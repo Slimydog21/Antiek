@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  MAX_OUTLINE_SECTIONS,
   prepareHtmlDraftForWrite,
+  splitHtmlIntoOutlineSections,
   stripHtmlToPlainText,
   titleHintFromDraft,
 } from "./htmlDraftImport";
 
-describe("htmlDraftImport residual fm", () => {
+describe("htmlDraftImport residual fm/fu", () => {
   it("strips tags and scripts to plain text", () => {
     const plain = stripHtmlToPlainText(
       "<p>Hello <b>world</b></p><script>alert(1)</script><style>.x{}</style>",
@@ -53,5 +55,46 @@ describe("htmlDraftImport residual fm", () => {
     expect(out.title).toBe("Analysis");
     expect(out.plain_text).toMatch(/Body text here/);
     expect(out.plain_preview.length).toBeGreaterThan(5);
+    expect(out.outline_sections.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("splitHtmlIntoOutlineSections uses single section when no headings (fu)", () => {
+    const secs = splitHtmlIntoOutlineSections(
+      "<p>Only a paragraph of research.</p>",
+      "Fallback Title",
+    );
+    expect(secs).toHaveLength(1);
+    expect(secs[0].title).toBe("Fallback Title");
+    expect(secs[0].plain_text).toMatch(/Only a paragraph/);
+    expect(secs[0].section_index).toBe(0);
+  });
+
+  it("splitHtmlIntoOutlineSections splits on h1/h2 with preamble (fu)", () => {
+    const html = `
+      <p>Preamble before headings.</p>
+      <h1>First</h1>
+      <p>Body one.</p>
+      <h2>Second</h2>
+      <p>Body two more text.</p>
+    `;
+    const secs = splitHtmlIntoOutlineSections(html, "Draft");
+    expect(secs.length).toBe(3);
+    expect(secs[0].title).toMatch(/Draft|Introduction/);
+    expect(secs[0].plain_text).toMatch(/Preamble/);
+    expect(secs[1].title).toBe("First");
+    expect(secs[1].plain_text).toMatch(/Body one/);
+    expect(secs[2].title).toBe("Second");
+    expect(secs[2].plain_text).toMatch(/Body two/);
+    expect(secs.map((s) => s.section_index)).toEqual([0, 1, 2]);
+  });
+
+  it("splitHtmlIntoOutlineSections caps at MAX_OUTLINE_SECTIONS (fu)", () => {
+    let html = "";
+    for (let i = 0; i < MAX_OUTLINE_SECTIONS + 5; i++) {
+      html += `<h2>Sec ${i}</h2><p>Body ${i}</p>`;
+    }
+    const secs = splitHtmlIntoOutlineSections(html, "Cap");
+    expect(secs.length).toBe(MAX_OUTLINE_SECTIONS);
+    expect(secs[secs.length - 1].section_index).toBe(MAX_OUTLINE_SECTIONS - 1);
   });
 });

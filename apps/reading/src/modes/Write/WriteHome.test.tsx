@@ -197,8 +197,13 @@ describe("WriteHome — the re-homed door", () => {
         .getAttribute("data-import-on-create"),
     ).toBe("true");
     expect(screen.getByTestId("write-html-draft-import-deferred").textContent).toMatch(
-      /section 0|plain text/i,
+      /outline sections|plain-text|h1–h3/i,
     );
+    expect(
+      screen
+        .getByTestId("write-html-draft-import-outline")
+        .getAttribute("data-section-count"),
+    ).toBe("1");
     // Seed brainstorm opens idea dump with plain text.
     await userEvent.click(screen.getByTestId("write-html-draft-seed-brainstorm"));
     await waitFor(() => {
@@ -234,6 +239,74 @@ describe("WriteHome — the re-homed door", () => {
         }),
       );
     });
+  });
+
+  it("imports multi-heading HTML into multiple outline sections (fu)", async () => {
+    createSectionMock
+      .mockResolvedValueOnce({
+        section_id: "sec_0",
+        deliverable_id: "dlv-new",
+        section_index: 0,
+        title: "First",
+        parent_section_id: null,
+      })
+      .mockResolvedValueOnce({
+        section_id: "sec_1",
+        deliverable_id: "dlv-new",
+        section_index: 1,
+        title: "Second",
+        parent_section_id: null,
+      });
+    fetchHostedDocumentHtmlMock.mockResolvedValueOnce({
+      document_id: "draft_multi",
+      view_format: "html",
+      title: "Multi draft",
+      html: "<h1>First</h1><p>Alpha body.</p><h2>Second</h2><p>Beta body.</p>",
+    });
+    mountAt("/write?html_draft=draft_multi");
+    await waitFor(() => {
+      expect(screen.getByTestId("write-html-draft-loaded")).toBeTruthy();
+    });
+    expect(
+      screen
+        .getByTestId("write-html-draft-import-outline")
+        .getAttribute("data-section-count"),
+    ).toBe("2");
+    const title = await screen.findByPlaceholderText(/what are you writing/i);
+    await userEvent.clear(title);
+    await userEvent.type(title, "Multi section piece");
+    await userEvent.click(await screen.findByText(/start without a project/i));
+    await waitFor(() => expect(createDeliverableMock).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(createSectionMock).toHaveBeenCalledTimes(2);
+    });
+    expect(createSectionMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        deliverable_id: "dlv-new",
+        section_index: 0,
+        title: "First",
+      }),
+    );
+    expect(createSectionMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        deliverable_id: "dlv-new",
+        section_index: 1,
+        title: "Second",
+      }),
+    );
+    await waitFor(() => {
+      expect(updateSectionProseMock).toHaveBeenCalledTimes(2);
+    });
+    expect(updateSectionProseMock).toHaveBeenCalledWith(
+      "sec_0",
+      expect.objectContaining({ prose_text: expect.stringMatching(/Alpha/) }),
+    );
+    expect(updateSectionProseMock).toHaveBeenCalledWith(
+      "sec_1",
+      expect.objectContaining({ prose_text: expect.stringMatching(/Beta/) }),
+    );
   });
 
   it("refuses non-html draft view_format (fm)", async () => {

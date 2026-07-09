@@ -48,8 +48,9 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
  * Residual (fl): `?html_draft=<document_id>` handoff from hosted HTML merge.
  * Residual (fm): load hosted HTML, refuse non-html, prefill title + seed
  * brainstorm plain text.
- * Residual (ft): on create piece with loaded HTML draft, create section 0 and
- * PATCH prose with plain text (HTML-first land into outline).
+ * Residual (ft): on create piece with loaded HTML draft, create section(s)
+ * and PATCH prose (HTML-first land into outline).
+ * Residual (fu): multi-section import via h1–h3 split (outline_sections).
  */
 export default function WriteHome() {
   const { deliverableId } = useParams<{ deliverableId?: string }>();
@@ -211,18 +212,37 @@ export default function WriteHome() {
         // investigation_root_id; reused, not a new column — see decision D-1).
         investigation_root_id: resolved.investigationId,
       });
-      // Residual (ft): land HTML draft plain text into outline section 0.
-      if (htmlDraft?.plain_text?.trim()) {
+      // Residual (ft/fu): land HTML draft into outline section(s).
+      // Prefer heading-split outline_sections; fall back to single plain body.
+      if (htmlDraft) {
         try {
-          const sec = await createSection({
-            deliverable_id: d.deliverable_id,
-            section_index: 0,
-            title: (htmlDraft.title_hint || "Imported HTML draft").slice(0, 120),
-          });
-          await updateSectionProse(sec.section_id, {
-            prose_text: htmlDraft.plain_text.slice(0, 100_000),
-            promote_to_graph: false,
-          });
+          const sections =
+            htmlDraft.outline_sections?.length > 0
+              ? htmlDraft.outline_sections
+              : htmlDraft.plain_text?.trim()
+                ? [
+                    {
+                      title: (htmlDraft.title_hint || "Imported HTML draft").slice(
+                        0,
+                        120,
+                      ),
+                      plain_text: htmlDraft.plain_text,
+                      section_index: 0,
+                    },
+                  ]
+                : [];
+          for (const s of sections) {
+            if (!s.plain_text?.trim()) continue;
+            const sec = await createSection({
+              deliverable_id: d.deliverable_id,
+              section_index: s.section_index,
+              title: (s.title || "Imported section").slice(0, 120),
+            });
+            await updateSectionProse(sec.section_id, {
+              prose_text: s.plain_text.slice(0, 100_000),
+              promote_to_graph: false,
+            });
+          }
         } catch {
           // Non-fatal: piece still opens; operator can paste from brainstorm seed.
         }
@@ -302,23 +322,28 @@ export default function WriteHome() {
               >
                 Seed brainstorm from draft
               </button>
-              {/* Residual (ft): import lands on create piece (section 0 prose). */}
+              {/* Residual (ft/fu): import lands on create piece (multi-section). */}
               <span
                 className="rounded border border-aurora/40 px-2 py-1 text-[11px] text-aurora"
                 data-testid="write-html-draft-import-outline"
                 data-import-on-create="true"
-                title="Creating a piece below imports draft plain text into section 0"
+                data-section-count={String(
+                  htmlDraft.outline_sections?.length ?? 0,
+                )}
+                title="Creating a piece below imports draft into outline section(s)"
               >
-                Imports on create piece → section 0
+                Imports on create →{" "}
+                {htmlDraft.outline_sections?.length ?? 0} section(s)
               </span>
             </div>
             <p
               className="text-[10px] text-ink-mute dark:text-moonlight"
               data-testid="write-html-draft-import-deferred"
             >
-              Residual (ft): create a piece below (connect research) and section
-              0 receives this draft&apos;s plain text (HTML-first, not PDF).
-              Provenance document <code>{htmlDraft.document_id}</code>.
+              Residual (fu): create a piece below (connect research); h1–h3
+              structure becomes outline sections with plain-text prose
+              (HTML-first, not PDF). Provenance document{" "}
+              <code>{htmlDraft.document_id}</code>.
             </p>
             {/* Residual (fp): visible provenance stamp for freeform project type. */}
             <p

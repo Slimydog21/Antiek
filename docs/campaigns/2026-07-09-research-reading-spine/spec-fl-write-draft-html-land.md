@@ -30,3 +30,6 @@ Disabled Import HTML into outline button + deferred copy on Write handoff panel.
 
 ## Residual (ft)
 On create piece with loaded html_draft: createSection(0) + updateSectionProse(plain_text). Heading/structure split remains (fu)+.
+
+## Residual (fu)
+splitHtmlIntoOutlineSections on h1–h3; createWithConnection creates N sections with plain-text prose. Cap 20.

@@ -1,8 +1,9 @@
 /**
  * htmlDraftImport — pure helpers for landing hosted HTML research drafts
- * into Write mode (residuals fl/fm).
+ * into Write mode (residuals fl/fm/ft/fu).
  *
  * HTML-first only: refuse non-html view_format. Does not invent body text.
+ * Residual (fu): split h1–h3 structure into outline sections for multi-section land.
  */
 
 export type HtmlDraftImportInput = {
@@ -20,7 +21,19 @@ export type HtmlDraftImportPrepared = {
   plain_text: string;
   plain_preview: string;
   title_hint: string;
+  /** Residual (fu): outline sections derived from HTML headings (or single body). */
+  outline_sections: OutlineSectionImport[];
 };
+
+/** One outline section candidate for createSection + updateSectionProse. */
+export type OutlineSectionImport = {
+  title: string;
+  plain_text: string;
+  section_index: number;
+};
+
+/** Max sections created on import (hard-to-vary safety cap). */
+export const MAX_OUTLINE_SECTIONS = 20;
 
 /** Strip tags / collapse whitespace for brainstorm / title hints. */
 export function stripHtmlToPlainText(html: string): string {
@@ -55,6 +68,76 @@ export function titleHintFromDraft(opts: {
 }
 
 /**
+ * Residual (fu): split HTML on h1–h3 into outline sections.
+ * Preamble before the first heading becomes "Introduction" (or fallbackTitle)
+ * when non-empty. No headings → single section with fallbackTitle.
+ * Empty bodies after a heading keep the heading text as minimal prose.
+ * Capped at MAX_OUTLINE_SECTIONS.
+ */
+export function splitHtmlIntoOutlineSections(
+  html: string,
+  fallbackTitle: string,
+): OutlineSectionImport[] {
+  const cleaned = (html || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "");
+  const re = /<h([1-3])\b[^>]*>([\s\S]*?)<\/h\1>/gi;
+  const matches = Array.from(cleaned.matchAll(re));
+  const fallback = (fallbackTitle || "Imported HTML draft").trim().slice(0, 120);
+
+  if (matches.length === 0) {
+    const plain = stripHtmlToPlainText(cleaned);
+    if (!plain) return [];
+    return [
+      {
+        title: fallback || "Imported HTML draft",
+        plain_text: plain.slice(0, 100_000),
+        section_index: 0,
+      },
+    ];
+  }
+
+  const sections: OutlineSectionImport[] = [];
+  const firstIdx = matches[0].index ?? 0;
+  if (firstIdx > 0) {
+    const preamble = cleaned.slice(0, firstIdx);
+    const plain = stripHtmlToPlainText(preamble);
+    if (plain) {
+      sections.push({
+        title: (fallback || "Introduction").slice(0, 120),
+        plain_text: plain.slice(0, 100_000),
+        section_index: 0,
+      });
+    }
+  }
+
+  for (let i = 0; i < matches.length; i++) {
+    const m = matches[i];
+    const headingPlain = stripHtmlToPlainText(m[2] || "");
+    const title =
+      headingPlain.slice(0, 120) || `Section ${sections.length + 1}`;
+    const start = (m.index ?? 0) + m[0].length;
+    const end =
+      i + 1 < matches.length
+        ? (matches[i + 1].index ?? cleaned.length)
+        : cleaned.length;
+    const bodyPlain = stripHtmlToPlainText(cleaned.slice(start, end));
+    const plain_text = (bodyPlain || headingPlain || title).slice(0, 100_000);
+    if (!plain_text.trim()) continue;
+    sections.push({
+      title,
+      plain_text,
+      section_index: sections.length,
+    });
+  }
+
+  return sections.slice(0, MAX_OUTLINE_SECTIONS).map((s, i) => ({
+    ...s,
+    section_index: i,
+  }));
+}
+
+/**
  * Prepare a hosted document response for Write handoff.
  * Throws if view_format is not html or html body is empty.
  */
@@ -79,13 +162,16 @@ export function prepareHtmlDraftForWrite(
     plain_text,
     document_id,
   });
+  const title = (input.title || "").trim() || title_hint;
+  const outline_sections = splitHtmlIntoOutlineSections(html, title_hint);
   return {
     document_id,
     view_format: "html",
-    title: (input.title || "").trim() || title_hint,
+    title,
     html,
     plain_text,
     plain_preview: plain_text.slice(0, 600) + (plain_text.length > 600 ? "…" : ""),
     title_hint,
+    outline_sections,
   };
 }
