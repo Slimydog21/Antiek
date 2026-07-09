@@ -18,6 +18,7 @@
  * Residual (ci): SpawnMergePanel — this spawn → draft/parent reading asset.
  * Residual (ck): PublicationAttachPanel — arxiv/substack attach + hydrate.
  * Residual (cl): SessionFlywheelPanel — complete flywheel + twins/usage.
+ * Residual (cp): ResearchProgressPanel autoLoad + autoSeedIfEmpty.
  */
 
 import { useMemo } from "react";
@@ -209,7 +210,11 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
           data-testid="deep-research-progress-mount"
           data-view-format="html"
         >
-          <ResearchProgressPanel spawnId={props.spawn_id.trim()} />
+          <ResearchProgressPanel
+            spawnId={props.spawn_id.trim()}
+            autoLoad
+            autoSeedIfEmpty
+          />
         </section>
       ) : null}
 

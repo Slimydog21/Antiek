@@ -4,10 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SpawnMergePanel } from "./SpawnMergePanel";
 
 const mergeSpawnOutputs = vi.fn();
+const seedTwinNotes = vi.fn();
 const openWindow = vi.fn(() => "win:merge:draft_1");
 
 vi.mock("../../api/engagement", () => ({
   mergeSpawnOutputs: (...args: unknown[]) => mergeSpawnOutputs(...args),
+  seedTwinNotes: (...args: unknown[]) => seedTwinNotes(...args),
 }));
 
 vi.mock("../windows/openWindow", () => ({
@@ -18,6 +20,15 @@ describe("SpawnMergePanel residual ci", () => {
   afterEach(() => cleanup());
   beforeEach(() => {
     mergeSpawnOutputs.mockReset();
+    seedTwinNotes.mockReset();
+    seedTwinNotes.mockResolvedValue({
+      asset_id: "draft_book-1_abc",
+      seeded: true,
+      view_format: "html",
+      notes: [],
+      insight_count: 1,
+      question_count: 1,
+    });
     openWindow.mockClear();
   });
 
@@ -50,8 +61,17 @@ describe("SpawnMergePanel residual ci", () => {
       });
     });
     await waitFor(() => {
+      expect(seedTwinNotes).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "draft_book-1_abc",
+          force_offline: true,
+          source_spawn_id: "spn_1",
+        }),
+      );
+    });
+    await waitFor(() => {
       expect(screen.getByTestId("spawn-merge-result").textContent).toMatch(
-        /draft_combined/,
+        /draft_combined|Twin notes seeded/,
       );
     });
     expect(

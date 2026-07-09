@@ -57,4 +57,94 @@ describe("ResearchProgressPanel", () => {
       screen.getByTestId("research-progress-panel").getAttribute("data-view-format"),
     ).toBe("html");
   });
+
+  it("auto-loads progress on mount (cp)", async () => {
+    fetchResearchProgress.mockResolvedValue({
+      spawn_id: "spn_1",
+      event_count: 1,
+      events: [
+        { spawn_id: "spn_1", stage: "plan", message: "planned", ts: 1, sequence: 1 },
+      ],
+      latest_stage: "plan",
+      is_terminal: false,
+      view_format: "html",
+      product_panel: "research_progress",
+      source: "engagement_spine.progress",
+      notes: [],
+      html: "<p>plan</p>",
+    });
+    render(<ResearchProgressPanel spawnId="spn_1" autoLoad />);
+    await waitFor(() => {
+      expect(fetchResearchProgress).toHaveBeenCalledWith("spn_1", {
+        includeHtml: true,
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("research-progress-summary").textContent).toMatch(
+        /plan/,
+      );
+    });
+    expect(seedResearchProgress).not.toHaveBeenCalled();
+  });
+
+  it("auto-seeds empty pipeline when autoSeedIfEmpty (cp)", async () => {
+    fetchResearchProgress.mockResolvedValue({
+      spawn_id: "spn_empty",
+      event_count: 0,
+      events: [],
+      latest_stage: null,
+      is_terminal: false,
+      view_format: "html",
+      product_panel: "research_progress",
+      source: "engagement_spine.progress",
+      notes: [],
+      html: "<p>empty</p>",
+    });
+    seedResearchProgress.mockResolvedValue({
+      spawn_id: "spn_empty",
+      event_count: 4,
+      events: [
+        { spawn_id: "spn_empty", stage: "plan", message: "p", ts: 1, sequence: 1 },
+        {
+          spawn_id: "spn_empty",
+          stage: "gather",
+          message: "g",
+          ts: 2,
+          sequence: 2,
+        },
+        {
+          spawn_id: "spn_empty",
+          stage: "synthesize",
+          message: "s",
+          ts: 3,
+          sequence: 3,
+        },
+        { spawn_id: "spn_empty", stage: "cite", message: "c", ts: 4, sequence: 4 },
+      ],
+      latest_stage: "cite",
+      is_terminal: false,
+      view_format: "html",
+      product_panel: "research_progress",
+      source: "engagement_spine.progress",
+      notes: [],
+      html: "<p>seeded</p>",
+    });
+    render(
+      <ResearchProgressPanel
+        spawnId="spn_empty"
+        autoLoad
+        autoSeedIfEmpty
+      />,
+    );
+    await waitFor(() => {
+      expect(seedResearchProgress).toHaveBeenCalledWith("spn_empty", {
+        includeHtml: true,
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("research-progress-summary").textContent).toMatch(
+        /cite/,
+      );
+    });
+  });
 });

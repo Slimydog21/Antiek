@@ -1,0 +1,11 @@
+# residual (cp) Progress autoLoad + twin seed on spawn merge
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(co) prior | branch_only | campaign inventories
+(cp) progress autoLoad + merge twin seed | branch_only | ResearchProgressPanel autoLoad/autoSeedIfEmpty; SpawnMergePanel seedTwinNotes; 21 vitest; tip after commit
+
+PRODUCT PATH:
+DR host open → progress plan→cite visible; merge → twins on merged document
+
+NEXT: (cq) re-derive; operator merge PR #465

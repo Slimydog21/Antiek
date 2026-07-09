@@ -2,10 +2,12 @@
  * ResearchProgressPanel — multi-minute deep-research progress telemetry UI.
  *
  * Residual (ax): plan → gather → synthesize → cite (+ terminal) for a spawn.
+ * Residual (cp): autoLoad (and optional empty-pipeline seed) on mount for
+ * competitive multi-minute job visibility without an extra click.
  * HTML-first; never PDF.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   fetchResearchProgress,
   seedResearchProgress,
@@ -14,14 +16,25 @@ import {
 
 export type ResearchProgressPanelProps = {
   spawnId: string;
+  /** Residual (cp): fetch progress on mount. */
+  autoLoad?: boolean;
+  /**
+   * When autoLoad finds zero events, seed the offline plan→cite pipeline
+   * so the operator sees stages immediately (honest offline scaffold).
+   */
+  autoSeedIfEmpty?: boolean;
 };
 
-export function ResearchProgressPanel({ spawnId }: ResearchProgressPanelProps) {
+export function ResearchProgressPanel({
+  spawnId,
+  autoLoad = false,
+  autoSeedIfEmpty = false,
+}: ResearchProgressPanelProps) {
   const [progress, setProgress] = useState<ResearchProgressResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<ResearchProgressResponse | null> => {
     setBusy(true);
     setError(null);
     try {
@@ -30,14 +43,16 @@ export function ResearchProgressPanel({ spawnId }: ResearchProgressPanelProps) {
         throw new Error("progress view_format must be html");
       }
       setProgress(p);
+      return p;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      return null;
     } finally {
       setBusy(false);
     }
   }, [spawnId]);
 
-  const seed = useCallback(async () => {
+  const seed = useCallback(async (): Promise<ResearchProgressResponse | null> => {
     setBusy(true);
     setError(null);
     try {
@@ -46,12 +61,30 @@ export function ResearchProgressPanel({ spawnId }: ResearchProgressPanelProps) {
         throw new Error("progress view_format must be html");
       }
       setProgress(p);
+      return p;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      return null;
     } finally {
       setBusy(false);
     }
   }, [spawnId]);
+
+  useEffect(() => {
+    if (!autoLoad || !spawnId.trim()) return;
+    void (async () => {
+      const p = await load();
+      if (
+        autoSeedIfEmpty &&
+        p &&
+        (p.event_count === 0 || (p.events || []).length === 0)
+      ) {
+        await seed();
+      }
+    })();
+    // Mount-once per spawn when autoLoad is on (residual cp).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoLoad, autoSeedIfEmpty, spawnId]);
 
   return (
     <section

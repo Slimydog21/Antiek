@@ -62,6 +62,19 @@ vi.mock("../engagement/SessionFlywheelPanel", () => ({
   ),
 }));
 
+vi.mock("../engagement/ResearchProgressPanel", () => ({
+  ResearchProgressPanel: (props: {
+    spawnId: string;
+    autoLoad?: boolean;
+    autoSeedIfEmpty?: boolean;
+  }) => (
+    <div data-testid="research-progress-panel-stub">
+      {props.spawnId}:auto={String(Boolean(props.autoLoad))}:seed=
+      {String(Boolean(props.autoSeedIfEmpty))}
+    </div>
+  ),
+}));
+
 const FIXTURE = {
   session_id: "fsess_launch_1",
   spawn_id: "spn_launch_1",
@@ -129,6 +142,14 @@ describe("DeepResearchSessionHost", () => {
     expect(screen.getByTestId("deep-research-flywheel-mount")).toBeTruthy();
     expect(screen.getByTestId("session-flywheel-panel-stub").textContent).toBe(
       "fsess_launch_1",
+    );
+  });
+
+  it("mounts ResearchProgressPanel with autoLoad+autoSeedIfEmpty (cp)", () => {
+    render(<DeepResearchSessionHost {...FIXTURE} />);
+    expect(screen.getByTestId("deep-research-progress-mount")).toBeTruthy();
+    expect(screen.getByTestId("research-progress-panel-stub").textContent).toMatch(
+      /spn_launch_1:auto=true:seed=true/,
     );
   });
 

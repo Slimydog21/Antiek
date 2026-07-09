@@ -4,11 +4,13 @@
  * Residual (ci): highlight → floating DR → merge into the reading asset
  * without multi-select collective friction. Composes shipped
  * mergeSpawnOutputs (draft_combined | into_parent). HTML-first only.
+ * Residual (cp): seed twin notes on the merged document_id after success.
  */
 
 import { useCallback, useState } from "react";
 import {
   mergeSpawnOutputs,
+  seedTwinNotes,
   type MergeMode,
   type MergeProductResponse,
 } from "../../api/engagement";
@@ -47,7 +49,27 @@ export function SpawnMergePanel({
         if (out.view_format !== "html") {
           throw new Error("merge view_format must be html");
         }
-        setResult(out);
+        // Residual (cp): recursive note-taker seed on merged document.
+        let notes = [...(out.notes || [])];
+        try {
+          const twins = await seedTwinNotes({
+            asset_id: out.document_id,
+            title: `Merged research (${mode}) from ${sid}`,
+            body_text: `Parent ${parent} · spawn ${sid} · mode ${mode}`,
+            source_spawn_id: sid,
+            include_html: false,
+            force_offline: true,
+          });
+          notes = [
+            ...notes,
+            twins.seeded
+              ? "Twin notes seeded on merged document (recursive note-taker)."
+              : `Twin seed: ${twins.seed_skipped || "skipped"}`,
+          ];
+        } catch {
+          notes = [...notes, "Twin seed skipped (API unavailable)."];
+        }
+        setResult({ ...out, notes });
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       } finally {
