@@ -5,6 +5,8 @@
  * Residual (cz): prefill model_id from Settings decision-tree driver when
  * installed (editable override). Autonomous runs should inherit the same
  * driver the operator configured for workstation prompts.
+ * Residual (db): open deposit HTML deliverable in hosted_html_document window
+ * so Midnight Oil results join the reading/research flywheel (da host).
  */
 
 import { useEffect, useState } from "react";
@@ -20,6 +22,7 @@ import {
 import { fetchDecisionTreeSelection } from "../../api/settings";
 import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
 import { ResearchLaunchBudgetPanel } from "../../components/engagement/ResearchLaunchBudgetPanel";
+import { openWindow } from "../../components/windows/openWindow";
 
 export default function MidnightOil() {
   const [goalsText, setGoalsText] = useState("");
@@ -41,6 +44,7 @@ export default function MidnightOil() {
   const [autoDeposit, setAutoDeposit] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [depositWindowId, setDepositWindowId] = useState<string | null>(null);
 
   // Residual (cz): prefill model from decision-tree once on mount.
   useEffect(() => {
@@ -445,6 +449,50 @@ export default function MidnightOil() {
                   dangerouslySetInnerHTML={{ __html: deposit.progress.html }}
                 />
               ) : null}
+              {/* Residual (db): open deposit as hosted HTML reading window. */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  data-testid="moil-open-deposit-window"
+                  disabled={
+                    deposit.view_format !== "html" ||
+                    !deposit.html ||
+                    !deposit.document_id
+                  }
+                  onClick={() => {
+                    if (deposit.view_format !== "html" || !deposit.html) {
+                      setError("deposit view_format must be html with body");
+                      return;
+                    }
+                    const winId = openWindow(
+                      "hosted_html_document",
+                      {
+                        document_id: deposit.document_id || deposit.asset_id,
+                        title: `Midnight Oil · ${deposit.job_id}`,
+                        html: deposit.html,
+                        view_format: "html",
+                        source: "midnight_oil_deposit",
+                      },
+                      {
+                        id: `win:moil-deposit:${deposit.document_id || deposit.job_id}`,
+                        title: `Midnight Oil · ${deposit.job_id}`,
+                      },
+                    );
+                    setDepositWindowId(winId);
+                  }}
+                >
+                  Open deposit in window
+                </button>
+                {depositWindowId ? (
+                  <span
+                    className="text-[11px] font-mono"
+                    data-testid="moil-deposit-window-id"
+                    role="status"
+                  >
+                    Window {depositWindowId}
+                  </span>
+                ) : null}
+              </div>
             </div>
           ) : null}
 

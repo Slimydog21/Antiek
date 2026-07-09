@@ -45,6 +45,11 @@ vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
   ),
 }));
 
+const openWindow = vi.fn(() => "win:moil-deposit:draft_moil_asset_dep_abc");
+vi.mock("../../components/windows/openWindow", () => ({
+  openWindow: (...args: unknown[]) => openWindow(...args),
+}));
+
 describe("MidnightOil mode", () => {
   afterEach(() => cleanup());
   beforeEach(() => {
@@ -53,6 +58,7 @@ describe("MidnightOil mode", () => {
     depositMidnightOilJob.mockReset();
     runMidnightOilJob.mockReset();
     getMidnightOilJob.mockReset();
+    openWindow.mockClear();
     fetchDecisionTreeSelection.mockReset();
     fetchDecisionTreeSelection.mockResolvedValue({
       installed: false,
@@ -236,6 +242,25 @@ describe("MidnightOil mode", () => {
     expect(
       screen.getByTestId("midnight-oil-mode").getAttribute("data-view-format"),
     ).toBe("html");
+
+    // Residual (db): open deposit HTML in hosted window for reading flywheel.
+    fireEvent.click(screen.getByTestId("moil-open-deposit-window"));
+    expect(openWindow).toHaveBeenCalledWith(
+      "hosted_html_document",
+      expect.objectContaining({
+        document_id: "draft_moil_asset_dep_abc",
+        view_format: "html",
+        source: "midnight_oil_deposit",
+      }),
+      expect.objectContaining({
+        id: "win:moil-deposit:draft_moil_asset_dep_abc",
+      }),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("moil-deposit-window-id").textContent).toMatch(
+        /win:moil-deposit/,
+      );
+    });
   });
 
   it("runs offline worker after approve with auto-deposit", async () => {
