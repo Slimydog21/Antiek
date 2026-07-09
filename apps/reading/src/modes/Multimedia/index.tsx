@@ -1536,7 +1536,8 @@ export default function Multimedia() {
                   </LemonButton>
                 </div>
                 <p className="text-[11px] leading-snug text-shadow-1 dark:text-moonlight">
-                  Approve render creates a draft render package only; it does not call providers, export, or publish media.
+                  Edit brief and Steer outline update local planning state only; they do not call providers or spend budget. Approve
+                  render creates a draft render package only; it does not call providers, export, or publish media.
                 </p>
               </>
             )}
