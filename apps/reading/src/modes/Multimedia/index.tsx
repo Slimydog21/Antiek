@@ -2605,6 +2605,9 @@ function StatusPanel({
           </LemonButton>
         )}
       </div>
+      <p className="mt-2 text-[11px] leading-snug text-shadow-1 dark:text-moonlight">
+        Simulator and fallback controls change preview state or route only; they do not call providers, export, or publish media.
+      </p>
     </section>
   );
 }

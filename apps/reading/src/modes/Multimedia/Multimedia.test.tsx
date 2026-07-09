@@ -361,6 +361,9 @@ describe("Multimedia workstation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sim provider down" }));
 
     expect(screen.getByRole("status").textContent).toContain("Krea provider unavailable");
+    expect(
+      screen.getByText("Simulator and fallback controls change preview state or route only; they do not call providers, export, or publish media."),
+    ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Use cheapest fallback" }));
 
