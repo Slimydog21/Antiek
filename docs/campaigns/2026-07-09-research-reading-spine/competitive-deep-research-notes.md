@@ -184,3 +184,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - (ll) ResearchThis + StartResearch DecisionTreeDriverBadge researchTier
   Major launch hosts now all co-display model driver, daily budget, and closed depth.
 
+
+- Closed (ln, 2026-07-10) **Workstation chat Ask driver+depth:**
+  - (ln) ChatInputArea DecisionTreeDriverBadge with launchTier
+  In-investigation follow-on prompts now match StartResearch co-display.
+
