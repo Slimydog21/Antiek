@@ -41,6 +41,8 @@
  * multi-select even if the floating window is closed (parity ob).
  * Residual (pn): open multi-selected twins as HTML draft window (FUTURE-AGENT
  * V1 partial — recursive note-taker combine draft before promote/merge).
+ * Residual (po): twin-draft-metrics machine attrs after HTML draft open
+ * (note_count / note_ids / window_id) for recursive note-taker audit.
  * HTML-first; never PDF.
  */
 
@@ -202,6 +204,13 @@ export function TwinNotesPanel({
   const [promoteStatus, setPromoteStatus] = useState<string | null>(null);
   /** Residual (mz): chase-selected deep research status chrome. */
   const [chaseStatus, setChaseStatus] = useState<string | null>(null);
+  /** Residual (po): last twin HTML draft open metrics. */
+  const [draftMetrics, setDraftMetrics] = useState<{
+    note_count: number;
+    note_ids: string[];
+    window_id: string | null;
+    title: string;
+  } | null>(null);
   /**
    * Residual (nc): machine-readable last chase result for audit (parity
    * twin-promote-metrics / marketplace-host-dr-status).
@@ -902,6 +911,12 @@ export function TwinNotesPanel({
                 mode: "floating",
               },
             );
+            setDraftMetrics({
+              note_count: selected.length,
+              note_ids: draft.note_ids,
+              window_id: winId,
+              title: draft.title,
+            });
             setChaseStatus(
               winId
                 ? `Opened twin HTML draft (${selected.length} note(s))`
@@ -913,6 +928,20 @@ export function TwinNotesPanel({
         >
           Draft HTML ({selectedNoteIds.size})
         </button>
+        {draftMetrics ? (
+          <div
+            className="w-full font-mono text-[11px] opacity-80"
+            data-testid="twin-draft-metrics"
+            data-note-count={String(draftMetrics.note_count)}
+            data-window-id={draftMetrics.window_id ?? ""}
+            data-view-format="html"
+            data-source="twin_draft_selected"
+            role="status"
+          >
+            Twin draft · notes={draftMetrics.note_count} · window=
+            {draftMetrics.window_id ?? "(none)"} · {draftMetrics.title}
+          </div>
+        ) : null}
       </div>
       {/* Residual (na): budget projection soft-gate when multi-select is active. */}
       {selectedNoteIds.size > 0 ? (

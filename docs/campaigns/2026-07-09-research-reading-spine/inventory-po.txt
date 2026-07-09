@@ -1,0 +1,7 @@
+# inventory-po · twin-draft-metrics after HTML draft open
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: po
+files:
+  apps/reading/src/components/engagement/TwinNotesPanel.tsx
+proof: vitest TwinNotesPanel 23 passed
+invariants: HTML-first · note_count / window_id audit · twin_draft_selected source

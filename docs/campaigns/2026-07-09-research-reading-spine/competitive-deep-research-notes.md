@@ -582,3 +582,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (pn, 2026-07-10) **Twin multi-select HTML draft window (V1 partial):**
   - buildTwinDraftHtml pure helper (escape · questions first)
   - twin-draft-selected-html opens hosted HTML floating draft
+
+- Closed (po, 2026-07-10) **twin-draft-metrics after HTML draft open:**
+  - data-note-count / data-window-id / data-source=twin_draft_selected
