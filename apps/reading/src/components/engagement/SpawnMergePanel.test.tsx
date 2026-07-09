@@ -76,6 +76,8 @@ describe("SpawnMergePanel residual ci", () => {
     ).toBe("true");
     // Residual (ih): Settings deep-link for driver + budget.
     const settings = screen.getByTestId("spawn-merge-settings-link");
+    const dual = screen.getByTestId("spawn-merge-dual-gate-checklist-link");
+    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4/);
     expect(settings.getAttribute("href")).toBe("/settings");
     expect(settings.textContent).toMatch(/driver & budget/i);
     // Residual (lj): driver badge defaults deep pre-merge.

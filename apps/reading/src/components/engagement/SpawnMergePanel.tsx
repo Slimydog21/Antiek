@@ -16,6 +16,7 @@
  * Residual (ih): Settings deep-link for driver + budget.
  * Residual (kn): surface recommended_research_tier + research_tiers from merge.
  * Residual (lj): DecisionTreeDriverBadge with merge recommended tier (or prop).
+ * Residual (nn): dual-gate L1–L4 checklist deep-link (prep only).
  */
 
 import { useCallback, useMemo, useState } from "react";
@@ -202,8 +203,8 @@ export function SpawnMergePanel({
             ? " · draft auto-opens HTML window"
             : " · draft open is manual"}
         </p>
-        {/* Residual (ih): Settings deep-link for model driver + budget. */}
-        <p className="text-[11px] font-mono">
+        {/* Residual (ih/nn): Settings + dual-gate checklist (merge path prep). */}
+        <p className="text-[11px] font-mono space-x-3">
           <a
             href="/settings"
             data-testid="spawn-merge-settings-link"
@@ -211,6 +212,14 @@ export function SpawnMergePanel({
             title="Open Settings for decision-tree driver and daily budget"
           >
             Settings · driver & budget
+          </a>
+          <a
+            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+            data-testid="spawn-merge-dual-gate-checklist-link"
+            className="underline opacity-80 hover:opacity-100"
+            title="Dual-gate L1–L4 checklist (prep only; offline default)"
+          >
+            Dual-gate L1–L4 checklist
           </a>
         </p>
         {/* Residual (lj): model driver + budget + depth (parity collective lg). */}

@@ -370,3 +370,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (nm, 2026-07-10) **SESSION-ARC nk–nl collective multi-select:**
   - SESSION-ARC-nk-nl-collective-multiselect.md fleet handoff
   - dual-gate prep surfaces complete on major engagement panels
+
+- Closed (nn, 2026-07-10) **SpawnMerge dual-gate checklist link:**
+  - Completes dual-gate prep on spawn merge path
