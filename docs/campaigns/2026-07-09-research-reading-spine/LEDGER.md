@@ -11,19 +11,18 @@
 
 | Cycle | Package | Status |
 |---|---|---|
-| 1–6 | spine … decision-tree dispatch | done |
-| 7 | **Session ↔ workspace window composition** | **done** |
+| 1–7 | spine … session↔window descriptors | done |
+| 8 | **Deep-research session WINDOW_PAGES host** | **done** |
 
-## Cycle 7 details
+## Cycle 8 details
 
 | Item | Status |
 |---|---|
-| session_to_window_descriptor (windowsStore-shaped) | done |
-| open_session_as_window / multi-session open | done |
-| floating⇄full sync on session + window store | done |
-| TS handoff deepResearchWindow.ts | done |
-| HTML path via project_session_html | done |
+| WINDOW_PAGES.deep_research_session registration | done |
+| DeepResearchSessionHost payload identity render | done |
+| openDeepResearchWindow via openWindow (registry) | done |
+| vitest host + eligibility + open | done |
 
 ## Non-claims
 
-No browser multi-window e2e; no reimplementation of windowsStore z-order; operator merges only.
+No nesting ResearchWorkstation; no browser Playwright e2e; operator merges only.

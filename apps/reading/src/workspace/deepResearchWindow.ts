@@ -17,6 +17,7 @@
  * coverage lives on the Python composition side + windowsStore tests.
  */
 
+import { isWindowEligible, openWindow } from "../components/windows/openWindow";
 import { useWindows } from "./windowsStore";
 import type { OpenWindowOptions, WindowMode } from "./windowsStore";
 
@@ -55,9 +56,9 @@ export function windowIdForSession(sessionId: string): string {
 }
 
 /**
- * Open (or focus) a deep-research session window via the real windowsStore.
- * Call from UI when a highlight session is ready; payload must match the
- * Python composition handoff shape.
+ * Open (or focus) a deep-research session window via the real openWindow path
+ * (registry-eligible kind → windowsStore). Call from UI when a highlight
+ * session is ready; payload must match the Python composition handoff shape.
  */
 export function openDeepResearchWindow(
   descriptor: DeepResearchWindowDescriptor,
@@ -65,12 +66,18 @@ export function openDeepResearchWindow(
   if (descriptor.kind !== DEEP_RESEARCH_WINDOW_KIND) {
     throw new Error(`expected kind ${DEEP_RESEARCH_WINDOW_KIND}, got ${descriptor.kind}`);
   }
+  if (!isWindowEligible(DEEP_RESEARCH_WINDOW_KIND)) {
+    throw new Error(
+      `kind ${DEEP_RESEARCH_WINDOW_KIND} is not registered in WINDOW_PAGES`,
+    );
+  }
   const opts: OpenWindowOptions = {
     id: descriptor.id || windowIdForSession(descriptor.session_id),
     title: descriptor.title,
     mode: descriptor.mode,
   };
-  return useWindows.getState().open(
+  // openWindow applies registry title default then opts; stable id focuses.
+  return openWindow(
     DEEP_RESEARCH_WINDOW_KIND,
     descriptor.payload as unknown as Record<string, unknown>,
     opts,

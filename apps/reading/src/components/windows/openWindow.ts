@@ -96,6 +96,15 @@ export const WINDOW_PAGES: Record<string, { title: string; renderer: WindowPageR
     title: "Sub-actions",
     renderer: lazy(() => import("./SubActionList")),
   },
+  // Deep-research floating session host (campaign residual). Window-native:
+  // glass-safe payload renderer for kind deep_research_session. Does NOT nest
+  // ResearchWorkstation / WrestleApp (out-of-contract dock/full-viewport).
+  // Payload contract: substrate/floating_session/window_compose.py +
+  // workspace/deepResearchWindow.ts.
+  deep_research_session: {
+    title: "Deep research",
+    renderer: lazy(() => import("./DeepResearchSessionHost")),
+  },
 };
 
 export type WindowEligibleKind = keyof typeof WINDOW_PAGES;
