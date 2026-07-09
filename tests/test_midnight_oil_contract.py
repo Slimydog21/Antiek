@@ -17,6 +17,7 @@ from substrate.midnight_oil import (
     MidnightOilProviderRouteRequest,
     MidnightOilRequest,
     MidnightOilRetrievalRequest,
+    MidnightOilRunnerControlPlanRequest,
     MidnightOilRunnerReadinessRequest,
     activation_checklist_midnight_oil,
     budget_reservation_midnight_oil,
@@ -28,6 +29,7 @@ from substrate.midnight_oil import (
     preflight_midnight_oil,
     provider_route_midnight_oil,
     retrieval_midnight_oil,
+    runner_control_plan_midnight_oil,
     runner_readiness_midnight_oil,
 )
 
@@ -2113,6 +2115,178 @@ def test_midnight_oil_runner_readiness_api_contract() -> None:
     assert body["status"] == "blocked_runner_readiness_controls_missing"
     assert chain["final_artifact"].receipt_id in body["completed_receipt_ids"]
     assert "final HTML artifact writer" in body["remaining_blockers"]
+    assert body["live_run_allowed"] is False
+    assert body["dispatch_allowed"] is False
+    assert body["budget_reservation_allowed"] is False
+    assert body["provider_execution_allowed"] is False
+    assert body["retrieval_allowed"] is False
+    assert body["graph_mutation_allowed"] is False
+    assert body["final_artifact_allowed"] is False
+    assert body["dispatch_performed"] is False
+    assert body["budget_reserved"] is False
+    assert body["provider_calls_made"] is False
+    assert body["retrieval_performed"] is False
+    assert body["graph_mutated"] is False
+    assert body["final_artifact_created"] is False
+
+
+def test_runner_control_plan_records_missing_implementation_requirements() -> None:
+    chain = _accepted_midnight_oil_gate_chain(
+        goal="Plan controls for a midnight oil run about widebody maintenance.",
+        source_policy=["arxiv", "web"],
+    )
+    preflight = chain["preflight"]
+    readiness = runner_readiness_midnight_oil(
+        MidnightOilRunnerReadinessRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            live_run_activation_settings_receipt=chain["live_settings"],
+            dispatch_receipt=chain["dispatch"],
+            activation_checklist_receipt=chain["checklist"],
+            budget_reservation_receipt=chain["reservation"],
+            provider_route_receipt=chain["provider_route"],
+            retrieval_receipt=chain["retrieval"],
+            graph_mutation_receipt=chain["graph"],
+            final_artifact_receipt=chain["final_artifact"],
+        )
+    )
+
+    plan = runner_control_plan_midnight_oil(
+        MidnightOilRunnerControlPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_readiness_receipt=readiness,
+        )
+    )
+
+    assert plan.receipt_id == f"{preflight.run_id}-runner-control-plan"
+    assert plan.runner_readiness_receipt_id == readiness.receipt_id
+    assert plan.runner_handoff_id == preflight.runner_handoff.handoff_id
+    assert plan.status == "blocked_runner_controls_unimplemented"
+    assert plan.requested_control_scope == plan.required_control_order
+    assert len(plan.implementation_requirements) == 6
+    assert plan.implementation_requirements[0].control_key == "budget_reservation_provider"
+    assert plan.implementation_requirements[0].blocker == "budget reservation provider"
+    assert "budget provider adapter" in plan.implementation_requirements[0].required_artifact
+    assert all(req.implementation_status == "missing" for req in plan.implementation_requirements)
+    assert all(req.live_enablement_allowed is False for req in plan.implementation_requirements)
+    assert "final HTML artifact writer" in plan.remaining_blockers
+    assert plan.blocker_reason == "runner_controls_unimplemented"
+    assert plan.live_run_allowed is False
+    assert plan.dispatch_allowed is False
+    assert plan.budget_reservation_allowed is False
+    assert plan.provider_execution_allowed is False
+    assert plan.retrieval_allowed is False
+    assert plan.graph_mutation_allowed is False
+    assert plan.final_artifact_allowed is False
+    assert plan.dispatch_performed is False
+    assert plan.budget_reserved is False
+    assert plan.provider_calls_made is False
+    assert plan.retrieval_performed is False
+    assert plan.graph_mutated is False
+    assert plan.final_artifact_created is False
+    assert "implementation requirements are recorded" in plan.control_plan_notes[0]
+
+
+def test_runner_control_plan_rejects_readiness_that_allows_live_run() -> None:
+    chain = _accepted_midnight_oil_gate_chain(
+        goal="Reject control plan when readiness allows live execution.",
+        source_policy=["web"],
+    )
+    preflight = chain["preflight"]
+    readiness = runner_readiness_midnight_oil(
+        MidnightOilRunnerReadinessRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            live_run_activation_settings_receipt=chain["live_settings"],
+            dispatch_receipt=chain["dispatch"],
+            activation_checklist_receipt=chain["checklist"],
+            budget_reservation_receipt=chain["reservation"],
+            provider_route_receipt=chain["provider_route"],
+            retrieval_receipt=chain["retrieval"],
+            graph_mutation_receipt=chain["graph"],
+            final_artifact_receipt=chain["final_artifact"],
+        )
+    ).model_copy(update={"live_run_allowed": True})
+
+    with pytest.raises(ValidationError, match="runner_readiness_receipt must not allow live run"):
+        MidnightOilRunnerControlPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_readiness_receipt=readiness,
+        )
+
+
+def test_midnight_oil_runner_control_plan_api_contract() -> None:
+    from interfaces.research.api.app import create_app
+
+    chain = _accepted_midnight_oil_gate_chain(
+        goal="Gate midnight oil runner controls about widebody maintenance.",
+        source_policy=["arxiv", "web"],
+    )
+    preflight = chain["preflight"]
+    readiness = runner_readiness_midnight_oil(
+        MidnightOilRunnerReadinessRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            live_run_activation_settings_receipt=chain["live_settings"],
+            dispatch_receipt=chain["dispatch"],
+            activation_checklist_receipt=chain["checklist"],
+            budget_reservation_receipt=chain["reservation"],
+            provider_route_receipt=chain["provider_route"],
+            retrieval_receipt=chain["retrieval"],
+            graph_mutation_receipt=chain["graph"],
+            final_artifact_receipt=chain["final_artifact"],
+        )
+    )
+
+    with TestClient(create_app()) as client:
+        r = client.post(
+            "/research/midnight-oil/runner-control-plan",
+            json={
+                "launch_packet": preflight.launch_packet.model_dump(mode="json"),
+                "approval_receipt": preflight.approval_receipt.model_dump(mode="json"),
+                "runner_handoff": preflight.runner_handoff.model_dump(mode="json"),
+                "runner_readiness_receipt": readiness.model_dump(mode="json"),
+                "requested_control_scope": [
+                    "budget_reservation_provider",
+                    "operator_live_dispatch_enablement",
+                ],
+            },
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["receipt_id"] == f"{preflight.run_id}-runner-control-plan"
+    assert body["runner_readiness_receipt_id"] == readiness.receipt_id
+    assert body["status"] == "blocked_runner_controls_unimplemented"
+    assert body["requested_control_scope"] == [
+        "budget_reservation_provider",
+        "operator_live_dispatch_enablement",
+    ]
+    assert body["required_control_order"] == [
+        "budget_reservation_provider",
+        "model_provider_route_executor",
+        "retrieval_executor_source_receipts",
+        "graph_mutation_writer",
+        "final_html_artifact_writer",
+        "operator_live_dispatch_enablement",
+    ]
+    assert [item["control_key"] for item in body["implementation_requirements"]] == [
+        "budget_reservation_provider",
+        "operator_live_dispatch_enablement",
+    ]
+    assert body["implementation_requirements"][0]["implementation_status"] == "missing"
+    assert body["implementation_requirements"][0]["live_enablement_allowed"] is False
+    assert "budget reservation provider" in body["remaining_blockers"]
     assert body["live_run_allowed"] is False
     assert body["dispatch_allowed"] is False
     assert body["budget_reservation_allowed"] is False

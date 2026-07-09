@@ -18,6 +18,14 @@ RouteMode = Literal["auto_quality", "auto_balanced", "auto_cost", "auto_latency"
 SourcePolicy = Literal["arxiv", "substack", "web", "operator_corpus"]
 DeliverableKind = Literal["html_research_asset"]
 MidnightOilRole = Literal["planner", "gatherer", "verifier", "synthesizer"]
+RunnerControlKey = Literal[
+    "budget_reservation_provider",
+    "model_provider_route_executor",
+    "retrieval_executor_source_receipts",
+    "graph_mutation_writer",
+    "final_html_artifact_writer",
+    "operator_live_dispatch_enablement",
+]
 
 _ROLE_ORDER: tuple[MidnightOilRole, ...] = ("planner", "gatherer", "verifier", "synthesizer")
 _BUDGET_WEIGHTS: dict[MidnightOilRole, int] = {
@@ -31,6 +39,30 @@ _TIME_WEIGHTS: dict[MidnightOilRole, int] = {
     "gatherer": 50,
     "verifier": 15,
     "synthesizer": 20,
+}
+_RUNNER_CONTROL_ORDER: tuple[RunnerControlKey, ...] = (
+    "budget_reservation_provider",
+    "model_provider_route_executor",
+    "retrieval_executor_source_receipts",
+    "graph_mutation_writer",
+    "final_html_artifact_writer",
+    "operator_live_dispatch_enablement",
+)
+_RUNNER_CONTROL_BLOCKERS: dict[RunnerControlKey, str] = {
+    "budget_reservation_provider": "budget reservation provider",
+    "model_provider_route_executor": "model/provider route executor",
+    "retrieval_executor_source_receipts": "retrieval executor with source receipts",
+    "graph_mutation_writer": "graph mutation writer",
+    "final_html_artifact_writer": "final HTML artifact writer",
+    "operator_live_dispatch_enablement": "operator live-run dispatch enablement",
+}
+_RUNNER_CONTROL_ARTIFACTS: dict[RunnerControlKey, str] = {
+    "budget_reservation_provider": "budget provider adapter and reservation ledger",
+    "model_provider_route_executor": "model/provider route executor with per-role receipts",
+    "retrieval_executor_source_receipts": "source connector executor with arXiv/Substack/web/operator corpus receipts",
+    "graph_mutation_writer": "knowledge graph mutation writer with idempotent node and edge writes",
+    "final_html_artifact_writer": "HTML research asset and twin-note writer",
+    "operator_live_dispatch_enablement": "operator-controlled live dispatch setting with budget ceiling enforcement",
 }
 
 
@@ -1237,6 +1269,103 @@ class MidnightOilRunnerReadinessReceipt(BaseModel):
     readiness_notes: list[str] = Field(default_factory=list)
 
 
+class MidnightOilRunnerControlRequirement(BaseModel):
+    control_key: RunnerControlKey
+    blocker: str
+    required_artifact: str
+    implementation_status: Literal["missing"] = "missing"
+    live_enablement_allowed: bool = False
+
+
+class MidnightOilRunnerControlPlanRequest(BaseModel):
+    launch_packet: MidnightOilLaunchPacket
+    approval_receipt: MidnightOilApprovalReceipt
+    runner_handoff: MidnightOilRunnerHandoff
+    runner_readiness_receipt: MidnightOilRunnerReadinessReceipt
+    requested_control_scope: list[RunnerControlKey] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _receipt_chain_matches(self) -> MidnightOilRunnerControlPlanRequest:
+        if self.approval_receipt.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("approval_receipt must reference launch_packet")
+        if self.runner_handoff.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("runner_handoff must reference launch_packet")
+        if self.runner_handoff.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError("runner_handoff must reference approval_receipt")
+        if self.runner_readiness_receipt.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("runner_readiness_receipt must reference launch_packet")
+        if self.runner_readiness_receipt.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError("runner_readiness_receipt must reference approval_receipt")
+        if self.runner_readiness_receipt.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError("runner_readiness_receipt must reference runner_handoff")
+        if self.runner_readiness_receipt.run_id != self.launch_packet.run_id:
+            raise ValueError("runner_readiness_receipt run_id must match launch_packet")
+        if self.runner_readiness_receipt.status != "blocked_runner_readiness_controls_missing":
+            raise ValueError("runner_readiness_receipt must be blocked_runner_readiness_controls_missing")
+        if self.runner_readiness_receipt.live_run_allowed:
+            raise ValueError("runner_readiness_receipt must not allow live run")
+        if self.runner_readiness_receipt.dispatch_allowed or self.runner_readiness_receipt.dispatch_performed:
+            raise ValueError("runner_readiness_receipt must not dispatch")
+        if (
+            self.runner_readiness_receipt.budget_reservation_allowed
+            or self.runner_readiness_receipt.budget_reserved
+        ):
+            raise ValueError("runner_readiness_receipt must not reserve budget")
+        if (
+            self.runner_readiness_receipt.provider_execution_allowed
+            or self.runner_readiness_receipt.provider_calls_made
+        ):
+            raise ValueError("runner_readiness_receipt must not include provider calls")
+        if self.runner_readiness_receipt.retrieval_allowed or self.runner_readiness_receipt.retrieval_performed:
+            raise ValueError("runner_readiness_receipt must not perform retrieval")
+        if (
+            self.runner_readiness_receipt.graph_mutation_allowed
+            or self.runner_readiness_receipt.graph_mutated
+        ):
+            raise ValueError("runner_readiness_receipt must not mutate graph")
+        if (
+            self.runner_readiness_receipt.final_artifact_allowed
+            or self.runner_readiness_receipt.final_artifact_created
+        ):
+            raise ValueError("runner_readiness_receipt must not create final artifact")
+        if not self.requested_control_scope:
+            self.requested_control_scope = list(_RUNNER_CONTROL_ORDER)
+        if len(set(self.requested_control_scope)) != len(self.requested_control_scope):
+            raise ValueError("requested_control_scope must not contain duplicates")
+        return self
+
+
+class MidnightOilRunnerControlPlanReceipt(BaseModel):
+    receipt_id: str
+    runner_readiness_receipt_id: str
+    runner_handoff_id: str
+    approval_receipt_id: str
+    launch_packet_id: str
+    run_id: str
+    status: Literal["blocked_runner_controls_unimplemented"] = (
+        "blocked_runner_controls_unimplemented"
+    )
+    requested_control_scope: list[RunnerControlKey]
+    required_control_order: list[RunnerControlKey]
+    implementation_requirements: list[MidnightOilRunnerControlRequirement]
+    remaining_blockers: list[str]
+    blocker_reason: Literal["runner_controls_unimplemented"] = "runner_controls_unimplemented"
+    live_run_allowed: bool = False
+    dispatch_allowed: bool = False
+    budget_reservation_allowed: bool = False
+    provider_execution_allowed: bool = False
+    retrieval_allowed: bool = False
+    graph_mutation_allowed: bool = False
+    final_artifact_allowed: bool = False
+    dispatch_performed: bool = False
+    budget_reserved: bool = False
+    provider_calls_made: bool = False
+    retrieval_performed: bool = False
+    graph_mutated: bool = False
+    final_artifact_created: bool = False
+    control_plan_notes: list[str] = Field(default_factory=list)
+
+
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
     price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
@@ -1667,6 +1796,49 @@ def runner_readiness_midnight_oil(
         readiness_notes=[
             "runner readiness gate only: full no-spend receipt chain has been reviewed",
             "live autonomous execution remains blocked until every remaining blocker is replaced by an enabled control",
+            "no dispatch, budget reservation, provider call, retrieval, graph mutation, or artifact write is performed",
+        ],
+    )
+
+
+def runner_control_plan_midnight_oil(
+    req: MidnightOilRunnerControlPlanRequest,
+) -> MidnightOilRunnerControlPlanReceipt:
+    requirements = [
+        MidnightOilRunnerControlRequirement(
+            control_key=control_key,
+            blocker=_RUNNER_CONTROL_BLOCKERS[control_key],
+            required_artifact=_RUNNER_CONTROL_ARTIFACTS[control_key],
+        )
+        for control_key in req.requested_control_scope
+    ]
+    return MidnightOilRunnerControlPlanReceipt(
+        receipt_id=f"{req.launch_packet.run_id}-runner-control-plan",
+        runner_readiness_receipt_id=req.runner_readiness_receipt.receipt_id,
+        runner_handoff_id=req.runner_handoff.handoff_id,
+        approval_receipt_id=req.approval_receipt.receipt_id,
+        launch_packet_id=req.launch_packet.packet_id,
+        run_id=req.launch_packet.run_id,
+        requested_control_scope=req.requested_control_scope,
+        required_control_order=list(_RUNNER_CONTROL_ORDER),
+        implementation_requirements=requirements,
+        remaining_blockers=req.runner_readiness_receipt.remaining_blockers,
+        live_run_allowed=False,
+        dispatch_allowed=False,
+        budget_reservation_allowed=False,
+        provider_execution_allowed=False,
+        retrieval_allowed=False,
+        graph_mutation_allowed=False,
+        final_artifact_allowed=False,
+        dispatch_performed=False,
+        budget_reserved=False,
+        provider_calls_made=False,
+        retrieval_performed=False,
+        graph_mutated=False,
+        final_artifact_created=False,
+        control_plan_notes=[
+            "runner control plan only: implementation requirements are recorded without enabling live execution",
+            "every requested control remains missing until replaced by a concrete provider, executor, writer, or operator setting",
             "no dispatch, budget reservation, provider call, retrieval, graph mutation, or artifact write is performed",
         ],
     )

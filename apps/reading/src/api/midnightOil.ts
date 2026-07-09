@@ -479,6 +479,59 @@ export interface MidnightOilRunnerReadinessReceipt {
   readiness_notes: string[];
 }
 
+export type MidnightOilRunnerControlKey =
+  | "budget_reservation_provider"
+  | "model_provider_route_executor"
+  | "retrieval_executor_source_receipts"
+  | "graph_mutation_writer"
+  | "final_html_artifact_writer"
+  | "operator_live_dispatch_enablement";
+
+export interface MidnightOilRunnerControlRequirement {
+  control_key: MidnightOilRunnerControlKey;
+  blocker: string;
+  required_artifact: string;
+  implementation_status: "missing";
+  live_enablement_allowed: boolean;
+}
+
+export interface MidnightOilRunnerControlPlanRequest {
+  launch_packet: MidnightOilLaunchPacket;
+  approval_receipt: MidnightOilApprovalReceipt;
+  runner_handoff: MidnightOilRunnerHandoff;
+  runner_readiness_receipt: MidnightOilRunnerReadinessReceipt;
+  requested_control_scope?: MidnightOilRunnerControlKey[];
+}
+
+export interface MidnightOilRunnerControlPlanReceipt {
+  receipt_id: string;
+  runner_readiness_receipt_id: string;
+  runner_handoff_id: string;
+  approval_receipt_id: string;
+  launch_packet_id: string;
+  run_id: string;
+  status: "blocked_runner_controls_unimplemented";
+  requested_control_scope: MidnightOilRunnerControlKey[];
+  required_control_order: MidnightOilRunnerControlKey[];
+  implementation_requirements: MidnightOilRunnerControlRequirement[];
+  remaining_blockers: string[];
+  blocker_reason: "runner_controls_unimplemented";
+  live_run_allowed: boolean;
+  dispatch_allowed: boolean;
+  budget_reservation_allowed: boolean;
+  provider_execution_allowed: boolean;
+  retrieval_allowed: boolean;
+  graph_mutation_allowed: boolean;
+  final_artifact_allowed: boolean;
+  dispatch_performed: boolean;
+  budget_reserved: boolean;
+  provider_calls_made: boolean;
+  retrieval_performed: boolean;
+  graph_mutated: boolean;
+  final_artifact_created: boolean;
+  control_plan_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -644,4 +697,19 @@ export async function runnerReadinessMidnightOil(
     throw new Error(`POST /research/midnight-oil/runner-readiness: HTTP ${resp.status}: ${body}`);
   }
   return (await resp.json()) as MidnightOilRunnerReadinessReceipt;
+}
+
+export async function runnerControlPlanMidnightOil(
+  request: MidnightOilRunnerControlPlanRequest,
+): Promise<MidnightOilRunnerControlPlanReceipt> {
+  const resp = await apiFetch(`${API_BASE}/research/midnight-oil/runner-control-plan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`POST /research/midnight-oil/runner-control-plan: HTTP ${resp.status}: ${body}`);
+  }
+  return (await resp.json()) as MidnightOilRunnerControlPlanReceipt;
 }
