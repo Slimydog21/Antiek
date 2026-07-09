@@ -1,0 +1,12 @@
+# inventory-je · DR session host Settings depth prefill · residual (je)
+
+## Delta
+- DeepResearchSessionHost: fetchDepthTiers → researchTier state
+- deep-research-budget-mount data-depth-prefill / data-research-tier
+- onResearchTierChange for local pick
+
+## Verified
+vitest DeepResearchSessionHost 23_passed
+
+## Next
+(jf) re-derive

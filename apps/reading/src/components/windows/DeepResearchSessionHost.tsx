@@ -33,15 +33,21 @@
  * / written analysis (onDocMerged → onContextNeedsRefresh).
  * Residual (fa): remount TwinNotesPanel on the same contextRefreshKey so
  * recursive note-taker reloads after promote/attach/flywheel/merge (parity ez).
+ * Residual (je): prefill researchTier from Settings depth-tier (parity jd/jc).
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { fetchDepthTiers } from "../../api/settings";
+import { mapDepthTierToResearchTier } from "../../lib/researchTier";
 import { CollectiveResearchPanel } from "../engagement/CollectiveResearchPanel";
 import { DecisionTreeDriverBadge } from "../engagement/DecisionTreeDriverBadge";
 import { PublicationAttachPanel } from "../engagement/PublicationAttachPanel";
 import { ResearchContextPanel } from "../engagement/ResearchContextPanel";
-import { ResearchLaunchBudgetPanel } from "../engagement/ResearchLaunchBudgetPanel";
+import {
+  ResearchLaunchBudgetPanel,
+  type ResearchLaunchTier,
+} from "../engagement/ResearchLaunchBudgetPanel";
 import { ResearchProgressPanel } from "../engagement/ResearchProgressPanel";
 import { SessionFlywheelPanel } from "../engagement/SessionFlywheelPanel";
 import { SpawnMergePanel } from "../engagement/SpawnMergePanel";
@@ -95,6 +101,33 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
   const status = props.status?.trim() || "unknown";
   const viewFormat = (props.view_format?.trim() || "html").toLowerCase();
   const isHtml = viewFormat === "html";
+
+  /** Residual (je): Settings depth-tier prefill for session budget projection. */
+  const [researchTier, setResearchTier] = useState<ResearchLaunchTier>("deep");
+  const [depthPrefill, setDepthPrefill] = useState<
+    "pending" | "installed" | "none" | "error"
+  >("pending");
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchDepthTiers()
+      .then((resp) => {
+        if (cancelled) return;
+        const mapped = mapDepthTierToResearchTier(resp.active_depth_tier);
+        if (mapped) {
+          setResearchTier(mapped);
+          setDepthPrefill("installed");
+        } else {
+          setDepthPrefill("none");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setDepthPrefill("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Residuals (ec/ed/ee/eh/ei): shared remount chokepoint for ResearchContextPanel
   // after twin promote, pub attach, flywheel complete, or spawn merge.
@@ -194,12 +227,26 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
         </p>
       </section>
 
-      {/* Residual (bx): budget bar + prompt projection for goal/selection. */}
+      {/* Residual (bx/je): budget bar + Settings depth prefill for projection. */}
       <section
         className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
         data-testid="deep-research-budget-mount"
         data-view-format="html"
+        data-research-tier={researchTier}
+        data-depth-prefill={depthPrefill}
       >
+        <p
+          className="mb-1 text-[10px] font-mono text-shadow-1 dark:text-moonlight"
+          data-testid="deep-research-depth-prefill"
+          role="status"
+        >
+          Depth prefill: {depthPrefill}
+          {depthPrefill === "installed"
+            ? ` → ${researchTier}`
+            : depthPrefill === "none"
+              ? " (default deep)"
+              : ""}
+        </p>
         <ResearchLaunchBudgetPanel
           promptText={
             (props.goal?.trim() || "") +
@@ -207,8 +254,9 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
               ? `\n\n${selection}`
               : "")
           }
-          researchTier="deep"
+          researchTier={researchTier}
           allowTierPick
+          onResearchTierChange={setResearchTier}
         />
       </section>
 

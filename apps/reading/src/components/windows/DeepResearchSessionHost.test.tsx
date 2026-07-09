@@ -4,13 +4,26 @@
  * Residual (ah): mounts CollectiveResearchPanel with available spawn ids.
  * Residual (bx): mounts ResearchLaunchBudgetPanel for goal/selection projection.
  */
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEEP_RESEARCH_WINDOW_KIND } from "../../workspace/deepResearchWindow";
 import DeepResearchSessionHost from "./DeepResearchSessionHost";
 import { WINDOW_PAGES, isWindowEligible, openWindow } from "./openWindow";
 import { useWindows } from "../../workspace/windowsStore";
+
+const fetchDepthTiers = vi.hoisted(() =>
+  vi.fn(async () => ({
+    active_depth_tier: null as string | null,
+    active_preset: null,
+    presets: [],
+    projection_hints: null,
+    view_format: "html" as const,
+    settings_panel: "depth_tier_presets",
+    source: "test",
+    notes: [] as string[],
+  })),
+);
 
 vi.mock("../../api/settings", () => ({
   fetchSettingsBudget: vi.fn(async () => ({
@@ -40,6 +53,7 @@ vi.mock("../../api/settings", () => ({
     notes: [],
     source: "test",
   })),
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...args),
 }));
 
 vi.mock("../engagement/SpawnMergePanel", () => ({
@@ -166,6 +180,19 @@ describe("DeepResearchSessionHost", () => {
     cleanup();
   });
 
+  beforeEach(() => {
+    fetchDepthTiers.mockReset().mockResolvedValue({
+      active_depth_tier: null,
+      active_preset: null,
+      presets: [],
+      projection_hints: null,
+      view_format: "html",
+      settings_panel: "depth_tier_presets",
+      source: "test",
+      notes: [],
+    });
+  });
+
   it("renders session identity and selection from payload", () => {
     render(<DeepResearchSessionHost {...FIXTURE} />);
     expect(screen.getByTestId("deep-research-session-host")).toBeTruthy();
@@ -184,7 +211,37 @@ describe("DeepResearchSessionHost", () => {
     ).toBe("html");
   });
 
-  it("mounts ResearchLaunchBudgetPanel for goal/selection (bx)", () => {
+  it("prefills research tier from Settings wrestle (je)", async () => {
+    fetchDepthTiers.mockResolvedValue({
+      active_depth_tier: "wrestle",
+      active_preset: null,
+      presets: [],
+      projection_hints: null,
+      view_format: "html",
+      settings_panel: "depth_tier_presets",
+      source: "test",
+      notes: [],
+    });
+    render(
+      <DeepResearchSessionHost
+        session_id="fsess_1"
+        spawn_id="spn_1"
+        parent_asset_id="book-1"
+        selection_text="Attention is routing."
+        view_format="html"
+      />,
+    );
+    await waitFor(() => {
+      const mount = screen.getByTestId("deep-research-budget-mount");
+      expect(mount.getAttribute("data-depth-prefill")).toBe("installed");
+      expect(mount.getAttribute("data-research-tier")).toBe("wrestle");
+    });
+    expect(screen.getByTestId("deep-research-depth-prefill").textContent).toMatch(
+      /installed.*wrestle/i,
+    );
+  });
+
+  it("mounts ResearchLaunchBudgetPanel for goal/selection (bx)", async () => {
     render(<DeepResearchSessionHost {...FIXTURE} />);
     const mount = screen.getByTestId("deep-research-budget-mount");
     expect(mount).toBeTruthy();
