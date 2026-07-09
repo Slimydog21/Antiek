@@ -1661,6 +1661,15 @@ def create_app(
     # floating-session flywheel (process-local store MVP; residual (w)).
     from .engagement_routes import register_engagement_routes
     register_engagement_routes(app)
+    # Residual (cb): env-gated live twin seed note_taker (default no-op).
+    try:
+        from substrate.engagement_spine.twin_seed_live_wiring import (
+            configure_twin_seed_from_env,
+        )
+
+        configure_twin_seed_from_env()
+    except Exception:
+        pass  # offline seed remains; never block app boot
     # Midnight Oil — create → recommended price ceiling → explicit approve.
     from .midnight_oil_routes import register_midnight_oil_routes
     register_midnight_oil_routes(app)
