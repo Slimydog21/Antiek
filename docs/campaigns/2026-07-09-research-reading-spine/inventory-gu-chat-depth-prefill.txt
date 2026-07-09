@@ -1,0 +1,17 @@
+# residual (gu) ChatInputArea Settings depth-tier prefill
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(gt) prior | branch_only | campaign inventories
+(gu) chat depth prefill | branch_only | ChatInput fetchDepthTiers when prop deep; 3 ChatInputArea.budget vitest
+
+PATHS:
+- apps/reading/src/modes/ResearchWorkstation/ChatInputArea.tsx
+- apps/reading/src/modes/ResearchWorkstation/ChatInputArea.budget.test.tsx
+
+BEHAVIOR:
+- Default researchTier=deep → Settings active_depth_tier maps into launchTier
+- Explicit prop ≠ deep wins (data-depth-prefill=prop)
+- chat-input-budget-mount data-research-tier + data-depth-prefill
+
+NEXT: (gv) re-derive; operator merge PR #465

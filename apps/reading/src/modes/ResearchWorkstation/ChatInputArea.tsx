@@ -7,9 +7,11 @@ import {
 } from "../../components/engagement/ResearchLaunchBudgetPanel";
 import LemonButton from "../../components/lemon/LemonButton";
 import LemonTextarea from "../../components/lemon/LemonTextarea";
+import { fetchDepthTiers } from "../../api/settings";
 import { track, trackException } from "../../lib/analytics";
 import { startInvestigation } from "../../lib/api";
 import type { ResearchTier } from "../../lib/api";
+import { mapDepthTierToResearchTier } from "../../lib/researchTier";
 import {
   hydratePublicationRefs,
   parsePublicationRefs,
@@ -30,6 +32,7 @@ import {
  *   researchTier           optional fast|deep|wrestle for launch + budget (default deep)
  * Residual (gr): budget-panel tier pick is written into startInvestigation
  * research_tier (not projection-only).
+ * Residual (gu): Settings depth-tier prefill when prop is default deep.
  *
  * S5 redesign: now a Lemon-styled docked-bottom panel surface. The
  * surrounding chrome (sun-yellow border, ink offset shadow) is provided
@@ -63,11 +66,40 @@ export default function ChatInputArea({
   const [forceOverBudget, setForceOverBudget] = useState(false);
   // Residual (gr): launch tier state — prop default + budget-panel pick.
   const [launchTier, setLaunchTier] = useState<ResearchTier>(researchTier);
+  const [depthPrefill, setDepthPrefill] = useState<
+    "pending" | "settings" | "prop" | "default" | "error"
+  >("pending");
   const navigate = useNavigate();
 
-  // Keep prop → state in sync when parent remounts with a different default.
+  // Keep prop → state in sync when parent remounts with a non-default prop.
   useEffect(() => {
-    setLaunchTier(researchTier);
+    if (researchTier !== "deep") {
+      setLaunchTier(researchTier);
+      setDepthPrefill("prop");
+    }
+  }, [researchTier]);
+
+  // Residual (gu): Settings depth-tier when prop is default deep.
+  useEffect(() => {
+    if (researchTier !== "deep") return;
+    let cancelled = false;
+    void fetchDepthTiers()
+      .then((resp) => {
+        if (cancelled) return;
+        const mapped = mapDepthTierToResearchTier(resp.active_depth_tier);
+        if (mapped) {
+          setLaunchTier(mapped);
+          setDepthPrefill("settings");
+        } else {
+          setDepthPrefill("default");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setDepthPrefill("error");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [researchTier]);
 
   const onProjectionChange = useCallback((p: ResearchLaunchBudgetProjection) => {
@@ -191,7 +223,12 @@ export default function ChatInputArea({
         ) : null}
       </div>
       {/* Residual (bq/df): same launch budget panel as StartResearch (bp). */}
-      <div className="mt-2" data-testid="chat-input-budget-mount">
+      <div
+        className="mt-2"
+        data-testid="chat-input-budget-mount"
+        data-depth-prefill={depthPrefill}
+        data-research-tier={launchTier}
+      >
         <ResearchLaunchBudgetPanel
           promptText={question}
           researchTier={launchTier}

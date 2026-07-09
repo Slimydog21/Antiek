@@ -111,3 +111,6 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 - mapDepthTierToResearchTier pure helper
 - StartResearch + Midnight Oil fetchDepthTiers on mount
 - tests: researchTier 4 + StartResearch 18 + MidnightOil 7
+## residual (gu) ChatInput Settings depth prefill — 2026-07-09
+- fetchDepthTiers when researchTier prop is default deep
+- tests: ChatInputArea.budget 3 passed

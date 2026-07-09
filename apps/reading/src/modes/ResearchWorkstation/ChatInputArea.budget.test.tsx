@@ -40,10 +40,24 @@ const {
   })),
 }));
 
+const fetchDepthTiers = vi.hoisted(() =>
+  vi.fn(async () => ({
+    active_depth_tier: null as string | null,
+    active_preset: null,
+    presets: [],
+    projection_hints: null,
+    view_format: "html" as const,
+    settings_panel: "depth_tier_presets",
+    source: "test",
+    notes: [] as string[],
+  })),
+);
+
 vi.mock("../../api/settings", () => ({
   fetchSettingsBudget,
   estimatePromptCost,
   fetchDecisionTreeSelection,
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...args),
 }));
 
 vi.mock("../../lib/api", async (importOriginal) => {
@@ -61,6 +75,16 @@ describe("ChatInputArea budget projection (bq)", () => {
     fetchSettingsBudget.mockClear();
     estimatePromptCost.mockClear();
     fetchDecisionTreeSelection.mockClear();
+    fetchDepthTiers.mockReset().mockResolvedValue({
+      active_depth_tier: null,
+      active_preset: null,
+      presets: [],
+      projection_hints: null,
+      view_format: "html",
+      settings_panel: "depth_tier_presets",
+      source: "test",
+      notes: [],
+    });
     startInvestigationMock.mockReset().mockResolvedValue({
       investigation_id: "inv-chat-1",
     } as Awaited<ReturnType<typeof startInvestigation>>);
@@ -114,6 +138,53 @@ describe("ChatInputArea budget projection (bq)", () => {
           research_tier: "wrestle",
           question: expect.stringMatching(/Follow-up wrestle/),
         }),
+      );
+    });
+  });
+
+  it("prefills launch tier from Settings active_depth_tier (gu)", async () => {
+    fetchDepthTiers.mockResolvedValueOnce({
+      active_depth_tier: "wrestle",
+      active_preset: null,
+      presets: [],
+      projection_hints: null,
+      view_format: "html",
+      settings_panel: "depth_tier_presets",
+      source: "test",
+      notes: [],
+    });
+    render(
+      <MemoryRouter>
+        <ChatInputArea />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(fetchDepthTiers).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("chat-input-budget-mount").getAttribute(
+          "data-research-tier",
+        ),
+      ).toBe("wrestle");
+    });
+    expect(
+      screen.getByTestId("chat-input-budget-mount").getAttribute(
+        "data-depth-prefill",
+      ),
+    ).toBe("settings");
+    const ta = screen.getByPlaceholderText(/what do you want to research/i);
+    await userEvent.type(ta, "Chat follow-up inherits Settings wrestle depth");
+    await waitFor(() => {
+      expect(
+        (screen.getByRole("button", { name: /ask/i }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false);
+    });
+    fireEvent.click(screen.getByRole("button", { name: /ask/i }));
+    await waitFor(() => {
+      expect(startInvestigationMock).toHaveBeenCalledWith(
+        expect.objectContaining({ research_tier: "wrestle" }),
       );
     });
   });

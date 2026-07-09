@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(gu) · PR #465
+ChatInput Settings depth prefill (gu); StartResearch/moil prefill (gt).
+Depth preference flywheel complete across entry surfaces. Next residual (gv).
