@@ -38,12 +38,16 @@
  * + data-session-research-tier audit (recorded spawn tier, not only Settings).
  * Residual (jo): ResearchProgressPanel poll interval scales by research_tier
  * (fast 2s · deep 4s · wrestle 8s) for multi-minute competitive depth honesty.
+ * Residual (ju): poll ms via mapResearchTierToProgressPollMs (shared closed map).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { fetchDepthTiers } from "../../api/settings";
-import { mapDepthTierToResearchTier } from "../../lib/researchTier";
+import {
+  mapDepthTierToResearchTier,
+  mapResearchTierToProgressPollMs,
+} from "../../lib/researchTier";
 import { CollectiveResearchPanel } from "../engagement/CollectiveResearchPanel";
 import { DecisionTreeDriverBadge } from "../engagement/DecisionTreeDriverBadge";
 import { PublicationAttachPanel } from "../engagement/PublicationAttachPanel";
@@ -318,30 +322,18 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
           data-testid="deep-research-progress-mount"
           data-view-format="html"
         >
-          {/* Residual (jo): poll cadence follows research_tier intensity. */}
+          {/* Residual (jo/ju): poll cadence from shared researchTier map. */}
           <div
             data-testid="deep-research-progress-tier-poll"
             data-research-tier={researchTier}
-            data-poll-ms={String(
-              researchTier === "wrestle"
-                ? 8000
-                : researchTier === "fast"
-                  ? 2000
-                  : 4000,
-            )}
+            data-poll-ms={String(mapResearchTierToProgressPollMs(researchTier))}
           >
             <ResearchProgressPanel
               spawnId={props.spawn_id.trim()}
               autoLoad
               autoSeedIfEmpty
               researchTier={researchTier}
-              pollIntervalMs={
-                researchTier === "wrestle"
-                  ? 8000
-                  : researchTier === "fast"
-                    ? 2000
-                    : 4000
-              }
+              pollIntervalMs={mapResearchTierToProgressPollMs(researchTier)}
             />
           </div>
         </section>

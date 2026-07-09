@@ -1,0 +1,10 @@
+# inventory-ju · shared researchTier progress poll map
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ju
+files:
+  apps/reading/src/lib/researchTier.ts
+  apps/reading/src/lib/researchTier.test.ts
+  apps/reading/src/components/windows/DeepResearchSessionHost.tsx
+  apps/reading/src/modes/MidnightOil/index.tsx
+proof: vitest researchTier + DR host + MidnightOil 40_passed (HONEST_OK)
+invariants: one closed poll map · fast 2s · deep 4s · wrestle 8s

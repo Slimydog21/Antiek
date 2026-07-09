@@ -63,3 +63,26 @@ export function mapResearchTierToBenchTaskClass(
   if (t === "deep" || t === "pro") return "synthesize";
   return null;
 }
+
+/**
+ * Residual (ju): progress poll cadence by research_tier intensity.
+ * One closed map for DeepResearchSessionHost + Midnight Oil deposit
+ * (fast 2s · deep 4s · wrestle 8s multi-minute competitive posture).
+ * Unknown/unset → deep default (4000ms).
+ */
+export const RESEARCH_TIER_PROGRESS_POLL_MS = {
+  fast: 2000,
+  deep: 4000,
+  wrestle: 8000,
+} as const;
+
+export function mapResearchTierToProgressPollMs(
+  researchTier: ResearchTier | string | null | undefined,
+): number {
+  const t = String(researchTier || "")
+    .trim()
+    .toLowerCase();
+  if (t === "fast" || t === "flash") return RESEARCH_TIER_PROGRESS_POLL_MS.fast;
+  if (t === "wrestle") return RESEARCH_TIER_PROGRESS_POLL_MS.wrestle;
+  return RESEARCH_TIER_PROGRESS_POLL_MS.deep;
+}

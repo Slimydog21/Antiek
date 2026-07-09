@@ -38,7 +38,10 @@ import {
 } from "../../api/midnightOil";
 import { fetchDecisionTreeSelection, fetchDepthTiers } from "../../api/settings";
 import type { ResearchTier } from "../../lib/api";
-import { mapDepthTierToResearchTier } from "../../lib/researchTier";
+import {
+  mapDepthTierToResearchTier,
+  mapResearchTierToProgressPollMs,
+} from "../../lib/researchTier";
 import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
 import {
   ResearchLaunchBudgetPanel,
@@ -804,28 +807,25 @@ export default function MidnightOil() {
                     const tier = (job.research_tier || researchTier || "deep")
                       .toString()
                       .toLowerCase();
-                    // Residual (js): parity DR host poll cadence by tier.
-                    const pollMs =
-                      tier === "wrestle" ? 8000 : tier === "fast" ? 2000 : 4000;
+                    // Residual (js/ju): shared poll map (parity DR host).
+                    const pollMs = mapResearchTierToProgressPollMs(tier);
+                    const closedTier =
+                      tier === "fast" || tier === "deep" || tier === "wrestle"
+                        ? tier
+                        : "deep";
                     return (
                       <div
                         key={sid}
                         data-testid={`moil-progress-spawn-${sid}`}
                         data-spawn-id={sid}
-                        data-research-tier={tier}
+                        data-research-tier={closedTier}
                         data-poll-ms={String(pollMs)}
                       >
                         <ResearchProgressPanel
                           spawnId={sid}
                           autoLoad
                           autoSeedIfEmpty
-                          researchTier={
-                            tier === "fast" ||
-                            tier === "deep" ||
-                            tier === "wrestle"
-                              ? tier
-                              : "deep"
-                          }
+                          researchTier={closedTier}
                           pollIntervalMs={pollMs}
                         />
                       </div>

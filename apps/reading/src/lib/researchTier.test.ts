@@ -4,6 +4,8 @@ import {
   mapDepthTierToResearchTier,
   mapResearchTierToBenchTaskClass,
   mapResearchTierToDepthTier,
+  mapResearchTierToProgressPollMs,
+  RESEARCH_TIER_PROGRESS_POLL_MS,
 } from "./researchTier";
 
 describe("researchTier map residual (gt)", () => {
@@ -41,5 +43,22 @@ describe("researchTier map residual (gw) bench task_class", () => {
     expect(mapResearchTierToBenchTaskClass("pro")).toBe("synthesize");
     expect(mapResearchTierToBenchTaskClass(null)).toBeNull();
     expect(mapResearchTierToBenchTaskClass("unknown")).toBeNull();
+  });
+});
+
+describe("researchTier map residual (ju) progress poll cadence", () => {
+  it("maps closed tiers to poll ms (fast 2s · deep 4s · wrestle 8s)", () => {
+    expect(mapResearchTierToProgressPollMs("fast")).toBe(
+      RESEARCH_TIER_PROGRESS_POLL_MS.fast,
+    );
+    expect(mapResearchTierToProgressPollMs("deep")).toBe(
+      RESEARCH_TIER_PROGRESS_POLL_MS.deep,
+    );
+    expect(mapResearchTierToProgressPollMs("wrestle")).toBe(
+      RESEARCH_TIER_PROGRESS_POLL_MS.wrestle,
+    );
+    expect(mapResearchTierToProgressPollMs("flash")).toBe(2000);
+    expect(mapResearchTierToProgressPollMs(null)).toBe(4000);
+    expect(mapResearchTierToProgressPollMs("turbo")).toBe(4000);
   });
 });
