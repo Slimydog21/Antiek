@@ -1934,11 +1934,16 @@ function JobPanel({
     { label: "Activation audit", value: "Not run in app", tone: "muted" },
     { label: "Required proof", value: "Worker logs + manual artifact attach", tone: "sun" },
   ];
+  const providerReadinessCopyItems = [
+    ...readiness.map((item) => `${item.label}: ${item.value}`),
+    ...buildProviderActivationAuditItems().map((item) => `${item.label}: ${item.value}`),
+    ...buildPublicReviewAuditItems().map((item) => `${item.label}: ${item.value}`),
+  ];
   const liveSpendReviewKey = liveSpendReview.map((item) => `${item.label}:${item.value}`).join("|");
   const activationChecklistKey = activationChecklist.map((item) => `${item.label}:${item.value}`).join("|");
   const activationDecisionKey = activationDecision.map((item) => `${item.label}:${item.value}`).join("|");
   const activationBlockersKey = activationBlockers.map((item) => `${item.label}:${item.value}`).join("|");
-  const readinessKey = readiness.map((item) => `${item.label}:${item.value}`).join("|");
+  const readinessKey = providerReadinessCopyItems.join("|");
   const queueAuditFeedbackKey = queueAuditFeedback?.items.map((item) => `${item.label}:${item.value}`).join("|") ?? "";
   const activationHandoffItems = [
     "Activation handoff",
@@ -2079,7 +2084,7 @@ function JobPanel({
 
   async function copyProviderReadiness() {
     if (!navigator.clipboard) return;
-    await navigator.clipboard.writeText(readiness.map((item) => `${item.label}: ${item.value}`).join("\n"));
+    await navigator.clipboard.writeText(providerReadinessCopyItems.join("\n"));
     setReadinessCopied(true);
   }
 

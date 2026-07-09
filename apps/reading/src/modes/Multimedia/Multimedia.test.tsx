@@ -1131,6 +1131,10 @@ describe("Multimedia workstation", () => {
           "Live queue: No active live job",
           "Manual attach: Waiting for live job",
           "Artifact state: Not attached",
+          "Activation audit: Not run in app",
+          "Activation proof: Worker logs + manual artifact attach",
+          "Review audit: Not run in app",
+          "Review proof: Manual review notes + rights clearance",
         ].join("\n"),
       ),
     );
@@ -1474,6 +1478,10 @@ describe("Multimedia workstation", () => {
           "Request revision: rev-1",
           "Manual attach: Ready for job-mm-1-0001",
           "Artifact state: Pending",
+          "Activation audit: Not run in app",
+          "Activation proof: Worker logs + manual artifact attach",
+          "Review audit: Not run in app",
+          "Review proof: Manual review notes + rights clearance",
         ].join("\n"),
       ),
     );
