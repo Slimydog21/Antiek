@@ -21,6 +21,7 @@ from .hardening import (
     evaluate_multimedia_asset,
 )
 from .live_worker import (
+    plan_provider_artifact_attachment,
     preview_next_live_execution,
     record_provider_artifact_receipt,
 )
@@ -57,6 +58,7 @@ from .provider_router import (
 from .read_model import (
     CreateMultimediaDraftRequest,
     LiveProviderArtifactReceipt,
+    LiveProviderAttachmentPlan,
     LiveProviderExecutionRequest,
     LiveProviderRoutePreview,
     MultimediaAssetList,
@@ -161,6 +163,7 @@ __all__ = [
     "GateFinding",
     "GateResult",
     "LiveProviderArtifactReceipt",
+    "LiveProviderAttachmentPlan",
     "LiveProviderExecutionRequest",
     "LiveProviderRoutePreview",
     "GateStatus",
@@ -174,6 +177,7 @@ __all__ = [
     "MultimediaAssetStore",
     "MultimediaAssetSummary",
     "SteeringRequest",
+    "plan_provider_artifact_attachment",
     "preview_next_live_execution",
     "record_provider_artifact_receipt",
 ]

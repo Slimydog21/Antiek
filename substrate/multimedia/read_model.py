@@ -150,6 +150,17 @@ class LiveProviderArtifactReceipt(_ReadModelBase):
         return self
 
 
+class LiveProviderAttachmentPlan(_ReadModelBase):
+    """Validated files ready for a later manifest-attach mutation."""
+
+    provider_job_id: str
+    route_provider: str
+    route_model: str
+    files: tuple[GeneratedFile, ...] = Field(min_length=1)
+    manifest_revision_id: str
+    attach_reason: str
+
+
 class MultimediaJobRecord(_ReadModelBase):
     """Durable progress record for one multimedia operation.
 
@@ -172,6 +183,7 @@ class MultimediaJobRecord(_ReadModelBase):
     execution_plan: LiveProviderExecutionPlan | None = None
     route_preview: LiveProviderRoutePreview | None = None
     artifact_receipt: LiveProviderArtifactReceipt | None = None
+    attachment_plan: LiveProviderAttachmentPlan | None = None
 
 
 class MultimediaAssetSummary(_ReadModelBase):
@@ -463,6 +475,7 @@ class MultimediaAssetStore:
         execution_plan: LiveProviderExecutionPlan | None = None,
         route_preview: LiveProviderRoutePreview | None = None,
         artifact_receipt: LiveProviderArtifactReceipt | None = None,
+        attachment_plan: LiveProviderAttachmentPlan | None = None,
     ) -> MultimediaAssetRecord:
         """Append an arbitrary job row (failed/partial provider jobs, retries).
 
@@ -482,6 +495,7 @@ class MultimediaAssetStore:
             execution_plan=execution_plan,
             route_preview=route_preview,
             artifact_receipt=artifact_receipt,
+            attachment_plan=attachment_plan,
         )
         self.save(updated)
         return updated
@@ -504,6 +518,7 @@ class MultimediaAssetStore:
         execution_plan: LiveProviderExecutionPlan | None = None,
         route_preview: LiveProviderRoutePreview | None = None,
         artifact_receipt: LiveProviderArtifactReceipt | None = None,
+        attachment_plan: LiveProviderAttachmentPlan | None = None,
     ) -> MultimediaAssetRecord:
         sequence = max((job.sequence for job in record.jobs), default=0) + 1
         job = MultimediaJobRecord(
@@ -520,6 +535,7 @@ class MultimediaAssetStore:
             execution_plan=execution_plan,
             route_preview=route_preview,
             artifact_receipt=artifact_receipt,
+            attachment_plan=attachment_plan,
         )
         return record.model_copy(update={"jobs": record.jobs + (job,)})
 
@@ -624,6 +640,7 @@ def _missing_provider_families(provider_families: tuple[str, ...]) -> tuple[str,
 __all__ = [
     "CreateMultimediaDraftRequest",
     "LiveProviderArtifactReceipt",
+    "LiveProviderAttachmentPlan",
     "LiveProviderExecutionPlan",
     "LiveProviderExecutionRequest",
     "LiveProviderRoutePreview",

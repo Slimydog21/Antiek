@@ -17,12 +17,84 @@ from substrate.multimedia.provider_router import (
 )
 from substrate.multimedia.read_model import (
     LiveProviderArtifactReceipt,
+    LiveProviderAttachmentPlan,
     LiveProviderExecutionPlan,
     LiveProviderRoutePreview,
     MultimediaAssetRecord,
     MultimediaAssetStore,
     MultimediaJobRecord,
 )
+
+
+def plan_provider_artifact_attachment(
+    store: MultimediaAssetStore,
+    asset_id: str,
+) -> MultimediaAssetRecord:
+    """Validate the latest successful receipt and stage manifest attachment."""
+
+    record = store.get(asset_id)
+    plan = _latest_execution_plan(record)
+    preview = _latest_route_preview(record)
+    receipt = _latest_succeeded_receipt(record)
+    if plan is None or preview is None or receipt is None:
+        return store.record_job(
+            asset_id,
+            kind="provider_execution",
+            status="failed",
+            progress_percent=80,
+            message="Attachment planning requires an execution plan, route preview, and succeeded artifact receipt.",
+            error_code="artifact_attachment_prerequisite_missing",
+            retryable=False,
+        )
+    if plan.asset_id != record.asset.asset_id or plan.revision_id != record.asset.revision_id:
+        return store.record_job(
+            asset_id,
+            kind="provider_execution",
+            status="failed",
+            progress_percent=80,
+            message="Attachment planning found a stale execution plan for this asset revision.",
+            error_code="live_execution_plan_stale",
+            retryable=False,
+            execution_plan=plan,
+            route_preview=preview,
+            artifact_receipt=receipt,
+        )
+
+    mismatch = _attachment_mismatch(preview, receipt)
+    if mismatch is not None:
+        return store.record_job(
+            asset_id,
+            kind="provider_execution",
+            status="failed",
+            progress_percent=80,
+            message=mismatch,
+            error_code="artifact_shape_mismatch",
+            retryable=False,
+            execution_plan=plan,
+            route_preview=preview,
+            artifact_receipt=receipt,
+        )
+
+    attachment_plan = LiveProviderAttachmentPlan(
+        provider_job_id=receipt.provider_job_id,
+        route_provider=preview.provider,
+        route_model=preview.model,
+        files=receipt.files,
+        manifest_revision_id=record.asset.revision_id,
+        attach_reason="Receipt files match the approved provider route preview.",
+    )
+    return store.record_job(
+        asset_id,
+        kind="provider_execution",
+        status="partial",
+        progress_percent=90,
+        message=f"Validated {len(receipt.files)} provider artifact(s) for later manifest attachment.",
+        retryable=True,
+        execution_plan=plan,
+        route_preview=preview,
+        artifact_receipt=receipt,
+        attachment_plan=attachment_plan,
+    )
 
 
 def record_provider_artifact_receipt(
@@ -193,6 +265,40 @@ def _latest_execution_plan(record: MultimediaAssetRecord) -> LiveProviderExecuti
     return None
 
 
+def _latest_route_preview(record: MultimediaAssetRecord) -> LiveProviderRoutePreview | None:
+    for job in reversed(record.jobs):
+        if job.kind == "provider_execution" and job.route_preview:
+            return job.route_preview
+    return None
+
+
+def _latest_succeeded_receipt(record: MultimediaAssetRecord) -> LiveProviderArtifactReceipt | None:
+    for job in reversed(record.jobs):
+        if (
+            job.kind == "provider_execution"
+            and job.artifact_receipt
+            and job.artifact_receipt.status == "succeeded"
+        ):
+            return job.artifact_receipt
+    return None
+
+
+def _attachment_mismatch(
+    preview: LiveProviderRoutePreview,
+    receipt: LiveProviderArtifactReceipt,
+) -> str | None:
+    if receipt.provider.strip().lower() != preview.provider.strip().lower():
+        return "Artifact receipt provider does not match the approved route preview."
+    for file in receipt.files:
+        if file.provider.strip().lower() != preview.provider.strip().lower():
+            return "Artifact file provider does not match the approved route preview."
+        if preview.resolution and (file.width_px, file.height_px) != preview.resolution:
+            return "Artifact file dimensions do not match the approved route preview."
+        if preview.duration_seconds is not None and file.duration_seconds != preview.duration_seconds:
+            return "Artifact file duration does not match the approved route preview."
+    return None
+
+
 def _media_request_from_plan(
     record: MultimediaAssetRecord,
     plan: LiveProviderExecutionPlan,
@@ -217,4 +323,8 @@ def _primary_generation_kind(kind: AssetKind) -> GenerationKind:
     return "video"
 
 
-__all__ = ["preview_next_live_execution", "record_provider_artifact_receipt"]
+__all__ = [
+    "plan_provider_artifact_attachment",
+    "preview_next_live_execution",
+    "record_provider_artifact_receipt",
+]

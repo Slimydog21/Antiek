@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from substrate.contracts.multimedia import GeneratedFile
 from substrate.multimedia.live_worker import (
+    plan_provider_artifact_attachment,
     preview_next_live_execution,
     record_provider_artifact_receipt,
 )
@@ -175,6 +176,154 @@ def test_provider_artifact_receipt_records_progress_without_manifest_attachment(
     assert reloaded.jobs[-1].artifact_receipt == receipt
     for row in reloaded.jobs:
         assert "presence-only-not-a-real-secret" not in row.model_dump_json()
+
+
+def test_provider_artifact_attachment_plan_validates_receipt_without_manifest_mutation(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("KREA_API_KEY", "presence-only-not-a-real-secret")
+    store = MultimediaAssetStore(tmp_path)
+    draft = store.create_draft(
+        CreateMultimediaDraftRequest(
+            topic="documentary on composite airframes",
+            target_minutes=20,
+            mode="video",
+            route_policy="balanced",
+            sources=("Composite materials changed fatigue, maintenance, and weight tradeoffs.",),
+        )
+    )
+    approved = store.approve_dry_run(draft.asset.asset_id)
+    queued = store.prepare_live_execution(
+        draft.asset.asset_id,
+        LiveProviderExecutionRequest(
+            max_budget_usd=100,
+            route_policy="balanced",
+            operator_acknowledged_spend=True,
+            dry_run_revision_id=draft.asset.revision_id,
+        ),
+    )
+    previewed = preview_next_live_execution(store, draft.asset.asset_id)
+    route_preview = previewed.jobs[-1].route_preview
+    assert route_preview is not None
+    receipt = LiveProviderArtifactReceipt(
+        provider_job_id="krea-job-2",
+        provider="krea",
+        status="succeeded",
+        files=(
+            GeneratedFile(
+                file_id="krea-file-2",
+                kind="video",
+                storage_uri="s3://antiek/multimedia/krea-file-2.mp4",
+                sha256=SHA,
+                mime="video/mp4",
+                provider="krea",
+                duration_seconds=route_preview.duration_seconds,
+                width_px=route_preview.resolution[0] if route_preview.resolution else None,
+                height_px=route_preview.resolution[1] if route_preview.resolution else None,
+            ),
+        ),
+    )
+    recorded = record_provider_artifact_receipt(store, draft.asset.asset_id, receipt)
+
+    planned = plan_provider_artifact_attachment(store, draft.asset.asset_id)
+    job = planned.jobs[-1]
+
+    assert job.status == "partial"
+    assert job.progress_percent == 90
+    assert job.execution_plan == queued.jobs[-1].execution_plan
+    assert job.route_preview == route_preview
+    assert job.artifact_receipt == recorded.jobs[-1].artifact_receipt
+    assert job.attachment_plan is not None
+    assert job.attachment_plan.provider_job_id == "krea-job-2"
+    assert job.attachment_plan.route_model == "krea-video-standard"
+    assert job.attachment_plan.manifest_revision_id == draft.asset.revision_id
+    assert job.attachment_plan.files == receipt.files
+    assert planned.asset.manifest.files == approved.asset.manifest.files
+
+    reloaded = MultimediaAssetStore(tmp_path).list_jobs(draft.asset.asset_id)
+    assert reloaded.jobs[-1].attachment_plan == job.attachment_plan
+
+
+def test_provider_artifact_attachment_plan_requires_successful_receipt(tmp_path, monkeypatch):
+    monkeypatch.setenv("KREA_API_KEY", "presence-only-not-a-real-secret")
+    store = MultimediaAssetStore(tmp_path)
+    draft = store.create_draft(
+        CreateMultimediaDraftRequest(
+            topic="documentary on aircraft displays",
+            target_minutes=20,
+            mode="video",
+            route_policy="balanced",
+        )
+    )
+    store.approve_dry_run(draft.asset.asset_id)
+    store.prepare_live_execution(
+        draft.asset.asset_id,
+        LiveProviderExecutionRequest(
+            max_budget_usd=100,
+            route_policy="balanced",
+            operator_acknowledged_spend=True,
+            dry_run_revision_id=draft.asset.revision_id,
+        ),
+    )
+    preview_next_live_execution(store, draft.asset.asset_id)
+
+    planned = plan_provider_artifact_attachment(store, draft.asset.asset_id)
+
+    assert planned.jobs[-1].status == "failed"
+    assert planned.jobs[-1].error_code == "artifact_attachment_prerequisite_missing"
+    assert planned.jobs[-1].attachment_plan is None
+
+
+def test_provider_artifact_attachment_plan_rejects_shape_mismatch(tmp_path, monkeypatch):
+    monkeypatch.setenv("KREA_API_KEY", "presence-only-not-a-real-secret")
+    store = MultimediaAssetStore(tmp_path)
+    draft = store.create_draft(
+        CreateMultimediaDraftRequest(
+            topic="documentary on winglets",
+            target_minutes=20,
+            mode="video",
+            route_policy="balanced",
+        )
+    )
+    store.approve_dry_run(draft.asset.asset_id)
+    queued = store.prepare_live_execution(
+        draft.asset.asset_id,
+        LiveProviderExecutionRequest(
+            max_budget_usd=100,
+            route_policy="balanced",
+            operator_acknowledged_spend=True,
+            dry_run_revision_id=draft.asset.revision_id,
+        ),
+    )
+    preview_next_live_execution(store, draft.asset.asset_id)
+    receipt = LiveProviderArtifactReceipt(
+        provider_job_id="krea-job-bad-shape",
+        provider="krea",
+        status="succeeded",
+        files=(
+            GeneratedFile(
+                file_id="krea-file-bad-shape",
+                kind="video",
+                storage_uri="s3://antiek/multimedia/krea-file-bad-shape.mp4",
+                sha256=SHA,
+                mime="video/mp4",
+                provider="krea",
+                duration_seconds=1200,
+                width_px=1920,
+                height_px=1080,
+            ),
+        ),
+    )
+    recorded = record_provider_artifact_receipt(store, draft.asset.asset_id, receipt)
+
+    planned = plan_provider_artifact_attachment(store, draft.asset.asset_id)
+
+    assert planned.jobs[-1].status == "failed"
+    assert planned.jobs[-1].error_code == "artifact_shape_mismatch"
+    assert planned.jobs[-1].execution_plan == queued.jobs[-1].execution_plan
+    assert planned.jobs[-1].artifact_receipt == recorded.jobs[-1].artifact_receipt
+    assert planned.jobs[-1].attachment_plan is None
 
 
 def test_provider_artifact_receipt_rejects_provider_outside_plan(tmp_path, monkeypatch):
