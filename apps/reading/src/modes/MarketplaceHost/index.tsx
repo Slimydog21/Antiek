@@ -10,6 +10,7 @@
  * Residual (dq): load account library on mount (not only after host).
  * Residual (dz): DecisionTreeDriverBadge — active model driver readout before
  * host/research (reading ≡ research model visibility).
+ * Residual (qj): DecisionTreeDriverBadge promptText from hosted book body/title.
  * Residual (gi): Open Write HTML draft handoff from host-result + library
  * rows (marketplace → write flywheel; fl path).
  * Residual (qc / FUTURE-AGENT V5): dual handoff html_draft + twin_seed on host
@@ -77,7 +78,10 @@ import {
 import { fetchDepthTiers } from "../../api/settings";
 import { mapDepthTierToResearchTier } from "../../lib/researchTier";
 import { openWindow } from "../../components/windows/openWindow";
-import { buildMarketplaceWriteHref } from "../../workspace/twinWriteSeed";
+import {
+  buildMarketplaceWriteHref,
+  plainTextFromHtml,
+} from "../../workspace/twinWriteSeed";
 import { launchFloatingDeepResearch } from "../Reading/launchFloatingDeepResearch";
 
 type LibraryDoc = {
@@ -793,7 +797,16 @@ export default function MarketplaceHost({
           </div>
           {/* Residual (dz): Settings decision-tree driver (advisory readout). */}
           <div data-testid="marketplace-driver-badge-mount" data-view-format="html">
-            <DecisionTreeDriverBadge researchTier={hostDrTier} />
+            <DecisionTreeDriverBadge
+              researchTier={hostDrTier}
+              promptText={
+                hosted?.html
+                  ? plainTextFromHtml(hosted.html).slice(0, 4000)
+                  : hosted?.title
+                    ? `marketplace DR · ${hosted.title}`
+                    : undefined
+              }
+            />
             {/* Residual (id): Settings deep-link (driver + twin seed readiness). */}
             <p className="mt-1 text-[11px] font-mono space-x-3">
               <a

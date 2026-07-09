@@ -1,0 +1,4 @@
+# inventory-qj · marketplace driver badge promptText
+residual: qj · 2026-07-10
+- DecisionTreeDriverBadge promptText from hosted HTML plain / title
+- vitest MarketplaceHost 13 passed
