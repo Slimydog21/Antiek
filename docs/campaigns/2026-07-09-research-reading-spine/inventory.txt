@@ -3,6 +3,6 @@
 
 CAPABILITY | STATUS | EVIDENCE
 (a)–(ay) prior | branch_only | campaign inventories
-(az) Settings dogfood fixtures panel | branch_only | fetchAntiekBenchDogfoodFixtures; Settings panel antiek-bench-dogfood-*; Settings.test.tsx; GET dogfood-fixtures API (av); THIS CYCLE
+(az) Settings dogfood fixtures panel | branch_only | fetchAntiekBenchDogfoodFixtures; Settings panel antiek-bench-dogfood-*; Settings.test.tsx; GET dogfood-fixtures API (av); @ 244be7cdc
 
 NEXT: (ba) recursive twin note product path polish / twin UI; operator merge PR #465
