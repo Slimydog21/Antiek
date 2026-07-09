@@ -58,6 +58,7 @@ from .usage_bridge import (
     propose_from_recorded_usage,
     record_session_flywheel_usage,
     record_usage_event,
+    research_tier_to_task_class,
     weekly_usage_summary,
 )
 from .dogfood_fixtures import (
@@ -103,6 +104,7 @@ __all__ = [
     "propose_suite_delta",
     "record_session_flywheel_usage",
     "record_usage_event",
+    "research_tier_to_task_class",
     "register_competitive_dogfood_suite",
     "register_suite",
     "resolve_usage_store",

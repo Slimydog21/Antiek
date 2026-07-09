@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(gv) · PR #465
+Research tier → Antiek-bench usage (gv); depth prefill (gt/gu); moil tier (gs).
+Recursive bench flywheel gets wrestle signal from autonomous runs. Next (gw).

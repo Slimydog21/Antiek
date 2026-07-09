@@ -55,6 +55,25 @@ def classify_engagement_task(
     return "synthesize"
 
 
+def research_tier_to_task_class(research_tier: str | None) -> TaskClass | None:
+    """Residual (gv): map curated ResearchTier → Antiek-bench task_class.
+
+    Returns None when unset so callers keep heuristic classify_engagement_task.
+    """
+    if research_tier is None:
+        return None
+    raw = str(research_tier).strip().lower()
+    if not raw:
+        return None
+    if raw in ("wrestle",):
+        return "wrestle"
+    if raw in ("fast", "flash"):
+        return "distill"
+    if raw in ("deep", "pro"):
+        return "synthesize"
+    return None
+
+
 def record_usage_event(
     event: UsageEvent | dict[str, Any],
     *,
@@ -89,13 +108,23 @@ def record_session_flywheel_usage(
     prompt_hint: str = "",
     week_id: str | None = None,
     is_book_asset: bool = False,
+    research_tier: str | None = None,
+    task_class: TaskClass | None = None,
 ) -> dict[str, Any]:
-    """Record usage from complete_session_with_context_flywheel outcome."""
+    """Record usage from complete_session_with_context_flywheel outcome.
+
+    Residual (gv): optional ``research_tier`` / ``task_class`` overrides the
+    heuristic so Midnight Oil wrestle jobs feed the wrestle bench bucket.
+    """
     outcome: Outcome = "worked" if status == "complete" else "failed"
-    task = classify_engagement_task(
-        has_twins=twin_count > 0,
-        has_source_refs=ref_count > 0,
-        is_book_asset=is_book_asset,
+    task = (
+        task_class
+        or research_tier_to_task_class(research_tier)
+        or classify_engagement_task(
+            has_twins=twin_count > 0,
+            has_source_refs=ref_count > 0,
+            is_book_asset=is_book_asset,
+        )
     )
     return record_usage_event(
         UsageEvent(

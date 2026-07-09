@@ -280,6 +280,7 @@ def deposit_job_results(
                 outcome_status = "failed"
             else:
                 outcome_status = "complete"
+            # Residual (gv): job.research_tier → Antiek-bench task_class.
             usage_event = record_session_flywheel_usage(
                 store=bench_usage_store,
                 twin_count=len(twins),
@@ -287,6 +288,7 @@ def deposit_job_results(
                 status=outcome_status,
                 model_id=job.model_id,
                 prompt_hint=(job.goals[0] if job.goals else job.job_id)[:200],
+                research_tier=getattr(job, "research_tier", None),
             )
             usage_recorded = True
         except Exception as exc:  # pragma: no cover — never fail deposit on bench

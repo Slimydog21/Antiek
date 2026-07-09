@@ -36,6 +36,7 @@ def test_deposit_records_usage_and_progress():
         store=jobs,
         pricing=PRICING,
         model_id="test-model",
+        research_tier="wrestle",
     )
     approve_price_ceiling(
         created.job.job_id, store=jobs, use_recommended=True
@@ -70,6 +71,8 @@ def test_deposit_records_usage_and_progress():
     events = list_usage_events(store=bench)
     assert len(events) == 1
     assert events[0]["source"] == "session_flywheel"
+    # Residual (gv): wrestle research_tier → wrestle task_class for suite rewrite.
+    assert events[0]["task_class"] == "wrestle"
     assert result.progress_seeded is True
     assert result.spawn_ids
     progress = list_progress(result.spawn_ids[0], store=eng)
