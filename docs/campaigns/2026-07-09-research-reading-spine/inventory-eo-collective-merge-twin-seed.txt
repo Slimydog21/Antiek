@@ -1,0 +1,17 @@
+# residual (eo) twin seed on collective document merge
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(en) prior | branch_only | campaign inventories
+(eo) collective merge twin seed | branch_only | mergeDocument seedTwinNotes force_offline; draft + parent; 7 vitest
+
+PATHS:
+- apps/reading/src/components/engagement/CollectiveResearchPanel.tsx
+- apps/reading/src/components/engagement/CollectiveResearchPanel.test.tsx
+
+INVARIANTS:
+- Twin seed after HTML merge success
+- force_offline honest seed path
+- Parity with SpawnMergePanel (cp) and written analysis (ch)
+
+NEXT: (ep) re-derive; operator merge PR #465

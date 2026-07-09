@@ -232,6 +232,21 @@ describe("CollectiveResearchPanel", () => {
     expect(
       screen.getByTestId("collective-research-panel").getAttribute("data-view-format"),
     ).toBe("html");
+    // Residual (eo): twin notes seeded on draft merge document.
+    await waitFor(() => {
+      expect(seedTwinNotes).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "draft_book-1_deadbeef",
+          force_offline: true,
+          source_spawn_id: "spn_1",
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("collective-doc-merge-result").textContent).toMatch(
+        /Twin notes seeded|Twin seed/,
+      );
+    });
     // Residual (em): draft_combined auto-opens hosted HTML without extra click.
     await waitFor(() => {
       expect(openWindow).toHaveBeenCalledWith(

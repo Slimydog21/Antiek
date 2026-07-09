@@ -10,6 +10,9 @@
  * 5. Residual (di): budget projection + soft-gate on continue-as-unit.
  * 6. Residual (em): auto-open draft_combined / written-analysis HTML via shared
  *    openMergedResearchWindow (parity with spawn merge el); into_parent manual.
+ * 7. Residual (eo): seed twin notes on draft_combined document merge (parity
+ *    with SpawnMergePanel cp / written-analysis ch); into_parent seeds too so
+ *    the recursive note-taker always tracks the merge target.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -141,15 +144,36 @@ export function CollectiveResearchPanel({
         if (result.view_format !== "html") {
           throw new Error("merge view_format must be html");
         }
+        // Residual (eo): recursive note-taker on merge target document.
+        let notes = [...(result.notes || [])];
+        try {
+          const twins = await seedTwinNotes({
+            asset_id: result.document_id,
+            title: `Collective merge (${mode}) · ${selected.length} spawn(s)`,
+            body_text: `Parent ${parentAssetId} · spawns ${selected.join(", ")} · mode ${mode}`,
+            source_spawn_id: selected[0] || undefined,
+            include_html: false,
+            force_offline: true,
+          });
+          notes = [
+            ...notes,
+            twins.seeded
+              ? "Twin notes seeded on merged document (recursive note-taker)."
+              : `Twin seed: ${twins.seed_skipped || "skipped"}`,
+          ];
+        } catch {
+          notes = [...notes, "Twin seed skipped (API unavailable)."];
+        }
+        const withTwins: MergeProductResponse = { ...result, notes };
         // Residual (em): draft_combined auto-opens hosted HTML flywheel.
         const final =
           mode === "draft_combined"
-            ? maybeAutoOpenDraft(result, {
+            ? maybeAutoOpenDraft(withTwins, {
                 titleStem: "Collective draft merge",
                 source: "collective_doc_merge",
                 idPrefix: "win:collective-merge",
               })
-            : result;
+            : withTwins;
         setDocMerge(final);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));

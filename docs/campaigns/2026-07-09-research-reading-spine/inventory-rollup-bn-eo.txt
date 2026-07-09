@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(eo) · PR #465
+Collective merge twin seed (eo); hosted highlight DR (en); draft auto-open el/em.
+Operator merge still gated. Next residual (ep).
