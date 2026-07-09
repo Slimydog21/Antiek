@@ -466,3 +466,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - preferredSpawnId still wins
   - no re-auto after clear of same newest
   - chase → collective one less click
+
+- Closed (om, 2026-07-10) **WriteHome recent_ring collective wire:**
+  - listRecentDeepResearchSpawnIds + recentTick + data-recent-count
+  - onRecentSpawnsCleared same-tab refresh
+  - parity DR host / hosted HTML / ResearchThis (reading≡write)

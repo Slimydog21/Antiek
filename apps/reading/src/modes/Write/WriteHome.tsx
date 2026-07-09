@@ -26,6 +26,7 @@ import { fetchDepthTiers } from "../../api/settings";
 import { mapDepthTierToResearchTier } from "../../lib/researchTier";
 import GlassSurface from "../../shell/GlassSurface";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
+import { listRecentDeepResearchSpawnIds } from "../../workspace/recentDeepResearchSpawns";
 import type { WindowMode } from "../../workspace/windowsStore";
 import { useWindows } from "../../workspace/windowsStore";
 import Canvas from "../DeepResearchWorkspace/Canvas/Canvas";
@@ -85,7 +86,8 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
  * Residual (ge): deep research launch + pub refs on open piece (reading≡write
  * parity with hosted HTML host: arxiv/substack grounding, float|full, budget soft-gate).
  * Residual (if): Settings deep-link beside Write piece driver badge.
- * Residual (gf): CollectiveResearchPanel on open piece when DR spawns exist
+ * Residual (gf/om): CollectiveResearchPanel on open piece when DR spawns exist
+ * (includes recent_ring so twin-chase closed windows still multi-select).
  * (multi-select merge/analysis with writing asset as parent).
  * Residual (gg): remount TwinNotesPanel on same refresh key as research
  * context (DR launch / collective merge / promote / re-import) — hosted ez parity.
@@ -103,15 +105,21 @@ export default function WriteHome() {
     () => (searchParams.get("html_draft") || "").trim(),
     [searchParams],
   );
-  // Residual (gf): open DR session spawns for collective multi-select on Write.
+  // Residual (gf/om): open + recent DR session spawns for collective on Write.
   const windows = useWindows((s) => s.windows);
+  const [recentTick, setRecentTick] = useState(0);
+  const recentSpawnIds = useMemo(
+    () => listRecentDeepResearchSpawnIds(),
+    [windows, recentTick],
+  );
   const availableSpawnIds = useMemo(
     () =>
       collectDeepResearchSpawnIds({
         currentSpawnId: null,
         windows,
+        recentSpawnIds,
       }),
-    [windows],
+    [windows, recentSpawnIds],
   );
 
   const [detail, setDetail] = useState<DeliverableDetailResponse | null>(null);
@@ -1134,19 +1142,22 @@ export default function WriteHome() {
                 />
               </div>
             </section>
-            {/* Residual (gf): multi-select open DR spawns → merge into this piece. */}
+            {/* Residual (gf/om): multi-select open + recent DR spawns → this piece. */}
             {availableSpawnIds.length > 0 ? (
               <section
                 className="mt-4 border-t border-rule pt-4 dark:border-charcoal-1"
                 data-testid="write-piece-collective-mount"
                 data-view-format="html"
                 data-available-spawn-count={String(availableSpawnIds.length)}
+                data-recent-count={String(recentSpawnIds.length)}
                 data-asset-id={detail.deliverable_id}
               >
                 <CollectiveResearchPanel
                   availableSpawnIds={availableSpawnIds}
                   parentAssetId={detail.deliverable_id}
+                  recentSpawnIds={recentSpawnIds}
                   onDocMerged={onContextNeedsRefresh}
+                  onRecentSpawnsCleared={() => setRecentTick((n) => n + 1)}
                 />
               </section>
             ) : null}

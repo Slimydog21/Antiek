@@ -22,7 +22,8 @@ const {
   startInvestigationMock, createDeliverableMock, fetchHostedDocumentHtmlMock,
   createSectionMock, updateSectionProseMock, seedTwinNotesMock, getDeliverableMock,
   launchFloatingDeepResearchMock, hydratePublicationRefsMock, parsePublicationRefsMock,
-  collectDeepResearchSpawnIdsMock, fetchDepthTiersMock,
+  collectDeepResearchSpawnIdsMock, listRecentDeepResearchSpawnIdsMock,
+  fetchDepthTiersMock,
 } = vi.hoisted(() => ({
   listDeliverablesMock: vi.fn(),
   getTraceTargetMock: vi.fn(),
@@ -43,6 +44,7 @@ const {
       .filter(Boolean),
   ),
   collectDeepResearchSpawnIdsMock: vi.fn(() => [] as string[]),
+  listRecentDeepResearchSpawnIdsMock: vi.fn(() => [] as string[]),
   fetchDepthTiersMock: vi.fn(async () => ({
     active_depth_tier: null as string | null,
     active_preset: null,
@@ -148,8 +150,16 @@ vi.mock("../../components/engagement/CollectiveResearchPanel", () => ({
   CollectiveResearchPanel: (props: {
     availableSpawnIds: string[];
     parentAssetId?: string | null;
+    recentSpawnIds?: readonly string[] | null;
+    onRecentSpawnsCleared?: () => void;
   }) => (
-    <div data-testid="collective-research-panel-stub">
+    <div
+      data-testid="collective-research-panel-stub"
+      data-recent={
+        props.recentSpawnIds != null ? props.recentSpawnIds.join(",") : ""
+      }
+      data-has-clear={props.onRecentSpawnsCleared ? "1" : "0"}
+    >
       parent={props.parentAssetId ?? ""}:spawns={props.availableSpawnIds.join(",")}
     </div>
   ),
@@ -163,6 +173,11 @@ vi.mock("../../workspace/windowsStore", () => ({
 vi.mock("../../workspace/collectDeepResearchSpawnIds", () => ({
   collectDeepResearchSpawnIds: (...args: unknown[]) =>
     collectDeepResearchSpawnIdsMock(...args),
+}));
+
+vi.mock("../../workspace/recentDeepResearchSpawns", () => ({
+  listRecentDeepResearchSpawnIds: (...args: unknown[]) =>
+    listRecentDeepResearchSpawnIdsMock(...args),
 }));
 
 vi.mock("../Reading/launchFloatingDeepResearch", () => ({
@@ -254,6 +269,7 @@ beforeEach(() => {
   });
   parsePublicationRefsMock.mockClear();
   collectDeepResearchSpawnIdsMock.mockReset().mockReturnValue([]);
+  listRecentDeepResearchSpawnIdsMock.mockReset().mockReturnValue([]);
   fetchDepthTiersMock.mockReset().mockResolvedValue({
     active_depth_tier: null,
     active_preset: null,
@@ -680,6 +696,51 @@ describe("WriteHome — the re-homed door", () => {
     expect(mount.getAttribute("data-available-spawn-count")).toBe("2");
     expect(screen.getByTestId("collective-research-panel-stub").textContent).toMatch(
       /parent=dlv-coll:spawns=spawn_a,spawn_b/,
+    );
+  });
+
+  it("wires recent_ring into collect + collective mount (om)", async () => {
+    listRecentDeepResearchSpawnIdsMock.mockReturnValue([
+      "spn_chased_closed",
+      "spn_older",
+    ]);
+    collectDeepResearchSpawnIdsMock.mockImplementation(
+      (source: { recentSpawnIds?: readonly string[] | null }) =>
+        [...(source.recentSpawnIds ?? [])],
+    );
+    getDeliverableMock.mockResolvedValue({
+      deliverable_id: "dlv-recent",
+      title: "Recent ring piece",
+      deliverable_kind: "general_essay",
+      investigation_root_id: null,
+      status: "draft",
+      sections: [],
+      created_at: null,
+      updated_at: null,
+      section_count: 0,
+    });
+    mountAt("/write/dlv-recent");
+    await waitFor(() => {
+      expect(screen.getByTestId("write-piece-collective-mount")).toBeTruthy();
+    });
+    expect(collectDeepResearchSpawnIdsMock).toHaveBeenCalled();
+    const lastCall = collectDeepResearchSpawnIdsMock.mock.calls.at(-1)?.[0] as {
+      recentSpawnIds?: readonly string[];
+    };
+    expect(lastCall.recentSpawnIds).toEqual([
+      "spn_chased_closed",
+      "spn_older",
+    ]);
+    const mount = screen.getByTestId("write-piece-collective-mount");
+    expect(mount.getAttribute("data-recent-count")).toBe("2");
+    expect(mount.getAttribute("data-available-spawn-count")).toBe("2");
+    const stub = screen.getByTestId("collective-research-panel-stub");
+    expect(stub.getAttribute("data-recent")).toBe(
+      "spn_chased_closed,spn_older",
+    );
+    expect(stub.getAttribute("data-has-clear")).toBe("1");
+    expect(stub.textContent).toMatch(
+      /parent=dlv-recent:spawns=spn_chased_closed,spn_older/,
     );
   });
 
