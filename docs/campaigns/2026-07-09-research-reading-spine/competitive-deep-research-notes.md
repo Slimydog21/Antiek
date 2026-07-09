@@ -168,3 +168,9 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - (ld) SESSION-ARC-kk-lc-depth-identity.md zero-context fleet handoff
   - (le) GET /engagement/twins?spawn_id= research_tier + TwinNotesPanel list wire
 
+
+- Closed (lg–lh, 2026-07-10) **Driver+depth co-display on collective + pure reading:**
+  - (lg) CollectiveResearchPanel DecisionTreeDriverBadge researchTier
+  - (lh) TalkToBook + MetaReading DecisionTreeDriverBadge researchTier
+  Completes model+budget+depth on multi-spawn continue and book-native talk/meta-read.
+
