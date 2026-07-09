@@ -8,6 +8,8 @@
  * 4. Residual (dc): Continue the collective prompt as a new floating deep
  *    research session (cohesive unit re-entry).
  * 5. Residual (di): budget projection + soft-gate on continue-as-unit.
+ * 6. Residual (em): auto-open draft_combined / written-analysis HTML via shared
+ *    openMergedResearchWindow (parity with spawn merge el); into_parent manual.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -24,7 +26,7 @@ import {
   ResearchLaunchBudgetPanel,
   type ResearchLaunchBudgetProjection,
 } from "./ResearchLaunchBudgetPanel";
-import { openWindow } from "../windows/openWindow";
+import { openMergedResearchWindow } from "./SpawnMergePanel";
 
 export type CollectiveResearchPanelProps = {
   /** Pre-listed spawn ids available for multi-select */
@@ -33,12 +35,18 @@ export type CollectiveResearchPanelProps = {
   parentAssetId?: string | null;
   /** Residual (cn): pre-select this spawn when present in available list. */
   preferredSpawnId?: string | null;
+  /**
+   * Residual (em): when true (default), open hosted HTML after draft_combined
+   * document merge or written analysis. into_parent never auto-opens.
+   */
+  autoOpenDraft?: boolean;
 };
 
 export function CollectiveResearchPanel({
   availableSpawnIds,
   parentAssetId = null,
   preferredSpawnId = null,
+  autoOpenDraft = true,
 }: CollectiveResearchPanelProps) {
   const [selected, setSelected] = useState<string[]>([]);
 
@@ -54,11 +62,41 @@ export function CollectiveResearchPanel({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [continueWindowId, setContinueWindowId] = useState<string | null>(null);
+  const [autoOpenedWindowId, setAutoOpenedWindowId] = useState<string | null>(
+    null,
+  );
   const [budgetWarn, setBudgetWarn] = useState(false);
   const [forceOverBudget, setForceOverBudget] = useState(false);
   const onProjectionChange = useCallback((p: ResearchLaunchBudgetProjection) => {
     setBudgetWarn(p.wouldExceedBudget === true);
   }, []);
+
+  const maybeAutoOpenDraft = useCallback(
+    (
+      result: MergeProductResponse,
+      opts: { titleStem: string; source: string; idPrefix: string },
+    ): MergeProductResponse => {
+      if (
+        !autoOpenDraft ||
+        result.mode !== "draft_combined" ||
+        result.view_format !== "html" ||
+        !result.html?.trim()
+      ) {
+        return result;
+      }
+      const winId = openMergedResearchWindow(result, opts);
+      if (!winId) return result;
+      setAutoOpenedWindowId(winId);
+      return {
+        ...result,
+        notes: [
+          ...(result.notes || []),
+          "Draft combined auto-opened in hosted HTML window (em).",
+        ],
+      };
+    },
+    [autoOpenDraft],
+  );
 
   const toggle = (id: string) => {
     setSelected((prev) =>
@@ -92,6 +130,7 @@ export function CollectiveResearchPanel({
       }
       setBusy(true);
       setError(null);
+      setAutoOpenedWindowId(null);
       try {
         const result = await mergeSpawnOutputs({
           parent_asset_id: parentAssetId,
@@ -102,14 +141,23 @@ export function CollectiveResearchPanel({
         if (result.view_format !== "html") {
           throw new Error("merge view_format must be html");
         }
-        setDocMerge(result);
+        // Residual (em): draft_combined auto-opens hosted HTML flywheel.
+        const final =
+          mode === "draft_combined"
+            ? maybeAutoOpenDraft(result, {
+                titleStem: "Collective draft merge",
+                source: "collective_doc_merge",
+                idPrefix: "win:collective-merge",
+              })
+            : result;
+        setDocMerge(final);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       } finally {
         setBusy(false);
       }
     },
-    [selected, parentAssetId],
+    [selected, parentAssetId, maybeAutoOpenDraft],
   );
 
   /** Residual (cf): cohesive unit prompt + draft HTML analysis document. */
@@ -121,6 +169,7 @@ export function CollectiveResearchPanel({
     }
     setBusy(true);
     setError(null);
+    setAutoOpenedWindowId(null);
     try {
       const collective = await fetchCollectiveResearch({ spawn_ids: selected });
       if (collective.view_format !== "html") {
@@ -152,20 +201,28 @@ export function CollectiveResearchPanel({
       } catch {
         twinNote = "Twin seed skipped (API unavailable).";
       }
-      setDocMerge({
+      const withNotes: MergeProductResponse = {
         ...draft,
         notes: [
           ...(draft.notes || []),
           "Written analysis draft from collective deep research (residual cf).",
           twinNote,
         ],
-      });
+      };
+      // Residual (em): written analysis draft auto-opens hosted HTML.
+      setDocMerge(
+        maybeAutoOpenDraft(withNotes, {
+          titleStem: "Written analysis",
+          source: "collective_written_analysis",
+          idPrefix: "win:analysis",
+        }),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
-  }, [selected, parentAssetId]);
+  }, [selected, parentAssetId, maybeAutoOpenDraft]);
 
   /**
    * Residual (dc): re-enter research with the collective prompt as one unit.
@@ -211,6 +268,7 @@ export function CollectiveResearchPanel({
       className="collective-research-panel"
       data-view-format="html"
       data-testid="collective-research-panel"
+      data-auto-open-draft={autoOpenDraft ? "true" : "false"}
       aria-label="Collective deep research"
     >
       <header>
@@ -218,6 +276,9 @@ export function CollectiveResearchPanel({
         <p className="meta">
           Merge multiple subagent instances into one prompt unit, or into a
           draft-combined / parent HTML document
+          {autoOpenDraft
+            ? " · draft auto-opens HTML window"
+            : " · draft open is manual"}
         </p>
         {parentAssetId ? (
           <p className="meta" data-testid="collective-parent-asset">
@@ -373,32 +434,31 @@ export function CollectiveResearchPanel({
             <code>{docMerge.document_id}</code> · draft_leaves_parent=
             {String(docMerge.draft_leaves_parent)}
           </p>
+          {autoOpenedWindowId ? (
+            <p
+              className="meta"
+              data-testid="collective-auto-open-window"
+              role="status"
+            >
+              Auto-opened window {autoOpenedWindowId}
+            </p>
+          ) : null}
           {docMerge.notes?.map((n) => (
             <p key={n} className="meta">
               {n}
             </p>
           ))}
-          {/* Residual (cg): open draft analysis HTML in floating window. */}
+          {/* Residual (cg/em): open draft analysis HTML via shared chokepoint. */}
           {docMerge.html && docMerge.view_format === "html" ? (
             <button
               type="button"
               data-testid="collective-open-analysis-window"
               onClick={() => {
-                openWindow(
-                  "hosted_html_document",
-                  {
-                    document_id: docMerge.document_id,
-                    title: `Written analysis (${docMerge.mode})`,
-                    html: docMerge.html,
-                    view_format: "html",
-                    source: "collective_written_analysis",
-                  },
-                  {
-                    id: `win:analysis:${docMerge.document_id}`,
-                    title: "Written analysis",
-                    mode: "floating",
-                  },
-                );
+                openMergedResearchWindow(docMerge, {
+                  titleStem: "Written analysis",
+                  source: "collective_written_analysis",
+                  idPrefix: "win:analysis",
+                });
               }}
             >
               Open analysis in window

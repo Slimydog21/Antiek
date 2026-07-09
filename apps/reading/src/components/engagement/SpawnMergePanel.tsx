@@ -21,25 +21,38 @@ import {
 } from "../../api/engagement";
 import { openWindow } from "../windows/openWindow";
 
-/** Open merged HTML as hosted document (HTML-first; never PDF). */
+export type OpenMergedResearchWindowOpts = {
+  /** Window + payload title stem (default: Merged research). */
+  titleStem?: string;
+  /** Payload source tag for provenance. */
+  source?: string;
+  /** Window id prefix (default: win:merge). */
+  idPrefix?: string;
+};
+
+/** Open merged HTML as hosted document (HTML-first; never PDF). Shared by spawn + collective. */
 export function openMergedResearchWindow(
   result: Pick<MergeProductResponse, "document_id" | "mode" | "html" | "view_format">,
+  opts: OpenMergedResearchWindowOpts = {},
 ): string | null {
   if (result.view_format !== "html" || !result.html?.trim()) {
     return null;
   }
+  const stem = (opts.titleStem || "Merged research").trim() || "Merged research";
+  const source = (opts.source || "spawn_merge_panel").trim() || "spawn_merge_panel";
+  const idPrefix = (opts.idPrefix || "win:merge").trim() || "win:merge";
   return openWindow(
     "hosted_html_document",
     {
       document_id: result.document_id,
-      title: `Merged research (${result.mode})`,
+      title: `${stem} (${result.mode})`,
       html: result.html,
       view_format: "html",
-      source: "spawn_merge_panel",
+      source,
     },
     {
-      id: `win:merge:${result.document_id}`,
-      title: "Merged research",
+      id: `${idPrefix}:${result.document_id}`,
+      title: stem,
       mode: "floating",
     },
   );

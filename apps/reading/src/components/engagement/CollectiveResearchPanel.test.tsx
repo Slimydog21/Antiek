@@ -207,6 +207,11 @@ describe("CollectiveResearchPanel", () => {
     expect(screen.getByTestId("collective-parent-asset").textContent).toMatch(
       /book-1/,
     );
+    expect(
+      screen
+        .getByTestId("collective-research-panel")
+        .getAttribute("data-auto-open-draft"),
+    ).toBe("true");
     fireEvent.click(screen.getAllByRole("checkbox")[0]);
     fireEvent.click(screen.getByTestId("collective-merge-draft"));
 
@@ -227,6 +232,55 @@ describe("CollectiveResearchPanel", () => {
     expect(
       screen.getByTestId("collective-research-panel").getAttribute("data-view-format"),
     ).toBe("html");
+    // Residual (em): draft_combined auto-opens hosted HTML without extra click.
+    await waitFor(() => {
+      expect(openWindow).toHaveBeenCalledWith(
+        "hosted_html_document",
+        expect.objectContaining({
+          document_id: "draft_book-1_deadbeef",
+          view_format: "html",
+          source: "collective_doc_merge",
+        }),
+        expect.objectContaining({
+          id: "win:collective-merge:draft_book-1_deadbeef",
+          mode: "floating",
+        }),
+      );
+    });
+    expect(screen.getByTestId("collective-auto-open-window").textContent).toMatch(
+      /win:analysis:draft_1/,
+    );
+  });
+
+  it("does not auto-open collective draft when autoOpenDraft is false", async () => {
+    mergeSpawnOutputs.mockResolvedValue({
+      mode: "draft_combined",
+      parent_asset_id: "book-1",
+      document_id: "draft_manual",
+      source_spawn_ids: ["spn_1"],
+      sections_merged: 1,
+      draft_leaves_parent: true,
+      parent_document_id: "book-1",
+      view_format: "html",
+      product_panel: "engagement_merge",
+      source: "engagement_spine.merge_spawn_outputs",
+      notes: ["Draft"],
+      html: "<p>Manual</p>",
+    });
+    render(
+      <CollectiveResearchPanel
+        availableSpawnIds={["spn_1"]}
+        parentAssetId="book-1"
+        autoOpenDraft={false}
+      />,
+    );
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    fireEvent.click(screen.getByTestId("collective-merge-draft"));
+    await waitFor(() => {
+      expect(screen.getByTestId("collective-open-analysis-window")).toBeTruthy();
+    });
+    expect(openWindow).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("collective-auto-open-window")).toBeNull();
   });
 
   it("disables document merge without parentAssetId", () => {
@@ -314,14 +368,22 @@ describe("CollectiveResearchPanel", () => {
     expect(screen.getByTestId("collective-prompt-block").textContent).toMatch(
       /col_analysis/,
     );
-    fireEvent.click(screen.getByTestId("collective-open-analysis-window"));
-    expect(openWindow).toHaveBeenCalledWith(
-      "hosted_html_document",
-      expect.objectContaining({
-        document_id: "draft_analysis_1",
-        view_format: "html",
-      }),
-      expect.objectContaining({ mode: "floating" }),
-    );
+    // Residual (em): written analysis draft auto-opens (manual button still present).
+    await waitFor(() => {
+      expect(openWindow).toHaveBeenCalledWith(
+        "hosted_html_document",
+        expect.objectContaining({
+          document_id: "draft_analysis_1",
+          view_format: "html",
+          source: "collective_written_analysis",
+        }),
+        expect.objectContaining({
+          id: "win:analysis:draft_analysis_1",
+          mode: "floating",
+        }),
+      );
+    });
+    expect(screen.getByTestId("collective-auto-open-window")).toBeTruthy();
+    expect(screen.getByTestId("collective-open-analysis-window")).toBeTruthy();
   });
 });
