@@ -20,7 +20,7 @@ import type { TraceTarget } from "./writeApi";
 const {
   listDeliverablesMock, getTraceTargetMock, listInvestigationsMock,
   startInvestigationMock, createDeliverableMock, fetchHostedDocumentHtmlMock,
-  createSectionMock, updateSectionProseMock, seedTwinNotesMock,
+  createSectionMock, updateSectionProseMock, seedTwinNotesMock, getDeliverableMock,
 } = vi.hoisted(() => ({
   listDeliverablesMock: vi.fn(),
   getTraceTargetMock: vi.fn(),
@@ -31,12 +31,13 @@ const {
   createSectionMock: vi.fn(),
   updateSectionProseMock: vi.fn(),
   seedTwinNotesMock: vi.fn(),
+  getDeliverableMock: vi.fn(),
 }));
 
 vi.mock("../../lib/api", async (orig) => ({
   ...(await orig<typeof import("../../lib/api")>()),
   listDeliverables: listDeliverablesMock,
-  getDeliverable: vi.fn().mockResolvedValue(null),
+  getDeliverable: (...args: unknown[]) => getDeliverableMock(...args),
   createDeliverable: createDeliverableMock,
   listInvestigations: listInvestigationsMock,
   startInvestigation: startInvestigationMock,
@@ -51,6 +52,40 @@ vi.mock("../../api/marketplaceHost", () => ({
 
 vi.mock("../../api/engagement", () => ({
   seedTwinNotes: (...args: unknown[]) => seedTwinNotesMock(...args),
+  fetchTwinNotes: vi.fn(async () => ({
+    asset_id: "dlv-open",
+    note_count: 0,
+    insight_count: 0,
+    question_count: 0,
+    notes: [],
+    view_format: "html",
+    product_panel: "twin_notes",
+    source: "test",
+    messages: [],
+    html: "",
+  })),
+  promoteTwinsToContext: vi.fn(),
+  recordTwinNote: vi.fn(),
+}));
+
+vi.mock("../../components/engagement/TwinNotesPanel", () => ({
+  TwinNotesPanel: (props: { assetId: string; autoLoad?: boolean }) => (
+    <div data-testid="twin-notes-panel-stub">
+      {props.assetId}:auto={String(Boolean(props.autoLoad))}
+    </div>
+  ),
+}));
+
+vi.mock("./Outline", () => ({
+  default: () => <div data-testid="outline-stub">outline</div>,
+}));
+
+vi.mock("../DeepResearchWorkspace/Canvas/Canvas", () => ({
+  default: () => <div data-testid="canvas-stub">canvas</div>,
+}));
+
+vi.mock("./BlockRepository", () => ({
+  default: () => <div data-testid="block-repo-stub">repo</div>,
 }));
 
 vi.mock("./writeApi", async (orig) => ({
@@ -62,6 +97,7 @@ import WriteHome from "./WriteHome";
 
 beforeEach(() => {
   listDeliverablesMock.mockReset().mockResolvedValue({ count: 0, deliverables: [] });
+  getDeliverableMock.mockReset().mockResolvedValue(null);
   getTraceTargetMock.mockReset();
   listInvestigationsMock.mockReset().mockResolvedValue({ count: 0, investigations: [] });
   startInvestigationMock.mockReset().mockResolvedValue({
@@ -360,6 +396,31 @@ describe("WriteHome — the re-homed door", () => {
         /html/i,
       );
     });
+  });
+
+  it("mounts TwinNotesPanel on open piece (ga)", async () => {
+    getDeliverableMock.mockResolvedValue({
+      deliverable_id: "dlv-open",
+      title: "Open piece",
+      deliverable_kind: "general_essay",
+      investigation_root_id: "inv-1",
+      status: "draft",
+      sections: [],
+      created_at: null,
+      updated_at: null,
+      section_count: 0,
+    });
+    mountAt("/write/dlv-open");
+    await waitFor(() => {
+      expect(screen.getByTestId("write-piece-twins-mount")).toBeTruthy();
+    });
+    expect(
+      screen.getByTestId("write-piece-twins-mount").getAttribute("data-asset-id"),
+    ).toBe("dlv-open");
+    expect(screen.getByTestId("twin-notes-panel-stub").textContent).toMatch(
+      /dlv-open:auto=true/,
+    );
+    expect(screen.getByTestId("outline-stub")).toBeTruthy();
   });
 
   it("M1 — 'none' auto-spawns a research folder and creates the piece linked to it", async () => {

@@ -13,6 +13,7 @@ import {
 } from "../../lib/api";
 import { seedTwinNotes } from "../../api/engagement";
 import { fetchHostedDocumentHtml } from "../../api/marketplaceHost";
+import { TwinNotesPanel } from "../../components/engagement/TwinNotesPanel";
 import GlassSurface from "../../shell/GlassSurface";
 import Canvas from "../DeepResearchWorkspace/Canvas/Canvas";
 import BlockRepository from "./BlockRepository";
@@ -57,6 +58,8 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
  * Residual (fx): prefer html_fragment for section prose (HTML-first land).
  * Residual (fz): offline twin seed on deliverable after HTML draft import
  * (recursive note-taker substrate for the new writing asset).
+ * Residual (ga): TwinNotesPanel on open piece so writing assets share the
+ * recursive note-taker UI with reading/research hosts.
  */
 export default function WriteHome() {
   const { deliverableId } = useParams<{ deliverableId?: string }>();
@@ -630,6 +633,25 @@ export default function WriteHome() {
             {loading ? "Opening the piece…" : "That piece isn't available."}
           </p>
         )}
+
+        {/* Residual (ga): recursive note-taker on writing assets (reading≡write). */}
+        {detail?.deliverable_id ? (
+          <section
+            className="mt-4 border-t border-rule pt-4 dark:border-charcoal-1"
+            data-testid="write-piece-twins-mount"
+            data-view-format="html"
+            data-asset-id={detail.deliverable_id}
+          >
+            <TwinNotesPanel
+              assetId={detail.deliverable_id}
+              spawnId={null}
+              autoLoad
+              autoSeedIfEmpty
+              seedTitle={detail.title || detail.deliverable_id}
+              seedBodyText={detail.title || ""}
+            />
+          </section>
+        ) : null}
       </main>
 
       <aside className="hidden w-80 shrink-0 flex-col border-l border-rule bg-ice-0 p-4 dark:border-charcoal-1 dark:bg-charcoal-2 lg:flex">
