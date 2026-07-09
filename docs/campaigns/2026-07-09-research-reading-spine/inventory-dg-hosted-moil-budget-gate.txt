@@ -1,0 +1,12 @@
+# residual (dg) Hosted + Midnight Oil budget soft-gate
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(df) prior | branch_only | campaign inventories
+(dg) hosted+moil budget gate | branch_only | HostedHtmlDocumentHost + MidnightOil soft-gate; 10 vitest
+
+## What shipped
+- Hosted book deep research button soft-gated on would_exceed + force override.
+- Midnight Oil create soft-gated same way (before recommend ceiling job create).
+
+NEXT: (dh) re-derive; operator merge PR #465

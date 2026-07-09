@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(dg) · PR #465
+Budget soft-gate family complete: ResearchThis, StartResearch, ChatInputArea, Hosted books, Midnight Oil.
+Operator merge still gated.

@@ -9,7 +9,7 @@
  * so Midnight Oil results join the reading/research flywheel (da host).
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   approveMidnightOilCeiling,
   createMidnightOilJob,
@@ -21,7 +21,10 @@ import {
 } from "../../api/midnightOil";
 import { fetchDecisionTreeSelection } from "../../api/settings";
 import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
-import { ResearchLaunchBudgetPanel } from "../../components/engagement/ResearchLaunchBudgetPanel";
+import {
+  ResearchLaunchBudgetPanel,
+  type ResearchLaunchBudgetProjection,
+} from "../../components/engagement/ResearchLaunchBudgetPanel";
 import { openWindow } from "../../components/windows/openWindow";
 
 export default function MidnightOil() {
@@ -45,6 +48,15 @@ export default function MidnightOil() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [depositWindowId, setDepositWindowId] = useState<string | null>(null);
+  // Residual (dg): soft-gate create when budget projection would exceed.
+  const [budgetWarn, setBudgetWarn] = useState(false);
+  const [forceOverBudget, setForceOverBudget] = useState(false);
+  const onProjectionChange = useCallback(
+    (p: ResearchLaunchBudgetProjection) => {
+      setBudgetWarn(p.wouldExceedBudget === true);
+    },
+    [],
+  );
 
   // Residual (cz): prefill model from decision-tree once on mount.
   useEffect(() => {
@@ -69,6 +81,12 @@ export default function MidnightOil() {
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
+    if (budgetWarn && !forceOverBudget) {
+      setError(
+        "Projected cost may exceed remaining daily budget — enable force override or reduce goals.",
+      );
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -258,9 +276,28 @@ export default function MidnightOil() {
           <ResearchLaunchBudgetPanel
             promptText={goalsText}
             researchTier="deep"
+            onProjectionChange={onProjectionChange}
           />
+          {budgetWarn ? (
+            <label
+              className="mt-1 flex items-center gap-2 text-[11px] font-mono text-emperor"
+              data-testid="moil-over-budget-warn"
+            >
+              <input
+                type="checkbox"
+                data-testid="moil-force-over-budget"
+                checked={forceOverBudget}
+                onChange={(e) => setForceOverBudget(e.target.checked)}
+                disabled={busy}
+              />
+              Force create despite budget projection
+            </label>
+          ) : null}
         </div>
-        <button type="submit" disabled={busy || !goalsText.trim()}>
+        <button
+          type="submit"
+          disabled={busy || !goalsText.trim() || (budgetWarn && !forceOverBudget)}
+        >
           {busy ? "Working…" : "Create job + recommend ceiling"}
         </button>
       </form>

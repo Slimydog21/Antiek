@@ -31,13 +31,36 @@ vi.mock("../../api/settings", () => ({
     fetchDecisionTreeSelection(...args),
 }));
 
-vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", () => ({
-  ResearchLaunchBudgetPanel: (props: { promptText: string }) => (
-    <div data-testid="research-launch-budget-panel-stub">
-      goals={props.promptText.length}
-    </div>
-  ),
-}));
+vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", () => {
+  const React = require("react") as typeof import("react");
+  return {
+    ResearchLaunchBudgetPanel: (props: {
+      promptText: string;
+      onProjectionChange?: (p: {
+        wouldExceedBudget: boolean | null;
+        pricingKnown: boolean;
+        estimatedUsdHigh: number | null;
+        remainingUsd: number | null;
+        modelId: string | null;
+      }) => void;
+    }) => {
+      React.useEffect(() => {
+        props.onProjectionChange?.({
+          wouldExceedBudget: false,
+          pricingKnown: true,
+          estimatedUsdHigh: 0.1,
+          remainingUsd: 5,
+          modelId: null,
+        });
+      }, [props.onProjectionChange]);
+      return (
+        <div data-testid="research-launch-budget-panel-stub">
+          goals={props.promptText.length}
+        </div>
+      );
+    },
+  };
+});
 
 vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
   DecisionTreeDriverBadge: () => (

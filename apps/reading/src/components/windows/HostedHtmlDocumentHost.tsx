@@ -8,16 +8,20 @@
  * Residual (cv): ResearchContextPanel autoLoad.
  * Residual (da): DecisionTreeDriverBadge + budget projection + deep research
  * float launch from the hosted book (reading ≡ research).
+ * Residual (dg): soft-gate deep research when budget would exceed.
  *
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
  */
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import { launchFloatingDeepResearch } from "../../modes/Reading/launchFloatingDeepResearch";
 import { DecisionTreeDriverBadge } from "../engagement/DecisionTreeDriverBadge";
 import { ResearchContextPanel } from "../engagement/ResearchContextPanel";
-import { ResearchLaunchBudgetPanel } from "../engagement/ResearchLaunchBudgetPanel";
+import {
+  ResearchLaunchBudgetPanel,
+  type ResearchLaunchBudgetProjection,
+} from "../engagement/ResearchLaunchBudgetPanel";
 import { TwinNotesPanel } from "../engagement/TwinNotesPanel";
 import { useInWindow } from "./windowHostContext";
 
@@ -50,6 +54,14 @@ export default function HostedHtmlDocumentHost(
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastWindowId, setLastWindowId] = useState<string | null>(null);
+  const [budgetWarn, setBudgetWarn] = useState(false);
+  const [forceOverBudget, setForceOverBudget] = useState(false);
+  const onProjectionChange = useCallback(
+    (p: ResearchLaunchBudgetProjection) => {
+      setBudgetWarn(p.wouldExceedBudget === true);
+    },
+    [],
+  );
 
   const spinFloating = async () => {
     if (!assetId) {
@@ -58,6 +70,12 @@ export default function HostedHtmlDocumentHost(
     }
     if (!isHtml) {
       setError("view_format must be html");
+      return;
+    }
+    if (budgetWarn && !forceOverBudget) {
+      setError(
+        "Projected cost may exceed remaining daily budget — enable force override or reduce scope.",
+      );
       return;
     }
     setBusy(true);
@@ -134,13 +152,29 @@ export default function HostedHtmlDocumentHost(
           <ResearchLaunchBudgetPanel
             promptText={researchSelection}
             researchTier="deep"
+            onProjectionChange={onProjectionChange}
           />
+          {budgetWarn ? (
+            <label
+              className="flex items-center gap-2 text-[11px] font-mono text-emperor"
+              data-testid="hosted-html-over-budget-warn"
+            >
+              <input
+                type="checkbox"
+                data-testid="hosted-html-force-over-budget"
+                checked={forceOverBudget}
+                onChange={(e) => setForceOverBudget(e.target.checked)}
+                disabled={busy}
+              />
+              Force open despite budget projection
+            </label>
+          ) : null}
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               className="rounded border border-ink/20 px-3 py-1.5 text-xs font-mono dark:border-bright/20"
               data-testid="hosted-html-deep-research"
-              disabled={busy}
+              disabled={busy || (budgetWarn && !forceOverBudget)}
               onClick={() => void spinFloating()}
             >
               {busy ? "Opening…" : "Deep research (window)"}
