@@ -1,0 +1,8 @@
+# inventory-kt · competitive notes kq–ks + suite-proposal AC
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: kt
+files:
+  docs/campaigns/2026-07-09-research-reading-spine/competitive-deep-research-notes.md
+  docs/campaigns/2026-07-09-research-reading-spine/DEFERRED-GAPS-for-future-agents.md
+proof: suite-proposal 4_passed (plan AC); docs honesty
+invariants: operator merge PR #465 · L1–L4 dual-gate · NotDiamond advisory

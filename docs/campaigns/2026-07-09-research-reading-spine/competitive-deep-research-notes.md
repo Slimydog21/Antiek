@@ -137,3 +137,10 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - (ko) attach-refs research_tier + PublicationAttachPanel chrome (citation path depth)
   Completes depth identity on merge-into-asset and mid-session arxiv/substack attach.
 
+
+- Closed (kq–ks, 2026-07-10) **Flywheel pack + recursive note-taker depth identity:**
+  - (kq) SessionFlywheelPanel session||context.research_tier fallback + pack chrome
+  - (kr) TwinNotesPanel researchTier chrome; DeepResearchSessionHost wire
+  - (ks) HostedHtml + Write TwinNotes researchTier wire (reading ≡ write ≡ DR)
+  Recursive note-taker substrate now inherits closed depth on every major host.
+

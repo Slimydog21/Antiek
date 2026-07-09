@@ -54,7 +54,10 @@ injectors remain operator dual-gate; NotDiamond remains advisory only (L7).
 maps, budget intensity chrome, MetaReading, progress/evidence/search/collective/research-context
 API+UI+HTML research_tier identity (see competitive notes jt–jw, jy–ka, kd–ke, kf–kl).
 
+**kn–ks** closed merge + attach-refs + flywheel pack fallback + TwinNotes researchTier on
+DR/Hosted/Write hosts (see competitive notes kn–ko, kq–ks).
+
 ## Next residual after this doc
 
-**(kn)+** next thin product residual (twin polish / marketplace / MO UX) or operator merge PR #465.
+**(ku)+** next thin product residual or operator merge PR #465.
 Infinite continues until STOP.
