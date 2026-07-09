@@ -107,3 +107,9 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - (jw) budget panel intensity chrome on every launch surface
   - (jx) substrate TIER_MULTIPLIER closed-set contract test for fleet parity
 
+
+- Closed (jy–ka, 2026-07-10) **Meta-reading + progress identity:**
+  - (jy) MetaReading Settings research_tier on generate
+  - (jz) progress_payload includes spawn research_tier
+  - (ka) ResearchProgressPanel API research_tier fallback (prop wins)
+
