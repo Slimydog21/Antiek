@@ -24,6 +24,14 @@ vi.mock("../../api/midnightOil", () => ({
   getMidnightOilJob,
 }));
 
+vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", () => ({
+  ResearchLaunchBudgetPanel: (props: { promptText: string }) => (
+    <div data-testid="research-launch-budget-panel-stub">
+      goals={props.promptText.length}
+    </div>
+  ),
+}));
+
 describe("MidnightOil mode", () => {
   afterEach(() => cleanup());
   beforeEach(() => {
@@ -32,6 +40,15 @@ describe("MidnightOil mode", () => {
     depositMidnightOilJob.mockReset();
     runMidnightOilJob.mockReset();
     getMidnightOilJob.mockReset();
+  });
+
+  it("mounts budget projection panel before create (cs)", () => {
+    render(<MidnightOil />);
+    expect(screen.getByTestId("moil-budget-mount")).toBeTruthy();
+    expect(screen.getByTestId("research-launch-budget-panel-stub")).toBeTruthy();
+    expect(
+      screen.getByTestId("moil-budget-mount").getAttribute("data-view-format"),
+    ).toBe("html");
   });
 
   it("creates job then approves at recommended ceiling", async () => {

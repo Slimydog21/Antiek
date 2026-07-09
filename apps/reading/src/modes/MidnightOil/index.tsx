@@ -13,6 +13,7 @@ import {
   type MidnightOilJobResponse,
   type MidnightOilRunResponse,
 } from "../../api/midnightOil";
+import { ResearchLaunchBudgetPanel } from "../../components/engagement/ResearchLaunchBudgetPanel";
 
 export default function MidnightOil() {
   const [goalsText, setGoalsText] = useState("");
@@ -198,6 +199,13 @@ export default function MidnightOil() {
             disabled={busy}
           />
         </label>
+        {/* Residual (cs): daily budget + prompt projection before ceiling approve. */}
+        <div data-testid="moil-budget-mount" data-view-format="html">
+          <ResearchLaunchBudgetPanel
+            promptText={goalsText}
+            researchTier="deep"
+          />
+        </div>
         <button type="submit" disabled={busy || !goalsText.trim()}>
           {busy ? "Working…" : "Create job + recommend ceiling"}
         </button>
