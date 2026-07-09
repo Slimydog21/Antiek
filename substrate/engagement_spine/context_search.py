@@ -113,7 +113,13 @@ def project_context_search_html(payload: dict[str, Any]) -> str:
                 {
                     "type": "text",
                     "text": (
-                        f"Query: {q} · hits={payload.get('hit_count')} · view: HTML"
+                        f"Query: {q} · hits={payload.get('hit_count')}"
+                        + (
+                            f" · tier={payload.get('research_tier')}"
+                            if payload.get("research_tier")
+                            else ""
+                        )
+                        + " · view: HTML"
                     ),
                 }
             ],

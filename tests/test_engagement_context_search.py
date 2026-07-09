@@ -57,6 +57,8 @@ def test_search_finds_twin_and_ref():
     assert "application/pdf" not in payload["html"].lower()
     # Residual (kg): spawn research_tier on scoped intelligent search.
     assert payload["research_tier"] == "wrestle"
+    # Residual (kh): HTML projection includes tier for agent-readable audit.
+    assert "tier=wrestle" in (payload.get("html") or "")
     kinds = {h["kind"] for h in payload["hits"]}
     assert any(k.startswith("twin_") for k in kinds)
 
