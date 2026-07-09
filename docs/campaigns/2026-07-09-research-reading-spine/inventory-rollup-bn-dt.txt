@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(dt) · PR #465
+ds: dogfood usage events · dt: Settings UI exposes usage_events_recorded + weekly agent note.
+Operator merge still gated.

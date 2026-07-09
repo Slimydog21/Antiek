@@ -1093,6 +1093,8 @@ export default function Settings() {
               <div
                 className="font-mono text-[13px] space-y-1 border border-ink/10 dark:border-bright/10 rounded p-2"
                 data-testid="antiek-bench-run-offline-result"
+                data-auto-promoted={String(Boolean(offlineRun.auto_promoted))}
+                data-view-format={offlineRun.view_format || "html"}
               >
                 <Row label="Offline runs" value={String(offlineRun.run_count)} />
                 <Row
@@ -1111,6 +1113,27 @@ export default function Settings() {
                       : "—"
                   }
                 />
+                {/* Residual (dt): show usage feed into recursive suite rewrite. */}
+                <Row
+                  label="Usage events recorded"
+                  value={
+                    offlineRun.usage_events_recorded != null
+                      ? String(offlineRun.usage_events_recorded)
+                      : "—"
+                  }
+                />
+                <Row
+                  label="Auto-promoted"
+                  value={offlineRun.auto_promoted ? "true (unexpected)" : "false"}
+                />
+                <p
+                  className="text-[11px] text-ink-mute dark:text-moonlight"
+                  data-testid="antiek-bench-weekly-agent-note"
+                >
+                  Weekly offline schedule (operator): LaunchAgent template under
+                  docs/campaigns/2026-07-09-research-reading-spine/ — never
+                  auto-promotes; use suite proposal approve below.
+                </p>
                 {offlineRun.html ? (
                   <div
                     className="prose border rounded p-2 text-sm max-h-40 overflow-auto"

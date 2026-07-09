@@ -287,6 +287,7 @@ const {
       view_format: "html",
       offline: true,
       auto_promoted: false,
+      usage_events_recorded: 15,
       settings_panel: "antiek_bench_run_offline",
       source: "antiek_bench.product_path.run_offline_dogfood",
       notes: ["Offline dogfood suite run — keyword stub providers only."],
@@ -671,6 +672,21 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(
       screen.getByTestId("antiek-bench-run-offline-result").textContent,
     ).toMatch(/3/);
+    // Residual (dt): usage events + auto-promoted honesty + weekly agent note.
+    expect(
+      screen.getByTestId("antiek-bench-run-offline-result").textContent,
+    ).toMatch(/Usage events recorded/);
+    expect(
+      screen.getByTestId("antiek-bench-run-offline-result").textContent,
+    ).toMatch(/15/);
+    expect(
+      screen
+        .getByTestId("antiek-bench-run-offline-result")
+        .getAttribute("data-auto-promoted"),
+    ).toBe("false");
+    expect(screen.getByTestId("antiek-bench-weekly-agent-note").textContent).toMatch(
+      /LaunchAgent/i,
+    );
     expect(screen.getByTestId("antiek-bench-run-offline-html").innerHTML).toMatch(
       /offline dogfood|2026-W28/i,
     );

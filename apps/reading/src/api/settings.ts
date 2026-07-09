@@ -290,6 +290,8 @@ export type AntiekBenchRunOfflineResponse = {
   recommended_model_id: string | null;
   recommended_mean_score: number | null;
   leaderboard?: AntiekBenchLeaderboardResponse;
+  /** Residual (ds/dt): usage events recorded for suite rewrite proposals. */
+  usage_events_recorded?: number;
   view_format: "html" | string;
   offline: boolean;
   auto_promoted: boolean;
