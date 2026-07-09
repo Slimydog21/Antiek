@@ -10,7 +10,9 @@ import {
   type InvestigationSummary,
   type ResearchArtifactComposeResponse,
   type SourceMergeApplyResponse,
+  type SourceMergePreviewResponse,
   type SourceMergeReviewPacket,
+  previewSourceMerge,
 } from "../../lib/api";
 import { useChaseDraftHandoffs } from "../ResearchWorkstation/chaseHandoffs";
 import { deriveNotes } from "../ResearchWorkstation/NotesPanel";
@@ -86,6 +88,9 @@ export default function ReadingCompanion({
   const [copiedSourceReviewPacket, setCopiedSourceReviewPacket] = useState(false);
   const [sourceApplyAck, setSourceApplyAck] = useState(false);
   const [sourceApplyConflictAck, setSourceApplyConflictAck] = useState(false);
+  const [sourcePreviewBusy, setSourcePreviewBusy] = useState(false);
+  const [sourcePreviewReceipt, setSourcePreviewReceipt] = useState<SourceMergePreviewResponse | null>(null);
+  const [sourcePreviewError, setSourcePreviewError] = useState<string | null>(null);
   const [sourceApplyBusy, setSourceApplyBusy] = useState(false);
   const [sourceApplyReceipt, setSourceApplyReceipt] = useState<SourceMergeApplyResponse | null>(null);
   const [sourceApplyError, setSourceApplyError] = useState<string | null>(null);
@@ -148,30 +153,51 @@ export default function ReadingCompanion({
     setCopiedSourceReviewPacket(true);
   }
 
-  async function applySourceMergeReceipt() {
+  function buildSourceMergeApplyRequest() {
     if (!draftMergeReceipt || !sourceApplyAck) return;
     if (draftMergeReceipt.hash_conflicts.length > 0 && !sourceApplyConflictAck) return;
+    const packet = buildSourceMergeReviewPacket({
+      documentId,
+      title,
+      readingThreadId,
+      draftMergeReceipt,
+      draftMergeIds,
+    });
+    return {
+      reviewed_packet: packet,
+      expected_content_hashes: Object.fromEntries(
+        draftMergeReceipt.members.map((member) => [member.investigation_id, member.content_hash]),
+      ),
+      acknowledge_reviewed_draft: true,
+      acknowledge_source_book_mutation: true,
+      acknowledge_twin_document_mutation: true,
+      acknowledge_hash_conflicts: sourceApplyConflictAck,
+      operator_reviewer: "reader-companion",
+    };
+  }
+
+  async function previewSourceMergeReceipt() {
+    const request = buildSourceMergeApplyRequest();
+    if (!request) return;
+    setSourcePreviewBusy(true);
+    setSourcePreviewError(null);
+    try {
+      const result = await previewSourceMerge(request);
+      setSourcePreviewReceipt(result);
+    } catch (error) {
+      setSourcePreviewError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSourcePreviewBusy(false);
+    }
+  }
+
+  async function applySourceMergeReceipt() {
+    const request = buildSourceMergeApplyRequest();
+    if (!request) return;
     setSourceApplyBusy(true);
     setSourceApplyError(null);
     try {
-      const packet = buildSourceMergeReviewPacket({
-        documentId,
-        title,
-        readingThreadId,
-        draftMergeReceipt,
-        draftMergeIds,
-      });
-      const result = await applySourceMerge({
-        reviewed_packet: packet,
-        expected_content_hashes: Object.fromEntries(
-          draftMergeReceipt.members.map((member) => [member.investigation_id, member.content_hash]),
-        ),
-        acknowledge_reviewed_draft: true,
-        acknowledge_source_book_mutation: true,
-        acknowledge_twin_document_mutation: true,
-        acknowledge_hash_conflicts: sourceApplyConflictAck,
-        operator_reviewer: "reader-companion",
-      });
+      const result = await applySourceMerge(request);
       setSourceApplyReceipt(result);
     } catch (error) {
       setSourceApplyError(error instanceof Error ? error.message : String(error));
@@ -194,6 +220,8 @@ export default function ReadingCompanion({
       setCopiedSourceReviewPacket(false);
       setSourceApplyAck(false);
       setSourceApplyConflictAck(false);
+      setSourcePreviewReceipt(null);
+      setSourcePreviewError(null);
       setSourceApplyReceipt(null);
       setSourceApplyError(null);
     } catch (error) {
@@ -318,6 +346,19 @@ export default function ReadingCompanion({
                 <p>Ledger only · body not rewritten</p>
                 <button
                   type="button"
+                  onClick={() => void previewSourceMergeReceipt()}
+                  disabled={
+                    sourcePreviewBusy ||
+                    !sourceApplyAck ||
+                    (draftMergeReceipt.hash_conflicts.length > 0 && !sourceApplyConflictAck)
+                  }
+                  className="shrink-0 text-ink underline disabled:cursor-not-allowed disabled:text-ink-mute dark:text-bright dark:disabled:text-moonlight"
+                  title="Preview revision evidence without rewriting the book body"
+                >
+                  {sourcePreviewBusy ? "previewing" : "preview"}
+                </button>
+                <button
+                  type="button"
                   onClick={() => void applySourceMergeReceipt()}
                   disabled={
                     sourceApplyBusy ||
@@ -330,6 +371,26 @@ export default function ReadingCompanion({
                   {sourceApplyBusy ? "applying" : "apply receipt"}
                 </button>
               </div>
+              {sourcePreviewReceipt ? (
+                <div
+                  className="mt-1 border-t border-rule pt-1 dark:border-charcoal-1"
+                  aria-label="Source merge preview"
+                  role="region"
+                >
+                  <p>Preview {sourcePreviewReceipt.status}</p>
+                  <p>{sourcePreviewReceipt.source_bytes_before} → {sourcePreviewReceipt.source_bytes_after} bytes</p>
+                  <p className="truncate" title={sourcePreviewReceipt.before_source_hash}>
+                    before {sourcePreviewReceipt.before_source_hash}
+                  </p>
+                  <p className="truncate" title={sourcePreviewReceipt.after_source_hash}>
+                    after {sourcePreviewReceipt.after_source_hash}
+                  </p>
+                  <p>writes performed {String(sourcePreviewReceipt.writes_performed)}</p>
+                </div>
+              ) : null}
+              {sourcePreviewError ? (
+                <p className="mt-1 text-emperor">{sourcePreviewError}</p>
+              ) : null}
               {sourceApplyReceipt ? (
                 <div
                   className="mt-1 border-t border-rule pt-1 dark:border-charcoal-1"

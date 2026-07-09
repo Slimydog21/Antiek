@@ -27,11 +27,18 @@ import {
  *    running, not as decoration.
  */
 
-const { useInvestigationMock, listState, composeResearchArtifactsMock, applySourceMergeMock } = vi.hoisted(() => ({
+const {
+  useInvestigationMock,
+  listState,
+  composeResearchArtifactsMock,
+  applySourceMergeMock,
+  previewSourceMergeMock,
+} = vi.hoisted(() => ({
   useInvestigationMock: vi.fn(),
   listState: { investigations: [] as InvestigationSummary[], loading: false, error: null, refetch: vi.fn() },
   composeResearchArtifactsMock: vi.fn(),
   applySourceMergeMock: vi.fn(),
+  previewSourceMergeMock: vi.fn(),
 }));
 
 vi.mock("../../hooks/useInvestigation", () => ({
@@ -47,6 +54,7 @@ vi.mock("../../lib/api", async (orig) => {
     API_BASE: "",
     applySourceMerge: applySourceMergeMock,
     composeResearchArtifacts: composeResearchArtifactsMock,
+    previewSourceMerge: previewSourceMergeMock,
   };
 });
 
@@ -82,6 +90,7 @@ beforeEach(() => {
   listState.investigations = [];
   composeResearchArtifactsMock.mockReset();
   applySourceMergeMock.mockReset();
+  previewSourceMergeMock.mockReset();
 });
 afterEach(() => {
   cleanup();
@@ -424,6 +433,97 @@ describe("ReadingCompanion (Read SPR-06 M2)", () => {
     expect(screen.getByText("srcmerge-doc-1-abc123")).toBeTruthy();
     expect(screen.getByText("twinmerge-doc-1-abc123")).toBeTruthy();
     expect(screen.getByText("Book body not rewritten")).toBeTruthy();
+  });
+
+  it("previews source merge revision evidence without applying the receipt", async () => {
+    for (const childInvestigationId of ["inv-preview-ready-a", "inv-preview-ready-b"]) {
+      recordChaseDraftHandoff(
+        buildChaseDraftHandoff({
+          childInvestigationId,
+          parentInvestigationId: "read-doc-1",
+          sourcePassage: `Completed chase ${childInvestigationId}.`,
+        }),
+      );
+    }
+    listState.investigations = [
+      summary({ investigation_id: "inv-preview-ready-a", status: "completed" }),
+      summary({ investigation_id: "inv-preview-ready-b", status: "completed" }),
+    ];
+    composeResearchArtifactsMock.mockResolvedValue({
+      path: "/tmp/preview-ready-compose.html",
+      draft_merge_path: "/tmp/preview-ready-draft.html",
+      members: [
+        {
+          investigation_id: "inv-preview-ready-b",
+          content_hash: "hash-b",
+          artifact_path: "/tmp/inv-preview-ready-b.html",
+          twin_notes_path: "/tmp/inv-preview-ready-b.notes.html",
+        },
+        {
+          investigation_id: "inv-preview-ready-a",
+          content_hash: "hash-a",
+          artifact_path: "/tmp/inv-preview-ready-a.html",
+          twin_notes_path: "/tmp/inv-preview-ready-a.notes.html",
+        },
+      ],
+      hash_conflicts: [],
+    });
+    previewSourceMergeMock.mockResolvedValue({
+      status: "previewed",
+      document_id: "doc-1",
+      source_revision_id: "srcmerge-doc-1-preview",
+      twin_revision_id: "twinmerge-doc-1-preview",
+      member_investigation_ids: ["inv-preview-ready-b", "inv-preview-ready-a"],
+      before_source_hash: "before-hash",
+      after_source_hash: "after-hash",
+      before_twin_hash: "before-twin",
+      after_twin_hash: "after-twin",
+      source_bytes_before: 22,
+      source_bytes_after: 88,
+      twin_bytes_after: 44,
+      writes_performed: false,
+    });
+    useInvestigationMock.mockReturnValue(state({ status: "not_found", events: [] }));
+
+    renderCompanion();
+    fireEvent.click(screen.getByRole("button", { name: /draft ready/i }));
+    await screen.findByRole("region", { name: /Draft merge receipt/i });
+    fireEvent.click(screen.getByLabelText(/Reviewed draft/i));
+    fireEvent.click(screen.getByRole("button", { name: /^preview$/i }));
+
+    await waitFor(() => expect(previewSourceMergeMock).toHaveBeenCalledTimes(1));
+    expect(applySourceMergeMock).not.toHaveBeenCalled();
+    expect(previewSourceMergeMock).toHaveBeenCalledWith({
+      reviewed_packet: {
+        kind: "antiek.reader.source_merge_review_packet",
+        document_id: "doc-1",
+        title: "Meditations",
+        parent_reading_thread_id: "read-doc-1",
+        draft_merge_path: "/tmp/preview-ready-draft.html",
+        compose_index_path: "/tmp/preview-ready-compose.html",
+        member_investigation_ids: ["inv-preview-ready-b", "inv-preview-ready-a"],
+        requested_investigation_ids: ["inv-preview-ready-b", "inv-preview-ready-a"],
+        hash_conflict_count: 0,
+        hash_conflicts: [],
+        source_book_mutated: false,
+        twin_document_mutated: false,
+        no_spend: true,
+      },
+      expected_content_hashes: {
+        "inv-preview-ready-b": "hash-b",
+        "inv-preview-ready-a": "hash-a",
+      },
+      acknowledge_reviewed_draft: true,
+      acknowledge_source_book_mutation: true,
+      acknowledge_twin_document_mutation: true,
+      acknowledge_hash_conflicts: false,
+      operator_reviewer: "reader-companion",
+    });
+    expect(await screen.findByRole("region", { name: /Source merge preview/i })).toBeTruthy();
+    expect(screen.getByText("22 → 88 bytes")).toBeTruthy();
+    expect(screen.getByText("before before-hash")).toBeTruthy();
+    expect(screen.getByText("after after-hash")).toBeTruthy();
+    expect(screen.getByText("writes performed false")).toBeTruthy();
   });
 
   it("requires conflict acknowledgement before applying a conflicted draft", async () => {
