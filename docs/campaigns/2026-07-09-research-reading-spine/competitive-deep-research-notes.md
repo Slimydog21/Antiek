@@ -194,3 +194,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - (lp) BlockDetail DecisionTreeDriverBadge researchTier
   Second FloatMenu host (graph node detail) co-displays model+budget+depth.
 
+
+- Closed (lr, 2026-07-10) **Multi-minute progress driver+depth:**
+  - (lr) ResearchProgressPanel DecisionTreeDriverBadge when tier known
+  Long-horizon plan→cite jobs keep model driver, budget, and depth visible mid-run.
+
