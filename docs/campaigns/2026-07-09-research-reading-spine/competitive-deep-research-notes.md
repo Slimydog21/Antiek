@@ -85,3 +85,17 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (iu–iw, 2026-07-10): marketplace host + library deep research float|full (reading≡research on HTML books).
 
 - Closed (iy, 2026-07-10): marketplace host DR budget soft-gate before fire.
+
+- Closed (jf–jo, 2026-07-10) **Depth-tier product spine (reading ≡ research ≡ write ≡ midnight oil):**
+  - (jf) Collective continue-as-unit Settings depth prefill
+  - (jg) ResearchThis Settings depth prefill
+  - (jh) WriteHome piece DR Settings depth prefill
+  - (ji) research_tier persists on spawn + floating session open + launchFloatingDeepResearch
+  - (jj) useSettingsResearchTier shared hook; Reading FloatMenu / HighlightToolbar / BlockDetail
+  - (jk) session host chrome surfaces research_tier (payload wins over Settings)
+  - (jl) Midnight Oil recommended ceiling × tier (fast 0.5 / deep 1.0 / wrestle 2.0)
+  - (jm) spinResearch full workstation path + InvestigationStart research_tier
+  - (jn) TalkToBook Settings research_tier on askBook
+  - (jo) progress poll cadence by tier (fast 2s / deep 4s / wrestle 8s)
+  Competitive match: budget-capped depth honesty + multi-minute wrestle posture without second runtime.
+
