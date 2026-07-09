@@ -91,6 +91,26 @@ class MidnightOilLaunchPacket(BaseModel):
     launch_notes: list[str] = Field(default_factory=list)
 
 
+class MidnightOilApprovalReceipt(BaseModel):
+    receipt_id: str
+    launch_packet_id: str
+    run_id: str
+    operator_acknowledged_spend: bool = True
+    approved_price_ceiling_usd: float = Field(ge=0.0)
+    approved_work_minutes: int = Field(ge=0)
+    approved_route_mode: RouteMode
+    approved_source_policy: list[SourcePolicy]
+    approved_deliverable: DeliverableKind
+    planned_budget_usd: float = Field(ge=0.0)
+    unallocated_budget_usd: float = Field(ge=0.0)
+    approval_scope: Literal["preflight_launch_packet_only"] = "preflight_launch_packet_only"
+    runner_apply_required: bool = True
+    dispatch_allowed: bool = False
+    budget_reserved: bool = False
+    provider_calls_made: bool = False
+    receipt_notes: list[str] = Field(default_factory=list)
+
+
 class MidnightOilPreflight(BaseModel):
     accepted: bool
     denial_reason: str | None = None
@@ -101,29 +121,31 @@ class MidnightOilPreflight(BaseModel):
     route_mode: RouteMode
     source_policy: list[SourcePolicy]
     deliverable: DeliverableKind
+    planned_budget_usd: float = Field(default=0.0, ge=0.0)
+    unallocated_budget_usd: float = Field(default=0.0, ge=0.0)
     role_plans: list[MidnightOilRolePlan] = Field(default_factory=list)
     artifact_contract: MidnightOilArtifactContract = Field(
         default_factory=MidnightOilArtifactContract
     )
     launch_packet: MidnightOilLaunchPacket | None = None
+    approval_receipt: MidnightOilApprovalReceipt | None = None
     notes: list[str] = Field(default_factory=list)
-
-    @property
-    def planned_budget_usd(self) -> float:
-        return round(sum(plan.budget_usd for plan in self.role_plans), 2)
 
 
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
+    price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
         return MidnightOilPreflight(
             accepted=False,
             denial_reason="operator_acknowledged_spend_required",
             goal=req.goal,
             work_minutes=req.work_minutes,
-            price_ceiling_usd=round(req.price_ceiling_usd, 2),
+            price_ceiling_usd=price_ceiling_usd,
             route_mode=req.route_mode,
             source_policy=req.source_policy,
             deliverable=req.deliverable,
+            planned_budget_usd=0.0,
+            unallocated_budget_usd=price_ceiling_usd,
             notes=[
                 "denied before dispatch: autonomous research requires explicit spend acknowledgement"
             ],
@@ -136,27 +158,64 @@ def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
         work_minutes=req.work_minutes,
         route_mode=req.route_mode,
     )
+    planned_budget_usd = round(sum(plan.budget_usd for plan in role_plans), 2)
+    unallocated_budget_usd = round(max(0.0, price_ceiling_usd - planned_budget_usd), 2)
+    launch_packet = _launch_packet(
+        run_id=run_id,
+        req=req,
+        price_ceiling_usd=price_ceiling_usd,
+        planned_budget_usd=planned_budget_usd,
+        unallocated_budget_usd=unallocated_budget_usd,
+        role_plans=role_plans,
+    )
     return MidnightOilPreflight(
         accepted=True,
         run_id=run_id,
         goal=req.goal,
         work_minutes=req.work_minutes,
-        price_ceiling_usd=round(req.price_ceiling_usd, 2),
+        price_ceiling_usd=price_ceiling_usd,
         route_mode=req.route_mode,
         source_policy=req.source_policy,
         deliverable=req.deliverable,
+        planned_budget_usd=planned_budget_usd,
+        unallocated_budget_usd=unallocated_budget_usd,
         role_plans=role_plans,
-        launch_packet=_launch_packet(
-            run_id=run_id,
-            req=req,
-            price_ceiling_usd=price_ceiling_usd,
-            planned_budget_usd=planned_budget_usd,
-            unallocated_budget_usd=round(max(0.0, price_ceiling_usd - planned_budget_usd), 2),
-            role_plans=role_plans,
+        launch_packet=launch_packet,
+        approval_receipt=_approval_receipt(
+            launch_packet=launch_packet,
+            operator_acknowledged_spend=req.operator_acknowledged_spend,
         ),
         notes=[
             "preflight only: no agents launched, no budget reserved, no retrieval performed",
             "each future subagent must inherit the parent ceiling through this role allocation",
+        ],
+    )
+
+
+def _approval_receipt(
+    *,
+    launch_packet: MidnightOilLaunchPacket,
+    operator_acknowledged_spend: bool,
+) -> MidnightOilApprovalReceipt:
+    return MidnightOilApprovalReceipt(
+        receipt_id=f"{launch_packet.run_id}-approval-receipt",
+        launch_packet_id=launch_packet.packet_id,
+        run_id=launch_packet.run_id,
+        operator_acknowledged_spend=operator_acknowledged_spend,
+        approved_price_ceiling_usd=launch_packet.price_ceiling_usd,
+        approved_work_minutes=launch_packet.work_minutes,
+        approved_route_mode=launch_packet.route_mode,
+        approved_source_policy=launch_packet.source_policy,
+        approved_deliverable=launch_packet.deliverable,
+        planned_budget_usd=launch_packet.planned_budget_usd,
+        unallocated_budget_usd=launch_packet.unallocated_budget_usd,
+        dispatch_allowed=launch_packet.dispatch_allowed,
+        budget_reserved=launch_packet.budget_reserved,
+        provider_calls_made=launch_packet.provider_calls_made,
+        receipt_notes=[
+            "operator approved the ceiling for this launch packet only",
+            "runner apply is still required before any dispatch or budget reservation",
+            "no provider calls or graph mutations were performed by this receipt",
         ],
     )
 
