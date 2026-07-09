@@ -8,6 +8,7 @@ import {
   fetchAccountLibrary,
   fetchMarketplaceCatalog,
   hostBookIntoAccount,
+  purchaseAndHost,
   type CatalogEntryRow,
   type HostResultResponse,
 } from "../../api/marketplaceHost";
@@ -15,6 +16,15 @@ import {
 export type MarketplaceHostProps = {
   ownerId?: string;
 };
+
+/** Offline demo body for purchased-book host (HTML bytes → base64). */
+function demoPurchasedContentB64(title: string): string {
+  const html = `<!DOCTYPE html><html><body data-view-format="html"><h1>${title}</h1><p>Hosted after manual purchase receipt (no live payment rails).</p></body></html>`;
+  // browser + vitest both have btoa
+  return typeof btoa === "function"
+    ? btoa(html)
+    : Buffer.from(html, "utf-8").toString("base64");
+}
 
 export default function MarketplaceHost({
   ownerId = "operator",
@@ -24,6 +34,7 @@ export default function MarketplaceHost({
   const [libraryHtml, setLibraryHtml] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [receiptRef, setReceiptRef] = useState("manual-order-token-demo");
 
   const loadCatalog = useCallback(async () => {
     setBusy(true);
@@ -63,20 +74,59 @@ export default function MarketplaceHost({
     }
   }
 
+  async function onPurchaseAndHost(entry: CatalogEntryRow) {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await purchaseAndHost({
+        owner_id: ownerId,
+        book_id: entry.book_id,
+        opaque_reference: receiptRef.trim() || "manual-order-token-demo",
+        content_b64: demoPurchasedContentB64(entry.title),
+        note: "Manual purchase receipt (residual bg UI)",
+      });
+      if (result.view_format !== "html") {
+        throw new Error("hosted view_format must be html");
+      }
+      setHosted(result);
+      const lib = await fetchAccountLibrary(ownerId);
+      setLibraryHtml(lib.html);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <div className="h-full overflow-y-auto p-6" data-view-format="html">
+    <div className="h-full overflow-y-auto p-6" data-view-format="html" data-testid="marketplace-host-mode">
       <header className="mb-6 space-y-1">
         <h1 className="text-2xl font-semibold">Marketplace · host into account</h1>
         <p className="text-sm opacity-80">
           Host public-domain catalog books into your Antiek library. Purchased
-          titles require a receipt (manual order token — no live payment rails
-          here). Human view is HTML, never PDF.
+          titles use a manual receipt token (no live payment rails). Human view
+          is HTML, never PDF.
         </p>
       </header>
 
-      <button type="button" onClick={() => void loadCatalog()} disabled={busy}>
-        Refresh catalog
-      </button>
+      <div className="flex flex-wrap gap-3 items-end mb-4">
+        <button type="button" onClick={() => void loadCatalog()} disabled={busy}>
+          Refresh catalog
+        </button>
+        <label className="flex flex-col gap-1 text-sm font-mono">
+          <span className="text-[11px] uppercase opacity-70">
+            Purchase receipt ref
+          </span>
+          <input
+            type="text"
+            data-testid="purchase-receipt-ref"
+            value={receiptRef}
+            onChange={(e) => setReceiptRef(e.target.value)}
+            className="border rounded px-2 py-1 min-w-[16rem]"
+            disabled={busy}
+          />
+        </label>
+      </div>
 
       {error ? (
         <p className="mt-4 text-red-600" role="alert">
@@ -103,7 +153,14 @@ export default function MarketplaceHost({
                 Host into account
               </button>
             ) : (
-              <span className="text-sm opacity-70">requires receipt</span>
+              <button
+                type="button"
+                data-testid={`purchase-host-${e.book_id}`}
+                disabled={busy || !receiptRef.trim()}
+                onClick={() => void onPurchaseAndHost(e)}
+              >
+                Purchase + host
+              </button>
             )}
           </li>
         ))}
