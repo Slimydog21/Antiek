@@ -27,3 +27,6 @@ Does not invent live multi-agent writing. Offline-honest path first.
 
 ## Residual (fq)
 Disabled Import HTML into outline button + deferred copy on Write handoff panel. Full import remains (fr)+.
+
+## Residual (ft)
+On create piece with loaded html_draft: createSection(0) + updateSectionProse(plain_text). Heading/structure split remains (fu)+.

@@ -20,6 +20,7 @@ import type { TraceTarget } from "./writeApi";
 const {
   listDeliverablesMock, getTraceTargetMock, listInvestigationsMock,
   startInvestigationMock, createDeliverableMock, fetchHostedDocumentHtmlMock,
+  createSectionMock, updateSectionProseMock,
 } = vi.hoisted(() => ({
   listDeliverablesMock: vi.fn(),
   getTraceTargetMock: vi.fn(),
@@ -27,6 +28,8 @@ const {
   startInvestigationMock: vi.fn(),
   createDeliverableMock: vi.fn(),
   fetchHostedDocumentHtmlMock: vi.fn(),
+  createSectionMock: vi.fn(),
+  updateSectionProseMock: vi.fn(),
 }));
 
 vi.mock("../../lib/api", async (orig) => ({
@@ -36,6 +39,8 @@ vi.mock("../../lib/api", async (orig) => ({
   createDeliverable: createDeliverableMock,
   listInvestigations: listInvestigationsMock,
   startInvestigation: startInvestigationMock,
+  createSection: (...args: unknown[]) => createSectionMock(...args),
+  updateSectionProse: (...args: unknown[]) => updateSectionProseMock(...args),
 }));
 
 vi.mock("../../api/marketplaceHost", () => ({
@@ -61,6 +66,19 @@ beforeEach(() => {
     deliverable_id: "dlv-new", title: "Memo", deliverable_kind: "general_essay",
     investigation_root_id: "inv-spawned", status: "draft",
     created_at: null, updated_at: null, section_count: 0,
+  });
+  createSectionMock.mockReset().mockResolvedValue({
+    section_id: "sec_import_0",
+    deliverable_id: "dlv-new",
+    section_index: 0,
+    title: "Imported",
+    parent_section_id: null,
+  });
+  updateSectionProseMock.mockReset().mockResolvedValue({
+    status: "saved",
+    section_id: "sec_import_0",
+    claim_node_id: null,
+    claim_event_id: null,
   });
   fetchHostedDocumentHtmlMock.mockReset().mockResolvedValue({
     document_id: "draft_merge_abc",
@@ -172,18 +190,49 @@ describe("WriteHome — the re-homed door", () => {
     expect(screen.getByTestId("write-html-draft-provenance").textContent).toMatch(
       /html_draft:draft_merge_abc/,
     );
-    // Residual (fq): outline import is honestly deferred (disabled).
-    const importBtn = screen.getByTestId(
-      "write-html-draft-import-outline",
-    ) as HTMLButtonElement;
-    expect(importBtn.disabled).toBe(true);
+    // Residual (ft): import-on-create badge (section 0 prose).
+    expect(
+      screen
+        .getByTestId("write-html-draft-import-outline")
+        .getAttribute("data-import-on-create"),
+    ).toBe("true");
     expect(screen.getByTestId("write-html-draft-import-deferred").textContent).toMatch(
-      /deferred|propose≠invent/i,
+      /section 0|plain text/i,
     );
     // Seed brainstorm opens idea dump with plain text.
     await userEvent.click(screen.getByTestId("write-html-draft-seed-brainstorm"));
     await waitFor(() => {
       expect(screen.getByDisplayValue(/Attention is content-addressable/)).toBeTruthy();
+    });
+  });
+
+  it("imports HTML draft plain text into section 0 on create piece (ft)", async () => {
+    mountAt("/write?html_draft=draft_merge_abc");
+    await waitFor(() => {
+      expect(screen.getByTestId("write-html-draft-loaded")).toBeTruthy();
+    });
+    const title = await screen.findByPlaceholderText(/what are you writing/i);
+    // Title may already be prefilled; ensure non-empty for connect.
+    await userEvent.clear(title);
+    await userEvent.type(title, "Piece from draft");
+    await userEvent.click(await screen.findByText(/start without a project/i));
+    await waitFor(() => expect(createDeliverableMock).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(createSectionMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          deliverable_id: "dlv-new",
+          section_index: 0,
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(updateSectionProseMock).toHaveBeenCalledWith(
+        "sec_import_0",
+        expect.objectContaining({
+          prose_text: expect.stringMatching(/Attention is content-addressable/),
+          promote_to_graph: false,
+        }),
+      );
     });
   });
 

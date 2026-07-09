@@ -3,8 +3,10 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import {
   createDeliverable,
+  createSection,
   getDeliverable,
   listDeliverables,
+  updateSectionProse,
   type DeliverableDetailResponse,
   type DeliverableKind,
   type DeliverableSummary,
@@ -45,7 +47,9 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
  *
  * Residual (fl): `?html_draft=<document_id>` handoff from hosted HTML merge.
  * Residual (fm): load hosted HTML, refuse non-html, prefill title + seed
- * brainstorm plain text; full outline section import remains follow-on.
+ * brainstorm plain text.
+ * Residual (ft): on create piece with loaded HTML draft, create section 0 and
+ * PATCH prose with plain text (HTML-first land into outline).
  */
 export default function WriteHome() {
   const { deliverableId } = useParams<{ deliverableId?: string }>();
@@ -207,6 +211,22 @@ export default function WriteHome() {
         // investigation_root_id; reused, not a new column — see decision D-1).
         investigation_root_id: resolved.investigationId,
       });
+      // Residual (ft): land HTML draft plain text into outline section 0.
+      if (htmlDraft?.plain_text?.trim()) {
+        try {
+          const sec = await createSection({
+            deliverable_id: d.deliverable_id,
+            section_index: 0,
+            title: (htmlDraft.title_hint || "Imported HTML draft").slice(0, 120),
+          });
+          await updateSectionProse(sec.section_id, {
+            prose_text: htmlDraft.plain_text.slice(0, 100_000),
+            promote_to_graph: false,
+          });
+        } catch {
+          // Non-fatal: piece still opens; operator can paste from brainstorm seed.
+        }
+      }
       navigate(`/write/${d.deliverable_id}`);
     } finally {
       setStarting(false);
@@ -282,25 +302,23 @@ export default function WriteHome() {
               >
                 Seed brainstorm from draft
               </button>
-              {/* Residual (fq): honest deferred outline import — not invented green. */}
-              <button
-                type="button"
+              {/* Residual (ft): import lands on create piece (section 0 prose). */}
+              <span
+                className="rounded border border-aurora/40 px-2 py-1 text-[11px] text-aurora"
                 data-testid="write-html-draft-import-outline"
-                disabled
-                title="Full HTML→outline section import is not shipped yet (spec-fl residual fq+)"
-                className="rounded border border-ink/20 px-2 py-1 text-[11px] opacity-50 dark:border-bright/20"
+                data-import-on-create="true"
+                title="Creating a piece below imports draft plain text into section 0"
               >
-                Import HTML into outline (not yet)
-              </button>
+                Imports on create piece → section 0
+              </span>
             </div>
             <p
               className="text-[10px] text-ink-mute dark:text-moonlight"
               data-testid="write-html-draft-import-deferred"
             >
-              Outline auto-import of HTML sections is deferred (propose≠invent).
-              Create a piece below with provenance document{" "}
-              <code>{htmlDraft.document_id}</code>; use brainstorm seed for
-              plain-text drivers until import ships.
+              Residual (ft): create a piece below (connect research) and section
+              0 receives this draft&apos;s plain text (HTML-first, not PDF).
+              Provenance document <code>{htmlDraft.document_id}</code>.
             </p>
             {/* Residual (fp): visible provenance stamp for freeform project type. */}
             <p
