@@ -3,7 +3,12 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import MidnightOil from "./index";
-import { dispatchMidnightOil, dryRunMidnightOil, preflightMidnightOil } from "../../api/midnightOil";
+import {
+  activationChecklistMidnightOil,
+  dispatchMidnightOil,
+  dryRunMidnightOil,
+  preflightMidnightOil,
+} from "../../api/midnightOil";
 
 vi.mock("../../api/midnightOil", () => ({
   preflightMidnightOil: vi.fn(async () => ({
@@ -185,6 +190,30 @@ vi.mock("../../api/midnightOil", () => ({
     final_artifact_created: false,
     dispatch_notes: ["live dispatch gate only: autonomous runner execution is disabled"],
   })),
+  activationChecklistMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-activation-checklist",
+    dispatch_receipt_id: "midnight-oil-test-dispatch-receipt",
+    applied_run_receipt_id: "midnight-oil-test-applied-run-receipt",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    run_id: "midnight-oil-test",
+    status: "activation_blocked_controls_missing",
+    completed_items: ["blocked dispatch receipt exists"],
+    missing_items: [
+      "operator live-run activation setting",
+      "budget reservation provider",
+      "model/provider route executor",
+      "final HTML artifact writer",
+    ],
+    dispatch_allowed: false,
+    budget_reservation_allowed: false,
+    provider_execution_allowed: false,
+    retrieval_allowed: false,
+    graph_mutation_allowed: false,
+    final_artifact_allowed: false,
+    checklist_notes: ["activation checklist only: live execution remains blocked"],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -286,5 +315,32 @@ describe("MidnightOil", () => {
     expect(screen.getByText("blocked live dispatch disabled")).toBeTruthy();
     expect(screen.getByText("live dispatch disabled")).toBeTruthy();
     expect(screen.getAllByText("none").length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("button", { name: "Activation checklist" }));
+
+    await waitFor(() => expect(activationChecklistMidnightOil).toHaveBeenCalled());
+    expect(activationChecklistMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      applied_run_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-applied-run-receipt",
+      }),
+      dispatch_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-dispatch-receipt",
+      }),
+    });
+    expect(screen.getByText("Activation receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-activation-checklist")).toBeTruthy();
+    expect(screen.getByText("activation blocked controls missing")).toBeTruthy();
+    expect(screen.getByText("4 controls")).toBeTruthy();
+    expect(screen.getByText("operator live-run activation setting")).toBeTruthy();
+    expect(screen.getByText("budget reservation provider")).toBeTruthy();
   });
 });

@@ -1,9 +1,11 @@
 import { useState } from "react";
 
 import {
+  activationChecklistMidnightOil,
   dispatchMidnightOil,
   dryRunMidnightOil,
   preflightMidnightOil,
+  type MidnightOilActivationChecklistReceipt,
   type MidnightOilAppliedRunReceipt,
   type MidnightOilDispatchReceipt,
   type MidnightOilPreflight,
@@ -40,12 +42,16 @@ export default function MidnightOil() {
   const [preflight, setPreflight] = useState<MidnightOilPreflight | null>(null);
   const [dryRunReceipt, setDryRunReceipt] = useState<MidnightOilAppliedRunReceipt | null>(null);
   const [dispatchReceipt, setDispatchReceipt] = useState<MidnightOilDispatchReceipt | null>(null);
+  const [activationReceipt, setActivationReceipt] =
+    useState<MidnightOilActivationChecklistReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [dispatchBusy, setDispatchBusy] = useState(false);
+  const [activationBusy, setActivationBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
+  const [activationError, setActivationError] = useState<string | null>(null);
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -53,9 +59,11 @@ export default function MidnightOil() {
     setError(null);
     setDryRunError(null);
     setDispatchError(null);
+    setActivationError(null);
     setPreflight(null);
     setDryRunReceipt(null);
     setDispatchReceipt(null);
+    setActivationReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -113,6 +121,8 @@ export default function MidnightOil() {
     setDispatchBusy(true);
     setDispatchError(null);
     setDispatchReceipt(null);
+    setActivationError(null);
+    setActivationReceipt(null);
     try {
       const result = await dispatchMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -126,6 +136,39 @@ export default function MidnightOil() {
       setDispatchError(e instanceof Error ? e.message : String(e));
     } finally {
       setDispatchBusy(false);
+    }
+  }
+
+  async function onActivationChecklist() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !preflight.applied_run_receipt ||
+      !dispatchReceipt
+    ) {
+      setActivationError(
+        "Activation checklist requires launch packet, approval receipt, runner handoff, applied run receipt, and dispatch receipt.",
+      );
+      return;
+    }
+
+    setActivationBusy(true);
+    setActivationError(null);
+    setActivationReceipt(null);
+    try {
+      const result = await activationChecklistMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        applied_run_receipt: preflight.applied_run_receipt,
+        dispatch_receipt: dispatchReceipt,
+      });
+      setActivationReceipt(result);
+    } catch (e) {
+      setActivationError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setActivationBusy(false);
     }
   }
 
@@ -555,6 +598,66 @@ export default function MidnightOil() {
                       value={dispatchReceipt.provider_calls_made ? "made" : "none"}
                     />
                   </div>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Activation checklist
+                </p>
+                <button
+                  type="button"
+                  onClick={onActivationChecklist}
+                  disabled={
+                    activationBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !preflight.applied_run_receipt ||
+                    !dispatchReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {activationBusy ? "Checking controls..." : "Activation checklist"}
+                </button>
+              </div>
+
+              {activationError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {activationError}
+                </p>
+              )}
+
+              {activationReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Activation receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {activationReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 font-mono text-[12px]">
+                    <Metric label="Status" value={activationReceipt.status.replaceAll("_", " ")} />
+                    <Metric
+                      label="Missing"
+                      value={`${activationReceipt.missing_items.length} controls`}
+                    />
+                    <Metric
+                      label="Budget reserve"
+                      value={activationReceipt.budget_reservation_allowed ? "allowed" : "blocked"}
+                    />
+                    <Metric
+                      label="Provider execution"
+                      value={activationReceipt.provider_execution_allowed ? "allowed" : "blocked"}
+                    />
+                  </div>
+                  <ul className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {activationReceipt.missing_items.slice(0, 4).map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
                 </div>
               )}
 
