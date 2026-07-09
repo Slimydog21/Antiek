@@ -1,0 +1,82 @@
+"""Competitive dogfood fixtures for Antiek-bench (residual av)."""
+
+from __future__ import annotations
+
+import os
+import sys
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+_REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _REPO not in sys.path:
+    sys.path.insert(0, _REPO)
+
+from interfaces.research.api.settings_budget import (  # noqa: E402
+    register_settings_budget_routes,
+)
+from substrate.antiek_bench import (  # noqa: E402
+    COMPETITIVE_DOGFOOD_VERSION,
+    InMemoryBenchStore,
+    SuiteRegistry,
+    active_suite,
+    competitive_dogfood_suite,
+    default_core_suite,
+    dogfood_fixture_payload,
+    register_competitive_dogfood_suite,
+    register_suite,
+    run_suite,
+)
+from substrate.antiek_bench.run import keyword_stub_provider  # noqa: E402
+
+
+def test_dogfood_suite_covers_task_classes():
+    suite = competitive_dogfood_suite()
+    assert suite.suite_version == COMPETITIVE_DOGFOOD_VERSION
+    classes = set(suite.task_classes())
+    assert {"distill", "synthesize", "wrestle", "book_qa"} <= classes
+    assert len(suite.items) >= 5
+
+
+def test_register_does_not_auto_activate():
+    reg = SuiteRegistry()
+    register_suite(default_core_suite(), registry=reg, make_active=True)
+    before = active_suite(registry=reg).suite_version
+    dog = register_competitive_dogfood_suite(registry=reg, make_active=False)
+    assert dog.suite_version == COMPETITIVE_DOGFOOD_VERSION
+    assert active_suite(registry=reg).suite_version == before
+    assert before != COMPETITIVE_DOGFOOD_VERSION
+
+
+def test_run_dogfood_offline():
+    reg = SuiteRegistry()
+    suite = register_competitive_dogfood_suite(registry=reg, make_active=True)
+    store = InMemoryBenchStore()
+    result = run_suite(
+        model_id="stub",
+        week_id="2026-W28",
+        store=store,
+        registry=reg,
+        provider_fn=keyword_stub_provider("stub", quality=0.9),
+    )
+    assert result.mean_score >= 0.0
+    assert len(result.scores) == len(suite.items)
+    assert result.suite_version == COMPETITIVE_DOGFOOD_VERSION
+
+
+def test_payload_and_api_html():
+    payload = dogfood_fixture_payload(include_html=True)
+    assert payload["auto_promoted"] is False
+    assert payload["view_format"] == "html"
+    assert payload["item_count"] >= 5
+    assert payload["html"]
+    assert "application/pdf" not in payload["html"].lower()
+
+    app = FastAPI()
+    register_settings_budget_routes(app)
+    client = TestClient(app)
+    r1 = client.get("/settings/antiek-bench/dogfood-fixtures?include_html=true")
+    r2 = client.get("/settings/antiek-bench/dogfood-fixtures?include_html=true")
+    assert r1.status_code == 200 and r2.status_code == 200
+    assert r1.json()["suite_version"] == r2.json()["suite_version"]
+    assert r1.json()["item_count"] == r2.json()["item_count"]

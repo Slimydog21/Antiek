@@ -60,9 +60,16 @@ from .usage_bridge import (
     record_usage_event,
     weekly_usage_summary,
 )
+from .dogfood_fixtures import (
+    COMPETITIVE_DOGFOOD_VERSION,
+    competitive_dogfood_suite,
+    dogfood_fixture_payload,
+    register_competitive_dogfood_suite,
+)
 
 __all__ = [
     "ANTIEK_BENCH_USAGE_DIR_ENV",
+    "COMPETITIVE_DOGFOOD_VERSION",
     "BenchRunResult",
     "BenchStore",
     "FileBenchStore",
@@ -80,7 +87,9 @@ __all__ = [
     "approve_and_promote",
     "build_leaderboard",
     "classify_engagement_task",
+    "competitive_dogfood_suite",
     "default_core_suite",
+    "dogfood_fixture_payload",
     "get_suite",
     "list_usage_events",
     "project_leaderboard_html",
@@ -89,6 +98,7 @@ __all__ = [
     "propose_suite_delta",
     "record_session_flywheel_usage",
     "record_usage_event",
+    "register_competitive_dogfood_suite",
     "register_suite",
     "resolve_usage_store",
     "run_suite",

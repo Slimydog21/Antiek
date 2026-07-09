@@ -812,6 +812,14 @@ class DepthTierResponse(BaseModel):
     html: str | None = None
 
 
+@settings_router.get("/antiek-bench/dogfood-fixtures")
+def get_antiek_bench_dogfood_fixtures(include_html: bool = False) -> dict[str, Any]:
+    """List competitive dogfood fixtures (offline; never auto-promote)."""
+    from substrate.antiek_bench import dogfood_fixture_payload
+
+    return dogfood_fixture_payload(include_html=include_html)
+
+
 @settings_router.get(
     "/depth-tier",
     response_model=DepthTierResponse,

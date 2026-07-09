@@ -106,7 +106,7 @@ Residuals are **one product seam each**. Status values: `missing` | `branch_only
 **Why:** autonomous mode must land twins + refs into graph like interactive path.  
 **Seam:** ensure deposit path records usage_bridge events (already partial).
 
-### (av) Competitive dogfood harness (offline fixtures)  
+### (av) Competitive dogfood harness — SHIPPED on PR #465 (offline fixtures)  
 **Why:** weekly Antiek-bench should include DR task classes against fixed fixtures.  
 **Seam:** suite items in `book_qa` / `wrestle` from usage rewrite (al/am already enable propose).
 
