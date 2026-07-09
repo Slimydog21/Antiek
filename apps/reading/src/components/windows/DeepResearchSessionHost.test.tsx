@@ -248,6 +248,26 @@ describe("DeepResearchSessionHost", () => {
     ).toBe("1");
   });
 
+  it("remounts twin notes with context refresh key (fa)", () => {
+    render(<DeepResearchSessionHost {...FIXTURE} />);
+    expect(
+      screen
+        .getByTestId("deep-research-twins-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("0");
+    fireEvent.click(screen.getByTestId("spawn-merge-notify"));
+    expect(
+      screen
+        .getByTestId("deep-research-twins-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("1");
+    expect(
+      screen
+        .getByTestId("deep-research-context-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("1");
+  });
+
   it("mounts ResearchProgressPanel with autoLoad+autoSeedIfEmpty (cp)", () => {
     render(<DeepResearchSessionHost {...FIXTURE} />);
     expect(screen.getByTestId("deep-research-progress-mount")).toBeTruthy();

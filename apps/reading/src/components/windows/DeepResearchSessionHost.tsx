@@ -31,6 +31,8 @@
  * Residual (eh): remount ResearchContextPanel after spawn merge.
  * Residual (ep): remount ResearchContextPanel after collective document merge
  * / written analysis (onDocMerged → onContextNeedsRefresh).
+ * Residual (fa): remount TwinNotesPanel on the same contextRefreshKey so
+ * recursive note-taker reloads after promote/attach/flywheel/merge (parity ez).
  */
 
 import { useCallback, useMemo, useState } from "react";
@@ -252,16 +254,25 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
           data-testid="deep-research-twins-mount"
           data-view-format="html"
         >
-          <TwinNotesPanel
-            assetId={props.parent_asset_id.trim()}
-            spawnId={props.spawn_id?.trim() || null}
-            autoLoad
-            autoSeedIfEmpty
-            autoPromoteAfterLoad
-            onPromoted={onContextNeedsRefresh}
-            seedTitle={props.goal?.trim() || props.parent_asset_id.trim()}
-            seedBodyText={props.selection_text?.trim() || props.goal?.trim() || ""}
-          />
+          {/* Residual (fa): remount twins with context refresh key (parity ez). */}
+          <div
+            data-testid="deep-research-twins-refresh"
+            data-refresh-key={String(contextRefreshKey)}
+          >
+            <TwinNotesPanel
+              key={`twins-${props.parent_asset_id.trim()}-${contextRefreshKey}`}
+              assetId={props.parent_asset_id.trim()}
+              spawnId={props.spawn_id?.trim() || null}
+              autoLoad
+              autoSeedIfEmpty
+              autoPromoteAfterLoad
+              onPromoted={onContextNeedsRefresh}
+              seedTitle={props.goal?.trim() || props.parent_asset_id.trim()}
+              seedBodyText={
+                props.selection_text?.trim() || props.goal?.trim() || ""
+              }
+            />
+          </div>
         </section>
       ) : null}
 
