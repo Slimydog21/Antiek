@@ -27,9 +27,10 @@ import {
  *    running, not as decoration.
  */
 
-const { useInvestigationMock, listState } = vi.hoisted(() => ({
+const { useInvestigationMock, listState, composeResearchArtifactsMock } = vi.hoisted(() => ({
   useInvestigationMock: vi.fn(),
   listState: { investigations: [] as InvestigationSummary[], loading: false, error: null, refetch: vi.fn() },
+  composeResearchArtifactsMock: vi.fn(),
 }));
 
 vi.mock("../../hooks/useInvestigation", () => ({
@@ -38,6 +39,14 @@ vi.mock("../../hooks/useInvestigation", () => ({
 vi.mock("../../hooks/useInvestigationList", () => ({
   useInvestigationList: () => listState,
 }));
+vi.mock("../../lib/api", async (orig) => {
+  const actual = await orig<typeof import("../../lib/api")>();
+  return {
+    ...actual,
+    API_BASE: "",
+    composeResearchArtifacts: composeResearchArtifactsMock,
+  };
+});
 
 import ReadingCompanion from "./ReadingCompanion";
 
@@ -69,6 +78,7 @@ function state(over: Partial<InvestigationState>): InvestigationState {
 beforeEach(() => {
   useInvestigationMock.mockReset();
   listState.investigations = [];
+  composeResearchArtifactsMock.mockReset();
 });
 afterEach(() => {
   cleanup();
@@ -180,7 +190,7 @@ describe("ReadingCompanion (Read SPR-06 M2)", () => {
     expect(screen.getByText(/Stoic discipline turns attention/)).toBeTruthy();
     expect(screen.getByRole("link", { name: /open research/i }).getAttribute("href")).toBe("/inv/inv-child-1");
 
-    fireEvent.click(screen.getByRole("button", { name: /copy merge packet/i }));
+    fireEvent.click(screen.getByRole("button", { name: /copy packet/i }));
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
     const payload = JSON.parse(writeText.mock.calls[0][0]);
     expect(payload).toMatchObject({
@@ -225,12 +235,66 @@ describe("ReadingCompanion (Read SPR-06 M2)", () => {
 
     expect(screen.getByText("ready to export")).toBeTruthy();
     expect(screen.getByText("still working")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /copy merge packet/i }));
+    fireEvent.click(screen.getByRole("button", { name: /copy packet/i }));
 
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
     const payload = JSON.parse(writeText.mock.calls[0][0]);
     expect(payload.child_investigation_ids).toEqual(["inv-running", "inv-done"]);
     expect(payload.ready_child_investigation_ids).toEqual(["inv-done"]);
+  });
+
+  it("drafts a no-mutation merge from at least two ready saved chases", async () => {
+    for (const [childInvestigationId, sourcePassage] of [
+      ["inv-ready-a", "First completed chase."],
+      ["inv-ready-b", "Second completed chase."],
+    ] as const) {
+      recordChaseDraftHandoff(
+        buildChaseDraftHandoff({
+          childInvestigationId,
+          parentInvestigationId: "read-doc-1",
+          sourcePassage,
+        }),
+      );
+    }
+    listState.investigations = [
+      summary({ investigation_id: "inv-ready-a", status: "completed" }),
+      summary({ investigation_id: "inv-ready-b", status: "completed" }),
+    ];
+    composeResearchArtifactsMock.mockResolvedValue({
+      path: "/tmp/compose.html",
+      draft_merge_path: "/tmp/draft-merge.html",
+      members: [],
+      hash_conflicts: [],
+    });
+    useInvestigationMock.mockReturnValue(state({ status: "not_found", events: [] }));
+
+    renderCompanion();
+
+    fireEvent.click(screen.getByRole("button", { name: /draft ready/i }));
+    await waitFor(() =>
+      expect(composeResearchArtifactsMock).toHaveBeenCalledWith(["inv-ready-b", "inv-ready-a"], true),
+    );
+    expect(await screen.findByText(/Draft written/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "open" }).getAttribute("href")).toBe(
+      "/research/artifacts/compose/draft-merge.html?investigation_ids=inv-ready-b&investigation_ids=inv-ready-a",
+    );
+  });
+
+  it("keeps draft merge disabled until two chases are ready", () => {
+    recordChaseDraftHandoff(
+      buildChaseDraftHandoff({
+        childInvestigationId: "inv-one-ready",
+        parentInvestigationId: "read-doc-1",
+        sourcePassage: "Only one completed chase.",
+      }),
+    );
+    listState.investigations = [summary({ investigation_id: "inv-one-ready", status: "completed" })];
+    useInvestigationMock.mockReturnValue(state({ status: "not_found", events: [] }));
+
+    renderCompanion();
+
+    expect((screen.getByRole("button", { name: /draft ready/i }) as HTMLButtonElement).disabled).toBe(true);
+    expect(composeResearchArtifactsMock).not.toHaveBeenCalled();
   });
 
   it("shows the shared working beat only while the thread is running", () => {

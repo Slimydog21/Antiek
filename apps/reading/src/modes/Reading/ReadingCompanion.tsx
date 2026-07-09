@@ -3,7 +3,11 @@ import { Link } from "react-router-dom";
 
 import { useInvestigation } from "../../hooks/useInvestigation";
 import { useInvestigationList } from "../../hooks/useInvestigationList";
-import type { InvestigationSummary } from "../../lib/api";
+import {
+  API_BASE,
+  composeResearchArtifacts,
+  type InvestigationSummary,
+} from "../../lib/api";
 import { useChaseDraftHandoffs } from "../ResearchWorkstation/chaseHandoffs";
 import { deriveNotes } from "../ResearchWorkstation/NotesPanel";
 import Thinking from "../../shared/Thinking";
@@ -75,16 +79,28 @@ export default function ReadingCompanion({
     [investigations],
   );
   const [copiedMergePacket, setCopiedMergePacket] = useState(false);
+  const [draftBusy, setDraftBusy] = useState(false);
+  const [draftMergePath, setDraftMergePath] = useState<string | null>(null);
+  const [draftMergeIds, setDraftMergeIds] = useState<string[]>([]);
+  const [draftError, setDraftError] = useState<string | null>(null);
 
   // "Working" only when the thread is genuinely running (a distill / talk in
   // flight). A not_found thread (nothing has happened on this book yet) is
   // calm, not "thinking".
   const working = reading.status === "in_progress";
+  const readyHandoffs = useMemo(
+    () =>
+      handoffs.filter(
+        (handoff) => summariesById.get(handoff.child_investigation_id)?.status === "completed",
+      ),
+    [handoffs, summariesById],
+  );
+  const readyIds = useMemo(
+    () => readyHandoffs.map((handoff) => handoff.child_investigation_id),
+    [readyHandoffs],
+  );
 
   async function copyMergePacket() {
-    const readyHandoffs = handoffs.filter(
-      (handoff) => summariesById.get(handoff.child_investigation_id)?.status === "completed",
-    );
     const payload = {
       kind: "antiek.reader.chase_merge_packet",
       document_id: documentId,
@@ -98,6 +114,24 @@ export default function ReadingCompanion({
     };
     await navigator.clipboard?.writeText(JSON.stringify(payload, null, 2));
     setCopiedMergePacket(true);
+  }
+
+  async function draftReadyChases() {
+    if (readyIds.length < 2) {
+      setDraftError("Two completed chases are needed for a draft merge.");
+      return;
+    }
+    setDraftBusy(true);
+    setDraftError(null);
+    try {
+      const result = await composeResearchArtifacts(readyIds, true);
+      setDraftMergePath(result.draft_merge_path ?? result.path);
+      setDraftMergeIds(readyIds);
+    } catch (error) {
+      setDraftError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDraftBusy(false);
+    }
   }
 
   return (
@@ -130,15 +164,48 @@ export default function ReadingCompanion({
             <p className="font-mono text-[10px] uppercase tracking-wide text-shadow-1 dark:text-moonlight">
               Saved chases
             </p>
-            <button
-              type="button"
-              onClick={copyMergePacket}
-              className="shrink-0 font-mono text-[11px] text-ink hover:underline dark:text-bright"
-              title="Copy a no-spend packet for a later draft merge"
-            >
-              {copiedMergePacket ? "copied" : "copy merge packet"}
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void draftReadyChases()}
+                disabled={draftBusy || readyIds.length < 2}
+                className="font-mono text-[11px] text-ink hover:underline disabled:cursor-not-allowed disabled:text-ink-mute dark:text-bright dark:disabled:text-moonlight"
+                title={
+                  readyIds.length >= 2
+                    ? "Draft a no-mutation merge of completed chase artifacts"
+                    : "Two completed chases are needed for a draft merge"
+                }
+              >
+                {draftBusy ? "drafting" : "draft ready"}
+              </button>
+              <button
+                type="button"
+                onClick={copyMergePacket}
+                className="font-mono text-[11px] text-ink hover:underline dark:text-bright"
+                title="Copy a no-spend packet for a later draft merge"
+              >
+                {copiedMergePacket ? "copied" : "copy packet"}
+              </button>
+            </div>
           </div>
+          {draftMergePath ? (
+            <p className="mb-2 font-mono text-[10px] text-shadow-1 dark:text-moonlight">
+              Draft written{" "}
+              {draftMergeIds.length >= 2 ? (
+                <a
+                  href={draftMergeHref(draftMergeIds)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-ink underline dark:text-bright"
+                >
+                  open
+                </a>
+              ) : null}
+            </p>
+          ) : null}
+          {draftError ? (
+            <p className="mb-2 font-serif text-[12px] text-emperor">{draftError}</p>
+          ) : null}
           <ol className="space-y-1.5">
             {handoffs.map((handoff) => (
               <li
@@ -208,6 +275,12 @@ export default function ReadingCompanion({
       </div>
     </aside>
   );
+}
+
+function draftMergeHref(investigationIds: string[]): string {
+  const params = new URLSearchParams();
+  for (const id of investigationIds) params.append("investigation_ids", id);
+  return `${API_BASE}/research/artifacts/compose/draft-merge.html?${params.toString()}`;
 }
 
 function handoffStatusLabel(summary: InvestigationSummary | undefined): string {
