@@ -285,6 +285,61 @@ export async function seedResearchProgress(
   return readJson<ResearchProgressResponse>(res);
 }
 
+/** Twin notes — recursive note-taker substrate per asset. */
+export type TwinNotesResponse = {
+  asset_id: string;
+  note_count: number;
+  insight_count: number;
+  question_count: number;
+  notes: Array<{
+    note_id: string;
+    asset_id: string;
+    kind: "insight" | "question" | string;
+    text: string;
+    source_spawn_id?: string | null;
+    investigation_id?: string | null;
+  }>;
+  view_format: "html" | string;
+  product_panel: string;
+  source: string;
+  messages?: string[];
+  html?: string | null;
+};
+
+export async function fetchTwinNotes(
+  assetId: string,
+  opts?: { includeHtml?: boolean },
+): Promise<TwinNotesResponse> {
+  const q = opts?.includeHtml ? "?include_html=true" : "";
+  const res = await apiFetch(
+    `${API_BASE}/engagement/twins/${encodeURIComponent(assetId)}${q}`,
+  );
+  return readJson<TwinNotesResponse>(res);
+}
+
+export async function recordTwinNote(body: {
+  asset_id: string;
+  kind: "insight" | "question";
+  text: string;
+  source_spawn_id?: string | null;
+  investigation_id?: string | null;
+  include_html?: boolean;
+}): Promise<TwinNotesResponse> {
+  const res = await apiFetch(`${API_BASE}/engagement/twins`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      asset_id: body.asset_id,
+      kind: body.kind,
+      text: body.text,
+      source_spawn_id: body.source_spawn_id ?? null,
+      investigation_id: body.investigation_id ?? null,
+      include_html: body.include_html ?? true,
+    }),
+  });
+  return readJson<TwinNotesResponse>(res);
+}
+
 export async function openEngagementSession(
   body: SessionOpenRequest,
 ): Promise<SessionOpenResponse> {

@@ -18,6 +18,8 @@ Surfaces:
   POST /engagement/progress
   GET  /engagement/progress/{spawn_id}
   POST /engagement/evidence-pack
+  GET  /engagement/twins/{asset_id}
+  POST /engagement/twins
   POST /engagement/sessions/open
   POST /engagement/sessions/complete-flywheel
 """
@@ -42,8 +44,10 @@ from substrate.engagement_spine import (
     merge_spawns_collective,
     progress_payload,
     record_progress,
+    record_twin_product,
     seed_default_pipeline,
     spawn_from_highlight_with_references,
+    twins_product_payload,
 )
 from substrate.engagement_spine.store import EngagementStore, FileEngagementStore
 from substrate.floating_session import (
@@ -199,6 +203,15 @@ class ProgressSeedBody(BaseModel):
 class EvidencePackBody(BaseModel):
     asset_id: str = Field(min_length=1)
     spawn_id: str | None = None
+    include_html: bool = True
+
+
+class TwinRecordBody(BaseModel):
+    asset_id: str = Field(min_length=1)
+    kind: Literal["insight", "question"]
+    text: str = Field(min_length=1)
+    source_spawn_id: str | None = None
+    investigation_id: str | None = None
     include_html: bool = True
 
 
@@ -410,6 +423,34 @@ def post_evidence_pack(body: EvidencePackBody) -> dict[str, Any]:
             body.asset_id,
             store=_eng(),
             spawn_id=body.spawn_id,
+            include_html=body.include_html,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@engagement_router.get("/twins/{asset_id}")
+def get_twins(asset_id: str, include_html: bool = False) -> dict[str, Any]:
+    """List twin notes (insights/questions) for an information asset."""
+    try:
+        return twins_product_payload(
+            asset_id, store=_eng(), include_html=include_html
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@engagement_router.post("/twins")
+def post_twins(body: TwinRecordBody) -> dict[str, Any]:
+    """Record one twin insight or question (recursive note-taker product path)."""
+    try:
+        return record_twin_product(
+            body.asset_id,
+            store=_eng(),
+            kind=body.kind,
+            text=body.text,
+            source_spawn_id=body.source_spawn_id,
+            investigation_id=body.investigation_id,
             include_html=body.include_html,
         )
     except ValueError as e:

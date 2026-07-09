@@ -35,7 +35,16 @@ from .spawn import (
     spawn_from_highlight,
 )
 from .store import EngagementStore, FileEngagementStore, InMemoryEngagementStore
-from .twin import TwinKind, TwinNote, list_twin_notes, record_twin_insight, record_twin_question
+from .twin import (
+    TwinKind,
+    TwinNote,
+    list_twin_notes,
+    project_twins_html,
+    record_twin_insight,
+    record_twin_product,
+    record_twin_question,
+    twins_product_payload,
+)
 from .twin_promote import (
     TwinContextUnit,
     TwinPromoteContextResult,
@@ -136,7 +145,9 @@ __all__ = [
     "promote_and_context_for_asset",
     "promote_twin_note",
     "promote_twin_notes_for_asset",
+    "project_twins_html",
     "record_twin_insight",
+    "record_twin_product",
     "record_twin_question",
     "research_context_html",
     "research_context_sections_html",
@@ -146,4 +157,5 @@ __all__ = [
     "spawn_from_highlight",
     "spawn_from_highlight_with_references",
     "twin_context_html",
+    "twins_product_payload",
 ]
