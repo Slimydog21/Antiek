@@ -11,18 +11,18 @@
 
 | Cycle | Package | Status |
 |---|---|---|
-| 1–7 | spine … session↔window descriptors | done |
-| 8 | **Deep-research session WINDOW_PAGES host** | **done** |
+| 1–8 | spine … deep-research window host | done |
+| 9 | **Settings decision-tree install** | **done** |
 
-## Cycle 8 details
+## Cycle 9 details
 
 | Item | Status |
 |---|---|
-| WINDOW_PAGES.deep_research_session registration | done |
-| DeepResearchSessionHost payload identity render | done |
-| openDeepResearchWindow via openWindow (registry) | done |
-| vitest host + eligibility + open | done |
+| install_decision_tree_selection pure entry | done |
+| GET/POST/DELETE /settings/decision-tree | done |
+| Settings UI Decision tree driver panel | done |
+| Budget projection remains #440 | done |
 
 ## Non-claims
 
-No nesting ResearchWorkstation; no browser Playwright e2e; operator merges only.
+Process-local registry (honest multi-worker limitation); no secrets vault; operator merges only.

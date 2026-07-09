@@ -29,6 +29,12 @@ from .dispatch_bridge import (
     resolve_override_for_session,
     settings_budget_projection_still_owned_by_settings,
 )
+from .install import (
+    DecisionTreeInstallResult,
+    clear_decision_tree_selection,
+    install_decision_tree_selection,
+    read_decision_tree_selection,
+)
 from .process_registry import (
     clear_decision_tree_registry,
     get_decision_tree_model_id,
@@ -47,6 +53,7 @@ from .registry import (
 )
 
 __all__ = [
+    "DecisionTreeInstallResult",
     "DispatchOverride",
     "ModelEntry",
     "ModelRegistry",
@@ -55,13 +62,16 @@ __all__ = [
     "assert_dispatch_accepts_override_kwargs",
     "build_dispatch_call_kwargs",
     "clear_decision_tree_registry",
+    "clear_decision_tree_selection",
     "dispatch_kwargs_from_selection",
     "dispatch_with_selected_driver",
     "get_decision_tree_model_id",
     "get_decision_tree_registry",
     "get_model",
+    "install_decision_tree_selection",
     "list_models",
     "model_override_for_dispatch",
+    "read_decision_tree_selection",
     "resolve_dispatch_override",
     "resolve_override_for_session",
     "select_driver",

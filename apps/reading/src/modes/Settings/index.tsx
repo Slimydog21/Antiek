@@ -2,20 +2,24 @@ import { useEffect, useMemo, useState } from "react";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import {
+  clearDecisionTreeSelection,
   estimatePromptCost,
+  fetchDecisionTreeSelection,
   fetchSettingsBudget,
   fetchSettingsModels,
+  installDecisionTreeSelection,
   type BudgetResponse,
+  type DecisionTreeSelectionResponse,
   type ModelRow,
   type PromptCostEstimateResponse,
 } from "../../api/settings";
 
 /**
- * Operator Settings — model inventory + budget + prompt projection (SPR-01).
+ * Operator Settings — model inventory + budget + prompt projection (SPR-01)
+ * + decision-tree driver install (process-local registry).
  *
  * Honesty: spent/pricing may be unknown; UI never invents $0.00 when the
- * ledger or rate table is unset. Full "add model" + decision-tree override
- * land in later sprints.
+ * ledger or rate table is unset. Cost projection stays on #440 API.
  */
 export default function Settings() {
   const tier = useViewportTier();
@@ -39,13 +43,25 @@ export default function Settings() {
   );
   const [estimateError, setEstimateError] = useState<string | null>(null);
   const [estimating, setEstimating] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState<string>("");
+  const [selectedModel, setSelectedModel] = useState<string>("");
+  const [tree, setTree] = useState<DecisionTreeSelectionResponse | null>(null);
+  const [treeError, setTreeError] = useState<string | null>(null);
+  const [treeBusy, setTreeBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const m = await fetchSettingsModels();
-        if (!cancelled) setModels(m.models);
+        if (!cancelled) {
+          setModels(m.models);
+          const firstReady = m.models.find((r) => r.ready && r.primary_model);
+          if (firstReady?.primary_model) {
+            setSelectedProvider(firstReady.provider_id);
+            setSelectedModel(firstReady.primary_model);
+          }
+        }
       } catch (e) {
         if (!cancelled)
           setModelsError(e instanceof Error ? e.message : String(e));
@@ -56,6 +72,19 @@ export default function Settings() {
       } catch (e) {
         if (!cancelled)
           setBudgetError(e instanceof Error ? e.message : String(e));
+      }
+      try {
+        const t = await fetchDecisionTreeSelection();
+        if (!cancelled) {
+          setTree(t);
+          if (t.installed && t.model_id) {
+            setSelectedModel(t.model_id);
+            if (t.provider_id) setSelectedProvider(t.provider_id);
+          }
+        }
+      } catch (e) {
+        if (!cancelled)
+          setTreeError(e instanceof Error ? e.message : String(e));
       }
     })();
     return () => {
@@ -81,6 +110,8 @@ export default function Settings() {
     try {
       const res = await estimatePromptCost({
         tier: "pro",
+        provider: selectedProvider || null,
+        model: selectedModel || null,
         input_chars: inputChars,
         expected_output_tokens: outTokens,
       });
@@ -89,6 +120,39 @@ export default function Settings() {
       setEstimateError(e instanceof Error ? e.message : String(e));
     } finally {
       setEstimating(false);
+    }
+  }
+
+  async function onInstallDriver() {
+    if (!selectedModel.trim()) {
+      setTreeError("Select a model before installing");
+      return;
+    }
+    setTreeBusy(true);
+    setTreeError(null);
+    try {
+      const res = await installDecisionTreeSelection({
+        model_id: selectedModel.trim(),
+        provider_id: selectedProvider.trim() || null,
+      });
+      setTree(res);
+    } catch (e) {
+      setTreeError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTreeBusy(false);
+    }
+  }
+
+  async function onClearDriver() {
+    setTreeBusy(true);
+    setTreeError(null);
+    try {
+      const res = await clearDecisionTreeSelection();
+      setTree(res);
+    } catch (e) {
+      setTreeError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTreeBusy(false);
     }
   }
 
@@ -180,9 +244,103 @@ export default function Settings() {
               </ul>
             )}
             <p className="text-[11px] text-ink-soft dark:text-starlight font-serif italic">
-              Adding API keys / new models lands in SPR-02. Decision-tree
-              per-prompt override lands in SPR-03.
+              Adding API keys / new models remains operator-gated. Decision-tree
+              install below is process-local (same process as dispatch).
             </p>
+          </div>
+        </LemonCard>
+
+        <LemonCard title="Decision tree driver" elevation="z1" colour="glacial">
+          <div className="p-4 space-y-3" data-testid="decision-tree-panel">
+            <p className="text-sm text-ink dark:text-bright">
+              Select the model driver for this process. Install writes the
+              choice into the decision-tree registry so research dispatch can
+              apply provider+model overrides. Cost projection still uses the
+              #440 settings estimate API (never invents $0).
+            </p>
+            {treeError && (
+              <p className="text-sm text-red-700 dark:text-red-300 font-mono">
+                {treeError}
+              </p>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-[13px]">
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
+                  Provider
+                </span>
+                <select
+                  data-testid="decision-tree-provider"
+                  value={selectedProvider}
+                  onChange={(e) => {
+                    setSelectedProvider(e.target.value);
+                    const row = models?.find(
+                      (m) => m.provider_id === e.target.value,
+                    );
+                    if (row?.primary_model) setSelectedModel(row.primary_model);
+                  }}
+                  className="border border-ink/20 dark:border-bright/20 bg-transparent px-2 py-1 rounded"
+                >
+                  <option value="">—</option>
+                  {(models ?? []).map((m) => (
+                    <option key={m.provider_id} value={m.provider_id}>
+                      {m.provider_id}
+                      {m.ready ? "" : " (not ready)"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
+                  Model id
+                </span>
+                <input
+                  data-testid="decision-tree-model"
+                  type="text"
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  placeholder="e.g. glm-5.2"
+                  className="border border-ink/20 dark:border-bright/20 bg-transparent px-2 py-1 rounded"
+                />
+              </label>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                data-testid="decision-tree-install"
+                onClick={onInstallDriver}
+                disabled={treeBusy}
+                className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+              >
+                {treeBusy ? "Working…" : "Install driver"}
+              </button>
+              <button
+                type="button"
+                data-testid="decision-tree-clear"
+                onClick={onClearDriver}
+                disabled={treeBusy}
+                className="px-3 py-1.5 rounded border border-ink/40 dark:border-bright/40 text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+              >
+                Clear
+              </button>
+            </div>
+            <div className="font-mono text-[13px] space-y-1" data-testid="decision-tree-status">
+              <Row
+                label="Installed"
+                value={
+                  tree?.installed
+                    ? `${tree.provider_id ?? "?"} / ${tree.model_id ?? "?"}`
+                    : "none"
+                }
+              />
+              {tree?.notes?.map((n) => (
+                <p
+                  key={n}
+                  className="text-[11px] text-ink-soft dark:text-starlight"
+                >
+                  {n}
+                </p>
+              ))}
+            </div>
           </div>
         </LemonCard>
 
@@ -352,8 +510,7 @@ export default function Settings() {
         <LemonCard title="Coming later" elevation="z1">
           <ul className="p-4 space-y-2 text-sm text-ink dark:text-bright list-disc list-inside">
             <li>Add model + multi-provider secret vault (SPR-02)</li>
-            <li>Decision-tree per-prompt model override (SPR-03)</li>
-            <li>Antiek-bench weekly model quality report</li>
+            <li>Antiek-bench weekly model quality report (UI polish)</li>
             <li>Midnight oil: time + goals + price-ceiling approve UI</li>
             <li>Keyboard map customisation + layout export</li>
           </ul>

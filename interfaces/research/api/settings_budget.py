@@ -405,6 +405,91 @@ def get_antiek_bench_leaderboard(
     )
 
 
+class DecisionTreeSelectionRequest(BaseModel):
+    """Install operator decision-tree driver for this process."""
+
+    model_id: str = Field(min_length=1)
+    provider_id: str | None = Field(
+        default=None,
+        description="Required when the model is not yet in the process registry.",
+    )
+
+
+class DecisionTreeSelectionResponse(BaseModel):
+    model_id: str | None = None
+    provider_id: str | None = None
+    installed: bool = False
+    notes: list[str] = Field(default_factory=list)
+    source: str = "substrate.model_registration.process_registry"
+
+
+@settings_router.get(
+    "/decision-tree",
+    response_model=DecisionTreeSelectionResponse,
+)
+def get_decision_tree_selection() -> DecisionTreeSelectionResponse:
+    """Read process-local decision-tree selection (may be empty)."""
+    from substrate.model_registration import read_decision_tree_selection
+
+    raw = read_decision_tree_selection()
+    return DecisionTreeSelectionResponse(
+        model_id=raw.get("model_id"),
+        provider_id=raw.get("provider_id"),
+        installed=bool(raw.get("installed")),
+        notes=list(raw.get("notes") or []),
+    )
+
+
+@settings_router.post(
+    "/decision-tree",
+    response_model=DecisionTreeSelectionResponse,
+)
+def post_decision_tree_selection(
+    req: DecisionTreeSelectionRequest,
+) -> DecisionTreeSelectionResponse:
+    """Install model into process-local decision-tree registry.
+
+    Honest limitation: selection is process-local. The API process that
+    serves this route must be the same process that runs dispatch for the
+    override to apply (or each worker must receive the same install).
+    """
+    from substrate.model_registration import install_decision_tree_selection
+
+    try:
+        result = install_decision_tree_selection(
+            req.model_id,
+            provider_id=req.provider_id,
+            ensure_registered=True,
+        )
+    except (KeyError, ValueError) as exc:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return DecisionTreeSelectionResponse(
+        model_id=result.model_id,
+        provider_id=result.provider_id,
+        installed=result.installed,
+        notes=list(result.notes),
+    )
+
+
+@settings_router.delete(
+    "/decision-tree",
+    response_model=DecisionTreeSelectionResponse,
+)
+def delete_decision_tree_selection() -> DecisionTreeSelectionResponse:
+    """Clear process-local decision-tree selection."""
+    from substrate.model_registration import clear_decision_tree_selection
+
+    raw = clear_decision_tree_selection()
+    return DecisionTreeSelectionResponse(
+        model_id=raw.get("model_id"),
+        provider_id=raw.get("provider_id"),
+        installed=bool(raw.get("installed")),
+        notes=list(raw.get("notes") or []),
+    )
+
+
 def register_settings_budget_routes(app: FastAPI) -> None:
     app.include_router(settings_router)
 
@@ -412,11 +497,16 @@ def register_settings_budget_routes(app: FastAPI) -> None:
 __all__ = [
     "AntiekBenchLeaderboardResponse",
     "BudgetResponse",
+    "DecisionTreeSelectionRequest",
+    "DecisionTreeSelectionResponse",
     "ModelsResponse",
     "PromptCostEstimateRequest",
     "PromptCostEstimateResponse",
+    "delete_decision_tree_selection",
     "estimate_prompt_cost",
     "get_antiek_bench_leaderboard",
+    "get_decision_tree_selection",
+    "post_decision_tree_selection",
     "read_operator_budget",
     "register_settings_budget_routes",
     "settings_router",

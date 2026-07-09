@@ -73,3 +73,36 @@ export async function estimatePromptCost(
   });
   return readJson<PromptCostEstimateResponse>(res);
 }
+
+/** Process-local decision-tree driver selection (install / read / clear). */
+export interface DecisionTreeSelectionResponse {
+  model_id: string | null;
+  provider_id: string | null;
+  installed: boolean;
+  notes: string[];
+  source: string;
+}
+
+export async function fetchDecisionTreeSelection(): Promise<DecisionTreeSelectionResponse> {
+  const res = await apiFetch(`${API_BASE}/settings/decision-tree`);
+  return readJson<DecisionTreeSelectionResponse>(res);
+}
+
+export async function installDecisionTreeSelection(body: {
+  model_id: string;
+  provider_id?: string | null;
+}): Promise<DecisionTreeSelectionResponse> {
+  const res = await apiFetch(`${API_BASE}/settings/decision-tree`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return readJson<DecisionTreeSelectionResponse>(res);
+}
+
+export async function clearDecisionTreeSelection(): Promise<DecisionTreeSelectionResponse> {
+  const res = await apiFetch(`${API_BASE}/settings/decision-tree`, {
+    method: "DELETE",
+  });
+  return readJson<DecisionTreeSelectionResponse>(res);
+}
