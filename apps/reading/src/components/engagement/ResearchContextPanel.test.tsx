@@ -367,6 +367,14 @@ describe("ResearchContextPanel", () => {
     expect(screen.getByTestId("evidence-citation-trust").textContent).toMatch(
       /grounded/i,
     );
+    // Residual (hu): machine-readable evidence pack metrics.
+    const metrics = screen.getByTestId("evidence-pack-metrics");
+    expect(metrics.getAttribute("data-insight-count")).toBe("1");
+    expect(metrics.getAttribute("data-question-count")).toBe("0");
+    expect(metrics.getAttribute("data-ref-count")).toBe("1");
+    expect(metrics.getAttribute("data-citation-trust")).toBe("grounded");
+    expect(metrics.getAttribute("data-view-format")).toBe("html");
+    expect(metrics.textContent).toMatch(/Evidence pack/);
   });
 
   it("flags ungrounded evidence when ref_count is zero (dm)", async () => {

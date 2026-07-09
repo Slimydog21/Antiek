@@ -388,6 +388,23 @@ export function ResearchContextPanel({
             (evidence.ref_count ?? 0) > 0 ? "grounded" : "ungrounded"
           }
         >
+          {/* Residual (hu): machine-readable competitive citation metrics. */}
+          <div
+            data-testid="evidence-pack-metrics"
+            data-insight-count={String(evidence.insight_count ?? 0)}
+            data-question-count={String(evidence.question_count ?? 0)}
+            data-ref-count={String(evidence.ref_count ?? 0)}
+            data-citation-trust={
+              (evidence.ref_count ?? 0) > 0 ? "grounded" : "ungrounded"
+            }
+            data-view-format="html"
+            role="status"
+          >
+            Evidence pack · insights={evidence.insight_count ?? 0} · questions=
+            {evidence.question_count ?? 0} · refs={evidence.ref_count ?? 0} ·
+            trust=
+            {(evidence.ref_count ?? 0) > 0 ? "grounded" : "ungrounded"}
+          </div>
           <p className="counts">
             evidence · insights={evidence.insight_count} · questions=
             {evidence.question_count} · refs={evidence.ref_count}
