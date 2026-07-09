@@ -1727,6 +1727,31 @@ export default function Settings() {
               Invariant: propose ≠ auto-promote · auto_promoted=
               {String(suiteProposal?.auto_promoted ?? false)}
             </p>
+            {/* Residual (ht): recursive rewrite metrics for audit. */}
+            {suiteProposal ? (
+              <div
+                className="font-mono text-[11px] text-ink-soft dark:text-starlight"
+                data-testid="antiek-bench-suite-proposal-metrics"
+                data-has-proposal={String(Boolean(suiteProposal.has_proposal))}
+                data-status={suiteProposal.status ?? ""}
+                data-proposal-id={suiteProposal.proposal_id ?? ""}
+                data-event-count={String(suiteProposal.event_count ?? 0)}
+                data-proposed-task-count={String(
+                  (suiteProposal.added_item_ids || []).length,
+                )}
+                data-auto-promoted={String(
+                  suiteProposal.auto_promoted === true,
+                )}
+                data-propose-not-promote="true"
+                data-view-format="html"
+                role="status"
+              >
+                Recursive rewrite · events={suiteProposal.event_count ?? 0} ·
+                proposed_tasks=
+                {(suiteProposal.added_item_ids || []).length} · status=
+                {suiteProposal.status ?? "—"}
+              </div>
+            ) : null}
             {/* Residual (hf): show which usage sources feed this rewrite. */}
             {Object.keys(usage?.by_source || {}).length > 0 ? (
               <p

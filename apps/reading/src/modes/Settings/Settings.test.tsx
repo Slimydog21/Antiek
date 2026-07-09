@@ -707,6 +707,16 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("antiek-bench-propose-not-promote").textContent).toMatch(
       /propose ≠ auto-promote/i,
     );
+    // Residual (ht): recursive rewrite metrics machine attrs.
+    const metrics = screen.getByTestId("antiek-bench-suite-proposal-metrics");
+    expect(metrics.getAttribute("data-has-proposal")).toBe("true");
+    expect(metrics.getAttribute("data-status")).toBe("proposed");
+    expect(metrics.getAttribute("data-proposal-id")).toBe("prop_testdeadbeef01");
+    expect(metrics.getAttribute("data-event-count")).toBe("2");
+    expect(metrics.getAttribute("data-proposed-task-count")).toBe("1");
+    expect(metrics.getAttribute("data-auto-promoted")).toBe("false");
+    expect(metrics.getAttribute("data-propose-not-promote")).toBe("true");
+    expect(metrics.textContent).toMatch(/Recursive rewrite/);
     const tasks = screen.getByTestId("antiek-bench-proposed-tasks");
     expect(tasks.getAttribute("data-task-count")).toBe("1");
     expect(screen.getByTestId("antiek-bench-proposed-task-id").textContent).toMatch(

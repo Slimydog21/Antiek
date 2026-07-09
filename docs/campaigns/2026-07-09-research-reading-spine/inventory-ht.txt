@@ -1,0 +1,11 @@
+# inventory-ht · suite proposal recursive rewrite metrics · residual (ht)
+
+## Delta
+- antiek-bench-suite-proposal-metrics: has_proposal, status, proposal_id,
+  event_count, proposed_task_count, auto_promoted, propose_not_promote
+
+## Verified
+vitest Settings suite proposal test + full Settings 19_passed
+
+## Next
+(hu) re-derive
