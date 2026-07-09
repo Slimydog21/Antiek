@@ -1076,6 +1076,21 @@ describe("MidnightOil mode", () => {
     expect(screen.getByTestId("moil-pub-refs-status").textContent).toMatch(
       /HTML-first/,
     );
+    // Residual (pc): job receipt grounded pub goals chrome.
+    await waitFor(() => {
+      expect(screen.getByTestId("moil-job")).toBeTruthy();
+    });
+    expect(
+      screen
+        .getByTestId("moil-ceiling-metrics")
+        .getAttribute("data-grounded-pub-goal-count"),
+    ).toBe("1");
+    expect(screen.getByTestId("moil-grounded-pub-goals").getAttribute("data-count")).toBe(
+      "1",
+    );
+    expect(screen.getByTestId("moil-grounded-pub-goals").textContent).toMatch(
+      /Ground publication: arxiv:1706.03762/,
+    );
   });
 
   it("pushes offline run spawn_ids to recent_ring without auto-deposit (oq)", async () => {

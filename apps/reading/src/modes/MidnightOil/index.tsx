@@ -51,6 +51,8 @@
  * sees grounded-goal length before create (never under-project MO cost).
  * Residual (pb): dual-gate L1–L2 hydrate checklist deep-link beside pub refs
  * (prep only; never enables live arxiv/substack injectors).
+ * Residual (pc): job receipt lists grounded publication goals count + chrome
+ * so operator audits knowledge-dense swarm grounding after create.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -840,6 +842,11 @@ export default function MidnightOil() {
             data-status={job.status}
             data-duration-minutes={String(job.duration_minutes ?? 0)}
             data-goal-count={String((job.goals || []).length)}
+            data-grounded-pub-goal-count={String(
+              (job.goals || []).filter((g) =>
+                String(g || "").startsWith("Ground publication:"),
+              ).length,
+            )}
             data-model-id={job.model_id || "default"}
             data-research-tier={job.research_tier || researchTier}
             data-recommended-usd={String(job.recommended_price_ceiling_usd)}
@@ -853,10 +860,41 @@ export default function MidnightOil() {
             role="status"
           >
             Ceiling audit · duration={job.duration_minutes}m · goals=
-            {(job.goals || []).length} · model=
+            {(job.goals || []).length} · grounded_pubs=
+            {
+              (job.goals || []).filter((g) =>
+                String(g || "").startsWith("Ground publication:"),
+              ).length
+            }{" "}
+            · model=
             {job.model_id || "default"} · recommended=$
             {job.recommended_price_ceiling_usd.toFixed(2)}
           </div>
+          {/* Residual (pc): grounded publication goals on job receipt. */}
+          {(job.goals || []).some((g) =>
+            String(g || "").startsWith("Ground publication:"),
+          ) ? (
+            <ul
+              className="list-disc pl-5 font-mono text-[11px] opacity-90"
+              data-testid="moil-grounded-pub-goals"
+              data-count={String(
+                (job.goals || []).filter((g) =>
+                  String(g || "").startsWith("Ground publication:"),
+                ).length,
+              )}
+              data-view-format="html"
+            >
+              {(job.goals || [])
+                .filter((g) =>
+                  String(g || "").startsWith("Ground publication:"),
+                )
+                .map((g) => (
+                  <li key={g} data-grounded-goal={g}>
+                    {g}
+                  </li>
+                ))}
+            </ul>
+          ) : null}
           <p
             data-testid="recommended-ceiling"
             data-recommended-usd={String(job.recommended_price_ceiling_usd)}

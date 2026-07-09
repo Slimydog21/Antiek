@@ -534,3 +534,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (pb, 2026-07-10) **MO pub refs dual-gate L1–L2 hydrate link:**
   - moil-pub-refs-dual-gate-link + offline identity default honesty
   - prep only; never enables live arxiv/substack injectors
+
+- Closed (pc, 2026-07-10) **MO job receipt grounded publication goals:**
+  - data-grounded-pub-goal-count on ceiling metrics
+  - moil-grounded-pub-goals list for swarm grounding audit
