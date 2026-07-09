@@ -16,7 +16,13 @@ PDF is never the canonical view surface).
 
 from __future__ import annotations
 
-from .merge import MergeMode, MergeResult, merge_spawn_outputs
+from .merge import (
+    MergeMode,
+    MergeResult,
+    merge_product_payload,
+    merge_spawn_outputs,
+    project_merge_html,
+)
 from .project import project_to_html
 from .spawn import (
     HighlightSelection,
@@ -98,10 +104,12 @@ __all__ = [
     "list_source_references",
     "list_spawns_for_asset",
     "list_twin_notes",
+    "merge_product_payload",
     "merge_spawn_outputs",
     "merge_spawns_collective",
     "parse_source_reference",
     "parse_source_references",
+    "project_merge_html",
     "project_to_html",
     "promote_and_context_for_asset",
     "promote_twin_note",

@@ -13,6 +13,7 @@ Surfaces:
   POST /engagement/attach-refs
   POST /engagement/research-context
   POST /engagement/collective
+  POST /engagement/merge
   POST /engagement/sessions/open
   POST /engagement/sessions/complete-flywheel
 """
@@ -31,6 +32,7 @@ from substrate.engagement_spine import (
     InMemoryEngagementStore,
     attach_source_references,
     assemble_research_context,
+    merge_product_payload,
     merge_spawns_collective,
     spawn_from_highlight_with_references,
 )
@@ -154,6 +156,17 @@ class CollectiveBody(BaseModel):
     include_twin_promote: bool = True
 
 
+class MergeBody(BaseModel):
+    """Merge completed deep-research spawns into parent or draft-combined."""
+
+    parent_asset_id: str = Field(min_length=1)
+    spawn_ids: list[str] = Field(min_length=1)
+    mode: Literal["into_parent", "draft_combined"] = "draft_combined"
+    parent_title: str | None = None
+    parent_body: str | None = None
+    include_html: bool = True
+
+
 class SessionOpenBody(HighlightBody):
     view_mode: Literal["floating", "full"] = "floating"
 
@@ -260,6 +273,30 @@ def post_collective(body: CollectiveBody) -> dict[str, Any]:
     out = unit.to_dict()
     out["prompt_block"] = unit.prompt_block()
     return out
+
+
+@engagement_router.post("/merge")
+def post_merge(body: MergeBody) -> dict[str, Any]:
+    """Merge completed spawn outputs into parent or a draft-combined document.
+
+    Default mode is ``draft_combined`` so operators can review before full
+    parent merge. Calls shipped ``merge_product_payload`` / ``merge_spawn_outputs``.
+    """
+    try:
+        payload = merge_product_payload(
+            body.parent_asset_id,
+            body.spawn_ids,
+            store=_eng(),
+            mode=body.mode,
+            parent_title=body.parent_title,
+            parent_body=body.parent_body,
+            include_html=body.include_html,
+        )
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return payload
 
 
 @engagement_router.post("/sessions/open")

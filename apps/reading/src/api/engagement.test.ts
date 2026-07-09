@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   attachSourceRefs,
   fetchResearchContext,
+  mergeSpawnOutputs,
   openEngagementSession,
   spawnFromHighlight,
 } from "./engagement";
@@ -98,6 +99,41 @@ describe("engagement API client", () => {
     });
     expect(s.session_id).toBe("fsess_1");
     expect(mockFetch.mock.calls[0][0]).toBe("/engagement/sessions/open");
+  });
+
+  it("mergeSpawnOutputs posts draft_combined by default", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        mode: "draft_combined",
+        parent_asset_id: "book-1",
+        document_id: "draft_book-1_abc",
+        source_spawn_ids: ["spn_1"],
+        sections_merged: 2,
+        draft_leaves_parent: true,
+        parent_document_id: "book-1",
+        view_format: "html",
+        product_panel: "engagement_merge",
+        source: "engagement_spine.merge_spawn_outputs",
+        notes: ["Draft-combined document; parent asset unchanged"],
+        html: "<p>Merge mode: draft_combined</p>",
+      }),
+    });
+    const out = await mergeSpawnOutputs({
+      parent_asset_id: "book-1",
+      spawn_ids: ["spn_1"],
+    });
+    expect(out.mode).toBe("draft_combined");
+    expect(out.draft_leaves_parent).toBe(true);
+    expect(out.view_format).toBe("html");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/engagement/merge",
+      expect.objectContaining({ method: "POST" }),
+    );
+    const init = mockFetch.mock.calls[0][1] as { body: string };
+    const body = JSON.parse(init.body);
+    expect(body.mode).toBe("draft_combined");
+    expect(body.include_html).toBe(true);
   });
 
   it("throws on non-ok", async () => {

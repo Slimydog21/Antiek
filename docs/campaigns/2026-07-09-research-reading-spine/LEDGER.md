@@ -35,3 +35,7 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 - POST /settings/antiek-bench/suite-proposal/approve
 - settings_approve_suite_proposal_payload; UI gate buttons
 - GET propose path remains non-promoting
+## residual (an) merge draft/parent product path — 2026-07-09
+- POST /engagement/merge via merge_product_payload
+- draft_combined default; parent left untouched
+- tests/test_engagement_merge_product.py (4)

@@ -133,6 +133,47 @@ export async function fetchCollectiveResearch(body: {
   return readJson<CollectiveResponse>(res);
 }
 
+/** Merge completed spawns into parent or draft-combined (default draft). */
+export type MergeMode = "into_parent" | "draft_combined";
+
+export type MergeProductResponse = {
+  mode: MergeMode | string;
+  parent_asset_id: string;
+  document_id: string;
+  source_spawn_ids: string[];
+  sections_merged: number;
+  draft_leaves_parent: boolean;
+  parent_document_id: string;
+  view_format: "html" | string;
+  product_panel: string;
+  source: string;
+  notes: string[];
+  html?: string | null;
+};
+
+export async function mergeSpawnOutputs(body: {
+  parent_asset_id: string;
+  spawn_ids: string[];
+  mode?: MergeMode;
+  parent_title?: string | null;
+  parent_body?: string | null;
+  include_html?: boolean;
+}): Promise<MergeProductResponse> {
+  const res = await apiFetch(`${API_BASE}/engagement/merge`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      parent_asset_id: body.parent_asset_id,
+      spawn_ids: body.spawn_ids,
+      mode: body.mode ?? "draft_combined",
+      parent_title: body.parent_title ?? null,
+      parent_body: body.parent_body ?? null,
+      include_html: body.include_html ?? true,
+    }),
+  });
+  return readJson<MergeProductResponse>(res);
+}
+
 export async function openEngagementSession(
   body: SessionOpenRequest,
 ): Promise<SessionOpenResponse> {

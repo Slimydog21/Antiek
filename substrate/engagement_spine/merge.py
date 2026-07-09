@@ -118,6 +118,122 @@ def merge_spawn_outputs(
     )
 
 
+def merge_product_payload(
+    parent_asset_id: str,
+    spawn_ids: list[str] | tuple[str, ...],
+    *,
+    store: EngagementStore,
+    mode: MergeMode = "draft_combined",
+    parent_title: str | None = None,
+    parent_body: str | None = None,
+    include_html: bool = False,
+) -> dict[str, Any]:
+    """Product entry: merge spawns into parent or draft-combined (HTML-first).
+
+    ``draft_combined`` leaves the parent document untouched until a later
+    into_parent merge. Never invents PDF as the view surface.
+    """
+    result = merge_spawn_outputs(
+        parent_asset_id,
+        spawn_ids,
+        store=store,
+        mode=mode,
+        parent_title=parent_title,
+        parent_body=parent_body,
+    )
+    parent_doc = store.get_document(parent_asset_id) or {}
+    draft_leaves_parent = mode == "draft_combined"
+    payload: dict[str, Any] = {
+        "mode": result.mode,
+        "parent_asset_id": result.parent_asset_id,
+        "document_id": result.document_id,
+        "source_spawn_ids": list(result.source_spawn_ids),
+        "sections_merged": result.sections_merged,
+        "draft_leaves_parent": draft_leaves_parent,
+        "parent_document_id": parent_asset_id if draft_leaves_parent else result.document_id,
+        "view_format": "html",
+        "product_panel": "engagement_merge",
+        "source": "engagement_spine.merge_spawn_outputs",
+        "notes": [
+            (
+                "Draft-combined document; parent asset unchanged until into_parent merge."
+                if draft_leaves_parent
+                else "Merged into parent asset document in-place."
+            )
+        ],
+    }
+    # Honesty: draft mode must not rewrite parent document_id content mode
+    if draft_leaves_parent and parent_doc.get("mode") == "into_parent":
+        payload["notes"].append("Parent already had into_parent content; draft is separate.")
+    if include_html:
+        payload["html"] = project_merge_html(result)
+    return payload
+
+
+def project_merge_html(result: MergeResult | dict[str, Any]) -> str:
+    """HTML-first projection of a merge result (never PDF)."""
+    from .project import project_to_html
+
+    if isinstance(result, MergeResult):
+        doc_model = result.doc_model
+        document_id = result.document_id
+        mode = result.mode
+        parent = result.parent_asset_id
+    else:
+        doc_model = result.get("doc_model") or {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [{"type": "text", "text": "Empty merge"}],
+                }
+            ],
+        }
+        document_id = str(result.get("document_id") or "merge")
+        mode = str(result.get("mode") or "")
+        parent = str(result.get("parent_asset_id") or "")
+
+    # Ensure tip-tap style wrapper if bare content list was stored
+    if "type" not in doc_model and "content" in doc_model:
+        wrapped = {
+            "type": "doc",
+            "content": doc_model.get("content") or [],
+        }
+        # prepend mode banner
+        banner = {
+            "type": "paragraph",
+            "content": [
+                {
+                    "type": "text",
+                    "text": f"Merge mode: {mode} · parent: {parent} · document: {document_id} · view: HTML",
+                }
+            ],
+        }
+        wrapped["content"] = [banner] + list(wrapped["content"])
+        doc_model = wrapped
+    elif doc_model.get("type") == "doc":
+        banner = {
+            "type": "paragraph",
+            "content": [
+                {
+                    "type": "text",
+                    "text": f"Merge mode: {mode} · parent: {parent} · document: {document_id} · view: HTML",
+                }
+            ],
+        }
+        content = list(doc_model.get("content") or [])
+        doc_model = {**doc_model, "content": [banner] + content}
+
+    html = project_to_html(
+        doc_model,
+        document_id=document_id,
+        creator="engagement_spine.merge",
+    )
+    if html.lstrip().lower().startswith("%pdf"):
+        raise RuntimeError("PDF is not a valid merge view surface")
+    return html
+
+
 def _para(text: str, block_id: str) -> dict[str, Any]:
     return {
         "type": "paragraph",
