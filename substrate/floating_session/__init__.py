@@ -25,6 +25,10 @@ from .session import (
     set_view_mode,
 )
 from .view import project_session_html
+from .product_path import (
+    HighlightDeepResearchResult,
+    open_deep_research_from_highlight,
+)
 from .window_compose import (
     DEEP_RESEARCH_WINDOW_KIND,
     InMemoryWindowStore,
@@ -42,6 +46,7 @@ from .window_compose import (
 __all__ = [
     "DEEP_RESEARCH_WINDOW_KIND",
     "FloatingSession",
+    "HighlightDeepResearchResult",
     "InMemoryWindowStore",
     "SessionStore",
     "ViewMode",
@@ -53,6 +58,7 @@ __all__ = [
     "list_sessions_for_asset",
     "map_session_mode_to_window_mode",
     "merge_sessions",
+    "open_deep_research_from_highlight",
     "open_from_highlight",
     "open_session_as_window",
     "open_sessions_as_windows",
