@@ -6,6 +6,7 @@ import {
   approveAntiekBenchSuiteProposal,
   clearDecisionTreeSelection,
   estimatePromptCost,
+  fetchAntiekBenchDogfoodFixtures,
   fetchAntiekBenchSuiteProposal,
   fetchAntiekBenchUsageSummary,
   fetchDecisionTreeSelection,
@@ -14,6 +15,7 @@ import {
   fetchSettingsBudget,
   fetchSettingsModels,
   installDecisionTreeSelection,
+  type AntiekBenchDogfoodFixturesResponse,
   type AntiekBenchSuiteApproveResponse,
   type AntiekBenchSuiteProposalResponse,
   type AntiekBenchUsageSummaryResponse,
@@ -29,7 +31,8 @@ import {
  * Operator Settings — model inventory + budget + prompt projection (SPR-01)
  * + decision-tree driver install (process-local registry)
  * + Antiek-bench weekly usage summary (recorded engagement outcomes)
- * + Antiek-bench suite rewrite proposal (proposed only; not auto-promoted).
+ * + Antiek-bench suite rewrite proposal (proposed only; not auto-promoted)
+ * + competitive dogfood fixtures listing (never auto-promoted).
  *
  * Honesty: spent/pricing may be unknown; UI never invents $0.00 when the
  * ledger or rate table is unset. Cost projection stays on #440 API.
@@ -80,6 +83,10 @@ export default function Settings() {
   const [depth, setDepth] = useState<DepthTierResponse | null>(null);
   const [depthError, setDepthError] = useState<string | null>(null);
   const [depthBusy, setDepthBusy] = useState(false);
+  const [dogfood, setDogfood] =
+    useState<AntiekBenchDogfoodFixturesResponse | null>(null);
+  const [dogfoodError, setDogfoodError] = useState<string | null>(null);
+  const [dogfoodBusy, setDogfoodBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -152,11 +159,39 @@ export default function Settings() {
         if (!cancelled)
           setDepthError(e instanceof Error ? e.message : String(e));
       }
+      try {
+        const df = await fetchAntiekBenchDogfoodFixtures({
+          includeHtml: true,
+        });
+        if (!cancelled) setDogfood(df);
+      } catch (e) {
+        if (!cancelled)
+          setDogfoodError(e instanceof Error ? e.message : String(e));
+      }
     })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  async function onRefreshDogfood() {
+    setDogfoodBusy(true);
+    setDogfoodError(null);
+    try {
+      const df = await fetchAntiekBenchDogfoodFixtures({ includeHtml: true });
+      if (df.view_format !== "html") {
+        throw new Error("dogfood fixtures view_format must be html");
+      }
+      if (df.auto_promoted) {
+        throw new Error("dogfood fixtures must not auto-promote");
+      }
+      setDogfood(df);
+    } catch (e) {
+      setDogfoodError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDogfoodBusy(false);
+    }
+  }
 
   async function onApplyDepthTier(tier: string) {
     setDepthBusy(true);
@@ -625,6 +660,84 @@ export default function Settings() {
                     className="prose border rounded p-2 text-sm max-h-48 overflow-auto"
                     data-testid="notdiamond-advisory-html"
                     dangerouslySetInnerHTML={{ __html: nd.html }}
+                  />
+                ) : null}
+              </div>
+            )}
+          </div>
+        </LemonCard>
+
+        <LemonCard
+          title="Antiek-bench competitive dogfood"
+          elevation="z1"
+          colour="glacial"
+        >
+          <div
+            className="p-4 space-y-3"
+            data-testid="antiek-bench-dogfood-panel"
+            data-view-format="html"
+          >
+            <p className="text-sm text-ink dark:text-bright">
+              Offline multi-task-class fixtures (distill / synthesize / wrestle
+              / book_qa) for weekly model comparison. Listing only — never
+              auto-promotes the active suite.
+            </p>
+            {dogfoodError && (
+              <p className="text-sm text-red-700 dark:text-red-300 font-mono">
+                {dogfoodError}
+              </p>
+            )}
+            <button
+              type="button"
+              data-testid="antiek-bench-dogfood-refresh"
+              onClick={() => void onRefreshDogfood()}
+              disabled={dogfoodBusy}
+              className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+            >
+              {dogfoodBusy ? "Loading…" : "Refresh dogfood fixtures"}
+            </button>
+            {dogfood && (
+              <div
+                className="font-mono text-[13px] space-y-2"
+                data-testid="antiek-bench-dogfood-summary"
+              >
+                <Row label="Suite" value={dogfood.suite_version} />
+                <Row label="Label" value={dogfood.label} />
+                <Row label="Items" value={String(dogfood.item_count)} />
+                <Row
+                  label="Auto-promoted"
+                  value={String(dogfood.auto_promoted)}
+                />
+                <Row label="View" value={dogfood.view_format} />
+                <ul data-testid="antiek-bench-dogfood-classes" className="space-y-1">
+                  {Object.entries(dogfood.by_task_class || {}).map(
+                    ([tc, n]) => (
+                      <li key={tc}>
+                        <strong>{tc}</strong>: {n}
+                      </li>
+                    ),
+                  )}
+                </ul>
+                <ul data-testid="antiek-bench-dogfood-items" className="space-y-1 text-[11px]">
+                  {(dogfood.items || []).slice(0, 8).map((it) => (
+                    <li key={it.item_id}>
+                      [{it.task_class}] {it.item_id}
+                    </li>
+                  ))}
+                </ul>
+                {dogfood.notes?.map((n) => (
+                  <p
+                    key={n}
+                    className="text-[11px] text-ink-soft dark:text-starlight"
+                  >
+                    {n}
+                  </p>
+                ))}
+                {dogfood.html ? (
+                  <div
+                    className="prose border rounded p-2 text-sm max-h-48 overflow-auto"
+                    data-testid="antiek-bench-dogfood-html"
+                    dangerouslySetInnerHTML={{ __html: dogfood.html }}
                   />
                 ) : null}
               </div>

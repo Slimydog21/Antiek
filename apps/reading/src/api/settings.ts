@@ -191,6 +191,35 @@ export async function fetchAntiekBenchUsageSummary(opts?: {
   return readJson<AntiekBenchUsageSummaryResponse>(res);
 }
 
+/** Competitive dogfood fixtures listing (offline; never auto-promoted). */
+export type AntiekBenchDogfoodFixturesResponse = {
+  suite_version: string;
+  label: string;
+  item_count: number;
+  by_task_class: Record<string, number>;
+  items: Array<{
+    item_id: string;
+    task_class: string;
+    prompt: string;
+  }>;
+  auto_promoted: boolean;
+  view_format: "html" | string;
+  settings_panel: string;
+  source: string;
+  notes: string[];
+  html?: string | null;
+};
+
+export async function fetchAntiekBenchDogfoodFixtures(opts?: {
+  includeHtml?: boolean;
+}): Promise<AntiekBenchDogfoodFixturesResponse> {
+  const q = opts?.includeHtml ? "?include_html=true" : "";
+  const res = await apiFetch(
+    `${API_BASE}/settings/antiek-bench/dogfood-fixtures${q}`,
+  );
+  return readJson<AntiekBenchDogfoodFixturesResponse>(res);
+}
+
 /** Suite rewrite proposal from recorded usage — never auto-promoted. */
 export type AntiekBenchSuiteProposalResponse = {
   has_proposal: boolean;

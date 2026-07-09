@@ -19,6 +19,7 @@ const {
   approveAntiekBenchSuiteProposal,
   fetchDepthTiers,
   applyDepthTier,
+  fetchAntiekBenchDogfoodFixtures,
   fetchNotDiamondAdvisory,
 } = vi.hoisted(() => {
   const models = {
@@ -211,6 +212,30 @@ const {
       notes: [`Active depth tier set to ${opts.depth_tier}`],
       html: `<p>Active: ${opts.depth_tier}</p>`,
     })),
+    fetchAntiekBenchDogfoodFixtures: vi.fn(async () => ({
+      suite_version: "suite-competitive-dogfood-v1",
+      label: "antiek-bench-competitive-dogfood",
+      item_count: 5,
+      by_task_class: {
+        distill: 1,
+        synthesize: 1,
+        wrestle: 2,
+        book_qa: 1,
+      },
+      items: [
+        {
+          item_id: "dogfood-distill-attention",
+          task_class: "distill",
+          prompt: "Distill attention claim",
+        },
+      ],
+      auto_promoted: false,
+      view_format: "html",
+      settings_panel: "antiek_bench_dogfood_fixtures",
+      source: "antiek_bench.dogfood_fixtures",
+      notes: ["Competitive dogfood fixtures are offline prompts only."],
+      html: "<p>Suite suite-competitive-dogfood-v1 · items=5</p>",
+    })),
     fetchNotDiamondAdvisory: vi.fn(async () => ({
       advisory_allowed: true,
       advisory_verdict: "GO",
@@ -244,6 +269,7 @@ vi.mock("../../api/settings", () => ({
   approveAntiekBenchSuiteProposal,
   fetchDepthTiers,
   applyDepthTier,
+  fetchAntiekBenchDogfoodFixtures,
   fetchNotDiamondAdvisory,
 }));
 
@@ -264,6 +290,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
     approveAntiekBenchSuiteProposal.mockClear();
     fetchDepthTiers.mockClear();
     applyDepthTier.mockClear();
+    fetchAntiekBenchDogfoodFixtures.mockClear();
     fetchNotDiamondAdvisory.mockClear();
   });
 
@@ -438,5 +465,29 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(
       screen.getByTestId("depth-tier-panel").getAttribute("data-view-format"),
     ).toBe("html");
+  });
+
+  it("loads competitive dogfood fixtures — never auto-promoted", async () => {
+    render(<Settings />);
+    await waitFor(() => {
+      expect(screen.getByTestId("antiek-bench-dogfood-panel")).toBeTruthy();
+    });
+    expect(fetchAntiekBenchDogfoodFixtures).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("antiek-bench-dogfood-summary").textContent,
+      ).toMatch(/suite-competitive-dogfood-v1/);
+    });
+    expect(
+      screen
+        .getByTestId("antiek-bench-dogfood-panel")
+        .getAttribute("data-view-format"),
+    ).toBe("html");
+    expect(
+      screen.getByTestId("antiek-bench-dogfood-summary").textContent,
+    ).toMatch(/Auto-promoted\s*false/i);
+    expect(screen.getByTestId("antiek-bench-dogfood-html").innerHTML).toMatch(
+      /items=5|dogfood/i,
+    );
   });
 });
