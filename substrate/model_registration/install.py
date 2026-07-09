@@ -115,3 +115,96 @@ def clear_decision_tree_selection() -> dict[str, Any]:
         "installed": False,
         "notes": ["decision-tree selection cleared"],
     }
+
+
+def register_operator_model(
+    model_id: str,
+    *,
+    provider_id: str,
+    display_name: str = "",
+    select: bool = False,
+) -> dict[str, Any]:
+    """Add-model product path into the process-local decision-tree registry.
+
+    Does not store API secrets (operator-gated elsewhere). Does not auto-
+    install as driver unless ``select=True``.
+    """
+    from .registry import list_models
+
+    mid = (model_id or "").strip()
+    pid = (provider_id or "").strip()
+    if not mid:
+        raise ValueError("model_id is required")
+    if not pid:
+        raise ValueError("provider_id is required")
+
+    reg = get_decision_tree_registry()
+    if reg is None:
+        reg = ModelRegistry()
+    active_mid = get_decision_tree_model_id()
+    entry = add_model(
+        reg,
+        mid,
+        provider_id=pid,
+        display_name=display_name or mid,
+        select=select,
+    )
+    # Keep process registry pointer; only change active driver when select=True
+    # or when no prior active selection exists.
+    next_active = mid if select else (active_mid or reg.selected_model_id)
+    set_decision_tree_registry(reg, model_id=next_active)
+
+    return {
+        "model_id": entry.model_id,
+        "provider_id": entry.provider_id,
+        "display_name": entry.display_name,
+        "enabled": entry.enabled,
+        "selected": get_decision_tree_model_id() == entry.model_id,
+        "view_format": "html",
+        "settings_panel": "add_model",
+        "source": "substrate.model_registration.install",
+        "notes": [
+            f"Registered model {entry.model_id} under provider {entry.provider_id} "
+            "(process-local; secrets remain operator-gated).",
+        ],
+        "registered_count": len(list_models(reg)),
+    }
+
+
+def list_operator_models() -> dict[str, Any]:
+    """List process-local registered models for Settings."""
+    from .registry import list_models
+
+    reg = get_decision_tree_registry()
+    active = get_decision_tree_model_id()
+    if reg is None:
+        return {
+            "models": [],
+            "count": 0,
+            "active_model_id": None,
+            "view_format": "html",
+            "settings_panel": "add_model",
+            "source": "substrate.model_registration.install",
+            "notes": ["No process-local model registry yet — add a model below."],
+        }
+    rows = [
+        {
+            "model_id": m.model_id,
+            "provider_id": m.provider_id,
+            "display_name": m.display_name,
+            "enabled": m.enabled,
+            "selected": m.model_id == active,
+        }
+        for m in list_models(reg)
+    ]
+    return {
+        "models": rows,
+        "count": len(rows),
+        "active_model_id": active,
+        "view_format": "html",
+        "settings_panel": "add_model",
+        "source": "substrate.model_registration.install",
+        "notes": [
+            "Process-local registry only; multi-worker daemons need the same adds per worker.",
+        ],
+    }

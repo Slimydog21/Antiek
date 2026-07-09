@@ -307,6 +307,89 @@ def read_operator_budget() -> BudgetResponse:
     )
 
 
+class AddModelRequest(BaseModel):
+    """Register a model id into the process-local decision-tree registry."""
+
+    model_id: str = Field(min_length=1)
+    provider_id: str = Field(min_length=1)
+    display_name: str = ""
+    select: bool = False
+
+
+class RegisteredModelsResponse(BaseModel):
+    models: list[dict[str, Any]] = Field(default_factory=list)
+    count: int = 0
+    active_model_id: str | None = None
+    view_format: str = "html"
+    settings_panel: str = "add_model"
+    source: str = "substrate.model_registration.install"
+    notes: list[str] = Field(default_factory=list)
+    model_id: str | None = None
+    provider_id: str | None = None
+    display_name: str | None = None
+    selected: bool | None = None
+    registered_count: int | None = None
+
+
+@settings_router.get(
+    "/registered-models",
+    response_model=RegisteredModelsResponse,
+)
+def get_registered_models() -> RegisteredModelsResponse:
+    """List process-local operator-added models (not provider inventory)."""
+    from substrate.model_registration import list_operator_models
+
+    payload = list_operator_models()
+    return RegisteredModelsResponse(
+        models=list(payload.get("models") or []),
+        count=int(payload.get("count") or 0),
+        active_model_id=payload.get("active_model_id"),
+        view_format=str(payload.get("view_format") or "html"),
+        settings_panel=str(payload.get("settings_panel") or "add_model"),
+        source=str(payload.get("source") or ""),
+        notes=list(payload.get("notes") or []),
+    )
+
+
+@settings_router.post(
+    "/models/register",
+    response_model=RegisteredModelsResponse,
+)
+def post_register_model(req: AddModelRequest) -> RegisteredModelsResponse:
+    """Add model to process-local registry (no secrets; operator-gated keys)."""
+    from substrate.model_registration import (
+        list_operator_models,
+        register_operator_model,
+    )
+
+    try:
+        registered = register_operator_model(
+            req.model_id,
+            provider_id=req.provider_id,
+            display_name=req.display_name,
+            select=req.select,
+        )
+    except ValueError as exc:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    listing = list_operator_models()
+    return RegisteredModelsResponse(
+        models=list(listing.get("models") or []),
+        count=int(listing.get("count") or 0),
+        active_model_id=listing.get("active_model_id"),
+        view_format="html",
+        settings_panel="add_model",
+        source=str(registered.get("source") or ""),
+        notes=list(registered.get("notes") or []) + list(listing.get("notes") or []),
+        model_id=registered.get("model_id"),
+        provider_id=registered.get("provider_id"),
+        display_name=registered.get("display_name"),
+        selected=registered.get("selected"),
+        registered_count=registered.get("registered_count"),
+    )
+
+
 @settings_router.get("/models", response_model=ModelsResponse)
 def get_settings_models(request: Request) -> ModelsResponse:
     raw_providers = getattr(request.app.state, "registered_providers", None)
@@ -933,6 +1016,7 @@ def register_settings_budget_routes(app: FastAPI) -> None:
 
 
 __all__ = [
+    "AddModelRequest",
     "AntiekBenchLeaderboardResponse",
     "AntiekBenchSuiteApproveRequest",
     "AntiekBenchSuiteApproveResponse",
@@ -946,6 +1030,7 @@ __all__ = [
     "ModelsResponse",
     "PromptCostEstimateRequest",
     "PromptCostEstimateResponse",
+    "RegisteredModelsResponse",
     "delete_decision_tree_selection",
     "delete_depth_tier",
     "estimate_prompt_cost",
@@ -956,9 +1041,11 @@ __all__ = [
     "get_decision_tree_selection",
     "get_depth_tier",
     "get_notdiamond_advisory",
+    "get_registered_models",
     "post_antiek_bench_suite_approve",
     "post_decision_tree_selection",
     "post_depth_tier",
+    "post_register_model",
     "read_operator_budget",
     "register_settings_budget_routes",
     "settings_router",

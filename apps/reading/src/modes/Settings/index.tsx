@@ -13,9 +13,11 @@ import {
   fetchDecisionTreeSelection,
   fetchDepthTiers,
   fetchNotDiamondAdvisory,
+  fetchRegisteredModels,
   fetchSettingsBudget,
   fetchSettingsModels,
   installDecisionTreeSelection,
+  registerSettingsModel,
   type AntiekBenchDogfoodFixturesResponse,
   type AntiekBenchLeaderboardResponse,
   type AntiekBenchSuiteApproveResponse,
@@ -27,6 +29,7 @@ import {
   type ModelRow,
   type NotDiamondAdvisoryResponse,
   type PromptCostEstimateResponse,
+  type RegisteredModelsResponse,
 } from "../../api/settings";
 
 /**
@@ -102,6 +105,13 @@ export default function Settings() {
     );
     return `${d.getFullYear()}-W${String(week).padStart(2, "0")}`;
   });
+  const [registered, setRegistered] =
+    useState<RegisteredModelsResponse | null>(null);
+  const [registeredError, setRegisteredError] = useState<string | null>(null);
+  const [registeredBusy, setRegisteredBusy] = useState(false);
+  const [addModelId, setAddModelId] = useState("");
+  const [addProviderId, setAddProviderId] = useState("");
+  const [addSelectDriver, setAddSelectDriver] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -193,11 +203,46 @@ export default function Settings() {
         if (!cancelled)
           setLeaderboardError(e instanceof Error ? e.message : String(e));
       }
+      try {
+        const rm = await fetchRegisteredModels();
+        if (!cancelled) setRegistered(rm);
+      } catch (e) {
+        if (!cancelled)
+          setRegisteredError(e instanceof Error ? e.message : String(e));
+      }
     })();
     return () => {
       cancelled = true;
     };
   }, [leaderboardWeek]);
+
+  async function onRegisterModel() {
+    if (!addModelId.trim() || !addProviderId.trim()) {
+      setRegisteredError("model_id and provider_id are required");
+      return;
+    }
+    setRegisteredBusy(true);
+    setRegisteredError(null);
+    try {
+      const rm = await registerSettingsModel({
+        model_id: addModelId.trim(),
+        provider_id: addProviderId.trim(),
+        select: addSelectDriver,
+      });
+      if (rm.view_format !== "html") {
+        throw new Error("registered models view_format must be html");
+      }
+      setRegistered(rm);
+      if (addSelectDriver) {
+        setSelectedModel(addModelId.trim());
+        setSelectedProvider(addProviderId.trim());
+      }
+    } catch (e) {
+      setRegisteredError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRegisteredBusy(false);
+    }
+  }
 
   async function onRefreshDogfood() {
     setDogfoodBusy(true);
@@ -505,6 +550,101 @@ export default function Settings() {
               Adding API keys / new models remains operator-gated. Decision-tree
               install below is process-local (same process as dispatch).
             </p>
+          </div>
+        </LemonCard>
+
+        <LemonCard title="Add model" elevation="z1" colour="glacial">
+          <div
+            className="p-4 space-y-3"
+            data-testid="add-model-panel"
+            data-view-format="html"
+          >
+            <p className="text-sm text-ink dark:text-bright">
+              Register a model id into the process-local decision-tree registry.
+              API keys remain operator-gated — this only records identity for
+              driver selection.
+            </p>
+            {registeredError && (
+              <p className="text-sm text-red-700 dark:text-red-300 font-mono">
+                {registeredError}
+              </p>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-[13px]">
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
+                  Provider id
+                </span>
+                <input
+                  type="text"
+                  data-testid="add-model-provider"
+                  value={addProviderId}
+                  onChange={(e) => setAddProviderId(e.target.value)}
+                  placeholder="zai"
+                  className="border border-ink/20 dark:border-bright/20 bg-transparent px-2 py-1 rounded"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
+                  Model id
+                </span>
+                <input
+                  type="text"
+                  data-testid="add-model-id"
+                  value={addModelId}
+                  onChange={(e) => setAddModelId(e.target.value)}
+                  placeholder="glm-5.2"
+                  className="border border-ink/20 dark:border-bright/20 bg-transparent px-2 py-1 rounded"
+                />
+              </label>
+            </div>
+            <label className="flex items-center gap-2 text-sm font-mono">
+              <input
+                type="checkbox"
+                data-testid="add-model-select"
+                checked={addSelectDriver}
+                onChange={(e) => setAddSelectDriver(e.target.checked)}
+              />
+              Install as decision-tree driver
+            </label>
+            <button
+              type="button"
+              data-testid="add-model-submit"
+              onClick={() => void onRegisterModel()}
+              disabled={
+                registeredBusy || !addModelId.trim() || !addProviderId.trim()
+              }
+              className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+            >
+              {registeredBusy ? "Registering…" : "Register model"}
+            </button>
+            {registered && (
+              <div
+                className="font-mono text-[13px] space-y-1"
+                data-testid="add-model-summary"
+              >
+                <Row label="Count" value={String(registered.count)} />
+                <Row
+                  label="Active"
+                  value={registered.active_model_id ?? "(none)"}
+                />
+                <ul data-testid="add-model-list" className="space-y-1">
+                  {(registered.models || []).map((m) => (
+                    <li key={m.model_id}>
+                      {m.provider_id}/{m.model_id}
+                      {m.selected ? " ✓" : ""}
+                    </li>
+                  ))}
+                </ul>
+                {registered.notes?.map((n) => (
+                  <p
+                    key={n}
+                    className="text-[11px] text-ink-soft dark:text-starlight"
+                  >
+                    {n}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
         </LemonCard>
 

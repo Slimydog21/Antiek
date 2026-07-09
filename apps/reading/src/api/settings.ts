@@ -53,6 +53,54 @@ async function readJson<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** Process-local operator model registry (add-model residual). */
+export type RegisteredModelRow = {
+  model_id: string;
+  provider_id: string;
+  display_name?: string;
+  enabled?: boolean;
+  selected?: boolean;
+};
+
+export type RegisteredModelsResponse = {
+  models: RegisteredModelRow[];
+  count: number;
+  active_model_id: string | null;
+  view_format: "html" | string;
+  settings_panel: string;
+  source: string;
+  notes: string[];
+  model_id?: string | null;
+  provider_id?: string | null;
+  display_name?: string | null;
+  selected?: boolean | null;
+  registered_count?: number | null;
+};
+
+export async function fetchRegisteredModels(): Promise<RegisteredModelsResponse> {
+  const res = await apiFetch(`${API_BASE}/settings/registered-models`);
+  return readJson<RegisteredModelsResponse>(res);
+}
+
+export async function registerSettingsModel(opts: {
+  model_id: string;
+  provider_id: string;
+  display_name?: string;
+  select?: boolean;
+}): Promise<RegisteredModelsResponse> {
+  const res = await apiFetch(`${API_BASE}/settings/models/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model_id: opts.model_id,
+      provider_id: opts.provider_id,
+      display_name: opts.display_name ?? "",
+      select: Boolean(opts.select),
+    }),
+  });
+  return readJson<RegisteredModelsResponse>(res);
+}
+
 export async function fetchSettingsModels(): Promise<ModelsResponse> {
   const res = await apiFetch(`${API_BASE}/settings/models`);
   return readJson<ModelsResponse>(res);

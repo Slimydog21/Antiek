@@ -33,7 +33,9 @@ from .install import (
     DecisionTreeInstallResult,
     clear_decision_tree_selection,
     install_decision_tree_selection,
+    list_operator_models,
     read_decision_tree_selection,
+    register_operator_model,
 )
 from .process_registry import (
     clear_decision_tree_registry,
@@ -88,9 +90,11 @@ __all__ = [
     "install_decision_tree_selection",
     "list_depth_tiers",
     "list_models",
+    "list_operator_models",
     "model_override_for_dispatch",
     "project_depth_tiers_html",
     "read_decision_tree_selection",
+    "register_operator_model",
     "resolve_dispatch_override",
     "resolve_override_for_session",
     "select_driver",

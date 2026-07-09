@@ -21,6 +21,8 @@ const {
   applyDepthTier,
   fetchAntiekBenchDogfoodFixtures,
   fetchAntiekBenchLeaderboard,
+  fetchRegisteredModels,
+  registerSettingsModel,
   fetchNotDiamondAdvisory,
 } = vi.hoisted(() => {
   const models = {
@@ -254,6 +256,40 @@ const {
       notes: [],
       html: "<p>Leaderboard week 2026-W28 · strong-model</p>",
     })),
+    fetchRegisteredModels: vi.fn(async () => ({
+      models: [],
+      count: 0,
+      active_model_id: null,
+      view_format: "html",
+      settings_panel: "add_model",
+      source: "substrate.model_registration.install",
+      notes: ["No process-local model registry yet"],
+    })),
+    registerSettingsModel: vi.fn(async (opts: {
+      model_id: string;
+      provider_id: string;
+      select?: boolean;
+    }) => ({
+      models: [
+        {
+          model_id: opts.model_id,
+          provider_id: opts.provider_id,
+          display_name: opts.model_id,
+          enabled: true,
+          selected: Boolean(opts.select),
+        },
+      ],
+      count: 1,
+      active_model_id: opts.select ? opts.model_id : null,
+      view_format: "html",
+      settings_panel: "add_model",
+      source: "substrate.model_registration.install",
+      notes: [`Registered model ${opts.model_id}`],
+      model_id: opts.model_id,
+      provider_id: opts.provider_id,
+      selected: Boolean(opts.select),
+      registered_count: 1,
+    })),
     fetchNotDiamondAdvisory: vi.fn(async () => ({
       advisory_allowed: true,
       advisory_verdict: "GO",
@@ -289,6 +325,8 @@ vi.mock("../../api/settings", () => ({
   applyDepthTier,
   fetchAntiekBenchDogfoodFixtures,
   fetchAntiekBenchLeaderboard,
+  fetchRegisteredModels,
+  registerSettingsModel,
   fetchNotDiamondAdvisory,
 }));
 
@@ -311,6 +349,8 @@ describe("Settings SPR-01 + decision-tree install", () => {
     applyDepthTier.mockClear();
     fetchAntiekBenchDogfoodFixtures.mockClear();
     fetchAntiekBenchLeaderboard.mockClear();
+    fetchRegisteredModels.mockClear();
+    registerSettingsModel.mockClear();
     fetchNotDiamondAdvisory.mockClear();
   });
 
@@ -542,5 +582,35 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("antiek-bench-leaderboard-html").innerHTML).toMatch(
       /Leaderboard|strong-model/i,
     );
+  });
+
+  it("registers an operator model via Add model panel", async () => {
+    const user = userEvent.setup();
+    render(<Settings />);
+    await waitFor(() => {
+      expect(screen.getByTestId("add-model-panel")).toBeTruthy();
+    });
+    expect(fetchRegisteredModels).toHaveBeenCalled();
+    await user.type(screen.getByTestId("add-model-provider"), "zai");
+    await user.type(screen.getByTestId("add-model-id"), "glm-5.2");
+    await user.click(screen.getByTestId("add-model-submit"));
+    await waitFor(() => {
+      expect(registerSettingsModel).toHaveBeenCalled();
+    });
+    const call = registerSettingsModel.mock.calls.at(-1)?.[0] as {
+      model_id: string;
+      provider_id: string;
+      select: boolean;
+    };
+    expect(call.model_id).toBe("glm-5.2");
+    expect(call.provider_id).toBe("zai");
+    await waitFor(() => {
+      expect(screen.getByTestId("add-model-summary").textContent).toMatch(
+        /glm-5\.2/,
+      );
+    });
+    expect(
+      screen.getByTestId("add-model-panel").getAttribute("data-view-format"),
+    ).toBe("html");
   });
 });
