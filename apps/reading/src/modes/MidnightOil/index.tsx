@@ -7,6 +7,7 @@ import {
   dryRunMidnightOil,
   finalArtifactMidnightOil,
   graphMutationMidnightOil,
+  liveRunActivationSettingsMidnightOil,
   preflightMidnightOil,
   providerRouteMidnightOil,
   retrievalMidnightOil,
@@ -16,6 +17,7 @@ import {
   type MidnightOilDispatchReceipt,
   type MidnightOilFinalArtifactReceipt,
   type MidnightOilGraphMutationReceipt,
+  type MidnightOilLiveRunActivationSettingsReceipt,
   type MidnightOilPreflight,
   type MidnightOilProviderRouteReceipt,
   type MidnightOilRetrievalReceipt,
@@ -51,6 +53,8 @@ export default function MidnightOil() {
   const [ack, setAck] = useState(false);
   const [preflight, setPreflight] = useState<MidnightOilPreflight | null>(null);
   const [dryRunReceipt, setDryRunReceipt] = useState<MidnightOilAppliedRunReceipt | null>(null);
+  const [liveSettingsReceipt, setLiveSettingsReceipt] =
+    useState<MidnightOilLiveRunActivationSettingsReceipt | null>(null);
   const [dispatchReceipt, setDispatchReceipt] = useState<MidnightOilDispatchReceipt | null>(null);
   const [activationReceipt, setActivationReceipt] =
     useState<MidnightOilActivationChecklistReceipt | null>(null);
@@ -65,6 +69,7 @@ export default function MidnightOil() {
     useState<MidnightOilFinalArtifactReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
+  const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
   const [dispatchBusy, setDispatchBusy] = useState(false);
   const [activationBusy, setActivationBusy] = useState(false);
   const [budgetReservationBusy, setBudgetReservationBusy] = useState(false);
@@ -74,6 +79,7 @@ export default function MidnightOil() {
   const [finalArtifactBusy, setFinalArtifactBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
+  const [liveSettingsError, setLiveSettingsError] = useState<string | null>(null);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
   const [activationError, setActivationError] = useState<string | null>(null);
   const [budgetReservationError, setBudgetReservationError] = useState<string | null>(null);
@@ -87,6 +93,7 @@ export default function MidnightOil() {
     setBusy(true);
     setError(null);
     setDryRunError(null);
+    setLiveSettingsError(null);
     setDispatchError(null);
     setActivationError(null);
     setBudgetReservationError(null);
@@ -96,6 +103,7 @@ export default function MidnightOil() {
     setFinalArtifactError(null);
     setPreflight(null);
     setDryRunReceipt(null);
+    setLiveSettingsReceipt(null);
     setDispatchReceipt(null);
     setActivationReceipt(null);
     setBudgetReservationReceipt(null);
@@ -141,6 +149,54 @@ export default function MidnightOil() {
       setDryRunError(e instanceof Error ? e.message : String(e));
     } finally {
       setDryRunBusy(false);
+    }
+  }
+
+  async function onLiveRunSettings() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !preflight.applied_run_receipt
+    ) {
+      setLiveSettingsError(
+        "Live settings require launch packet, approval receipt, runner handoff, and applied run receipt.",
+      );
+      return;
+    }
+
+    setLiveSettingsBusy(true);
+    setLiveSettingsError(null);
+    setLiveSettingsReceipt(null);
+    setDispatchError(null);
+    setDispatchReceipt(null);
+    setActivationError(null);
+    setActivationReceipt(null);
+    setBudgetReservationError(null);
+    setBudgetReservationReceipt(null);
+    setProviderRouteError(null);
+    setProviderRouteReceipt(null);
+    setRetrievalError(null);
+    setRetrievalReceipt(null);
+    setGraphMutationError(null);
+    setGraphMutationReceipt(null);
+    setFinalArtifactError(null);
+    setFinalArtifactReceipt(null);
+    try {
+      const result = await liveRunActivationSettingsMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        applied_run_receipt: preflight.applied_run_receipt,
+        requested_live_run_enabled: true,
+        requested_price_ceiling_usd: preflight.approval_receipt.approved_price_ceiling_usd,
+        requested_work_minutes: preflight.approval_receipt.approved_work_minutes,
+      });
+      setLiveSettingsReceipt(result);
+    } catch (e) {
+      setLiveSettingsError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLiveSettingsBusy(false);
     }
   }
 
@@ -816,6 +872,73 @@ export default function MidnightOil() {
                     <Metric
                       label="Artifact"
                       value={dryRunReceipt.final_artifact_created ? "created" : "not created"}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Live settings
+                </p>
+                <button
+                  type="button"
+                  onClick={onLiveRunSettings}
+                  disabled={
+                    liveSettingsBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !preflight.applied_run_receipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {liveSettingsBusy ? "Checking settings..." : "Live settings"}
+                </button>
+              </div>
+
+              {liveSettingsError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {liveSettingsError}
+                </p>
+              )}
+
+              {liveSettingsReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Settings receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {liveSettingsReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={liveSettingsReceipt.status.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Ceiling"
+                      value={`$${liveSettingsReceipt.requested_price_ceiling_usd.toFixed(2)}`}
+                    />
+                    <Metric
+                      label="Work"
+                      value={`${liveSettingsReceipt.requested_work_minutes}m`}
+                    />
+                    <Metric
+                      label="Live"
+                      value={liveSettingsReceipt.live_run_activation_allowed ? "allowed" : "blocked"}
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Blocker"
+                      value={liveSettingsReceipt.blocker_reason.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Missing"
+                      value={`${liveSettingsReceipt.missing_controls.length} controls`}
                     />
                   </div>
                 </div>

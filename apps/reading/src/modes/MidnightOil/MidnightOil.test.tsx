@@ -10,6 +10,7 @@ import {
   dryRunMidnightOil,
   finalArtifactMidnightOil,
   graphMutationMidnightOil,
+  liveRunActivationSettingsMidnightOil,
   preflightMidnightOil,
   providerRouteMidnightOil,
   retrievalMidnightOil,
@@ -175,6 +176,39 @@ vi.mock("../../api/midnightOil", () => ({
     graph_mutated: false,
     final_artifact_created: false,
     applied_notes: ["endpoint dry run only: no autonomous agents dispatched"],
+  })),
+  liveRunActivationSettingsMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-live-run-activation-settings",
+    applied_run_receipt_id: "midnight-oil-test-applied-run-receipt",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    run_id: "midnight-oil-test",
+    status: "blocked_live_run_activation_disabled",
+    settings_scope: "midnight_oil_live_run_activation",
+    requested_live_run_enabled: true,
+    requested_price_ceiling_usd: 12,
+    requested_work_minutes: 90,
+    approved_price_ceiling_usd: 12,
+    approved_work_minutes: 90,
+    missing_controls: [
+      "operator live-run activation setting persistence",
+      "budget reservation provider",
+      "model/provider route executor",
+      "retrieval executor with source receipts",
+      "graph mutation writer",
+      "final HTML artifact writer",
+    ],
+    blocker_reason: "live_run_activation_controls_missing",
+    live_run_activation_allowed: false,
+    dispatch_allowed: false,
+    dispatch_performed: false,
+    budget_reserved: false,
+    provider_calls_made: false,
+    retrieval_performed: false,
+    graph_mutated: false,
+    final_artifact_created: false,
+    settings_notes: ["live-run activation settings gate only: live execution remains disabled"],
   })),
   dispatchMidnightOil: vi.fn(async () => ({
     receipt_id: "midnight-oil-test-dispatch-receipt",
@@ -440,6 +474,33 @@ describe("MidnightOil", () => {
     expect(screen.getByText("midnight-oil-test-endpoint-dry-run-receipt")).toBeTruthy();
     expect(screen.getAllByText("planned not dispatched").length).toBeGreaterThan(1);
     expect(screen.getAllByText("not performed").length).toBeGreaterThan(1);
+
+    await user.click(screen.getByRole("button", { name: "Live settings" }));
+
+    await waitFor(() => expect(liveRunActivationSettingsMidnightOil).toHaveBeenCalled());
+    expect(liveRunActivationSettingsMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      applied_run_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-applied-run-receipt",
+      }),
+      requested_live_run_enabled: true,
+      requested_price_ceiling_usd: 12,
+      requested_work_minutes: 90,
+    });
+    expect(screen.getByText("Settings receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-live-run-activation-settings")).toBeTruthy();
+    expect(screen.getByText("blocked live run activation disabled")).toBeTruthy();
+    expect(screen.getByText("live run activation controls missing")).toBeTruthy();
+    expect(screen.getByText("6 controls")).toBeTruthy();
+    expect(screen.getByText("blocked")).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "Dispatch gate" }));
 
