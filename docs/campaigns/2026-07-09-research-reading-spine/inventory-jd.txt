@@ -1,0 +1,12 @@
+# inventory-jd · hosted HTML DR Settings depth prefill · residual (jd)
+
+## Delta
+- HostedHtmlDocumentHost: fetchDepthTiers → researchTier state
+- hosted-html-dr-depth-mount data-depth-prefill / data-research-tier
+- onResearchTierChange for local pick override
+
+## Verified
+vitest HostedHtmlDocumentHost 11_passed
+
+## Next
+(je) DeepResearchSessionHost depth prefill parity

@@ -76,6 +76,23 @@ vi.mock("../engagement/ResearchContextPanel", () => ({
   ),
 }));
 
+const fetchDepthTiers = vi.hoisted(() =>
+  vi.fn(async () => ({
+    active_depth_tier: null as string | null,
+    active_preset: null,
+    presets: [],
+    projection_hints: null,
+    view_format: "html" as const,
+    settings_panel: "depth_tier_presets",
+    source: "test",
+    notes: [] as string[],
+  })),
+);
+
+vi.mock("../../api/settings", () => ({
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...args),
+}));
+
 vi.mock("../engagement/ResearchLaunchBudgetPanel", () => {
   const React = require("react") as typeof import("react");
   return {
@@ -127,6 +144,16 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     hydratePublicationRefs.mockReset();
     collectDeepResearchSpawnIds.mockReset();
     collectDeepResearchSpawnIds.mockReturnValue([]);
+    fetchDepthTiers.mockReset().mockResolvedValue({
+      active_depth_tier: null,
+      active_preset: null,
+      presets: [],
+      projection_hints: null,
+      view_format: "html",
+      settings_panel: "depth_tier_presets",
+      source: "test",
+      notes: [],
+    });
     hydratePublicationRefs.mockResolvedValue({
       ok: [{ handle: "arxiv:1706.03762", asset_id: "pub_1" }],
       failed: [],
@@ -161,6 +188,40 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     // Residual (fl): Write handoff for HTML draft.
     const write = screen.getByTestId("hosted-html-open-write");
     expect(write.getAttribute("href")).toBe("/write?html_draft=doc_abc");
+  });
+
+  it("prefills research tier from Settings wrestle (jd)", async () => {
+    fetchDepthTiers.mockResolvedValue({
+      active_depth_tier: "wrestle",
+      active_preset: null,
+      presets: [],
+      projection_hints: null,
+      view_format: "html",
+      settings_panel: "depth_tier_presets",
+      source: "test",
+      notes: [],
+    });
+    render(
+      <HostedHtmlDocumentHost
+        document_id="doc_wrestle"
+        title="Origin"
+        view_format="html"
+        html="<p>Species</p>"
+      />,
+    );
+    await waitFor(() => {
+      const mount = screen.getByTestId("hosted-html-dr-depth-mount");
+      expect(mount.getAttribute("data-depth-prefill")).toBe("installed");
+      expect(mount.getAttribute("data-research-tier")).toBe("wrestle");
+    });
+    expect(
+      screen.getByTestId("hosted-html-dr-depth-prefill").textContent,
+    ).toMatch(/installed.*wrestle/i);
+    expect(
+      screen
+        .getByTestId("research-launch-budget-panel-stub")
+        .getAttribute("data-research-tier"),
+    ).toBe("wrestle");
   });
 
   it("mounts twin notes + research context for document_id (bw/cv)", () => {
@@ -207,6 +268,16 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(screen.getByTestId("decision-tree-driver-badge-stub")).toBeTruthy();
     const launch = screen.getByTestId("hosted-html-research-launch");
     expect(launch.getAttribute("data-view-format")).toBe("html");
+    await waitFor(() => {
+      expect(fetchDepthTiers).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId("hosted-html-dr-depth-mount")
+          .getAttribute("data-depth-prefill"),
+      ).toBe("none");
+    });
     const budget = screen.getByTestId("research-launch-budget-panel-stub");
     expect(budget.getAttribute("data-research-tier")).toBe("deep");
     // Residual (gn): depth-tier picker enabled on hosted book DR.

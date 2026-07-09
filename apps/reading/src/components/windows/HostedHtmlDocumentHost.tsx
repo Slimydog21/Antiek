@@ -23,12 +23,15 @@
  * Residual (ez): remount TwinNotesPanel on the same refresh key as research
  * context so collective merge / promote reload recursive note-taker twins.
  * Residual (gn): allowTierPick on ResearchLaunchBudgetPanel (flash|pro|wrestle).
+ * Residual (jd): prefill researchTier from Settings depth-tier (parity marketplace jc).
  *
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { fetchDepthTiers } from "../../api/settings";
+import { mapDepthTierToResearchTier } from "../../lib/researchTier";
 import { launchFloatingDeepResearch } from "../../modes/Reading/launchFloatingDeepResearch";
 import {
   hydratePublicationRefs,
@@ -43,6 +46,7 @@ import { ResearchContextPanel } from "../engagement/ResearchContextPanel";
 import {
   ResearchLaunchBudgetPanel,
   type ResearchLaunchBudgetProjection,
+  type ResearchLaunchTier,
 } from "../engagement/ResearchLaunchBudgetPanel";
 import { TwinNotesPanel } from "../engagement/TwinNotesPanel";
 import { useInWindow } from "./windowHostContext";
@@ -108,6 +112,33 @@ export default function HostedHtmlDocumentHost(
   const [budgetWarn, setBudgetWarn] = useState(false);
   const [forceOverBudget, setForceOverBudget] = useState(false);
   const [contextRefreshKey, setContextRefreshKey] = useState(0);
+  /** Residual (jd): Settings depth-tier prefill for hosted book DR. */
+  const [researchTier, setResearchTier] = useState<ResearchLaunchTier>("deep");
+  const [depthPrefill, setDepthPrefill] = useState<
+    "pending" | "installed" | "none" | "error"
+  >("pending");
+
+  // Residual (jd): prefill depth from Settings (parity marketplace jc / Midnight Oil gt).
+  useEffect(() => {
+    let cancelled = false;
+    void fetchDepthTiers()
+      .then((resp) => {
+        if (cancelled) return;
+        const mapped = mapDepthTierToResearchTier(resp.active_depth_tier);
+        if (mapped) {
+          setResearchTier(mapped);
+          setDepthPrefill("installed");
+        } else {
+          setDepthPrefill("none");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setDepthPrefill("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Residual (en): selection identity for float DR + budget.
   const { selection_text: researchSelection, from_highlight: fromHighlight } =
@@ -343,12 +374,33 @@ export default function HostedHtmlDocumentHost(
               </p>
             ) : null}
           </div>
-          <ResearchLaunchBudgetPanel
-            promptText={researchSelection}
-            researchTier="deep"
-            allowTierPick
-            onProjectionChange={onProjectionChange}
-          />
+          {/* Residual (jd): Settings depth prefill + tier pick for hosted book DR. */}
+          <div
+            data-testid="hosted-html-dr-depth-mount"
+            data-research-tier={researchTier}
+            data-depth-prefill={depthPrefill}
+            data-view-format="html"
+          >
+            <p
+              className="text-[10px] font-mono text-ink-mute dark:text-moonlight mb-1"
+              data-testid="hosted-html-dr-depth-prefill"
+              role="status"
+            >
+              Depth prefill: {depthPrefill}
+              {depthPrefill === "installed"
+                ? ` → ${researchTier}`
+                : depthPrefill === "none"
+                  ? " (default deep)"
+                  : ""}
+            </p>
+            <ResearchLaunchBudgetPanel
+              promptText={researchSelection}
+              researchTier={researchTier}
+              allowTierPick
+              onResearchTierChange={setResearchTier}
+              onProjectionChange={onProjectionChange}
+            />
+          </div>
           {budgetWarn ? (
             <label
               className="flex items-center gap-2 text-[11px] font-mono text-emperor"
