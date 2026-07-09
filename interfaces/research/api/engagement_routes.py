@@ -373,20 +373,38 @@ def post_merge(body: MergeBody) -> dict[str, Any]:
 # Optional injectable publication body fetcher for hydrate-ref (tests / wired apps).
 # Signature: (SourceReference) -> dict with title/body_text/abstract/canonical_url.
 hydrate_fetch_publication: Any = None
+# Optional arXiv fetch_by_id(arxiv_id) -> ArxivPaper|dict (never silent live default).
+hydrate_arxiv_fetch_by_id: Any = None
 
 
 @engagement_router.post("/hydrate-ref")
 def post_hydrate_ref(body: HydrateRefBody) -> dict[str, Any]:
     """Land arxiv/substack/url as an HTML-first asset (offline-safe by default).
 
-    Does not call live arxiv/substack network unless ``hydrate_fetch_publication``
-    is set (tests / app wiring). PDF is never required.
+    Does not call live arxiv/substack network unless injectors are set:
+    ``hydrate_fetch_publication`` and/or ``hydrate_arxiv_fetch_by_id``.
+    PDF is never required.
     """
+    from substrate.engagement_spine import (
+        arxiv_metadata_fetch_publication,
+        compose_fetch_publication,
+    )
+
+    fetcher = hydrate_fetch_publication
+    if fetcher is None and hydrate_arxiv_fetch_by_id is not None:
+        fetcher = arxiv_metadata_fetch_publication(
+            fetch_by_id=hydrate_arxiv_fetch_by_id
+        )
+    elif fetcher is not None and hydrate_arxiv_fetch_by_id is not None:
+        fetcher = compose_fetch_publication(
+            fetcher,
+            arxiv_metadata_fetch_publication(fetch_by_id=hydrate_arxiv_fetch_by_id),
+        )
     try:
         asset = hydrate_reference(
             body.reference,
             store=_eng(),
-            fetch_publication=hydrate_fetch_publication,
+            fetch_publication=fetcher,
             include_html=body.include_html,
             attach_spawn_id=body.attach_spawn_id,
         )

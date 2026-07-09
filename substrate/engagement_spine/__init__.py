@@ -83,6 +83,11 @@ from .collective import (
     merge_spawns_collective,
 )
 from .hydrate import HydratedAsset, asset_id_for_ref, hydrate_reference, project_hydrated_html
+from .hydrate_adapters import (
+    arxiv_metadata_fetch_publication,
+    compose_fetch_publication,
+    hydrate_with_arxiv_adapter,
+)
 from .context_search import search_engagement_context, project_context_search_html
 from .progress import (
     ProgressEvent,
@@ -123,10 +128,13 @@ __all__ = [
     "filter_references",
     "HydratedAsset",
     "ProgressEvent",
+    "arxiv_metadata_fetch_publication",
     "asset_id_for_ref",
+    "compose_fetch_publication",
     "evidence_pack_payload",
     "get_spawn",
     "hydrate_reference",
+    "hydrate_with_arxiv_adapter",
     "list_progress",
     "list_source_references",
     "list_spawns_for_asset",
