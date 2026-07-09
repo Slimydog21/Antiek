@@ -144,3 +144,37 @@ def test_spawn_rejects_empty_selection(client):
         json={"asset_id": "a", "selection_text": "  "},
     )
     assert r.status_code == 400
+
+
+def test_durable_file_store_survives_reset_rebuild(tmp_path, monkeypatch):
+    """ANTIEK_ENGAGEMENT_DIR → FileEngagementStore; data survives store rebuild."""
+    monkeypatch.setenv("ANTIEK_ENGAGEMENT_DIR", str(tmp_path / "eng-data"))
+    reset_engagement_stores()
+    app = FastAPI()
+    register_engagement_routes(app)
+    c = TestClient(app)
+    r = c.post(
+        "/engagement/spawn-from-highlight",
+        json={
+            "asset_id": "durable-asset",
+            "selection_text": "durable passage",
+            "region_id": "d1",
+            "references": ["1706.03762"],
+        },
+    )
+    assert r.status_code == 200
+    spawn_id = r.json()["spawn_id"]
+
+    # Rebuild stores from same dir (simulates process restart)
+    reset_engagement_stores()
+    app2 = FastAPI()
+    register_engagement_routes(app2)
+    c2 = TestClient(app2)
+    r2 = c2.post(
+        "/engagement/attach-refs",
+        json={"spawn_id": spawn_id, "references": ["https://x.substack.com/p/y"]},
+    )
+    assert r2.status_code == 200, r2.text
+    kinds = {ref["kind"] for ref in r2.json()["source_references"]}
+    assert "arxiv" in kinds
+    assert "substack" in kinds

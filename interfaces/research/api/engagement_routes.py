@@ -1,9 +1,12 @@
 """Engagement spine REST surface — research↔reading workstation.
 
 Standalone APIRouter (same discipline as settings_budget / write_routes):
-testable alone; included with one line. Process-local engagement + session
-stores for the MVP residual — durable multi-worker store is a later residual
-(honest limitation, mirrored by decision-tree process registry).
+testable alone; included with one line.
+
+Store backend:
+  * ``ANTIEK_ENGAGEMENT_DIR`` set → durable ``FileEngagementStore`` +
+    ``FileSessionStore`` under that directory (JSON files).
+  * unset → process-local in-memory stores (tests / single-worker MVP).
 
 Surfaces:
   POST /engagement/spawn-from-highlight
@@ -16,6 +19,8 @@ Surfaces:
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, FastAPI, HTTPException
@@ -29,37 +34,63 @@ from substrate.engagement_spine import (
     merge_spawns_collective,
     spawn_from_highlight_with_references,
 )
+from substrate.engagement_spine.store import EngagementStore, FileEngagementStore
 from substrate.floating_session import (
     complete_session_with_context_flywheel,
     open_from_highlight_with_references,
 )
-from substrate.floating_session.store import InMemorySessionStore
+from substrate.floating_session.store import (
+    FileSessionStore,
+    InMemorySessionStore,
+    SessionStore,
+)
 
 engagement_router = APIRouter(prefix="/engagement", tags=["engagement"])
 
-# Process-local stores (documented honest MVP). Tests call reset_engagement_stores().
-_engagement_store: InMemoryEngagementStore | None = None
-_session_store: InMemorySessionStore | None = None
+# Lazily constructed stores. Tests call reset_engagement_stores().
+_engagement_store: EngagementStore | None = None
+_session_store: SessionStore | None = None
 
 
-def reset_engagement_stores() -> None:
-    """Clear process-local stores (tests + operator reset)."""
+def engagement_data_dir() -> Path | None:
+    """Resolve durable root when ANTIEK_ENGAGEMENT_DIR is set."""
+    raw = (os.environ.get("ANTIEK_ENGAGEMENT_DIR") or "").strip()
+    if not raw:
+        return None
+    return Path(raw).expanduser()
+
+
+def reset_engagement_stores(*, root: Path | None = None) -> None:
+    """Rebuild stores (tests + operator reset).
+
+    If ``root`` is provided, use file stores at that path. Else honor
+    ``ANTIEK_ENGAGEMENT_DIR``, else in-memory.
+    """
     global _engagement_store, _session_store
-    _engagement_store = InMemoryEngagementStore()
-    _session_store = InMemorySessionStore()
+    base = root if root is not None else engagement_data_dir()
+    if base is not None:
+        base = Path(base)
+        base.mkdir(parents=True, exist_ok=True)
+        _engagement_store = FileEngagementStore(base / "engagement")
+        _session_store = FileSessionStore(base / "sessions")
+    else:
+        _engagement_store = InMemoryEngagementStore()
+        _session_store = InMemorySessionStore()
 
 
-def _eng() -> InMemoryEngagementStore:
+def _eng() -> EngagementStore:
     global _engagement_store
     if _engagement_store is None:
-        _engagement_store = InMemoryEngagementStore()
+        reset_engagement_stores()
+    assert _engagement_store is not None
     return _engagement_store
 
 
-def _sess() -> InMemorySessionStore:
+def _sess() -> SessionStore:
     global _session_store
     if _session_store is None:
-        _session_store = InMemorySessionStore()
+        reset_engagement_stores()
+    assert _session_store is not None
     return _session_store
 
 
