@@ -1682,7 +1682,7 @@ export default function Settings() {
                     ))}
                   </ul>
                 ) : null}
-                {/* Residual (nx): known feed sources legend (twin_chase, floating DR). */}
+                {/* Residual (nx/os): known feed sources legend (chase/DR + MO/collective). */}
                 {(usage.known_sources || []).length > 0 ? (
                   <p
                     className="text-[11px] font-mono opacity-80"
@@ -1697,6 +1697,12 @@ export default function Settings() {
                       (usage.known_sources || []).includes(
                         "floating_deep_research",
                       ),
+                    )}
+                    data-has-midnight-oil={String(
+                      (usage.known_sources || []).includes("midnight_oil"),
+                    )}
+                    data-has-collective-merge={String(
+                      (usage.known_sources || []).includes("collective_merge"),
                     )}
                     role="status"
                   >
@@ -1791,7 +1797,7 @@ export default function Settings() {
                 {suiteProposal.status ?? "—"}
               </div>
             ) : null}
-            {/* Residual (hf/nz): show which usage sources feed this rewrite. */}
+            {/* Residual (hf/nz/os): show which usage sources feed this rewrite. */}
             {Object.keys(usage?.by_source || {}).length > 0 ? (
               <p
                 className="text-[11px] font-mono text-ink-soft dark:text-starlight"
@@ -1801,6 +1807,12 @@ export default function Settings() {
                 )}
                 data-has-floating-dr={String(
                   Boolean((usage?.by_source || {}).floating_deep_research),
+                )}
+                data-has-midnight-oil={String(
+                  Boolean((usage?.by_source || {}).midnight_oil),
+                )}
+                data-has-collective-merge={String(
+                  Boolean((usage?.by_source || {}).collective_merge),
                 )}
                 role="status"
               >
@@ -1815,11 +1827,13 @@ export default function Settings() {
                 data-testid="antiek-bench-suite-proposal-feed-sources"
                 data-has-twin-chase="false"
                 data-has-floating-dr="false"
+                data-has-midnight-oil="false"
+                data-has-collective-merge="false"
                 role="status"
               >
                 Feed sources: (none yet — investigation starts, floating DR /
-                twin chase opens, engagement flywheel, marketplace host, and
-                Midnight Oil populate usage)
+                twin chase opens, engagement flywheel, marketplace host,
+                Midnight Oil, and collective merge populate usage)
               </p>
             )}
             {suiteProposalError && (

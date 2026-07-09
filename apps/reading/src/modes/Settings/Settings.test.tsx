@@ -97,8 +97,11 @@ const {
         session_flywheel: 1,
         twin_chase: 1,
         floating_deep_research: 1,
+        // Residual (os): MO + collective feed honesty after om–oq engagement.
+        midnight_oil: 1,
+        collective_merge: 1,
       },
-      // Residual (nx): known feed sources legend (incl twin_chase / floating DR).
+      // Residual (nx/os): known feed sources legend (chase/DR + MO/collective).
       known_sources: [
         "investigation_start",
         "session_flywheel",
@@ -671,12 +674,19 @@ describe("Settings SPR-01 + decision-tree install", () => {
     const legend = screen.getByTestId("antiek-bench-usage-known-sources");
     expect(legend.getAttribute("data-has-twin-chase")).toBe("true");
     expect(legend.getAttribute("data-has-floating-dr")).toBe("true");
+    // Residual (os): midnight_oil + collective_merge machine-readable honesty.
+    expect(legend.getAttribute("data-has-midnight-oil")).toBe("true");
+    expect(legend.getAttribute("data-has-collective-merge")).toBe("true");
     expect(legend.textContent).toMatch(/twin_chase/);
     expect(legend.textContent).toMatch(/floating_deep_research/);
+    expect(legend.textContent).toMatch(/midnight_oil/);
+    expect(legend.textContent).toMatch(/collective_merge/);
     // Residual (nx): by_source list includes chase open sources when present.
     const sources = screen.getByTestId("antiek-bench-usage-sources");
     expect(sources.textContent).toMatch(/twin_chase/);
     expect(sources.textContent).toMatch(/floating_deep_research/);
+    expect(sources.textContent).toMatch(/midnight_oil/);
+    expect(sources.textContent).toMatch(/collective_merge/);
   });
 
   it("links dual-gate checklist + NotDiamond advisory-only on suite panel (nt)", async () => {
@@ -693,7 +703,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(nd.textContent).toMatch(/advisory only/i);
   });
 
-  it("shows suite proposal feed sources from usage by_source (hf/nz)", async () => {
+  it("shows suite proposal feed sources from usage by_source (hf/nz/os)", async () => {
     render(<Settings />);
     await waitFor(() => {
       expect(
@@ -709,6 +719,11 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(feed.textContent).toMatch(/floating_deep_research/);
     expect(feed.getAttribute("data-has-twin-chase")).toBe("true");
     expect(feed.getAttribute("data-has-floating-dr")).toBe("true");
+    // Residual (os): midnight_oil + collective_merge feed chrome.
+    expect(feed.textContent).toMatch(/midnight_oil/);
+    expect(feed.textContent).toMatch(/collective_merge/);
+    expect(feed.getAttribute("data-has-midnight-oil")).toBe("true");
+    expect(feed.getAttribute("data-has-collective-merge")).toBe("true");
     expect(
       screen.getByTestId("antiek-bench-suite-proposal-panel").getAttribute(
         "data-propose-not-promote",

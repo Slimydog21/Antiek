@@ -494,3 +494,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (or, 2026-07-10) **SESSION-ARC om–oq Write + MO engagement:**
   - SESSION-ARC-om-oq-write-moil-engagement.md fleet handoff
   - DEFERRED-GAPS closed-since-om block
+
+- Closed (os, 2026-07-10) **Settings Antiek-bench MO + collective_merge chrome:**
+  - data-has-midnight-oil / data-has-collective-merge on known sources + suite feed
+  - empty-state copy includes collective merge
