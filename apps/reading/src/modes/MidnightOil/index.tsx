@@ -25,6 +25,7 @@
  * (fits | may_exceed | unknown) — never invent $0 remaining.
  * Residual (me): soft-gate approve when ceiling may_exceed remaining budget
  * (force override required; unknown remaining never blocks).
+ * Residual (ml): dual-gate L1–L4 checklist deep-link (parity mj; prep only).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -450,8 +451,8 @@ export default function MidnightOil() {
       ) : null}
 
 
-      {/* Residual (ic): Settings deep-link for decision-tree + daily budget. */}
-      <p className="mb-4 max-w-xl text-[11px] font-mono">
+      {/* Residual (ic/ml): Settings + dual-gate checklist (prep only). */}
+      <p className="mb-4 max-w-xl text-[11px] font-mono space-x-3">
         <a
           href="/settings"
           data-testid="moil-settings-link"
@@ -459,6 +460,14 @@ export default function MidnightOil() {
           title="Open Settings for decision-tree driver and daily budget cap"
         >
           Settings · model driver & budget
+        </a>
+        <a
+          href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+          data-testid="moil-dual-gate-checklist-link"
+          className="underline opacity-80 hover:opacity-100"
+          title="Dual-gate L1–L4 operator checklist (live MO step prep; offline default)"
+        >
+          Dual-gate L1–L4 checklist
         </a>
       </p>
 

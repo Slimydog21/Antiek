@@ -1,0 +1,9 @@
+# inventory-ml · Midnight Oil dual-gate checklist deep-link
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ml
+files:
+  apps/reading/src/modes/MidnightOil/index.tsx
+  apps/reading/src/modes/MidnightOil/MidnightOil.test.tsx
+  docs/campaigns/2026-07-09-research-reading-spine/DEFERRED-GAPS-for-future-agents.md
+proof: vitest MidnightOil 11 passed
+invariants: never enables L4 live step · prep link only · offline default

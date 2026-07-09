@@ -199,6 +199,13 @@ describe("MidnightOil mode", () => {
     expect(link.textContent).toMatch(/model driver & budget/i);
   });
 
+  it("links dual-gate L1–L4 checklist for live-step prep (ml)", () => {
+    render(<MidnightOil />);
+    const dual = screen.getByTestId("moil-dual-gate-checklist-link");
+    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4/);
+    expect(dual.textContent).toMatch(/dual-gate/i);
+  });
+
   it("mounts budget projection panel before create (cs)", () => {
     render(<MidnightOil />);
     expect(screen.getByTestId("moil-budget-mount")).toBeTruthy();

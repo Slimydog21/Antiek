@@ -264,3 +264,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (mk, 2026-07-10) **SESSION-ARC lw–mj full wave:**
   - SESSION-ARC-lw-mj-catalog-moil-dualgate.md zero-context handoff
+
+- Closed (ml, 2026-07-10) **Midnight Oil dual-gate checklist link:**
+  - Parity mj attach surface; prep only for L4 live step

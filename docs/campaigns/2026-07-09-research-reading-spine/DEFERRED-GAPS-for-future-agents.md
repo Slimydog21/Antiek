@@ -65,10 +65,13 @@ Does not enable live injectors — documents how to enable without silent failur
 
 ## Closed since lv (marketplace catalog subjects · 2026-07-10)
 
-**(lw)** research-domain subjects + STEM PD (elements/principia/novum) + by_subject
-honesty + domain chip filter UI. Live connectors still L1/L2 dual-gate only.
+**(lw–mk)** marketplace catalog product-complete offline (subjects, STEM PD, source
+chips, HTML open, book_qa usage, host subjects, chip-aware windows); Midnight Oil
+ceiling budget fit + soft-gate approve; dual-gate checklist on attach; full-wave
+SESSION-ARC. Live L1–L4 injectors remain operator dual-gate only.
+See `SESSION-ARC-lw-mj-catalog-moil-dualgate.md`.
 
 ## Next residual after this doc
 
-**(lx)+** next thin product residual or operator merge PR #465.
+**(ml)+** next thin product residual or operator merge PR #465.
 Infinite continues until STOP.
