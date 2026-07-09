@@ -2,6 +2,8 @@ import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 
 import { useInvestigation } from "../../hooks/useInvestigation";
+import { useInvestigationList } from "../../hooks/useInvestigationList";
+import type { InvestigationSummary } from "../../lib/api";
 import { useChaseDraftHandoffs } from "../ResearchWorkstation/chaseHandoffs";
 import { deriveNotes } from "../ResearchWorkstation/NotesPanel";
 import Thinking from "../../shared/Thinking";
@@ -67,6 +69,11 @@ export default function ReadingCompanion({
   const reading = useInvestigation(readingThreadId);
   const notes = useMemo(() => deriveNotes(reading.events), [reading.events]);
   const handoffs = useChaseDraftHandoffs(readingThreadId);
+  const { investigations } = useInvestigationList({ limit: 200, pollIntervalMs: 0 });
+  const summariesById = useMemo(
+    () => new Map(investigations.map((item) => [item.investigation_id, item])),
+    [investigations],
+  );
   const [copiedMergePacket, setCopiedMergePacket] = useState(false);
 
   // "Working" only when the thread is genuinely running (a distill / talk in
@@ -75,12 +82,16 @@ export default function ReadingCompanion({
   const working = reading.status === "in_progress";
 
   async function copyMergePacket() {
+    const readyHandoffs = handoffs.filter(
+      (handoff) => summariesById.get(handoff.child_investigation_id)?.status === "completed",
+    );
     const payload = {
       kind: "antiek.reader.chase_merge_packet",
       document_id: documentId,
       title: title ?? null,
       parent_reading_thread_id: readingThreadId,
       child_investigation_ids: handoffs.map((handoff) => handoff.child_investigation_id),
+      ready_child_investigation_ids: readyHandoffs.map((handoff) => handoff.child_investigation_id),
       source_passages: handoffs.map((handoff) => handoff.source_passage),
       next_step: "open the child researches, export completed artifacts, then draft a merge before changing the book asset",
       no_spend: true,
@@ -134,6 +145,9 @@ export default function ReadingCompanion({
                 key={`${handoff.parent_investigation_id}:${handoff.child_investigation_id}`}
                 className="rounded-hog border border-rule bg-ice-0 px-2 py-1.5 dark:bg-charcoal-2"
               >
+                <span className="mb-1 inline-flex rounded-hog border border-rule px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+                  {handoffStatusLabel(summariesById.get(handoff.child_investigation_id))}
+                </span>
                 <p className="line-clamp-2 font-serif text-[13px] leading-snug text-ink dark:text-bright">
                   {handoff.source_passage}
                 </p>
@@ -194,4 +208,19 @@ export default function ReadingCompanion({
       </div>
     </aside>
   );
+}
+
+function handoffStatusLabel(summary: InvestigationSummary | undefined): string {
+  if (!summary) return "saved locally";
+  switch (summary.status) {
+    case "completed":
+      return "ready to export";
+    case "in_progress":
+      return "still working";
+    case "failed":
+    case "stopped":
+      return "needs attention";
+    case "not_found":
+      return "not found";
+  }
 }

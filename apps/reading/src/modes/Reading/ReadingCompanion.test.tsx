@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 
 import type { Event } from "../../generated/types";
 import type { InvestigationState } from "../../hooks/useInvestigation";
+import type { InvestigationSummary } from "../../lib/api";
 import {
   buildChaseDraftHandoff,
   clearChaseDraftHandoffs,
@@ -26,12 +27,16 @@ import {
  *    running, not as decoration.
  */
 
-const { useInvestigationMock } = vi.hoisted(() => ({
+const { useInvestigationMock, listState } = vi.hoisted(() => ({
   useInvestigationMock: vi.fn(),
+  listState: { investigations: [] as InvestigationSummary[], loading: false, error: null, refetch: vi.fn() },
 }));
 
 vi.mock("../../hooks/useInvestigation", () => ({
   useInvestigation: useInvestigationMock,
+}));
+vi.mock("../../hooks/useInvestigationList", () => ({
+  useInvestigationList: () => listState,
 }));
 
 import ReadingCompanion from "./ReadingCompanion";
@@ -61,7 +66,10 @@ function state(over: Partial<InvestigationState>): InvestigationState {
   } as InvestigationState;
 }
 
-beforeEach(() => useInvestigationMock.mockReset());
+beforeEach(() => {
+  useInvestigationMock.mockReset();
+  listState.investigations = [];
+});
 afterEach(() => {
   cleanup();
   clearChaseDraftHandoffs();
@@ -73,6 +81,18 @@ function renderCompanion() {
       <ReadingCompanion documentId="doc-1" title="Meditations" readingThreadId="read-doc-1" />
     </MemoryRouter>,
   );
+}
+
+function summary(over: Partial<InvestigationSummary> & { investigation_id: string }): InvestigationSummary {
+  return {
+    question: null,
+    status: "completed",
+    started_at: null,
+    completed_at: null,
+    cost_usd_total: 0,
+    parent_investigation_id: "read-doc-1",
+    ...over,
+  };
 }
 
 describe("ReadingCompanion (Read SPR-06 M2)", () => {
@@ -173,6 +193,44 @@ describe("ReadingCompanion (Read SPR-06 M2)", () => {
     });
     expect(payload.next_step).toMatch(/draft a merge/);
     expect(screen.getByRole("button", { name: /copied/i })).toBeTruthy();
+  });
+
+  it("distinguishes completed saved chases from chases still working", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    recordChaseDraftHandoff(
+      buildChaseDraftHandoff({
+        childInvestigationId: "inv-done",
+        parentInvestigationId: "read-doc-1",
+        sourcePassage: "A completed chase can be exported into a merge draft.",
+      }),
+    );
+    recordChaseDraftHandoff(
+      buildChaseDraftHandoff({
+        childInvestigationId: "inv-running",
+        parentInvestigationId: "read-doc-1",
+        sourcePassage: "A running chase should stay visible but not ready.",
+      }),
+    );
+    listState.investigations = [
+      summary({ investigation_id: "inv-done", status: "completed" }),
+      summary({ investigation_id: "inv-running", status: "in_progress" }),
+    ];
+    useInvestigationMock.mockReturnValue(state({ status: "not_found", events: [] }));
+
+    renderCompanion();
+
+    expect(screen.getByText("ready to export")).toBeTruthy();
+    expect(screen.getByText("still working")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /copy merge packet/i }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    const payload = JSON.parse(writeText.mock.calls[0][0]);
+    expect(payload.child_investigation_ids).toEqual(["inv-running", "inv-done"]);
+    expect(payload.ready_child_investigation_ids).toEqual(["inv-done"]);
   });
 
   it("shows the shared working beat only while the thread is running", () => {
