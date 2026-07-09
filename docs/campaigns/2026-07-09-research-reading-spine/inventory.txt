@@ -3,6 +3,6 @@
 
 CAPABILITY | STATUS | EVIDENCE
 (a)–(bg) prior | branch_only | campaign inventories
-(bh) Midnight Oil deposit progress UI | branch_only | POST /midnight-oil/deposit; depositMidnightOilJob client; MidnightOil deposit+progress panel; tests deposit route + mode; THIS CYCLE
+(bh) Midnight Oil deposit progress UI | branch_only | POST /midnight-oil/deposit; depositMidnightOilJob client; MidnightOil deposit+progress panel; tests deposit route + mode; @ 57f21c2f
 
 NEXT: (bi) arxiv hydrate wire to acquisition adapter (optional live fetch injector); operator merge PR #465
