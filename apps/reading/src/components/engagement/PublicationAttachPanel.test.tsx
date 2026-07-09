@@ -22,6 +22,7 @@ describe("PublicationAttachPanel residual ck/ed", () => {
     attachSourceRefs.mockResolvedValue({
       spawn_id: "spn_1",
       source_references: [{ kind: "arxiv", raw: "arxiv:1706.03762" }],
+      research_tier: "wrestle",
       view_format: "html",
     });
     hydratePublicationRef.mockResolvedValue({
@@ -98,6 +99,19 @@ describe("PublicationAttachPanel residual ck/ed", () => {
     const metrics = screen.getByTestId("publication-attach-metrics");
     expect(metrics.getAttribute("data-attached-count")).toBe("1");
     expect(metrics.getAttribute("data-hydrated-count")).toBe("1");
+    // Residual (ko): spawn research_tier from attach-refs response.
+    expect(metrics.getAttribute("data-research-tier")).toBe("wrestle");
+    expect(
+      screen
+        .getByTestId("publication-attach-result")
+        .getAttribute("data-research-tier"),
+    ).toBe("wrestle");
+    expect(
+      screen.getByTestId("publication-attach-research-tier").textContent,
+    ).toMatch(/wrestle/i);
+    expect(
+      screen.getByTestId("publication-attach-research-tier").textContent,
+    ).toMatch(/long-horizon/i);
     expect(metrics.getAttribute("data-offline-honest-count")).toBe("1");
     expect(metrics.getAttribute("data-citation-trust")).toBe("grounded");
     expect(metrics.getAttribute("data-view-format")).toBe("html");

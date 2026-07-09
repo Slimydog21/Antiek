@@ -8,6 +8,7 @@
  * Residual (hc): surface offline_honest per hydrated asset so operators
  * never confuse identity-only stubs with live publication bodies.
  * Residual (ia): Settings deep-link for hydrate live-injector readiness (hq).
+ * Residual (ko): surface spawn research_tier from attach-refs response.
  * HTML-first; offline hydrate by default.
  */
 
@@ -43,6 +44,7 @@ export function PublicationAttachPanel({
   const [error, setError] = useState<string | null>(null);
   const [attached, setAttached] = useState<string[]>([]);
   const [hydrated, setHydrated] = useState<HydrateRefResponse[]>([]);
+  const [researchTier, setResearchTier] = useState<string | null>(null);
 
   const run = useCallback(async () => {
     const sid = spawnId.trim();
@@ -63,6 +65,10 @@ export function PublicationAttachPanel({
         throw new Error("attach view_format must be html");
       }
       setAttached(refs);
+      // Residual (ko): reserved spawn research_tier from attach response.
+      setResearchTier(
+        (attach.research_tier || "").trim().toLowerCase() || null,
+      );
       const assets: HydrateRefResponse[] = [];
       for (const reference of refs) {
         const asset = await hydratePublicationRef({
@@ -145,12 +151,13 @@ export function PublicationAttachPanel({
           data-view-format="html"
           data-citation-trust={hydrated.length > 0 ? "grounded" : "ungrounded"}
           data-hydrated-count={String(hydrated.length)}
+          data-research-tier={researchTier || ""}
           data-offline-honest-count={String(
             hydrated.filter((a) => a.offline_honest !== false && !a.fetched)
               .length,
           )}
         >
-          {/* Residual (hz): machine-readable attach+hydrate metrics. */}
+          {/* Residual (hz/ko): machine-readable attach+hydrate + depth metrics. */}
           <div
             data-testid="publication-attach-metrics"
             data-attached-count={String(attached.length)}
@@ -162,16 +169,34 @@ export function PublicationAttachPanel({
             data-citation-trust={
               hydrated.length > 0 ? "grounded" : "ungrounded"
             }
+            data-research-tier={researchTier || ""}
             data-view-format="html"
             role="status"
           >
             Publication attach · attached={attached.length} · hydrated=
             {hydrated.length} · trust=
             {hydrated.length > 0 ? "grounded" : "ungrounded"}
+            {researchTier ? ` · tier=${researchTier}` : ""}
           </div>
           <p>
             Attached {attached.length} · hydrated {hydrated.length} HTML asset(s)
           </p>
+          {/* Residual (ko): spawn research_tier depth posture after attach. */}
+          {researchTier ? (
+            <p
+              className="opacity-90"
+              data-testid="publication-attach-research-tier"
+              data-research-tier={researchTier}
+              role="status"
+            >
+              Research tier: <strong>{researchTier}</strong>
+              {researchTier === "wrestle"
+                ? " · multi-minute long-horizon depth"
+                : researchTier === "fast"
+                  ? " · flash / distill depth"
+                  : " · deep / synthesize depth"}
+            </p>
+          ) : null}
           {/* Residual (ef): competitive bar — attached pubs are citation ground. */}
           <p
             className={

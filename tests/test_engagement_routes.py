@@ -56,6 +56,8 @@ def test_spawn_attach_context_collective(client):
     )
     assert r2.status_code == 200
     assert len(r2.json()["source_references"]) == 2
+    # Residual (ko): attach-refs surfaces reserved spawn research_tier.
+    assert r2.json().get("research_tier") in ("fast", "deep", "wrestle")
 
     # Seed a twin into the process store for promote path
     record_twin_insight(

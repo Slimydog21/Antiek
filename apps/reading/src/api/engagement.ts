@@ -113,7 +113,13 @@ export async function spawnFromHighlight(
 export async function attachSourceRefs(
   spawn_id: string,
   references: string[],
-): Promise<{ spawn_id: string; source_references: SourceReference[]; view_format: "html" }> {
+): Promise<{
+  spawn_id: string;
+  source_references: SourceReference[];
+  /** Residual (ko): reserved spawn research_tier after attach. */
+  research_tier?: "fast" | "deep" | "wrestle" | string | null;
+  view_format: "html";
+}> {
   const res = await apiFetch(`${API_BASE}/engagement/attach-refs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

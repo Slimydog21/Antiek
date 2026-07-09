@@ -316,6 +316,8 @@ def post_attach_refs(body: AttachRefsBody) -> dict[str, Any]:
     return {
         "spawn_id": spawn.spawn_id,
         "source_references": [r.to_dict() for r in merged],
+        # Residual (ko): reserved spawn research_tier for attach UI identity.
+        "research_tier": getattr(spawn, "research_tier", None) or "deep",
         "view_format": "html",
     }
 
