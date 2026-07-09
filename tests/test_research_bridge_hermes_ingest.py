@@ -450,3 +450,67 @@ def test_payload_string_secret_values_redacted():
     rendered = _render_payload({"note": "token is sk-live-abcdefghijklmnopqrstuvwxyz ok"})
     assert "sk-live" not in rendered
     assert "[redacted]" in rendered
+
+
+def test_symlink_loop_does_not_abort_sweep(env):
+    """A self-looping symlink must be skipped, not crash the batch."""
+    loop = Path(env["events"]) / "loop.jsonl"
+    try:
+        loop.symlink_to(loop)
+    except OSError:
+        pytest.skip("symlink not permitted in this environment")
+    _write_events(env, [_event("ok", "ok-inv")], filename="ok.jsonl")
+    with connect_write(env["db"]) as con:
+        batch = ingest_hermes_events(
+            con, env["events"], allowed_roots=env["allowed"]
+        )
+    labels = {r.investigation_id for r in batch.results}
+    assert "ok-inv" in labels
+
+
+def test_blank_lines_charge_physical_budget(env, monkeypatch):
+    """Blank lines must not be free — they charge the physical-read budget."""
+    from substrate.research_bridge import hermes_ingest as H
+
+    monkeypatch.setattr(H, "_MAX_PHYSICAL_READS", 5)
+    path = Path(env["events"]) / "blanks.jsonl"
+    # 10 blank lines then a real event — with budget 5 the real event is never seen.
+    path.write_text("\n" * 10 + json.dumps(_event("late", "late-inv")) + "\n", encoding="utf-8")
+    events = list(iter_hermes_events(env["events"], allowed_roots=env["allowed"]))
+    assert events == []
+
+
+def test_jsonl_file_count_is_capped(env, monkeypatch):
+    """Unbounded rglob must not retain more than _MAX_JSONL_FILES candidates."""
+    from substrate.research_bridge import hermes_ingest as H
+
+    monkeypatch.setattr(H, "_MAX_JSONL_FILES", 3)
+    for i in range(10):
+        _write_events(
+            env,
+            [_event(f"e{i}", f"inv-{i}")],
+            filename=f"part-{i:02d}.jsonl",
+        )
+    events = list(iter_hermes_events(env["events"], allowed_roots=env["allowed"]))
+    # At most 3 files × 1 event each under the cap.
+    assert len(events) <= 3
+
+
+def test_aws_key_equals_value_payload_is_redacted():
+    rendered = _render_payload(
+        {
+            "note": "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+            "ok": "plain prose about keys",
+        }
+    )
+    assert "wJalrXUtnFEMI" not in rendered
+    assert "[redacted]" in rendered
+    assert "plain prose" in rendered
+
+
+def test_generic_secret_env_assignment_redacted():
+    rendered = _render_payload(
+        {"log": "MY_API_TOKEN=abcdefghijklmnopQRST and done"}
+    )
+    assert "abcdefghijklmnopQRST" not in rendered
+    assert "[redacted]" in rendered

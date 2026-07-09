@@ -59,6 +59,10 @@ _MAX_EVENT_ID_CHARS: int = 128
 _MAX_LINES_SCANNED: int = 50_000
 _MAX_EVENTS_RETAINED: int = 20_000
 _MAX_LINE_CHARS: int = 64_000
+# Cap file enumeration before any line reads — rglob materialization DoS.
+_MAX_JSONL_FILES: int = 2_000
+# Physical readline budget (includes blank/skipped lines so they still charge).
+_MAX_PHYSICAL_READS: int = 100_000
 
 # Key-name patterns treated as secret-bearing (case-insensitive substring).
 _SECRET_KEY_RE = re.compile(
@@ -79,6 +83,13 @@ _SECRET_VALUE_RE = re.compile(
     r"|AIza[0-9A-Za-z\-_]{20,}"
     r"|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"
     r"|eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}"  # JWT-shaped
+    # Free-form KEY=value secret assignments common in logs/env dumps.
+    r"|(?:AWS_SECRET_ACCESS_KEY|AWS_ACCESS_KEY_ID|AWS_SESSION_TOKEN|"
+    r"GOOGLE_API_KEY|GCP_SERVICE_ACCOUNT|AZURE_CLIENT_SECRET|"
+    r"OPENAI_API_KEY|ANTHROPIC_API_KEY|XAI_API_KEY|"
+    r"DATABASE_URL|POSTGRES_PASSWORD|MYSQL_PWD|"
+    r"PRIVATE_KEY|SECRET_KEY|ACCESS_KEY|CLIENT_SECRET)"
+    r"\s*[:=]\s*\S{8,}"
     r")"
 )
 
@@ -203,11 +214,40 @@ def resolve_allowed_events_dir(
 
 
 def _is_under_root(path: Path, root: Path) -> bool:
+    """True when ``path`` resolves under ``root``.
+
+    Catches ``ValueError`` (outside root) AND ``RuntimeError``/``OSError``
+    (symlink loops, permission races) so a single hostile entry cannot abort
+    the whole sweep.
+    """
     try:
         path.resolve().relative_to(root)
         return True
-    except ValueError:
+    except (ValueError, RuntimeError, OSError):
         return False
+
+
+def _open_jsonl_nofollow(path: Path) -> Any:
+    """Open a JSONL path without following a final-component symlink (TOCTOU).
+
+    Uses ``O_NOFOLLOW`` when available so a race that swaps a checked regular
+    file for a symlink-to-outside fails closed at open time rather than
+    reading the outside target. Falls back to an explicit ``is_symlink``
+    re-check + plain open on platforms without ``O_NOFOLLOW``.
+
+    Returns a text file object (``IO[str]``); typed as ``Any`` to avoid
+    depending on ``typing.TextIO`` across the dual-import bootstrap path.
+    """
+    flags = os.O_RDONLY
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    if nofollow:
+        flags |= nofollow
+        fd = os.open(path, flags)
+        return os.fdopen(fd, "r", encoding="utf-8", errors="replace")
+    # Fallback platforms: re-check symlink bit immediately before open.
+    if path.is_symlink():
+        raise OSError("refusing to follow symlink (no O_NOFOLLOW)")
+    return path.open("r", encoding="utf-8", errors="replace")
 
 
 def parse_hermes_event_line(line: str) -> HermesEventRecord | None:
@@ -268,30 +308,57 @@ def _scan_event_lines(
     root = resolve_allowed_events_dir(events_dir, allowed_roots=allowed_roots)
     if not root.is_dir():
         return
-    for path in sorted(root.rglob("*.jsonl")):
-        # Per-file trust check: a symlink under root pointing outside is rejected.
+    # Bound file discovery: never materialize an unbounded rglob list into RAM.
+    # Iterate unsorted (filesystem order) once the cap is hit; sort only the
+    # capped candidate set for deterministic ingest within the budget.
+    candidates: list[Path] = []
+    try:
+        for path in root.rglob("*.jsonl"):
+            candidates.append(path)
+            if len(candidates) >= _MAX_JSONL_FILES:
+                break
+    except (OSError, RuntimeError):
+        # Hostile/broken directory trees must not crash the bridge.
+        return
+    physical_reads = 0
+    for path in sorted(candidates):
+        # Reject symlinks up front (Hermes events are plain files). Combined
+        # with O_NOFOLLOW open this closes the check-then-open TOCTOU window.
+        try:
+            if path.is_symlink():
+                continue
+        except OSError:
+            continue
         if not _is_under_root(path, root):
             continue
         try:
-            with path.open("r", encoding="utf-8", errors="replace") as handle:
+            with _open_jsonl_nofollow(path) as handle:
                 while True:
+                    if physical_reads >= _MAX_PHYSICAL_READS:
+                        return
                     raw_line = handle.readline(_MAX_LINE_CHARS + 1)
                     if raw_line == "":
                         break
+                    physical_reads += 1
                     if not raw_line.strip():
+                        # Blank lines still charge the physical-read budget so
+                        # a multi-GB file of newlines cannot spin forever for free.
                         continue
                     if len(raw_line) > _MAX_LINE_CHARS:
                         yield None, True
                         while raw_line and not raw_line.endswith("\n"):
+                            if physical_reads >= _MAX_PHYSICAL_READS:
+                                return
                             raw_line = handle.readline(_MAX_LINE_CHARS + 1)
+                            physical_reads += 1
                         continue
                     record = parse_hermes_event_line(raw_line)
                     if record is not None:
                         yield record, False
                     else:
                         yield None, True
-        except (OSError, UnicodeDecodeError):
-            # A single unreadable file must not abort the whole sweep.
+        except (OSError, UnicodeDecodeError, RuntimeError):
+            # A single unreadable/hostile file must not abort the whole sweep.
             continue
 
 
@@ -530,11 +597,34 @@ def _is_secret_key(key: str) -> bool:
     return _SECRET_KEY_RE.search(key) is not None
 
 
+def _env_name_looks_secret(name: str) -> bool:
+    """True when an ALL_CAPS env-style name is credential-shaped."""
+    if _is_secret_key(name):
+        return True
+    upper = name.upper()
+    return bool(
+        re.search(
+            r"(?:^|_)(SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIALS?|PRIVATE|"
+            r"API[_-]?KEY|ACCESS[_-]?KEY)(?:$|_)",
+            upper,
+        )
+    )
+
+
 def _looks_like_secret_value(value: str) -> bool:
     """True when a free-form string looks like a credential, not prose."""
     if not value or len(value) < 12:
         return False
-    return _SECRET_VALUE_RE.search(value) is not None
+    if _SECRET_VALUE_RE.search(value) is not None:
+        return True
+    # Generic env-style assignments: SECRETISH_NAME=value (value ≥ 12 chars).
+    # Catches dumps like ``MY_API_TOKEN=abcdefghijklmnop`` without enumerating
+    # every vendor prefix. Requires a secret-ish key token on the left.
+    assign = re.search(
+        r"(?i)\b([A-Z][A-Z0-9_]{2,63})\s*[:=]\s*(\S{12,})",
+        value,
+    )
+    return assign is not None and _env_name_looks_secret(assign.group(1))
 
 
 def _truncate(text: str, limit: int) -> str:
