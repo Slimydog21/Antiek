@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { ResearchLaunchBudgetPanel } from "./ResearchLaunchBudgetPanel";
 
@@ -138,6 +139,76 @@ describe("ResearchLaunchBudgetPanel", () => {
         .getByTestId("research-launch-budget-panel")
         .getAttribute("data-dispatch-tier"),
     ).toBe("flash");
+  });
+
+  it("maps wrestle research tier to wrestle projection (gm)", async () => {
+    render(
+      <ResearchLaunchBudgetPanel
+        promptText="Wrestle with a multi-hop research question carefully"
+        researchTier="wrestle"
+        debounceMs={0}
+      />,
+    );
+    await waitFor(() => {
+      expect(estimatePromptCost).toHaveBeenCalled();
+    });
+    const call = estimatePromptCost.mock.calls.at(-1)?.[0] as {
+      tier?: string;
+      expected_output_tokens?: number;
+    };
+    expect(call.tier).toBe("wrestle");
+    expect(call.expected_output_tokens).toBe(4000);
+    expect(
+      screen
+        .getByTestId("research-launch-budget-panel")
+        .getAttribute("data-dispatch-tier"),
+    ).toBe("wrestle");
+    expect(
+      screen
+        .getByTestId("research-launch-budget-panel")
+        .getAttribute("data-research-tier"),
+    ).toBe("wrestle");
+  });
+
+  it("tier picker switches projection to wrestle (gm)", async () => {
+    const onTier = vi.fn();
+    render(
+      <ResearchLaunchBudgetPanel
+        promptText="Depth tier picker should re-project cost"
+        researchTier="deep"
+        allowTierPick
+        onResearchTierChange={onTier}
+        debounceMs={0}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("research-launch-tier-picker")).toBeTruthy();
+    });
+    expect(
+      screen
+        .getByTestId("research-launch-budget-panel")
+        .getAttribute("data-allow-tier-pick"),
+    ).toBe("true");
+    expect(
+      screen.getByTestId("research-launch-tier-deep").getAttribute("data-selected"),
+    ).toBe("true");
+    estimatePromptCost.mockClear();
+    await userEvent.click(screen.getByTestId("research-launch-tier-wrestle"));
+    expect(onTier).toHaveBeenCalledWith("wrestle");
+    await waitFor(() => {
+      expect(estimatePromptCost).toHaveBeenCalled();
+    });
+    const call = estimatePromptCost.mock.calls.at(-1)?.[0] as {
+      tier?: string;
+      expected_output_tokens?: number;
+    };
+    expect(call.tier).toBe("wrestle");
+    expect(call.expected_output_tokens).toBe(4000);
+    expect(
+      screen
+        .getByTestId("research-launch-tier-wrestle")
+        .getAttribute("data-selected"),
+    ).toBe("true");
   });
 
   it("flags would_exceed_budget when API says true", async () => {

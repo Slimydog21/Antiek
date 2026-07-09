@@ -1,0 +1,19 @@
+# residual (gm) ResearchLaunchBudgetPanel flash|pro|wrestle tier picker
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(gl) prior | branch_only | campaign inventories
+(gm) depth tier picker | branch_only | research-launch-tier-picker + wrestle projection 4000 tok; Write allowTierPick; 8 budget + 19 WriteHome vitest
+
+PATHS:
+- apps/reading/src/components/engagement/ResearchLaunchBudgetPanel.tsx
+- apps/reading/src/components/engagement/ResearchLaunchBudgetPanel.test.tsx
+- apps/reading/src/modes/Write/WriteHome.tsx
+
+BEHAVIOR:
+- researchTier: fast|deep|wrestle
+- wrestle → dispatch tier wrestle, expected_output_tokens 4000
+- allowTierPick shows flash|pro|wrestle buttons
+- Write piece DR panel enables picker (competitive depth choice)
+
+NEXT: (gn) re-derive; operator merge PR #465

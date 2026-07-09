@@ -6,8 +6,12 @@
  * decision-tree read surfaces — never invents $0 when unknown.
  *
  * Research tier maps to dispatch tier for projection only:
- *   fast → flash · deep → pro
+ *   fast → flash · deep → pro · wrestle → wrestle (competitive depth preset)
  * Decision-tree driver is advisory display (Hermes still owns dispatch).
+ *
+ * Residual (gm): optional in-panel depth-tier picker (flash|pro|wrestle) so
+ * launch surfaces can project Perplexity-speed vs OpenAI-depth without
+ * leaving the research flywheel.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -29,11 +33,14 @@ export type ResearchLaunchBudgetProjection = {
   modelId: string | null;
 };
 
+/** Curated research entry tiers (not raw model ids). */
+export type ResearchLaunchTier = "fast" | "deep" | "wrestle";
+
 export type ResearchLaunchBudgetPanelProps = {
   /** Live composer text used for input_chars projection. */
   promptText: string;
   /** Curated research entry tier (not a raw model id). */
-  researchTier: "fast" | "deep";
+  researchTier: ResearchLaunchTier;
   /** Debounce ms for estimate calls (default 350). */
   debounceMs?: number;
   /**
@@ -41,14 +48,25 @@ export type ResearchLaunchBudgetPanelProps = {
    * can soft-warn / disable before fire without re-fetching Settings.
    */
   onProjectionChange?: (projection: ResearchLaunchBudgetProjection) => void;
+  /**
+   * Residual (gm): show flash|pro|wrestle picker; local override of
+   * researchTier for projection only.
+   */
+  allowTierPick?: boolean;
+  /** Notify parent when operator picks a depth tier (optional). */
+  onResearchTierChange?: (tier: ResearchLaunchTier) => void;
 };
 
-function dispatchTierFor(researchTier: "fast" | "deep"): {
+function dispatchTierFor(researchTier: ResearchLaunchTier): {
   tier: string;
   expected_output_tokens: number;
 } {
   if (researchTier === "fast") {
     return { tier: "flash", expected_output_tokens: 800 };
+  }
+  if (researchTier === "wrestle") {
+    // Competitive depth / long-horizon synthesis (OpenAI Deep Research posture).
+    return { tier: "wrestle", expected_output_tokens: 4000 };
   }
   return { tier: "pro", expected_output_tokens: 2500 };
 }
@@ -64,6 +82,8 @@ export function ResearchLaunchBudgetPanel({
   researchTier,
   debounceMs = 350,
   onProjectionChange,
+  allowTierPick = false,
+  onResearchTierChange,
 }: ResearchLaunchBudgetPanelProps) {
   const [budget, setBudget] = useState<BudgetResponse | null>(null);
   const [tree, setTree] = useState<DecisionTreeSelectionResponse | null>(null);
@@ -72,6 +92,11 @@ export function ResearchLaunchBudgetPanel({
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Residual (gm): local tier override when picker is enabled.
+  const [pickedTier, setPickedTier] = useState<ResearchLaunchTier | null>(
+    null,
+  );
+  const activeTier: ResearchLaunchTier = pickedTier ?? researchTier;
 
   // Residual (de): surface projection to parent for launch gating honesty.
   useEffect(() => {
@@ -91,8 +116,8 @@ export function ResearchLaunchBudgetPanel({
   }, [estimate, budget?.remaining_usd, tree?.model_id, onProjectionChange]);
 
   const mapping = useMemo(
-    () => dispatchTierFor(researchTier),
-    [researchTier],
+    () => dispatchTierFor(activeTier),
+    [activeTier],
   );
 
   const barPct = useMemo(() => {
@@ -171,8 +196,9 @@ export function ResearchLaunchBudgetPanel({
       className="rounded-hog border border-rule dark:border-charcoal-1 bg-ice-0/80 dark:bg-charcoal-2/80 px-3 py-2 space-y-2"
       data-testid="research-launch-budget-panel"
       data-view-format="html"
-      data-research-tier={researchTier}
+      data-research-tier={activeTier}
       data-dispatch-tier={mapping.tier}
+      data-allow-tier-pick={allowTierPick ? "true" : "false"}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
@@ -193,6 +219,51 @@ export function ResearchLaunchBudgetPanel({
           ) : null}
         </div>
       </div>
+
+      {/* Residual (gm): flash | pro | wrestle depth picker for projection. */}
+      {allowTierPick ? (
+        <div
+          className="flex flex-wrap items-center gap-1"
+          data-testid="research-launch-tier-picker"
+          role="group"
+          aria-label="Research depth tier"
+        >
+          {(
+            [
+              { id: "fast" as const, label: "flash", title: "Fast / flash projection" },
+              { id: "deep" as const, label: "pro", title: "Deep / pro projection" },
+              {
+                id: "wrestle" as const,
+                label: "wrestle",
+                title: "Wrestle / long-horizon depth projection",
+              },
+            ] as const
+          ).map((t) => {
+            const selected = activeTier === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                data-testid={`research-launch-tier-${t.id}`}
+                data-selected={selected ? "true" : "false"}
+                title={t.title}
+                onClick={() => {
+                  setPickedTier(t.id);
+                  onResearchTierChange?.(t.id);
+                }}
+                className={
+                  "rounded border px-2 py-0.5 text-[10px] font-mono " +
+                  (selected
+                    ? "border-aurora bg-aurora/10 text-ink dark:text-bright"
+                    : "border-ink/20 text-ink-mute hover:bg-ink/5 dark:border-bright/20")
+                }
+              >
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
 
       {error ? (
         <p

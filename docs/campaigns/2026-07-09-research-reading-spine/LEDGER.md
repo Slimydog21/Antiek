@@ -82,3 +82,7 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 - moil-deposit-progress-mount + ResearchProgressPanel per spawn_id
 - autoLoad + autoSeedIfEmpty
 - tests: MidnightOil 6 passed
+## residual (gm) Research depth tier picker flash|pro|wrestle — 2026-07-09
+- ResearchLaunchBudgetPanel allowTierPick + wrestle projection
+- Write piece enables picker
+- tests: ResearchLaunchBudgetPanel 8 + WriteHome 19

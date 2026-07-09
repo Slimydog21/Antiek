@@ -942,6 +942,7 @@ export default function WriteHome() {
             <ResearchLaunchBudgetPanel
               promptText={writeResearchPromptText}
               researchTier="deep"
+              allowTierPick
               onProjectionChange={onWriteDrProjectionChange}
             />
             {writeBudgetWarn ? (
