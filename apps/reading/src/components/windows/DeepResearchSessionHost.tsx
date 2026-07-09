@@ -425,13 +425,14 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
         </section>
       ) : null}
 
-      {/* Product mount (ah): multi-select collective merge over open spawns. */}
+      {/* Product mount (ah/ox): multi-select open + recent DR spawns. */}
       {availableSpawnIds.length > 0 ? (
         <section
           className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
           data-testid="deep-research-collective-mount"
           data-view-format="html"
           data-available-spawn-count={String(availableSpawnIds.length)}
+          data-recent-count={String(recentSpawnIds.length)}
         >
           <CollectiveResearchPanel
             availableSpawnIds={availableSpawnIds}

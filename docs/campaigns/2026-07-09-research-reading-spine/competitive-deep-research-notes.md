@@ -514,3 +514,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (ow, 2026-07-10) **SESSION-ARC om–ov engagement parity:**
   - SESSION-ARC-om-ov-engagement-parity.md fleet handoff
   - full host matrix Write/ResearchThis/Hosted/MO/Settings
+
+- Closed (ox, 2026-07-10) **DeepResearchSessionHost recent_ring proof:**
+  - data-recent-count on deep-research-collective-mount
+  - vitest pushRecent closed spawn appears in multi-select (parity om/ou/ov)

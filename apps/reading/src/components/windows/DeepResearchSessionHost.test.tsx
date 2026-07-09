@@ -8,6 +8,10 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEEP_RESEARCH_WINDOW_KIND } from "../../workspace/deepResearchWindow";
+import {
+  clearRecentDeepResearchSpawnIds,
+  pushRecentDeepResearchSpawnId,
+} from "../../workspace/recentDeepResearchSpawns";
 import DeepResearchSessionHost from "./DeepResearchSessionHost";
 import { WINDOW_PAGES, isWindowEligible, openWindow } from "./openWindow";
 import { useWindows } from "../../workspace/windowsStore";
@@ -563,6 +567,21 @@ describe("DeepResearchSessionHost", () => {
     expect(mount.textContent).toContain("spn_launch_1");
     expect(mount.textContent).toContain("spn_other_2");
     expect(mount.textContent).toContain("spn_extra_3");
+  });
+
+  it("includes recent_ring spawn ids on collective mount (ox)", () => {
+    useWindows.getState().reset();
+    clearRecentDeepResearchSpawnIds();
+    pushRecentDeepResearchSpawnId("spn_chased_closed");
+    render(<DeepResearchSessionHost {...FIXTURE} />);
+    const mount = screen.getByTestId("deep-research-collective-mount");
+    expect(mount.getAttribute("data-recent-count")).toBe("1");
+    expect(
+      Number(mount.getAttribute("data-available-spawn-count") || 0),
+    ).toBeGreaterThanOrEqual(2);
+    expect(mount.textContent).toContain("spn_chased_closed");
+    expect(mount.textContent).toContain("spn_launch_1");
+    clearRecentDeepResearchSpawnIds();
   });
 
   it("omits CollectiveResearchPanel when no spawn ids available", () => {
