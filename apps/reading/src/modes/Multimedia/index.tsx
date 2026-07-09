@@ -2418,7 +2418,8 @@ function JobPanel({
         </LemonButton>
       </div>
       <p className="mt-2 text-[11px] leading-snug text-shadow-1 dark:text-moonlight">
-        Refresh jobs reloads status only; Run dry-run worker stays in dry-run mode and does not call Krea/TTS/video providers.
+        Queue live job records request metadata only; it does not call providers, start workers, export, or publish media. Refresh jobs
+        reloads status only; Run dry-run worker stays in dry-run mode and does not call Krea/TTS/video providers.
       </p>
       <div className="mt-3 rounded-md border border-rule bg-ice-0 p-2 dark:border-charcoal-1 dark:bg-charcoal-1">
         <p className="font-mono text-[11px] uppercase text-shadow-2 dark:text-moonlight">Manual artifact attach</p>

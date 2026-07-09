@@ -1167,7 +1167,7 @@ describe("Multimedia workstation", () => {
     expect(screen.getByText(/Live execution queued for krea/)).toBeTruthy();
     expect(
       screen.getByText(
-        "Refresh jobs reloads status only; Run dry-run worker stays in dry-run mode and does not call Krea/TTS/video providers.",
+        "Queue live job records request metadata only; it does not call providers, start workers, export, or publish media. Refresh jobs reloads status only; Run dry-run worker stays in dry-run mode and does not call Krea/TTS/video providers.",
       ),
     ).toBeTruthy();
 
@@ -1188,6 +1188,11 @@ describe("Multimedia workstation", () => {
     await reviewPlan();
 
     const liveSpendReview = screen.getByTestId("multimedia-live-spend-review");
+    expect(
+      screen.getByText(
+        "Queue live job records request metadata only; it does not call providers, start workers, export, or publish media. Refresh jobs reloads status only; Run dry-run worker stays in dry-run mode and does not call Krea/TTS/video providers.",
+      ),
+    ).toBeTruthy();
     expect(within(liveSpendReview).getByText("No paid worker runs from Queue live job")).toBeTruthy();
     expect(within(liveSpendReview).getByText("$50.00 cap")).toBeTruthy();
     expect(within(liveSpendReview).getByText("Acknowledgement required")).toBeTruthy();
