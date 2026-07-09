@@ -1,9 +1,13 @@
 /**
  * Midnight Oil mode — goals + duration → recommended ceiling → explicit approve.
  * HTML deliverable only (view_format html). Worker launch is out of band.
+ *
+ * Residual (cz): prefill model_id from Settings decision-tree driver when
+ * installed (editable override). Autonomous runs should inherit the same
+ * driver the operator configured for workstation prompts.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   approveMidnightOilCeiling,
   createMidnightOilJob,
@@ -13,12 +17,18 @@ import {
   type MidnightOilJobResponse,
   type MidnightOilRunResponse,
 } from "../../api/midnightOil";
+import { fetchDecisionTreeSelection } from "../../api/settings";
+import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
 import { ResearchLaunchBudgetPanel } from "../../components/engagement/ResearchLaunchBudgetPanel";
 
 export default function MidnightOil() {
   const [goalsText, setGoalsText] = useState("");
   const [durationMinutes, setDurationMinutes] = useState(60);
+  /** Default until decision-tree prefill (cz); ceiling pricing accepts "default". */
   const [modelId, setModelId] = useState("default");
+  const [driverPrefill, setDriverPrefill] = useState<
+    "pending" | "installed" | "none" | "error"
+  >("pending");
   const [job, setJob] = useState<MidnightOilJobResponse | null>(null);
   const [deposit, setDeposit] = useState<MidnightOilDepositResponse | null>(
     null,
@@ -31,6 +41,27 @@ export default function MidnightOil() {
   const [autoDeposit, setAutoDeposit] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Residual (cz): prefill model from decision-tree once on mount.
+  useEffect(() => {
+    let cancelled = false;
+    void fetchDecisionTreeSelection()
+      .then((tree) => {
+        if (cancelled) return;
+        if (tree.installed && tree.model_id?.trim()) {
+          setModelId(tree.model_id.trim());
+          setDriverPrefill("installed");
+        } else {
+          setDriverPrefill("none");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setDriverPrefill("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -197,7 +228,26 @@ export default function MidnightOil() {
             value={modelId}
             onChange={(e) => setModelId(e.target.value)}
             disabled={busy}
+            data-testid="moil-model-id"
+            aria-label="Model id"
           />
+          <div
+            className="flex flex-wrap items-center gap-2"
+            data-testid="moil-driver-prefill"
+            data-prefill={driverPrefill}
+            data-view-format="html"
+          >
+            <DecisionTreeDriverBadge />
+            <span className="text-[10px] font-mono opacity-70">
+              {driverPrefill === "installed"
+                ? "Prefill from Settings decision tree (editable)"
+                : driverPrefill === "none"
+                  ? "No driver installed — using default / type a model"
+                  : driverPrefill === "error"
+                    ? "Driver lookup failed — using default"
+                    : "Loading driver…"}
+            </span>
+          </div>
         </label>
         {/* Residual (cs): daily budget + prompt projection before ceiling approve. */}
         <div data-testid="moil-budget-mount" data-view-format="html">

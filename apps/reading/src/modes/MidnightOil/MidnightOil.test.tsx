@@ -8,12 +8,14 @@ const {
   depositMidnightOilJob,
   runMidnightOilJob,
   getMidnightOilJob,
+  fetchDecisionTreeSelection,
 } = vi.hoisted(() => ({
   createMidnightOilJob: vi.fn(),
   approveMidnightOilCeiling: vi.fn(),
   depositMidnightOilJob: vi.fn(),
   runMidnightOilJob: vi.fn(),
   getMidnightOilJob: vi.fn(),
+  fetchDecisionTreeSelection: vi.fn(),
 }));
 
 vi.mock("../../api/midnightOil", () => ({
@@ -24,11 +26,22 @@ vi.mock("../../api/midnightOil", () => ({
   getMidnightOilJob,
 }));
 
+vi.mock("../../api/settings", () => ({
+  fetchDecisionTreeSelection: (...args: unknown[]) =>
+    fetchDecisionTreeSelection(...args),
+}));
+
 vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", () => ({
   ResearchLaunchBudgetPanel: (props: { promptText: string }) => (
     <div data-testid="research-launch-budget-panel-stub">
       goals={props.promptText.length}
     </div>
+  ),
+}));
+
+vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
+  DecisionTreeDriverBadge: () => (
+    <div data-testid="decision-tree-driver-badge-stub">driver badge</div>
   ),
 }));
 
@@ -40,6 +53,12 @@ describe("MidnightOil mode", () => {
     depositMidnightOilJob.mockReset();
     runMidnightOilJob.mockReset();
     getMidnightOilJob.mockReset();
+    fetchDecisionTreeSelection.mockReset();
+    fetchDecisionTreeSelection.mockResolvedValue({
+      installed: false,
+      model_id: null,
+      provider_id: null,
+    });
   });
 
   it("mounts budget projection panel before create (cs)", () => {
@@ -49,6 +68,39 @@ describe("MidnightOil mode", () => {
     expect(
       screen.getByTestId("moil-budget-mount").getAttribute("data-view-format"),
     ).toBe("html");
+  });
+
+  it("prefills model_id from decision-tree driver when installed (cz)", async () => {
+    fetchDecisionTreeSelection.mockResolvedValue({
+      installed: true,
+      model_id: "claude-opus-4-8",
+      provider_id: "anthropic",
+    });
+    render(<MidnightOil />);
+    await waitFor(() => {
+      expect(fetchDecisionTreeSelection).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(
+        (screen.getByTestId("moil-model-id") as HTMLInputElement).value,
+      ).toBe("claude-opus-4-8");
+    });
+    const prefill = screen.getByTestId("moil-driver-prefill");
+    expect(prefill.getAttribute("data-prefill")).toBe("installed");
+    expect(prefill.getAttribute("data-view-format")).toBe("html");
+    expect(screen.getByTestId("decision-tree-driver-badge-stub")).toBeTruthy();
+  });
+
+  it("keeps default model when no driver installed (cz)", async () => {
+    render(<MidnightOil />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("moil-driver-prefill").getAttribute("data-prefill"),
+      ).toBe("none");
+    });
+    expect(
+      (screen.getByTestId("moil-model-id") as HTMLInputElement).value,
+    ).toBe("default");
   });
 
   it("creates job then approves at recommended ceiling", async () => {
