@@ -10,6 +10,7 @@ from fastapi import APIRouter, FastAPI, HTTPException
 
 from substrate.multimedia.live_worker import (
     evaluate_public_export_gate,
+    plan_public_export,
     record_public_export_review,
 )
 from substrate.multimedia.read_model import (
@@ -118,6 +119,14 @@ def record_multimedia_public_export_review(
 ) -> MultimediaAssetRecord:
     try:
         return record_public_export_review(get_store(), asset_id, request)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
+
+
+@multimedia_router.post("/assets/{asset_id}/plan-public-export", response_model=MultimediaAssetRecord)
+def plan_multimedia_public_export(asset_id: str) -> MultimediaAssetRecord:
+    try:
+        return plan_public_export(get_store(), asset_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
 

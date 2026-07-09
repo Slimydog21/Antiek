@@ -107,6 +107,7 @@ export interface MultimediaJobRecord {
   retryable: boolean | null;
   public_export_gate?: MultimediaPublicExportGate | null;
   public_export_review?: MultimediaPublicExportReview | null;
+  public_export_plan?: MultimediaPublicExportPlan | null;
 }
 
 export interface MultimediaJobList {
@@ -129,6 +130,15 @@ export interface MultimediaPublicExportReview {
   attached_file_ids: string[];
   operator_acknowledged_public_distribution: boolean;
   notes: string | null;
+}
+
+export interface MultimediaPublicExportPlan {
+  export_id: string;
+  attached_file_ids: string[];
+  review_gate_ids: string[];
+  storage_backend: "pending";
+  public_url: null;
+  publish_enabled: boolean;
 }
 
 export interface MultimediaPublicExportStatus {
@@ -259,5 +269,14 @@ export async function recordMultimediaPublicExportReview(
   });
   if (resp.status === 404) throw new Error("multimedia_asset_not_found");
   if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/public-export-review: HTTP ${resp.status}`);
+  return (await resp.json()) as MultimediaAssetRecord;
+}
+
+export async function planMultimediaPublicExport(assetId: string): Promise<MultimediaAssetRecord> {
+  const resp = await apiFetch(`${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/plan-public-export`, {
+    method: "POST",
+  });
+  if (resp.status === 404) throw new Error("multimedia_asset_not_found");
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/plan-public-export: HTTP ${resp.status}`);
   return (await resp.json()) as MultimediaAssetRecord;
 }

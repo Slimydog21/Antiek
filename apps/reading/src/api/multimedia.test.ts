@@ -19,6 +19,7 @@ import {
   listMultimediaAssets,
   listMultimediaJobs,
   manualGateIds,
+  planMultimediaPublicExport,
   prepareMultimediaLiveExecution,
   recordMultimediaPublicExportReview,
   runMultimediaHardening,
@@ -125,6 +126,35 @@ const exportReviewRecord: MultimediaAssetRecord = {
         attached_file_ids: ["file-mm-1-transcript"],
         operator_acknowledged_public_distribution: true,
         notes: "Approved for future public export staging; do not publish yet.",
+      },
+    },
+  ],
+};
+
+const exportPlanRecord: MultimediaAssetRecord = {
+  ...record,
+  jobs: [
+    ...exportReviewRecord.jobs,
+    {
+      job_id: "job-mm-1-0004",
+      asset_id: "mm-1",
+      revision_id: "rev-1",
+      sequence: 4,
+      kind: "export_gate",
+      status: "partial",
+      progress_percent: 99,
+      message: "Public export plan staged; no public URL has been minted.",
+      error_code: null,
+      retryable: false,
+      public_export_gate: exportReviewRecord.jobs.at(-1)?.public_export_gate,
+      public_export_review: exportReviewRecord.jobs.at(-1)?.public_export_review,
+      public_export_plan: {
+        export_id: "export-mm-1-rev-1",
+        attached_file_ids: ["file-mm-1-transcript"],
+        review_gate_ids: ["rights_and_publication"],
+        storage_backend: "pending",
+        public_url: null,
+        publish_enabled: false,
       },
     },
   ],
@@ -308,6 +338,17 @@ describe("multimedia API client", () => {
     expect(result.jobs.at(-1)?.public_export_gate?.public_export_enabled).toBe(false);
   });
 
+  it("posts public export planning to the no-spend endpoint", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, exportPlanRecord));
+    const result = await planMultimediaPublicExport("mm-1");
+    expect(mockFetch()).toHaveBeenLastCalledWith(
+      "/multimedia/assets/mm-1/plan-public-export",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(result.jobs.at(-1)?.public_export_plan?.publish_enabled).toBe(false);
+    expect(result.jobs.at(-1)?.public_export_plan?.public_url).toBeNull();
+  });
+
   it("surfaces a typed not-found error for a 404 live-execution prep", async () => {
     mockFetch().mockResolvedValueOnce(jsonResponse(404, { detail: "missing" }));
     await expect(
@@ -333,5 +374,10 @@ describe("multimedia API client", () => {
         operator_acknowledged_public_distribution: true,
       }),
     ).rejects.toThrow("multimedia_asset_not_found");
+  });
+
+  it("surfaces a typed not-found error for a 404 public export plan", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(404, { detail: "missing" }));
+    await expect(planMultimediaPublicExport("mm-missing")).rejects.toThrow("multimedia_asset_not_found");
   });
 });

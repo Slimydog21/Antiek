@@ -218,6 +218,13 @@ def test_multimedia_routes_round_trip_without_provider_secrets(tmp_path, monkeyp
     assert review_job["public_export_review"]["decision"] == "approved"
     assert review_job["public_export_gate"]["public_export_enabled"] is False
 
+    export_plan = client.post(f"/multimedia/assets/{review_asset_id}/plan-public-export")
+    assert export_plan.status_code == 200
+    export_plan_job = export_plan.json()["jobs"][-1]
+    assert export_plan_job["kind"] == "export_gate"
+    assert export_plan_job["public_export_plan"]["publish_enabled"] is False
+    assert export_plan_job["public_export_plan"]["public_url"] is None
+
     missing_export_gate = client.post("/multimedia/assets/mm-missing/evaluate-public-export-gate")
     assert missing_export_gate.status_code == 404
 
@@ -230,6 +237,9 @@ def test_multimedia_routes_round_trip_without_provider_secrets(tmp_path, monkeyp
         },
     )
     assert missing_review.status_code == 404
+
+    missing_export_plan = client.post("/multimedia/assets/mm-missing/plan-public-export")
+    assert missing_export_plan.status_code == 404
 
 
 def test_hybrid_approve_does_not_double_count_audio_cost_rows(tmp_path):
