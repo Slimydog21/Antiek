@@ -32,6 +32,14 @@ from orchestration.continuous.budget import (
 settings_router = APIRouter(prefix="/settings", tags=["settings"])
 
 SpentStatus = Literal["known", "unknown", "no_cap"]
+TaskKind = Literal[
+    "research_question",
+    "reading_highlight",
+    "midnight_oil",
+    "synthesis",
+    "verification",
+]
+RouteMode = Literal["manual", "auto_quality", "auto_balanced", "auto_cost", "auto_latency"]
 
 
 class ModelRow(BaseModel):
@@ -59,14 +67,33 @@ class BudgetResponse(BaseModel):
 
 
 class PromptCostEstimateRequest(BaseModel):
+    task_kind: TaskKind | None = None
+    role: str | None = None
+    route_mode: RouteMode = "manual"
+    manual_provider: str | None = None
+    manual_model: str | None = None
+    session_cache_key: str | None = None
     provider: str | None = None
     model: str | None = None
     tier: str | None = Field(
         default="pro",
         description="Dispatch tier name used when model/provider omitted.",
     )
+    prompt_chars: int | None = Field(default=None, ge=0)
     input_chars: int = Field(ge=0, default=0)
     expected_output_tokens: int = Field(ge=0, default=500)
+
+
+class PromptCostCandidate(BaseModel):
+    provider: str
+    model: str
+    tier: str
+    fallback_chain_index: int = Field(ge=0)
+    estimated_usd_low: float | None
+    estimated_usd_high: float | None
+    pricing_known: bool
+    cache_status: Literal["warm", "cold", "unknown"] = "unknown"
+    selection_reason: str
 
 
 class PromptCostEstimateResponse(BaseModel):
@@ -80,6 +107,11 @@ class PromptCostEstimateResponse(BaseModel):
     tier: str | None = None
     provider: str | None = None
     model: str | None = None
+    task_kind: str | None = None
+    role: str | None = None
+    route_mode: RouteMode | None = None
+    selected_candidate: PromptCostCandidate | None = None
+    candidates: list[PromptCostCandidate] = Field(default_factory=list)
 
 
 def _dispatch_config_path() -> Path:
@@ -174,20 +206,216 @@ def _chars_to_tokens(chars: int) -> int:
     return max(0, (chars + 3) // 4)
 
 
+def _tier_candidates(
+    cfg: dict[str, Any],
+    *,
+    tier: str | None,
+    provider: str | None,
+    model: str | None,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    notes: list[str] = []
+    tiers = cfg.get("tiers") or {}
+    if not isinstance(tiers, dict) or not tiers:
+        return [], ["dispatch config has no tiers"]
+
+    chosen_tier = tier if tier and tier in tiers else None
+    if chosen_tier is None and (provider or model):
+        for name, raw in tiers.items():
+            if not isinstance(raw, dict):
+                continue
+            if provider and raw.get("provider") != provider:
+                continue
+            if model and raw.get("model") != model:
+                continue
+            chosen_tier = str(name)
+            break
+        if chosen_tier is None:
+            return [], ["no tier matches requested provider/model"]
+    if chosen_tier is None:
+        chosen_tier = "pro" if "pro" in tiers else str(next(iter(tiers)))
+        notes.append(f"defaulted to tier {chosen_tier!r}")
+
+    raw = tiers.get(chosen_tier)
+    if not isinstance(raw, dict):
+        return [], notes + ["tier body missing"]
+
+    base_pricing = raw.get("pricing") if isinstance(raw.get("pricing"), dict) else None
+    out: list[dict[str, Any]] = []
+
+    def append_candidate(body: dict[str, Any], *, name: str, index: int) -> None:
+        candidate_provider = body.get("provider")
+        candidate_model = body.get("model")
+        if not candidate_provider or not candidate_model:
+            return
+        pricing = body.get("pricing") if isinstance(body.get("pricing"), dict) else base_pricing
+        out.append(
+            {
+                "tier": name,
+                "provider": str(candidate_provider),
+                "model": str(candidate_model),
+                "pricing": pricing if isinstance(pricing, dict) else None,
+                "fallback_chain_index": index,
+            }
+        )
+
+    append_candidate(raw, name=chosen_tier, index=0)
+    current = raw.get("fallback")
+    index = 1
+    while isinstance(current, dict):
+        suffix = "" if index == 1 else str(index)
+        append_candidate(current, name=f"{chosen_tier}__fallback{suffix}", index=index)
+        current = current.get("fallback")
+        index += 1
+    return out, notes
+
+
+def _estimate_candidate(
+    candidate: dict[str, Any],
+    *,
+    input_tokens: int,
+    output_tokens: int,
+    cache_warm: bool,
+    selection_reason: str,
+) -> PromptCostCandidate:
+    pricing = candidate.get("pricing")
+    if not isinstance(pricing, dict):
+        return PromptCostCandidate(
+            provider=str(candidate["provider"]),
+            model=str(candidate["model"]),
+            tier=str(candidate["tier"]),
+            fallback_chain_index=int(candidate["fallback_chain_index"]),
+            estimated_usd_low=None,
+            estimated_usd_high=None,
+            pricing_known=False,
+            cache_status="unknown",
+            selection_reason=selection_reason,
+        )
+
+    in_rate = float(pricing.get("input_per_mtok") or 0.0)
+    out_rate = float(pricing.get("output_per_mtok") or 0.0)
+    cached_rate = float(pricing.get("cached_input_per_mtok") or 0.0)
+    if in_rate <= 0.0 and out_rate <= 0.0:
+        return PromptCostCandidate(
+            provider=str(candidate["provider"]),
+            model=str(candidate["model"]),
+            tier=str(candidate["tier"]),
+            fallback_chain_index=int(candidate["fallback_chain_index"]),
+            estimated_usd_low=None,
+            estimated_usd_high=None,
+            pricing_known=False,
+            cache_status="unknown",
+            selection_reason=selection_reason,
+        )
+
+    effective_input_rate = cached_rate if cache_warm and cached_rate > 0.0 else in_rate
+    base = (input_tokens / 1_000_000.0) * effective_input_rate + (
+        output_tokens / 1_000_000.0
+    ) * out_rate
+    return PromptCostCandidate(
+        provider=str(candidate["provider"]),
+        model=str(candidate["model"]),
+        tier=str(candidate["tier"]),
+        fallback_chain_index=int(candidate["fallback_chain_index"]),
+        estimated_usd_low=round(base * 0.8, 8),
+        estimated_usd_high=round(base * 1.2, 8),
+        pricing_known=True,
+        cache_status="warm" if cache_warm and cached_rate > 0.0 else "cold",
+        selection_reason=selection_reason,
+    )
+
+
+def _select_candidate(
+    candidates: list[PromptCostCandidate],
+    *,
+    route_mode: RouteMode,
+    manual_provider: str | None,
+    manual_model: str | None,
+) -> PromptCostCandidate | None:
+    if not candidates:
+        return None
+    if route_mode == "manual":
+        for candidate in candidates:
+            provider_match = manual_provider is None or candidate.provider == manual_provider
+            model_match = manual_model is None or candidate.model == manual_model
+            if provider_match and model_match:
+                return candidate
+        return candidates[0]
+    if route_mode == "auto_cost":
+        priced = [c for c in candidates if c.estimated_usd_high is not None]
+        return min(priced, key=lambda c: c.estimated_usd_high or 0.0) if priced else candidates[0]
+    # Until Antiek-bench lands, quality/balanced/latency keep config order.
+    return candidates[0]
+
+
 def estimate_prompt_cost(
     req: PromptCostEstimateRequest,
     *,
     budget: BudgetResponse | None = None,
 ) -> PromptCostEstimateResponse:
     cfg = _load_dispatch_config()
+    request_provider = req.manual_provider or req.provider
+    request_model = req.manual_model or req.model
+    prompt_chars = req.prompt_chars if req.prompt_chars is not None else req.input_chars
+    route_mode = req.route_mode
+    raw_candidates, candidate_notes = _tier_candidates(
+        cfg,
+        tier=req.tier,
+        provider=request_provider,
+        model=request_model,
+    )
+    in_tok = _chars_to_tokens(prompt_chars)
+    out_tok = req.expected_output_tokens
+    projected_candidates = [
+        _estimate_candidate(
+            candidate,
+            input_tokens=in_tok,
+            output_tokens=out_tok,
+            cache_warm=bool(req.session_cache_key)
+            and int(candidate.get("fallback_chain_index") or 0) == 0,
+            selection_reason=route_mode,
+        )
+        for candidate in raw_candidates
+    ]
+    selected_candidate = _select_candidate(
+        projected_candidates,
+        route_mode=route_mode,
+        manual_provider=request_provider,
+        manual_model=request_model,
+    )
+
     pricing, tier, provider, model, notes = _resolve_tier_pricing(
         cfg,
         tier=req.tier,
-        provider=req.provider,
-        model=req.model,
+        provider=selected_candidate.provider if selected_candidate else request_provider,
+        model=selected_candidate.model if selected_candidate else request_model,
     )
-    in_tok = _chars_to_tokens(req.input_chars)
-    out_tok = req.expected_output_tokens
+    notes = candidate_notes + notes
+    if selected_candidate is not None:
+        tier = selected_candidate.tier
+        provider = selected_candidate.provider
+        model = selected_candidate.model
+        if not selected_candidate.pricing_known:
+            return PromptCostEstimateResponse(
+                estimated_usd_low=None,
+                estimated_usd_high=None,
+                would_exceed_budget=None,
+                pricing_known=False,
+                notes=notes
+                + [
+                    "tier pricing is 0.0 placeholder in dispatch/config.yaml — "
+                    "operator must verify rates before projection is numeric"
+                ],
+                assumed_input_tokens=in_tok,
+                assumed_output_tokens=out_tok,
+                tier=tier,
+                provider=provider,
+                model=model,
+                task_kind=req.task_kind,
+                role=req.role,
+                route_mode=route_mode,
+                selected_candidate=selected_candidate,
+                candidates=projected_candidates,
+            )
 
     if pricing is None:
         return PromptCostEstimateResponse(
@@ -201,6 +429,11 @@ def estimate_prompt_cost(
             tier=tier,
             provider=provider,
             model=model,
+            task_kind=req.task_kind,
+            role=req.role,
+            route_mode=route_mode,
+            selected_candidate=selected_candidate,
+            candidates=projected_candidates,
         )
 
     in_rate = float(pricing.get("input_per_mtok") or 0.0)
@@ -221,12 +454,21 @@ def estimate_prompt_cost(
             tier=tier,
             provider=provider,
             model=model,
+            task_kind=req.task_kind,
+            role=req.role,
+            route_mode=route_mode,
+            selected_candidate=selected_candidate,
+            candidates=projected_candidates,
         )
 
-    base = (in_tok / 1_000_000.0) * in_rate + (out_tok / 1_000_000.0) * out_rate
-    # Low/high band: ±20% heuristic for projection UI, not a guarantee.
-    low = round(base * 0.8, 8)
-    high = round(base * 1.2, 8)
+    if selected_candidate and selected_candidate.estimated_usd_low is not None:
+        low = selected_candidate.estimated_usd_low
+        high = selected_candidate.estimated_usd_high or selected_candidate.estimated_usd_low
+    else:
+        base = (in_tok / 1_000_000.0) * in_rate + (out_tok / 1_000_000.0) * out_rate
+        # Low/high band: ±20% heuristic for projection UI, not a guarantee.
+        low = round(base * 0.8, 8)
+        high = round(base * 1.2, 8)
 
     would_exceed: bool | None = None
     if budget is not None and budget.remaining_usd is not None:
@@ -246,6 +488,11 @@ def estimate_prompt_cost(
         tier=tier,
         provider=provider,
         model=model,
+        task_kind=req.task_kind,
+        role=req.role,
+        route_mode=route_mode,
+        selected_candidate=selected_candidate,
+        candidates=projected_candidates,
     )
 
 
@@ -357,6 +604,7 @@ def register_settings_budget_routes(app: FastAPI) -> None:
 __all__ = [
     "BudgetResponse",
     "ModelsResponse",
+    "PromptCostCandidate",
     "PromptCostEstimateRequest",
     "PromptCostEstimateResponse",
     "estimate_prompt_cost",

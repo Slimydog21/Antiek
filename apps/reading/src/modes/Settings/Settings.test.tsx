@@ -45,6 +45,11 @@ vi.mock("../../api/settings", () => ({
     tier: "pro",
     provider: "zai",
     model: "glm-5.2",
+    task_kind: null,
+    role: null,
+    route_mode: "manual",
+    selected_candidate: null,
+    candidates: [],
   })),
 }));
 

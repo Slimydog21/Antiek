@@ -25,11 +25,41 @@ export interface BudgetResponse {
 }
 
 export interface PromptCostEstimateRequest {
+  task_kind?:
+    | "research_question"
+    | "reading_highlight"
+    | "midnight_oil"
+    | "synthesis"
+    | "verification"
+    | null;
+  role?: string | null;
+  route_mode?:
+    | "manual"
+    | "auto_quality"
+    | "auto_balanced"
+    | "auto_cost"
+    | "auto_latency";
+  manual_provider?: string | null;
+  manual_model?: string | null;
+  session_cache_key?: string | null;
   provider?: string | null;
   model?: string | null;
   tier?: string | null;
+  prompt_chars?: number | null;
   input_chars: number;
   expected_output_tokens: number;
+}
+
+export interface PromptCostCandidate {
+  provider: string;
+  model: string;
+  tier: string;
+  fallback_chain_index: number;
+  estimated_usd_low: number | null;
+  estimated_usd_high: number | null;
+  pricing_known: boolean;
+  cache_status: "warm" | "cold" | "unknown";
+  selection_reason: string;
 }
 
 export interface PromptCostEstimateResponse {
@@ -43,6 +73,17 @@ export interface PromptCostEstimateResponse {
   tier: string | null;
   provider: string | null;
   model: string | null;
+  task_kind: string | null;
+  role: string | null;
+  route_mode:
+    | "manual"
+    | "auto_quality"
+    | "auto_balanced"
+    | "auto_cost"
+    | "auto_latency"
+    | null;
+  selected_candidate: PromptCostCandidate | null;
+  candidates: PromptCostCandidate[];
 }
 
 async function readJson<T>(res: Response): Promise<T> {

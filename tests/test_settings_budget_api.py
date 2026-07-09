@@ -146,6 +146,162 @@ def test_estimate_with_synthetic_pricing(
     assert est.estimated_usd_low < 0.01
 
 
+def test_route_projection_auto_cost_selects_cheapest_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import interfaces.research.api.settings_budget as sb
+
+    fake: dict[str, Any] = {
+        "tiers": {
+            "pro": {
+                "provider": "premium",
+                "model": "quality",
+                "pricing": {"input_per_mtok": 10.0, "output_per_mtok": 10.0},
+                "fallback": {
+                    "provider": "cheap",
+                    "model": "fast",
+                    "pricing": {"input_per_mtok": 1.0, "output_per_mtok": 1.0},
+                },
+            }
+        }
+    }
+    monkeypatch.setattr(sb, "_load_dispatch_config", lambda: fake)
+
+    est = estimate_prompt_cost(
+        PromptCostEstimateRequest(
+            task_kind="research_question",
+            role="synthesizer",
+            tier="pro",
+            route_mode="auto_cost",
+            prompt_chars=4000,
+            expected_output_tokens=1000,
+        )
+    )
+
+    assert est.selected_candidate is not None
+    assert est.selected_candidate.provider == "cheap"
+    assert est.selected_candidate.fallback_chain_index == 1
+    assert est.provider == "cheap"
+    assert len(est.candidates) == 2
+
+
+def test_route_projection_unknown_pricing_has_no_false_pass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import interfaces.research.api.settings_budget as sb
+
+    fake: dict[str, Any] = {
+        "tiers": {
+            "pro": {
+                "provider": "unknown",
+                "model": "mystery",
+                "pricing": {"input_per_mtok": 0.0, "output_per_mtok": 0.0},
+            }
+        }
+    }
+    monkeypatch.setattr(sb, "_load_dispatch_config", lambda: fake)
+
+    est = estimate_prompt_cost(
+        PromptCostEstimateRequest(
+            task_kind="synthesis",
+            role="synthesizer",
+            tier="pro",
+            route_mode="auto_balanced",
+            prompt_chars=4000,
+            expected_output_tokens=1000,
+        )
+    )
+
+    assert est.pricing_known is False
+    assert est.estimated_usd_low is None
+    assert est.would_exceed_budget is None
+    assert est.selected_candidate is not None
+    assert est.selected_candidate.pricing_known is False
+
+
+def test_route_projection_manual_model_bypasses_advisor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import interfaces.research.api.settings_budget as sb
+
+    fake: dict[str, Any] = {
+        "tiers": {
+            "pro": {
+                "provider": "premium",
+                "model": "quality",
+                "pricing": {"input_per_mtok": 10.0, "output_per_mtok": 10.0},
+                "fallback": {
+                    "provider": "cheap",
+                    "model": "fast",
+                    "pricing": {"input_per_mtok": 1.0, "output_per_mtok": 1.0},
+                },
+            }
+        }
+    }
+    monkeypatch.setattr(sb, "_load_dispatch_config", lambda: fake)
+
+    est = estimate_prompt_cost(
+        PromptCostEstimateRequest(
+            tier="pro",
+            route_mode="manual",
+            manual_provider="premium",
+            manual_model="quality",
+            prompt_chars=4000,
+            expected_output_tokens=1000,
+        )
+    )
+
+    assert est.selected_candidate is not None
+    assert est.selected_candidate.provider == "premium"
+    assert est.selected_candidate.selection_reason == "manual"
+
+
+def test_route_projection_cache_warm_candidate_can_beat_cheaper_cold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import interfaces.research.api.settings_budget as sb
+
+    fake: dict[str, Any] = {
+        "tiers": {
+            "pro": {
+                "provider": "cached-premium",
+                "model": "quality",
+                "pricing": {
+                    "input_per_mtok": 4.0,
+                    "cached_input_per_mtok": 0.1,
+                    "output_per_mtok": 1.0,
+                },
+                "fallback": {
+                    "provider": "cold-cheap",
+                    "model": "fast",
+                    "pricing": {
+                        "input_per_mtok": 1.0,
+                        "cached_input_per_mtok": 0.0,
+                        "output_per_mtok": 1.0,
+                    },
+                },
+            }
+        }
+    }
+    monkeypatch.setattr(sb, "_load_dispatch_config", lambda: fake)
+
+    est = estimate_prompt_cost(
+        PromptCostEstimateRequest(
+            tier="pro",
+            route_mode="auto_cost",
+            prompt_chars=40_000,
+            expected_output_tokens=100,
+            session_cache_key="read-session-1",
+        )
+    )
+
+    assert est.selected_candidate is not None
+    assert est.selected_candidate.provider == "cached-premium"
+    assert est.selected_candidate.cache_status == "warm"
+    cold = next(c for c in est.candidates if c.provider == "cold-cheap")
+    assert cold.cache_status == "cold"
+
+
 def test_caddy_allowlist_includes_settings() -> None:
     caddy = Path("infrastructure/ansible/templates/Caddyfile.j2").read_text(
         encoding="utf-8"
