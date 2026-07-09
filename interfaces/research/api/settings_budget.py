@@ -554,6 +554,98 @@ def get_antiek_bench_suite_proposal(
     )
 
 
+class AntiekBenchSuiteApproveRequest(BaseModel):
+    """Explicit operator approve/reject for a suite rewrite proposal."""
+
+    proposal_id: str = Field(min_length=1)
+    approve: bool = True
+    include_html: bool = False
+
+
+class AntiekBenchSuiteApproveResponse(BaseModel):
+    """Result of explicit approve_and_promote (never from GET propose alone)."""
+
+    ok: bool = False
+    proposal_id: str | None = None
+    status: str | None = None
+    approved: bool = False
+    promoted: bool = False
+    active_suite_version: str | None = None
+    active_suite_before: str | None = None
+    proposed_suite_version: str | None = None
+    view_format: str = "html"
+    settings_panel: str = "antiek_bench_suite_approve"
+    source: str = "antiek_bench.approve_and_promote"
+    notes: list[str] = Field(default_factory=list)
+    html: str | None = None
+
+
+@settings_router.post(
+    "/antiek-bench/suite-proposal/approve",
+    response_model=AntiekBenchSuiteApproveResponse,
+)
+def post_antiek_bench_suite_approve(
+    request: Request,
+    body: AntiekBenchSuiteApproveRequest,
+) -> AntiekBenchSuiteApproveResponse:
+    """Explicit operator gate for suite promote/reject.
+
+    Does **not** run on GET propose. Reject leaves active suite unchanged.
+    """
+    from substrate.antiek_bench import settings_approve_suite_proposal_payload
+
+    store = getattr(request.app.state, "antiek_bench_store", None)
+    if store is None:
+        try:
+            from .engagement_routes import get_bench_usage_store
+
+            store = get_bench_usage_store(create_if_missing=False)
+        except Exception:
+            store = None
+    if store is None:
+        return AntiekBenchSuiteApproveResponse(
+            ok=False,
+            proposal_id=body.proposal_id,
+            notes=[
+                "No antiek_bench_store / engagement usage store configured; "
+                "cannot approve/promote without a store holding the proposal"
+            ],
+            view_format="html",
+        )
+
+    registry = getattr(request.app.state, "antiek_bench_registry", None)
+    try:
+        payload = settings_approve_suite_proposal_payload(
+            body.proposal_id,
+            store=store,
+            registry=registry,
+            approve=body.approve,
+            include_html=body.include_html,
+        )
+    except ValueError as exc:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return AntiekBenchSuiteApproveResponse(
+        ok=bool(payload.get("ok")),
+        proposal_id=payload.get("proposal_id"),
+        status=payload.get("status"),
+        approved=bool(payload.get("approved")),
+        promoted=bool(payload.get("promoted")),
+        active_suite_version=payload.get("active_suite_version"),
+        active_suite_before=payload.get("active_suite_before"),
+        proposed_suite_version=payload.get("proposed_suite_version"),
+        view_format=str(payload.get("view_format") or "html"),
+        settings_panel=str(
+            payload.get("settings_panel") or "antiek_bench_suite_approve"
+        ),
+        source=str(payload.get("source") or "antiek_bench.approve_and_promote"),
+        notes=list(payload.get("notes") or []),
+        html=payload.get("html"),
+    )
+
+
 class NotDiamondAdvisoryResponse(BaseModel):
     """Settings-facing NotDiamond advisory posture (offline; never authority)."""
 
@@ -703,6 +795,8 @@ def register_settings_budget_routes(app: FastAPI) -> None:
 
 __all__ = [
     "AntiekBenchLeaderboardResponse",
+    "AntiekBenchSuiteApproveRequest",
+    "AntiekBenchSuiteApproveResponse",
     "AntiekBenchSuiteProposalResponse",
     "AntiekBenchUsageSummaryResponse",
     "BudgetResponse",
@@ -719,6 +813,7 @@ __all__ = [
     "get_antiek_bench_usage_summary",
     "get_decision_tree_selection",
     "get_notdiamond_advisory",
+    "post_antiek_bench_suite_approve",
     "post_decision_tree_selection",
     "read_operator_budget",
     "register_settings_budget_routes",

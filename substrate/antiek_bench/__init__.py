@@ -27,6 +27,7 @@ from .run import BenchRunResult, TaskScore, run_suite
 from .settings_surface import (
     project_suite_proposal_html,
     project_usage_summary_html,
+    settings_approve_suite_proposal_payload,
     settings_leaderboard_payload,
     settings_suite_proposal_payload,
     settings_usage_summary_payload,
@@ -93,6 +94,7 @@ __all__ = [
     "run_suite",
     "project_suite_proposal_html",
     "project_usage_summary_html",
+    "settings_approve_suite_proposal_payload",
     "settings_leaderboard_payload",
     "settings_suite_proposal_payload",
     "settings_usage_summary_payload",

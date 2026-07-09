@@ -221,6 +221,101 @@ def settings_suite_proposal_payload(
     return payload
 
 
+def settings_approve_suite_proposal_payload(
+    proposal_id: str,
+    *,
+    store: BenchStore,
+    registry: Any = None,
+    approve: bool = True,
+    include_html: bool = False,
+) -> dict[str, Any]:
+    """Explicit operator gate: approve/reject + promote only when approve=True.
+
+    Calls shipped ``approve_and_promote``. Never implicit from GET propose path.
+    """
+    from .rewrite import approve_and_promote
+    from .suite import active_suite
+
+    pid = str(proposal_id or "").strip()
+    if not pid:
+        raise ValueError("proposal_id is required")
+
+    before = active_suite(registry=registry)
+    before_version = before.suite_version
+    row = store.get_proposal(pid)
+    if row is None:
+        payload: dict[str, Any] = {
+            "ok": False,
+            "proposal_id": pid,
+            "status": None,
+            "approved": False,
+            "promoted": False,
+            "active_suite_version": before_version,
+            "active_suite_before": before_version,
+            "proposed_suite_version": None,
+            "view_format": "html",
+            "settings_panel": "antiek_bench_suite_approve",
+            "source": "antiek_bench.approve_and_promote",
+            "notes": [f"Unknown proposal_id: {pid}"],
+        }
+        if include_html:
+            payload["html"] = project_suite_proposal_html(
+                {
+                    "has_proposal": False,
+                    "auto_promoted": False,
+                    "proposal_id": pid,
+                    "status": None,
+                    "rationale": payload["notes"][0],
+                }
+            )
+        return payload
+
+    suite = approve_and_promote(
+        pid, store=store, registry=registry, approve=approve
+    )
+    after = active_suite(registry=registry)
+    updated = store.get_proposal(pid) or {}
+    status = str(updated.get("status") or ("approved" if approve else "rejected"))
+    promoted = bool(approve) and after.suite_version != before_version
+    payload = {
+        "ok": True,
+        "proposal_id": pid,
+        "status": status,
+        "approved": bool(approve),
+        "promoted": promoted,
+        "active_suite_version": after.suite_version,
+        "active_suite_before": before_version,
+        "proposed_suite_version": str(
+            updated.get("proposed_suite_version") or suite.suite_version
+        ),
+        "view_format": "html",
+        "settings_panel": "antiek_bench_suite_approve",
+        "source": "antiek_bench.approve_and_promote",
+        "notes": [
+            (
+                f"Approved and promoted suite {after.suite_version}"
+                if approve
+                else f"Rejected proposal {pid}; active suite remains {after.suite_version}"
+            )
+        ],
+    }
+    if include_html:
+        payload["html"] = project_suite_proposal_html(
+            {
+                "has_proposal": True,
+                "proposal_id": pid,
+                "status": status,
+                "base_suite_version": before_version,
+                "proposed_suite_version": payload["proposed_suite_version"],
+                "active_suite_version": after.suite_version,
+                "auto_promoted": False,
+                "rationale": payload["notes"][0],
+                "added_item_ids": list(updated.get("added_item_ids") or []),
+            }
+        )
+    return payload
+
+
 def project_suite_proposal_html(payload: dict[str, Any]) -> str:
     """HTML-first human view of a suite proposal (never PDF)."""
     from substrate.engagement_spine.project import project_to_html

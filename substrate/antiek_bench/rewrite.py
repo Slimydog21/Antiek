@@ -147,13 +147,22 @@ def approve_and_promote(
     proposal_id: str,
     *,
     store: BenchStore,
-    registry: SuiteRegistry,
+    registry: SuiteRegistry | None = None,
     approve: bool = True,
 ) -> SuiteDefinition:
     """Explicit gate: only approved proposals register+promote the new suite.
 
     Unapproved / rejected proposals must leave ``registry.active_version`` unchanged.
+    When ``registry`` is None, uses the process-default suite registry (same as
+    ``active_suite()``) after ensuring the core suite is registered.
     """
+    from .suite import active_suite
+
+    reg = registry if registry is not None else _process_registry()
+    # Ensure a baseline active suite exists when using the process default.
+    if registry is None:
+        active_suite(registry=reg)
+
     row = store.get_proposal(proposal_id)
     if row is None:
         raise KeyError(f"unknown proposal_id: {proposal_id}")
@@ -161,7 +170,7 @@ def approve_and_promote(
         row = dict(row)
         row["status"] = "rejected"
         store.put_proposal(proposal_id, row)
-        return registry.active()
+        return reg.active()
 
     suite_data = row.get("suite") or {}
     items = []
@@ -179,9 +188,15 @@ def approve_and_promote(
         label=str(suite_data.get("label") or "antiek-bench-core"),
         items=tuple(items),
     )
-    registry.register(suite)
-    promoted = registry.promote(suite.suite_version)
+    reg.register(suite)
+    promoted = reg.promote(suite.suite_version)
     row = dict(row)
     row["status"] = "approved"
     store.put_proposal(proposal_id, row)
     return promoted
+
+
+def _process_registry() -> SuiteRegistry:
+    from .suite import _DEFAULT_REGISTRY
+
+    return _DEFAULT_REGISTRY

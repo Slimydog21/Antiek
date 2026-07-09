@@ -31,3 +31,7 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 - Settings panel data-testid antiek-bench-suite-proposal-panel; view_format html
 - tests: test_settings_suite_proposal.py (4) + Settings.test.tsx suite proposal case
 - NEVER auto-promote; empty usage → has_proposal=false
+## residual (am) Settings suite approve/promote — 2026-07-09
+- POST /settings/antiek-bench/suite-proposal/approve
+- settings_approve_suite_proposal_payload; UI gate buttons
+- GET propose path remains non-promoting

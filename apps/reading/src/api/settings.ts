@@ -162,6 +162,43 @@ export async function fetchAntiekBenchSuiteProposal(opts?: {
   return readJson<AntiekBenchSuiteProposalResponse>(res);
 }
 
+/** Explicit operator approve/reject for a suite proposal (never implicit). */
+export type AntiekBenchSuiteApproveResponse = {
+  ok: boolean;
+  proposal_id: string | null;
+  status: string | null;
+  approved: boolean;
+  promoted: boolean;
+  active_suite_version: string | null;
+  active_suite_before: string | null;
+  proposed_suite_version: string | null;
+  view_format: "html" | string;
+  settings_panel: string;
+  source: string;
+  notes: string[];
+  html?: string | null;
+};
+
+export async function approveAntiekBenchSuiteProposal(opts: {
+  proposal_id: string;
+  approve: boolean;
+  includeHtml?: boolean;
+}): Promise<AntiekBenchSuiteApproveResponse> {
+  const res = await apiFetch(
+    `${API_BASE}/settings/antiek-bench/suite-proposal/approve`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        proposal_id: opts.proposal_id,
+        approve: opts.approve,
+        include_html: Boolean(opts.includeHtml),
+      }),
+    },
+  );
+  return readJson<AntiekBenchSuiteApproveResponse>(res);
+}
+
 /** NotDiamond advisory posture — never authority over dispatch. */
 export type NotDiamondAdvisoryResponse = {
   advisory_allowed: boolean;

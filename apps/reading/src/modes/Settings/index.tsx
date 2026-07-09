@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import {
+  approveAntiekBenchSuiteProposal,
   clearDecisionTreeSelection,
   estimatePromptCost,
   fetchAntiekBenchSuiteProposal,
@@ -11,6 +12,7 @@ import {
   fetchSettingsBudget,
   fetchSettingsModels,
   installDecisionTreeSelection,
+  type AntiekBenchSuiteApproveResponse,
   type AntiekBenchSuiteProposalResponse,
   type AntiekBenchUsageSummaryResponse,
   type BudgetResponse,
@@ -67,6 +69,9 @@ export default function Settings() {
     null,
   );
   const [suiteProposalBusy, setSuiteProposalBusy] = useState(false);
+  const [suiteApprove, setSuiteApprove] =
+    useState<AntiekBenchSuiteApproveResponse | null>(null);
+  const [suiteApproveBusy, setSuiteApproveBusy] = useState(false);
   const [nd, setNd] = useState<NotDiamondAdvisoryResponse | null>(null);
   const [ndError, setNdError] = useState<string | null>(null);
 
@@ -165,6 +170,30 @@ export default function Settings() {
       setSuiteProposalError(e instanceof Error ? e.message : String(e));
     } finally {
       setSuiteProposalBusy(false);
+    }
+  }
+
+  async function onApproveSuiteProposal(approve: boolean) {
+    if (!suiteProposal?.proposal_id) {
+      setSuiteProposalError("No proposal_id to approve/reject");
+      return;
+    }
+    setSuiteApproveBusy(true);
+    setSuiteProposalError(null);
+    try {
+      const result = await approveAntiekBenchSuiteProposal({
+        proposal_id: suiteProposal.proposal_id,
+        approve,
+        includeHtml: true,
+      });
+      setSuiteApprove(result);
+      // Refresh proposal view after gate action
+      const p = await fetchAntiekBenchSuiteProposal({ includeHtml: true });
+      setSuiteProposal(p);
+    } catch (e) {
+      setSuiteProposalError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSuiteApproveBusy(false);
     }
   }
 
@@ -558,15 +587,73 @@ export default function Settings() {
                 {suiteProposalError}
               </p>
             )}
-            <button
-              type="button"
-              data-testid="antiek-bench-suite-proposal-refresh"
-              onClick={() => void onRefreshSuiteProposal()}
-              disabled={suiteProposalBusy}
-              className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
-            >
-              {suiteProposalBusy ? "Loading…" : "Refresh suite proposal"}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                data-testid="antiek-bench-suite-proposal-refresh"
+                onClick={() => void onRefreshSuiteProposal()}
+                disabled={suiteProposalBusy || suiteApproveBusy}
+                className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+              >
+                {suiteProposalBusy ? "Loading…" : "Refresh suite proposal"}
+              </button>
+              <button
+                type="button"
+                data-testid="antiek-bench-suite-approve"
+                onClick={() => void onApproveSuiteProposal(true)}
+                disabled={
+                  suiteApproveBusy ||
+                  !suiteProposal?.has_proposal ||
+                  !suiteProposal?.proposal_id ||
+                  suiteProposal.status !== "proposed"
+                }
+                className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+              >
+                {suiteApproveBusy ? "Working…" : "Approve & promote"}
+              </button>
+              <button
+                type="button"
+                data-testid="antiek-bench-suite-reject"
+                onClick={() => void onApproveSuiteProposal(false)}
+                disabled={
+                  suiteApproveBusy ||
+                  !suiteProposal?.has_proposal ||
+                  !suiteProposal?.proposal_id ||
+                  suiteProposal.status !== "proposed"
+                }
+                className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+              >
+                Reject proposal
+              </button>
+            </div>
+            {suiteApprove && (
+              <div
+                className="font-mono text-[13px] space-y-1 border-t border-ink/10 dark:border-bright/10 pt-2"
+                data-testid="antiek-bench-suite-approve-result"
+              >
+                <Row label="Gate ok" value={String(suiteApprove.ok)} />
+                <Row
+                  label="Gate status"
+                  value={suiteApprove.status ?? "—"}
+                />
+                <Row
+                  label="Promoted"
+                  value={String(suiteApprove.promoted)}
+                />
+                <Row
+                  label="Active after"
+                  value={suiteApprove.active_suite_version ?? "—"}
+                />
+                {suiteApprove.notes?.map((n) => (
+                  <p
+                    key={n}
+                    className="text-[11px] text-ink-soft dark:text-starlight"
+                  >
+                    {n}
+                  </p>
+                ))}
+              </div>
+            )}
             {suiteProposal && (
               <div
                 className="font-mono text-[13px] space-y-2"

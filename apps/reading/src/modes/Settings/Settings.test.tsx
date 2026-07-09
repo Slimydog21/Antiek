@@ -16,6 +16,7 @@ const {
   fetchSettingsBudget,
   fetchAntiekBenchUsageSummary,
   fetchAntiekBenchSuiteProposal,
+  approveAntiekBenchSuiteProposal,
   fetchNotDiamondAdvisory,
 } = vi.hoisted(() => {
   const models = {
@@ -106,6 +107,30 @@ const {
       notes: ["Proposal status is proposed only"],
       html: "<p>Status: proposal only · proposed</p>",
     })),
+    approveAntiekBenchSuiteProposal: vi.fn(async (opts: {
+      proposal_id: string;
+      approve: boolean;
+    }) => ({
+      ok: true,
+      proposal_id: opts.proposal_id,
+      status: opts.approve ? "approved" : "rejected",
+      approved: opts.approve,
+      promoted: opts.approve,
+      active_suite_version: opts.approve
+        ? "core-v1+usage-abcd1234"
+        : "core-v1",
+      active_suite_before: "core-v1",
+      proposed_suite_version: "core-v1+usage-abcd1234",
+      view_format: "html",
+      settings_panel: "antiek_bench_suite_approve",
+      source: "antiek_bench.approve_and_promote",
+      notes: [
+        opts.approve
+          ? "Approved and promoted suite core-v1+usage-abcd1234"
+          : "Rejected proposal",
+      ],
+      html: null,
+    })),
     fetchNotDiamondAdvisory: vi.fn(async () => ({
       advisory_allowed: true,
       advisory_verdict: "GO",
@@ -136,6 +161,7 @@ vi.mock("../../api/settings", () => ({
   clearDecisionTreeSelection,
   fetchAntiekBenchUsageSummary,
   fetchAntiekBenchSuiteProposal,
+  approveAntiekBenchSuiteProposal,
   fetchNotDiamondAdvisory,
 }));
 
@@ -153,6 +179,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
     fetchSettingsBudget.mockClear();
     fetchAntiekBenchUsageSummary.mockClear();
     fetchAntiekBenchSuiteProposal.mockClear();
+    approveAntiekBenchSuiteProposal.mockClear();
     fetchNotDiamondAdvisory.mockClear();
   });
 
@@ -273,5 +300,33 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("antiek-bench-suite-proposal-html").innerHTML).toMatch(
       /proposal|proposed/i,
     );
+  });
+
+  it("approves suite proposal via explicit Settings gate", async () => {
+    const user = userEvent.setup();
+    render(<Settings />);
+    await waitFor(() => {
+      expect(screen.getByTestId("antiek-bench-suite-approve")).toBeTruthy();
+    });
+    const approveBtn = screen.getByTestId("antiek-bench-suite-approve");
+    expect(approveBtn).toBeTruthy();
+    await waitFor(() => {
+      expect((approveBtn as HTMLButtonElement).disabled).toBe(false);
+    });
+    await user.click(approveBtn);
+    await waitFor(() => {
+      expect(approveAntiekBenchSuiteProposal).toHaveBeenCalled();
+    });
+    const call = approveAntiekBenchSuiteProposal.mock.calls.at(-1)?.[0] as {
+      proposal_id: string;
+      approve: boolean;
+    };
+    expect(call.proposal_id).toBe("prop_testdeadbeef01");
+    expect(call.approve).toBe(true);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("antiek-bench-suite-approve-result").textContent,
+      ).toMatch(/approved|Promoted\s*true/i);
+    });
   });
 });
