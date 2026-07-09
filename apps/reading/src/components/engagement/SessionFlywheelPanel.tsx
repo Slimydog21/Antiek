@@ -7,6 +7,7 @@
  * after twins/usage land.
  * Residual (hj): session-flywheel-metrics machine attrs for recursive
  * note-taker + Antiek-bench audit (parity twin-notes / twin-promote metrics).
+ * Residual (ii): Settings deep-link for driver + budget before complete.
  * Composes shipped completeSessionFlywheel. HTML-first context pack.
  */
 
@@ -93,6 +94,17 @@ export function SessionFlywheelPanel({
         </h2>
         <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
           Land output → twins/context pack → usage events for Antiek-bench
+        </p>
+        {/* Residual (ii): Settings deep-link for model driver + budget. */}
+        <p className="text-[11px] font-mono">
+          <a
+            href="/settings"
+            data-testid="session-flywheel-settings-link"
+            className="underline opacity-80 hover:opacity-100"
+            title="Open Settings for decision-tree driver and daily budget"
+          >
+            Settings · driver & budget
+          </a>
         </p>
       </header>
       <textarea

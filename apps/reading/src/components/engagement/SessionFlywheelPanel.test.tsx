@@ -85,4 +85,11 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
         .disabled,
     ).toBe(true);
   });
+
+  it("links to Settings for driver & budget (ii)", () => {
+    render(<SessionFlywheelPanel sessionId="fsess_1" />);
+    const link = screen.getByTestId("session-flywheel-settings-link");
+    expect(link.getAttribute("href")).toBe("/settings");
+    expect(link.textContent).toMatch(/driver & budget/i);
+  });
 });
