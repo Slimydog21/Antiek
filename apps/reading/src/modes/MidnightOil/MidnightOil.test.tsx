@@ -11,6 +11,8 @@ const {
   fetchMidnightOilLiveStepStatus,
   fetchDecisionTreeSelection,
   seedTwinNotes,
+  hydratePublicationRefsMock,
+  parsePublicationRefsMock,
   collectDeepResearchSpawnIdsMock,
   listRecentDeepResearchSpawnIdsMock,
   pushRecentDeepResearchSpawnIdMock,
@@ -35,6 +37,28 @@ const {
   })),
   fetchDecisionTreeSelection: vi.fn(),
   seedTwinNotes: vi.fn(),
+  hydratePublicationRefsMock: vi.fn(async (refs: string[]) => ({
+    ok: refs.map((reference) => ({
+      asset_id: `pub_${reference}`,
+      ref: { handle: reference },
+      title: reference,
+      body_text: "",
+      fetched: false,
+      offline_honest: true,
+      view_format: "html" as const,
+      notes: [],
+      product_panel: "test",
+      source: "test",
+    })),
+    failed: [] as Array<{ reference: string; error: string }>,
+    view_format: "html" as const,
+  })),
+  parsePublicationRefsMock: vi.fn((raw: string) =>
+    (raw || "")
+      .split(/\r?\n+/)
+      .map((l) => l.trim())
+      .filter(Boolean),
+  ),
   collectDeepResearchSpawnIdsMock: vi.fn(
     (source: {
       extraSpawnIds?: readonly string[] | null;
@@ -253,6 +277,13 @@ vi.mock("../../workspace/windowsStore", () => ({
     sel({ windows: {} }),
 }));
 
+vi.mock("../ResearchWorkstation/publicationRefs", () => ({
+  parsePublicationRefs: (...args: unknown[]) =>
+    parsePublicationRefsMock(...(args as [string])),
+  hydratePublicationRefs: (...args: unknown[]) =>
+    hydratePublicationRefsMock(...(args as [string[]])),
+}));
+
 vi.mock("../../workspace/collectDeepResearchSpawnIds", () => ({
   collectDeepResearchSpawnIds: (...args: unknown[]) =>
     collectDeepResearchSpawnIdsMock(...args),
@@ -291,6 +322,30 @@ describe("MidnightOil mode", () => {
     collectDeepResearchSpawnIdsMock.mockClear();
     listRecentDeepResearchSpawnIdsMock.mockReset().mockReturnValue([]);
     pushRecentDeepResearchSpawnIdMock.mockClear();
+    hydratePublicationRefsMock.mockClear();
+    parsePublicationRefsMock.mockClear();
+    parsePublicationRefsMock.mockImplementation((raw: string) =>
+      (raw || "")
+        .split(/\r?\n+/)
+        .map((l) => l.trim())
+        .filter(Boolean),
+    );
+    hydratePublicationRefsMock.mockImplementation(async (refs: string[]) => ({
+      ok: refs.map((reference) => ({
+        asset_id: `pub_${reference}`,
+        ref: { handle: reference },
+        title: reference,
+        body_text: "",
+        fetched: false,
+        offline_honest: true,
+        view_format: "html" as const,
+        notes: [],
+        product_panel: "test",
+        source: "test",
+      })),
+      failed: [] as Array<{ reference: string; error: string }>,
+      view_format: "html" as const,
+    }));
     // Keep ring-update behavior after clear.
     pushRecentDeepResearchSpawnIdMock.mockImplementation((id: string) => {
       const sid = String(id || "").trim();
@@ -406,7 +461,7 @@ describe("MidnightOil mode", () => {
       html: "<p>Wrestle job</p>",
     });
     render(<MidnightOil />);
-    fireEvent.change(screen.getByLabelText(/goals/i), {
+    fireEvent.change(screen.getByLabelText(/^Goals \(one per line\)$/i), {
       target: { value: "Long-horizon synthesis" },
     });
     fireEvent.click(screen.getByTestId("research-launch-tier-wrestle"));
@@ -465,7 +520,7 @@ describe("MidnightOil mode", () => {
     });
 
     render(<MidnightOil />);
-    fireEvent.change(screen.getByLabelText(/goals/i), {
+    fireEvent.change(screen.getByLabelText(/^Goals \(one per line\)$/i), {
       target: { value: "Map residual risks" },
     });
     fireEvent.click(
@@ -547,7 +602,7 @@ describe("MidnightOil mode", () => {
       html: "<p>ok</p>",
     });
     render(<MidnightOil />);
-    fireEvent.change(screen.getByLabelText(/goals/i), {
+    fireEvent.change(screen.getByLabelText(/^Goals \(one per line\)$/i), {
       target: { value: "Huge wrestle" },
     });
     fireEvent.click(
@@ -622,7 +677,7 @@ describe("MidnightOil mode", () => {
     });
 
     render(<MidnightOil />);
-    fireEvent.change(screen.getByLabelText(/goals/i), {
+    fireEvent.change(screen.getByLabelText(/^Goals \(one per line\)$/i), {
       target: { value: "Wrestle with twin notes" },
     });
     fireEvent.click(
@@ -864,7 +919,7 @@ describe("MidnightOil mode", () => {
     });
 
     render(<MidnightOil />);
-    fireEvent.change(screen.getByLabelText(/goals/i), {
+    fireEvent.change(screen.getByLabelText(/^Goals \(one per line\)$/i), {
       target: { value: "Goal A" },
     });
     fireEvent.click(
@@ -936,6 +991,55 @@ describe("MidnightOil mode", () => {
     expect(depositMetrics.textContent).toMatch(/Midnight Oil deposit/);
   });
 
+  it("hydrates pub refs and appends grounded goals on create (oy)", async () => {
+    createMidnightOilJob.mockResolvedValue({
+      job_id: "moil_pubs",
+      goals: [
+        "Wrestle with attention",
+        "Ground publication: arxiv:1706.03762",
+      ],
+      duration_minutes: 30,
+      status: "awaiting_approval",
+      recommended_price_ceiling_usd: 2.0,
+      view_format: "html",
+      runnable: false,
+      html: "<p>Receipt</p>",
+    });
+    render(<MidnightOil />);
+    fireEvent.change(screen.getByLabelText(/^Goals \(one per line\)$/i), {
+      target: { value: "Wrestle with attention" },
+    });
+    fireEvent.change(screen.getByTestId("moil-pub-refs"), {
+      target: { value: "arxiv:1706.03762" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /create job \+ recommend ceiling/i }),
+    );
+    await waitFor(() => {
+      expect(hydratePublicationRefsMock).toHaveBeenCalledWith([
+        "arxiv:1706.03762",
+      ]);
+    });
+    await waitFor(() => {
+      expect(createMidnightOilJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          goals: expect.arrayContaining([
+            "Wrestle with attention",
+            "Ground publication: arxiv:1706.03762",
+          ]),
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("moil-pub-refs-status").textContent).toMatch(
+        /Hydrated 1/,
+      );
+    });
+    expect(screen.getByTestId("moil-pub-refs-status").textContent).toMatch(
+      /HTML-first/,
+    );
+  });
+
   it("pushes offline run spawn_ids to recent_ring without auto-deposit (oq)", async () => {
     createMidnightOilJob.mockResolvedValue({
       job_id: "moil_run_no_dep",
@@ -977,7 +1081,7 @@ describe("MidnightOil mode", () => {
     });
 
     render(<MidnightOil />);
-    fireEvent.change(screen.getByLabelText(/goals/i), {
+    fireEvent.change(screen.getByLabelText(/^Goals \(one per line\)$/i), {
       target: { value: "Goal alone" },
     });
     fireEvent.click(

@@ -44,6 +44,9 @@
  * is off so swarm goals remain multi-selectable elsewhere (Write/hosted).
  * Residual (ot): run-result metrics surface recent_ring honesty (spawn count
  * remembered for collective multi-select without leaving MO or after navigate).
+ * Residual (oy): optional arxiv/substack/URL pub refs on create — hydrate then
+ * append as grounded goals so offline swarm inherits knowledge-dense sources
+ * (parity Write/ResearchThis; offline-honest hydrate default).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -80,6 +83,10 @@ import { ResearchContextPanel } from "../../components/engagement/ResearchContex
 import { ResearchProgressPanel } from "../../components/engagement/ResearchProgressPanel";
 import { TwinNotesPanel } from "../../components/engagement/TwinNotesPanel";
 import { openWindow } from "../../components/windows/openWindow";
+import {
+  hydratePublicationRefs,
+  parsePublicationRefs,
+} from "../ResearchWorkstation/publicationRefs";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
 import {
   listRecentDeepResearchSpawnIds,
@@ -121,6 +128,9 @@ export function openMidnightOilDepositWindow(
 
 export default function MidnightOil() {
   const [goalsText, setGoalsText] = useState("");
+  // Residual (oy): knowledge-dense pub refs grounding for autonomous swarm.
+  const [pubRefs, setPubRefs] = useState("");
+  const [pubRefStatus, setPubRefStatus] = useState<string | null>(null);
   const [durationMinutes, setDurationMinutes] = useState(60);
   /** Default until decision-tree prefill (cz); ceiling pricing accepts "default". */
   const [modelId, setModelId] = useState("default");
@@ -349,11 +359,35 @@ export default function MidnightOil() {
     }
     setBusy(true);
     setError(null);
+    setPubRefStatus(null);
     try {
       const goals = goalsText
         .split("\n")
         .map((g) => g.trim())
         .filter(Boolean);
+      // Residual (oy): hydrate pub refs then append as grounded goals (HTML-first).
+      const refs = parsePublicationRefs(pubRefs);
+      if (refs.length > 0) {
+        const hydrated = await hydratePublicationRefs(refs);
+        // Swarm goals always see operator-supplied handles (never invent).
+        for (const handle of refs) {
+          const line = `Ground publication: ${handle}`;
+          if (!goals.includes(line)) goals.push(line);
+        }
+        const offlineCount = (hydrated.ok || []).filter(
+          (row) => row.offline_honest !== false,
+        ).length;
+        setPubRefStatus(
+          `Hydrated ${hydrated.ok.length} pub asset(s)` +
+            (hydrated.failed.length
+              ? ` · ${hydrated.failed.length} failed`
+              : "") +
+            (offlineCount > 0
+              ? ` · offline_honest≈${offlineCount}`
+              : "") +
+            " · HTML-first",
+        );
+      }
       const created = await createMidnightOilJob({
         goals,
         duration_minutes: durationMinutes,
@@ -587,6 +621,35 @@ export default function MidnightOil() {
             required
             disabled={busy}
           />
+        </label>
+        {/* Residual (oy): knowledge-dense arxiv/substack/URL grounding. */}
+        <label className="block space-y-1">
+          <span className="text-sm font-medium">
+            Publication refs (optional · one per line)
+          </span>
+          <p className="text-[11px] font-mono opacity-70">
+            arxiv / substack / URL — hydrated then appended as grounded goals
+            for the offline swarm (HTML-first; live body hydrate is dual-gate).
+          </p>
+          <textarea
+            className="w-full min-h-[72px] border rounded p-2 font-mono text-sm"
+            value={pubRefs}
+            onChange={(e) => setPubRefs(e.target.value)}
+            disabled={busy}
+            data-testid="moil-pub-refs"
+            data-view-format="html"
+            placeholder={"arxiv:1706.03762\nhttps://…"}
+            aria-label="Publication references for Midnight Oil grounding"
+          />
+          {pubRefStatus ? (
+            <p
+              className="text-[11px] font-mono opacity-80"
+              data-testid="moil-pub-refs-status"
+              role="status"
+            >
+              {pubRefStatus}
+            </p>
+          ) : null}
         </label>
         <label className="block space-y-1">
           <span className="text-sm font-medium">Duration (minutes)</span>

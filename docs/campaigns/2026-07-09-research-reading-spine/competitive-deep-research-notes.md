@@ -518,3 +518,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (ox, 2026-07-10) **DeepResearchSessionHost recent_ring proof:**
   - data-recent-count on deep-research-collective-mount
   - vitest pushRecent closed spawn appears in multi-select (parity om/ou/ov)
+
+- Closed (oy, 2026-07-10) **Midnight Oil create pub refs grounding:**
+  - arxiv/substack/URL hydrate offline-honest on create
+  - Ground publication: handles appended as swarm goals
+  - knowledge-dense autonomous research parity Write/ResearchThis
