@@ -1,0 +1,13 @@
+# inventory-jj · Settings research_tier on FloatMenu hosts
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: jj
+files:
+  apps/reading/src/lib/useSettingsResearchTier.ts
+  apps/reading/src/lib/useSettingsResearchTier.test.ts
+  apps/reading/src/modes/Reading/index.tsx
+  apps/reading/src/modes/Reading/Reading.test.tsx
+  apps/reading/src/modes/ResearchWorkstation/HighlightToolbar.tsx
+  apps/reading/src/modes/DeepResearchWorkspace/BlockDetail.tsx
+  apps/reading/src/modes/DeepResearchWorkspace/BlockDetail.test.tsx
+proof: vitest useSettingsResearchTier + Reading + BlockDetail 38_passed (HONEST_OK)
+invariants: HTML · closed set · default deep · offline-honest fetch · shared hook (hard to vary)

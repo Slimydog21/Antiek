@@ -1,6 +1,7 @@
 import FloatMenu from "../shared/FloatMenu/FloatMenu";
 import { useFloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection";
 import type { FloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection";
+import { useSettingsResearchTier } from "../../lib/useSettingsResearchTier";
 import { launchFloatingDeepResearch } from "../Reading/launchFloatingDeepResearch";
 
 /**
@@ -11,6 +12,7 @@ import { launchFloatingDeepResearch } from "../Reading/launchFloatingDeepResearc
  * (same product path as Reading). Residual (fe): Deep-research full opens
  * view_mode full. ChaseThread remains the degraded fallback via `onChaseThis`
  * when launch fails.
+ * Residual (jj): Settings depth-tier → research_tier on launch (parity ji).
  *
  * Why a host adapter and not FloatMenu directly in the page: FloatMenu is
  * host-agnostic (it takes a rect prop, reads no DOM, imports nothing from
@@ -35,6 +37,7 @@ export default function HighlightToolbar({
   investigationId?: string;
 }) {
   const selection = useFloatMenuSelection({ scopeRef });
+  const { researchTier } = useSettingsResearchTier();
 
   return (
     <FloatMenu
@@ -57,6 +60,7 @@ export default function HighlightToolbar({
               selection_text: safeSpawnText,
               goal_hint: "Deep-research the highlighted synthesis passage",
               view_mode: viewMode,
+              research_tier: researchTier,
             });
           } catch {
             onChaseThis(safeSpawnText);

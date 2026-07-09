@@ -27,6 +27,13 @@ const postTypedEventMock = vi.fn((_envelope: unknown) =>
 );
 const launchFloatingDeepResearch = vi.fn();
 const startInvestigation = vi.fn();
+const fetchDepthTiers = vi.hoisted(() =>
+  vi.fn(async () => ({
+    active_depth_tier: null as string | null,
+    active_preset: null,
+    tiers: [],
+  })),
+);
 
 vi.mock("../../lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/api")>();
@@ -36,6 +43,10 @@ vi.mock("../../lib/api", async (importOriginal) => {
     startInvestigation: (...args: unknown[]) => startInvestigation(...args),
   };
 });
+
+vi.mock("../../api/settings", () => ({
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...args),
+}));
 
 vi.mock("../Reading/launchFloatingDeepResearch", () => ({
   launchFloatingDeepResearch: (...args: unknown[]) =>
@@ -106,6 +117,11 @@ beforeEach(() => {
   postTypedEventMock.mockClear();
   launchFloatingDeepResearch.mockReset();
   startInvestigation.mockReset();
+  fetchDepthTiers.mockReset().mockResolvedValue({
+    active_depth_tier: null,
+    active_preset: null,
+    tiers: [],
+  });
   launchFloatingDeepResearch.mockResolvedValue({
     session_id: "fsess_b",
     spawn_id: "spn_b",
@@ -116,6 +132,7 @@ beforeEach(() => {
     view_mode: "floating",
     status: "reserved",
     model_id: null,
+    research_tier: "deep",
   });
 });
 afterEach(() => {
@@ -158,9 +175,37 @@ describe("BlockDetail — the SECOND live FloatMenu host (M1)", () => {
         asset_id: "doc-block-9",
         selection_text: "a grounded insight",
         view_mode: "floating",
+        research_tier: "deep",
       }),
     );
     expect(startInvestigation).not.toHaveBeenCalled();
+  });
+
+  it("Deep-research forwards Settings wrestle research_tier (jj)", async () => {
+    fetchDepthTiers.mockResolvedValue({
+      active_depth_tier: "wrestle",
+      active_preset: null,
+      tiers: [],
+    });
+    renderDetail(insightNode());
+    // Let Settings prefill settle before clicking Deep-research.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const scope = screen.getByText(
+      "a grounded insight worth selecting and noting",
+    );
+    selectTextIn(scope, "a grounded insight");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitem", { name: "Deep-research" }));
+    });
+    expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        asset_id: "doc-block-9",
+        research_tier: "wrestle",
+        view_mode: "floating",
+      }),
+    );
   });
 
   it("Deep-research full launches full window mode (fh)", async () => {

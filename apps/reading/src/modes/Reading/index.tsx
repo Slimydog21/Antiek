@@ -21,6 +21,7 @@ import ResearchThis from "./ResearchThis";
 import TalkToBook from "./TalkToBook";
 import TocPanel from "./TocPanel";
 import VoiceNote from "./VoiceNote";
+import { useSettingsResearchTier } from "../../lib/useSettingsResearchTier";
 import { launchFloatingDeepResearch } from "./launchFloatingDeepResearch";
 import { paginate, windowForTocPage } from "./paginate";
 import { usePosition } from "./usePosition";
@@ -195,8 +196,11 @@ export default function BookReader() {
     minLength: 8,
   });
 
-  // Deep-research (residual cd/fe): primary → floating or full
-  // deep_research_session via launchFloatingDeepResearch.
+  // Residual (jj): Settings depth-tier for FloatMenu DR launches.
+  const { researchTier } = useSettingsResearchTier();
+
+  // Deep-research (residual cd/fe/jj): primary → floating or full
+  // deep_research_session via launchFloatingDeepResearch + research_tier.
   // Fallback → in-book ChaseThread if launch fails (degraded path).
   // §9.0: `safeSpawnText` is null when the selection crosses a withheld
   // region — refuse rather than spawn on a withheld body.
@@ -218,6 +222,7 @@ export default function BookReader() {
             region_id: sel.provenance.chunkId ?? undefined,
             goal_hint: "Deep-research the highlighted passage from reading",
             view_mode: viewMode,
+            research_tier: researchTier,
           });
         } catch {
           // Degraded: keep the SHIPPED ChaseThread rabbit-hole path.
@@ -225,7 +230,7 @@ export default function BookReader() {
         }
       })();
     },
-    [documentId, pageIndex],
+    [documentId, pageIndex, researchTier],
   );
 
   // Turning the page (or jumping via TOC) collapses a stale selection — the

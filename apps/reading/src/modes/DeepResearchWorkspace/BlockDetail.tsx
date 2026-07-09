@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { recordSpawnRelationship } from "../../hooks/useInvestigationTree";
 import { startInvestigation, type DistilledNode } from "../../lib/api";
+import { useSettingsResearchTier } from "../../lib/useSettingsResearchTier";
 import FloatMenu from "../shared/FloatMenu/FloatMenu";
 import {
   useFloatMenuSelection,
@@ -26,6 +27,7 @@ import { launchFloatingDeepResearch } from "../Reading/launchFloatingDeepResearc
  * Residual (fh): Deep-research primary path opens deep_research_session window
  * floating|full (parity Reading/HighlightToolbar). Chase startInvestigation
  * remains the degraded fallback when float launch fails.
+ * Residual (jj): Settings depth-tier → research_tier on launch (parity ji).
  */
 export default function BlockDetail({
   node,
@@ -40,6 +42,7 @@ export default function BlockDetail({
 }) {
   const scopeRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const { researchTier } = useSettingsResearchTier();
 
   // The host resolves provenance: this node's source document grounds any note
   // (§9 chain claim→chunk→document). The selection hook reads the DOM range;
@@ -61,12 +64,13 @@ export default function BlockDetail({
       (node.source_document_id || "").trim() || investigationId || "__research__";
     const viewMode = opts?.viewMode === "full" ? "full" : "floating";
     try {
-      // Residual (fh): window host first (reading ≡ research).
+      // Residual (fh/jj): window host first + Settings research_tier.
       await launchFloatingDeepResearch({
         asset_id: assetId,
         selection_text: safeSpawnText,
         goal_hint: "Deep-research the highlighted block detail passage",
         view_mode: viewMode,
+        research_tier: researchTier,
       });
     } catch {
       // Degraded: REUSED chase path — child investigation + navigate.

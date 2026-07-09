@@ -20,6 +20,7 @@ const {
   startInvestigationMock,
   apiFetchMock,
   launchFloatingDeepResearchMock,
+  fetchDepthTiersMock,
 } = vi.hoisted(() => ({
   getBookMock: vi.fn(),
   getFullTextMock: vi.fn(),
@@ -47,12 +48,22 @@ const {
     view_format: "html" as const,
     view_mode: "floating",
     status: "reserved",
+    research_tier: "deep",
+  })),
+  fetchDepthTiersMock: vi.fn(async () => ({
+    active_depth_tier: null as string | null,
+    active_preset: null,
+    tiers: [],
   })),
 }));
 
 vi.mock("./launchFloatingDeepResearch", () => ({
   launchFloatingDeepResearch: (...args: unknown[]) =>
     launchFloatingDeepResearchMock(...args),
+}));
+
+vi.mock("../../api/settings", () => ({
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiersMock(...args),
 }));
 
 vi.mock("../../api/books", async (orig) => {
@@ -280,6 +291,11 @@ describe("BookReader", () => {
     getFullTextMock.mockReset();
     listBooksMock.mockReset();
     navigateMock.mockReset();
+    fetchDepthTiersMock.mockReset().mockResolvedValue({
+      active_depth_tier: null,
+      active_preset: null,
+      tiers: [],
+    });
     // Default: a calm, empty reading thread (the no-key / nothing-yet case).
     useInvestigationMock.mockReset();
     useInvestigationMock.mockReturnValue({
@@ -439,14 +455,44 @@ describe("BookReader", () => {
       asset_id: string;
       selection_text: string;
       view_mode: string;
+      research_tier?: string;
     };
     expect(call.asset_id).toBe("doc-1");
     expect(call.selection_text).toMatch(/opening of the book/);
     expect(call.view_mode).toBe("floating");
+    // Residual (jj): Settings unset → default deep research_tier.
+    expect(call.research_tier).toBe("deep");
     // ChaseThread is the degraded fallback only — not used when launch succeeds.
     expect(
       screen.queryByRole("complementary", { name: /Following this passage/ }),
     ).toBeNull();
+  });
+
+  it("Deep-research FloatMenu forwards Settings wrestle research_tier (jj)", async () => {
+    fetchDepthTiersMock.mockResolvedValue({
+      active_depth_tier: "wrestle",
+      active_preset: null,
+      tiers: [],
+    });
+    launchFloatingDeepResearchMock.mockClear();
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody());
+    await renderReader();
+    await waitFor(() => {
+      expect(fetchDepthTiersMock).toHaveBeenCalled();
+    });
+    const para = await screen.findByText("The opening of the book.");
+    selectTextIn(para, "The opening of the book.");
+    const menu = await screen.findByRole("menu", { name: /Highlight actions/ });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Deep-research" }));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearchMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          research_tier: "wrestle",
+          view_mode: "floating",
+        }),
+      );
+    });
   });
 
   it("Deep-research falls back to ChaseThread when floating launch fails", async () => {
