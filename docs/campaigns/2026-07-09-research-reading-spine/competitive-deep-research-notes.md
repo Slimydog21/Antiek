@@ -594,3 +594,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (pq, 2026-07-10) **twin_seed create seeds twin notes on new piece:**
   - createWithConnection → seedTwinNotes force_offline from twin seed plain_text
   - recursive note-taker continues into writing asset
+
+- Closed (pr, 2026-07-10) **SESSION-ARC pn–pq twin write path:**
+  - SESSION-ARC-pn-pq-twin-write-path.md fleet handoff
