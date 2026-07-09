@@ -17,6 +17,7 @@ Surfaces:
   POST /engagement/hydrate-ref
   POST /engagement/progress
   GET  /engagement/progress/{spawn_id}
+  POST /engagement/evidence-pack
   POST /engagement/sessions/open
   POST /engagement/sessions/complete-flywheel
 """
@@ -35,6 +36,7 @@ from substrate.engagement_spine import (
     InMemoryEngagementStore,
     attach_source_references,
     assemble_research_context,
+    evidence_pack_payload,
     hydrate_reference,
     merge_product_payload,
     merge_spawns_collective,
@@ -191,6 +193,12 @@ class ProgressRecordBody(BaseModel):
 
 class ProgressSeedBody(BaseModel):
     spawn_id: str = Field(min_length=1)
+    include_html: bool = True
+
+
+class EvidencePackBody(BaseModel):
+    asset_id: str = Field(min_length=1)
+    spawn_id: str | None = None
     include_html: bool = True
 
 
@@ -392,6 +400,20 @@ def get_progress(spawn_id: str, include_html: bool = False) -> dict[str, Any]:
     if _eng().get_spawn(spawn_id) is None:
         raise HTTPException(status_code=404, detail=f"unknown spawn_id: {spawn_id}")
     return progress_payload(spawn_id, store=_eng(), include_html=include_html)
+
+
+@engagement_router.post("/evidence-pack")
+def post_evidence_pack(body: EvidencePackBody) -> dict[str, Any]:
+    """HTML-first evidence pack from twin notes + spawn source refs."""
+    try:
+        return evidence_pack_payload(
+            body.asset_id,
+            store=_eng(),
+            spawn_id=body.spawn_id,
+            include_html=body.include_html,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @engagement_router.post("/sessions/open")

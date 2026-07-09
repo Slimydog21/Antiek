@@ -81,6 +81,7 @@ from .progress import (
     record_progress,
     seed_default_pipeline,
 )
+from .evidence import evidence_pack_payload, project_evidence_html
 
 __all__ = [
     "CollectiveResearchUnit",
@@ -112,6 +113,7 @@ __all__ = [
     "HydratedAsset",
     "ProgressEvent",
     "asset_id_for_ref",
+    "evidence_pack_payload",
     "get_spawn",
     "hydrate_reference",
     "list_progress",
@@ -124,6 +126,7 @@ __all__ = [
     "parse_source_reference",
     "parse_source_references",
     "progress_payload",
+    "project_evidence_html",
     "project_hydrated_html",
     "project_merge_html",
     "project_progress_html",
