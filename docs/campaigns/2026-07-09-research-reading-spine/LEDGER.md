@@ -11,18 +11,19 @@
 
 | Cycle | Package | Status |
 |---|---|---|
-| 1–5 | spine, midnight oil, marketplace, antiek-bench, leaderboard, floating session | done |
-| 6 | **Decision-tree → real dispatch model_override** | **done** |
+| 1–6 | spine … decision-tree dispatch | done |
+| 7 | **Session ↔ workspace window composition** | **done** |
 
-## Cycle 6 details
+## Cycle 7 details
 
 | Item | Status |
 |---|---|
-| `resolve_dispatch_override` both halves | done |
-| `dispatch_with_selected_driver` calls real dispatch path | done |
-| floating session model_id handoff | done |
-| #440 budget projection not duplicated | done |
+| session_to_window_descriptor (windowsStore-shaped) | done |
+| open_session_as_window / multi-session open | done |
+| floating⇄full sync on session + window store | done |
+| TS handoff deepResearchWindow.ts | done |
+| HTML path via project_session_html | done |
 
 ## Non-claims
 
-No Settings React decision-tree UI e2e; no NotDiamond authority; no live multi-provider; operator merges only.
+No browser multi-window e2e; no reimplementation of windowsStore z-order; operator merges only.
