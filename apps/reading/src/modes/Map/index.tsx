@@ -21,6 +21,7 @@ const GROUPS: { title: string; routes: RouteEntry[] }[] = [
     title: "Workstation",
     routes: [
       { path: "/", title: "Research workstation", description: "Mode A — chat-first investigation surface" },
+      { path: "/midnight-oil", title: "Midnight oil", description: "Autonomous research-swarm preflight" },
       { path: "/wrestle", title: "Document wrestler", description: "Mode B — PDF reading + region selection" },
       { path: "/create", title: "Creation studio", description: "Mode C — lego-block writing" },
       { path: "/brainstorm", title: "Brainstorm station", description: "Mode E — watch-for-later + thought partner" },

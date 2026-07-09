@@ -21,6 +21,7 @@ import LibraryView from "./components/library/LibraryView";
 import Login from "./modes/Login";
 import Loop3 from "./modes/Loop3";
 import Map from "./modes/Map";
+import MidnightOil from "./modes/MidnightOil";
 import Multimedia from "./modes/Multimedia";
 import Notebook from "./modes/Notebook";
 import AutoNotebook from "./modes/Notebook/AutoNotebook";
@@ -111,6 +112,7 @@ function AuthenticatedRoutes() {
             (the Research-entry cascade navigates here after launch). */}
         <Route path="/deep-research" element={<DeepResearchWorkspace />} />
         <Route path="/deep-research/:sessionId" element={<DeepResearchWorkspace />} />
+        <Route path="/midnight-oil" element={<MidnightOil />} />
         <Route path="/wrestle" element={<WrestleApp />} />
         <Route path="/wrestle/:documentId" element={<WrestleApp />} />
         <Route path="/sources" element={<Sources />} />
