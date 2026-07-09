@@ -1994,6 +1994,7 @@ function JobPanel({
     ...buildPublicReviewAuditItems().map((item) => `${item.label}: ${item.value}`),
     `Copy boundary: ${readinessCopyBoundary}`,
   ];
+  const liveSpendCopyBoundary = "Live spend review is evidence only; copying it does not authorize spend, start workers, export, publish, or call providers.";
   const liveSpendReviewKey = liveSpendReview.map((item) => `${item.label}:${item.value}`).join("|");
   const activationChecklistKey = activationChecklist.map((item) => `${item.label}:${item.value}`).join("|");
   const activationDecisionKey = activationDecision.map((item) => `${item.label}:${item.value}`).join("|");
@@ -2104,7 +2105,9 @@ function JobPanel({
 
   async function copyLiveSpendReview() {
     if (!navigator.clipboard) return;
-    await navigator.clipboard.writeText(liveSpendReview.map((item) => `${item.label}: ${item.value}`).join("\n"));
+    await navigator.clipboard.writeText(
+      [...liveSpendReview.map((item) => `${item.label}: ${item.value}`), `Copy boundary: ${liveSpendCopyBoundary}`].join("\n"),
+    );
     setLiveReviewCopied(true);
   }
 
@@ -2229,6 +2232,9 @@ function JobPanel({
         <LemonButton type="button" size="sm" variant="secondary" className="mt-2" onClick={copyLiveSpendReview}>
           {liveReviewCopied ? "Review copied" : "Copy review"}
         </LemonButton>
+        <p className="mt-1 text-[11px] leading-snug text-shadow-1 dark:text-moonlight">
+          {liveSpendCopyBoundary}
+        </p>
       </div>
       <div
         className="mt-3 rounded-md border border-rule bg-ice-0 p-2 dark:border-charcoal-1 dark:bg-charcoal-1"

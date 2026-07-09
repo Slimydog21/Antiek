@@ -1214,6 +1214,11 @@ describe("Multimedia workstation", () => {
     expect(within(liveSpendReview).getByText("Balanced / krea")).toBeTruthy();
     expect(within(liveSpendReview).getByText("30 min video")).toBeTruthy();
     expect(within(liveSpendReview).getByText("Live worker disabled")).toBeTruthy();
+    expect(
+      within(liveSpendReview).getByText(
+        "Live spend review is evidence only; copying it does not authorize spend, start workers, export, publish, or call providers.",
+      ),
+    ).toBeTruthy();
     const readiness = screen.getByTestId("multimedia-provider-readiness");
     expect(
       screen.getByText("Readiness copy is evidence only; it does not authorize spend, run workers, export, publish, or call providers."),
@@ -1462,6 +1467,7 @@ describe("Multimedia workstation", () => {
           "Provider route: Balanced / krea",
           "Requested media: 30 min video",
           "Worker state: Live worker disabled",
+          "Copy boundary: Live spend review is evidence only; copying it does not authorize spend, start workers, export, publish, or call providers.",
         ].join("\n"),
       ),
     );
