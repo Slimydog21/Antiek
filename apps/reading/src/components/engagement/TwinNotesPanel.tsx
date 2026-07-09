@@ -18,10 +18,12 @@
  * Residual (lb): fall back to seed/list API research_tier when prop absent (la).
  * Residual (mq): selective promote by twin kind (all | insight | question)
  * for recursive note-taker merge UX into research context.
+ * Residual (mr): list filter by twin kind (browse insights/questions before
+ * selective promote) — same kind axis as promoteKinds.
  * HTML-first; never PDF.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchTwinNotes,
   promoteTwinsToContext,
@@ -95,6 +97,13 @@ export function TwinNotesPanel({
    * all → both; insight|question → single-class selective merge.
    */
   const [promoteKinds, setPromoteKinds] = useState<
+    "all" | "insight" | "question"
+  >("all");
+  /**
+   * Residual (mr): which twin kinds to show in the list (browse filter).
+   * Independent of promoteKinds so operators can audit one class then promote it.
+   */
+  const [listFilter, setListFilter] = useState<
     "all" | "insight" | "question"
   >("all");
 
@@ -237,6 +246,13 @@ export function TwinNotesPanel({
       setBusy(false);
     }
   }, [assetId, kind, text, spawnId]);
+
+  /** Residual (mr): notes visible under list filter. */
+  const visibleNotes = useMemo(() => {
+    const notes = twins?.notes || [];
+    if (listFilter === "all") return notes;
+    return notes.filter((n) => n.kind === listFilter);
+  }, [twins?.notes, listFilter]);
 
   const promote = useCallback(async () => {
     setBusy(true);
@@ -422,6 +438,8 @@ export function TwinNotesPanel({
             data-note-count={String(twins.note_count ?? 0)}
             data-insight-count={String(twins.insight_count ?? 0)}
             data-question-count={String(twins.question_count ?? 0)}
+            data-list-filter={listFilter}
+            data-visible-count={String(visibleNotes.length)}
             data-research-tier={normalizedResearchTier}
             data-view-format="html"
             role="status"
@@ -429,18 +447,51 @@ export function TwinNotesPanel({
             Recursive note-taker · notes={twins.note_count ?? 0} · insights=
             {twins.insight_count ?? 0} · questions={twins.question_count ?? 0}
             {normalizedResearchTier ? ` · tier=${normalizedResearchTier}` : ""}
+            {listFilter !== "all"
+              ? ` · showing ${listFilter}=${visibleNotes.length}`
+              : ""}
           </div>
+          {/* Residual (mr): browse filter before selective promote. */}
+          <label className="flex items-center gap-1 text-[11px] font-mono">
+            <span className="opacity-70">Show</span>
+            <select
+              data-testid="twin-list-filter"
+              value={listFilter}
+              onChange={(e) =>
+                setListFilter(
+                  e.target.value as "all" | "insight" | "question",
+                )
+              }
+              disabled={busy}
+              aria-label="Filter twin notes by kind"
+            >
+              <option value="all">all notes</option>
+              <option value="insight">insights only</option>
+              <option value="question">questions only</option>
+            </select>
+          </label>
           <p>
             notes={twins.note_count} · insights={twins.insight_count} · questions=
             {twins.question_count}
+            {listFilter !== "all"
+              ? ` · visible=${visibleNotes.length}`
+              : ""}
           </p>
           <ul data-testid="twin-notes-list">
-            {twins.notes.map((n) => (
-              <li key={n.note_id}>
+            {visibleNotes.map((n) => (
+              <li key={n.note_id} data-kind={n.kind}>
                 <strong>[{n.kind}]</strong> {n.text}
               </li>
             ))}
           </ul>
+          {twins.notes.length > 0 && visibleNotes.length === 0 ? (
+            <p
+              className="text-[11px] font-mono opacity-70"
+              data-testid="twin-list-filter-empty"
+            >
+              No {listFilter} notes in this twin substrate.
+            </p>
+          ) : null}
           {twins.html ? (
             <div
               data-testid="twin-notes-html"

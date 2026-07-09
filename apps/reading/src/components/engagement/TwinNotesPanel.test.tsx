@@ -461,6 +461,70 @@ describe("TwinNotesPanel", () => {
     expect(metrics.textContent).toMatch(/Twin promote → context/);
   });
 
+  it("filters twin list by kind before promote (mr)", async () => {
+    fetchTwinNotes.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 2,
+      insight_count: 1,
+      question_count: 1,
+      notes: [
+        {
+          note_id: "twin_i",
+          asset_id: "paper",
+          kind: "insight",
+          text: "Insight A",
+        },
+        {
+          note_id: "twin_q",
+          asset_id: "paper",
+          kind: "question",
+          text: "Question B?",
+        },
+      ],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+      html: "<p>twins</p>",
+    });
+    render(<TwinNotesPanel assetId="paper" autoLoad />);
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-list-filter")).toBeTruthy();
+    });
+    expect(screen.getByTestId("twin-notes-list").textContent).toMatch(
+      /Insight A/,
+    );
+    expect(screen.getByTestId("twin-notes-list").textContent).toMatch(
+      /Question B/,
+    );
+    fireEvent.change(screen.getByTestId("twin-list-filter"), {
+      target: { value: "insight" },
+    });
+    expect(screen.getByTestId("twin-notes-list").textContent).toMatch(
+      /Insight A/,
+    );
+    expect(screen.getByTestId("twin-notes-list").textContent).not.toMatch(
+      /Question B/,
+    );
+    expect(
+      screen.getByTestId("twin-notes-metrics").getAttribute("data-list-filter"),
+    ).toBe("insight");
+    expect(
+      screen
+        .getByTestId("twin-notes-metrics")
+        .getAttribute("data-visible-count"),
+    ).toBe("1");
+    fireEvent.change(screen.getByTestId("twin-list-filter"), {
+      target: { value: "question" },
+    });
+    expect(screen.getByTestId("twin-notes-list").textContent).toMatch(
+      /Question B/,
+    );
+    expect(screen.getByTestId("twin-notes-list").textContent).not.toMatch(
+      /Insight A/,
+    );
+  });
+
   it("selectively promotes questions only (mq)", async () => {
     promoteTwinsToContext.mockResolvedValue({
       asset_id: "paper",

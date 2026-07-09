@@ -285,3 +285,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (mq, 2026-07-10) **Selective twin promote by kind:**
   - kinds filter on promote-context API + TwinNotesPanel UI
   - insights only | questions only | all for recursive note-taker merge
+
+- Closed (mr, 2026-07-10) **Twin list filter by kind:**
+  - Show all|insights|questions before selective promote (mq)
