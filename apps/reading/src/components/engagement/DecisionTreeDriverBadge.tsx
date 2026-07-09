@@ -9,9 +9,10 @@
  * surface that mounts the badge also shows spend vs cap / remaining (honest
  * unknown when spent_status is unknown). Not a launch soft-gate — that stays
  * on ResearchLaunchBudgetPanel.
+ * Residual (fd): manual refresh of driver + budget without remounting the host.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchDecisionTreeSelection,
   fetchSettingsBudget,
@@ -43,27 +44,29 @@ export function DecisionTreeDriverBadge() {
   const [tree, setTree] = useState<DecisionTreeSelectionResponse | null>(null);
   const [budget, setBudget] = useState<BudgetResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async () => {
+    setRefreshing(true);
+    setError(null);
+    try {
+      const [t, b] = await Promise.all([
+        fetchDecisionTreeSelection(),
+        fetchSettingsBudget().catch(() => null),
+      ]);
+      setTree(t);
+      setBudget(b);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    void Promise.all([
-      fetchDecisionTreeSelection().catch((e) => {
-        throw e;
-      }),
-      fetchSettingsBudget().catch(() => null),
-    ])
-      .then(([t, b]) => {
-        if (cancelled) return;
-        setTree(t);
-        setBudget(b);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    void load();
+  }, [load, refreshTick]);
 
   const pct = useMemo(() => budgetUsagePct(budget), [budget]);
 
@@ -72,18 +75,31 @@ export function DecisionTreeDriverBadge() {
       className="space-y-1 text-[11px] font-mono text-shadow-1 dark:text-moonlight"
       data-testid="decision-tree-driver-badge"
       data-view-format="html"
+      data-refresh-tick={String(refreshTick)}
     >
-      {error ? (
-        <span data-testid="decision-tree-driver-error">Driver unknown</span>
-      ) : tree?.installed && tree.model_id ? (
-        <span data-testid="decision-tree-driver-active">
-          Driver: {tree.provider_id ?? "?"} / {tree.model_id}
-        </span>
-      ) : (
-        <span data-testid="decision-tree-driver-none">
-          Driver: (none — Settings → decision tree)
-        </span>
-      )}
+      <div className="flex flex-wrap items-center gap-2">
+        {error ? (
+          <span data-testid="decision-tree-driver-error">Driver unknown</span>
+        ) : tree?.installed && tree.model_id ? (
+          <span data-testid="decision-tree-driver-active">
+            Driver: {tree.provider_id ?? "?"} / {tree.model_id}
+          </span>
+        ) : (
+          <span data-testid="decision-tree-driver-none">
+            Driver: (none — Settings → decision tree)
+          </span>
+        )}
+        {/* Residual (fd): re-fetch driver + budget after Settings changes. */}
+        <button
+          type="button"
+          data-testid="decision-tree-driver-refresh"
+          className="underline opacity-80 hover:opacity-100"
+          disabled={refreshing}
+          onClick={() => setRefreshTick((n) => n + 1)}
+        >
+          {refreshing ? "Refreshing…" : "Refresh"}
+        </button>
+      </div>
 
       {/* Residual (eq): compact usage bar for the operator's daily API budget. */}
       <div
