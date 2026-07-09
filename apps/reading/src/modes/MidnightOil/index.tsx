@@ -38,6 +38,8 @@
  * Deposit spawn_ids also push into recent_ring for closed-window merge.
  * Residual (oo): TwinNotesPanel on deposit HTML asset (promote/chase multi-select
  * recursive note-taker) — parity hosted/Write; remount after promote/merge.
+ * Residual (op): ResearchContextPanel on deposit (search/metrics over twin
+ * substrate that feeds the next prompt) — remount on same refresh key as twins.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -70,6 +72,7 @@ import {
   type ResearchLaunchBudgetProjection,
   type ResearchLaunchTier,
 } from "../../components/engagement/ResearchLaunchBudgetPanel";
+import { ResearchContextPanel } from "../../components/engagement/ResearchContextPanel";
 import { ResearchProgressPanel } from "../../components/engagement/ResearchProgressPanel";
 import { TwinNotesPanel } from "../../components/engagement/TwinNotesPanel";
 import { openWindow } from "../../components/windows/openWindow";
@@ -1081,6 +1084,30 @@ export default function MidnightOil() {
                             : "deep";
                         })()
                       }
+                    />
+                  </div>
+                </section>
+              ) : null}
+              {/* Residual (op): research context pack over deposit twin substrate. */}
+              {depositParentAssetId ? (
+                <section
+                  className="space-y-2 border-t border-ink/10 pt-2 dark:border-bright/10"
+                  data-testid="moil-deposit-context-mount"
+                  data-view-format="html"
+                  data-asset-id={depositParentAssetId}
+                >
+                  <p className="text-[10px] font-mono uppercase tracking-wider opacity-70">
+                    Research context (deposit asset)
+                  </p>
+                  <div
+                    data-testid="moil-deposit-context-refresh"
+                    data-refresh-key={String(contextRefreshKey)}
+                  >
+                    <ResearchContextPanel
+                      key={`ctx-${depositParentAssetId}-${contextRefreshKey}`}
+                      assetId={depositParentAssetId}
+                      spawnId={depositSpawnIds[0] ?? null}
+                      autoLoad
                     />
                   </div>
                 </section>

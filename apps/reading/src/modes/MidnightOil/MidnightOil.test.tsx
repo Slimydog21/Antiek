@@ -231,6 +231,23 @@ vi.mock("../../components/engagement/TwinNotesPanel", () => ({
   ),
 }));
 
+vi.mock("../../components/engagement/ResearchContextPanel", () => ({
+  ResearchContextPanel: (props: {
+    assetId: string;
+    spawnId?: string | null;
+    autoLoad?: boolean;
+  }) => (
+    <div
+      data-testid="research-context-panel-stub"
+      data-asset-id={props.assetId}
+      data-spawn-id={props.spawnId ?? ""}
+      data-auto-load={props.autoLoad ? "1" : "0"}
+    >
+      context={props.assetId}
+    </div>
+  ),
+}));
+
 vi.mock("../../workspace/windowsStore", () => ({
   useWindows: (sel: (s: { windows: Record<string, unknown> }) => unknown) =>
     sel({ windows: {} }),
@@ -671,6 +688,24 @@ describe("MidnightOil mode", () => {
     expect(twinsStub.getAttribute("data-auto-seed")).toBe("1");
     expect(twinsStub.getAttribute("data-auto-promote")).toBe("1");
     expect(twinsStub.getAttribute("data-has-promoted")).toBe("1");
+    // Residual (op): ResearchContextPanel over deposit twin substrate.
+    expect(screen.getByTestId("moil-deposit-context-mount")).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("moil-deposit-context-mount")
+        .getAttribute("data-asset-id"),
+    ).toBe("draft_moil_asset_dep_abc");
+    expect(
+      screen
+        .getByTestId("moil-deposit-context-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("0");
+    const ctxStub = screen.getByTestId("research-context-panel-stub");
+    expect(ctxStub.getAttribute("data-asset-id")).toBe(
+      "draft_moil_asset_dep_abc",
+    );
+    expect(ctxStub.getAttribute("data-spawn-id")).toBe("spn_1");
+    expect(ctxStub.getAttribute("data-auto-load")).toBe("1");
     // Residual (gl/js): progress panel for deposit spawn_ids + tier poll.
     expect(screen.getByTestId("moil-deposit-progress-mount")).toBeTruthy();
     expect(

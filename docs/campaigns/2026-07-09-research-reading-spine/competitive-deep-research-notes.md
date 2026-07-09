@@ -481,3 +481,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - autoLoad / autoSeedIfEmpty / autoPromoteAfterLoad on deposit asset
   - remount after promote + collective onDocMerged
   - recursive note-taker promote/chase without leaving MO
+
+- Closed (op, 2026-07-10) **Midnight Oil deposit ResearchContextPanel:**
+  - autoLoad research context pack on deposit asset
+  - remount with twins on promote / collective merge
+  - full MO engagement spine: twins · context · progress · collective
