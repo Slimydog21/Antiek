@@ -758,7 +758,15 @@ export default function MidnightOil() {
             data-prefill={driverPrefill}
             data-view-format="html"
           >
-            <DecisionTreeDriverBadge researchTier={researchTier} />
+            <DecisionTreeDriverBadge
+              researchTier={researchTier}
+              /* Residual (pg): project goals+pub refs cost vs remaining budget. */
+              promptText={
+                pubRefs.trim()
+                  ? `${goalsText}\n\nPublication refs:\n${pubRefs.trim()}`
+                  : goalsText
+              }
+            />
             <span className="text-[10px] font-mono opacity-70">
               {driverPrefill === "installed"
                 ? "Prefill from Settings decision tree (editable)"

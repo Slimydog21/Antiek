@@ -549,3 +549,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (pf, 2026-07-10) **SESSION-ARC om–pe engagement + MO + bench:**
   - SESSION-ARC-om-pe-engagement-moil-bench.md fleet handoff
+
+- Closed (pg, 2026-07-10) **DecisionTreeDriverBadge prompt projection (V4):**
+  - optional promptText → estimatePromptCost vs remaining budget
+  - decision-tree-prompt-projection + remaining-after chrome
+  - Midnight Oil wires goals+pub refs into badge projection

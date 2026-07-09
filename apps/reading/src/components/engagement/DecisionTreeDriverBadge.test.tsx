@@ -8,11 +8,13 @@ import {
 
 const fetchDecisionTreeSelection = vi.fn();
 const fetchSettingsBudget = vi.fn();
+const estimatePromptCost = vi.fn();
 
 vi.mock("../../api/settings", () => ({
   fetchDecisionTreeSelection: (...args: unknown[]) =>
     fetchDecisionTreeSelection(...args),
   fetchSettingsBudget: (...args: unknown[]) => fetchSettingsBudget(...args),
+  estimatePromptCost: (...args: unknown[]) => estimatePromptCost(...args),
 }));
 
 describe("DecisionTreeDriverBadge residual cw/eq", () => {
@@ -20,6 +22,7 @@ describe("DecisionTreeDriverBadge residual cw/eq", () => {
   beforeEach(() => {
     fetchDecisionTreeSelection.mockReset();
     fetchSettingsBudget.mockReset();
+    estimatePromptCost.mockReset();
     fetchSettingsBudget.mockResolvedValue({
       daily_cap_usd: 10,
       spent_usd: 2.5,
@@ -27,6 +30,18 @@ describe("DecisionTreeDriverBadge residual cw/eq", () => {
       spent_status: "known",
       cap_env: "ANTIEK_DAILY_BUDGET_USD",
       notes: [],
+    });
+    estimatePromptCost.mockResolvedValue({
+      estimated_usd_low: 0.05,
+      estimated_usd_high: 0.2,
+      would_exceed_budget: false,
+      pricing_known: true,
+      notes: [],
+      assumed_input_tokens: 50,
+      assumed_output_tokens: 2500,
+      tier: "deep",
+      provider: "zai",
+      model: "glm-5.2",
     });
   });
 
@@ -246,5 +261,54 @@ describe("DecisionTreeDriverBadge residual cw/eq", () => {
     );
     expect(fetchDecisionTreeSelection).toHaveBeenCalledTimes(2);
     expect(fetchSettingsBudget).toHaveBeenCalledTimes(2);
+  });
+
+  it("projects prompt cost impact when promptText is provided (pg)", async () => {
+    fetchDecisionTreeSelection.mockResolvedValue({
+      model_id: "glm-5.2",
+      provider_id: "zai",
+      installed: true,
+      notes: [],
+      source: "test",
+    });
+    render(
+      <DecisionTreeDriverBadge
+        researchTier="deep"
+        promptText="What is the recursive note-taker twin substrate?"
+      />,
+    );
+    await waitFor(() => {
+      expect(estimatePromptCost).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("decision-tree-prompt-projection")).toBeTruthy();
+    });
+    const strip = screen.getByTestId("decision-tree-prompt-projection");
+    expect(Number(strip.getAttribute("data-prompt-chars") || 0)).toBeGreaterThan(
+      0,
+    );
+    expect(strip.getAttribute("data-pricing-known")).toBe("true");
+    expect(strip.getAttribute("data-would-exceed")).toBe("false");
+    expect(strip.textContent).toMatch(/Prompt projection/i);
+    expect(strip.textContent).toMatch(/within remaining budget/i);
+    expect(
+      screen.getByTestId("decision-tree-prompt-remaining-after").textContent,
+    ).toMatch(/Remaining after prompt/i);
+  });
+
+  it("omits prompt projection when promptText is empty (pg)", async () => {
+    fetchDecisionTreeSelection.mockResolvedValue({
+      model_id: "glm-5.2",
+      provider_id: "zai",
+      installed: true,
+      notes: [],
+      source: "test",
+    });
+    render(<DecisionTreeDriverBadge promptText="" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("decision-tree-driver-active")).toBeTruthy();
+    });
+    expect(screen.queryByTestId("decision-tree-prompt-projection")).toBeNull();
+    expect(estimatePromptCost).not.toHaveBeenCalled();
   });
 });

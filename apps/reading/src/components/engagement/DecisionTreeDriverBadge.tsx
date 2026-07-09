@@ -15,14 +15,18 @@
  * (prep only; every host that mounts the badge can reach live-enable prep).
  * Residual (ku): optional researchTier chrome so model driver + depth posture
  * share one decision-tree surface (not NotDiamond authority).
+ * Residual (pg): optional promptText projects estimated cost impact on remaining
+ * daily budget (operator foresight before send; not a hard gate).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  estimatePromptCost,
   fetchDecisionTreeSelection,
   fetchSettingsBudget,
   type BudgetResponse,
   type DecisionTreeSelectionResponse,
+  type PromptCostEstimateResponse,
 } from "../../api/settings";
 
 function formatUsd(n: number | null | undefined): string {
@@ -51,17 +55,26 @@ export type DecisionTreeDriverBadgeProps = {
    * knows workstation depth (fast|deep|wrestle). Advisory only.
    */
   researchTier?: "fast" | "deep" | "wrestle" | string | null;
+  /**
+   * Residual (pg): live prompt text for cost projection vs remaining budget.
+   * When empty, projection strip is omitted (badge stays read-only advisory).
+   */
+  promptText?: string | null;
 };
 
 export function DecisionTreeDriverBadge({
   researchTier = null,
+  promptText = null,
 }: DecisionTreeDriverBadgeProps = {}) {
   const [tree, setTree] = useState<DecisionTreeSelectionResponse | null>(null);
   const [budget, setBudget] = useState<BudgetResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [projection, setProjection] =
+    useState<PromptCostEstimateResponse | null>(null);
   const normalizedTier = (researchTier || "").trim().toLowerCase() || "";
+  const promptChars = (promptText || "").length;
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -84,7 +97,44 @@ export function DecisionTreeDriverBadge({
     void load();
   }, [load, refreshTick]);
 
+  // Residual (pg): project prompt cost impact when host provides promptText.
+  useEffect(() => {
+    const text = (promptText || "").trim();
+    if (!text) {
+      setProjection(null);
+      return;
+    }
+    let cancelled = false;
+    const tier =
+      normalizedTier === "fast" ||
+      normalizedTier === "deep" ||
+      normalizedTier === "wrestle"
+        ? normalizedTier
+        : "deep";
+    void estimatePromptCost({
+      input_chars: text.length,
+      expected_output_tokens: tier === "wrestle" ? 8000 : tier === "fast" ? 1200 : 2500,
+      tier,
+      model: tree?.model_id ?? null,
+      provider: tree?.provider_id ?? null,
+    })
+      .then((p) => {
+        if (!cancelled) setProjection(p);
+      })
+      .catch(() => {
+        if (!cancelled) setProjection(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [promptText, normalizedTier, tree?.model_id, tree?.provider_id, refreshTick]);
+
   const pct = useMemo(() => budgetUsagePct(budget), [budget]);
+  const projectedHigh = projection?.estimated_usd_high ?? null;
+  const remainingAfter =
+    budget?.remaining_usd != null && projectedHigh != null
+      ? budget.remaining_usd - projectedHigh
+      : null;
 
   return (
     <div
@@ -234,6 +284,49 @@ export function DecisionTreeDriverBadge({
               : "—"}
         </p>
       </div>
+
+      {/* Residual (pg): prompt cost projection vs remaining daily budget. */}
+      {promptChars > 0 ? (
+        <div
+          className="space-y-0.5 border-t border-ink/10 pt-1 dark:border-bright/10"
+          data-testid="decision-tree-prompt-projection"
+          data-prompt-chars={String(promptChars)}
+          data-pricing-known={String(Boolean(projection?.pricing_known))}
+          data-would-exceed={String(
+            projection?.would_exceed_budget == null
+              ? "unknown"
+              : String(projection.would_exceed_budget),
+          )}
+          data-estimated-usd-high={
+            projectedHigh != null ? String(projectedHigh) : ""
+          }
+          data-remaining-after-usd={
+            remainingAfter != null ? String(remainingAfter) : ""
+          }
+          data-view-format="html"
+          role="status"
+        >
+          <p className="opacity-90">
+            Prompt projection ({promptChars} chars):{" "}
+            {projection?.pricing_known && projectedHigh != null
+              ? `est. ≤ ${formatUsd(projectedHigh)}`
+              : "pricing unknown"}
+            {projection?.would_exceed_budget === true
+              ? " · may exceed remaining budget"
+              : projection?.would_exceed_budget === false
+                ? " · within remaining budget"
+                : ""}
+          </p>
+          {remainingAfter != null ? (
+            <p
+              className="opacity-80"
+              data-testid="decision-tree-prompt-remaining-after"
+            >
+              Remaining after prompt ≈ {formatUsd(remainingAfter)}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
