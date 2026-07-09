@@ -30,6 +30,8 @@
  * (parity progress mw bands) — apply-recommended chips for time-of-work.
  * Residual (nh): when research_tier changes, soft-sync duration if still at
  * previous recommended (preserve operator override otherwise).
+ * Residual (nr): on Settings depth-tier prefill, soft-apply recommended
+ * duration when still at factory default 60m.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -243,7 +245,17 @@ export default function MidnightOil() {
       .then((resp) => {
         if (cancelled) return;
         const mapped = mapDepthTierToResearchTier(resp.active_depth_tier);
-        if (mapped) setResearchTier(mapped);
+        if (mapped) {
+          setResearchTier(mapped);
+          // Residual (nr): factory default duration is 60 — soft-apply competitive
+          // recommended midpoint for the Settings depth-tier so MO time-of-work
+          // matches depth posture without wiping custom edits.
+          setDurationMinutes((d) =>
+            d === 60
+              ? mapResearchTierToRecommendedDurationMinutes(mapped)
+              : d,
+          );
+        }
       })
       .catch(() => {
         /* keep default deep */

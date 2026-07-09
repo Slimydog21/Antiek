@@ -383,3 +383,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (nq, 2026-07-10) **SESSION-ARC nl–np dual-gate surfaces:**
   - 9 engagement dual-gate prep deep-links complete offline
+
+- Closed (nr, 2026-07-10) **MO soft-apply duration on Settings depth prefill:**
+  - factory default 60m → recommended midpoint for mapped depth-tier
+  - preserves custom duration overrides

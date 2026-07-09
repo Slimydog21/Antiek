@@ -762,6 +762,36 @@ describe("MidnightOil mode", () => {
     ).toBe("3");
   });
 
+  it("soft-applies recommended duration on Settings depth prefill (nr)", async () => {
+    fetchDepthTiers.mockResolvedValueOnce({
+      active_depth_tier: "wrestle",
+      active_preset: null,
+      presets: [],
+      projection_hints: null,
+      view_format: "html",
+      settings_panel: "depth_tier_presets",
+      source: "test",
+      notes: [],
+    });
+    render(<MidnightOil />);
+    // Factory default 60 → wrestle recommended 30 after prefill.
+    await waitFor(() => {
+      expect(
+        (screen.getByTestId("moil-duration-minutes") as HTMLInputElement).value,
+      ).toBe("30");
+    });
+    expect(
+      screen
+        .getByTestId("moil-duration-recommend")
+        .getAttribute("data-research-tier"),
+    ).toBe("wrestle");
+    expect(
+      screen
+        .getByTestId("moil-duration-recommend")
+        .getAttribute("data-matches-recommended"),
+    ).toBe("true");
+  });
+
   it("soft-syncs duration when research tier changes at recommended (nh)", async () => {
     render(<MidnightOil />);
     await waitFor(() => {
