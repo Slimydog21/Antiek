@@ -1,0 +1,4 @@
+# Campaign rollup (bn)–(gf) · PR #465
+Write collective multi-select (gf); DR+pubs (ge); HTML re-import (gd).
+Write piece engagement parity with hosted book nearly closed.
+Operator merge still gated. Next residual (gg).

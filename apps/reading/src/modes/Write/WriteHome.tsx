@@ -13,6 +13,7 @@ import {
 } from "../../lib/api";
 import { seedTwinNotes } from "../../api/engagement";
 import { fetchHostedDocumentHtml } from "../../api/marketplaceHost";
+import { CollectiveResearchPanel } from "../../components/engagement/CollectiveResearchPanel";
 import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
 import {
   ResearchLaunchBudgetPanel,
@@ -21,7 +22,9 @@ import {
 import { ResearchContextPanel } from "../../components/engagement/ResearchContextPanel";
 import { TwinNotesPanel } from "../../components/engagement/TwinNotesPanel";
 import GlassSurface from "../../shell/GlassSurface";
+import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
 import type { WindowMode } from "../../workspace/windowsStore";
+import { useWindows } from "../../workspace/windowsStore";
 import Canvas from "../DeepResearchWorkspace/Canvas/Canvas";
 import { launchFloatingDeepResearch } from "../Reading/launchFloatingDeepResearch";
 import {
@@ -78,6 +81,8 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
  * Residual (gd): re-import html_draft into an existing open piece (not only create).
  * Residual (ge): deep research launch + pub refs on open piece (reading≡write
  * parity with hosted HTML host: arxiv/substack grounding, float|full, budget soft-gate).
+ * Residual (gf): CollectiveResearchPanel on open piece when DR spawns exist
+ * (multi-select merge/analysis with writing asset as parent).
  */
 export default function WriteHome() {
   const { deliverableId } = useParams<{ deliverableId?: string }>();
@@ -87,6 +92,16 @@ export default function WriteHome() {
   const htmlDraftId = useMemo(
     () => (searchParams.get("html_draft") || "").trim(),
     [searchParams],
+  );
+  // Residual (gf): open DR session spawns for collective multi-select on Write.
+  const windows = useWindows((s) => s.windows);
+  const availableSpawnIds = useMemo(
+    () =>
+      collectDeepResearchSpawnIds({
+        currentSpawnId: null,
+        windows,
+      }),
+    [windows],
   );
 
   const [detail, setDetail] = useState<DeliverableDetailResponse | null>(null);
@@ -983,6 +998,22 @@ export default function WriteHome() {
                 />
               </div>
             </section>
+            {/* Residual (gf): multi-select open DR spawns → merge into this piece. */}
+            {availableSpawnIds.length > 0 ? (
+              <section
+                className="mt-4 border-t border-rule pt-4 dark:border-charcoal-1"
+                data-testid="write-piece-collective-mount"
+                data-view-format="html"
+                data-available-spawn-count={String(availableSpawnIds.length)}
+                data-asset-id={detail.deliverable_id}
+              >
+                <CollectiveResearchPanel
+                  availableSpawnIds={availableSpawnIds}
+                  parentAssetId={detail.deliverable_id}
+                  onDocMerged={onContextNeedsRefresh}
+                />
+              </section>
+            ) : null}
           </>
         ) : null}
       </main>

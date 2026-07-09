@@ -22,6 +22,7 @@ const {
   startInvestigationMock, createDeliverableMock, fetchHostedDocumentHtmlMock,
   createSectionMock, updateSectionProseMock, seedTwinNotesMock, getDeliverableMock,
   launchFloatingDeepResearchMock, hydratePublicationRefsMock, parsePublicationRefsMock,
+  collectDeepResearchSpawnIdsMock,
 } = vi.hoisted(() => ({
   listDeliverablesMock: vi.fn(),
   getTraceTargetMock: vi.fn(),
@@ -41,6 +42,7 @@ const {
       .map((l) => l.trim())
       .filter(Boolean),
   ),
+  collectDeepResearchSpawnIdsMock: vi.fn(() => [] as string[]),
 }));
 
 vi.mock("../../lib/api", async (orig) => ({
@@ -121,6 +123,27 @@ vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", () => ({
       budget len={props.promptText?.length ?? 0}
     </div>
   ),
+}));
+
+vi.mock("../../components/engagement/CollectiveResearchPanel", () => ({
+  CollectiveResearchPanel: (props: {
+    availableSpawnIds: string[];
+    parentAssetId?: string | null;
+  }) => (
+    <div data-testid="collective-research-panel-stub">
+      parent={props.parentAssetId ?? ""}:spawns={props.availableSpawnIds.join(",")}
+    </div>
+  ),
+}));
+
+vi.mock("../../workspace/windowsStore", () => ({
+  useWindows: (sel: (s: { windows: Record<string, unknown> }) => unknown) =>
+    sel({ windows: {} }),
+}));
+
+vi.mock("../../workspace/collectDeepResearchSpawnIds", () => ({
+  collectDeepResearchSpawnIds: (...args: unknown[]) =>
+    collectDeepResearchSpawnIdsMock(...args),
 }));
 
 vi.mock("../Reading/launchFloatingDeepResearch", () => ({
@@ -211,6 +234,7 @@ beforeEach(() => {
     view_format: "html",
   });
   parsePublicationRefsMock.mockClear();
+  collectDeepResearchSpawnIdsMock.mockReset().mockReturnValue([]);
   // WriteHome now renders through GlassSurface (SPR-03 M2 landing-glass home /
   // M3 solid open-piece), which reads prefers-reduced-motion via
   // window.matchMedia. jsdom lacks it; stub the default (motion allowed → the
@@ -554,6 +578,52 @@ describe("WriteHome — the re-homed door", () => {
       screen.getByTestId("write-piece-driver-badge").getAttribute("data-view-format"),
     ).toBe("html");
     expect(screen.getByTestId("decision-tree-driver-badge-stub")).toBeTruthy();
+  });
+
+  it("mounts CollectiveResearchPanel when DR spawns exist (gf)", async () => {
+    collectDeepResearchSpawnIdsMock.mockReturnValue(["spawn_a", "spawn_b"]);
+    getDeliverableMock.mockResolvedValue({
+      deliverable_id: "dlv-coll",
+      title: "Collective piece",
+      deliverable_kind: "general_essay",
+      investigation_root_id: null,
+      status: "draft",
+      sections: [],
+      created_at: null,
+      updated_at: null,
+      section_count: 0,
+    });
+    mountAt("/write/dlv-coll");
+    await waitFor(() => {
+      expect(screen.getByTestId("write-piece-collective-mount")).toBeTruthy();
+    });
+    const mount = screen.getByTestId("write-piece-collective-mount");
+    expect(mount.getAttribute("data-asset-id")).toBe("dlv-coll");
+    expect(mount.getAttribute("data-view-format")).toBe("html");
+    expect(mount.getAttribute("data-available-spawn-count")).toBe("2");
+    expect(screen.getByTestId("collective-research-panel-stub").textContent).toMatch(
+      /parent=dlv-coll:spawns=spawn_a,spawn_b/,
+    );
+  });
+
+  it("hides collective mount when no DR spawns (gf)", async () => {
+    collectDeepResearchSpawnIdsMock.mockReturnValue([]);
+    getDeliverableMock.mockResolvedValue({
+      deliverable_id: "dlv-solo",
+      title: "Solo piece",
+      deliverable_kind: "general_essay",
+      investigation_root_id: null,
+      status: "draft",
+      sections: [],
+      created_at: null,
+      updated_at: null,
+      section_count: 0,
+    });
+    mountAt("/write/dlv-solo");
+    await waitFor(() => {
+      expect(screen.getByTestId("write-piece-twins-mount")).toBeTruthy();
+    });
+    expect(screen.queryByTestId("write-piece-collective-mount")).toBeNull();
   });
 
   it("launches deep research from open Write piece with pub refs (ge)", async () => {

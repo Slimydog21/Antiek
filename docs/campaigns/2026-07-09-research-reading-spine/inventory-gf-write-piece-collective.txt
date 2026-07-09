@@ -1,0 +1,23 @@
+# residual (gf) CollectiveResearchPanel on open Write piece
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(ge) prior | branch_only | campaign inventories
+(gf) write piece collective | branch_only | write-piece-collective-mount when DR spawns exist; parent=deliverable; 17 WriteHome vitest
+
+PATHS:
+- apps/reading/src/modes/Write/WriteHome.tsx
+- apps/reading/src/modes/Write/WriteHome.test.tsx
+
+BEHAVIOR:
+- collectDeepResearchSpawnIds from open windows
+- Mount CollectiveResearchPanel only when spawn count > 0
+- parentAssetId = deliverable_id; onDocMerged remounts context
+- Hidden when no spawns (honest empty state)
+
+INVARIANTS:
+- HTML view_format
+- Shared CollectiveResearchPanel (no fork)
+- Reading≡write collective unit
+
+NEXT: (gg) re-derive; operator merge PR #465

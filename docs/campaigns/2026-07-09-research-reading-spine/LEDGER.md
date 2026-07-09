@@ -54,3 +54,7 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 - write-piece-research-launch panel: pubs + budget + float|full
 - launchFloatingDeepResearch + hydratePublicationRefs shared paths
 - tests: WriteHome.test.tsx 15 passed
+## residual (gf) Write piece collective multi-select — 2026-07-09
+- write-piece-collective-mount when collectDeepResearchSpawnIds non-empty
+- parentAssetId=deliverable; onDocMerged remounts context
+- tests: WriteHome.test.tsx 17 passed
