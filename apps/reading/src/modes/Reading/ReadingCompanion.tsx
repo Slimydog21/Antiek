@@ -5,9 +5,12 @@ import { useInvestigation } from "../../hooks/useInvestigation";
 import { useInvestigationList } from "../../hooks/useInvestigationList";
 import {
   API_BASE,
+  applySourceMerge,
   composeResearchArtifacts,
   type InvestigationSummary,
   type ResearchArtifactComposeResponse,
+  type SourceMergeApplyResponse,
+  type SourceMergeReviewPacket,
 } from "../../lib/api";
 import { useChaseDraftHandoffs } from "../ResearchWorkstation/chaseHandoffs";
 import { deriveNotes } from "../ResearchWorkstation/NotesPanel";
@@ -81,6 +84,11 @@ export default function ReadingCompanion({
   );
   const [copiedMergePacket, setCopiedMergePacket] = useState(false);
   const [copiedSourceReviewPacket, setCopiedSourceReviewPacket] = useState(false);
+  const [sourceApplyAck, setSourceApplyAck] = useState(false);
+  const [sourceApplyConflictAck, setSourceApplyConflictAck] = useState(false);
+  const [sourceApplyBusy, setSourceApplyBusy] = useState(false);
+  const [sourceApplyReceipt, setSourceApplyReceipt] = useState<SourceMergeApplyResponse | null>(null);
+  const [sourceApplyError, setSourceApplyError] = useState<string | null>(null);
   const [draftBusy, setDraftBusy] = useState(false);
   const [draftMergeReceipt, setDraftMergeReceipt] = useState<ResearchArtifactComposeResponse | null>(null);
   const [draftMergeIds, setDraftMergeIds] = useState<string[]>([]);
@@ -120,25 +128,56 @@ export default function ReadingCompanion({
 
   async function copySourceMergeReviewPacket() {
     if (!draftMergeReceipt) return;
-    const draftPath = draftMergeReceipt.draft_merge_path ?? draftMergeReceipt.path;
-    const payload = {
-      kind: "antiek.reader.source_merge_review_packet",
-      document_id: documentId,
-      title: title ?? null,
-      parent_reading_thread_id: readingThreadId,
-      draft_merge_path: draftPath,
-      compose_index_path: draftMergeReceipt.path,
-      member_investigation_ids: draftMergeReceipt.members.map((member) => member.investigation_id),
-      requested_investigation_ids: draftMergeIds,
-      hash_conflict_count: draftMergeReceipt.hash_conflicts.length,
-      hash_conflicts: draftMergeReceipt.hash_conflicts,
-      source_book_mutated: false,
-      twin_document_mutated: false,
-      no_spend: true,
-      next_step: "review the draft merge before any source book or twin-document mutation",
-    };
-    await navigator.clipboard?.writeText(JSON.stringify(payload, null, 2));
+    const payload = buildSourceMergeReviewPacket({
+      documentId,
+      title,
+      readingThreadId,
+      draftMergeReceipt,
+      draftMergeIds,
+    });
+    await navigator.clipboard?.writeText(
+      JSON.stringify(
+        {
+          ...payload,
+          next_step: "review the draft merge before any source book or twin-document mutation",
+        },
+        null,
+        2,
+      ),
+    );
     setCopiedSourceReviewPacket(true);
+  }
+
+  async function applySourceMergeReceipt() {
+    if (!draftMergeReceipt || !sourceApplyAck) return;
+    if (draftMergeReceipt.hash_conflicts.length > 0 && !sourceApplyConflictAck) return;
+    setSourceApplyBusy(true);
+    setSourceApplyError(null);
+    try {
+      const packet = buildSourceMergeReviewPacket({
+        documentId,
+        title,
+        readingThreadId,
+        draftMergeReceipt,
+        draftMergeIds,
+      });
+      const result = await applySourceMerge({
+        reviewed_packet: packet,
+        expected_content_hashes: Object.fromEntries(
+          draftMergeReceipt.members.map((member) => [member.investigation_id, member.content_hash]),
+        ),
+        acknowledge_reviewed_draft: true,
+        acknowledge_source_book_mutation: true,
+        acknowledge_twin_document_mutation: true,
+        acknowledge_hash_conflicts: sourceApplyConflictAck,
+        operator_reviewer: "reader-companion",
+      });
+      setSourceApplyReceipt(result);
+    } catch (error) {
+      setSourceApplyError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSourceApplyBusy(false);
+    }
   }
 
   async function draftReadyChases() {
@@ -153,6 +192,10 @@ export default function ReadingCompanion({
       setDraftMergeReceipt(result);
       setDraftMergeIds(readyIds);
       setCopiedSourceReviewPacket(false);
+      setSourceApplyAck(false);
+      setSourceApplyConflictAck(false);
+      setSourceApplyReceipt(null);
+      setSourceApplyError(null);
     } catch (error) {
       setDraftError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -251,6 +294,61 @@ export default function ReadingCompanion({
                   {copiedSourceReviewPacket ? "copied review" : "copy review"}
                 </button>
               </div>
+              <label className="mt-1 flex items-start gap-1.5 border-t border-rule pt-1 dark:border-charcoal-1">
+                <input
+                  type="checkbox"
+                  checked={sourceApplyAck}
+                  onChange={(event) => setSourceApplyAck(event.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>Reviewed draft · create receipt only</span>
+              </label>
+              {draftMergeReceipt.hash_conflicts.length > 0 ? (
+                <label className="mt-1 flex items-start gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={sourceApplyConflictAck}
+                    onChange={(event) => setSourceApplyConflictAck(event.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>Conflict reviewed</span>
+                </label>
+              ) : null}
+              <div className="mt-1 flex items-center justify-between gap-2">
+                <p>Ledger only · body not rewritten</p>
+                <button
+                  type="button"
+                  onClick={() => void applySourceMergeReceipt()}
+                  disabled={
+                    sourceApplyBusy ||
+                    !sourceApplyAck ||
+                    (draftMergeReceipt.hash_conflicts.length > 0 && !sourceApplyConflictAck)
+                  }
+                  className="shrink-0 text-ink underline disabled:cursor-not-allowed disabled:text-ink-mute dark:text-bright dark:disabled:text-moonlight"
+                  title="Record the reviewed source/twin apply receipt without rewriting the book body"
+                >
+                  {sourceApplyBusy ? "applying" : "apply receipt"}
+                </button>
+              </div>
+              {sourceApplyReceipt ? (
+                <div
+                  className="mt-1 border-t border-rule pt-1 dark:border-charcoal-1"
+                  aria-label="Source merge receipt"
+                  role="region"
+                >
+                  <p>Receipt {sourceApplyReceipt.status}</p>
+                  <p className="truncate" title={sourceApplyReceipt.source_revision_id}>
+                    {sourceApplyReceipt.source_revision_id}
+                  </p>
+                  <p className="truncate" title={sourceApplyReceipt.twin_revision_id}>
+                    {sourceApplyReceipt.twin_revision_id}
+                  </p>
+                  <p>Book body not rewritten</p>
+                </div>
+              ) : null}
+              {sourceApplyError ? (
+                <p className="mt-1 text-emperor">{sourceApplyError}</p>
+              ) : null}
               {draftMergeReceipt.hash_conflicts.length > 0 ? (
                 <p className="text-emperor">
                   {draftMergeReceipt.hash_conflicts.length} hash conflict
@@ -339,6 +437,36 @@ function draftMergeHref(investigationIds: string[]): string {
   const params = new URLSearchParams();
   for (const id of investigationIds) params.append("investigation_ids", id);
   return `${API_BASE}/research/artifacts/compose/draft-merge.html?${params.toString()}`;
+}
+
+function buildSourceMergeReviewPacket({
+  documentId,
+  title,
+  readingThreadId,
+  draftMergeReceipt,
+  draftMergeIds,
+}: {
+  documentId: string;
+  title?: string | null;
+  readingThreadId: string;
+  draftMergeReceipt: ResearchArtifactComposeResponse;
+  draftMergeIds: string[];
+}): SourceMergeReviewPacket {
+  return {
+    kind: "antiek.reader.source_merge_review_packet",
+    document_id: documentId,
+    title: title ?? null,
+    parent_reading_thread_id: readingThreadId,
+    draft_merge_path: draftMergeReceipt.draft_merge_path ?? draftMergeReceipt.path,
+    compose_index_path: draftMergeReceipt.path,
+    member_investigation_ids: draftMergeReceipt.members.map((member) => member.investigation_id),
+    requested_investigation_ids: draftMergeIds,
+    hash_conflict_count: draftMergeReceipt.hash_conflicts.length,
+    hash_conflicts: draftMergeReceipt.hash_conflicts,
+    source_book_mutated: false,
+    twin_document_mutated: false,
+    no_spend: true,
+  };
 }
 
 function handoffStatusLabel(summary: InvestigationSummary | undefined): string {
