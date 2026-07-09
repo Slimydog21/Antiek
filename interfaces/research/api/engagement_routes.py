@@ -20,6 +20,7 @@ Surfaces:
   POST /engagement/evidence-pack
   GET  /engagement/twins/{asset_id}
   POST /engagement/twins
+  POST /engagement/twins/promote-context
   POST /engagement/sessions/open
   POST /engagement/sessions/complete-flywheel
 """
@@ -47,6 +48,7 @@ from substrate.engagement_spine import (
     record_twin_product,
     seed_default_pipeline,
     spawn_from_highlight_with_references,
+    twin_promote_context_payload,
     twins_product_payload,
 )
 from substrate.engagement_spine.store import EngagementStore, FileEngagementStore
@@ -211,6 +213,15 @@ class TwinRecordBody(BaseModel):
     kind: Literal["insight", "question"]
     text: str = Field(min_length=1)
     source_spawn_id: str | None = None
+    investigation_id: str | None = None
+    include_html: bool = True
+
+
+class TwinPromoteContextBody(BaseModel):
+    """Promote twin notes into depth-graph context units for research prompts."""
+
+    asset_id: str = Field(min_length=1)
+    query: str | None = None
     investigation_id: str | None = None
     include_html: bool = True
 
@@ -451,6 +462,27 @@ def post_twins(body: TwinRecordBody) -> dict[str, Any]:
             text=body.text,
             source_spawn_id=body.source_spawn_id,
             investigation_id=body.investigation_id,
+            include_html=body.include_html,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@engagement_router.post("/twins/promote-context")
+def post_twins_promote_context(body: TwinPromoteContextBody) -> dict[str, Any]:
+    """Promote asset twins into research context units (idempotent offline-safe).
+
+    Uses process offline promote hooks by default so API tests never need DuckDB.
+    Production can inject real promote_* via a future app factory.
+    """
+    try:
+        return twin_promote_context_payload(
+            body.asset_id,
+            store=_eng(),
+            query=body.query,
+            investigation_id=body.investigation_id,
+            promote_insight_fn=_offline_promote_insight,
+            promote_question_fn=_offline_promote_question,
             include_html=body.include_html,
         )
     except ValueError as e:

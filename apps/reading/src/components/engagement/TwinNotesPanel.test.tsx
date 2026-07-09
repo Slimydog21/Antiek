@@ -4,10 +4,12 @@ import { TwinNotesPanel } from "./TwinNotesPanel";
 
 const fetchTwinNotes = vi.fn();
 const recordTwinNote = vi.fn();
+const promoteTwinsToContext = vi.fn();
 
 vi.mock("../../api/engagement", () => ({
   fetchTwinNotes: (...args: unknown[]) => fetchTwinNotes(...args),
   recordTwinNote: (...args: unknown[]) => recordTwinNote(...args),
+  promoteTwinsToContext: (...args: unknown[]) => promoteTwinsToContext(...args),
 }));
 
 describe("TwinNotesPanel", () => {
@@ -15,6 +17,7 @@ describe("TwinNotesPanel", () => {
   beforeEach(() => {
     fetchTwinNotes.mockReset();
     recordTwinNote.mockReset();
+    promoteTwinsToContext.mockReset();
   });
 
   it("records insight and shows twin HTML", async () => {
@@ -61,5 +64,49 @@ describe("TwinNotesPanel", () => {
     expect(
       screen.getByTestId("twin-notes-panel").getAttribute("data-view-format"),
     ).toBe("html");
+  });
+
+  it("promotes twins into context units", async () => {
+    promoteTwinsToContext.mockResolvedValue({
+      asset_id: "paper",
+      promoted_count: 1,
+      context_unit_count: 1,
+      promoted: [
+        {
+          twin_note_id: "twin_1",
+          graph_node_id: "insight_abc",
+          kind: "insight",
+          text: "Attention is routing.",
+        },
+      ],
+      context_units: [
+        {
+          unit_id: "insight_abc",
+          twin_note_id: "twin_1",
+          kind: "insight",
+          text: "Attention is routing.",
+        },
+      ],
+      view_format: "html",
+      product_panel: "twin_promote_context",
+      source: "engagement_spine.twin_promote",
+      notes: ["Twins promoted into content-addressed context units"],
+      html: "<p>[insight] Attention is routing.</p>",
+    });
+
+    render(<TwinNotesPanel assetId="paper" />);
+    fireEvent.click(screen.getByTestId("twin-promote-context"));
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-promote-result").textContent).toMatch(
+        /promoted=1/,
+      );
+    });
+    expect(promoteTwinsToContext).toHaveBeenCalledWith({
+      asset_id: "paper",
+      include_html: true,
+    });
+    expect(screen.getByTestId("twin-promote-html").innerHTML).toMatch(
+      /Attention is routing/,
+    );
   });
 });

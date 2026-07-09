@@ -56,6 +56,7 @@ from .twin_promote import (
     result_to_context_unit,
     search_twin_context,
     twin_context_html,
+    twin_promote_context_payload,
 )
 from .source_refs import (
     SourceKind,
@@ -157,5 +158,6 @@ __all__ = [
     "spawn_from_highlight",
     "spawn_from_highlight_with_references",
     "twin_context_html",
+    "twin_promote_context_payload",
     "twins_product_payload",
 ]

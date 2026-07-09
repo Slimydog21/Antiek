@@ -8,8 +8,10 @@
 import { useCallback, useState } from "react";
 import {
   fetchTwinNotes,
+  promoteTwinsToContext,
   recordTwinNote,
   type TwinNotesResponse,
+  type TwinPromoteContextResponse,
 } from "../../api/engagement";
 
 export type TwinNotesPanelProps = {
@@ -22,6 +24,9 @@ export function TwinNotesPanel({
   spawnId = null,
 }: TwinNotesPanelProps) {
   const [twins, setTwins] = useState<TwinNotesResponse | null>(null);
+  const [promoted, setPromoted] = useState<TwinPromoteContextResponse | null>(
+    null,
+  );
   const [text, setText] = useState("");
   const [kind, setKind] = useState<"insight" | "question">("insight");
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +71,25 @@ export function TwinNotesPanel({
       setBusy(false);
     }
   }, [assetId, kind, text, spawnId]);
+
+  const promote = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const p = await promoteTwinsToContext({
+        asset_id: assetId,
+        include_html: true,
+      });
+      if (p.view_format !== "html") {
+        throw new Error("twin promote view_format must be html");
+      }
+      setPromoted(p);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [assetId]);
 
   return (
     <section
@@ -115,6 +139,15 @@ export function TwinNotesPanel({
         >
           Refresh
         </button>
+        <button
+          type="button"
+          data-testid="twin-promote-context"
+          onClick={() => void promote()}
+          disabled={busy}
+          title="Promote twins into research context units"
+        >
+          Promote to context
+        </button>
       </div>
       {error ? (
         <p className="error" role="alert">
@@ -138,6 +171,36 @@ export function TwinNotesPanel({
             <div
               data-testid="twin-notes-html"
               dangerouslySetInnerHTML={{ __html: twins.html }}
+            />
+          ) : null}
+        </div>
+      ) : null}
+      {promoted ? (
+        <div
+          data-testid="twin-promote-result"
+          data-view-format="html"
+          className="font-mono text-sm"
+        >
+          <p>
+            promoted={promoted.promoted_count} · context_units=
+            {promoted.context_unit_count}
+          </p>
+          <ul data-testid="twin-promote-units">
+            {promoted.context_units.map((u) => (
+              <li key={u.unit_id}>
+                <strong>[{u.kind}]</strong> {u.text}
+              </li>
+            ))}
+          </ul>
+          {promoted.notes?.map((n) => (
+            <p key={n} className="meta">
+              {n}
+            </p>
+          ))}
+          {promoted.html ? (
+            <div
+              data-testid="twin-promote-html"
+              dangerouslySetInnerHTML={{ __html: promoted.html }}
             />
           ) : null}
         </div>

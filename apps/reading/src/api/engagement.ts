@@ -340,6 +340,52 @@ export async function recordTwinNote(body: {
   return readJson<TwinNotesResponse>(res);
 }
 
+/** Promote twins into depth-graph context units for research prompts. */
+export type TwinPromoteContextResponse = {
+  asset_id: string;
+  promoted_count: number;
+  context_unit_count: number;
+  promoted: Array<{
+    twin_note_id: string;
+    graph_node_id: string;
+    kind: string;
+    text: string;
+    unit_id?: string;
+  }>;
+  context_units: Array<{
+    unit_id: string;
+    twin_note_id: string;
+    kind: string;
+    text: string;
+    graph_node_id?: string;
+  }>;
+  query?: string | null;
+  view_format: "html" | string;
+  product_panel: string;
+  source: string;
+  notes: string[];
+  html?: string | null;
+};
+
+export async function promoteTwinsToContext(body: {
+  asset_id: string;
+  query?: string | null;
+  investigation_id?: string | null;
+  include_html?: boolean;
+}): Promise<TwinPromoteContextResponse> {
+  const res = await apiFetch(`${API_BASE}/engagement/twins/promote-context`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      asset_id: body.asset_id,
+      query: body.query ?? null,
+      investigation_id: body.investigation_id ?? null,
+      include_html: body.include_html ?? true,
+    }),
+  });
+  return readJson<TwinPromoteContextResponse>(res);
+}
+
 export async function openEngagementSession(
   body: SessionOpenRequest,
 ): Promise<SessionOpenResponse> {

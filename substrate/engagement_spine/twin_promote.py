@@ -354,6 +354,65 @@ def promote_and_context_for_asset(
     )
 
 
+def twin_promote_context_payload(
+    asset_id: str,
+    *,
+    store: EngagementStore,
+    query: str | None = None,
+    investigation_id: str | None = None,
+    source_document_id: str | None = None,
+    promote_insight_fn: PromoteInsightFn | None = None,
+    promote_question_fn: PromoteQuestionFn | None = None,
+    include_html: bool = True,
+) -> dict[str, Any]:
+    """Settings/workstation product shape for twin promote → context.
+
+    Calls shipped ``promote_and_context_for_asset``. Does not invent twin notes.
+    Empty twins → zero promoted units + honest notes (not an error).
+    """
+    if not asset_id or not str(asset_id).strip():
+        raise ValueError("asset_id is required")
+    result = promote_and_context_for_asset(
+        asset_id.strip(),
+        store=store,
+        query=query,
+        investigation_id=investigation_id,
+        source_document_id=source_document_id,
+        promote_insight_fn=promote_insight_fn,
+        promote_question_fn=promote_question_fn,
+    )
+    raw = result.to_dict()
+    payload: dict[str, Any] = {
+        "asset_id": asset_id.strip(),
+        "promoted_count": len(result.promoted),
+        "context_unit_count": len(result.context_units),
+        "promoted": raw["promoted"],
+        "context_units": raw["context_units"],
+        "query": query,
+        "view_format": "html",
+        "product_panel": "twin_promote_context",
+        "source": "engagement_spine.twin_promote",
+        "notes": [],
+    }
+    if not result.promoted:
+        payload["notes"] = [
+            "No twin notes to promote — record insights/questions first "
+            "(recursive note-taker substrate is empty)."
+        ]
+    else:
+        payload["notes"] = [
+            "Twins promoted into content-addressed context units for research prompts.",
+            "Re-promote is idempotent (same graph_node_id / unit_id for same text).",
+        ]
+    if include_html:
+        payload["html"] = twin_context_html(
+            result.context_units,
+            document_id=f"twin-promote-{asset_id.strip()}",
+            title=f"Twin promote context · {asset_id.strip()}",
+        )
+    return payload
+
+
 def twin_context_html(
     units: Sequence[TwinContextUnit],
     *,
