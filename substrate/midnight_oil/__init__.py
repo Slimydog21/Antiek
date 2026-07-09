@@ -13,6 +13,8 @@ from .contracts import (
     MidnightOilDryRunRequest,
     MidnightOilLaunchPacket,
     MidnightOilPreflight,
+    MidnightOilProviderRouteReceipt,
+    MidnightOilProviderRouteRequest,
     MidnightOilRequest,
     MidnightOilRolePlan,
     MidnightOilRunnerHandoff,
@@ -21,6 +23,7 @@ from .contracts import (
     dispatch_midnight_oil,
     dry_run_midnight_oil,
     preflight_midnight_oil,
+    provider_route_midnight_oil,
 )
 
 __all__ = [
@@ -36,6 +39,8 @@ __all__ = [
     "MidnightOilDryRunRequest",
     "MidnightOilLaunchPacket",
     "MidnightOilPreflight",
+    "MidnightOilProviderRouteReceipt",
+    "MidnightOilProviderRouteRequest",
     "MidnightOilRequest",
     "MidnightOilRolePlan",
     "MidnightOilRunnerHandoff",
@@ -44,4 +49,5 @@ __all__ = [
     "dispatch_midnight_oil",
     "dry_run_midnight_oil",
     "preflight_midnight_oil",
+    "provider_route_midnight_oil",
 ]

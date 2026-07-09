@@ -236,6 +236,41 @@ export interface MidnightOilBudgetReservationReceipt {
   reservation_notes: string[];
 }
 
+export interface MidnightOilProviderRouteRequest {
+  launch_packet: MidnightOilLaunchPacket;
+  approval_receipt: MidnightOilApprovalReceipt;
+  runner_handoff: MidnightOilRunnerHandoff;
+  applied_run_receipt: MidnightOilAppliedRunReceipt;
+  dispatch_receipt: MidnightOilDispatchReceipt;
+  activation_checklist_receipt: MidnightOilActivationChecklistReceipt;
+  budget_reservation_receipt: MidnightOilBudgetReservationReceipt;
+}
+
+export interface MidnightOilProviderRouteReceipt {
+  receipt_id: string;
+  budget_reservation_receipt_id: string;
+  activation_checklist_receipt_id: string;
+  dispatch_receipt_id: string;
+  applied_run_receipt_id: string;
+  runner_handoff_id: string;
+  approval_receipt_id: string;
+  launch_packet_id: string;
+  run_id: string;
+  status: "blocked_provider_route_executor_disabled";
+  requested_route_count: number;
+  planned_role_route_receipt_ids: string[];
+  blocker_reason: "provider_route_executor_missing";
+  route_executor_allowed: boolean;
+  provider_execution_allowed: boolean;
+  provider_calls_made: boolean;
+  budget_reserved: boolean;
+  dispatch_performed: boolean;
+  retrieval_performed: boolean;
+  graph_mutated: boolean;
+  final_artifact_created: boolean;
+  provider_route_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -309,4 +344,19 @@ export async function budgetReservationMidnightOil(
     throw new Error(`POST /research/midnight-oil/budget-reservation: HTTP ${resp.status}: ${body}`);
   }
   return (await resp.json()) as MidnightOilBudgetReservationReceipt;
+}
+
+export async function providerRouteMidnightOil(
+  request: MidnightOilProviderRouteRequest,
+): Promise<MidnightOilProviderRouteReceipt> {
+  const resp = await apiFetch(`${API_BASE}/research/midnight-oil/provider-route`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`POST /research/midnight-oil/provider-route: HTTP ${resp.status}: ${body}`);
+  }
+  return (await resp.json()) as MidnightOilProviderRouteReceipt;
 }
