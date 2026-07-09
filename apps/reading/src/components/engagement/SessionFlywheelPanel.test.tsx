@@ -30,6 +30,12 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
       },
       view_format: "html",
       prompt_block: "# Research context pack\n",
+      research_tier: "wrestle",
+      usage_event: {
+        task_class: "wrestle",
+        outcome: "worked",
+        source: "session_flywheel",
+      },
     });
 
     const onCompleted = vi.fn();
@@ -76,6 +82,16 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
     expect(metrics.getAttribute("data-record-twins")).toBe("true");
     expect(metrics.getAttribute("data-view-format")).toBe("html");
     expect(metrics.textContent).toMatch(/Session flywheel/);
+    // Residual (jt): research_tier + Antiek-bench task_class audit.
+    expect(metrics.getAttribute("data-research-tier")).toBe("wrestle");
+    expect(metrics.getAttribute("data-usage-task-class")).toBe("wrestle");
+    expect(metrics.getAttribute("data-usage-outcome")).toBe("worked");
+    expect(screen.getByTestId("session-flywheel-research-tier").textContent).toBe(
+      "wrestle",
+    );
+    expect(
+      screen.getByTestId("session-flywheel-usage-task-class").textContent,
+    ).toMatch(/wrestle/);
   });
 
   it("disables complete when output too short", () => {

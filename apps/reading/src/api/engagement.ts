@@ -77,6 +77,16 @@ export type SessionFlywheelResponse = {
   context: ResearchContextPack & { twin_count?: number; ref_count?: number };
   view_format: "html";
   prompt_block: string;
+  /** Residual (jt): closed research tier from reserved session. */
+  research_tier?: "fast" | "deep" | "wrestle" | string | null;
+  /** Best-effort Antiek-bench usage event from flywheel complete. */
+  usage_event?: {
+    task_class?: string;
+    outcome?: string;
+    source?: string;
+    model_id?: string | null;
+    [key: string]: unknown;
+  } | null;
 };
 
 async function readJson<T>(res: Response): Promise<T> {

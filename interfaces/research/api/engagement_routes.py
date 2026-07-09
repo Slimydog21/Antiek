@@ -807,6 +807,9 @@ def post_session_complete_flywheel(body: SessionFlywheelBody) -> dict[str, Any]:
         from substrate.antiek_bench import record_session_flywheel_usage
 
         ctx = result.context
+        # Residual (jt): session research_tier → Antiek-bench task_class
+        # (wrestle sessions feed wrestle rewrite bucket, not distill heuristic).
+        session_tier = getattr(result.session, "research_tier", None)
         usage = record_session_flywheel_usage(
             store=get_bench_usage_store(create_if_missing=True),
             twin_count=len(ctx.twin_units),
@@ -814,8 +817,10 @@ def post_session_complete_flywheel(body: SessionFlywheelBody) -> dict[str, Any]:
             status=result.session.status,
             model_id=result.session.model_id,
             prompt_hint=body.output_text[:200],
+            research_tier=session_tier,
         )
         out["usage_event"] = usage
+        out["research_tier"] = session_tier or out.get("research_tier") or "deep"
     except Exception as exc:  # pragma: no cover — never fail flywheel on bench
         out["usage_event_error"] = str(exc)
     return out

@@ -107,11 +107,15 @@ def test_session_open_and_flywheel(client):
             "region_id": "bx1",
             "references": ["2402.03300"],
             "view_mode": "floating",
+            "research_tier": "wrestle",
         },
     )
     assert r.status_code == 200
-    session_id = r.json()["session_id"]
+    open_body = r.json()
+    session_id = open_body["session_id"]
     assert session_id.startswith("fsess_")
+    # Residual (ji): open echoes research_tier when provided.
+    assert open_body.get("research_tier") == "wrestle"
 
     r2 = client.post(
         "/engagement/sessions/complete-flywheel",
@@ -130,6 +134,9 @@ def test_session_open_and_flywheel(client):
     assert "prompt_block" in body
     assert "usage_event" in body
     assert body["usage_event"]["outcome"] == "worked"
+    # Residual (jt): wrestle session → wrestle bench task_class (not distill).
+    assert body.get("research_tier") == "wrestle"
+    assert body["usage_event"].get("task_class") == "wrestle"
 
 
 def test_attach_unknown_spawn_404(client):

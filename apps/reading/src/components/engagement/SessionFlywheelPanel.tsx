@@ -8,6 +8,8 @@
  * Residual (hj): session-flywheel-metrics machine attrs for recursive
  * note-taker + Antiek-bench audit (parity twin-notes / twin-promote metrics).
  * Residual (ii): Settings deep-link for driver + budget before complete.
+ * Residual (jt): surface research_tier + Antiek-bench task_class from usage
+ * event so recursive rewrite feed is operator-auditable on flywheel close.
  * Composes shipped completeSessionFlywheel. HTML-first context pack.
  */
 
@@ -146,7 +148,7 @@ export function SessionFlywheelPanel({
           data-testid="session-flywheel-result"
           data-view-format="html"
         >
-          {/* Residual (hj): machine-readable flywheel close metrics. */}
+          {/* Residual (hj/jt): machine-readable flywheel close + bench tier. */}
           <div
             data-testid="session-flywheel-metrics"
             data-status={result.status ?? ""}
@@ -155,17 +157,52 @@ export function SessionFlywheelPanel({
             data-twin-count={String(flywheelTwinCount(result))}
             data-ref-count={String(flywheelRefCount(result))}
             data-record-twins={String(recordTwins)}
+            data-research-tier={
+              (result.research_tier ||
+                result.usage_event?.task_class ||
+                "") as string
+            }
+            data-usage-task-class={
+              (result.usage_event?.task_class || "") as string
+            }
+            data-usage-outcome={(result.usage_event?.outcome || "") as string}
             data-view-format="html"
             role="status"
           >
             Session flywheel · status={result.status} · twins=
             {flywheelTwinCount(result)} · refs={flywheelRefCount(result)}
+            {result.research_tier
+              ? ` · tier=${result.research_tier}`
+              : ""}
+            {result.usage_event?.task_class
+              ? ` · bench=${result.usage_event.task_class}`
+              : ""}
           </div>
           <p>
             status=<code>{result.status}</code> · session=
             <code>{result.session_id}</code> · spawn=
             <code>{result.spawn_id}</code>
+            {result.research_tier ? (
+              <>
+                {" "}
+                · tier=<code data-testid="session-flywheel-research-tier">
+                  {result.research_tier}
+                </code>
+              </>
+            ) : null}
           </p>
+          {result.usage_event?.task_class ? (
+            <p
+              className="opacity-80"
+              data-testid="session-flywheel-usage-task-class"
+            >
+              Antiek-bench task_class=
+              <code>{result.usage_event.task_class}</code>
+              {result.usage_event.outcome
+                ? ` · outcome=${result.usage_event.outcome}`
+                : ""}
+            </p>
+          ) : null}
           {result.prompt_block ? (
             <pre
               className="max-h-32 overflow-auto whitespace-pre-wrap"

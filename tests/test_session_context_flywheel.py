@@ -73,7 +73,9 @@ def test_flywheel_complete_promote_context():
         engagement_store=eng,
         session_store=sess,
         references=["https://arxiv.org/abs/1706.03762"],
+        research_tier="wrestle",
     )
+    assert session.research_tier == "wrestle"
     rec = _Rec()
     result = complete_session_with_context_flywheel(
         session.session_id,
@@ -112,3 +114,29 @@ def test_flywheel_complete_promote_context():
     d = result.to_dict()
     assert d["session_id"] == session.session_id
     assert "prompt_block" in d
+    # Residual (jt): flywheel dict surfaces session research_tier for bench.
+    assert d["research_tier"] == "wrestle"
+    assert result.session.research_tier == "wrestle"
+
+
+def test_flywheel_research_tier_default_deep_when_omitted():
+    eng = InMemoryEngagementStore()
+    sess = InMemorySessionStore()
+    session = open_from_highlight_with_references(
+        HighlightSelection(
+            asset_id="paper-d",
+            selection_text="Default tier passage",
+            region_id="fly-deep",
+        ),
+        engagement_store=eng,
+        session_store=sess,
+    )
+    result = complete_session_with_context_flywheel(
+        session.session_id,
+        session_store=sess,
+        engagement_store=eng,
+        output_text="Done.",
+        insights=["i"],
+        questions=["q"],
+    )
+    assert result.to_dict()["research_tier"] == "deep"
