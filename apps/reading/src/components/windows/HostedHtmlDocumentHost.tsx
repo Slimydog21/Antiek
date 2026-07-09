@@ -9,6 +9,7 @@
  * Residual (da): DecisionTreeDriverBadge + budget projection + deep research
  * float launch from the hosted book (reading ≡ research).
  * Residual (dg): soft-gate deep research when budget would exceed.
+ * Residual (ec): remount ResearchContextPanel after twin promote.
  *
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
  */
@@ -56,12 +57,16 @@ export default function HostedHtmlDocumentHost(
   const [lastWindowId, setLastWindowId] = useState<string | null>(null);
   const [budgetWarn, setBudgetWarn] = useState(false);
   const [forceOverBudget, setForceOverBudget] = useState(false);
+  const [contextRefreshKey, setContextRefreshKey] = useState(0);
   const onProjectionChange = useCallback(
     (p: ResearchLaunchBudgetProjection) => {
       setBudgetWarn(p.wouldExceedBudget === true);
     },
     [],
   );
+  const onTwinsPromoted = useCallback(() => {
+    setContextRefreshKey((k) => k + 1);
+  }, []);
 
   const spinFloating = async () => {
     if (!assetId) {
@@ -213,6 +218,7 @@ export default function HostedHtmlDocumentHost(
             autoLoad
             autoSeedIfEmpty
             autoPromoteAfterLoad
+            onPromoted={onTwinsPromoted}
             seedTitle={title}
             seedBodyText={html ? html.replace(/<[^>]+>/g, " ").slice(0, 500) : title}
           />
@@ -225,7 +231,17 @@ export default function HostedHtmlDocumentHost(
           data-testid="hosted-html-context-mount"
           data-view-format="html"
         >
-          <ResearchContextPanel assetId={assetId} spawnId={null} autoLoad />
+          <div
+            data-testid="hosted-html-context-refresh"
+            data-refresh-key={String(contextRefreshKey)}
+          >
+            <ResearchContextPanel
+              key={`ctx-${assetId}-${contextRefreshKey}`}
+              assetId={assetId}
+              spawnId={null}
+              autoLoad
+            />
+          </div>
         </section>
       ) : null}
     </div>

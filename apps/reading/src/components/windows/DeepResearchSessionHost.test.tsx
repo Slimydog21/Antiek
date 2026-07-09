@@ -82,9 +82,19 @@ vi.mock("../engagement/TwinNotesPanel", () => ({
     assetId: string;
     spawnId?: string | null;
     autoLoad?: boolean;
+    onPromoted?: (r: { promoted_count: number }) => void;
   }) => (
     <div data-testid="twin-notes-panel-stub">
       {props.assetId}:auto={String(Boolean(props.autoLoad))}
+      {props.onPromoted ? (
+        <button
+          type="button"
+          data-testid="twin-notes-promote-notify"
+          onClick={() => props.onPromoted?.({ promoted_count: 1 })}
+        >
+          notify
+        </button>
+      ) : null}
     </div>
   ),
 }));
@@ -179,6 +189,21 @@ describe("DeepResearchSessionHost", () => {
     expect(screen.getByTestId("twin-notes-panel-stub").textContent).toMatch(
       /launch-asset:auto=true/,
     );
+  });
+
+  it("remounts research context after twin promote notify (ec)", () => {
+    render(<DeepResearchSessionHost {...FIXTURE} />);
+    expect(
+      screen
+        .getByTestId("deep-research-context-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("0");
+    fireEvent.click(screen.getByTestId("twin-notes-promote-notify"));
+    expect(
+      screen
+        .getByTestId("deep-research-context-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("1");
   });
 
   it("mounts DecisionTreeDriverBadge (cw)", () => {

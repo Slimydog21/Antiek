@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(ec) · PR #465
+ea: twin auto-promote · eb: notes · ec: remount research context after twin promote.
+Operator merge still gated. Next residual (ed).

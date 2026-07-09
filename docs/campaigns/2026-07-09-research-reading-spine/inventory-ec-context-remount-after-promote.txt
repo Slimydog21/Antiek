@@ -1,0 +1,16 @@
+# residual (ec) remount research context after twin promote
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(eb) prior | branch_only | campaign inventories
+(ec) context remount after promote | branch_only | TwinNotesPanel onPromoted; DR + hosted hosts remount ResearchContextPanel; 27 vitest
+
+## What shipped
+- TwinNotesPanel `onPromoted` callback after auto/manual promote.
+- DeepResearchSessionHost + HostedHtmlDocumentHost bump `contextRefreshKey` and remount ResearchContextPanel so autoLoad re-fetches twin-enriched context.
+- data-refresh-key test hook for honesty.
+
+## Why (north star)
+Recursive twin notes must feed research prompts without a stale context panel left from pre-promote mount.
+
+NEXT: (ed) re-derive; operator merge PR #465

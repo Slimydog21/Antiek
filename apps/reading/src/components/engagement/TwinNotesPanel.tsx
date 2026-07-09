@@ -38,6 +38,11 @@ export type TwinNotesPanelProps = {
    * research context units when notes exist. Offline-safe promote path.
    */
   autoPromoteAfterLoad?: boolean;
+  /**
+   * Residual (ec): notify parent after a successful promote so research
+   * context panels can remount/reload with recursive notes.
+   */
+  onPromoted?: (result: TwinPromoteContextResponse) => void;
 };
 
 export function TwinNotesPanel({
@@ -48,6 +53,7 @@ export function TwinNotesPanel({
   seedTitle = null,
   seedBodyText = null,
   autoPromoteAfterLoad = false,
+  onPromoted,
 }: TwinNotesPanelProps) {
   const [twins, setTwins] = useState<TwinNotesResponse | null>(null);
   const [promoted, setPromoted] = useState<TwinPromoteContextResponse | null>(
@@ -111,6 +117,7 @@ export function TwinNotesPanel({
           setPromoteStatus(
             `auto-promoted ${p.promoted_count ?? t.note_count} twin unit(s) to context`,
           );
+          onPromoted?.(p);
         } catch (pe) {
           setPromoteStatus(
             pe instanceof Error
@@ -131,6 +138,7 @@ export function TwinNotesPanel({
     seedBodyText,
     spawnId,
     autoPromoteAfterLoad,
+    onPromoted,
   ]);
 
   useEffect(() => {
@@ -176,12 +184,16 @@ export function TwinNotesPanel({
         throw new Error("twin promote view_format must be html");
       }
       setPromoted(p);
+      setPromoteStatus(
+        `promoted ${p.promoted_count} twin unit(s) to context`,
+      );
+      onPromoted?.(p);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
-  }, [assetId]);
+  }, [assetId, onPromoted]);
 
   return (
     <section

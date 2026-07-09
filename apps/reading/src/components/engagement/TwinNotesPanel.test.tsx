@@ -161,8 +161,14 @@ describe("TwinNotesPanel", () => {
       html: "<p>promoted</p>",
     });
 
+    const onPromoted = vi.fn();
     render(
-      <TwinNotesPanel assetId="paper" autoLoad autoPromoteAfterLoad />,
+      <TwinNotesPanel
+        assetId="paper"
+        autoLoad
+        autoPromoteAfterLoad
+        onPromoted={onPromoted}
+      />,
     );
 
     await waitFor(() => {
@@ -175,6 +181,11 @@ describe("TwinNotesPanel", () => {
         /auto-promoted 1/,
       );
     });
+    // Residual (ec): parent notified so context can remount.
+    await waitFor(() => {
+      expect(onPromoted).toHaveBeenCalled();
+    });
+    expect(onPromoted.mock.calls[0][0].promoted_count).toBe(1);
   });
 
   it("records insight and shows twin HTML", async () => {

@@ -24,9 +24,11 @@
  * Residual (cw): DecisionTreeDriverBadge — active model driver readout.
  * Residual (dd): TwinNotesPanel autoSeedIfEmpty (offline recursive note-taker).
  * Residual (ea): TwinNotesPanel autoPromoteAfterLoad into research context.
+ * Residual (ec): remount ResearchContextPanel after twin promote so context
+ * pack reloads recursive notes for prompts.
  */
 
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { CollectiveResearchPanel } from "../engagement/CollectiveResearchPanel";
 import { DecisionTreeDriverBadge } from "../engagement/DecisionTreeDriverBadge";
@@ -86,6 +88,12 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
   const status = props.status?.trim() || "unknown";
   const viewFormat = (props.view_format?.trim() || "html").toLowerCase();
   const isHtml = viewFormat === "html";
+
+  // Residual (ec): bump key after twin promote → ResearchContextPanel remounts.
+  const [contextRefreshKey, setContextRefreshKey] = useState(0);
+  const onTwinsPromoted = useCallback(() => {
+    setContextRefreshKey((k) => k + 1);
+  }, []);
 
   // Subscribe to open windows so multi-session spawns appear in collective list.
   const windows = useWindows((s) => s.windows);
@@ -203,11 +211,17 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
           data-testid="deep-research-research-context-mount"
           data-view-format="html"
         >
-          <ResearchContextPanel
-            assetId={props.parent_asset_id.trim()}
-            spawnId={props.spawn_id?.trim() || null}
-            autoLoad
-          />
+          <div
+            data-testid="deep-research-context-refresh"
+            data-refresh-key={String(contextRefreshKey)}
+          >
+            <ResearchContextPanel
+              key={`ctx-${props.parent_asset_id.trim()}-${contextRefreshKey}`}
+              assetId={props.parent_asset_id.trim()}
+              spawnId={props.spawn_id?.trim() || null}
+              autoLoad
+            />
+          </div>
         </section>
       ) : null}
 
@@ -238,6 +252,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
             autoLoad
             autoSeedIfEmpty
             autoPromoteAfterLoad
+            onPromoted={onTwinsPromoted}
             seedTitle={props.goal?.trim() || props.parent_asset_id.trim()}
             seedBodyText={props.selection_text?.trim() || props.goal?.trim() || ""}
           />
