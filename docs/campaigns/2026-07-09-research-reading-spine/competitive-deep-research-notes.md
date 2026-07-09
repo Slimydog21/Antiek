@@ -163,3 +163,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - (lb) TwinNotesPanel prop||API research_tier fallback chrome
   Twin seed + UI now inherit closed depth when spawn-scoped.
 
+
+- Closed (ld–le, 2026-07-10) **Fleet handoff + twins list spawn-scoped tier:**
+  - (ld) SESSION-ARC-kk-lc-depth-identity.md zero-context fleet handoff
+  - (le) GET /engagement/twins?spawn_id= research_tier + TwinNotesPanel list wire
+
