@@ -1,0 +1,8 @@
+# inventory-ma · marketplace host → Antiek-bench book_qa usage
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ma
+files:
+  interfaces/research/api/marketplace_host_routes.py
+  tests/test_marketplace_host_usage_ma.py
+proof: pytest host + purchase usage events green
+invariants: best-effort usage · propose≠promote · book_qa task_class · source=marketplace_host

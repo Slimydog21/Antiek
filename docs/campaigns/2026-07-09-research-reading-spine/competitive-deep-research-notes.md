@@ -226,3 +226,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - DecisionTreeDriverBadge on PublicationAttachPanel
   - researchTier prop (session preferred) + attach-response fallback
   - DeepResearchSessionHost wires session researchTier into attach panel
+
+- Closed (ma, 2026-07-10) **Marketplace host → Antiek-bench book_qa usage:**
+  - POST /host and /purchase-and-host record UsageEvent(task_class=book_qa, source=marketplace_host)
+  - Shared bench usage store feeds Settings suite-proposal rewrite (propose≠promote)

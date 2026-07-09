@@ -184,6 +184,55 @@ def _maybe_seed_twins(
         }
 
 
+def _maybe_record_marketplace_host_usage(
+    *,
+    book_id: str,
+    title: str,
+    license_class: str,
+    already_hosted: bool,
+) -> dict[str, Any] | None:
+    """Residual (ma): feed marketplace host → Antiek-bench book_qa usage.
+
+    Best-effort only (never raises to host path). Uses the shared process-local
+    usage store so Settings suite-proposal rewrite can learn book_qa patterns
+    from HTML-first catalog hosts. propose ≠ promote still holds on rewrite.
+    """
+    try:
+        from substrate.antiek_bench import UsageEvent, record_usage_event
+
+        from .engagement_routes import get_bench_usage_store
+
+        store = get_bench_usage_store(create_if_missing=True)
+        if store is None:
+            return None
+        entry = _c().get(book_id)
+        subjects = ",".join(entry.subjects) if entry and entry.subjects else ""
+        source_name = (entry.source if entry else "") or "unknown"
+        hint = (
+            f"host {book_id} · {title} · {license_class}"
+            f" · source={source_name}"
+            + (f" · subjects={subjects}" if subjects else "")
+            + (" · rehost" if already_hosted else "")
+        )[:280]
+        return record_usage_event(
+            UsageEvent(
+                task_class="book_qa",
+                outcome="worked",
+                prompt_hint=hint,
+                source="marketplace_host",
+                model_id=None,
+            ),
+            store=store,
+        )
+    except Exception as exc:
+        return {
+            "recorded": False,
+            "record_skipped": f"usage_failed: {exc}",
+            "task_class": "book_qa",
+            "source": "marketplace_host",
+        }
+
+
 @marketplace_host_router.post("/host")
 def post_host(body: HostBody) -> dict[str, Any]:
     content = None
@@ -214,6 +263,15 @@ def post_host(body: HostBody) -> dict[str, Any]:
     )
     if twins is not None:
         out["twins"] = twins
+    # Residual (ma): Antiek-bench book_qa usage for recursive suite rewrite feed.
+    usage = _maybe_record_marketplace_host_usage(
+        book_id=result.host.book_id,
+        title=result.host.title,
+        license_class=result.host.license_class,
+        already_hosted=result.host.already_hosted,
+    )
+    if usage is not None:
+        out["usage_event"] = usage
     return out
 
 
@@ -247,6 +305,15 @@ def post_purchase_and_host(body: PurchaseHostBody) -> dict[str, Any]:
     )
     if twins is not None:
         out["twins"] = twins
+    # Residual (ma): Antiek-bench book_qa usage (purchase host path).
+    usage = _maybe_record_marketplace_host_usage(
+        book_id=result.host.book_id,
+        title=result.host.title,
+        license_class=result.host.license_class,
+        already_hosted=result.host.already_hosted,
+    )
+    if usage is not None:
+        out["usage_event"] = usage
     return out
 
 
