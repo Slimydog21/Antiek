@@ -1,0 +1,8 @@
+# inventory-jz · progress_payload research_tier from spawn
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: jz
+files:
+  substrate/engagement_spine/progress.py
+  tests/test_engagement_progress.py
+proof: test_engagement_progress 3_passed (HONEST_OK)
+invariants: HTML · spawn research_tier default deep · wrestle preserved

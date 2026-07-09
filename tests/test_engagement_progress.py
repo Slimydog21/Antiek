@@ -51,10 +51,31 @@ def test_record_progress_pipeline():
     assert payload["view_format"] == "html"
     assert payload["html"]
     assert "application/pdf" not in payload["html"].lower()
+    # Residual (jz): default research_tier deep on progress snapshot.
+    assert payload["research_tier"] == "deep"
     record_progress(spawn.spawn_id, "complete", "done", store=store)
     payload2 = progress_payload(spawn.spawn_id, store=store)
     assert payload2["latest_stage"] == "complete"
     assert payload2["is_terminal"] is True
+
+
+def test_progress_payload_surfaces_spawn_research_tier_wrestle():
+    """Residual (jz): progress snapshot carries reserved spawn research_tier."""
+    store = InMemoryEngagementStore()
+    spawn = spawn_from_highlight(
+        HighlightSelection(
+            asset_id="w",
+            selection_text="wrestle progress",
+            region_id="prog-w",
+        ),
+        store=store,
+        research_tier="wrestle",
+    )
+    assert spawn.research_tier == "wrestle"
+    seed_default_pipeline(spawn.spawn_id, store=store)
+    payload = progress_payload(spawn.spawn_id, store=store)
+    assert payload["research_tier"] == "wrestle"
+    assert payload["spawn_id"] == spawn.spawn_id
 
 
 def test_api_progress_double_run(client):

@@ -113,16 +113,25 @@ def progress_payload(
     store: EngagementStore,
     include_html: bool = False,
 ) -> dict[str, Any]:
-    """Product-facing progress snapshot for API/UI."""
+    """Product-facing progress snapshot for API/UI.
+
+    Residual (jz): include spawn ``research_tier`` when reserved (default deep)
+    so multi-minute progress UI can stay aligned without a second fetch.
+    """
+    from substrate.dispatch.research_tier import normalize_research_tier
+
     events = list_progress(spawn_id, store=store)
     stages = [e.stage for e in events]
     latest = stages[-1] if stages else None
+    spawn_row = store.get_spawn(spawn_id) or {}
+    tier = normalize_research_tier(spawn_row.get("research_tier"))
     payload: dict[str, Any] = {
         "spawn_id": spawn_id,
         "event_count": len(events),
         "events": [e.to_dict() for e in events],
         "latest_stage": latest,
         "is_terminal": latest in ("complete", "failed") if latest else False,
+        "research_tier": tier,
         "view_format": "html",
         "product_panel": "research_progress",
         "source": "engagement_spine.progress",
