@@ -24,6 +24,8 @@
  * (project_gutenberg / standard_ebooks / marketplace_stub); filter includes source.
  * Residual (ip): host-land metrics include catalog knowledge source + recursive
  * note-taker substrate note after twin seed.
+ * Residual (ir): prefer server catalog honesty (by_source / free_count /
+ * payment_rails) when GET /marketplace/catalog provides them (iq).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -36,6 +38,7 @@ import {
   purchaseAndHost,
   type CatalogEntryRow,
   type HostResultResponse,
+  type MarketplaceCatalogResponse,
 } from "../../api/marketplaceHost";
 import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
 import { openWindow } from "../../components/windows/openWindow";
@@ -76,6 +79,14 @@ export default function MarketplaceHost({
   ownerId = "operator",
 }: MarketplaceHostProps) {
   const [entries, setEntries] = useState<CatalogEntryRow[]>([]);
+  /** Residual (ir): server honesty fields from catalog route (iq). */
+  const [catalogHonesty, setCatalogHonesty] = useState<{
+    by_source?: Record<string, number>;
+    public_domain_count?: number;
+    purchased_count?: number;
+    free_count?: number;
+    payment_rails?: string;
+  } | null>(null);
   const [hosted, setHosted] = useState<HostResultResponse | null>(null);
   const [libraryHtml, setLibraryHtml] = useState<string | null>(null);
   const [libraryDocs, setLibraryDocs] = useState<LibraryDoc[]>([]);
@@ -100,11 +111,18 @@ export default function MarketplaceHost({
     });
   }, [entries, filterQuery]);
 
-  /** Residual (io): by_source breakdown for knowledge-dense catalog audit. */
-  const catalogBySource = useMemo(
-    () => groupCatalogBySource(entries),
-    [entries],
-  );
+  /**
+   * Residual (io/ir): by_source breakdown — prefer server honesty when present.
+   */
+  const catalogBySource = useMemo(() => {
+    if (
+      catalogHonesty?.by_source &&
+      Object.keys(catalogHonesty.by_source).length > 0
+    ) {
+      return catalogHonesty.by_source;
+    }
+    return groupCatalogBySource(entries);
+  }, [catalogHonesty, entries]);
 
   const filteredLibraryDocs = useMemo(() => {
     const q = libraryFilter.trim().toLowerCase();
@@ -120,8 +138,16 @@ export default function MarketplaceHost({
     setBusy(true);
     setError(null);
     try {
-      const cat = await fetchMarketplaceCatalog();
+      const cat: MarketplaceCatalogResponse = await fetchMarketplaceCatalog();
       setEntries(cat.entries);
+      // Residual (ir): retain server honesty fields when provided.
+      setCatalogHonesty({
+        by_source: cat.by_source,
+        public_domain_count: cat.public_domain_count,
+        purchased_count: cat.purchased_count,
+        free_count: cat.free_count,
+        payment_rails: cat.payment_rails,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -474,14 +500,31 @@ export default function MarketplaceHost({
         data-entry-count={String(entries.length)}
         data-filtered-count={String(filteredEntries.length)}
         data-source-count={String(Object.keys(catalogBySource).length)}
+        data-public-domain-count={String(
+          catalogHonesty?.public_domain_count ??
+            entries.filter((e) => e.license_class === "public_domain").length,
+        )}
+        data-free-count={String(
+          catalogHonesty?.free_count ??
+            entries.filter((e) => e.is_free).length,
+        )}
+        data-honesty-source={
+          catalogHonesty?.by_source ? "server" : "client"
+        }
         data-view-format="html"
-        data-payment-rails="manual_receipt_only"
+        data-payment-rails={
+          catalogHonesty?.payment_rails || "manual_receipt_only"
+        }
         role="status"
       >
         <p>
           Catalog · entries={entries.length} · filtered={filteredEntries.length}{" "}
-          · sources={Object.keys(catalogBySource).length} · human view=HTML ·
-          payment=manual receipt only (no live rails)
+          · sources={Object.keys(catalogBySource).length} · free=
+          {catalogHonesty?.free_count ??
+            entries.filter((e) => e.is_free).length}{" "}
+          · human view=HTML · payment=
+          {catalogHonesty?.payment_rails || "manual_receipt_only"} (no live
+          rails)
         </p>
         {Object.keys(catalogBySource).length > 0 ? (
           <p data-testid="marketplace-catalog-by-source">

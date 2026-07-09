@@ -85,6 +85,12 @@ describe("MarketplaceHost mode", () => {
       ],
       count: 1,
       view_format: "html",
+      // Residual (iq/ir): server honesty fields.
+      by_source: { standard_ebooks: 1 },
+      public_domain_count: 1,
+      purchased_count: 0,
+      free_count: 1,
+      payment_rails: "manual_receipt_only",
     });
     hostBookIntoAccount.mockResolvedValue({
       document_id: "hdoc_abc",
@@ -129,6 +135,10 @@ describe("MarketplaceHost mode", () => {
     expect(catMetrics.getAttribute("data-payment-rails")).toBe(
       "manual_receipt_only",
     );
+    // Residual (ir): server honesty preferred.
+    expect(catMetrics.getAttribute("data-honesty-source")).toBe("server");
+    expect(catMetrics.getAttribute("data-public-domain-count")).toBe("1");
+    expect(catMetrics.getAttribute("data-free-count")).toBe("1");
     expect(Number(catMetrics.getAttribute("data-entry-count"))).toBeGreaterThan(
       0,
     );
