@@ -649,6 +649,20 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(call.provider_id).toBeTruthy();
   });
 
+  it("links dual-gate checklist + NotDiamond advisory-only on suite panel (nt)", async () => {
+    render(<Settings />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("antiek-bench-suite-proposal-panel"),
+      ).toBeTruthy();
+    });
+    const dual = screen.getByTestId("antiek-bench-dual-gate-checklist-link");
+    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4/);
+    const nd = screen.getByTestId("antiek-bench-notdiamond-advisory-only");
+    expect(nd.getAttribute("data-notdiamond-authority")).toBe("advisory_only");
+    expect(nd.textContent).toMatch(/advisory only/i);
+  });
+
   it("shows suite proposal feed sources from usage by_source (hf)", async () => {
     render(<Settings />);
     await waitFor(() => {

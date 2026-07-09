@@ -1727,6 +1727,24 @@ export default function Settings() {
               Invariant: propose ≠ auto-promote · auto_promoted=
               {String(suiteProposal?.auto_promoted ?? false)}
             </p>
+            {/* Residual (nt): dual-gate prep + L7 NotDiamond never-router reminder. */}
+            <p className="text-[11px] font-mono space-x-3">
+              <a
+                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+                data-testid="antiek-bench-dual-gate-checklist-link"
+                className="underline opacity-80 hover:opacity-100"
+                title="Dual-gate L1–L4 checklist (prep only; L7 NotDiamond never router)"
+              >
+                Dual-gate L1–L4 checklist
+              </a>
+              <span
+                data-testid="antiek-bench-notdiamond-advisory-only"
+                data-notdiamond-authority="advisory_only"
+                role="status"
+              >
+                NotDiamond: advisory only (L7 · never dispatch authority)
+              </span>
+            </p>
             {/* Residual (ht): recursive rewrite metrics for audit. */}
             {suiteProposal ? (
               <div

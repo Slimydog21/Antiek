@@ -391,3 +391,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (ns, 2026-07-10) **SESSION-ARC ng–nr MO duration path:**
   - SESSION-ARC-ng-nr-moil-duration-path.md fleet handoff
   - MO time-of-work path offline product-complete
+
+- Closed (nt, 2026-07-10) **Antiek-bench dual-gate + NotDiamond L7 banner:**
+  - Settings suite proposal panel dual-gate checklist link
+  - NotDiamond advisory-only authority chrome (never dispatch)

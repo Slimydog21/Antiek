@@ -116,5 +116,6 @@ Checklist is linked from engagement surfaces for operator prep only.
 | Collective | `collective-dual-gate-checklist-link` | L6 multi-agent prep |
 | SpawnMerge | `spawn-merge-dual-gate-checklist-link` | merge path prep |
 | SessionFlywheel | `session-flywheel-dual-gate-checklist-link` | land → bench feed |
+| Settings Antiek-bench | `antiek-bench-dual-gate-checklist-link` | suite rewrite + L7 ND |
 
 L5 payment rails and L6 live multi-agent remain **deferred** (specs only until injectors exist).
