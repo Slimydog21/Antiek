@@ -7,6 +7,7 @@ import {
   createMultimediaDraft,
   getMultimediaAsset,
   listMultimediaAssets,
+  prepareMultimediaLiveExecution,
   runMultimediaHardening,
   steerMultimediaAsset,
 } from "../../api/multimedia";
@@ -23,6 +24,7 @@ vi.mock("../../api/multimedia", async (importOriginal) => {
     createMultimediaDraft: vi.fn(),
     getMultimediaAsset: vi.fn(),
     listMultimediaAssets: vi.fn(),
+    prepareMultimediaLiveExecution: vi.fn(),
     runMultimediaHardening: vi.fn(),
     steerMultimediaAsset: vi.fn(),
   };
@@ -32,6 +34,7 @@ const mockApprove = vi.mocked(approveMultimediaDryRun);
 const mockCreate = vi.mocked(createMultimediaDraft);
 const mockGet = vi.mocked(getMultimediaAsset);
 const mockList = vi.mocked(listMultimediaAssets);
+const mockPrepareLive = vi.mocked(prepareMultimediaLiveExecution);
 const mockHarden = vi.mocked(runMultimediaHardening);
 const mockSteer = vi.mocked(steerMultimediaAsset);
 
@@ -89,6 +92,24 @@ const hardenedRecord: MultimediaAssetRecord = {
   },
 };
 
+const liveQueuedRecord: MultimediaAssetRecord = {
+  ...approvedRecord,
+  jobs: [
+    {
+      job_id: "job-mm-1-0001",
+      asset_id: "mm-1",
+      revision_id: "rev-1",
+      sequence: 1,
+      kind: "provider_execution",
+      status: "queued",
+      progress_percent: 0,
+      message: "Live execution queued for krea with route balanced and max budget $60.00.",
+      error_code: null,
+      retryable: true,
+    },
+  ],
+};
+
 beforeEach(() => {
   mockList.mockResolvedValue({
     assets: [
@@ -113,6 +134,7 @@ beforeEach(() => {
   mockApprove.mockResolvedValue(approvedRecord);
   mockSteer.mockResolvedValue(steeredRecord);
   mockHarden.mockResolvedValue(hardenedRecord);
+  mockPrepareLive.mockResolvedValue(liveQueuedRecord);
 });
 
 afterEach(() => {
@@ -219,6 +241,37 @@ describe("Multimedia workstation", () => {
     await waitFor(() => expect(mockHarden).toHaveBeenCalledWith("mm-1"));
     expect(await screen.findByText(/Hardening: manual_review/)).toBeTruthy();
     expect(screen.getByText(/rights_and_publication/)).toBeTruthy();
+  });
+
+  it("prepares live provider execution only after dry-run approval and spend acknowledgement", async () => {
+    await reviewPlan();
+
+    const prepare = screen.getByRole("button", { name: "Prepare live execution" });
+    expect(prepare.getAttribute("disabled")).not.toBeNull();
+    expect(screen.getByText(/Approve the dry-run package/i)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve render" }));
+    await screen.findByTestId("multimedia-player");
+    expect(prepare.getAttribute("disabled")).not.toBeNull();
+
+    fireEvent.click(screen.getByLabelText(/I acknowledge this route may spend provider budget/i));
+    await waitFor(() => expect(prepare.getAttribute("disabled")).toBeNull());
+    fireEvent.click(prepare);
+
+    await waitFor(() =>
+      expect(mockPrepareLive).toHaveBeenCalledWith(
+        "mm-1",
+        expect.objectContaining({
+          max_budget_usd: 60,
+          route_policy: "balanced",
+          operator_acknowledged_spend: true,
+          provider_families: ["krea"],
+          dry_run_revision_id: "rev-1",
+        }),
+      ),
+    );
+    expect(await screen.findByText(/Provider job: queued/)).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("Provider calls are queued behind budget approval");
   });
 
   it("keeps the fixture preview visible when the API is unavailable", async () => {

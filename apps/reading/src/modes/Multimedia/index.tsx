@@ -8,6 +8,7 @@ import {
   getMultimediaAsset,
   listMultimediaAssets,
   manualGateIds,
+  prepareMultimediaLiveExecution,
   runMultimediaHardening,
   steerMultimediaAsset,
 } from "../../api/multimedia";
@@ -22,7 +23,7 @@ type Mode = "video" | "audio" | "hybrid";
 type RouteTier = "cheapest" | "balanced" | "highest_quality";
 type RenderState = "pending" | "rendering" | "partial" | "failed" | "over_budget" | "provider_unavailable";
 type PlayerView = "video" | "audio";
-type PendingCommand = "list" | "create" | "approve" | "steer" | "harden" | "open" | null;
+type PendingCommand = "list" | "create" | "approve" | "steer" | "harden" | "open" | "live" | null;
 
 type Chapter = {
   id: string;
@@ -147,6 +148,21 @@ function statusToRenderState(record: MultimediaAssetRecord | null): RenderState 
   return "pending";
 }
 
+function latestProviderExecutionJob(record: MultimediaAssetRecord | null) {
+  return [...(record?.jobs ?? [])].reverse().find((job) => job.kind === "provider_execution") ?? null;
+}
+
+function providerJobToRenderState(record: MultimediaAssetRecord): RenderState {
+  const job = latestProviderExecutionJob(record);
+  if (!job) return statusToRenderState(record);
+  if (job.status === "queued" || job.status === "running") return "rendering";
+  if (job.error_code === "budget_below_estimate") return "over_budget";
+  if (job.error_code === "provider_unconfigured") return "provider_unavailable";
+  if (job.status === "failed") return "failed";
+  if (job.status === "partial") return "partial";
+  return statusToRenderState(record);
+}
+
 function distributeMinutes(total: number): number[] {
   const weights = [0.32, 0.41, 0.27];
   return weights.map((w, i) => {
@@ -178,6 +194,8 @@ export default function Multimedia() {
   const [selectedRecord, setSelectedRecord] = useState<MultimediaAssetRecord | null>(null);
   const [pendingCommand, setPendingCommand] = useState<PendingCommand>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [liveBudget, setLiveBudget] = useState("60");
+  const [liveSpendAcknowledged, setLiveSpendAcknowledged] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -214,6 +232,16 @@ export default function Multimedia() {
   const canApprove =
     planReady && topic.trim().length > 0 && duration >= 15 && duration <= 45 && routeTierMatchesRecord;
   const canRunAssetCommand = Boolean(selectedRecord) && pendingCommand === null;
+  const parsedLiveBudget = Number.parseFloat(liveBudget);
+  const liveJob = latestProviderExecutionJob(selectedRecord);
+  const canPrepareLiveExecution =
+    Boolean(selectedRecord) &&
+    approved &&
+    pendingCommand === null &&
+    routeTierMatchesRecord &&
+    liveSpendAcknowledged &&
+    Number.isFinite(parsedLiveBudget) &&
+    parsedLiveBudget > 0;
 
   function setPreset(next: number) {
     setDuration(next);
@@ -250,6 +278,7 @@ export default function Multimedia() {
       setSelectedRecord(record);
       setPlanReady(true);
       setApproved(false);
+      setLiveSpendAcknowledged(false);
       setRenderState(statusToRenderState(record));
       setApiError(null);
       try {
@@ -280,7 +309,8 @@ export default function Multimedia() {
       setStyle(record.style ?? "");
       setPlanReady(true);
       setApproved(record.asset.status === "ready");
-      setRenderState(statusToRenderState(record));
+      setLiveSpendAcknowledged(false);
+      setRenderState(providerJobToRenderState(record));
       setApiError(null);
     } catch {
       setApiError("Could not reopen that multimedia asset.");
@@ -319,6 +349,7 @@ export default function Multimedia() {
       setSelectedRecord(record);
       setPlanReady(true);
       setApproved(record.asset.status === "ready");
+      setLiveSpendAcknowledged(false);
       setRenderState(statusToRenderState(record));
       setApiError(null);
       try {
@@ -328,6 +359,33 @@ export default function Multimedia() {
       }
     } catch {
       setApiError("Could not apply that steering prompt.");
+    } finally {
+      setPendingCommand(null);
+    }
+  }
+
+  async function prepareLiveExecution() {
+    if (!selectedRecord || !canPrepareLiveExecution) return;
+    setPendingCommand("live");
+    try {
+      const record = await prepareMultimediaLiveExecution(selectedRecord.asset.asset_id, {
+        max_budget_usd: parsedLiveBudget,
+        route_policy: tier,
+        operator_acknowledged_spend: true,
+        provider_families: ["krea"],
+        dry_run_revision_id: selectedRecord.asset.revision_id,
+      });
+      setSelectedRecord(record);
+      setRenderState(providerJobToRenderState(record));
+      setApiError(null);
+      try {
+        await refreshAssetList();
+      } catch {
+        // best-effort: a failed list refresh must not mask a successful mutation
+      }
+    } catch {
+      setApiError("Could not prepare live provider execution.");
+      setRenderState("failed");
     } finally {
       setPendingCommand(null);
     }
@@ -681,6 +739,64 @@ export default function Multimedia() {
                   <p className="font-mono">Hardening: {selectedRecord.hardening_report.ship_status}</p>
                   <p>Manual: {manualGateIds(selectedRecord.hardening_report).join(", ") || "none"}</p>
                   <p>Failed: {failedGateIds(selectedRecord.hardening_report).join(", ") || "none"}</p>
+                </div>
+              )}
+            </section>
+
+            <section className="rounded-md border border-rule bg-ice-1 p-3 dark:border-charcoal-1 dark:bg-charcoal-2">
+              <p className="font-mono text-[12px] text-shadow-2 dark:text-moonlight">Live provider gate</p>
+              <p className="mt-1 text-[12px] leading-snug text-shadow-1 dark:text-moonlight">
+                Prepares Krea execution behind a budget ceiling. This records a provider job only; it does not start paid media generation.
+              </p>
+              <label className="mt-3 block text-[12px] text-shadow-1 dark:text-moonlight" htmlFor="multimedia-live-budget">
+                Max budget
+              </label>
+              <div className="mt-1 flex items-center gap-2">
+                <span className="font-mono text-[13px] text-shadow-2 dark:text-moonlight">$</span>
+                <input
+                  id="multimedia-live-budget"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={liveBudget}
+                  onChange={(event) => setLiveBudget(event.target.value)}
+                  className="h-8 w-full rounded-md border border-rule bg-ice-0 px-2 text-[13px] text-ink outline-none dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
+                />
+              </div>
+              <label className="mt-3 flex items-start gap-2 text-[12px] leading-snug text-ink dark:text-bright">
+                <input
+                  type="checkbox"
+                  checked={liveSpendAcknowledged}
+                  onChange={(event) => setLiveSpendAcknowledged(event.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>I acknowledge this route may spend provider budget when a live worker is attached.</span>
+              </label>
+              <LemonButton
+                type="button"
+                size="sm"
+                variant="primary"
+                disabled={!canPrepareLiveExecution}
+                onClick={prepareLiveExecution}
+                className="mt-3 w-full"
+              >
+                {pendingCommand === "live" ? "Preparing..." : "Prepare live execution"}
+              </LemonButton>
+              {!approved && (
+                <p className="mt-2 text-[12px] leading-snug text-shadow-1 dark:text-moonlight">
+                  Approve the dry-run package before opening the live provider gate.
+                </p>
+              )}
+              {selectedRecord && !routeTierMatchesRecord && (
+                <p className="mt-2 text-[12px] leading-snug text-shadow-1 dark:text-moonlight">
+                  Create a new draft before preparing a different generation route.
+                </p>
+              )}
+              {liveJob && (
+                <div className="mt-3 rounded-md border border-rule bg-ice-0 p-2 text-[12px] text-ink dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright">
+                  <p className="font-mono">Provider job: {liveJob.status}</p>
+                  <p>{liveJob.message}</p>
+                  {liveJob.error_code && <p>Error: {liveJob.error_code}</p>}
                 </div>
               )}
             </section>
