@@ -1,0 +1,17 @@
+# residual (ey) collective continue-as-unit full window mode
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(ex) prior | branch_only | campaign inventories
+(ey) collective continue full | branch_only | continueAsCohesiveUnit(viewMode); collective-continue-as-unit-full; 8 vitest
+
+PATHS:
+- apps/reading/src/components/engagement/CollectiveResearchPanel.tsx
+- apps/reading/src/components/engagement/CollectiveResearchPanel.test.tsx
+
+INVARIANTS:
+- Same budget soft-gate for floating and full
+- decision-tree model chokepoint via launchFloatingDeepResearch
+- HTML deep_research_session host
+
+NEXT: (ez) re-derive; operator merge PR #465

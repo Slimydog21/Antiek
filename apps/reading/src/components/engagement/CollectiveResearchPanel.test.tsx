@@ -179,6 +179,29 @@ describe("CollectiveResearchPanel", () => {
         /wdr_col_unit/,
       );
     });
+
+    // Residual (ey): full working-region continue.
+    launchFloatingDeepResearch.mockClear();
+    launchFloatingDeepResearch.mockResolvedValue({
+      session_id: "fsess_col_full",
+      spawn_id: "spn_full",
+      investigation_id: "inv_col_full",
+      parent_asset_id: "book-1",
+      window_id: "wdr_col_full",
+      view_format: "html",
+      view_mode: "full",
+      status: "reserved",
+      model_id: null,
+    });
+    fireEvent.click(screen.getByTestId("collective-continue-as-unit-full"));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "book-1",
+          view_mode: "full",
+        }),
+      );
+    });
   });
 
   it("merges selected spawns to draft document when parentAssetId set", async () => {

@@ -15,6 +15,8 @@
  *    the recursive note-taker always tracks the merge target.
  * 8. Residual (ep): onDocMerged notifies parent (DR host) to remount research
  *    context after document merge / written analysis (+ twin seed).
+ * 9. Residual (ey): continue cohesive unit as full working-region window as
+ *    well as floating (parity with ResearchThis et / hosted es).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -27,6 +29,7 @@ import {
   type MergeProductResponse,
 } from "../../api/engagement";
 import { launchFloatingDeepResearch } from "../../modes/Reading/launchFloatingDeepResearch";
+import type { WindowMode } from "../../workspace/windowsStore";
 import {
   ResearchLaunchBudgetPanel,
   type ResearchLaunchBudgetProjection,
@@ -257,43 +260,46 @@ export function CollectiveResearchPanel({
   }, [selected, parentAssetId, maybeAutoOpenDraft, onDocMerged]);
 
   /**
-   * Residual (dc): re-enter research with the collective prompt as one unit.
+   * Residual (dc/ey): re-enter research with the collective prompt as one unit.
    * Requires parent asset + a merged unit (prompt_block). Uses launchFloatingDeepResearch
-   * so decision-tree model_id chokepoint (cy) applies.
+   * so decision-tree model_id chokepoint (cy) applies. view_mode floating | full.
    */
-  const continueAsCohesiveUnit = useCallback(async () => {
-    if (!unit?.prompt_block?.trim()) {
-      setError("Merge spawns as prompt first");
-      return;
-    }
-    const asset = (parentAssetId || unit.asset_ids?.[0] || "").trim();
-    if (!asset) {
-      setError("parentAssetId (or collective asset_ids) required to continue");
-      return;
-    }
-    if (budgetWarn && !forceOverBudget) {
-      setError(
-        "Projected cost may exceed remaining daily budget — enable force override or reduce scope.",
-      );
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const selection = unit.prompt_block.trim().slice(0, 8000);
-      const out = await launchFloatingDeepResearch({
-        asset_id: asset,
-        selection_text: selection,
-        goal_hint: `Continue collective deep research unit ${unit.collective_id} as one cohesive prompt`,
-        view_mode: "floating",
-      });
-      setContinueWindowId(out.window_id);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }, [unit, parentAssetId, budgetWarn, forceOverBudget]);
+  const continueAsCohesiveUnit = useCallback(
+    async (viewMode: WindowMode = "floating") => {
+      if (!unit?.prompt_block?.trim()) {
+        setError("Merge spawns as prompt first");
+        return;
+      }
+      const asset = (parentAssetId || unit.asset_ids?.[0] || "").trim();
+      if (!asset) {
+        setError("parentAssetId (or collective asset_ids) required to continue");
+        return;
+      }
+      if (budgetWarn && !forceOverBudget) {
+        setError(
+          "Projected cost may exceed remaining daily budget — enable force override or reduce scope.",
+        );
+        return;
+      }
+      setBusy(true);
+      setError(null);
+      try {
+        const selection = unit.prompt_block.trim().slice(0, 8000);
+        const out = await launchFloatingDeepResearch({
+          asset_id: asset,
+          selection_text: selection,
+          goal_hint: `Continue collective deep research unit ${unit.collective_id} as one cohesive prompt`,
+          view_mode: viewMode,
+        });
+        setContinueWindowId(out.window_id);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [unit, parentAssetId, budgetWarn, forceOverBudget],
+  );
 
   return (
     <section
@@ -431,7 +437,7 @@ export function CollectiveResearchPanel({
               <button
                 type="button"
                 data-testid="collective-continue-as-unit"
-                onClick={() => void continueAsCohesiveUnit()}
+                onClick={() => void continueAsCohesiveUnit("floating")}
                 disabled={
                   busy ||
                   !unit.prompt_block?.trim() ||
@@ -440,6 +446,19 @@ export function CollectiveResearchPanel({
                 title="Open a new floating deep research session seeded with this collective prompt"
               >
                 {busy ? "Opening…" : "Continue as cohesive unit (window)"}
+              </button>
+              <button
+                type="button"
+                data-testid="collective-continue-as-unit-full"
+                onClick={() => void continueAsCohesiveUnit("full")}
+                disabled={
+                  busy ||
+                  !unit.prompt_block?.trim() ||
+                  (budgetWarn && !forceOverBudget)
+                }
+                title="Open collective unit deep research expanded to full working region"
+              >
+                {busy ? "Opening…" : "Continue as unit (full)"}
               </button>
               {continueWindowId ? (
                 <span
