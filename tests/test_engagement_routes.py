@@ -128,6 +128,8 @@ def test_session_open_and_flywheel(client):
     assert body["view_format"] == "html"
     assert body["context"]["twin_count"] >= 1
     assert "prompt_block" in body
+    assert "usage_event" in body
+    assert body["usage_event"]["outcome"] == "worked"
 
 
 def test_attach_unknown_spawn_404(client):

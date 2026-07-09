@@ -50,6 +50,7 @@ engagement_router = APIRouter(prefix="/engagement", tags=["engagement"])
 # Lazily constructed stores. Tests call reset_engagement_stores().
 _engagement_store: EngagementStore | None = None
 _session_store: SessionStore | None = None
+_bench_usage_store: Any = None
 
 
 def engagement_data_dir() -> Path | None:
@@ -289,7 +290,27 @@ def post_session_complete_flywheel(body: SessionFlywheelBody) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    return result.to_dict()
+    out = result.to_dict()
+    # Feed Antiek-bench recursive rewrite with engagement outcomes (best-effort).
+    try:
+        from substrate.antiek_bench import InMemoryBenchStore, record_session_flywheel_usage
+
+        global _bench_usage_store
+        if _bench_usage_store is None:
+            _bench_usage_store = InMemoryBenchStore()
+        ctx = result.context
+        usage = record_session_flywheel_usage(
+            store=_bench_usage_store,
+            twin_count=len(ctx.twin_units),
+            ref_count=len(ctx.source_references),
+            status=result.session.status,
+            model_id=result.session.model_id,
+            prompt_hint=body.output_text[:200],
+        )
+        out["usage_event"] = usage
+    except Exception as exc:  # pragma: no cover — never fail flywheel on bench
+        out["usage_event_error"] = str(exc)
+    return out
 
 
 # Offline content-addressed promote hooks so API tests never need DuckDB.
