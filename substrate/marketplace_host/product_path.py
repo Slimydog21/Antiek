@@ -178,7 +178,12 @@ def list_account_library_html(
 
 
 def default_demo_catalog() -> Catalog:
-    """Fixed offline catalog fixture for product/API tests and demos."""
+    """Fixed offline catalog fixture for product/API tests and demos.
+
+    Residual (io): expand beyond a single PD novel with knowledge-dense
+    public-domain works a technology researcher would host HTML-first.
+    No network; fixtures only. Purchased stub remains for receipt path.
+    """
     from .catalog import make_catalog
 
     return make_catalog(
@@ -194,6 +199,85 @@ def default_demo_catalog() -> Catalog:
                     "It is a truth universally acknowledged, that a single man "
                     "in possession of a good fortune, must be in want of a wife.\n\n"
                     "However little known the feelings or views of such a man may be."
+                ),
+                source_format="html",
+            ),
+            # Residual (io): knowledge-dense PD spine for research workstation.
+            CatalogEntry(
+                book_id="pd-origin",
+                title="On the Origin of Species",
+                author="Charles Darwin",
+                source="project_gutenberg",
+                license_class="public_domain",
+                is_free=True,
+                body_text=(
+                    "When on board H.M.S. 'Beagle,' as naturalist, I was much struck "
+                    "with certain facts in the distribution of the inhabitants of "
+                    "South America.\n\n"
+                    "These facts seemed to me to throw some light on the origin of "
+                    "species—that mystery of mysteries."
+                ),
+                source_format="html",
+            ),
+            CatalogEntry(
+                book_id="pd-wealth",
+                title="An Inquiry into the Nature and Causes of the Wealth of Nations",
+                author="Adam Smith",
+                source="project_gutenberg",
+                license_class="public_domain",
+                is_free=True,
+                body_text=(
+                    "The annual labour of every nation is the fund which originally "
+                    "supplies it with all the necessaries and conveniences of life "
+                    "which it annually consumes.\n\n"
+                    "According therefore as this produce, or what is purchased with "
+                    "it, bears a greater or smaller proportion to the number of those "
+                    "who are to consume it, the nation will be better or worse supplied."
+                ),
+                source_format="html",
+            ),
+            CatalogEntry(
+                book_id="pd-federalist",
+                title="The Federalist Papers",
+                author="Hamilton, Madison, and Jay",
+                source="project_gutenberg",
+                license_class="public_domain",
+                is_free=True,
+                body_text=(
+                    "After an unequivocal experience of the inefficiency of the "
+                    "subsisting federal government, you are called upon to deliberate "
+                    "on a new Constitution for the United States of America.\n\n"
+                    "The subject speaks its own importance."
+                ),
+                source_format="html",
+            ),
+            CatalogEntry(
+                book_id="pd-discourse",
+                title="Discourse on the Method",
+                author="René Descartes",
+                source="standard_ebooks",
+                license_class="public_domain",
+                is_free=True,
+                body_text=(
+                    "Good sense is, of all things among men, the most equally distributed; "
+                    "for every one thinks himself so abundantly provided with it, that those "
+                    "even who are the most difficult to satisfy in everything else, do not "
+                    "usually desire a larger measure of this quality than they already possess."
+                ),
+                source_format="html",
+            ),
+            CatalogEntry(
+                book_id="pd-liberty",
+                title="On Liberty",
+                author="John Stuart Mill",
+                source="standard_ebooks",
+                license_class="public_domain",
+                is_free=True,
+                body_text=(
+                    "The subject of this Essay is not the so-called Liberty of the Will, "
+                    "so unfortunately opposed to the misnamed doctrine of Philosophical "
+                    "Necessity; but Civil, or Social Liberty: the nature and limits of "
+                    "the power which can be legitimately exercised by society over the individual."
                 ),
                 source_format="html",
             ),

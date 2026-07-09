@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import MarketplaceHost from "./index";
+import MarketplaceHost, { groupCatalogBySource } from "./index";
 
 const {
   fetchMarketplaceCatalog,
@@ -123,7 +123,7 @@ describe("MarketplaceHost mode", () => {
     await waitFor(() => {
       expect(screen.getByText("Pride and Prejudice")).toBeTruthy();
     });
-    // Residual (il): HTML-first catalog honesty metrics.
+    // Residual (il/io): HTML-first catalog honesty + by_source.
     const catMetrics = screen.getByTestId("marketplace-catalog-metrics");
     expect(catMetrics.getAttribute("data-view-format")).toBe("html");
     expect(catMetrics.getAttribute("data-payment-rails")).toBe(
@@ -133,6 +133,12 @@ describe("MarketplaceHost mode", () => {
       0,
     );
     expect(catMetrics.textContent).toMatch(/HTML/);
+    expect(screen.getByTestId("marketplace-catalog-by-source").textContent).toMatch(
+      /standard_ebooks/,
+    );
+    expect(
+      screen.getByTestId("catalog-entry-pd-pride").getAttribute("data-source"),
+    ).toBe("standard_ebooks");
     fireEvent.click(screen.getByRole("button", { name: /host into account/i }));
     await waitFor(() => {
       expect(screen.getByTestId("host-result").textContent).toContain("hdoc_abc");
@@ -445,5 +451,73 @@ describe("MarketplaceHost mode", () => {
     expect(
       screen.getByTestId("marketplace-host-mode").getAttribute("data-view-format"),
     ).toBe("html");
+  });
+
+  it("groups catalog entries by knowledge source (io)", () => {
+    const g = groupCatalogBySource([
+      {
+        book_id: "pd-origin",
+        title: "Origin",
+        author: "Darwin",
+        license_class: "public_domain",
+        is_free: true,
+        source: "project_gutenberg",
+      },
+      {
+        book_id: "pd-wealth",
+        title: "Wealth",
+        author: "Smith",
+        license_class: "public_domain",
+        is_free: true,
+        source: "project_gutenberg",
+      },
+      {
+        book_id: "pd-pride",
+        title: "Pride",
+        author: "Austen",
+        license_class: "public_domain",
+        is_free: true,
+        source: "standard_ebooks",
+      },
+    ]);
+    expect(g.project_gutenberg).toBe(2);
+    expect(g.standard_ebooks).toBe(1);
+  });
+
+  it("filters catalog by knowledge source (io)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-origin",
+          title: "On the Origin of Species",
+          author: "Charles Darwin",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+        },
+        {
+          book_id: "pd-pride",
+          title: "Pride and Prejudice",
+          author: "Jane Austen",
+          license_class: "public_domain",
+          is_free: true,
+          source: "standard_ebooks",
+        },
+      ],
+      count: 2,
+      view_format: "html",
+    });
+    render(<MarketplaceHost ownerId="operator" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("catalog-entry-pd-origin")).toBeTruthy();
+    });
+    fireEvent.change(screen.getByTestId("catalog-filter"), {
+      target: { value: "project_gutenberg" },
+    });
+    expect(screen.getByTestId("catalog-entry-pd-origin")).toBeTruthy();
+    expect(screen.queryByTestId("catalog-entry-pd-pride")).toBeNull();
+    expect(screen.getByTestId("marketplace-catalog-by-source").textContent).toMatch(
+      /project_gutenberg=1/,
+    );
   });
 });

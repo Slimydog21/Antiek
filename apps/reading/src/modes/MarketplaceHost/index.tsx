@@ -20,6 +20,8 @@
  * Residual (il): catalog HTML-first honesty metrics (no payment rails claim).
  * Residual (im): account library HTML-first metrics strip.
  * Residual (in): host-result metrics after host/purchase land.
+ * Residual (io): knowledge-dense PD catalog expansion + source surface in UI
+ * (project_gutenberg / standard_ebooks / marketplace_stub); filter includes source.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -56,6 +58,18 @@ function demoPurchasedContentB64(title: string): string {
     : Buffer.from(html, "utf-8").toString("base64");
 }
 
+/** Residual (io): count catalog rows by knowledge source for audit metrics. */
+export function groupCatalogBySource(
+  rows: CatalogEntryRow[],
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const e of rows) {
+    const src = (e.source || "unknown").trim() || "unknown";
+    out[src] = (out[src] || 0) + 1;
+  }
+  return out;
+}
+
 export default function MarketplaceHost({
   ownerId = "operator",
 }: MarketplaceHostProps) {
@@ -77,11 +91,18 @@ export default function MarketplaceHost({
     const q = filterQuery.trim().toLowerCase();
     if (!q) return entries;
     return entries.filter((e) => {
+      // Residual (io): include knowledge source in filter haystack.
       const hay =
-        `${e.title} ${e.author} ${e.license_class} ${e.book_id}`.toLowerCase();
+        `${e.title} ${e.author} ${e.license_class} ${e.book_id} ${e.source}`.toLowerCase();
       return hay.includes(q);
     });
   }, [entries, filterQuery]);
+
+  /** Residual (io): by_source breakdown for knowledge-dense catalog audit. */
+  const catalogBySource = useMemo(
+    () => groupCatalogBySource(entries),
+    [entries],
+  );
 
   const filteredLibraryDocs = useMemo(() => {
     const q = libraryFilter.trim().toLowerCase();
@@ -444,18 +465,30 @@ export default function MarketplaceHost({
       >
         Showing {filteredEntries.length} of {entries.length}
       </p>
-      {/* Residual (il): HTML-first catalog honesty (no live payment rails). */}
+      {/* Residual (il/io): HTML-first catalog honesty + by_source audit. */}
       <div
-        className="text-[11px] font-mono opacity-80 mb-2"
+        className="text-[11px] font-mono opacity-80 mb-2 space-y-0.5"
         data-testid="marketplace-catalog-metrics"
         data-entry-count={String(entries.length)}
         data-filtered-count={String(filteredEntries.length)}
+        data-source-count={String(Object.keys(catalogBySource).length)}
         data-view-format="html"
         data-payment-rails="manual_receipt_only"
         role="status"
       >
-        Catalog · entries={entries.length} · filtered={filteredEntries.length} ·
-        human view=HTML · payment=manual receipt only (no live rails)
+        <p>
+          Catalog · entries={entries.length} · filtered={filteredEntries.length}{" "}
+          · sources={Object.keys(catalogBySource).length} · human view=HTML ·
+          payment=manual receipt only (no live rails)
+        </p>
+        {Object.keys(catalogBySource).length > 0 ? (
+          <p data-testid="marketplace-catalog-by-source">
+            By source:{" "}
+            {Object.entries(catalogBySource)
+              .map(([src, n]) => `${src}=${n}`)
+              .join(" · ")}
+          </p>
+        ) : null}
       </div>
 
       <ul className="mt-4 space-y-2" data-testid="catalog-list">
@@ -467,12 +500,16 @@ export default function MarketplaceHost({
             data-view-format="html"
             data-license-class={e.license_class}
             data-is-free={String(Boolean(e.is_free))}
+            data-source={e.source || "unknown"}
+            data-source-format="html"
           >
             <div>
               <strong>{e.title}</strong>
               <div className="text-sm opacity-80">
                 {e.author} · {e.license_class}
                 {e.is_free ? " · free" : ""}
+                {" · source="}
+                {e.source || "unknown"}
                 {" · HTML host"}
               </div>
             </div>
