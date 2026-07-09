@@ -208,6 +208,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
               : "")
           }
           researchTier="deep"
+          allowTierPick
         />
       </section>
 

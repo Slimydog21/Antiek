@@ -89,3 +89,6 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 ## residual (gn) depth-tier picker flywheel — 2026-07-09
 - allowTierPick on hosted book, Midnight Oil, collective continue
 - tests: HostedHtml 10 + MidnightOil 6 + Collective 8
+## residual (go) workstation depth-tier picker — 2026-07-09
+- allowTierPick on DR session host, ResearchThis, StartResearch, ChatInput
+- tests: DeepResearchSessionHost 22 + ResearchThis 7 + ChatInput budget 1

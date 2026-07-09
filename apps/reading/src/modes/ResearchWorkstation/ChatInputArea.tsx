@@ -182,6 +182,7 @@ export default function ChatInputArea({
         <ResearchLaunchBudgetPanel
           promptText={question}
           researchTier={researchTier === "fast" ? "fast" : "deep"}
+          allowTierPick
           onProjectionChange={onProjectionChange}
         />
         {budgetWarn ? (

@@ -672,6 +672,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
           <ResearchLaunchBudgetPanel
             promptText={question}
             researchTier={tier}
+            allowTierPick
             onProjectionChange={onProjectionChange}
           />
           {budgetWarn ? (

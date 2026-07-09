@@ -189,6 +189,7 @@ export default function ResearchThis({
         <ResearchLaunchBudgetPanel
           promptText={selection}
           researchTier="deep"
+          allowTierPick
           onProjectionChange={onProjectionChange}
         />
         {budgetWarn ? (
