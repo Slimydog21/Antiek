@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { PlanTree, ResearchStatus } from "../../api/research";
 import PlanEditor from "./PlanEditor";
 import ResearchPanel from "./ResearchPanel";
+import SessionSourceReceipt from "./SessionSourceReceipt";
 
 afterEach(() => cleanup());
 
@@ -79,6 +80,30 @@ describe("ResearchPanel — steer controls", () => {
   });
 });
 
+describe("SessionSourceReceipt", () => {
+  it("renders session source metadata without claiming retrieval ran", () => {
+    render(
+      <SessionSourceReceipt
+        policy={["operator_corpus", "web", "arxiv"]}
+        execution="metadata_only"
+      />,
+    );
+
+    expect(screen.getByText("Session sources")).toBeTruthy();
+    expect(screen.getByText("Corpus · Web · arXiv")).toBeTruthy();
+    expect(screen.getByText(/carried as launch metadata/i)).toBeTruthy();
+    expect(screen.getByText(/retrieval receipts arrive separately/i)).toBeTruthy();
+  });
+
+  it("renders nothing when no session source policy was recorded", () => {
+    const { container } = render(
+      <SessionSourceReceipt policy={[]} execution={null} />,
+    );
+
+    expect(container.textContent).toBe("");
+  });
+});
+
 describe("useResearchSession — polling stops at terminal", () => {
   it("polls the durable status endpoint and stops once all terminal", async () => {
     const getSession = vi.fn()
@@ -86,11 +111,15 @@ describe("useResearchSession — polling stops at terminal", () => {
         session_id: "s", live: true,
         researches: [{ investigation_id: "inv-0", sub_question: "Q", state: "running" }],
         cost: { per_research: { "inv-0": 0.01 }, session_total_usd: 0.01, aggregate_spent_usd: 0.01, aggregate_cap_usd: 10 },
+        source_policy: ["operator_corpus", "web"],
+        source_policy_execution: "metadata_only",
       })
       .mockResolvedValue({
         session_id: "s", live: true,
         researches: [{ investigation_id: "inv-0", sub_question: "Q", state: "done" }],
         cost: { per_research: { "inv-0": 0.03 }, session_total_usd: 0.03, aggregate_spent_usd: 0.03, aggregate_cap_usd: 10 },
+        source_policy: ["operator_corpus", "web"],
+        source_policy_execution: "metadata_only",
       });
     vi.doMock("../../api/research", async (orig) => ({
       ...(await orig<typeof import("../../api/research")>()),
@@ -102,6 +131,8 @@ describe("useResearchSession — polling stops at terminal", () => {
     await waitFor(() => expect(result.current.allTerminal).toBe(true), { timeout: 2000 });
     expect(result.current.researches[0].state).toBe("done");
     expect(result.current.cost?.session_total_usd).toBeCloseTo(0.03);
+    expect(result.current.sourcePolicy).toEqual(["operator_corpus", "web"]);
+    expect(result.current.sourcePolicyExecution).toBe("metadata_only");
     vi.doUnmock("../../api/research");
   });
 });

@@ -40,6 +40,7 @@ import type { DistilledNode, ResearchSourcePolicy } from "../../lib/api";
 import CostMeter from "./CostMeter";
 import PlanEditor from "./PlanEditor";
 import ResearchPanel from "./ResearchPanel";
+import SessionSourceReceipt from "./SessionSourceReceipt";
 import Canvas from "./Canvas/Canvas";
 import BlockDetail from "./BlockDetail";
 import { useResearchSession } from "./useResearchSession";
@@ -356,6 +357,10 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
 
   return (
     <div className="flex flex-col gap-3">
+      <SessionSourceReceipt
+        policy={session.sourcePolicy}
+        execution={session.sourcePolicyExecution}
+      />
       <div className="flex items-center justify-between gap-4">
         <h2 className="text-sm font-semibold text-ink dark:text-bright">
           {session.researches.length} researches

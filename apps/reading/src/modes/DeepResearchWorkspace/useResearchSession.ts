@@ -22,6 +22,7 @@ import {
   type ResearchStatus,
   type SessionCost,
 } from "../../api/research";
+import type { ResearchSourcePolicy } from "../../lib/api";
 
 export interface SessionView {
   researches: ResearchStatus[];
@@ -29,6 +30,8 @@ export interface SessionView {
   live: boolean;
   allTerminal: boolean;
   loading: boolean;
+  sourcePolicy: ResearchSourcePolicy[];
+  sourcePolicyExecution: "metadata_only" | "runner_consumed" | null;
   /** Transient poll error; the hook keeps retrying (reconnect). */
   error: string | null;
 }
@@ -39,6 +42,8 @@ const EMPTY: SessionView = {
   live: false,
   allTerminal: false,
   loading: true,
+  sourcePolicy: [],
+  sourcePolicyExecution: null,
   error: null,
 };
 
@@ -71,6 +76,8 @@ export function useResearchSession(
           live: s.live,
           allTerminal,
           loading: false,
+          sourcePolicy: s.source_policy ?? [],
+          sourcePolicyExecution: s.source_policy_execution ?? null,
           error: null,
         });
         // Keep polling until every research is terminal; then stop (the
