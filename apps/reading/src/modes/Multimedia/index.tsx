@@ -1981,6 +1981,7 @@ function JobPanel({
   const activationWorkerRunbookItems: LiveSpendReviewItem[] = [
     { label: "Provider worker", value: "Disabled in app", tone: "muted" },
     { label: "Activation authority", value: "Separate worker required", tone: "sun" },
+    { label: "Runbook packet", value: "Evidence only; no worker authority or spend authorization", tone: "sun" },
   ];
   const activationAuditItems: LiveSpendReviewItem[] = [
     { label: "Activation audit", value: "Not run in app", tone: "muted" },

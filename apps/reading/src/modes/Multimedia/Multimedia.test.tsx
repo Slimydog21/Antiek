@@ -1273,6 +1273,8 @@ describe("Multimedia workstation", () => {
     expect(within(activationHandoff).getAllByText("Disabled in app").length).toBeGreaterThan(0);
     expect(within(activationHandoff).getAllByText("Activation authority").length).toBeGreaterThan(0);
     expect(within(activationHandoff).getAllByText("Separate worker required").length).toBeGreaterThan(0);
+    expect(within(activationHandoff).getAllByText("Runbook packet").length).toBeGreaterThan(0);
+    expect(within(activationHandoff).getAllByText("Evidence only; no worker authority or spend authorization").length).toBeGreaterThan(0);
     expect(within(activationHandoff).getAllByText("Activation audit").length).toBeGreaterThan(0);
     expect(within(activationHandoff).getAllByText("Not run in app").length).toBeGreaterThan(0);
     expect(within(activationHandoff).getAllByText("Required proof").length).toBeGreaterThan(0);
@@ -1317,6 +1319,7 @@ describe("Multimedia workstation", () => {
           "Worker runbook",
           "Provider worker: Disabled in app",
           "Activation authority: Separate worker required",
+          "Runbook packet: Evidence only; no worker authority or spend authorization",
           "Provider activation audit",
           "Activation audit: Not run in app",
           "Required proof: Worker logs + manual artifact attach",
@@ -1353,6 +1356,8 @@ describe("Multimedia workstation", () => {
     expect(within(activationPacket).getByText("Disabled in app")).toBeTruthy();
     expect(within(activationPacket).getByText("Activation authority")).toBeTruthy();
     expect(within(activationPacket).getByText("Separate worker required")).toBeTruthy();
+    expect(within(activationPacket).getByText("Runbook packet")).toBeTruthy();
+    expect(within(activationPacket).getByText("Evidence only; no worker authority or spend authorization")).toBeTruthy();
     expect(within(activationPacket).getByText("Activation audit")).toBeTruthy();
     expect(within(activationPacket).getAllByText("Not run in app").length).toBeGreaterThan(0);
     expect(within(activationPacket).getByText("Required proof")).toBeTruthy();
@@ -1413,6 +1418,7 @@ describe("Multimedia workstation", () => {
           "Worker runbook",
           "Provider worker: Disabled in app",
           "Activation authority: Separate worker required",
+          "Runbook packet: Evidence only; no worker authority or spend authorization",
           "Provider activation audit",
           "Activation audit: Not run in app",
           "Required proof: Worker logs + manual artifact attach",
@@ -1535,6 +1541,7 @@ describe("Multimedia workstation", () => {
           "Worker runbook",
           "Provider worker: Disabled in app",
           "Activation authority: Separate worker required",
+          "Runbook packet: Evidence only; no worker authority or spend authorization",
           "Provider activation audit",
           "Activation audit: Not run in app",
           "Required proof: Worker logs + manual artifact attach",
@@ -1663,6 +1670,7 @@ describe("Multimedia workstation", () => {
           "Worker runbook",
           "Provider worker: Disabled in app",
           "Activation authority: Separate worker required",
+          "Runbook packet: Evidence only; no worker authority or spend authorization",
           "Provider activation audit",
           "Activation audit: Not run in app",
           "Required proof: Worker logs + manual artifact attach",
