@@ -23,7 +23,94 @@ from substrate.multimedia.read_model import (
     MultimediaAssetRecord,
     MultimediaAssetStore,
     MultimediaJobRecord,
+    MultimediaPublicExportGate,
 )
+
+
+def evaluate_public_export_gate(
+    store: MultimediaAssetStore,
+    asset_id: str,
+) -> MultimediaAssetRecord:
+    """Record a no-spend public-export gate for attached provider artifacts."""
+
+    record = store.get(asset_id)
+    attached_file_ids = tuple(file.file_id for file in record.asset.manifest.files)
+    if not attached_file_ids:
+        gate = MultimediaPublicExportGate(
+            status="blocked",
+            public_export_enabled=False,
+            attached_file_ids=(),
+            required_gate_ids=("provider_artifact_attachment",),
+            reason="Public export requires at least one attached manifest file.",
+        )
+        return store.record_job(
+            asset_id,
+            kind="export_gate",
+            status="failed",
+            progress_percent=0,
+            message=gate.reason,
+            error_code="public_export_no_attached_files",
+            retryable=False,
+            public_export_gate=gate,
+        )
+
+    hardening = record.hardening_report
+    if hardening is None:
+        gate = MultimediaPublicExportGate(
+            status="manual_review",
+            public_export_enabled=False,
+            attached_file_ids=attached_file_ids,
+            required_gate_ids=("hardening", "rights_and_publication"),
+            reason="Public export requires a hardening report and manual publication review.",
+        )
+        return store.record_job(
+            asset_id,
+            kind="export_gate",
+            status="partial",
+            progress_percent=95,
+            message=gate.reason,
+            retryable=True,
+            public_export_gate=gate,
+        )
+
+    if hardening.ship_status == "blocked":
+        gate = MultimediaPublicExportGate(
+            status="blocked",
+            public_export_enabled=False,
+            hardening_status=hardening.ship_status,
+            attached_file_ids=attached_file_ids,
+            required_gate_ids=hardening.failed_gate_ids,
+            reason="Public export is blocked by failed multimedia hardening gates.",
+        )
+        return store.record_job(
+            asset_id,
+            kind="export_gate",
+            status="failed",
+            progress_percent=95,
+            message=gate.reason,
+            error_code="public_export_hardening_blocked",
+            retryable=False,
+            public_export_gate=gate,
+        )
+
+    manual_gate_ids = hardening.manual_gate_ids or ("rights_and_publication",)
+    gate = MultimediaPublicExportGate(
+        status="manual_review",
+        public_export_enabled=False,
+        hardening_status=hardening.ship_status,
+        attached_file_ids=attached_file_ids,
+        required_gate_ids=manual_gate_ids,
+        reason="Public export remains disabled until operator publication rights review is complete.",
+    )
+    return store.record_job(
+        asset_id,
+        kind="export_gate",
+        status="partial",
+        progress_percent=95,
+        message=gate.reason,
+        retryable=True,
+        public_export_gate=gate,
+    )
 
 
 def attach_provider_artifacts_to_manifest(
@@ -393,6 +480,7 @@ def _primary_generation_kind(kind: AssetKind) -> GenerationKind:
 
 __all__ = [
     "attach_provider_artifacts_to_manifest",
+    "evaluate_public_export_gate",
     "plan_provider_artifact_attachment",
     "preview_next_live_execution",
     "record_provider_artifact_receipt",

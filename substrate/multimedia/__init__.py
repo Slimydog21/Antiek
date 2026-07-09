@@ -22,6 +22,7 @@ from .hardening import (
 )
 from .live_worker import (
     attach_provider_artifacts_to_manifest,
+    evaluate_public_export_gate,
     plan_provider_artifact_attachment,
     preview_next_live_execution,
     record_provider_artifact_receipt,
@@ -66,6 +67,7 @@ from .read_model import (
     MultimediaAssetRecord,
     MultimediaAssetStore,
     MultimediaAssetSummary,
+    MultimediaPublicExportGate,
     SteeringRequest,
 )
 from .steering import (
@@ -169,6 +171,7 @@ __all__ = [
     "LiveProviderRoutePreview",
     "GateStatus",
     "MultimediaHardeningReport",
+    "MultimediaPublicExportGate",
     "ShipStatus",
     "evaluate_multimedia_asset",
     # SPR-09 API persistence/read-model
@@ -179,6 +182,7 @@ __all__ = [
     "MultimediaAssetSummary",
     "SteeringRequest",
     "attach_provider_artifacts_to_manifest",
+    "evaluate_public_export_gate",
     "plan_provider_artifact_attachment",
     "preview_next_live_execution",
     "record_provider_artifact_receipt",

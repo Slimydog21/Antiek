@@ -46,7 +46,7 @@ from substrate.multimedia.video import (
 )
 
 PlanMode = Literal["video", "audio", "hybrid"]
-JobKind = Literal["render", "steering", "hardening", "provider_execution"]
+JobKind = Literal["render", "steering", "hardening", "provider_execution", "export_gate"]
 JobStatus = Literal["queued", "running", "succeeded", "failed", "canceled", "partial"]
 
 
@@ -161,6 +161,23 @@ class LiveProviderAttachmentPlan(_ReadModelBase):
     attach_reason: str
 
 
+class MultimediaPublicExportGate(_ReadModelBase):
+    """No-spend public export decision for attached provider artifacts."""
+
+    status: Literal["blocked", "manual_review", "ready"]
+    public_export_enabled: bool = False
+    hardening_status: str | None = None
+    attached_file_ids: tuple[str, ...] = Field(default_factory=tuple)
+    required_gate_ids: tuple[str, ...] = Field(default_factory=tuple)
+    reason: str
+
+    @model_validator(mode="after")
+    def public_export_requires_ready_status(self) -> MultimediaPublicExportGate:
+        if self.public_export_enabled and self.status != "ready":
+            raise ValueError("public export can only be enabled when gate status is ready")
+        return self
+
+
 class MultimediaJobRecord(_ReadModelBase):
     """Durable progress record for one multimedia operation.
 
@@ -184,6 +201,7 @@ class MultimediaJobRecord(_ReadModelBase):
     route_preview: LiveProviderRoutePreview | None = None
     artifact_receipt: LiveProviderArtifactReceipt | None = None
     attachment_plan: LiveProviderAttachmentPlan | None = None
+    public_export_gate: MultimediaPublicExportGate | None = None
 
 
 class MultimediaAssetSummary(_ReadModelBase):
@@ -476,6 +494,7 @@ class MultimediaAssetStore:
         route_preview: LiveProviderRoutePreview | None = None,
         artifact_receipt: LiveProviderArtifactReceipt | None = None,
         attachment_plan: LiveProviderAttachmentPlan | None = None,
+        public_export_gate: MultimediaPublicExportGate | None = None,
     ) -> MultimediaAssetRecord:
         """Append an arbitrary job row (failed/partial provider jobs, retries).
 
@@ -496,6 +515,7 @@ class MultimediaAssetStore:
             route_preview=route_preview,
             artifact_receipt=artifact_receipt,
             attachment_plan=attachment_plan,
+            public_export_gate=public_export_gate,
         )
         self.save(updated)
         return updated
@@ -519,6 +539,7 @@ class MultimediaAssetStore:
         route_preview: LiveProviderRoutePreview | None = None,
         artifact_receipt: LiveProviderArtifactReceipt | None = None,
         attachment_plan: LiveProviderAttachmentPlan | None = None,
+        public_export_gate: MultimediaPublicExportGate | None = None,
     ) -> MultimediaAssetRecord:
         sequence = max((job.sequence for job in record.jobs), default=0) + 1
         job = MultimediaJobRecord(
@@ -536,6 +557,7 @@ class MultimediaAssetStore:
             route_preview=route_preview,
             artifact_receipt=artifact_receipt,
             attachment_plan=attachment_plan,
+            public_export_gate=public_export_gate,
         )
         return record.model_copy(update={"jobs": record.jobs + (job,)})
 
@@ -650,5 +672,6 @@ __all__ = [
     "MultimediaAssetSummary",
     "MultimediaJobList",
     "MultimediaJobRecord",
+    "MultimediaPublicExportGate",
     "SteeringRequest",
 ]
