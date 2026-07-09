@@ -14,6 +14,7 @@ Surfaces:
   POST /engagement/research-context
   POST /engagement/collective
   POST /engagement/merge
+  POST /engagement/hydrate-ref
   POST /engagement/sessions/open
   POST /engagement/sessions/complete-flywheel
 """
@@ -32,6 +33,7 @@ from substrate.engagement_spine import (
     InMemoryEngagementStore,
     attach_source_references,
     assemble_research_context,
+    hydrate_reference,
     merge_product_payload,
     merge_spawns_collective,
     spawn_from_highlight_with_references,
@@ -167,6 +169,14 @@ class MergeBody(BaseModel):
     include_html: bool = True
 
 
+class HydrateRefBody(BaseModel):
+    """Hydrate arxiv/substack/url into an HTML-first engagement asset."""
+
+    reference: str = Field(min_length=1)
+    include_html: bool = True
+    attach_spawn_id: str | None = None
+
+
 class SessionOpenBody(HighlightBody):
     view_mode: Literal["floating", "full"] = "floating"
 
@@ -297,6 +307,31 @@ def post_merge(body: MergeBody) -> dict[str, Any]:
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return payload
+
+
+# Optional injectable publication body fetcher for hydrate-ref (tests / wired apps).
+# Signature: (SourceReference) -> dict with title/body_text/abstract/canonical_url.
+hydrate_fetch_publication: Any = None
+
+
+@engagement_router.post("/hydrate-ref")
+def post_hydrate_ref(body: HydrateRefBody) -> dict[str, Any]:
+    """Land arxiv/substack/url as an HTML-first asset (offline-safe by default).
+
+    Does not call live arxiv/substack network unless ``hydrate_fetch_publication``
+    is set (tests / app wiring). PDF is never required.
+    """
+    try:
+        asset = hydrate_reference(
+            body.reference,
+            store=_eng(),
+            fetch_publication=hydrate_fetch_publication,
+            include_html=body.include_html,
+            attach_spawn_id=body.attach_spawn_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return asset.to_dict()
 
 
 @engagement_router.post("/sessions/open")

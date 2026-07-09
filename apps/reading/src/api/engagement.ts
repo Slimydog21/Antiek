@@ -174,6 +174,37 @@ export async function mergeSpawnOutputs(body: {
   return readJson<MergeProductResponse>(res);
 }
 
+/** Hydrate arxiv/substack/url into HTML-first engagement asset. */
+export type HydrateRefResponse = {
+  asset_id: string;
+  ref: SourceReference;
+  title: string;
+  body_text: string;
+  fetched: boolean;
+  view_format: "html" | string;
+  html?: string | null;
+  notes: string[];
+  product_panel: string;
+  source: string;
+};
+
+export async function hydratePublicationRef(body: {
+  reference: string;
+  include_html?: boolean;
+  attach_spawn_id?: string | null;
+}): Promise<HydrateRefResponse> {
+  const res = await apiFetch(`${API_BASE}/engagement/hydrate-ref`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      reference: body.reference,
+      include_html: body.include_html ?? true,
+      attach_spawn_id: body.attach_spawn_id ?? null,
+    }),
+  });
+  return readJson<HydrateRefResponse>(res);
+}
+
 export async function openEngagementSession(
   body: SessionOpenRequest,
 ): Promise<SessionOpenResponse> {

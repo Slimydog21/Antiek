@@ -72,6 +72,7 @@ from .collective import (
     collective_research_html,
     merge_spawns_collective,
 )
+from .hydrate import HydratedAsset, asset_id_for_ref, hydrate_reference, project_hydrated_html
 
 __all__ = [
     "CollectiveResearchUnit",
@@ -100,7 +101,10 @@ __all__ = [
     "expected_graph_node_id",
     "extract_arxiv_id",
     "filter_references",
+    "HydratedAsset",
+    "asset_id_for_ref",
     "get_spawn",
+    "hydrate_reference",
     "list_source_references",
     "list_spawns_for_asset",
     "list_twin_notes",
@@ -109,6 +113,7 @@ __all__ = [
     "merge_spawns_collective",
     "parse_source_reference",
     "parse_source_references",
+    "project_hydrated_html",
     "project_merge_html",
     "project_to_html",
     "promote_and_context_for_asset",
