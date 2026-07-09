@@ -38,6 +38,28 @@ export interface MidnightOilArtifactContract {
   source_receipt_links_required: boolean;
 }
 
+export interface MidnightOilLaunchPacket {
+  packet_id: string;
+  run_id: string;
+  goal: string;
+  work_minutes: number;
+  price_ceiling_usd: number;
+  planned_budget_usd: number;
+  unallocated_budget_usd: number;
+  route_mode: MidnightOilRouteMode;
+  source_policy: MidnightOilSourcePolicy[];
+  deliverable: "html_research_asset";
+  artifact_contract: MidnightOilArtifactContract;
+  role_count: number;
+  role_route_receipt_ids: string[];
+  source_receipts_required: boolean;
+  route_receipts_required: boolean;
+  dispatch_allowed: boolean;
+  budget_reserved: boolean;
+  provider_calls_made: boolean;
+  launch_notes: string[];
+}
+
 export interface MidnightOilPreflight {
   accepted: boolean;
   denial_reason: string | null;
@@ -52,6 +74,7 @@ export interface MidnightOilPreflight {
   unallocated_budget_usd: number;
   role_plans: MidnightOilRolePlan[];
   artifact_contract: MidnightOilArtifactContract;
+  launch_packet: MidnightOilLaunchPacket | null;
   notes: string[];
 }
 

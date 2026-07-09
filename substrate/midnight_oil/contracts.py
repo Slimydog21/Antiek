@@ -69,6 +69,28 @@ class MidnightOilRolePlan(BaseModel):
     planned_route_receipt_id: str
 
 
+class MidnightOilLaunchPacket(BaseModel):
+    packet_id: str
+    run_id: str
+    goal: str
+    work_minutes: int
+    price_ceiling_usd: float = Field(ge=0.0)
+    planned_budget_usd: float = Field(ge=0.0)
+    unallocated_budget_usd: float = Field(ge=0.0)
+    route_mode: RouteMode
+    source_policy: list[SourcePolicy]
+    deliverable: DeliverableKind
+    artifact_contract: MidnightOilArtifactContract
+    role_count: int = Field(ge=0)
+    role_route_receipt_ids: list[str]
+    source_receipts_required: bool = True
+    route_receipts_required: bool = True
+    dispatch_allowed: bool = False
+    budget_reserved: bool = False
+    provider_calls_made: bool = False
+    launch_notes: list[str] = Field(default_factory=list)
+
+
 class MidnightOilPreflight(BaseModel):
     accepted: bool
     denial_reason: str | None = None
@@ -85,6 +107,7 @@ class MidnightOilPreflight(BaseModel):
     artifact_contract: MidnightOilArtifactContract = Field(
         default_factory=MidnightOilArtifactContract
     )
+    launch_packet: MidnightOilLaunchPacket | None = None
     notes: list[str] = Field(default_factory=list)
 
 
@@ -127,6 +150,14 @@ def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
         planned_budget_usd=planned_budget_usd,
         unallocated_budget_usd=round(max(0.0, price_ceiling_usd - planned_budget_usd), 2),
         role_plans=role_plans,
+        launch_packet=_launch_packet(
+            run_id=run_id,
+            req=req,
+            price_ceiling_usd=price_ceiling_usd,
+            planned_budget_usd=planned_budget_usd,
+            unallocated_budget_usd=round(max(0.0, price_ceiling_usd - planned_budget_usd), 2),
+            role_plans=role_plans,
+        ),
         notes=[
             "preflight only: no agents launched, no budget reserved, no retrieval performed",
             "each future subagent must inherit the parent ceiling through this role allocation",
@@ -162,3 +193,37 @@ def _role_plans(
             )
         )
     return plans
+
+
+def _launch_packet(
+    *,
+    run_id: str,
+    req: MidnightOilRequest,
+    price_ceiling_usd: float,
+    planned_budget_usd: float,
+    unallocated_budget_usd: float,
+    role_plans: list[MidnightOilRolePlan],
+) -> MidnightOilLaunchPacket:
+    artifact_contract = MidnightOilArtifactContract()
+    return MidnightOilLaunchPacket(
+        packet_id=f"{run_id}-launch-packet",
+        run_id=run_id,
+        goal=req.goal,
+        work_minutes=req.work_minutes,
+        price_ceiling_usd=price_ceiling_usd,
+        planned_budget_usd=planned_budget_usd,
+        unallocated_budget_usd=unallocated_budget_usd,
+        route_mode=req.route_mode,
+        source_policy=req.source_policy,
+        deliverable=req.deliverable,
+        artifact_contract=artifact_contract,
+        role_count=len(role_plans),
+        role_route_receipt_ids=[plan.planned_route_receipt_id for plan in role_plans],
+        source_receipts_required=artifact_contract.source_receipt_links_required,
+        route_receipts_required=artifact_contract.route_receipt_links_required,
+        launch_notes=[
+            "launch packet only: no agents dispatched",
+            "no budget reserved and no provider calls made",
+            "future runner must attach route and source receipts before final HTML asset",
+        ],
+    )

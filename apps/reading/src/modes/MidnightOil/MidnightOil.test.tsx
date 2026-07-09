@@ -46,6 +46,37 @@ vi.mock("../../api/midnightOil", () => ({
       route_receipt_links_required: true,
       source_receipt_links_required: true,
     },
+    launch_packet: {
+      packet_id: "midnight-oil-test-launch-packet",
+      run_id: "midnight-oil-test",
+      goal: "Explain widebody engine bottlenecks.",
+      work_minutes: 90,
+      price_ceiling_usd: 12,
+      planned_budget_usd: 7.2,
+      unallocated_budget_usd: 4.8,
+      route_mode: "auto_cost",
+      source_policy: ["arxiv", "substack", "operator_corpus"],
+      deliverable: "html_research_asset",
+      artifact_contract: {
+        final_format: "html",
+        pdf_allowed: false,
+        antiek_information_asset: true,
+        twin_note_document_required: true,
+        route_receipt_links_required: true,
+        source_receipt_links_required: true,
+      },
+      role_count: 2,
+      role_route_receipt_ids: [
+        "midnight-oil-test-planner-route-receipt",
+        "midnight-oil-test-gatherer-route-receipt",
+      ],
+      source_receipts_required: true,
+      route_receipts_required: true,
+      dispatch_allowed: false,
+      budget_reserved: false,
+      provider_calls_made: false,
+      launch_notes: ["launch packet only: no agents dispatched"],
+    },
     notes: ["preflight only: no agents launched, no budget reserved, no retrieval performed"],
   })),
 }));
@@ -89,6 +120,10 @@ describe("MidnightOil", () => {
     expect(screen.getByText("Unallocated")).toBeTruthy();
     expect(screen.getByText("html")).toBeTruthy();
     expect(screen.getByText("Twin notes")).toBeTruthy();
+    expect(screen.getByText("Launch packet")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-launch-packet")).toBeTruthy();
+    expect(screen.getByText("Dispatch")).toBeTruthy();
+    expect(screen.getByText("disabled")).toBeTruthy();
     expect(screen.getByText(/no agents launched/i)).toBeTruthy();
   });
 });

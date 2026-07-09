@@ -2,6 +2,7 @@
 
 from .contracts import (
     MidnightOilArtifactContract,
+    MidnightOilLaunchPacket,
     MidnightOilPreflight,
     MidnightOilRequest,
     MidnightOilRolePlan,
@@ -10,6 +11,7 @@ from .contracts import (
 
 __all__ = [
     "MidnightOilArtifactContract",
+    "MidnightOilLaunchPacket",
     "MidnightOilPreflight",
     "MidnightOilRequest",
     "MidnightOilRolePlan",

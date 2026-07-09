@@ -24,6 +24,7 @@ def test_no_ack_request_is_denied_before_dispatch() -> None:
     assert result.role_plans == []
     assert result.planned_budget_usd == 0.0
     assert result.unallocated_budget_usd == 25.0
+    assert result.launch_packet is None
     assert "denied before dispatch" in result.notes[0]
 
 
@@ -87,6 +88,45 @@ def test_mock_role_plan_requires_route_and_source_receipts() -> None:
     assert all(plan.planned_route_receipt_id.startswith(result.run_id or "") for plan in result.role_plans)
 
 
+def test_accepted_preflight_emits_no_dispatch_launch_packet() -> None:
+    result = preflight_midnight_oil(
+        MidnightOilRequest(
+            goal="Research whether composite aircraft repair is capacity constrained.",
+            work_minutes=45,
+            price_ceiling_usd=3.25,
+            route_mode="auto_latency",
+            source_policy=["arxiv", "operator_corpus"],
+            operator_acknowledged_spend=True,
+        )
+    )
+
+    assert result.accepted is True
+    assert result.launch_packet is not None
+    packet = result.launch_packet
+    assert packet.packet_id == f"{result.run_id}-launch-packet"
+    assert packet.run_id == result.run_id
+    assert packet.goal == result.goal
+    assert packet.work_minutes == result.work_minutes
+    assert packet.price_ceiling_usd == result.price_ceiling_usd
+    assert packet.planned_budget_usd == result.planned_budget_usd
+    assert packet.unallocated_budget_usd == result.unallocated_budget_usd
+    assert packet.route_mode == "auto_latency"
+    assert packet.source_policy == ["arxiv", "operator_corpus"]
+    assert packet.deliverable == "html_research_asset"
+    assert packet.artifact_contract.final_format == "html"
+    assert packet.artifact_contract.pdf_allowed is False
+    assert packet.role_count == len(result.role_plans)
+    assert packet.role_route_receipt_ids == [
+        plan.planned_route_receipt_id for plan in result.role_plans
+    ]
+    assert packet.source_receipts_required is True
+    assert packet.route_receipts_required is True
+    assert packet.dispatch_allowed is False
+    assert packet.budget_reserved is False
+    assert packet.provider_calls_made is False
+    assert "no agents dispatched" in packet.launch_notes[0]
+
+
 def test_final_artifact_contract_is_html_not_pdf_with_twin_note() -> None:
     result = preflight_midnight_oil(
         MidnightOilRequest(
@@ -128,5 +168,12 @@ def test_midnight_oil_preflight_api_contract() -> None:
     assert body["accepted"] is True
     assert body["planned_budget_usd"] == 25.0
     assert body["unallocated_budget_usd"] == 0.0
+    assert body["launch_packet"]["packet_id"].endswith("-launch-packet")
+    assert body["launch_packet"]["dispatch_allowed"] is False
+    assert body["launch_packet"]["budget_reserved"] is False
+    assert body["launch_packet"]["provider_calls_made"] is False
+    assert body["launch_packet"]["role_route_receipt_ids"] == [
+        plan["planned_route_receipt_id"] for plan in body["role_plans"]
+    ]
     assert body["artifact_contract"]["final_format"] == "html"
     assert len(body["role_plans"]) == 4

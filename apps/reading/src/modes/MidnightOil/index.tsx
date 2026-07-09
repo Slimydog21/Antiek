@@ -258,6 +258,37 @@ export default function MidnightOil() {
                 />
               </div>
 
+              {preflight.launch_packet && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Launch packet
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {preflight.launch_packet.packet_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Dispatch"
+                      value={preflight.launch_packet.dispatch_allowed ? "enabled" : "disabled"}
+                    />
+                    <Metric
+                      label="Budget reserve"
+                      value={preflight.launch_packet.budget_reserved ? "reserved" : "not reserved"}
+                    />
+                    <Metric
+                      label="Provider calls"
+                      value={preflight.launch_packet.provider_calls_made ? "made" : "none"}
+                    />
+                  </div>
+                  <p className="mt-2 text-[11px] text-ink-soft dark:text-starlight">
+                    {preflight.launch_packet.role_count} roles inherit this packet and must attach route
+                    and source receipts before the final HTML asset.
+                  </p>
+                </div>
+              )}
+
               {preflight.notes.map((note) => (
                 <p key={note} className="text-[11px] text-ink-soft dark:text-starlight">
                   {note}
