@@ -1995,6 +1995,8 @@ function JobPanel({
     `Copy boundary: ${readinessCopyBoundary}`,
   ];
   const liveSpendCopyBoundary = "Live spend review is evidence only; copying it does not authorize spend, start workers, export, publish, or call providers.";
+  const activationChecklistCopyBoundary =
+    "Activation checklist copy is evidence only; copying it does not authorize spend, start workers, export, publish, or call providers.";
   const liveSpendReviewKey = liveSpendReview.map((item) => `${item.label}:${item.value}`).join("|");
   const activationChecklistKey = activationChecklist.map((item) => `${item.label}:${item.value}`).join("|");
   const activationDecisionKey = activationDecision.map((item) => `${item.label}:${item.value}`).join("|");
@@ -2117,6 +2119,7 @@ function JobPanel({
       [
         ...activationChecklist.map((item) => `${item.label}: ${item.value}`),
         "Activation state: Evidence only; provider execution still requires a separate worker activation.",
+        `Copy boundary: ${activationChecklistCopyBoundary}`,
       ].join("\n"),
     );
     setActivationChecklistCopied(true);
@@ -2254,7 +2257,7 @@ function JobPanel({
           ))}
         </dl>
         <p className="mt-2 text-[11px] leading-snug text-shadow-1 dark:text-moonlight">
-          This checklist is evidence only; provider execution still requires a separate worker activation.
+          {activationChecklistCopyBoundary}
         </p>
         <LemonButton type="button" size="sm" variant="secondary" className="mt-2" onClick={copyActivationChecklist}>
           {activationChecklistCopied ? "Checklist copied" : "Copy checklist"}

@@ -1256,7 +1256,9 @@ describe("Multimedia workstation", () => {
     expect(within(activationChecklist).getByText("Execution boundary")).toBeTruthy();
     expect(within(activationChecklist).getByText("Live worker disabled")).toBeTruthy();
     expect(
-      within(activationChecklist).getByText("This checklist is evidence only; provider execution still requires a separate worker activation."),
+      within(activationChecklist).getByText(
+        "Activation checklist copy is evidence only; copying it does not authorize spend, start workers, export, publish, or call providers.",
+      ),
     ).toBeTruthy();
     fireEvent.click(within(activationChecklist).getByRole("button", { name: "Copy checklist" }));
     await waitFor(() =>
@@ -1269,6 +1271,7 @@ describe("Multimedia workstation", () => {
           "Provider route: Balanced / krea",
           "Execution boundary: Live worker disabled",
           "Activation state: Evidence only; provider execution still requires a separate worker activation.",
+          "Copy boundary: Activation checklist copy is evidence only; copying it does not authorize spend, start workers, export, publish, or call providers.",
         ].join("\n"),
       ),
     );
