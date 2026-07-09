@@ -614,3 +614,10 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (pw, 2026-07-10) **mergeTwinChaseNotes pure helper (V1 foundation):**
   - multi-list dedupe by note_id · questions first
   - composes with buildTwinDraftHtml for cross-asset drafts
+
+- Closed (px, 2026-07-10) **cross-asset twin merge UI (FUTURE-AGENT V1):**
+  - second asset_id input + Load merge asset (fetchTwinNotes; must differ)
+  - secondary multi-select (auto-select all on load)
+  - Merge draft HTML/full → mergeTwinChaseNotes → openTwinDraft + Write seed
+  - metrics data-source=twin_cross_asset_merge · data-merge-assets=A|B
+  - TwinNotesPanel vitest 28 passed

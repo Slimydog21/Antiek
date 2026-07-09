@@ -1505,4 +1505,169 @@ describe("TwinNotesPanel", () => {
       );
     });
   });
+
+  it("loads second asset twins and opens cross-asset merge draft (px)", async () => {
+    fetchTwinNotes.mockImplementation(async (assetId: string) => {
+      if (assetId === "paper-a") {
+        return {
+          asset_id: "paper-a",
+          note_count: 1,
+          insight_count: 0,
+          question_count: 1,
+          notes: [
+            {
+              note_id: "twin_a_q",
+              asset_id: "paper-a",
+              kind: "question",
+              text: "Q from A",
+            },
+          ],
+          view_format: "html",
+          product_panel: "twin_notes",
+          source: "engagement_spine.twin",
+          messages: [],
+          html: "<p>a</p>",
+        };
+      }
+      if (assetId === "paper-b") {
+        return {
+          asset_id: "paper-b",
+          note_count: 2,
+          insight_count: 1,
+          question_count: 1,
+          notes: [
+            {
+              note_id: "twin_b_q",
+              asset_id: "paper-b",
+              kind: "question",
+              text: "Q from B",
+            },
+            {
+              note_id: "twin_b_i",
+              asset_id: "paper-b",
+              kind: "insight",
+              text: "I from B",
+            },
+          ],
+          view_format: "html",
+          product_panel: "twin_notes",
+          source: "engagement_spine.twin",
+          messages: [],
+          html: "<p>b</p>",
+        };
+      }
+      throw new Error(`unexpected asset ${assetId}`);
+    });
+    openWindow.mockReturnValue("win:twin-draft:paper-a_paper-b:twin_a_q-twin_b_q");
+
+    render(<TwinNotesPanel assetId="paper-a" autoLoad />);
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-select-twin_a_q")).toBeTruthy();
+    });
+
+    // Merge controls present; merge draft disabled until load + both sides selected.
+    expect(screen.getByTestId("twin-cross-asset-merge")).toBeTruthy();
+    expect(
+      (screen.getByTestId("twin-merge-draft-html") as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+
+    fireEvent.change(screen.getByTestId("twin-merge-asset-id"), {
+      target: { value: "paper-b" },
+    });
+    fireEvent.click(screen.getByTestId("twin-merge-asset-load"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-merge-load-status").textContent).toMatch(
+        /paper-b/,
+      );
+    });
+    expect(fetchTwinNotes).toHaveBeenCalledWith("paper-b", {
+      includeHtml: true,
+    });
+    // Secondary notes auto-selected on load.
+    expect(
+      screen
+        .getByTestId("twin-cross-asset-merge")
+        .getAttribute("data-merge-selected-count"),
+    ).toBe("2");
+    expect(screen.getByTestId("twin-merge-select-twin_b_q")).toBeTruthy();
+
+    // Primary still needs selection for cross-asset merge.
+    expect(
+      (screen.getByTestId("twin-merge-draft-html") as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    fireEvent.click(screen.getByTestId("twin-select-twin_a_q"));
+    expect(
+      (screen.getByTestId("twin-merge-draft-html") as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+
+    fireEvent.click(screen.getByTestId("twin-merge-draft-html"));
+
+    await waitFor(() => {
+      expect(openWindow).toHaveBeenCalled();
+    });
+    const openArgs = openWindow.mock.calls.at(-1);
+    expect(openArgs?.[0]).toBe("hosted_html_document");
+    expect(openArgs?.[1]).toEqual(
+      expect.objectContaining({
+        view_format: "html",
+        source: "twin_cross_asset_merge",
+        html: expect.stringMatching(/data-merge-assets="paper-a\|paper-b"/),
+      }),
+    );
+    expect(openArgs?.[1].html).toMatch(/Q from A/);
+    expect(openArgs?.[1].html).toMatch(/Q from B/);
+    // Deduped merge includes B insight too (all secondary selected).
+    expect(openArgs?.[1].html).toMatch(/I from B/);
+    expect(storeTwinWriteSeed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        asset_id: "paper-a+paper-b",
+        note_ids: expect.arrayContaining(["twin_a_q", "twin_b_q", "twin_b_i"]),
+      }),
+    );
+
+    const metrics = screen.getByTestId("twin-draft-metrics");
+    expect(metrics.getAttribute("data-source")).toBe("twin_cross_asset_merge");
+    expect(metrics.getAttribute("data-merge-assets")).toBe("paper-a|paper-b");
+    expect(metrics.getAttribute("data-note-count")).toBe("3");
+    expect(screen.getByTestId("twin-draft-open-write")).toBeTruthy();
+    expect(screen.getByTestId("twin-chase-status").textContent).toMatch(
+      /cross-asset/i,
+    );
+  });
+
+  it("rejects merge asset_id equal to current asset (px)", async () => {
+    fetchTwinNotes.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 0,
+      insight_count: 0,
+      question_count: 0,
+      notes: [],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+      html: "",
+    });
+    render(<TwinNotesPanel assetId="paper" autoLoad />);
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-merge-asset-id")).toBeTruthy();
+    });
+    fireEvent.change(screen.getByTestId("twin-merge-asset-id"), {
+      target: { value: "paper" },
+    });
+    fireEvent.click(screen.getByTestId("twin-merge-asset-load"));
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toMatch(
+        /must differ from the current asset/i,
+      );
+    });
+    // Should not have called fetch for the merge load (only autoLoad primary).
+    expect(
+      fetchTwinNotes.mock.calls.filter((c) => c[0] === "paper"),
+    ).toHaveLength(1);
+  });
 });

@@ -49,6 +49,8 @@
  * Residual (pt): twin-draft-metrics echo note_ids provenance (parity ni chase).
  * Residual (pw): mergeTwinChaseNotes pure helper — dedupe by note_id, questions
  * first (FUTURE-AGENT V1 cross-asset combine foundation).
+ * Residual (px): second asset_id picker — load remote twins + multi-select +
+ * mergeTwinChaseNotes → openTwinDraft float|full + Write seed (full V1 UI).
  * HTML-first; never PDF.
  */
 
@@ -245,7 +247,7 @@ export function TwinNotesPanel({
   const [promoteStatus, setPromoteStatus] = useState<string | null>(null);
   /** Residual (mz): chase-selected deep research status chrome. */
   const [chaseStatus, setChaseStatus] = useState<string | null>(null);
-  /** Residual (po/pp): last twin HTML draft open + Write handoff metrics. */
+  /** Residual (po/pp/px): last twin HTML draft open + Write handoff metrics. */
   const [draftMetrics, setDraftMetrics] = useState<{
     note_count: number;
     note_ids: string[];
@@ -253,7 +255,21 @@ export function TwinNotesPanel({
     title: string;
     write_href: string | null;
     write_seed_key: string | null;
+    /** Residual (px): cross-asset merge provenance when draft used second asset. */
+    merge_asset_ids?: string[] | null;
+    merge_source?: string | null;
   } | null>(null);
+  /**
+   * Residual (px): second asset_id for cross-asset twin merge drafts.
+   * Input is freeform; loaded id + twins only after explicit Load.
+   */
+  const [mergeAssetIdInput, setMergeAssetIdInput] = useState("");
+  const [mergeAssetId, setMergeAssetId] = useState<string | null>(null);
+  const [mergeTwins, setMergeTwins] = useState<TwinNotesResponse | null>(null);
+  const [mergeSelectedNoteIds, setMergeSelectedNoteIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [mergeLoadStatus, setMergeLoadStatus] = useState<string | null>(null);
   /**
    * Residual (nc): machine-readable last chase result for audit (parity
    * twin-promote-metrics / marketplace-host-dr-status).
@@ -622,37 +638,156 @@ export function TwinNotesPanel({
     return buildTwinChasePayload(selectedNotes, assetId).selection_text;
   }, [selectedNotes, assetId]);
 
+  /** Residual (px): secondary-asset notes resolved from merge multi-select. */
+  const mergeSelectedNotes = useMemo(() => {
+    const notes = mergeTwins?.notes || [];
+    if (mergeSelectedNoteIds.size < 1) return [] as TwinChaseNote[];
+    return notes
+      .filter((n) => mergeSelectedNoteIds.has(n.note_id))
+      .map((n) => ({
+        note_id: n.note_id,
+        kind: n.kind,
+        text: n.text,
+      }));
+  }, [mergeTwins?.notes, mergeSelectedNoteIds]);
+
   /**
-   * Residual (pn/pp/ps): open multi-selected twins as HTML draft window
-   * (floating | full) + Write twin_seed handoff.
+   * Residual (px): load twins for a second asset_id (must differ from current).
+   * Auto-selects all loaded secondary notes for merge convenience.
+   */
+  const loadMergeAsset = useCallback(async () => {
+    const id = mergeAssetIdInput.trim();
+    if (!id) {
+      setError("Enter a second asset_id to load for cross-asset merge");
+      return;
+    }
+    if (id === (assetId || "").trim()) {
+      setError("Merge asset_id must differ from the current asset");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setMergeLoadStatus(null);
+    try {
+      const t = await fetchTwinNotes(id, { includeHtml: true });
+      if (t.view_format !== "html") {
+        throw new Error("merge-asset twin notes view_format must be html");
+      }
+      setMergeAssetId(id);
+      setMergeTwins(t);
+      const ids = (t.notes || [])
+        .map((n) => String(n.note_id || "").trim())
+        .filter(Boolean);
+      setMergeSelectedNoteIds(new Set(ids));
+      setMergeLoadStatus(
+        `Loaded ${t.note_count ?? ids.length} twin(s) from merge asset ${id}`,
+      );
+    } catch (e) {
+      setMergeAssetId(null);
+      setMergeTwins(null);
+      setMergeSelectedNoteIds(new Set());
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [mergeAssetIdInput, assetId]);
+
+  const toggleMergeNoteSelection = useCallback((noteId: string) => {
+    setMergeSelectedNoteIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(noteId)) next.delete(noteId);
+      else next.add(noteId);
+      return next;
+    });
+  }, []);
+
+  const clearMergeNoteSelection = useCallback(() => {
+    setMergeSelectedNoteIds(new Set());
+  }, []);
+
+  const selectAllMergeNotes = useCallback(() => {
+    const ids = (mergeTwins?.notes || [])
+      .map((n) => String(n.note_id || "").trim())
+      .filter(Boolean);
+    setMergeSelectedNoteIds(new Set(ids));
+  }, [mergeTwins?.notes]);
+
+  /**
+   * Residual (pn/pp/ps/px): open twins as HTML draft window (floating | full)
+   * + Write twin_seed handoff. Single-asset uses primary multi-select; cross-
+   * asset (px) merges primary + secondary via mergeTwinChaseNotes.
    */
   const openTwinDraft = useCallback(
-    (mode: "floating" | "full" = "floating") => {
-      const selected = selectedNotes;
-      if (selected.length < 1) return;
-      const draft = buildTwinDraftHtml(selected, assetId);
-      const chase = buildTwinChasePayload(selected, assetId);
+    (
+      mode: "floating" | "full" = "floating",
+      opts?: { crossAsset?: boolean },
+    ) => {
+      const crossAsset = opts?.crossAsset === true;
+      let selected: TwinChaseNote[];
+      let draftAssetLabel: string;
+      let source: string;
+      let mergeIds: string[] | null = null;
+
+      if (crossAsset) {
+        if (!mergeAssetId) {
+          setError("Load a second asset_id before cross-asset merge draft");
+          return;
+        }
+        selected = mergeTwinChaseNotes([selectedNotes, mergeSelectedNotes]);
+        if (selected.length < 1) {
+          setError(
+            "Select at least one twin note from primary and/or merge asset",
+          );
+          return;
+        }
+        if (selectedNotes.length < 1 || mergeSelectedNotes.length < 1) {
+          setError(
+            "Cross-asset merge requires at least one selected note on each asset",
+          );
+          return;
+        }
+        const primaryId = (assetId || "").trim() || "asset";
+        draftAssetLabel = `${primaryId}+${mergeAssetId}`;
+        source = "twin_cross_asset_merge";
+        mergeIds = [primaryId, mergeAssetId];
+      } else {
+        selected = selectedNotes;
+        if (selected.length < 1) return;
+        draftAssetLabel = assetId;
+        source = "twin_draft_selected";
+      }
+
+      const draft = buildTwinDraftHtml(selected, draftAssetLabel);
+      // Residual (px): stamp merge provenance on HTML article when cross-asset.
+      const html =
+        crossAsset && mergeIds
+          ? draft.html.replace(
+              'data-twin-draft="true"',
+              `data-twin-draft="true" data-source="${source}" data-merge-assets="${mergeIds.join("|")}"`,
+            )
+          : draft.html;
+      const chase = buildTwinChasePayload(selected, draftAssetLabel);
       const idSuffix = mode === "full" ? ":full" : "";
       const winId = openWindow(
         "hosted_html_document",
         {
-          document_id: `twin_draft_${assetId.trim() || "asset"}_${Date.now()}`,
+          document_id: `twin_draft_${(draftAssetLabel || "asset").replace(/\+/g, "_")}_${Date.now()}`,
           title: draft.title,
-          html: draft.html,
+          html,
           view_format: "html",
-          source: "twin_draft_selected",
+          source,
         },
         {
-          id: `win:twin-draft:${assetId.trim() || "asset"}:${draft.note_ids.slice(0, 3).join("-")}${idSuffix}`,
+          id: `win:twin-draft:${(draftAssetLabel || "asset").replace(/\+/g, "_")}:${draft.note_ids.slice(0, 3).join("-")}${idSuffix}`,
           title: draft.title,
           mode,
         },
       );
       const seedKey = storeTwinWriteSeed({
         plain_text: chase.selection_text,
-        html: draft.html,
+        html,
         title: draft.title,
-        asset_id: assetId,
+        asset_id: draftAssetLabel,
         note_ids: draft.note_ids,
       });
       const writeHref = seedKey ? buildTwinWriteHref(seedKey) : null;
@@ -663,15 +798,20 @@ export function TwinNotesPanel({
         title: draft.title,
         write_href: writeHref,
         write_seed_key: seedKey,
+        merge_asset_ids: mergeIds,
+        merge_source: crossAsset ? source : null,
       });
       setChaseStatus(
         winId
-          ? `Opened twin HTML draft (${selected.length} note(s)) · mode=${mode}` +
+          ? crossAsset
+            ? `Opened cross-asset twin HTML draft (${selected.length} note(s) · ${draftAssetLabel}) · mode=${mode}` +
+              (writeHref ? " · Write handoff ready" : "")
+            : `Opened twin HTML draft (${selected.length} note(s)) · mode=${mode}` +
               (writeHref ? " · Write handoff ready" : "")
           : "Twin HTML draft open failed",
       );
     },
-    [selectedNotes, assetId],
+    [selectedNotes, mergeSelectedNotes, mergeAssetId, assetId],
   );
 
   /**
@@ -1002,6 +1142,131 @@ export function TwinNotesPanel({
         >
           Draft full
         </button>
+        {/* Residual (px): second asset_id → load twins → merge draft. */}
+        <div
+          className="w-full space-y-2 border rounded p-3 my-1"
+          data-testid="twin-cross-asset-merge"
+          data-view-format="html"
+          data-merge-asset-id={mergeAssetId ?? ""}
+          data-merge-note-count={String(mergeTwins?.note_count ?? 0)}
+          data-merge-selected-count={String(mergeSelectedNoteIds.size)}
+        >
+          <p className="font-mono text-[11px] opacity-90">
+            Cross-asset merge (FUTURE-AGENT V1) — load a second asset_id, select
+            notes on both sides, open combined HTML draft (propose-only).
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="font-mono text-[11px]" htmlFor="twin-merge-asset-id">
+              Merge asset_id
+            </label>
+            <input
+              id="twin-merge-asset-id"
+              type="text"
+              data-testid="twin-merge-asset-id"
+              value={mergeAssetIdInput}
+              onChange={(e) => setMergeAssetIdInput(e.target.value)}
+              placeholder="other-asset-id"
+              disabled={busy}
+              className="font-mono text-[11px] min-w-[12rem]"
+            />
+            <button
+              type="button"
+              data-testid="twin-merge-asset-load"
+              onClick={() => void loadMergeAsset()}
+              disabled={busy || !mergeAssetIdInput.trim()}
+              title="Fetch twin notes for second asset_id (must differ from current)"
+            >
+              Load merge asset
+            </button>
+            <button
+              type="button"
+              data-testid="twin-merge-draft-html"
+              onClick={() => openTwinDraft("floating", { crossAsset: true })}
+              disabled={
+                busy ||
+                !mergeAssetId ||
+                selectedNoteIds.size === 0 ||
+                mergeSelectedNoteIds.size === 0
+              }
+              title="Merge selected primary + merge-asset twins → HTML draft window"
+            >
+              Merge draft HTML
+            </button>
+            <button
+              type="button"
+              data-testid="twin-merge-draft-html-full"
+              onClick={() => openTwinDraft("full", { crossAsset: true })}
+              disabled={
+                busy ||
+                !mergeAssetId ||
+                selectedNoteIds.size === 0 ||
+                mergeSelectedNoteIds.size === 0
+              }
+              title="Merge selected twins → full working-region HTML draft"
+            >
+              Merge draft full
+            </button>
+          </div>
+          {mergeLoadStatus ? (
+            <p
+              className="font-mono text-[11px] opacity-80"
+              data-testid="twin-merge-load-status"
+              role="status"
+            >
+              {mergeLoadStatus}
+            </p>
+          ) : null}
+          {mergeTwins && (mergeTwins.notes || []).length > 0 ? (
+            <div
+              className="space-y-1"
+              data-testid="twin-merge-notes-list"
+              data-asset-id={mergeAssetId ?? ""}
+            >
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  data-testid="twin-merge-select-all"
+                  onClick={() => selectAllMergeNotes()}
+                  disabled={busy}
+                >
+                  Select all merge notes
+                </button>
+                <button
+                  type="button"
+                  data-testid="twin-merge-clear-selection"
+                  onClick={() => clearMergeNoteSelection()}
+                  disabled={busy || mergeSelectedNoteIds.size === 0}
+                >
+                  Clear merge selection
+                </button>
+              </div>
+              <ul className="space-y-1 list-none p-0 m-0">
+                {(mergeTwins.notes || []).map((n) => {
+                  const nid = String(n.note_id || "").trim();
+                  if (!nid) return null;
+                  const checked = mergeSelectedNoteIds.has(nid);
+                  return (
+                    <li key={nid} className="font-mono text-[11px]">
+                      <label className="flex items-start gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          data-testid={`twin-merge-select-${nid}`}
+                          data-selected={checked ? "1" : "0"}
+                          checked={checked}
+                          onChange={() => toggleMergeNoteSelection(nid)}
+                          disabled={busy}
+                        />
+                        <span>
+                          <strong>{n.kind}</strong>: {n.text}
+                        </span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null}
+        </div>
         {draftMetrics ? (
           <div
             className="w-full space-y-1 font-mono text-[11px] opacity-80"
@@ -1021,7 +1286,12 @@ export function TwinNotesPanel({
                 : "floating"
             }
             data-view-format="html"
-            data-source="twin_draft_selected"
+            data-source={
+              draftMetrics.merge_source || "twin_draft_selected"
+            }
+            data-merge-assets={
+              draftMetrics.merge_asset_ids?.join("|") ?? ""
+            }
             role="status"
           >
             <p>
@@ -1031,6 +1301,9 @@ export function TwinNotesPanel({
                 : `${draftMetrics.note_ids.slice(0, 6).join(",")},+${draftMetrics.note_ids.length - 6}`}{" "}
               · window=
               {draftMetrics.window_id ?? "(none)"} · {draftMetrics.title}
+              {draftMetrics.merge_asset_ids?.length ? (
+                <> · merge={draftMetrics.merge_asset_ids.join("+")}</>
+              ) : null}
             </p>
             {draftMetrics.write_href ? (
               <a
