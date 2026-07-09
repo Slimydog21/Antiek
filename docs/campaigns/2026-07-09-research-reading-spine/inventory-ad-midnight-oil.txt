@@ -1,0 +1,19 @@
+# Residual inventory — Midnight Oil ceiling→approve (ad) — 2026-07-09
+# origin/main@b3875724c6223a7cc66a05c5b6d2bba8e5d69b1d
+# branch PR #465 campaign/research-reading-spine-2026-07-09-main @ 33a38c3de816a3011d5a0e0fa1e9f65be7b32a6f
+
+CAPABILITY | STATUS | EVIDENCE
+(a) research↔reading engagement spine | branch_only | substrate/engagement_spine/**
+(b) HTML-first human view | on_main + branch | html_projection + project_to_html + twin_context_html
+(c) model driver/budget/projection/add-model | on_main partial + branch | #440 + model_registration
+(d) Midnight oil substrate | branch_only | substrate/midnight_oil/** (ceiling/job/worker/deposit)
+(e) book marketplace host-into-account | branch_only package | substrate/marketplace_host/**
+(f) Antiek-bench core | branch_only | substrate/antiek_bench/**
+(g) NotDiamond usefulness | branch_only verdict | docs/htmlspec/notdiamond-verdict/
+(h) settings Antiek-bench leaderboard | branch_only | antiek_bench/leaderboard + settings_surface
+(i)–(n) floating/session/window/decision-tree | branch_only | floating_session + WINDOW_PAGES + install
+(o)–(ac) twin promote…usage bridge | branch_only | PR #465 commits 7bb082e4..33a38c3d
+(ad) Midnight Oil create→recommend→approve PRODUCT path | missing→shipping | substrate create_job/approve_job exist; product entry + API/chrome residual this cycle
+
+ALREADY_SHIPPED_DO_NOT_REBUILD: living-roadmap SPR-01..14; midnight_oil ceiling math; engagement o–ac stack
+NEXT_IF_AD_LANDS: marketplace host product UI; live swarm polish; operator merge

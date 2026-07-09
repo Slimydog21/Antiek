@@ -1661,6 +1661,9 @@ def create_app(
     # floating-session flywheel (process-local store MVP; residual (w)).
     from .engagement_routes import register_engagement_routes
     register_engagement_routes(app)
+    # Midnight Oil — create → recommended price ceiling → explicit approve.
+    from .midnight_oil_routes import register_midnight_oil_routes
+    register_midnight_oil_routes(app)
     # Read SPR-09 — library catalog (paginated/filtered/searched view over the
     # SAME servable-corpus read path; §9.0 keeps gated bodies out of payloads).
     from .library import register_library_routes

@@ -20,17 +20,31 @@ from .job import (
     create_job,
     get_job,
 )
+from .product_path import (
+    MidnightOilProductResult,
+    approve_price_ceiling,
+    create_recommend_and_approve,
+    create_with_recommended_ceiling,
+    job_summary_html,
+    product_result_html,
+)
 from .worker import WorkerStepResult, run_worker_iteration, run_worker_loop
 
 __all__ = [
     "DepositResult",
     "JobStatus",
     "MidnightOilJob",
+    "MidnightOilProductResult",
     "WorkerStepResult",
     "approve_job",
+    "approve_price_ceiling",
     "create_job",
+    "create_recommend_and_approve",
+    "create_with_recommended_ceiling",
     "deposit_job_results",
     "get_job",
+    "job_summary_html",
+    "product_result_html",
     "recommend_price_ceiling",
     "run_worker_iteration",
     "run_worker_loop",
