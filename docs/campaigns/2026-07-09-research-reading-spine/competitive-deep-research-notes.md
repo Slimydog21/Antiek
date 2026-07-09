@@ -174,3 +174,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - (lh) TalkToBook + MetaReading DecisionTreeDriverBadge researchTier
   Completes model+budget+depth on multi-spawn continue and book-native talk/meta-read.
 
+
+- Closed (lj, 2026-07-10) **Spawn merge driver+depth:**
+  - (lj) SpawnMergePanel DecisionTreeDriverBadge; post-merge recommended_research_tier wins
+  Single-spawn merge path now co-displays model driver, budget, and depth.
+
