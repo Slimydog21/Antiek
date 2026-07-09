@@ -307,6 +307,12 @@ class InvestigationStartRequest(BaseModel):
     # window closes (Sprint 20 verdict landed), the operator may restore a
     # "deep" default if deep-synthesizer routing is then desired.
     research_tier: Literal["fast", "deep"] | None = None
+    # Metadata-only source-pack intent from the research entry. Recording this
+    # does not launch retrieval or connector calls; runner/source-pack execution
+    # must still be explicitly wired through the approved research path.
+    source_policy: list[
+        Literal["arxiv", "substack", "web", "operator_corpus"]
+    ] = Field(default_factory=list)
 
 
 # ── Sprint 11 additions ────────────────────────────────────────────────
@@ -491,6 +497,9 @@ class InvestigationStatusResponse(BaseModel):
     # the start event has no tier (legacy / daemon-spawned runs predate
     # the field); the surface treats null as the default, never fabricates.
     research_tier: str | None = None
+    # Source-pack intent recorded on the start event. Empty for legacy runs
+    # and for requests that did not choose a source pack; never recomputed.
+    source_policy: list[str] = Field(default_factory=list)
 
 
 # ── Sprint 13: deliverables + voice notes ─────────────────────────────
@@ -2207,6 +2216,7 @@ def create_app(
                     # start event (queryable after the fact). The payload
                     # field is the same CLOSED set.
                     research_tier=req.research_tier,
+                    source_policy=req.source_policy,
                 ),
                 role="operator",
                 policy_id="operator-cli",
@@ -2309,6 +2319,7 @@ def create_app(
         # (legacy/daemon runs predate the field) — never fabricated.
         start_action = ActionType.INVESTIGATION_START_REQUESTED.value
         research_tier: str | None = None
+        source_policy: list[str] = []
         for r in rows:
             if r.get("action_type") == start_action:
                 payload = r.get("payload")
@@ -2316,6 +2327,9 @@ def create_app(
                     rt = payload.get("research_tier")
                     if isinstance(rt, str):
                         research_tier = rt
+                    sp = payload.get("source_policy")
+                    if isinstance(sp, list):
+                        source_policy = [x for x in sp if isinstance(x, str)]
                 break
 
         if terminal_row is not None:
@@ -2332,6 +2346,7 @@ def create_app(
                 terminal_payload=terminal_row.get("payload"),
                 rubric_score=rubric_score,
                 research_tier=research_tier,
+                source_policy=source_policy,
             )
 
         return InvestigationStatusResponse(
@@ -2342,6 +2357,7 @@ def create_app(
             terminal_payload=None,
             rubric_score=rubric_score,
             research_tier=research_tier,
+            source_policy=source_policy,
         )
 
     # ── Sprint 11: list investigations + chunk fetch ───────────

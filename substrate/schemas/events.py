@@ -2268,6 +2268,12 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     # meaning for the research-runner lane is UNCHANGED — see
     # substrate/dispatch/research_tier.py.
     research_tier: Literal["fast", "deep"] | None = None
+    # Metadata-only source-pack intent from the research entry. This makes a
+    # run's desired discovery surface queryable without implying connector
+    # execution, spend, or retrieval at event-record time.
+    source_policy: list[
+        Literal["arxiv", "substack", "web", "operator_corpus"]
+    ] = Field(default_factory=list)
 
 
 class InvestigationChaseHaltedPayload(_PayloadBase):

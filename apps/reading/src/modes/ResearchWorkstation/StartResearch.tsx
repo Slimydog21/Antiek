@@ -10,7 +10,7 @@ import AIActionFailure from "../../shared/AIActionFailure";
 import { CelebrateBurst, useCelebrate } from "../../shared/delight";
 import { useStartInvestigation } from "../../hooks/useStartInvestigation";
 import { ApiError, ingestSource, ingestVoiceNote } from "../../lib/api";
-import type { ResearchTier } from "../../lib/api";
+import type { ResearchSourcePolicy, ResearchTier } from "../../lib/api";
 import CascadeProposal from "./CascadeProposal";
 import MyResearch from "./MyResearch";
 import VoiceChaseButton from "./VoiceChaseButton";
@@ -96,6 +96,18 @@ const RESEARCH_TIER_OPTIONS: ReadonlyArray<{
 ];
 const DEFAULT_TIER: ResearchTier = "deep";
 
+const SOURCE_POLICY_OPTIONS: ReadonlyArray<{
+  value: ResearchSourcePolicy;
+  label: string;
+  hint: string;
+}> = [
+  { value: "operator_corpus", label: "Corpus", hint: "your imported notes, books, and saved sources" },
+  { value: "web", label: "Web", hint: "public web discovery when the runner supports it" },
+  { value: "arxiv", label: "arXiv", hint: "papers and preprints" },
+  { value: "substack", label: "Substack", hint: "newsletter feeds and essays" },
+];
+const DEFAULT_SOURCE_POLICY: ResearchSourcePolicy[] = ["operator_corpus", "web"];
+
 /** Grace period before navigating even if no event has streamed yet, so a
  *  slow WS connection doesn't strand the operator on the start surface. */
 const NAVIGATE_GRACE_MS = 1500;
@@ -135,6 +147,9 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   // SPR-01 M3: the curated fast/deep tier. Closed set; defaults to deep.
   // Recorded on the investigation server-side so it's queryable after.
   const [tier, setTier] = useState<ResearchTier>(DEFAULT_TIER);
+  const [sourcePolicy, setSourcePolicy] = useState<ResearchSourcePolicy[]>(
+    DEFAULT_SOURCE_POLICY,
+  );
   // Two entry actions on one composer: Ask (one-shot, the shipped fast lane,
   // default) and Break-into-sub-questions (cascade). Cascade swaps the
   // composer for the proposal surface IN PLACE — no navigation away (M1). The
@@ -167,9 +182,18 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   } = start;
 
   const onSubmit = useCallback(async () => {
-    const id = await submit({ question, researchTier: tier });
+    const id = await submit({ question, researchTier: tier, sourcePolicy });
     if (id) setQuestion("");
-  }, [submit, question, tier]);
+  }, [submit, question, tier, sourcePolicy]);
+
+  const toggleSourcePolicy = useCallback((value: ResearchSourcePolicy) => {
+    setSourcePolicy((current) => {
+      const next = current.includes(value)
+        ? current.filter((item) => item !== value)
+        : [...current, value];
+      return next.length > 0 ? next : current;
+    });
+  }, []);
 
   const fillExample = useCallback((prompt: string) => {
     setQuestion(prompt);
@@ -618,6 +642,43 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             <span className="text-[11px] font-serif text-ink-mute dark:text-moonlight">
               {RESEARCH_TIER_OPTIONS.find((o) => o.value === tier)?.hint}
             </span>
+          </div>
+
+          <div
+            className="flex flex-col gap-2"
+            role="group"
+            aria-label="Source policy"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                Sources
+              </span>
+              {SOURCE_POLICY_OPTIONS.map((opt) => {
+                const active = sourcePolicy.includes(opt.value);
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => toggleSourcePolicy(opt.value)}
+                    disabled={busy}
+                    title={opt.hint}
+                    className={
+                      "rounded-hog border px-2.5 py-1 text-[12px] font-mono transition-colors disabled:opacity-50 disabled:pointer-events-none " +
+                      (active
+                        ? "border-aurora bg-aurora/15 text-ink dark:text-bright"
+                        : "border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 text-ink-mute dark:text-moonlight hover:bg-aurora/10")
+                    }
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[11px] font-serif text-ink-mute dark:text-moonlight">
+              Recorded as source-pack intent for this research; connector
+              execution still happens only inside the approved runner path.
+            </p>
           </div>
 
           <div className="flex items-center justify-between gap-3">

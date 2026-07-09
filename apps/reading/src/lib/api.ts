@@ -241,6 +241,7 @@ export async function getHealth(): Promise<{
  * substrate/dispatch/research_tier.py:RESEARCH_TIERS.
  */
 export type ResearchTier = "fast" | "deep";
+export type ResearchSourcePolicy = "arxiv" | "substack" | "web" | "operator_corpus";
 
 export interface StartInvestigationRequest {
   question: string;
@@ -252,6 +253,12 @@ export interface StartInvestigationRequest {
   investigation_id?: string;
   /** Curated fast/deep tier; defaults server-side to "deep" when omitted. */
   research_tier?: ResearchTier;
+  /**
+   * Metadata-only source intent for this run. Recording it does not itself
+   * launch retrieval connectors; the backend start event makes the operator's
+   * requested source pack queryable for later runner/source-pack execution.
+   */
+  source_policy?: ResearchSourcePolicy[];
 }
 
 export interface StartInvestigationResponse {

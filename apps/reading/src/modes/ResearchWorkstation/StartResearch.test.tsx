@@ -181,6 +181,40 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
     );
   });
 
+  it("submits the default source policy as metadata-only source-pack intent", async () => {
+    startInvestigationMock.mockResolvedValue({ investigation_id: "inv-source-default" });
+    renderStart();
+    fireEvent.change(screen.getByLabelText("Research question"), {
+      target: { value: "Trace this claim across high-quality sources." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() =>
+      expect(startInvestigationMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source_policy: ["operator_corpus", "web"],
+        }),
+      ),
+    );
+  });
+
+  it("lets the operator add arXiv and Substack to the submitted source policy", async () => {
+    startInvestigationMock.mockResolvedValue({ investigation_id: "inv-source-expanded" });
+    renderStart();
+    fireEvent.change(screen.getByLabelText("Research question"), {
+      target: { value: "Which technical claims have the strongest paper trail?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "arXiv" }));
+    fireEvent.click(screen.getByRole("button", { name: "Substack" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() =>
+      expect(startInvestigationMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source_policy: ["operator_corpus", "web", "arxiv", "substack"],
+        }),
+      ),
+    );
+  });
+
   it("selecting Fast changes the submitted tier (SPR-01 M3)", async () => {
     startInvestigationMock.mockResolvedValue({ investigation_id: "inv-fast" });
     renderStart();
