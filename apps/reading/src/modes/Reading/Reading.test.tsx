@@ -330,6 +330,8 @@ describe("BookReader", () => {
       gated: false,
       servability: "public_domain",
       seed_preview: "From the book…",
+      artifact_path: "/tmp/antiek/inv-child-xyz.html",
+      twin_notes_path: "/tmp/antiek/inv-child-xyz.notes.html",
     });
     navigateMock.mockReset();
     await renderReader();
@@ -337,7 +339,7 @@ describe("BookReader", () => {
     fireEvent.click(screen.getByRole("button", { name: /Research this page/ }));
     await waitFor(() => expect(spinResearchMock).toHaveBeenCalled());
     // Seeds from the current page index (0) and hands off to the research.
-    expect(spinResearchMock).toHaveBeenCalledWith("doc-1", 0, expect.stringContaining("opening"));
+    expect(spinResearchMock).toHaveBeenCalledWith("doc-1", 0, expect.stringContaining("opening"), true);
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith("/inv/inv-child-xyz"));
   });
 

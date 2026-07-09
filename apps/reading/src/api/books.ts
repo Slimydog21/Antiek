@@ -187,6 +187,8 @@ export interface SpinResearchResponse {
   gated: boolean;
   servability: Servability | string;
   seed_preview: string;
+  artifact_path: string | null;
+  twin_notes_path: string | null;
 }
 
 /** Spin a deep research from a book passage (Read SPR-08). The seed is
@@ -197,11 +199,16 @@ export async function spinResearch(
   documentId: string,
   pageIndex: number,
   passageText?: string,
+  exportArtifact = false,
 ): Promise<SpinResearchResponse> {
   const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}/spin-research`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ page_index: pageIndex, passage_text: passageText ?? null }),
+    body: JSON.stringify({
+      page_index: pageIndex,
+      passage_text: passageText ?? null,
+      export_artifact: exportArtifact,
+    }),
   });
   if (resp.status === 404) throw new Error("book_not_found");
   if (!resp.ok) throw new Error(`POST /books/{id}/spin-research: HTTP ${resp.status}`);

@@ -96,6 +96,10 @@ export const WINDOW_PAGES: Record<string, { title: string; renderer: WindowPageR
     title: "Sub-actions",
     renderer: lazy(() => import("./SubActionList")),
   },
+  researchArtifactReceipt: {
+    title: "Research artifact",
+    renderer: lazy(() => import("./ResearchArtifactReceipt")),
+  },
 };
 
 export type WindowEligibleKind = keyof typeof WINDOW_PAGES;

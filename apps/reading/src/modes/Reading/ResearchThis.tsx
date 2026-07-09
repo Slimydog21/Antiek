@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { LemonButton } from "../../components/lemon";
+import { openWindow } from "../../components/windows/openWindow";
 import { spinResearch } from "../../api/books";
 import { track } from "../../lib/analytics";
 
@@ -38,12 +39,29 @@ export default function ResearchThis({ documentId, pageIndex, passageText }: Res
     setBusy(true);
     setError(null);
     try {
-      const res = await spinResearch(documentId, pageIndex, passageText);
+      const res = await spinResearch(documentId, pageIndex, passageText, true);
       track("reading_research_spun", {
         document_id: documentId,
         page_index: pageIndex,
         has_passage: Boolean(passageText),
       });
+      if (res.artifact_path || res.twin_notes_path) {
+        openWindow(
+          "researchArtifactReceipt",
+          {
+            investigationId: res.investigation_id,
+            artifactPath: res.artifact_path,
+            twinNotesPath: res.twin_notes_path,
+            documentId,
+            pageIndex,
+          },
+          {
+            id: `win:research-artifact:${res.investigation_id}`,
+            title: "Research artifact",
+            rect: { width: 520, height: 380 },
+          },
+        );
+      }
       // Hand off to the Research workflow. Return-to-reading is handled by
       // usePosition persisting this page.
       navigate(`/inv/${encodeURIComponent(res.investigation_id)}`);
