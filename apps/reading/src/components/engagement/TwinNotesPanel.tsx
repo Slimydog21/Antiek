@@ -20,6 +20,8 @@
  * for recursive note-taker merge UX into research context.
  * Residual (mr): list filter by twin kind (browse insights/questions before
  * selective promote) — same kind axis as promoteKinds.
+ * Residual (ms): "Promote visible" one-click — align promoteKinds to listFilter
+ * then promote (browse→merge path without a second dropdown).
  * HTML-first; never PDF.
  */
 
@@ -254,36 +256,47 @@ export function TwinNotesPanel({
     return notes.filter((n) => n.kind === listFilter);
   }, [twins?.notes, listFilter]);
 
-  const promote = useCallback(async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      // Residual (mq): selective kinds for recursive note-taker merge.
-      const kinds =
-        promoteKinds === "all"
-          ? null
-          : ([promoteKinds] as Array<"insight" | "question">);
-      const p = await promoteTwinsToContext({
-        asset_id: assetId,
-        include_html: true,
-        kinds,
-      });
-      if (p.view_format !== "html") {
-        throw new Error("twin promote view_format must be html");
+  const promote = useCallback(
+    async (kindsOverride?: "all" | "insight" | "question") => {
+      setBusy(true);
+      setError(null);
+      try {
+        const effective = kindsOverride ?? promoteKinds;
+        if (kindsOverride && kindsOverride !== promoteKinds) {
+          setPromoteKinds(kindsOverride);
+        }
+        // Residual (mq): selective kinds for recursive note-taker merge.
+        const kinds =
+          effective === "all"
+            ? null
+            : ([effective] as Array<"insight" | "question">);
+        const p = await promoteTwinsToContext({
+          asset_id: assetId,
+          include_html: true,
+          kinds,
+        });
+        if (p.view_format !== "html") {
+          throw new Error("twin promote view_format must be html");
+        }
+        setPromoted(p);
+        const kindLabel = effective === "all" ? "all kinds" : effective;
+        setPromoteStatus(
+          `promoted ${p.promoted_count} twin unit(s) to context (${kindLabel})`,
+        );
+        onPromoted?.(p);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusy(false);
       }
-      setPromoted(p);
-      const kindLabel =
-        promoteKinds === "all" ? "all kinds" : promoteKinds;
-      setPromoteStatus(
-        `promoted ${p.promoted_count} twin unit(s) to context (${kindLabel})`,
-      );
-      onPromoted?.(p);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }, [assetId, onPromoted, promoteKinds]);
+    },
+    [assetId, onPromoted, promoteKinds],
+  );
+
+  /** Residual (ms): promote using current list filter (browse→merge). */
+  const promoteVisible = useCallback(() => {
+    void promote(listFilter);
+  }, [promote, listFilter]);
 
   return (
     <section
@@ -393,6 +406,17 @@ export function TwinNotesPanel({
           title="Promote twins into research context units (selective kinds)"
         >
           Promote to context
+        </button>
+        {/* Residual (ms): one-click promote of currently visible kind filter. */}
+        <button
+          type="button"
+          data-testid="twin-promote-visible"
+          onClick={() => promoteVisible()}
+          disabled={busy}
+          title="Promote only the twin kinds currently shown in the list filter"
+        >
+          Promote visible
+          {listFilter !== "all" ? ` (${listFilter})` : ""}
         </button>
       </div>
       {error ? (

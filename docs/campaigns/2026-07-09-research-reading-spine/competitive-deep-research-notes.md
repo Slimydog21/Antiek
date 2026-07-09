@@ -288,3 +288,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (mr, 2026-07-10) **Twin list filter by kind:**
   - Show all|insights|questions before selective promote (mq)
+
+- Closed (ms, 2026-07-10) **Promote visible twins:**
+  - One-click promote using current list filter (browse→merge)

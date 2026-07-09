@@ -461,6 +461,84 @@ describe("TwinNotesPanel", () => {
     expect(metrics.textContent).toMatch(/Twin promote → context/);
   });
 
+  it("promotes visible list filter in one click (ms)", async () => {
+    fetchTwinNotes.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 2,
+      insight_count: 1,
+      question_count: 1,
+      notes: [
+        {
+          note_id: "twin_i",
+          asset_id: "paper",
+          kind: "insight",
+          text: "Insight A",
+        },
+        {
+          note_id: "twin_q",
+          asset_id: "paper",
+          kind: "question",
+          text: "Question B?",
+        },
+      ],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+      html: "<p>twins</p>",
+    });
+    promoteTwinsToContext.mockResolvedValue({
+      asset_id: "paper",
+      promoted_count: 1,
+      context_unit_count: 1,
+      promoted: [
+        {
+          twin_note_id: "twin_i",
+          graph_node_id: "insight_a",
+          kind: "insight",
+          text: "Insight A",
+        },
+      ],
+      context_units: [
+        {
+          unit_id: "insight_a",
+          twin_note_id: "twin_i",
+          kind: "insight",
+          text: "Insight A",
+        },
+      ],
+      kinds: ["insight"],
+      view_format: "html",
+      product_panel: "twin_promote_context",
+      source: "engagement_spine.twin_promote",
+      notes: [],
+      html: "<p>[insight] Insight A</p>",
+    });
+    render(<TwinNotesPanel assetId="paper" autoLoad />);
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-list-filter")).toBeTruthy();
+    });
+    fireEvent.change(screen.getByTestId("twin-list-filter"), {
+      target: { value: "insight" },
+    });
+    fireEvent.click(screen.getByTestId("twin-promote-visible"));
+    await waitFor(() => {
+      expect(promoteTwinsToContext).toHaveBeenCalledWith({
+        asset_id: "paper",
+        include_html: true,
+        kinds: ["insight"],
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-promote-status").textContent).toMatch(
+        /insight/i,
+      );
+    });
+    expect(
+      (screen.getByTestId("twin-promote-kinds") as HTMLSelectElement).value,
+    ).toBe("insight");
+  });
+
   it("filters twin list by kind before promote (mr)", async () => {
     fetchTwinNotes.mockResolvedValue({
       asset_id: "paper",
