@@ -237,6 +237,16 @@ export function ResearchContextPanel({
     >
       <header>
         <h2>Research context</h2>
+        {/* Residual (ie): Settings deep-link for hydrate readiness. */}
+        <p className="meta font-mono text-[11px]">
+          <a
+            href="/settings"
+            data-testid="research-context-settings-link"
+            title="Open Settings → Publication hydrate readiness"
+          >
+            Settings · hydrate readiness
+          </a>
+        </p>
         <p className="meta">
           asset <code>{assetId}</code>
           {spawnId ? (

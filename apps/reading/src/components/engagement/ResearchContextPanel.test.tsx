@@ -33,6 +33,13 @@ describe("ResearchContextPanel", () => {
     promoteTwinsToContext.mockReset();
   });
 
+  it("links to Settings hydrate readiness (ie)", () => {
+    render(<ResearchContextPanel assetId="paper" />);
+    const link = screen.getByTestId("research-context-settings-link");
+    expect(link.getAttribute("href")).toBe("/settings");
+    expect(link.textContent).toMatch(/hydrate readiness/i);
+  });
+
   it("auto-loads context and evidence on mount when autoLoad (co)", async () => {
     fetchResearchContext.mockResolvedValue({
       asset_id: "paper",

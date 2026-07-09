@@ -1,0 +1,10 @@
+# inventory-ie · research context Settings deep-link · residual (ie)
+
+## Delta
+- research-context-settings-link → /settings (hydrate readiness)
+
+## Verified
+vitest ResearchContextPanel 10_passed
+
+## Next
+(if) re-derive
