@@ -60,8 +60,13 @@ def test_catalog_and_host_pd(client):
 
     html = client.get(f"/marketplace/documents/{doc_id}/html")
     assert html.status_code == 200
-    assert html.json()["view_format"] == "html"
-    assert "html" in html.json()
+    hbody = html.json()
+    assert hbody["view_format"] == "html"
+    assert hbody["html"]
+    # Residual (dp): rehydrate metadata for library open path.
+    assert hbody.get("title")
+    assert hbody.get("source") == "marketplace_host.project_hosted_book_html"
+    assert hbody.get("document_id") == doc_id
 
 
 def test_purchased_without_receipt_400(client):

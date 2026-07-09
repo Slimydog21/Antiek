@@ -216,14 +216,24 @@ def get_library(owner_id: str) -> dict[str, Any]:
 
 @marketplace_host_router.get("/documents/{document_id}/html")
 def get_document_html(document_id: str) -> dict[str, Any]:
+    """Residual (dp): return HTML body plus title/license for library rehydrate."""
+    store = _s()
     try:
-        html = project_hosted_book_html(document_id, store=_s())
+        html = project_hosted_book_html(document_id, store=store)
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
+    except RuntimeError as e:
+        # PDF / empty projection — honest 400, not a fake HTML body.
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    doc = store.get_document(document_id) or {}
     return {
         "document_id": document_id,
         "view_format": "html",
         "html": html,
+        "title": doc.get("title") or document_id,
+        "license_class": doc.get("license_class"),
+        "owner_id": doc.get("owner_id"),
+        "source": "marketplace_host.project_hosted_book_html",
     }
 
 
