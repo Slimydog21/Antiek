@@ -26,6 +26,7 @@ from substrate.research_artifact import (  # noqa: E402
     list_outline_blocks,
     preview_source_merge_review,
     render_twin_notes_html,
+    restore_source_merge_review,
 )
 from substrate.research_artifact.build_body import build_body  # noqa: E402
 from substrate.research_artifact.paths import artifact_path_for  # noqa: E402
@@ -155,6 +156,28 @@ class SourceMergePreviewOut(BaseModel):
 
 class SourceMergeCommitOut(SourceMergePreviewOut):
     event_id: str
+
+
+class SourceMergeRestoreIn(BaseModel):
+    document_id: str = Field(min_length=1)
+    parent_reading_thread_id: str = Field(min_length=1)
+    source_revision_id: str = Field(min_length=1)
+    twin_revision_id: str = Field(min_length=1)
+    expected_after_source_hash: str = Field(min_length=1)
+    expected_before_source_hash: str = Field(min_length=1)
+    acknowledge_restore: bool = False
+    operator_reviewer: str | None = Field(default=None, max_length=160)
+
+
+class SourceMergeRestoreOut(BaseModel):
+    status: str
+    document_id: str
+    source_revision_id: str
+    twin_revision_id: str
+    event_id: str
+    before_source_hash: str
+    restored_source_hash: str
+    writes_performed: bool
 
 
 def _clean_member_ids(raw_ids: list[str]) -> list[str]:
@@ -438,6 +461,41 @@ async def post_source_merge_commit(body: SourceMergeCommitIn) -> SourceMergeComm
         twin_bytes_after=receipt.twin_bytes_after,
         writes_performed=receipt.writes_performed,
         event_id=receipt.event_id or "",
+    )
+
+
+@artifact_router.post("/artifacts/source-merge/restore", response_model=SourceMergeRestoreOut)
+async def post_source_merge_restore(body: SourceMergeRestoreIn) -> SourceMergeRestoreOut:
+    """Restore source body from a prior source-merge commit snapshot."""
+
+    if not body.acknowledge_restore:
+        _raise_source_merge_refusal("source_merge_restore_acknowledgement_required")
+    db_path = _db()
+    try:
+        with connect_write(db_path, purpose="research_artifact/source_merge_restore") as con:
+            receipt = restore_source_merge_review(
+                con,
+                document_id=body.document_id,
+                parent_reading_thread_id=body.parent_reading_thread_id,
+                source_revision_id=body.source_revision_id,
+                twin_revision_id=body.twin_revision_id,
+                expected_after_source_hash=body.expected_after_source_hash,
+                expected_before_source_hash=body.expected_before_source_hash,
+                operator_reviewer=body.operator_reviewer,
+            )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return SourceMergeRestoreOut(
+        status=receipt.status,
+        document_id=receipt.document_id,
+        source_revision_id=receipt.source_revision_id,
+        twin_revision_id=receipt.twin_revision_id,
+        event_id=receipt.event_id or "",
+        before_source_hash=receipt.before_source_hash,
+        restored_source_hash=receipt.restored_source_hash,
+        writes_performed=receipt.writes_performed,
     )
 
 

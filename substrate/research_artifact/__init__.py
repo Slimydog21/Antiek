@@ -9,9 +9,11 @@ from .source_merge import (
     SourceMergeApplyReceipt,
     SourceMergeCommitReceipt,
     SourceMergePreviewReceipt,
+    SourceMergeRestoreReceipt,
     apply_source_merge_review,
     commit_source_merge_review,
     preview_source_merge_review,
+    restore_source_merge_review,
 )
 from .twin_notes import render_twin_notes_html, write_twin_notes
 
@@ -26,6 +28,7 @@ __all__ = [
     "SourceMergeApplyReceipt",
     "SourceMergeCommitReceipt",
     "SourceMergePreviewReceipt",
+    "SourceMergeRestoreReceipt",
     "apply_source_merge_review",
     "build_html_only",
     "compose_artifacts",
@@ -35,6 +38,7 @@ __all__ = [
     "list_outline_blocks",
     "parse_body_from_html",
     "preview_source_merge_review",
+    "restore_source_merge_review",
     "render_twin_notes_html",
     "write_twin_notes",
 ]

@@ -1268,6 +1268,28 @@ export interface SourceMergeCommitResponse extends SourceMergePreviewResponse {
   event_id: string;
 }
 
+export interface SourceMergeRestoreRequest {
+  document_id: string;
+  parent_reading_thread_id: string;
+  source_revision_id: string;
+  twin_revision_id: string;
+  expected_after_source_hash: string;
+  expected_before_source_hash: string;
+  acknowledge_restore: boolean;
+  operator_reviewer?: string | null;
+}
+
+export interface SourceMergeRestoreResponse {
+  status: string;
+  document_id: string;
+  source_revision_id: string;
+  twin_revision_id: string;
+  event_id: string;
+  before_source_hash: string;
+  restored_source_hash: string;
+  writes_performed: boolean;
+}
+
 /** GET /research/{id}/artifact/blocks — Lego refs for Write outline drops. */
 export async function getResearchArtifactBlocks(
   investigationId: string,
@@ -1376,6 +1398,25 @@ export async function commitSourceMerge(
   if (!resp.ok) {
     throw new ApiError(
       `POST /research/artifacts/source-merge/commit failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+/** POST /research/artifacts/source-merge/restore — restore source body from a committed merge. */
+export async function restoreSourceMerge(
+  request: SourceMergeRestoreRequest,
+): Promise<SourceMergeRestoreResponse> {
+  const resp = await apiFetch(`${API_BASE}/research/artifacts/source-merge/restore`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /research/artifacts/source-merge/restore failed: HTTP ${resp.status}`,
       resp.status,
       await resp.text(),
     );

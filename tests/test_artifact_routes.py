@@ -480,6 +480,120 @@ def test_source_merge_commit_is_idempotent_after_rewrite(api_env):
     assert {**first_body, "writes_performed": False} == second_body
 
 
+def _source_merge_restore_payload(commit: dict, *, acknowledged: bool = True) -> dict:
+    return {
+        "document_id": commit["document_id"],
+        "parent_reading_thread_id": "read-doc-source-merge",
+        "source_revision_id": commit["source_revision_id"],
+        "twin_revision_id": commit["twin_revision_id"],
+        "expected_after_source_hash": commit["after_source_hash"],
+        "expected_before_source_hash": commit["before_source_hash"],
+        "acknowledge_restore": acknowledged,
+        "operator_reviewer": "pytest",
+    }
+
+
+def _committed_source_merge(client: TestClient) -> tuple[dict, dict, dict[str, str]]:
+    packet, hashes = _source_merge_ready_packet(client)
+    preview = _source_merge_preview_body(client, packet, hashes)
+    commit = client.post(
+        "/research/artifacts/source-merge/commit",
+        json=_source_merge_commit_payload(packet, hashes, preview),
+    )
+    assert commit.status_code == 200
+    return packet, commit.json(), hashes
+
+
+def test_source_merge_restore_requires_acknowledgement(api_env):
+    client = _client()
+    _packet, commit, _hashes = _committed_source_merge(client)
+    payload = _source_merge_restore_payload(commit, acknowledged=False)
+
+    resp = client.post("/research/artifacts/source-merge/restore", json=payload)
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "source_merge_restore_acknowledgement_required"
+
+
+def test_source_merge_restore_refuses_binding_mismatch(api_env):
+    client = _client()
+    _packet, commit, _hashes = _committed_source_merge(client)
+    payload = _source_merge_restore_payload(commit)
+    payload["expected_after_source_hash"] = "stale-" + payload["expected_after_source_hash"]
+
+    resp = client.post("/research/artifacts/source-merge/restore", json=payload)
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "source_merge_restore_binding_mismatch"
+
+
+def test_source_merge_restore_refuses_when_current_source_drifted(api_env):
+    client = _client()
+    _packet, commit, _hashes = _committed_source_merge(client)
+    with connect_write(os.environ["ANTIEK_DUCKDB_PATH"], purpose="test/source_restore_drift") as con:
+        con.execute(
+            "UPDATE documents SET raw_text = ? WHERE document_id = ?",
+            ["operator edit after merge", "doc-source-merge"],
+        )
+
+    resp = client.post(
+        "/research/artifacts/source-merge/restore",
+        json=_source_merge_restore_payload(commit),
+    )
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "source_merge_restore_current_hash_mismatch"
+
+
+def test_source_merge_restore_reverts_source_body_and_emits_metadata_event(api_env):
+    client = _client()
+    _packet, commit, _hashes = _committed_source_merge(client)
+
+    resp = client.post(
+        "/research/artifacts/source-merge/restore",
+        json=_source_merge_restore_payload(commit),
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "restored"
+    assert body["writes_performed"] is True
+    assert body["restored_source_hash"] == commit["before_source_hash"]
+    with connect_write(os.environ["ANTIEK_DUCKDB_PATH"], purpose="test/read_source_after_restore") as con:
+        (raw_text,) = con.execute(
+            "SELECT raw_text FROM documents WHERE document_id = ?",
+            ["doc-source-merge"],
+        ).fetchone()
+    assert raw_text == "Original source book body."
+
+    events_path = Path(api_env["events"]) / "read-doc-source-merge.jsonl"
+    rows = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines()]
+    event = rows[-1]
+    assert event["event_id"] == body["event_id"]
+    assert event["action_type"] == "source_merge.restored"
+    assert event["payload"]["source_book_body_restored"] is True
+    assert event["payload"]["restored_source_hash"] == commit["before_source_hash"]
+    assert "Source merge A" not in json.dumps(event)
+    assert "Source merge B" not in json.dumps(event)
+
+
+def test_source_merge_restore_is_idempotent_after_restore(api_env):
+    client = _client()
+    _packet, commit, _hashes = _committed_source_merge(client)
+    payload = _source_merge_restore_payload(commit)
+
+    first = client.post("/research/artifacts/source-merge/restore", json=payload)
+    second = client.post("/research/artifacts/source-merge/restore", json=payload)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    first_body = first.json()
+    second_body = second.json()
+    assert first_body["writes_performed"] is True
+    assert second_body["writes_performed"] is False
+    assert {**first_body, "writes_performed": False} == second_body
+
+
 def test_source_merge_apply_records_deterministic_receipt(api_env):
     client = _client()
     packet, hashes = _source_merge_ready_packet(client)

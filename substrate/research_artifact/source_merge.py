@@ -20,6 +20,7 @@ from substrate.event_log import log_event
 
 SOURCE_MERGE_APPLIED = "source_merge.applied"
 SOURCE_MERGE_COMMITTED = "source_merge.committed"
+SOURCE_MERGE_RESTORED = "source_merge.restored"
 
 
 @dataclass(frozen=True)
@@ -68,6 +69,18 @@ class SourceMergeCommitReceipt:
     writes_performed: bool
 
 
+@dataclass(frozen=True)
+class SourceMergeRestoreReceipt:
+    status: str
+    document_id: str
+    source_revision_id: str
+    twin_revision_id: str
+    event_id: str | None
+    before_source_hash: str
+    restored_source_hash: str
+    writes_performed: bool
+
+
 def _require_locked(con: Any) -> None:
     if not isinstance(con, LockedConnection):
         raise TypeError(
@@ -113,6 +126,7 @@ def _ensure_commit_schema(con: LockedConnection) -> None:
             member_investigation_ids_json TEXT NOT NULL,
             expected_content_hashes_json TEXT NOT NULL,
             twin_body_json TEXT NOT NULL,
+            before_source_body TEXT NOT NULL,
             before_source_hash TEXT NOT NULL,
             after_source_hash TEXT NOT NULL,
             before_twin_hash TEXT NOT NULL,
@@ -120,6 +134,23 @@ def _ensure_commit_schema(con: LockedConnection) -> None:
             source_bytes_before INTEGER NOT NULL,
             source_bytes_after INTEGER NOT NULL,
             twin_bytes_after INTEGER NOT NULL,
+            event_id TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    con.execute("ALTER TABLE source_merge_body_commits ADD COLUMN IF NOT EXISTS before_source_body TEXT")
+    con.execute(
+        """
+        CREATE TABLE IF NOT EXISTS source_merge_body_restores (
+            restore_id TEXT PRIMARY KEY,
+            commit_id TEXT NOT NULL,
+            document_id TEXT NOT NULL,
+            source_revision_id TEXT NOT NULL,
+            twin_revision_id TEXT NOT NULL,
+            before_source_hash TEXT NOT NULL,
+            restored_source_hash TEXT NOT NULL,
+            parent_reading_thread_id TEXT NOT NULL,
             event_id TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -420,11 +451,11 @@ def commit_source_merge_review(
             commit_id, document_id, source_revision_id, twin_revision_id,
             parent_reading_thread_id, draft_merge_path, compose_index_path,
             member_investigation_ids_json, expected_content_hashes_json,
-            twin_body_json,
+            twin_body_json, before_source_body,
             before_source_hash, after_source_hash, before_twin_hash,
             after_twin_hash, source_bytes_before, source_bytes_after,
             twin_bytes_after, event_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             commit_id,
@@ -437,6 +468,7 @@ def commit_source_merge_review(
             json.dumps(preview.member_investigation_ids, sort_keys=True),
             json.dumps(expected_content_hashes, sort_keys=True),
             twin_body_json,
+            before_source,
             preview.before_source_hash,
             preview.after_source_hash,
             preview.before_twin_hash,
@@ -461,6 +493,142 @@ def commit_source_merge_review(
         source_bytes_before=preview.source_bytes_before,
         source_bytes_after=preview.source_bytes_after,
         twin_bytes_after=preview.twin_bytes_after,
+        writes_performed=True,
+    )
+
+
+def restore_source_merge_review(
+    con: LockedConnection,
+    *,
+    document_id: str,
+    parent_reading_thread_id: str,
+    source_revision_id: str,
+    twin_revision_id: str,
+    expected_after_source_hash: str,
+    expected_before_source_hash: str,
+    operator_reviewer: str | None = None,
+    events_dir: str | None = None,
+) -> SourceMergeRestoreReceipt:
+    """Restore source body from the body snapshot captured at commit time."""
+
+    _require_locked(con)
+    _ensure_commit_schema(con)
+    row = con.execute(
+        """
+        SELECT commit_id, before_source_body, before_source_hash, after_source_hash
+        FROM source_merge_body_commits
+        WHERE document_id = ?
+          AND source_revision_id = ?
+          AND twin_revision_id = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        [document_id, source_revision_id, twin_revision_id],
+    ).fetchone()
+    if row is None:
+        raise ValueError("source_merge_commit_not_found")
+    commit_id, before_source_body, before_source_hash, after_source_hash = row
+    if not before_source_body and before_source_hash != _hash_text(""):
+        raise ValueError("source_merge_restore_body_unavailable")
+    if before_source_hash != expected_before_source_hash or after_source_hash != expected_after_source_hash:
+        raise ValueError("source_merge_restore_binding_mismatch")
+
+    restore_id = hashlib.sha256(
+        json.dumps(
+            {
+                "commit_id": commit_id,
+                "document_id": document_id,
+                "source_revision_id": source_revision_id,
+                "twin_revision_id": twin_revision_id,
+                "expected_after_source_hash": expected_after_source_hash,
+                "expected_before_source_hash": expected_before_source_hash,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    existing = con.execute(
+        """
+        SELECT event_id, restored_source_hash
+        FROM source_merge_body_restores
+        WHERE restore_id = ?
+        """,
+        [restore_id],
+    ).fetchone()
+    if existing:
+        return SourceMergeRestoreReceipt(
+            status="restored",
+            document_id=document_id,
+            source_revision_id=source_revision_id,
+            twin_revision_id=twin_revision_id,
+            event_id=existing[0],
+            before_source_hash=before_source_hash,
+            restored_source_hash=existing[1],
+            writes_performed=False,
+        )
+
+    current = con.execute(
+        "SELECT raw_text FROM documents WHERE document_id = ? LIMIT 1",
+        [document_id],
+    ).fetchone()
+    if current is None:
+        raise ValueError("source_merge_source_document_not_found")
+    current_hash = _hash_text(current[0] or "")
+    if current_hash != after_source_hash:
+        raise ValueError("source_merge_restore_current_hash_mismatch")
+
+    con.execute(
+        "UPDATE documents SET raw_text = ? WHERE document_id = ?",
+        [before_source_body or "", document_id],
+    )
+    restored_hash = _hash_text(before_source_body or "")
+    payload = {
+        "document_id": document_id,
+        "source_revision_id": source_revision_id,
+        "twin_revision_id": twin_revision_id,
+        "before_source_hash": before_source_hash,
+        "after_source_hash": after_source_hash,
+        "restored_source_hash": restored_hash,
+        "operator_reviewer": operator_reviewer,
+        "source_book_body_restored": True,
+    }
+    event_id = log_event(
+        parent_reading_thread_id,
+        SOURCE_MERGE_RESTORED,
+        payload=payload,
+        role="read/source_merge_restore",
+        policy_id="read/source_merge/restore",
+        document_id=document_id,
+        events_dir=events_dir,
+    )
+    con.execute(
+        """
+        INSERT INTO source_merge_body_restores (
+            restore_id, commit_id, document_id, source_revision_id,
+            twin_revision_id, before_source_hash, restored_source_hash,
+            parent_reading_thread_id, event_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            restore_id,
+            commit_id,
+            document_id,
+            source_revision_id,
+            twin_revision_id,
+            before_source_hash,
+            restored_hash,
+            parent_reading_thread_id,
+            event_id,
+        ],
+    )
+    return SourceMergeRestoreReceipt(
+        status="restored",
+        document_id=document_id,
+        source_revision_id=source_revision_id,
+        twin_revision_id=twin_revision_id,
+        event_id=event_id,
+        before_source_hash=before_source_hash,
+        restored_source_hash=restored_hash,
         writes_performed=True,
     )
 
