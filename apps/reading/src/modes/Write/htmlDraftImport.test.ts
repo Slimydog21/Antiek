@@ -106,4 +106,14 @@ describe("htmlDraftImport residual fm/fu", () => {
     expect(secs.map((s) => s.heading_level)).toEqual([1, 2, 3]);
     expect(secs.map((s) => s.title)).toEqual(["Top", "Sub", "Deep"]);
   });
+
+  it("splitHtmlIntoOutlineSections keeps html_fragment for HTML-first prose (fx)", () => {
+    const secs = splitHtmlIntoOutlineSections(
+      "<h1>One</h1><p>Alpha <em>rich</em>.</p><h2>Two</h2><p>Beta.</p>",
+      "Doc",
+    );
+    expect(secs[0].html_fragment).toMatch(/<p>Alpha <em>rich<\/em>\.<\/p>/i);
+    expect(secs[0].plain_text).toMatch(/Alpha rich/);
+    expect(secs[1].html_fragment).toMatch(/Beta/);
+  });
 });

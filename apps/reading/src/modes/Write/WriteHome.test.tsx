@@ -310,13 +310,18 @@ describe("WriteHome — the re-homed door", () => {
     await waitFor(() => {
       expect(updateSectionProseMock).toHaveBeenCalledTimes(2);
     });
+    // Residual (fx): prose prefers HTML fragment (HTML-first).
     expect(updateSectionProseMock).toHaveBeenCalledWith(
       "sec_0",
-      expect.objectContaining({ prose_text: expect.stringMatching(/Alpha/) }),
+      expect.objectContaining({
+        prose_text: expect.stringMatching(/<p>Alpha body\.<\/p>/i),
+      }),
     );
     expect(updateSectionProseMock).toHaveBeenCalledWith(
       "sec_1",
-      expect.objectContaining({ prose_text: expect.stringMatching(/Beta/) }),
+      expect.objectContaining({
+        prose_text: expect.stringMatching(/<p>Beta body\.<\/p>/i),
+      }),
     );
   });
 

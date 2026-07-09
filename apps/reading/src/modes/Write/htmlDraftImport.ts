@@ -35,6 +35,11 @@ export type OutlineSectionImport = {
    * 0 = preamble / single-body fallback (top-level).
    */
   heading_level: number;
+  /**
+   * Residual (fx): raw HTML fragment for the section body (HTML-first prose).
+   * Empty when only plain fallback is available.
+   */
+  html_fragment: string;
 };
 
 /** Max sections created on import (hard-to-vary safety cap). */
@@ -93,12 +98,14 @@ export function splitHtmlIntoOutlineSections(
   if (matches.length === 0) {
     const plain = stripHtmlToPlainText(cleaned);
     if (!plain) return [];
+    const frag = cleaned.trim().slice(0, 100_000);
     return [
       {
         title: fallback || "Imported HTML draft",
         plain_text: plain.slice(0, 100_000),
         section_index: 0,
         heading_level: 0,
+        html_fragment: frag,
       },
     ];
   }
@@ -114,6 +121,7 @@ export function splitHtmlIntoOutlineSections(
         plain_text: plain.slice(0, 100_000),
         section_index: 0,
         heading_level: 0,
+        html_fragment: preamble.trim().slice(0, 100_000),
       });
     }
   }
@@ -129,14 +137,21 @@ export function splitHtmlIntoOutlineSections(
       i + 1 < matches.length
         ? (matches[i + 1].index ?? cleaned.length)
         : cleaned.length;
-    const bodyPlain = stripHtmlToPlainText(cleaned.slice(start, end));
+    const bodyHtml = cleaned.slice(start, end).trim();
+    const bodyPlain = stripHtmlToPlainText(bodyHtml);
     const plain_text = (bodyPlain || headingPlain || title).slice(0, 100_000);
     if (!plain_text.trim()) continue;
+    // Residual (fx): keep HTML body when present; wrap heading if body empty.
+    const html_fragment = (
+      bodyHtml ||
+      (headingPlain ? `<p>${escapeHtmlText(headingPlain)}</p>` : "")
+    ).slice(0, 100_000);
     sections.push({
       title,
       plain_text,
       section_index: sections.length,
       heading_level: level,
+      html_fragment,
     });
   }
 
@@ -144,6 +159,15 @@ export function splitHtmlIntoOutlineSections(
     ...s,
     section_index: i,
   }));
+}
+
+/** Minimal escape for heading-only HTML fallback fragments. */
+function escapeHtmlText(s: string): string {
+  return (s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 /**

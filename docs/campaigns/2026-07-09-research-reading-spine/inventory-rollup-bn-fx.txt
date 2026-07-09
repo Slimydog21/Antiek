@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(fx) · PR #465
+HTML fragment prose import (fx); section preview (fw); nested multi-section (fu/fv).
+Operator merge still gated. Next residual (fy).

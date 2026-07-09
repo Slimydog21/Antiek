@@ -53,6 +53,7 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
  * Residual (fu): multi-section import via h1–h3 split (outline_sections).
  * Residual (fv): nest h2/h3 under preceding higher-level section via
  * parent_section_id when createSection accepts it.
+ * Residual (fx): prefer html_fragment for section prose (HTML-first land).
  */
 export default function WriteHome() {
   const { deliverableId } = useParams<{ deliverableId?: string }>();
@@ -231,6 +232,7 @@ export default function WriteHome() {
                       plain_text: htmlDraft.plain_text,
                       section_index: 0,
                       heading_level: 0,
+                      html_fragment: htmlDraft.html.slice(0, 100_000),
                     },
                   ]
                 : [];
@@ -263,8 +265,12 @@ export default function WriteHome() {
               const kl = Number(k);
               if (kl > level) delete lastIdByLevel[kl];
             }
+            // Residual (fx): HTML-first prose when fragment present.
+            const prose =
+              (s.html_fragment || "").trim() ||
+              s.plain_text.slice(0, 100_000);
             await updateSectionProse(sec.section_id, {
-              prose_text: s.plain_text.slice(0, 100_000),
+              prose_text: prose.slice(0, 100_000),
               promote_to_graph: false,
             });
           }
