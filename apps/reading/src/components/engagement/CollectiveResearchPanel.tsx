@@ -13,6 +13,8 @@
  * 7. Residual (eo): seed twin notes on draft_combined document merge (parity
  *    with SpawnMergePanel cp / written-analysis ch); into_parent seeds too so
  *    the recursive note-taker always tracks the merge target.
+ * 8. Residual (ep): onDocMerged notifies parent (DR host) to remount research
+ *    context after document merge / written analysis (+ twin seed).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -43,6 +45,8 @@ export type CollectiveResearchPanelProps = {
    * document merge or written analysis. into_parent never auto-opens.
    */
   autoOpenDraft?: boolean;
+  /** Residual (ep): after successful document merge or written analysis. */
+  onDocMerged?: (result: MergeProductResponse) => void;
 };
 
 export function CollectiveResearchPanel({
@@ -50,6 +54,7 @@ export function CollectiveResearchPanel({
   parentAssetId = null,
   preferredSpawnId = null,
   autoOpenDraft = true,
+  onDocMerged,
 }: CollectiveResearchPanelProps) {
   const [selected, setSelected] = useState<string[]>([]);
 
@@ -175,13 +180,15 @@ export function CollectiveResearchPanel({
               })
             : withTwins;
         setDocMerge(final);
+        // Residual (ep): parent remounts research context after merge + twin seed.
+        onDocMerged?.(final);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       } finally {
         setBusy(false);
       }
     },
-    [selected, parentAssetId, maybeAutoOpenDraft],
+    [selected, parentAssetId, maybeAutoOpenDraft, onDocMerged],
   );
 
   /** Residual (cf): cohesive unit prompt + draft HTML analysis document. */
@@ -234,19 +241,20 @@ export function CollectiveResearchPanel({
         ],
       };
       // Residual (em): written analysis draft auto-opens hosted HTML.
-      setDocMerge(
-        maybeAutoOpenDraft(withNotes, {
-          titleStem: "Written analysis",
-          source: "collective_written_analysis",
-          idPrefix: "win:analysis",
-        }),
-      );
+      const final = maybeAutoOpenDraft(withNotes, {
+        titleStem: "Written analysis",
+        source: "collective_written_analysis",
+        idPrefix: "win:analysis",
+      });
+      setDocMerge(final);
+      // Residual (ep): parent remounts research context after analysis + twin seed.
+      onDocMerged?.(final);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
-  }, [selected, parentAssetId, maybeAutoOpenDraft]);
+  }, [selected, parentAssetId, maybeAutoOpenDraft, onDocMerged]);
 
   /**
    * Residual (dc): re-enter research with the collective prompt as one unit.

@@ -267,6 +267,40 @@ describe("CollectiveResearchPanel", () => {
     );
   });
 
+  it("notifies onDocMerged after draft merge with twin seed (ep)", async () => {
+    mergeSpawnOutputs.mockResolvedValue({
+      mode: "draft_combined",
+      parent_asset_id: "book-1",
+      document_id: "draft_ep",
+      source_spawn_ids: ["spn_1"],
+      sections_merged: 1,
+      draft_leaves_parent: true,
+      parent_document_id: "book-1",
+      view_format: "html",
+      product_panel: "engagement_merge",
+      source: "engagement_spine.merge_spawn_outputs",
+      notes: ["Draft"],
+      html: "<p>ep</p>",
+    });
+    const onDocMerged = vi.fn();
+    render(
+      <CollectiveResearchPanel
+        availableSpawnIds={["spn_1"]}
+        parentAssetId="book-1"
+        onDocMerged={onDocMerged}
+        autoOpenDraft={false}
+      />,
+    );
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    fireEvent.click(screen.getByTestId("collective-merge-draft"));
+    await waitFor(() => {
+      expect(onDocMerged).toHaveBeenCalled();
+    });
+    expect(onDocMerged.mock.calls[0][0].document_id).toBe("draft_ep");
+    expect(onDocMerged.mock.calls[0][0].view_format).toBe("html");
+    expect(seedTwinNotes).toHaveBeenCalled();
+  });
+
   it("does not auto-open collective draft when autoOpenDraft is false", async () => {
     mergeSpawnOutputs.mockResolvedValue({
       mode: "draft_combined",

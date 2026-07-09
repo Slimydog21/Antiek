@@ -29,6 +29,8 @@
  * Residual (ed): remount ResearchContextPanel after publication attach.
  * Residual (ee): remount ResearchContextPanel after session flywheel complete.
  * Residual (eh): remount ResearchContextPanel after spawn merge.
+ * Residual (ep): remount ResearchContextPanel after collective document merge
+ * / written analysis (onDocMerged → onContextNeedsRefresh).
  */
 
 import { useCallback, useMemo, useState } from "react";
@@ -322,6 +324,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
             availableSpawnIds={availableSpawnIds}
             parentAssetId={props.parent_asset_id?.trim() || null}
             preferredSpawnId={props.spawn_id?.trim() || null}
+            onDocMerged={onContextNeedsRefresh}
           />
         </section>
       ) : null}
