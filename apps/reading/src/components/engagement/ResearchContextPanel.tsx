@@ -335,11 +335,35 @@ export function ResearchContextPanel({
           className="evidence-pack"
           data-testid="evidence-pack-result"
           data-view-format="html"
+          data-ref-count={String(evidence.ref_count ?? 0)}
+          data-citation-trust={
+            (evidence.ref_count ?? 0) > 0 ? "grounded" : "ungrounded"
+          }
         >
           <p className="counts">
             evidence · insights={evidence.insight_count} · questions=
             {evidence.question_count} · refs={evidence.ref_count}
           </p>
+          {/* Residual (dm): competitive bar — never pretend citations exist. */}
+          {(evidence.ref_count ?? 0) === 0 ? (
+            <p
+              className="meta font-mono text-[11px] text-emperor"
+              data-testid="evidence-citation-trust"
+              role="status"
+            >
+              Citation trust: ungrounded — attach arxiv/substack/URL refs or
+              seed twins before treating this pack as competitive-grade
+              synthesis.
+            </p>
+          ) : (
+            <p
+              className="meta font-mono text-[11px]"
+              data-testid="evidence-citation-trust"
+              role="status"
+            >
+              Citation trust: grounded · {evidence.ref_count} source ref(s)
+            </p>
+          )}
           {evidence.html ? (
             <div
               className="evidence-html"

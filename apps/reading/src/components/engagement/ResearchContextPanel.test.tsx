@@ -321,5 +321,41 @@ describe("ResearchContextPanel", () => {
     expect(
       screen.getByTestId("research-context-panel").getAttribute("data-view-format"),
     ).toBe("html");
+    // Residual (dm): citation trust honesty.
+    expect(
+      screen.getByTestId("evidence-pack-result").getAttribute("data-citation-trust"),
+    ).toBe("grounded");
+    expect(screen.getByTestId("evidence-citation-trust").textContent).toMatch(
+      /grounded/i,
+    );
+  });
+
+  it("flags ungrounded evidence when ref_count is zero (dm)", async () => {
+    fetchEvidencePack.mockResolvedValue({
+      asset_id: "paper",
+      spawn_id: "spn_1",
+      insight_count: 1,
+      question_count: 1,
+      ref_count: 0,
+      insights: ["A claim without sources."],
+      questions: ["Where is the citation?"],
+      source_references: [],
+      view_format: "html",
+      product_panel: "evidence_pack",
+      source: "engagement_spine.evidence",
+      notes: [],
+      html: "<p>Evidence pack · no refs</p>",
+    });
+
+    render(<ResearchContextPanel assetId="paper" spawnId="spn_1" />);
+    fireEvent.click(screen.getByTestId("load-evidence-pack"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("evidence-pack-result").getAttribute("data-citation-trust"),
+      ).toBe("ungrounded");
+    });
+    expect(screen.getByTestId("evidence-citation-trust").textContent).toMatch(
+      /ungrounded/i,
+    );
   });
 });
