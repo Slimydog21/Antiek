@@ -1112,6 +1112,9 @@ export default function Multimedia() {
                   <p className="font-mono text-[12px] text-shadow-2 dark:text-moonlight">Persisted assets</p>
                   <LemonTag>{assets.length}</LemonTag>
                 </div>
+                <p className="mt-1 text-[11px] leading-snug text-shadow-1 dark:text-moonlight">
+                  Opening persisted assets loads saved planning evidence only; it does not call providers, export, or publish media.
+                </p>
                 <div className="mt-2 flex flex-wrap gap-2" aria-label="Persisted asset readiness filters">
                   {READINESS_FILTERS.map((filter) => {
                     const count =

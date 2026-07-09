@@ -405,6 +405,9 @@ describe("Multimedia workstation", () => {
 
     expect(await screen.findByText(/Persisted assets/)).toBeTruthy();
     expect(screen.getByText("Manual attach ready")).toBeTruthy();
+    expect(
+      screen.getByText("Opening persisted assets loads saved planning evidence only; it does not call providers, export, or publish media."),
+    ).toBeTruthy();
     expect(screen.getAllByText("job-mm-1-0004").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: /The aircraft program/ }));
 
