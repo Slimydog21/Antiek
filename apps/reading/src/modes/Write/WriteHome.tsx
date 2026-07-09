@@ -135,6 +135,15 @@ export default function WriteHome() {
         setHtmlDraft(prepared);
         // Prefill piece title when empty so connect-research can proceed.
         setNewTitle((prev) => (prev.trim() ? prev : prepared.title_hint));
+        // Residual (fp): stamp project-type freeform with HTML draft provenance.
+        setProjectType((prev) =>
+          prev.freeform.trim()
+            ? prev
+            : {
+                ...prev,
+                freeform: `html_draft:${prepared.document_id}`,
+              },
+        );
       })
       .catch((e) => {
         if (cancelled) return;
@@ -278,6 +287,18 @@ export default function WriteHome() {
               Outline auto-import of HTML sections remains a follow-on residual
               (spec-fl). Create a piece below with provenance document{" "}
               <code>{htmlDraft.document_id}</code>.
+            </p>
+            {/* Residual (fp): visible provenance stamp for freeform project type. */}
+            <p
+              className="text-[10px] font-mono"
+              data-testid="write-html-draft-provenance"
+              data-document-id={htmlDraft.document_id}
+            >
+              Provenance freeform:{" "}
+              <code>
+                {projectType.freeform.trim() ||
+                  `html_draft:${htmlDraft.document_id}`}
+              </code>
             </p>
           </div>
         ) : null}

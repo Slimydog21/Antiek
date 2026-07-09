@@ -32,6 +32,13 @@ for future agents — not a claim that the north star is finished.
 | fg | suite proposed tasks UI |
 | fh | BlockDetail window DR |
 | fi | context search metrics |
+| fj | driver Settings link |
+| fk | twin notes metrics |
+| fl | Write html_draft handoff |
+| fm | Write load HTML draft |
+| fn | merge Open Write |
+| fo | moil Open Write |
+| fp | Write draft provenance |
 | fd | DecisionTreeDriverBadge refresh |
 | fe | FloatMenu Deep-research full |
 
@@ -68,5 +75,5 @@ Prefer thin chokepoint product over parallel UIs:
 
 ## Next residual letter
 
-**(fj)** — re-derive; tip advanced past fi.
+**(fq)** — re-derive; tip advanced past fp.
 Operator merge still gated.

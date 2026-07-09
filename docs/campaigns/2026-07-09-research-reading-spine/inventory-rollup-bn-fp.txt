@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(fp) · PR #465
+Write HTML draft provenance (fp); moil/merge Write handoffs; draft load (fm).
+Operator merge still gated. Next residual (fq).

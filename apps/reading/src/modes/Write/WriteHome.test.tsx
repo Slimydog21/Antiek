@@ -161,6 +161,17 @@ describe("WriteHome — the re-homed door", () => {
       /what are you writing/i,
     ) as HTMLInputElement;
     expect(titleInput.value).toMatch(/Merged research draft/);
+    // Residual (fp): provenance freeform stamped for html draft.
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("write-html-draft-provenance").getAttribute(
+          "data-document-id",
+        ),
+      ).toBe("draft_merge_abc");
+    });
+    expect(screen.getByTestId("write-html-draft-provenance").textContent).toMatch(
+      /html_draft:draft_merge_abc/,
+    );
     // Seed brainstorm opens idea dump with plain text.
     await userEvent.click(screen.getByTestId("write-html-draft-seed-brainstorm"));
     await waitFor(() => {
