@@ -201,6 +201,70 @@ class MidnightOilDryRunRequest(BaseModel):
         return self
 
 
+class MidnightOilDispatchRequest(BaseModel):
+    launch_packet: MidnightOilLaunchPacket
+    approval_receipt: MidnightOilApprovalReceipt
+    runner_handoff: MidnightOilRunnerHandoff
+    applied_run_receipt: MidnightOilAppliedRunReceipt
+    live_dispatch_requested: bool = False
+
+    @model_validator(mode="after")
+    def _receipt_chain_matches(self) -> MidnightOilDispatchRequest:
+        if self.approval_receipt.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("approval_receipt must reference launch_packet")
+        if self.runner_handoff.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("runner_handoff must reference launch_packet")
+        if self.runner_handoff.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError("runner_handoff must reference approval_receipt")
+        if self.applied_run_receipt.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("applied_run_receipt must reference launch_packet")
+        if self.applied_run_receipt.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError("applied_run_receipt must reference approval_receipt")
+        if self.applied_run_receipt.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError("applied_run_receipt must reference runner_handoff")
+        if self.runner_handoff.run_id != self.launch_packet.run_id:
+            raise ValueError("runner_handoff run_id must match launch_packet")
+        if self.approval_receipt.run_id != self.launch_packet.run_id:
+            raise ValueError("approval_receipt run_id must match launch_packet")
+        if self.applied_run_receipt.run_id != self.launch_packet.run_id:
+            raise ValueError("applied_run_receipt run_id must match launch_packet")
+        if self.applied_run_receipt.status != "planned_not_dispatched":
+            raise ValueError("applied_run_receipt must be planned_not_dispatched")
+        if self.runner_handoff.dispatch_performed or self.applied_run_receipt.dispatch_performed:
+            raise ValueError("receipt chain must not already be dispatched")
+        if self.runner_handoff.budget_reserved or self.applied_run_receipt.budget_reserved:
+            raise ValueError("receipt chain must not reserve budget")
+        if self.runner_handoff.provider_calls_made or self.applied_run_receipt.provider_calls_made:
+            raise ValueError("receipt chain must not include provider calls")
+        if self.runner_handoff.graph_mutated or self.applied_run_receipt.graph_mutated:
+            raise ValueError("receipt chain must not mutate graph")
+        if self.applied_run_receipt.retrieval_performed:
+            raise ValueError("applied_run_receipt must not perform retrieval")
+        if self.applied_run_receipt.final_artifact_created:
+            raise ValueError("applied_run_receipt must not create final artifact")
+        return self
+
+
+class MidnightOilDispatchReceipt(BaseModel):
+    receipt_id: str
+    applied_run_receipt_id: str
+    runner_handoff_id: str
+    approval_receipt_id: str
+    launch_packet_id: str
+    run_id: str
+    status: Literal["blocked_live_dispatch_disabled"] = "blocked_live_dispatch_disabled"
+    live_dispatch_requested: bool = False
+    blocker_reason: Literal["live_dispatch_disabled"] = "live_dispatch_disabled"
+    dispatch_allowed: bool = False
+    dispatch_performed: bool = False
+    budget_reserved: bool = False
+    provider_calls_made: bool = False
+    retrieval_performed: bool = False
+    graph_mutated: bool = False
+    final_artifact_created: bool = False
+    dispatch_notes: list[str] = Field(default_factory=list)
+
+
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
     price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
@@ -277,6 +341,30 @@ def dry_run_midnight_oil(req: MidnightOilDryRunRequest) -> MidnightOilAppliedRun
         launch_packet=req.launch_packet,
         approval_receipt=req.approval_receipt,
         runner_handoff=req.runner_handoff,
+    )
+
+
+def dispatch_midnight_oil(req: MidnightOilDispatchRequest) -> MidnightOilDispatchReceipt:
+    return MidnightOilDispatchReceipt(
+        receipt_id=f"{req.launch_packet.run_id}-dispatch-receipt",
+        applied_run_receipt_id=req.applied_run_receipt.receipt_id,
+        runner_handoff_id=req.runner_handoff.handoff_id,
+        approval_receipt_id=req.approval_receipt.receipt_id,
+        launch_packet_id=req.launch_packet.packet_id,
+        run_id=req.launch_packet.run_id,
+        live_dispatch_requested=req.live_dispatch_requested,
+        dispatch_allowed=False,
+        dispatch_performed=False,
+        budget_reserved=False,
+        provider_calls_made=False,
+        retrieval_performed=False,
+        graph_mutated=False,
+        final_artifact_created=False,
+        dispatch_notes=[
+            "live dispatch gate only: autonomous runner execution is disabled",
+            "no budget reserved, provider calls made, retrieval performed, or graph mutation",
+            "future live runner must replace this blocked receipt after operator-enabled controls",
+        ],
     )
 
 

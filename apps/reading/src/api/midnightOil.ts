@@ -146,6 +146,34 @@ export interface MidnightOilDryRunRequest {
   runner_handoff: MidnightOilRunnerHandoff;
 }
 
+export interface MidnightOilDispatchRequest {
+  launch_packet: MidnightOilLaunchPacket;
+  approval_receipt: MidnightOilApprovalReceipt;
+  runner_handoff: MidnightOilRunnerHandoff;
+  applied_run_receipt: MidnightOilAppliedRunReceipt;
+  live_dispatch_requested: boolean;
+}
+
+export interface MidnightOilDispatchReceipt {
+  receipt_id: string;
+  applied_run_receipt_id: string;
+  runner_handoff_id: string;
+  approval_receipt_id: string;
+  launch_packet_id: string;
+  run_id: string;
+  status: "blocked_live_dispatch_disabled";
+  live_dispatch_requested: boolean;
+  blocker_reason: "live_dispatch_disabled";
+  dispatch_allowed: boolean;
+  dispatch_performed: boolean;
+  budget_reserved: boolean;
+  provider_calls_made: boolean;
+  retrieval_performed: boolean;
+  graph_mutated: boolean;
+  final_artifact_created: boolean;
+  dispatch_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -174,4 +202,19 @@ export async function dryRunMidnightOil(
     throw new Error(`POST /research/midnight-oil/dry-run: HTTP ${resp.status}: ${body}`);
   }
   return (await resp.json()) as MidnightOilAppliedRunReceipt;
+}
+
+export async function dispatchMidnightOil(
+  request: MidnightOilDispatchRequest,
+): Promise<MidnightOilDispatchReceipt> {
+  const resp = await apiFetch(`${API_BASE}/research/midnight-oil/dispatch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`POST /research/midnight-oil/dispatch: HTTP ${resp.status}: ${body}`);
+  }
+  return (await resp.json()) as MidnightOilDispatchReceipt;
 }

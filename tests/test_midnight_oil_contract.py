@@ -7,8 +7,10 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from substrate.midnight_oil import (
+    MidnightOilDispatchRequest,
     MidnightOilDryRunRequest,
     MidnightOilRequest,
+    dispatch_midnight_oil,
     dry_run_midnight_oil,
     preflight_midnight_oil,
 )
@@ -304,6 +306,80 @@ def test_dry_run_rejects_mismatched_receipt_chain() -> None:
         )
 
 
+def test_dispatch_gate_returns_blocked_receipt_without_side_effects() -> None:
+    preflight = preflight_midnight_oil(
+        MidnightOilRequest(
+            goal="Prepare a live-dispatch gate for a midnight oil run about turbofan durability.",
+            work_minutes=150,
+            price_ceiling_usd=22.0,
+            route_mode="auto_balanced",
+            source_policy=["arxiv", "operator_corpus"],
+            operator_acknowledged_spend=True,
+        )
+    )
+
+    assert preflight.launch_packet is not None
+    assert preflight.approval_receipt is not None
+    assert preflight.runner_handoff is not None
+    assert preflight.applied_run_receipt is not None
+    receipt = dispatch_midnight_oil(
+        MidnightOilDispatchRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            live_dispatch_requested=True,
+        )
+    )
+
+    assert receipt.receipt_id == f"{preflight.run_id}-dispatch-receipt"
+    assert receipt.applied_run_receipt_id == preflight.applied_run_receipt.receipt_id
+    assert receipt.runner_handoff_id == preflight.runner_handoff.handoff_id
+    assert receipt.approval_receipt_id == preflight.approval_receipt.receipt_id
+    assert receipt.launch_packet_id == preflight.launch_packet.packet_id
+    assert receipt.run_id == preflight.run_id
+    assert receipt.status == "blocked_live_dispatch_disabled"
+    assert receipt.live_dispatch_requested is True
+    assert receipt.blocker_reason == "live_dispatch_disabled"
+    assert receipt.dispatch_allowed is False
+    assert receipt.dispatch_performed is False
+    assert receipt.budget_reserved is False
+    assert receipt.provider_calls_made is False
+    assert receipt.retrieval_performed is False
+    assert receipt.graph_mutated is False
+    assert receipt.final_artifact_created is False
+    assert "autonomous runner execution is disabled" in receipt.dispatch_notes[0]
+
+
+def test_dispatch_gate_rejects_mismatched_applied_receipt_chain() -> None:
+    preflight = preflight_midnight_oil(
+        MidnightOilRequest(
+            goal="Prepare a live-dispatch gate for a midnight oil run about airline financing.",
+            work_minutes=120,
+            price_ceiling_usd=18.0,
+            route_mode="auto_cost",
+            source_policy=["web"],
+            operator_acknowledged_spend=True,
+        )
+    )
+
+    assert preflight.launch_packet is not None
+    assert preflight.approval_receipt is not None
+    assert preflight.runner_handoff is not None
+    assert preflight.applied_run_receipt is not None
+    bad_applied = preflight.applied_run_receipt.model_copy(
+        update={"runner_handoff_id": "wrong-handoff"}
+    )
+
+    with pytest.raises(ValidationError, match="applied_run_receipt must reference runner_handoff"):
+        MidnightOilDispatchRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=bad_applied,
+        )
+
+
 def test_final_artifact_contract_is_html_not_pdf_with_twin_note() -> None:
     result = preflight_midnight_oil(
         MidnightOilRequest(
@@ -414,6 +490,54 @@ def test_midnight_oil_dry_run_api_contract() -> None:
     assert body["approval_receipt_id"] == preflight.approval_receipt.receipt_id
     assert body["launch_packet_id"] == preflight.launch_packet.packet_id
     assert body["status"] == "planned_not_dispatched"
+    assert body["dispatch_performed"] is False
+    assert body["budget_reserved"] is False
+    assert body["provider_calls_made"] is False
+    assert body["retrieval_performed"] is False
+    assert body["graph_mutated"] is False
+    assert body["final_artifact_created"] is False
+
+
+def test_midnight_oil_dispatch_gate_api_contract() -> None:
+    from interfaces.research.api.app import create_app
+
+    preflight = preflight_midnight_oil(
+        MidnightOilRequest(
+            goal="Gate a midnight oil dispatch plan about widebody maintenance.",
+            work_minutes=120,
+            price_ceiling_usd=25.0,
+            route_mode="auto_balanced",
+            source_policy=["arxiv", "web"],
+            operator_acknowledged_spend=True,
+        )
+    )
+
+    assert preflight.launch_packet is not None
+    assert preflight.approval_receipt is not None
+    assert preflight.runner_handoff is not None
+    assert preflight.applied_run_receipt is not None
+    with TestClient(create_app()) as client:
+        r = client.post(
+            "/research/midnight-oil/dispatch",
+            json={
+                "launch_packet": preflight.launch_packet.model_dump(mode="json"),
+                "approval_receipt": preflight.approval_receipt.model_dump(mode="json"),
+                "runner_handoff": preflight.runner_handoff.model_dump(mode="json"),
+                "applied_run_receipt": preflight.applied_run_receipt.model_dump(mode="json"),
+                "live_dispatch_requested": True,
+            },
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["applied_run_receipt_id"] == preflight.applied_run_receipt.receipt_id
+    assert body["runner_handoff_id"] == preflight.runner_handoff.handoff_id
+    assert body["approval_receipt_id"] == preflight.approval_receipt.receipt_id
+    assert body["launch_packet_id"] == preflight.launch_packet.packet_id
+    assert body["status"] == "blocked_live_dispatch_disabled"
+    assert body["live_dispatch_requested"] is True
+    assert body["blocker_reason"] == "live_dispatch_disabled"
+    assert body["dispatch_allowed"] is False
     assert body["dispatch_performed"] is False
     assert body["budget_reserved"] is False
     assert body["provider_calls_made"] is False
