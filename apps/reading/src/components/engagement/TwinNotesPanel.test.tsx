@@ -1670,4 +1670,119 @@ describe("TwinNotesPanel", () => {
       fetchTwinNotes.mock.calls.filter((c) => c[0] === "paper"),
     ).toHaveLength(1);
   });
+
+  it("accumulates N>2 merge assets into one cross-asset draft (qb)", async () => {
+    fetchTwinNotes.mockImplementation(async (assetId: string) => {
+      if (assetId === "paper-a") {
+        return {
+          asset_id: "paper-a",
+          note_count: 1,
+          insight_count: 0,
+          question_count: 1,
+          notes: [
+            {
+              note_id: "twin_a_q",
+              asset_id: "paper-a",
+              kind: "question",
+              text: "Q from A",
+            },
+          ],
+          view_format: "html",
+          product_panel: "twin_notes",
+          source: "engagement_spine.twin",
+          messages: [],
+          html: "<p>a</p>",
+        };
+      }
+      if (assetId === "paper-b") {
+        return {
+          asset_id: "paper-b",
+          note_count: 1,
+          insight_count: 0,
+          question_count: 1,
+          notes: [
+            {
+              note_id: "twin_b_q",
+              asset_id: "paper-b",
+              kind: "question",
+              text: "Q from B",
+            },
+          ],
+          view_format: "html",
+          product_panel: "twin_notes",
+          source: "engagement_spine.twin",
+          messages: [],
+          html: "<p>b</p>",
+        };
+      }
+      if (assetId === "paper-c") {
+        return {
+          asset_id: "paper-c",
+          note_count: 1,
+          insight_count: 1,
+          question_count: 0,
+          notes: [
+            {
+              note_id: "twin_c_i",
+              asset_id: "paper-c",
+              kind: "insight",
+              text: "I from C",
+            },
+          ],
+          view_format: "html",
+          product_panel: "twin_notes",
+          source: "engagement_spine.twin",
+          messages: [],
+          html: "<p>c</p>",
+        };
+      }
+      throw new Error(`unexpected ${assetId}`);
+    });
+
+    render(<TwinNotesPanel assetId="paper-a" autoLoad />);
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-select-twin_a_q")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("twin-select-twin_a_q"));
+
+    fireEvent.change(screen.getByTestId("twin-merge-asset-id"), {
+      target: { value: "paper-b" },
+    });
+    fireEvent.click(screen.getByTestId("twin-merge-asset-load"));
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-merge-bucket-paper-b")).toBeTruthy();
+    });
+    fireEvent.change(screen.getByTestId("twin-merge-asset-id"), {
+      target: { value: "paper-c" },
+    });
+    fireEvent.click(screen.getByTestId("twin-merge-asset-load"));
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-merge-bucket-paper-c")).toBeTruthy();
+    });
+    expect(
+      screen
+        .getByTestId("twin-cross-asset-merge")
+        .getAttribute("data-merge-asset-count"),
+    ).toBe("2");
+    expect(screen.getByTestId("twin-merge-load-status").textContent).toMatch(
+      /paper-c/,
+    );
+    expect(screen.getByTestId("twin-merge-bucket-paper-b")).toBeTruthy();
+    expect(screen.getByTestId("twin-merge-bucket-paper-c")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("twin-merge-draft-html"));
+    await waitFor(() => {
+      expect(openWindow).toHaveBeenCalled();
+    });
+    const html = openWindow.mock.calls.at(-1)?.[1]?.html as string;
+    expect(html).toMatch(/data-merge-assets="paper-a\|paper-b\|paper-c"/);
+    expect(html).toMatch(/Q from A/);
+    expect(html).toMatch(/Q from B/);
+    expect(html).toMatch(/I from C/);
+    expect(storeTwinWriteSeed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        asset_id: "paper-a+paper-b+paper-c",
+      }),
+    );
+  });
 });

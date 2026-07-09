@@ -51,6 +51,8 @@
  * first (FUTURE-AGENT V1 cross-asset combine foundation).
  * Residual (px): second asset_id picker — load remote twins + multi-select +
  * mergeTwinChaseNotes → openTwinDraft float|full + Write seed (full V1 UI).
+ * Residual (qb): accumulate N>2 merge assets (add another asset_id without
+ * replacing prior) → mergeTwinChaseNotes over primary + all buckets.
  * HTML-first; never PDF.
  */
 
@@ -260,16 +262,32 @@ export function TwinNotesPanel({
     merge_source?: string | null;
   } | null>(null);
   /**
-   * Residual (px): second asset_id for cross-asset twin merge drafts.
-   * Input is freeform; loaded id + twins only after explicit Load.
+   * Residual (px/qb): merge asset_id input + N loaded buckets (qb accumulates).
+   * Each bucket holds its own multi-select; Load updates-or-appends by asset_id.
    */
   const [mergeAssetIdInput, setMergeAssetIdInput] = useState("");
-  const [mergeAssetId, setMergeAssetId] = useState<string | null>(null);
-  const [mergeTwins, setMergeTwins] = useState<TwinNotesResponse | null>(null);
-  const [mergeSelectedNoteIds, setMergeSelectedNoteIds] = useState<Set<string>>(
-    () => new Set(),
-  );
+  const [mergeBuckets, setMergeBuckets] = useState<
+    {
+      asset_id: string;
+      twins: TwinNotesResponse;
+      selectedNoteIds: string[];
+    }[]
+  >([]);
   const [mergeLoadStatus, setMergeLoadStatus] = useState<string | null>(null);
+  /** Last focused merge asset (UI list + chrome); derived from buckets. */
+  const mergeAssetId = mergeBuckets.length
+    ? mergeBuckets[mergeBuckets.length - 1]!.asset_id
+    : null;
+  const mergeTwins = mergeBuckets.length
+    ? mergeBuckets[mergeBuckets.length - 1]!.twins
+    : null;
+  const mergeSelectedNoteIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const b of mergeBuckets) {
+      for (const id of b.selectedNoteIds) s.add(id);
+    }
+    return s;
+  }, [mergeBuckets]);
   /**
    * Residual (nc): machine-readable last chase result for audit (parity
    * twin-promote-metrics / marketplace-host-dr-status).
@@ -638,22 +656,30 @@ export function TwinNotesPanel({
     return buildTwinChasePayload(selectedNotes, assetId).selection_text;
   }, [selectedNotes, assetId]);
 
-  /** Residual (px): secondary-asset notes resolved from merge multi-select. */
+  /**
+   * Residual (px/qb): notes from all merge buckets (selected only).
+   * Order follows bucket load order then note list order within each.
+   */
   const mergeSelectedNotes = useMemo(() => {
-    const notes = mergeTwins?.notes || [];
-    if (mergeSelectedNoteIds.size < 1) return [] as TwinChaseNote[];
-    return notes
-      .filter((n) => mergeSelectedNoteIds.has(n.note_id))
-      .map((n) => ({
-        note_id: n.note_id,
-        kind: n.kind,
-        text: n.text,
-      }));
-  }, [mergeTwins?.notes, mergeSelectedNoteIds]);
+    const out: TwinChaseNote[] = [];
+    for (const b of mergeBuckets) {
+      const sel = new Set(b.selectedNoteIds);
+      for (const n of b.twins.notes || []) {
+        if (!sel.has(n.note_id)) continue;
+        out.push({
+          note_id: n.note_id,
+          kind: n.kind,
+          text: n.text,
+        });
+      }
+    }
+    return out;
+  }, [mergeBuckets]);
 
   /**
-   * Residual (px): load twins for a second asset_id (must differ from current).
-   * Auto-selects all loaded secondary notes for merge convenience.
+   * Residual (px/qb): load twins for a merge asset_id (must differ from current
+   * and may accumulate — qb does not replace prior buckets).
+   * Auto-selects all loaded notes for merge convenience.
    */
   const loadMergeAsset = useCallback(async () => {
     const id = mergeAssetIdInput.trim();
@@ -673,49 +699,76 @@ export function TwinNotesPanel({
       if (t.view_format !== "html") {
         throw new Error("merge-asset twin notes view_format must be html");
       }
-      setMergeAssetId(id);
-      setMergeTwins(t);
       const ids = (t.notes || [])
         .map((n) => String(n.note_id || "").trim())
         .filter(Boolean);
-      setMergeSelectedNoteIds(new Set(ids));
+      setMergeBuckets((prev) => {
+        const without = prev.filter((b) => b.asset_id !== id);
+        return [
+          ...without,
+          { asset_id: id, twins: t, selectedNoteIds: ids },
+        ];
+      });
+      // Bucket total is machine-readable on data-merge-asset-count (re-render).
       setMergeLoadStatus(
         `Loaded ${t.note_count ?? ids.length} twin(s) from merge asset ${id}`,
       );
+      setMergeAssetIdInput("");
     } catch (e) {
-      setMergeAssetId(null);
-      setMergeTwins(null);
-      setMergeSelectedNoteIds(new Set());
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
   }, [mergeAssetIdInput, assetId]);
 
-  const toggleMergeNoteSelection = useCallback((noteId: string) => {
-    setMergeSelectedNoteIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(noteId)) next.delete(noteId);
-      else next.add(noteId);
-      return next;
-    });
-  }, []);
+  const toggleMergeNoteSelection = useCallback(
+    (noteId: string, forAssetId?: string) => {
+      const aid =
+        (forAssetId || "").trim() ||
+        mergeBuckets[mergeBuckets.length - 1]?.asset_id ||
+        "";
+      if (!aid) return;
+      setMergeBuckets((prev) =>
+        prev.map((b) => {
+          if (b.asset_id !== aid) return b;
+          const has = b.selectedNoteIds.includes(noteId);
+          return {
+            ...b,
+            selectedNoteIds: has
+              ? b.selectedNoteIds.filter((x) => x !== noteId)
+              : [...b.selectedNoteIds, noteId],
+          };
+        }),
+      );
+    },
+    [mergeBuckets],
+  );
 
   const clearMergeNoteSelection = useCallback(() => {
-    setMergeSelectedNoteIds(new Set());
+    setMergeBuckets((prev) =>
+      prev.map((b) => ({ ...b, selectedNoteIds: [] })),
+    );
   }, []);
 
   const selectAllMergeNotes = useCallback(() => {
-    const ids = (mergeTwins?.notes || [])
-      .map((n) => String(n.note_id || "").trim())
-      .filter(Boolean);
-    setMergeSelectedNoteIds(new Set(ids));
-  }, [mergeTwins?.notes]);
+    setMergeBuckets((prev) =>
+      prev.map((b) => ({
+        ...b,
+        selectedNoteIds: (b.twins.notes || [])
+          .map((n) => String(n.note_id || "").trim())
+          .filter(Boolean),
+      })),
+    );
+  }, []);
+
+  const removeMergeBucket = useCallback((id: string) => {
+    setMergeBuckets((prev) => prev.filter((b) => b.asset_id !== id));
+  }, []);
 
   /**
-   * Residual (pn/pp/ps/px): open twins as HTML draft window (floating | full)
+   * Residual (pn/pp/ps/px/qb): open twins as HTML draft window (floating | full)
    * + Write twin_seed handoff. Single-asset uses primary multi-select; cross-
-   * asset (px) merges primary + secondary via mergeTwinChaseNotes.
+   * asset merges primary + all merge buckets via mergeTwinChaseNotes.
    */
   const openTwinDraft = useCallback(
     (
@@ -729,11 +782,12 @@ export function TwinNotesPanel({
       let mergeIds: string[] | null = null;
 
       if (crossAsset) {
-        if (!mergeAssetId) {
+        if (mergeBuckets.length < 1) {
           setError("Load a second asset_id before cross-asset merge draft");
           return;
         }
-        selected = mergeTwinChaseNotes([selectedNotes, mergeSelectedNotes]);
+        const lists: TwinChaseNote[][] = [selectedNotes, mergeSelectedNotes];
+        selected = mergeTwinChaseNotes(lists);
         if (selected.length < 1) {
           setError(
             "Select at least one twin note from primary and/or merge asset",
@@ -742,14 +796,15 @@ export function TwinNotesPanel({
         }
         if (selectedNotes.length < 1 || mergeSelectedNotes.length < 1) {
           setError(
-            "Cross-asset merge requires at least one selected note on each asset",
+            "Cross-asset merge requires at least one selected note on primary and merge assets",
           );
           return;
         }
         const primaryId = (assetId || "").trim() || "asset";
-        draftAssetLabel = `${primaryId}+${mergeAssetId}`;
+        const secondaryIds = mergeBuckets.map((b) => b.asset_id);
+        draftAssetLabel = [primaryId, ...secondaryIds].join("+");
         source = "twin_cross_asset_merge";
-        mergeIds = [primaryId, mergeAssetId];
+        mergeIds = [primaryId, ...secondaryIds];
       } else {
         selected = selectedNotes;
         if (selected.length < 1) return;
@@ -811,7 +866,7 @@ export function TwinNotesPanel({
           : "Twin HTML draft open failed",
       );
     },
-    [selectedNotes, mergeSelectedNotes, mergeAssetId, assetId],
+    [selectedNotes, mergeSelectedNotes, mergeBuckets, assetId],
   );
 
   /**
@@ -1142,18 +1197,22 @@ export function TwinNotesPanel({
         >
           Draft full
         </button>
-        {/* Residual (px): second asset_id → load twins → merge draft. */}
+        {/* Residual (px/qb): N merge assets → load twins → merge draft. */}
         <div
           className="w-full space-y-2 border rounded p-3 my-1"
           data-testid="twin-cross-asset-merge"
           data-view-format="html"
           data-merge-asset-id={mergeAssetId ?? ""}
-          data-merge-note-count={String(mergeTwins?.note_count ?? 0)}
+          data-merge-asset-count={String(mergeBuckets.length)}
+          data-merge-note-count={String(
+            mergeBuckets.reduce((n, b) => n + (b.twins.note_count ?? 0), 0),
+          )}
           data-merge-selected-count={String(mergeSelectedNoteIds.size)}
         >
           <p className="font-mono text-[11px] opacity-90">
-            Cross-asset merge (FUTURE-AGENT V1) — load a second asset_id, select
-            notes on both sides, open combined HTML draft (propose-only).
+            Cross-asset merge (FUTURE-AGENT V1/qb) — load one or more asset_ids,
+            select notes on primary + merge assets, open combined HTML draft
+            (propose-only · N&gt;2 accumulates).
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <label className="font-mono text-[11px]" htmlFor="twin-merge-asset-id">
@@ -1174,9 +1233,9 @@ export function TwinNotesPanel({
               data-testid="twin-merge-asset-load"
               onClick={() => void loadMergeAsset()}
               disabled={busy || !mergeAssetIdInput.trim()}
-              title="Fetch twin notes for second asset_id (must differ from current)"
+              title="Fetch twin notes for merge asset_id (accumulates; must differ from current)"
             >
-              Load merge asset
+              {mergeBuckets.length > 0 ? "Add merge asset" : "Load merge asset"}
             </button>
             <button
               type="button"
@@ -1184,11 +1243,11 @@ export function TwinNotesPanel({
               onClick={() => openTwinDraft("floating", { crossAsset: true })}
               disabled={
                 busy ||
-                !mergeAssetId ||
+                mergeBuckets.length === 0 ||
                 selectedNoteIds.size === 0 ||
                 mergeSelectedNoteIds.size === 0
               }
-              title="Merge selected primary + merge-asset twins → HTML draft window"
+              title="Merge selected primary + all merge-asset twins → HTML draft window"
             >
               Merge draft HTML
             </button>
@@ -1198,7 +1257,7 @@ export function TwinNotesPanel({
               onClick={() => openTwinDraft("full", { crossAsset: true })}
               disabled={
                 busy ||
-                !mergeAssetId ||
+                mergeBuckets.length === 0 ||
                 selectedNoteIds.size === 0 ||
                 mergeSelectedNoteIds.size === 0
               }
@@ -1216,11 +1275,12 @@ export function TwinNotesPanel({
               {mergeLoadStatus}
             </p>
           ) : null}
-          {mergeTwins && (mergeTwins.notes || []).length > 0 ? (
+          {mergeBuckets.length > 0 ? (
             <div
-              className="space-y-1"
+              className="space-y-2"
               data-testid="twin-merge-notes-list"
               data-asset-id={mergeAssetId ?? ""}
+              data-merge-asset-count={String(mergeBuckets.length)}
             >
               <div className="flex flex-wrap gap-2">
                 <button
@@ -1240,30 +1300,59 @@ export function TwinNotesPanel({
                   Clear merge selection
                 </button>
               </div>
-              <ul className="space-y-1 list-none p-0 m-0">
-                {(mergeTwins.notes || []).map((n) => {
-                  const nid = String(n.note_id || "").trim();
-                  if (!nid) return null;
-                  const checked = mergeSelectedNoteIds.has(nid);
-                  return (
-                    <li key={nid} className="font-mono text-[11px]">
-                      <label className="flex items-start gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          data-testid={`twin-merge-select-${nid}`}
-                          data-selected={checked ? "1" : "0"}
-                          checked={checked}
-                          onChange={() => toggleMergeNoteSelection(nid)}
-                          disabled={busy}
-                        />
-                        <span>
-                          <strong>{n.kind}</strong>: {n.text}
-                        </span>
-                      </label>
-                    </li>
-                  );
-                })}
-              </ul>
+              {mergeBuckets.map((bucket) => {
+                const sel = new Set(bucket.selectedNoteIds);
+                return (
+                  <div
+                    key={bucket.asset_id}
+                    className="border rounded p-2 space-y-1"
+                    data-testid={`twin-merge-bucket-${bucket.asset_id}`}
+                    data-asset-id={bucket.asset_id}
+                    data-selected-count={String(bucket.selectedNoteIds.length)}
+                  >
+                    <div className="flex flex-wrap items-center gap-2 font-mono text-[11px]">
+                      <strong>Merge asset:</strong>{" "}
+                      <code>{bucket.asset_id}</code>
+                      <button
+                        type="button"
+                        data-testid={`twin-merge-remove-${bucket.asset_id}`}
+                        onClick={() => removeMergeBucket(bucket.asset_id)}
+                        disabled={busy}
+                        title="Remove this merge asset from the combine set"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <ul className="space-y-1 list-none p-0 m-0">
+                      {(bucket.twins.notes || []).map((n) => {
+                        const nid = String(n.note_id || "").trim();
+                        if (!nid) return null;
+                        const checked = sel.has(nid);
+                        return (
+                          <li key={nid} className="font-mono text-[11px]">
+                            <label className="flex items-start gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                data-testid={`twin-merge-select-${nid}`}
+                                data-selected={checked ? "1" : "0"}
+                                data-merge-asset-id={bucket.asset_id}
+                                checked={checked}
+                                onChange={() =>
+                                  toggleMergeNoteSelection(nid, bucket.asset_id)
+                                }
+                                disabled={busy}
+                              />
+                              <span>
+                                <strong>{n.kind}</strong>: {n.text}
+                              </span>
+                            </label>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                );
+              })}
             </div>
           ) : null}
         </div>

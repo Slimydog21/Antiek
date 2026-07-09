@@ -1,0 +1,14 @@
+# inventory-qb · FUTURE-AGENT V1 N>2 multi-asset twin merge
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: qb
+date: 2026-07-10
+
+## Closed
+- mergeBuckets accumulate N merge assets (add without replace)
+- Per-bucket multi-select + remove bucket
+- mergeTwinChaseNotes over primary + all buckets
+- merge_asset_ids = A|B|C… on draft HTML + Write seed label A+B+C
+- vitest TwinNotesPanel 29 passed
+
+## Files
+- apps/reading/src/components/engagement/TwinNotesPanel.tsx (+ .test.tsx)

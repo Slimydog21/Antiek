@@ -637,3 +637,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - primaryFeedSourceFromBySource (max by_source count)
   - Settings primary-feed chrome + ranked feed sources + metrics attrs
   - vitest 28 passed
+
+- Closed (qb, 2026-07-10) **twin N>2 multi-asset merge (FUTURE-AGENT V1 polish):**
+  - mergeBuckets accumulate asset_ids; per-bucket select/remove
+  - merge draft label A+B+C · data-merge-assets=A|B|C
+  - TwinNotesPanel vitest 29 passed
