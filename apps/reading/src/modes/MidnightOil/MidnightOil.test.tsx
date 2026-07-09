@@ -761,4 +761,36 @@ describe("MidnightOil mode", () => {
       (screen.getByTestId("moil-duration-minutes") as HTMLInputElement).value,
     ).toBe("3");
   });
+
+  it("soft-syncs duration when research tier changes at recommended (nh)", async () => {
+    render(<MidnightOil />);
+    await waitFor(() => {
+      expect(screen.getByTestId("moil-duration-minutes")).toBeTruthy();
+      expect(screen.getByTestId("research-launch-tier-wrestle")).toBeTruthy();
+    });
+    // Start at recommended deep (10m).
+    fireEvent.click(screen.getByTestId("moil-apply-recommended-duration"));
+    expect(
+      (screen.getByTestId("moil-duration-minutes") as HTMLInputElement).value,
+    ).toBe("10");
+    // Tier → wrestle while duration matches deep recommended → soft-sync to 30.
+    fireEvent.click(screen.getByTestId("research-launch-tier-wrestle"));
+    await waitFor(() => {
+      expect(
+        (screen.getByTestId("moil-duration-minutes") as HTMLInputElement).value,
+      ).toBe("30");
+    });
+    // Custom override: set 45, then tier change should NOT overwrite.
+    fireEvent.change(screen.getByTestId("moil-duration-minutes"), {
+      target: { value: "45" },
+    });
+    expect(
+      (screen.getByTestId("moil-duration-minutes") as HTMLInputElement).value,
+    ).toBe("45");
+    // Stub only has wrestle button; re-click wrestle (same tier) — still 45.
+    fireEvent.click(screen.getByTestId("research-launch-tier-wrestle"));
+    expect(
+      (screen.getByTestId("moil-duration-minutes") as HTMLInputElement).value,
+    ).toBe("45");
+  });
 });

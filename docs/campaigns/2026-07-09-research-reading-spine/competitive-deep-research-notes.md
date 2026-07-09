@@ -346,3 +346,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - mapResearchTierToRecommendedDurationMinutes (fast 3 / deep 10 / wrestle 30)
   - moil-duration-recommend chrome + Use recommended + tier chips
   - parity ResearchProgressPanel mw bands; offline-honest estimate
+
+- Closed (nh, 2026-07-10) **MO soft-sync duration on tier change:**
+  - onResearchTierChange updates duration only when still at previous recommended
+  - preserves operator custom duration overrides

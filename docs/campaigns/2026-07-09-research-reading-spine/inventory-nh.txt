@@ -1,0 +1,8 @@
+# inventory-nh · MO soft-sync duration when research_tier changes
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: nh
+files:
+  apps/reading/src/modes/MidnightOil/index.tsx
+  apps/reading/src/modes/MidnightOil/MidnightOil.test.tsx
+proof: vitest MidnightOil 13 passed
+invariants: preserve operator override · soft-sync only when at previous recommended

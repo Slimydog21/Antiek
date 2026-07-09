@@ -28,6 +28,8 @@
  * Residual (ml): dual-gate L1–L4 checklist deep-link (parity mj; prep only).
  * Residual (ng): competitive recommended duration by research_tier
  * (parity progress mw bands) — apply-recommended chips for time-of-work.
+ * Residual (nh): when research_tier changes, soft-sync duration if still at
+ * previous recommended (preserve operator override otherwise).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -195,9 +197,21 @@ export default function MidnightOil() {
     },
     [],
   );
-  const onResearchTierChange = useCallback((t: ResearchLaunchTier) => {
-    setResearchTier(t);
-  }, []);
+  /**
+   * Residual (nh): soft-sync duration when tier changes and operator has not
+   * customized duration away from the previous recommended midpoint.
+   */
+  const onResearchTierChange = useCallback(
+    (t: ResearchLaunchTier) => {
+      setResearchTier((prev) => {
+        const prevRec = mapResearchTierToRecommendedDurationMinutes(prev);
+        const nextRec = mapResearchTierToRecommendedDurationMinutes(t);
+        setDurationMinutes((d) => (d === prevRec ? nextRec : d));
+        return t;
+      });
+    },
+    [],
+  );
 
   // Residual (cz): prefill model from decision-tree once on mount.
   // Residual (gt): prefill research tier from Settings depth-tier.
