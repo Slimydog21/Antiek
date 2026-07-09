@@ -42,3 +42,6 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 ## residual (ao) CollectiveResearchPanel document merge UI — 2026-07-09
 - draft_combined + into_parent actions on multi-select panel
 - host passes parentAssetId
+## residual (ap) competitive deep-research notes→spec — 2026-07-09
+- docs/htmlspec/competitive-deep-research/VERDICT.md + index.html
+- backlog aq–av for hydrate/telemetry/evidence/tiers/dogfood
