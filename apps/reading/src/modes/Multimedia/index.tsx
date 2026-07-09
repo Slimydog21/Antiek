@@ -1009,6 +1009,9 @@ export default function Multimedia() {
                   {item}
                 </button>
               ))}
+              <p className="col-span-full text-[11px] leading-snug text-shadow-1 dark:text-moonlight">
+                Mode changes requested media type and preview only; it does not call providers or spend budget.
+              </p>
             </Fieldset>
 
             <div>
