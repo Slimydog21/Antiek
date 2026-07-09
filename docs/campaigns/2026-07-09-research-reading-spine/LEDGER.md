@@ -12,20 +12,21 @@
 | Cycle | Package | Status |
 |---|---|---|
 | 1 | Engagement spine + Midnight oil + model residual + NotDiamond | done |
-| 2 | Marketplace host-into-account (B) | done |
-| 3 | Antiek-bench core (C) | done |
-| 4 | **Settings-facing Antiek-bench leaderboard** | **done** |
+| 2 | Marketplace host-into-account | done |
+| 3 | Antiek-bench core | done |
+| 4 | Settings-facing Antiek-bench leaderboard | done |
+| 5 | **Highlight→floating deep-research session** | **done** |
 
-## Cycle 4 details
+## Cycle 5 details
 
 | Item | Status |
 |---|---|
-| `build_leaderboard(week_id)` from offline runs | done |
-| Multi-task-class breakdown | done |
-| `settings_leaderboard_payload` JSON for Settings | done |
-| `GET /settings/antiek-bench/leaderboard` (injectable store) | done |
-| HTML leaderboard view (not PDF) | done |
+| `open_from_highlight` reserves spine spawn | done |
+| view mode floating ⇄ full | done |
+| complete + merge parent/draft via spine | done |
+| multi-session collective merge | done |
+| HTML session/merge projection | done |
 
 ## Non-claims
 
-No live multi-provider bench; no auto traffic switch; no full Settings React e2e; operator merges only.
+No browser multi-window e2e; no live multi-provider research; operator merges only.

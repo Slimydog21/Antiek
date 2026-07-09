@@ -1,0 +1,16 @@
+# Residual inventory — floating deep-research session cycle · 2026-07-09
+# origin/main @ b3875724 | PR #465 campaign/research-reading-spine-2026-07-09-main @ d0fa7d70
+# Living-roadmap SPR-01..14: ALREADY SHIPPED — NOT rebuild TODOs.
+
+CAPABILITY | STATUS | EVIDENCE
+(a) research↔reading engagement spine | branch_only | substrate/engagement_spine/**
+(b) HTML-first human view | on_main + branch | services/html_projection/**
+(c) model driver/budget/projection/add-model | on_main + branch residual | #440 + model_registration
+(d) Midnight oil | branch_only | substrate/midnight_oil/**
+(e) book marketplace + host-into-account | branch_only | substrate/marketplace_host/**
+(f) Antiek-bench core | branch_only | substrate/antiek_bench/**
+(g) NotDiamond usefulness | branch_only | docs/htmlspec/notdiamond-verdict/VERDICT.md
+(h) settings Antiek-bench leaderboard | branch_only | leaderboard.py + GET /settings/antiek-bench/leaderboard @ d0fa7d70
+(i) highlight→floating deep-research session | missing → THIS CYCLE | substrate/floating_session/**
+
+CHOSEN: (i) floating deep-research session over engagement_spine
