@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(fi) · PR #465
+Context search metrics (fi); BlockDetail window DR (fh); suite proposed tasks (fg); twin metrics (ff).
+Operator merge still gated. Next residual (fj).

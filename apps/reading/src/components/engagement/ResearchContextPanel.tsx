@@ -447,6 +447,18 @@ export function ResearchContextPanel({
           data-testid="context-search-result"
           data-view-format="html"
         >
+          {/* Residual (fi): intelligent search metrics over twin/ref substrate. */}
+          <div
+            className="meta font-mono text-[11px]"
+            data-testid="context-search-metrics"
+            data-hit-count={String(searchHits.hit_count ?? 0)}
+            data-query={searchHits.query ?? ""}
+            role="status"
+          >
+            Intelligent search · query=
+            <code>{searchHits.query}</code> · hits=
+            {searchHits.hit_count ?? 0}
+          </div>
           <p className="counts">
             search “{searchHits.query}” · hits={searchHits.hit_count}
           </p>

@@ -297,6 +297,11 @@ describe("ResearchContextPanel", () => {
         /hits=1/,
       );
     });
+    // Residual (fi): intelligent search metrics.
+    const metrics = screen.getByTestId("context-search-metrics");
+    expect(metrics.getAttribute("data-hit-count")).toBe("1");
+    expect(metrics.getAttribute("data-query")).toBe("attention");
+    expect(metrics.textContent).toMatch(/Intelligent search/);
     expect(searchEngagementContext).toHaveBeenCalledWith({
       query: "attention",
       asset_id: "paper",

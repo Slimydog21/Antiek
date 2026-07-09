@@ -28,6 +28,12 @@ for future agents — not a claim that the north star is finished.
 | fc | Reading ResearchThis collective multi-select |
 | fd | DecisionTreeDriverBadge refresh |
 | fe | FloatMenu Deep-research full |
+| ff | twin metrics strip |
+| fg | suite proposed tasks UI |
+| fh | BlockDetail window DR |
+| fi | context search metrics |
+| fd | DecisionTreeDriverBadge refresh |
+| fe | FloatMenu Deep-research full |
 
 ## Operator / env gated (do not fake green)
 
@@ -62,5 +68,5 @@ Prefer thin chokepoint product over parallel UIs:
 
 ## Next residual letter
 
-**(ff)** — re-derive; tip advanced past fe.
+**(fj)** — re-derive; tip advanced past fi.
 Operator merge still gated.
