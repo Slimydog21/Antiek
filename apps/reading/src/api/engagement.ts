@@ -384,6 +384,9 @@ export type TwinNotesResponse = {
     source_spawn_id?: string | null;
     investigation_id?: string | null;
   }>;
+  /** Residual (la/lb): reserved spawn research_tier when seed/list scoped. */
+  research_tier?: "fast" | "deep" | "wrestle" | string | null;
+  source_spawn_id?: string | null;
   view_format: "html" | string;
   product_panel: string;
   source: string;

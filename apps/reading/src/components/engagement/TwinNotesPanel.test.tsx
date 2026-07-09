@@ -70,6 +70,61 @@ describe("TwinNotesPanel", () => {
     );
   });
 
+  it("falls back to API research_tier when prop absent (lb)", async () => {
+    fetchTwinNotes.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 0,
+      insight_count: 0,
+      question_count: 0,
+      notes: [],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+      html: "<p>empty</p>",
+    });
+    seedTwinNotes.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 2,
+      insight_count: 1,
+      question_count: 1,
+      notes: [
+        {
+          note_id: "twin_s",
+          asset_id: "paper",
+          kind: "insight",
+          text: "Seeded",
+        },
+      ],
+      research_tier: "deep",
+      source_spawn_id: "spn_seed",
+      seeded: true,
+      live_seed: false,
+      seed_source: "engagement_spine.twin.seed_twins_for_asset",
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+      html: "<p>twins · tier=deep</p>",
+    });
+    render(
+      <TwinNotesPanel
+        assetId="paper"
+        spawnId="spn_seed"
+        autoLoad
+        autoSeedIfEmpty
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-notes-research-tier").textContent).toMatch(
+        /deep/i,
+      );
+    });
+    expect(
+      screen.getByTestId("twin-notes-panel").getAttribute("data-research-tier"),
+    ).toBe("deep");
+  });
+
   it("auto-loads twins on mount when autoLoad (cq)", async () => {
     fetchTwinNotes.mockResolvedValue({
       asset_id: "paper",

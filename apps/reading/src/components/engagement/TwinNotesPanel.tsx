@@ -15,6 +15,7 @@
  * audit (parity twin-notes-metrics fk / context-search-metrics fi).
  * Residual (ib): Settings deep-link for twin seed live readiness (hs).
  * Residual (kr): optional researchTier chrome for depth posture on note-taker.
+ * Residual (lb): fall back to seed/list API research_tier when prop absent (la).
  * HTML-first; never PDF.
  */
 
@@ -88,8 +89,10 @@ export function TwinNotesPanel({
   } | null>(null);
   const [promoteStatus, setPromoteStatus] = useState<string | null>(null);
 
-  // Residual (kr): normalize optional parent-supplied depth for chrome.
-  const normalizedResearchTier = (researchTier || "").trim().toLowerCase() || "";
+  // Residual (kr/lb): prop wins; seed/list API research_tier is fallback.
+  const apiResearchTier = (twins?.research_tier || "").trim().toLowerCase() || "";
+  const normalizedResearchTier =
+    (researchTier || "").trim().toLowerCase() || apiResearchTier;
 
   const load = useCallback(async () => {
     setBusy(true);
