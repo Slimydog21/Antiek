@@ -1,0 +1,10 @@
+# inventory-in · marketplace host land metrics · residual (in)
+
+## Delta
+- marketplace-host-metrics: document_id, already_hosted, license, view_format, book_id
+
+## Verified
+vitest MarketplaceHost 5_passed
+
+## Next
+(io) re-derive

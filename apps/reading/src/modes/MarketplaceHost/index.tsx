@@ -19,6 +19,7 @@
  * Residual (id): Settings deep-link for driver + twin seed readiness.
  * Residual (il): catalog HTML-first honesty metrics (no payment rails claim).
  * Residual (im): account library HTML-first metrics strip.
+ * Residual (in): host-result metrics after host/purchase land.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -505,6 +506,21 @@ export default function MarketplaceHost({
       {hosted ? (
         <section className="mt-8 space-y-2" data-testid="host-result">
           <h2 className="text-lg font-medium">Hosted {hosted.document_id}</h2>
+          {/* Residual (in): machine-readable host land metrics. */}
+          <div
+            data-testid="marketplace-host-metrics"
+            data-document-id={hosted.document_id}
+            data-already-hosted={String(Boolean(hosted.already_hosted))}
+            data-license-class={hosted.license_class ?? ""}
+            data-view-format={hosted.view_format ?? "html"}
+            data-book-id={hosted.book_id ?? ""}
+            role="status"
+            className="font-mono text-[11px] opacity-80"
+          >
+            Host land · document={hosted.document_id} · already=
+            {String(Boolean(hosted.already_hosted))} · view=
+            {hosted.view_format}
+          </div>
           <p>
             {hosted.already_hosted ? "Already hosted" : "Newly hosted"} ·{" "}
             {hosted.license_class} · view_format={hosted.view_format}
