@@ -14,7 +14,9 @@ import {
   type SourceMergeCommitResponse,
   type SourceMergePreviewResponse,
   type SourceMergeReviewPacket,
+  type SourceMergeRestoreResponse,
   previewSourceMerge,
+  restoreSourceMerge,
 } from "../../lib/api";
 import { useChaseDraftHandoffs } from "../ResearchWorkstation/chaseHandoffs";
 import { deriveNotes } from "../ResearchWorkstation/NotesPanel";
@@ -97,6 +99,10 @@ export default function ReadingCompanion({
   const [sourceCommitBusy, setSourceCommitBusy] = useState(false);
   const [sourceCommitReceipt, setSourceCommitReceipt] = useState<SourceMergeCommitResponse | null>(null);
   const [sourceCommitError, setSourceCommitError] = useState<string | null>(null);
+  const [sourceRestoreAck, setSourceRestoreAck] = useState(false);
+  const [sourceRestoreBusy, setSourceRestoreBusy] = useState(false);
+  const [sourceRestoreReceipt, setSourceRestoreReceipt] = useState<SourceMergeRestoreResponse | null>(null);
+  const [sourceRestoreError, setSourceRestoreError] = useState<string | null>(null);
   const [sourceApplyBusy, setSourceApplyBusy] = useState(false);
   const [sourceApplyReceipt, setSourceApplyReceipt] = useState<SourceMergeApplyResponse | null>(null);
   const [sourceApplyError, setSourceApplyError] = useState<string | null>(null);
@@ -193,6 +199,9 @@ export default function ReadingCompanion({
       setSourceCommitAck(false);
       setSourceCommitReceipt(null);
       setSourceCommitError(null);
+      setSourceRestoreAck(false);
+      setSourceRestoreReceipt(null);
+      setSourceRestoreError(null);
     } catch (error) {
       setSourcePreviewError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -217,10 +226,36 @@ export default function ReadingCompanion({
         acknowledge_body_rewrite: true,
       });
       setSourceCommitReceipt(result);
+      setSourceRestoreAck(false);
+      setSourceRestoreReceipt(null);
+      setSourceRestoreError(null);
     } catch (error) {
       setSourceCommitError(error instanceof Error ? error.message : String(error));
     } finally {
       setSourceCommitBusy(false);
+    }
+  }
+
+  async function restoreSourceMergeReceipt() {
+    if (!sourceCommitReceipt || !sourceRestoreAck) return;
+    setSourceRestoreBusy(true);
+    setSourceRestoreError(null);
+    try {
+      const result = await restoreSourceMerge({
+        document_id: sourceCommitReceipt.document_id,
+        parent_reading_thread_id: readingThreadId,
+        source_revision_id: sourceCommitReceipt.source_revision_id,
+        twin_revision_id: sourceCommitReceipt.twin_revision_id,
+        expected_after_source_hash: sourceCommitReceipt.after_source_hash,
+        expected_before_source_hash: sourceCommitReceipt.before_source_hash,
+        acknowledge_restore: true,
+        operator_reviewer: "reader-companion",
+      });
+      setSourceRestoreReceipt(result);
+    } catch (error) {
+      setSourceRestoreError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSourceRestoreBusy(false);
     }
   }
 
@@ -258,6 +293,9 @@ export default function ReadingCompanion({
       setSourceCommitAck(false);
       setSourceCommitReceipt(null);
       setSourceCommitError(null);
+      setSourceRestoreAck(false);
+      setSourceRestoreReceipt(null);
+      setSourceRestoreError(null);
       setSourceApplyReceipt(null);
       setSourceApplyError(null);
     } catch (error) {
@@ -460,10 +498,47 @@ export default function ReadingCompanion({
                     {sourceCommitReceipt.event_id}
                   </p>
                   <p>writes performed {String(sourceCommitReceipt.writes_performed)}</p>
+                  <label className="mt-1 flex items-start gap-1.5 border-t border-rule pt-1 dark:border-charcoal-1">
+                    <input
+                      type="checkbox"
+                      checked={sourceRestoreAck}
+                      onChange={(event) => setSourceRestoreAck(event.target.checked)}
+                      className="mt-0.5"
+                    />
+                    <span>Restore previous source body</span>
+                  </label>
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <p>Requires current hash match</p>
+                    <button
+                      type="button"
+                      onClick={() => void restoreSourceMergeReceipt()}
+                      disabled={sourceRestoreBusy || !sourceRestoreAck}
+                      className="shrink-0 text-ink underline disabled:cursor-not-allowed disabled:text-ink-mute dark:text-bright dark:disabled:text-moonlight"
+                      title="Restore the previous source body from the commit snapshot"
+                    >
+                      {sourceRestoreBusy ? "restoring" : "restore"}
+                    </button>
+                  </div>
                 </div>
               ) : null}
               {sourceCommitError ? (
                 <p className="mt-1 text-emperor">{sourceCommitError}</p>
+              ) : null}
+              {sourceRestoreReceipt ? (
+                <div
+                  className="mt-1 border-t border-rule pt-1 dark:border-charcoal-1"
+                  aria-label="Source merge restore"
+                  role="region"
+                >
+                  <p>Restore {sourceRestoreReceipt.status}</p>
+                  <p className="truncate" title={sourceRestoreReceipt.event_id}>
+                    {sourceRestoreReceipt.event_id}
+                  </p>
+                  <p>writes performed {String(sourceRestoreReceipt.writes_performed)}</p>
+                </div>
+              ) : null}
+              {sourceRestoreError ? (
+                <p className="mt-1 text-emperor">{sourceRestoreError}</p>
               ) : null}
               {sourceApplyReceipt ? (
                 <div

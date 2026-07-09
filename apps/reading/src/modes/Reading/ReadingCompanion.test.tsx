@@ -34,6 +34,7 @@ const {
   applySourceMergeMock,
   previewSourceMergeMock,
   commitSourceMergeMock,
+  restoreSourceMergeMock,
 } = vi.hoisted(() => ({
   useInvestigationMock: vi.fn(),
   listState: { investigations: [] as InvestigationSummary[], loading: false, error: null, refetch: vi.fn() },
@@ -41,6 +42,7 @@ const {
   applySourceMergeMock: vi.fn(),
   previewSourceMergeMock: vi.fn(),
   commitSourceMergeMock: vi.fn(),
+  restoreSourceMergeMock: vi.fn(),
 }));
 
 vi.mock("../../hooks/useInvestigation", () => ({
@@ -58,6 +60,7 @@ vi.mock("../../lib/api", async (orig) => {
     commitSourceMerge: commitSourceMergeMock,
     composeResearchArtifacts: composeResearchArtifactsMock,
     previewSourceMerge: previewSourceMergeMock,
+    restoreSourceMerge: restoreSourceMergeMock,
   };
 });
 
@@ -95,6 +98,7 @@ beforeEach(() => {
   applySourceMergeMock.mockReset();
   previewSourceMergeMock.mockReset();
   commitSourceMergeMock.mockReset();
+  restoreSourceMergeMock.mockReset();
 });
 afterEach(() => {
   cleanup();
@@ -645,6 +649,112 @@ describe("ReadingCompanion (Read SPR-06 M2)", () => {
     expect(screen.getByText("Commit committed")).toBeTruthy();
     expect(screen.getByText("evt-commit")).toBeTruthy();
     expect(screen.getByText("writes performed true")).toBeTruthy();
+  });
+
+  it("restores source merge only after restore acknowledgement", async () => {
+    for (const childInvestigationId of ["inv-restore-ready-a", "inv-restore-ready-b"]) {
+      recordChaseDraftHandoff(
+        buildChaseDraftHandoff({
+          childInvestigationId,
+          parentInvestigationId: "read-doc-1",
+          sourcePassage: `Completed chase ${childInvestigationId}.`,
+        }),
+      );
+    }
+    listState.investigations = [
+      summary({ investigation_id: "inv-restore-ready-a", status: "completed" }),
+      summary({ investigation_id: "inv-restore-ready-b", status: "completed" }),
+    ];
+    composeResearchArtifactsMock.mockResolvedValue({
+      path: "/tmp/restore-ready-compose.html",
+      draft_merge_path: "/tmp/restore-ready-draft.html",
+      members: [
+        {
+          investigation_id: "inv-restore-ready-b",
+          content_hash: "hash-b",
+          artifact_path: "/tmp/inv-restore-ready-b.html",
+          twin_notes_path: "/tmp/inv-restore-ready-b.notes.html",
+        },
+        {
+          investigation_id: "inv-restore-ready-a",
+          content_hash: "hash-a",
+          artifact_path: "/tmp/inv-restore-ready-a.html",
+          twin_notes_path: "/tmp/inv-restore-ready-a.notes.html",
+        },
+      ],
+      hash_conflicts: [],
+    });
+    previewSourceMergeMock.mockResolvedValue({
+      status: "previewed",
+      document_id: "doc-1",
+      source_revision_id: "srcmerge-doc-1-restore",
+      twin_revision_id: "twinmerge-doc-1-restore",
+      member_investigation_ids: ["inv-restore-ready-b", "inv-restore-ready-a"],
+      before_source_hash: "before-hash",
+      after_source_hash: "after-hash",
+      before_twin_hash: "before-twin",
+      after_twin_hash: "after-twin",
+      source_bytes_before: 22,
+      source_bytes_after: 88,
+      twin_bytes_after: 44,
+      writes_performed: false,
+    });
+    commitSourceMergeMock.mockResolvedValue({
+      status: "committed",
+      document_id: "doc-1",
+      source_revision_id: "srcmerge-doc-1-restore",
+      twin_revision_id: "twinmerge-doc-1-restore",
+      member_investigation_ids: ["inv-restore-ready-b", "inv-restore-ready-a"],
+      before_source_hash: "before-hash",
+      after_source_hash: "after-hash",
+      before_twin_hash: "before-twin",
+      after_twin_hash: "after-twin",
+      source_bytes_before: 22,
+      source_bytes_after: 88,
+      twin_bytes_after: 44,
+      writes_performed: true,
+      event_id: "evt-commit",
+    });
+    restoreSourceMergeMock.mockResolvedValue({
+      status: "restored",
+      document_id: "doc-1",
+      source_revision_id: "srcmerge-doc-1-restore",
+      twin_revision_id: "twinmerge-doc-1-restore",
+      event_id: "evt-restore",
+      before_source_hash: "before-hash",
+      restored_source_hash: "before-hash",
+      writes_performed: true,
+    });
+    useInvestigationMock.mockReturnValue(state({ status: "not_found", events: [] }));
+
+    renderCompanion();
+    fireEvent.click(screen.getByRole("button", { name: /draft ready/i }));
+    await screen.findByRole("region", { name: /Draft merge receipt/i });
+    fireEvent.click(screen.getByLabelText(/Reviewed draft/i));
+    fireEvent.click(screen.getByRole("button", { name: /^preview$/i }));
+    await screen.findByRole("region", { name: /Source merge preview/i });
+    fireEvent.click(screen.getByLabelText(/Rewrite source from preview/i));
+    fireEvent.click(screen.getByRole("button", { name: /rewrite source/i }));
+    await screen.findByRole("region", { name: /Source merge commit/i });
+
+    expect((screen.getByRole("button", { name: /^restore$/i }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByLabelText(/Restore previous source body/i));
+    fireEvent.click(screen.getByRole("button", { name: /^restore$/i }));
+
+    await waitFor(() => expect(restoreSourceMergeMock).toHaveBeenCalledTimes(1));
+    expect(restoreSourceMergeMock).toHaveBeenCalledWith({
+      document_id: "doc-1",
+      parent_reading_thread_id: "read-doc-1",
+      source_revision_id: "srcmerge-doc-1-restore",
+      twin_revision_id: "twinmerge-doc-1-restore",
+      expected_after_source_hash: "after-hash",
+      expected_before_source_hash: "before-hash",
+      acknowledge_restore: true,
+      operator_reviewer: "reader-companion",
+    });
+    expect(await screen.findByRole("region", { name: /Source merge restore/i })).toBeTruthy();
+    expect(screen.getByText("Restore restored")).toBeTruthy();
+    expect(screen.getByText("evt-restore")).toBeTruthy();
   });
 
   it("requires conflict acknowledgement before applying a conflicted draft", async () => {
