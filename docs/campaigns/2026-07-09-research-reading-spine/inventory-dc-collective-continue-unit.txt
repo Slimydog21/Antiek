@@ -1,0 +1,16 @@
+# residual (dc) Continue collective prompt as cohesive floating DR unit
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(db) prior | branch_only | campaign inventories
+(dc) collective continue as unit | branch_only | CollectiveResearchPanel continueAsCohesiveUnit → launchFloatingDeepResearch; 6 vitest
+
+## What shipped
+- After merge-as-prompt, "Continue as cohesive unit (window)" opens floating deep research seeded with collective prompt_block.
+- Uses parentAssetId (preferred) or first collective asset_id.
+- Inherits cy decision-tree model chokepoint via launchFloatingDeepResearch.
+
+## Why (north star)
+Operator multi-selects floating deep research subagents, merges them, then re-prompts the cohesive unit without leaving the workstation — collective → next research hop.
+
+NEXT: (dd) re-derive; operator merge PR #465

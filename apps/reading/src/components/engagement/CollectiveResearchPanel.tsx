@@ -5,6 +5,8 @@
  * 1. Merge them via /engagement/collective into a cohesive prompt block
  * 2. Merge them into a draft-combined or parent document via /engagement/merge
  * 3. Residual (cf): Create written analysis draft (collective + draft document)
+ * 4. Residual (dc): Continue the collective prompt as a new floating deep
+ *    research session (cohesive unit re-entry).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -16,6 +18,7 @@ import {
   type MergeMode,
   type MergeProductResponse,
 } from "../../api/engagement";
+import { launchFloatingDeepResearch } from "../../modes/Reading/launchFloatingDeepResearch";
 import { openWindow } from "../windows/openWindow";
 
 export type CollectiveResearchPanelProps = {
@@ -45,6 +48,7 @@ export function CollectiveResearchPanel({
   const [docMerge, setDocMerge] = useState<MergeProductResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [continueWindowId, setContinueWindowId] = useState<string | null>(null);
 
   const toggle = (id: string) => {
     setSelected((prev) =>
@@ -153,6 +157,39 @@ export function CollectiveResearchPanel({
     }
   }, [selected, parentAssetId]);
 
+  /**
+   * Residual (dc): re-enter research with the collective prompt as one unit.
+   * Requires parent asset + a merged unit (prompt_block). Uses launchFloatingDeepResearch
+   * so decision-tree model_id chokepoint (cy) applies.
+   */
+  const continueAsCohesiveUnit = useCallback(async () => {
+    if (!unit?.prompt_block?.trim()) {
+      setError("Merge spawns as prompt first");
+      return;
+    }
+    const asset = (parentAssetId || unit.asset_ids?.[0] || "").trim();
+    if (!asset) {
+      setError("parentAssetId (or collective asset_ids) required to continue");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const selection = unit.prompt_block.trim().slice(0, 8000);
+      const out = await launchFloatingDeepResearch({
+        asset_id: asset,
+        selection_text: selection,
+        goal_hint: `Continue collective deep research unit ${unit.collective_id} as one cohesive prompt`,
+        view_mode: "floating",
+      });
+      setContinueWindowId(out.window_id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [unit, parentAssetId]);
+
   return (
     <section
       className="collective-research-panel"
@@ -246,7 +283,7 @@ export function CollectiveResearchPanel({
       ) : null}
 
       {unit ? (
-        <div className="collective-result">
+        <div className="collective-result" data-testid="collective-unit-result">
           <p>
             collective <code>{unit.collective_id}</code> · spawns=
             {unit.spawn_count} · twins={unit.twin_count} · refs={unit.ref_count}
@@ -254,6 +291,27 @@ export function CollectiveResearchPanel({
           <pre className="prompt-block" data-testid="collective-prompt-block">
             {unit.prompt_block}
           </pre>
+          {/* Residual (dc): engage merged unit as next floating deep research. */}
+          <div className="flex flex-wrap items-center gap-2" style={{ marginTop: "0.5rem" }}>
+            <button
+              type="button"
+              data-testid="collective-continue-as-unit"
+              onClick={() => void continueAsCohesiveUnit()}
+              disabled={busy || !unit.prompt_block?.trim()}
+              title="Open a new floating deep research session seeded with this collective prompt"
+            >
+              {busy ? "Opening…" : "Continue as cohesive unit (window)"}
+            </button>
+            {continueWindowId ? (
+              <span
+                className="meta"
+                data-testid="collective-continue-window-id"
+                role="status"
+              >
+                Window {continueWindowId}
+              </span>
+            ) : null}
+          </div>
         </div>
       ) : null}
 

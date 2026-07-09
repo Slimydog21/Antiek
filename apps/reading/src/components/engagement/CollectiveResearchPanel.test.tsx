@@ -6,6 +6,7 @@ const fetchCollectiveResearch = vi.fn();
 const mergeSpawnOutputs = vi.fn();
 const seedTwinNotes = vi.fn();
 const openWindow = vi.fn(() => "win:analysis:draft_1");
+const launchFloatingDeepResearch = vi.fn();
 
 vi.mock("../../api/engagement", () => ({
   fetchCollectiveResearch: (...args: unknown[]) => fetchCollectiveResearch(...args),
@@ -15,6 +16,11 @@ vi.mock("../../api/engagement", () => ({
 
 vi.mock("../windows/openWindow", () => ({
   openWindow: (...args: unknown[]) => openWindow(...args),
+}));
+
+vi.mock("../../modes/Reading/launchFloatingDeepResearch", () => ({
+  launchFloatingDeepResearch: (...args: unknown[]) =>
+    launchFloatingDeepResearch(...args),
 }));
 
 describe("CollectiveResearchPanel", () => {
@@ -32,6 +38,7 @@ describe("CollectiveResearchPanel", () => {
       question_count: 1,
     });
     openWindow.mockClear();
+    launchFloatingDeepResearch.mockReset();
   });
 
   it("auto-selects preferredSpawnId when available (cn)", () => {
@@ -77,6 +84,67 @@ describe("CollectiveResearchPanel", () => {
     });
     expect(fetchCollectiveResearch).toHaveBeenCalledWith({
       spawn_ids: ["spn_1", "spn_2"],
+    });
+  });
+
+  it("continues collective prompt as floating deep research unit (dc)", async () => {
+    fetchCollectiveResearch.mockResolvedValue({
+      collective_id: "col_dc",
+      spawn_ids: ["spn_1", "spn_2"],
+      asset_ids: ["asset_parent"],
+      investigation_ids: [],
+      twin_units: [],
+      source_references: [],
+      view_format: "html",
+      spawn_count: 2,
+      twin_count: 1,
+      ref_count: 0,
+      prompt_block: "# Collective unit col_dc\nInsights and questions…",
+    });
+    launchFloatingDeepResearch.mockResolvedValue({
+      session_id: "fsess_col",
+      spawn_id: "spn_new",
+      investigation_id: "inv_col",
+      parent_asset_id: "book-1",
+      window_id: "wdr_col_unit",
+      view_format: "html",
+      view_mode: "floating",
+      status: "reserved",
+      model_id: null,
+    });
+
+    render(
+      <CollectiveResearchPanel
+        availableSpawnIds={["spn_1", "spn_2"]}
+        parentAssetId="book-1"
+      />,
+    );
+    const boxes = screen.getAllByRole("checkbox");
+    fireEvent.click(boxes[0]);
+    fireEvent.click(boxes[1]);
+    fireEvent.click(screen.getByTestId("collective-merge-prompt"));
+    await waitFor(() => {
+      expect(screen.getByTestId("collective-continue-as-unit")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("collective-continue-as-unit"));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "book-1",
+          view_mode: "floating",
+        }),
+      );
+    });
+    const call = launchFloatingDeepResearch.mock.calls.at(-1)?.[0] as {
+      selection_text: string;
+      goal_hint: string;
+    };
+    expect(call.selection_text).toMatch(/col_dc/);
+    expect(call.goal_hint).toMatch(/col_dc/);
+    await waitFor(() => {
+      expect(screen.getByTestId("collective-continue-window-id").textContent).toMatch(
+        /wdr_col_unit/,
+      );
     });
   });
 
