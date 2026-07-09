@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import MidnightOil from "./index";
-import { preflightMidnightOil } from "../../api/midnightOil";
+import { dryRunMidnightOil, preflightMidnightOil } from "../../api/midnightOil";
 
 vi.mock("../../api/midnightOil", () => ({
   preflightMidnightOil: vi.fn(async () => ({
@@ -144,6 +144,28 @@ vi.mock("../../api/midnightOil", () => ({
     },
     notes: ["preflight only: no agents launched, no budget reserved, no retrieval performed"],
   })),
+  dryRunMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-endpoint-dry-run-receipt",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    run_id: "midnight-oil-test",
+    status: "planned_not_dispatched",
+    planned_role_count: 2,
+    planned_budget_usd: 7.2,
+    unallocated_budget_usd: 4.8,
+    planned_role_route_receipt_ids: [
+      "midnight-oil-test-planner-route-receipt",
+      "midnight-oil-test-gatherer-route-receipt",
+    ],
+    dispatch_performed: false,
+    budget_reserved: false,
+    provider_calls_made: false,
+    retrieval_performed: false,
+    graph_mutated: false,
+    final_artifact_created: false,
+    applied_notes: ["endpoint dry run only: no autonomous agents dispatched"],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -202,5 +224,24 @@ describe("MidnightOil", () => {
     expect(screen.getByText("planned not dispatched")).toBeTruthy();
     expect(screen.getByText("not created")).toBeTruthy();
     expect(screen.getByText(/no agents launched/i)).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Dry run endpoint" }));
+
+    await waitFor(() => expect(dryRunMidnightOil).toHaveBeenCalled());
+    expect(dryRunMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+    });
+    expect(screen.getByText("Dry-run receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-endpoint-dry-run-receipt")).toBeTruthy();
+    expect(screen.getAllByText("planned not dispatched").length).toBeGreaterThan(1);
+    expect(screen.getAllByText("not performed").length).toBeGreaterThan(1);
   });
 });
