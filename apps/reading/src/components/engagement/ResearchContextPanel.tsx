@@ -7,6 +7,7 @@
  *
  * Residual (ff): recursive note-taker metrics strip — insight/question/other
  * twin breakdown so operators see the twin substrate that feeds prompts.
+ * Residual (kd): evidence pack surfaces spawn research_tier (depth posture).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -394,16 +395,22 @@ export function ResearchContextPanel({
           data-testid="evidence-pack-result"
           data-view-format="html"
           data-ref-count={String(evidence.ref_count ?? 0)}
+          data-research-tier={
+            (evidence.research_tier || "").trim().toLowerCase() || ""
+          }
           data-citation-trust={
             (evidence.ref_count ?? 0) > 0 ? "grounded" : "ungrounded"
           }
         >
-          {/* Residual (hu): machine-readable competitive citation metrics. */}
+          {/* Residual (hu/kd): machine-readable competitive citation + depth. */}
           <div
             data-testid="evidence-pack-metrics"
             data-insight-count={String(evidence.insight_count ?? 0)}
             data-question-count={String(evidence.question_count ?? 0)}
             data-ref-count={String(evidence.ref_count ?? 0)}
+            data-research-tier={
+              (evidence.research_tier || "").trim().toLowerCase() || ""
+            }
             data-citation-trust={
               (evidence.ref_count ?? 0) > 0 ? "grounded" : "ungrounded"
             }
@@ -414,11 +421,32 @@ export function ResearchContextPanel({
             {evidence.question_count ?? 0} · refs={evidence.ref_count ?? 0} ·
             trust=
             {(evidence.ref_count ?? 0) > 0 ? "grounded" : "ungrounded"}
+            {evidence.research_tier
+              ? ` · tier=${evidence.research_tier}`
+              : ""}
           </div>
           <p className="counts">
             evidence · insights={evidence.insight_count} · questions=
             {evidence.question_count} · refs={evidence.ref_count}
           </p>
+          {/* Residual (kd): spawn research_tier depth posture (citation trust). */}
+          {evidence.research_tier ? (
+            <p
+              className="meta font-mono text-[11px]"
+              data-testid="evidence-research-tier"
+              data-research-tier={String(evidence.research_tier)
+                .trim()
+                .toLowerCase()}
+              role="status"
+            >
+              Research tier: <strong>{evidence.research_tier}</strong>
+              {String(evidence.research_tier).toLowerCase() === "wrestle"
+                ? " · multi-minute long-horizon depth"
+                : String(evidence.research_tier).toLowerCase() === "fast"
+                  ? " · flash / distill depth"
+                  : " · deep / synthesize depth"}
+            </p>
+          ) : null}
           {/* Residual (dm): competitive bar — never pretend citations exist. */}
           {(evidence.ref_count ?? 0) === 0 ? (
             <p

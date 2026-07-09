@@ -342,6 +342,7 @@ describe("ResearchContextPanel", () => {
           canonical_url: "https://arxiv.org/abs/1706.03762",
         },
       ],
+      research_tier: "wrestle",
       view_format: "html",
       product_panel: "evidence_pack",
       source: "engagement_spine.evidence",
@@ -382,6 +383,17 @@ describe("ResearchContextPanel", () => {
     expect(metrics.getAttribute("data-citation-trust")).toBe("grounded");
     expect(metrics.getAttribute("data-view-format")).toBe("html");
     expect(metrics.textContent).toMatch(/Evidence pack/);
+    // Residual (kd): spawn research_tier chrome on evidence pack.
+    expect(metrics.getAttribute("data-research-tier")).toBe("wrestle");
+    expect(
+      screen.getByTestId("evidence-pack-result").getAttribute("data-research-tier"),
+    ).toBe("wrestle");
+    expect(screen.getByTestId("evidence-research-tier").textContent).toMatch(
+      /wrestle/i,
+    );
+    expect(screen.getByTestId("evidence-research-tier").textContent).toMatch(
+      /long-horizon/i,
+    );
   });
 
   it("flags ungrounded evidence when ref_count is zero (dm)", async () => {
