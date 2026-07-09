@@ -28,6 +28,7 @@ from orchestration.continuous.budget import (
     DaemonBudget,
     _budget_path,
 )
+from substrate.antiek_bench import read_latest_scorecard
 
 settings_router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -112,6 +113,28 @@ class PromptCostEstimateResponse(BaseModel):
     route_mode: RouteMode | None = None
     selected_candidate: PromptCostCandidate | None = None
     candidates: list[PromptCostCandidate] = Field(default_factory=list)
+
+
+class AntiekBenchBestModelRow(BaseModel):
+    task_class: str
+    provider: str
+    model: str
+    quality_score: float
+    estimated_cost_usd: float | None = None
+    actual_cost_usd: float | None = None
+    cost_per_acceptable_answer: float | None = None
+    latency_ms: int | None = None
+    route_receipt_ids: list[str] = Field(default_factory=list)
+
+
+class AntiekBenchLatestResponse(BaseModel):
+    available: bool
+    scorecard_id: str | None = None
+    generated_at: str | None = None
+    week_id: str | None = None
+    mock_run: bool | None = None
+    best_by_task_class: list[AntiekBenchBestModelRow] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
 
 
 def _dispatch_config_path() -> Path:
@@ -597,12 +620,47 @@ def post_prompt_cost_estimate(req: PromptCostEstimateRequest) -> PromptCostEstim
     return estimate_prompt_cost(req, budget=budget)
 
 
+@settings_router.get("/antiek-bench/latest", response_model=AntiekBenchLatestResponse)
+def get_latest_antiek_bench_scorecard() -> AntiekBenchLatestResponse:
+    scorecard = read_latest_scorecard()
+    if scorecard is None:
+        return AntiekBenchLatestResponse(
+            available=False,
+            notes=["no Antiek-bench scorecard has been written yet"],
+        )
+    best = scorecard.best_by_task_class()
+    return AntiekBenchLatestResponse(
+        available=True,
+        scorecard_id=scorecard.scorecard_id,
+        generated_at=scorecard.generated_at,
+        week_id=scorecard.week_id,
+        mock_run=scorecard.mock_run,
+        best_by_task_class=[
+            AntiekBenchBestModelRow(
+                task_class=task_class,
+                provider=entry.provider,
+                model=entry.model,
+                quality_score=entry.quality_score,
+                estimated_cost_usd=entry.estimated_cost_usd,
+                actual_cost_usd=entry.actual_cost_usd,
+                cost_per_acceptable_answer=entry.cost_per_acceptable_answer,
+                latency_ms=entry.latency_ms,
+                route_receipt_ids=entry.route_receipt_ids,
+            )
+            for task_class, entry in sorted(best.items())
+        ],
+        notes=scorecard.notes,
+    )
+
+
 def register_settings_budget_routes(app: FastAPI) -> None:
     app.include_router(settings_router)
 
 
 __all__ = [
     "BudgetResponse",
+    "AntiekBenchBestModelRow",
+    "AntiekBenchLatestResponse",
     "ModelsResponse",
     "PromptCostCandidate",
     "PromptCostEstimateRequest",

@@ -86,6 +86,28 @@ export interface PromptCostEstimateResponse {
   candidates: PromptCostCandidate[];
 }
 
+export interface AntiekBenchBestModelRow {
+  task_class: string;
+  provider: string;
+  model: string;
+  quality_score: number;
+  estimated_cost_usd: number | null;
+  actual_cost_usd: number | null;
+  cost_per_acceptable_answer: number | null;
+  latency_ms: number | null;
+  route_receipt_ids: string[];
+}
+
+export interface AntiekBenchLatestResponse {
+  available: boolean;
+  scorecard_id: string | null;
+  generated_at: string | null;
+  week_id: string | null;
+  mock_run: boolean | null;
+  best_by_task_class: AntiekBenchBestModelRow[];
+  notes: string[];
+}
+
 async function readJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text();
@@ -102,6 +124,11 @@ export async function fetchSettingsModels(): Promise<ModelsResponse> {
 export async function fetchSettingsBudget(): Promise<BudgetResponse> {
   const res = await apiFetch(`${API_BASE}/settings/budget`);
   return readJson<BudgetResponse>(res);
+}
+
+export async function fetchLatestAntiekBench(): Promise<AntiekBenchLatestResponse> {
+  const res = await apiFetch(`${API_BASE}/settings/antiek-bench/latest`);
+  return readJson<AntiekBenchLatestResponse>(res);
 }
 
 export async function estimatePromptCost(

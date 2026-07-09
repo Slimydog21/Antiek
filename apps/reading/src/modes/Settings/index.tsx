@@ -3,8 +3,10 @@ import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import {
   estimatePromptCost,
+  fetchLatestAntiekBench,
   fetchSettingsBudget,
   fetchSettingsModels,
+  type AntiekBenchLatestResponse,
   type BudgetResponse,
   type ModelRow,
   type PromptCostEstimateRequest,
@@ -51,6 +53,8 @@ export default function Settings() {
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [budget, setBudget] = useState<BudgetResponse | null>(null);
   const [budgetError, setBudgetError] = useState<string | null>(null);
+  const [bench, setBench] = useState<AntiekBenchLatestResponse | null>(null);
+  const [benchError, setBenchError] = useState<string | null>(null);
   const [promptText, setPromptText] = useState("");
   const [outTokens, setOutTokens] = useState(500);
   const [taskKind, setTaskKind] = useState<TaskKind>("research_question");
@@ -79,6 +83,13 @@ export default function Settings() {
       } catch (e) {
         if (!cancelled)
           setBudgetError(e instanceof Error ? e.message : String(e));
+      }
+      try {
+        const latestBench = await fetchLatestAntiekBench();
+        if (!cancelled) setBench(latestBench);
+      } catch (e) {
+        if (!cancelled)
+          setBenchError(e instanceof Error ? e.message : String(e));
       }
     })();
     return () => {
@@ -318,6 +329,83 @@ export default function Settings() {
                   </ul>
                 )}
               </>
+            )}
+          </div>
+        </LemonCard>
+
+        <LemonCard title="Antiek-bench" elevation="z1">
+          <div className="p-4 space-y-3">
+            {benchError && (
+              <p className="text-sm text-red-700 dark:text-red-300 font-mono">
+                {benchError}
+              </p>
+            )}
+            {bench === null && !benchError && (
+              <p className="text-sm text-ink-soft dark:text-starlight">
+                Loading scorecard…
+              </p>
+            )}
+            {bench && !bench.available && (
+              <div className="space-y-2">
+                <p className="text-sm text-ink-soft dark:text-starlight">
+                  No Antiek-bench scorecard available yet.
+                </p>
+                {bench.notes.map((note) => (
+                  <p
+                    key={note}
+                    className="text-[11px] text-ink-soft dark:text-starlight"
+                  >
+                    {note}
+                  </p>
+                ))}
+              </div>
+            )}
+            {bench && bench.available && (
+              <div className="space-y-3 font-mono text-[13px]">
+                <Row label="Week" value={bench.week_id ?? "unknown"} />
+                <Row
+                  label="Run"
+                  value={bench.mock_run ? "mock scorecard" : "ratified scorecard"}
+                />
+                <ul className="space-y-2" aria-label="Best model by task class">
+                  {bench.best_by_task_class.map((row) => (
+                    <li
+                      key={row.task_class}
+                      className="border-t border-ink/10 dark:border-bright/10 pt-2"
+                    >
+                      <div className="flex flex-wrap justify-between gap-2">
+                        <span className="font-semibold text-ink dark:text-bright">
+                          {row.task_class}
+                        </span>
+                        <span>
+                          {row.provider} / {row.model}
+                        </span>
+                      </div>
+                      <div className="mt-1 grid grid-cols-1 sm:grid-cols-3 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                        <span>quality {row.quality_score.toFixed(2)}</span>
+                        <span>
+                          cost{" "}
+                          {row.cost_per_acceptable_answer == null
+                            ? "unknown"
+                            : `$${row.cost_per_acceptable_answer.toFixed(6)}`}
+                        </span>
+                        <span>
+                          latency{" "}
+                          {row.latency_ms == null ? "unknown" : `${row.latency_ms} ms`}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                {bench.notes.map((note) => (
+                  <p
+                    key={note}
+                    className="text-[11px] text-ink-soft dark:text-starlight"
+                  >
+                    {note}
+                  </p>
+                ))}
+              </div>
             )}
           </div>
         </LemonCard>

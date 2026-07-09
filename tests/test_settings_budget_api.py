@@ -15,6 +15,7 @@ from interfaces.research.api.settings_budget import (
     read_operator_budget,
 )
 from orchestration.continuous.budget import DaemonBudget
+from substrate.antiek_bench import run_mock_weekly_scorecard
 
 
 @pytest.fixture
@@ -107,6 +108,39 @@ def test_prompt_cost_estimate_pricing_placeholder_is_null(client: TestClient) ->
     assert body["estimated_usd_low"] is None
     assert body["estimated_usd_high"] is None
     assert any("placeholder" in n.lower() or "0.0" in n for n in body["notes"])
+
+
+def test_antiek_bench_latest_returns_unavailable_before_scorecard(
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANTIEK_BENCH_DIR", str(tmp_path / "bench"))
+    r = client.get("/settings/antiek-bench/latest")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["available"] is False
+    assert body["best_by_task_class"] == []
+    assert any("no Antiek-bench scorecard" in note for note in body["notes"])
+
+
+def test_antiek_bench_latest_shows_best_model_by_task_class(
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bench_dir = tmp_path / "bench"
+    monkeypatch.setenv("ANTIEK_BENCH_DIR", str(bench_dir))
+    run_mock_weekly_scorecard(base_dir=bench_dir, week_id="2026-W28")
+
+    r = client.get("/settings/antiek-bench/latest")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["available"] is True
+    assert body["week_id"] == "2026-W28"
+    task_classes = {row["task_class"] for row in body["best_by_task_class"]}
+    assert {"research_question", "reading_highlight"} <= task_classes
+    assert all(row["provider"] and row["model"] for row in body["best_by_task_class"])
 
 
 def test_estimate_with_synthetic_pricing(

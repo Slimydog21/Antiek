@@ -37,6 +37,27 @@ const mockState = vi.hoisted((): { budget: BudgetResponse } => ({
 vi.mock("../../api/settings", () => ({
   fetchSettingsModels: vi.fn(async () => models),
   fetchSettingsBudget: vi.fn(async () => mockState.budget),
+  fetchLatestAntiekBench: vi.fn(async () => ({
+    available: true,
+    scorecard_id: "antiek-bench-2026-W28",
+    generated_at: "2026-07-09T00:00:00Z",
+    week_id: "2026-W28",
+    mock_run: true,
+    notes: ["mock scorecard"],
+    best_by_task_class: [
+      {
+        task_class: "research_question",
+        provider: "zai",
+        model: "glm-5.2",
+        quality_score: 0.82,
+        estimated_cost_usd: 0.014,
+        actual_cost_usd: 0.013,
+        cost_per_acceptable_answer: 0.00433333,
+        latency_ms: 4200,
+        route_receipt_ids: ["receipt-1"],
+      },
+    ],
+  })),
   estimatePromptCost: vi.fn(async () => ({
     estimated_usd_low: 0.001,
     estimated_usd_high: 0.002,
@@ -103,6 +124,16 @@ describe("Settings SPR-01", () => {
     expect(screen.getByText(/ready/i)).toBeTruthy();
     expect(screen.getByText("$5.00")).toBeTruthy();
     expect(screen.getByText("$1.0000")).toBeTruthy();
+  });
+
+  it("renders latest Antiek-bench best model by task class", async () => {
+    render(<Settings />);
+    await waitFor(() => {
+      expect(screen.getByLabelText("Best model by task class")).toBeTruthy();
+    });
+    expect(screen.getByText("research_question")).toBeTruthy();
+    expect(screen.getAllByText("zai / glm-5.2").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("mock scorecard").length).toBeGreaterThan(0);
   });
 
   it("changes task kind in the estimator request", async () => {
