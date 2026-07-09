@@ -7,6 +7,7 @@
  * Residual (dl): structured account library list + filter (HTML-first docs).
  * Residual (do): rehydrate document HTML via GET /documents/{id}/html so any
  * library row can open a hosted window without last-host session body.
+ * Residual (dq): load account library on mount (not only after host).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -91,9 +92,25 @@ export default function MarketplaceHost({
     }
   }, []);
 
+  /** Residual (dq): hydrate library list on enter so open-rehydrate works immediately. */
+  const loadLibrary = useCallback(async () => {
+    try {
+      const lib = await fetchAccountLibrary(ownerId);
+      if (lib.view_format !== "html") {
+        throw new Error("library view_format must be html");
+      }
+      setLibraryHtml(lib.html);
+      setLibraryDocs(lib.documents || []);
+    } catch (e) {
+      // Non-fatal on mount — catalog still usable; host path will refresh library.
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [ownerId]);
+
   useEffect(() => {
     void loadCatalog();
-  }, [loadCatalog]);
+    void loadLibrary();
+  }, [loadCatalog, loadLibrary]);
 
   function openHostedWindow(opts: {
     document_id: string;

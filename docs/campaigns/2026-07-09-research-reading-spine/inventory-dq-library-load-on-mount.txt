@@ -1,0 +1,12 @@
+# residual (dq) load account library on MarketplaceHost mount
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(dp) prior | branch_only | campaign inventories
+(dq) library on mount | branch_only | loadLibrary on enter; open rehydrate without host-first; 5 vitest
+
+## What shipped
+- fetchAccountLibrary on mount alongside catalog.
+- Library list + Open window available immediately for prior hosts.
+
+NEXT: (dr) re-derive; operator merge PR #465

@@ -39,6 +39,14 @@ describe("MarketplaceHost mode", () => {
     purchaseAndHost.mockReset();
     fetchHostedDocumentHtml.mockReset();
     openWindow.mockClear();
+    // Residual (dq): library loads on mount — default empty honest library.
+    fetchAccountLibrary.mockResolvedValue({
+      owner_id: "operator",
+      documents: [],
+      count: 0,
+      view_format: "html",
+      html: "",
+    });
   });
 
   it("loads catalog and hosts public domain book", async () => {
@@ -119,48 +127,7 @@ describe("MarketplaceHost mode", () => {
     expect(screen.getByTestId("library-filter-empty")).toBeTruthy();
   });
 
-  it("rehydrates library doc HTML when opening without session body (do)", async () => {
-    fetchMarketplaceCatalog.mockResolvedValue({
-      entries: [],
-      count: 0,
-      view_format: "html",
-    });
-    // Simulate library already populated without a last-host body.
-    fetchAccountLibrary.mockResolvedValue({
-      owner_id: "operator",
-      documents: [
-        {
-          document_id: "hdoc_old",
-          title: "Old Hosted Book",
-          license_class: "public_domain",
-          view_format: "html",
-        },
-      ],
-      count: 1,
-      view_format: "html",
-      html: "<p>Library</p>",
-    });
-    fetchHostedDocumentHtml.mockResolvedValue({
-      document_id: "hdoc_old",
-      view_format: "html",
-      html: "<article><h1>Old Hosted Book</h1><p>Rehydrated body.</p></article>",
-    });
-
-    // Force library state by host path that sets docs then clear hosted via re-render...
-    // Instead: host once with different id then open the old library doc.
-    hostBookIntoAccount.mockResolvedValue({
-      document_id: "hdoc_new",
-      owner_id: "operator",
-      book_id: "pd-x",
-      content_hash: "x",
-      title: "New",
-      license_class: "public_domain",
-      already_hosted: false,
-      source_format: "html",
-      library_document_ids: ["hdoc_old", "hdoc_new"],
-      view_format: "html",
-      html: "<p>new only</p>",
-    });
+  it("loads account library on mount and rehydrates open (dq/do)", async () => {
     fetchMarketplaceCatalog.mockResolvedValue({
       entries: [
         {
@@ -184,25 +151,24 @@ describe("MarketplaceHost mode", () => {
           license_class: "public_domain",
           view_format: "html",
         },
-        {
-          document_id: "hdoc_new",
-          title: "New",
-          license_class: "public_domain",
-          view_format: "html",
-        },
       ],
-      count: 2,
+      count: 1,
       view_format: "html",
       html: "<p>Library</p>",
     });
+    fetchHostedDocumentHtml.mockResolvedValue({
+      document_id: "hdoc_old",
+      view_format: "html",
+      title: "Old Hosted Book",
+      license_class: "public_domain",
+      html: "<article><h1>Old Hosted Book</h1><p>Rehydrated body.</p></article>",
+    });
 
     render(<MarketplaceHost ownerId="operator" />);
+    // Residual (dq): library visible without host first.
     await waitFor(() => {
-      expect(screen.getByText("New")).toBeTruthy();
+      expect(fetchAccountLibrary).toHaveBeenCalledWith("operator");
     });
-    // Uncheck auto-open so openWindow is only from library open.
-    fireEvent.click(screen.getByTestId("auto-open-hosted-window").querySelector("input")!);
-    fireEvent.click(screen.getByRole("button", { name: /host into account/i }));
     await waitFor(() => {
       expect(screen.getByTestId("library-doc-hdoc_old")).toBeTruthy();
     });
@@ -368,7 +334,8 @@ describe("MarketplaceHost mode", () => {
 
     render(<MarketplaceHost ownerId="operator" />);
     await waitFor(() => {
-      expect(screen.getByText("Modern Systems")).toBeTruthy();
+      // Catalog purchase button (library may also list "Modern Systems" after mount).
+      expect(screen.getByTestId("purchase-host-buy-modern")).toBeTruthy();
     });
     expect(screen.getByTestId("purchase-receipt-ref")).toBeTruthy();
     fireEvent.click(screen.getByTestId("purchase-host-buy-modern"));
