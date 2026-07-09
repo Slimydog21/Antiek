@@ -399,3 +399,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (nu, 2026-07-10) **Launch budget dual-gate checklist:**
   - ResearchLaunchBudgetPanel shared chokepoint dual-gate deep-link
   - suite-proposal AC recheck 4_passed
+
+- Closed (nv, 2026-07-10) **SESSION-ARC nt–nu bench + launch budget dual-gate:**
+  - Settings suite + shared launch budget dual-gate surfaces documented
