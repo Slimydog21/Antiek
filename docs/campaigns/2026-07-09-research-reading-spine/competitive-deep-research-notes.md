@@ -179,3 +179,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - (lj) SpawnMergePanel DecisionTreeDriverBadge; post-merge recommended_research_tier wins
   Single-spawn merge path now co-displays model driver, budget, and depth.
 
+
+- Closed (ll, 2026-07-10) **Launch-path driver+depth complete:**
+  - (ll) ResearchThis + StartResearch DecisionTreeDriverBadge researchTier
+  Major launch hosts now all co-display model driver, daily budget, and closed depth.
+

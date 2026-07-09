@@ -33,6 +33,14 @@ name closed research depth `fast|deep|wrestle` in **API + HTML + UI**, and the
 | la | twin seed research_tier from source_spawn |
 | lb | TwinNotes prop\|\|API research_tier fallback |
 | lc | competitive notes la–lb + suite AC |
+| ld–lf | fleet handoff + twins list spawn_id tier + notes |
+| lg–lj | driver badge on collective · TalkToBook · MetaReading · spawn merge |
+| lk–ll | competitive notes + ResearchThis · StartResearch driver badge |
+
+## Driver+depth co-display hosts (complete set)
+
+DR session · Hosted HTML · Write · Midnight Oil · Marketplace · Collective ·
+Spawn merge · TalkToBook · MetaReading · ResearchThis · StartResearch.
 
 ## Invariants still hard
 
