@@ -395,3 +395,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (nt, 2026-07-10) **Antiek-bench dual-gate + NotDiamond L7 banner:**
   - Settings suite proposal panel dual-gate checklist link
   - NotDiamond advisory-only authority chrome (never dispatch)
+
+- Closed (nu, 2026-07-10) **Launch budget dual-gate checklist:**
+  - ResearchLaunchBudgetPanel shared chokepoint dual-gate deep-link
+  - suite-proposal AC recheck 4_passed

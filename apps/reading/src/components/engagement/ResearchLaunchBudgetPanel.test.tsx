@@ -81,6 +81,10 @@ describe("ResearchLaunchBudgetPanel", () => {
     expect(screen.getByTestId("research-launch-budget-bar-fill")).toBeTruthy();
     // Residual (fr): Settings deep-link for cap + decision-tree.
     const settings = screen.getByTestId("research-launch-budget-settings-link");
+    const dual = screen.getByTestId(
+      "research-launch-budget-dual-gate-checklist-link",
+    );
+    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4/);
     expect(settings.getAttribute("href")).toBe("/settings");
   });
 

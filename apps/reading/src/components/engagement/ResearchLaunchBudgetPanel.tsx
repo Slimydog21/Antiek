@@ -227,6 +227,15 @@ export function ResearchLaunchBudgetPanel({
           >
             Settings
           </a>
+          {/* Residual (nu): dual-gate prep on shared launch budget chokepoint. */}
+          <a
+            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+            data-testid="research-launch-budget-dual-gate-checklist-link"
+            className="text-[10px] font-mono underline opacity-80 hover:opacity-100"
+            title="Dual-gate L1–L4 checklist (prep only; offline default)"
+          >
+            Dual-gate
+          </a>
           {busy ? (
             <span className="text-[10px] font-mono text-ink-mute">projecting…</span>
           ) : null}

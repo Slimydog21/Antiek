@@ -1,0 +1,8 @@
+# inventory-nu · ResearchLaunchBudgetPanel dual-gate checklist
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: nu
+files:
+  apps/reading/src/components/engagement/ResearchLaunchBudgetPanel.tsx
+  apps/reading/src/components/engagement/ResearchLaunchBudgetPanel.test.tsx
+proof: vitest ResearchLaunchBudgetPanel 9 passed · suite-proposal 4 passed
+invariants: shared launch chokepoint · prep only · soft budget honesty
