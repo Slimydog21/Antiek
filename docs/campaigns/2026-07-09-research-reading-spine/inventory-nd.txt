@@ -1,0 +1,8 @@
+# inventory-nd · select questions|insights one-click multi-select
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: nd
+files:
+  apps/reading/src/components/engagement/TwinNotesPanel.tsx
+  apps/reading/src/components/engagement/TwinNotesPanel.test.tsx
+proof: vitest TwinNotesPanel 20 passed
+invariants: HTML-first · union multi-select · chase/promote questions path

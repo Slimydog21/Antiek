@@ -33,6 +33,8 @@
  * ResearchLaunchBudgetPanel + force override when projection would exceed.
  * Residual (nc): DecisionTreeDriverBadge + chase metrics (model/spawn/tier)
  * for model+budget+depth audit on recursive note-taker chase path.
+ * Residual (nd): one-click select questions|insights into multi-select
+ * (chase/promote questions path without manual checkbox grind).
  * HTML-first; never PDF.
  */
 
@@ -377,6 +379,25 @@ export function TwinNotesPanel({
     });
   }, [visibleNotes]);
 
+  /**
+   * Residual (nd): select all notes of a kind from the full twin substrate
+   * (not only list-filtered), so operators can multi-select questions for
+   * chase/promote without toggling list filter first.
+   */
+  const selectByKind = useCallback(
+    (kindFilter: "question" | "insight") => {
+      const notes = twins?.notes || [];
+      setSelectedNoteIds((prev) => {
+        const next = new Set(prev);
+        for (const n of notes) {
+          if (n.kind === kindFilter) next.add(n.note_id);
+        }
+        return next;
+      });
+    },
+    [twins?.notes],
+  );
+
   const clearNoteSelection = useCallback(() => {
     setSelectedNoteIds(new Set());
   }, []);
@@ -696,6 +717,30 @@ export function TwinNotesPanel({
           title="Select all notes currently shown in the list filter"
         >
           Select visible
+        </button>
+        {/* Residual (nd): one-click select by kind for chase/promote. */}
+        <button
+          type="button"
+          data-testid="twin-select-questions"
+          onClick={() => selectByKind("question")}
+          disabled={
+            busy ||
+            !(twins?.notes || []).some((n) => n.kind === "question")
+          }
+          title="Select all question twins for chase/promote"
+        >
+          Select questions
+        </button>
+        <button
+          type="button"
+          data-testid="twin-select-insights"
+          onClick={() => selectByKind("insight")}
+          disabled={
+            busy || !(twins?.notes || []).some((n) => n.kind === "insight")
+          }
+          title="Select all insight twins for promote/merge"
+        >
+          Select insights
         </button>
         <button
           type="button"

@@ -1095,6 +1095,74 @@ describe("TwinNotesPanel", () => {
     });
   });
 
+  it("selects all questions or insights in one click (nd)", async () => {
+    fetchTwinNotes.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 3,
+      insight_count: 2,
+      question_count: 1,
+      notes: [
+        {
+          note_id: "twin_i1",
+          asset_id: "paper",
+          kind: "insight",
+          text: "I1",
+        },
+        {
+          note_id: "twin_i2",
+          asset_id: "paper",
+          kind: "insight",
+          text: "I2",
+        },
+        {
+          note_id: "twin_q1",
+          asset_id: "paper",
+          kind: "question",
+          text: "Q1",
+        },
+      ],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+      html: "<p>twins</p>",
+    });
+    render(<TwinNotesPanel assetId="paper" autoLoad />);
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-select-questions")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("twin-select-questions"));
+    expect(
+      screen
+        .getByTestId("twin-selection-count")
+        .getAttribute("data-selected-count"),
+    ).toBe("1");
+    expect(
+      screen.getByTestId("twin-select-twin_q1").getAttribute("data-selected") ||
+        (screen.getByTestId("twin-select-twin_q1") as HTMLInputElement).checked,
+    ).toBeTruthy();
+    // Select insights accumulates with questions (union).
+    fireEvent.click(screen.getByTestId("twin-select-insights"));
+    expect(
+      screen
+        .getByTestId("twin-selection-count")
+        .getAttribute("data-selected-count"),
+    ).toBe("3");
+    fireEvent.click(screen.getByTestId("twin-clear-selection"));
+    expect(
+      screen
+        .getByTestId("twin-selection-count")
+        .getAttribute("data-selected-count"),
+    ).toBe("0");
+    // Insights only.
+    fireEvent.click(screen.getByTestId("twin-select-insights"));
+    expect(
+      screen
+        .getByTestId("twin-selection-count")
+        .getAttribute("data-selected-count"),
+    ).toBe("2");
+  });
+
   it("soft-gates chase when budget would exceed; force unlocks (na)", async () => {
     mockWouldExceed = true;
     fetchTwinNotes.mockResolvedValue({
