@@ -10,6 +10,7 @@ from substrate.midnight_oil import (
     MidnightOilActivationChecklistRequest,
     MidnightOilBudgetProviderAdapterPlanRequest,
     MidnightOilBudgetReservationRequest,
+    MidnightOilControlLedgerAdapterPlanRequest,
     MidnightOilDispatchRequest,
     MidnightOilDryRunRequest,
     MidnightOilFinalArtifactAdapterPlanRequest,
@@ -28,6 +29,7 @@ from substrate.midnight_oil import (
     activation_checklist_midnight_oil,
     budget_provider_adapter_plan_midnight_oil,
     budget_reservation_midnight_oil,
+    control_ledger_adapter_plan_midnight_oil,
     dispatch_midnight_oil,
     dry_run_midnight_oil,
     final_artifact_adapter_plan_midnight_oil,
@@ -277,6 +279,37 @@ def _accepted_midnight_oil_final_adapter_plan_chain(
     return {
         **chain,
         "final_artifact_adapter_plan": final_artifact_adapter_plan,
+    }
+
+
+def _accepted_midnight_oil_operator_adapter_plan_chain(
+    *,
+    goal: str,
+    source_policy: list[str],
+    requested_control_scope: list[str],
+) -> dict[str, object]:
+    chain = _accepted_midnight_oil_final_adapter_plan_chain(
+        goal=goal,
+        source_policy=source_policy,
+        requested_control_scope=requested_control_scope,
+    )
+    preflight = chain["preflight"]
+    operator_adapter_plan = operator_dispatch_adapter_plan_midnight_oil(
+        MidnightOilOperatorDispatchAdapterPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=chain["control_plan"],
+            budget_provider_adapter_plan_receipt=chain["budget_adapter_plan"],
+            provider_executor_adapter_plan_receipt=chain["provider_adapter_plan"],
+            retrieval_adapter_plan_receipt=chain["retrieval_adapter_plan"],
+            graph_adapter_plan_receipt=chain["graph_adapter_plan"],
+            final_artifact_adapter_plan_receipt=chain["final_artifact_adapter_plan"],
+        )
+    )
+    return {
+        **chain,
+        "operator_adapter_plan": operator_adapter_plan,
     }
 
 
@@ -3727,6 +3760,202 @@ def test_midnight_oil_operator_dispatch_adapter_plan_api_contract() -> None:
     assert "approved_price_ceiling_usd" in body["required_dispatch_enablement_fields"]
     assert "enabled_by_operator_id" in body["required_dispatch_enablement_fields"]
     assert body["blocker_reason"] == "operator_dispatch_adapter_unimplemented"
+    assert body["operator_dispatch_allowed"] is False
+    assert body["operator_live_dispatch_enabled"] is False
+    assert body["live_run_allowed"] is False
+    assert body["dispatch_allowed"] is False
+    assert body["dispatch_performed"] is False
+    assert body["budget_reserved"] is False
+    assert body["provider_calls_made"] is False
+    assert body["retrieval_performed"] is False
+    assert body["source_receipts_created"] is False
+    assert body["graph_mutated"] is False
+    assert body["final_artifact_created"] is False
+
+
+def test_control_ledger_adapter_plan_records_disabled_persistence_requirements() -> None:
+    chain = _accepted_midnight_oil_operator_adapter_plan_chain(
+        goal="Plan durable operator control ledger controls for a midnight oil run.",
+        source_policy=["arxiv", "web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+
+    control_ledger_plan = control_ledger_adapter_plan_midnight_oil(
+        MidnightOilControlLedgerAdapterPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=chain["control_plan"],
+            budget_provider_adapter_plan_receipt=chain["budget_adapter_plan"],
+            provider_executor_adapter_plan_receipt=chain["provider_adapter_plan"],
+            retrieval_adapter_plan_receipt=chain["retrieval_adapter_plan"],
+            graph_adapter_plan_receipt=chain["graph_adapter_plan"],
+            final_artifact_adapter_plan_receipt=chain["final_artifact_adapter_plan"],
+            operator_dispatch_adapter_plan_receipt=chain["operator_adapter_plan"],
+        )
+    )
+
+    assert control_ledger_plan.receipt_id == f"{preflight.run_id}-control-ledger-adapter-plan"
+    assert control_ledger_plan.operator_dispatch_adapter_plan_receipt_id == (
+        chain["operator_adapter_plan"].receipt_id
+    )
+    assert control_ledger_plan.status == "blocked_control_ledger_adapter_unimplemented"
+    assert control_ledger_plan.adapter_key == "operator_dispatch_control_ledger"
+    assert control_ledger_plan.planned_setting_id == (
+        chain["operator_adapter_plan"].planned_setting_id
+    )
+    assert control_ledger_plan.planned_control_ledger_id == (
+        chain["operator_adapter_plan"].planned_control_ledger_id
+    )
+    assert control_ledger_plan.planned_audit_log_id == (
+        f"{preflight.run_id}-operator-dispatch-audit-log"
+    )
+    assert control_ledger_plan.planned_rollback_receipt_id == (
+        f"{preflight.run_id}-operator-dispatch-rollback-receipt"
+    )
+    assert "persist exactly one enablement row" in control_ledger_plan.required_invariants[0]
+    assert "control_ledger_id" in control_ledger_plan.required_control_ledger_fields
+    assert "audit_log_id" in control_ledger_plan.required_control_ledger_fields
+    assert "rollback_receipt_id" in control_ledger_plan.required_control_ledger_fields
+    assert "rolled_back_at" in control_ledger_plan.required_rollback_receipt_fields
+    assert control_ledger_plan.blocker_reason == "control_ledger_adapter_unimplemented"
+    assert control_ledger_plan.control_ledger_persistence_allowed is False
+    assert control_ledger_plan.control_ledger_written is False
+    assert control_ledger_plan.audit_log_written is False
+    assert control_ledger_plan.rollback_receipt_created is False
+    assert control_ledger_plan.operator_dispatch_allowed is False
+    assert control_ledger_plan.operator_live_dispatch_enabled is False
+    assert control_ledger_plan.live_run_allowed is False
+    assert control_ledger_plan.dispatch_allowed is False
+    assert control_ledger_plan.dispatch_performed is False
+    assert control_ledger_plan.budget_reservation_allowed is False
+    assert control_ledger_plan.budget_reserved is False
+    assert control_ledger_plan.provider_execution_allowed is False
+    assert control_ledger_plan.provider_calls_made is False
+    assert control_ledger_plan.retrieval_allowed is False
+    assert control_ledger_plan.retrieval_performed is False
+    assert control_ledger_plan.source_receipts_created is False
+    assert control_ledger_plan.graph_mutation_allowed is False
+    assert control_ledger_plan.graph_mutated is False
+    assert control_ledger_plan.final_artifact_allowed is False
+    assert control_ledger_plan.final_artifact_created is False
+    assert "no operator setting or ledger row is persisted" in control_ledger_plan.adapter_plan_notes[0]
+
+
+def test_control_ledger_adapter_plan_rejects_mismatched_operator_dispatch_receipt() -> None:
+    chain = _accepted_midnight_oil_operator_adapter_plan_chain(
+        goal="Reject mismatched operator dispatch receipt before control ledger planning.",
+        source_policy=["web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    bad_operator_adapter = chain["operator_adapter_plan"].model_copy(
+        update={"final_artifact_adapter_plan_receipt_id": "wrong-final-adapter-plan"}
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match="operator_dispatch_adapter_plan_receipt must reference final_artifact_adapter_plan_receipt",
+    ):
+        MidnightOilControlLedgerAdapterPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=chain["control_plan"],
+            budget_provider_adapter_plan_receipt=chain["budget_adapter_plan"],
+            provider_executor_adapter_plan_receipt=chain["provider_adapter_plan"],
+            retrieval_adapter_plan_receipt=chain["retrieval_adapter_plan"],
+            graph_adapter_plan_receipt=chain["graph_adapter_plan"],
+            final_artifact_adapter_plan_receipt=chain["final_artifact_adapter_plan"],
+            operator_dispatch_adapter_plan_receipt=bad_operator_adapter,
+        )
+
+
+def test_midnight_oil_control_ledger_adapter_plan_api_contract() -> None:
+    from interfaces.research.api.app import create_app
+
+    chain = _accepted_midnight_oil_operator_adapter_plan_chain(
+        goal="Expose control ledger adapter planning over the API.",
+        source_policy=["arxiv", "substack"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+
+    with TestClient(create_app()) as client:
+        r = client.post(
+            "/research/midnight-oil/control-ledger-adapter-plan",
+            json={
+                "launch_packet": preflight.launch_packet.model_dump(mode="json"),
+                "approval_receipt": preflight.approval_receipt.model_dump(mode="json"),
+                "runner_handoff": preflight.runner_handoff.model_dump(mode="json"),
+                "runner_control_plan_receipt": chain["control_plan"].model_dump(mode="json"),
+                "budget_provider_adapter_plan_receipt": chain[
+                    "budget_adapter_plan"
+                ].model_dump(mode="json"),
+                "provider_executor_adapter_plan_receipt": chain[
+                    "provider_adapter_plan"
+                ].model_dump(mode="json"),
+                "retrieval_adapter_plan_receipt": chain[
+                    "retrieval_adapter_plan"
+                ].model_dump(mode="json"),
+                "graph_adapter_plan_receipt": chain["graph_adapter_plan"].model_dump(
+                    mode="json"
+                ),
+                "final_artifact_adapter_plan_receipt": chain[
+                    "final_artifact_adapter_plan"
+                ].model_dump(mode="json"),
+                "operator_dispatch_adapter_plan_receipt": chain[
+                    "operator_adapter_plan"
+                ].model_dump(mode="json"),
+            },
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["receipt_id"] == f"{preflight.run_id}-control-ledger-adapter-plan"
+    assert body["operator_dispatch_adapter_plan_receipt_id"] == (
+        chain["operator_adapter_plan"].receipt_id
+    )
+    assert body["status"] == "blocked_control_ledger_adapter_unimplemented"
+    assert body["adapter_key"] == "operator_dispatch_control_ledger"
+    assert body["planned_setting_id"] == chain["operator_adapter_plan"].planned_setting_id
+    assert body["planned_control_ledger_id"] == (
+        chain["operator_adapter_plan"].planned_control_ledger_id
+    )
+    assert body["planned_audit_log_id"] == f"{preflight.run_id}-operator-dispatch-audit-log"
+    assert body["planned_rollback_receipt_id"] == (
+        f"{preflight.run_id}-operator-dispatch-rollback-receipt"
+    )
+    assert "enabled_by_operator_id" in body["required_control_ledger_fields"]
+    assert "rollback_receipt_id" in body["required_control_ledger_fields"]
+    assert "rolled_back_by_operator_id" in body["required_rollback_receipt_fields"]
+    assert body["blocker_reason"] == "control_ledger_adapter_unimplemented"
+    assert body["control_ledger_persistence_allowed"] is False
+    assert body["control_ledger_written"] is False
+    assert body["audit_log_written"] is False
+    assert body["rollback_receipt_created"] is False
     assert body["operator_dispatch_allowed"] is False
     assert body["operator_live_dispatch_enabled"] is False
     assert body["live_run_allowed"] is False
