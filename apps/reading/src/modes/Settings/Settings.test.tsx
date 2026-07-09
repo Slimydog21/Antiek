@@ -21,6 +21,7 @@ const {
   applyDepthTier,
   fetchAntiekBenchDogfoodFixtures,
   fetchAntiekBenchLeaderboard,
+  runAntiekBenchOffline,
   fetchRegisteredModels,
   registerSettingsModel,
   fetchNotDiamondAdvisory,
@@ -256,6 +257,41 @@ const {
       notes: [],
       html: "<p>Leaderboard week 2026-W28 · strong-model</p>",
     })),
+    runAntiekBenchOffline: vi.fn(async () => ({
+      week_id: "2026-W28",
+      suite_version: "suite-competitive-dogfood-v1",
+      suite_label: "antiek-bench-competitive-dogfood",
+      run_count: 3,
+      runs: [
+        { run_id: "brun_1", model_id: "stub-strong", mean_score: 0.9 },
+        { run_id: "brun_2", model_id: "stub-mid", mean_score: 0.5 },
+        { run_id: "brun_3", model_id: "stub-weak", mean_score: 0.2 },
+      ],
+      models_run: ["stub-strong", "stub-mid", "stub-weak"],
+      recommended_model_id: "stub-strong",
+      recommended_mean_score: 0.9,
+      leaderboard: {
+        week_id: "2026-W28",
+        models: [{ model_id: "stub-strong", mean_score: 0.9 }],
+        task_classes: ["distill"],
+        run_count: 3,
+        suite_versions: ["suite-competitive-dogfood-v1"],
+        recommended_model_id: "stub-strong",
+        recommended_mean_score: 0.9,
+        view_format: "html",
+        settings_panel: "antiek_bench_weekly",
+        source: "antiek_bench.offline_runs",
+        notes: [],
+        html: "<p>Leaderboard after offline run</p>",
+      },
+      view_format: "html",
+      offline: true,
+      auto_promoted: false,
+      settings_panel: "antiek_bench_run_offline",
+      source: "antiek_bench.product_path.run_offline_dogfood",
+      notes: ["Offline dogfood suite run — keyword stub providers only."],
+      html: "<p>Antiek-bench offline dogfood week 2026-W28</p>",
+    })),
     fetchRegisteredModels: vi.fn(async () => ({
       models: [],
       count: 0,
@@ -325,6 +361,7 @@ vi.mock("../../api/settings", () => ({
   applyDepthTier,
   fetchAntiekBenchDogfoodFixtures,
   fetchAntiekBenchLeaderboard,
+  runAntiekBenchOffline,
   fetchRegisteredModels,
   registerSettingsModel,
   fetchNotDiamondAdvisory,
@@ -349,6 +386,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
     applyDepthTier.mockClear();
     fetchAntiekBenchDogfoodFixtures.mockClear();
     fetchAntiekBenchLeaderboard.mockClear();
+    runAntiekBenchOffline.mockClear();
     fetchRegisteredModels.mockClear();
     registerSettingsModel.mockClear();
     fetchNotDiamondAdvisory.mockClear();
@@ -581,6 +619,35 @@ describe("Settings SPR-01 + decision-tree install", () => {
     ).toBe("html");
     expect(screen.getByTestId("antiek-bench-leaderboard-html").innerHTML).toMatch(
       /Leaderboard|strong-model/i,
+    );
+  });
+
+  it("runs offline dogfood suite and shows result panel", async () => {
+    const user = userEvent.setup();
+    render(<Settings />);
+    await waitFor(() => {
+      expect(screen.getByTestId("antiek-bench-run-offline")).toBeTruthy();
+    });
+    await user.click(screen.getByTestId("antiek-bench-run-offline"));
+    await waitFor(() => {
+      expect(runAntiekBenchOffline).toHaveBeenCalled();
+    });
+    const call = runAntiekBenchOffline.mock.calls.at(-1)?.[0] as {
+      weekId: string;
+      includeHtml?: boolean;
+    };
+    expect(call.weekId).toBeTruthy();
+    expect(call.includeHtml).toBe(true);
+    await waitFor(() => {
+      expect(screen.getByTestId("antiek-bench-run-offline-result").textContent).toMatch(
+        /stub-strong/,
+      );
+    });
+    expect(
+      screen.getByTestId("antiek-bench-run-offline-result").textContent,
+    ).toMatch(/3/);
+    expect(screen.getByTestId("antiek-bench-run-offline-html").innerHTML).toMatch(
+      /offline dogfood|2026-W28/i,
     );
   });
 

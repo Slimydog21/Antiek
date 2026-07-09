@@ -923,6 +923,75 @@ def get_antiek_bench_dogfood_fixtures(include_html: bool = False) -> dict[str, A
     return dogfood_fixture_payload(include_html=include_html)
 
 
+class AntiekBenchRunOfflineRequest(BaseModel):
+    """Run competitive dogfood suite offline into the bench store (residual bo)."""
+
+    week_id: str
+    include_html: bool = True
+    # Optional: list of {model_id, quality}; empty → default stub cohort
+    models: list[dict[str, Any]] = Field(default_factory=list)
+
+
+@settings_router.post("/antiek-bench/run-offline")
+def post_antiek_bench_run_offline(
+    request: Request,
+    body: AntiekBenchRunOfflineRequest,
+) -> dict[str, Any]:
+    """Run offline dogfood suite (keyword stubs) and record runs for leaderboard.
+
+    Store resolution:
+    1. ``app.state.antiek_bench_store`` when injected
+    2. engagement usage store (create if missing)
+
+    Never calls live multi-provider APIs. Does not auto-install decision-tree.
+    """
+    from fastapi import HTTPException
+
+    from substrate.antiek_bench import run_offline_dogfood_product
+
+    store = getattr(request.app.state, "antiek_bench_store", None)
+    if store is None:
+        try:
+            from .engagement_routes import get_bench_usage_store
+
+            store = get_bench_usage_store(create_if_missing=True)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "No antiek_bench_store available to record offline runs "
+                    f"({exc})"
+                ),
+            ) from exc
+
+    models: list[tuple[str, float]] | None = None
+    if body.models:
+        models = []
+        for m in body.models:
+            mid = str(m.get("model_id") or "").strip()
+            if not mid:
+                raise HTTPException(
+                    status_code=400, detail="each model needs model_id"
+                )
+            try:
+                q = float(m.get("quality", 0.8))
+            except (TypeError, ValueError) as exc:
+                raise HTTPException(
+                    status_code=400, detail=f"invalid quality for {mid}"
+                ) from exc
+            models.append((mid, q))
+
+    try:
+        return run_offline_dogfood_product(
+            week_id=body.week_id,
+            store=store,
+            models=models,
+            include_html=body.include_html,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @settings_router.get(
     "/depth-tier",
     response_model=DepthTierResponse,
@@ -1018,6 +1087,7 @@ def register_settings_budget_routes(app: FastAPI) -> None:
 __all__ = [
     "AddModelRequest",
     "AntiekBenchLeaderboardResponse",
+    "AntiekBenchRunOfflineRequest",
     "AntiekBenchSuiteApproveRequest",
     "AntiekBenchSuiteApproveResponse",
     "AntiekBenchSuiteProposalResponse",
@@ -1037,6 +1107,7 @@ __all__ = [
     "NotDiamondAdvisoryResponse",
     "get_antiek_bench_leaderboard",
     "get_antiek_bench_suite_proposal",
+    "post_antiek_bench_run_offline",
     "get_antiek_bench_usage_summary",
     "get_decision_tree_selection",
     "get_depth_tier",

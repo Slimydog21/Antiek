@@ -66,10 +66,15 @@ from .dogfood_fixtures import (
     dogfood_fixture_payload,
     register_competitive_dogfood_suite,
 )
+from .product_path import (
+    DEFAULT_OFFLINE_MODELS,
+    run_offline_dogfood_product,
+)
 
 __all__ = [
     "ANTIEK_BENCH_USAGE_DIR_ENV",
     "COMPETITIVE_DOGFOOD_VERSION",
+    "DEFAULT_OFFLINE_MODELS",
     "BenchRunResult",
     "BenchStore",
     "FileBenchStore",
@@ -101,6 +106,7 @@ __all__ = [
     "register_competitive_dogfood_suite",
     "register_suite",
     "resolve_usage_store",
+    "run_offline_dogfood_product",
     "run_suite",
     "project_suite_proposal_html",
     "project_usage_summary_html",

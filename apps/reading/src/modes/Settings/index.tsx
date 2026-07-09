@@ -18,8 +18,10 @@ import {
   fetchSettingsModels,
   installDecisionTreeSelection,
   registerSettingsModel,
+  runAntiekBenchOffline,
   type AntiekBenchDogfoodFixturesResponse,
   type AntiekBenchLeaderboardResponse,
+  type AntiekBenchRunOfflineResponse,
   type AntiekBenchSuiteApproveResponse,
   type AntiekBenchSuiteProposalResponse,
   type AntiekBenchUsageSummaryResponse,
@@ -37,7 +39,8 @@ import {
  * + decision-tree driver install (process-local registry)
  * + Antiek-bench weekly usage summary (recorded engagement outcomes)
  * + Antiek-bench suite rewrite proposal (proposed only; not auto-promoted)
- * + competitive dogfood fixtures listing (never auto-promoted).
+ * + competitive dogfood fixtures listing (never auto-promoted)
+ * + offline dogfood suite run → populate weekly leaderboard (residual bo).
  *
  * Honesty: spent/pricing may be unknown; UI never invents $0.00 when the
  * ledger or rate table is unset. Cost projection stays on #440 API.
@@ -96,6 +99,10 @@ export default function Settings() {
     useState<AntiekBenchLeaderboardResponse | null>(null);
   const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
   const [leaderboardBusy, setLeaderboardBusy] = useState(false);
+  const [offlineRun, setOfflineRun] =
+    useState<AntiekBenchRunOfflineResponse | null>(null);
+  const [offlineRunBusy, setOfflineRunBusy] = useState(false);
+  const [offlineRunError, setOfflineRunError] = useState<string | null>(null);
   const [leaderboardWeek, setLeaderboardWeek] = useState(() => {
     // ISO-like week id: YYYY-Www (local calendar approximation)
     const d = new Date();
@@ -279,6 +286,38 @@ export default function Settings() {
       setLeaderboardError(e instanceof Error ? e.message : String(e));
     } finally {
       setLeaderboardBusy(false);
+    }
+  }
+
+  async function onRunOfflineDogfood() {
+    setOfflineRunBusy(true);
+    setOfflineRunError(null);
+    setLeaderboardError(null);
+    try {
+      const out = await runAntiekBenchOffline({
+        weekId: leaderboardWeek,
+        includeHtml: true,
+      });
+      if (out.view_format !== "html") {
+        throw new Error("offline run view_format must be html");
+      }
+      if (!out.offline) {
+        throw new Error("offline run must report offline=true");
+      }
+      if (out.auto_promoted) {
+        throw new Error("offline run must not auto-promote");
+      }
+      setOfflineRun(out);
+      // Refresh leaderboard from store so install-recommended appears.
+      if (out.leaderboard && out.leaderboard.view_format === "html") {
+        setLeaderboard(out.leaderboard as AntiekBenchLeaderboardResponse);
+      } else {
+        await onRefreshLeaderboard();
+      }
+    } catch (e) {
+      setOfflineRunError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOfflineRunBusy(false);
     }
   }
 
@@ -964,7 +1003,58 @@ export default function Settings() {
               >
                 {leaderboardBusy ? "Loading…" : "Refresh leaderboard"}
               </button>
+              <button
+                type="button"
+                data-testid="antiek-bench-run-offline"
+                onClick={() => void onRunOfflineDogfood()}
+                disabled={
+                  offlineRunBusy ||
+                  leaderboardBusy ||
+                  !leaderboardWeek.trim()
+                }
+                className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+              >
+                {offlineRunBusy
+                  ? "Running offline…"
+                  : "Run offline dogfood suite"}
+              </button>
             </div>
+            {offlineRunError && (
+              <p className="text-sm text-red-700 dark:text-red-300 font-mono">
+                {offlineRunError}
+              </p>
+            )}
+            {offlineRun ? (
+              <div
+                className="font-mono text-[13px] space-y-1 border border-ink/10 dark:border-bright/10 rounded p-2"
+                data-testid="antiek-bench-run-offline-result"
+              >
+                <Row label="Offline runs" value={String(offlineRun.run_count)} />
+                <Row
+                  label="Models"
+                  value={(offlineRun.models_run || []).join(", ") || "—"}
+                />
+                <Row
+                  label="Suite"
+                  value={offlineRun.suite_version || "—"}
+                />
+                <Row
+                  label="Recommended"
+                  value={
+                    offlineRun.recommended_model_id
+                      ? `${offlineRun.recommended_model_id} (${offlineRun.recommended_mean_score ?? "—"})`
+                      : "—"
+                  }
+                />
+                {offlineRun.html ? (
+                  <div
+                    className="prose border rounded p-2 text-sm max-h-40 overflow-auto"
+                    data-testid="antiek-bench-run-offline-html"
+                    dangerouslySetInnerHTML={{ __html: offlineRun.html }}
+                  />
+                ) : null}
+              </div>
+            ) : null}
             {leaderboard && (
               <div
                 className="font-mono text-[13px] space-y-2"

@@ -274,6 +274,48 @@ export async function fetchAntiekBenchLeaderboard(opts: {
   return readJson<AntiekBenchLeaderboardResponse>(res);
 }
 
+/** Offline dogfood suite run → records runs for leaderboard (residual bo). */
+export type AntiekBenchRunOfflineResponse = {
+  week_id: string;
+  suite_version: string;
+  suite_label?: string;
+  run_count: number;
+  runs: Array<{
+    run_id: string;
+    model_id: string;
+    mean_score: number;
+    suite_version?: string;
+  }>;
+  models_run: string[];
+  recommended_model_id: string | null;
+  recommended_mean_score: number | null;
+  leaderboard?: AntiekBenchLeaderboardResponse;
+  view_format: "html" | string;
+  offline: boolean;
+  auto_promoted: boolean;
+  settings_panel: string;
+  source: string;
+  notes: string[];
+  html?: string | null;
+};
+
+export async function runAntiekBenchOffline(opts: {
+  weekId: string;
+  includeHtml?: boolean;
+  models?: Array<{ model_id: string; quality?: number }>;
+}): Promise<AntiekBenchRunOfflineResponse> {
+  const res = await apiFetch(`${API_BASE}/settings/antiek-bench/run-offline`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      week_id: opts.weekId,
+      include_html: opts.includeHtml !== false,
+      models: opts.models ?? [],
+    }),
+  });
+  return readJson<AntiekBenchRunOfflineResponse>(res);
+}
+
 /** Competitive dogfood fixtures listing (offline; never auto-promoted). */
 export type AntiekBenchDogfoodFixturesResponse = {
   suite_version: string;
