@@ -5,6 +5,8 @@
  * notes. Residual (cq): autoLoad twins on mount for DR/hosted windows.
  * Residual (dd): autoSeedIfEmpty — offline seed when load finds zero notes so
  * the recursive note-taker substrate exists without a manual click.
+ * Residual (ea): autoPromoteAfterLoad — promote twins into research context
+ * after autoLoad/seed so prompts inherit recursive notes without a click.
  * HTML-first; never PDF.
  */
 
@@ -31,6 +33,11 @@ export type TwinNotesPanelProps = {
   /** Optional title/body context for offline seed. */
   seedTitle?: string | null;
   seedBodyText?: string | null;
+  /**
+   * Residual (ea): after autoLoad (and optional seed), promote twins into
+   * research context units when notes exist. Offline-safe promote path.
+   */
+  autoPromoteAfterLoad?: boolean;
 };
 
 export function TwinNotesPanel({
@@ -40,6 +47,7 @@ export function TwinNotesPanel({
   autoSeedIfEmpty = false,
   seedTitle = null,
   seedBodyText = null,
+  autoPromoteAfterLoad = false,
 }: TwinNotesPanelProps) {
   const [twins, setTwins] = useState<TwinNotesResponse | null>(null);
   const [promoted, setPromoted] = useState<TwinPromoteContextResponse | null>(
@@ -50,6 +58,7 @@ export function TwinNotesPanel({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [seedStatus, setSeedStatus] = useState<string | null>(null);
+  const [promoteStatus, setPromoteStatus] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -88,19 +97,48 @@ export function TwinNotesPanel({
         }
       }
       setTwins(t);
+      // Residual (ea): promote seeded/loaded twins into context for prompts.
+      if (autoPromoteAfterLoad && (t.note_count ?? 0) > 0) {
+        try {
+          const p = await promoteTwinsToContext({
+            asset_id: assetId,
+            include_html: true,
+          });
+          if (p.view_format !== "html") {
+            throw new Error("twin promote view_format must be html");
+          }
+          setPromoted(p);
+          setPromoteStatus(
+            `auto-promoted ${p.promoted_count ?? t.note_count} twin unit(s) to context`,
+          );
+        } catch (pe) {
+          setPromoteStatus(
+            pe instanceof Error
+              ? `auto-promote failed: ${pe.message}`
+              : "auto-promote failed",
+          );
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
-  }, [assetId, autoSeedIfEmpty, seedTitle, seedBodyText, spawnId]);
+  }, [
+    assetId,
+    autoSeedIfEmpty,
+    seedTitle,
+    seedBodyText,
+    spawnId,
+    autoPromoteAfterLoad,
+  ]);
 
   useEffect(() => {
     if (!autoLoad || !assetId.trim()) return;
     void load();
-    // Mount-once per asset when autoLoad is on (residual cq/dd).
+    // Mount-once per asset when autoLoad is on (residual cq/dd/ea).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoLoad, assetId, autoSeedIfEmpty]);
+  }, [autoLoad, assetId, autoSeedIfEmpty, autoPromoteAfterLoad]);
 
   const record = useCallback(async () => {
     if (!text.trim()) return;
@@ -215,6 +253,15 @@ export function TwinNotesPanel({
           role="status"
         >
           {seedStatus}
+        </p>
+      ) : null}
+      {promoteStatus ? (
+        <p
+          className="meta font-mono text-[11px]"
+          data-testid="twin-promote-status"
+          role="status"
+        >
+          {promoteStatus}
         </p>
       ) : null}
       {twins ? (

@@ -212,6 +212,7 @@ export default function HostedHtmlDocumentHost(
             spawnId={null}
             autoLoad
             autoSeedIfEmpty
+            autoPromoteAfterLoad
             seedTitle={title}
             seedBodyText={html ? html.replace(/<[^>]+>/g, " ").slice(0, 500) : title}
           />

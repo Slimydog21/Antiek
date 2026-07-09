@@ -121,6 +121,62 @@ describe("TwinNotesPanel", () => {
     });
   });
 
+  it("auto-promotes twins to context after load when autoPromoteAfterLoad (ea)", async () => {
+    fetchTwinNotes.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 1,
+      insight_count: 1,
+      question_count: 0,
+      notes: [
+        {
+          note_id: "twin_1",
+          asset_id: "paper",
+          kind: "insight",
+          text: "Attention is routing.",
+        },
+      ],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+      html: "<p>twins</p>",
+    });
+    promoteTwinsToContext.mockResolvedValue({
+      asset_id: "paper",
+      promoted_count: 1,
+      context_unit_count: 1,
+      promoted: [
+        {
+          twin_note_id: "twin_1",
+          graph_node_id: "n1",
+          kind: "insight",
+          text: "Attention is routing.",
+        },
+      ],
+      context_units: [],
+      view_format: "html",
+      product_panel: "twin_promote_context",
+      source: "engagement_spine.twin_promote",
+      notes: [],
+      html: "<p>promoted</p>",
+    });
+
+    render(
+      <TwinNotesPanel assetId="paper" autoLoad autoPromoteAfterLoad />,
+    );
+
+    await waitFor(() => {
+      expect(promoteTwinsToContext).toHaveBeenCalledWith(
+        expect.objectContaining({ asset_id: "paper", include_html: true }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-promote-status").textContent).toMatch(
+        /auto-promoted 1/,
+      );
+    });
+  });
+
   it("records insight and shows twin HTML", async () => {
     recordTwinNote.mockResolvedValue({
       asset_id: "paper",
