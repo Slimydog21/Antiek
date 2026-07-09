@@ -1,11 +1,12 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TwinNotesPanel } from "./TwinNotesPanel";
+import { buildTwinChasePayload, TwinNotesPanel } from "./TwinNotesPanel";
 
 const fetchTwinNotes = vi.fn();
 const recordTwinNote = vi.fn();
 const promoteTwinsToContext = vi.fn();
 const seedTwinNotes = vi.fn();
+const launchFloatingDeepResearch = vi.fn();
 
 vi.mock("../../api/engagement", () => ({
   fetchTwinNotes: (...args: unknown[]) => fetchTwinNotes(...args),
@@ -14,6 +15,29 @@ vi.mock("../../api/engagement", () => ({
   seedTwinNotes: (...args: unknown[]) => seedTwinNotes(...args),
 }));
 
+vi.mock("../../modes/Reading/launchFloatingDeepResearch", () => ({
+  launchFloatingDeepResearch: (...args: unknown[]) =>
+    launchFloatingDeepResearch(...args),
+}));
+
+describe("buildTwinChasePayload (mz)", () => {
+  it("orders questions before insights and builds goal_hint", () => {
+    const payload = buildTwinChasePayload(
+      [
+        { note_id: "i1", kind: "insight", text: "Insight first" },
+        { note_id: "q1", kind: "question", text: "Question second" },
+      ],
+      "paper-42",
+    );
+    expect(payload.note_ids).toEqual(["q1", "i1"]);
+    expect(payload.selection_text).toMatch(/\[question\] Question second/);
+    expect(payload.selection_text).toMatch(/\[insight\] Insight first/);
+    expect(payload.goal_hint).toMatch(/Twin chase on paper-42/);
+    expect(payload.goal_hint).toMatch(/questions=1/);
+    expect(payload.goal_hint).toMatch(/insights=1/);
+  });
+});
+
 describe("TwinNotesPanel", () => {
   afterEach(() => cleanup());
   beforeEach(() => {
@@ -21,6 +45,7 @@ describe("TwinNotesPanel", () => {
     recordTwinNote.mockReset();
     promoteTwinsToContext.mockReset();
     seedTwinNotes.mockReset();
+    launchFloatingDeepResearch.mockReset();
   });
 
   it("links to Settings twin seed readiness (ib)", () => {
@@ -854,5 +879,143 @@ describe("TwinNotesPanel", () => {
       (screen.getByTestId("twin-promote-selected") as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+  });
+
+  it("chases selected twin notes as floating deep research (mz)", async () => {
+    fetchTwinNotes.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 2,
+      insight_count: 1,
+      question_count: 1,
+      notes: [
+        {
+          note_id: "twin_i",
+          asset_id: "paper",
+          kind: "insight",
+          text: "Claim about X",
+        },
+        {
+          note_id: "twin_q",
+          asset_id: "paper",
+          kind: "question",
+          text: "What follows from X?",
+        },
+      ],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+      html: "<p>twins</p>",
+    });
+    launchFloatingDeepResearch.mockResolvedValue({
+      session_id: "sess_chase",
+      spawn_id: "spn_chase",
+      investigation_id: "inv_chase",
+      parent_asset_id: "paper",
+      window_id: "win_chase",
+      view_format: "html",
+      view_mode: "floating",
+      status: "reserved",
+      model_id: "model-a",
+      research_tier: "deep",
+    });
+    render(
+      <TwinNotesPanel assetId="paper" autoLoad researchTier="deep" />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-select-twin_q")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("twin-select-twin_q"));
+    fireEvent.click(screen.getByTestId("twin-select-twin_i"));
+    fireEvent.click(screen.getByTestId("twin-chase-selected"));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "paper",
+          view_mode: "floating",
+          research_tier: "deep",
+          selection_text: expect.stringMatching(/\[question\] What follows from X\?/),
+          goal_hint: expect.stringMatching(/Twin chase on paper/),
+        }),
+      );
+    });
+    const call = launchFloatingDeepResearch.mock.calls.at(-1)?.[0] as {
+      selection_text: string;
+    };
+    // Questions ordered before insights in selection_text.
+    expect(call.selection_text.indexOf("[question]")).toBeLessThan(
+      call.selection_text.indexOf("[insight]"),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-chase-status").textContent).toMatch(
+        /chased 2 twin note/,
+      );
+      expect(screen.getByTestId("twin-chase-status").textContent).toMatch(
+        /spn_chase/,
+      );
+    });
+    // Selection cleared after successful chase (parity my).
+    expect(
+      screen
+        .getByTestId("twin-selection-count")
+        .getAttribute("data-selected-count"),
+    ).toBe("0");
+  });
+
+  it("chases selected twins in full window mode (mz)", async () => {
+    fetchTwinNotes.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 1,
+      insight_count: 0,
+      question_count: 1,
+      notes: [
+        {
+          note_id: "twin_q",
+          asset_id: "paper",
+          kind: "question",
+          text: "Open Q",
+        },
+      ],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+      html: "<p>twins</p>",
+    });
+    launchFloatingDeepResearch.mockResolvedValue({
+      session_id: "sess_full",
+      spawn_id: "spn_full",
+      investigation_id: "inv_full",
+      parent_asset_id: "paper",
+      window_id: "win_full",
+      view_format: "html",
+      view_mode: "full",
+      status: "reserved",
+      model_id: null,
+      research_tier: "wrestle",
+    });
+    render(
+      <TwinNotesPanel assetId="paper" autoLoad researchTier="wrestle" />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-select-twin_q")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("twin-select-twin_q"));
+    fireEvent.click(screen.getByTestId("twin-chase-selected-full"));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "paper",
+          view_mode: "full",
+          research_tier: "wrestle",
+          selection_text: expect.stringMatching(/\[question\] Open Q/),
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-chase-status").textContent).toMatch(
+        /mode=full/,
+      );
+    });
   });
 });

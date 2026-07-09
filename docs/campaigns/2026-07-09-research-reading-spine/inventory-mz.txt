@@ -1,0 +1,8 @@
+# inventory-mz · chase selected twin notes as floating deep research
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: mz
+files:
+  apps/reading/src/components/engagement/TwinNotesPanel.tsx
+  apps/reading/src/components/engagement/TwinNotesPanel.test.tsx
+proof: vitest TwinNotesPanel 18 passed (incl buildTwinChasePayload)
+invariants: HTML-first · launchFloatingDeepResearch chokepoint · questions-first order · clear selection on success

@@ -25,6 +25,10 @@
  * Residual (mt): dual-gate L1–L4 checklist deep-link for L3 twin live seed prep
  * (parity mj/ml/mm; never enables injectors).
  * Residual (mx): multi-select by note_id — promote only checked twin notes.
+ * Residual (my): clear multi-select after successful note_ids promote; echo
+ * note_ids on promote metrics for audit honesty.
+ * Residual (mz): chase selected twin notes as floating deep research
+ * (highlight→float DR parity for recursive note-taker questions/insights).
  * HTML-first; never PDF.
  */
 
@@ -37,6 +41,41 @@ import {
   type TwinNotesResponse,
   type TwinPromoteContextResponse,
 } from "../../api/engagement";
+import { launchFloatingDeepResearch } from "../../modes/Reading/launchFloatingDeepResearch";
+
+/** Minimal twin note shape for residual (mz) chase payload. */
+export type TwinChaseNote = {
+  note_id: string;
+  kind: string;
+  text: string;
+};
+
+/**
+ * Residual (mz): pure helper — build selection_text + goal_hint for floating
+ * deep research from multi-selected twin notes (questions preferred first).
+ */
+export function buildTwinChasePayload(
+  notes: TwinChaseNote[],
+  assetId: string,
+): { selection_text: string; goal_hint: string; note_ids: string[] } {
+  const ordered = [...notes].sort((a, b) => {
+    // Prefer questions (chase open questions) then insights then other.
+    const rank = (k: string) =>
+      k === "question" ? 0 : k === "insight" ? 1 : 2;
+    return rank(a.kind) - rank(b.kind);
+  });
+  const note_ids = ordered.map((n) => n.note_id);
+  const lines = ordered.map(
+    (n) => `[${n.kind}] ${String(n.text || "").trim()}`.trim(),
+  );
+  const selection_text = lines.filter(Boolean).join("\n\n");
+  const qCount = ordered.filter((n) => n.kind === "question").length;
+  const iCount = ordered.filter((n) => n.kind === "insight").length;
+  const goal_hint =
+    `Twin chase on ${assetId.trim() || "asset"}: ` +
+    `${ordered.length} note(s) (questions=${qCount}, insights=${iCount})`;
+  return { selection_text, goal_hint, note_ids };
+}
 
 export type TwinNotesPanelProps = {
   assetId: string;
@@ -97,6 +136,8 @@ export function TwinNotesPanel({
     seedSkipped: string | null;
   } | null>(null);
   const [promoteStatus, setPromoteStatus] = useState<string | null>(null);
+  /** Residual (mz): chase-selected deep research status chrome. */
+  const [chaseStatus, setChaseStatus] = useState<string | null>(null);
   /**
    * Residual (mq): which twin kinds to promote into context.
    * all → both; insight|question → single-class selective merge.
@@ -366,6 +407,66 @@ export function TwinNotesPanel({
     void promote(undefined, Array.from(selectedNoteIds));
   }, [promote, selectedNoteIds]);
 
+  /** Residual (mz): selected twin notes resolved from current substrate. */
+  const selectedNotes = useMemo(() => {
+    const notes = twins?.notes || [];
+    if (selectedNoteIds.size < 1) return [] as TwinChaseNote[];
+    return notes
+      .filter((n) => selectedNoteIds.has(n.note_id))
+      .map((n) => ({
+        note_id: n.note_id,
+        kind: n.kind,
+        text: n.text,
+      }));
+  }, [twins?.notes, selectedNoteIds]);
+
+  /**
+   * Residual (mz): spin floating deep research from multi-selected twins
+   * (questions preferred in payload order). Clears selection on success.
+   */
+  const chaseSelected = useCallback(
+    async (viewMode: "floating" | "full" = "floating") => {
+      if (selectedNotes.length < 1) {
+        setError("Select at least one twin note to chase as deep research");
+        return;
+      }
+      setBusy(true);
+      setError(null);
+      setChaseStatus(null);
+      try {
+        const payload = buildTwinChasePayload(selectedNotes, assetId);
+        if (!payload.selection_text.trim()) {
+          throw new Error("Selected twin notes have empty text");
+        }
+        const rawTier = (normalizedResearchTier || "").trim().toLowerCase();
+        const research_tier =
+          rawTier === "fast" || rawTier === "deep" || rawTier === "wrestle"
+            ? rawTier
+            : undefined;
+        const out = await launchFloatingDeepResearch({
+          asset_id: assetId,
+          selection_text: payload.selection_text,
+          goal_hint: payload.goal_hint,
+          view_mode: viewMode,
+          research_tier: research_tier ?? null,
+        });
+        if (out.view_format !== "html") {
+          throw new Error("twin chase view_format must be html");
+        }
+        setSelectedNoteIds(new Set());
+        setChaseStatus(
+          `chased ${payload.note_ids.length} twin note(s) → spawn=${out.spawn_id} · ` +
+            `mode=${viewMode} · tier=${out.research_tier}`,
+        );
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [assetId, normalizedResearchTier, selectedNotes],
+  );
+
   return (
     <section
       className="twin-notes-panel"
@@ -520,6 +621,25 @@ export function TwinNotesPanel({
         >
           Promote selected ({selectedNoteIds.size})
         </button>
+        {/* Residual (mz): chase multi-selected twins as floating deep research. */}
+        <button
+          type="button"
+          data-testid="twin-chase-selected"
+          onClick={() => void chaseSelected("floating")}
+          disabled={busy || selectedNoteIds.size === 0}
+          title="Spin floating deep research from multi-selected twin notes (questions preferred)"
+        >
+          Chase selected ({selectedNoteIds.size})
+        </button>
+        <button
+          type="button"
+          data-testid="twin-chase-selected-full"
+          onClick={() => void chaseSelected("full")}
+          disabled={busy || selectedNoteIds.size === 0}
+          title="Spin full working-region deep research from multi-selected twin notes"
+        >
+          Chase full
+        </button>
       </div>
       {error ? (
         <p className="error" role="alert">
@@ -554,6 +674,16 @@ export function TwinNotesPanel({
           role="status"
         >
           {promoteStatus}
+        </p>
+      ) : null}
+      {chaseStatus ? (
+        <p
+          className="meta font-mono text-[11px]"
+          data-testid="twin-chase-status"
+          data-selected-count={String(selectedNoteIds.size)}
+          role="status"
+        >
+          {chaseStatus}
         </p>
       ) : null}
       {twins ? (

@@ -313,3 +313,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (my, 2026-07-10) **Clear multi-select after promote + note_ids metrics:**
   - Selection clears after successful note_ids promote (browse→select→merge ready)
   - twin-promote-metrics data-promoted-note-ids / note_id-count audit honesty
+
+- Closed (mz, 2026-07-10) **Chase selected twins as floating deep research:**
+  - buildTwinChasePayload (questions first) + Chase selected / Chase full
+  - launchFloatingDeepResearch chokepoint; selection clears on success
