@@ -1084,6 +1084,43 @@ describe("WriteHome — the re-homed door", () => {
     );
   });
 
+  it("seeds twin notes on create when twin_seed handoff is present (pq)", async () => {
+    const key = "antiek.twin_write_seed.createtest";
+    window.sessionStorage.setItem(
+      key,
+      JSON.stringify({
+        plain_text: "[question] Why?\n\n[insight] Recursive notes.",
+        html: '<article data-twin-draft="true"><p>Why?</p></article>',
+        title: "Twin draft · paper · 2 note(s)",
+        asset_id: "paper-pq",
+        note_ids: ["q1", "i1"],
+        view_format: "html",
+        source: "twin_draft_selected",
+      }),
+    );
+    seedTwinNotesMock.mockClear();
+    mountAt(`/write?twin_seed=${encodeURIComponent(key)}`);
+    await waitFor(() => {
+      expect(screen.getByTestId("write-twin-seed-ready")).toBeTruthy();
+    });
+    const title = await screen.findByPlaceholderText(/what are you writing/i);
+    await userEvent.clear(title);
+    await userEvent.type(title, "Twin-seeded essay");
+    await userEvent.click(await screen.findByText(/start without a project/i));
+    await waitFor(() => expect(createDeliverableMock).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(seedTwinNotesMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "dlv-new",
+          force_offline: true,
+          body_text: expect.stringMatching(/\[question\] Why\?/),
+          title: "Twin-seeded essay",
+        }),
+      );
+    });
+    window.sessionStorage.removeItem(key);
+  });
+
   it("routes a servable trace-to-source to the source reader", async () => {
     const target: TraceTarget = {
       kind: "document",

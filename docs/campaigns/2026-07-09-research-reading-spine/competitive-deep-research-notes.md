@@ -590,3 +590,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - sessionStorage twinWriteSeed store/load + `/write?twin_seed=`
   - TwinNotes Draft HTML → Open Write link
   - WriteHome brainstorm seed + HTML preview + freeform provenance
+
+- Closed (pq, 2026-07-10) **twin_seed create seeds twin notes on new piece:**
+  - createWithConnection → seedTwinNotes force_offline from twin seed plain_text
+  - recursive note-taker continues into writing asset

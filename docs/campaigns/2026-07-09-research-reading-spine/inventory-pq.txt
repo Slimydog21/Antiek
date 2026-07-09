@@ -1,0 +1,8 @@
+# inventory-pq · twin_seed create seeds twin notes on new piece
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: pq
+files:
+  apps/reading/src/modes/Write/WriteHome.tsx
+  apps/reading/src/modes/Write/WriteHome.test.tsx
+proof: vitest WriteHome 23 passed
+invariants: force_offline seed · non-fatal · HTML-first · recursive note-taker continues into Write

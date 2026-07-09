@@ -97,6 +97,9 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
  * for cost-vs-remaining projection (parity MO pg / FUTURE-AGENT V4).
  * Residual (pp): `?twin_seed=<sessionStorage key>` handoff from TwinNotes
  * multi-select draft — seeds brainstorm + freeform provenance (HTML-first).
+ * Residual (pq): on create with twin_seed, offline-seed twin notes onto the new
+ * writing asset so recursive note-taker substrate continues into Write.
+
  * Residual (gg): remount TwinNotesPanel on same refresh key as research
  * context (DR launch / collective merge / promote / re-import) — hosted ez parity.
  * Residual (gh): live selection drives Write DR budget projection + launch
@@ -465,6 +468,20 @@ export default function WriteHome() {
           });
         } catch {
           // Non-fatal: piece still opens; operator can paste from brainstorm seed.
+        }
+      }
+      // Residual (pq): twin_seed path — reinforce recursive note-taker on new piece.
+      if (twinSeed && twinSeed.plain_text.trim()) {
+        try {
+          await seedTwinNotes({
+            asset_id: d.deliverable_id,
+            title: newTitle.trim() || twinSeed.title,
+            body_text: twinSeed.plain_text.slice(0, 2000),
+            include_html: false,
+            force_offline: true,
+          });
+        } catch {
+          // Non-fatal: piece still opens; operator has brainstorm seed.
         }
       }
       navigate(`/write/${d.deliverable_id}`);
