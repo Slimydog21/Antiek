@@ -1,0 +1,18 @@
+# residual (gz) hydrate offline_honest flag + HTML honesty line
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(gy) prior | branch_only | campaign inventories
+(gz) hydrate offline_honest | branch_only | HydratedAsset.offline_honest; store field; HTML honesty copy; 5 test_engagement_hydrate
+
+PATHS:
+- substrate/engagement_spine/hydrate.py
+- tests/test_engagement_hydrate.py
+
+BEHAVIOR:
+- offline identity path: offline_honest=true, no invented abstract
+- injector path: offline_honest=false
+- Human HTML states offline-honest vs body landed via injector
+- Never PDF
+
+NEXT: (ha) re-derive; operator merge PR #465

@@ -45,14 +45,19 @@ def test_hydrate_offline_identity_only():
     )
     assert asset.view_format == "html"
     assert asset.fetched is False
+    # Residual (gz): offline-honest identity path (no invented abstract).
+    assert asset.offline_honest is True
+    assert asset.to_dict()["offline_honest"] is True
     assert asset.asset_id.startswith("pub_arxiv_")
     assert asset.html
     assert "application/pdf" not in asset.html.lower()
     assert "HTML" in asset.html or "html" in asset.html.lower()
+    assert "offline-honest" in asset.html.lower()
     assert "1706.03762" in asset.body_text or "1706.03762" in asset.title
     doc = store.get_document(asset.asset_id)
     assert doc is not None
     assert doc["view_format"] == "html"
+    assert doc.get("offline_honest") is True
 
 
 def test_hydrate_with_injector_lands_body():
@@ -72,10 +77,12 @@ def test_hydrate_with_injector_lands_body():
         include_html=True,
     )
     assert asset.fetched is True
+    assert asset.offline_honest is False
     assert "Attention Is All You Need" in asset.title
     assert "Transformer" in asset.body_text
     assert asset.html
     assert "Attention" in asset.html
+    assert "body landed via injector" in asset.html.lower()
 
 
 def test_asset_id_stable():

@@ -37,6 +37,8 @@ class HydratedAsset:
     html: str | None
     notes: tuple[str, ...]
     twins: dict[str, Any] | None = None
+    # Residual (gz): true when identity-only (no live body) — competitive aq honesty.
+    offline_honest: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -45,6 +47,7 @@ class HydratedAsset:
             "title": self.title,
             "body_text": self.body_text,
             "fetched": self.fetched,
+            "offline_honest": self.offline_honest,
             "view_format": self.view_format,
             "html": self.html,
             "notes": list(self.notes),
@@ -138,6 +141,7 @@ def hydrate_reference(
             fetched=fetched,
         )
 
+    offline_honest = not fetched
     store.put_document(
         asset_id,
         {
@@ -147,6 +151,8 @@ def hydrate_reference(
             "view_format": "html",
             "source_ref": ref.to_dict(),
             "fetched": fetched,
+            # Residual (gz): identity-only path is offline-honest (no invented abstract).
+            "offline_honest": offline_honest,
             "mode": "publication_hydrate",
             "html": html,
         },
@@ -197,6 +203,7 @@ def hydrate_reference(
         html=html,
         notes=tuple(notes),
         twins=twins_payload,
+        offline_honest=offline_honest,
     )
 
 
@@ -209,6 +216,11 @@ def project_hydrated_html(
     fetched: bool,
 ) -> str:
     """HTML-first human view of a hydrated publication asset (never PDF)."""
+    honesty = (
+        "offline-honest identity (no live body)"
+        if not fetched
+        else "body landed via injector"
+    )
     blocks: list[dict[str, Any]] = [
         {
             "type": "heading",
@@ -222,7 +234,8 @@ def project_hydrated_html(
                     "type": "text",
                     "text": (
                         f"Asset {asset_id} · kind={ref.kind} · "
-                        f"fetched={fetched} · view: HTML (not PDF)"
+                        f"fetched={fetched} · {honesty} · "
+                        f"view: HTML (not PDF)"
                     ),
                 }
             ],

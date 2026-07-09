@@ -128,3 +128,6 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 ## residual (gy) books research_tier wrestle — 2026-07-09
 - AskBookRequest + MetaReadingRequest accept wrestle
 - tests: book_qa_meta_reading 15 + schema smoke GY_BOOKS_TIER_OK
+## residual (gz) hydrate offline_honest — 2026-07-09
+- HydratedAsset.offline_honest + store + HTML honesty line
+- tests: test_engagement_hydrate 5 passed
