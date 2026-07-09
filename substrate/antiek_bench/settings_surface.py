@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from .leaderboard import LeaderboardSnapshot, build_leaderboard, project_leaderboard_html
-from .store import BenchStore
+from .store import BenchStore  # BenchStore protocol / concrete stores
 
 
 def settings_leaderboard_payload(
@@ -122,5 +122,178 @@ def project_usage_summary_html(summary: dict[str, Any]) -> str:
     return project_to_html(
         {"type": "doc", "content": blocks},
         document_id="antiek-bench-usage-summary",
+        creator="antiek_bench",
+    )
+
+
+def settings_suite_proposal_payload(
+    *,
+    store: BenchStore,
+    registry: Any = None,
+    include_html: bool = False,
+) -> dict[str, Any]:
+    """Public entry for Settings: suite rewrite *proposal* from recorded usage.
+
+    Calls shipped ``propose_from_recorded_usage`` / ``propose_suite_delta``.
+    Status is always ``proposed`` on this path — never auto-promotes active suite.
+
+    Honest empty: zero usage events → no fabricated proposal (notes only).
+    """
+    from .suite import active_suite
+    from .usage_bridge import list_usage_events, propose_from_recorded_usage
+
+    events = list_usage_events(store=store)
+    active = active_suite(registry=registry)
+    active_version = active.suite_version
+    base: dict[str, Any] = {
+        "has_proposal": False,
+        "proposal_id": None,
+        "status": None,
+        "base_suite_version": active_version,
+        "proposed_suite_version": None,
+        "active_suite_version": active_version,
+        "active_suite_unchanged": True,
+        "auto_promoted": False,
+        "rationale": None,
+        "added_item_ids": [],
+        "event_count": len(events),
+        "view_format": "html",
+        "settings_panel": "antiek_bench_suite_proposal",
+        "source": "antiek_bench.propose_from_recorded_usage",
+        "notes": [],
+    }
+    if not events:
+        base["notes"] = [
+            "No usage events recorded; suite proposal requires non-empty "
+            "usage history. Active suite is unchanged."
+        ]
+        if include_html:
+            base["html"] = project_suite_proposal_html(base)
+        return base
+
+    proposal = propose_from_recorded_usage(store=store, registry=registry)
+    after = active_suite(registry=registry)
+    prop_dict = proposal.to_dict() if hasattr(proposal, "to_dict") else dict(proposal)
+    status = str(prop_dict.get("status") or getattr(proposal, "status", "proposed"))
+    payload: dict[str, Any] = {
+        "has_proposal": True,
+        "proposal_id": str(
+            prop_dict.get("proposal_id") or getattr(proposal, "proposal_id", "")
+        ),
+        "status": status,
+        "base_suite_version": str(
+            prop_dict.get("base_suite_version")
+            or getattr(proposal, "base_suite_version", active_version)
+        ),
+        "proposed_suite_version": str(
+            prop_dict.get("proposed_suite_version")
+            or getattr(proposal, "proposed_suite_version", "")
+        ),
+        "active_suite_version": after.suite_version,
+        "active_suite_unchanged": after.suite_version == active_version,
+        "auto_promoted": False,
+        "rationale": str(
+            prop_dict.get("rationale") or getattr(proposal, "rationale", "") or ""
+        ),
+        "added_item_ids": list(
+            prop_dict.get("added_item_ids")
+            or getattr(proposal, "added_item_ids", ())
+            or []
+        ),
+        "event_count": len(events),
+        "view_format": "html",
+        "settings_panel": "antiek_bench_suite_proposal",
+        "source": "antiek_bench.propose_from_recorded_usage",
+        "notes": [
+            "Proposal status is proposed only — approve_and_promote is a separate operator gate.",
+        ],
+    }
+    if status != "proposed":
+        payload["notes"].append(
+            f"Unexpected proposal status {status!r}; product path must not auto-promote."
+        )
+    if not payload["active_suite_unchanged"]:
+        payload["notes"].append(
+            "WARNING: active suite version changed during propose — promote must stay gated."
+        )
+    if include_html:
+        payload["html"] = project_suite_proposal_html(payload)
+    return payload
+
+
+def project_suite_proposal_html(payload: dict[str, Any]) -> str:
+    """HTML-first human view of a suite proposal (never PDF)."""
+    from substrate.engagement_spine.project import project_to_html
+
+    has = bool(payload.get("has_proposal"))
+    blocks: list[dict[str, Any]] = [
+        {
+            "type": "heading",
+            "attrs": {"level": 1},
+            "content": [{"type": "text", "text": "Antiek-bench suite proposal"}],
+        },
+        {
+            "type": "paragraph",
+            "content": [
+                {
+                    "type": "text",
+                    "text": (
+                        "Status: proposal only (not auto-active) · view: HTML · "
+                        f"auto_promoted={payload.get('auto_promoted')}"
+                    ),
+                }
+            ],
+        },
+    ]
+    if not has:
+        blocks.append(
+            {
+                "type": "paragraph",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "(no proposal — record usage events via engagement flywheel first)"
+                        ),
+                    }
+                ],
+            }
+        )
+    else:
+        for label, key in (
+            ("Proposal id", "proposal_id"),
+            ("Status", "status"),
+            ("Base suite", "base_suite_version"),
+            ("Proposed suite", "proposed_suite_version"),
+            ("Active suite", "active_suite_version"),
+            ("Rationale", "rationale"),
+        ):
+            val = payload.get(key)
+            if val is None or val == "":
+                continue
+            blocks.append(
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {"type": "text", "text": f"{label}: {val}"},
+                    ],
+                }
+            )
+        added = payload.get("added_item_ids") or []
+        if added:
+            blocks.append(
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Added items: {', '.join(str(x) for x in added)}",
+                        }
+                    ],
+                }
+            )
+    return project_to_html(
+        {"type": "doc", "content": blocks},
+        document_id="antiek-bench-suite-proposal",
         creator="antiek_bench",
     )

@@ -25,8 +25,10 @@ from .rewrite import (
 )
 from .run import BenchRunResult, TaskScore, run_suite
 from .settings_surface import (
+    project_suite_proposal_html,
     project_usage_summary_html,
     settings_leaderboard_payload,
+    settings_suite_proposal_payload,
     settings_usage_summary_payload,
 )
 from .store import (
@@ -89,8 +91,10 @@ __all__ = [
     "register_suite",
     "resolve_usage_store",
     "run_suite",
+    "project_suite_proposal_html",
     "project_usage_summary_html",
     "settings_leaderboard_payload",
+    "settings_suite_proposal_payload",
     "settings_usage_summary_payload",
     "usage_store_data_dir",
     "weekly_usage_summary",

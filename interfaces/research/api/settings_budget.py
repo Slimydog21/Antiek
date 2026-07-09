@@ -467,6 +467,93 @@ def get_antiek_bench_usage_summary(
     )
 
 
+class AntiekBenchSuiteProposalResponse(BaseModel):
+    """Settings-facing suite rewrite proposal (proposed only; never auto-promote)."""
+
+    has_proposal: bool = False
+    proposal_id: str | None = None
+    status: str | None = None
+    base_suite_version: str | None = None
+    proposed_suite_version: str | None = None
+    active_suite_version: str | None = None
+    active_suite_unchanged: bool = True
+    auto_promoted: bool = False
+    rationale: str | None = None
+    added_item_ids: list[str] = Field(default_factory=list)
+    event_count: int = 0
+    view_format: str = "html"
+    settings_panel: str = "antiek_bench_suite_proposal"
+    source: str = "antiek_bench.propose_from_recorded_usage"
+    notes: list[str] = Field(default_factory=list)
+    html: str | None = None
+
+
+@settings_router.get(
+    "/antiek-bench/suite-proposal",
+    response_model=AntiekBenchSuiteProposalResponse,
+)
+def get_antiek_bench_suite_proposal(
+    request: Request,
+    include_html: bool = False,
+) -> AntiekBenchSuiteProposalResponse:
+    """Return suite rewrite *proposal* from recorded usage events.
+
+    Calls shipped ``propose_from_recorded_usage``. Does **not** call
+    ``approve_and_promote``. Empty usage yields honest empty (no fabricated suite).
+
+    Store resolution matches usage-summary:
+    1. ``app.state.antiek_bench_store`` when injected
+    2. engagement flywheel process-local usage store when present
+    3. honest empty when neither is available
+    """
+    from substrate.antiek_bench import settings_suite_proposal_payload
+
+    store = getattr(request.app.state, "antiek_bench_store", None)
+    if store is None:
+        try:
+            from .engagement_routes import get_bench_usage_store
+
+            store = get_bench_usage_store(create_if_missing=False)
+        except Exception:
+            store = None
+    if store is None:
+        return AntiekBenchSuiteProposalResponse(
+            notes=[
+                "No antiek_bench_store / engagement usage store configured; "
+                "suite proposal is empty until flywheel records events or a store is injected"
+            ],
+            view_format="html",
+            auto_promoted=False,
+            active_suite_unchanged=True,
+        )
+
+    payload = settings_suite_proposal_payload(
+        store=store, include_html=include_html
+    )
+    return AntiekBenchSuiteProposalResponse(
+        has_proposal=bool(payload.get("has_proposal")),
+        proposal_id=payload.get("proposal_id"),
+        status=payload.get("status"),
+        base_suite_version=payload.get("base_suite_version"),
+        proposed_suite_version=payload.get("proposed_suite_version"),
+        active_suite_version=payload.get("active_suite_version"),
+        active_suite_unchanged=bool(payload.get("active_suite_unchanged", True)),
+        auto_promoted=bool(payload.get("auto_promoted", False)),
+        rationale=payload.get("rationale"),
+        added_item_ids=list(payload.get("added_item_ids") or []),
+        event_count=int(payload.get("event_count") or 0),
+        view_format=str(payload.get("view_format") or "html"),
+        settings_panel=str(
+            payload.get("settings_panel") or "antiek_bench_suite_proposal"
+        ),
+        source=str(
+            payload.get("source") or "antiek_bench.propose_from_recorded_usage"
+        ),
+        notes=list(payload.get("notes") or []),
+        html=payload.get("html"),
+    )
+
+
 class NotDiamondAdvisoryResponse(BaseModel):
     """Settings-facing NotDiamond advisory posture (offline; never authority)."""
 
@@ -616,6 +703,7 @@ def register_settings_budget_routes(app: FastAPI) -> None:
 
 __all__ = [
     "AntiekBenchLeaderboardResponse",
+    "AntiekBenchSuiteProposalResponse",
     "AntiekBenchUsageSummaryResponse",
     "BudgetResponse",
     "DecisionTreeSelectionRequest",
@@ -627,6 +715,7 @@ __all__ = [
     "estimate_prompt_cost",
     "NotDiamondAdvisoryResponse",
     "get_antiek_bench_leaderboard",
+    "get_antiek_bench_suite_proposal",
     "get_antiek_bench_usage_summary",
     "get_decision_tree_selection",
     "get_notdiamond_advisory",

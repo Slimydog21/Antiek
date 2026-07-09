@@ -132,6 +132,36 @@ export async function fetchAntiekBenchUsageSummary(opts?: {
   return readJson<AntiekBenchUsageSummaryResponse>(res);
 }
 
+/** Suite rewrite proposal from recorded usage — never auto-promoted. */
+export type AntiekBenchSuiteProposalResponse = {
+  has_proposal: boolean;
+  proposal_id: string | null;
+  status: string | null;
+  base_suite_version: string | null;
+  proposed_suite_version: string | null;
+  active_suite_version: string | null;
+  active_suite_unchanged: boolean;
+  auto_promoted: boolean;
+  rationale: string | null;
+  added_item_ids: string[];
+  event_count: number;
+  view_format: "html" | string;
+  settings_panel: string;
+  source: string;
+  notes: string[];
+  html?: string | null;
+};
+
+export async function fetchAntiekBenchSuiteProposal(opts?: {
+  includeHtml?: boolean;
+}): Promise<AntiekBenchSuiteProposalResponse> {
+  const q = opts?.includeHtml ? "?include_html=true" : "";
+  const res = await apiFetch(
+    `${API_BASE}/settings/antiek-bench/suite-proposal${q}`,
+  );
+  return readJson<AntiekBenchSuiteProposalResponse>(res);
+}
+
 /** NotDiamond advisory posture — never authority over dispatch. */
 export type NotDiamondAdvisoryResponse = {
   advisory_allowed: boolean;

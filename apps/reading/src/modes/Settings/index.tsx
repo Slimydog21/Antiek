@@ -4,12 +4,14 @@ import LemonCard from "../../components/lemon/LemonCard";
 import {
   clearDecisionTreeSelection,
   estimatePromptCost,
+  fetchAntiekBenchSuiteProposal,
   fetchAntiekBenchUsageSummary,
   fetchDecisionTreeSelection,
   fetchNotDiamondAdvisory,
   fetchSettingsBudget,
   fetchSettingsModels,
   installDecisionTreeSelection,
+  type AntiekBenchSuiteProposalResponse,
   type AntiekBenchUsageSummaryResponse,
   type BudgetResponse,
   type DecisionTreeSelectionResponse,
@@ -21,7 +23,8 @@ import {
 /**
  * Operator Settings — model inventory + budget + prompt projection (SPR-01)
  * + decision-tree driver install (process-local registry)
- * + Antiek-bench weekly usage summary (recorded engagement outcomes).
+ * + Antiek-bench weekly usage summary (recorded engagement outcomes)
+ * + Antiek-bench suite rewrite proposal (proposed only; not auto-promoted).
  *
  * Honesty: spent/pricing may be unknown; UI never invents $0.00 when the
  * ledger or rate table is unset. Cost projection stays on #440 API.
@@ -58,6 +61,12 @@ export default function Settings() {
   );
   const [usageError, setUsageError] = useState<string | null>(null);
   const [usageBusy, setUsageBusy] = useState(false);
+  const [suiteProposal, setSuiteProposal] =
+    useState<AntiekBenchSuiteProposalResponse | null>(null);
+  const [suiteProposalError, setSuiteProposalError] = useState<string | null>(
+    null,
+  );
+  const [suiteProposalBusy, setSuiteProposalBusy] = useState(false);
   const [nd, setNd] = useState<NotDiamondAdvisoryResponse | null>(null);
   const [ndError, setNdError] = useState<string | null>(null);
 
@@ -106,6 +115,13 @@ export default function Settings() {
           setUsageError(e instanceof Error ? e.message : String(e));
       }
       try {
+        const p = await fetchAntiekBenchSuiteProposal({ includeHtml: true });
+        if (!cancelled) setSuiteProposal(p);
+      } catch (e) {
+        if (!cancelled)
+          setSuiteProposalError(e instanceof Error ? e.message : String(e));
+      }
+      try {
         const n = await fetchNotDiamondAdvisory({ includeHtml: true });
         if (!cancelled) setNd(n);
       } catch (e) {
@@ -130,6 +146,25 @@ export default function Settings() {
       setUsageError(e instanceof Error ? e.message : String(e));
     } finally {
       setUsageBusy(false);
+    }
+  }
+
+  async function onRefreshSuiteProposal() {
+    setSuiteProposalBusy(true);
+    setSuiteProposalError(null);
+    try {
+      const p = await fetchAntiekBenchSuiteProposal({ includeHtml: true });
+      if (p.view_format !== "html") {
+        throw new Error("suite proposal view_format must be html");
+      }
+      if (p.auto_promoted) {
+        throw new Error("suite proposal must not auto-promote");
+      }
+      setSuiteProposal(p);
+    } catch (e) {
+      setSuiteProposalError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSuiteProposalBusy(false);
     }
   }
 
@@ -500,6 +535,98 @@ export default function Settings() {
                     className="prose border rounded p-2 text-sm max-h-48 overflow-auto"
                     data-testid="antiek-bench-usage-html"
                     dangerouslySetInnerHTML={{ __html: usage.html }}
+                  />
+                ) : null}
+              </div>
+            )}
+          </div>
+        </LemonCard>
+
+        <LemonCard title="Antiek-bench suite proposal" elevation="z1" colour="glacial">
+          <div
+            className="p-4 space-y-3"
+            data-testid="antiek-bench-suite-proposal-panel"
+            data-view-format="html"
+          >
+            <p className="text-sm text-ink dark:text-bright">
+              Recursive suite rewrite proposal derived from recorded usage
+              events. Status is always <strong>proposed</strong> here —
+              operator must explicitly approve/promote (not auto-active).
+            </p>
+            {suiteProposalError && (
+              <p className="text-sm text-red-700 dark:text-red-300 font-mono">
+                {suiteProposalError}
+              </p>
+            )}
+            <button
+              type="button"
+              data-testid="antiek-bench-suite-proposal-refresh"
+              onClick={() => void onRefreshSuiteProposal()}
+              disabled={suiteProposalBusy}
+              className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+            >
+              {suiteProposalBusy ? "Loading…" : "Refresh suite proposal"}
+            </button>
+            {suiteProposal && (
+              <div
+                className="font-mono text-[13px] space-y-2"
+                data-testid="antiek-bench-suite-proposal-summary"
+              >
+                <Row
+                  label="Has proposal"
+                  value={String(suiteProposal.has_proposal)}
+                />
+                <Row
+                  label="Status"
+                  value={suiteProposal.status ?? "(none)"}
+                />
+                <Row
+                  label="Proposal id"
+                  value={suiteProposal.proposal_id ?? "—"}
+                />
+                <Row
+                  label="Base suite"
+                  value={suiteProposal.base_suite_version ?? "—"}
+                />
+                <Row
+                  label="Proposed suite"
+                  value={suiteProposal.proposed_suite_version ?? "—"}
+                />
+                <Row
+                  label="Active suite"
+                  value={suiteProposal.active_suite_version ?? "—"}
+                />
+                <Row
+                  label="Active unchanged"
+                  value={String(suiteProposal.active_suite_unchanged)}
+                />
+                <Row
+                  label="Auto-promoted"
+                  value={String(suiteProposal.auto_promoted)}
+                />
+                <Row label="Events" value={String(suiteProposal.event_count)} />
+                <Row label="View" value={suiteProposal.view_format} />
+                {suiteProposal.rationale ? (
+                  <p
+                    className="text-[11px] text-ink-soft dark:text-starlight"
+                    data-testid="antiek-bench-suite-proposal-rationale"
+                  >
+                    {suiteProposal.rationale}
+                  </p>
+                ) : null}
+                {suiteProposal.notes?.map((n) => (
+                  <p
+                    key={n}
+                    className="text-[11px] text-ink-soft dark:text-starlight"
+                  >
+                    {n}
+                  </p>
+                ))}
+                {suiteProposal.html ? (
+                  <div
+                    className="prose border rounded p-2 text-sm max-h-48 overflow-auto"
+                    data-testid="antiek-bench-suite-proposal-html"
+                    dangerouslySetInnerHTML={{ __html: suiteProposal.html }}
                   />
                 ) : null}
               </div>

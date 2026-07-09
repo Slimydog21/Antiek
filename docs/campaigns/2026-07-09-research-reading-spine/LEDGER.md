@@ -26,3 +26,8 @@
 ## Non-claims
 
 No browser Playwright e2e; does not replace chase-launcher write path; operator merges only.
+## residual (al) Settings suite-proposal visibility — 2026-07-09
+- settings_suite_proposal_payload + GET /settings/antiek-bench/suite-proposal
+- Settings panel data-testid antiek-bench-suite-proposal-panel; view_format html
+- tests: test_settings_suite_proposal.py (4) + Settings.test.tsx suite proposal case
+- NEVER auto-promote; empty usage → has_proposal=false

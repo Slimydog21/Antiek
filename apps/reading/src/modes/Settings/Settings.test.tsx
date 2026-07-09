@@ -15,6 +15,7 @@ const {
   fetchSettingsModels,
   fetchSettingsBudget,
   fetchAntiekBenchUsageSummary,
+  fetchAntiekBenchSuiteProposal,
   fetchNotDiamondAdvisory,
 } = vi.hoisted(() => {
   const models = {
@@ -87,6 +88,24 @@ const {
       notes: [],
       html: "<p>Events recorded: 2</p>",
     })),
+    fetchAntiekBenchSuiteProposal: vi.fn(async () => ({
+      has_proposal: true,
+      proposal_id: "prop_testdeadbeef01",
+      status: "proposed",
+      base_suite_version: "core-v1",
+      proposed_suite_version: "core-v1+usage-abcd1234",
+      active_suite_version: "core-v1",
+      active_suite_unchanged: true,
+      auto_promoted: false,
+      rationale: "Ingested 2 usage events; added 1 items from failed outcomes",
+      added_item_ids: ["usage-distill-abcd12-0"],
+      event_count: 2,
+      view_format: "html",
+      settings_panel: "antiek_bench_suite_proposal",
+      source: "antiek_bench.propose_from_recorded_usage",
+      notes: ["Proposal status is proposed only"],
+      html: "<p>Status: proposal only · proposed</p>",
+    })),
     fetchNotDiamondAdvisory: vi.fn(async () => ({
       advisory_allowed: true,
       advisory_verdict: "GO",
@@ -116,6 +135,7 @@ vi.mock("../../api/settings", () => ({
   installDecisionTreeSelection,
   clearDecisionTreeSelection,
   fetchAntiekBenchUsageSummary,
+  fetchAntiekBenchSuiteProposal,
   fetchNotDiamondAdvisory,
 }));
 
@@ -132,6 +152,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
     fetchSettingsModels.mockClear();
     fetchSettingsBudget.mockClear();
     fetchAntiekBenchUsageSummary.mockClear();
+    fetchAntiekBenchSuiteProposal.mockClear();
     fetchNotDiamondAdvisory.mockClear();
   });
 
@@ -227,6 +248,30 @@ describe("Settings SPR-01 + decision-tree install", () => {
     );
     expect(screen.getByTestId("notdiamond-advisory-html").innerHTML).toMatch(
       /authority|REJECT/i,
+    );
+  });
+
+  it("loads Antiek-bench suite proposal — proposed not auto-promoted", async () => {
+    render(<Settings />);
+    await waitFor(() => {
+      expect(screen.getByTestId("antiek-bench-suite-proposal-panel")).toBeTruthy();
+    });
+    expect(fetchAntiekBenchSuiteProposal).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("antiek-bench-suite-proposal-summary").textContent,
+      ).toMatch(/proposed/i);
+    });
+    expect(
+      screen
+        .getByTestId("antiek-bench-suite-proposal-panel")
+        .getAttribute("data-view-format"),
+    ).toBe("html");
+    const summary = screen.getByTestId("antiek-bench-suite-proposal-summary");
+    expect(summary.textContent).toMatch(/prop_testdeadbeef01/);
+    expect(summary.textContent).toMatch(/Auto-promoted\s*false/i);
+    expect(screen.getByTestId("antiek-bench-suite-proposal-html").innerHTML).toMatch(
+      /proposal|proposed/i,
     );
   });
 });
