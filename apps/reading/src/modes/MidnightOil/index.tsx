@@ -1,9 +1,11 @@
 import { useState } from "react";
 
 import {
+  dispatchMidnightOil,
   dryRunMidnightOil,
   preflightMidnightOil,
   type MidnightOilAppliedRunReceipt,
+  type MidnightOilDispatchReceipt,
   type MidnightOilPreflight,
   type MidnightOilRouteMode,
   type MidnightOilSourcePolicy,
@@ -37,18 +39,23 @@ export default function MidnightOil() {
   const [ack, setAck] = useState(false);
   const [preflight, setPreflight] = useState<MidnightOilPreflight | null>(null);
   const [dryRunReceipt, setDryRunReceipt] = useState<MidnightOilAppliedRunReceipt | null>(null);
+  const [dispatchReceipt, setDispatchReceipt] = useState<MidnightOilDispatchReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
+  const [dispatchBusy, setDispatchBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
+  const [dispatchError, setDispatchError] = useState<string | null>(null);
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
     setBusy(true);
     setError(null);
     setDryRunError(null);
+    setDispatchError(null);
     setPreflight(null);
     setDryRunReceipt(null);
+    setDispatchReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -87,6 +94,38 @@ export default function MidnightOil() {
       setDryRunError(e instanceof Error ? e.message : String(e));
     } finally {
       setDryRunBusy(false);
+    }
+  }
+
+  async function onDispatchGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !preflight.applied_run_receipt
+    ) {
+      setDispatchError(
+        "Dispatch gate requires launch packet, approval receipt, runner handoff, and applied run receipt.",
+      );
+      return;
+    }
+
+    setDispatchBusy(true);
+    setDispatchError(null);
+    setDispatchReceipt(null);
+    try {
+      const result = await dispatchMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        applied_run_receipt: preflight.applied_run_receipt,
+        live_dispatch_requested: true,
+      });
+      setDispatchReceipt(result);
+    } catch (e) {
+      setDispatchError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDispatchBusy(false);
     }
   }
 
@@ -460,6 +499,60 @@ export default function MidnightOil() {
                     <Metric
                       label="Artifact"
                       value={dryRunReceipt.final_artifact_created ? "created" : "not created"}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Dispatch gate
+                </p>
+                <button
+                  type="button"
+                  onClick={onDispatchGate}
+                  disabled={
+                    dispatchBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !preflight.applied_run_receipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {dispatchBusy ? "Checking gate..." : "Dispatch gate"}
+                </button>
+              </div>
+
+              {dispatchError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {dispatchError}
+                </p>
+              )}
+
+              {dispatchReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Dispatch receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {dispatchReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 font-mono text-[12px]">
+                    <Metric label="Status" value={dispatchReceipt.status.replaceAll("_", " ")} />
+                    <Metric
+                      label="Blocker"
+                      value={dispatchReceipt.blocker_reason.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Dispatch"
+                      value={dispatchReceipt.dispatch_performed ? "dispatched" : "not dispatched"}
+                    />
+                    <Metric
+                      label="Provider calls"
+                      value={dispatchReceipt.provider_calls_made ? "made" : "none"}
                     />
                   </div>
                 </div>

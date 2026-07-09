@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import MidnightOil from "./index";
-import { dryRunMidnightOil, preflightMidnightOil } from "../../api/midnightOil";
+import { dispatchMidnightOil, dryRunMidnightOil, preflightMidnightOil } from "../../api/midnightOil";
 
 vi.mock("../../api/midnightOil", () => ({
   preflightMidnightOil: vi.fn(async () => ({
@@ -166,6 +166,25 @@ vi.mock("../../api/midnightOil", () => ({
     final_artifact_created: false,
     applied_notes: ["endpoint dry run only: no autonomous agents dispatched"],
   })),
+  dispatchMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-dispatch-receipt",
+    applied_run_receipt_id: "midnight-oil-test-applied-run-receipt",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    run_id: "midnight-oil-test",
+    status: "blocked_live_dispatch_disabled",
+    live_dispatch_requested: true,
+    blocker_reason: "live_dispatch_disabled",
+    dispatch_allowed: false,
+    dispatch_performed: false,
+    budget_reserved: false,
+    provider_calls_made: false,
+    retrieval_performed: false,
+    graph_mutated: false,
+    final_artifact_created: false,
+    dispatch_notes: ["live dispatch gate only: autonomous runner execution is disabled"],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -243,5 +262,29 @@ describe("MidnightOil", () => {
     expect(screen.getByText("midnight-oil-test-endpoint-dry-run-receipt")).toBeTruthy();
     expect(screen.getAllByText("planned not dispatched").length).toBeGreaterThan(1);
     expect(screen.getAllByText("not performed").length).toBeGreaterThan(1);
+
+    await user.click(screen.getByRole("button", { name: "Dispatch gate" }));
+
+    await waitFor(() => expect(dispatchMidnightOil).toHaveBeenCalled());
+    expect(dispatchMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      applied_run_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-applied-run-receipt",
+      }),
+      live_dispatch_requested: true,
+    });
+    expect(screen.getByText("Dispatch receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-dispatch-receipt")).toBeTruthy();
+    expect(screen.getByText("blocked live dispatch disabled")).toBeTruthy();
+    expect(screen.getByText("live dispatch disabled")).toBeTruthy();
+    expect(screen.getAllByText("none").length).toBeGreaterThan(0);
   });
 });
