@@ -7,6 +7,18 @@ vi.mock("./windowHostContext", () => ({
   useInWindow: () => undefined,
 }));
 
+vi.mock("../engagement/TwinNotesPanel", () => ({
+  TwinNotesPanel: (props: { assetId: string }) => (
+    <div data-testid="twin-notes-panel-stub">{props.assetId}</div>
+  ),
+}));
+
+vi.mock("../engagement/ResearchContextPanel", () => ({
+  ResearchContextPanel: (props: { assetId: string }) => (
+    <div data-testid="research-context-panel-stub">{props.assetId}</div>
+  ),
+}));
+
 describe("HostedHtmlDocumentHost", () => {
   afterEach(() => cleanup());
 
@@ -28,6 +40,25 @@ describe("HostedHtmlDocumentHost", () => {
     );
     expect(screen.getByTestId("hosted-html-document-host").textContent).toMatch(
       /not PDF/,
+    );
+  });
+
+  it("mounts twin notes + research context for document_id (bw)", () => {
+    render(
+      <HostedHtmlDocumentHost
+        document_id="hdoc_xyz"
+        title="Pride"
+        view_format="html"
+        html="<p>It is a truth</p>"
+      />,
+    );
+    expect(screen.getByTestId("hosted-html-twins-mount")).toBeTruthy();
+    expect(screen.getByTestId("twin-notes-panel-stub").textContent).toBe(
+      "hdoc_xyz",
+    );
+    expect(screen.getByTestId("hosted-html-context-mount")).toBeTruthy();
+    expect(screen.getByTestId("research-context-panel-stub").textContent).toBe(
+      "hdoc_xyz",
     );
   });
 

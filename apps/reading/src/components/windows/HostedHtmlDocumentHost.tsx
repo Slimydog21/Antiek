@@ -2,9 +2,15 @@
  * HostedHtmlDocumentHost — window-native page for marketplace / account
  * hosted books (residual bt). HTML-first only; PDF never required as view.
  *
+ * Residual (bw): mounts TwinNotesPanel + ResearchContextPanel so reading
+ * and research share the recursive note-taker / context flywheel on the
+ * same document_id used as engagement asset_id after host seed (bv).
+ *
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
  */
 
+import { ResearchContextPanel } from "../engagement/ResearchContextPanel";
+import { TwinNotesPanel } from "../engagement/TwinNotesPanel";
 import { useInWindow } from "./windowHostContext";
 
 export type HostedHtmlDocumentHostProps = {
@@ -28,6 +34,7 @@ export default function HostedHtmlDocumentHost(
   const viewFormat = (props.view_format?.trim() || "html").toLowerCase();
   const isHtml = viewFormat === "html";
   const html = props.html?.trim() || "";
+  const assetId = props.document_id?.trim() || "";
 
   return (
     <div
@@ -69,6 +76,26 @@ export default function HostedHtmlDocumentHost(
           No HTML body yet — host the book into your account first.
         </p>
       )}
+
+      {assetId ? (
+        <section
+          className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
+          data-testid="hosted-html-twins-mount"
+          data-view-format="html"
+        >
+          <TwinNotesPanel assetId={assetId} spawnId={null} />
+        </section>
+      ) : null}
+
+      {assetId ? (
+        <section
+          className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
+          data-testid="hosted-html-context-mount"
+          data-view-format="html"
+        >
+          <ResearchContextPanel assetId={assetId} spawnId={null} />
+        </section>
+      ) : null}
     </div>
   );
 }
