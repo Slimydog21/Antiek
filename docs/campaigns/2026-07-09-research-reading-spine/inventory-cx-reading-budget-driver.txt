@@ -1,0 +1,17 @@
+# residual (cx) ResearchThis budget projection + decision-tree model_id
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(cw) prior | branch_only | campaign inventories
+(cx) reading float launch budget + driver | branch_only | ResearchThis mounts ResearchLaunchBudgetPanel; float open passes decision-tree model_id when installed; 5 vitest
+
+## What shipped
+- `ResearchThis` mounts `ResearchLaunchBudgetPanel` (promptText = selection, researchTier=deep) before Deep research (window).
+- Float open path reads Settings decision-tree selection and passes `model_id` when installed; omits inventing a model when none.
+- Driver fetch failure is non-fatal (session still opens without model_id).
+- Tests: budget mount html view; model_id null when none; model_id pass-through when installed; prior cc/cu paths green.
+
+## Why (north star)
+Reading ≡ research: operator sees daily budget + prompt projection and active driver before spinning floating deep research from a highlight/page — parity with StartResearch (bp) and ChatInputArea (bq).
+
+NEXT: (cy) re-derive; operator merge PR #465

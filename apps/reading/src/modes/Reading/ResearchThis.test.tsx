@@ -9,6 +9,7 @@ const spinResearch = vi.fn();
 const navigate = vi.fn();
 const hydratePublicationRefs = vi.fn();
 const parsePublicationRefs = vi.fn();
+const fetchDecisionTreeSelection = vi.fn();
 
 vi.mock("./launchFloatingDeepResearch", () => ({
   launchFloatingDeepResearch: (...args: unknown[]) =>
@@ -25,6 +26,26 @@ vi.mock("../../api/books", () => ({
   spinResearch: (...args: unknown[]) => spinResearch(...args),
 }));
 
+vi.mock("../../api/settings", () => ({
+  fetchDecisionTreeSelection: (...args: unknown[]) =>
+    fetchDecisionTreeSelection(...args),
+}));
+
+vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", () => ({
+  ResearchLaunchBudgetPanel: (props: {
+    promptText: string;
+    researchTier: string;
+  }) => (
+    <div
+      data-testid="research-launch-budget-panel-stub"
+      data-prompt-len={String(props.promptText.length)}
+      data-research-tier={props.researchTier}
+    >
+      budget stub
+    </div>
+  ),
+}));
+
 vi.mock("react-router-dom", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react-router-dom")>();
   return {
@@ -37,7 +58,7 @@ vi.mock("../../lib/analytics", () => ({
   track: vi.fn(),
 }));
 
-describe("ResearchThis residual cc", () => {
+describe("ResearchThis residual cc/cu/cx", () => {
   beforeEach(() => {
     launchFloatingDeepResearch.mockReset();
     spinResearch.mockReset();
@@ -45,9 +66,33 @@ describe("ResearchThis residual cc", () => {
     hydratePublicationRefs.mockReset();
     parsePublicationRefs.mockReset();
     parsePublicationRefs.mockReturnValue([]);
+    fetchDecisionTreeSelection.mockReset();
+    fetchDecisionTreeSelection.mockResolvedValue({
+      installed: false,
+      model_id: null,
+      provider_id: null,
+    });
   });
 
   afterEach(() => cleanup());
+
+  it("mounts budget projection panel before float open (cx)", () => {
+    render(
+      <MemoryRouter>
+        <ResearchThis
+          documentId="doc-1"
+          pageIndex={0}
+          passageText="Attention is content-addressable memory."
+        />
+      </MemoryRouter>,
+    );
+    const mount = screen.getByTestId("research-this-budget-mount");
+    expect(mount).toBeTruthy();
+    expect(mount.getAttribute("data-view-format")).toBe("html");
+    const stub = screen.getByTestId("research-launch-budget-panel-stub");
+    expect(stub.getAttribute("data-research-tier")).toBe("deep");
+    expect(Number(stub.getAttribute("data-prompt-len"))).toBeGreaterThan(3);
+  });
 
   it("opens floating deep research window from passage", async () => {
     launchFloatingDeepResearch.mockResolvedValue({
@@ -79,13 +124,56 @@ describe("ResearchThis residual cc", () => {
       asset_id: string;
       selection_text: string;
       view_mode: string;
+      model_id: string | null;
     };
     expect(call.asset_id).toBe("doc-1");
     expect(call.selection_text).toMatch(/Attention/);
     expect(call.view_mode).toBe("floating");
+    expect(call.model_id).toBeNull();
     await waitFor(() => {
       expect(screen.getByTestId("research-this-window-id").textContent).toMatch(
         /wdr_fsess_1/,
+      );
+    });
+  });
+
+  it("passes decision-tree model_id when installed (cx)", async () => {
+    fetchDecisionTreeSelection.mockResolvedValue({
+      installed: true,
+      model_id: "claude-opus-4-8",
+      provider_id: "anthropic",
+    });
+    launchFloatingDeepResearch.mockResolvedValue({
+      session_id: "fsess_cx",
+      spawn_id: "spn_cx",
+      investigation_id: "inv_cx",
+      parent_asset_id: "doc-1",
+      window_id: "wdr_fsess_cx",
+      view_format: "html",
+      view_mode: "floating",
+      status: "reserved",
+    });
+
+    render(
+      <MemoryRouter>
+        <ResearchThis
+          documentId="doc-1"
+          pageIndex={1}
+          passageText="Twin notes are recursive."
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByTestId("research-this-floating"));
+    await waitFor(() => {
+      expect(fetchDecisionTreeSelection).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model_id: "claude-opus-4-8",
+          view_mode: "floating",
+        }),
       );
     });
   });

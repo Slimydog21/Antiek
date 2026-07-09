@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 
 import { LemonButton } from "../../components/lemon";
 import { spinResearch } from "../../api/books";
+import { fetchDecisionTreeSelection } from "../../api/settings";
+import { ResearchLaunchBudgetPanel } from "../../components/engagement/ResearchLaunchBudgetPanel";
 import { track } from "../../lib/analytics";
 import {
   hydratePublicationRefs,
@@ -11,12 +13,14 @@ import {
 import { launchFloatingDeepResearch } from "./launchFloatingDeepResearch";
 
 /**
- * ResearchThis (Read SPR-08 + residual cc/cu) — spin deep research from the
+ * ResearchThis (Read SPR-08 + residual cc/cu/cx) — spin deep research from the
  * current passage.
  *
  * Residual (cc): primary path opens a **floating** deep_research_session
  * window via engagement sessions/open + openDeepResearchFromHighlight.
  * Residual (cu): optional arxiv/substack/URL refs hydrate + attach on open.
+ * Residual (cx): budget projection before fire + decision-tree model_id on
+ * float open (parity with StartResearch/ChatInputArea launch surfaces).
  * Full-page workstation handoff remains an explicit secondary action.
  *
  * Gate-safe: passageText for gated books is still constrained server-side;
@@ -61,6 +65,18 @@ export default function ResearchThis({
             " · HTML-first",
         );
       }
+      // Residual (cx): pass Settings decision-tree driver when installed.
+      // Never invent a model; omit model_id when none is installed.
+      let modelId: string | null = null;
+      try {
+        const tree = await fetchDecisionTreeSelection();
+        if (tree.installed && tree.model_id?.trim()) {
+          modelId = tree.model_id.trim();
+        }
+      } catch {
+        // Driver unknown is non-fatal — session open still proceeds without model_id.
+        modelId = null;
+      }
       const out = await launchFloatingDeepResearch({
         asset_id: documentId,
         selection_text: selection,
@@ -68,6 +84,7 @@ export default function ResearchThis({
         goal_hint: "Deep-research the highlighted passage from reading",
         view_mode: "floating",
         references: refs.length ? refs : undefined,
+        model_id: modelId,
       });
       track("reading_research_spun", {
         document_id: documentId,
@@ -76,6 +93,7 @@ export default function ResearchThis({
         mode: "floating_window",
         session_id: out.session_id,
         publication_ref_count: refs.length,
+        model_id: modelId,
       });
       setLastWindowId(out.window_id);
     } catch (e: unknown) {
@@ -135,6 +153,17 @@ export default function ResearchThis({
             {pubRefStatus}
           </p>
         ) : null}
+      </div>
+      {/* Residual (cx): daily budget + prompt projection before float open. */}
+      <div
+        className="max-w-md"
+        data-testid="research-this-budget-mount"
+        data-view-format="html"
+      >
+        <ResearchLaunchBudgetPanel
+          promptText={selection}
+          researchTier="deep"
+        />
       </div>
       <div className="inline-flex flex-wrap items-center gap-2">
         <LemonButton
