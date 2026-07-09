@@ -68,6 +68,33 @@ const record: MultimediaAssetRecord = {
   ],
 };
 
+const exportGateRecord: MultimediaAssetRecord = {
+  ...record,
+  jobs: [
+    ...record.jobs,
+    {
+      job_id: "job-mm-1-0002",
+      asset_id: "mm-1",
+      revision_id: "rev-1",
+      sequence: 2,
+      kind: "export_gate",
+      status: "partial",
+      progress_percent: 95,
+      message: "Manual publication review required before public export.",
+      error_code: null,
+      retryable: true,
+      public_export_gate: {
+        status: "manual_review",
+        public_export_enabled: false,
+        hardening_status: "manual_review",
+        attached_file_ids: ["file-mm-1-transcript"],
+        required_gate_ids: ["rights_and_publication"],
+        reason: "Manual publication review required before public export.",
+      },
+    },
+  ],
+};
+
 const jobs = {
   jobs: record.jobs,
   count: 1,
@@ -216,12 +243,14 @@ describe("multimedia API client", () => {
   });
 
   it("posts public export gate evaluation to the no-spend endpoint", async () => {
-    mockFetch().mockResolvedValueOnce(jsonResponse(200, record));
-    await evaluateMultimediaPublicExportGate("mm-1");
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, exportGateRecord));
+    const result = await evaluateMultimediaPublicExportGate("mm-1");
     expect(mockFetch()).toHaveBeenLastCalledWith(
       "/multimedia/assets/mm-1/evaluate-public-export-gate",
       expect.objectContaining({ method: "POST" }),
     );
+    expect(result.jobs.at(-1)?.kind).toBe("export_gate");
+    expect(result.jobs.at(-1)?.public_export_gate?.public_export_enabled).toBe(false);
   });
 
   it("surfaces a typed not-found error for a 404 live-execution prep", async () => {

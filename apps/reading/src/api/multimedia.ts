@@ -3,7 +3,7 @@ import { API_BASE, apiFetch } from "../lib/api";
 export type MultimediaMode = "video" | "audio" | "hybrid";
 export type MultimediaRoutePolicy = "cheapest" | "balanced" | "highest_quality";
 export type MultimediaKind = "information_video" | "documentary_video" | "audio_experience";
-export type MultimediaJobKind = "render" | "steering" | "hardening" | "provider_execution";
+export type MultimediaJobKind = "render" | "steering" | "hardening" | "provider_execution" | "export_gate";
 export type MultimediaJobStatus = "queued" | "running" | "succeeded" | "failed" | "canceled" | "partial";
 export type MultimediaPublicExportNextAction =
   | "attach_provider_artifacts"
@@ -98,11 +98,21 @@ export interface MultimediaJobRecord {
   message: string;
   error_code: string | null;
   retryable: boolean | null;
+  public_export_gate?: MultimediaPublicExportGate | null;
 }
 
 export interface MultimediaJobList {
   jobs: MultimediaJobRecord[];
   count: number;
+}
+
+export interface MultimediaPublicExportGate {
+  status: "blocked" | "manual_review" | "ready";
+  public_export_enabled: boolean;
+  hardening_status: string | null;
+  attached_file_ids: string[];
+  required_gate_ids: string[];
+  reason: string;
 }
 
 export interface MultimediaPublicExportStatus {
