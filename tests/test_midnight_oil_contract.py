@@ -26,6 +26,7 @@ def test_no_ack_request_is_denied_before_dispatch() -> None:
     assert result.unallocated_budget_usd == 25.0
     assert result.launch_packet is None
     assert result.approval_receipt is None
+    assert result.runner_handoff is None
     assert "denied before dispatch" in result.notes[0]
 
 
@@ -163,6 +164,42 @@ def test_accepted_preflight_emits_operator_approval_receipt_bound_to_launch_pack
     assert "runner apply is still required" in receipt.receipt_notes[1]
 
 
+def test_accepted_preflight_emits_runner_apply_handoff_without_side_effects() -> None:
+    result = preflight_midnight_oil(
+        MidnightOilRequest(
+            goal="Plan a midnight oil research run about airline fleet renewal.",
+            work_minutes=180,
+            price_ceiling_usd=40.0,
+            route_mode="auto_balanced",
+            source_policy=["arxiv", "substack", "web"],
+            operator_acknowledged_spend=True,
+        )
+    )
+
+    assert result.launch_packet is not None
+    assert result.approval_receipt is not None
+    assert result.runner_handoff is not None
+    handoff = result.runner_handoff
+    packet = result.launch_packet
+    receipt = result.approval_receipt
+    assert handoff.handoff_id == f"{result.run_id}-runner-handoff"
+    assert handoff.approval_receipt_id == receipt.receipt_id
+    assert handoff.launch_packet_id == packet.packet_id
+    assert handoff.run_id == result.run_id
+    assert handoff.status == "ready_for_runner_apply"
+    assert handoff.approved_price_ceiling_usd == receipt.approved_price_ceiling_usd
+    assert handoff.planned_budget_usd == receipt.planned_budget_usd
+    assert handoff.unallocated_budget_usd == receipt.unallocated_budget_usd
+    assert handoff.role_route_receipt_ids == packet.role_route_receipt_ids
+    assert handoff.prerequisite_receipt_ids == [packet.packet_id, receipt.receipt_id]
+    assert handoff.dispatch_ready is True
+    assert handoff.dispatch_performed is False
+    assert handoff.budget_reserved is False
+    assert handoff.provider_calls_made is False
+    assert handoff.graph_mutated is False
+    assert "ready for a future dispatcher" in handoff.handoff_notes[0]
+
+
 def test_final_artifact_contract_is_html_not_pdf_with_twin_note() -> None:
     result = preflight_midnight_oil(
         MidnightOilRequest(
@@ -217,5 +254,13 @@ def test_midnight_oil_preflight_api_contract() -> None:
     assert body["approval_receipt"]["dispatch_allowed"] is False
     assert body["approval_receipt"]["budget_reserved"] is False
     assert body["approval_receipt"]["provider_calls_made"] is False
+    assert body["runner_handoff"]["approval_receipt_id"] == body["approval_receipt"]["receipt_id"]
+    assert body["runner_handoff"]["launch_packet_id"] == body["launch_packet"]["packet_id"]
+    assert body["runner_handoff"]["status"] == "ready_for_runner_apply"
+    assert body["runner_handoff"]["dispatch_ready"] is True
+    assert body["runner_handoff"]["dispatch_performed"] is False
+    assert body["runner_handoff"]["budget_reserved"] is False
+    assert body["runner_handoff"]["provider_calls_made"] is False
+    assert body["runner_handoff"]["graph_mutated"] is False
     assert body["artifact_contract"]["final_format"] == "html"
     assert len(body["role_plans"]) == 4

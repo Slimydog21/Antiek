@@ -111,6 +111,25 @@ class MidnightOilApprovalReceipt(BaseModel):
     receipt_notes: list[str] = Field(default_factory=list)
 
 
+class MidnightOilRunnerHandoff(BaseModel):
+    handoff_id: str
+    approval_receipt_id: str
+    launch_packet_id: str
+    run_id: str
+    status: Literal["ready_for_runner_apply"] = "ready_for_runner_apply"
+    approved_price_ceiling_usd: float = Field(ge=0.0)
+    planned_budget_usd: float = Field(ge=0.0)
+    unallocated_budget_usd: float = Field(ge=0.0)
+    role_route_receipt_ids: list[str]
+    prerequisite_receipt_ids: list[str]
+    dispatch_ready: bool = True
+    dispatch_performed: bool = False
+    budget_reserved: bool = False
+    provider_calls_made: bool = False
+    graph_mutated: bool = False
+    handoff_notes: list[str] = Field(default_factory=list)
+
+
 class MidnightOilPreflight(BaseModel):
     accepted: bool
     denial_reason: str | None = None
@@ -129,6 +148,7 @@ class MidnightOilPreflight(BaseModel):
     )
     launch_packet: MidnightOilLaunchPacket | None = None
     approval_receipt: MidnightOilApprovalReceipt | None = None
+    runner_handoff: MidnightOilRunnerHandoff | None = None
     notes: list[str] = Field(default_factory=list)
 
 
@@ -168,6 +188,10 @@ def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
         unallocated_budget_usd=unallocated_budget_usd,
         role_plans=role_plans,
     )
+    approval_receipt = _approval_receipt(
+        launch_packet=launch_packet,
+        operator_acknowledged_spend=req.operator_acknowledged_spend,
+    )
     return MidnightOilPreflight(
         accepted=True,
         run_id=run_id,
@@ -181,13 +205,42 @@ def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
         unallocated_budget_usd=unallocated_budget_usd,
         role_plans=role_plans,
         launch_packet=launch_packet,
-        approval_receipt=_approval_receipt(
+        approval_receipt=approval_receipt,
+        runner_handoff=_runner_handoff(
             launch_packet=launch_packet,
-            operator_acknowledged_spend=req.operator_acknowledged_spend,
+            approval_receipt=approval_receipt,
         ),
         notes=[
             "preflight only: no agents launched, no budget reserved, no retrieval performed",
             "each future subagent must inherit the parent ceiling through this role allocation",
+        ],
+    )
+
+
+def _runner_handoff(
+    *,
+    launch_packet: MidnightOilLaunchPacket,
+    approval_receipt: MidnightOilApprovalReceipt,
+) -> MidnightOilRunnerHandoff:
+    return MidnightOilRunnerHandoff(
+        handoff_id=f"{launch_packet.run_id}-runner-handoff",
+        approval_receipt_id=approval_receipt.receipt_id,
+        launch_packet_id=launch_packet.packet_id,
+        run_id=launch_packet.run_id,
+        approved_price_ceiling_usd=approval_receipt.approved_price_ceiling_usd,
+        planned_budget_usd=approval_receipt.planned_budget_usd,
+        unallocated_budget_usd=approval_receipt.unallocated_budget_usd,
+        role_route_receipt_ids=launch_packet.role_route_receipt_ids,
+        prerequisite_receipt_ids=[launch_packet.packet_id, approval_receipt.receipt_id],
+        dispatch_ready=True,
+        dispatch_performed=False,
+        budget_reserved=False,
+        provider_calls_made=False,
+        graph_mutated=False,
+        handoff_notes=[
+            "runner apply handoff only: ready for a future dispatcher",
+            "no agents dispatched, no budget reserved, no provider calls made",
+            "future runner must convert this handoff into an applied run receipt",
         ],
     )
 
