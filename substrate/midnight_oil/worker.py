@@ -109,7 +109,7 @@ def run_worker_iteration(
         return put_job_state(job, store=store)
 
     spawn_ids = job.spawn_ids
-    if result.spawn_id:
+    if result.spawn_id and result.spawn_id not in spawn_ids:
         spawn_ids = spawn_ids + (result.spawn_id,)
     job = replace(
         job,

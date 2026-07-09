@@ -255,3 +255,93 @@ def test_end_to_end_create_approve_run_deposit(tmp_path):
     )
     assert deposit.twin_count >= 1
     assert "html" in deposit.html.lower() or "<p" in deposit.html or "<div" in deposit.html
+
+
+def test_worker_spawn_id_then_deposit_no_keyerror(tmp_path):
+    """Regression: step_fn returns non-None spawn_id; deposit must materialize it.
+
+    Prior bug: worker only recorded id on job; deposit complete_spawn KeyError'd
+    (or merge KeyError'd) because engagement_spine had no row for that id.
+    """
+    job_store = InMemoryJobStore()
+    eng = FileEngagementStore(tmp_path / "eng-worker-id")
+    job = create_job(["Chase worker-id spawn path"], 10, store=job_store)
+    approve_job(job.job_id, job.recommended_price_ceiling_usd, store=job_store)
+    clock = FakeClock(0)
+    worker_spawn = "spn_worker_fixed_regression_1"
+    steps_log: list[WorkerStepResult] = []
+
+    def step(_j):
+        r = WorkerStepResult(
+            spent_usd=0.2,
+            spawn_id=worker_spawn,
+            output_text="Worker analysis with pre-allocated spawn id.",
+            insights=("Worker insight about retrieval",),
+            questions=("What is the next open question?",),
+            done=True,
+        )
+        steps_log.append(r)
+        return r
+
+    final = run_worker_loop(
+        job.job_id,
+        store=job_store,
+        step_fn=step,
+        clock=clock,
+        max_steps=3,
+        advance_ms_per_step=1_000,
+    )
+    assert final.status == "complete"
+    assert final.spawn_ids == (worker_spawn,)
+
+    # Deposit with step_outputs that carry the worker id (real integration path).
+    deposit = deposit_job_results(
+        job.job_id,
+        job_store=job_store,
+        engagement_store=eng,
+        step_outputs=steps_log,
+    )
+    assert worker_spawn in deposit.spawn_ids
+    assert deposit.twin_count >= 1
+    assert deposit.html and len(deposit.html) > 40
+    assert "Worker" in deposit.html or "retrieval" in deposit.html.lower() or "<" in deposit.html
+
+    # Deposit with *only* job.spawn_ids (no step_outputs) also works.
+    eng2 = FileEngagementStore(tmp_path / "eng-job-ids-only")
+    deposit2 = deposit_job_results(
+        job.job_id,
+        job_store=job_store,
+        engagement_store=eng2,
+        step_outputs=(),
+    )
+    assert worker_spawn in deposit2.spawn_ids
+    assert deposit2.twin_count >= 1
+
+
+def test_worker_dedups_repeated_spawn_id():
+    """Regression: same spawn_id returned every step must not duplicate on job."""
+    store = InMemoryJobStore()
+    job = create_job(["g"], 60, store=store)
+    approve_job(job.job_id, job.recommended_price_ceiling_usd, store=store)
+    clock = FakeClock(0)
+    n = {"i": 0}
+
+    def step(_j):
+        n["i"] += 1
+        return WorkerStepResult(
+            spent_usd=0.01,
+            spawn_id="spn_worker_1",
+            done=(n["i"] >= 3),
+        )
+
+    final = run_worker_loop(
+        job.job_id,
+        store=store,
+        step_fn=step,
+        clock=clock,
+        max_steps=5,
+        advance_ms_per_step=1_000,
+    )
+    assert final.status == "complete"
+    assert final.spawn_ids == ("spn_worker_1",)
+    assert final.spawn_ids.count("spn_worker_1") == 1

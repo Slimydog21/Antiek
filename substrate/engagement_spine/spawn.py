@@ -118,6 +118,50 @@ def spawn_from_highlight(
     return spawn
 
 
+def ensure_spawn(
+    spawn_id: str,
+    *,
+    store: EngagementStore,
+    parent_asset_id: str,
+    goal: str,
+    selection_text: str = "",
+    model_id: str | None = None,
+    region_id: str | None = None,
+) -> ResearchSpawn:
+    """Return existing spawn or mint a reserved row with a caller-chosen id.
+
+    Midnight Oil (and other external workers) may allocate spawn ids before
+    engagement_spine has a row. Deposit and merge require a real row —
+    this is the public API to materialize one without re-hashing ids.
+    """
+    sid = (spawn_id or "").strip()
+    if not sid:
+        raise ValueError("spawn_id is required")
+    parent = (parent_asset_id or "").strip()
+    if not parent:
+        raise ValueError("parent_asset_id is required")
+    goal_text = (goal or "").strip()
+    if not goal_text:
+        raise ValueError("goal is required")
+
+    prior = store.get_spawn(sid)
+    if prior is not None:
+        return _from_row(prior)
+
+    spawn = ResearchSpawn(
+        spawn_id=sid,
+        investigation_id=_investigation_id_for(sid),
+        parent_asset_id=parent,
+        goal=goal_text,
+        selection_text=(selection_text or goal_text).strip(),
+        status="reserved",
+        model_id=model_id,
+        region_id=region_id,
+    )
+    store.put_spawn(_to_row(spawn))
+    return spawn
+
+
 def complete_spawn(
     spawn_id: str,
     *,
