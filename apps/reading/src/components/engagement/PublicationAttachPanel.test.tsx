@@ -80,6 +80,15 @@ describe("PublicationAttachPanel residual ck/ed", () => {
     expect(payload.view_format).toBe("html");
     expect(payload.references).toEqual(["arxiv:1706.03762"]);
     expect(payload.hydrated[0].asset_id).toBe("pub_arxiv_abc");
+    // Residual (ef): citation trust honesty after attach.
+    expect(
+      screen
+        .getByTestId("publication-attach-result")
+        .getAttribute("data-citation-trust"),
+    ).toBe("grounded");
+    expect(
+      screen.getByTestId("publication-attach-citation-trust").textContent,
+    ).toMatch(/grounded/i);
   });
 
   it("surfaces attach failure honestly", async () => {

@@ -128,9 +128,26 @@ export function PublicationAttachPanel({
         <div
           className="text-[11px] font-mono space-y-1"
           data-testid="publication-attach-result"
+          data-view-format="html"
+          data-citation-trust={hydrated.length > 0 ? "grounded" : "ungrounded"}
+          data-hydrated-count={String(hydrated.length)}
         >
           <p>
             Attached {attached.length} · hydrated {hydrated.length} HTML asset(s)
+          </p>
+          {/* Residual (ef): competitive bar — attached pubs are citation ground. */}
+          <p
+            className={
+              hydrated.length > 0
+                ? "text-aurora"
+                : "text-emperor"
+            }
+            data-testid="publication-attach-citation-trust"
+            role="status"
+          >
+            {hydrated.length > 0
+              ? `Citation trust: grounded · ${hydrated.length} HTML publication asset(s)`
+              : "Citation trust: ungrounded — hydrate failed; re-attach refs"}
           </p>
           <ul>
             {hydrated.map((a) => (
