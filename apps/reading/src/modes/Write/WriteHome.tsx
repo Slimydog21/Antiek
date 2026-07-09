@@ -85,6 +85,8 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
  * (multi-select merge/analysis with writing asset as parent).
  * Residual (gg): remount TwinNotesPanel on same refresh key as research
  * context (DR launch / collective merge / promote / re-import) — hosted ez parity.
+ * Residual (gh): live selection drives Write DR budget projection + launch
+ * (mouseup capture; clear returns to whole-piece fallback).
  */
 export default function WriteHome() {
   const { deliverableId } = useParams<{ deliverableId?: string }>();
@@ -129,6 +131,8 @@ export default function WriteHome() {
   const [writeDrWindowId, setWriteDrWindowId] = useState<string | null>(null);
   const [writeBudgetWarn, setWriteBudgetWarn] = useState(false);
   const [writeForceOverBudget, setWriteForceOverBudget] = useState(false);
+  // Residual (gh): highlight selection for Write DR budget + launch.
+  const [writeHighlightText, setWriteHighlightText] = useState("");
   const onContextNeedsRefresh = useCallback(() => {
     setContextRefreshKey((k) => k + 1);
   }, []);
@@ -138,6 +142,25 @@ export default function WriteHome() {
     },
     [],
   );
+  const captureWriteHighlight = useCallback(() => {
+    if (typeof window === "undefined" || !window.getSelection) return;
+    const text = (window.getSelection()?.toString() || "").trim();
+    // Empty mouseup keeps last highlight so budget/DR stay stable.
+    if (text) {
+      setWriteHighlightText(text.slice(0, 8000));
+    }
+  }, []);
+  const clearWriteHighlight = useCallback(() => {
+    setWriteHighlightText("");
+  }, []);
+  /** Residual (gh): selection for budget panel + launch — highlight wins. */
+  const writeResearchPromptText = useMemo(() => {
+    const highlight = writeHighlightText.trim();
+    if (highlight) return highlight;
+    const title = detail?.title?.trim() || "writing piece";
+    const id = detail?.deliverable_id || deliverableId || "";
+    return `Deep-research writing piece: ${title} (${id})`;
+  }, [writeHighlightText, detail?.title, detail?.deliverable_id, deliverableId]);
   // The "start a piece" action — must be declared before html_draft load effect.
   const [starting, setStarting] = useState(false);
   const [newTitle, setNewTitle] = useState("");
@@ -416,13 +439,19 @@ export default function WriteHome() {
     setWritePubRefStatus(null);
     try {
       const title = detail?.title?.trim() || "writing piece";
-      let selection = `Deep-research writing piece: ${title} (${assetId})`;
-      let goal = `Deep-research the writing piece «${title}»`;
+      // Residual (gh): prefer stored highlight; capture live selection at fire.
+      let selection = writeResearchPromptText;
+      let fromHighlight = Boolean(writeHighlightText.trim());
+      let goal = fromHighlight
+        ? `Deep-research the highlighted passage from writing piece «${title}»`
+        : `Deep-research the writing piece «${title}»`;
       if (typeof window !== "undefined" && window.getSelection) {
         const live = (window.getSelection()?.toString() || "").trim();
         if (live) {
           selection = live.slice(0, 8000);
+          fromHighlight = true;
           goal = `Deep-research the highlighted passage from writing piece «${title}»`;
+          setWriteHighlightText(selection);
         }
       }
       const refs = parsePublicationRefs(writePubRefs);
@@ -835,14 +864,50 @@ export default function WriteHome() {
             data-testid="write-piece-research-launch"
             data-view-format="html"
             data-asset-id={detail.deliverable_id}
+            data-from-highlight={writeHighlightText.trim() ? "true" : "false"}
+            onMouseUp={captureWriteHighlight}
           >
             <p className="text-[10px] uppercase tracking-wider text-ink-mute dark:text-moonlight">
               Deep research from this piece
             </p>
             <p className="text-[11px] text-ink-mute dark:text-moonlight">
-              Select text in the outline, or research the whole piece. Optional
-              arxiv / substack / URL grounding.
+              Select text in the outline (or here), or research the whole piece.
+              Optional arxiv / substack / URL grounding.
             </p>
+            {/* Residual (gh): selection preview drives budget projection. */}
+            <div
+              className="space-y-1"
+              data-testid="write-piece-selection-preview"
+              data-from-highlight={writeHighlightText.trim() ? "true" : "false"}
+            >
+              {writeHighlightText.trim() ? (
+                <>
+                  <p
+                    className="max-h-16 overflow-auto text-[11px] text-ink dark:text-bright"
+                    data-testid="write-piece-selection-text"
+                  >
+                    {writeHighlightText.slice(0, 500)}
+                    {writeHighlightText.length > 500 ? "…" : ""}
+                  </p>
+                  <button
+                    type="button"
+                    className="underline text-[11px]"
+                    data-testid="write-piece-clear-highlight"
+                    onClick={clearWriteHighlight}
+                    disabled={writeDrBusy}
+                  >
+                    Clear highlight (use whole piece)
+                  </button>
+                </>
+              ) : (
+                <p
+                  className="text-[11px] text-ink-mute dark:text-moonlight"
+                  data-testid="write-piece-selection-fallback"
+                >
+                  No highlight — budget/launch use whole-piece prompt.
+                </p>
+              )}
+            </div>
             <div
               className="space-y-1"
               data-testid="write-piece-pub-refs"
@@ -875,11 +940,7 @@ export default function WriteHome() {
               ) : null}
             </div>
             <ResearchLaunchBudgetPanel
-              promptText={
-                detail.title
-                  ? `Deep-research writing piece: ${detail.title} (${detail.deliverable_id})`
-                  : `Deep-research writing piece (${detail.deliverable_id})`
-              }
+              promptText={writeResearchPromptText}
               researchTier="deep"
               onProjectionChange={onWriteDrProjectionChange}
             />

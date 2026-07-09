@@ -690,8 +690,10 @@ describe("WriteHome — the re-homed door", () => {
     const panel = screen.getByTestId("write-piece-research-launch");
     expect(panel.getAttribute("data-asset-id")).toBe("dlv-open");
     expect(panel.getAttribute("data-view-format")).toBe("html");
+    expect(panel.getAttribute("data-from-highlight")).toBe("false");
     expect(screen.getByTestId("write-piece-pub-refs")).toBeTruthy();
     expect(screen.getByTestId("research-launch-budget-panel-stub")).toBeTruthy();
+    expect(screen.getByTestId("write-piece-selection-fallback")).toBeTruthy();
     await userEvent.type(
       screen.getByTestId("write-piece-refs-input"),
       "arxiv:1706.03762",
@@ -731,6 +733,67 @@ describe("WriteHome — the re-homed door", () => {
         }),
       );
     });
+  });
+
+  it("captures highlight for Write DR budget projection and launch (gh)", async () => {
+    getDeliverableMock.mockResolvedValue({
+      deliverable_id: "dlv-hl",
+      title: "Highlight piece",
+      deliverable_kind: "general_essay",
+      investigation_root_id: null,
+      status: "draft",
+      sections: [],
+      created_at: null,
+      updated_at: null,
+      section_count: 0,
+    });
+    // Seed a DOM selection so mouseup capture can read it.
+    const rangeHolder = document.createElement("div");
+    rangeHolder.textContent = "Selected claim about attention mechanisms.";
+    document.body.appendChild(rangeHolder);
+    const range = document.createRange();
+    range.selectNodeContents(rangeHolder);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+
+    mountAt("/write/dlv-hl");
+    await waitFor(() => {
+      expect(screen.getByTestId("write-piece-research-launch")).toBeTruthy();
+    });
+    fireEvent.mouseUp(screen.getByTestId("write-piece-research-launch"));
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId("write-piece-research-launch")
+          .getAttribute("data-from-highlight"),
+      ).toBe("true");
+    });
+    expect(screen.getByTestId("write-piece-selection-text").textContent).toMatch(
+      /Selected claim about attention/,
+    );
+    expect(
+      screen.getByTestId("write-piece-selection-preview").getAttribute(
+        "data-from-highlight",
+      ),
+    ).toBe("true");
+    await userEvent.click(screen.getByTestId("write-piece-deep-research"));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearchMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "dlv-hl",
+          selection_text: expect.stringMatching(/Selected claim about attention/),
+        }),
+      );
+    });
+    await userEvent.click(screen.getByTestId("write-piece-clear-highlight"));
+    expect(
+      screen
+        .getByTestId("write-piece-research-launch")
+        .getAttribute("data-from-highlight"),
+    ).toBe("false");
+    expect(screen.getByTestId("write-piece-selection-fallback")).toBeTruthy();
+    rangeHolder.remove();
   });
 
   it("re-imports html_draft into open piece with section index offset (gd)", async () => {

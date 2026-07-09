@@ -62,3 +62,7 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 - write-piece-twins-refresh shares contextRefreshKey with context panel
 - TwinNotesPanel remounts on promote/DR/collective/re-import
 - NEXT-WAVE-after-gf.md map; tests: WriteHome 18 passed
+## residual (gh) Write DR live selection budget — 2026-07-09
+- write-piece-selection-preview + clear highlight
+- ResearchLaunchBudgetPanel promptText tracks highlight
+- tests: WriteHome 19 passed
