@@ -1,0 +1,12 @@
+# inventory-hp · launch projection metrics · residual (hp)
+
+## Delta
+- research-launch-projection-metrics: dispatch_tier, research_tier, prompt_chars,
+  pricing_known, usd_low/high, would_exceed, view_format
+- competitive-deep-research-notes.md closed arc hh–hp
+
+## Verified
+vitest ResearchLaunchBudgetPanel 8_passed
+
+## Next
+(hq) re-derive — live injector status surface or Antiek-bench recursive polish

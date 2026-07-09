@@ -102,6 +102,20 @@ describe("ResearchLaunchBudgetPanel", () => {
       model?: string | null;
     };
     expect(call.tier).toBe("pro");
+    // Residual (hp): machine-readable projection metrics for budget-before-fire.
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("research-launch-projection-metrics"),
+      ).toBeTruthy();
+    });
+    const metrics = screen.getByTestId("research-launch-projection-metrics");
+    expect(metrics.getAttribute("data-dispatch-tier")).toBe("pro");
+    expect(metrics.getAttribute("data-research-tier")).toBe("deep");
+    expect(Number(metrics.getAttribute("data-prompt-chars"))).toBeGreaterThan(
+      3,
+    );
+    expect(metrics.getAttribute("data-view-format")).toBe("html");
+    expect(metrics.textContent).toMatch(/Projection metrics/);
     expect(call.expected_output_tokens).toBe(2500);
     expect(call.input_chars).toBeGreaterThan(3);
     expect(call.model).toBe("glm-5.2");

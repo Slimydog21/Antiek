@@ -12,6 +12,8 @@
  * Residual (gm): optional in-panel depth-tier picker (flash|pro|wrestle) so
  * launch surfaces can project Perplexity-speed vs OpenAI-depth without
  * leaving the research flywheel.
+ * Residual (hp): research-launch-projection-metrics machine attrs (usd band,
+ * would_exceed, chars, tier) for competitive budget-before-fire audit.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -346,7 +348,7 @@ export function ResearchLaunchBudgetPanel({
           : "(none installed — Settings → decision tree)"}
       </p>
 
-      {/* Prompt cost projection */}
+      {/* Prompt cost projection — residual (hp): machine-readable metrics. */}
       <div data-testid="research-launch-projection" className="space-y-0.5">
         {promptText.trim().length < 3 ? (
           <p className="text-[11px] font-mono text-ink-mute dark:text-moonlight">
@@ -354,6 +356,38 @@ export function ResearchLaunchBudgetPanel({
           </p>
         ) : estimate ? (
           <>
+            <div
+              data-testid="research-launch-projection-metrics"
+              data-dispatch-tier={mapping.tier}
+              data-research-tier={activeTier}
+              data-prompt-chars={String(promptText.trim().length)}
+              data-pricing-known={String(Boolean(estimate.pricing_known))}
+              data-usd-low={
+                estimate.estimated_usd_low != null
+                  ? String(estimate.estimated_usd_low)
+                  : ""
+              }
+              data-usd-high={
+                estimate.estimated_usd_high != null
+                  ? String(estimate.estimated_usd_high)
+                  : ""
+              }
+              data-would-exceed={
+                estimate.would_exceed_budget == null
+                  ? "unknown"
+                  : estimate.would_exceed_budget
+                    ? "true"
+                    : "false"
+              }
+              data-view-format="html"
+              role="status"
+            >
+              Projection metrics · tier={mapping.tier} · chars=
+              {promptText.trim().length} · would_exceed=
+              {estimate.would_exceed_budget == null
+                ? "unknown"
+                : String(estimate.would_exceed_budget)}
+            </div>
             <p className="text-[11px] font-mono text-ink dark:text-bright">
               Projected ({mapping.tier}):{" "}
               {estimate.pricing_known &&

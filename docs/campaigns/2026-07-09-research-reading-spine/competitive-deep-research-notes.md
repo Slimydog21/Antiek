@@ -74,3 +74,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (gb, 2026-07-09): ResearchContextPanel on open Write piece; remount after twin promote.
 - Closed (gc, 2026-07-09): DecisionTreeDriverBadge on open Write piece (model + budget).
 - Left (env/operator): floating multi-agent *live* collective chat (merge+continue unit ships); live midnight oil multi-provider; paid marketplace rails; live hydrate/seed injectors; operator install of weekly LaunchAgent; PR #465 main merge.
+
+- Closed (hh–ho, 2026-07-10): TwinNotes offline-seed honesty; twin-promote/session-flywheel/research-progress/collective/spawn-merge metrics; marketplace twin-seed honesty; Midnight Oil recommended-ceiling metrics + formula note.
+- Closed (hp, 2026-07-10): ResearchLaunchBudgetPanel projection-metrics (usd band, would_exceed, chars, tier) for competitive budget-before-fire audit.
