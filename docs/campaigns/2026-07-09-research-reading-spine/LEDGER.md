@@ -58,3 +58,7 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 - write-piece-collective-mount when collectDeepResearchSpawnIds non-empty
 - parentAssetId=deliverable; onDocMerged remounts context
 - tests: WriteHome.test.tsx 17 passed
+## residual (gg) Write twins remount key — 2026-07-09
+- write-piece-twins-refresh shares contextRefreshKey with context panel
+- TwinNotesPanel remounts on promote/DR/collective/re-import
+- NEXT-WAVE-after-gf.md map; tests: WriteHome 18 passed

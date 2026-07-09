@@ -83,6 +83,8 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
  * parity with hosted HTML host: arxiv/substack grounding, float|full, budget soft-gate).
  * Residual (gf): CollectiveResearchPanel on open piece when DR spawns exist
  * (multi-select merge/analysis with writing asset as parent).
+ * Residual (gg): remount TwinNotesPanel on same refresh key as research
+ * context (DR launch / collective merge / promote / re-import) — hosted ez parity.
  */
 export default function WriteHome() {
   const { deliverableId } = useParams<{ deliverableId?: string }>();
@@ -970,15 +972,22 @@ export default function WriteHome() {
               data-view-format="html"
               data-asset-id={detail.deliverable_id}
             >
-              <TwinNotesPanel
-                assetId={detail.deliverable_id}
-                spawnId={null}
-                autoLoad
-                autoSeedIfEmpty
-                seedTitle={detail.title || detail.deliverable_id}
-                seedBodyText={detail.title || ""}
-                onPromoted={onContextNeedsRefresh}
-              />
+              {/* Residual (gg): remount twins with context refresh key. */}
+              <div
+                data-testid="write-piece-twins-refresh"
+                data-refresh-key={String(contextRefreshKey)}
+              >
+                <TwinNotesPanel
+                  key={`twins-${detail.deliverable_id}-${contextRefreshKey}`}
+                  assetId={detail.deliverable_id}
+                  spawnId={null}
+                  autoLoad
+                  autoSeedIfEmpty
+                  seedTitle={detail.title || detail.deliverable_id}
+                  seedBodyText={detail.title || ""}
+                  onPromoted={onContextNeedsRefresh}
+                />
+              </div>
             </section>
             <section
               className="mt-4 border-t border-rule pt-4 dark:border-charcoal-1"

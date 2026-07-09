@@ -521,6 +521,51 @@ describe("WriteHome — the re-homed door", () => {
       /dlv-open:auto=true/,
     );
     expect(screen.getByTestId("outline-stub")).toBeTruthy();
+    // Residual (gg): twins share refresh key with context (starts at 0).
+    expect(
+      screen
+        .getByTestId("write-piece-twins-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("0");
+  });
+
+  it("remounts TwinNotesPanel after twin promote (gg)", async () => {
+    getDeliverableMock.mockResolvedValue({
+      deliverable_id: "dlv-twins-gg",
+      title: "Twins remount piece",
+      deliverable_kind: "general_essay",
+      investigation_root_id: null,
+      status: "draft",
+      sections: [],
+      created_at: null,
+      updated_at: null,
+      section_count: 0,
+    });
+    mountAt("/write/dlv-twins-gg");
+    await waitFor(() => {
+      expect(screen.getByTestId("write-piece-twins-refresh")).toBeTruthy();
+    });
+    expect(
+      screen
+        .getByTestId("write-piece-twins-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("0");
+    expect(
+      screen
+        .getByTestId("write-piece-context-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("0");
+    fireEvent.click(screen.getByTestId("write-twin-promote-notify"));
+    expect(
+      screen
+        .getByTestId("write-piece-twins-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("1");
+    expect(
+      screen
+        .getByTestId("write-piece-context-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("1");
   });
 
   it("mounts ResearchContextPanel and remounts after twin promote (gb)", async () => {
