@@ -1295,6 +1295,9 @@ export default function Multimedia() {
                                 {TIER_COPY[asset.provider_readiness.live_request_route_policy ?? asset.route_policy].label} /{" "}
                                 {asset.requested_duration_minutes} min
                               </p>
+                              <p className="mt-1 leading-snug text-shadow-1 dark:text-moonlight">
+                                Copy queue audit is read-only; Attach only pre-fills manual evidence and does not run providers.
+                              </p>
                               {expandedQueuedAuditAssetId === asset.asset_id && (
                                 <dl className="mt-2 grid gap-1">
                                   {persistedQueuedAuditItems.map((item) => (

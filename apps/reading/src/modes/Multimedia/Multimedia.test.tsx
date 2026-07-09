@@ -438,6 +438,9 @@ describe("Multimedia workstation", () => {
     expect(within(persistedAssets).getByText("Queued live request")).toBeTruthy();
     expect(within(persistedAssets).queryByText("Queued job")).toBeNull();
     expect(within(persistedAssets).getByText("job-mm-1-0004 / Balanced / 30 min")).toBeTruthy();
+    expect(
+      within(persistedAssets).getByText("Copy queue audit is read-only; Attach only pre-fills manual evidence and does not run providers."),
+    ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Details" }));
 
@@ -536,6 +539,9 @@ describe("Multimedia workstation", () => {
     expect(await screen.findByText(/Persisted assets/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Manual attach 1" }));
     const persistedAssets = screen.getByTestId("multimedia-persisted-assets");
+    expect(
+      within(persistedAssets).getByText("Copy queue audit is read-only; Attach only pre-fills manual evidence and does not run providers."),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Details" }));
 
     expect(within(persistedAssets).getByText("Highest quality")).toBeTruthy();
