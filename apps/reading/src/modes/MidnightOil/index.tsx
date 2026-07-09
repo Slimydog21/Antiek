@@ -19,6 +19,7 @@
  * Residual (hn): moil-ceiling-metrics + formula note for recommended price
  * ceiling transparency (goals+duration → approve before swarm work).
  * Residual (hy): live-step status panel (offline-honest dual-gate readiness).
+ * Residual (ic): Settings deep-link for decision-tree driver + daily budget.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -397,6 +398,19 @@ export default function MidnightOil() {
           ))}
         </div>
       ) : null}
+
+
+      {/* Residual (ic): Settings deep-link for decision-tree + daily budget. */}
+      <p className="mb-4 max-w-xl text-[11px] font-mono">
+        <a
+          href="/settings"
+          data-testid="moil-settings-link"
+          className="underline opacity-80 hover:opacity-100"
+          title="Open Settings for decision-tree driver and daily budget cap"
+        >
+          Settings · model driver & budget
+        </a>
+      </p>
 
       <form onSubmit={(e) => void onCreate(e)} className="space-y-4 max-w-xl">
         <label className="block space-y-1">

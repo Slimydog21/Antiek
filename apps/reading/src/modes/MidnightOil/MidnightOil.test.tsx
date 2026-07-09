@@ -178,6 +178,13 @@ describe("MidnightOil mode", () => {
     expect(panel.textContent).toMatch(/offline-honest stub steps/);
   });
 
+  it("links to Settings for driver & budget (ic)", () => {
+    render(<MidnightOil />);
+    const link = screen.getByTestId("moil-settings-link");
+    expect(link.getAttribute("href")).toBe("/settings");
+    expect(link.textContent).toMatch(/model driver & budget/i);
+  });
+
   it("mounts budget projection panel before create (cs)", () => {
     render(<MidnightOil />);
     expect(screen.getByTestId("moil-budget-mount")).toBeTruthy();

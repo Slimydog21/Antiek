@@ -1,0 +1,11 @@
+# inventory-ic · deferred gaps + MO Settings deep-link · residual (ic)
+
+## Delta
+- DEFERRED-GAPS-for-future-agents.md (L1–L7 dual-gate deferred map)
+- moil-settings-link → /settings (driver + budget)
+
+## Verified
+vitest MidnightOil 9_passed
+
+## Next
+(id) re-derive
