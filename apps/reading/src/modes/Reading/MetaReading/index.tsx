@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { LemonButton } from "../../../components/lemon";
 import { generateMetaReading, getSavedMetaReading } from "../../../api/books";
 import type { BookCitation, MetaReadingResponse } from "../../../api/books";
+import { useSettingsResearchTier } from "../../../lib/useSettingsResearchTier";
 import ReadAloud from "../../../components/voice/ReadAloud";
 import { acceptPromotion, suggestPromotion } from "../../../lib/researchSuggestion";
 
@@ -24,6 +25,7 @@ import { acceptPromotion, suggestPromotion } from "../../../lib/researchSuggesti
  *     "open the book", never a fake page);
  *   • narratable via the SPR-14 shared TTS service;
  *   • a SUGGEST-NOT-AUTOSHIP promote-into-Research link (never auto).
+ * Residual (jy): Settings depth-tier → research_tier on generate (parity DR).
  *
  * PROPOSED BOUNDARY (operator decision 2, sign-off pending): the surface
  * carries the "proposed (sign-off pending)" banner. Reversible to a soft corpus
@@ -49,6 +51,8 @@ export default function MetaReading() {
   const [deliverable, setDeliverable] = useState<MetaReadingResponse | null>(null);
   const [promoted, setPromoted] = useState<string | null>(null);
   const [promoting, setPromoting] = useState(false);
+  // Residual (jy): Settings depth-tier for meta-reading research_tier.
+  const { researchTier, depthPrefill } = useSettingsResearchTier();
 
   // Re-open a saved asset by id. Maps the saved shape onto MetaReadingResponse
   // (the read-only render path is identical); the generation-only fields
@@ -117,6 +121,7 @@ export default function MetaReading() {
         prompt: prompt.trim(),
         length_unit: unit,
         length_amount: amount,
+        research_tier: researchTier,
       });
       setDeliverable(res);
     } catch (e: unknown) {
@@ -124,7 +129,7 @@ export default function MetaReading() {
     } finally {
       setBusy(false);
     }
-  }, [prompt, unit, amount, busy]);
+  }, [prompt, unit, amount, busy, researchTier]);
 
   const suggestion = deliverable && !deliverable.empty
     ? suggestPromotion({
@@ -151,7 +156,12 @@ export default function MetaReading() {
   }, [deliverable, prompt, promoting]);
 
   return (
-    <div className="flex flex-col h-screen">
+    <div
+      className="flex flex-col h-screen"
+      data-testid="meta-reading-root"
+      data-research-tier={researchTier}
+      data-depth-prefill={depthPrefill}
+    >
       <ProposedBanner />
       <main className="flex-1 min-h-0 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-8 space-y-5">
@@ -161,6 +171,18 @@ export default function MetaReading() {
               Deep-read across the books you own and get one cited report — built
               to the length you choose. It reads only your corpus, never the open
               internet.
+            </p>
+            <p
+              className="text-[11px] font-mono opacity-70"
+              data-testid="meta-reading-depth-prefill"
+              role="status"
+            >
+              Depth prefill: {depthPrefill}
+              {depthPrefill === "installed"
+                ? ` → ${researchTier}`
+                : depthPrefill === "none"
+                  ? " (default deep)"
+                  : ""}
             </p>
           </header>
 

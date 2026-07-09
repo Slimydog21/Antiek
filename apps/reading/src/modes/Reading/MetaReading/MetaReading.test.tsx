@@ -9,21 +9,31 @@
  * minutes to the narrate control (M3 scope wiring).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import type { BookCitation, MetaReadingResponse } from "../../../api/books";
 import MetaReading from "./index";
 
-const { generateMock, navigateMock, acceptPromotionMock } = vi.hoisted(() => ({
-  generateMock: vi.fn(),
-  navigateMock: vi.fn(),
-  acceptPromotionMock: vi.fn(),
-}));
+const { generateMock, navigateMock, acceptPromotionMock, fetchDepthTiersMock } =
+  vi.hoisted(() => ({
+    generateMock: vi.fn(),
+    navigateMock: vi.fn(),
+    acceptPromotionMock: vi.fn(),
+    fetchDepthTiersMock: vi.fn(async () => ({
+      active_depth_tier: null as string | null,
+      active_preset: null,
+      tiers: [],
+    })),
+  }));
 
 vi.mock("../../../api/books", async (orig) => {
   const actual = await orig<typeof import("../../../api/books")>();
   return { ...actual, generateMetaReading: generateMock };
 });
+
+vi.mock("../../../api/settings", () => ({
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiersMock(...args),
+}));
 
 vi.mock("../../../lib/researchSuggestion", async (orig) => {
   const actual = await orig<typeof import("../../../lib/researchSuggestion")>();
@@ -75,6 +85,11 @@ beforeEach(() => {
   generateMock.mockReset();
   navigateMock.mockReset();
   acceptPromotionMock.mockReset();
+  fetchDepthTiersMock.mockReset().mockResolvedValue({
+    active_depth_tier: null,
+    active_preset: null,
+    tiers: [],
+  });
   window.sessionStorage.clear();
 });
 afterEach(cleanup);
@@ -82,6 +97,11 @@ afterEach(cleanup);
 async function generate(over: Partial<MetaReadingResponse> = {}, prompt = "free will across my books") {
   generateMock.mockResolvedValue(deliverable(over));
   render(<MetaReading />);
+  await waitFor(() => {
+    expect(
+      screen.getByTestId("meta-reading-root").getAttribute("data-depth-prefill"),
+    ).toBe("none");
+  });
   fireEvent.change(screen.getByPlaceholderText(/What should this reading be about/), {
     target: { value: prompt },
   });
@@ -117,11 +137,43 @@ describe("MetaReading (M4)", () => {
     // The report renders; there is NO editable input for it (read-only).
     expect(screen.getByText("A synthesis of your books on free will.")).toBeTruthy();
     // generate was called with the HARD length-box (built-to-size).
+    // Residual (jy): research_tier defaults deep when Settings unset.
     expect(generateMock).toHaveBeenCalledWith({
       prompt: "free will across my books",
       length_unit: "pages",
       length_amount: 3,
+      research_tier: "deep",
     });
+  });
+
+  it("forwards Settings wrestle research_tier on generate (jy)", async () => {
+    fetchDepthTiersMock.mockResolvedValue({
+      active_depth_tier: "wrestle",
+      active_preset: null,
+      tiers: [],
+    });
+    generateMock.mockResolvedValue(deliverable());
+    render(<MetaReading />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("meta-reading-root").getAttribute("data-depth-prefill"),
+      ).toBe("installed");
+    });
+    expect(
+      screen.getByTestId("meta-reading-root").getAttribute("data-research-tier"),
+    ).toBe("wrestle");
+    fireEvent.change(
+      screen.getByPlaceholderText(/What should this reading be about/),
+      { target: { value: "wrestle owned corpus" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Make the reading" }));
+    await screen.findByTestId("meta-reading-deliverable");
+    expect(generateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        research_tier: "wrestle",
+        prompt: "wrestle owned corpus",
+      }),
+    );
   });
 
   it("the promote-into-Research suggestion APPEARS but never auto-ships", async () => {

@@ -1,0 +1,8 @@
+# inventory-jy · MetaReading Settings research_tier
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: jy
+files:
+  apps/reading/src/modes/Reading/MetaReading/index.tsx
+  apps/reading/src/modes/Reading/MetaReading/MetaReading.test.tsx
+proof: MetaReading vitest 11_passed (HONEST_OK)
+invariants: Settings depth prefill · research_tier on generateMetaReading · HTML owned corpus
