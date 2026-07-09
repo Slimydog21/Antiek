@@ -1767,6 +1767,9 @@ export default function Multimedia() {
                       <li>Unsourced claim marked before render approval.</li>
                       <li>Current steer queued: {steer}</li>
                     </ol>
+                    <p className="mt-2 text-[11px] leading-snug text-shadow-1 dark:text-moonlight">
+                      Revision history records draft planning events only; queued steer entries do not queue provider work or spend budget.
+                    </p>
                   </section>
                 </div>
               </div>

@@ -410,6 +410,11 @@ describe("Multimedia workstation", () => {
         "Cost and Krea call counts are planning estimates only; viewing the ledger does not call providers or spend budget.",
       ),
     ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Revision history records draft planning events only; queued steer entries do not queue provider work or spend budget.",
+      ),
+    ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /The engineering constraint stack/ }));
 
