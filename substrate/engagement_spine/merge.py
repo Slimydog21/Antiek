@@ -143,6 +143,17 @@ def merge_product_payload(
     )
     parent_doc = store.get_document(parent_asset_id) or {}
     draft_leaves_parent = mode == "draft_combined"
+    # Residual (kn): surface reserved spawn research_tiers + depth-max
+    # recommended_research_tier (parity collective ke / research-context kk).
+    from substrate.dispatch.research_tier import normalize_research_tier
+
+    from .collective import _max_research_tier
+
+    tiers: list[str] = []
+    for sid in result.source_spawn_ids:
+        row = store.get_spawn(sid) or {}
+        tiers.append(normalize_research_tier(row.get("research_tier")))
+    recommended = _max_research_tier(tiers) if tiers else "deep"
     payload: dict[str, Any] = {
         "mode": result.mode,
         "parent_asset_id": result.parent_asset_id,
@@ -151,6 +162,8 @@ def merge_product_payload(
         "sections_merged": result.sections_merged,
         "draft_leaves_parent": draft_leaves_parent,
         "parent_document_id": parent_asset_id if draft_leaves_parent else result.document_id,
+        "research_tiers": list(tiers),
+        "recommended_research_tier": recommended,
         "view_format": "html",
         "product_panel": "engagement_merge",
         "source": "engagement_spine.merge_spawn_outputs",
@@ -166,11 +179,20 @@ def merge_product_payload(
     if draft_leaves_parent and parent_doc.get("mode") == "into_parent":
         payload["notes"].append("Parent already had into_parent content; draft is separate.")
     if include_html:
-        payload["html"] = project_merge_html(result)
+        payload["html"] = project_merge_html(
+            result,
+            research_tiers=tiers,
+            recommended_research_tier=recommended,
+        )
     return payload
 
 
-def project_merge_html(result: MergeResult | dict[str, Any]) -> str:
+def project_merge_html(
+    result: MergeResult | dict[str, Any],
+    *,
+    research_tiers: list[str] | tuple[str, ...] | None = None,
+    recommended_research_tier: str | None = None,
+) -> str:
     """HTML-first projection of a merge result (never PDF)."""
     from .project import project_to_html
 
@@ -192,6 +214,21 @@ def project_merge_html(result: MergeResult | dict[str, Any]) -> str:
         document_id = str(result.get("document_id") or "merge")
         mode = str(result.get("mode") or "")
         parent = str(result.get("parent_asset_id") or "")
+        if research_tiers is None and result.get("research_tiers"):
+            research_tiers = list(result.get("research_tiers") or [])
+        if recommended_research_tier is None:
+            recommended_research_tier = result.get("recommended_research_tier")
+
+    tier_suffix = ""
+    if recommended_research_tier:
+        tier_suffix = f" · recommended_tier={recommended_research_tier}"
+        if research_tiers:
+            tier_suffix += f" · tiers={','.join(research_tiers)}"
+
+    banner_text = (
+        f"Merge mode: {mode} · parent: {parent} · document: {document_id}"
+        f"{tier_suffix} · view: HTML"
+    )
 
     # Ensure tip-tap style wrapper if bare content list was stored
     if "type" not in doc_model and "content" in doc_model:
@@ -205,7 +242,7 @@ def project_merge_html(result: MergeResult | dict[str, Any]) -> str:
             "content": [
                 {
                     "type": "text",
-                    "text": f"Merge mode: {mode} · parent: {parent} · document: {document_id} · view: HTML",
+                    "text": banner_text,
                 }
             ],
         }
@@ -217,7 +254,7 @@ def project_merge_html(result: MergeResult | dict[str, Any]) -> str:
             "content": [
                 {
                     "type": "text",
-                    "text": f"Merge mode: {mode} · parent: {parent} · document: {document_id} · view: HTML",
+                    "text": banner_text,
                 }
             ],
         }

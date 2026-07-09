@@ -34,10 +34,11 @@ def client():
     return TestClient(app)
 
 
-def _complete_spawn(asset_id: str, text: str, store):
+def _complete_spawn(asset_id: str, text: str, store, *, research_tier: str | None = None):
     spawn = spawn_from_highlight(
         HighlightSelection(asset_id=asset_id, selection_text=text),
         store=store,
+        research_tier=research_tier,
     )
     complete_spawn(
         spawn.spawn_id,
@@ -77,6 +78,10 @@ def test_merge_product_draft_leaves_parent(client):
     assert payload["html"]
     assert "application/pdf" not in payload["html"].lower()
     assert "draft" in payload["html"].lower() or "Merge mode" in payload["html"]
+    # Residual (kn): default deep tier when spawn reserved without override.
+    assert payload["research_tiers"] == ["deep"]
+    assert payload["recommended_research_tier"] == "deep"
+    assert "recommended_tier=deep" in payload["html"]
     # Parent body document not switched to into_parent
     parent = store.get_document("book-1")
     assert parent is not None
@@ -85,6 +90,30 @@ def test_merge_product_draft_leaves_parent(client):
     draft = store.get_document(payload["document_id"])
     assert draft is not None
     assert draft["mode"] == "draft_combined"
+
+
+def test_merge_product_surfaces_spawn_research_tiers_wrestle(client):
+    """Residual (kn): merge payload + HTML carry spawn research_tiers."""
+    store = eng_mod._eng()
+    fast = _complete_spawn(
+        "paper-merge", "fast selection", store, research_tier="fast"
+    )
+    wrestle = _complete_spawn(
+        "paper-merge", "wrestle selection", store, research_tier="wrestle"
+    )
+    payload = merge_product_payload(
+        "paper-merge",
+        [fast.spawn_id, wrestle.spawn_id],
+        store=store,
+        mode="draft_combined",
+        include_html=True,
+    )
+    assert payload["research_tiers"] == ["fast", "wrestle"]
+    assert payload["recommended_research_tier"] == "wrestle"
+    html = payload["html"] or ""
+    assert "recommended_tier=wrestle" in html
+    assert "tiers=fast,wrestle" in html
+    assert "application/pdf" not in html.lower()
 
 
 def test_merge_product_into_parent(client):

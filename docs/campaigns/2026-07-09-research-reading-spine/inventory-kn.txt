@@ -1,0 +1,11 @@
+# inventory-kn · merge product research_tiers + SpawnMergePanel chrome
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: kn
+files:
+  substrate/engagement_spine/merge.py
+  tests/test_engagement_merge_product.py
+  apps/reading/src/api/engagement.ts
+  apps/reading/src/components/engagement/SpawnMergePanel.tsx
+  apps/reading/src/components/engagement/SpawnMergePanel.test.tsx
+proof: pytest merge 5_passed + SpawnMergePanel vitest 6_passed (HONEST_OK)
+invariants: HTML · recommended_tier · member tiers · parity collective ke · no PDF

@@ -41,11 +41,13 @@ describe("SpawnMergePanel residual ci", () => {
       sections_merged: 2,
       draft_leaves_parent: true,
       parent_document_id: "book-1",
+      research_tiers: ["wrestle"],
+      recommended_research_tier: "wrestle",
       view_format: "html",
       product_panel: "engagement_merge",
       source: "engagement_spine.merge_spawn_outputs",
       notes: ["Draft-combined document"],
-      html: "<p>Draft merge HTML</p>",
+      html: "<p>Draft merge HTML · recommended_tier=wrestle</p>",
     });
 
     const onMerged = vi.fn();
@@ -98,6 +100,22 @@ describe("SpawnMergePanel residual ci", () => {
     expect(metrics.getAttribute("data-parent-asset-id")).toBe("book-1");
     expect(metrics.getAttribute("data-view-format")).toBe("html");
     expect(metrics.getAttribute("data-auto-open-draft")).toBe("true");
+    // Residual (kn): recommended research tier + member tiers chrome.
+    expect(metrics.getAttribute("data-recommended-research-tier")).toBe(
+      "wrestle",
+    );
+    expect(metrics.getAttribute("data-research-tiers")).toBe("wrestle");
+    expect(
+      screen.getByTestId("spawn-merge-result").getAttribute(
+        "data-recommended-research-tier",
+      ),
+    ).toBe("wrestle");
+    expect(screen.getByTestId("spawn-merge-research-tier").textContent).toMatch(
+      /wrestle/i,
+    );
+    expect(screen.getByTestId("spawn-merge-research-tier").textContent).toMatch(
+      /long-horizon/i,
+    );
     expect(metrics.textContent).toMatch(/Spawn merge/);
     // Residual (eh): parent notified after merge + twin seed.
     await waitFor(() => {
@@ -112,7 +130,7 @@ describe("SpawnMergePanel residual ci", () => {
         expect.objectContaining({
           document_id: "draft_book-1_abc",
           view_format: "html",
-          html: "<p>Draft merge HTML</p>",
+          html: "<p>Draft merge HTML · recommended_tier=wrestle</p>",
           source: "spawn_merge_panel",
         }),
         expect.objectContaining({

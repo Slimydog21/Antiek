@@ -160,6 +160,10 @@ export type MergeProductResponse = {
   sections_merged: number;
   draft_leaves_parent: boolean;
   parent_document_id: string;
+  /** Residual (kn): per-spawn closed research tiers from merge sources. */
+  research_tiers?: string[];
+  /** Residual (kn): depth-max recommended tier for follow-on research. */
+  recommended_research_tier?: "fast" | "deep" | "wrestle" | string;
   view_format: "html" | string;
   product_panel: string;
   source: string;

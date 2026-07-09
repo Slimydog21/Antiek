@@ -14,6 +14,7 @@
  * Residual (fn): Open Write handoff link for merged HTML document_id (fl/fm).
  * Residual (ho): spawn-merge-metrics machine attrs for draft/parent merge audit.
  * Residual (ih): Settings deep-link for driver + budget.
+ * Residual (kn): surface recommended_research_tier + research_tiers from merge.
  */
 
 import { useCallback, useState } from "react";
@@ -229,8 +230,11 @@ export function SpawnMergePanel({
           data-testid="spawn-merge-result"
           data-view-format="html"
           data-mode={result.mode}
+          data-recommended-research-tier={
+            (result.recommended_research_tier || "").trim().toLowerCase() || ""
+          }
         >
-          {/* Residual (ho): machine-readable merge outcome metrics. */}
+          {/* Residual (ho/kn): machine-readable merge outcome + depth identity. */}
           <div
             data-testid="spawn-merge-metrics"
             data-mode={result.mode}
@@ -242,15 +246,52 @@ export function SpawnMergePanel({
             data-parent-asset-id={parentAssetId}
             data-view-format="html"
             data-auto-open-draft={autoOpenDraft ? "true" : "false"}
+            data-recommended-research-tier={
+              (result.recommended_research_tier || "").trim().toLowerCase() ||
+              ""
+            }
+            data-research-tiers={(result.research_tiers || []).join(",")}
             role="status"
           >
             Spawn merge · mode={result.mode} · document={result.document_id}
+            {result.recommended_research_tier
+              ? ` · recommended_tier=${result.recommended_research_tier}`
+              : ""}
+            {(result.research_tiers || []).length
+              ? ` · tiers=${(result.research_tiers || []).join(",")}`
+              : ""}
           </div>
           <p className="text-[12px] font-mono text-ink dark:text-bright">
             mode=<code>{result.mode}</code> · document=
             <code>{result.document_id}</code> · draft_leaves_parent=
             {String(result.draft_leaves_parent)}
           </p>
+          {/* Residual (kn): depth posture chrome (parity collective ke). */}
+          {result.recommended_research_tier ? (
+            <p
+              className="text-[11px] font-mono opacity-90"
+              data-testid="spawn-merge-research-tier"
+              data-recommended-research-tier={String(
+                result.recommended_research_tier,
+              )
+                .trim()
+                .toLowerCase()}
+              role="status"
+            >
+              Recommended research tier:{" "}
+              <strong>{result.recommended_research_tier}</strong>
+              {(result.research_tiers || []).length
+                ? ` · members=${(result.research_tiers || []).join(",")}`
+                : ""}
+              {String(result.recommended_research_tier).toLowerCase() ===
+              "wrestle"
+                ? " · multi-minute long-horizon depth"
+                : String(result.recommended_research_tier).toLowerCase() ===
+                    "fast"
+                  ? " · flash / distill depth"
+                  : " · deep / synthesize depth"}
+            </p>
+          ) : null}
           {autoOpenedWindowId ? (
             <p
               className="text-[11px] font-mono text-aurora"
