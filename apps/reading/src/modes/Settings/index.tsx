@@ -1367,6 +1367,19 @@ export default function Settings() {
                     ))}
                   </ul>
                 )}
+                {/* Residual (hb): source breakdown (interactive vs autonomous). */}
+                {Object.keys(usage.by_source || {}).length > 0 ? (
+                  <ul
+                    className="space-y-1"
+                    data-testid="antiek-bench-usage-sources"
+                  >
+                    {Object.entries(usage.by_source || {}).map(([src, n]) => (
+                      <li key={src}>
+                        <strong>{src}</strong>: {n}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
                 {usage.notes?.map((n) => (
                   <p
                     key={n}

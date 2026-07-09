@@ -1,0 +1,2 @@
+# Campaign rollup (bn)–(hb) · PR #465
+Settings by_source UI (hb); backend by_source (ha). Next residual (hc).

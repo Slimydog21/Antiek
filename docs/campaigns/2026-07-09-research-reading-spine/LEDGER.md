@@ -135,3 +135,7 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 - weekly_usage_summary + settings payload by_source
 - HTML "By source: investigation_start=…"
 - tests: test_antiek_bench_usage_bridge 4 passed
+## residual (hb) Settings usage by_source UI — 2026-07-09
+- antiek-bench-usage-sources renders investigation_start + session_flywheel
+- TS AntiekBenchUsageSummaryResponse.by_source
+- tests: Settings weekly usage case

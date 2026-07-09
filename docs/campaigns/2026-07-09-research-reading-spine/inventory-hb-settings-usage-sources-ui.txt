@@ -1,0 +1,13 @@
+# residual (hb) Settings UI antiek-bench-usage-sources
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(ha) prior | branch_only | campaign inventories
+(hb) Settings by_source UI | branch_only | antiek-bench-usage-sources list; Settings.test usage case
+
+PATHS:
+- apps/reading/src/api/settings.ts
+- apps/reading/src/modes/Settings/index.tsx
+- apps/reading/src/modes/Settings/Settings.test.tsx
+
+NEXT: (hc) re-derive; operator merge PR #465

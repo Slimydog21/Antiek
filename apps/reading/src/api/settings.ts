@@ -224,6 +224,8 @@ export type UsageTaskClassBucket = {
 export type AntiekBenchUsageSummaryResponse = {
   event_count: number;
   by_task_class: Record<string, UsageTaskClassBucket>;
+  /** Residual (ha/hb): investigation_start vs session_flywheel etc. */
+  by_source?: Record<string, number>;
   view_format: "html" | string;
   settings_panel: string;
   source: string;

@@ -90,11 +90,15 @@ const {
         wrestle: { worked: 1, failed: 0, total: 1 },
         book_qa: { worked: 0, failed: 1, total: 1 },
       },
+      by_source: {
+        investigation_start: 1,
+        session_flywheel: 1,
+      },
       view_format: "html",
       settings_panel: "antiek_bench_usage_weekly",
       source: "antiek_bench.usage_events",
       notes: [],
-      html: "<p>Events recorded: 2</p>",
+      html: "<p>Events recorded: 2 · By source: investigation_start=1</p>",
     })),
     fetchAntiekBenchSuiteProposal: vi.fn(async () => ({
       has_proposal: true,
@@ -469,6 +473,13 @@ describe("Settings SPR-01 + decision-tree install", () => {
     // wrestle appears in usage summary and depth-tier chrome
     expect(screen.getAllByText(/wrestle/i).length).toBeGreaterThan(0);
     expect(screen.getByTestId("antiek-bench-usage-html").innerHTML).toContain("2");
+    // Residual (hb): by_source list in Settings UI.
+    expect(screen.getByTestId("antiek-bench-usage-sources").textContent).toMatch(
+      /investigation_start/,
+    );
+    expect(screen.getByTestId("antiek-bench-usage-sources").textContent).toMatch(
+      /session_flywheel/,
+    );
   });
 
   it("loads NotDiamond advisory posture — authority rejected", async () => {
