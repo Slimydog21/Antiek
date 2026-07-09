@@ -9,7 +9,9 @@
 import { useCallback, useState } from "react";
 import {
   attachSourceRefs,
+  fetchEvidencePack,
   fetchResearchContext,
+  type EvidencePackResponse,
   type ResearchContextResponse,
 } from "../../api/engagement";
 import { detectSourceKindClient } from "../../workspace/researchContextPack";
@@ -29,6 +31,7 @@ export function ResearchContextPanel({
   const [query, setQuery] = useState(initialQuery);
   const [refInput, setRefInput] = useState("");
   const [pack, setPack] = useState<ResearchContextResponse | null>(null);
+  const [evidence, setEvidence] = useState<EvidencePackResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -52,6 +55,26 @@ export function ResearchContextPanel({
     }
   }, [assetId, spawnId, query]);
 
+  const loadEvidence = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const packEv = await fetchEvidencePack({
+        asset_id: assetId,
+        spawn_id: spawnId,
+        include_html: true,
+      });
+      if (packEv.view_format !== "html") {
+        throw new Error("evidence pack view_format must be html");
+      }
+      setEvidence(packEv);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [assetId, spawnId]);
+
   const attach = useCallback(async () => {
     if (!spawnId || !refInput.trim()) return;
     setBusy(true);
@@ -70,6 +93,7 @@ export function ResearchContextPanel({
     <section
       className="research-context-panel"
       data-view-format="html"
+      data-testid="research-context-panel"
       aria-label="Research context"
     >
       <header>
@@ -98,6 +122,14 @@ export function ResearchContextPanel({
         </label>
         <button type="button" onClick={() => void load()} disabled={busy}>
           {busy ? "Loading…" : "Load context"}
+        </button>
+        <button
+          type="button"
+          data-testid="load-evidence-pack"
+          onClick={() => void loadEvidence()}
+          disabled={busy}
+        >
+          {busy ? "Loading…" : "Load evidence pack"}
         </button>
       </div>
 
@@ -153,6 +185,26 @@ export function ResearchContextPanel({
           <pre className="prompt-block" data-testid="prompt-block">
             {pack.prompt_block}
           </pre>
+        </div>
+      ) : null}
+
+      {evidence ? (
+        <div
+          className="evidence-pack"
+          data-testid="evidence-pack-result"
+          data-view-format="html"
+        >
+          <p className="counts">
+            evidence · insights={evidence.insight_count} · questions=
+            {evidence.question_count} · refs={evidence.ref_count}
+          </p>
+          {evidence.html ? (
+            <div
+              className="evidence-html"
+              data-testid="evidence-pack-html"
+              dangerouslySetInnerHTML={{ __html: evidence.html }}
+            />
+          ) : null}
         </div>
       ) : null}
     </section>

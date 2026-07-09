@@ -4,10 +4,12 @@ import { ResearchContextPanel } from "./ResearchContextPanel";
 
 const fetchResearchContext = vi.fn();
 const attachSourceRefs = vi.fn();
+const fetchEvidencePack = vi.fn();
 
 vi.mock("../../api/engagement", () => ({
   fetchResearchContext: (...args: unknown[]) => fetchResearchContext(...args),
   attachSourceRefs: (...args: unknown[]) => attachSourceRefs(...args),
+  fetchEvidencePack: (...args: unknown[]) => fetchEvidencePack(...args),
 }));
 
 describe("ResearchContextPanel", () => {
@@ -18,6 +20,7 @@ describe("ResearchContextPanel", () => {
   beforeEach(() => {
     fetchResearchContext.mockReset();
     attachSourceRefs.mockReset();
+    fetchEvidencePack.mockReset();
   });
 
   it("loads and renders prompt block", async () => {
@@ -91,5 +94,49 @@ describe("ResearchContextPanel", () => {
     await waitFor(() => {
       expect(fetchResearchContext).toHaveBeenCalled();
     });
+  });
+
+  it("loads evidence pack HTML", async () => {
+    fetchEvidencePack.mockResolvedValue({
+      asset_id: "paper",
+      spawn_id: "spn_1",
+      insight_count: 1,
+      question_count: 0,
+      ref_count: 1,
+      insights: ["Attention is routing."],
+      questions: [],
+      source_references: [
+        {
+          ref_id: "s1",
+          kind: "arxiv",
+          raw: "1706.03762",
+          canonical_url: "https://arxiv.org/abs/1706.03762",
+        },
+      ],
+      view_format: "html",
+      product_panel: "evidence_pack",
+      source: "engagement_spine.evidence",
+      notes: [],
+      html: "<p>Evidence pack · Insight: Attention is routing.</p>",
+    });
+
+    render(<ResearchContextPanel assetId="paper" spawnId="spn_1" />);
+    fireEvent.click(screen.getByTestId("load-evidence-pack"));
+    await waitFor(() => {
+      expect(screen.getByTestId("evidence-pack-result").textContent).toMatch(
+        /insights=1/,
+      );
+    });
+    expect(fetchEvidencePack).toHaveBeenCalledWith({
+      asset_id: "paper",
+      spawn_id: "spn_1",
+      include_html: true,
+    });
+    expect(screen.getByTestId("evidence-pack-html").innerHTML).toMatch(
+      /Attention is routing/,
+    );
+    expect(
+      screen.getByTestId("research-context-panel").getAttribute("data-view-format"),
+    ).toBe("html");
   });
 });

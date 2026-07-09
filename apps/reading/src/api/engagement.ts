@@ -205,6 +205,40 @@ export async function hydratePublicationRef(body: {
   return readJson<HydrateRefResponse>(res);
 }
 
+/** Evidence pack: twin insights/questions + spawn source refs (HTML-first). */
+export type EvidencePackResponse = {
+  asset_id: string;
+  spawn_id?: string | null;
+  insight_count: number;
+  question_count: number;
+  ref_count: number;
+  insights: string[];
+  questions: string[];
+  source_references: SourceReference[];
+  view_format: "html" | string;
+  product_panel: string;
+  source: string;
+  notes: string[];
+  html?: string | null;
+};
+
+export async function fetchEvidencePack(body: {
+  asset_id: string;
+  spawn_id?: string | null;
+  include_html?: boolean;
+}): Promise<EvidencePackResponse> {
+  const res = await apiFetch(`${API_BASE}/engagement/evidence-pack`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      asset_id: body.asset_id,
+      spawn_id: body.spawn_id ?? null,
+      include_html: body.include_html ?? true,
+    }),
+  });
+  return readJson<EvidencePackResponse>(res);
+}
+
 export async function openEngagementSession(
   body: SessionOpenRequest,
 ): Promise<SessionOpenResponse> {
