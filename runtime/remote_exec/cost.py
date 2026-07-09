@@ -50,7 +50,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from runtime.remote_exec.provider import RemoteStepEvent  # type: ignore[no-redef]
     from runtime.research_runner.budget import BudgetManager  # type: ignore[no-redef]
-    from substrate.dispatch.nd_attribution import consume_nd_decision  # type: ignore[no-redef]
+    from substrate.dispatch.nd_attribution import consume_nd_decision
     from substrate.event_log import emit_typed  # type: ignore[no-redef]
     from substrate.schemas.events import DispatchCallPayload  # type: ignore[no-redef]
 
@@ -97,6 +97,7 @@ def record_remote_dispatch(
     provider = event.provider or "remote_exec"
     model = event.model or "research-leaf"
     tier = event.data.get("tier", DEFAULT_REMOTE_TIER)
+    nd = consume_nd_decision()
     return emit_typed(
         investigation_id,
         DispatchCallPayload(
@@ -113,7 +114,13 @@ def record_remote_dispatch(
             prompt_hash=str(event.data.get("prompt_hash", "remote")),
             finish_reason=event.data.get("finish_reason"),
             context_pack_event_id=context_pack_event_id,
-            **consume_nd_decision(),
+            nd_session_id=nd["nd_session_id"],
+            nd_recommended_provider=nd["nd_recommended_provider"],
+            nd_recommended_model=nd["nd_recommended_model"],
+            nd_tradeoff=nd["nd_tradeoff"],
+            nd_decision_latency_ms=nd["nd_decision_latency_ms"],
+            nd_bypassed=nd["nd_bypassed"],
+            nd_bypass_reason=nd["nd_bypass_reason"],
         ),
         parent_event_id=parent_event_id,
         role=role,

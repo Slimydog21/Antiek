@@ -319,14 +319,45 @@ def normalize_finish_reason(provider_native: str | None) -> str | None:
     return _FINISH_REASON_MAP.get(provider_native, "error")
 
 
-def _consume_nd_decision() -> dict[str, object]:
-    """Drain ND attribution lazily to avoid dispatch package import cycles."""
+def _consume_nd_decision() -> tuple[
+    str | None,
+    str | None,
+    str | None,
+    str | None,
+    int | None,
+    bool,
+    str | None,
+]:
+    """Drain ND attribution lazily to avoid dispatch package import cycles.
+
+    Returns an explicit 7-tuple so DispatchCallPayload construction stays
+    mypy-strict (``**dict`` unpacking produced NEW mypy:arg-type on CI).
+    """
     try:
         module = importlib.import_module(".nd_attribution", package=__package__)
     except ImportError:  # pragma: no cover
         module = importlib.import_module("dispatch.nd_attribution")
     consume_nd_decision = module.consume_nd_decision
-    return dict(consume_nd_decision())
+    nd = dict(consume_nd_decision())
+    latency = nd.get("nd_decision_latency_ms")
+    latency_ms: int | None
+    if latency is None:
+        latency_ms = None
+    else:
+        latency_ms = int(latency)
+    return (
+        str(nd["nd_session_id"]) if nd.get("nd_session_id") is not None else None,
+        str(nd["nd_recommended_provider"])
+        if nd.get("nd_recommended_provider") is not None
+        else None,
+        str(nd["nd_recommended_model"])
+        if nd.get("nd_recommended_model") is not None
+        else None,
+        str(nd["nd_tradeoff"]) if nd.get("nd_tradeoff") is not None else None,
+        latency_ms,
+        bool(nd.get("nd_bypassed", False)),
+        str(nd["nd_bypass_reason"]) if nd.get("nd_bypass_reason") is not None else None,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -352,6 +383,15 @@ def _emit_dispatch_call(
     context_pack_event_id: str | None,
 ) -> str | None:
     """Emit one DispatchCall event. Returns the event_id."""
+    (
+        nd_session_id,
+        nd_recommended_provider,
+        nd_recommended_model,
+        nd_tradeoff,
+        nd_decision_latency_ms,
+        nd_bypassed,
+        nd_bypass_reason,
+    ) = _consume_nd_decision()
     return emit_typed(
         investigation_id,
         DispatchCallPayload(
@@ -368,7 +408,13 @@ def _emit_dispatch_call(
             prompt_hash=prompt_hash,
             finish_reason=finish_reason,  # type: ignore[arg-type]
             context_pack_event_id=context_pack_event_id,
-            **_consume_nd_decision(),
+            nd_session_id=nd_session_id,
+            nd_recommended_provider=nd_recommended_provider,
+            nd_recommended_model=nd_recommended_model,
+            nd_tradeoff=nd_tradeoff,
+            nd_decision_latency_ms=nd_decision_latency_ms,
+            nd_bypassed=nd_bypassed,
+            nd_bypass_reason=nd_bypass_reason,
         ),
         parent_event_id=parent_event_id,
         role=role,

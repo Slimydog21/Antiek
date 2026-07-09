@@ -151,6 +151,8 @@ describe("AccrualView — NO money path (M4, BINDING)", () => {
     getConsentViewMock.mockResolvedValue(consent());
     const onPayoutRefused = vi.fn();
     render(<AccrualView synthesisId="syn-1" onPayoutRefused={onPayoutRefused} />);
+    // Wait for the control itself — the loading copy also contains
+    // "whose work grounds this", which made the previous wait racey on CI.
     fireEvent.click(await screen.findByRole("button", { name: /try a payout/i }));
     // It surfaces the specific gate reason (G2 + G3) and says nothing was paid.
     expect(screen.getByText(/G2 \+ G3/)).toBeTruthy();
