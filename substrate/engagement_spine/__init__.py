@@ -55,6 +55,12 @@ from .source_refs import (
     source_references_html,
     spawn_from_highlight_with_references,
 )
+from .research_context import (
+    ResearchContextPack,
+    assemble_research_context,
+    research_context_html,
+    research_context_sections_html,
+)
 
 __all__ = [
     "EngagementStore",
@@ -63,6 +69,7 @@ __all__ = [
     "InMemoryEngagementStore",
     "MergeMode",
     "MergeResult",
+    "ResearchContextPack",
     "ResearchSpawn",
     "SourceKind",
     "SourceReference",
@@ -72,6 +79,7 @@ __all__ = [
     "TwinNote",
     "TwinPromoteContextResult",
     "TwinPromoteResult",
+    "assemble_research_context",
     "attach_source_references",
     "complete_spawn",
     "detect_source_kind",
@@ -92,6 +100,8 @@ __all__ = [
     "promote_twin_notes_for_asset",
     "record_twin_insight",
     "record_twin_question",
+    "research_context_html",
+    "research_context_sections_html",
     "result_to_context_unit",
     "search_twin_context",
     "source_references_html",
