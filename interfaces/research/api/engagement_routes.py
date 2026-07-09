@@ -21,6 +21,7 @@ Surfaces:
   GET  /engagement/twins/{asset_id}
   POST /engagement/twins
   POST /engagement/twins/promote-context
+  POST /engagement/context-search
   POST /engagement/sessions/open
   POST /engagement/sessions/complete-flywheel
 """
@@ -48,6 +49,7 @@ from substrate.engagement_spine import (
     record_twin_product,
     seed_default_pipeline,
     spawn_from_highlight_with_references,
+    search_engagement_context,
     twin_promote_context_payload,
     twins_product_payload,
 )
@@ -224,6 +226,16 @@ class TwinPromoteContextBody(BaseModel):
     query: str | None = None
     investigation_id: str | None = None
     include_html: bool = True
+
+
+class ContextSearchBody(BaseModel):
+    """Search twin notes + spawn source refs (offline intelligent search)."""
+
+    query: str = Field(min_length=1)
+    asset_id: str | None = None
+    spawn_id: str | None = None
+    include_html: bool = True
+    limit: int = 50
 
 
 class SessionOpenBody(HighlightBody):
@@ -484,6 +496,22 @@ def post_twins_promote_context(body: TwinPromoteContextBody) -> dict[str, Any]:
             promote_insight_fn=_offline_promote_insight,
             promote_question_fn=_offline_promote_question,
             include_html=body.include_html,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@engagement_router.post("/context-search")
+def post_context_search(body: ContextSearchBody) -> dict[str, Any]:
+    """Search twin substrate + source refs for research context assembly."""
+    try:
+        return search_engagement_context(
+            store=_eng(),
+            query=body.query,
+            asset_id=body.asset_id,
+            spawn_id=body.spawn_id,
+            include_html=body.include_html,
+            limit=body.limit,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e

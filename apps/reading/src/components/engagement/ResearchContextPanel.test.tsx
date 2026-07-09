@@ -6,12 +6,15 @@ const fetchResearchContext = vi.fn();
 const attachSourceRefs = vi.fn();
 const fetchEvidencePack = vi.fn();
 const hydratePublicationRef = vi.fn();
+const searchEngagementContext = vi.fn();
 
 vi.mock("../../api/engagement", () => ({
   fetchResearchContext: (...args: unknown[]) => fetchResearchContext(...args),
   attachSourceRefs: (...args: unknown[]) => attachSourceRefs(...args),
   fetchEvidencePack: (...args: unknown[]) => fetchEvidencePack(...args),
   hydratePublicationRef: (...args: unknown[]) => hydratePublicationRef(...args),
+  searchEngagementContext: (...args: unknown[]) =>
+    searchEngagementContext(...args),
 }));
 
 describe("ResearchContextPanel", () => {
@@ -24,6 +27,7 @@ describe("ResearchContextPanel", () => {
     attachSourceRefs.mockReset();
     fetchEvidencePack.mockReset();
     hydratePublicationRef.mockReset();
+    searchEngagementContext.mockReset();
   });
 
   it("loads and renders prompt block", async () => {
@@ -143,6 +147,46 @@ describe("ResearchContextPanel", () => {
       attach_spawn_id: "spn_1",
     });
     expect(screen.getByTestId("hydrate-ref-html").innerHTML).toMatch(/HTML/);
+  });
+
+  it("searches twins/refs via context-search", async () => {
+    searchEngagementContext.mockResolvedValue({
+      query: "attention",
+      asset_id: "paper",
+      spawn_id: "spn_1",
+      hit_count: 1,
+      hits: [
+        {
+          kind: "twin_insight",
+          id: "twin_1",
+          asset_id: "paper",
+          text: "Attention is routing.",
+          source: "twin",
+        },
+      ],
+      view_format: "html",
+      product_panel: "engagement_context_search",
+      source: "engagement_spine.context_search",
+      notes: [],
+      html: "<p>Query: attention · hits=1</p>",
+    });
+
+    render(<ResearchContextPanel assetId="paper" spawnId="spn_1" />);
+    fireEvent.change(screen.getByPlaceholderText(/filter twins/i), {
+      target: { value: "attention" },
+    });
+    fireEvent.click(screen.getByTestId("context-search"));
+    await waitFor(() => {
+      expect(screen.getByTestId("context-search-result").textContent).toMatch(
+        /hits=1/,
+      );
+    });
+    expect(searchEngagementContext).toHaveBeenCalledWith({
+      query: "attention",
+      asset_id: "paper",
+      spawn_id: "spn_1",
+      include_html: true,
+    });
   });
 
   it("loads evidence pack HTML", async () => {

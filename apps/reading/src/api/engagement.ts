@@ -386,6 +386,47 @@ export async function promoteTwinsToContext(body: {
   return readJson<TwinPromoteContextResponse>(res);
 }
 
+/** Search twin notes + source refs for research context. */
+export type ContextSearchResponse = {
+  query: string;
+  asset_id?: string | null;
+  spawn_id?: string | null;
+  hit_count: number;
+  hits: Array<{
+    kind: string;
+    id: string;
+    asset_id?: string | null;
+    text: string;
+    source: string;
+  }>;
+  view_format: "html" | string;
+  product_panel: string;
+  source: string;
+  notes: string[];
+  html?: string | null;
+};
+
+export async function searchEngagementContext(body: {
+  query: string;
+  asset_id?: string | null;
+  spawn_id?: string | null;
+  include_html?: boolean;
+  limit?: number;
+}): Promise<ContextSearchResponse> {
+  const res = await apiFetch(`${API_BASE}/engagement/context-search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      query: body.query,
+      asset_id: body.asset_id ?? null,
+      spawn_id: body.spawn_id ?? null,
+      include_html: body.include_html ?? true,
+      limit: body.limit ?? 50,
+    }),
+  });
+  return readJson<ContextSearchResponse>(res);
+}
+
 export async function openEngagementSession(
   body: SessionOpenRequest,
 ): Promise<SessionOpenResponse> {

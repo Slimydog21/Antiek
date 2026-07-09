@@ -83,6 +83,7 @@ from .collective import (
     merge_spawns_collective,
 )
 from .hydrate import HydratedAsset, asset_id_for_ref, hydrate_reference, project_hydrated_html
+from .context_search import search_engagement_context, project_context_search_html
 from .progress import (
     ProgressEvent,
     list_progress,
@@ -136,6 +137,7 @@ __all__ = [
     "parse_source_reference",
     "parse_source_references",
     "progress_payload",
+    "project_context_search_html",
     "project_evidence_html",
     "project_hydrated_html",
     "project_merge_html",
@@ -153,6 +155,7 @@ __all__ = [
     "research_context_html",
     "research_context_sections_html",
     "result_to_context_unit",
+    "search_engagement_context",
     "search_twin_context",
     "source_references_html",
     "spawn_from_highlight",

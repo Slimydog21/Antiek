@@ -12,6 +12,8 @@ import {
   fetchEvidencePack,
   fetchResearchContext,
   hydratePublicationRef,
+  searchEngagementContext,
+  type ContextSearchResponse,
   type EvidencePackResponse,
   type HydrateRefResponse,
   type ResearchContextResponse,
@@ -35,6 +37,9 @@ export function ResearchContextPanel({
   const [pack, setPack] = useState<ResearchContextResponse | null>(null);
   const [evidence, setEvidence] = useState<EvidencePackResponse | null>(null);
   const [hydrated, setHydrated] = useState<HydrateRefResponse | null>(null);
+  const [searchHits, setSearchHits] = useState<ContextSearchResponse | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -114,6 +119,32 @@ export function ResearchContextPanel({
     }
   }, [refInput, spawnId, load]);
 
+  const searchContext = useCallback(async () => {
+    const q = query.trim();
+    if (!q) {
+      setError("Enter a query filter to search twins/refs");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const hits = await searchEngagementContext({
+        query: q,
+        asset_id: assetId,
+        spawn_id: spawnId,
+        include_html: true,
+      });
+      if (hits.view_format !== "html") {
+        throw new Error("context search view_format must be html");
+      }
+      setSearchHits(hits);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [query, assetId, spawnId]);
+
   return (
     <section
       className="research-context-panel"
@@ -155,6 +186,14 @@ export function ResearchContextPanel({
           disabled={busy}
         >
           {busy ? "Loading…" : "Load evidence pack"}
+        </button>
+        <button
+          type="button"
+          data-testid="context-search"
+          onClick={() => void searchContext()}
+          disabled={busy || !query.trim()}
+        >
+          Search twins/refs
         </button>
       </div>
 
@@ -261,6 +300,31 @@ export function ResearchContextPanel({
             <div
               data-testid="hydrate-ref-html"
               dangerouslySetInnerHTML={{ __html: hydrated.html }}
+            />
+          ) : null}
+        </div>
+      ) : null}
+
+      {searchHits ? (
+        <div
+          className="context-search-result"
+          data-testid="context-search-result"
+          data-view-format="html"
+        >
+          <p className="counts">
+            search “{searchHits.query}” · hits={searchHits.hit_count}
+          </p>
+          <ul data-testid="context-search-hits">
+            {searchHits.hits.map((h) => (
+              <li key={`${h.kind}-${h.id}`}>
+                <strong>[{h.kind}]</strong> {h.text}
+              </li>
+            ))}
+          </ul>
+          {searchHits.html ? (
+            <div
+              data-testid="context-search-html"
+              dangerouslySetInnerHTML={{ __html: searchHits.html }}
             />
           ) : null}
         </div>
