@@ -67,6 +67,66 @@ def arxiv_metadata_fetch_publication(
     return _fetch
 
 
+def substack_post_fetch_publication(
+    *,
+    fetch_post: Callable[[str], Any] | None = None,
+) -> FetchPublication:
+    """Build fetch_publication for substack refs via injectable post fetcher.
+
+    ``fetch_post`` receives canonical/raw URL and returns a Post-like object
+    or dict with title/body_markdown/body_html/post_url. Refuses silent network
+    when ``fetch_post`` is None and kind is substack.
+    """
+
+    def _fetch(ref: SourceReference) -> dict[str, Any]:
+        if ref.kind != "substack":
+            return {}
+        url = ref.canonical_url or ref.raw
+        if not url:
+            return {}
+        if fetch_post is None:
+            raise RuntimeError(
+                "substack fetch_post not injected — refuse silent live network"
+            )
+        post = fetch_post(str(url))
+        if hasattr(post, "title"):
+            title = str(getattr(post, "title") or "")
+            body = str(
+                getattr(post, "body_markdown")
+                or getattr(post, "body_html")
+                or ""
+            )
+            post_url = getattr(post, "post_url", None) or url
+            author = str(getattr(post, "author") or "")
+            truncated = bool(getattr(post, "truncated", False))
+        elif isinstance(post, dict):
+            title = str(post.get("title") or "")
+            body = str(
+                post.get("body_markdown")
+                or post.get("body_html")
+                or post.get("body_text")
+                or ""
+            )
+            post_url = post.get("post_url") or post.get("canonical_url") or url
+            author = str(post.get("author") or "")
+            truncated = bool(post.get("truncated", False))
+        else:
+            raise TypeError("fetch_post must return Post-like or dict")
+
+        if author:
+            body = f"Author: {author}\n\n{body}".strip()
+        notes_extra = " (truncated/paywall teaser)" if truncated else ""
+        return {
+            "title": (title.strip() or "Substack post") + notes_extra,
+            "body_text": body.strip(),
+            "canonical_url": str(post_url),
+            "source": "acquisition.substack",
+            "truncated": truncated,
+        }
+
+    return _fetch
+
+
 def compose_fetch_publication(
     *adapters: FetchPublication,
 ) -> FetchPublication:
@@ -102,6 +162,37 @@ def hydrate_with_arxiv_adapter(
     adapters: list[FetchPublication] = []
     if fetch_by_id is not None:
         adapters.append(arxiv_metadata_fetch_publication(fetch_by_id=fetch_by_id))
+    fetch = compose_fetch_publication(*adapters) if adapters else None
+    return hydrate_reference(
+        raw,
+        store=store,
+        fetch_publication=fetch,
+        include_html=include_html,
+        attach_spawn_id=attach_spawn_id,
+    )
+
+
+def hydrate_with_publication_adapters(
+    raw: str,
+    *,
+    store: Any,
+    arxiv_fetch_by_id: Callable[[str], Any] | None = None,
+    substack_fetch_post: Callable[[str], Any] | None = None,
+    include_html: bool = True,
+    attach_spawn_id: str | None = None,
+) -> Any:
+    """Product entry: hydrate with arXiv and/or Substack injectable adapters."""
+    from .hydrate import hydrate_reference
+
+    adapters: list[FetchPublication] = []
+    if arxiv_fetch_by_id is not None:
+        adapters.append(
+            arxiv_metadata_fetch_publication(fetch_by_id=arxiv_fetch_by_id)
+        )
+    if substack_fetch_post is not None:
+        adapters.append(
+            substack_post_fetch_publication(fetch_post=substack_fetch_post)
+        )
     fetch = compose_fetch_publication(*adapters) if adapters else None
     return hydrate_reference(
         raw,

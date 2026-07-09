@@ -375,6 +375,8 @@ def post_merge(body: MergeBody) -> dict[str, Any]:
 hydrate_fetch_publication: Any = None
 # Optional arXiv fetch_by_id(arxiv_id) -> ArxivPaper|dict (never silent live default).
 hydrate_arxiv_fetch_by_id: Any = None
+# Optional Substack fetch_post(url) -> Post|dict (never silent live default).
+hydrate_substack_fetch_post: Any = None
 
 
 @engagement_router.post("/hydrate-ref")
@@ -382,24 +384,27 @@ def post_hydrate_ref(body: HydrateRefBody) -> dict[str, Any]:
     """Land arxiv/substack/url as an HTML-first asset (offline-safe by default).
 
     Does not call live arxiv/substack network unless injectors are set:
-    ``hydrate_fetch_publication`` and/or ``hydrate_arxiv_fetch_by_id``.
-    PDF is never required.
+    ``hydrate_fetch_publication``, ``hydrate_arxiv_fetch_by_id``,
+    and/or ``hydrate_substack_fetch_post``. PDF is never required.
     """
     from substrate.engagement_spine import (
         arxiv_metadata_fetch_publication,
         compose_fetch_publication,
+        substack_post_fetch_publication,
     )
 
-    fetcher = hydrate_fetch_publication
-    if fetcher is None and hydrate_arxiv_fetch_by_id is not None:
-        fetcher = arxiv_metadata_fetch_publication(
-            fetch_by_id=hydrate_arxiv_fetch_by_id
+    adapters: list[Any] = []
+    if hydrate_fetch_publication is not None:
+        adapters.append(hydrate_fetch_publication)
+    if hydrate_arxiv_fetch_by_id is not None:
+        adapters.append(
+            arxiv_metadata_fetch_publication(fetch_by_id=hydrate_arxiv_fetch_by_id)
         )
-    elif fetcher is not None and hydrate_arxiv_fetch_by_id is not None:
-        fetcher = compose_fetch_publication(
-            fetcher,
-            arxiv_metadata_fetch_publication(fetch_by_id=hydrate_arxiv_fetch_by_id),
+    if hydrate_substack_fetch_post is not None:
+        adapters.append(
+            substack_post_fetch_publication(fetch_post=hydrate_substack_fetch_post)
         )
+    fetcher = compose_fetch_publication(*adapters) if adapters else None
     try:
         asset = hydrate_reference(
             body.reference,

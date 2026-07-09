@@ -87,6 +87,8 @@ from .hydrate_adapters import (
     arxiv_metadata_fetch_publication,
     compose_fetch_publication,
     hydrate_with_arxiv_adapter,
+    hydrate_with_publication_adapters,
+    substack_post_fetch_publication,
 )
 from .context_search import search_engagement_context, project_context_search_html
 from .progress import (
@@ -135,7 +137,9 @@ __all__ = [
     "get_spawn",
     "hydrate_reference",
     "hydrate_with_arxiv_adapter",
+    "hydrate_with_publication_adapters",
     "list_progress",
+    "substack_post_fetch_publication",
     "list_source_references",
     "list_spawns_for_asset",
     "list_twin_notes",
