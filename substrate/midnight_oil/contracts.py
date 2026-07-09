@@ -331,6 +331,91 @@ class MidnightOilActivationChecklistReceipt(BaseModel):
     checklist_notes: list[str] = Field(default_factory=list)
 
 
+class MidnightOilBudgetReservationRequest(BaseModel):
+    launch_packet: MidnightOilLaunchPacket
+    approval_receipt: MidnightOilApprovalReceipt
+    runner_handoff: MidnightOilRunnerHandoff
+    applied_run_receipt: MidnightOilAppliedRunReceipt
+    dispatch_receipt: MidnightOilDispatchReceipt
+    activation_checklist_receipt: MidnightOilActivationChecklistReceipt
+
+    @model_validator(mode="after")
+    def _receipt_chain_matches(self) -> MidnightOilBudgetReservationRequest:
+        if self.approval_receipt.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("approval_receipt must reference launch_packet")
+        if self.runner_handoff.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("runner_handoff must reference launch_packet")
+        if self.runner_handoff.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError("runner_handoff must reference approval_receipt")
+        if self.applied_run_receipt.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("applied_run_receipt must reference launch_packet")
+        if self.applied_run_receipt.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError("applied_run_receipt must reference approval_receipt")
+        if self.applied_run_receipt.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError("applied_run_receipt must reference runner_handoff")
+        if self.dispatch_receipt.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("dispatch_receipt must reference launch_packet")
+        if self.dispatch_receipt.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError("dispatch_receipt must reference approval_receipt")
+        if self.dispatch_receipt.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError("dispatch_receipt must reference runner_handoff")
+        if self.dispatch_receipt.applied_run_receipt_id != self.applied_run_receipt.receipt_id:
+            raise ValueError("dispatch_receipt must reference applied_run_receipt")
+        if self.activation_checklist_receipt.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("activation_checklist_receipt must reference launch_packet")
+        if self.activation_checklist_receipt.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError("activation_checklist_receipt must reference approval_receipt")
+        if self.activation_checklist_receipt.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError("activation_checklist_receipt must reference runner_handoff")
+        if (
+            self.activation_checklist_receipt.applied_run_receipt_id
+            != self.applied_run_receipt.receipt_id
+        ):
+            raise ValueError("activation_checklist_receipt must reference applied_run_receipt")
+        if self.activation_checklist_receipt.dispatch_receipt_id != self.dispatch_receipt.receipt_id:
+            raise ValueError("activation_checklist_receipt must reference dispatch_receipt")
+        if self.activation_checklist_receipt.status != "activation_blocked_controls_missing":
+            raise ValueError("activation_checklist_receipt must be activation_blocked_controls_missing")
+        if self.activation_checklist_receipt.budget_reservation_allowed:
+            raise ValueError("activation_checklist_receipt must not allow budget reservation")
+        if self.dispatch_receipt.budget_reserved or self.applied_run_receipt.budget_reserved:
+            raise ValueError("receipt chain must not already reserve budget")
+        if self.dispatch_receipt.provider_calls_made or self.applied_run_receipt.provider_calls_made:
+            raise ValueError("receipt chain must not include provider calls")
+        if self.dispatch_receipt.dispatch_performed or self.applied_run_receipt.dispatch_performed:
+            raise ValueError("receipt chain must not dispatch")
+        if self.dispatch_receipt.graph_mutated or self.applied_run_receipt.graph_mutated:
+            raise ValueError("receipt chain must not mutate graph")
+        return self
+
+
+class MidnightOilBudgetReservationReceipt(BaseModel):
+    receipt_id: str
+    activation_checklist_receipt_id: str
+    dispatch_receipt_id: str
+    applied_run_receipt_id: str
+    runner_handoff_id: str
+    approval_receipt_id: str
+    launch_packet_id: str
+    run_id: str
+    status: Literal["blocked_budget_reservation_disabled"] = "blocked_budget_reservation_disabled"
+    requested_reservation_usd: float = Field(ge=0.0)
+    approved_price_ceiling_usd: float = Field(ge=0.0)
+    planned_budget_usd: float = Field(ge=0.0)
+    unallocated_budget_usd: float = Field(ge=0.0)
+    blocker_reason: Literal["budget_reservation_provider_missing"] = (
+        "budget_reservation_provider_missing"
+    )
+    budget_reservation_allowed: bool = False
+    budget_reserved: bool = False
+    provider_calls_made: bool = False
+    dispatch_performed: bool = False
+    retrieval_performed: bool = False
+    graph_mutated: bool = False
+    final_artifact_created: bool = False
+    reservation_notes: list[str] = Field(default_factory=list)
+
+
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
     price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
@@ -471,6 +556,37 @@ def activation_checklist_midnight_oil(
             "activation checklist only: live execution remains blocked",
             "no budget reservation, provider call, retrieval, graph mutation, or artifact write is allowed",
             "future live runner must satisfy every missing item before replacing this receipt",
+        ],
+    )
+
+
+def budget_reservation_midnight_oil(
+    req: MidnightOilBudgetReservationRequest,
+) -> MidnightOilBudgetReservationReceipt:
+    return MidnightOilBudgetReservationReceipt(
+        receipt_id=f"{req.launch_packet.run_id}-budget-reservation",
+        activation_checklist_receipt_id=req.activation_checklist_receipt.receipt_id,
+        dispatch_receipt_id=req.dispatch_receipt.receipt_id,
+        applied_run_receipt_id=req.applied_run_receipt.receipt_id,
+        runner_handoff_id=req.runner_handoff.handoff_id,
+        approval_receipt_id=req.approval_receipt.receipt_id,
+        launch_packet_id=req.launch_packet.packet_id,
+        run_id=req.launch_packet.run_id,
+        requested_reservation_usd=req.approval_receipt.planned_budget_usd,
+        approved_price_ceiling_usd=req.approval_receipt.approved_price_ceiling_usd,
+        planned_budget_usd=req.approval_receipt.planned_budget_usd,
+        unallocated_budget_usd=req.approval_receipt.unallocated_budget_usd,
+        budget_reservation_allowed=False,
+        budget_reserved=False,
+        provider_calls_made=False,
+        dispatch_performed=False,
+        retrieval_performed=False,
+        graph_mutated=False,
+        final_artifact_created=False,
+        reservation_notes=[
+            "budget reservation gate only: reservation provider is not configured",
+            "no budget reserved, provider call, dispatch, retrieval, graph mutation, or artifact write",
+            "future live runner must replace this blocked receipt after settings-backed controls",
         ],
     )
 

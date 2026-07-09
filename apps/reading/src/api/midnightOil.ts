@@ -202,6 +202,40 @@ export interface MidnightOilActivationChecklistReceipt {
   checklist_notes: string[];
 }
 
+export interface MidnightOilBudgetReservationRequest {
+  launch_packet: MidnightOilLaunchPacket;
+  approval_receipt: MidnightOilApprovalReceipt;
+  runner_handoff: MidnightOilRunnerHandoff;
+  applied_run_receipt: MidnightOilAppliedRunReceipt;
+  dispatch_receipt: MidnightOilDispatchReceipt;
+  activation_checklist_receipt: MidnightOilActivationChecklistReceipt;
+}
+
+export interface MidnightOilBudgetReservationReceipt {
+  receipt_id: string;
+  activation_checklist_receipt_id: string;
+  dispatch_receipt_id: string;
+  applied_run_receipt_id: string;
+  runner_handoff_id: string;
+  approval_receipt_id: string;
+  launch_packet_id: string;
+  run_id: string;
+  status: "blocked_budget_reservation_disabled";
+  requested_reservation_usd: number;
+  approved_price_ceiling_usd: number;
+  planned_budget_usd: number;
+  unallocated_budget_usd: number;
+  blocker_reason: "budget_reservation_provider_missing";
+  budget_reservation_allowed: boolean;
+  budget_reserved: boolean;
+  provider_calls_made: boolean;
+  dispatch_performed: boolean;
+  retrieval_performed: boolean;
+  graph_mutated: boolean;
+  final_artifact_created: boolean;
+  reservation_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -260,4 +294,19 @@ export async function activationChecklistMidnightOil(
     throw new Error(`POST /research/midnight-oil/activation-checklist: HTTP ${resp.status}: ${body}`);
   }
   return (await resp.json()) as MidnightOilActivationChecklistReceipt;
+}
+
+export async function budgetReservationMidnightOil(
+  request: MidnightOilBudgetReservationRequest,
+): Promise<MidnightOilBudgetReservationReceipt> {
+  const resp = await apiFetch(`${API_BASE}/research/midnight-oil/budget-reservation`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`POST /research/midnight-oil/budget-reservation: HTTP ${resp.status}: ${body}`);
+  }
+  return (await resp.json()) as MidnightOilBudgetReservationReceipt;
 }

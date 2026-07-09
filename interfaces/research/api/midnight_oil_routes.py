@@ -13,12 +13,15 @@ from substrate.midnight_oil import (
     MidnightOilActivationChecklistReceipt,
     MidnightOilActivationChecklistRequest,
     MidnightOilAppliedRunReceipt,
+    MidnightOilBudgetReservationReceipt,
+    MidnightOilBudgetReservationRequest,
     MidnightOilDispatchReceipt,
     MidnightOilDispatchRequest,
     MidnightOilDryRunRequest,
     MidnightOilPreflight,
     MidnightOilRequest,
     activation_checklist_midnight_oil,
+    budget_reservation_midnight_oil,
     dispatch_midnight_oil,
     dry_run_midnight_oil,
     preflight_midnight_oil,
@@ -49,6 +52,13 @@ def post_midnight_oil_activation_checklist(
     return activation_checklist_midnight_oil(req)
 
 
+@midnight_oil_router.post("/budget-reservation", response_model=MidnightOilBudgetReservationReceipt)
+def post_midnight_oil_budget_reservation(
+    req: MidnightOilBudgetReservationRequest,
+) -> MidnightOilBudgetReservationReceipt:
+    return budget_reservation_midnight_oil(req)
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
@@ -56,6 +66,7 @@ def register_midnight_oil_routes(app: FastAPI) -> None:
 __all__ = [
     "midnight_oil_router",
     "post_midnight_oil_activation_checklist",
+    "post_midnight_oil_budget_reservation",
     "post_midnight_oil_dispatch",
     "post_midnight_oil_dry_run",
     "post_midnight_oil_preflight",
