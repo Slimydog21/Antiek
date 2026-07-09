@@ -11,8 +11,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
+from runtime.db_lock import connect_write
 from substrate.graph import ensure_initialized
 from substrate.graph.insight_question import promote_insight
+from substrate.graph.ops import insert_document
 
 
 @pytest.fixture
@@ -173,6 +175,16 @@ def test_post_compose_artifacts_requires_two_ids(api_env):
 
 
 def _source_merge_ready_packet(client: TestClient) -> tuple[dict, dict[str, str]]:
+    with connect_write(os.environ["ANTIEK_DUCKDB_PATH"], purpose="test/source_merge_source_doc") as con:
+        insert_document(
+            con,
+            document_id="doc-source-merge",
+            source_tier=2,
+            document_type="book",
+            title="Source Merge Book",
+            raw_text="Original source book body.",
+            on_conflict="ignore",
+        )
     for iid, text in [("inv-src-a", "Source merge A"), ("inv-src-b", "Source merge B")]:
         promote_insight(
             text=text,
@@ -269,6 +281,80 @@ def test_source_merge_apply_requires_hash_conflict_acknowledgement(api_env):
 
     assert resp.status_code == 409
     assert resp.json()["detail"] == "source_merge_hash_conflicts_acknowledgement_required"
+
+
+def test_source_merge_preview_returns_revision_evidence_without_writes(api_env):
+    client = _client()
+    packet, hashes = _source_merge_ready_packet(client)
+
+    resp = client.post(
+        "/research/artifacts/source-merge/preview",
+        json={
+            "reviewed_packet": packet,
+            "expected_content_hashes": hashes,
+            "acknowledge_reviewed_draft": True,
+            "acknowledge_source_book_mutation": True,
+            "acknowledge_twin_document_mutation": True,
+        },
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "previewed"
+    assert body["document_id"] == "doc-source-merge"
+    assert body["source_revision_id"].startswith("srcmerge-doc-source-merge-")
+    assert body["twin_revision_id"].startswith("twinmerge-doc-source-merge-")
+    assert body["member_investigation_ids"] == ["inv-src-a", "inv-src-b"]
+    assert body["before_source_hash"] != body["after_source_hash"]
+    assert body["before_twin_hash"] != body["after_twin_hash"]
+    assert body["source_bytes_after"] > body["source_bytes_before"]
+    assert body["twin_bytes_after"] > 0
+    assert body["writes_performed"] is False
+
+
+def test_source_merge_preview_does_not_mutate_source_or_emit_event(api_env):
+    client = _client()
+    packet, hashes = _source_merge_ready_packet(client)
+
+    resp = client.post(
+        "/research/artifacts/source-merge/preview",
+        json={
+            "reviewed_packet": packet,
+            "expected_content_hashes": hashes,
+            "acknowledge_reviewed_draft": True,
+            "acknowledge_source_book_mutation": True,
+            "acknowledge_twin_document_mutation": True,
+        },
+    )
+
+    assert resp.status_code == 200
+    with connect_write(os.environ["ANTIEK_DUCKDB_PATH"], purpose="test/read_source_after_preview") as con:
+        (raw_text,) = con.execute(
+            "SELECT raw_text FROM documents WHERE document_id = ?",
+            ["doc-source-merge"],
+        ).fetchone()
+    assert raw_text == "Original source book body."
+    assert not (Path(api_env["events"]) / "read-doc-source-merge.jsonl").exists()
+
+
+def test_source_merge_preview_refuses_missing_source_document(api_env):
+    client = _client()
+    packet, hashes = _source_merge_ready_packet(client)
+    packet["document_id"] = "doc-source-merge-missing"
+
+    resp = client.post(
+        "/research/artifacts/source-merge/preview",
+        json={
+            "reviewed_packet": packet,
+            "expected_content_hashes": hashes,
+            "acknowledge_reviewed_draft": True,
+            "acknowledge_source_book_mutation": True,
+            "acknowledge_twin_document_mutation": True,
+        },
+    )
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "source_merge_source_document_not_found"
 
 
 def test_source_merge_apply_records_deterministic_receipt(api_env):

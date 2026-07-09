@@ -23,6 +23,7 @@ from substrate.research_artifact import (  # noqa: E402
     export_research_artifact,
     import_agent_notes,
     list_outline_blocks,
+    preview_source_merge_review,
     render_twin_notes_html,
 )
 from substrate.research_artifact.build_body import build_body  # noqa: E402
@@ -123,6 +124,22 @@ class SourceMergeApplyOut(BaseModel):
     event_id: str
     member_investigation_ids: list[str]
     hash_conflicts_acknowledged: bool
+
+
+class SourceMergePreviewOut(BaseModel):
+    status: str
+    document_id: str
+    source_revision_id: str
+    twin_revision_id: str
+    member_investigation_ids: list[str]
+    before_source_hash: str
+    after_source_hash: str
+    before_twin_hash: str
+    after_twin_hash: str
+    source_bytes_before: int
+    source_bytes_after: int
+    twin_bytes_after: int
+    writes_performed: bool
 
 
 def _clean_member_ids(raw_ids: list[str]) -> list[str]:
@@ -317,6 +334,45 @@ async def post_source_merge_apply(body: SourceMergeApplyIn) -> SourceMergeApplyO
         event_id=receipt.event_id or "",
         member_investigation_ids=receipt.member_investigation_ids,
         hash_conflicts_acknowledged=receipt.hash_conflicts_acknowledged,
+    )
+
+
+@artifact_router.post("/artifacts/source-merge/preview", response_model=SourceMergePreviewOut)
+async def post_source_merge_preview(body: SourceMergeApplyIn) -> SourceMergePreviewOut:
+    """Preview source/twin revision evidence without writing bodies or events."""
+
+    db_path = _db()
+    member_ids = _validate_source_merge_preflight(body, db_path=db_path)
+    packet = body.reviewed_packet
+    try:
+        with connect_write(db_path, purpose="research_artifact/source_merge_preview") as con:
+            preview = preview_source_merge_review(
+                con,
+                document_id=packet.document_id,
+                draft_merge_path=packet.draft_merge_path,
+                compose_index_path=packet.compose_index_path,
+                member_investigation_ids=member_ids,
+                expected_content_hashes=body.expected_content_hashes,
+                hash_conflicts=packet.hash_conflicts,
+            )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return SourceMergePreviewOut(
+        status=preview.status,
+        document_id=preview.document_id,
+        source_revision_id=preview.source_revision_id,
+        twin_revision_id=preview.twin_revision_id,
+        member_investigation_ids=preview.member_investigation_ids,
+        before_source_hash=preview.before_source_hash,
+        after_source_hash=preview.after_source_hash,
+        before_twin_hash=preview.before_twin_hash,
+        after_twin_hash=preview.after_twin_hash,
+        source_bytes_before=preview.source_bytes_before,
+        source_bytes_after=preview.source_bytes_after,
+        twin_bytes_after=preview.twin_bytes_after,
+        writes_performed=preview.writes_performed,
     )
 
 

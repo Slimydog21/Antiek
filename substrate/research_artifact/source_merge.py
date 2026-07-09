@@ -31,6 +31,23 @@ class SourceMergeApplyReceipt:
     hash_conflicts_acknowledged: bool
 
 
+@dataclass(frozen=True)
+class SourceMergePreviewReceipt:
+    status: str
+    document_id: str
+    source_revision_id: str
+    twin_revision_id: str
+    member_investigation_ids: list[str]
+    before_source_hash: str
+    after_source_hash: str
+    before_twin_hash: str
+    after_twin_hash: str
+    source_bytes_before: int
+    source_bytes_after: int
+    twin_bytes_after: int
+    writes_performed: bool
+
+
 def _require_locked(con: Any) -> None:
     if not isinstance(con, LockedConnection):
         raise TypeError(
@@ -84,6 +101,98 @@ def _canonical_apply_id(
         separators=(",", ":"),
     )
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def _hash_text(value: str | None) -> str:
+    return hashlib.sha256((value or "").encode("utf-8")).hexdigest()
+
+
+def _preview_merge_payload(
+    *,
+    member_investigation_ids: list[str],
+    expected_content_hashes: dict[str, str],
+    hash_conflicts: list[list[str]],
+) -> str:
+    return json.dumps(
+        {
+            "kind": "antiek.source_merge.preview_payload",
+            "member_investigation_ids": member_investigation_ids,
+            "expected_content_hashes": expected_content_hashes,
+            "hash_conflicts": hash_conflicts,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def preview_source_merge_review(
+    con: LockedConnection,
+    *,
+    document_id: str,
+    draft_merge_path: str,
+    compose_index_path: str,
+    member_investigation_ids: list[str],
+    expected_content_hashes: dict[str, str],
+    hash_conflicts: list[list[str]],
+) -> SourceMergePreviewReceipt:
+    """Compute source/twin revision evidence without mutating storage."""
+
+    _require_locked(con)
+    member_ids = [iid.strip() for iid in member_investigation_ids if iid.strip()]
+    apply_id = _canonical_apply_id(
+        document_id=document_id,
+        draft_merge_path=draft_merge_path,
+        compose_index_path=compose_index_path,
+        member_investigation_ids=member_ids,
+        expected_content_hashes=expected_content_hashes,
+        hash_conflicts=hash_conflicts,
+    )
+    suffix = apply_id[:16]
+    source_revision_id = f"srcmerge-{document_id}-{suffix}"
+    twin_revision_id = f"twinmerge-{document_id}-{suffix}"
+
+    row = con.execute(
+        "SELECT raw_text FROM documents WHERE document_id = ? LIMIT 1",
+        [document_id],
+    ).fetchone()
+    if row is None:
+        raise ValueError("source_merge_source_document_not_found")
+
+    before_source = row[0] or ""
+    merge_payload = _preview_merge_payload(
+        member_investigation_ids=member_ids,
+        expected_content_hashes=expected_content_hashes,
+        hash_conflicts=hash_conflicts,
+    )
+    after_source = "\n\n".join(
+        part
+        for part in [
+            before_source.rstrip(),
+            "<!-- antiek-source-merge-preview -->",
+            merge_payload,
+        ]
+        if part
+    )
+    twin_payload = _preview_merge_payload(
+        member_investigation_ids=member_ids,
+        expected_content_hashes=expected_content_hashes,
+        hash_conflicts=hash_conflicts,
+    )
+    return SourceMergePreviewReceipt(
+        status="previewed",
+        document_id=document_id,
+        source_revision_id=source_revision_id,
+        twin_revision_id=twin_revision_id,
+        member_investigation_ids=member_ids,
+        before_source_hash=_hash_text(before_source),
+        after_source_hash=_hash_text(after_source),
+        before_twin_hash=_hash_text(None),
+        after_twin_hash=_hash_text(twin_payload),
+        source_bytes_before=len(before_source.encode("utf-8")),
+        source_bytes_after=len(after_source.encode("utf-8")),
+        twin_bytes_after=len(twin_payload.encode("utf-8")),
+        writes_performed=False,
+    )
 
 
 def apply_source_merge_review(
