@@ -690,9 +690,14 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("antiek-bench-run-offline-html").innerHTML).toMatch(
       /offline dogfood|2026-W28/i,
     );
-    // Residual (dv): suite proposal refreshed after dogfood usage feed.
+    // Residual (dv/dx): suite proposal + usage summary refreshed after dogfood.
     await waitFor(() => {
       expect(fetchAntiekBenchSuiteProposal.mock.calls.length).toBeGreaterThanOrEqual(
+        2,
+      );
+    });
+    await waitFor(() => {
+      expect(fetchAntiekBenchUsageSummary.mock.calls.length).toBeGreaterThanOrEqual(
         2,
       );
     });

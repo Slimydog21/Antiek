@@ -317,7 +317,7 @@ export default function Settings() {
       } else {
         await onRefreshLeaderboard();
       }
-      // Residual (dv): dogfood usage events → refresh suite proposal panel
+      // Residual (dv/dx): dogfood usage events → refresh suite proposal + usage summary
       // (proposed only; never auto-promoted).
       try {
         const p = await fetchAntiekBenchSuiteProposal({ includeHtml: true });
@@ -334,6 +334,13 @@ export default function Settings() {
         setSuiteProposalError(
           pe instanceof Error ? pe.message : String(pe),
         );
+      }
+      try {
+        const u = await fetchAntiekBenchUsageSummary({ includeHtml: true });
+        setUsage(u);
+        setUsageError(null);
+      } catch (ue) {
+        setUsageError(ue instanceof Error ? ue.message : String(ue));
       }
     } catch (e) {
       setOfflineRunError(e instanceof Error ? e.message : String(e));

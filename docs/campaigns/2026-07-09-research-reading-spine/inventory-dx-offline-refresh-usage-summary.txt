@@ -1,0 +1,8 @@
+# residual (dx) refresh usage summary after offline dogfood
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(dw) prior | branch_only | campaign inventories
+(dx) usage summary refresh | branch_only | Settings onRunOfflineDogfood refreshes usage summary; vitest
+
+NEXT: (dy) re-derive; operator merge PR #465
