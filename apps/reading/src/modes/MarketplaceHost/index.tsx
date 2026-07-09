@@ -40,6 +40,8 @@
  * honesty (STEM PD spine: elements/principia/novum).
  * Residual (lx): knowledge-source chip filter (parity subject chips; composes
  * with free-PD + subject + text filter).
+ * Residual (ly): open catalog as HTML asset window (project_catalog_html;
+ * chip-aware free_only/subject/source filters).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -127,6 +129,8 @@ export default function MarketplaceHost({
   } | null>(null);
   const [hosted, setHosted] = useState<HostResultResponse | null>(null);
   const [libraryHtml, setLibraryHtml] = useState<string | null>(null);
+  /** Residual (ly): last catalog HTML projection (full catalog on load). */
+  const [catalogHtml, setCatalogHtml] = useState<string | null>(null);
   const [libraryDocs, setLibraryDocs] = useState<LibraryDoc[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -242,6 +246,10 @@ export default function MarketplaceHost({
         free_count: cat.free_count,
         payment_rails: cat.payment_rails,
       });
+      // Residual (ly): keep full-catalog HTML projection when provided.
+      if (cat.html && cat.view_format === "html") {
+        setCatalogHtml(cat.html);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -346,6 +354,61 @@ export default function MarketplaceHost({
         title: opts.title || "Hosted book",
       },
     );
+  }
+
+  /**
+   * Residual (ly): open catalog as HTML asset — re-fetch with active chips so
+   * the projected document matches free-PD / subject / source filters.
+   */
+  async function openCatalogAsHtml() {
+    setBusy(true);
+    setError(null);
+    try {
+      const cat = await fetchMarketplaceCatalog({
+        freeOnly: freePdOnly,
+        subject: subjectFilter || undefined,
+        source: sourceFilter || undefined,
+        includeHtml: true,
+      });
+      if (cat.view_format !== "html" || !cat.html?.trim()) {
+        throw new Error("catalog HTML projection missing or non-html");
+      }
+      if (cat.html.trimStart().toLowerCase().startsWith("%pdf")) {
+        throw new Error("catalog view must not be PDF");
+      }
+      setCatalogHtml(cat.html);
+      openHostedWindow({
+        document_id: "marketplace-catalog",
+        title: "Marketplace catalog (HTML)",
+        html: cat.html,
+        view_format: "html",
+        license_class: "public_domain",
+        owner_id: ownerId,
+        source: "marketplace_catalog",
+      });
+    } catch (e) {
+      // Fallback: last full-catalog projection if chip-aware fetch fails.
+      if (catalogHtml?.trim()) {
+        openHostedWindow({
+          document_id: "marketplace-catalog",
+          title: "Marketplace catalog (HTML)",
+          html: catalogHtml,
+          view_format: "html",
+          license_class: "public_domain",
+          owner_id: ownerId,
+          source: "marketplace_catalog",
+        });
+        setError(
+          e instanceof Error
+            ? `catalog filter HTML failed (${e.message}); opened last full catalog`
+            : String(e),
+        );
+      } else {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    } finally {
+      setBusy(false);
+    }
   }
 
   function hostDrSelectionFromHtml(
@@ -690,6 +753,16 @@ export default function MarketplaceHost({
       <div className="flex flex-wrap gap-3 items-end mb-4">
         <button type="button" onClick={() => void loadCatalog()} disabled={busy}>
           Refresh catalog
+        </button>
+        {/* Residual (ly): browse catalog as HTML-first asset window. */}
+        <button
+          type="button"
+          data-testid="catalog-open-html"
+          onClick={() => void openCatalogAsHtml()}
+          disabled={busy}
+          title="Open catalog as HTML (respects free-PD / domain / source chips)"
+        >
+          Open catalog as HTML
         </button>
         <label className="flex flex-col gap-1 text-sm font-mono">
           <span className="text-[11px] uppercase opacity-70">

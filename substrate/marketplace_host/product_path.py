@@ -177,6 +177,94 @@ def list_account_library_html(
     )
 
 
+def project_catalog_html(
+    catalog: Catalog,
+    *,
+    document_id: str = "marketplace-catalog",
+    free_only: bool = False,
+    subject: str | None = None,
+    source: str | None = None,
+) -> str:
+    """Residual (ly): HTML-first catalog browse projection (never PDF).
+
+    Optional filters mirror MarketplaceHost chips so the projected asset
+    can reflect free-PD / subject / source without inventing payment rails.
+    """
+    from substrate.engagement_spine.project import project_to_html
+
+    entries = list(catalog.search(""))
+    subj_token = (subject or "").strip().lower()
+    src_token = (source or "").strip().lower()
+    filtered: list[CatalogEntry] = []
+    for e in entries:
+        if free_only and not (
+            e.license_class == "public_domain" and e.is_free
+        ):
+            continue
+        if subj_token and subj_token not in e.subjects:
+            continue
+        if src_token and (e.source or "").strip().lower() != src_token:
+            continue
+        filtered.append(e)
+
+    blocks: list[dict[str, Any]] = [
+        {
+            "type": "heading",
+            "attrs": {"level": 1},
+            "content": [{"type": "text", "text": "Antiek marketplace catalog"}],
+        },
+        {
+            "type": "paragraph",
+            "content": [
+                {
+                    "type": "text",
+                    "text": (
+                        f"Entries={len(filtered)} of {len(entries)} · view=HTML · "
+                        "payment=manual_receipt_only (no live rails)"
+                        + (f" · free_only={free_only}" if free_only else "")
+                        + (f" · subject={subj_token}" if subj_token else "")
+                        + (f" · source={src_token}" if src_token else "")
+                    ),
+                }
+            ],
+        },
+    ]
+    if not filtered:
+        blocks.append(
+            {
+                "type": "paragraph",
+                "content": [{"type": "text", "text": "(no catalog matches)"}],
+            }
+        )
+    for e in filtered:
+        subj = ",".join(e.subjects) if e.subjects else "none"
+        free_mark = "free" if e.is_free else "paid"
+        blocks.append(
+            {
+                "type": "paragraph",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            f"[{e.license_class}/{free_mark}] {e.title} — {e.author} "
+                            f"· source={e.source} · subjects={subj} · id={e.book_id}"
+                        ),
+                    }
+                ],
+            }
+        )
+    html = project_to_html(
+        {"type": "doc", "content": blocks},
+        document_id=document_id,
+        creator="marketplace_host",
+    )
+    if not html or not html.strip():
+        raise RuntimeError("catalog HTML projection empty")
+    if html.lstrip().lower().startswith("%pdf"):
+        raise RuntimeError("catalog view must not be PDF")
+    return html
+
+
 def default_demo_catalog() -> Catalog:
     """Fixed offline catalog fixture for product/API tests and demos.
 

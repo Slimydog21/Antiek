@@ -216,3 +216,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - UI source chips compose free-PD × subject × text filters
   Offline demo catalog filter matrix product-complete; live connectors still deferred.
 
+
+- Closed (ly, 2026-07-10) **Catalog HTML projection open:**
+  - project_catalog_html substrate (chip filters free_only/subject/source)
+  - GET /marketplace/catalog returns html (include_html opt-out)
+  - MarketplaceHost Open catalog as HTML window

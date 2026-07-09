@@ -21,6 +21,7 @@ from .product_path import (
     default_demo_catalog,
     host_book_into_account,
     list_account_library_html,
+    project_catalog_html,
     record_purchase_and_host,
 )
 from .purchase import ManualPurchaseReceipt, PurchaseAdapter, PurchaseReceipt
@@ -42,6 +43,7 @@ __all__ = [
     "host_into_account",
     "list_account_library_html",
     "make_catalog",
+    "project_catalog_html",
     "project_hosted_book_html",
     "record_purchase_and_host",
 ]

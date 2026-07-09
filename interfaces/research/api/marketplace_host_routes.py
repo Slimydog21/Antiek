@@ -17,6 +17,7 @@ from substrate.marketplace_host import (
     default_demo_catalog,
     host_book_into_account,
     list_account_library_html,
+    project_catalog_html,
     project_hosted_book_html,
     record_purchase_and_host,
 )
@@ -107,7 +108,12 @@ def catalog_honesty_payload(entries: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 @marketplace_host_router.get("/catalog")
-def get_catalog() -> dict[str, Any]:
+def get_catalog(
+    free_only: bool = False,
+    subject: str | None = None,
+    source: str | None = None,
+    include_html: bool = True,
+) -> dict[str, Any]:
     cat = _c()
     # Empty search returns all entries (catalog.search contract).
     entries = []
@@ -126,12 +132,21 @@ def get_catalog() -> dict[str, Any]:
         )
     # Residual (iq/lw): knowledge-source + subject honesty for research marketplace.
     honesty = catalog_honesty_payload(entries)
-    return {
+    out: dict[str, Any] = {
         "entries": entries,
         "count": len(entries),
         "view_format": "html",
         **honesty,
     }
+    # Residual (ly): HTML-first catalog projection (optional filters for chip parity).
+    if include_html:
+        out["html"] = project_catalog_html(
+            cat,
+            free_only=free_only,
+            subject=subject,
+            source=source,
+        )
+    return out
 
 
 def _maybe_seed_twins(

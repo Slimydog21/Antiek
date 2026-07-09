@@ -39,6 +39,7 @@ describe("marketplaceHost client", () => {
         purchased_count: 0,
         free_count: 1,
         payment_rails: "manual_receipt_only",
+        html: "<html><body>catalog</body></html>",
       }),
     });
     const out = await fetchMarketplaceCatalog();
@@ -50,6 +51,29 @@ describe("marketplaceHost client", () => {
     expect(out.public_domain_count).toBe(1);
     expect(out.free_count).toBe(1);
     expect(out.payment_rails).toBe("manual_receipt_only");
+    expect(out.html).toContain("catalog");
+  });
+
+  it("fetchMarketplaceCatalog passes filter query params (ly)", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        entries: [],
+        count: 0,
+        view_format: "html",
+        html: "<html></html>",
+      }),
+    });
+    await fetchMarketplaceCatalog({
+      freeOnly: true,
+      subject: "science",
+      source: "project_gutenberg",
+    });
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /\/marketplace\/catalog\?.*free_only=true.*subject=science.*source=project_gutenberg/,
+      ),
+    );
   });
 
   it("hostBookIntoAccount posts host", async () => {

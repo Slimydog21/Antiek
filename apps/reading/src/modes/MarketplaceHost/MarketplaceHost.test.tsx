@@ -940,6 +940,71 @@ describe("MarketplaceHost mode", () => {
     expect(screen.getByTestId("catalog-entry-pd-novum")).toBeTruthy();
   });
 
+  it("opens catalog as HTML asset window (ly)", async () => {
+    const catalogHtmlBody =
+      "<!DOCTYPE html><html><body><h1>Antiek marketplace catalog</h1>" +
+      "<p>Entries=2 · view=HTML · payment=manual_receipt_only</p>" +
+      "<p>[public_domain/free] Origin — Darwin · source=project_gutenberg</p>" +
+      "</body></html>";
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-origin",
+          title: "On the Origin of Species",
+          author: "Charles Darwin",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: ["science", "biology"],
+        },
+      ],
+      count: 1,
+      view_format: "html",
+      by_source: { project_gutenberg: 1 },
+      by_subject: { science: 1, biology: 1 },
+      free_count: 1,
+      public_domain_count: 1,
+      purchased_count: 0,
+      payment_rails: "manual_receipt_only",
+      html: catalogHtmlBody,
+    });
+    render(<MarketplaceHost ownerId="operator" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("catalog-open-html")).toBeTruthy();
+    });
+    // Load already called once; open re-fetches with chips.
+    fetchMarketplaceCatalog.mockClear();
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-origin",
+          title: "On the Origin of Species",
+          author: "Charles Darwin",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: ["science", "biology"],
+        },
+      ],
+      count: 1,
+      view_format: "html",
+      html: catalogHtmlBody,
+      payment_rails: "manual_receipt_only",
+    });
+    fireEvent.click(screen.getByTestId("catalog-open-html"));
+    await waitFor(() => {
+      expect(openWindow).toHaveBeenCalled();
+    });
+    const call = openWindow.mock.calls.find(
+      (c) => c[0] === "hosted_html_document",
+    );
+    expect(call).toBeTruthy();
+    expect(call![1].document_id).toBe("marketplace-catalog");
+    expect(call![1].view_format).toBe("html");
+    expect(call![1].html).toContain("marketplace catalog");
+    expect(call![1].source).toBe("marketplace_catalog");
+  });
+
   it("filters catalog by knowledge-source chip (lx)", async () => {
     fetchMarketplaceCatalog.mockResolvedValue({
       entries: [
