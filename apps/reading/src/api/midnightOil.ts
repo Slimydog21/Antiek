@@ -65,3 +65,52 @@ export async function getMidnightOilJob(
   const res = await apiFetch(`${API_BASE}/midnight-oil/jobs/${encodeURIComponent(jobId)}`);
   return readJson<MidnightOilJobResponse>(res);
 }
+
+/** Deposit job results: HTML asset + twins + optional progress/usage. */
+export type MidnightOilDepositResponse = {
+  job_id: string;
+  asset_id: string;
+  document_id: string;
+  twin_count: number;
+  spawn_ids: string[];
+  draft_combined: boolean;
+  usage_recorded: boolean;
+  usage_event?: Record<string, unknown> | null;
+  progress_seeded: boolean;
+  progress?: {
+    spawn_id?: string;
+    event_count?: number;
+    latest_stage?: string | null;
+    is_terminal?: boolean;
+    view_format?: string;
+    html?: string | null;
+    events?: Array<{ stage: string; message: string; sequence: number }>;
+  } | null;
+  job_status?: string | null;
+  view_format: "html" | string;
+  html?: string | null;
+  product_panel?: string;
+  source?: string;
+  notes?: string[];
+};
+
+export async function depositMidnightOilJob(body: {
+  job_id: string;
+  draft_combined?: boolean;
+  record_progress?: boolean;
+  mark_complete?: boolean;
+  include_progress_html?: boolean;
+}): Promise<MidnightOilDepositResponse> {
+  const res = await apiFetch(`${API_BASE}/midnight-oil/deposit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      job_id: body.job_id,
+      draft_combined: body.draft_combined ?? true,
+      record_progress: body.record_progress ?? true,
+      mark_complete: body.mark_complete ?? true,
+      include_progress_html: body.include_progress_html ?? true,
+    }),
+  });
+  return readJson<MidnightOilDepositResponse>(res);
+}

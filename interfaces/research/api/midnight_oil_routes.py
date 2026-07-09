@@ -1,4 +1,4 @@
-"""Midnight Oil REST surface — create → recommend ceiling → approve.
+"""Midnight Oil REST surface — create → recommend ceiling → approve → deposit.
 
 Standalone APIRouter (same discipline as engagement_routes). Process-local
 InMemoryJobStore by default; tests call reset_midnight_oil_store().
@@ -14,11 +14,12 @@ from pydantic import BaseModel, Field
 from substrate.midnight_oil import (
     approve_price_ceiling,
     create_with_recommended_ceiling,
+    deposit_job_results,
     get_job,
     job_summary_html,
     product_result_html,
 )
-from substrate.midnight_oil.job import InMemoryJobStore, JobStore
+from substrate.midnight_oil.job import InMemoryJobStore, JobStore, put_job_state, _job_from_row
 
 midnight_oil_router = APIRouter(prefix="/midnight-oil", tags=["midnight-oil"])
 
@@ -51,6 +52,16 @@ class ApproveBody(BaseModel):
     ceiling_usd: float | None = None
     use_recommended: bool = False
     force_below: bool = False
+
+
+class DepositBody(BaseModel):
+    """Deposit job results into engagement twins + HTML (progress + usage)."""
+
+    job_id: str
+    draft_combined: bool = True
+    record_progress: bool = True
+    mark_complete: bool = True
+    include_progress_html: bool = True
 
 
 @midnight_oil_router.post("/create")
@@ -106,10 +117,82 @@ def get_job_route(job_id: str) -> dict[str, Any]:
         "approved_ceiling_usd": job.approved_ceiling_usd,
         "force_below_recommended": job.force_below_recommended,
         "asset_id": job.asset_id,
+        "spawn_ids": list(job.spawn_ids),
         "notes": job.notes,
         "view_format": "html",
         "runnable": job.status == "approved",
         "html": job_summary_html(job),
+    }
+
+
+@midnight_oil_router.post("/deposit")
+def post_deposit(body: DepositBody) -> dict[str, Any]:
+    """Deposit job results as HTML + twins; record progress/usage when available.
+
+    Residual (bh) product path for operator-visible deposit outcome after
+    approve (or simulated complete). Worker may still run out of band.
+    """
+    from interfaces.research.api.engagement_routes import (
+        get_bench_usage_store,
+        _eng,
+    )
+    from substrate.engagement_spine import progress_payload
+
+    job = get_job(body.job_id, store=_store())
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"unknown job_id: {body.job_id}")
+
+    if body.mark_complete and job.status in ("approved", "running"):
+        row = dict(_store().get_job(body.job_id) or {})
+        row["status"] = "complete"
+        put_job_state(_job_from_row(row), store=_store())
+
+    try:
+        deposit = deposit_job_results(
+            body.job_id,
+            job_store=_store(),
+            engagement_store=_eng(),
+            draft_combined=body.draft_combined,
+            bench_usage_store=get_bench_usage_store(create_if_missing=True),
+            record_progress=body.record_progress,
+        )
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    progress: dict[str, Any] | None = None
+    if deposit.spawn_ids:
+        try:
+            progress = progress_payload(
+                deposit.spawn_ids[0],
+                store=_eng(),
+                include_html=body.include_progress_html,
+            )
+        except Exception:
+            progress = None
+
+    job_after = get_job(body.job_id, store=_store())
+    return {
+        "job_id": deposit.job_id,
+        "asset_id": deposit.asset_id,
+        "document_id": deposit.document_id,
+        "twin_count": deposit.twin_count,
+        "spawn_ids": list(deposit.spawn_ids),
+        "draft_combined": deposit.draft_combined,
+        "usage_recorded": deposit.usage_recorded,
+        "usage_event": deposit.usage_event,
+        "progress_seeded": deposit.progress_seeded,
+        "progress": progress,
+        "job_status": job_after.status if job_after else None,
+        "view_format": "html",
+        "html": deposit.html,
+        "product_panel": "midnight_oil_deposit",
+        "source": "midnight_oil.deposit_job_results",
+        "notes": [
+            "Deposit lands HTML research asset + twin notes.",
+            "Progress plan→cite→complete seeded when spawn ids exist.",
+        ],
     }
 
 

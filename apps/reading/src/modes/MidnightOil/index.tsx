@@ -7,6 +7,8 @@ import { useState } from "react";
 import {
   approveMidnightOilCeiling,
   createMidnightOilJob,
+  depositMidnightOilJob,
+  type MidnightOilDepositResponse,
   type MidnightOilJobResponse,
 } from "../../api/midnightOil";
 
@@ -15,6 +17,9 @@ export default function MidnightOil() {
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [modelId, setModelId] = useState("default");
   const [job, setJob] = useState<MidnightOilJobResponse | null>(null);
+  const [deposit, setDeposit] = useState<MidnightOilDepositResponse | null>(
+    null,
+  );
   const [ceilingInput, setCeilingInput] = useState("");
   const [forceBelow, setForceBelow] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -82,8 +87,41 @@ export default function MidnightOil() {
     }
   }
 
+  async function onDeposit() {
+    if (!job) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await depositMidnightOilJob({
+        job_id: job.job_id,
+        draft_combined: true,
+        record_progress: true,
+        mark_complete: true,
+        include_progress_html: true,
+      });
+      if (result.view_format !== "html") {
+        throw new Error("deposit view_format must be html");
+      }
+      setDeposit(result);
+      setJob({
+        ...job,
+        status: result.job_status || "complete",
+        asset_id: result.asset_id,
+        runnable: false,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <div className="h-full overflow-y-auto p-6" data-view-format="html">
+    <div
+      className="h-full overflow-y-auto p-6"
+      data-view-format="html"
+      data-testid="midnight-oil-mode"
+    >
       <header className="mb-6 space-y-1">
         <h1 className="text-2xl font-semibold">Midnight Oil</h1>
         <p className="text-sm opacity-80">
@@ -190,6 +228,62 @@ export default function MidnightOil() {
                   Approve custom ceiling
                 </button>
               </div>
+            </div>
+          ) : null}
+
+          {job.status === "approved" || job.status === "complete" ? (
+            <div className="space-y-2 border rounded p-3">
+              <p className="text-sm opacity-80">
+                Deposit lands HTML research output + twin notes and seeds
+                progress telemetry (plan→cite→complete). Worker may also run
+                out-of-band.
+              </p>
+              <button
+                type="button"
+                data-testid="moil-deposit"
+                onClick={() => void onDeposit()}
+                disabled={busy}
+              >
+                {busy ? "Depositing…" : "Deposit results (HTML + twins)"}
+              </button>
+            </div>
+          ) : null}
+
+          {deposit ? (
+            <div
+              className="space-y-2 border rounded p-3"
+              data-testid="moil-deposit-result"
+              data-view-format="html"
+            >
+              <h3 className="font-medium">Deposit result</h3>
+              <p className="font-mono text-sm">
+                document=<code>{deposit.document_id}</code> · twins=
+                {deposit.twin_count} · usage=
+                {String(deposit.usage_recorded)} · progress_seeded=
+                {String(deposit.progress_seeded)}
+              </p>
+              {deposit.progress ? (
+                <p className="font-mono text-sm" data-testid="moil-progress-summary">
+                  progress latest=
+                  <strong>{deposit.progress.latest_stage ?? "(none)"}</strong> ·
+                  events={deposit.progress.event_count ?? 0} · terminal=
+                  {String(deposit.progress.is_terminal ?? false)}
+                </p>
+              ) : null}
+              {deposit.html ? (
+                <div
+                  className="prose border rounded p-3 text-sm max-h-64 overflow-auto"
+                  data-testid="deposit-html"
+                  dangerouslySetInnerHTML={{ __html: deposit.html }}
+                />
+              ) : null}
+              {deposit.progress?.html ? (
+                <div
+                  className="prose border rounded p-3 text-sm max-h-48 overflow-auto"
+                  data-testid="deposit-progress-html"
+                  dangerouslySetInnerHTML={{ __html: deposit.progress.html }}
+                />
+              ) : null}
             </div>
           ) : null}
 
