@@ -50,6 +50,12 @@ vi.mock("../engagement/SpawnMergePanel", () => ({
   ),
 }));
 
+vi.mock("../engagement/PublicationAttachPanel", () => ({
+  PublicationAttachPanel: (props: { spawnId: string }) => (
+    <div data-testid="publication-attach-panel-stub">{props.spawnId}</div>
+  ),
+}));
+
 const FIXTURE = {
   session_id: "fsess_launch_1",
   spawn_id: "spn_launch_1",
@@ -98,6 +104,16 @@ describe("DeepResearchSessionHost", () => {
     expect(screen.getByTestId("deep-research-spawn-merge-mount")).toBeTruthy();
     expect(screen.getByTestId("spawn-merge-panel-stub").textContent).toBe(
       "spn_launch_1→launch-asset",
+    );
+  });
+
+  it("mounts PublicationAttachPanel when spawn present (ck)", () => {
+    render(<DeepResearchSessionHost {...FIXTURE} />);
+    expect(
+      screen.getByTestId("deep-research-publication-attach-mount"),
+    ).toBeTruthy();
+    expect(screen.getByTestId("publication-attach-panel-stub").textContent).toBe(
+      "spn_launch_1",
     );
   });
 

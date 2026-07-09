@@ -16,11 +16,13 @@
  * Residual (bx): mounts ResearchLaunchBudgetPanel for goal/selection projection.
  * Residual (ce): expand full / restore floating mode controls.
  * Residual (ci): SpawnMergePanel — this spawn → draft/parent reading asset.
+ * Residual (ck): PublicationAttachPanel — arxiv/substack attach + hydrate.
  */
 
 import { useMemo } from "react";
 
 import { CollectiveResearchPanel } from "../engagement/CollectiveResearchPanel";
+import { PublicationAttachPanel } from "../engagement/PublicationAttachPanel";
 import { ResearchContextPanel } from "../engagement/ResearchContextPanel";
 import { ResearchLaunchBudgetPanel } from "../engagement/ResearchLaunchBudgetPanel";
 import { ResearchProgressPanel } from "../engagement/ResearchProgressPanel";
@@ -218,6 +220,17 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
             assetId={props.parent_asset_id.trim()}
             spawnId={props.spawn_id?.trim() || null}
           />
+        </section>
+      ) : null}
+
+      {/* Residual (ck): attach knowledge-dense publications mid-session. */}
+      {props.spawn_id?.trim() ? (
+        <section
+          className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
+          data-testid="deep-research-publication-attach-mount"
+          data-view-format="html"
+        >
+          <PublicationAttachPanel spawnId={props.spawn_id.trim()} />
         </section>
       ) : null}
 
