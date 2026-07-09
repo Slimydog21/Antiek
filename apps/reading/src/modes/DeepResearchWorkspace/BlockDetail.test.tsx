@@ -15,7 +15,14 @@
  * getSelection, fired via `selectionchange`.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import type { DistilledNode } from "../../lib/api";
@@ -46,6 +53,27 @@ vi.mock("../../lib/api", async (importOriginal) => {
 
 vi.mock("../../api/settings", () => ({
   fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...args),
+  fetchDecisionTreeSelection: vi.fn(async () => ({
+    model_id: null,
+    provider_id: null,
+    installed: false,
+    notes: [],
+    source: "test",
+  })),
+  fetchSettingsBudget: vi.fn(async () => null),
+}));
+
+vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
+  DecisionTreeDriverBadge: (props: {
+    researchTier?: string | null;
+  }) => (
+    <div
+      data-testid="decision-tree-driver-badge-stub"
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+    >
+      driver badge
+    </div>
+  ),
 }));
 
 vi.mock("../Reading/launchFloatingDeepResearch", () => ({
@@ -141,6 +169,26 @@ afterEach(() => {
 });
 
 describe("BlockDetail — the SECOND live FloatMenu host (M1)", () => {
+  it("mounts DecisionTreeDriverBadge with researchTier (lp)", async () => {
+    renderDetail(insightNode());
+    await waitFor(() => {
+      expect(screen.getByTestId("block-detail-driver-badge-mount")).toBeTruthy();
+    });
+    expect(
+      screen.getByTestId("block-detail").getAttribute("data-research-tier"),
+    ).toBe("deep");
+    expect(
+      screen
+        .getByTestId("block-detail-driver-badge-mount")
+        .getAttribute("data-research-tier"),
+    ).toBe("deep");
+    expect(
+      screen
+        .getByTestId("decision-tree-driver-badge-stub")
+        .getAttribute("data-research-tier"),
+    ).toBe("deep");
+  });
+
   it("a text selection inside the block detail opens the SAME four-action FloatMenu", () => {
     renderDetail(insightNode());
     // The scope is the node-text container; nothing is open until a selection.

@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
 import { recordSpawnRelationship } from "../../hooks/useInvestigationTree";
 import { startInvestigation, type DistilledNode } from "../../lib/api";
 import { useSettingsResearchTier } from "../../lib/useSettingsResearchTier";
@@ -28,6 +29,7 @@ import { launchFloatingDeepResearch } from "../Reading/launchFloatingDeepResearc
  * floating|full (parity Reading/HighlightToolbar). Chase startInvestigation
  * remains the degraded fallback when float launch fails.
  * Residual (jj): Settings depth-tier → research_tier on launch (parity ji).
+ * Residual (lp): DecisionTreeDriverBadge researchTier (graph block DR entry).
  */
 export default function BlockDetail({
   node,
@@ -90,6 +92,7 @@ export default function BlockDetail({
       className="flex flex-col h-full text-ink dark:text-bright p-4"
       data-testid="block-detail"
       data-view-format="html"
+      data-research-tier={researchTier}
     >
       <div className="flex items-center justify-between mb-2">
         <span className="font-mono text-[10px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
@@ -105,6 +108,15 @@ export default function BlockDetail({
             ✕
           </button>
         )}
+      </div>
+      {/* Residual (lp): model driver + budget + depth before graph-block DR. */}
+      <div
+        className="mb-2"
+        data-testid="block-detail-driver-badge-mount"
+        data-view-format="html"
+        data-research-tier={researchTier}
+      >
+        <DecisionTreeDriverBadge researchTier={researchTier} />
       </div>
       {/* The scope container the float-menu narrows to — select text here. */}
       <div ref={scopeRef} className="font-serif text-base leading-relaxed">

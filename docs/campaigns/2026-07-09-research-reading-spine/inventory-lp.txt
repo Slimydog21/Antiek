@@ -1,0 +1,8 @@
+# inventory-lp · BlockDetail DecisionTreeDriverBadge researchTier
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: lp
+files:
+  apps/reading/src/modes/DeepResearchWorkspace/BlockDetail.tsx
+  apps/reading/src/modes/DeepResearchWorkspace/BlockDetail.test.tsx
+proof: BlockDetail vitest 6_passed (HONEST_OK)
+invariants: HTML · graph-block DR entry model+depth · NotDiamond advisory
