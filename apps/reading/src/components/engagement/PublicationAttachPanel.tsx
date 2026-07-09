@@ -9,10 +9,12 @@
  * never confuse identity-only stubs with live publication bodies.
  * Residual (ia): Settings deep-link for hydrate live-injector readiness (hq).
  * Residual (ko): surface spawn research_tier from attach-refs response.
+ * Residual (lz): DecisionTreeDriverBadge — model+budget+depth co-display
+ * before/after attach (prop tier preferred; attach response fills when known).
  * HTML-first; offline hydrate by default.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   attachSourceRefs,
   hydratePublicationRef,
@@ -21,6 +23,7 @@ import {
 import {
   parsePublicationRefs,
 } from "../../modes/ResearchWorkstation/publicationRefs";
+import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 
 export type PublicationAttachResult = {
   spawnId: string;
@@ -33,18 +36,33 @@ export type PublicationAttachPanelProps = {
   spawnId: string;
   /** Residual (ed): fire after successful attach+hydrate (HTML assets only). */
   onAttached?: (result: PublicationAttachResult) => void;
+  /**
+   * Residual (lz): session/spawn research tier for driver co-display.
+   * Prop wins over attach-response tier when both present.
+   */
+  researchTier?: "fast" | "deep" | "wrestle" | string | null;
 };
 
 export function PublicationAttachPanel({
   spawnId,
   onAttached,
+  researchTier: researchTierProp = null,
 }: PublicationAttachPanelProps) {
   const [raw, setRaw] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attached, setAttached] = useState<string[]>([]);
   const [hydrated, setHydrated] = useState<HydrateRefResponse[]>([]);
-  const [researchTier, setResearchTier] = useState<string | null>(null);
+  const [attachResearchTier, setAttachResearchTier] = useState<string | null>(
+    null,
+  );
+
+  /** Residual (lz): prop session tier preferred; attach response as fallback. */
+  const researchTier = useMemo(() => {
+    const fromProp = (researchTierProp || "").trim().toLowerCase();
+    if (fromProp) return fromProp;
+    return (attachResearchTier || "").trim().toLowerCase() || null;
+  }, [researchTierProp, attachResearchTier]);
 
   const run = useCallback(async () => {
     const sid = spawnId.trim();
@@ -66,7 +84,7 @@ export function PublicationAttachPanel({
       }
       setAttached(refs);
       // Residual (ko): reserved spawn research_tier from attach response.
-      setResearchTier(
+      setAttachResearchTier(
         (attach.research_tier || "").trim().toLowerCase() || null,
       );
       const assets: HydrateRefResponse[] = [];
@@ -100,15 +118,24 @@ export function PublicationAttachPanel({
       className="space-y-2"
       data-testid="publication-attach-panel"
       data-view-format="html"
+      data-research-tier={researchTier || ""}
       aria-label="Attach publication references"
     >
-      <header>
+      <header className="space-y-1">
         <h2 className="text-sm font-medium text-ink dark:text-parchment">
           Attach publications
         </h2>
         <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
           arxiv / substack / URL → attach to spawn + hydrate HTML assets
         </p>
+        {/* Residual (lz): model driver + budget + depth co-display at attach. */}
+        <div
+          data-testid="publication-attach-driver-badge-mount"
+          data-view-format="html"
+          data-research-tier={researchTier || ""}
+        >
+          <DecisionTreeDriverBadge researchTier={researchTier} />
+        </div>
       </header>
       <textarea
         data-testid="publication-attach-input"

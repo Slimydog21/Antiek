@@ -82,10 +82,15 @@ vi.mock("../engagement/SpawnMergePanel", () => ({
 vi.mock("../engagement/PublicationAttachPanel", () => ({
   PublicationAttachPanel: (props: {
     spawnId: string;
+    researchTier?: string | null;
     onAttached?: (r: { spawnId: string }) => void;
   }) => (
-    <div data-testid="publication-attach-panel-stub">
+    <div
+      data-testid="publication-attach-panel-stub"
+      data-research-tier={props.researchTier || ""}
+    >
       {props.spawnId}
+      {props.researchTier ? ` · tier=${props.researchTier}` : ""}
       {props.onAttached ? (
         <button
           type="button"
@@ -306,6 +311,15 @@ describe("DeepResearchSessionHost", () => {
     );
   });
 
+  it("wires session researchTier into PublicationAttachPanel (lz)", () => {
+    render(
+      <DeepResearchSessionHost {...FIXTURE} research_tier="wrestle" />,
+    );
+    const stub = screen.getByTestId("publication-attach-panel-stub");
+    expect(stub.getAttribute("data-research-tier")).toBe("wrestle");
+    expect(stub.textContent).toMatch(/tier=wrestle/);
+  });
+
   it("mounts SessionFlywheelPanel when session present (cl)", () => {
     render(<DeepResearchSessionHost {...FIXTURE} />);
     expect(screen.getByTestId("deep-research-flywheel-mount")).toBeTruthy();
@@ -439,7 +453,10 @@ describe("DeepResearchSessionHost", () => {
 
   it("mounts DecisionTreeDriverBadge (cw)", () => {
     render(<DeepResearchSessionHost {...FIXTURE} />);
-    expect(screen.getByTestId("decision-tree-driver-badge")).toBeTruthy();
+    // Residual (lz): host + PublicationAttach each mount a driver badge.
+    expect(
+      screen.getAllByTestId("decision-tree-driver-badge").length,
+    ).toBeGreaterThanOrEqual(1);
   });
 
   it("omits SpawnMergePanel without parent_asset_id", () => {

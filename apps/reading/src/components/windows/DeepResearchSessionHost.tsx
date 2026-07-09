@@ -397,6 +397,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
           <PublicationAttachPanel
             spawnId={props.spawn_id.trim()}
             onAttached={onContextNeedsRefresh}
+            researchTier={researchTier}
           />
         </section>
       ) : null}

@@ -221,3 +221,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - project_catalog_html substrate (chip filters free_only/subject/source)
   - GET /marketplace/catalog returns html (include_html opt-out)
   - MarketplaceHost Open catalog as HTML window
+
+- Closed (lz, 2026-07-10) **PublicationAttach driver+depth:**
+  - DecisionTreeDriverBadge on PublicationAttachPanel
+  - researchTier prop (session preferred) + attach-response fallback
+  - DeepResearchSessionHost wires session researchTier into attach panel

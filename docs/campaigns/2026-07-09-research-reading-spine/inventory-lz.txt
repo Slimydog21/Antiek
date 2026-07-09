@@ -1,0 +1,10 @@
+# inventory-lz · PublicationAttachPanel driver badge depth
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: lz
+files:
+  apps/reading/src/components/engagement/PublicationAttachPanel.tsx
+  apps/reading/src/components/engagement/PublicationAttachPanel.test.tsx
+  apps/reading/src/components/windows/DeepResearchSessionHost.tsx
+  apps/reading/src/components/windows/DeepResearchSessionHost.test.tsx
+proof: vitest PublicationAttach + DR host 31 passed
+invariants: HTML-first · offline hydrate default · prop tier preferred over attach response

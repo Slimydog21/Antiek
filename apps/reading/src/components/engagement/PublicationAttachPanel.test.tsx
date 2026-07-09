@@ -11,6 +11,19 @@ vi.mock("../../api/engagement", () => ({
   hydratePublicationRef: (...args: unknown[]) => hydratePublicationRef(...args),
 }));
 
+vi.mock("./DecisionTreeDriverBadge", () => ({
+  DecisionTreeDriverBadge: (props: {
+    researchTier?: string | null;
+  }) => (
+    <div
+      data-testid="decision-tree-driver-badge-stub"
+      data-research-tier={props.researchTier || ""}
+    >
+      driver · tier={props.researchTier || "none"}
+    </div>
+  ),
+}));
+
 describe("PublicationAttachPanel residual ck/ed", () => {
   afterEach(() => cleanup());
   beforeEach(() => {
@@ -185,6 +198,97 @@ describe("PublicationAttachPanel residual ck/ed", () => {
     fireEvent.click(screen.getByTestId("publication-attach-submit"));
     await waitFor(() => {
       expect(screen.getByRole("alert").textContent).toMatch(/spawn unknown/);
+    });
+  });
+
+  it("mounts driver badge and prefers prop researchTier (lz)", async () => {
+    attachSourceRefs.mockResolvedValue({
+      spawn_id: "spn_lz",
+      source_references: [{ kind: "arxiv", raw: "arxiv:1706.03762" }],
+      research_tier: "fast",
+      view_format: "html",
+    });
+    hydratePublicationRef.mockResolvedValue({
+      asset_id: "pub_lz",
+      ref: { kind: "arxiv", raw: "arxiv:1706.03762" },
+      title: "T",
+      body_text: "…",
+      fetched: false,
+      offline_honest: true,
+      view_format: "html",
+      notes: [],
+      product_panel: "engagement_hydrate",
+      source: "test",
+      html: "<p>t</p>",
+    });
+    render(
+      <PublicationAttachPanel spawnId="spn_lz" researchTier="wrestle" />,
+    );
+    // Before attach: prop tier on badge.
+    expect(
+      screen.getByTestId("publication-attach-driver-badge-mount"),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("decision-tree-driver-badge-stub")
+        .getAttribute("data-research-tier"),
+    ).toBe("wrestle");
+    expect(
+      screen
+        .getByTestId("publication-attach-panel")
+        .getAttribute("data-research-tier"),
+    ).toBe("wrestle");
+    fireEvent.change(screen.getByTestId("publication-attach-input"), {
+      target: { value: "arxiv:1706.03762" },
+    });
+    fireEvent.click(screen.getByTestId("publication-attach-submit"));
+    await waitFor(() => {
+      expect(screen.getByTestId("publication-attach-result")).toBeTruthy();
+    });
+    // Prop still wins over attach response "fast".
+    expect(
+      screen
+        .getByTestId("decision-tree-driver-badge-stub")
+        .getAttribute("data-research-tier"),
+    ).toBe("wrestle");
+    expect(
+      screen
+        .getByTestId("publication-attach-metrics")
+        .getAttribute("data-research-tier"),
+    ).toBe("wrestle");
+  });
+
+  it("falls back to attach response research_tier when prop absent (lz)", async () => {
+    attachSourceRefs.mockResolvedValue({
+      spawn_id: "spn_fb",
+      source_references: [{ kind: "arxiv", raw: "arxiv:1" }],
+      research_tier: "deep",
+      view_format: "html",
+    });
+    hydratePublicationRef.mockResolvedValue({
+      asset_id: "pub_fb",
+      ref: { kind: "arxiv", raw: "arxiv:1" },
+      title: "T",
+      body_text: "…",
+      fetched: false,
+      offline_honest: true,
+      view_format: "html",
+      notes: [],
+      product_panel: "engagement_hydrate",
+      source: "test",
+      html: "<p>t</p>",
+    });
+    render(<PublicationAttachPanel spawnId="spn_fb" />);
+    fireEvent.change(screen.getByTestId("publication-attach-input"), {
+      target: { value: "arxiv:1" },
+    });
+    fireEvent.click(screen.getByTestId("publication-attach-submit"));
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId("decision-tree-driver-badge-stub")
+          .getAttribute("data-research-tier"),
+      ).toBe("deep");
     });
   });
 });
