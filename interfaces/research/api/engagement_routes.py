@@ -133,6 +133,16 @@ def _eng() -> EngagementStore:
     return _engagement_store
 
 
+def get_engagement_store(*, create_if_missing: bool = True) -> EngagementStore:
+    """Public accessor for other product routers (marketplace twin seed, etc.)."""
+    if create_if_missing:
+        return _eng()
+    global _engagement_store
+    if _engagement_store is None:
+        raise RuntimeError("engagement store not initialized")
+    return _engagement_store
+
+
 def _sess() -> SessionStore:
     global _session_store
     if _session_store is None:

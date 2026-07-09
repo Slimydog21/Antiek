@@ -53,6 +53,8 @@ class HostBody(BaseModel):
     book_id: str
     receipt_id: str | None = None
     content_b64: str | None = None  # optional raw bytes for purchased/PDF ingest
+    # Residual (bv): offline recursive note-taker seed into engagement twins
+    seed_twins: bool = True
 
 
 class PurchaseHostBody(BaseModel):
@@ -63,6 +65,7 @@ class PurchaseHostBody(BaseModel):
         description="Base64 of book bytes (PDF ingest source allowed; view is HTML)"
     )
     note: str = ""
+    seed_twins: bool = True
 
 
 @marketplace_host_router.get("/catalog")
@@ -82,6 +85,41 @@ def get_catalog() -> dict[str, Any]:
             }
         )
     return {"entries": entries, "count": len(entries), "view_format": "html"}
+
+
+def _maybe_seed_twins(
+    *,
+    document_id: str,
+    title: str,
+    body_preview: str = "",
+    seed: bool,
+) -> dict[str, Any] | None:
+    """Seed engagement twin notes for a hosted document (residual bv).
+
+    Uses the process-local engagement store so twins join research context
+    flywheel. Offline stubs only.
+    """
+    if not seed:
+        return None
+    try:
+        from substrate.engagement_spine import seed_twins_for_asset
+
+        from .engagement_routes import get_engagement_store
+
+        eng = get_engagement_store(create_if_missing=True)
+        return seed_twins_for_asset(
+            document_id,
+            store=eng,
+            title=title or document_id,
+            body_text=body_preview,
+            include_html=True,
+        )
+    except Exception as exc:
+        return {
+            "seeded": False,
+            "seed_skipped": f"seed_failed: {exc}",
+            "view_format": "html",
+        }
 
 
 @marketplace_host_router.post("/host")
@@ -105,7 +143,16 @@ def post_host(body: HostBody) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    return result.to_dict()
+    out = result.to_dict()
+    twins = _maybe_seed_twins(
+        document_id=result.host.document_id,
+        title=result.host.title,
+        body_preview=(out.get("body_preview") or "")[:200],
+        seed=body.seed_twins,
+    )
+    if twins is not None:
+        out["twins"] = twins
+    return out
 
 
 @marketplace_host_router.post("/purchase-and-host")
@@ -130,6 +177,14 @@ def post_purchase_and_host(body: PurchaseHostBody) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(e)) from e
     out = result.to_dict()
     out["receipt_id"] = receipt.receipt_id
+    twins = _maybe_seed_twins(
+        document_id=result.host.document_id,
+        title=result.host.title,
+        body_preview=(out.get("body_preview") or "")[:200],
+        seed=body.seed_twins,
+    )
+    if twins is not None:
+        out["twins"] = twins
     return out
 
 
