@@ -96,6 +96,30 @@ vi.mock("../../api/midnightOil", () => ({
       provider_calls_made: false,
       receipt_notes: ["operator approved the ceiling for this launch packet only"],
     },
+    runner_handoff: {
+      handoff_id: "midnight-oil-test-runner-handoff",
+      approval_receipt_id: "midnight-oil-test-approval-receipt",
+      launch_packet_id: "midnight-oil-test-launch-packet",
+      run_id: "midnight-oil-test",
+      status: "ready_for_runner_apply",
+      approved_price_ceiling_usd: 12,
+      planned_budget_usd: 7.2,
+      unallocated_budget_usd: 4.8,
+      role_route_receipt_ids: [
+        "midnight-oil-test-planner-route-receipt",
+        "midnight-oil-test-gatherer-route-receipt",
+      ],
+      prerequisite_receipt_ids: [
+        "midnight-oil-test-launch-packet",
+        "midnight-oil-test-approval-receipt",
+      ],
+      dispatch_ready: true,
+      dispatch_performed: false,
+      budget_reserved: false,
+      provider_calls_made: false,
+      graph_mutated: false,
+      handoff_notes: ["runner apply handoff only: ready for a future dispatcher"],
+    },
     notes: ["preflight only: no agents launched, no budget reserved, no retrieval performed"],
   })),
 }));
@@ -141,12 +165,16 @@ describe("MidnightOil", () => {
     expect(screen.getByText("Twin notes")).toBeTruthy();
     expect(screen.getByText("Launch packet")).toBeTruthy();
     expect(screen.getByText("midnight-oil-test-launch-packet")).toBeTruthy();
-    expect(screen.getByText("Dispatch")).toBeTruthy();
+    expect(screen.getAllByText("Dispatch").length).toBeGreaterThan(0);
     expect(screen.getByText("disabled")).toBeTruthy();
     expect(screen.getByText("Approval receipt")).toBeTruthy();
     expect(screen.getByText("midnight-oil-test-approval-receipt")).toBeTruthy();
     expect(screen.getByText("Runner apply")).toBeTruthy();
     expect(screen.getAllByText("required").length).toBeGreaterThan(0);
+    expect(screen.getByText("Runner handoff")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-runner-handoff")).toBeTruthy();
+    expect(screen.getByText("ready for runner apply")).toBeTruthy();
+    expect(screen.getByText("not dispatched")).toBeTruthy();
     expect(screen.getByText(/no agents launched/i)).toBeTruthy();
   });
 });

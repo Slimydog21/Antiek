@@ -7,6 +7,7 @@ from .contracts import (
     MidnightOilPreflight,
     MidnightOilRequest,
     MidnightOilRolePlan,
+    MidnightOilRunnerHandoff,
     preflight_midnight_oil,
 )
 
@@ -17,5 +18,6 @@ __all__ = [
     "MidnightOilPreflight",
     "MidnightOilRequest",
     "MidnightOilRolePlan",
+    "MidnightOilRunnerHandoff",
     "preflight_midnight_oil",
 ]

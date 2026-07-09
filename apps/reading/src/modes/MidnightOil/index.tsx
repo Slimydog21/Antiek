@@ -320,6 +320,37 @@ export default function MidnightOil() {
                 </div>
               )}
 
+              {preflight.runner_handoff && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Runner handoff
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {preflight.runner_handoff.handoff_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={preflight.runner_handoff.status.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Dispatch"
+                      value={preflight.runner_handoff.dispatch_performed ? "dispatched" : "not dispatched"}
+                    />
+                    <Metric
+                      label="Graph"
+                      value={preflight.runner_handoff.graph_mutated ? "mutated" : "unchanged"}
+                    />
+                  </div>
+                  <p className="mt-2 text-[11px] text-ink-soft dark:text-starlight">
+                    Requires {preflight.runner_handoff.prerequisite_receipt_ids.length} prior receipts;
+                    no budget reservation or provider call has happened.
+                  </p>
+                </div>
+              )}
+
               {preflight.notes.map((note) => (
                 <p key={note} className="text-[11px] text-ink-soft dark:text-starlight">
                   {note}
