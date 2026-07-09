@@ -15,6 +15,7 @@ const {
   requestBookPurchaseMock,
   preflightBookHtmlImportMock,
   handoffBookHtmlFileMock,
+  reviewBookHtmlConversionMock,
   listInvestigationsMock,
   navigateMock,
 } = vi.hoisted(() => ({
@@ -23,6 +24,7 @@ const {
   requestBookPurchaseMock: vi.fn(),
   preflightBookHtmlImportMock: vi.fn(),
   handoffBookHtmlFileMock: vi.fn(),
+  reviewBookHtmlConversionMock: vi.fn(),
   // M1: the active-research signal documentsByTheme ranks the shelf to.
   // Default: no active research → the feed falls back to recency.
   listInvestigationsMock: vi.fn<
@@ -40,6 +42,7 @@ vi.mock("../../api/books", async (orig) => {
     requestBookPurchase: requestBookPurchaseMock,
     preflightBookHtmlImport: preflightBookHtmlImportMock,
     handoffBookHtmlFile: handoffBookHtmlFileMock,
+    reviewBookHtmlConversion: reviewBookHtmlConversionMock,
   };
 });
 
@@ -80,6 +83,7 @@ beforeEach(() => {
   requestBookPurchaseMock.mockReset();
   preflightBookHtmlImportMock.mockReset();
   handoffBookHtmlFileMock.mockReset();
+  reviewBookHtmlConversionMock.mockReset();
   listInvestigationsMock.mockReset();
   listInvestigationsMock.mockResolvedValue({ count: 0, investigations: [] });
   navigateMock.mockReset();
@@ -322,7 +326,7 @@ describe("Library", () => {
     });
   });
 
-  it("preflights and records a manual file handoff without uploading, reading, or converting", async () => {
+  it("preflights, records handoff, and reviews conversion without reading or converting", async () => {
     listBooksMock.mockResolvedValue({ books: [servableBook], count: 1 });
     requestBookPurchaseMock.mockResolvedValue({
       request_id: "bookreq-safe123",
@@ -380,6 +384,25 @@ describe("Library", () => {
       graph_mutation_performed: false,
       html_conversion_required: true,
       html_hosting_required: true,
+      required_operator_steps: [],
+      policy_notes: [],
+    });
+    reviewBookHtmlConversionMock.mockResolvedValue({
+      conversion_review_id: "bookconv-safe123",
+      status: "ready_for_explicit_conversion_job",
+      handoff_id: "bookhand-safe123",
+      import_preflight_id: "bookimp-safe123",
+      converter: "pandoc",
+      sandbox_profile: "locked_down",
+      output_format: "antiek_html",
+      storage_ref_read: false,
+      file_read_attempted: false,
+      conversion_attempted: false,
+      output_written: false,
+      ingest_attempted: false,
+      graph_mutation_performed: false,
+      html_hosting_required: true,
+      serve_gate_required: true,
       required_operator_steps: [],
       policy_notes: [],
     });
@@ -443,6 +466,30 @@ describe("Library", () => {
       checksum_sha256: "a".repeat(64),
       acknowledge_manual_storage_only: true,
       acknowledge_no_file_read_or_conversion: true,
+    });
+
+    fireEvent.change(screen.getByLabelText("Converter"), {
+      target: { value: "pandoc" },
+    });
+    fireEvent.change(screen.getByLabelText("Sandbox"), {
+      target: { value: "locked_down" },
+    });
+    fireEvent.click(screen.getByLabelText(/converter must run later/));
+    fireEvent.click(screen.getByLabelText(/No conversion, file read/));
+    fireEvent.click(screen.getByRole("button", { name: "Review conversion" }));
+
+    const conversionStatus = await screen.findByText(/Conversion bookconv-safe123/);
+    expect(conversionStatus.textContent).toContain("read no");
+    expect(conversionStatus.textContent).toContain("converted no");
+    expect(conversionStatus.textContent).toContain("output written no");
+    expect(reviewBookHtmlConversionMock).toHaveBeenCalledWith({
+      handoff_id: "bookhand-safe123",
+      import_preflight_id: "bookimp-safe123",
+      converter: "pandoc",
+      sandbox_profile: "locked_down",
+      output_format: "antiek_html",
+      acknowledge_sandbox_required: true,
+      acknowledge_no_conversion_run: true,
     });
   });
 });

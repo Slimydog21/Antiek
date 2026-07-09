@@ -320,6 +320,36 @@ export interface BookHtmlFileHandoffResponse {
   policy_notes: string[];
 }
 
+export interface BookHtmlConversionReviewInput {
+  handoff_id: string;
+  import_preflight_id: string;
+  converter?: "pandoc" | "calibre" | "native_html" | "manual_review" | "unknown";
+  sandbox_profile?: "locked_down" | "network_disabled" | "manual_only";
+  output_format?: "antiek_html";
+  acknowledge_sandbox_required: boolean;
+  acknowledge_no_conversion_run: boolean;
+}
+
+export interface BookHtmlConversionReviewResponse {
+  conversion_review_id: string;
+  status: "ready_for_explicit_conversion_job";
+  handoff_id: string;
+  import_preflight_id: string;
+  converter: string;
+  sandbox_profile: string;
+  output_format: "antiek_html";
+  storage_ref_read: boolean;
+  file_read_attempted: boolean;
+  conversion_attempted: boolean;
+  output_written: boolean;
+  ingest_attempted: boolean;
+  graph_mutation_performed: boolean;
+  html_hosting_required: boolean;
+  serve_gate_required: boolean;
+  required_operator_steps: string[];
+  policy_notes: string[];
+}
+
 /** Prompt-to-curate (Read SPR-04). Ranks ONLY servable books by relevance
  * to the prompt — a gated book is never curated into a readable list.
  * Returns 503 if the embedding model isn't available server-side. */
@@ -373,6 +403,21 @@ export async function handoffBookHtmlFile(
   }
   if (!resp.ok) throw new Error(`POST /books/import/file-handoff: HTTP ${resp.status}`);
   return (await resp.json()) as BookHtmlFileHandoffResponse;
+}
+
+export async function reviewBookHtmlConversion(
+  request: BookHtmlConversionReviewInput,
+): Promise<BookHtmlConversionReviewResponse> {
+  const resp = await apiFetch(`${API_BASE}/books/import/conversion-review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ output_format: "antiek_html", ...request }),
+  });
+  if (resp.status === 400) {
+    throw new Error("Confirm the sandbox and no-conversion review boundary.");
+  }
+  if (!resp.ok) throw new Error(`POST /books/import/conversion-review: HTTP ${resp.status}`);
+  return (await resp.json()) as BookHtmlConversionReviewResponse;
 }
 
 // ── SPR-08 M2: talk-to-book (multi-turn, page-cited) ──────────────────

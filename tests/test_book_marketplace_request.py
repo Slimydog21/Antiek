@@ -194,3 +194,84 @@ def test_html_file_handoff_records_metadata_without_reading_or_converting() -> N
     assert body["html_hosting_required"] is True
     assert body["checksum_sha256"] == checksum
     assert any("No upload bytes" in note for note in body["policy_notes"])
+
+
+def test_html_conversion_review_requires_valid_ids_and_acknowledgements() -> None:
+    client = _client()
+
+    invalid_handoff = client.post(
+        "/books/import/conversion-review",
+        json={
+            "handoff_id": "not-a-handoff",
+            "import_preflight_id": "bookimp-safe123",
+            "converter": "pandoc",
+            "sandbox_profile": "locked_down",
+            "acknowledge_sandbox_required": True,
+            "acknowledge_no_conversion_run": True,
+        },
+    )
+    assert invalid_handoff.status_code == 400
+    assert invalid_handoff.json()["detail"] == "invalid_handoff_id"
+
+    missing_sandbox_ack = client.post(
+        "/books/import/conversion-review",
+        json={
+            "handoff_id": "bookhand-safe123",
+            "import_preflight_id": "bookimp-safe123",
+            "converter": "pandoc",
+            "sandbox_profile": "locked_down",
+            "acknowledge_sandbox_required": False,
+            "acknowledge_no_conversion_run": True,
+        },
+    )
+    assert missing_sandbox_ack.status_code == 400
+    assert missing_sandbox_ack.json()["detail"] == "conversion_sandbox_ack_required"
+
+    missing_no_run_ack = client.post(
+        "/books/import/conversion-review",
+        json={
+            "handoff_id": "bookhand-safe123",
+            "import_preflight_id": "bookimp-safe123",
+            "converter": "pandoc",
+            "sandbox_profile": "locked_down",
+            "acknowledge_sandbox_required": True,
+            "acknowledge_no_conversion_run": False,
+        },
+    )
+    assert missing_no_run_ack.status_code == 400
+    assert missing_no_run_ack.json()["detail"] == "conversion_no_run_ack_required"
+
+
+def test_html_conversion_review_is_no_run_no_write_contract() -> None:
+    client = _client()
+
+    resp = client.post(
+        "/books/import/conversion-review",
+        json={
+            "handoff_id": "bookhand-safe123",
+            "import_preflight_id": "bookimp-safe123",
+            "converter": "pandoc",
+            "sandbox_profile": "locked_down",
+            "acknowledge_sandbox_required": True,
+            "acknowledge_no_conversion_run": True,
+        },
+    )
+
+    assert resp.status_code == 202, resp.text
+    body = resp.json()
+    assert body["conversion_review_id"].startswith("bookconv-")
+    assert body["status"] == "ready_for_explicit_conversion_job"
+    assert body["handoff_id"] == "bookhand-safe123"
+    assert body["import_preflight_id"] == "bookimp-safe123"
+    assert body["converter"] == "pandoc"
+    assert body["sandbox_profile"] == "locked_down"
+    assert body["output_format"] == "antiek_html"
+    assert body["storage_ref_read"] is False
+    assert body["file_read_attempted"] is False
+    assert body["conversion_attempted"] is False
+    assert body["output_written"] is False
+    assert body["ingest_attempted"] is False
+    assert body["graph_mutation_performed"] is False
+    assert body["html_hosting_required"] is True
+    assert body["serve_gate_required"] is True
+    assert any("No converter ran" in note for note in body["policy_notes"])

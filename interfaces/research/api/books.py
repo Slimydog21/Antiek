@@ -345,6 +345,36 @@ class BookHtmlFileHandoffOut(BaseModel):
     policy_notes: list[str]
 
 
+class BookHtmlConversionReviewIn(BaseModel):
+    handoff_id: str = Field(min_length=1, max_length=80)
+    import_preflight_id: str = Field(min_length=1, max_length=80)
+    converter: Literal["pandoc", "calibre", "native_html", "manual_review", "unknown"] = "unknown"
+    sandbox_profile: Literal["locked_down", "network_disabled", "manual_only"] = "locked_down"
+    output_format: Literal["antiek_html"] = "antiek_html"
+    acknowledge_sandbox_required: bool = False
+    acknowledge_no_conversion_run: bool = False
+
+
+class BookHtmlConversionReviewOut(BaseModel):
+    conversion_review_id: str
+    status: Literal["ready_for_explicit_conversion_job"]
+    handoff_id: str
+    import_preflight_id: str
+    converter: str
+    sandbox_profile: str
+    output_format: Literal["antiek_html"]
+    storage_ref_read: bool
+    file_read_attempted: bool
+    conversion_attempted: bool
+    output_written: bool
+    ingest_attempted: bool
+    graph_mutation_performed: bool
+    html_hosting_required: bool
+    serve_gate_required: bool
+    required_operator_steps: list[str]
+    policy_notes: list[str]
+
+
 def _book_purchase_request_id(req: BookPurchaseRequestIn) -> str:
     normalized = "|".join(
         [
@@ -385,6 +415,19 @@ def _book_html_file_handoff_id(req: BookHtmlFileHandoffIn) -> str:
         ]
     )
     return f"bookhand-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _book_html_conversion_review_id(req: BookHtmlConversionReviewIn) -> str:
+    normalized = "|".join(
+        [
+            req.handoff_id.strip(),
+            req.import_preflight_id.strip(),
+            req.converter,
+            req.sandbox_profile,
+            req.output_format,
+        ]
+    )
+    return f"bookconv-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
 
 
 class SpinResearchRequest(BaseModel):
@@ -834,6 +877,59 @@ def register_book_routes(app: FastAPI) -> None:
             policy_notes=[
                 "No upload bytes were accepted; only operator-supplied storage metadata was recorded.",
                 "No file path, storage reference, or URL was opened, fetched, converted, ingested, or served.",
+            ],
+        )
+
+    @app.post(
+        "/books/import/conversion-review",
+        response_model=BookHtmlConversionReviewOut,
+        status_code=202,
+        tags=["books"],
+    )
+    async def book_html_conversion_review(
+        req: BookHtmlConversionReviewIn,
+    ) -> BookHtmlConversionReviewOut:
+        """Approve the next converter shape without running the converter.
+
+        This is a no-side-effect review receipt. The converter itself remains a
+        later, explicit job that may read the handed-off file only inside the
+        stated sandbox after operator approval.
+        """
+        handoff_id = req.handoff_id.strip()
+        preflight_id = req.import_preflight_id.strip()
+        if not handoff_id.startswith("bookhand-"):
+            raise HTTPException(status_code=400, detail="invalid_handoff_id")
+        if not preflight_id.startswith("bookimp-"):
+            raise HTTPException(status_code=400, detail="invalid_import_preflight_id")
+        if not req.acknowledge_sandbox_required:
+            raise HTTPException(status_code=400, detail="conversion_sandbox_ack_required")
+        if not req.acknowledge_no_conversion_run:
+            raise HTTPException(status_code=400, detail="conversion_no_run_ack_required")
+
+        return BookHtmlConversionReviewOut(
+            conversion_review_id=_book_html_conversion_review_id(req),
+            status="ready_for_explicit_conversion_job",
+            handoff_id=handoff_id,
+            import_preflight_id=preflight_id,
+            converter=req.converter,
+            sandbox_profile=req.sandbox_profile,
+            output_format=req.output_format,
+            storage_ref_read=False,
+            file_read_attempted=False,
+            conversion_attempted=False,
+            output_written=False,
+            ingest_attempted=False,
+            graph_mutation_performed=False,
+            html_hosting_required=True,
+            serve_gate_required=True,
+            required_operator_steps=[
+                "Run the converter only as a separate explicit job with the approved sandbox profile.",
+                "Write Antiek HTML output to a review location before any graph ingest or shelf publication.",
+                "Pass the converted HTML through the book serve gate before Reader or Library availability.",
+            ],
+            policy_notes=[
+                "No storage reference or file bytes were read during conversion review.",
+                "No converter ran, no HTML output was written, and no graph or shelf state changed.",
             ],
         )
 

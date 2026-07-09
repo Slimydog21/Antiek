@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import type {
+  BookHtmlConversionReviewResponse,
   BookHtmlFileHandoffResponse,
   BookHtmlImportPreflightResponse,
   BookPurchaseRequestResponse,
@@ -14,6 +15,7 @@ import {
   listBooks,
   preflightBookHtmlImport,
   requestBookPurchase,
+  reviewBookHtmlConversion,
 } from "../../api/books";
 import { listInvestigations } from "../../lib/api";
 import type { InvestigationSummary } from "../../lib/api";
@@ -89,6 +91,16 @@ export default function Library() {
   const [handoffNoReadAck, setHandoffNoReadAck] = useState(false);
   const [handoffBusy, setHandoffBusy] = useState(false);
   const [handoffReceipt, setHandoffReceipt] = useState<BookHtmlFileHandoffResponse | null>(null);
+  const [conversionConverter, setConversionConverter] = useState<
+    "pandoc" | "calibre" | "native_html" | "manual_review" | "unknown"
+  >("pandoc");
+  const [conversionSandbox, setConversionSandbox] = useState<
+    "locked_down" | "network_disabled" | "manual_only"
+  >("locked_down");
+  const [conversionSandboxAck, setConversionSandboxAck] = useState(false);
+  const [conversionNoRunAck, setConversionNoRunAck] = useState(false);
+  const [conversionBusy, setConversionBusy] = useState(false);
+  const [conversionReceipt, setConversionReceipt] = useState<BookHtmlConversionReviewResponse | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -216,6 +228,7 @@ export default function Library() {
         acknowledge_no_file_read_or_conversion: handoffNoReadAck,
       });
       setHandoffReceipt(res);
+      setConversionReceipt(null);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -227,6 +240,36 @@ export default function Library() {
     handoffNoReadAck,
     handoffStorageRef,
     importFileName,
+    importReceipt,
+  ]);
+
+  const onConversionReview = useCallback(async () => {
+    if (!handoffReceipt || !importReceipt) return;
+    setConversionBusy(true);
+    setError(null);
+    setConversionReceipt(null);
+    try {
+      const res = await reviewBookHtmlConversion({
+        handoff_id: handoffReceipt.handoff_id,
+        import_preflight_id: importReceipt.import_preflight_id,
+        converter: conversionConverter,
+        sandbox_profile: conversionSandbox,
+        output_format: "antiek_html",
+        acknowledge_sandbox_required: conversionSandboxAck,
+        acknowledge_no_conversion_run: conversionNoRunAck,
+      });
+      setConversionReceipt(res);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setConversionBusy(false);
+    }
+  }, [
+    conversionConverter,
+    conversionNoRunAck,
+    conversionSandbox,
+    conversionSandboxAck,
+    handoffReceipt,
     importReceipt,
   ]);
 
@@ -608,6 +651,95 @@ export default function Library() {
                   {handoffReceipt.file_read_attempted ? "yes" : "no"}, converted{" "}
                   {handoffReceipt.conversion_attempted ? "yes" : "no"}, uploaded{" "}
                   {handoffReceipt.upload_accepted ? "yes" : "no"}.
+                </p>
+              )}
+            </form>
+          )}
+
+          {handoffReceipt && (
+            <form
+              className="rounded-md border border-ice-4 dark:border-charcoal-1 bg-white/70 dark:bg-charcoal-2/70 p-3 space-y-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void onConversionReview();
+              }}
+            >
+              <div>
+                <p className="text-[13px] font-serif text-ink dark:text-bright">
+                  Conversion review
+                </p>
+                <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                  Approves the converter plan only; no storage reference is read,
+                  no converter runs, and no HTML output is written here.
+                </p>
+              </div>
+              <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                <label className="flex-1 min-w-0 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Converter
+                  <select
+                    value={conversionConverter}
+                    onChange={(event) =>
+                      setConversionConverter(
+                        event.target.value as "pandoc" | "calibre" | "native_html" | "manual_review" | "unknown",
+                      )
+                    }
+                    className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  >
+                    <option value="pandoc">Pandoc</option>
+                    <option value="calibre">Calibre</option>
+                    <option value="native_html">Native HTML</option>
+                    <option value="manual_review">Manual review</option>
+                    <option value="unknown">Unknown</option>
+                  </select>
+                </label>
+                <label className="flex-1 min-w-0 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Sandbox
+                  <select
+                    value={conversionSandbox}
+                    onChange={(event) =>
+                      setConversionSandbox(event.target.value as "locked_down" | "network_disabled" | "manual_only")
+                    }
+                    className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  >
+                    <option value="locked_down">Locked down</option>
+                    <option value="network_disabled">Network disabled</option>
+                    <option value="manual_only">Manual only</option>
+                  </select>
+                </label>
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                  <input
+                    type="checkbox"
+                    checked={conversionSandboxAck}
+                    onChange={(event) => setConversionSandboxAck(event.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>The converter must run later inside the approved sandbox.</span>
+                </label>
+                <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                  <input
+                    type="checkbox"
+                    checked={conversionNoRunAck}
+                    onChange={(event) => setConversionNoRunAck(event.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>No conversion, file read, output write, ingest, graph write, or serve runs from this review.</span>
+                </label>
+              </div>
+              <button
+                type="submit"
+                disabled={conversionBusy}
+                className="rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+              >
+                {conversionBusy ? "Reviewing…" : "Review conversion"}
+              </button>
+              {conversionReceipt && (
+                <p className="text-[13px] font-serif text-ink dark:text-bright" role="status">
+                  Conversion {conversionReceipt.conversion_review_id} is ready for an explicit job; read{" "}
+                  {conversionReceipt.file_read_attempted ? "yes" : "no"}, converted{" "}
+                  {conversionReceipt.conversion_attempted ? "yes" : "no"}, output written{" "}
+                  {conversionReceipt.output_written ? "yes" : "no"}.
                 </p>
               )}
             </form>
