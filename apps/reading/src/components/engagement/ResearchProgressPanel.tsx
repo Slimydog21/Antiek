@@ -10,16 +10,52 @@
  * Residual (jq): optional researchTier for long-horizon wrestle posture chrome.
  * Residual (ka): prefer prop researchTier; fall back to progress API research_tier.
  * Residual (lr): DecisionTreeDriverBadge with resolved tier during multi-minute jobs.
+ * Residual (mw): competitive duration band + poll cadence honesty by tier
+ * (fast/deep/wrestle) for long-horizon Deep Research posture.
  * HTML-first; never PDF.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchResearchProgress,
   seedResearchProgress,
   type ResearchProgressResponse,
 } from "../../api/engagement";
+import {
+  mapResearchTierToProgressPollMs,
+  RESEARCH_TIER_PROGRESS_POLL_MS,
+} from "../../lib/researchTier";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
+
+/**
+ * Residual (mw): competitive long-horizon duration bands (honest estimates).
+ * Not a timer — posture for operator expectations vs OpenAI Deep Research-class
+ * multi-minute jobs. Offline offline-honest; does not invent live ETA.
+ */
+export function competitiveDurationBand(
+  tier: "fast" | "deep" | "wrestle" | null,
+): { label: string; bandMinutes: string; pollMs: number } {
+  if (tier === "wrestle") {
+    return {
+      label: "wrestle long-horizon",
+      bandMinutes: "10–30+",
+      pollMs: RESEARCH_TIER_PROGRESS_POLL_MS.wrestle,
+    };
+  }
+  if (tier === "fast") {
+    return {
+      label: "fast distill",
+      bandMinutes: "1–3",
+      pollMs: RESEARCH_TIER_PROGRESS_POLL_MS.fast,
+    };
+  }
+  // deep default
+  return {
+    label: "deep synthesize",
+    bandMinutes: "3–10",
+    pollMs: RESEARCH_TIER_PROGRESS_POLL_MS.deep,
+  };
+}
 
 export type ResearchProgressPanelProps = {
   spawnId: string;
@@ -131,6 +167,16 @@ export function ResearchProgressPanel({
       ? "api"
       : "none";
 
+  // Residual (mw): competitive duration band + effective poll cadence honesty.
+  const durationBand = useMemo(
+    () => competitiveDurationBand(tierKnown),
+    [tierKnown],
+  );
+  const effectivePollMs =
+    pollIntervalMs && pollIntervalMs >= 500
+      ? pollIntervalMs
+      : mapResearchTierToProgressPollMs(tierKnown);
+
   return (
     <section
       className="research-progress-panel"
@@ -158,14 +204,38 @@ export function ResearchProgressPanel({
             Research posture) · plan→cite may run longer than deep
           </p>
         ) : null}
+        {/* Residual (mw): competitive duration band + poll cadence honesty. */}
+        {tierKnown ? (
+          <p
+            className="meta font-mono text-[11px]"
+            data-testid="research-progress-competitive-band"
+            data-research-tier={tierKnown}
+            data-band-minutes={durationBand.bandMinutes}
+            data-poll-ms={String(effectivePollMs)}
+            data-view-format="html"
+            role="status"
+          >
+            Competitive posture: {durationBand.label} · expected band ~
+            {durationBand.bandMinutes} min · poll every{" "}
+            {(effectivePollMs / 1000).toFixed(0)}s (offline-honest estimate, not
+            a live ETA)
+          </p>
+        ) : null}
         {/* Residual (ij): Settings deep-link for model driver + budget. */}
-        <p className="meta font-mono text-[11px]">
+        <p className="meta font-mono text-[11px] space-x-3">
           <a
             href="/settings"
             data-testid="research-progress-settings-link"
             title="Open Settings for decision-tree driver and daily budget"
           >
             Settings · driver & budget
+          </a>
+          <a
+            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+            data-testid="research-progress-dual-gate-checklist-link"
+            title="Dual-gate L1–L4 checklist (prep only)"
+          >
+            Dual-gate L1–L4 checklist
           </a>
         </p>
         {/* Residual (lr): model+budget+depth during multi-minute plan→cite. */}

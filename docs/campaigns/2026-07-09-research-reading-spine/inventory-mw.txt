@@ -1,0 +1,8 @@
+# inventory-mw · competitive duration band on research progress
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: mw
+files:
+  apps/reading/src/components/engagement/ResearchProgressPanel.tsx
+  apps/reading/src/components/engagement/ResearchProgressPanel.test.tsx
+proof: vitest ResearchProgressPanel 8 passed
+invariants: offline-honest estimate not live ETA · HTML-first · tier poll cadence

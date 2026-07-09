@@ -300,3 +300,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (mv, 2026-07-10) **SESSION-ARC mp–mu twins dual-gate:**
   - SESSION-ARC-mp-mu-twins-dualgate.md fleet handoff
+
+- Closed (mw, 2026-07-10) **Competitive duration band on progress:**
+  - research-progress-competitive-band by tier + poll cadence honesty
+  - dual-gate checklist on progress panel

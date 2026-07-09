@@ -37,6 +37,20 @@ describe("ResearchProgressPanel", () => {
     expect(link.textContent).toMatch(/driver & budget/i);
   });
 
+  it("surfaces competitive duration band for wrestle (mw)", () => {
+    render(
+      <ResearchProgressPanel spawnId="spn_w" researchTier="wrestle" />,
+    );
+    const band = screen.getByTestId("research-progress-competitive-band");
+    expect(band.getAttribute("data-research-tier")).toBe("wrestle");
+    expect(band.getAttribute("data-band-minutes")).toMatch(/10/);
+    expect(band.getAttribute("data-poll-ms")).toBe("8000");
+    expect(band.textContent).toMatch(/long-horizon/i);
+    expect(band.textContent).toMatch(/offline-honest estimate/i);
+    const dual = screen.getByTestId("research-progress-dual-gate-checklist-link");
+    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4/);
+  });
+
   it("seeds and shows plan→cite pipeline", async () => {
     seedResearchProgress.mockResolvedValue({
       spawn_id: "spn_1",
