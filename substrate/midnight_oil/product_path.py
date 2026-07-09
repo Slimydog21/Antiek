@@ -247,10 +247,6 @@ def offline_goal_step_fn(
 # Env ``ANTIEK_MIDNIGHT_OIL_LIVE_STEP``: 0/empty/false → offline only (default).
 # When enabled AND a process-local injector is configured, run uses that
 # step_fn; still never auto-enables without both env + configure call.
-import os
-from collections.abc import Callable
-from typing import Any as _Any
-
 ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV = "ANTIEK_MIDNIGHT_OIL_LIVE_STEP"
 
 _LiveStepFn = Callable[[MidnightOilJob], "WorkerStepResult"]
