@@ -10,6 +10,7 @@
  * Residual (ew): open deposit as full working-region window as well as floating.
  * Residual (ex): auto-open deposit HTML floating after successful deposit /
  * auto-deposit run so Midnight Oil joins the reading flywheel without a click.
+ * Residual (fo): Open Write HTML draft handoff for deposit document_id (fl/fm/fn).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -590,6 +591,18 @@ export default function MidnightOil() {
                 >
                   Open deposit full
                 </button>
+                {/* Residual (fo): handoff deposit HTML into Write mode. */}
+                {deposit.view_format === "html" && deposit.document_id ? (
+                  <a
+                    href={`/write?html_draft=${encodeURIComponent(deposit.document_id)}`}
+                    data-testid="moil-open-write"
+                    data-view-format="html"
+                    className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono underline hover:bg-ink/5 dark:border-bright/30"
+                    title="Open Write with Midnight Oil deposit as HTML draft handoff"
+                  >
+                    Open Write (HTML draft)
+                  </a>
+                ) : null}
                 {depositWindowId ? (
                   <span
                     className="text-[11px] font-mono"

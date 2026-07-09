@@ -301,6 +301,12 @@ describe("MidnightOil mode", () => {
         mode: "full",
       }),
     );
+    // Residual (fo): Write handoff for deposit document.
+    const write = screen.getByTestId("moil-open-write");
+    expect(write.getAttribute("href")).toBe(
+      "/write?html_draft=draft_moil_asset_dep_abc",
+    );
+    expect(write.getAttribute("data-view-format")).toBe("html");
   });
 
   it("runs offline worker after approve with auto-deposit", async () => {
