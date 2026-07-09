@@ -766,6 +766,57 @@ def post_context_search(body: ContextSearchBody) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
+def _session_open_usage_source(goal_hint: str | None) -> str:
+    """Residual (nw): classify open source for Antiek-bench recursive rewrite.
+
+    Twin chase launches stamp goal_hint with ``Twin chase on …`` (buildTwinChasePayload).
+    All other highlight → floating DR opens use floating_deep_research.
+    """
+    g = (goal_hint or "").strip().lower()
+    if g.startswith("twin chase"):
+        return "twin_chase"
+    return "floating_deep_research"
+
+
+def _record_session_open_usage(
+    *,
+    research_tier: str | None,
+    goal_hint: str | None,
+    selection_text: str,
+    model_id: str | None,
+) -> dict[str, Any] | None:
+    """Residual (nw): best-effort Antiek-bench usage on session open.
+
+    Feeds recursive suite rewrite when operators launch floating DR or twin
+    chase (highlight→float path). Never raises to callers. Uses shared
+    get_bench_usage_store (parity flywheel / investigation_start).
+    """
+    from substrate.antiek_bench import (
+        UsageEvent,
+        record_usage_event,
+        research_tier_to_task_class,
+    )
+
+    # Prefer explicit tier; session open defaults to deep when unset.
+    task = research_tier_to_task_class(research_tier)
+    if task is None:
+        task = "synthesize"
+    store = get_bench_usage_store(create_if_missing=True)
+    if store is None:
+        return None
+    hint = ((goal_hint or "").strip() or (selection_text or "").strip())[:280]
+    return record_usage_event(
+        UsageEvent(
+            task_class=task,
+            outcome="worked",
+            prompt_hint=hint,
+            source=_session_open_usage_source(goal_hint),
+            model_id=model_id,
+        ),
+        store=store,
+    )
+
+
 @engagement_router.post("/sessions/open")
 def post_session_open(body: SessionOpenBody) -> dict[str, Any]:
     try:
@@ -788,7 +839,8 @@ def post_session_open(body: SessionOpenBody) -> dict[str, Any]:
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    return {
+    resolved_tier = getattr(session, "research_tier", None) or "deep"
+    out: dict[str, Any] = {
         "session_id": session.session_id,
         "spawn_id": session.spawn_id,
         "investigation_id": session.investigation_id,
@@ -798,9 +850,22 @@ def post_session_open(body: SessionOpenBody) -> dict[str, Any]:
         "view_mode": session.view_mode,
         "model_id": session.model_id,
         "goal": session.goal,
-        "research_tier": getattr(session, "research_tier", None) or "deep",
+        "research_tier": resolved_tier,
         "view_format": "html",
     }
+    # Residual (nw): Antiek-bench usage for floating DR + twin chase opens.
+    try:
+        usage = _record_session_open_usage(
+            research_tier=resolved_tier,
+            goal_hint=body.goal_hint,
+            selection_text=body.selection_text or "",
+            model_id=session.model_id,
+        )
+        if usage is not None:
+            out["usage_event"] = usage
+    except Exception as exc:  # pragma: no cover — never fail open on bench
+        out["usage_event_error"] = str(exc)
+    return out
 
 
 @engagement_router.post("/sessions/complete-flywheel")

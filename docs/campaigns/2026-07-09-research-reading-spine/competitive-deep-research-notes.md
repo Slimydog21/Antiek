@@ -402,3 +402,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (nv, 2026-07-10) **SESSION-ARC nt–nu bench + launch budget dual-gate:**
   - Settings suite + shared launch budget dual-gate surfaces documented
+
+- Closed (nw, 2026-07-10) **Antiek-bench usage on session open / twin chase:**
+  - sessions/open records usage_event (source twin_chase | floating_deep_research)
+  - research_tier → task_class feeds recursive suite rewrite
+  - TwinNotes chase metrics data-usage-source / task-class audit

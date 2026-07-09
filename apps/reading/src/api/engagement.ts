@@ -55,6 +55,18 @@ export type SessionOpenResponse = {
   goal?: string;
   research_tier?: "fast" | "deep" | "wrestle" | string | null;
   view_format: "html";
+  /**
+   * Residual (nw): Antiek-bench usage event recorded on open
+   * (floating_deep_research | twin_chase) for recursive suite rewrite.
+   */
+  usage_event?: {
+    task_class: string;
+    outcome: string;
+    prompt_hint?: string;
+    source?: string;
+    model_id?: string | null;
+  } | null;
+  usage_event_error?: string | null;
 };
 
 export type ResearchContextResponse = ResearchContextPack & {

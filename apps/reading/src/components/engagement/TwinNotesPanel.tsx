@@ -173,6 +173,9 @@ export function TwinNotesPanel({
     noteIds: string[];
     forceBudget: boolean;
     viewFormat: string;
+    /** Residual (nw): Antiek-bench usage source/task_class when recorded. */
+    usageSource: string | null;
+    usageTaskClass: string | null;
   } | null>(null);
   /**
    * Residual (na): soft budget gate before twin chase launch.
@@ -563,6 +566,7 @@ export function TwinNotesPanel({
         setSelectedNoteIds(new Set());
         setChaseForceBudget(false);
         // Residual (nc): structured chase metrics for model+spawn audit.
+        const usage = out.usage_event ?? null;
         setChaseMetrics({
           spawnId: out.spawn_id,
           sessionId: out.session_id,
@@ -573,13 +577,19 @@ export function TwinNotesPanel({
           noteIds: payload.note_ids,
           forceBudget: forced,
           viewFormat: out.view_format,
+          usageSource: usage?.source ?? null,
+          usageTaskClass: usage?.task_class ?? null,
         });
         const modelLabel = out.model_id?.trim()
           ? ` · model=${out.model_id.trim()}`
           : " · model=none";
+        const usageLabel =
+          usage?.source || usage?.task_class
+            ? ` · bench=${usage?.source ?? "usage"}/${usage?.task_class ?? "?"}`
+            : "";
         setChaseStatus(
           `chased ${payload.note_ids.length} twin note(s) → spawn=${out.spawn_id} · ` +
-            `mode=${viewMode} · tier=${out.research_tier}${modelLabel}` +
+            `mode=${viewMode} · tier=${out.research_tier}${modelLabel}${usageLabel}` +
             (forced ? " · force_budget" : ""),
         );
       } catch (e) {
@@ -913,6 +923,8 @@ export function TwinNotesPanel({
           data-note-ids={chaseMetrics.noteIds.join(",")}
           data-force-budget={String(chaseMetrics.forceBudget)}
           data-view-format={chaseMetrics.viewFormat}
+          data-usage-source={chaseMetrics.usageSource ?? ""}
+          data-usage-task-class={chaseMetrics.usageTaskClass ?? ""}
           className="font-mono text-[11px] opacity-80"
           role="status"
         >
@@ -921,6 +933,9 @@ export function TwinNotesPanel({
           mode={chaseMetrics.viewMode} · notes={chaseMetrics.noteIdCount}
           {chaseMetrics.noteIds.length > 0
             ? ` · note_ids=${chaseMetrics.noteIds.join(",")}`
+            : ""}
+          {chaseMetrics.usageSource
+            ? ` · bench=${chaseMetrics.usageSource}/${chaseMetrics.usageTaskClass ?? "?"}`
             : ""}
           {chaseMetrics.forceBudget ? " · force_budget" : ""}
         </div>

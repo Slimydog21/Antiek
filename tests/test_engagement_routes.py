@@ -118,6 +118,11 @@ def test_session_open_and_flywheel(client):
     assert session_id.startswith("fsess_")
     # Residual (ji): open echoes research_tier when provided.
     assert open_body.get("research_tier") == "wrestle"
+    # Residual (nw): session open feeds Antiek-bench (floating_deep_research).
+    assert "usage_event" in open_body
+    assert open_body["usage_event"]["outcome"] == "worked"
+    assert open_body["usage_event"]["task_class"] == "wrestle"
+    assert open_body["usage_event"]["source"] == "floating_deep_research"
 
     r2 = client.post(
         "/engagement/sessions/complete-flywheel",
@@ -139,6 +144,27 @@ def test_session_open_and_flywheel(client):
     # Residual (jt): wrestle session → wrestle bench task_class (not distill).
     assert body.get("research_tier") == "wrestle"
     assert body["usage_event"].get("task_class") == "wrestle"
+
+
+def test_session_open_twin_chase_usage_source(client):
+    """Residual (nw): Twin chase goal_hint → usage source=twin_chase."""
+    r = client.post(
+        "/engagement/sessions/open",
+        json={
+            "asset_id": "paper-y",
+            "selection_text": "[question] What follows?\n\n[insight] Claim X",
+            "goal_hint": "Twin chase on paper-y: 2 note(s) (questions=1, insights=1) · note_ids=q1,i1",
+            "view_mode": "floating",
+            "research_tier": "deep",
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body.get("research_tier") == "deep"
+    assert body["usage_event"]["source"] == "twin_chase"
+    assert body["usage_event"]["task_class"] == "synthesize"
+    assert body["usage_event"]["outcome"] == "worked"
+    assert "Twin chase" in (body["usage_event"].get("prompt_hint") or "")
 
 
 def test_attach_unknown_spawn_404(client):

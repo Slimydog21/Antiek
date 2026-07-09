@@ -77,6 +77,36 @@ describe("launchFloatingDeepResearch residual cc/cy", () => {
     expect(out.model_id).toBeNull();
   });
 
+  it("passes through Antiek-bench usage_event from session open (nw)", async () => {
+    openEngagementSession.mockResolvedValue({
+      session_id: "fsess_twin",
+      spawn_id: "spn_twin",
+      investigation_id: "inv_twin",
+      parent_asset_id: "paper",
+      selection_text: "[question] Q?",
+      status: "reserved",
+      view_mode: "floating",
+      view_format: "html",
+      goal: "Twin chase on paper",
+      model_id: "m1",
+      research_tier: "deep",
+      usage_event: {
+        task_class: "synthesize",
+        outcome: "worked",
+        source: "twin_chase",
+        prompt_hint: "Twin chase on paper",
+      },
+    });
+    const out = await launchFloatingDeepResearch({
+      asset_id: "paper",
+      selection_text: "[question] Q?",
+      goal_hint: "Twin chase on paper: 1 note(s)",
+      research_tier: "deep",
+    });
+    expect(out.usage_event?.source).toBe("twin_chase");
+    expect(out.usage_event?.task_class).toBe("synthesize");
+  });
+
   it("resolves decision-tree model_id when caller omits model (cy)", async () => {
     fetchDecisionTreeSelection.mockResolvedValue({
       installed: true,

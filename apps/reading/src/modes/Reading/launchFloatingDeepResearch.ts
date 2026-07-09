@@ -46,6 +46,17 @@ export type LaunchFloatingDeepResearchResult = {
   model_id: string | null;
   /** Research tier recorded on the session (default deep). */
   research_tier: "fast" | "deep" | "wrestle" | string;
+  /**
+   * Residual (nw): Antiek-bench usage from sessions/open when present
+   * (twin_chase | floating_deep_research).
+   */
+  usage_event?: {
+    task_class: string;
+    outcome: string;
+    prompt_hint?: string;
+    source?: string;
+    model_id?: string | null;
+  } | null;
 };
 
 /**
@@ -150,5 +161,7 @@ export async function launchFloatingDeepResearch(
     status: session.status,
     model_id: resolvedModel,
     research_tier: resolvedTier,
+    // Residual (nw): pass through Antiek-bench usage for chase/DR audit.
+    usage_event: session.usage_event ?? null,
   };
 }

@@ -996,6 +996,13 @@ describe("TwinNotesPanel", () => {
       status: "reserved",
       model_id: "model-a",
       research_tier: "deep",
+      // Residual (nw): Antiek-bench twin_chase usage passthrough.
+      usage_event: {
+        task_class: "synthesize",
+        outcome: "worked",
+        source: "twin_chase",
+        prompt_hint: "Twin chase on paper",
+      },
     });
     render(
       <TwinNotesPanel assetId="paper" autoLoad researchTier="deep" />,
@@ -1045,6 +1052,10 @@ describe("TwinNotesPanel", () => {
     expect(metrics.getAttribute("data-note-id-count")).toBe("2");
     expect(metrics.getAttribute("data-note-ids")).toMatch(/twin_q/);
     expect(metrics.getAttribute("data-view-format")).toBe("html");
+    // Residual (nw): Antiek-bench twin_chase usage metrics.
+    expect(metrics.getAttribute("data-usage-source")).toBe("twin_chase");
+    expect(metrics.getAttribute("data-usage-task-class")).toBe("synthesize");
+    expect(metrics.textContent).toMatch(/bench=twin_chase\/synthesize/);
     // Selection cleared after successful chase (parity my).
     expect(
       screen
