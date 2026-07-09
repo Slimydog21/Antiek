@@ -13,6 +13,7 @@ from substrate.multimedia.hardening import (
 )
 from substrate.multimedia.live_worker import (
     attach_provider_artifacts_to_manifest,
+    deny_public_publish_request,
     evaluate_public_export_gate,
     evaluate_public_publish_blocker,
     plan_provider_artifact_attachment,
@@ -27,6 +28,7 @@ from substrate.multimedia.read_model import (
     LiveProviderExecutionRequest,
     MultimediaAssetStore,
     MultimediaPublicExportReviewRequest,
+    MultimediaPublicPublishRequest,
 )
 
 SHA = "e" * 64
@@ -970,6 +972,86 @@ def test_public_publish_blocker_rejects_attachment_ids_changed_after_plan(tmp_pa
     assert blocked.jobs[-1].error_code == "public_publish_attachment_mismatch"
     assert blocked.jobs[-1].public_export_plan is not None
     assert blocked.jobs[-1].public_publish_blocker is None
+
+
+def test_public_publish_request_requires_distribution_acknowledgement(tmp_path, monkeypatch):
+    store, draft = _create_reviewed_public_export_asset(tmp_path, monkeypatch)
+    planned = plan_public_export(store, draft.asset.asset_id)
+    export_plan = planned.jobs[-1].public_export_plan
+    assert export_plan is not None
+    evaluate_public_publish_blocker(store, draft.asset.asset_id)
+
+    denied = deny_public_publish_request(
+        store,
+        draft.asset.asset_id,
+        MultimediaPublicPublishRequest(export_id=export_plan.export_id),
+    )
+    job = denied.jobs[-1]
+
+    assert job.status == "failed"
+    assert job.error_code == "public_distribution_not_acknowledged"
+    assert job.public_publish_denial is not None
+    assert job.public_publish_denial.reason_code == "public_distribution_not_acknowledged"
+    assert job.public_publish_denial.public_url is None
+    assert job.public_publish_blocker is not None
+
+
+def test_public_publish_request_requires_blocker_audit_row(tmp_path, monkeypatch):
+    store, draft = _create_reviewed_public_export_asset(tmp_path, monkeypatch)
+    planned = plan_public_export(store, draft.asset.asset_id)
+    export_plan = planned.jobs[-1].public_export_plan
+    assert export_plan is not None
+
+    denied = deny_public_publish_request(
+        store,
+        draft.asset.asset_id,
+        MultimediaPublicPublishRequest(
+            export_id=export_plan.export_id,
+            operator_acknowledged_public_distribution=True,
+        ),
+    )
+
+    assert denied.jobs[-1].status == "failed"
+    assert denied.jobs[-1].error_code == "public_publish_blocker_missing"
+    assert denied.jobs[-1].public_export_plan == export_plan
+    assert denied.jobs[-1].public_publish_blocker is None
+    assert denied.jobs[-1].public_publish_denial is not None
+    assert denied.jobs[-1].public_publish_denial.public_url is None
+
+
+def test_public_publish_request_is_denied_until_publisher_exists(tmp_path, monkeypatch):
+    store, draft = _create_reviewed_public_export_asset(tmp_path, monkeypatch)
+    planned = plan_public_export(store, draft.asset.asset_id)
+    export_plan = planned.jobs[-1].public_export_plan
+    assert export_plan is not None
+    blocked = evaluate_public_publish_blocker(store, draft.asset.asset_id)
+    blocker = blocked.jobs[-1].public_publish_blocker
+    assert blocker is not None
+
+    denied = deny_public_publish_request(
+        store,
+        draft.asset.asset_id,
+        MultimediaPublicPublishRequest(
+            export_id=export_plan.export_id,
+            operator_acknowledged_public_distribution=True,
+        ),
+    )
+    job = denied.jobs[-1]
+
+    assert job.kind == "export_gate"
+    assert job.status == "failed"
+    assert job.error_code == "publisher_unimplemented"
+    assert job.public_export_plan == export_plan
+    assert job.public_publish_blocker == blocker
+    assert job.public_publish_denial is not None
+    assert job.public_publish_denial.status == "blocked"
+    assert job.public_publish_denial.export_id == export_plan.export_id
+    assert job.public_publish_denial.requested_destination == "public_web"
+    assert job.public_publish_denial.public_url is None
+    assert "presence-only-not-a-real-secret" not in job.model_dump_json()
+
+    reloaded = MultimediaAssetStore(tmp_path).list_jobs(draft.asset.asset_id)
+    assert reloaded.jobs[-1].public_publish_denial == job.public_publish_denial
 
 
 def test_provider_artifact_attachment_plan_requires_successful_receipt(tmp_path, monkeypatch):

@@ -8,6 +8,8 @@ outside this path.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from substrate.contracts.multimedia import AssetKind
 from substrate.multimedia.provider_router import (
     BudgetExceeded,
@@ -28,7 +30,17 @@ from substrate.multimedia.read_model import (
     MultimediaPublicExportReview,
     MultimediaPublicExportReviewRequest,
     MultimediaPublicPublishBlocker,
+    MultimediaPublicPublishDenial,
+    MultimediaPublicPublishRequest,
 )
+
+PublishDenialReason = Literal[
+    "public_distribution_not_acknowledged",
+    "public_export_plan_missing",
+    "public_publish_blocker_missing",
+    "public_publish_export_mismatch",
+    "publisher_unimplemented",
+]
 
 
 def evaluate_public_export_gate(
@@ -363,6 +375,118 @@ def evaluate_public_publish_blocker(
         public_export_review=review,
         public_export_plan=export_plan,
         public_publish_blocker=blocker,
+    )
+
+
+def deny_public_publish_request(
+    store: MultimediaAssetStore,
+    asset_id: str,
+    request: MultimediaPublicPublishRequest,
+) -> MultimediaAssetRecord:
+    """Record that public publishing is unavailable in the no-spend lane."""
+
+    record = store.get(asset_id)
+    gate = _latest_public_export_gate(record)
+    review = _latest_public_export_review(record)
+    export_plan = _latest_public_export_plan(record)
+    blocker = _latest_public_publish_blocker(record)
+    if not request.operator_acknowledged_public_distribution:
+        denial = _publish_denial(
+            request,
+            reason_code="public_distribution_not_acknowledged",
+            reason="Public publishing requires explicit operator acknowledgement.",
+        )
+        return store.record_job(
+            asset_id,
+            kind="export_gate",
+            status="failed",
+            progress_percent=99,
+            message=denial.reason,
+            error_code=denial.reason_code,
+            retryable=False,
+            public_export_gate=gate,
+            public_export_review=review,
+            public_export_plan=export_plan,
+            public_publish_blocker=blocker,
+            public_publish_denial=denial,
+        )
+    if export_plan is None:
+        denial = _publish_denial(
+            request,
+            reason_code="public_export_plan_missing",
+            reason="Public publishing requires a staged export plan.",
+        )
+        return store.record_job(
+            asset_id,
+            kind="export_gate",
+            status="failed",
+            progress_percent=99,
+            message=denial.reason,
+            error_code=denial.reason_code,
+            retryable=False,
+            public_export_gate=gate,
+            public_export_review=review,
+            public_publish_blocker=blocker,
+            public_publish_denial=denial,
+        )
+    if request.export_id != export_plan.export_id:
+        denial = _publish_denial(
+            request,
+            reason_code="public_publish_export_mismatch",
+            reason="Public publish request does not match the staged export plan.",
+        )
+        return store.record_job(
+            asset_id,
+            kind="export_gate",
+            status="failed",
+            progress_percent=99,
+            message=denial.reason,
+            error_code=denial.reason_code,
+            retryable=False,
+            public_export_gate=gate,
+            public_export_review=review,
+            public_export_plan=export_plan,
+            public_publish_blocker=blocker,
+            public_publish_denial=denial,
+        )
+    if blocker is None:
+        denial = _publish_denial(
+            request,
+            reason_code="public_publish_blocker_missing",
+            reason="Public publishing requires an explicit no-publish blocker audit row.",
+        )
+        return store.record_job(
+            asset_id,
+            kind="export_gate",
+            status="failed",
+            progress_percent=99,
+            message=denial.reason,
+            error_code=denial.reason_code,
+            retryable=False,
+            public_export_gate=gate,
+            public_export_review=review,
+            public_export_plan=export_plan,
+            public_publish_denial=denial,
+        )
+
+    denial = _publish_denial(
+        request,
+        reason_code="publisher_unimplemented",
+        reason="Public publisher implementation is not available; no public URL was minted.",
+    )
+    return store.record_job(
+        asset_id,
+        kind="export_gate",
+        status="failed",
+        progress_percent=99,
+        message=denial.reason,
+        error_code=denial.reason_code,
+        retryable=False,
+        public_export_gate=gate,
+        public_export_review=review,
+        public_export_plan=export_plan,
+        public_publish_blocker=blocker,
+        public_publish_denial=denial,
     )
 
 
@@ -712,6 +836,27 @@ def _latest_public_export_plan(record: MultimediaAssetRecord) -> MultimediaPubli
     return None
 
 
+def _latest_public_publish_blocker(record: MultimediaAssetRecord) -> MultimediaPublicPublishBlocker | None:
+    for job in reversed(record.jobs):
+        if job.kind == "export_gate" and job.public_publish_blocker:
+            return job.public_publish_blocker
+    return None
+
+
+def _publish_denial(
+    request: MultimediaPublicPublishRequest,
+    *,
+    reason_code: PublishDenialReason,
+    reason: str,
+) -> MultimediaPublicPublishDenial:
+    return MultimediaPublicPublishDenial(
+        export_id=request.export_id,
+        requested_destination=request.requested_destination,
+        reason_code=reason_code,
+        reason=reason,
+    )
+
+
 def _attachment_mismatch(
     preview: LiveProviderRoutePreview,
     receipt: LiveProviderArtifactReceipt,
@@ -754,6 +899,7 @@ def _primary_generation_kind(kind: AssetKind) -> GenerationKind:
 
 __all__ = [
     "attach_provider_artifacts_to_manifest",
+    "deny_public_publish_request",
     "evaluate_public_export_gate",
     "evaluate_public_publish_blocker",
     "plan_public_export",

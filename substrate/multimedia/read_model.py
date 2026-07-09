@@ -245,6 +245,37 @@ class MultimediaPublicPublishBlocker(_ReadModelBase):
         return self
 
 
+class MultimediaPublicPublishRequest(_ReadModelBase):
+    """Operator request shape for future public publication."""
+
+    export_id: str
+    requested_destination: Literal["public_web"] = "public_web"
+    operator_acknowledged_public_distribution: bool = False
+
+
+class MultimediaPublicPublishDenial(_ReadModelBase):
+    """Structured refusal for public publishing while publisher support is absent."""
+
+    status: Literal["blocked"] = "blocked"
+    export_id: str
+    requested_destination: Literal["public_web"]
+    reason_code: Literal[
+        "public_distribution_not_acknowledged",
+        "public_export_plan_missing",
+        "public_publish_blocker_missing",
+        "public_publish_export_mismatch",
+        "publisher_unimplemented",
+    ]
+    public_url: None = None
+    reason: str
+
+    @model_validator(mode="after")
+    def denial_must_not_publish(self) -> MultimediaPublicPublishDenial:
+        if self.public_url is not None:
+            raise ValueError("publish denials cannot include public URLs")
+        return self
+
+
 class MultimediaJobRecord(_ReadModelBase):
     """Durable progress record for one multimedia operation.
 
@@ -272,6 +303,7 @@ class MultimediaJobRecord(_ReadModelBase):
     public_export_review: MultimediaPublicExportReview | None = None
     public_export_plan: MultimediaPublicExportPlan | None = None
     public_publish_blocker: MultimediaPublicPublishBlocker | None = None
+    public_publish_denial: MultimediaPublicPublishDenial | None = None
 
 
 class MultimediaAssetSummary(_ReadModelBase):
@@ -568,6 +600,7 @@ class MultimediaAssetStore:
         public_export_review: MultimediaPublicExportReview | None = None,
         public_export_plan: MultimediaPublicExportPlan | None = None,
         public_publish_blocker: MultimediaPublicPublishBlocker | None = None,
+        public_publish_denial: MultimediaPublicPublishDenial | None = None,
     ) -> MultimediaAssetRecord:
         """Append an arbitrary job row (failed/partial provider jobs, retries).
 
@@ -592,6 +625,7 @@ class MultimediaAssetStore:
             public_export_review=public_export_review,
             public_export_plan=public_export_plan,
             public_publish_blocker=public_publish_blocker,
+            public_publish_denial=public_publish_denial,
         )
         self.save(updated)
         return updated
@@ -619,6 +653,7 @@ class MultimediaAssetStore:
         public_export_review: MultimediaPublicExportReview | None = None,
         public_export_plan: MultimediaPublicExportPlan | None = None,
         public_publish_blocker: MultimediaPublicPublishBlocker | None = None,
+        public_publish_denial: MultimediaPublicPublishDenial | None = None,
     ) -> MultimediaAssetRecord:
         sequence = max((job.sequence for job in record.jobs), default=0) + 1
         job = MultimediaJobRecord(
@@ -640,6 +675,7 @@ class MultimediaAssetStore:
             public_export_review=public_export_review,
             public_export_plan=public_export_plan,
             public_publish_blocker=public_publish_blocker,
+            public_publish_denial=public_publish_denial,
         )
         return record.model_copy(update={"jobs": record.jobs + (job,)})
 
