@@ -457,7 +457,7 @@ export default function MidnightOil() {
             data-prefill={driverPrefill}
             data-view-format="html"
           >
-            <DecisionTreeDriverBadge />
+            <DecisionTreeDriverBadge researchTier={researchTier} />
             <span className="text-[10px] font-mono opacity-70">
               {driverPrefill === "installed"
                 ? "Prefill from Settings decision tree (editable)"

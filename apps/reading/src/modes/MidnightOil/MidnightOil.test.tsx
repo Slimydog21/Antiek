@@ -114,8 +114,15 @@ vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", () => {
 });
 
 vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
-  DecisionTreeDriverBadge: () => (
-    <div data-testid="decision-tree-driver-badge-stub">driver badge</div>
+  DecisionTreeDriverBadge: (props: {
+    researchTier?: string | null;
+  }) => (
+    <div
+      data-testid="decision-tree-driver-badge-stub"
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+    >
+      driver badge{props.researchTier ? `:tier=${props.researchTier}` : ""}
+    </div>
   ),
 }));
 
@@ -226,6 +233,12 @@ describe("MidnightOil mode", () => {
     expect(prefill.getAttribute("data-prefill")).toBe("installed");
     expect(prefill.getAttribute("data-view-format")).toBe("html");
     expect(screen.getByTestId("decision-tree-driver-badge-stub")).toBeTruthy();
+    // Residual (kv): Midnight Oil wires researchTier into driver badge (ku).
+    expect(
+      screen
+        .getByTestId("decision-tree-driver-badge-stub")
+        .getAttribute("data-research-tier"),
+    ).toBe("deep");
   });
 
   it("keeps default model when no driver installed (cz)", async () => {
