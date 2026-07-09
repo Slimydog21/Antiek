@@ -3,6 +3,7 @@ import {
   TWIN_WRITE_SEED_KEY_PREFIX,
   buildTwinWriteHref,
   buildMarketplaceWriteHref,
+  buildMergedDocWriteHref,
   buildWriteHtmlDraftHref,
   loadTwinWriteSeed,
   plainTextFromHtml,
@@ -73,6 +74,17 @@ describe("twinWriteSeed (pp)", () => {
   it("strips HTML for MO deposit twin_seed plain text (pz)", () => {
     expect(plainTextFromHtml("<p>Hello <b>world</b></p>")).toBe("Hello world");
     expect(plainTextFromHtml("   ")).toBe("");
+  });
+
+  it("builds merged-doc dual Write href with twin_seed (qd/qe)", () => {
+    const href = buildMergedDocWriteHref({
+      documentId: "draft_merge_1",
+      title: "Merged",
+      html: "<article><p>Merge body</p></article>",
+      source: "spawn_merge",
+    });
+    expect(href).toMatch(/html_draft=draft_merge_1/);
+    expect(href).toMatch(/twin_seed=antiek\.twin_write_seed\./);
   });
 
   it("builds marketplace dual Write href with twin_seed (qc)", () => {

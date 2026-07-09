@@ -1,0 +1,4 @@
+# inventory-qf · Write dual-handoff matrix SESSION-ARC + buildMergedDocWriteHref test
+residual: qf · 2026-07-10
+- SESSION-ARC-pz-qe-write-dual-handoff.md
+- twinWriteSeed buildMergedDocWriteHref unit test
