@@ -15,6 +15,7 @@ if _PKG_ROOT not in sys.path:
 
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.research_artifact import (  # noqa: E402
+    compose_artifacts,
     export_research_artifact,
     import_agent_notes,
     list_outline_blocks,
@@ -62,6 +63,25 @@ class ImportNotesOut(BaseModel):
     event_ids: list[str]
 
 
+class ComposeIn(BaseModel):
+    investigation_ids: list[str]
+    write_draft_merge: bool = True
+
+
+class ComposeMemberOut(BaseModel):
+    investigation_id: str
+    content_hash: str
+    artifact_path: str
+    twin_notes_path: str
+
+
+class ComposeOut(BaseModel):
+    path: str
+    draft_merge_path: str | None = None
+    members: list[ComposeMemberOut]
+    hash_conflicts: list[list[str]]
+
+
 @artifact_router.post("/{investigation_id}/artifact/export", response_model=ExportOut)
 async def post_export_artifact(investigation_id: str) -> ExportOut:
     try:
@@ -75,6 +95,35 @@ async def post_export_artifact(investigation_id: str) -> ExportOut:
         content_hash=res.content_hash,
         size_bytes=res.size_bytes,
         event_id=res.event_id,
+    )
+
+
+@artifact_router.post("/artifacts/compose", response_model=ComposeOut)
+async def post_compose_artifacts(body: ComposeIn) -> ComposeOut:
+    ids = [item.strip() for item in body.investigation_ids if item.strip()]
+    if len(ids) < 2:
+        raise HTTPException(status_code=400, detail="at least two investigation_ids required")
+    try:
+        res = compose_artifacts(
+            ids,
+            db_path=_db(),
+            write_draft_merge=body.write_draft_merge,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return ComposeOut(
+        path=str(res.path),
+        draft_merge_path=str(res.draft_merge_path) if res.draft_merge_path else None,
+        members=[
+            ComposeMemberOut(
+                investigation_id=m.investigation_id,
+                content_hash=m.content_hash,
+                artifact_path=str(m.artifact_path),
+                twin_notes_path=str(m.twin_notes_path),
+            )
+            for m in res.members
+        ],
+        hash_conflicts=[[a, b] for a, b in res.hash_conflicts],
     )
 
 

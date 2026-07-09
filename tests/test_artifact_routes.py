@@ -75,3 +75,39 @@ def test_get_artifact_blocks_after_insight(api_env):
     assert len(blocks) >= 1
     assert blocks[0]["investigation_id"] == "inv-blocks"
     assert blocks[0]["kind"] in ("insight", "question", "synthesis")
+
+
+def test_post_compose_artifacts_writes_draft_merge(api_env):
+    for iid, text in [("inv-api-a", "API A"), ("inv-api-b", "API B")]:
+        promote_insight(
+            text=text,
+            investigation_id=iid,
+            confidence="moderate",
+            source_document_id="doc-compose",
+        )
+    client = _client()
+    resp = client.post(
+        "/research/artifacts/compose",
+        json={
+            "investigation_ids": ["inv-api-a", "inv-api-b"],
+            "write_draft_merge": True,
+        },
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert os.path.isfile(body["path"])
+    assert os.path.isfile(body["draft_merge_path"])
+    assert len(body["members"]) == 2
+    assert all(member["twin_notes_path"] for member in body["members"])
+
+
+def test_post_compose_artifacts_requires_two_ids(api_env):
+    client = _client()
+    resp = client.post(
+        "/research/artifacts/compose",
+        json={"investigation_ids": ["one"]},
+    )
+
+    assert resp.status_code == 400
+    assert "at least two" in resp.json()["detail"]

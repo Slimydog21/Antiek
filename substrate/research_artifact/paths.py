@@ -32,3 +32,10 @@ def compose_path_for(*investigation_ids: str) -> Path:
     if len(investigation_ids) > 8:
         joined += f"-and{len(investigation_ids) - 8}-more"
     return research_artifacts_dir() / f"compose-{joined}.html"
+
+
+def draft_merge_path_for(*investigation_ids: str) -> Path:
+    joined = "-".join(i.replace("/", "_") for i in investigation_ids[:8])
+    if len(investigation_ids) > 8:
+        joined += f"-and{len(investigation_ids) - 8}-more"
+    return research_artifacts_dir() / f"draft-merge-{joined}.html"
