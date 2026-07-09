@@ -9,6 +9,7 @@ import {
   type FloatMenuSelection,
   type SelectionProvenance,
 } from "../shared/FloatMenu/useFloatMenuSelection";
+import { launchFloatingDeepResearch } from "../Reading/launchFloatingDeepResearch";
 
 /**
  * BlockDetail — the SECOND host for the shared {@link FloatMenu} (Living
@@ -22,10 +23,9 @@ import {
  * block-detail selection chains to that document. (A chunk id isn't resolved
  * from a free selection over the node text, so chunk stays null — honest.)
  *
- * Deep-research reuses the chase path directly (startInvestigation with
- * parent_investigation_id + recordSpawnRelationship — the same calls
- * ChaseSlideOver.tsx:57,64 make), spawning a child investigation linked back to
- * the source highlight.
+ * Residual (fh): Deep-research primary path opens deep_research_session window
+ * floating|full (parity Reading/HighlightToolbar). Chase startInvestigation
+ * remains the degraded fallback when float launch fails.
  */
 export default function BlockDetail({
   node,
@@ -51,23 +51,42 @@ export default function BlockDetail({
 
   const selection = useFloatMenuSelection({ scopeRef, resolveProvenance });
 
-  async function deepResearch(safeSpawnText: string | null) {
+  async function deepResearch(
+    safeSpawnText: string | null,
+    opts?: { viewMode?: "floating" | "full" },
+  ) {
     // §9.0: refuse to spawn on a withheld body.
     if (safeSpawnText === null) return;
-    // REUSED chase path — child investigation linked to the parent + the
-    // selection (ChaseSlideOver.tsx:57,64).
-    const resp = await startInvestigation({
-      question: safeSpawnText,
-      context: safeSpawnText,
-      parent_investigation_id: investigationId,
-      spawn_context: safeSpawnText,
-    });
-    recordSpawnRelationship(resp.investigation_id, investigationId);
-    navigate(`/inv/${resp.investigation_id}`);
+    const assetId =
+      (node.source_document_id || "").trim() || investigationId || "__research__";
+    const viewMode = opts?.viewMode === "full" ? "full" : "floating";
+    try {
+      // Residual (fh): window host first (reading ≡ research).
+      await launchFloatingDeepResearch({
+        asset_id: assetId,
+        selection_text: safeSpawnText,
+        goal_hint: "Deep-research the highlighted block detail passage",
+        view_mode: viewMode,
+      });
+    } catch {
+      // Degraded: REUSED chase path — child investigation + navigate.
+      const resp = await startInvestigation({
+        question: safeSpawnText,
+        context: safeSpawnText,
+        parent_investigation_id: investigationId,
+        spawn_context: safeSpawnText,
+      });
+      recordSpawnRelationship(resp.investigation_id, investigationId);
+      navigate(`/inv/${resp.investigation_id}`);
+    }
   }
 
   return (
-    <div className="flex flex-col h-full text-ink dark:text-bright p-4">
+    <div
+      className="flex flex-col h-full text-ink dark:text-bright p-4"
+      data-testid="block-detail"
+      data-view-format="html"
+    >
       <div className="flex items-center justify-between mb-2">
         <span className="font-mono text-[10px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
           {node.kind} · block detail
@@ -90,9 +109,11 @@ export default function BlockDetail({
       <FloatMenu
         selection={selection}
         investigationId={investigationId}
-        onDeepResearch={(safeSpawnText: string | null, _sel: FloatMenuSelection) =>
-          void deepResearch(safeSpawnText)
-        }
+        onDeepResearch={(
+          safeSpawnText: string | null,
+          _sel: FloatMenuSelection,
+          opts?: { viewMode?: "floating" | "full" },
+        ) => void deepResearch(safeSpawnText, opts)}
       />
     </div>
   );

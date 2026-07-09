@@ -1,0 +1,17 @@
+# residual (fh) BlockDetail deep research via floating/full window
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(fg) prior | branch_only | campaign inventories
+(fh) BlockDetail DR window | branch_only | launchFloatingDeepResearch primary; startInvestigation fallback; full via FloatMenu; 4 vitest
+
+PATHS:
+- apps/reading/src/modes/DeepResearchWorkspace/BlockDetail.tsx
+- apps/reading/src/modes/DeepResearchWorkspace/BlockDetail.test.tsx
+
+INVARIANTS:
+- §9.0 withheld refused
+- HTML deep_research_session host
+- Chase /inv navigate remains degraded fallback only
+
+NEXT: (fi) re-derive; operator merge PR #465

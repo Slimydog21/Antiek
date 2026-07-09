@@ -25,14 +25,22 @@ import type { DistilledNode } from "../../lib/api";
 const postTypedEventMock = vi.fn((_envelope: unknown) =>
   Promise.resolve({ event_id: "ev-note-1", action_type: "marginalia.noted" }),
 );
+const launchFloatingDeepResearch = vi.fn();
+const startInvestigation = vi.fn();
 
 vi.mock("../../lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/api")>();
   return {
     ...actual,
     postTypedEvent: (envelope: unknown) => postTypedEventMock(envelope),
+    startInvestigation: (...args: unknown[]) => startInvestigation(...args),
   };
 });
+
+vi.mock("../Reading/launchFloatingDeepResearch", () => ({
+  launchFloatingDeepResearch: (...args: unknown[]) =>
+    launchFloatingDeepResearch(...args),
+}));
 
 import BlockDetail from "./BlockDetail";
 
@@ -96,6 +104,19 @@ function renderDetail(node: DistilledNode) {
 
 beforeEach(() => {
   postTypedEventMock.mockClear();
+  launchFloatingDeepResearch.mockReset();
+  startInvestigation.mockReset();
+  launchFloatingDeepResearch.mockResolvedValue({
+    session_id: "fsess_b",
+    spawn_id: "spn_b",
+    investigation_id: "inv_b",
+    parent_asset_id: "doc-block-9",
+    window_id: "wdr_b",
+    view_format: "html",
+    view_mode: "floating",
+    status: "reserved",
+    model_id: null,
+  });
 });
 afterEach(() => {
   cleanup();
@@ -112,12 +133,53 @@ describe("BlockDetail — the SECOND live FloatMenu host (M1)", () => {
       "a grounded insight worth selecting and noting",
     );
     selectTextIn(scope, "a grounded insight");
-    // The SAME shared FloatMenu opens — all four actions present.
+    // The SAME shared FloatMenu opens — all four actions present + full (fe/fh).
     expect(screen.getByRole("menu")).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Note" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Dialogue" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Search" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Deep-research" })).toBeTruthy();
+    expect(
+      screen.getByRole("menuitem", { name: "Deep-research full" }),
+    ).toBeTruthy();
+  });
+
+  it("Deep-research launches floating window via launchFloatingDeepResearch (fh)", async () => {
+    renderDetail(insightNode());
+    const scope = screen.getByText(
+      "a grounded insight worth selecting and noting",
+    );
+    selectTextIn(scope, "a grounded insight");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitem", { name: "Deep-research" }));
+    });
+    expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        asset_id: "doc-block-9",
+        selection_text: "a grounded insight",
+        view_mode: "floating",
+      }),
+    );
+    expect(startInvestigation).not.toHaveBeenCalled();
+  });
+
+  it("Deep-research full launches full window mode (fh)", async () => {
+    renderDetail(insightNode());
+    const scope = screen.getByText(
+      "a grounded insight worth selecting and noting",
+    );
+    selectTextIn(scope, "a grounded insight");
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("menuitem", { name: "Deep-research full" }),
+      );
+    });
+    expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        asset_id: "doc-block-9",
+        view_mode: "full",
+      }),
+    );
   });
 
   it("a NOTE on a block-detail selection chains to the node's source_document_id (richer provenance §9)", async () => {
