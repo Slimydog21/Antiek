@@ -434,3 +434,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (od, 2026-07-10) **SESSION-ARC ob–oc collective recent spawns:**
   - SESSION-ARC-ob-oc-collective-recent-spawns.md fleet handoff
+
+- Closed (oe, 2026-07-10) **Twin chase collective recent_ring chrome:**
+  - chase status + metrics data-collective-recent
+  - honesty: spawn survives window close for multi-select merge

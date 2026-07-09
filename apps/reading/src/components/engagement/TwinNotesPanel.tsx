@@ -37,6 +37,8 @@
  * (chase/promote questions path without manual checkbox grind).
  * Residual (ne): invert multi-select over currently visible notes.
  * Residual (ni): note_ids provenance in chase goal_hint (recursive audit).
+ * Residual (oe): chase success notes spawn is in recent ring for collective
+ * multi-select even if the floating window is closed (parity ob).
  * HTML-first; never PDF.
  */
 
@@ -587,9 +589,13 @@ export function TwinNotesPanel({
           usage?.source || usage?.task_class
             ? ` · bench=${usage?.source ?? "usage"}/${usage?.task_class ?? "?"}`
             : "";
+        // Residual (oe): closed-window collective multi-select path honesty.
+        const collectiveLabel =
+          " · collective=recent_ring (survives window close)";
         setChaseStatus(
           `chased ${payload.note_ids.length} twin note(s) → spawn=${out.spawn_id} · ` +
             `mode=${viewMode} · tier=${out.research_tier}${modelLabel}${usageLabel}` +
+            collectiveLabel +
             (forced ? " · force_budget" : ""),
         );
       } catch (e) {
@@ -925,6 +931,7 @@ export function TwinNotesPanel({
           data-view-format={chaseMetrics.viewFormat}
           data-usage-source={chaseMetrics.usageSource ?? ""}
           data-usage-task-class={chaseMetrics.usageTaskClass ?? ""}
+          data-collective-recent="true"
           className="font-mono text-[11px] opacity-80"
           role="status"
         >
@@ -937,9 +944,11 @@ export function TwinNotesPanel({
           {chaseMetrics.usageSource
             ? ` · bench=${chaseMetrics.usageSource}/${chaseMetrics.usageTaskClass ?? "?"}`
             : ""}
+          {" · collective=recent_ring"}
           {chaseMetrics.forceBudget ? " · force_budget" : ""}
         </div>
       ) : null}
+
       {twins ? (
         <div data-testid="twin-notes-summary" className="font-mono text-sm">
           {/* Residual (fk): machine-readable recursive note-taker metrics. */}

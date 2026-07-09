@@ -1,0 +1,8 @@
+# inventory-oe · twin chase collective recent_ring status chrome
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: oe
+files:
+  apps/reading/src/components/engagement/TwinNotesPanel.tsx
+  apps/reading/src/components/engagement/TwinNotesPanel.test.tsx
+proof: vitest TwinNotes chase filter 2 passed
+invariants: HTML-first · honest closed-window collective path · no invent

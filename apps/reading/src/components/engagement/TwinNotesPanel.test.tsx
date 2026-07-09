@@ -1056,6 +1056,12 @@ describe("TwinNotesPanel", () => {
     expect(metrics.getAttribute("data-usage-source")).toBe("twin_chase");
     expect(metrics.getAttribute("data-usage-task-class")).toBe("synthesize");
     expect(metrics.textContent).toMatch(/bench=twin_chase\/synthesize/);
+    // Residual (oe): collective recent-ring honesty after chase.
+    expect(metrics.getAttribute("data-collective-recent")).toBe("true");
+    expect(metrics.textContent).toMatch(/collective=recent_ring/);
+    expect(screen.getByTestId("twin-chase-status").textContent).toMatch(
+      /collective=recent_ring/,
+    );
     // Selection cleared after successful chase (parity my).
     expect(
       screen
