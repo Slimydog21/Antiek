@@ -120,6 +120,28 @@ vi.mock("../../api/midnightOil", () => ({
       graph_mutated: false,
       handoff_notes: ["runner apply handoff only: ready for a future dispatcher"],
     },
+    applied_run_receipt: {
+      receipt_id: "midnight-oil-test-applied-run-receipt",
+      runner_handoff_id: "midnight-oil-test-runner-handoff",
+      approval_receipt_id: "midnight-oil-test-approval-receipt",
+      launch_packet_id: "midnight-oil-test-launch-packet",
+      run_id: "midnight-oil-test",
+      status: "planned_not_dispatched",
+      planned_role_count: 2,
+      planned_budget_usd: 7.2,
+      unallocated_budget_usd: 4.8,
+      planned_role_route_receipt_ids: [
+        "midnight-oil-test-planner-route-receipt",
+        "midnight-oil-test-gatherer-route-receipt",
+      ],
+      dispatch_performed: false,
+      budget_reserved: false,
+      provider_calls_made: false,
+      retrieval_performed: false,
+      graph_mutated: false,
+      final_artifact_created: false,
+      applied_notes: ["dry applied run receipt only: no autonomous agents dispatched"],
+    },
     notes: ["preflight only: no agents launched, no budget reserved, no retrieval performed"],
   })),
 }));
@@ -175,6 +197,10 @@ describe("MidnightOil", () => {
     expect(screen.getByText("midnight-oil-test-runner-handoff")).toBeTruthy();
     expect(screen.getByText("ready for runner apply")).toBeTruthy();
     expect(screen.getByText("not dispatched")).toBeTruthy();
+    expect(screen.getByText("Applied run")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-applied-run-receipt")).toBeTruthy();
+    expect(screen.getByText("planned not dispatched")).toBeTruthy();
+    expect(screen.getByText("not created")).toBeTruthy();
     expect(screen.getByText(/no agents launched/i)).toBeTruthy();
   });
 });

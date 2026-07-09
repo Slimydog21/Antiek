@@ -99,6 +99,26 @@ export interface MidnightOilRunnerHandoff {
   handoff_notes: string[];
 }
 
+export interface MidnightOilAppliedRunReceipt {
+  receipt_id: string;
+  runner_handoff_id: string;
+  approval_receipt_id: string;
+  launch_packet_id: string;
+  run_id: string;
+  status: "planned_not_dispatched";
+  planned_role_count: number;
+  planned_budget_usd: number;
+  unallocated_budget_usd: number;
+  planned_role_route_receipt_ids: string[];
+  dispatch_performed: boolean;
+  budget_reserved: boolean;
+  provider_calls_made: boolean;
+  retrieval_performed: boolean;
+  graph_mutated: boolean;
+  final_artifact_created: boolean;
+  applied_notes: string[];
+}
+
 export interface MidnightOilPreflight {
   accepted: boolean;
   denial_reason: string | null;
@@ -116,6 +136,7 @@ export interface MidnightOilPreflight {
   launch_packet: MidnightOilLaunchPacket | null;
   approval_receipt: MidnightOilApprovalReceipt | null;
   runner_handoff: MidnightOilRunnerHandoff | null;
+  applied_run_receipt: MidnightOilAppliedRunReceipt | null;
   notes: string[];
 }
 

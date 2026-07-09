@@ -1,6 +1,7 @@
 """Midnight-oil autonomous research contracts."""
 
 from .contracts import (
+    MidnightOilAppliedRunReceipt,
     MidnightOilApprovalReceipt,
     MidnightOilArtifactContract,
     MidnightOilLaunchPacket,
@@ -12,6 +13,7 @@ from .contracts import (
 )
 
 __all__ = [
+    "MidnightOilAppliedRunReceipt",
     "MidnightOilApprovalReceipt",
     "MidnightOilArtifactContract",
     "MidnightOilLaunchPacket",
