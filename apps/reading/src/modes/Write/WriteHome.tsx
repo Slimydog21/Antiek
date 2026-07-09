@@ -99,6 +99,7 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
  * multi-select draft — seeds brainstorm + freeform provenance (HTML-first).
  * Residual (pq): on create with twin_seed, offline-seed twin notes onto the new
  * writing asset so recursive note-taker substrate continues into Write.
+ * Residual (pu): twin seed handoff banner echoes note_ids provenance (parity pt).
 
  * Residual (gg): remount TwinNotesPanel on same refresh key as research
  * context (DR launch / collective merge / promote / re-import) — hosted ez parity.
@@ -731,6 +732,13 @@ export default function WriteHome() {
           data-note-count={
             twinSeed ? String(twinSeed.note_ids.length) : "0"
           }
+          data-note-ids={
+            twinSeed
+              ? twinSeed.note_ids.length <= 6
+                ? twinSeed.note_ids.join(",")
+                : `${twinSeed.note_ids.slice(0, 6).join(",")},+${twinSeed.note_ids.length - 6}`
+              : ""
+          }
           data-asset-id={twinSeed?.asset_id ?? ""}
           role="status"
         >
@@ -739,7 +747,15 @@ export default function WriteHome() {
               <p data-testid="write-twin-seed-ready">
                 Twin draft seed from recursive note-taker:{" "}
                 <strong>{twinSeed.title}</strong> · notes=
-                {twinSeed.note_ids.length} · asset=
+                {twinSeed.note_ids.length}
+                {twinSeed.note_ids.length
+                  ? ` · note_ids=${
+                      twinSeed.note_ids.length <= 6
+                        ? twinSeed.note_ids.join(",")
+                        : `${twinSeed.note_ids.slice(0, 6).join(",")},+${twinSeed.note_ids.length - 6}`
+                    }`
+                  : ""}{" "}
+                · asset=
                 <code>{twinSeed.asset_id || "(none)"}</code>
               </p>
               <p className="text-[11px] opacity-80">

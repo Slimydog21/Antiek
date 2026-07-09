@@ -604,3 +604,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (pt, 2026-07-10) **twin-draft-metrics note_ids provenance:**
   - data-note-ids + note_ids= chrome (truncated when >6)
+
+- Closed (pu, 2026-07-10) **Write twin_seed banner note_ids provenance:**
+  - data-note-ids + note_ids= on write-twin-seed-handoff

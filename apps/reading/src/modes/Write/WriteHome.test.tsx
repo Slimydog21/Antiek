@@ -377,9 +377,14 @@ describe("WriteHome — the re-homed door", () => {
     expect(banner.getAttribute("data-load-status")).toBe("ready");
     expect(banner.getAttribute("data-view-format")).toBe("html");
     expect(banner.getAttribute("data-note-count")).toBe("2");
+    // Residual (pu): note_ids provenance on Write twin seed banner.
+    expect(banner.getAttribute("data-note-ids")).toBe("q1,i1");
     expect(banner.getAttribute("data-asset-id")).toBe("paper-pp");
     expect(screen.getByTestId("write-twin-seed-ready").textContent).toMatch(
       /Twin draft seed/,
+    );
+    expect(screen.getByTestId("write-twin-seed-ready").textContent).toMatch(
+      /note_ids=q1,i1/,
     );
     expect(screen.getByTestId("write-twin-seed-html-preview").innerHTML).toMatch(
       /twin-draft/,
