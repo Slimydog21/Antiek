@@ -538,3 +538,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (pc, 2026-07-10) **MO job receipt grounded publication goals:**
   - data-grounded-pub-goal-count on ceiling metrics
   - moil-grounded-pub-goals list for swarm grounding audit
+
+- Closed (pd, 2026-07-10) **FUTURE-AGENT-SPEC remaining vision:**
+  - FUTURE-AGENT-SPEC-remaining-vision-2026-07-10.md
+  - V1–V6 offline product residuals + L1–L7 dual-gate honesty
