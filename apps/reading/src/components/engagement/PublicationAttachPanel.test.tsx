@@ -85,6 +85,10 @@ describe("PublicationAttachPanel residual ck/ed", () => {
     const settings = screen.getByTestId("publication-attach-settings-link");
     expect(settings.getAttribute("href")).toBe("/settings");
     expect(settings.textContent).toMatch(/hydrate readiness/i);
+    // Residual (mj): dual-gate checklist link (prep only; never enables injectors).
+    const dual = screen.getByTestId("publication-attach-dual-gate-checklist-link");
+    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4/);
+    expect(dual.textContent).toMatch(/dual-gate/i);
     // Residual (ed): parent notified so research context can remount.
     await waitFor(() => {
       expect(onAttached).toHaveBeenCalled();

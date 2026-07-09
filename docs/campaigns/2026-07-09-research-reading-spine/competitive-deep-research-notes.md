@@ -258,3 +258,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (mi, 2026-07-10) **Chip-aware catalog HTML window ids:**
   - document_id encodes freePD/subject/source filters
+
+- Closed (mj, 2026-07-10) **PublicationAttach dual-gate checklist link:**
+  - Deep-link to DUAL-GATE-L1-L4-OPERATOR-CHECKLIST (prep only; never enables)

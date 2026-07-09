@@ -11,6 +11,8 @@
  * Residual (ko): surface spawn research_tier from attach-refs response.
  * Residual (lz): DecisionTreeDriverBadge — model+budget+depth co-display
  * before/after attach (prop tier preferred; attach response fills when known).
+ * Residual (mj): dual-gate L1–L4 checklist deep-link for arxiv/substack
+ * live-injector dogfood prep (never enables injectors).
  * HTML-first; offline hydrate by default.
  */
 
@@ -164,6 +166,15 @@ export function PublicationAttachPanel({
           title="Open Settings → Publication hydrate readiness (arxiv/substack injectors)"
         >
           Settings · hydrate readiness
+        </a>
+        {/* Residual (mj): dual-gate checklist — prep only, never enables L1–L4. */}
+        <a
+          href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+          data-testid="publication-attach-dual-gate-checklist-link"
+          className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
+          title="Dual-gate L1–L4 operator checklist (env+injector prep; offline default)"
+        >
+          Dual-gate L1–L4 checklist
         </a>
       </div>
       {error ? (
