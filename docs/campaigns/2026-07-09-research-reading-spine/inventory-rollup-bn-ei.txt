@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(ei) · PR #465
+Shared deep-research context refresh chokepoint documented and named.
+Operator merge still gated. Next residual (ej).

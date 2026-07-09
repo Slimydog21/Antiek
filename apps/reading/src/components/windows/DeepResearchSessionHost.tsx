@@ -92,9 +92,10 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
   const viewFormat = (props.view_format?.trim() || "html").toLowerCase();
   const isHtml = viewFormat === "html";
 
-  // Residual (ec): bump key after twin promote → ResearchContextPanel remounts.
+  // Residuals (ec/ed/ee/eh/ei): shared remount chokepoint for ResearchContextPanel
+  // after twin promote, pub attach, flywheel complete, or spawn merge.
   const [contextRefreshKey, setContextRefreshKey] = useState(0);
-  const onTwinsPromoted = useCallback(() => {
+  const onContextNeedsRefresh = useCallback(() => {
     setContextRefreshKey((k) => k + 1);
   }, []);
 
@@ -255,7 +256,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
             autoLoad
             autoSeedIfEmpty
             autoPromoteAfterLoad
-            onPromoted={onTwinsPromoted}
+            onPromoted={onContextNeedsRefresh}
             seedTitle={props.goal?.trim() || props.parent_asset_id.trim()}
             seedBodyText={props.selection_text?.trim() || props.goal?.trim() || ""}
           />
@@ -275,7 +276,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
               props.goal?.trim() ||
               (selection !== "(no selection)" ? selection : "")
             }
-            onCompleted={onTwinsPromoted}
+            onCompleted={onContextNeedsRefresh}
           />
         </section>
       ) : null}
@@ -289,7 +290,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
         >
           <PublicationAttachPanel
             spawnId={props.spawn_id.trim()}
-            onAttached={onTwinsPromoted}
+            onAttached={onContextNeedsRefresh}
           />
         </section>
       ) : null}
@@ -304,7 +305,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
           <SpawnMergePanel
             spawnId={props.spawn_id.trim()}
             parentAssetId={props.parent_asset_id.trim()}
-            onMerged={onTwinsPromoted}
+            onMerged={onContextNeedsRefresh}
           />
         </section>
       ) : null}

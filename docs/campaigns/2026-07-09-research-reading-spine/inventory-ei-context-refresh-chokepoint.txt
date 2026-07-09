@@ -1,0 +1,11 @@
+# residual (ei) shared onContextNeedsRefresh chokepoint on DR host
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(eh) prior | branch_only | campaign inventories
+(ei) context refresh rename | branch_only | onContextNeedsRefresh shared; 21 DR host vitest
+
+## What shipped
+- Renamed DR host callback to `onContextNeedsRefresh` (craftsmanship: one name for promote/attach/flywheel/merge remounts).
+
+NEXT: (ej) re-derive; operator merge PR #465
