@@ -607,3 +607,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (pu, 2026-07-10) **Write twin_seed banner note_ids provenance:**
   - data-note-ids + note_ids= on write-twin-seed-handoff
+
+- Closed (pv, 2026-07-10) **SESSION-ARC pn–pu twin write complete:**
+  - SESSION-ARC-pn-pu-twin-write-complete.md fleet handoff
