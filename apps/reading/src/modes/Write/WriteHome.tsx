@@ -9,6 +9,7 @@ import {
   type DeliverableKind,
   type DeliverableSummary,
 } from "../../lib/api";
+import { fetchHostedDocumentHtml } from "../../api/marketplaceHost";
 import GlassSurface from "../../shell/GlassSurface";
 import Canvas from "../DeepResearchWorkspace/Canvas/Canvas";
 import BlockRepository from "./BlockRepository";
@@ -18,6 +19,10 @@ import { IdeaDump } from "./Brainstorm/IdeaDump";
 import Outline from "./Outline";
 import { ProjectTypeField } from "./ProjectType";
 import { onTraceIntent } from "./Editor/traceIntent";
+import {
+  prepareHtmlDraftForWrite,
+  type HtmlDraftImportPrepared,
+} from "./htmlDraftImport";
 import { getTraceTarget, type RepositoryHit } from "./writeApi";
 
 /**
@@ -38,14 +43,15 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
  * `/write/:deliverableId` opens onto that piece's outline. No id is ever
  * shown — the piece is named by its title, blocks by their text + provenance.
  *
- * Residual (fl): `?html_draft=<document_id>` handoff from hosted HTML merge
- * drafts — banner only until full HTML→outline import ships (spec-fl).
+ * Residual (fl): `?html_draft=<document_id>` handoff from hosted HTML merge.
+ * Residual (fm): load hosted HTML, refuse non-html, prefill title + seed
+ * brainstorm plain text; full outline section import remains follow-on.
  */
 export default function WriteHome() {
   const { deliverableId } = useParams<{ deliverableId?: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  // Residual (fl): HTML draft handoff from reading/research merge flywheel.
+  // Residual (fl/fm): HTML draft handoff from reading/research merge flywheel.
   const htmlDraftId = useMemo(
     () => (searchParams.get("html_draft") || "").trim(),
     [searchParams],
@@ -55,6 +61,21 @@ export default function WriteHome() {
   const [pieces, setPieces] = useState<DeliverableSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [onRamp, setOnRamp] = useState<"idea" | "context" | null>(null);
+  // Residual (fm): prepared HTML draft for Write surface.
+  const [htmlDraft, setHtmlDraft] = useState<HtmlDraftImportPrepared | null>(
+    null,
+  );
+  const [htmlDraftError, setHtmlDraftError] = useState<string | null>(null);
+  const [htmlDraftBusy, setHtmlDraftBusy] = useState(false);
+  const [brainstormSeed, setBrainstormSeed] = useState<string | null>(null);
+  // The "start a piece" action — must be declared before html_draft load effect.
+  const [starting, setStarting] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  // Open-ended project type (M4): freeform text the AI interprets; presets seed.
+  const [projectType, setProjectType] = useState<{
+    freeform: string;
+    kind: DeliverableKind;
+  }>({ freeform: "", kind: "general_essay" });
   // The piece-view surface: the outline loop, or the imported research canvas
   // (M1 — the SPR-03 Canvas of the linked investigation's blocks).
   const [pieceView, setPieceView] = useState<"outline" | "canvas">("outline");
@@ -92,6 +113,42 @@ export default function WriteHome() {
       .catch(() => setPieces([]));
   }, [deliverableId]);
 
+  // Residual (fm): load hosted HTML draft when handoff query is present.
+  useEffect(() => {
+    if (deliverableId || !htmlDraftId) {
+      setHtmlDraft(null);
+      setHtmlDraftError(null);
+      return;
+    }
+    let cancelled = false;
+    setHtmlDraftBusy(true);
+    setHtmlDraftError(null);
+    void fetchHostedDocumentHtml(htmlDraftId)
+      .then((doc) => {
+        if (cancelled) return;
+        const prepared = prepareHtmlDraftForWrite({
+          document_id: doc.document_id || htmlDraftId,
+          view_format: doc.view_format,
+          html: doc.html,
+          title: doc.title,
+        });
+        setHtmlDraft(prepared);
+        // Prefill piece title when empty so connect-research can proceed.
+        setNewTitle((prev) => (prev.trim() ? prev : prepared.title_hint));
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setHtmlDraft(null);
+        setHtmlDraftError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setHtmlDraftBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [deliverableId, htmlDraftId]);
+
   // Trace-to-source (M4): when a citation chip in the editor is clicked it
   // emits a decoupled intent (Editor/traceIntent.ts). The shared reader (DRW
   // SPR-10) is still unbuilt, so we resolve the trace target and route to the
@@ -127,12 +184,6 @@ export default function WriteHome() {
   // it now runs title → project-type → connect-to-research, so a piece is
   // created WITH its backing investigation_root_id set (the link is set at
   // creation; M1 reads it back to verify it exists).
-  const [starting, setStarting] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
-  // Open-ended project type (M4): freeform text the AI interprets; presets seed.
-  const [projectType, setProjectType] = useState<{ freeform: string; kind: DeliverableKind }>(
-    { freeform: "", kind: "general_essay" },
-  );
 
   async function createWithConnection(resolved: { investigationId: string; label: string }) {
     if (!newTitle.trim()) return;
@@ -157,15 +208,79 @@ export default function WriteHome() {
   if (!deliverableId) {
     const htmlDraftBanner = htmlDraftId ? (
       <div
-        className="mb-4 rounded border border-ink/20 p-3 font-mono text-[12px] dark:border-bright/20"
+        className="mb-4 space-y-2 rounded border border-ink/20 p-3 font-mono text-[12px] dark:border-bright/20"
         data-testid="write-html-draft-handoff"
         data-view-format="html"
         data-html-draft={htmlDraftId}
+        data-load-status={
+          htmlDraftBusy ? "loading" : htmlDraftError ? "error" : htmlDraft ? "ready" : "idle"
+        }
         role="status"
       >
-        HTML draft handoff from reading/research: document{" "}
-        <code>{htmlDraftId}</code>. Full outline import is residual fl+ (
-        propose≠invent: create a piece below and paste or import when ready).
+        <p>
+          HTML draft handoff from reading/research: document{" "}
+          <code>{htmlDraftId}</code>
+          {htmlDraftBusy ? " · loading…" : null}
+        </p>
+        {htmlDraftError ? (
+          <p
+            className="text-emperor"
+            data-testid="write-html-draft-error"
+            role="alert"
+          >
+            {htmlDraftError}
+          </p>
+        ) : null}
+        {htmlDraft ? (
+          <div
+            className="space-y-2 border-t border-ink/10 pt-2 dark:border-bright/10"
+            data-testid="write-html-draft-loaded"
+            data-document-id={htmlDraft.document_id}
+          >
+            <p data-testid="write-html-draft-title">
+              Title: <strong>{htmlDraft.title}</strong>
+            </p>
+            <p
+              className="max-h-24 overflow-auto text-[11px] text-ink-soft dark:text-moonlight"
+              data-testid="write-html-draft-plain-preview"
+            >
+              {htmlDraft.plain_preview}
+            </p>
+            <div
+              className="prose max-h-32 overflow-auto text-sm"
+              data-testid="write-html-draft-html-preview"
+              dangerouslySetInnerHTML={{
+                __html: htmlDraft.html.slice(0, 4000),
+              }}
+            />
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                data-testid="write-html-draft-use-title"
+                className="rounded border border-ink/30 px-2 py-1 text-[11px] hover:bg-ink/5 dark:border-bright/30"
+                onClick={() => setNewTitle(htmlDraft.title_hint)}
+              >
+                Use draft title
+              </button>
+              <button
+                type="button"
+                data-testid="write-html-draft-seed-brainstorm"
+                className="rounded border border-ink/30 px-2 py-1 text-[11px] hover:bg-ink/5 dark:border-bright/30"
+                onClick={() => {
+                  setBrainstormSeed(htmlDraft.plain_text.slice(0, 8000));
+                  setOnRamp("idea");
+                }}
+              >
+                Seed brainstorm from draft
+              </button>
+            </div>
+            <p className="text-[10px] text-ink-mute dark:text-moonlight">
+              Outline auto-import of HTML sections remains a follow-on residual
+              (spec-fl). Create a piece below with provenance document{" "}
+              <code>{htmlDraft.document_id}</code>.
+            </p>
+          </div>
+        ) : null}
       </div>
     ) : null;
 
@@ -233,7 +348,10 @@ export default function WriteHome() {
               Think aloud here. The drivers you confirm become blocks you can
               outline and draft from — start a piece first to land them on it.
             </p>
-            <IdeaDump sectionId="__brainstorm__" />
+            <IdeaDump
+              sectionId="__brainstorm__"
+              initialIdea={brainstormSeed}
+            />
           </div>
         )}
 

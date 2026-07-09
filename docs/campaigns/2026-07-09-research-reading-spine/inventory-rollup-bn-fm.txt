@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(fm) · PR #465
+Write loads hosted HTML draft (fm) after handoff (fl); twin metrics; full/float DR spine.
+Operator merge still gated. Next residual (fn).

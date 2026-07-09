@@ -2,7 +2,8 @@
 
 ## Status
 - Handoff shipped as residual (fl): hosted → `/write?html_draft=` + WriteHome banner.
-- Full HTML→outline import remains open for (fm)+.
+- Residual (fm) shipped: load HTML body, title prefill, brainstorm seed.
+- Full HTML→outline section import remains open for (fn)+.
 
 ## Intent
 North star: merged research drafts and written analysis open as HTML in the

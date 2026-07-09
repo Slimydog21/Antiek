@@ -19,13 +19,14 @@ import type { TraceTarget } from "./writeApi";
 
 const {
   listDeliverablesMock, getTraceTargetMock, listInvestigationsMock,
-  startInvestigationMock, createDeliverableMock,
+  startInvestigationMock, createDeliverableMock, fetchHostedDocumentHtmlMock,
 } = vi.hoisted(() => ({
   listDeliverablesMock: vi.fn(),
   getTraceTargetMock: vi.fn(),
   listInvestigationsMock: vi.fn(),
   startInvestigationMock: vi.fn(),
   createDeliverableMock: vi.fn(),
+  fetchHostedDocumentHtmlMock: vi.fn(),
 }));
 
 vi.mock("../../lib/api", async (orig) => ({
@@ -35,6 +36,11 @@ vi.mock("../../lib/api", async (orig) => ({
   createDeliverable: createDeliverableMock,
   listInvestigations: listInvestigationsMock,
   startInvestigation: startInvestigationMock,
+}));
+
+vi.mock("../../api/marketplaceHost", () => ({
+  fetchHostedDocumentHtml: (...args: unknown[]) =>
+    fetchHostedDocumentHtmlMock(...args),
 }));
 
 vi.mock("./writeApi", async (orig) => ({
@@ -55,6 +61,12 @@ beforeEach(() => {
     deliverable_id: "dlv-new", title: "Memo", deliverable_kind: "general_essay",
     investigation_root_id: "inv-spawned", status: "draft",
     created_at: null, updated_at: null, section_count: 0,
+  });
+  fetchHostedDocumentHtmlMock.mockReset().mockResolvedValue({
+    document_id: "draft_merge_abc",
+    view_format: "html",
+    title: "Merged research draft",
+    html: "<article><p>Attention is content-addressable memory.</p></article>",
   });
   // WriteHome now renders through GlassSurface (SPR-03 M2 landing-glass home /
   // M3 solid open-piece), which reads prefers-reduced-motion via
@@ -125,6 +137,50 @@ describe("WriteHome — the re-homed door", () => {
     expect(banner.getAttribute("data-view-format")).toBe("html");
     expect(banner.textContent).toMatch(/HTML draft handoff/);
     expect(banner.textContent).toMatch(/draft_merge_abc/);
+  });
+
+  it("loads hosted HTML draft, prefills title, seeds brainstorm (fm)", async () => {
+    mountAt("/write?html_draft=draft_merge_abc");
+    await waitFor(() => {
+      expect(fetchHostedDocumentHtmlMock).toHaveBeenCalledWith("draft_merge_abc");
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("write-html-draft-loaded")).toBeTruthy();
+    });
+    expect(
+      screen.getByTestId("write-html-draft-handoff").getAttribute("data-load-status"),
+    ).toBe("ready");
+    expect(screen.getByTestId("write-html-draft-title").textContent).toMatch(
+      /Merged research draft/,
+    );
+    expect(screen.getByTestId("write-html-draft-plain-preview").textContent).toMatch(
+      /Attention is content-addressable/,
+    );
+    // Title prefilled from draft.
+    const titleInput = screen.getByPlaceholderText(
+      /what are you writing/i,
+    ) as HTMLInputElement;
+    expect(titleInput.value).toMatch(/Merged research draft/);
+    // Seed brainstorm opens idea dump with plain text.
+    await userEvent.click(screen.getByTestId("write-html-draft-seed-brainstorm"));
+    await waitFor(() => {
+      expect(screen.getByDisplayValue(/Attention is content-addressable/)).toBeTruthy();
+    });
+  });
+
+  it("refuses non-html draft view_format (fm)", async () => {
+    fetchHostedDocumentHtmlMock.mockResolvedValueOnce({
+      document_id: "bad",
+      view_format: "pdf",
+      title: "Nope",
+      html: "%PDF",
+    });
+    mountAt("/write?html_draft=bad");
+    await waitFor(() => {
+      expect(screen.getByTestId("write-html-draft-error").textContent).toMatch(
+        /html/i,
+      );
+    });
   });
 
   it("M1 — 'none' auto-spawns a research folder and creates the piece linked to it", async () => {

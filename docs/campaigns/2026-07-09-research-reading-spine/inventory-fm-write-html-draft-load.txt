@@ -1,0 +1,19 @@
+# residual (fm) load hosted HTML draft into Write (title + brainstorm seed)
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(fl) prior | branch_only | campaign inventories
+(fm) write HTML draft load | branch_only | htmlDraftImport pure helpers; WriteHome fetchHostedDocumentHtml; preview + title prefill + brainstorm seed; 3 unit + 8 WriteHome vitest
+
+PATHS:
+- apps/reading/src/modes/Write/htmlDraftImport.ts
+- apps/reading/src/modes/Write/htmlDraftImport.test.ts
+- apps/reading/src/modes/Write/WriteHome.tsx
+- apps/reading/src/modes/Write/Brainstorm/IdeaDump.tsx
+
+INVARIANTS:
+- view_format must be html
+- empty html refused
+- full outline auto-import still deferred (honest)
+
+NEXT: (fn) re-derive; operator merge PR #465

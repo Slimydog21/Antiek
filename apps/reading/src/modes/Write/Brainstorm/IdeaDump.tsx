@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { emitBrainstormBlocks, type BrainstormEmitResult } from "../writeApi";
 import { canAskMore, initClarify, recordTurn, type ClarifyState } from "./clarifyLoop";
@@ -19,19 +19,35 @@ import { canAskMore, initClarify, recordTurn, type ClarifyState } from "./clarif
  * dispatch config. Until then the surface has the operator confirm/edit
  * the identified drivers — it never silently invents "data" the writer
  * didn't assert, and asserted data is flagged as a claim to verify.
+ *
+ * Residual (fm): optional initialIdea seeds the dump from an HTML draft
+ * plain-text import (hosted merge → Write handoff).
  */
 export interface IdeaDumpProps {
   sectionId: string;
   deliverableId?: string;
   className?: string;
+  /** Residual (fm): seed idea text from HTML draft plain text. */
+  initialIdea?: string | null;
 }
 
 function lines(text: string): string[] {
   return text.split("\n").map((l) => l.trim()).filter(Boolean);
 }
 
-export function IdeaDump({ sectionId, deliverableId, className }: IdeaDumpProps) {
-  const [idea, setIdea] = useState("");
+export function IdeaDump({
+  sectionId,
+  deliverableId,
+  className,
+  initialIdea = null,
+}: IdeaDumpProps) {
+  const [idea, setIdea] = useState((initialIdea || "").trim());
+
+  // Residual (fm): when parent loads a hosted HTML draft, re-seed the dump.
+  useEffect(() => {
+    const seed = (initialIdea || "").trim();
+    if (seed) setIdea(seed);
+  }, [initialIdea]);
   const [insights, setInsights] = useState("");
   const [questions, setQuestions] = useState("");
   const [data, setData] = useState("");
