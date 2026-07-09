@@ -140,3 +140,74 @@ def test_dispatch_kwargs_from_selection_public_entry(registry):
     d = dispatch_kwargs_from_selection(registry, "glm-5.2")
     assert d["model_override"] == "glm-5.2"
     assert d["provider_override"] == "zhipu"
+
+
+def test_research_bridge_llm_dispatch_applies_decision_tree(registry, monkeypatch):
+    """Production call site: research_bridge.build_dispatch_llm_callable → dispatch."""
+    from substrate.model_registration import (
+        clear_decision_tree_registry,
+        set_decision_tree_registry,
+    )
+    from substrate.research_bridge import llm_dispatch
+
+    captured: dict = {}
+
+    def fake_dispatch(**kwargs):
+        captured.update(kwargs)
+        usage = type("U", (), {"input_tokens": 1, "output_tokens": 2})()
+        return type(
+            "R",
+            (),
+            {
+                "text": "ok",
+                "provider": kwargs.get("provider_override") or "default",
+                "model": kwargs.get("model_override") or "default",
+                "usage": usage,
+                "cost_usd": 0.0,
+            },
+        )()
+
+    monkeypatch.setattr(llm_dispatch, "dispatch", fake_dispatch)
+    set_decision_tree_registry(registry, model_id="glm-5.2")
+    try:
+        call = llm_dispatch.build_dispatch_llm_callable(investigation_id="inv_prod")
+        out = call("extract claims from this note")
+        assert out.text == "ok"
+        assert captured["provider_override"] == "zhipu"
+        assert captured["model_override"] == "glm-5.2"
+        assert captured["role"] == "note_taker"
+        assert captured["investigation_id"] == "inv_prod"
+    finally:
+        clear_decision_tree_registry()
+
+
+def test_research_bridge_explicit_registry_kwarg(registry, monkeypatch):
+    """Explicit registry on build_dispatch_llm_callable (no process global)."""
+    from substrate.research_bridge import llm_dispatch
+
+    captured: dict = {}
+
+    def fake_dispatch(**kwargs):
+        captured.update(kwargs)
+        usage = type("U", (), {"input_tokens": 0, "output_tokens": 0})()
+        return type(
+            "R",
+            (),
+            {
+                "text": "x",
+                "provider": kwargs["provider_override"],
+                "model": kwargs["model_override"],
+                "usage": usage,
+                "cost_usd": 0.0,
+            },
+        )()
+
+    monkeypatch.setattr(llm_dispatch, "dispatch", fake_dispatch)
+    call = llm_dispatch.build_dispatch_llm_callable(
+        investigation_id="inv_y",
+        registry=registry,
+        model_id="composer-2.5",
+    )
+    call("prompt")
+    assert captured["provider_override"] == "xai"
+    assert captured["model_override"] == "composer-2.5"

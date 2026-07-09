@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from .dispatch_bridge import (
     DispatchOverride,
+    apply_decision_tree_overrides,
     assert_dispatch_accepts_override_kwargs,
     build_dispatch_call_kwargs,
     dispatch_kwargs_from_selection,
@@ -27,6 +28,12 @@ from .dispatch_bridge import (
     resolve_dispatch_override,
     resolve_override_for_session,
     settings_budget_projection_still_owned_by_settings,
+)
+from .process_registry import (
+    clear_decision_tree_registry,
+    get_decision_tree_model_id,
+    get_decision_tree_registry,
+    set_decision_tree_registry,
 )
 from .registry import (
     ModelEntry,
@@ -44,10 +51,14 @@ __all__ = [
     "ModelEntry",
     "ModelRegistry",
     "add_model",
+    "apply_decision_tree_overrides",
     "assert_dispatch_accepts_override_kwargs",
     "build_dispatch_call_kwargs",
+    "clear_decision_tree_registry",
     "dispatch_kwargs_from_selection",
     "dispatch_with_selected_driver",
+    "get_decision_tree_model_id",
+    "get_decision_tree_registry",
     "get_model",
     "list_models",
     "model_override_for_dispatch",
@@ -55,5 +66,6 @@ __all__ = [
     "resolve_override_for_session",
     "select_driver",
     "selected_driver",
+    "set_decision_tree_registry",
     "settings_budget_projection_still_owned_by_settings",
 ]

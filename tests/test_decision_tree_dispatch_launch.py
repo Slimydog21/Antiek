@@ -13,12 +13,15 @@ from substrate.model_registration import (  # noqa: E402
     ModelRegistry,
     add_model,
     assert_dispatch_accepts_override_kwargs,
+    clear_decision_tree_registry,
     dispatch_kwargs_from_selection,
     dispatch_with_selected_driver,
     resolve_dispatch_override,
     resolve_override_for_session,
+    set_decision_tree_registry,
     settings_budget_projection_still_owned_by_settings,
 )
+from substrate.research_bridge import llm_dispatch  # noqa: E402
 
 
 def _once() -> dict[str, object]:
@@ -37,7 +40,18 @@ def _once() -> dict[str, object]:
 
     def fake_dispatch(**kw):
         captured.append(dict(kw))
-        return type("R", (), {"text": "ok", "provider": kw["provider_override"], "model": kw["model_override"]})()
+        usage = type("U", (), {"input_tokens": 0, "output_tokens": 0})()
+        return type(
+            "R",
+            (),
+            {
+                "text": "ok",
+                "provider": kw.get("provider_override"),
+                "model": kw.get("model_override"),
+                "usage": usage,
+                "cost_usd": 0.0,
+            },
+        )()
 
     dispatch_with_selected_driver(
         "launch prompt",
@@ -50,6 +64,21 @@ def _once() -> dict[str, object]:
     assert captured[0]["model_override"] == "launch-xai"
     assert captured[0]["provider_override"] == "xai"
 
+    # Production research_bridge path
+    set_decision_tree_registry(reg, model_id="launch-glm")
+    try:
+        orig = llm_dispatch.dispatch
+        llm_dispatch.dispatch = fake_dispatch  # type: ignore[assignment]
+        try:
+            call = llm_dispatch.build_dispatch_llm_callable(investigation_id="inv_prod")
+            call("prod prompt")
+        finally:
+            llm_dispatch.dispatch = orig  # type: ignore[assignment]
+    finally:
+        clear_decision_tree_registry()
+    assert captured[-1]["model_override"] == "launch-glm"
+    assert captured[-1]["provider_override"] == "zhipu"
+
     sess = resolve_override_for_session(reg, "launch-glm")
     assert sess is not None and sess.model_override == "launch-glm"
 
@@ -59,6 +88,8 @@ def _once() -> dict[str, object]:
         "session_model": sess.model_override,
         "dispatch_model": captured[0]["model_override"],
         "dispatch_provider": captured[0]["provider_override"],
+        "prod_model": captured[-1]["model_override"],
+        "prod_provider": captured[-1]["provider_override"],
     }
 
 

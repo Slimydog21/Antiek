@@ -171,3 +171,35 @@ def settings_budget_projection_still_owned_by_settings() -> str:
     if not hasattr(settings_budget, "estimate_prompt_cost"):
         raise RuntimeError("#440 estimate_prompt_cost missing from settings_budget")
     return "interfaces.research.api.settings_budget.estimate_prompt_cost"
+
+
+def apply_decision_tree_overrides(
+    kwargs: dict[str, Any],
+    *,
+    registry: ModelRegistry | None = None,
+    model_id: str | None = None,
+    required: bool = False,
+) -> dict[str, Any]:
+    """Mutate/copy dispatch kwargs with decision-tree overrides when available.
+
+    Used by production call sites (research_bridge llm_dispatch). When no
+    registry is active and ``required`` is False, returns kwargs unchanged.
+    """
+    from .process_registry import get_decision_tree_model_id, get_decision_tree_registry
+
+    reg = registry if registry is not None else get_decision_tree_registry()
+    mid = model_id if model_id is not None else get_decision_tree_model_id()
+    if reg is None:
+        if required:
+            raise ValueError("decision-tree registry is not configured")
+        return dict(kwargs)
+    try:
+        ov = resolve_dispatch_override(reg, mid)
+    except (KeyError, ValueError):
+        if required:
+            raise
+        return dict(kwargs)
+    out = dict(kwargs)
+    out["provider_override"] = ov.provider_override
+    out["model_override"] = ov.model_override
+    return out
