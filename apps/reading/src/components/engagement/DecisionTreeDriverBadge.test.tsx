@@ -108,6 +108,18 @@ describe("DecisionTreeDriverBadge residual cw/eq", () => {
     expect(screen.getByTestId("decision-tree-budget-bar-fill")).toBeTruthy();
     const track = screen.getByTestId("decision-tree-budget-bar-track");
     expect(track.getAttribute("aria-valuenow")).toBe("25");
+    // Residual (hv): machine-readable driver + budget metrics.
+    const metrics = screen.getByTestId("decision-tree-driver-metrics");
+    expect(metrics.getAttribute("data-installed")).toBe("true");
+    expect(metrics.getAttribute("data-model-id")).toBe("claude-opus-4-8");
+    expect(metrics.getAttribute("data-provider-id")).toBe("anthropic");
+    expect(metrics.getAttribute("data-spent-status")).toBe("known");
+    expect(metrics.getAttribute("data-spent-usd")).toBe("2.5");
+    expect(metrics.getAttribute("data-cap-usd")).toBe("10");
+    expect(metrics.getAttribute("data-remaining-usd")).toBe("7.5");
+    expect(metrics.getAttribute("data-usage-pct")).toBe("25");
+    expect(metrics.getAttribute("data-view-format")).toBe("html");
+    expect(metrics.textContent).toMatch(/Driver metrics/);
   });
 
   it("budgetUsagePct is honest for unknown/no_cap", () => {

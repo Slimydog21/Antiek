@@ -111,6 +111,32 @@ export function DecisionTreeDriverBadge() {
         </a>
       </div>
 
+      {/* Residual (hv): machine-readable driver + budget metrics. */}
+      <div
+        data-testid="decision-tree-driver-metrics"
+        data-installed={String(Boolean(tree?.installed && tree.model_id))}
+        data-model-id={tree?.model_id ?? ""}
+        data-provider-id={tree?.provider_id ?? ""}
+        data-spent-status={budget?.spent_status ?? "unknown"}
+        data-spent-usd={
+          budget?.spent_usd != null ? String(budget.spent_usd) : ""
+        }
+        data-cap-usd={
+          budget?.daily_cap_usd != null ? String(budget.daily_cap_usd) : ""
+        }
+        data-remaining-usd={
+          budget?.remaining_usd != null ? String(budget.remaining_usd) : ""
+        }
+        data-usage-pct={pct != null ? String(Math.round(pct)) : ""}
+        data-view-format="html"
+        role="status"
+      >
+        Driver metrics · installed=
+        {String(Boolean(tree?.installed && tree.model_id))} · model=
+        {tree?.model_id || "(none)"} · usage_pct=
+        {pct != null ? `${Math.round(pct)}%` : "unknown"}
+      </div>
+
       {/* Residual (eq): compact usage bar for the operator's daily API budget. */}
       <div
         className="space-y-0.5"
