@@ -49,6 +49,16 @@ _REQUIRED_EVENT_KEYS: tuple[str, ...] = ("event_id", "investigation_id")
 _MAX_PAYLOAD_VALUE_CHARS: int = 4_096
 _MAX_PAYLOAD_RENDER_CHARS: int = 8_192
 _MAX_PAYLOAD_DEPTH: int = 3
+_MAX_PAYLOAD_KEYS: int = 64
+_MAX_PAYLOAD_LIST_ITEMS: int = 32
+# Non-payload JSONL fields also land in corpus text / filenames — cap them.
+_MAX_META_FIELD_CHARS: int = 256
+_MAX_INVESTIGATION_ID_CHARS: int = 128
+_MAX_EVENT_ID_CHARS: int = 128
+# Sweep resource budget (hostile/huge Hermes dirs must not unbound memory).
+_MAX_LINES_SCANNED: int = 50_000
+_MAX_EVENTS_RETAINED: int = 20_000
+_MAX_LINE_CHARS: int = 64_000
 
 # Key-name patterns treated as secret-bearing (case-insensitive substring).
 _SECRET_KEY_RE = re.compile(
@@ -218,13 +228,13 @@ def parse_hermes_event_line(line: str) -> HermesEventRecord | None:
     except (TypeError, ValueError):
         schema_version = 0
     return HermesEventRecord(
-        event_id=event_id,
-        investigation_id=investigation_id,
-        synthesis_id=_as_optional_str(obj.get("synthesis_id")),
-        phase=_as_optional_str(obj.get("phase")),
-        role=_as_optional_str(obj.get("role")),
-        action_type=_as_optional_str(obj.get("action_type")),
-        emitted_at=_as_optional_str(obj.get("emitted_at")),
+        event_id=_cap_meta(event_id, _MAX_EVENT_ID_CHARS),
+        investigation_id=_cap_meta(investigation_id, _MAX_INVESTIGATION_ID_CHARS),
+        synthesis_id=_cap_meta_opt(obj.get("synthesis_id")),
+        phase=_cap_meta_opt(obj.get("phase")),
+        role=_cap_meta_opt(obj.get("role")),
+        action_type=_cap_meta_opt(obj.get("action_type")),
+        emitted_at=_cap_meta_opt(obj.get("emitted_at")),
         schema_version=schema_version,
         payload=payload,
     )
@@ -252,6 +262,9 @@ def _scan_event_lines(
             with path.open("r", encoding="utf-8", errors="replace") as handle:
                 for raw_line in handle:
                     if not raw_line.strip():
+                        continue
+                    if len(raw_line) > _MAX_LINE_CHARS:
+                        yield None, True
                         continue
                     record = parse_hermes_event_line(raw_line)
                     if record is not None:
@@ -369,7 +382,7 @@ def ingest_hermes_investigation(
         file_result: FileIngestResult = ingest_file(
             con,
             data=text.encode("utf-8"),
-            filename=f"hermes-{inv.investigation_id}.md",
+            filename=f"hermes-{_safe_filename_id(inv.investigation_id)}.md",
             content_type=_HERMES_MARKDOWN_CONTENT_TYPE,
             investigation_id=inv.investigation_id,
             operator_label=operator_label or source_label,
@@ -418,13 +431,18 @@ def ingest_hermes_events(
 
     records: list[HermesEventRecord] = []
     malformed_lines = 0
-    for record, is_malformed in _scan_event_lines(
-        events_dir, allowed_roots=allowed_roots
+    for lines_scanned, (record, is_malformed) in enumerate(
+        _scan_event_lines(events_dir, allowed_roots=allowed_roots),
+        start=1,
     ):
+        if lines_scanned > _MAX_LINES_SCANNED:
+            break
         if is_malformed:
             malformed_lines += 1
         elif record is not None:
             records.append(record)
+            if len(records) >= _MAX_EVENTS_RETAINED:
+                break
     investigations = group_investigations(records)
     ordered_ids = sorted(investigations)
     if limit is not None and limit >= 0:
@@ -457,12 +475,36 @@ def ingest_hermes_events(
     )
 
 
+def _safe_filename_id(investigation_id: str) -> str:
+    """Filesystem-safe, length-capped investigation id for ingest filenames."""
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", investigation_id)
+    cleaned = cleaned.strip("._-") or "unknown"
+    limit = _MAX_INVESTIGATION_ID_CHARS
+    if len(cleaned) > limit:
+        return cleaned[: max(0, limit - 1)] + "…"
+    return cleaned
+
+
 def _as_optional_str(value: Any) -> str | None:
     if value is None:
         return None
     if isinstance(value, str):
         return value or None
     return str(value)
+
+
+def _cap_meta(value: str, limit: int) -> str:
+    """Cap a metadata string; secret-like whole values become redacted."""
+    if _is_secret_key(value):
+        return "[redacted]"
+    return _truncate(value, limit)
+
+
+def _cap_meta_opt(value: Any) -> str | None:
+    s = _as_optional_str(value)
+    if s is None:
+        return None
+    return _cap_meta(s, _MAX_META_FIELD_CHARS)
 
 
 def _is_secret_key(key: str) -> bool:
@@ -475,8 +517,20 @@ def _truncate(text: str, limit: int) -> str:
     return text[: max(0, limit - 1)] + "…"
 
 
-def _sanitize_payload_value(value: Any, *, depth: int) -> Any:
-    """Return a JSON-safe, size-capped, secret-redacted view of ``value``."""
+def _sanitize_payload_value(
+    value: Any,
+    *,
+    depth: int,
+    budget: list[int],
+) -> Any:
+    """Return a JSON-safe, size-capped, secret-redacted view of ``value``.
+
+    ``budget`` is a one-element list of remaining *nodes* we may visit. When it
+    hits zero we stop walking (real resource cap, not just output truncation).
+    """
+    if budget[0] <= 0:
+        return "[truncated:budget]"
+    budget[0] -= 1
     if depth > _MAX_PAYLOAD_DEPTH:
         return "[truncated:depth]"
     if value is None or isinstance(value, (bool, int, float)):
@@ -485,16 +539,28 @@ def _sanitize_payload_value(value: Any, *, depth: int) -> Any:
         return _truncate(value, _MAX_PAYLOAD_VALUE_CHARS)
     if isinstance(value, dict):
         out: dict[str, Any] = {}
-        for raw_key, raw_val in value.items():
-            key = str(raw_key)
+        for index, (raw_key, raw_val) in enumerate(value.items()):
+            if index >= _MAX_PAYLOAD_KEYS or budget[0] <= 0:
+                out["…"] = "[truncated:keys]"
+                break
+            key = _truncate(str(raw_key), _MAX_META_FIELD_CHARS)
             if _is_secret_key(key):
                 out[key] = "[redacted]"
             else:
-                out[key] = _sanitize_payload_value(raw_val, depth=depth + 1)
+                out[key] = _sanitize_payload_value(
+                    raw_val, depth=depth + 1, budget=budget
+                )
         return out
     if isinstance(value, (list, tuple)):
-        return [_sanitize_payload_value(v, depth=depth + 1) for v in value[:50]]
-    # Unknown types → string form, capped.
+        items: list[Any] = []
+        for index, item in enumerate(value):
+            if index >= _MAX_PAYLOAD_LIST_ITEMS or budget[0] <= 0:
+                items.append("[truncated:list]")
+                break
+            items.append(
+                _sanitize_payload_value(item, depth=depth + 1, budget=budget)
+            )
+        return items
     return _truncate(str(value), _MAX_PAYLOAD_VALUE_CHARS)
 
 
@@ -502,7 +568,9 @@ def _render_payload(payload: dict[str, Any]) -> str:
     """Render an event payload as a compact, redacted, human-readable block."""
     if not payload:
         return ""
-    sanitized = _sanitize_payload_value(payload, depth=0)
+    # Node budget ≈ keys*depth headroom; stops hostile mega-objects early.
+    budget = [512]
+    sanitized = _sanitize_payload_value(payload, depth=0, budget=budget)
     try:
         rendered = json.dumps(
             sanitized, ensure_ascii=False, sort_keys=True, default=str

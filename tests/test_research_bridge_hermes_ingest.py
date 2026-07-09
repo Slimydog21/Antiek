@@ -384,3 +384,25 @@ def test_render_does_not_embed_raw_secrets_in_document():
     assert "super-secret-value" not in text
     assert "[redacted]" in text
     assert "n_chunks" in text
+
+
+def test_meta_fields_are_capped():
+    huge_id = "i" * 500
+    record = parse_hermes_event_line(
+        json.dumps(_event("e" * 400, huge_id, phase="p" * 1000))
+    )
+    assert record is not None
+    assert len(record.investigation_id) <= 128
+    assert len(record.event_id) <= 128
+    assert len(record.phase or "") <= 256
+    groups = group_investigations([record])
+    text = render_investigation_text(groups[record.investigation_id])
+    assert "i" * 500 not in text
+
+
+def test_payload_node_budget_stops_huge_object():
+    # 10k keys would OOM without a walk budget; ensure we truncate early.
+    huge = {f"k{i}": "v" for i in range(10_000)}
+    rendered = _render_payload(huge)
+    assert len(rendered) <= 8_192 + 32
+    assert "truncated" in rendered or "…" in rendered
