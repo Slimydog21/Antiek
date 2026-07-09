@@ -74,6 +74,19 @@ vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
   ),
 }));
 
+vi.mock("../../components/engagement/ResearchProgressPanel", () => ({
+  ResearchProgressPanel: (props: {
+    spawnId: string;
+    autoLoad?: boolean;
+    autoSeedIfEmpty?: boolean;
+  }) => (
+    <div data-testid="research-progress-panel-stub">
+      spawn={props.spawnId}:auto={String(Boolean(props.autoLoad))}:seed=
+      {String(Boolean(props.autoSeedIfEmpty))}
+    </div>
+  ),
+}));
+
 const openWindow = vi.fn(() => "win:moil-deposit:draft_moil_asset_dep_abc");
 vi.mock("../../components/windows/openWindow", () => ({
   openWindow: (...args: unknown[]) => openWindow(...args),
@@ -288,6 +301,16 @@ describe("MidnightOil mode", () => {
         /Twin notes reseeded/,
       );
     });
+    // Residual (gl): progress panel for deposit spawn_ids.
+    expect(screen.getByTestId("moil-deposit-progress-mount")).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("moil-deposit-progress-mount")
+        .getAttribute("data-spawn-count"),
+    ).toBe("1");
+    expect(screen.getByTestId("moil-progress-spawn-spn_1").textContent).toMatch(
+      /spawn=spn_1:auto=true/,
+    );
     expect(screen.getByTestId("moil-progress-summary").textContent).toMatch(
       /complete/,
     );

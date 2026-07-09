@@ -13,6 +13,8 @@
  * Residual (fo): Open Write HTML draft handoff for deposit document_id (fl/fm/fn).
  * Residual (gk): client offline twin reseed after deposit (ensure recursive
  * note-taker when backend twin_count is thin; non-fatal reinforce).
+ * Residual (gl): ResearchProgressPanel on deposit when spawn_ids present
+ * (competitive multi-minute plan→gather→synthesize→cite telemetry).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -32,6 +34,7 @@ import {
   ResearchLaunchBudgetPanel,
   type ResearchLaunchBudgetProjection,
 } from "../../components/engagement/ResearchLaunchBudgetPanel";
+import { ResearchProgressPanel } from "../../components/engagement/ResearchProgressPanel";
 import { openWindow } from "../../components/windows/openWindow";
 
 /** HTML-only deposit open (floating | full). Returns window id or null. */
@@ -583,6 +586,36 @@ export default function MidnightOil() {
                 >
                   {twinReseedStatus}
                 </p>
+              ) : null}
+              {/* Residual (gl): multi-minute progress for deposit spawn(s). */}
+              {Array.isArray(deposit.spawn_ids) &&
+              deposit.spawn_ids.filter(Boolean).length > 0 ? (
+                <section
+                  className="space-y-2 border-t border-ink/10 pt-2 dark:border-bright/10"
+                  data-testid="moil-deposit-progress-mount"
+                  data-view-format="html"
+                  data-spawn-count={String(
+                    deposit.spawn_ids.filter(Boolean).length,
+                  )}
+                >
+                  <p className="text-[10px] font-mono uppercase tracking-wider opacity-70">
+                    Research progress (deposit spawns)
+                  </p>
+                  {deposit.spawn_ids.filter(Boolean).map((sid) => (
+                    <div
+                      key={sid}
+                      data-testid={`moil-progress-spawn-${sid}`}
+                      data-spawn-id={sid}
+                    >
+                      <ResearchProgressPanel
+                        spawnId={sid}
+                        autoLoad
+                        autoSeedIfEmpty
+                        pollIntervalMs={0}
+                      />
+                    </div>
+                  ))}
+                </section>
               ) : null}
               {deposit.progress ? (
                 <p className="font-mono text-sm" data-testid="moil-progress-summary">

@@ -78,3 +78,7 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 - seedTwinNotes force_offline after deposit + auto-deposit
 - moil-twin-reseed-status UI
 - tests: MidnightOil 6 passed
+## residual (gl) Midnight Oil deposit progress panel — 2026-07-09
+- moil-deposit-progress-mount + ResearchProgressPanel per spawn_id
+- autoLoad + autoSeedIfEmpty
+- tests: MidnightOil 6 passed
