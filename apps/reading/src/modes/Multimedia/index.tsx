@@ -295,6 +295,7 @@ function buildExportBlockerItems(): PersistedQueuedAuditItem[] {
     { label: "Rights review", value: "Required before public use" },
     { label: "Export action", value: "No export or publish action available" },
     { label: "Copy action", value: "Read-only; no export or provider worker triggered" },
+    { label: "Review packet", value: "Evidence only; does not clear manual review or rights" },
   ];
 }
 
@@ -1278,6 +1279,10 @@ export default function Multimedia() {
                                     {copiedExportReviewAssetId === asset.asset_id ? "Export review copied" : "Copy export review"}
                                   </button>
                                 </div>
+                                <p className="mt-1 leading-snug text-shadow-1 dark:text-moonlight">
+                                  Export review packets are evidence only; copying one does not complete manual review, clear rights, export, publish,
+                                  or call providers.
+                                </p>
                                 <dl className="mt-2 grid gap-1">
                                   {buildAttachedArtifactExportReviewItems(asset).map((item) => (
                                     <div key={item.label} className="grid grid-cols-[108px_minmax(0,1fr)] gap-2">
@@ -2555,6 +2560,10 @@ function JobPanel({
                         {copiedJobExportReviewId === job.job_id ? "Export review copied" : "Copy export review"}
                       </LemonButton>
                     </div>
+                    <p className="mt-1 leading-snug text-[11px] text-shadow-1 dark:text-moonlight">
+                      Export review packets are evidence only; copying one does not complete manual review, clear rights, export, publish,
+                      or call providers.
+                    </p>
                     <dl className="mt-2 grid grid-cols-1 gap-1">
                       {jobExportReviewItems(job).map((item) => (
                         <div key={item.label} className="flex items-center justify-between gap-2 text-[12px]">

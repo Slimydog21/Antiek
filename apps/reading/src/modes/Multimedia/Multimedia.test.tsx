@@ -715,6 +715,12 @@ describe("Multimedia workstation", () => {
     expect(within(persistedAssets).getByText("Required before export")).toBeTruthy();
     expect(within(persistedAssets).getByText("Required before public use")).toBeTruthy();
     expect(within(persistedAssets).getByText("No export or publish action available")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Evidence only; does not clear manual review or rights")).toBeTruthy();
+    expect(
+      within(persistedAssets).getByText(
+        "Export review packets are evidence only; copying one does not complete manual review, clear rights, export, publish, or call providers.",
+      ),
+    ).toBeTruthy();
     expect(within(persistedAssets).getByText("No public export or publish action has run")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Open" }).getAttribute("href")).toBe(
       "https://cdn.example.test/mm-2.mp4",
@@ -784,6 +790,7 @@ describe("Multimedia workstation", () => {
           "Rights review: Required before public use",
           "Export action: No export or publish action available",
           "Copy action: Read-only; no export or provider worker triggered",
+          "Review packet: Evidence only; does not clear manual review or rights",
           "Publish boundary: No public export or publish action has run",
         ].join("\n"),
       ),
@@ -1740,6 +1747,12 @@ describe("Multimedia workstation", () => {
     expect(within(jobPanel).getByText("Required before export")).toBeTruthy();
     expect(within(jobPanel).getByText("Required before public use")).toBeTruthy();
     expect(within(jobPanel).getByText("No export or publish action available")).toBeTruthy();
+    expect(within(jobPanel).getByText("Evidence only; does not clear manual review or rights")).toBeTruthy();
+    expect(
+      within(jobPanel).getByText(
+        "Export review packets are evidence only; copying one does not complete manual review, clear rights, export, publish, or call providers.",
+      ),
+    ).toBeTruthy();
     expect(within(jobPanel).getAllByText("No public export or publish action has run").length).toBeGreaterThan(0);
     expect(within(jobPanel).getByRole("link", { name: "Open artifact" }).getAttribute("href")).toBe(
       "https://cdn.example.test/mm-1.mp4",
@@ -1796,6 +1809,7 @@ describe("Multimedia workstation", () => {
           "Rights review: Required before public use",
           "Export action: No export or publish action available",
           "Copy action: Read-only; no export or provider worker triggered",
+          "Review packet: Evidence only; does not clear manual review or rights",
           "Publish boundary: No public export or publish action has run",
         ].join("\n"),
       ),
