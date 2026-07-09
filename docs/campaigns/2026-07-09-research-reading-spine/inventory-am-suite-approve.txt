@@ -1,7 +1,7 @@
 # Antiek OBJECTIVE residual inventory — residual (am) suite approve/promote Settings control
 # Date: 2026-07-09
 # origin/main: b3875724c6223a7cc66a05c5b6d2bba8e5d69b1d
-# branch of record: campaign/research-reading-spine-2026-07-09-main @ (tip after am ship)
+# branch of record: campaign/research-reading-spine-2026-07-09-main @ a20a7efb52e1ae696be7d027d63cefcb3258371f (short a20a7efb)
 # PR: https://github.com/Slimydog21/Antiek/pull/465
 # Status values: on_main | branch_only | missing | spec_only
 
@@ -44,10 +44,10 @@ CAPABILITY | STATUS | EVIDENCE
 (aj) durable Antiek-bench usage store | branch_only | ANTIEK_BENCH_USAGE_DIR
 (ak) Settings NotDiamond advisory display | branch_only | notdiamond_advisory
 (al) Settings suite-proposal visibility | branch_only | suite-proposal GET; @ 0f286e35
-(am) Settings suite approve/promote control | branch_only | POST suite-proposal/approve; settings_approve_suite_proposal_payload; Settings Approve & promote + Reject; tests/test_settings_suite_approve.py; THIS CYCLE
+(am) Settings suite approve/promote control | branch_only | POST suite-proposal/approve; settings_approve_suite_proposal_payload; Settings Approve & promote + Reject; tests/test_settings_suite_approve.py; @ a20a7efb
 
 ALREADY_SHIPPED_DO_NOT_REBUILD:
 - living-roadmap SPR-01..14; propose_suite_delta/approve_and_promote core (composed only); usage_bridge; al GET propose path
 
-THIS_CYCLE_RESIDUAL: (am) suite approve/promote Settings control — shipping
+THIS_CYCLE_RESIDUAL: (am) suite approve/promote Settings control — complete @ a20a7efb
 NEXT_RESIDUAL: (an) competitive deep-research notes→spec OR twin/recursive note-taker product polish; operator merge PR #465
