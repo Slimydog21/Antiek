@@ -596,6 +596,17 @@ def test_activation_checklist_reports_missing_live_controls_without_side_effects
             live_dispatch_requested=True,
         )
     )
+    live_settings_receipt = live_run_activation_settings_midnight_oil(
+        MidnightOilLiveRunActivationSettingsRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            requested_live_run_enabled=True,
+            requested_price_ceiling_usd=preflight.approval_receipt.approved_price_ceiling_usd,
+            requested_work_minutes=preflight.approval_receipt.approved_work_minutes,
+        )
+    )
 
     checklist = activation_checklist_midnight_oil(
         MidnightOilActivationChecklistRequest(
@@ -603,12 +614,14 @@ def test_activation_checklist_reports_missing_live_controls_without_side_effects
             approval_receipt=preflight.approval_receipt,
             runner_handoff=preflight.runner_handoff,
             applied_run_receipt=preflight.applied_run_receipt,
+            live_run_activation_settings_receipt=live_settings_receipt,
             dispatch_receipt=dispatch_receipt,
         )
     )
 
     assert checklist.receipt_id == f"{preflight.run_id}-activation-checklist"
     assert checklist.dispatch_receipt_id == dispatch_receipt.receipt_id
+    assert checklist.live_run_activation_settings_receipt_id == live_settings_receipt.receipt_id
     assert checklist.applied_run_receipt_id == preflight.applied_run_receipt.receipt_id
     assert checklist.runner_handoff_id == preflight.runner_handoff.handoff_id
     assert checklist.approval_receipt_id == preflight.approval_receipt.receipt_id
@@ -616,6 +629,8 @@ def test_activation_checklist_reports_missing_live_controls_without_side_effects
     assert checklist.run_id == preflight.run_id
     assert checklist.status == "activation_blocked_controls_missing"
     assert "blocked dispatch receipt exists" in checklist.completed_items
+    assert "blocked live-run activation settings receipt exists" in checklist.completed_items
+    assert "operator live-run activation setting" not in checklist.missing_items
     assert "budget reservation provider" in checklist.missing_items
     assert "model/provider route executor" in checklist.missing_items
     assert checklist.dispatch_allowed is False
@@ -625,6 +640,58 @@ def test_activation_checklist_reports_missing_live_controls_without_side_effects
     assert checklist.graph_mutation_allowed is False
     assert checklist.final_artifact_allowed is False
     assert "live execution remains blocked" in checklist.checklist_notes[0]
+
+
+def test_activation_checklist_rejects_mismatched_live_settings_receipt_chain() -> None:
+    preflight = preflight_midnight_oil(
+        MidnightOilRequest(
+            goal="Reject mismatched activation settings for a midnight oil run about fleet renewal.",
+            work_minutes=90,
+            price_ceiling_usd=14.0,
+            route_mode="auto_cost",
+            source_policy=["web"],
+            operator_acknowledged_spend=True,
+        )
+    )
+
+    assert preflight.launch_packet is not None
+    assert preflight.approval_receipt is not None
+    assert preflight.runner_handoff is not None
+    assert preflight.applied_run_receipt is not None
+    dispatch_receipt = dispatch_midnight_oil(
+        MidnightOilDispatchRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            live_dispatch_requested=True,
+        )
+    )
+    live_settings_receipt = live_run_activation_settings_midnight_oil(
+        MidnightOilLiveRunActivationSettingsRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            requested_live_run_enabled=True,
+            requested_price_ceiling_usd=preflight.approval_receipt.approved_price_ceiling_usd,
+            requested_work_minutes=preflight.approval_receipt.approved_work_minutes,
+        )
+    )
+    bad_settings = live_settings_receipt.model_copy(update={"applied_run_receipt_id": "wrong-applied"})
+
+    with pytest.raises(
+        ValidationError,
+        match="live_run_activation_settings_receipt must reference applied_run_receipt",
+    ):
+        MidnightOilActivationChecklistRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            live_run_activation_settings_receipt=bad_settings,
+            dispatch_receipt=dispatch_receipt,
+        )
 
 
 def test_activation_checklist_rejects_mismatched_dispatch_receipt_chain() -> None:
@@ -1500,6 +1567,17 @@ def test_midnight_oil_activation_checklist_api_contract() -> None:
             live_dispatch_requested=True,
         )
     )
+    live_settings_receipt = live_run_activation_settings_midnight_oil(
+        MidnightOilLiveRunActivationSettingsRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            requested_live_run_enabled=True,
+            requested_price_ceiling_usd=preflight.approval_receipt.approved_price_ceiling_usd,
+            requested_work_minutes=preflight.approval_receipt.approved_work_minutes,
+        )
+    )
     with TestClient(create_app()) as client:
         r = client.post(
             "/research/midnight-oil/activation-checklist",
@@ -1508,6 +1586,7 @@ def test_midnight_oil_activation_checklist_api_contract() -> None:
                 "approval_receipt": preflight.approval_receipt.model_dump(mode="json"),
                 "runner_handoff": preflight.runner_handoff.model_dump(mode="json"),
                 "applied_run_receipt": preflight.applied_run_receipt.model_dump(mode="json"),
+                "live_run_activation_settings_receipt": live_settings_receipt.model_dump(mode="json"),
                 "dispatch_receipt": dispatch_receipt.model_dump(mode="json"),
             },
         )
@@ -1515,12 +1594,14 @@ def test_midnight_oil_activation_checklist_api_contract() -> None:
     assert r.status_code == 200
     body = r.json()
     assert body["dispatch_receipt_id"] == dispatch_receipt.receipt_id
+    assert body["live_run_activation_settings_receipt_id"] == live_settings_receipt.receipt_id
     assert body["applied_run_receipt_id"] == preflight.applied_run_receipt.receipt_id
     assert body["runner_handoff_id"] == preflight.runner_handoff.handoff_id
     assert body["approval_receipt_id"] == preflight.approval_receipt.receipt_id
     assert body["launch_packet_id"] == preflight.launch_packet.packet_id
     assert body["status"] == "activation_blocked_controls_missing"
-    assert "operator live-run activation setting" in body["missing_items"]
+    assert "blocked live-run activation settings receipt exists" in body["completed_items"]
+    assert "operator live-run activation setting" not in body["missing_items"]
     assert "final HTML artifact writer" in body["missing_items"]
     assert body["dispatch_allowed"] is False
     assert body["budget_reservation_allowed"] is False

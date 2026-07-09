@@ -351,6 +351,7 @@ class MidnightOilActivationChecklistRequest(BaseModel):
     approval_receipt: MidnightOilApprovalReceipt
     runner_handoff: MidnightOilRunnerHandoff
     applied_run_receipt: MidnightOilAppliedRunReceipt
+    live_run_activation_settings_receipt: MidnightOilLiveRunActivationSettingsReceipt | None = None
     dispatch_receipt: MidnightOilDispatchReceipt
 
     @model_validator(mode="after")
@@ -375,6 +376,36 @@ class MidnightOilActivationChecklistRequest(BaseModel):
             raise ValueError("dispatch_receipt must reference runner_handoff")
         if self.dispatch_receipt.applied_run_receipt_id != self.applied_run_receipt.receipt_id:
             raise ValueError("dispatch_receipt must reference applied_run_receipt")
+        if self.live_run_activation_settings_receipt is not None:
+            settings = self.live_run_activation_settings_receipt
+            if settings.launch_packet_id != self.launch_packet.packet_id:
+                raise ValueError("live_run_activation_settings_receipt must reference launch_packet")
+            if settings.approval_receipt_id != self.approval_receipt.receipt_id:
+                raise ValueError("live_run_activation_settings_receipt must reference approval_receipt")
+            if settings.runner_handoff_id != self.runner_handoff.handoff_id:
+                raise ValueError("live_run_activation_settings_receipt must reference runner_handoff")
+            if settings.applied_run_receipt_id != self.applied_run_receipt.receipt_id:
+                raise ValueError("live_run_activation_settings_receipt must reference applied_run_receipt")
+            if settings.run_id != self.launch_packet.run_id:
+                raise ValueError("live_run_activation_settings_receipt run_id must match launch_packet")
+            if settings.status != "blocked_live_run_activation_disabled":
+                raise ValueError(
+                    "live_run_activation_settings_receipt must be blocked_live_run_activation_disabled"
+                )
+            if settings.live_run_activation_allowed:
+                raise ValueError("live_run_activation_settings_receipt must not allow live activation")
+            if settings.dispatch_allowed or settings.dispatch_performed:
+                raise ValueError("live_run_activation_settings_receipt must not dispatch")
+            if settings.budget_reserved:
+                raise ValueError("live_run_activation_settings_receipt must not reserve budget")
+            if settings.provider_calls_made:
+                raise ValueError("live_run_activation_settings_receipt must not include provider calls")
+            if settings.retrieval_performed:
+                raise ValueError("live_run_activation_settings_receipt must not perform retrieval")
+            if settings.graph_mutated:
+                raise ValueError("live_run_activation_settings_receipt must not mutate graph")
+            if settings.final_artifact_created:
+                raise ValueError("live_run_activation_settings_receipt must not create final artifact")
         if self.dispatch_receipt.status != "blocked_live_dispatch_disabled":
             raise ValueError("dispatch_receipt must be blocked_live_dispatch_disabled")
         if self.dispatch_receipt.dispatch_performed:
@@ -395,6 +426,7 @@ class MidnightOilActivationChecklistRequest(BaseModel):
 class MidnightOilActivationChecklistReceipt(BaseModel):
     receipt_id: str
     dispatch_receipt_id: str
+    live_run_activation_settings_receipt_id: str | None = None
     applied_run_receipt_id: str
     runner_handoff_id: str
     approval_receipt_id: str
@@ -1216,30 +1248,41 @@ def dispatch_midnight_oil(req: MidnightOilDispatchRequest) -> MidnightOilDispatc
 def activation_checklist_midnight_oil(
     req: MidnightOilActivationChecklistRequest,
 ) -> MidnightOilActivationChecklistReceipt:
+    completed_items = [
+        "operator acknowledged spend ceiling for preflight",
+        "launch packet exists",
+        "approval receipt exists",
+        "runner handoff exists",
+        "applied run receipt exists",
+        "blocked dispatch receipt exists",
+    ]
+    missing_items = [
+        "operator live-run activation setting",
+        "budget reservation provider",
+        "model/provider route executor",
+        "retrieval executor with source receipts",
+        "graph mutation writer",
+        "final HTML artifact writer",
+    ]
+    if req.live_run_activation_settings_receipt is not None:
+        completed_items.append("blocked live-run activation settings receipt exists")
+        missing_items.remove("operator live-run activation setting")
+
     return MidnightOilActivationChecklistReceipt(
         receipt_id=f"{req.launch_packet.run_id}-activation-checklist",
         dispatch_receipt_id=req.dispatch_receipt.receipt_id,
+        live_run_activation_settings_receipt_id=(
+            req.live_run_activation_settings_receipt.receipt_id
+            if req.live_run_activation_settings_receipt is not None
+            else None
+        ),
         applied_run_receipt_id=req.applied_run_receipt.receipt_id,
         runner_handoff_id=req.runner_handoff.handoff_id,
         approval_receipt_id=req.approval_receipt.receipt_id,
         launch_packet_id=req.launch_packet.packet_id,
         run_id=req.launch_packet.run_id,
-        completed_items=[
-            "operator acknowledged spend ceiling for preflight",
-            "launch packet exists",
-            "approval receipt exists",
-            "runner handoff exists",
-            "applied run receipt exists",
-            "blocked dispatch receipt exists",
-        ],
-        missing_items=[
-            "operator live-run activation setting",
-            "budget reservation provider",
-            "model/provider route executor",
-            "retrieval executor with source receipts",
-            "graph mutation writer",
-            "final HTML artifact writer",
-        ],
+        completed_items=completed_items,
+        missing_items=missing_items,
         dispatch_allowed=False,
         budget_reservation_allowed=False,
         provider_execution_allowed=False,

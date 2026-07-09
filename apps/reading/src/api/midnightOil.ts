@@ -216,12 +216,14 @@ export interface MidnightOilActivationChecklistRequest {
   approval_receipt: MidnightOilApprovalReceipt;
   runner_handoff: MidnightOilRunnerHandoff;
   applied_run_receipt: MidnightOilAppliedRunReceipt;
+  live_run_activation_settings_receipt?: MidnightOilLiveRunActivationSettingsReceipt | null;
   dispatch_receipt: MidnightOilDispatchReceipt;
 }
 
 export interface MidnightOilActivationChecklistReceipt {
   receipt_id: string;
   dispatch_receipt_id: string;
+  live_run_activation_settings_receipt_id: string | null;
   applied_run_receipt_id: string;
   runner_handoff_id: string;
   approval_receipt_id: string;

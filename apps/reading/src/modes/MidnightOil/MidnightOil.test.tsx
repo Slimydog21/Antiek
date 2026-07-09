@@ -232,15 +232,18 @@ vi.mock("../../api/midnightOil", () => ({
   activationChecklistMidnightOil: vi.fn(async () => ({
     receipt_id: "midnight-oil-test-activation-checklist",
     dispatch_receipt_id: "midnight-oil-test-dispatch-receipt",
+    live_run_activation_settings_receipt_id: "midnight-oil-test-live-run-activation-settings",
     applied_run_receipt_id: "midnight-oil-test-applied-run-receipt",
     runner_handoff_id: "midnight-oil-test-runner-handoff",
     approval_receipt_id: "midnight-oil-test-approval-receipt",
     launch_packet_id: "midnight-oil-test-launch-packet",
     run_id: "midnight-oil-test",
     status: "activation_blocked_controls_missing",
-    completed_items: ["blocked dispatch receipt exists"],
+    completed_items: [
+      "blocked live-run activation settings receipt exists",
+      "blocked dispatch receipt exists",
+    ],
     missing_items: [
-      "operator live-run activation setting",
       "budget reservation provider",
       "model/provider route executor",
       "final HTML artifact writer",
@@ -542,6 +545,9 @@ describe("MidnightOil", () => {
       applied_run_receipt: expect.objectContaining({
         receipt_id: "midnight-oil-test-applied-run-receipt",
       }),
+      live_run_activation_settings_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-live-run-activation-settings",
+      }),
       dispatch_receipt: expect.objectContaining({
         receipt_id: "midnight-oil-test-dispatch-receipt",
       }),
@@ -549,8 +555,7 @@ describe("MidnightOil", () => {
     expect(screen.getByText("Activation receipt")).toBeTruthy();
     expect(screen.getByText("midnight-oil-test-activation-checklist")).toBeTruthy();
     expect(screen.getByText("activation blocked controls missing")).toBeTruthy();
-    expect(screen.getByText("4 controls")).toBeTruthy();
-    expect(screen.getByText("operator live-run activation setting")).toBeTruthy();
+    expect(screen.getByText("3 controls")).toBeTruthy();
     expect(screen.getByText("budget reservation provider")).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "Budget reservation" }));

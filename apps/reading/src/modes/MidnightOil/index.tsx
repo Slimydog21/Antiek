@@ -250,10 +250,11 @@ export default function MidnightOil() {
       !preflight.approval_receipt ||
       !preflight.runner_handoff ||
       !preflight.applied_run_receipt ||
+      !liveSettingsReceipt ||
       !dispatchReceipt
     ) {
       setActivationError(
-        "Activation checklist requires launch packet, approval receipt, runner handoff, applied run receipt, and dispatch receipt.",
+        "Activation checklist requires launch packet, approval receipt, runner handoff, applied run receipt, live settings receipt, and dispatch receipt.",
       );
       return;
     }
@@ -277,6 +278,7 @@ export default function MidnightOil() {
         approval_receipt: preflight.approval_receipt,
         runner_handoff: preflight.runner_handoff,
         applied_run_receipt: preflight.applied_run_receipt,
+        live_run_activation_settings_receipt: liveSettingsReceipt,
         dispatch_receipt: dispatchReceipt,
       });
       setActivationReceipt(result);
@@ -1011,6 +1013,7 @@ export default function MidnightOil() {
                     !preflight.approval_receipt ||
                     !preflight.runner_handoff ||
                     !preflight.applied_run_receipt ||
+                    !liveSettingsReceipt ||
                     !dispatchReceipt
                   }
                   className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
