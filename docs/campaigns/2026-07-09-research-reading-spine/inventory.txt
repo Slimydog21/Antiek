@@ -3,6 +3,6 @@
 
 CAPABILITY | STATUS | EVIDENCE
 (a)–(bk) prior | branch_only | campaign inventories
-(bl) install recommended leaderboard model | branch_only | Settings Install recommended as decision-tree driver; Settings.test.tsx; advisory only; THIS CYCLE
+(bl) install recommended leaderboard model | branch_only | Settings Install recommended as decision-tree driver; Settings.test.tsx; advisory only; @ 8a63b438
 
 NEXT: (bm) collective context-search + promote flywheel button; operator merge PR #465
