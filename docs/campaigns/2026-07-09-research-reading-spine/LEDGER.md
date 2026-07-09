@@ -86,3 +86,6 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 - ResearchLaunchBudgetPanel allowTierPick + wrestle projection
 - Write piece enables picker
 - tests: ResearchLaunchBudgetPanel 8 + WriteHome 19
+## residual (gn) depth-tier picker flywheel — 2026-07-09
+- allowTierPick on hosted book, Midnight Oil, collective continue
+- tests: HostedHtml 10 + MidnightOil 6 + Collective 8

@@ -378,6 +378,7 @@ export default function MidnightOil() {
           <ResearchLaunchBudgetPanel
             promptText={goalsText}
             researchTier="deep"
+            allowTierPick
             onProjectionChange={onProjectionChange}
           />
           {budgetWarn ? (

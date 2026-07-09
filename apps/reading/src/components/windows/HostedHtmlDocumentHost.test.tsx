@@ -82,6 +82,7 @@ vi.mock("../engagement/ResearchLaunchBudgetPanel", () => {
     ResearchLaunchBudgetPanel: (props: {
       promptText: string;
       researchTier: string;
+      allowTierPick?: boolean;
       onProjectionChange?: (p: {
         wouldExceedBudget: boolean | null;
         pricingKnown: boolean;
@@ -104,6 +105,7 @@ vi.mock("../engagement/ResearchLaunchBudgetPanel", () => {
           data-testid="research-launch-budget-panel-stub"
           data-research-tier={props.researchTier}
           data-prompt-len={String(props.promptText.length)}
+          data-allow-tier-pick={props.allowTierPick ? "true" : "false"}
         >
           budget
         </div>
@@ -207,6 +209,8 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(launch.getAttribute("data-view-format")).toBe("html");
     const budget = screen.getByTestId("research-launch-budget-panel-stub");
     expect(budget.getAttribute("data-research-tier")).toBe("deep");
+    // Residual (gn): depth-tier picker enabled on hosted book DR.
+    expect(budget.getAttribute("data-allow-tier-pick")).toBe("true");
     expect(Number(budget.getAttribute("data-prompt-len"))).toBeGreaterThan(3);
 
     fireEvent.click(screen.getByTestId("hosted-html-deep-research"));

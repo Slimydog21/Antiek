@@ -28,6 +28,7 @@ vi.mock("./ResearchLaunchBudgetPanel", () => {
   return {
     ResearchLaunchBudgetPanel: (props: {
       promptText: string;
+      allowTierPick?: boolean;
       onProjectionChange?: (p: {
         wouldExceedBudget: boolean | null;
         pricingKnown: boolean;
@@ -46,7 +47,10 @@ vi.mock("./ResearchLaunchBudgetPanel", () => {
         });
       }, [props.onProjectionChange]);
       return (
-        <div data-testid="research-launch-budget-panel-stub">
+        <div
+          data-testid="research-launch-budget-panel-stub"
+          data-allow-tier-pick={props.allowTierPick ? "true" : "false"}
+        >
           budget len={props.promptText.length}
         </div>
       );

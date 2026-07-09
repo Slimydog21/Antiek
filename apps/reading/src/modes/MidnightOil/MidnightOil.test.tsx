@@ -42,6 +42,7 @@ vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", () => {
   return {
     ResearchLaunchBudgetPanel: (props: {
       promptText: string;
+      allowTierPick?: boolean;
       onProjectionChange?: (p: {
         wouldExceedBudget: boolean | null;
         pricingKnown: boolean;
@@ -60,7 +61,10 @@ vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", () => {
         });
       }, [props.onProjectionChange]);
       return (
-        <div data-testid="research-launch-budget-panel-stub">
+        <div
+          data-testid="research-launch-budget-panel-stub"
+          data-allow-tier-pick={props.allowTierPick ? "true" : "false"}
+        >
           goals={props.promptText.length}
         </div>
       );
@@ -121,6 +125,12 @@ describe("MidnightOil mode", () => {
     render(<MidnightOil />);
     expect(screen.getByTestId("moil-budget-mount")).toBeTruthy();
     expect(screen.getByTestId("research-launch-budget-panel-stub")).toBeTruthy();
+    // Residual (gn): depth-tier picker on Midnight Oil create path.
+    expect(
+      screen
+        .getByTestId("research-launch-budget-panel-stub")
+        .getAttribute("data-allow-tier-pick"),
+    ).toBe("true");
     expect(
       screen.getByTestId("moil-budget-mount").getAttribute("data-view-format"),
     ).toBe("html");

@@ -22,6 +22,7 @@
  * (reading ≡ research collective unit).
  * Residual (ez): remount TwinNotesPanel on the same refresh key as research
  * context so collective merge / promote reload recursive note-taker twins.
+ * Residual (gn): allowTierPick on ResearchLaunchBudgetPanel (flash|pro|wrestle).
  *
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
  */
@@ -345,6 +346,7 @@ export default function HostedHtmlDocumentHost(
           <ResearchLaunchBudgetPanel
             promptText={researchSelection}
             researchTier="deep"
+            allowTierPick
             onProjectionChange={onProjectionChange}
           />
           {budgetWarn ? (

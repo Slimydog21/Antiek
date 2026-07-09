@@ -417,6 +417,7 @@ export function CollectiveResearchPanel({
             <ResearchLaunchBudgetPanel
               promptText={unit.prompt_block || ""}
               researchTier="deep"
+              allowTierPick
               onProjectionChange={onProjectionChange}
             />
             {budgetWarn ? (

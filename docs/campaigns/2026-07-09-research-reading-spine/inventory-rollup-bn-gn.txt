@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(gn) · PR #465
+Depth-tier picker flywheel (gn); picker core (gm); moil progress (gl).
+Operator merge still gated. Next residual (go).
