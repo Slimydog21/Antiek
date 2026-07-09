@@ -1088,6 +1088,9 @@ describe("Multimedia workstation", () => {
   it("applies steering and runs hardening through the API client", async () => {
     await reviewPlan();
 
+    expect(
+      screen.getByText("Apply steer revises the plan; Run hardening checks gates only. Neither action runs providers or publishes media."),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Apply steer" }));
     await waitFor(() => expect(mockSteer).toHaveBeenCalledWith("mm-1", expect.objectContaining({ prompt: expect.any(String) })));
     expect(await screen.findByText(/mm-1 \/ rev-2/)).toBeTruthy();

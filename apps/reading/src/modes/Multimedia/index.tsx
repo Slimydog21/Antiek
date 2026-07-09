@@ -1579,6 +1579,9 @@ export default function Multimedia() {
                 aria-label="Steering prompt"
                 className="mt-2"
               />
+              <p className="mt-2 text-[11px] leading-snug text-shadow-1 dark:text-moonlight">
+                Apply steer revises the plan; Run hardening checks gates only. Neither action runs providers or publishes media.
+              </p>
               <div className="mt-2 flex gap-2">
                 <LemonButton
                   type="button"
