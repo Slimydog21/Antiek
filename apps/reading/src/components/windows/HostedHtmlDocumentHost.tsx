@@ -12,6 +12,9 @@
  * Residual (ec): remount ResearchContextPanel after twin promote.
  * Residual (en): highlight inside hosted HTML body → selection drives float
  * DR + budget projection (fallback: title+asset when no selection).
+ * Residual (er): optional arxiv/substack/URL pub refs hydrate + attach on
+ * float open (parity with ResearchThis cu) — knowledge-dense grounding from
+ * marketplace/hosted books.
  *
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
  */
@@ -19,6 +22,10 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { launchFloatingDeepResearch } from "../../modes/Reading/launchFloatingDeepResearch";
+import {
+  hydratePublicationRefs,
+  parsePublicationRefs,
+} from "../../modes/ResearchWorkstation/publicationRefs";
 import { DecisionTreeDriverBadge } from "../engagement/DecisionTreeDriverBadge";
 import { ResearchContextPanel } from "../engagement/ResearchContextPanel";
 import {
@@ -70,6 +77,8 @@ export default function HostedHtmlDocumentHost(
   const assetId = props.document_id?.trim() || "";
 
   const [highlightText, setHighlightText] = useState("");
+  const [pubRefs, setPubRefs] = useState("");
+  const [pubRefStatus, setPubRefStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastWindowId, setLastWindowId] = useState<string | null>(null);
@@ -132,6 +141,7 @@ export default function HostedHtmlDocumentHost(
     }
     setBusy(true);
     setError(null);
+    setPubRefStatus(null);
     try {
       // Capture latest selection at fire time (mouseup may lag React state).
       let selection = researchSelection;
@@ -146,11 +156,24 @@ export default function HostedHtmlDocumentHost(
           setHighlightText(selection);
         }
       }
+      // Residual (er): optional knowledge-dense publication refs (HTML-first hydrate).
+      const refs = parsePublicationRefs(pubRefs);
+      if (refs.length > 0) {
+        const hydrated = await hydratePublicationRefs(refs);
+        setPubRefStatus(
+          `Hydrated ${hydrated.ok.length} pub asset(s)` +
+            (hydrated.failed.length
+              ? ` · ${hydrated.failed.length} failed`
+              : "") +
+            " · HTML-first",
+        );
+      }
       const out = await launchFloatingDeepResearch({
         asset_id: assetId,
         selection_text: selection,
         goal_hint: goal,
         view_mode: "floating",
+        references: refs.length ? refs : undefined,
       });
       setLastWindowId(out.window_id);
     } catch (e: unknown) {
@@ -250,6 +273,38 @@ export default function HostedHtmlDocumentHost(
                 Select text in the book above, then open deep research.
               </p>
             )}
+          </div>
+          {/* Residual (er): ground float DR with arxiv/substack/URL refs. */}
+          <div
+            className="space-y-1"
+            data-testid="hosted-html-pub-refs"
+            data-view-format="html"
+          >
+            <label
+              className="text-[10px] font-mono uppercase tracking-wider text-ink-mute dark:text-moonlight"
+              htmlFor="hosted-html-refs-input"
+            >
+              Ground with pubs (optional)
+            </label>
+            <textarea
+              id="hosted-html-refs-input"
+              data-testid="hosted-html-refs-input"
+              value={pubRefs}
+              onChange={(e) => setPubRefs(e.target.value)}
+              disabled={busy}
+              rows={2}
+              placeholder={"arxiv:1706.03762\nhttps://…"}
+              className="w-full rounded border border-ink/20 bg-transparent px-2 py-1 text-[11px] font-mono dark:border-bright/20"
+            />
+            {pubRefStatus ? (
+              <p
+                className="text-[10px] font-mono text-aurora"
+                data-testid="hosted-html-refs-status"
+                role="status"
+              >
+                {pubRefStatus}
+              </p>
+            ) : null}
           </div>
           <ResearchLaunchBudgetPanel
             promptText={researchSelection}

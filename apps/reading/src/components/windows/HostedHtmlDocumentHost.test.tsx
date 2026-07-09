@@ -6,6 +6,13 @@ import HostedHtmlDocumentHost, {
 } from "./HostedHtmlDocumentHost";
 
 const launchFloatingDeepResearch = vi.fn();
+const hydratePublicationRefs = vi.fn();
+const parsePublicationRefs = vi.fn((raw: string) =>
+  raw
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean),
+);
 
 vi.mock("./windowHostContext", () => ({
   useInWindow: () => undefined,
@@ -14,6 +21,13 @@ vi.mock("./windowHostContext", () => ({
 vi.mock("../../modes/Reading/launchFloatingDeepResearch", () => ({
   launchFloatingDeepResearch: (...args: unknown[]) =>
     launchFloatingDeepResearch(...args),
+}));
+
+vi.mock("../../modes/ResearchWorkstation/publicationRefs", () => ({
+  parsePublicationRefs: (...args: unknown[]) =>
+    parsePublicationRefs(...(args as [string])),
+  hydratePublicationRefs: (...args: unknown[]) =>
+    hydratePublicationRefs(...args),
 }));
 
 vi.mock("../engagement/TwinNotesPanel", () => ({
@@ -76,6 +90,17 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
   afterEach(() => cleanup());
   beforeEach(() => {
     launchFloatingDeepResearch.mockReset();
+    hydratePublicationRefs.mockReset();
+    hydratePublicationRefs.mockResolvedValue({
+      ok: [{ handle: "arxiv:1706.03762", asset_id: "pub_1" }],
+      failed: [],
+    });
+    parsePublicationRefs.mockImplementation((raw: string) =>
+      raw
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    );
   });
 
   it("renders HTML body for hosted book", () => {
@@ -269,5 +294,49 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     });
 
     vi.unstubAllGlobals();
+  });
+
+  it("hydrates optional pub refs and passes references on launch (er)", async () => {
+    launchFloatingDeepResearch.mockResolvedValue({
+      session_id: "fsess_pub",
+      spawn_id: "spn_pub",
+      investigation_id: "inv_pub",
+      parent_asset_id: "doc_pub",
+      window_id: "wdr_pub",
+      view_format: "html",
+      view_mode: "floating",
+      status: "reserved",
+      model_id: null,
+    });
+    render(
+      <HostedHtmlDocumentHost
+        document_id="doc_pub"
+        title="Hosted"
+        view_format="html"
+        html="<p>Body</p>"
+      />,
+    );
+    expect(screen.getByTestId("hosted-html-pub-refs")).toBeTruthy();
+    fireEvent.change(screen.getByTestId("hosted-html-refs-input"), {
+      target: { value: "arxiv:1706.03762" },
+    });
+    fireEvent.click(screen.getByTestId("hosted-html-deep-research"));
+    await waitFor(() => {
+      expect(hydratePublicationRefs).toHaveBeenCalledWith(["arxiv:1706.03762"]);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("hosted-html-refs-status").textContent).toMatch(
+        /Hydrated 1|HTML-first/,
+      );
+    });
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "doc_pub",
+          references: ["arxiv:1706.03762"],
+          view_mode: "floating",
+        }),
+      );
+    });
   });
 });
