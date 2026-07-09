@@ -387,3 +387,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (nr, 2026-07-10) **MO soft-apply duration on Settings depth prefill:**
   - factory default 60m → recommended midpoint for mapped depth-tier
   - preserves custom duration overrides
+
+- Closed (ns, 2026-07-10) **SESSION-ARC ng–nr MO duration path:**
+  - SESSION-ARC-ng-nr-moil-duration-path.md fleet handoff
+  - MO time-of-work path offline product-complete
