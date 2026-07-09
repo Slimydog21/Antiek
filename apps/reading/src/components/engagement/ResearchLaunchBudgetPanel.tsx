@@ -21,6 +21,14 @@ import {
   type PromptCostEstimateResponse,
 } from "../../api/settings";
 
+export type ResearchLaunchBudgetProjection = {
+  wouldExceedBudget: boolean | null;
+  pricingKnown: boolean;
+  estimatedUsdHigh: number | null;
+  remainingUsd: number | null;
+  modelId: string | null;
+};
+
 export type ResearchLaunchBudgetPanelProps = {
   /** Live composer text used for input_chars projection. */
   promptText: string;
@@ -28,6 +36,11 @@ export type ResearchLaunchBudgetPanelProps = {
   researchTier: "fast" | "deep";
   /** Debounce ms for estimate calls (default 350). */
   debounceMs?: number;
+  /**
+   * Residual (de): notify parent when projection updates so launch surfaces
+   * can soft-warn / disable before fire without re-fetching Settings.
+   */
+  onProjectionChange?: (projection: ResearchLaunchBudgetProjection) => void;
 };
 
 function dispatchTierFor(researchTier: "fast" | "deep"): {
@@ -50,6 +63,7 @@ export function ResearchLaunchBudgetPanel({
   promptText,
   researchTier,
   debounceMs = 350,
+  onProjectionChange,
 }: ResearchLaunchBudgetPanelProps) {
   const [budget, setBudget] = useState<BudgetResponse | null>(null);
   const [tree, setTree] = useState<DecisionTreeSelectionResponse | null>(null);
@@ -58,6 +72,23 @@ export function ResearchLaunchBudgetPanel({
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Residual (de): surface projection to parent for launch gating honesty.
+  useEffect(() => {
+    if (!onProjectionChange) return;
+    onProjectionChange({
+      wouldExceedBudget:
+        estimate?.would_exceed_budget === true
+          ? true
+          : estimate?.would_exceed_budget === false
+            ? false
+            : null,
+      pricingKnown: Boolean(estimate?.pricing_known),
+      estimatedUsdHigh: estimate?.estimated_usd_high ?? null,
+      remainingUsd: budget?.remaining_usd ?? null,
+      modelId: tree?.model_id ?? null,
+    });
+  }, [estimate, budget?.remaining_usd, tree?.model_id, onProjectionChange]);
 
   const mapping = useMemo(
     () => dispatchTierFor(researchTier),

@@ -1,9 +1,12 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { LemonButton } from "../../components/lemon";
 import { spinResearch } from "../../api/books";
-import { ResearchLaunchBudgetPanel } from "../../components/engagement/ResearchLaunchBudgetPanel";
+import {
+  ResearchLaunchBudgetPanel,
+  type ResearchLaunchBudgetProjection,
+} from "../../components/engagement/ResearchLaunchBudgetPanel";
 import { track } from "../../lib/analytics";
 import {
   hydratePublicationRefs,
@@ -12,7 +15,7 @@ import {
 import { launchFloatingDeepResearch } from "./launchFloatingDeepResearch";
 
 /**
- * ResearchThis (Read SPR-08 + residual cc/cu/cx/cy) — spin deep research from
+ * ResearchThis (Read SPR-08 + residual cc/cu/cx/cy/de) — spin deep research from
  * the current passage.
  *
  * Residual (cc): primary path opens a **floating** deep_research_session
@@ -46,12 +49,27 @@ export default function ResearchThis({
   const [lastWindowId, setLastWindowId] = useState<string | null>(null);
   const [pubRefs, setPubRefs] = useState("");
   const [pubRefStatus, setPubRefStatus] = useState<string | null>(null);
+  const [budgetWarn, setBudgetWarn] = useState(false);
+  const [forceOverBudget, setForceOverBudget] = useState(false);
 
   const selection =
     (passageText || "").trim() ||
     `Page ${pageIndex + 1} of document ${documentId}`;
 
+  const onProjectionChange = useCallback(
+    (p: ResearchLaunchBudgetProjection) => {
+      setBudgetWarn(p.wouldExceedBudget === true);
+    },
+    [],
+  );
+
   const spinFloating = async () => {
+    if (budgetWarn && !forceOverBudget) {
+      setError(
+        "Projected cost may exceed remaining daily budget — enable force override or reduce scope.",
+      );
+      return;
+    }
     setBusy(true);
     setError(null);
     setPubRefStatus(null);
@@ -152,14 +170,30 @@ export default function ResearchThis({
         <ResearchLaunchBudgetPanel
           promptText={selection}
           researchTier="deep"
+          onProjectionChange={onProjectionChange}
         />
+        {budgetWarn ? (
+          <label
+            className="flex items-center gap-2 text-[11px] font-mono text-emperor"
+            data-testid="research-this-over-budget-warn"
+          >
+            <input
+              type="checkbox"
+              data-testid="research-this-force-over-budget"
+              checked={forceOverBudget}
+              onChange={(e) => setForceOverBudget(e.target.checked)}
+              disabled={busy}
+            />
+            Force open despite budget projection
+          </label>
+        ) : null}
       </div>
       <div className="inline-flex flex-wrap items-center gap-2">
         <LemonButton
           type="button"
           variant="secondary"
           size="sm"
-          disabled={busy}
+          disabled={busy || (budgetWarn && !forceOverBudget)}
           onClick={() => void spinFloating()}
           title="Open deep research in a floating window over the scene"
           data-testid="research-this-floating"

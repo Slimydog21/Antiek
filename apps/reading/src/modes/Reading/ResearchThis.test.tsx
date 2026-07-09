@@ -25,20 +25,43 @@ vi.mock("../../api/books", () => ({
   spinResearch: (...args: unknown[]) => spinResearch(...args),
 }));
 
-vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", () => ({
-  ResearchLaunchBudgetPanel: (props: {
-    promptText: string;
-    researchTier: string;
-  }) => (
-    <div
-      data-testid="research-launch-budget-panel-stub"
-      data-prompt-len={String(props.promptText.length)}
-      data-research-tier={props.researchTier}
-    >
-      budget stub
-    </div>
-  ),
-}));
+vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", () => {
+  // Lazy require React inside factory so vitest mock is isolated.
+  const React = require("react") as typeof import("react");
+  return {
+    ResearchLaunchBudgetPanel: (props: {
+      promptText: string;
+      researchTier: string;
+      onProjectionChange?: (p: {
+        wouldExceedBudget: boolean | null;
+        pricingKnown: boolean;
+        estimatedUsdHigh: number | null;
+        remainingUsd: number | null;
+        modelId: string | null;
+      }) => void;
+    }) => {
+      // Residual (de): notify after mount — never during render.
+      React.useEffect(() => {
+        props.onProjectionChange?.({
+          wouldExceedBudget: false,
+          pricingKnown: true,
+          estimatedUsdHigh: 0.1,
+          remainingUsd: 5,
+          modelId: null,
+        });
+      }, [props.onProjectionChange]);
+      return (
+        <div
+          data-testid="research-launch-budget-panel-stub"
+          data-prompt-len={String(props.promptText.length)}
+          data-research-tier={props.researchTier}
+        >
+          budget stub
+        </div>
+      );
+    },
+  };
+});
 
 vi.mock("react-router-dom", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react-router-dom")>();

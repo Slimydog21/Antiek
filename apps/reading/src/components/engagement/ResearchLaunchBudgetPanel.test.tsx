@@ -169,6 +169,43 @@ describe("ResearchLaunchBudgetPanel", () => {
     );
   });
 
+  it("notifies parent via onProjectionChange (de)", async () => {
+    const onProjectionChange = vi.fn();
+    estimatePromptCost.mockResolvedValueOnce({
+      estimated_usd_low: 3,
+      estimated_usd_high: 5,
+      would_exceed_budget: true,
+      pricing_known: true,
+      notes: [],
+      assumed_input_tokens: 100,
+      assumed_output_tokens: 2500,
+      tier: "pro",
+      provider: null,
+      model: null,
+    });
+    render(
+      <ResearchLaunchBudgetPanel
+        promptText="Expensive collective deep research prompt for projection callback"
+        researchTier="deep"
+        debounceMs={0}
+        onProjectionChange={onProjectionChange}
+      />,
+    );
+    await waitFor(() => {
+      expect(onProjectionChange).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      const last = onProjectionChange.mock.calls.at(-1)?.[0] as {
+        wouldExceedBudget: boolean | null;
+        pricingKnown: boolean;
+        modelId: string | null;
+      };
+      expect(last.wouldExceedBudget).toBe(true);
+      expect(last.pricingKnown).toBe(true);
+      expect(last.modelId).toBe("glm-5.2");
+    });
+  });
+
   it("does not project when prompt shorter than 3 chars", async () => {
     render(
       <ResearchLaunchBudgetPanel
