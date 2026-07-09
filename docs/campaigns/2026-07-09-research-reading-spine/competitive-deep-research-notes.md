@@ -601,3 +601,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (ps, 2026-07-10) **Twin HTML draft full working-region window:**
   - openTwinDraft(floating|full) shared chokepoint
   - twin-draft-selected-html-full + data-window-mode
+
+- Closed (pt, 2026-07-10) **twin-draft-metrics note_ids provenance:**
+  - data-note-ids + note_ids= chrome (truncated when >6)

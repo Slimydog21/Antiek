@@ -1226,6 +1226,10 @@ describe("TwinNotesPanel", () => {
     );
     const metrics = screen.getByTestId("twin-draft-metrics");
     expect(metrics.getAttribute("data-note-count")).toBe("2");
+    // Residual (pt): note_ids provenance on draft metrics.
+    expect(metrics.getAttribute("data-note-ids")).toMatch(/twin_q/);
+    expect(metrics.getAttribute("data-note-ids")).toMatch(/twin_i/);
+    expect(metrics.textContent).toMatch(/note_ids=/);
     expect(metrics.getAttribute("data-has-write-href")).toBe("1");
     expect(metrics.getAttribute("data-write-seed-key")).toBe(
       "antiek.twin_write_seed.testkey",

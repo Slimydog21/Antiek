@@ -46,6 +46,7 @@
  * Residual (pp): twin multi-select → Write handoff via sessionStorage twin_seed
  * (brainstorm seed + HTML preview; no invented server document_id).
  * Residual (ps): twin HTML draft full working-region window (parity chase full).
+ * Residual (pt): twin-draft-metrics echo note_ids provenance (parity ni chase).
  * HTML-first; never PDF.
  */
 
@@ -973,6 +974,11 @@ export function TwinNotesPanel({
             className="w-full space-y-1 font-mono text-[11px] opacity-80"
             data-testid="twin-draft-metrics"
             data-note-count={String(draftMetrics.note_count)}
+            data-note-ids={
+              draftMetrics.note_ids.length <= 6
+                ? draftMetrics.note_ids.join(",")
+                : `${draftMetrics.note_ids.slice(0, 6).join(",")},+${draftMetrics.note_ids.length - 6}`
+            }
             data-window-id={draftMetrics.window_id ?? ""}
             data-write-seed-key={draftMetrics.write_seed_key ?? ""}
             data-has-write-href={draftMetrics.write_href ? "1" : "0"}
@@ -986,7 +992,11 @@ export function TwinNotesPanel({
             role="status"
           >
             <p>
-              Twin draft · notes={draftMetrics.note_count} · window=
+              Twin draft · notes={draftMetrics.note_count} · note_ids=
+              {draftMetrics.note_ids.length <= 6
+                ? draftMetrics.note_ids.join(",")
+                : `${draftMetrics.note_ids.slice(0, 6).join(",")},+${draftMetrics.note_ids.length - 6}`}{" "}
+              · window=
               {draftMetrics.window_id ?? "(none)"} · {draftMetrics.title}
             </p>
             {draftMetrics.write_href ? (
