@@ -649,3 +649,5 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - vitest 20 passed
 
 - Closed (qd, 2026-07-10) **spawn-merge Write dual handoff:** buildMergedDocWriteHref + twin_seed
+
+- Closed (qe, 2026-07-10) **collective Write dual handoff** twin_seed

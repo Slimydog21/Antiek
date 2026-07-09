@@ -18,6 +18,7 @@
  * 9. Residual (ey): continue cohesive unit as full working-region window as
  *    well as floating (parity with ResearchThis et / hosted es).
  * 10. Residual (fn): Open Write handoff for merged draft document_id (fl/fm).
+ * 25. Residual (qe): dual handoff html_draft + twin_seed on Open Write (parity qd).
  * 11. Residual (hm): collective-unit-metrics machine attrs for multi-spawn
  *     cohesive unit audit (parity twin/flywheel/progress metrics).
  * 12. Residual (ig): Settings deep-link for driver + budget before continue.
@@ -75,6 +76,7 @@ import {
   type ResearchLaunchTier,
 } from "./ResearchLaunchBudgetPanel";
 import { openMergedResearchWindow } from "./SpawnMergePanel";
+import { buildMergedDocWriteHref } from "../../workspace/twinWriteSeed";
 
 export type CollectiveResearchPanelProps = {
   /** Pre-listed spawn ids available for multi-select */
@@ -1034,13 +1036,19 @@ export function CollectiveResearchPanel({
               >
                 Open analysis full
               </button>
-              {/* Residual (fn): handoff collective draft into Write mode. */}
+              {/* Residual (fn/qe): dual handoff html_draft + twin_seed. */}
               <a
-                href={`/write?html_draft=${encodeURIComponent(docMerge.document_id)}`}
+                href={buildMergedDocWriteHref({
+                  documentId: docMerge.document_id,
+                  title: `Collective merge · ${docMerge.document_id}`,
+                  html: docMerge.html,
+                  source: "collective_doc_merge",
+                })}
                 data-testid="collective-open-write"
                 data-view-format="html"
+                data-has-twin-seed="1"
                 className="underline"
-                title="Open Write with this HTML merge document as draft handoff"
+                title="Open Write with collective HTML merge + twin_seed (seeds note-taker when empty)"
               >
                 Open Write (HTML draft)
               </a>

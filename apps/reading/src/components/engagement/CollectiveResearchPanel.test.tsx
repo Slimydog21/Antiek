@@ -610,11 +610,11 @@ describe("CollectiveResearchPanel", () => {
     });
     expect(screen.getByTestId("collective-auto-open-window")).toBeTruthy();
     expect(screen.getByTestId("collective-open-analysis-window")).toBeTruthy();
-    // Residual (fn): Write handoff for analysis draft document.
+    // Residual (fn/qe): Write dual handoff for analysis draft document.
     const write = screen.getByTestId("collective-open-write");
-    expect(write.getAttribute("href")).toBe(
-      "/write?html_draft=draft_analysis_1",
-    );
+    expect(write.getAttribute("href") || "").toMatch(/html_draft=draft_analysis_1/);
+    expect(write.getAttribute("href") || "").toMatch(/twin_seed=antiek\.twin_write_seed\./);
+    expect(write.getAttribute("data-has-twin-seed")).toBe("1");
   });
 
   it("links dual-gate L1–L4 checklist for L6 collective prep (nl)", () => {
@@ -922,4 +922,47 @@ describe("CollectiveResearchPanel", () => {
         .getAttribute("data-selected-count"),
     ).toBe("2");
   });
+
+  it("links dual Write handoff html_draft + twin_seed after draft merge (qe)", async () => {
+    fetchCollectiveResearch.mockResolvedValue({
+      collective_id: "col_qe",
+      spawn_ids: ["spn_1", "spn_2"],
+      asset_ids: ["asset_x"],
+      investigation_ids: [],
+      twin_units: [],
+      source_references: [],
+      view_format: "html",
+      spawn_count: 2,
+      twin_count: 0,
+      ref_count: 0,
+      prompt_block: "# unit",
+    });
+    mergeSpawnOutputs.mockResolvedValue({
+      document_id: "draft_col_qe",
+      mode: "draft_combined",
+      view_format: "html",
+      html: "<article><p>Collective draft body</p></article>",
+      notes: [],
+    });
+    seedTwinNotes.mockResolvedValue({ seeded: true, seed_skipped: null, view_format: "html" });
+    render(
+      <CollectiveResearchPanel
+        availableSpawnIds={["spn_1", "spn_2"]}
+        parentAssetId="asset_x"
+        autoSelectNewestRecent={false}
+        autoOpenDraft={false}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("collective-select-spn_1"));
+    fireEvent.click(screen.getByTestId("collective-select-spn_2"));
+    fireEvent.click(screen.getByTestId("collective-merge-draft"));
+    await waitFor(() => {
+      expect(screen.getByTestId("collective-open-write")).toBeTruthy();
+    });
+    const href = screen.getByTestId("collective-open-write").getAttribute("href") || "";
+    expect(href).toMatch(/html_draft=draft_col_qe/);
+    expect(href).toMatch(/twin_seed=antiek\.twin_write_seed\./);
+    expect(screen.getByTestId("collective-open-write").getAttribute("data-has-twin-seed")).toBe("1");
+  });
+
 });
