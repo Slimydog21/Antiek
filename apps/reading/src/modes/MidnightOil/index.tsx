@@ -8,6 +8,8 @@
  * Residual (db): open deposit HTML deliverable in hosted_html_document window
  * so Midnight Oil results join the reading/research flywheel (da host).
  * Residual (ew): open deposit as full working-region window as well as floating.
+ * Residual (ex): auto-open deposit HTML floating after successful deposit /
+ * auto-deposit run so Midnight Oil joins the reading flywheel without a click.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -28,6 +30,38 @@ import {
 } from "../../components/engagement/ResearchLaunchBudgetPanel";
 import { openWindow } from "../../components/windows/openWindow";
 
+/** HTML-only deposit open (floating | full). Returns window id or null. */
+export function openMidnightOilDepositWindow(
+  deposit: Pick<
+    MidnightOilDepositResponse,
+    "view_format" | "html" | "document_id" | "asset_id" | "job_id"
+  >,
+  mode: "floating" | "full" = "floating",
+): string | null {
+  if (deposit.view_format !== "html" || !deposit.html?.trim()) {
+    return null;
+  }
+  const docId = deposit.document_id || deposit.asset_id;
+  if (!docId) return null;
+  const docKey = deposit.document_id || deposit.job_id || docId;
+  const idSuffix = mode === "full" ? ":full" : "";
+  return openWindow(
+    "hosted_html_document",
+    {
+      document_id: docId,
+      title: `Midnight Oil · ${deposit.job_id}`,
+      html: deposit.html,
+      view_format: "html",
+      source: "midnight_oil_deposit",
+    },
+    {
+      id: `win:moil-deposit:${docKey}${idSuffix}`,
+      title: `Midnight Oil · ${deposit.job_id}`,
+      mode,
+    },
+  );
+}
+
 export default function MidnightOil() {
   const [goalsText, setGoalsText] = useState("");
   const [durationMinutes, setDurationMinutes] = useState(60);
@@ -46,9 +80,20 @@ export default function MidnightOil() {
   const [ceilingInput, setCeilingInput] = useState("");
   const [forceBelow, setForceBelow] = useState(false);
   const [autoDeposit, setAutoDeposit] = useState(true);
+  /** Residual (ex): auto-open hosted HTML after deposit (default on). */
+  const [autoOpenDeposit, setAutoOpenDeposit] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [depositWindowId, setDepositWindowId] = useState<string | null>(null);
+
+  const maybeAutoOpenDeposit = useCallback(
+    (dep: MidnightOilDepositResponse) => {
+      if (!autoOpenDeposit) return;
+      const winId = openMidnightOilDepositWindow(dep, "floating");
+      if (winId) setDepositWindowId(winId);
+    },
+    [autoOpenDeposit],
+  );
   // Residual (dg): soft-gate create when budget projection would exceed.
   const [budgetWarn, setBudgetWarn] = useState(false);
   const [forceOverBudget, setForceOverBudget] = useState(false);
@@ -170,6 +215,8 @@ export default function MidnightOil() {
         asset_id: result.asset_id,
         runnable: false,
       });
+      // Residual (ex): auto-open floating hosted HTML flywheel.
+      maybeAutoOpenDeposit(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -198,6 +245,8 @@ export default function MidnightOil() {
       });
       if (result.deposit) {
         setDeposit(result.deposit);
+        // Residual (ex): auto-deposit path also auto-opens.
+        maybeAutoOpenDeposit(result.deposit);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -399,6 +448,17 @@ export default function MidnightOil() {
                   </button>
                 </>
               ) : null}
+              {/* Residual (ex): auto-open deposit HTML after deposit/auto-deposit. */}
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  data-testid="moil-auto-open-deposit"
+                  checked={autoOpenDeposit}
+                  onChange={(e) => setAutoOpenDeposit(e.target.checked)}
+                  disabled={busy}
+                />
+                Auto-open deposit HTML window
+              </label>
               <button
                 type="button"
                 data-testid="moil-deposit"
@@ -498,26 +558,14 @@ export default function MidnightOil() {
                     !deposit.document_id
                   }
                   onClick={() => {
-                    if (deposit.view_format !== "html" || !deposit.html) {
+                    const winId = openMidnightOilDepositWindow(
+                      deposit,
+                      "floating",
+                    );
+                    if (!winId) {
                       setError("deposit view_format must be html with body");
                       return;
                     }
-                    const docKey = deposit.document_id || deposit.job_id;
-                    const winId = openWindow(
-                      "hosted_html_document",
-                      {
-                        document_id: deposit.document_id || deposit.asset_id,
-                        title: `Midnight Oil · ${deposit.job_id}`,
-                        html: deposit.html,
-                        view_format: "html",
-                        source: "midnight_oil_deposit",
-                      },
-                      {
-                        id: `win:moil-deposit:${docKey}`,
-                        title: `Midnight Oil · ${deposit.job_id}`,
-                        mode: "floating",
-                      },
-                    );
                     setDepositWindowId(winId);
                   }}
                 >
@@ -532,26 +580,11 @@ export default function MidnightOil() {
                     !deposit.document_id
                   }
                   onClick={() => {
-                    if (deposit.view_format !== "html" || !deposit.html) {
+                    const winId = openMidnightOilDepositWindow(deposit, "full");
+                    if (!winId) {
                       setError("deposit view_format must be html with body");
                       return;
                     }
-                    const docKey = deposit.document_id || deposit.job_id;
-                    const winId = openWindow(
-                      "hosted_html_document",
-                      {
-                        document_id: deposit.document_id || deposit.asset_id,
-                        title: `Midnight Oil · ${deposit.job_id}`,
-                        html: deposit.html,
-                        view_format: "html",
-                        source: "midnight_oil_deposit",
-                      },
-                      {
-                        id: `win:moil-deposit:${docKey}:full`,
-                        title: `Midnight Oil · ${deposit.job_id}`,
-                        mode: "full",
-                      },
-                    );
                     setDepositWindowId(winId);
                   }}
                 >

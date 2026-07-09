@@ -243,6 +243,8 @@ describe("MidnightOil mode", () => {
     await waitFor(() => {
       expect(screen.getByTestId("moil-deposit")).toBeTruthy();
     });
+    openWindow.mockClear();
+    expect(screen.getByTestId("moil-auto-open-deposit")).toBeTruthy();
     fireEvent.click(screen.getByTestId("moil-deposit"));
     await waitFor(() => {
       expect(depositMidnightOilJob).toHaveBeenCalledWith({
@@ -266,21 +268,27 @@ describe("MidnightOil mode", () => {
       screen.getByTestId("midnight-oil-mode").getAttribute("data-view-format"),
     ).toBe("html");
 
-    // Residual (db): open deposit HTML in hosted window for reading flywheel.
-    fireEvent.click(screen.getByTestId("moil-open-deposit-window"));
-    expect(openWindow).toHaveBeenCalledWith(
-      "hosted_html_document",
-      expect.objectContaining({
-        document_id: "draft_moil_asset_dep_abc",
-        view_format: "html",
-        source: "midnight_oil_deposit",
-      }),
-      expect.objectContaining({
-        id: "win:moil-deposit:draft_moil_asset_dep_abc",
-        mode: "floating",
-      }),
-    );
-    // Residual (ew): full working-region open.
+    // Residual (ex): auto-open floating hosted HTML after deposit.
+    await waitFor(() => {
+      expect(openWindow).toHaveBeenCalledWith(
+        "hosted_html_document",
+        expect.objectContaining({
+          document_id: "draft_moil_asset_dep_abc",
+          view_format: "html",
+          source: "midnight_oil_deposit",
+        }),
+        expect.objectContaining({
+          id: "win:moil-deposit:draft_moil_asset_dep_abc",
+          mode: "floating",
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("moil-deposit-window-id").textContent).toMatch(
+        /win:moil-deposit/,
+      );
+    });
+    // Residual (ew): full working-region open remains available.
     fireEvent.click(screen.getByTestId("moil-open-deposit-full"));
     expect(openWindow).toHaveBeenCalledWith(
       "hosted_html_document",
@@ -293,11 +301,6 @@ describe("MidnightOil mode", () => {
         mode: "full",
       }),
     );
-    await waitFor(() => {
-      expect(screen.getByTestId("moil-deposit-window-id").textContent).toMatch(
-        /win:moil-deposit/,
-      );
-    });
   });
 
   it("runs offline worker after approve with auto-deposit", async () => {
