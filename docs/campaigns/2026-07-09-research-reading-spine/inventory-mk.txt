@@ -1,0 +1,7 @@
+# inventory-mk · SESSION-ARC lw–mj catalog/MO/dual-gate handoff
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: mk
+files:
+  docs/campaigns/2026-07-09-research-reading-spine/SESSION-ARC-lw-mj-catalog-moil-dualgate.md
+proof: docs honesty; suite-proposal 4_passed
+invariants: operator merge PR #465 · fleet handoff · zero-context

@@ -261,3 +261,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (mj, 2026-07-10) **PublicationAttach dual-gate checklist link:**
   - Deep-link to DUAL-GATE-L1-L4-OPERATOR-CHECKLIST (prep only; never enables)
+
+- Closed (mk, 2026-07-10) **SESSION-ARC lw–mj full wave:**
+  - SESSION-ARC-lw-mj-catalog-moil-dualgate.md zero-context handoff
