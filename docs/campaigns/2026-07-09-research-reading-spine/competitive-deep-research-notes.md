@@ -412,3 +412,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - KNOWN_USAGE_FEED_SOURCES incl twin_chase / floating_deep_research
   - usage-summary API returns by_source + known_sources (by_source was missing)
   - Settings legend antiek-bench-usage-known-sources
+
+- Closed (ny, 2026-07-10) **SESSION-ARC nw–nx Antiek-bench chase feed:**
+  - SESSION-ARC-nw-nx-bench-chase-feed.md fleet handoff
