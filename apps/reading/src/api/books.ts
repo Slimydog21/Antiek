@@ -275,7 +275,7 @@ export interface AskBookResponse {
 export async function askBook(
   documentId: string,
   question: string,
-  opts?: { history?: TalkTurn[]; researchTier?: "fast" | "deep" },
+  opts?: { history?: TalkTurn[]; researchTier?: "fast" | "deep" | "wrestle" },
 ): Promise<AskBookResponse> {
   const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}/ask`, {
     method: "POST",
@@ -302,7 +302,7 @@ export interface MetaReadingRequest {
   prompt: string;
   length_unit: "pages" | "minutes";
   length_amount: number;
-  research_tier?: "fast" | "deep";
+  research_tier?: "fast" | "deep" | "wrestle";
   /** The owned-corpus scope. "hard" is the PROPOSED Research↔Read boundary;
    * "soft" is the rollback when sign-off is withheld. NEITHER reaches the
    * internet. */

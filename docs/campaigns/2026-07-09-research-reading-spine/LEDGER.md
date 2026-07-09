@@ -96,3 +96,6 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 - RESEARCH_TIERS += wrestle; zai_reasoning/glm-5.2
 - StartResearch Fast|Deep|Wrestle; TS ResearchTier
 - tests: test_research_tier_dispatch 23 passed
+## residual (gq) wrestle type alignment — 2026-07-09
+- books.ts research_tier + Talk opts include wrestle
+- generated/types.ts research_tier Literal += wrestle
