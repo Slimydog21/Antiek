@@ -3,6 +3,6 @@
 
 CAPABILITY | STATUS | EVIDENCE
 (a)–(aw) prior | branch_only | campaign inventories
-(ax) ResearchProgressPanel product mount | branch_only | ResearchProgressPanel.tsx; DeepResearchSessionHost progress mount; tests; THIS CYCLE
+(ax) ResearchProgressPanel product mount | branch_only | ResearchProgressPanel.tsx; DeepResearchSessionHost progress mount; tests; @ 67a899bd
 
 NEXT: (ay) hydrate ref UI on ResearchContextPanel; operator merge PR #465
