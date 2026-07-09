@@ -32,9 +32,11 @@
  * 18. Residual (ob): available list may include recent closed-window spawns
  *     (twin chase → collective cohesive unit without losing ids).
  * 19. Residual (oc): Clear recent closed-window spawns control (session ring).
+ * 20. Residual (of): mark available rows from recent_ring (closed chase/float)
+ *     so operators can see which multi-select ids survive window close.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchCollectiveResearch,
   mergeSpawnOutputs,
@@ -78,6 +80,11 @@ export type CollectiveResearchPanelProps = {
    * (sessionStorage does not fire same-tab storage events).
    */
   onRecentSpawnsCleared?: () => void;
+  /**
+   * Residual (of): spawn ids known to come from the session recent ring
+   * (closed windows). When omitted, falls back to listRecentDeepResearchSpawnIds().
+   */
+  recentSpawnIds?: readonly string[] | null;
 };
 
 export function CollectiveResearchPanel({
@@ -87,12 +94,14 @@ export function CollectiveResearchPanel({
   autoOpenDraft = true,
   onDocMerged,
   onRecentSpawnsCleared,
+  recentSpawnIds = null,
 }: CollectiveResearchPanelProps) {
   const [selected, setSelected] = useState<string[]>([]);
-  /** Residual (oc): local read of recent ring size for chrome. */
-  const [recentCount, setRecentCount] = useState(
-    () => listRecentDeepResearchSpawnIds().length,
+  /** Residual (oc/of): local read of recent ring for chrome + origin badges. */
+  const [recentRing, setRecentRing] = useState<string[]>(() =>
+    listRecentDeepResearchSpawnIds(),
   );
+  const recentCount = recentRing.length;
 
   // Auto-select preferred spawn once when available (residual cn).
   useEffect(() => {
@@ -203,14 +212,25 @@ export function CollectiveResearchPanel({
    */
   const clearRecentSpawns = useCallback(() => {
     clearRecentDeepResearchSpawnIds();
-    setRecentCount(0);
+    setRecentRing([]);
     onRecentSpawnsCleared?.();
   }, [onRecentSpawnsCleared]);
 
-  // Keep recent count chrome honest when parent re-renders with new available list.
+  // Keep recent origin chrome honest when parent re-renders with new available list.
   useEffect(() => {
-    setRecentCount(listRecentDeepResearchSpawnIds().length);
-  }, [availableSpawnIds]);
+    const fromProp =
+      recentSpawnIds != null
+        ? [...recentSpawnIds].map((x) => String(x || "").trim()).filter(Boolean)
+        : listRecentDeepResearchSpawnIds();
+    setRecentRing(fromProp);
+  }, [availableSpawnIds, recentSpawnIds]);
+
+  /** Residual (of): set of recent-ring ids for origin badges on list rows. */
+  const recentSet = useMemo(() => new Set(recentRing), [recentRing]);
+  const recentInAvailable = useMemo(
+    () => availableSpawnIds.filter((id) => recentSet.has(id)).length,
+    [availableSpawnIds, recentSet],
+  );
 
   const mergeCollective = useCallback(async () => {
     if (selected.length < 1) return;
@@ -467,21 +487,45 @@ export function CollectiveResearchPanel({
         </div>
       </header>
 
-      <ul className="spawn-list" data-testid="collective-spawn-list">
-        {availableSpawnIds.map((id) => (
-          <li key={id} data-spawn-id={id} data-selected={String(selected.includes(id))}>
-            <label>
-              <input
-                type="checkbox"
-                data-testid={`collective-select-${id}`}
-                checked={selected.includes(id)}
-                onChange={() => toggle(id)}
-                disabled={busy}
-              />{" "}
-              <code>{id}</code>
-            </label>
-          </li>
-        ))}
+      <ul
+        className="spawn-list"
+        data-testid="collective-spawn-list"
+        data-recent-in-available={String(recentInAvailable)}
+        data-view-format="html"
+      >
+        {availableSpawnIds.map((id) => {
+          const fromRecent = recentSet.has(id);
+          return (
+            <li
+              key={id}
+              data-spawn-id={id}
+              data-selected={String(selected.includes(id))}
+              data-origin-recent={String(fromRecent)}
+              data-testid={`collective-spawn-row-${id}`}
+            >
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  data-testid={`collective-select-${id}`}
+                  checked={selected.includes(id)}
+                  onChange={() => toggle(id)}
+                  disabled={busy}
+                />{" "}
+                <code>{id}</code>
+                {/* Residual (of): recent_ring origin for closed chase/float. */}
+                {fromRecent ? (
+                  <span
+                    className="text-[10px] font-mono opacity-70 border rounded px-1"
+                    data-testid={`collective-origin-recent-${id}`}
+                    title="From session recent ring — survives floating window close"
+                  >
+                    recent
+                  </span>
+                ) : null}
+              </label>
+            </li>
+          );
+        })}
       </ul>
       {/* Residual (nk): multi-select helpers (parity TwinNotes select path). */}
       <div
@@ -490,6 +534,7 @@ export function CollectiveResearchPanel({
         data-selected-count={String(selected.length)}
         data-available-count={String(availableSpawnIds.length)}
         data-recent-count={String(recentCount)}
+        data-recent-in-available={String(recentInAvailable)}
         data-view-format="html"
         title="Includes open deep-research windows and recent session opens (twin chase / float)"
       >
@@ -534,9 +579,13 @@ export function CollectiveResearchPanel({
           data-testid="collective-selection-count"
           data-selected-count={String(selected.length)}
           data-recent-count={String(recentCount)}
+          data-recent-in-available={String(recentInAvailable)}
         >
           Selected: {selected.length}/{availableSpawnIds.length}
           {recentCount > 0 ? ` · recent=${recentCount}` : ""}
+          {recentInAvailable > 0
+            ? ` · recent_in_list=${recentInAvailable}`
+            : ""}
         </span>
       </div>
 

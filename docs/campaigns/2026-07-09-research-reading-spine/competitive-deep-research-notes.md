@@ -438,3 +438,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (oe, 2026-07-10) **Twin chase collective recent_ring chrome:**
   - chase status + metrics data-collective-recent
   - honesty: spawn survives window close for multi-select merge
+
+- Closed (of, 2026-07-10) **Collective recent_ring origin badges:**
+  - data-origin-recent + recent badge on multi-select rows
+  - data-recent-in-available on list/controls

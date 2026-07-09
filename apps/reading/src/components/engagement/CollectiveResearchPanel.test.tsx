@@ -614,6 +614,43 @@ describe("CollectiveResearchPanel", () => {
     expect(dual.textContent).toMatch(/Dual-gate/i);
   });
 
+  it("marks available spawns from recent_ring with origin badge (of)", async () => {
+    const {
+      pushRecentDeepResearchSpawnId,
+      clearRecentDeepResearchSpawnIds,
+    } = await import("../../workspace/recentDeepResearchSpawns");
+    clearRecentDeepResearchSpawnIds();
+    pushRecentDeepResearchSpawnId("spn_chased");
+    render(
+      <CollectiveResearchPanel
+        availableSpawnIds={["spn_open", "spn_chased"]}
+        parentAssetId="parent"
+        recentSpawnIds={["spn_chased"]}
+      />,
+    );
+    const list = screen.getByTestId("collective-spawn-list");
+    expect(list.getAttribute("data-recent-in-available")).toBe("1");
+    expect(
+      screen
+        .getByTestId("collective-spawn-row-spn_chased")
+        .getAttribute("data-origin-recent"),
+    ).toBe("true");
+    expect(
+      screen
+        .getByTestId("collective-spawn-row-spn_open")
+        .getAttribute("data-origin-recent"),
+    ).toBe("false");
+    expect(screen.getByTestId("collective-origin-recent-spn_chased").textContent).toMatch(
+      /recent/i,
+    );
+    expect(
+      screen
+        .getByTestId("collective-selection-count")
+        .getAttribute("data-recent-in-available"),
+    ).toBe("1");
+    clearRecentDeepResearchSpawnIds();
+  });
+
   it("clears recent closed-window spawns (oc)", async () => {
     const {
       pushRecentDeepResearchSpawnId,

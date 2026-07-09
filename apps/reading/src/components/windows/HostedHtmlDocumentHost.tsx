@@ -96,14 +96,18 @@ export default function HostedHtmlDocumentHost(
   // Residual (eu/ob/oc): open + recent DR session spawns for collective multi-select.
   const windows = useWindows((s) => s.windows);
   const [recentTick, setRecentTick] = useState(0);
+  const recentSpawnIds = useMemo(
+    () => listRecentDeepResearchSpawnIds(),
+    [windows, recentTick],
+  );
   const availableSpawnIds = useMemo(
     () =>
       collectDeepResearchSpawnIds({
         currentSpawnId: null,
         windows,
-        recentSpawnIds: listRecentDeepResearchSpawnIds(),
+        recentSpawnIds,
       }),
-    [windows, recentTick],
+    [windows, recentSpawnIds],
   );
 
   const [highlightText, setHighlightText] = useState("");
@@ -527,6 +531,7 @@ export default function HostedHtmlDocumentHost(
           <CollectiveResearchPanel
             availableSpawnIds={availableSpawnIds}
             parentAssetId={assetId}
+            recentSpawnIds={recentSpawnIds}
             onDocMerged={onContextNeedsRefresh}
             onRecentSpawnsCleared={() => setRecentTick((n) => n + 1)}
           />

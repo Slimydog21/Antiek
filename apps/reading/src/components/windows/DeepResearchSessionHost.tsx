@@ -167,15 +167,19 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
   const windows = useWindows((s) => s.windows);
   // Residual (ob/oc): re-read recent ring when windows change or clear recent.
   const [recentTick, setRecentTick] = useState(0);
+  const recentSpawnIds = useMemo(
+    () => listRecentDeepResearchSpawnIds(),
+    [windows, recentTick],
+  );
   const availableSpawnIds = useMemo(
     () =>
       collectDeepResearchSpawnIds({
         currentSpawnId: props.spawn_id,
         extraSpawnIds: props.available_spawn_ids,
         windows,
-        recentSpawnIds: listRecentDeepResearchSpawnIds(),
+        recentSpawnIds,
       }),
-    [props.spawn_id, props.available_spawn_ids, windows, recentTick],
+    [props.spawn_id, props.available_spawn_ids, windows, recentSpawnIds],
   );
 
   const windowId = props.__windowId?.trim() || "";
@@ -433,6 +437,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
             availableSpawnIds={availableSpawnIds}
             parentAssetId={props.parent_asset_id?.trim() || null}
             preferredSpawnId={props.spawn_id?.trim() || null}
+            recentSpawnIds={recentSpawnIds}
             onDocMerged={onContextNeedsRefresh}
             onRecentSpawnsCleared={() => setRecentTick((n) => n + 1)}
           />
