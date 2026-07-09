@@ -12,6 +12,7 @@ const { composeResearchArtifactsMock, exportResearchArtifactMock, getResearchArt
   }));
 
 vi.mock("../../lib/api", () => ({
+  API_BASE: "",
   composeResearchArtifacts: composeResearchArtifactsMock,
   exportResearchArtifact: exportResearchArtifactMock,
   getResearchArtifactBlocks: getResearchArtifactBlocksMock,
@@ -79,6 +80,9 @@ describe("ArtifactOutlineShelf", () => {
       expect(composeResearchArtifactsMock).toHaveBeenCalledWith(["inv-a", "inv-b", "inv-c"], true),
     );
     expect(await screen.findByText("/tmp/artifacts/draft-merge.html")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Open draft" }).getAttribute("href")).toBe(
+      "/research/artifacts/compose/draft-merge.html?investigation_ids=inv-a&investigation_ids=inv-b&investigation_ids=inv-c",
+    );
   });
 
   it("draft-merges selected child researches from the investigation list", async () => {

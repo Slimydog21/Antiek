@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
 
 import {
+  API_BASE,
   composeResearchArtifacts,
   exportResearchArtifact,
   getResearchArtifactBlocks,
@@ -41,6 +42,12 @@ function parseSiblingIds(raw: string): string[] {
     .filter(Boolean);
 }
 
+function draftMergeHref(investigationIds: string[]): string {
+  const params = new URLSearchParams();
+  for (const id of investigationIds) params.append("investigation_ids", id);
+  return `${API_BASE}/research/artifacts/compose/draft-merge.html?${params.toString()}`;
+}
+
 export default function ArtifactOutlineShelf({
   investigationId,
 }: ArtifactOutlineShelfProps) {
@@ -50,6 +57,7 @@ export default function ArtifactOutlineShelf({
   const [mergeIds, setMergeIds] = useState("");
   const [selectedChildIds, setSelectedChildIds] = useState<string[]>([]);
   const [draftMergePath, setDraftMergePath] = useState<string | null>(null);
+  const [draftMergeIds, setDraftMergeIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [mergeBusy, setMergeBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -104,6 +112,7 @@ export default function ArtifactOutlineShelf({
     try {
       const res = await composeResearchArtifacts(uniqueIds, true);
       setDraftMergePath(res.draft_merge_path ?? res.path);
+      setDraftMergeIds(uniqueIds);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -179,9 +188,21 @@ export default function ArtifactOutlineShelf({
           Draft merge
         </LemonButton>
         {draftMergePath ? (
-          <span className="truncate font-mono text-[10px] text-ink-mute" title={draftMergePath}>
-            {draftMergePath}
-          </span>
+          <>
+            <span className="truncate font-mono text-[10px] text-ink-mute" title={draftMergePath}>
+              {draftMergePath}
+            </span>
+            {draftMergeIds.length >= 2 ? (
+              <a
+                href={draftMergeHref(draftMergeIds)}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-7 items-center rounded-hog px-2 font-mono text-[12px] font-semibold text-ink hover:bg-ice-3 dark:text-bright dark:hover:bg-charcoal-1"
+              >
+                Open draft
+              </a>
+            ) : null}
+          </>
         ) : null}
       </div>
       {err ? <p className="text-sm text-emperor">{err}</p> : null}

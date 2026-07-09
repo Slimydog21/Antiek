@@ -6,7 +6,7 @@ import os
 import sys
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
@@ -129,6 +129,35 @@ async def get_artifact_twin_notes_html(investigation_id: str) -> HTMLResponse:
         headers={
             "x-antiek-investigation-id": investigation_id,
             "x-antiek-content-hash": body.content_hash(),
+        },
+    )
+
+
+@artifact_router.get("/artifacts/compose/draft-merge.html", response_class=HTMLResponse)
+async def get_compose_draft_merge_html(
+    investigation_ids: list[str] = Query(default_factory=list),
+) -> HTMLResponse:
+    ids = [item.strip() for item in investigation_ids if item.strip()]
+    if len(ids) < 2:
+        raise HTTPException(status_code=400, detail="at least two investigation_ids required")
+    try:
+        res = compose_artifacts(
+            ids,
+            db_path=_db(),
+            write_draft_merge=True,
+        )
+        if not res.draft_merge_path:
+            raise RuntimeError("draft merge path was not written")
+        html = res.draft_merge_path.read_text(encoding="utf-8")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return HTMLResponse(
+        html,
+        headers={
+            "x-antiek-compose-count": str(len(ids)),
+            "x-antiek-compose-members": ",".join(ids),
         },
     )
 

@@ -136,11 +136,45 @@ def test_post_compose_artifacts_writes_draft_merge(api_env):
     assert all(member["twin_notes_path"] for member in body["members"])
 
 
+def test_get_compose_draft_merge_html_renders_by_investigation_ids(api_env):
+    for iid, text in [("inv-view-a", "View A"), ("inv-view-b", "View B")]:
+        promote_insight(
+            text=text,
+            investigation_id=iid,
+            confidence="moderate",
+            source_document_id="doc-compose",
+        )
+    client = _client()
+    resp = client.get(
+        "/research/artifacts/compose/draft-merge.html",
+        params=[("investigation_ids", "inv-view-a"), ("investigation_ids", "inv-view-b")],
+    )
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/html")
+    assert resp.headers["x-antiek-compose-count"] == "2"
+    assert resp.headers["x-antiek-compose-members"] == "inv-view-a,inv-view-b"
+    assert "Draft merge of 2 research artifacts" in resp.text
+    assert "View A" in resp.text
+    assert "View B" in resp.text
+
+
 def test_post_compose_artifacts_requires_two_ids(api_env):
     client = _client()
     resp = client.post(
         "/research/artifacts/compose",
         json={"investigation_ids": ["one"]},
+    )
+
+    assert resp.status_code == 400
+    assert "at least two" in resp.json()["detail"]
+
+
+def test_get_compose_draft_merge_html_requires_two_ids(api_env):
+    client = _client()
+    resp = client.get(
+        "/research/artifacts/compose/draft-merge.html",
+        params={"investigation_ids": "one"},
     )
 
     assert resp.status_code == 400
