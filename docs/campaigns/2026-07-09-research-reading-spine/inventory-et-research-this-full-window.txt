@@ -1,0 +1,17 @@
+# residual (et) ResearchThis full working-region deep research window
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(es) prior | branch_only | campaign inventories
+(et) reading DR full window | branch_only | ResearchThis spinDeepResearchWindow full; research-this-deep-full; legacy /inv still research-this-full; 5 vitest
+
+PATHS:
+- apps/reading/src/modes/Reading/ResearchThis.tsx
+- apps/reading/src/modes/Reading/ResearchThis.test.tsx
+
+INVARIANTS:
+- view_mode full ≠ full workstation navigate
+- budget soft-gate applies to floating and full window
+- HTML-first float host path
+
+NEXT: (eu) re-derive; operator merge PR #465

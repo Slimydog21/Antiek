@@ -192,6 +192,45 @@ describe("ResearchThis residual cc/cu/cx", () => {
     });
   });
 
+  it("opens full working-region deep research window (et)", async () => {
+    launchFloatingDeepResearch.mockResolvedValue({
+      session_id: "fsess_full",
+      spawn_id: "spn_full",
+      investigation_id: "inv_w",
+      parent_asset_id: "doc-1",
+      window_id: "wdr_full",
+      view_format: "html",
+      view_mode: "full",
+      status: "reserved",
+    });
+    render(
+      <MemoryRouter>
+        <ResearchThis
+          documentId="doc-1"
+          pageIndex={0}
+          passageText="Full window highlight"
+        />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByTestId("research-this-deep-full"));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "doc-1",
+          view_mode: "full",
+          selection_text: expect.stringMatching(/Full window/),
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("research-this-window-id").textContent).toMatch(
+        /wdr_full/,
+      );
+    });
+    // Legacy full-page handoff remains separate.
+    expect(screen.getByTestId("research-this-full")).toBeTruthy();
+  });
+
   it("full workstation path still navigates via spinResearch", async () => {
     spinResearch.mockResolvedValue({ investigation_id: "inv_full" });
     render(

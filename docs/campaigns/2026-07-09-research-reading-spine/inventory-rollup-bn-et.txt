@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(et) · PR #465
+Reading+hosted full/float DR; pub refs; highlight; draft auto-open; collective flywheel; driver budget bar.
+Operator merge still gated. Next residual (eu).

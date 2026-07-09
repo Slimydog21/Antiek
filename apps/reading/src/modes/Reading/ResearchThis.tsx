@@ -12,6 +12,7 @@ import {
   hydratePublicationRefs,
   parsePublicationRefs,
 } from "../ResearchWorkstation/publicationRefs";
+import type { WindowMode } from "../../workspace/windowsStore";
 import { launchFloatingDeepResearch } from "./launchFloatingDeepResearch";
 
 /**
@@ -24,7 +25,9 @@ import { launchFloatingDeepResearch } from "./launchFloatingDeepResearch";
  * Residual (cx): budget projection before fire (parity with StartResearch).
  * Residual (cy): decision-tree model_id resolved inside launchFloatingDeepResearch
  * (shared chokepoint with float-menu / HighlightToolbar).
- * Full-page workstation handoff remains an explicit secondary action.
+ * Residual (et): full working-region deep_research_session window (view_mode
+ * full) — distinct from legacy full-page ResearchWorkstation handoff.
+ * Full-page workstation handoff remains an explicit tertiary action.
  *
  * Gate-safe: passageText for gated books is still constrained server-side;
  * floating path uses the same asset_id + selection identity.
@@ -63,7 +66,7 @@ export default function ResearchThis({
     [],
   );
 
-  const spinFloating = async () => {
+  const spinDeepResearchWindow = async (viewMode: WindowMode = "floating") => {
     if (budgetWarn && !forceOverBudget) {
       setError(
         "Projected cost may exceed remaining daily budget — enable force override or reduce scope.",
@@ -85,19 +88,20 @@ export default function ResearchThis({
       }
       // Residual (cy): model_id resolved inside launchFloatingDeepResearch
       // (decision-tree driver when installed; never invented).
+      // Residual (et): view_mode floating | full for window host (not /inv).
       const out = await launchFloatingDeepResearch({
         asset_id: documentId,
         selection_text: selection,
         page: pageIndex,
         goal_hint: "Deep-research the highlighted passage from reading",
-        view_mode: "floating",
+        view_mode: viewMode,
         references: refs.length ? refs : undefined,
       });
       track("reading_research_spun", {
         document_id: documentId,
         page_index: pageIndex,
         has_passage: Boolean(passageText),
-        mode: "floating_window",
+        mode: viewMode === "full" ? "full_window" : "floating_window",
         session_id: out.session_id,
         publication_ref_count: refs.length,
         model_id: out.model_id,
@@ -194,11 +198,22 @@ export default function ResearchThis({
           variant="secondary"
           size="sm"
           disabled={busy || (budgetWarn && !forceOverBudget)}
-          onClick={() => void spinFloating()}
+          onClick={() => void spinDeepResearchWindow("floating")}
           title="Open deep research in a floating window over the scene"
           data-testid="research-this-floating"
         >
           {busy ? "Opening…" : "Deep research (window)"}
+        </LemonButton>
+        <LemonButton
+          type="button"
+          variant="secondary"
+          size="sm"
+          disabled={busy || (budgetWarn && !forceOverBudget)}
+          onClick={() => void spinDeepResearchWindow("full")}
+          title="Open deep research expanded to full working region"
+          data-testid="research-this-deep-full"
+        >
+          {busy ? "Opening…" : "Deep research (full)"}
         </LemonButton>
         <LemonButton
           type="button"
