@@ -471,6 +471,55 @@ class BookHtmlPublicationRequestOut(BaseModel):
     policy_notes: list[str]
 
 
+class BookHtmlPublishJobIn(BaseModel):
+    publication_request_id: str = Field(min_length=1, max_length=80)
+    serve_gate_review_id: str = Field(min_length=1, max_length=80)
+    document_id: str = Field(min_length=1, max_length=160)
+    title: str = Field(min_length=1, max_length=300)
+    author: str | None = Field(default=None, max_length=200)
+    html_body: str = Field(min_length=1, max_length=2_000_000)
+    rights_basis: Literal[
+        "public_domain",
+        "publisher_opt_in",
+        "platform_authored",
+        "personal_license",
+    ]
+    page_count: int = Field(default=0, ge=0, le=100_000)
+    license_basis: str = Field(min_length=1, max_length=1000)
+    acknowledge_write_to_library: bool = False
+    acknowledge_full_text_servable: bool = False
+
+
+class BookHtmlPublishJobOut(BaseModel):
+    publish_job_id: str
+    status: Literal["published_to_private_library"]
+    publication_request_id: str
+    serve_gate_review_id: str
+    document_id: str
+    title: str
+    author: str | None
+    import_target: Literal["antiek_html"]
+    content_class: str
+    servability: str
+    servable_full_text: bool
+    document_inserted: bool
+    book_asset_registered: bool
+    graph_mutation_performed: bool
+    shelf_publication_attempted: bool
+    reader_route_created: bool
+    full_text_served: bool
+    open_route: str
+    policy_notes: list[str]
+
+
+_PUBLISH_CONTENT_CLASS_BY_RIGHTS: dict[str, str] = {
+    "public_domain": "public_domain",
+    "publisher_opt_in": "opt_in_licensed",
+    "platform_authored": "user_owned",
+    "personal_license": "user_owned",
+}
+
+
 def _book_purchase_request_id(req: BookPurchaseRequestIn) -> str:
     normalized = "|".join(
         [
@@ -562,6 +611,19 @@ def _book_html_publication_request_id(req: BookHtmlPublicationRequestIn) -> str:
         ]
     )
     return f"bookpub-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _book_html_publish_job_id(req: BookHtmlPublishJobIn) -> str:
+    normalized = "|".join(
+        [
+            req.publication_request_id.strip(),
+            req.serve_gate_review_id.strip(),
+            req.document_id.strip(),
+            req.title.strip().casefold(),
+            req.rights_basis,
+        ]
+    )
+    return f"bookjob-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
 
 
 class SpinResearchRequest(BaseModel):
@@ -1211,6 +1273,101 @@ def register_book_routes(app: FastAPI) -> None:
             policy_notes=[
                 "Publication intent was recorded only; no graph, shelf, or reader state was written.",
                 "No full text was served and no Reader route was created by this request.",
+            ],
+        )
+
+    @app.post(
+        "/books/import/publish-job",
+        response_model=BookHtmlPublishJobOut,
+        status_code=201,
+        tags=["books"],
+    )
+    async def book_html_publish_job(req: BookHtmlPublishJobIn) -> BookHtmlPublishJobOut:
+        """Explicitly publish inline Antiek HTML through the existing book gate.
+
+        This is the first write in the staged import chain. It still does not
+        read any external file or output reference: the caller must provide the
+        HTML body inline, and the resulting Reader availability is governed by
+        the existing documents/content_class + book_assets serve gate.
+        """
+        publication_request_id = req.publication_request_id.strip()
+        serve_gate_review_id = req.serve_gate_review_id.strip()
+        document_id = req.document_id.strip()
+        if not publication_request_id.startswith("bookpub-"):
+            raise HTTPException(status_code=400, detail="invalid_publication_request_id")
+        if not serve_gate_review_id.startswith("bookserve-"):
+            raise HTTPException(status_code=400, detail="invalid_serve_gate_review_id")
+        if not req.acknowledge_write_to_library:
+            raise HTTPException(status_code=400, detail="write_to_library_ack_required")
+        if not req.acknowledge_full_text_servable:
+            raise HTTPException(status_code=400, detail="full_text_servable_ack_required")
+
+        content_class = _PUBLISH_CONTENT_CLASS_BY_RIGHTS[req.rights_basis]
+        db = _resolve_db_path()
+        from runtime.db_lock import connect_write
+        from substrate.books.ingest import register_book
+        from substrate.graph.ops import insert_document
+
+        con = connect_write(db, purpose="books:html_publish_job")
+        try:
+            exists = con.execute(
+                "SELECT 1 FROM documents WHERE document_id = ? LIMIT 1",
+                [document_id],
+            ).fetchone()
+            if exists:
+                raise HTTPException(status_code=409, detail="document_id_exists")
+            insert_document(
+                con,
+                document_id=document_id,
+                source_tier=2,
+                document_type="book",
+                source_uri=f"antiek://book-import/{publication_request_id}",
+                title=req.title.strip(),
+                author=req.author.strip() if req.author else None,
+                raw_text=req.html_body,
+                metadata={
+                    "import_target": "antiek_html",
+                    "publication_request_id": publication_request_id,
+                    "serve_gate_review_id": serve_gate_review_id,
+                    "rights_basis": req.rights_basis,
+                },
+                content_class=content_class,
+            )
+            asset = register_book(
+                con,
+                document_id=document_id,
+                content_class=content_class,
+                page_count=req.page_count,
+                pagination_scheme="html_section",
+                provenance=f"Antiek HTML import publication request {publication_request_id}",
+                license_basis=req.license_basis.strip(),
+            )
+        finally:
+            con.close()
+
+        return BookHtmlPublishJobOut(
+            publish_job_id=_book_html_publish_job_id(req),
+            status="published_to_private_library",
+            publication_request_id=publication_request_id,
+            serve_gate_review_id=serve_gate_review_id,
+            document_id=document_id,
+            title=req.title.strip(),
+            author=req.author.strip() if req.author else None,
+            import_target="antiek_html",
+            content_class=content_class,
+            servability=asset.servability.value,
+            servable_full_text=asset.servable_full_text,
+            document_inserted=True,
+            book_asset_registered=True,
+            graph_mutation_performed=True,
+            shelf_publication_attempted=True,
+            reader_route_created=True,
+            full_text_served=False,
+            open_route=f"/read/{document_id}",
+            policy_notes=[
+                "Inline Antiek HTML was written through the existing document/book substrate path.",
+                "No external file, storage reference, URL, provider, checkout, or spend path was touched.",
+                "This endpoint did not serve full text; subsequent reads still pass through the serve gate.",
             ],
         )
 

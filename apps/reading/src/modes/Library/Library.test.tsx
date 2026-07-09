@@ -19,6 +19,7 @@ const {
   recordBookHtmlConversionResultMock,
   reviewBookHtmlServeGateMock,
   requestBookHtmlPublicationMock,
+  runBookHtmlPublishJobMock,
   listInvestigationsMock,
   navigateMock,
 } = vi.hoisted(() => ({
@@ -31,6 +32,7 @@ const {
   recordBookHtmlConversionResultMock: vi.fn(),
   reviewBookHtmlServeGateMock: vi.fn(),
   requestBookHtmlPublicationMock: vi.fn(),
+  runBookHtmlPublishJobMock: vi.fn(),
   // M1: the active-research signal documentsByTheme ranks the shelf to.
   // Default: no active research → the feed falls back to recency.
   listInvestigationsMock: vi.fn<
@@ -52,6 +54,7 @@ vi.mock("../../api/books", async (orig) => {
     recordBookHtmlConversionResult: recordBookHtmlConversionResultMock,
     reviewBookHtmlServeGate: reviewBookHtmlServeGateMock,
     requestBookHtmlPublication: requestBookHtmlPublicationMock,
+    runBookHtmlPublishJob: runBookHtmlPublishJobMock,
   };
 });
 
@@ -96,6 +99,7 @@ beforeEach(() => {
   recordBookHtmlConversionResultMock.mockReset();
   reviewBookHtmlServeGateMock.mockReset();
   requestBookHtmlPublicationMock.mockReset();
+  runBookHtmlPublishJobMock.mockReset();
   listInvestigationsMock.mockReset();
   listInvestigationsMock.mockResolvedValue({ count: 0, investigations: [] });
   navigateMock.mockReset();
@@ -338,7 +342,7 @@ describe("Library", () => {
     });
   });
 
-  it("preflights through publication request without ingesting, publishing, or serving", async () => {
+  it("preflights through explicit inline publish into the local library", async () => {
     listBooksMock.mockResolvedValue({ books: [servableBook], count: 1 });
     requestBookPurchaseMock.mockResolvedValue({
       request_id: "bookreq-safe123",
@@ -472,6 +476,27 @@ describe("Library", () => {
       full_text_served: false,
       reader_route_created: false,
       required_operator_steps: [],
+      policy_notes: [],
+    });
+    runBookHtmlPublishJobMock.mockResolvedValue({
+      publish_job_id: "bookjob-safe123",
+      status: "published_to_private_library",
+      publication_request_id: "bookpub-safe123",
+      serve_gate_review_id: "bookserve-safe123",
+      document_id: "book-dream-machine",
+      title: "The Dream Machine",
+      author: "M. Mitchell Waldrop",
+      import_target: "antiek_html",
+      content_class: "user_owned",
+      servability: "platform_authored",
+      servable_full_text: true,
+      document_inserted: true,
+      book_asset_registered: true,
+      graph_mutation_performed: true,
+      shelf_publication_attempted: true,
+      reader_route_created: true,
+      full_text_served: false,
+      open_route: "/read/book-dream-machine",
       policy_notes: [],
     });
     renderLibrary();
@@ -632,6 +657,39 @@ describe("Library", () => {
       shelf_visibility: "private_library",
       acknowledge_publication_intent: true,
       acknowledge_no_ingest_or_serve: true,
+    });
+
+    fireEvent.change(screen.getByLabelText("Document id"), {
+      target: { value: "book-dream-machine" },
+    });
+    fireEvent.change(screen.getByLabelText("Antiek HTML body"), {
+      target: {
+        value: "<article><h1>The Dream Machine</h1><p>Networked computing history.</p></article>",
+      },
+    });
+    fireEvent.change(screen.getByLabelText("License basis"), {
+      target: { value: "Operator-owned copy for private Antiek library." },
+    });
+    fireEvent.click(screen.getByLabelText(/Write this inline HTML/));
+    fireEvent.click(screen.getByLabelText(/rights basis allows full-text/));
+    fireEvent.click(screen.getByRole("button", { name: "Publish HTML" }));
+
+    const publishStatus = await screen.findByText(/Published book-dream-machine/);
+    expect(publishStatus.textContent).toContain("bookjob-safe123");
+    expect(publishStatus.textContent).toContain("servable yes");
+    expect(publishStatus.textContent).toContain("/read/book-dream-machine");
+    expect(runBookHtmlPublishJobMock).toHaveBeenCalledWith({
+      publication_request_id: "bookpub-safe123",
+      serve_gate_review_id: "bookserve-safe123",
+      document_id: "book-dream-machine",
+      title: "The Dream Machine",
+      author: "M. Mitchell Waldrop",
+      html_body: "<article><h1>The Dream Machine</h1><p>Networked computing history.</p></article>",
+      rights_basis: "personal_license",
+      page_count: 340,
+      license_basis: "Operator-owned copy for private Antiek library.",
+      acknowledge_write_to_library: true,
+      acknowledge_full_text_servable: true,
     });
   });
 });

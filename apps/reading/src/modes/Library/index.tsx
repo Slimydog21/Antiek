@@ -6,6 +6,7 @@ import type {
   BookHtmlConversionReviewResponse,
   BookHtmlFileHandoffResponse,
   BookHtmlImportPreflightResponse,
+  BookHtmlPublishJobResponse,
   BookHtmlPublicationRequestResponse,
   BookHtmlServeGateReviewResponse,
   BookPurchaseRequestResponse,
@@ -22,6 +23,7 @@ import {
   requestBookHtmlPublication,
   reviewBookHtmlConversion,
   reviewBookHtmlServeGate,
+  runBookHtmlPublishJob,
 } from "../../api/books";
 import { listInvestigations } from "../../lib/api";
 import type { InvestigationSummary } from "../../lib/api";
@@ -133,6 +135,13 @@ export default function Library() {
   const [publicationBusy, setPublicationBusy] = useState(false);
   const [publicationReceipt, setPublicationReceipt] =
     useState<BookHtmlPublicationRequestResponse | null>(null);
+  const [publishDocumentId, setPublishDocumentId] = useState("");
+  const [publishHtmlBody, setPublishHtmlBody] = useState("");
+  const [publishLicenseBasis, setPublishLicenseBasis] = useState("");
+  const [publishWriteAck, setPublishWriteAck] = useState(false);
+  const [publishServableAck, setPublishServableAck] = useState(false);
+  const [publishBusy, setPublishBusy] = useState(false);
+  const [publishReceipt, setPublishReceipt] = useState<BookHtmlPublishJobResponse | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -387,6 +396,10 @@ export default function Library() {
         acknowledge_no_ingest_or_serve: publicationNoIngestAck,
       });
       setPublicationReceipt(res);
+      setPublishReceipt(null);
+      if (publicationDocHint.trim()) {
+        setPublishDocumentId(publicationDocHint.trim());
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -399,6 +412,50 @@ export default function Library() {
     publicationNoIngestAck,
     publicationVisibility,
     serveReceipt,
+  ]);
+
+  const onPublishJob = useCallback(async () => {
+    if (!publicationReceipt || !serveReceipt || !importReceipt) return;
+    const pageCount =
+      outputReceipt?.page_count_estimate !== null && outputReceipt?.page_count_estimate !== undefined
+        ? outputReceipt.page_count_estimate
+        : 0;
+    const rightsBasis =
+      serveRightsBasis === "unknown" ? "personal_license" : serveRightsBasis;
+    setPublishBusy(true);
+    setError(null);
+    setPublishReceipt(null);
+    try {
+      const res = await runBookHtmlPublishJob({
+        publication_request_id: publicationReceipt.publication_request_id,
+        serve_gate_review_id: serveReceipt.serve_gate_review_id,
+        document_id: publishDocumentId,
+        title: importReceipt.title,
+        author: importReceipt.author,
+        html_body: publishHtmlBody,
+        rights_basis: rightsBasis,
+        page_count: pageCount,
+        license_basis: publishLicenseBasis,
+        acknowledge_write_to_library: publishWriteAck,
+        acknowledge_full_text_servable: publishServableAck,
+      });
+      setPublishReceipt(res);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPublishBusy(false);
+    }
+  }, [
+    importReceipt,
+    outputReceipt,
+    publicationReceipt,
+    publishDocumentId,
+    publishHtmlBody,
+    publishLicenseBasis,
+    publishServableAck,
+    publishWriteAck,
+    serveReceipt,
+    serveRightsBasis,
   ]);
 
   // The display order, in three layers of precedence:
@@ -1127,6 +1184,95 @@ export default function Library() {
                   {publicationReceipt.ingest_attempted ? "yes" : "no"}, published{" "}
                   {publicationReceipt.shelf_publication_attempted ? "yes" : "no"}, served{" "}
                   {publicationReceipt.full_text_served ? "yes" : "no"}.
+                </p>
+              )}
+            </form>
+          )}
+
+          {publicationReceipt && (
+            <form
+              className="rounded-md border border-ice-4 dark:border-charcoal-1 bg-white/70 dark:bg-charcoal-2/70 p-3 space-y-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void onPublishJob();
+              }}
+            >
+              <div>
+                <p className="text-[13px] font-serif text-ink dark:text-bright">
+                  Publish inline HTML
+                </p>
+                <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                  Writes the provided Antiek HTML body into the local library;
+                  no external file, storage reference, provider, checkout, or spend is touched.
+                </p>
+              </div>
+              <label className="block text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                Document id
+                <input
+                  value={publishDocumentId}
+                  onChange={(event) => setPublishDocumentId(event.target.value)}
+                  required
+                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  placeholder="book-dream-machine"
+                />
+              </label>
+              <label className="block text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                Antiek HTML body
+                <textarea
+                  value={publishHtmlBody}
+                  onChange={(event) => setPublishHtmlBody(event.target.value)}
+                  required
+                  rows={4}
+                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  placeholder="<article><h1>Title</h1><p>Body…</p></article>"
+                />
+              </label>
+              <label className="block text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                License basis
+                <input
+                  value={publishLicenseBasis}
+                  onChange={(event) => setPublishLicenseBasis(event.target.value)}
+                  required
+                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  placeholder="Operator-owned copy for private Antiek library"
+                />
+              </label>
+              <div className="flex flex-col gap-2">
+                <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                  <input
+                    type="checkbox"
+                    checked={publishWriteAck}
+                    onChange={(event) => setPublishWriteAck(event.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>Write this inline HTML into my local Antiek library.</span>
+                </label>
+                <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                  <input
+                    type="checkbox"
+                    checked={publishServableAck}
+                    onChange={(event) => setPublishServableAck(event.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>The rights basis allows full-text reading through the existing serve gate.</span>
+                </label>
+              </div>
+              <button
+                type="submit"
+                disabled={
+                  publishBusy ||
+                  publishDocumentId.trim().length === 0 ||
+                  publishHtmlBody.trim().length === 0 ||
+                  publishLicenseBasis.trim().length === 0
+                }
+                className="rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+              >
+                {publishBusy ? "Publishing…" : "Publish HTML"}
+              </button>
+              {publishReceipt && (
+                <p className="text-[13px] font-serif text-ink dark:text-bright" role="status">
+                  Published {publishReceipt.document_id} through {publishReceipt.publish_job_id}; servable{" "}
+                  {publishReceipt.servable_full_text ? "yes" : "no"}, route {publishReceipt.open_route}.
                 </p>
               )}
             </form>

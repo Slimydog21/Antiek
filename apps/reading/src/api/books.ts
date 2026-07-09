@@ -443,6 +443,42 @@ export interface BookHtmlPublicationRequestResponse {
   policy_notes: string[];
 }
 
+export interface BookHtmlPublishJobInput {
+  publication_request_id: string;
+  serve_gate_review_id: string;
+  document_id: string;
+  title: string;
+  author?: string | null;
+  html_body: string;
+  rights_basis: "public_domain" | "publisher_opt_in" | "platform_authored" | "personal_license";
+  page_count?: number;
+  license_basis: string;
+  acknowledge_write_to_library: boolean;
+  acknowledge_full_text_servable: boolean;
+}
+
+export interface BookHtmlPublishJobResponse {
+  publish_job_id: string;
+  status: "published_to_private_library";
+  publication_request_id: string;
+  serve_gate_review_id: string;
+  document_id: string;
+  title: string;
+  author: string | null;
+  import_target: "antiek_html";
+  content_class: string;
+  servability: string;
+  servable_full_text: boolean;
+  document_inserted: boolean;
+  book_asset_registered: boolean;
+  graph_mutation_performed: boolean;
+  shelf_publication_attempted: boolean;
+  reader_route_created: boolean;
+  full_text_served: boolean;
+  open_route: string;
+  policy_notes: string[];
+}
+
 /** Prompt-to-curate (Read SPR-04). Ranks ONLY servable books by relevance
  * to the prompt — a gated book is never curated into a readable list.
  * Returns 503 if the embedding model isn't available server-side. */
@@ -556,6 +592,22 @@ export async function requestBookHtmlPublication(
   }
   if (!resp.ok) throw new Error(`POST /books/import/publication-request: HTTP ${resp.status}`);
   return (await resp.json()) as BookHtmlPublicationRequestResponse;
+}
+
+export async function runBookHtmlPublishJob(
+  request: BookHtmlPublishJobInput,
+): Promise<BookHtmlPublishJobResponse> {
+  const resp = await apiFetch(`${API_BASE}/books/import/publish-job`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (resp.status === 400) {
+    throw new Error("Confirm final library write and full-text servability.");
+  }
+  if (resp.status === 409) throw new Error("That document id already exists.");
+  if (!resp.ok) throw new Error(`POST /books/import/publish-job: HTTP ${resp.status}`);
+  return (await resp.json()) as BookHtmlPublishJobResponse;
 }
 
 // ── SPR-08 M2: talk-to-book (multi-turn, page-cited) ──────────────────

@@ -533,3 +533,94 @@ def test_html_publication_request_records_intent_without_ingest_or_serve() -> No
     assert body["full_text_served"] is False
     assert body["reader_route_created"] is False
     assert any("Publication intent" in note for note in body["policy_notes"])
+
+
+def test_html_publish_job_requires_final_write_acknowledgements() -> None:
+    client = _client()
+
+    missing_write_ack = client.post(
+        "/books/import/publish-job",
+        json={
+            "publication_request_id": "bookpub-safe123",
+            "serve_gate_review_id": "bookserve-safe123",
+            "document_id": "book-dream-machine",
+            "title": "The Dream Machine",
+            "html_body": "<article><h1>The Dream Machine</h1></article>",
+            "rights_basis": "personal_license",
+            "license_basis": "Operator-owned copy for private Antiek library.",
+            "acknowledge_write_to_library": False,
+            "acknowledge_full_text_servable": True,
+        },
+    )
+    assert missing_write_ack.status_code == 400
+    assert missing_write_ack.json()["detail"] == "write_to_library_ack_required"
+
+    missing_servable_ack = client.post(
+        "/books/import/publish-job",
+        json={
+            "publication_request_id": "bookpub-safe123",
+            "serve_gate_review_id": "bookserve-safe123",
+            "document_id": "book-dream-machine",
+            "title": "The Dream Machine",
+            "html_body": "<article><h1>The Dream Machine</h1></article>",
+            "rights_basis": "personal_license",
+            "license_basis": "Operator-owned copy for private Antiek library.",
+            "acknowledge_write_to_library": True,
+            "acknowledge_full_text_servable": False,
+        },
+    )
+    assert missing_servable_ack.status_code == 400
+    assert missing_servable_ack.json()["detail"] == "full_text_servable_ack_required"
+
+
+def test_html_publish_job_writes_book_through_existing_serve_gate() -> None:
+    client = _client()
+
+    resp = client.post(
+        "/books/import/publish-job",
+        json={
+            "publication_request_id": "bookpub-safe123",
+            "serve_gate_review_id": "bookserve-safe123",
+            "document_id": "book-dream-machine",
+            "title": "The Dream Machine",
+            "author": "M. Mitchell Waldrop",
+            "html_body": "<article><h1>The Dream Machine</h1><p>Networked computing history.</p></article>",
+            "rights_basis": "personal_license",
+            "page_count": 340,
+            "license_basis": "Operator-owned copy for private Antiek library.",
+            "acknowledge_write_to_library": True,
+            "acknowledge_full_text_servable": True,
+        },
+    )
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["publish_job_id"].startswith("bookjob-")
+    assert body["status"] == "published_to_private_library"
+    assert body["document_id"] == "book-dream-machine"
+    assert body["content_class"] == "user_owned"
+    assert body["servable_full_text"] is True
+    assert body["document_inserted"] is True
+    assert body["book_asset_registered"] is True
+    assert body["graph_mutation_performed"] is True
+    assert body["shelf_publication_attempted"] is True
+    assert body["reader_route_created"] is True
+    assert body["full_text_served"] is False
+    assert body["open_route"] == "/read/book-dream-machine"
+
+    detail = client.get("/books/book-dream-machine")
+    assert detail.status_code == 200, detail.text
+    detail_body = detail.json()
+    assert detail_body["document_id"] == "book-dream-machine"
+    assert detail_body["servable_full_text"] is True
+    assert detail_body["page_count"] == 340
+    assert detail_body["pagination_scheme"] == "html_section"
+
+    served = client.get("/books/book-dream-machine/full-text")
+    assert served.status_code == 200, served.text
+    served_body = served.json()
+    assert served_body["servable"] is True
+    assert served_body["full_text"] == (
+        "<article><h1>The Dream Machine</h1><p>Networked computing history.</p></article>"
+    )
+    assert served_body["reason"] == "servable"
