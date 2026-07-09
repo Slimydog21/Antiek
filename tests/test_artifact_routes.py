@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -269,7 +271,7 @@ def test_source_merge_apply_requires_hash_conflict_acknowledgement(api_env):
     assert resp.json()["detail"] == "source_merge_hash_conflicts_acknowledgement_required"
 
 
-def test_source_merge_apply_contract_stops_before_writer(api_env):
+def test_source_merge_apply_records_deterministic_receipt(api_env):
     client = _client()
     packet, hashes = _source_merge_ready_packet(client)
 
@@ -284,8 +286,56 @@ def test_source_merge_apply_contract_stops_before_writer(api_env):
         },
     )
 
-    assert resp.status_code == 501
-    assert resp.json()["detail"] == "source_merge_writer_not_implemented"
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "applied"
+    assert body["document_id"] == "doc-source-merge"
+    assert body["source_revision_id"].startswith("srcmerge-doc-source-merge-")
+    assert body["twin_revision_id"].startswith("twinmerge-doc-source-merge-")
+    assert body["member_investigation_ids"] == ["inv-src-a", "inv-src-b"]
+    assert body["hash_conflicts_acknowledged"] is False
+    assert body["event_id"]
+
+    again = client.post(
+        "/research/artifacts/source-merge/apply",
+        json={
+            "reviewed_packet": packet,
+            "expected_content_hashes": hashes,
+            "acknowledge_reviewed_draft": True,
+            "acknowledge_source_book_mutation": True,
+            "acknowledge_twin_document_mutation": True,
+        },
+    )
+    assert again.status_code == 200
+    assert again.json() == body
+
+
+def test_source_merge_apply_emits_metadata_only_audit_event(api_env):
+    client = _client()
+    packet, hashes = _source_merge_ready_packet(client)
+
+    resp = client.post(
+        "/research/artifacts/source-merge/apply",
+        json={
+            "reviewed_packet": packet,
+            "expected_content_hashes": hashes,
+            "acknowledge_reviewed_draft": True,
+            "acknowledge_source_book_mutation": True,
+            "acknowledge_twin_document_mutation": True,
+        },
+    )
+
+    assert resp.status_code == 200
+    events_path = Path(api_env["events"]) / "read-doc-source-merge.jsonl"
+    rows = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines()]
+    event = rows[-1]
+    assert event["event_id"] == resp.json()["event_id"]
+    assert event["action_type"] == "source_merge.applied"
+    assert event["document_id"] == "doc-source-merge"
+    assert event["payload"]["source_book_body_rewritten"] is False
+    assert event["payload"]["twin_document_body_rewritten"] is False
+    assert "Source merge A" not in json.dumps(event)
+    assert "Source merge B" not in json.dumps(event)
 
 
 def test_get_compose_draft_merge_html_requires_two_ids(api_env):

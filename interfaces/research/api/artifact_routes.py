@@ -14,8 +14,10 @@ _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.p
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
+from runtime.db_lock import connect_write  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.research_artifact import (  # noqa: E402
+    apply_source_merge_review,
     build_html_only,
     compose_artifacts,
     export_research_artifact,
@@ -280,14 +282,42 @@ async def post_compose_artifacts(body: ComposeIn) -> ComposeOut:
 async def post_source_merge_apply(body: SourceMergeApplyIn) -> SourceMergeApplyOut:
     """Preflight the irreversible source-book/twin apply boundary.
 
-    SPR-AHT-08 deliberately lands the contract before the writer: this route
-    validates the reviewed packet and all mutation acknowledgements, then
-    refuses with a typed not-implemented response before any source-book or
-    twin-document write can happen.
+    This route validates the reviewed packet and all mutation acknowledgements,
+    then records the first durable apply receipt under the DuckDB write lock.
+    The receipt is a metadata ledger entry: the source book body and twin body
+    are not rewritten by this milestone.
     """
 
-    _validate_source_merge_preflight(body, db_path=_db())
-    raise HTTPException(status_code=501, detail="source_merge_writer_not_implemented")
+    db_path = _db()
+    member_ids = _validate_source_merge_preflight(body, db_path=db_path)
+    packet = body.reviewed_packet
+    try:
+        with connect_write(db_path, purpose="research_artifact/source_merge_apply") as con:
+            receipt = apply_source_merge_review(
+                con,
+                document_id=packet.document_id,
+                parent_reading_thread_id=packet.parent_reading_thread_id,
+                draft_merge_path=packet.draft_merge_path,
+                compose_index_path=packet.compose_index_path,
+                member_investigation_ids=member_ids,
+                expected_content_hashes=body.expected_content_hashes,
+                hash_conflicts=packet.hash_conflicts,
+                hash_conflicts_acknowledged=body.acknowledge_hash_conflicts,
+                operator_reviewer=body.operator_reviewer,
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return SourceMergeApplyOut(
+        status=receipt.status,
+        document_id=receipt.document_id,
+        source_revision_id=receipt.source_revision_id,
+        twin_revision_id=receipt.twin_revision_id,
+        event_id=receipt.event_id or "",
+        member_investigation_ids=receipt.member_investigation_ids,
+        hash_conflicts_acknowledged=receipt.hash_conflicts_acknowledged,
+    )
 
 
 @artifact_router.post(
