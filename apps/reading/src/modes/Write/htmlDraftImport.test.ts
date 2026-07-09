@@ -97,4 +97,13 @@ describe("htmlDraftImport residual fm/fu", () => {
     expect(secs.length).toBe(MAX_OUTLINE_SECTIONS);
     expect(secs[secs.length - 1].section_index).toBe(MAX_OUTLINE_SECTIONS - 1);
   });
+
+  it("splitHtmlIntoOutlineSections records heading_level for nesting (fv)", () => {
+    const secs = splitHtmlIntoOutlineSections(
+      "<h1>Top</h1><p>A</p><h2>Sub</h2><p>B</p><h3>Deep</h3><p>C</p>",
+      "Doc",
+    );
+    expect(secs.map((s) => s.heading_level)).toEqual([1, 2, 3]);
+    expect(secs.map((s) => s.title)).toEqual(["Top", "Sub", "Deep"]);
+  });
 });

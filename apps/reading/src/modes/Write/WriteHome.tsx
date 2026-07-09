@@ -51,6 +51,8 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
  * Residual (ft): on create piece with loaded HTML draft, create section(s)
  * and PATCH prose (HTML-first land into outline).
  * Residual (fu): multi-section import via h1–h3 split (outline_sections).
+ * Residual (fv): nest h2/h3 under preceding higher-level section via
+ * parent_section_id when createSection accepts it.
  */
 export default function WriteHome() {
   const { deliverableId } = useParams<{ deliverableId?: string }>();
@@ -212,7 +214,7 @@ export default function WriteHome() {
         // investigation_root_id; reused, not a new column — see decision D-1).
         investigation_root_id: resolved.investigationId,
       });
-      // Residual (ft/fu): land HTML draft into outline section(s).
+      // Residual (ft/fu/fv): land HTML draft into outline section(s), nested by level.
       // Prefer heading-split outline_sections; fall back to single plain body.
       if (htmlDraft) {
         try {
@@ -228,16 +230,39 @@ export default function WriteHome() {
                       ),
                       plain_text: htmlDraft.plain_text,
                       section_index: 0,
+                      heading_level: 0,
                     },
                   ]
                 : [];
+          // Residual (fv): track last section id per heading level for nesting.
+          const lastIdByLevel: Record<number, string> = {};
           for (const s of sections) {
             if (!s.plain_text?.trim()) continue;
+            const level = s.heading_level ?? 0;
+            let parent_section_id: string | undefined;
+            if (level >= 2) {
+              // Prefer parent one level up; walk up if missing.
+              for (let p = level - 1; p >= 0; p--) {
+                if (lastIdByLevel[p]) {
+                  parent_section_id = lastIdByLevel[p];
+                  break;
+                }
+              }
+            }
             const sec = await createSection({
               deliverable_id: d.deliverable_id,
               section_index: s.section_index,
               title: (s.title || "Imported section").slice(0, 120),
+              ...(parent_section_id
+                ? { parent_section_id }
+                : {}),
             });
+            lastIdByLevel[level] = sec.section_id;
+            // Clear deeper levels when we place a shallower heading.
+            for (const k of Object.keys(lastIdByLevel)) {
+              const kl = Number(k);
+              if (kl > level) delete lastIdByLevel[kl];
+            }
             await updateSectionProse(sec.section_id, {
               prose_text: s.plain_text.slice(0, 100_000),
               promote_to_graph: false,

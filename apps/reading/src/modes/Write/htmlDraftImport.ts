@@ -30,6 +30,11 @@ export type OutlineSectionImport = {
   title: string;
   plain_text: string;
   section_index: number;
+  /**
+   * Residual (fv): heading level 1–3 for nesting under parent_section_id.
+   * 0 = preamble / single-body fallback (top-level).
+   */
+  heading_level: number;
 };
 
 /** Max sections created on import (hard-to-vary safety cap). */
@@ -93,6 +98,7 @@ export function splitHtmlIntoOutlineSections(
         title: fallback || "Imported HTML draft",
         plain_text: plain.slice(0, 100_000),
         section_index: 0,
+        heading_level: 0,
       },
     ];
   }
@@ -107,12 +113,14 @@ export function splitHtmlIntoOutlineSections(
         title: (fallback || "Introduction").slice(0, 120),
         plain_text: plain.slice(0, 100_000),
         section_index: 0,
+        heading_level: 0,
       });
     }
   }
 
   for (let i = 0; i < matches.length; i++) {
     const m = matches[i];
+    const level = Math.min(3, Math.max(1, parseInt(m[1] || "1", 10) || 1));
     const headingPlain = stripHtmlToPlainText(m[2] || "");
     const title =
       headingPlain.slice(0, 120) || `Section ${sections.length + 1}`;
@@ -128,6 +136,7 @@ export function splitHtmlIntoOutlineSections(
       title,
       plain_text,
       section_index: sections.length,
+      heading_level: level,
     });
   }
 

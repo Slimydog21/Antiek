@@ -65,4 +65,5 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (fs, 2026-07-09): NEXT-WAVE-after-fr.md honest gap map for post-fr residuals.
 - Closed (ft, 2026-07-09): Write create piece imports HTML draft plain text into outline section 0 (createSection + updateSectionProse).
 - Closed (fu, 2026-07-09): multi-section HTML outline import via h1–h3 split (MAX 20 sections).
+- Closed (fv, 2026-07-09): nest h2/h3 under parent_section_id by heading level on Write import.
 - Left (env/operator): floating multi-agent *live* collective chat (merge+continue unit ships); live midnight oil multi-provider; paid marketplace rails; live hydrate/seed injectors; operator install of weekly LaunchAgent; PR #465 main merge.

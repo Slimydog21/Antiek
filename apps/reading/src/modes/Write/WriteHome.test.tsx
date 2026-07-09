@@ -288,12 +288,14 @@ describe("WriteHome — the re-homed door", () => {
         title: "First",
       }),
     );
+    // Residual (fv): h2 nests under preceding h1 via parent_section_id.
     expect(createSectionMock).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
         deliverable_id: "dlv-new",
         section_index: 1,
         title: "Second",
+        parent_section_id: "sec_0",
       }),
     );
     await waitFor(() => {
