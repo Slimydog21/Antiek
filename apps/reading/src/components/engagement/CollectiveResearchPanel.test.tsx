@@ -110,5 +110,71 @@ describe("CollectiveResearchPanel", () => {
     expect(
       (screen.getByTestId("collective-merge-parent") as HTMLButtonElement).disabled,
     ).toBe(true);
+    expect(
+      (screen.getByTestId("collective-written-analysis") as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
+  it("creates written analysis draft from collective + draft merge (cf)", async () => {
+    fetchCollectiveResearch.mockResolvedValue({
+      collective_id: "col_analysis",
+      spawn_ids: ["spn_1", "spn_2"],
+      asset_ids: ["a", "b"],
+      investigation_ids: [],
+      twin_units: [],
+      source_references: [],
+      view_format: "html",
+      spawn_count: 2,
+      twin_count: 1,
+      ref_count: 0,
+      prompt_block: "# Collective deep-research unit `col_analysis`\n",
+    });
+    mergeSpawnOutputs.mockResolvedValue({
+      mode: "draft_combined",
+      parent_asset_id: "book-1",
+      document_id: "draft_analysis_1",
+      source_spawn_ids: ["spn_1", "spn_2"],
+      sections_merged: 3,
+      draft_leaves_parent: true,
+      parent_document_id: "book-1",
+      view_format: "html",
+      product_panel: "engagement_merge",
+      source: "engagement_spine.merge_spawn_outputs",
+      notes: ["Draft-combined document"],
+      html: "<p>Written analysis draft HTML</p>",
+    });
+
+    render(
+      <CollectiveResearchPanel
+        availableSpawnIds={["spn_1", "spn_2"]}
+        parentAssetId="book-1"
+      />,
+    );
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    fireEvent.click(screen.getAllByRole("checkbox")[1]);
+    fireEvent.click(screen.getByTestId("collective-written-analysis"));
+
+    await waitFor(() => {
+      expect(fetchCollectiveResearch).toHaveBeenCalledWith({
+        spawn_ids: ["spn_1", "spn_2"],
+      });
+    });
+    await waitFor(() => {
+      expect(mergeSpawnOutputs).toHaveBeenCalledWith({
+        parent_asset_id: "book-1",
+        spawn_ids: ["spn_1", "spn_2"],
+        mode: "draft_combined",
+        include_html: true,
+      });
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("collective-doc-merge-result").textContent,
+      ).toMatch(/written analysis|draft_combined/i);
+    });
+    expect(screen.getByTestId("collective-prompt-block").textContent).toMatch(
+      /col_analysis/,
+    );
   });
 });

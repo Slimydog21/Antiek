@@ -4,6 +4,7 @@
  * Operator selects multiple spawn ids (from floating sessions) and can:
  * 1. Merge them via /engagement/collective into a cohesive prompt block
  * 2. Merge them into a draft-combined or parent document via /engagement/merge
+ * 3. Residual (cf): Create written analysis draft (collective + draft document)
  */
 
 import { useCallback, useState } from "react";
@@ -84,6 +85,45 @@ export function CollectiveResearchPanel({
     [selected, parentAssetId],
   );
 
+  /** Residual (cf): cohesive unit prompt + draft HTML analysis document. */
+  const createWrittenAnalysis = useCallback(async () => {
+    if (selected.length < 1) return;
+    if (!parentAssetId?.trim()) {
+      setError("parentAssetId is required for written analysis draft");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const collective = await fetchCollectiveResearch({ spawn_ids: selected });
+      if (collective.view_format !== "html") {
+        throw new Error("collective view_format must be html");
+      }
+      setUnit(collective);
+      const draft = await mergeSpawnOutputs({
+        parent_asset_id: parentAssetId,
+        spawn_ids: selected,
+        mode: "draft_combined",
+        include_html: true,
+      });
+      if (draft.view_format !== "html") {
+        throw new Error("analysis draft view_format must be html");
+      }
+      setDocMerge({
+        ...draft,
+        // surface analysis product label without changing API contract shape
+        notes: [
+          ...(draft.notes || []),
+          "Written analysis draft from collective deep research (residual cf).",
+        ],
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [selected, parentAssetId]);
+
   return (
     <section
       className="collective-research-panel"
@@ -154,6 +194,19 @@ export function CollectiveResearchPanel({
           }
         >
           Merge into parent
+        </button>
+        <button
+          type="button"
+          data-testid="collective-written-analysis"
+          onClick={() => void createWrittenAnalysis()}
+          disabled={busy || selected.length < 1 || !parentAssetId}
+          title={
+            parentAssetId
+              ? "Collective prompt unit + draft-combined HTML analysis"
+              : "Requires parentAssetId"
+          }
+        >
+          Create written analysis
         </button>
       </div>
 

@@ -1,0 +1,8 @@
+# residual (cf) Create written analysis from collective deep research
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(ce) prior | branch_only | campaign inventories
+(cf) written analysis button | branch_only | CollectiveResearchPanel Create written analysis = collective prompt + draft_combined HTML; 4 vitest; tip after commit
+
+NEXT: (cg) open analysis draft in hosted HTML window; operator merge PR #465
