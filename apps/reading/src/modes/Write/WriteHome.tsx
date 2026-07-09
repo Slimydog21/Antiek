@@ -390,13 +390,15 @@ export default function WriteHome() {
                 className="rounded border border-aurora/40 px-2 py-1 text-[11px] text-aurora"
                 data-testid="write-html-draft-import-outline"
                 data-import-on-create="true"
+                data-html-prose="true"
                 data-section-count={String(
                   htmlDraft.outline_sections?.length ?? 0,
                 )}
-                title="Creating a piece below imports draft into outline section(s)"
+                title="Creating a piece below imports HTML prose into nested outline section(s)"
               >
                 Imports on create →{" "}
-                {htmlDraft.outline_sections?.length ?? 0} section(s)
+                {htmlDraft.outline_sections?.length ?? 0} section(s) · HTML
+                prose
               </span>
             </div>
             <p

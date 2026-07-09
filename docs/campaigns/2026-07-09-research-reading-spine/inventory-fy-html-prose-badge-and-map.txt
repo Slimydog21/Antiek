@@ -1,0 +1,12 @@
+# residual (fy) HTML prose import badge + next-wave after fx
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(fx) prior | branch_only | campaign inventories
+(fy) HTML prose badge + map | branch_only | data-html-prose on import badge; NEXT-WAVE-after-fx.md
+
+PATHS:
+- apps/reading/src/modes/Write/WriteHome.tsx
+- docs/campaigns/2026-07-09-research-reading-spine/NEXT-WAVE-after-fx.md
+
+NEXT: (fz) re-derive product residual; operator merge PR #465
