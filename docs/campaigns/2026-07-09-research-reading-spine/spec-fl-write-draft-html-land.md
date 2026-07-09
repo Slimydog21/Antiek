@@ -24,3 +24,6 @@ HTML document into Write mode for human editing without PDF.
 
 ## Honesty
 Does not invent live multi-agent writing. Offline-honest path first.
+
+## Residual (fq)
+Disabled Import HTML into outline button + deferred copy on Write handoff panel. Full import remains (fr)+.

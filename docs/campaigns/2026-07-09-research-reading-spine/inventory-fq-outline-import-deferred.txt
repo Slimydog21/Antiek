@@ -1,0 +1,17 @@
+# residual (fq) honest deferred HTML→outline import control
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(fp) prior | branch_only | campaign inventories
+(fq) outline import deferred UI | branch_only | write-html-draft-import-outline disabled + deferred note; 8 WriteHome vitest; propose≠invent
+
+PATHS:
+- apps/reading/src/modes/Write/WriteHome.tsx
+- apps/reading/src/modes/Write/WriteHome.test.tsx
+- docs/campaigns/2026-07-09-research-reading-spine/spec-fl-write-draft-html-land.md
+
+INVARIANTS:
+- Does not fake outline import green
+- Handoff + load + brainstorm seed remain available (fl/fm)
+
+NEXT: (fr) re-derive product residual (real outline import when write API ready) or next-wave; operator merge PR #465

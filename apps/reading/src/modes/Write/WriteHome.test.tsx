@@ -172,6 +172,14 @@ describe("WriteHome — the re-homed door", () => {
     expect(screen.getByTestId("write-html-draft-provenance").textContent).toMatch(
       /html_draft:draft_merge_abc/,
     );
+    // Residual (fq): outline import is honestly deferred (disabled).
+    const importBtn = screen.getByTestId(
+      "write-html-draft-import-outline",
+    ) as HTMLButtonElement;
+    expect(importBtn.disabled).toBe(true);
+    expect(screen.getByTestId("write-html-draft-import-deferred").textContent).toMatch(
+      /deferred|propose≠invent/i,
+    );
     // Seed brainstorm opens idea dump with plain text.
     await userEvent.click(screen.getByTestId("write-html-draft-seed-brainstorm"));
     await waitFor(() => {

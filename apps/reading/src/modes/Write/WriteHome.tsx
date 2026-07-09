@@ -282,11 +282,25 @@ export default function WriteHome() {
               >
                 Seed brainstorm from draft
               </button>
+              {/* Residual (fq): honest deferred outline import — not invented green. */}
+              <button
+                type="button"
+                data-testid="write-html-draft-import-outline"
+                disabled
+                title="Full HTML→outline section import is not shipped yet (spec-fl residual fq+)"
+                className="rounded border border-ink/20 px-2 py-1 text-[11px] opacity-50 dark:border-bright/20"
+              >
+                Import HTML into outline (not yet)
+              </button>
             </div>
-            <p className="text-[10px] text-ink-mute dark:text-moonlight">
-              Outline auto-import of HTML sections remains a follow-on residual
-              (spec-fl). Create a piece below with provenance document{" "}
-              <code>{htmlDraft.document_id}</code>.
+            <p
+              className="text-[10px] text-ink-mute dark:text-moonlight"
+              data-testid="write-html-draft-import-deferred"
+            >
+              Outline auto-import of HTML sections is deferred (propose≠invent).
+              Create a piece below with provenance document{" "}
+              <code>{htmlDraft.document_id}</code>; use brainstorm seed for
+              plain-text drivers until import ships.
             </p>
             {/* Residual (fp): visible provenance stamp for freeform project type. */}
             <p
