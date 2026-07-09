@@ -227,6 +227,18 @@ def seed_twins_for_asset(
         payload["seeded"] = False
         payload["seed_skipped"] = "twins_already_present"
         payload["live_seed"] = False
+        # Residual (la): still surface spawn research_tier when scoped.
+        sid = (source_spawn_id or "").strip() or None
+        if sid:
+            from substrate.dispatch.research_tier import normalize_research_tier
+
+            row = store.get_spawn(sid) or {}
+            payload["source_spawn_id"] = sid
+            payload["research_tier"] = normalize_research_tier(
+                row.get("research_tier")
+            )
+        else:
+            payload["research_tier"] = None
         return payload
 
     t = (title or "").strip() or aid
@@ -272,7 +284,7 @@ def seed_twins_for_asset(
                 aid, text, store=store, source_spawn_id=source_spawn_id
             )
 
-    payload = twins_product_payload(aid, store=store, include_html=include_html)
+    payload = twins_product_payload(aid, store=store, include_html=False)
     payload["seeded"] = True
     payload["seed_skipped"] = None
     payload["live_seed"] = used_live
@@ -281,6 +293,16 @@ def seed_twins_for_asset(
         if used_live
         else "engagement_spine.twin.seed_twins_for_asset"
     )
+    # Residual (la): surface reserved spawn research_tier when seed scoped.
+    research_tier = None
+    sid = (source_spawn_id or "").strip() or None
+    if sid:
+        from substrate.dispatch.research_tier import normalize_research_tier
+
+        row = store.get_spawn(sid) or {}
+        research_tier = normalize_research_tier(row.get("research_tier"))
+        payload["source_spawn_id"] = sid
+    payload["research_tier"] = research_tier
     payload["messages"] = list(payload.get("messages") or []) + [
         (
             "Live note_taker twin seed (env + injector)."
@@ -290,6 +312,8 @@ def seed_twins_for_asset(
         f"Live env {ANTIEK_TWIN_SEED_LIVE_ENV}="
         f"{'on' if twin_seed_live_enabled() else 'off (default)'}.",
     ]
+    if include_html:
+        payload["html"] = project_twins_html(payload)
     return payload
 
 
@@ -298,6 +322,7 @@ def project_twins_html(payload: dict[str, Any]) -> str:
     from .project import project_to_html
 
     asset_id = str(payload.get("asset_id") or "")
+    tier = payload.get("research_tier")
     blocks: list[dict[str, Any]] = [
         {
             "type": "heading",
@@ -311,7 +336,9 @@ def project_twins_html(payload: dict[str, Any]) -> str:
                     "type": "text",
                     "text": (
                         f"Asset {asset_id} · insights={payload.get('insight_count')} · "
-                        f"questions={payload.get('question_count')} · view: HTML"
+                        f"questions={payload.get('question_count')}"
+                        + (f" · tier={tier}" if tier else "")
+                        + " · view: HTML"
                     ),
                 }
             ],

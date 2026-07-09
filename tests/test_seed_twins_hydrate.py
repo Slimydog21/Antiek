@@ -17,10 +17,12 @@ from interfaces.research.api.engagement_routes import (  # noqa: E402
     reset_engagement_stores,
 )
 from substrate.engagement_spine import (  # noqa: E402
+    HighlightSelection,
     InMemoryEngagementStore,
     hydrate_reference,
     list_twin_notes,
     seed_twins_for_asset,
+    spawn_from_highlight,
 )
 
 
@@ -41,6 +43,8 @@ def test_seed_twins_idempotent():
     assert kinds == {"insight", "question"}
     assert first["html"]
     assert "application/pdf" not in first["html"].lower()
+    # Residual (la): no spawn scope → research_tier null.
+    assert first.get("research_tier") is None
 
     second = seed_twins_for_asset(
         "asset_x", store=store, title="Attention paper"
@@ -48,6 +52,33 @@ def test_seed_twins_idempotent():
     assert second["seeded"] is False
     assert second["seed_skipped"] == "twins_already_present"
     assert len(list_twin_notes("asset_x", store=store)) == 2
+
+
+def test_seed_twins_surfaces_spawn_research_tier_wrestle():
+    """Residual (la): seed payload + HTML carry reserved spawn research_tier."""
+    store = InMemoryEngagementStore()
+    spawn = spawn_from_highlight(
+        HighlightSelection(
+            asset_id="asset_w",
+            selection_text="wrestle twin seed",
+            region_id="tw-w",
+        ),
+        store=store,
+        research_tier="wrestle",
+    )
+    out = seed_twins_for_asset(
+        "asset_w",
+        store=store,
+        title="Wrestle asset",
+        body_text="Depth posture on recursive note-taker seed.",
+        source_spawn_id=spawn.spawn_id,
+        include_html=True,
+    )
+    assert out["seeded"] is True
+    assert out["research_tier"] == "wrestle"
+    assert out["source_spawn_id"] == spawn.spawn_id
+    assert "tier=wrestle" in (out.get("html") or "")
+    assert "application/pdf" not in (out.get("html") or "").lower()
 
 
 def test_hydrate_seeds_twins_by_default():
