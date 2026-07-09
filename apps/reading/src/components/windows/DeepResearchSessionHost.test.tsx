@@ -89,6 +89,12 @@ vi.mock("../engagement/TwinNotesPanel", () => ({
   ),
 }));
 
+vi.mock("../engagement/DecisionTreeDriverBadge", () => ({
+  DecisionTreeDriverBadge: () => (
+    <div data-testid="decision-tree-driver-badge">Driver badge</div>
+  ),
+}));
+
 const FIXTURE = {
   session_id: "fsess_launch_1",
   spawn_id: "spn_launch_1",
@@ -173,6 +179,11 @@ describe("DeepResearchSessionHost", () => {
     expect(screen.getByTestId("twin-notes-panel-stub").textContent).toMatch(
       /launch-asset:auto=true/,
     );
+  });
+
+  it("mounts DecisionTreeDriverBadge (cw)", () => {
+    render(<DeepResearchSessionHost {...FIXTURE} />);
+    expect(screen.getByTestId("decision-tree-driver-badge")).toBeTruthy();
   });
 
   it("omits SpawnMergePanel without parent_asset_id", () => {

@@ -21,11 +21,13 @@
  * Residual (cp): ResearchProgressPanel autoLoad + autoSeedIfEmpty.
  * Residual (cq): TwinNotesPanel autoLoad.
  * Residual (cr): ResearchProgressPanel pollIntervalMs for multi-minute jobs.
+ * Residual (cw): DecisionTreeDriverBadge — active model driver readout.
  */
 
 import { useMemo } from "react";
 
 import { CollectiveResearchPanel } from "../engagement/CollectiveResearchPanel";
+import { DecisionTreeDriverBadge } from "../engagement/DecisionTreeDriverBadge";
 import { PublicationAttachPanel } from "../engagement/PublicationAttachPanel";
 import { ResearchContextPanel } from "../engagement/ResearchContextPanel";
 import { ResearchLaunchBudgetPanel } from "../engagement/ResearchLaunchBudgetPanel";
@@ -116,6 +118,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
             <p className="text-xs text-shadow-1 dark:text-moonlight">
               Window-native host · content stance: {isHtml ? "HTML" : viewFormat} · not PDF
             </p>
+            <DecisionTreeDriverBadge />
           </div>
           {/* Residual (ce): floating ⇄ full without leaving the host. */}
           {rawSessionId ? (

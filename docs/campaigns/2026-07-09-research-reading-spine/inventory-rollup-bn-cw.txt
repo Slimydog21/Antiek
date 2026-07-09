@@ -1,0 +1,4 @@
+# Campaign rollup (bn)–(cw) · PR #465
+North-star spine on branch: reading float DR, twins, pubs, midnight oil, bench, budget, merge/analysis.
+cw: decision-tree driver badge visible on DR host (Settings remains authority).
+Operator merge still gated.
