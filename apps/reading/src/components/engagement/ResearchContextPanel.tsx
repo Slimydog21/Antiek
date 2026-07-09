@@ -1,0 +1,162 @@
+/**
+ * ResearchContextPanel — workstation chrome for twin + source-ref context.
+ *
+ * Loads a ResearchContextPack from /engagement/research-context and renders
+ * the prompt block for injection into the next deep-research turn.
+ * HTML-first stance: this panel never offers PDF export.
+ */
+
+import { useCallback, useState } from "react";
+import {
+  attachSourceRefs,
+  fetchResearchContext,
+  type ResearchContextResponse,
+} from "../../api/engagement";
+import { detectSourceKindClient } from "../../workspace/researchContextPack";
+
+export type ResearchContextPanelProps = {
+  assetId: string;
+  spawnId?: string | null;
+  /** Optional controlled initial query filter */
+  initialQuery?: string;
+};
+
+export function ResearchContextPanel({
+  assetId,
+  spawnId = null,
+  initialQuery = "",
+}: ResearchContextPanelProps) {
+  const [query, setQuery] = useState(initialQuery);
+  const [refInput, setRefInput] = useState("");
+  const [pack, setPack] = useState<ResearchContextResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const ctx = await fetchResearchContext({
+        asset_id: assetId,
+        spawn_id: spawnId,
+        query: query.trim() || null,
+      });
+      if (ctx.view_format !== "html") {
+        throw new Error("research context view_format must be html");
+      }
+      setPack(ctx);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [assetId, spawnId, query]);
+
+  const attach = useCallback(async () => {
+    if (!spawnId || !refInput.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await attachSourceRefs(spawnId, [refInput.trim()]);
+      setRefInput("");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setBusy(false);
+    }
+  }, [spawnId, refInput, load]);
+
+  return (
+    <section
+      className="research-context-panel"
+      data-view-format="html"
+      aria-label="Research context"
+    >
+      <header>
+        <h2>Research context</h2>
+        <p className="meta">
+          asset <code>{assetId}</code>
+          {spawnId ? (
+            <>
+              {" "}
+              · spawn <code>{spawnId}</code>
+            </>
+          ) : null}
+        </p>
+      </header>
+
+      <div className="controls">
+        <label>
+          Query filter
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="filter twins / refs"
+            disabled={busy}
+          />
+        </label>
+        <button type="button" onClick={() => void load()} disabled={busy}>
+          {busy ? "Loading…" : "Load context"}
+        </button>
+      </div>
+
+      {spawnId ? (
+        <div className="attach-refs">
+          <label>
+            Attach source (arxiv / substack / url)
+            <input
+              type="text"
+              value={refInput}
+              onChange={(e) => setRefInput(e.target.value)}
+              placeholder="https://arxiv.org/abs/… or 1706.03762"
+              disabled={busy}
+            />
+          </label>
+          {refInput.trim() ? (
+            <span className="kind-hint" data-kind={detectSourceKindClient(refInput)}>
+              kind: {detectSourceKindClient(refInput)}
+            </span>
+          ) : null}
+          <button type="button" onClick={() => void attach()} disabled={busy || !refInput.trim()}>
+            Attach ref
+          </button>
+        </div>
+      ) : null}
+
+      {error ? (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      ) : null}
+
+      {pack ? (
+        <div className="pack">
+          <p className="counts">
+            twins={pack.twin_count ?? pack.twin_units?.length ?? 0} · refs=
+            {pack.ref_count ?? pack.source_references?.length ?? 0}
+          </p>
+          <ul className="twins">
+            {(pack.twin_units ?? []).map((u) => (
+              <li key={u.unit_id}>
+                <strong>[{u.kind}]</strong> {u.text}
+              </li>
+            ))}
+          </ul>
+          <ul className="refs">
+            {(pack.source_references ?? []).map((r) => (
+              <li key={r.ref_id}>
+                <strong>[{r.kind}]</strong> {r.canonical_url || r.raw}
+              </li>
+            ))}
+          </ul>
+          <pre className="prompt-block" data-testid="prompt-block">
+            {pack.prompt_block}
+          </pre>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+export default ResearchContextPanel;
