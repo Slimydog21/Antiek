@@ -1102,6 +1102,141 @@ class MidnightOilFinalArtifactReceipt(BaseModel):
     artifact_notes: list[str] = Field(default_factory=list)
 
 
+class MidnightOilRunnerReadinessRequest(BaseModel):
+    launch_packet: MidnightOilLaunchPacket
+    approval_receipt: MidnightOilApprovalReceipt
+    runner_handoff: MidnightOilRunnerHandoff
+    applied_run_receipt: MidnightOilAppliedRunReceipt
+    live_run_activation_settings_receipt: MidnightOilLiveRunActivationSettingsReceipt
+    dispatch_receipt: MidnightOilDispatchReceipt
+    activation_checklist_receipt: MidnightOilActivationChecklistReceipt
+    budget_reservation_receipt: MidnightOilBudgetReservationReceipt
+    provider_route_receipt: MidnightOilProviderRouteReceipt
+    retrieval_receipt: MidnightOilRetrievalReceipt
+    graph_mutation_receipt: MidnightOilGraphMutationReceipt
+    final_artifact_receipt: MidnightOilFinalArtifactReceipt
+
+    @model_validator(mode="after")
+    def _receipt_chain_matches(self) -> MidnightOilRunnerReadinessRequest:
+        MidnightOilActivationChecklistRequest(
+            launch_packet=self.launch_packet,
+            approval_receipt=self.approval_receipt,
+            runner_handoff=self.runner_handoff,
+            applied_run_receipt=self.applied_run_receipt,
+            live_run_activation_settings_receipt=self.live_run_activation_settings_receipt,
+            dispatch_receipt=self.dispatch_receipt,
+        )
+        MidnightOilFinalArtifactRequest(
+            launch_packet=self.launch_packet,
+            approval_receipt=self.approval_receipt,
+            runner_handoff=self.runner_handoff,
+            applied_run_receipt=self.applied_run_receipt,
+            dispatch_receipt=self.dispatch_receipt,
+            activation_checklist_receipt=self.activation_checklist_receipt,
+            budget_reservation_receipt=self.budget_reservation_receipt,
+            provider_route_receipt=self.provider_route_receipt,
+            retrieval_receipt=self.retrieval_receipt,
+            graph_mutation_receipt=self.graph_mutation_receipt,
+        )
+        if (
+            self.activation_checklist_receipt.live_run_activation_settings_receipt_id
+            != self.live_run_activation_settings_receipt.receipt_id
+        ):
+            raise ValueError(
+                "activation_checklist_receipt must reference live_run_activation_settings_receipt"
+            )
+        if self.final_artifact_receipt.graph_mutation_receipt_id != self.graph_mutation_receipt.receipt_id:
+            raise ValueError("final_artifact_receipt must reference graph_mutation_receipt")
+        if self.final_artifact_receipt.retrieval_receipt_id != self.retrieval_receipt.receipt_id:
+            raise ValueError("final_artifact_receipt must reference retrieval_receipt")
+        if (
+            self.final_artifact_receipt.provider_route_receipt_id
+            != self.provider_route_receipt.receipt_id
+        ):
+            raise ValueError("final_artifact_receipt must reference provider_route_receipt")
+        if (
+            self.final_artifact_receipt.budget_reservation_receipt_id
+            != self.budget_reservation_receipt.receipt_id
+        ):
+            raise ValueError("final_artifact_receipt must reference budget_reservation_receipt")
+        if (
+            self.final_artifact_receipt.activation_checklist_receipt_id
+            != self.activation_checklist_receipt.receipt_id
+        ):
+            raise ValueError("final_artifact_receipt must reference activation_checklist_receipt")
+        if self.final_artifact_receipt.dispatch_receipt_id != self.dispatch_receipt.receipt_id:
+            raise ValueError("final_artifact_receipt must reference dispatch_receipt")
+        if (
+            self.final_artifact_receipt.applied_run_receipt_id
+            != self.applied_run_receipt.receipt_id
+        ):
+            raise ValueError("final_artifact_receipt must reference applied_run_receipt")
+        if self.final_artifact_receipt.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError("final_artifact_receipt must reference runner_handoff")
+        if self.final_artifact_receipt.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError("final_artifact_receipt must reference approval_receipt")
+        if self.final_artifact_receipt.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("final_artifact_receipt must reference launch_packet")
+        if self.final_artifact_receipt.status != "blocked_final_artifact_writer_disabled":
+            raise ValueError("final_artifact_receipt must be blocked_final_artifact_writer_disabled")
+        if self.final_artifact_receipt.final_artifact_allowed:
+            raise ValueError("final_artifact_receipt must not allow final artifact")
+        if self.final_artifact_receipt.final_artifact_created:
+            raise ValueError("final_artifact_receipt must not create final artifact")
+        if self.final_artifact_receipt.graph_mutated:
+            raise ValueError("final_artifact_receipt must not mutate graph")
+        if self.final_artifact_receipt.source_receipts_created:
+            raise ValueError("final_artifact_receipt must not create source receipts")
+        if self.final_artifact_receipt.retrieval_performed:
+            raise ValueError("final_artifact_receipt must not perform retrieval")
+        if self.final_artifact_receipt.provider_calls_made:
+            raise ValueError("final_artifact_receipt must not include provider calls")
+        if self.final_artifact_receipt.budget_reserved:
+            raise ValueError("final_artifact_receipt must not reserve budget")
+        if self.final_artifact_receipt.dispatch_performed:
+            raise ValueError("final_artifact_receipt must not dispatch")
+        return self
+
+
+class MidnightOilRunnerReadinessReceipt(BaseModel):
+    receipt_id: str
+    final_artifact_receipt_id: str
+    graph_mutation_receipt_id: str
+    retrieval_receipt_id: str
+    provider_route_receipt_id: str
+    budget_reservation_receipt_id: str
+    activation_checklist_receipt_id: str
+    live_run_activation_settings_receipt_id: str
+    dispatch_receipt_id: str
+    applied_run_receipt_id: str
+    runner_handoff_id: str
+    approval_receipt_id: str
+    launch_packet_id: str
+    run_id: str
+    status: Literal["blocked_runner_readiness_controls_missing"] = (
+        "blocked_runner_readiness_controls_missing"
+    )
+    completed_receipt_ids: list[str]
+    remaining_blockers: list[str]
+    blocker_reason: Literal["runner_readiness_controls_missing"] = (
+        "runner_readiness_controls_missing"
+    )
+    live_run_allowed: bool = False
+    dispatch_allowed: bool = False
+    budget_reservation_allowed: bool = False
+    provider_execution_allowed: bool = False
+    retrieval_allowed: bool = False
+    graph_mutation_allowed: bool = False
+    final_artifact_allowed: bool = False
+    dispatch_performed: bool = False
+    budget_reserved: bool = False
+    provider_calls_made: bool = False
+    retrieval_performed: bool = False
+    graph_mutated: bool = False
+    final_artifact_created: bool = False
+    readiness_notes: list[str] = Field(default_factory=list)
+
+
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
     price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
@@ -1468,6 +1603,71 @@ def final_artifact_midnight_oil(
             "final artifact gate only: final HTML artifact writer is not configured",
             "no HTML asset, twin note document, graph write, source receipt, retrieval, or provider call",
             "future live runner must replace this blocked receipt after artifact writer controls",
+        ],
+    )
+
+
+def runner_readiness_midnight_oil(
+    req: MidnightOilRunnerReadinessRequest,
+) -> MidnightOilRunnerReadinessReceipt:
+    completed_receipt_ids = [
+        req.launch_packet.packet_id,
+        req.approval_receipt.receipt_id,
+        req.runner_handoff.handoff_id,
+        req.applied_run_receipt.receipt_id,
+        req.live_run_activation_settings_receipt.receipt_id,
+        req.dispatch_receipt.receipt_id,
+        req.activation_checklist_receipt.receipt_id,
+        req.budget_reservation_receipt.receipt_id,
+        req.provider_route_receipt.receipt_id,
+        req.retrieval_receipt.receipt_id,
+        req.graph_mutation_receipt.receipt_id,
+        req.final_artifact_receipt.receipt_id,
+    ]
+    remaining_blockers = [
+        "budget reservation provider",
+        "model/provider route executor",
+        "retrieval executor with source receipts",
+        "graph mutation writer",
+        "final HTML artifact writer",
+        "operator live-run dispatch enablement",
+    ]
+    return MidnightOilRunnerReadinessReceipt(
+        receipt_id=f"{req.launch_packet.run_id}-runner-readiness",
+        final_artifact_receipt_id=req.final_artifact_receipt.receipt_id,
+        graph_mutation_receipt_id=req.graph_mutation_receipt.receipt_id,
+        retrieval_receipt_id=req.retrieval_receipt.receipt_id,
+        provider_route_receipt_id=req.provider_route_receipt.receipt_id,
+        budget_reservation_receipt_id=req.budget_reservation_receipt.receipt_id,
+        activation_checklist_receipt_id=req.activation_checklist_receipt.receipt_id,
+        live_run_activation_settings_receipt_id=(
+            req.live_run_activation_settings_receipt.receipt_id
+        ),
+        dispatch_receipt_id=req.dispatch_receipt.receipt_id,
+        applied_run_receipt_id=req.applied_run_receipt.receipt_id,
+        runner_handoff_id=req.runner_handoff.handoff_id,
+        approval_receipt_id=req.approval_receipt.receipt_id,
+        launch_packet_id=req.launch_packet.packet_id,
+        run_id=req.launch_packet.run_id,
+        completed_receipt_ids=completed_receipt_ids,
+        remaining_blockers=remaining_blockers,
+        live_run_allowed=False,
+        dispatch_allowed=False,
+        budget_reservation_allowed=False,
+        provider_execution_allowed=False,
+        retrieval_allowed=False,
+        graph_mutation_allowed=False,
+        final_artifact_allowed=False,
+        dispatch_performed=False,
+        budget_reserved=False,
+        provider_calls_made=False,
+        retrieval_performed=False,
+        graph_mutated=False,
+        final_artifact_created=False,
+        readiness_notes=[
+            "runner readiness gate only: full no-spend receipt chain has been reviewed",
+            "live autonomous execution remains blocked until every remaining blocker is replaced by an enabled control",
+            "no dispatch, budget reservation, provider call, retrieval, graph mutation, or artifact write is performed",
         ],
     )
 

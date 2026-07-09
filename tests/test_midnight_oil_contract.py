@@ -17,6 +17,7 @@ from substrate.midnight_oil import (
     MidnightOilProviderRouteRequest,
     MidnightOilRequest,
     MidnightOilRetrievalRequest,
+    MidnightOilRunnerReadinessRequest,
     activation_checklist_midnight_oil,
     budget_reservation_midnight_oil,
     dispatch_midnight_oil,
@@ -27,6 +28,7 @@ from substrate.midnight_oil import (
     preflight_midnight_oil,
     provider_route_midnight_oil,
     retrieval_midnight_oil,
+    runner_readiness_midnight_oil,
 )
 
 
@@ -49,6 +51,17 @@ def _accepted_midnight_oil_gate_chain(
     assert preflight.approval_receipt is not None
     assert preflight.runner_handoff is not None
     assert preflight.applied_run_receipt is not None
+    live_settings = live_run_activation_settings_midnight_oil(
+        MidnightOilLiveRunActivationSettingsRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            requested_live_run_enabled=True,
+            requested_price_ceiling_usd=preflight.approval_receipt.approved_price_ceiling_usd,
+            requested_work_minutes=preflight.approval_receipt.approved_work_minutes,
+        )
+    )
     dispatch = dispatch_midnight_oil(
         MidnightOilDispatchRequest(
             launch_packet=preflight.launch_packet,
@@ -64,6 +77,7 @@ def _accepted_midnight_oil_gate_chain(
             approval_receipt=preflight.approval_receipt,
             runner_handoff=preflight.runner_handoff,
             applied_run_receipt=preflight.applied_run_receipt,
+            live_run_activation_settings_receipt=live_settings,
             dispatch_receipt=dispatch,
         )
     )
@@ -113,14 +127,30 @@ def _accepted_midnight_oil_gate_chain(
             retrieval_receipt=retrieval,
         )
     )
+    final_artifact = final_artifact_midnight_oil(
+        MidnightOilFinalArtifactRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            dispatch_receipt=dispatch,
+            activation_checklist_receipt=checklist,
+            budget_reservation_receipt=reservation,
+            provider_route_receipt=provider_route,
+            retrieval_receipt=retrieval,
+            graph_mutation_receipt=graph,
+        )
+    )
     return {
         "preflight": preflight,
+        "live_settings": live_settings,
         "dispatch": dispatch,
         "checklist": checklist,
         "reservation": reservation,
         "provider_route": provider_route,
         "retrieval": retrieval,
         "graph": graph,
+        "final_artifact": final_artifact,
     }
 
 
@@ -1959,3 +1989,140 @@ def test_midnight_oil_final_artifact_gate_api_contract() -> None:
     assert body["provider_calls_made"] is False
     assert body["budget_reserved"] is False
     assert body["dispatch_performed"] is False
+
+
+def test_runner_readiness_blocks_live_run_after_full_no_spend_chain() -> None:
+    chain = _accepted_midnight_oil_gate_chain(
+        goal="Review runner readiness for a midnight oil run about widebody maintenance.",
+        source_policy=["arxiv", "web"],
+    )
+    preflight = chain["preflight"]
+
+    readiness = runner_readiness_midnight_oil(
+        MidnightOilRunnerReadinessRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            live_run_activation_settings_receipt=chain["live_settings"],
+            dispatch_receipt=chain["dispatch"],
+            activation_checklist_receipt=chain["checklist"],
+            budget_reservation_receipt=chain["reservation"],
+            provider_route_receipt=chain["provider_route"],
+            retrieval_receipt=chain["retrieval"],
+            graph_mutation_receipt=chain["graph"],
+            final_artifact_receipt=chain["final_artifact"],
+        )
+    )
+
+    assert readiness.receipt_id == f"{preflight.run_id}-runner-readiness"
+    assert readiness.final_artifact_receipt_id == chain["final_artifact"].receipt_id
+    assert readiness.graph_mutation_receipt_id == chain["graph"].receipt_id
+    assert readiness.live_run_activation_settings_receipt_id == chain["live_settings"].receipt_id
+    assert readiness.activation_checklist_receipt_id == chain["checklist"].receipt_id
+    assert readiness.status == "blocked_runner_readiness_controls_missing"
+    assert chain["live_settings"].receipt_id in readiness.completed_receipt_ids
+    assert chain["final_artifact"].receipt_id in readiness.completed_receipt_ids
+    assert "budget reservation provider" in readiness.remaining_blockers
+    assert "operator live-run dispatch enablement" in readiness.remaining_blockers
+    assert readiness.blocker_reason == "runner_readiness_controls_missing"
+    assert readiness.live_run_allowed is False
+    assert readiness.dispatch_allowed is False
+    assert readiness.budget_reservation_allowed is False
+    assert readiness.provider_execution_allowed is False
+    assert readiness.retrieval_allowed is False
+    assert readiness.graph_mutation_allowed is False
+    assert readiness.final_artifact_allowed is False
+    assert readiness.dispatch_performed is False
+    assert readiness.budget_reserved is False
+    assert readiness.provider_calls_made is False
+    assert readiness.retrieval_performed is False
+    assert readiness.graph_mutated is False
+    assert readiness.final_artifact_created is False
+    assert "full no-spend receipt chain" in readiness.readiness_notes[0]
+
+
+def test_runner_readiness_rejects_unlinked_live_settings_checklist() -> None:
+    chain = _accepted_midnight_oil_gate_chain(
+        goal="Reject readiness when activation checklist is not linked to live settings.",
+        source_policy=["web"],
+    )
+    preflight = chain["preflight"]
+    bad_checklist = chain["checklist"].model_copy(
+        update={"live_run_activation_settings_receipt_id": "wrong-settings"}
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match="activation_checklist_receipt must reference live_run_activation_settings_receipt",
+    ):
+        MidnightOilRunnerReadinessRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            live_run_activation_settings_receipt=chain["live_settings"],
+            dispatch_receipt=chain["dispatch"],
+            activation_checklist_receipt=bad_checklist,
+            budget_reservation_receipt=chain["reservation"],
+            provider_route_receipt=chain["provider_route"],
+            retrieval_receipt=chain["retrieval"],
+            graph_mutation_receipt=chain["graph"],
+            final_artifact_receipt=chain["final_artifact"],
+        )
+
+
+def test_midnight_oil_runner_readiness_api_contract() -> None:
+    from interfaces.research.api.app import create_app
+
+    chain = _accepted_midnight_oil_gate_chain(
+        goal="Gate midnight oil runner readiness about widebody maintenance.",
+        source_policy=["arxiv", "web"],
+    )
+    preflight = chain["preflight"]
+
+    with TestClient(create_app()) as client:
+        r = client.post(
+            "/research/midnight-oil/runner-readiness",
+            json={
+                "launch_packet": preflight.launch_packet.model_dump(mode="json"),
+                "approval_receipt": preflight.approval_receipt.model_dump(mode="json"),
+                "runner_handoff": preflight.runner_handoff.model_dump(mode="json"),
+                "applied_run_receipt": preflight.applied_run_receipt.model_dump(mode="json"),
+                "live_run_activation_settings_receipt": chain["live_settings"].model_dump(mode="json"),
+                "dispatch_receipt": chain["dispatch"].model_dump(mode="json"),
+                "activation_checklist_receipt": chain["checklist"].model_dump(mode="json"),
+                "budget_reservation_receipt": chain["reservation"].model_dump(mode="json"),
+                "provider_route_receipt": chain["provider_route"].model_dump(mode="json"),
+                "retrieval_receipt": chain["retrieval"].model_dump(mode="json"),
+                "graph_mutation_receipt": chain["graph"].model_dump(mode="json"),
+                "final_artifact_receipt": chain["final_artifact"].model_dump(mode="json"),
+            },
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["final_artifact_receipt_id"] == chain["final_artifact"].receipt_id
+    assert body["graph_mutation_receipt_id"] == chain["graph"].receipt_id
+    assert body["retrieval_receipt_id"] == chain["retrieval"].receipt_id
+    assert body["provider_route_receipt_id"] == chain["provider_route"].receipt_id
+    assert body["budget_reservation_receipt_id"] == chain["reservation"].receipt_id
+    assert body["activation_checklist_receipt_id"] == chain["checklist"].receipt_id
+    assert body["live_run_activation_settings_receipt_id"] == chain["live_settings"].receipt_id
+    assert body["launch_packet_id"] == preflight.launch_packet.packet_id
+    assert body["status"] == "blocked_runner_readiness_controls_missing"
+    assert chain["final_artifact"].receipt_id in body["completed_receipt_ids"]
+    assert "final HTML artifact writer" in body["remaining_blockers"]
+    assert body["live_run_allowed"] is False
+    assert body["dispatch_allowed"] is False
+    assert body["budget_reservation_allowed"] is False
+    assert body["provider_execution_allowed"] is False
+    assert body["retrieval_allowed"] is False
+    assert body["graph_mutation_allowed"] is False
+    assert body["final_artifact_allowed"] is False
+    assert body["dispatch_performed"] is False
+    assert body["budget_reserved"] is False
+    assert body["provider_calls_made"] is False
+    assert body["retrieval_performed"] is False
+    assert body["graph_mutated"] is False
+    assert body["final_artifact_created"] is False
