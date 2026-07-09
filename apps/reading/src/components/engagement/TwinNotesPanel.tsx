@@ -43,6 +43,8 @@
  * V1 partial — recursive note-taker combine draft before promote/merge).
  * Residual (po): twin-draft-metrics machine attrs after HTML draft open
  * (note_count / note_ids / window_id) for recursive note-taker audit.
+ * Residual (pp): twin multi-select → Write handoff via sessionStorage twin_seed
+ * (brainstorm seed + HTML preview; no invented server document_id).
  * HTML-first; never PDF.
  */
 
@@ -56,6 +58,10 @@ import {
   type TwinPromoteContextResponse,
 } from "../../api/engagement";
 import { launchFloatingDeepResearch } from "../../modes/Reading/launchFloatingDeepResearch";
+import {
+  buildTwinWriteHref,
+  storeTwinWriteSeed,
+} from "../../workspace/twinWriteSeed";
 import { openWindow } from "../windows/openWindow";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 import {
@@ -204,12 +210,14 @@ export function TwinNotesPanel({
   const [promoteStatus, setPromoteStatus] = useState<string | null>(null);
   /** Residual (mz): chase-selected deep research status chrome. */
   const [chaseStatus, setChaseStatus] = useState<string | null>(null);
-  /** Residual (po): last twin HTML draft open metrics. */
+  /** Residual (po/pp): last twin HTML draft open + Write handoff metrics. */
   const [draftMetrics, setDraftMetrics] = useState<{
     note_count: number;
     note_ids: string[];
     window_id: string | null;
     title: string;
+    write_href: string | null;
+    write_seed_key: string | null;
   } | null>(null);
   /**
    * Residual (nc): machine-readable last chase result for audit (parity
@@ -896,6 +904,7 @@ export function TwinNotesPanel({
             const selected = selectedNotes;
             if (selected.length < 1) return;
             const draft = buildTwinDraftHtml(selected, assetId);
+            const chase = buildTwinChasePayload(selected, assetId);
             const winId = openWindow(
               "hosted_html_document",
               {
@@ -911,15 +920,27 @@ export function TwinNotesPanel({
                 mode: "floating",
               },
             );
+            // Residual (pp): session seed for Write brainstorm handoff.
+            const seedKey = storeTwinWriteSeed({
+              plain_text: chase.selection_text,
+              html: draft.html,
+              title: draft.title,
+              asset_id: assetId,
+              note_ids: draft.note_ids,
+            });
+            const writeHref = seedKey ? buildTwinWriteHref(seedKey) : null;
             setDraftMetrics({
               note_count: selected.length,
               note_ids: draft.note_ids,
               window_id: winId,
               title: draft.title,
+              write_href: writeHref,
+              write_seed_key: seedKey,
             });
             setChaseStatus(
               winId
-                ? `Opened twin HTML draft (${selected.length} note(s))`
+                ? `Opened twin HTML draft (${selected.length} note(s))` +
+                    (writeHref ? " · Write handoff ready" : "")
                 : "Twin HTML draft open failed",
             );
           }}
@@ -930,16 +951,31 @@ export function TwinNotesPanel({
         </button>
         {draftMetrics ? (
           <div
-            className="w-full font-mono text-[11px] opacity-80"
+            className="w-full space-y-1 font-mono text-[11px] opacity-80"
             data-testid="twin-draft-metrics"
             data-note-count={String(draftMetrics.note_count)}
             data-window-id={draftMetrics.window_id ?? ""}
+            data-write-seed-key={draftMetrics.write_seed_key ?? ""}
+            data-has-write-href={draftMetrics.write_href ? "1" : "0"}
             data-view-format="html"
             data-source="twin_draft_selected"
             role="status"
           >
-            Twin draft · notes={draftMetrics.note_count} · window=
-            {draftMetrics.window_id ?? "(none)"} · {draftMetrics.title}
+            <p>
+              Twin draft · notes={draftMetrics.note_count} · window=
+              {draftMetrics.window_id ?? "(none)"} · {draftMetrics.title}
+            </p>
+            {draftMetrics.write_href ? (
+              <a
+                href={draftMetrics.write_href}
+                data-testid="twin-draft-open-write"
+                data-view-format="html"
+                className="underline opacity-90 hover:opacity-100"
+                title="Open Write with twin draft as brainstorm seed (sessionStorage; no server invent)"
+              >
+                Open Write (twin seed)
+              </a>
+            ) : null}
           </div>
         ) : null}
       </div>

@@ -12,6 +12,10 @@ const promoteTwinsToContext = vi.fn();
 const seedTwinNotes = vi.fn();
 const launchFloatingDeepResearch = vi.fn();
 const openWindow = vi.fn(() => "win:twin-draft:test");
+const storeTwinWriteSeed = vi.fn(() => "antiek.twin_write_seed.testkey");
+const buildTwinWriteHref = vi.fn(
+  (key: string) => `/write?twin_seed=${encodeURIComponent(key)}`,
+);
 
 vi.mock("../../api/engagement", () => ({
   fetchTwinNotes: (...args: unknown[]) => fetchTwinNotes(...args),
@@ -27,6 +31,12 @@ vi.mock("../../modes/Reading/launchFloatingDeepResearch", () => ({
 
 vi.mock("../windows/openWindow", () => ({
   openWindow: (...args: unknown[]) => openWindow(...args),
+}));
+
+vi.mock("../../workspace/twinWriteSeed", () => ({
+  storeTwinWriteSeed: (...args: unknown[]) => storeTwinWriteSeed(...args),
+  buildTwinWriteHref: (...args: unknown[]) =>
+    buildTwinWriteHref(...(args as [string])),
 }));
 
 vi.mock("./DecisionTreeDriverBadge", () => ({
@@ -148,6 +158,12 @@ describe("TwinNotesPanel", () => {
     promoteTwinsToContext.mockReset();
     openWindow.mockClear();
     openWindow.mockReturnValue("win:twin-draft:test");
+    storeTwinWriteSeed.mockClear();
+    storeTwinWriteSeed.mockReturnValue("antiek.twin_write_seed.testkey");
+    buildTwinWriteHref.mockClear();
+    buildTwinWriteHref.mockImplementation(
+      (key: string) => `/write?twin_seed=${encodeURIComponent(key)}`,
+    );
     seedTwinNotes.mockReset();
     launchFloatingDeepResearch.mockReset();
     mockWouldExceed = false;
@@ -1155,6 +1171,70 @@ describe("TwinNotesPanel", () => {
         /mode=full/,
       );
     });
+  });
+
+  it("opens twin HTML draft and Write handoff seed (pn/pp)", async () => {
+    fetchTwinNotes.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 2,
+      insight_count: 1,
+      question_count: 1,
+      notes: [
+        {
+          note_id: "twin_q",
+          asset_id: "paper",
+          kind: "question",
+          text: "Open Q",
+        },
+        {
+          note_id: "twin_i",
+          asset_id: "paper",
+          kind: "insight",
+          text: "Insight",
+        },
+      ],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+      html: "<p>twins</p>",
+    });
+    render(<TwinNotesPanel assetId="paper" autoLoad />);
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-select-twin_q")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("twin-select-twin_q"));
+    fireEvent.click(screen.getByTestId("twin-select-twin_i"));
+    fireEvent.click(screen.getByTestId("twin-draft-selected-html"));
+    await waitFor(() => {
+      expect(openWindow).toHaveBeenCalledWith(
+        "hosted_html_document",
+        expect.objectContaining({
+          view_format: "html",
+          source: "twin_draft_selected",
+          html: expect.stringMatching(/data-twin-draft="true"/),
+        }),
+        expect.objectContaining({ mode: "floating" }),
+      );
+    });
+    expect(storeTwinWriteSeed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        asset_id: "paper",
+        plain_text: expect.stringMatching(/\[question\] Open Q/),
+        note_ids: expect.arrayContaining(["twin_q", "twin_i"]),
+      }),
+    );
+    const metrics = screen.getByTestId("twin-draft-metrics");
+    expect(metrics.getAttribute("data-note-count")).toBe("2");
+    expect(metrics.getAttribute("data-has-write-href")).toBe("1");
+    expect(metrics.getAttribute("data-write-seed-key")).toBe(
+      "antiek.twin_write_seed.testkey",
+    );
+    const write = screen.getByTestId("twin-draft-open-write");
+    expect(write.getAttribute("href")).toBe(
+      "/write?twin_seed=antiek.twin_write_seed.testkey",
+    );
+    expect(write.getAttribute("data-view-format")).toBe("html");
   });
 
   it("inverts multi-select over visible notes (ne)", async () => {

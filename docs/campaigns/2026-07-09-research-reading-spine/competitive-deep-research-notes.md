@@ -585,3 +585,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (po, 2026-07-10) **twin-draft-metrics after HTML draft open:**
   - data-note-count / data-window-id / data-source=twin_draft_selected
+
+- Closed (pp, 2026-07-10) **Twin draft → Write handoff (twin_seed):**
+  - sessionStorage twinWriteSeed store/load + `/write?twin_seed=`
+  - TwinNotes Draft HTML → Open Write link
+  - WriteHome brainstorm seed + HTML preview + freeform provenance

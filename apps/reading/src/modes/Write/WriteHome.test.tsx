@@ -355,6 +355,47 @@ describe("WriteHome — the re-homed door", () => {
     expect(banner.textContent).toMatch(/draft_merge_abc/);
   });
 
+  it("loads twin_seed handoff and seeds brainstorm (pp)", async () => {
+    const key = "antiek.twin_write_seed.writetest";
+    window.sessionStorage.setItem(
+      key,
+      JSON.stringify({
+        plain_text: "[question] Why twins?\n\n[insight] Recursive notes.",
+        html: '<article data-twin-draft="true" data-view-format="html"><p>Why twins?</p></article>',
+        title: "Twin draft · paper · 2 note(s)",
+        asset_id: "paper-pp",
+        note_ids: ["q1", "i1"],
+        view_format: "html",
+        source: "twin_draft_selected",
+      }),
+    );
+    mountAt(`/write?twin_seed=${encodeURIComponent(key)}`);
+    await waitFor(() => {
+      expect(screen.getByTestId("write-twin-seed-handoff")).toBeTruthy();
+    });
+    const banner = screen.getByTestId("write-twin-seed-handoff");
+    expect(banner.getAttribute("data-load-status")).toBe("ready");
+    expect(banner.getAttribute("data-view-format")).toBe("html");
+    expect(banner.getAttribute("data-note-count")).toBe("2");
+    expect(banner.getAttribute("data-asset-id")).toBe("paper-pp");
+    expect(screen.getByTestId("write-twin-seed-ready").textContent).toMatch(
+      /Twin draft seed/,
+    );
+    expect(screen.getByTestId("write-twin-seed-html-preview").innerHTML).toMatch(
+      /twin-draft/,
+    );
+    expect(screen.getByTestId("write-twin-seed-provenance").textContent).toMatch(
+      /twin_seed:paper-pp:2/,
+    );
+    const titleInput = screen.getByPlaceholderText(
+      /what are you writing/i,
+    ) as HTMLInputElement;
+    expect(titleInput.value).toMatch(/Twin draft/);
+    // Brainstorm on-ramp opened with seed.
+    expect(screen.getByText(/brainstorm from an idea/i)).toBeTruthy();
+    window.sessionStorage.removeItem(key);
+  });
+
   it("loads hosted HTML draft, prefills title, seeds brainstorm (fm)", async () => {
     mountAt("/write?html_draft=draft_merge_abc");
     await waitFor(() => {

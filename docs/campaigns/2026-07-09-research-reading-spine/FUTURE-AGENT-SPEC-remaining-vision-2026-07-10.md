@@ -28,7 +28,7 @@ Highest leverage. Agents never merge main/prod.
 
 | ID | Gap | Acceptance | Notes |
 |---|---|---|---|
-| V1 | **Recursive twin cross-asset merge UI** | Multi-select twins from asset A + B → combined twin substrate draft (HTML) before promote | Substrate promote exists; need compose UI + draft_combined twins |
+| V1 | **Recursive twin cross-asset merge UI** | Partial ✅ **pn–pp**: multi-select → HTML draft window + Write twin_seed handoff (same-asset). Full cross-asset A+B merge still open | Need compose from two asset twin lists |
 | V2 | **Collective “cohesive unit prompt” history** | After collective continue-as-unit, re-open unit shows prior multi-select spawn set | Ring already max 24; persist unit membership on analysis asset |
 | V3 | **Antiek-bench recursive rewrite weekly chrome** | Settings shows last rewrite proposal delta + which by_source drove added tasks | propose≠promote already; polish rewrite rationale UI |
 | V4 | **Model decision-tree “prompt projection vs cap”** | ✅ **Closed pg–pj** DecisionTreeDriverBadge promptText on MO/Write/ResearchThis/Hosted | See SESSION-ARC-pg-pj |

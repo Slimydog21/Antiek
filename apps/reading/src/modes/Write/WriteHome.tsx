@@ -27,6 +27,10 @@ import { mapDepthTierToResearchTier } from "../../lib/researchTier";
 import GlassSurface from "../../shell/GlassSurface";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
 import { listRecentDeepResearchSpawnIds } from "../../workspace/recentDeepResearchSpawns";
+import {
+  loadTwinWriteSeed,
+  type TwinWriteSeedPayload,
+} from "../../workspace/twinWriteSeed";
 import type { WindowMode } from "../../workspace/windowsStore";
 import { useWindows } from "../../workspace/windowsStore";
 import Canvas from "../DeepResearchWorkspace/Canvas/Canvas";
@@ -91,6 +95,8 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
  * (multi-select merge/analysis with writing asset as parent).
  * Residual (ph): DecisionTreeDriverBadge promptText = DR selection + pub refs
  * for cost-vs-remaining projection (parity MO pg / FUTURE-AGENT V4).
+ * Residual (pp): `?twin_seed=<sessionStorage key>` handoff from TwinNotes
+ * multi-select draft — seeds brainstorm + freeform provenance (HTML-first).
  * Residual (gg): remount TwinNotesPanel on same refresh key as research
  * context (DR launch / collective merge / promote / re-import) — hosted ez parity.
  * Residual (gh): live selection drives Write DR budget projection + launch
@@ -105,6 +111,11 @@ export default function WriteHome() {
   // Residual (fl/fm): HTML draft handoff from reading/research merge flywheel.
   const htmlDraftId = useMemo(
     () => (searchParams.get("html_draft") || "").trim(),
+    [searchParams],
+  );
+  // Residual (pp): twin multi-select draft seed from TwinNotesPanel.
+  const twinSeedKey = useMemo(
+    () => (searchParams.get("twin_seed") || "").trim(),
     [searchParams],
   );
   // Residual (gf/om): open + recent DR session spawns for collective on Write.
@@ -137,6 +148,8 @@ export default function WriteHome() {
   const [htmlDraftError, setHtmlDraftError] = useState<string | null>(null);
   const [htmlDraftBusy, setHtmlDraftBusy] = useState(false);
   const [brainstormSeed, setBrainstormSeed] = useState<string | null>(null);
+  // Residual (pp): twin seed handoff banner payload.
+  const [twinSeed, setTwinSeed] = useState<TwinWriteSeedPayload | null>(null);
   const [reimportBusy, setReimportBusy] = useState(false);
   const [reimportStatus, setReimportStatus] = useState<string | null>(null);
   // Residual (ge): write-piece deep research launch (parity with hosted host).
@@ -247,6 +260,28 @@ export default function WriteHome() {
       .then((r) => setPieces(r.deliverables))
       .catch(() => setPieces([]));
   }, [deliverableId]);
+
+  // Residual (pp): load twin write seed from sessionStorage (home path).
+  useEffect(() => {
+    if (!twinSeedKey || deliverableId) {
+      if (!twinSeedKey) setTwinSeed(null);
+      return;
+    }
+    const loaded = loadTwinWriteSeed(twinSeedKey);
+    setTwinSeed(loaded);
+    if (!loaded) return;
+    setBrainstormSeed(loaded.plain_text.slice(0, 8000));
+    setOnRamp("idea");
+    setNewTitle((prev) => (prev.trim() ? prev : loaded.title.slice(0, 200)));
+    setProjectType((prev) =>
+      prev.freeform.trim()
+        ? prev
+        : {
+            ...prev,
+            freeform: `twin_seed:${loaded.asset_id || "asset"}:${loaded.note_ids.length}`,
+          },
+    );
+  }, [deliverableId, twinSeedKey]);
 
   // Residual (fm/gd): load hosted HTML draft on home OR open piece handoff.
   useEffect(() => {
@@ -667,6 +702,66 @@ export default function WriteHome() {
       </div>
     ) : null;
 
+    // Residual (pp): twin multi-select draft seed handoff banner.
+    const twinSeedBanner =
+      twinSeedKey && !deliverableId ? (
+        <div
+          className="mb-4 space-y-2 rounded border border-ink/20 p-3 font-mono text-[12px] dark:border-bright/20"
+          data-testid="write-twin-seed-handoff"
+          data-view-format="html"
+          data-twin-seed-key={twinSeedKey}
+          data-load-status={twinSeed ? "ready" : "missing"}
+          data-note-count={
+            twinSeed ? String(twinSeed.note_ids.length) : "0"
+          }
+          data-asset-id={twinSeed?.asset_id ?? ""}
+          role="status"
+        >
+          {twinSeed ? (
+            <>
+              <p data-testid="write-twin-seed-ready">
+                Twin draft seed from recursive note-taker:{" "}
+                <strong>{twinSeed.title}</strong> · notes=
+                {twinSeed.note_ids.length} · asset=
+                <code>{twinSeed.asset_id || "(none)"}</code>
+              </p>
+              <p className="text-[11px] opacity-80">
+                Brainstorm seeded with selected twin plain text (sessionStorage;
+                HTML-first · not auto-promoted into an outline).
+              </p>
+              {twinSeed.html ? (
+                <div
+                  className="prose max-h-28 overflow-auto text-sm border-t border-ink/10 pt-2 dark:border-bright/10"
+                  data-testid="write-twin-seed-html-preview"
+                  dangerouslySetInnerHTML={{
+                    __html: twinSeed.html.slice(0, 4000),
+                  }}
+                />
+              ) : null}
+              <p
+                className="text-[10px] font-mono"
+                data-testid="write-twin-seed-provenance"
+              >
+                Provenance freeform:{" "}
+                <code>
+                  {projectType.freeform.trim() ||
+                    `twin_seed:${twinSeed.asset_id || "asset"}:${twinSeed.note_ids.length}`}
+                </code>
+              </p>
+            </>
+          ) : (
+            <p
+              className="text-emperor"
+              data-testid="write-twin-seed-missing"
+              role="alert"
+            >
+              Twin seed key not found in this session (expired or wrong tab).
+              Re-open Draft HTML from Twin notes.
+            </p>
+          )}
+        </div>
+      ) : null;
+
     return (
       // Landing-glass (SPR-03 M2): the Write home is a LANDING surface. The
       // root renders through GlassSurface so the <Scene/> (z-0) shows through;
@@ -685,6 +780,7 @@ export default function WriteHome() {
         </header>
 
         {htmlDraftBanner}
+        {twinSeedBanner}
 
         <GlassSurface className="mb-6 space-y-3 rounded-md p-3">
           <input
