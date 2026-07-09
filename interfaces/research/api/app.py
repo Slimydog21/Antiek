@@ -1657,6 +1657,11 @@ def create_app(
     # cost projection (honest nulls when pricing/spend unknown).
     from .settings_budget import register_settings_budget_routes
     register_settings_budget_routes(app)
+    # Midnight-oil SPR-06 — no-spend preflight for autonomous research swarms:
+    # time box, approved ceiling, route policy, source policy, and HTML/twin-note
+    # artifact obligations. Does not launch agents or reserve budget.
+    from .midnight_oil_routes import register_midnight_oil_routes
+    register_midnight_oil_routes(app)
     # Read SPR-09 — library catalog (paginated/filtered/searched view over the
     # SAME servable-corpus read path; §9.0 keeps gated bodies out of payloads).
     from .library import register_library_routes
