@@ -48,6 +48,42 @@ vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
   ),
 }));
 
+vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", async () => {
+  const React = await import("react");
+  return {
+    ResearchLaunchBudgetPanel: (props: {
+      promptText?: string;
+      researchTier?: string;
+      onProjectionChange?: (p: {
+        wouldExceedBudget: boolean | null;
+        pricingKnown: boolean;
+        estimatedUsdHigh: number | null;
+        remainingUsd: number | null;
+        modelId: string | null;
+      }) => void;
+    }) => {
+      // Residual (iy): notify parent of projection for soft-gate tests.
+      React.useEffect(() => {
+        props.onProjectionChange?.({
+          wouldExceedBudget: false,
+          pricingKnown: true,
+          estimatedUsdHigh: 0.1,
+          remainingUsd: 4,
+          modelId: "glm-5.2",
+        });
+      }, [props]);
+      return React.createElement(
+        "div",
+        {
+          "data-testid": "research-launch-budget-panel-stub",
+          "data-research-tier": props.researchTier || "deep",
+        },
+        `budget stub · ${(props.promptText || "").slice(0, 24)}`,
+      );
+    },
+  };
+});
+
 describe("MarketplaceHost mode", () => {
   afterEach(() => cleanup());
   beforeEach(() => {
@@ -187,6 +223,13 @@ describe("MarketplaceHost mode", () => {
       book_id: "pd-pride",
     });
     expect(screen.getByTestId("hosted-html").innerHTML).toContain("truth");
+    // Residual (iy): budget panel mounted before DR launch.
+    await waitFor(() => {
+      expect(screen.getByTestId("marketplace-host-dr-budget-mount")).toBeTruthy();
+    });
+    expect(
+      screen.getByTestId("research-launch-budget-panel-stub"),
+    ).toBeTruthy();
     // Residual (iu): one-click floating deep research on hosted book.
     fireEvent.click(screen.getByTestId("marketplace-host-deep-research"));
     await waitFor(() => {

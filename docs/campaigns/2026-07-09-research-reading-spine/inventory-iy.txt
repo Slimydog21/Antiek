@@ -1,0 +1,12 @@
+# inventory-iy · marketplace host DR budget soft-gate · residual (iy)
+
+## Delta
+- marketplace-host-dr-budget-mount with ResearchLaunchBudgetPanel
+- soft-gate DR float/full when wouldExceedBudget unless force override
+- depth tier pick for projection (flash|pro|wrestle)
+
+## Verified
+vitest MarketplaceHost 8_passed
+
+## Next
+(iz) re-derive

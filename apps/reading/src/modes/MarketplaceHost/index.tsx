@@ -32,6 +32,7 @@
  * (reading ≡ research flywheel; decision-tree driver chokepoint).
  * Residual (iv): host-result deep research full window mode (parity hosted es).
  * Residual (iw): library row deep research launch parity (float|full).
+ * Residual (iy): budget soft-gate on host/library DR launch (parity di/cs).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -47,6 +48,11 @@ import {
   type MarketplaceCatalogResponse,
 } from "../../api/marketplaceHost";
 import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
+import {
+  ResearchLaunchBudgetPanel,
+  type ResearchLaunchBudgetProjection,
+  type ResearchLaunchTier,
+} from "../../components/engagement/ResearchLaunchBudgetPanel";
 import { openWindow } from "../../components/windows/openWindow";
 import { launchFloatingDeepResearch } from "../Reading/launchFloatingDeepResearch";
 
@@ -187,6 +193,11 @@ export default function MarketplaceHost({
   /** Residual (iu): floating DR launch status after host. */
   const [hostDrStatus, setHostDrStatus] = useState<string | null>(null);
   const [hostDrBusy, setHostDrBusy] = useState(false);
+  /** Residual (iy): soft budget gate before marketplace DR launch. */
+  const [hostDrBudgetWarn, setHostDrBudgetWarn] = useState(false);
+  const [hostDrForceBudget, setHostDrForceBudget] = useState(false);
+  const [hostDrTier, setHostDrTier] = useState<ResearchLaunchTier>("deep");
+  const [hostDrPromptPreview, setHostDrPromptPreview] = useState("");
   const loadLibrary = useCallback(async () => {
     try {
       const lib = await fetchAccountLibrary(ownerId);
@@ -237,10 +248,23 @@ export default function MarketplaceHost({
     );
   }
 
+  function hostDrSelectionFromHtml(
+    html: string,
+    title: string,
+  ): string {
+    const plain = (html || "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 800);
+    if (plain.length >= 3) return plain;
+    return `Key claims and open questions in “${title}” for deep research.`;
+  }
+
   /**
-   * Residual (iu/iv): one-click deep research on hosted HTML book.
+   * Residual (iu/iv/iy): one-click deep research on hosted HTML book.
    * Uses decision-tree driver chokepoint; selection from title/body preview.
-   * viewMode floating | full (parity hosted book DR es).
+   * Soft budget gate when projection would exceed (force override available).
    */
   async function onDeepResearchHostedBook(
     result: HostResultResponse,
@@ -250,16 +274,14 @@ export default function MarketplaceHost({
       setError("view_format must be html — PDF is not a research surface");
       return;
     }
-    const plain = (result.html || "")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 800);
+    if (hostDrBudgetWarn && !hostDrForceBudget) {
+      setHostDrStatus(
+        "Projected cost may exceed remaining daily budget — enable force override or reduce depth tier.",
+      );
+      return;
+    }
     const title = (result.title || result.document_id || "hosted book").trim();
-    const selection =
-      plain.length >= 3
-        ? plain
-        : `Key claims and open questions in “${title}” for deep research.`;
+    const selection = hostDrSelectionFromHtml(result.html || "", title);
     setHostDrBusy(true);
     setHostDrStatus(null);
     setError(null);
@@ -267,7 +289,7 @@ export default function MarketplaceHost({
       const out = await launchFloatingDeepResearch({
         asset_id: result.document_id,
         selection_text: selection,
-        goal_hint: `Wrestle claims and cite evidence in “${title}” (marketplace HTML host).`,
+        goal_hint: `Wrestle claims and cite evidence in “${title}” (marketplace HTML host · tier=${hostDrTier}).`,
         view_mode: viewMode,
       });
       if (out.view_format !== "html") {
@@ -284,6 +306,16 @@ export default function MarketplaceHost({
       setHostDrBusy(false);
     }
   }
+
+  /** Residual (iy): keep budget panel prompt in sync with hosted HTML. */
+  useEffect(() => {
+    if (!hosted?.html) {
+      setHostDrPromptPreview("");
+      return;
+    }
+    const title = (hosted.title || hosted.document_id || "hosted book").trim();
+    setHostDrPromptPreview(hostDrSelectionFromHtml(hosted.html, title));
+  }, [hosted]);
 
   /**
    * Residual (iw): deep research from library row — rehydrate HTML then launch.
@@ -766,6 +798,33 @@ export default function MarketplaceHost({
             {hosted.already_hosted ? "Already hosted" : "Newly hosted"} ·{" "}
             {hosted.license_class} · view_format={hosted.view_format}
           </p>
+          {/* Residual (iy): budget projection soft-gate before DR launch. */}
+          <div
+            className="space-y-2 border rounded p-3"
+            data-testid="marketplace-host-dr-budget-mount"
+            data-view-format="html"
+          >
+            <ResearchLaunchBudgetPanel
+              promptText={hostDrPromptPreview || hosted.title || "hosted book"}
+              researchTier={hostDrTier}
+              allowTierPick
+              onResearchTierChange={setHostDrTier}
+              onProjectionChange={(p: ResearchLaunchBudgetProjection) => {
+                setHostDrBudgetWarn(p.wouldExceedBudget === true);
+              }}
+            />
+            {hostDrBudgetWarn ? (
+              <label className="flex items-center gap-2 text-[11px] font-mono">
+                <input
+                  type="checkbox"
+                  data-testid="marketplace-host-dr-force-budget"
+                  checked={hostDrForceBudget}
+                  onChange={(e) => setHostDrForceBudget(e.target.checked)}
+                />
+                Force deep research despite budget projection
+              </label>
+            ) : null}
+          </div>
           {/* Residual (bt/dk): open hosted HTML book in a floating window. */}
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -815,7 +874,8 @@ export default function MarketplaceHost({
                 hostDrBusy ||
                 busy ||
                 hosted.view_format !== "html" ||
-                !hosted.document_id
+                !hosted.document_id ||
+                (hostDrBudgetWarn && !hostDrForceBudget)
               }
               onClick={() => void onDeepResearchHostedBook(hosted, "floating")}
               className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
@@ -833,7 +893,8 @@ export default function MarketplaceHost({
                 hostDrBusy ||
                 busy ||
                 hosted.view_format !== "html" ||
-                !hosted.document_id
+                !hosted.document_id ||
+                (hostDrBudgetWarn && !hostDrForceBudget)
               }
               onClick={() => void onDeepResearchHostedBook(hosted, "full")}
               className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
