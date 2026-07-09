@@ -54,16 +54,29 @@ _bench_usage_store: Any = None
 
 
 def get_bench_usage_store(*, create_if_missing: bool = True) -> Any:
-    """Process-local Antiek-bench usage store shared with settings summary.
+    """Antiek-bench usage store shared with settings summary.
 
-    Honest limitation: process-local (same as decision-tree registry). When
-    ``create_if_missing`` is False and no store was opened yet, returns None.
+    Resolution (shipped ``resolve_usage_store``):
+    * ``ANTIEK_BENCH_USAGE_DIR`` set → durable FileBenchStore (survives restart)
+    * unset → process-local InMemoryBenchStore (default for tests/CI)
+
+    When ``create_if_missing`` is False and no store was opened yet and no
+    durable env is set, returns None.
     """
     global _bench_usage_store
-    if _bench_usage_store is None and create_if_missing:
-        from substrate.antiek_bench import InMemoryBenchStore
+    if _bench_usage_store is None:
+        from substrate.antiek_bench import resolve_usage_store
 
-        _bench_usage_store = InMemoryBenchStore()
+        _bench_usage_store = resolve_usage_store(create_if_missing=create_if_missing)
+    return _bench_usage_store
+
+
+def reset_bench_usage_store(*, root: Path | str | None = None) -> Any:
+    """Rebuild usage store (tests). Pass root for durable FileBenchStore."""
+    global _bench_usage_store
+    from substrate.antiek_bench import resolve_usage_store
+
+    _bench_usage_store = resolve_usage_store(root=root, create_if_missing=True)
     return _bench_usage_store
 
 

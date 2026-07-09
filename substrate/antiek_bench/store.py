@@ -1,13 +1,23 @@
-"""Bench result + proposal store (offline)."""
+"""Bench result + proposal store (offline).
+
+Usage events for Antiek-bench rewrite live as a special run id
+``_usage_events`` (see usage_bridge). Durable resolution:
+
+* ``ANTIEK_BENCH_USAGE_DIR`` set → ``FileBenchStore`` under that root
+* unset → process-local ``InMemoryBenchStore`` (default for tests/CI)
+"""
 
 from __future__ import annotations
 
 import json
+import os
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+# Env for durable usage event persistence (operator opt-in).
+ANTIEK_BENCH_USAGE_DIR_ENV = "ANTIEK_BENCH_USAGE_DIR"
 
 @runtime_checkable
 class BenchStore(Protocol):
@@ -81,3 +91,38 @@ class FileBenchStore:
         if not path.is_file():
             return None
         return json.loads(path.read_text(encoding="utf-8"))
+
+
+def usage_store_data_dir() -> Path | None:
+    """Resolve durable usage-store root when ANTIEK_BENCH_USAGE_DIR is set."""
+    raw = (os.environ.get(ANTIEK_BENCH_USAGE_DIR_ENV) or "").strip()
+    if not raw:
+        return None
+    return Path(raw).expanduser()
+
+
+def resolve_usage_store(
+    *,
+    root: Path | str | None = None,
+    create_if_missing: bool = True,
+) -> BenchStore | None:
+    """Construct the bench store used for usage event write/read.
+
+    * Explicit ``root`` or ``ANTIEK_BENCH_USAGE_DIR`` → FileBenchStore (durable)
+    * Otherwise → InMemoryBenchStore when create_if_missing else None
+
+    Does not open a second usage writer — callers still use record_usage_event.
+    """
+    base: Path | None
+    if root is not None:
+        base = Path(root).expanduser()
+    else:
+        base = usage_store_data_dir()
+
+    if base is not None:
+        base.mkdir(parents=True, exist_ok=True)
+        return FileBenchStore(base)
+
+    if not create_if_missing:
+        return None
+    return InMemoryBenchStore()

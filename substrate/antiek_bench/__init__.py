@@ -29,7 +29,14 @@ from .settings_surface import (
     settings_leaderboard_payload,
     settings_usage_summary_payload,
 )
-from .store import BenchStore, InMemoryBenchStore
+from .store import (
+    ANTIEK_BENCH_USAGE_DIR_ENV,
+    BenchStore,
+    FileBenchStore,
+    InMemoryBenchStore,
+    resolve_usage_store,
+    usage_store_data_dir,
+)
 from .suite import (
     SuiteDefinition,
     SuiteItem,
@@ -52,8 +59,10 @@ from .usage_bridge import (
 )
 
 __all__ = [
+    "ANTIEK_BENCH_USAGE_DIR_ENV",
     "BenchRunResult",
     "BenchStore",
+    "FileBenchStore",
     "InMemoryBenchStore",
     "LeaderboardSnapshot",
     "ModelLeaderboardRow",
@@ -78,9 +87,11 @@ __all__ = [
     "record_session_flywheel_usage",
     "record_usage_event",
     "register_suite",
+    "resolve_usage_store",
     "run_suite",
     "project_usage_summary_html",
     "settings_leaderboard_payload",
     "settings_usage_summary_payload",
+    "usage_store_data_dir",
     "weekly_usage_summary",
 ]
