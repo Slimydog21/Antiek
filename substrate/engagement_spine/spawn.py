@@ -46,6 +46,8 @@ class ResearchSpawn:
     output_text: str | None = None
     output_insights: tuple[str, ...] = ()
     output_questions: tuple[str, ...] = ()
+    # Knowledge-dense publication handles (arxiv/substack/url) — see source_refs.
+    source_references: tuple[dict[str, Any], ...] = ()
 
 
 def _stable_spawn_id(asset_id: str, selection_text: str, region_id: str | None) -> str:
@@ -211,10 +213,14 @@ def _to_row(spawn: ResearchSpawn) -> dict[str, Any]:
         "output_text": spawn.output_text,
         "output_insights": list(spawn.output_insights),
         "output_questions": list(spawn.output_questions),
+        "source_references": list(spawn.source_references or ()),
     }
 
 
 def _from_row(row: dict[str, Any]) -> ResearchSpawn:
+    refs = row.get("source_references") or ()
+    if not isinstance(refs, (list, tuple)):
+        refs = ()
     return ResearchSpawn(
         spawn_id=row["spawn_id"],
         investigation_id=row["investigation_id"],
@@ -227,4 +233,5 @@ def _from_row(row: dict[str, Any]) -> ResearchSpawn:
         output_text=row.get("output_text"),
         output_insights=tuple(row.get("output_insights") or ()),
         output_questions=tuple(row.get("output_questions") or ()),
+        source_references=tuple(dict(r) for r in refs if isinstance(r, dict)),
     )

@@ -29,3 +29,6 @@ ALREADY_SHIPPED_DO_NOT_REBUILD:
 
 NEXT_RESIDUAL_IF_O_LANDS:
 - arxiv/substack reference attach on deep-research spawn (deferred this cycle)
+
+# Follow-on residual (p) — arxiv/substack reference attach on spawn — 2026-07-09 same cycle
+(p) arxiv/substack reference attach on deep-research spawn | BRANCH_ONLY→shipping | substrate/engagement_spine/source_refs.py; ResearchSpawn.source_references; tests/test_source_refs_attach.py; pure offline parse+attach (no live HTTP)
