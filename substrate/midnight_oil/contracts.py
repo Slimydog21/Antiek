@@ -2439,6 +2439,210 @@ class MidnightOilControlLedgerAdapterPlanReceipt(BaseModel):
     adapter_plan_notes: list[str] = Field(default_factory=list)
 
 
+class MidnightOilControlLedgerPersistencePlanRequest(BaseModel):
+    launch_packet: MidnightOilLaunchPacket
+    approval_receipt: MidnightOilApprovalReceipt
+    runner_handoff: MidnightOilRunnerHandoff
+    runner_control_plan_receipt: MidnightOilRunnerControlPlanReceipt
+    budget_provider_adapter_plan_receipt: MidnightOilBudgetProviderAdapterPlanReceipt
+    provider_executor_adapter_plan_receipt: MidnightOilProviderExecutorAdapterPlanReceipt
+    retrieval_adapter_plan_receipt: MidnightOilRetrievalAdapterPlanReceipt
+    graph_adapter_plan_receipt: MidnightOilGraphAdapterPlanReceipt
+    final_artifact_adapter_plan_receipt: MidnightOilFinalArtifactAdapterPlanReceipt
+    operator_dispatch_adapter_plan_receipt: MidnightOilOperatorDispatchAdapterPlanReceipt
+    control_ledger_adapter_plan_receipt: MidnightOilControlLedgerAdapterPlanReceipt
+
+    @model_validator(mode="after")
+    def _receipt_chain_matches(self) -> MidnightOilControlLedgerPersistencePlanRequest:
+        MidnightOilControlLedgerAdapterPlanRequest(
+            launch_packet=self.launch_packet,
+            approval_receipt=self.approval_receipt,
+            runner_handoff=self.runner_handoff,
+            runner_control_plan_receipt=self.runner_control_plan_receipt,
+            budget_provider_adapter_plan_receipt=self.budget_provider_adapter_plan_receipt,
+            provider_executor_adapter_plan_receipt=self.provider_executor_adapter_plan_receipt,
+            retrieval_adapter_plan_receipt=self.retrieval_adapter_plan_receipt,
+            graph_adapter_plan_receipt=self.graph_adapter_plan_receipt,
+            final_artifact_adapter_plan_receipt=self.final_artifact_adapter_plan_receipt,
+            operator_dispatch_adapter_plan_receipt=self.operator_dispatch_adapter_plan_receipt,
+        )
+        if (
+            self.control_ledger_adapter_plan_receipt.operator_dispatch_adapter_plan_receipt_id
+            != self.operator_dispatch_adapter_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "control_ledger_adapter_plan_receipt must reference operator_dispatch_adapter_plan_receipt"
+            )
+        if (
+            self.control_ledger_adapter_plan_receipt.runner_control_plan_receipt_id
+            != self.runner_control_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "control_ledger_adapter_plan_receipt must reference runner_control_plan_receipt"
+            )
+        if self.control_ledger_adapter_plan_receipt.budget_provider_adapter_plan_receipt_id != (
+            self.budget_provider_adapter_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "control_ledger_adapter_plan_receipt must reference budget_provider_adapter_plan_receipt"
+            )
+        if (
+            self.control_ledger_adapter_plan_receipt.provider_executor_adapter_plan_receipt_id
+            != self.provider_executor_adapter_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "control_ledger_adapter_plan_receipt must reference provider_executor_adapter_plan_receipt"
+            )
+        if self.control_ledger_adapter_plan_receipt.retrieval_adapter_plan_receipt_id != (
+            self.retrieval_adapter_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "control_ledger_adapter_plan_receipt must reference retrieval_adapter_plan_receipt"
+            )
+        if self.control_ledger_adapter_plan_receipt.graph_adapter_plan_receipt_id != (
+            self.graph_adapter_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "control_ledger_adapter_plan_receipt must reference graph_adapter_plan_receipt"
+            )
+        if self.control_ledger_adapter_plan_receipt.final_artifact_adapter_plan_receipt_id != (
+            self.final_artifact_adapter_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "control_ledger_adapter_plan_receipt must reference final_artifact_adapter_plan_receipt"
+            )
+        if self.control_ledger_adapter_plan_receipt.run_id != self.launch_packet.run_id:
+            raise ValueError("control_ledger_adapter_plan_receipt must reference launch run")
+        if self.control_ledger_adapter_plan_receipt.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("control_ledger_adapter_plan_receipt must reference launch_packet")
+        if (
+            self.control_ledger_adapter_plan_receipt.approval_receipt_id
+            != self.approval_receipt.receipt_id
+        ):
+            raise ValueError("control_ledger_adapter_plan_receipt must reference approval_receipt")
+        if (
+            self.control_ledger_adapter_plan_receipt.runner_handoff_id
+            != self.runner_handoff.handoff_id
+        ):
+            raise ValueError("control_ledger_adapter_plan_receipt must reference runner_handoff")
+        if (
+            self.control_ledger_adapter_plan_receipt.status
+            != "blocked_control_ledger_adapter_unimplemented"
+        ):
+            raise ValueError(
+                "control_ledger_adapter_plan_receipt must be blocked_control_ledger_adapter_unimplemented"
+            )
+        if self.control_ledger_adapter_plan_receipt.control_ledger_persistence_allowed:
+            raise ValueError("control_ledger_adapter_plan_receipt must not allow persistence")
+        if self.control_ledger_adapter_plan_receipt.control_ledger_written:
+            raise ValueError("control_ledger_adapter_plan_receipt must not write ledger")
+        if self.control_ledger_adapter_plan_receipt.audit_log_written:
+            raise ValueError("control_ledger_adapter_plan_receipt must not write audit log")
+        if self.control_ledger_adapter_plan_receipt.rollback_receipt_created:
+            raise ValueError(
+                "control_ledger_adapter_plan_receipt must not create rollback receipt"
+            )
+        receipts = (
+            self.runner_control_plan_receipt,
+            self.budget_provider_adapter_plan_receipt,
+            self.provider_executor_adapter_plan_receipt,
+            self.retrieval_adapter_plan_receipt,
+            self.graph_adapter_plan_receipt,
+            self.final_artifact_adapter_plan_receipt,
+            self.operator_dispatch_adapter_plan_receipt,
+            self.control_ledger_adapter_plan_receipt,
+        )
+        if any(receipt.live_run_allowed for receipt in receipts):
+            raise ValueError("receipt chain must not allow live run")
+        if any(receipt.dispatch_allowed or receipt.dispatch_performed for receipt in receipts):
+            raise ValueError("receipt chain must not dispatch")
+        if any(
+            receipt.budget_reservation_allowed or receipt.budget_reserved for receipt in receipts
+        ):
+            raise ValueError("receipt chain must not reserve budget")
+        if any(
+            receipt.provider_execution_allowed or receipt.provider_calls_made
+            for receipt in receipts
+        ):
+            raise ValueError("receipt chain must not include provider calls")
+        if any(receipt.retrieval_allowed or receipt.retrieval_performed for receipt in receipts):
+            raise ValueError("receipt chain must not perform retrieval")
+        if (
+            self.retrieval_adapter_plan_receipt.source_receipts_created
+            or self.graph_adapter_plan_receipt.source_receipts_created
+            or self.final_artifact_adapter_plan_receipt.source_receipts_created
+            or self.operator_dispatch_adapter_plan_receipt.source_receipts_created
+            or self.control_ledger_adapter_plan_receipt.source_receipts_created
+        ):
+            raise ValueError("receipt chain must not create source receipts")
+        if any(receipt.graph_mutation_allowed or receipt.graph_mutated for receipt in receipts):
+            raise ValueError("receipt chain must not mutate graph")
+        if any(
+            receipt.final_artifact_allowed or receipt.final_artifact_created
+            for receipt in receipts
+        ):
+            raise ValueError("receipt chain must not create final artifact")
+        if self.control_ledger_adapter_plan_receipt.operator_dispatch_allowed:
+            raise ValueError("control_ledger_adapter_plan_receipt must not allow dispatch")
+        if self.control_ledger_adapter_plan_receipt.operator_live_dispatch_enabled:
+            raise ValueError(
+                "control_ledger_adapter_plan_receipt must not enable live dispatch"
+            )
+        return self
+
+
+class MidnightOilControlLedgerPersistencePlanReceipt(BaseModel):
+    receipt_id: str
+    control_ledger_adapter_plan_receipt_id: str
+    operator_dispatch_adapter_plan_receipt_id: str
+    runner_control_plan_receipt_id: str
+    runner_readiness_receipt_id: str
+    runner_handoff_id: str
+    approval_receipt_id: str
+    launch_packet_id: str
+    run_id: str
+    status: Literal["blocked_control_ledger_persistence_unimplemented"] = (
+        "blocked_control_ledger_persistence_unimplemented"
+    )
+    adapter_key: Literal["operator_dispatch_control_ledger_persistence"] = (
+        "operator_dispatch_control_ledger_persistence"
+    )
+    planned_repository_id: str
+    planned_transaction_id: str
+    planned_setting_id: str
+    planned_control_ledger_id: str
+    planned_audit_log_id: str
+    planned_rollback_receipt_id: str
+    required_storage_tables: list[str]
+    required_transaction_invariants: list[str]
+    required_apply_fields: list[str]
+    blocker_reason: Literal["control_ledger_persistence_unimplemented"] = (
+        "control_ledger_persistence_unimplemented"
+    )
+    persistence_adapter_allowed: bool = False
+    control_ledger_persistence_allowed: bool = False
+    control_ledger_written: bool = False
+    audit_log_written: bool = False
+    rollback_receipt_created: bool = False
+    operator_dispatch_allowed: bool = False
+    operator_live_dispatch_enabled: bool = False
+    live_run_allowed: bool = False
+    dispatch_allowed: bool = False
+    dispatch_performed: bool = False
+    budget_reservation_allowed: bool = False
+    budget_reserved: bool = False
+    provider_execution_allowed: bool = False
+    provider_calls_made: bool = False
+    retrieval_allowed: bool = False
+    retrieval_performed: bool = False
+    source_receipts_created: bool = False
+    graph_mutation_allowed: bool = False
+    graph_mutated: bool = False
+    final_artifact_allowed: bool = False
+    final_artifact_created: bool = False
+    adapter_plan_notes: list[str] = Field(default_factory=list)
+
+
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
     price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
@@ -3412,6 +3616,94 @@ def control_ledger_adapter_plan_midnight_oil(
         adapter_plan_notes=[
             "control ledger adapter plan only: no operator setting or ledger row is persisted",
             "this receipt documents durable enablement, audit, idempotency, and rollback requirements before live dispatch can be enabled",
+            "no dispatch, budget reservation, provider call, retrieval, source receipt, graph mutation, or artifact write is performed",
+        ],
+    )
+
+
+def control_ledger_persistence_plan_midnight_oil(
+    req: MidnightOilControlLedgerPersistencePlanRequest,
+) -> MidnightOilControlLedgerPersistencePlanReceipt:
+    run_id = req.launch_packet.run_id
+    return MidnightOilControlLedgerPersistencePlanReceipt(
+        receipt_id=f"{run_id}-control-ledger-persistence-plan",
+        control_ledger_adapter_plan_receipt_id=(
+            req.control_ledger_adapter_plan_receipt.receipt_id
+        ),
+        operator_dispatch_adapter_plan_receipt_id=(
+            req.operator_dispatch_adapter_plan_receipt.receipt_id
+        ),
+        runner_control_plan_receipt_id=req.runner_control_plan_receipt.receipt_id,
+        runner_readiness_receipt_id=(
+            req.runner_control_plan_receipt.runner_readiness_receipt_id
+        ),
+        runner_handoff_id=req.runner_handoff.handoff_id,
+        approval_receipt_id=req.approval_receipt.receipt_id,
+        launch_packet_id=req.launch_packet.packet_id,
+        run_id=run_id,
+        planned_repository_id=f"{run_id}-operator-dispatch-control-repository",
+        planned_transaction_id=f"{run_id}-operator-dispatch-control-transaction",
+        planned_setting_id=req.control_ledger_adapter_plan_receipt.planned_setting_id,
+        planned_control_ledger_id=(
+            req.control_ledger_adapter_plan_receipt.planned_control_ledger_id
+        ),
+        planned_audit_log_id=req.control_ledger_adapter_plan_receipt.planned_audit_log_id,
+        planned_rollback_receipt_id=(
+            req.control_ledger_adapter_plan_receipt.planned_rollback_receipt_id
+        ),
+        required_storage_tables=[
+            "operator_dispatch_settings",
+            "operator_dispatch_control_ledger",
+            "operator_dispatch_audit_log",
+            "operator_dispatch_rollback_receipts",
+        ],
+        required_transaction_invariants=[
+            "persistence adapter must write setting, ledger, audit, and rollback rows in one transaction",
+            "persistence adapter must enforce one active enablement row per run id and idempotency key",
+            "persistence adapter must compare approved price ceiling and work minutes before commit",
+            "persistence adapter must keep live dispatch disabled until the committed row is separately activated",
+            "persistence adapter must be replay-safe and return the existing receipt for duplicate idempotency keys",
+        ],
+        required_apply_fields=[
+            "repository_id",
+            "transaction_id",
+            "operator_dispatch_setting_id",
+            "control_ledger_id",
+            "audit_log_id",
+            "rollback_receipt_id",
+            "run_id",
+            "launch_packet_id",
+            "approval_receipt_id",
+            "enabled_by_operator_id",
+            "enabled_at",
+            "expires_at",
+            "idempotency_key",
+            "content_digest",
+        ],
+        persistence_adapter_allowed=False,
+        control_ledger_persistence_allowed=False,
+        control_ledger_written=False,
+        audit_log_written=False,
+        rollback_receipt_created=False,
+        operator_dispatch_allowed=False,
+        operator_live_dispatch_enabled=False,
+        live_run_allowed=False,
+        dispatch_allowed=False,
+        dispatch_performed=False,
+        budget_reservation_allowed=False,
+        budget_reserved=False,
+        provider_execution_allowed=False,
+        provider_calls_made=False,
+        retrieval_allowed=False,
+        retrieval_performed=False,
+        source_receipts_created=False,
+        graph_mutation_allowed=False,
+        graph_mutated=False,
+        final_artifact_allowed=False,
+        final_artifact_created=False,
+        adapter_plan_notes=[
+            "control ledger persistence plan only: no repository transaction is opened or committed",
+            "this receipt documents persistence implementation requirements before any operator setting can be stored",
             "no dispatch, budget reservation, provider call, retrieval, source receipt, graph mutation, or artifact write is performed",
         ],
     )

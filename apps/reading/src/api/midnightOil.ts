@@ -873,6 +873,66 @@ export interface MidnightOilControlLedgerAdapterPlanReceipt {
   adapter_plan_notes: string[];
 }
 
+export interface MidnightOilControlLedgerPersistencePlanRequest {
+  launch_packet: MidnightOilLaunchPacket;
+  approval_receipt: MidnightOilApprovalReceipt;
+  runner_handoff: MidnightOilRunnerHandoff;
+  runner_control_plan_receipt: MidnightOilRunnerControlPlanReceipt;
+  budget_provider_adapter_plan_receipt: MidnightOilBudgetProviderAdapterPlanReceipt;
+  provider_executor_adapter_plan_receipt: MidnightOilProviderExecutorAdapterPlanReceipt;
+  retrieval_adapter_plan_receipt: MidnightOilRetrievalAdapterPlanReceipt;
+  graph_adapter_plan_receipt: MidnightOilGraphAdapterPlanReceipt;
+  final_artifact_adapter_plan_receipt: MidnightOilFinalArtifactAdapterPlanReceipt;
+  operator_dispatch_adapter_plan_receipt: MidnightOilOperatorDispatchAdapterPlanReceipt;
+  control_ledger_adapter_plan_receipt: MidnightOilControlLedgerAdapterPlanReceipt;
+}
+
+export interface MidnightOilControlLedgerPersistencePlanReceipt {
+  receipt_id: string;
+  control_ledger_adapter_plan_receipt_id: string;
+  operator_dispatch_adapter_plan_receipt_id: string;
+  runner_control_plan_receipt_id: string;
+  runner_readiness_receipt_id: string;
+  runner_handoff_id: string;
+  approval_receipt_id: string;
+  launch_packet_id: string;
+  run_id: string;
+  status: "blocked_control_ledger_persistence_unimplemented";
+  adapter_key: "operator_dispatch_control_ledger_persistence";
+  planned_repository_id: string;
+  planned_transaction_id: string;
+  planned_setting_id: string;
+  planned_control_ledger_id: string;
+  planned_audit_log_id: string;
+  planned_rollback_receipt_id: string;
+  required_storage_tables: string[];
+  required_transaction_invariants: string[];
+  required_apply_fields: string[];
+  blocker_reason: "control_ledger_persistence_unimplemented";
+  persistence_adapter_allowed: boolean;
+  control_ledger_persistence_allowed: boolean;
+  control_ledger_written: boolean;
+  audit_log_written: boolean;
+  rollback_receipt_created: boolean;
+  operator_dispatch_allowed: boolean;
+  operator_live_dispatch_enabled: boolean;
+  live_run_allowed: boolean;
+  dispatch_allowed: boolean;
+  dispatch_performed: boolean;
+  budget_reservation_allowed: boolean;
+  budget_reserved: boolean;
+  provider_execution_allowed: boolean;
+  provider_calls_made: boolean;
+  retrieval_allowed: boolean;
+  retrieval_performed: boolean;
+  source_receipts_created: boolean;
+  graph_mutation_allowed: boolean;
+  graph_mutated: boolean;
+  final_artifact_allowed: boolean;
+  final_artifact_created: boolean;
+  adapter_plan_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -1172,4 +1232,24 @@ export async function controlLedgerAdapterPlanMidnightOil(
     );
   }
   return (await resp.json()) as MidnightOilControlLedgerAdapterPlanReceipt;
+}
+
+export async function controlLedgerPersistencePlanMidnightOil(
+  request: MidnightOilControlLedgerPersistencePlanRequest,
+): Promise<MidnightOilControlLedgerPersistencePlanReceipt> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/midnight-oil/control-ledger-persistence-plan`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+  );
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(
+      `POST /research/midnight-oil/control-ledger-persistence-plan: HTTP ${resp.status}: ${body}`,
+    );
+  }
+  return (await resp.json()) as MidnightOilControlLedgerPersistencePlanReceipt;
 }
