@@ -61,8 +61,14 @@ from .research_context import (
     research_context_html,
     research_context_sections_html,
 )
+from .collective import (
+    CollectiveResearchUnit,
+    collective_research_html,
+    merge_spawns_collective,
+)
 
 __all__ = [
+    "CollectiveResearchUnit",
     "EngagementStore",
     "FileEngagementStore",
     "HighlightSelection",
@@ -81,6 +87,7 @@ __all__ = [
     "TwinPromoteResult",
     "assemble_research_context",
     "attach_source_references",
+    "collective_research_html",
     "complete_spawn",
     "detect_source_kind",
     "ensure_spawn",
@@ -92,6 +99,7 @@ __all__ = [
     "list_spawns_for_asset",
     "list_twin_notes",
     "merge_spawn_outputs",
+    "merge_spawns_collective",
     "parse_source_reference",
     "parse_source_references",
     "project_to_html",
