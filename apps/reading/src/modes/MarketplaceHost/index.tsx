@@ -48,6 +48,8 @@
  * Residual (mi): catalog HTML window id encodes active chips so filter-aware
  * projections do not clobber each other in the workspace.
  * Residual (mm): dual-gate L1–L4 checklist deep-link (parity mj/ml).
+ * Residual (mo): twin seed body includes catalog subjects for domain-aware
+ * recursive note-taker substrate after host.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -605,7 +607,7 @@ export default function MarketplaceHost({
     }
   }
 
-  /** Residual (gj)/(hl): offline twin seed for hosted book (non-fatal; honest). */
+  /** Residual (gj)/(hl)/(mo): offline twin seed for hosted book (non-fatal; honest). */
   async function seedHostedTwins(result: HostResultResponse) {
     setTwinSeedStatus(null);
     setTwinSeedHonesty(null);
@@ -615,10 +617,22 @@ export default function MarketplaceHost({
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, 2000);
+      // Residual (mo): domain subjects from catalog for recursive note-taker context.
+      const entry = entries.find((e) => e.book_id === result.book_id);
+      const subjects = (entry?.subjects || []).filter(Boolean);
+      const subjectPrefix =
+        subjects.length > 0
+          ? `Research domains: ${subjects.join(", ")}.\n\n`
+          : "";
+      const bodyText =
+        (subjectPrefix + (plain || result.title || result.document_id)).slice(
+          0,
+          2200,
+        );
       const seeded = await seedTwinNotes({
         asset_id: result.document_id,
         title: result.title || result.document_id,
-        body_text: plain || result.title || result.document_id,
+        body_text: bodyText,
         include_html: false,
         force_offline: true,
       });

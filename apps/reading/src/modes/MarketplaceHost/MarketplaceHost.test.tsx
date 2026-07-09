@@ -345,12 +345,13 @@ describe("MarketplaceHost mode", () => {
     expect(writeLink.getAttribute("href")).toBe("/write?html_draft=hdoc_abc");
     expect(writeLink.getAttribute("data-view-format")).toBe("html");
     expect(writeLink.getAttribute("data-document-id")).toBe("hdoc_abc");
-    // Residual (gj): offline twin seed after host.
+    // Residual (gj/mo): offline twin seed after host with domain subjects.
     await waitFor(() => {
       expect(seedTwinNotes).toHaveBeenCalledWith(
         expect.objectContaining({
           asset_id: "hdoc_abc",
           force_offline: true,
+          body_text: expect.stringMatching(/Research domains: literature/i),
         }),
       );
     });

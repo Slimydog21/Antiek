@@ -274,3 +274,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (mn, 2026-07-10) **Dual-gate prep triad close-out:**
   - Checklist links on PublicationAttach + Midnight Oil + Marketplace
   - Prep only; never enables L1–L4 injectors
+
+- Closed (mo, 2026-07-10) **Twin seed domain subjects:**
+  - Marketplace host twin seed body prefixes Research domains from catalog subjects
