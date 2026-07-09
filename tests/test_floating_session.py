@@ -231,3 +231,53 @@ def test_get_session_refreshes_status(eng, sessions):
     )
     assert again is not None
     assert again.status == "complete"
+
+
+def test_complete_session_records_twin_notes(eng, sessions):
+    from substrate.engagement_spine import list_twin_notes
+
+    s = open_from_highlight(
+        HighlightSelection(
+            asset_id="doc-twin",
+            selection_text="passage for twin deposit",
+            region_id="r-twin",
+        ),
+        engagement_store=eng,
+        session_store=sessions,
+    )
+    complete_session_research(
+        s.session_id,
+        session_store=sessions,
+        engagement_store=eng,
+        output_text="analysis body",
+        insights=["Twin insight from session complete"],
+        questions=["Twin question from session complete?"],
+    )
+    twins = list_twin_notes("doc-twin", store=eng)
+    texts = {t.text for t in twins}
+    assert "Twin insight from session complete" in texts
+    assert "Twin question from session complete?" in texts
+    assert all(t.source_spawn_id == s.spawn_id for t in twins)
+
+
+def test_complete_session_can_skip_twin_record(eng, sessions):
+    from substrate.engagement_spine import list_twin_notes
+
+    s = open_from_highlight(
+        HighlightSelection(
+            asset_id="doc-notwin",
+            selection_text="no twin",
+            region_id="r-notwin",
+        ),
+        engagement_store=eng,
+        session_store=sessions,
+    )
+    complete_session_research(
+        s.session_id,
+        session_store=sessions,
+        engagement_store=eng,
+        output_text="x",
+        insights=["should not record"],
+        record_twins=False,
+    )
+    assert list_twin_notes("doc-notwin", store=eng) == []

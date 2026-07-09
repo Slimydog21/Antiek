@@ -11,6 +11,8 @@ from substrate.engagement_spine import (
     complete_spawn,
     get_spawn,
     merge_spawn_outputs,
+    record_twin_insight,
+    record_twin_question,
     spawn_from_highlight,
 )
 from substrate.engagement_spine.store import EngagementStore
@@ -171,8 +173,14 @@ def complete_session_research(
     output_text: str,
     insights: list[str] | tuple[str, ...] = (),
     questions: list[str] | tuple[str, ...] = (),
+    record_twins: bool = True,
 ) -> FloatingSession:
-    """Mark the underlying spawn complete (does not auto-merge)."""
+    """Mark the underlying spawn complete (does not auto-merge).
+
+    When ``record_twins`` is True (default), each insight/question is also
+    written to the parent asset's twin substrate so the recursive note-taker
+    path can promote them into the depth graph later.
+    """
     row = session_store.get_session(session_id)
     if row is None:
         raise KeyError(f"unknown session_id: {session_id}")
@@ -184,6 +192,32 @@ def complete_session_research(
         questions=list(questions),
         status="complete",
     )
+    if record_twins:
+        asset = row["parent_asset_id"]
+        spawn_id = row["spawn_id"]
+        inv = row.get("investigation_id")
+        for text in insights:
+            cleaned = (text or "").strip()
+            if not cleaned:
+                continue
+            record_twin_insight(
+                asset,
+                cleaned,
+                store=engagement_store,
+                source_spawn_id=spawn_id,
+                investigation_id=inv,
+            )
+        for text in questions:
+            cleaned = (text or "").strip()
+            if not cleaned:
+                continue
+            record_twin_question(
+                asset,
+                cleaned,
+                store=engagement_store,
+                source_spawn_id=spawn_id,
+                investigation_id=inv,
+            )
     row = dict(row)
     row["status"] = "complete"
     session_store.put_session(row)
