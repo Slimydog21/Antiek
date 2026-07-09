@@ -22,6 +22,7 @@ function detectKindLabel(url: string): SourceKind {
   const u = url.toLowerCase().trim();
   if (u.includes("arxiv.org")) return "arxiv";
   if (u.includes("youtube.com") || u.includes("youtu.be")) return "youtube";
+  if (u.includes("substack.com")) return "substack";
   if (
     u.endsWith(".rss") ||
     u.endsWith(".xml") ||
@@ -149,9 +150,9 @@ export default function Sources() {
             Sources
           </h1>
           <p className="mt-1 text-sm text-ink-soft dark:text-starlight">
-            Add arXiv papers, YouTube transcripts, podcast feeds, or any
-            URL into the substrate graph. Auto-detects source kind from
-            the URL.
+            Add arXiv papers, YouTube transcripts, podcast feeds,
+            Substack publications, or any URL into the substrate graph.
+            Auto-detects source kind from the URL.
           </p>
 
           <form
@@ -168,6 +169,7 @@ export default function Sources() {
                 placeholder={
                   "https://arxiv.org/abs/2402.03300\n" +
                   "https://www.youtube.com/watch?v=...\n" +
+                  "https://example.substack.com\n" +
                   "https://feeds.example.com/podcast.rss"
                 }
                 rows={4}
@@ -206,6 +208,7 @@ export default function Sources() {
                   <option value="arxiv">arXiv</option>
                   <option value="youtube">YouTube</option>
                   <option value="podcast">Podcast (RSS)</option>
+                  <option value="substack">Substack</option>
                   <option value="url">URL</option>
                 </select>
               </div>
@@ -223,7 +226,7 @@ export default function Sources() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-ink dark:text-bright mb-1.5">
-                  Max episodes (podcast)
+                  Max feed items
                 </label>
                 <input
                   type="number"

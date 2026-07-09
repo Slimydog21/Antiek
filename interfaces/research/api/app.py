@@ -397,7 +397,9 @@ class IngestSourceRequest(BaseModel):
     when adding evidence to a specific run."""
 
     url: str = Field(..., min_length=8)
-    kind: Literal["arxiv", "youtube", "podcast", "twitter", "url", "inbox"] | None = None
+    kind: Literal[
+        "arxiv", "youtube", "podcast", "twitter", "substack", "url", "inbox"
+    ] | None = None
     investigation_id: str = Field(default="__operator__", min_length=1)
     source_tier: int | None = Field(default=None, ge=1, le=5)
     max_episodes: int = Field(default=10, ge=1, le=50)  # podcast feeds only
@@ -830,6 +832,8 @@ def _detect_source_kind(
         return "youtube"
     if "twitter.com" in u or "x.com" in u or "://t.co" in u:
         return "twitter"
+    if "substack.com" in u:
+        return "substack"
     # Podcast feeds: heuristic — RSS-ish URL OR explicit feed-like path.
     # The dashboard convention "podcasts.<host>/feed" + ".rss"
     # extensions cover most.
@@ -2740,6 +2744,37 @@ def create_app(
                     title=title,
                     episodes_processed=len(results),
                     episodes_ingested=ingested,
+                )
+            if detected == "substack":
+                from acquisition.substack import ingest_publication_feed
+
+                feed_url = req.url.rstrip("/")
+                if "/feed" not in feed_url.lower():
+                    feed_url = f"{feed_url}/feed"
+                substack_kwargs: dict[str, Any] = {
+                    "investigation_id": req.investigation_id,
+                    "max_posts": req.max_episodes,
+                }
+                if req.source_tier is not None:
+                    substack_kwargs["source_tier"] = req.source_tier
+                summary = ingest_publication_feed(feed_url, **substack_kwargs)
+                chunks_written = sum(r.chunks_written for r in summary.results)
+                first_result = next(
+                    (r for r in summary.results if r.status == "ingested"),
+                    summary.results[0] if summary.results else None,
+                )
+                return IngestSourceResponse(
+                    status="ingested" if summary.ingested > 0 else "skipped",
+                    detected_kind="substack",
+                    document_id=first_result.document_id if first_result else None,
+                    document_loaded_event_id=(
+                        first_result.document_loaded_event_id if first_result else None
+                    ),
+                    chunks_written=chunks_written,
+                    skipped_reason=None if summary.ingested > 0 else "no_public_posts_ingested",
+                    title=summary.publication_title,
+                    episodes_processed=len(summary.results),
+                    episodes_ingested=summary.ingested,
                 )
             if detected == "twitter":
                 # The URL alone is insufficient for X — the auth wall

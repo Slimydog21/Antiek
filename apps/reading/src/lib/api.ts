@@ -599,7 +599,7 @@ export interface ChunkResponse {
 
 // ── Sprint 12: source ingest ───────────────────────────────────────
 
-export type SourceKind = "arxiv" | "youtube" | "podcast" | "url";
+export type SourceKind = "arxiv" | "youtube" | "podcast" | "substack" | "url";
 
 export interface IngestSourceRequest {
   url: string;

@@ -19,7 +19,7 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from interfaces.research.api.app import (
+from interfaces.research.api.app import (  # noqa: E402
     _detect_source_kind,
     _extract_arxiv_id,
     create_app,
@@ -44,6 +44,11 @@ def test_detect_source_kind_podcast():
     assert _detect_source_kind("https://feeds.example.com/show.rss") == "podcast"
     assert _detect_source_kind("https://feeds.example.com/show.xml") == "podcast"
     assert _detect_source_kind("https://example.com/podcast/feed") == "podcast"
+
+
+def test_detect_source_kind_substack_before_feed_fallback():
+    assert _detect_source_kind("https://example.substack.com") == "substack"
+    assert _detect_source_kind("https://example.substack.com/feed") == "substack"
 
 
 def test_detect_source_kind_url_default():
@@ -204,6 +209,68 @@ def test_ingest_podcast_endpoint_aggregates_episodes(monkeypatch, temp_substrate
     assert body["episodes_processed"] == 3
     assert body["episodes_ingested"] == 2
     assert body["chunks_written"] == 20  # 12 + 0 + 8
+
+
+def test_ingest_substack_endpoint_aggregates_posts(monkeypatch, temp_substrate):
+    """Substack URLs must route to acquisition.substack without hitting the
+    generic URL adapter; the endpoint reports feed-level post counts."""
+    from dataclasses import dataclass
+
+    @dataclass
+    class _Post:
+        document_id: str
+        status: str
+        chunks_written: int
+        title: str
+        document_loaded_event_id: str = "evt-sub"
+
+    @dataclass
+    class _Summary:
+        feed_url: str
+        publication_title: str
+        results: list[_Post]
+
+        @property
+        def ingested(self) -> int:
+            return sum(1 for r in self.results if r.status == "ingested")
+
+    seen: dict[str, object] = {}
+
+    def _fake_ingest(feed_url: str, **kwargs):
+        seen["feed_url"] = feed_url
+        seen["kwargs"] = kwargs
+        return _Summary(
+            feed_url=feed_url,
+            publication_title="Mock Substack",
+            results=[
+                _Post("doc-sub-1", "ingested", 9, "Full post"),
+                _Post("doc-sub-2", "skipped", 0, "Already seen"),
+            ],
+        )
+
+    import acquisition.substack as _sub
+    monkeypatch.setattr(_sub, "ingest_publication_feed", _fake_ingest)
+
+    client = _client(temp_substrate)
+    resp = client.post(
+        "/sources/ingest",
+        json={
+            "url": "https://example.substack.com",
+            "investigation_id": "inv-sub",
+            "max_episodes": 3,
+        },
+    )
+    assert resp.status_code == 202
+    body = resp.json()
+    assert seen["feed_url"] == "https://example.substack.com/feed"
+    assert seen["kwargs"] == {"investigation_id": "inv-sub", "max_posts": 3}
+    assert body["status"] == "ingested"
+    assert body["detected_kind"] == "substack"
+    assert body["document_id"] == "doc-sub-1"
+    assert body["chunks_written"] == 9
+    assert body["title"] == "Mock Substack"
+    assert body["episodes_processed"] == 2
+    assert body["episodes_ingested"] == 1
 
 
 def test_ingest_url_endpoint_default(monkeypatch, temp_substrate):
