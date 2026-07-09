@@ -13,6 +13,7 @@
  * Residual (ev): manual re-open as full working-region window after merge.
  * Residual (fn): Open Write handoff link for merged HTML document_id (fl/fm).
  * Residual (ho): spawn-merge-metrics machine attrs for draft/parent merge audit.
+ * Residual (ih): Settings deep-link for driver + budget.
  */
 
 import { useCallback, useState } from "react";
@@ -181,6 +182,17 @@ export function SpawnMergePanel({
           {autoOpenDraft
             ? " · draft auto-opens HTML window"
             : " · draft open is manual"}
+        </p>
+        {/* Residual (ih): Settings deep-link for model driver + budget. */}
+        <p className="text-[11px] font-mono">
+          <a
+            href="/settings"
+            data-testid="spawn-merge-settings-link"
+            className="underline opacity-80 hover:opacity-100"
+            title="Open Settings for decision-tree driver and daily budget"
+          >
+            Settings · driver & budget
+          </a>
         </p>
       </header>
 

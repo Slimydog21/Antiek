@@ -59,6 +59,10 @@ describe("SpawnMergePanel residual ci", () => {
     expect(
       screen.getByTestId("spawn-merge-panel").getAttribute("data-auto-open-draft"),
     ).toBe("true");
+    // Residual (ih): Settings deep-link for driver + budget.
+    const settings = screen.getByTestId("spawn-merge-settings-link");
+    expect(settings.getAttribute("href")).toBe("/settings");
+    expect(settings.textContent).toMatch(/driver & budget/i);
     fireEvent.click(screen.getByTestId("spawn-merge-draft"));
     await waitFor(() => {
       expect(mergeSpawnOutputs).toHaveBeenCalledWith({

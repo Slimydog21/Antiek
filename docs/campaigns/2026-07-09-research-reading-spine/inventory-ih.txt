@@ -1,0 +1,10 @@
+# inventory-ih · spawn merge Settings deep-link · residual (ih)
+
+## Delta
+- spawn-merge-settings-link → /settings
+
+## Verified
+vitest SpawnMergePanel 6_passed
+
+## Next
+(ii) re-derive
