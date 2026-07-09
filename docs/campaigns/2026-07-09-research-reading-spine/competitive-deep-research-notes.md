@@ -24,4 +24,5 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 ## Gaps this campaign closed vs left
 
 - Closed: substrate spine spawn/twin/merge; model registry + projection; HTML path proof; deferred specs for midnight oil / marketplace / bench; ND verdict.
-- Left: floating multi-window UI; collective multi-select live chat; full midnight oil worker; paid marketplace rails; recursive bench rewrite implementation.
+- Closed (cx–dg, 2026-07-09): reading float budget + driver chokepoint; moil driver prefill + deposit window; hosted book DR launch; collective continue-as-unit; twin autoSeedIfEmpty; budget soft-gate family across launch surfaces.
+- Left (env/operator): floating multi-agent *live* collective chat (merge+continue unit ships); live midnight oil multi-provider; paid marketplace rails; live hydrate/seed injectors; recursive bench weekly cron; PR #465 main merge.

@@ -1,0 +1,46 @@
+# residual (dh) next-wave live gates inventory (operator / env only)
+# PR #465 · 2026-07-09 · tip after commit
+
+## Branch product spine (cx)–(dg) closed this session
+
+| Residual | Capability | Status |
+|---|---|---|
+| (cx) | ResearchThis budget + float launch | branch_only |
+| (cy) | decision-tree model_id chokepoint in launchFloatingDeepResearch | branch_only |
+| (cz) | Midnight Oil model prefill from decision tree | branch_only |
+| (da) | Hosted book deep research launch | branch_only |
+| (db) | Midnight Oil deposit → hosted HTML window | branch_only |
+| (dc) | Collective continue as cohesive unit | branch_only |
+| (dd) | TwinNotesPanel autoSeedIfEmpty offline | branch_only |
+| (de) | Budget onProjectionChange + ResearchThis soft-gate | branch_only |
+| (df) | StartResearch + ChatInputArea soft-gate | branch_only |
+| (dg) | Hosted + Midnight Oil soft-gate | branch_only |
+
+## Env-gated / operator-gated (do not fake green)
+
+1. **Live Midnight Oil multi-provider** — `ANTIEK_MIDNIGHT_OIL_LIVE_STEP` + injector; offline run is product default.
+2. **Live arxiv/substack hydrate** — `ANTIEK_HYDRATE_LIVE_*` injectors; offline identity hydrate ships.
+3. **Live twin note_taker LLM** — twin_seed_live dual-gate; offline seed is default (dd).
+4. **Marketplace live payments** — purchase UI is receipt-based; no card rails.
+5. **NotDiamond Wave-1 live adapter** — advisory install only; never dispatch authority.
+6. **Antiek-bench weekly cron** — propose≠promote; operator machine LaunchAgent.
+7. **Collective live multi-agent chat** — merge + continue unit (dc) ships; shared live session does not.
+8. **Main merge PR #465** — operator only.
+
+## Competitive bar (still true)
+
+- Twin recursive note-taker on every asset (dd closes empty substrate).
+- Reading ≡ research (hosted + float + moil deliverable windows).
+- Budget projection before fire + soft-gate (de–dg).
+- HTML-first human views.
+
+## Next residual candidates (di+)
+
+1. Soft-gate DeepResearchSessionHost secondary actions if needed (low value).
+2. Collective unit → budget panel before continue (thin polish).
+3. Marketplace catalog search + HTML port polish.
+4. Competitive citation trust UI on evidence pack.
+5. Spec for live multi-agent collective chat (htmlspec) before code.
+6. Antiek-bench LaunchAgent template (docs only until operator).
+
+NEXT: (di) re-derive; operator merge PR #465
