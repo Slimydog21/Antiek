@@ -1,0 +1,12 @@
+# inventory-hj · session flywheel metrics · residual (hj)
+
+## Delta
+- SessionFlywheelPanel session-flywheel-metrics: status, session_id, spawn_id,
+  twin_count, ref_count, record_twins, view_format
+- Helper counts from context.twin_count/ref_count or unit array lengths
+
+## Verified
+vitest SessionFlywheelPanel 2_passed
+
+## Next
+(hk) re-derive

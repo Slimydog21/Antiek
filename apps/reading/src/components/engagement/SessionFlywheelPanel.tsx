@@ -5,6 +5,8 @@
  * and feeds Antiek-bench usage events (server-side best-effort).
  * Residual (ee): onCompleted notifies parent so research context remounts
  * after twins/usage land.
+ * Residual (hj): session-flywheel-metrics machine attrs for recursive
+ * note-taker + Antiek-bench audit (parity twin-notes / twin-promote metrics).
  * Composes shipped completeSessionFlywheel. HTML-first context pack.
  */
 
@@ -65,6 +67,19 @@ export function SessionFlywheelPanel({
     }
   }, [sessionId, output, recordTwins, onCompleted]);
 
+  const flywheelTwinCount = (r: SessionFlywheelResponse): number => {
+    const ctx = r.context;
+    if (typeof ctx?.twin_count === "number") return ctx.twin_count;
+    if (Array.isArray(ctx?.twin_units)) return ctx.twin_units.length;
+    return 0;
+  };
+  const flywheelRefCount = (r: SessionFlywheelResponse): number => {
+    const ctx = r.context;
+    if (typeof ctx?.ref_count === "number") return ctx.ref_count;
+    if (Array.isArray(ctx?.source_references)) return ctx.source_references.length;
+    return 0;
+  };
+
   return (
     <section
       className="space-y-2"
@@ -119,6 +134,21 @@ export function SessionFlywheelPanel({
           data-testid="session-flywheel-result"
           data-view-format="html"
         >
+          {/* Residual (hj): machine-readable flywheel close metrics. */}
+          <div
+            data-testid="session-flywheel-metrics"
+            data-status={result.status ?? ""}
+            data-session-id={result.session_id ?? ""}
+            data-spawn-id={result.spawn_id ?? ""}
+            data-twin-count={String(flywheelTwinCount(result))}
+            data-ref-count={String(flywheelRefCount(result))}
+            data-record-twins={String(recordTwins)}
+            data-view-format="html"
+            role="status"
+          >
+            Session flywheel · status={result.status} · twins=
+            {flywheelTwinCount(result)} · refs={flywheelRefCount(result)}
+          </div>
           <p>
             status=<code>{result.status}</code> · session=
             <code>{result.session_id}</code> · spawn=

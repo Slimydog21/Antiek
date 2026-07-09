@@ -23,11 +23,11 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
       status: "complete",
       context: {
         asset_id: "book-1",
-        twin_units: [],
+        twin_units: [{ unit_id: "t1" }, { unit_id: "t2" }],
         source_references: [],
+        twin_count: 2,
+        ref_count: 0,
       },
-      twin_count: 2,
-      ref_count: 0,
       view_format: "html",
       prompt_block: "# Research context pack\n",
     });
@@ -66,6 +66,16 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
     });
     expect(onCompleted.mock.calls[0][0].view_format).toBe("html");
     expect(onCompleted.mock.calls[0][0].status).toBe("complete");
+    // Residual (hj): machine-readable session flywheel metrics.
+    const metrics = screen.getByTestId("session-flywheel-metrics");
+    expect(metrics.getAttribute("data-status")).toBe("complete");
+    expect(metrics.getAttribute("data-session-id")).toBe("fsess_1");
+    expect(metrics.getAttribute("data-spawn-id")).toBe("spn_1");
+    expect(metrics.getAttribute("data-twin-count")).toBe("2");
+    expect(metrics.getAttribute("data-ref-count")).toBe("0");
+    expect(metrics.getAttribute("data-record-twins")).toBe("true");
+    expect(metrics.getAttribute("data-view-format")).toBe("html");
+    expect(metrics.textContent).toMatch(/Session flywheel/);
   });
 
   it("disables complete when output too short", () => {
