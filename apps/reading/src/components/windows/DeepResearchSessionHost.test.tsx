@@ -42,6 +42,14 @@ vi.mock("../../api/settings", () => ({
   })),
 }));
 
+vi.mock("../engagement/SpawnMergePanel", () => ({
+  SpawnMergePanel: (props: { spawnId: string; parentAssetId: string }) => (
+    <div data-testid="spawn-merge-panel-stub">
+      {props.spawnId}→{props.parentAssetId}
+    </div>
+  ),
+}));
+
 const FIXTURE = {
   session_id: "fsess_launch_1",
   spawn_id: "spn_launch_1",
@@ -83,6 +91,20 @@ describe("DeepResearchSessionHost", () => {
     expect(mount).toBeTruthy();
     expect(mount.getAttribute("data-view-format")).toBe("html");
     expect(screen.getByTestId("research-launch-budget-panel")).toBeTruthy();
+  });
+
+  it("mounts SpawnMergePanel when spawn and parent present (ci)", () => {
+    render(<DeepResearchSessionHost {...FIXTURE} />);
+    expect(screen.getByTestId("deep-research-spawn-merge-mount")).toBeTruthy();
+    expect(screen.getByTestId("spawn-merge-panel-stub").textContent).toBe(
+      "spn_launch_1→launch-asset",
+    );
+  });
+
+  it("omits SpawnMergePanel without parent_asset_id", () => {
+    const { parent_asset_id: _drop, ...noParent } = FIXTURE;
+    render(<DeepResearchSessionHost {...noParent} />);
+    expect(screen.queryByTestId("deep-research-spawn-merge-mount")).toBeNull();
   });
 
   it("exposes expand full / restore floating controls (ce)", () => {

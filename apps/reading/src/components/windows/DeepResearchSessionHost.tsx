@@ -15,6 +15,7 @@
  * Residual (ba): mounts TwinNotesPanel when parent_asset_id is present.
  * Residual (bx): mounts ResearchLaunchBudgetPanel for goal/selection projection.
  * Residual (ce): expand full / restore floating mode controls.
+ * Residual (ci): SpawnMergePanel — this spawn → draft/parent reading asset.
  */
 
 import { useMemo } from "react";
@@ -23,6 +24,7 @@ import { CollectiveResearchPanel } from "../engagement/CollectiveResearchPanel";
 import { ResearchContextPanel } from "../engagement/ResearchContextPanel";
 import { ResearchLaunchBudgetPanel } from "../engagement/ResearchLaunchBudgetPanel";
 import { ResearchProgressPanel } from "../engagement/ResearchProgressPanel";
+import { SpawnMergePanel } from "../engagement/SpawnMergePanel";
 import { TwinNotesPanel } from "../engagement/TwinNotesPanel";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
 import { syncDeepResearchWindowMode } from "../../workspace/deepResearchWindow";
@@ -215,6 +217,20 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
           <TwinNotesPanel
             assetId={props.parent_asset_id.trim()}
             spawnId={props.spawn_id?.trim() || null}
+          />
+        </section>
+      ) : null}
+
+      {/* Residual (ci): one-click merge this spawn into reading parent/draft. */}
+      {props.spawn_id?.trim() && props.parent_asset_id?.trim() ? (
+        <section
+          className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
+          data-testid="deep-research-spawn-merge-mount"
+          data-view-format="html"
+        >
+          <SpawnMergePanel
+            spawnId={props.spawn_id.trim()}
+            parentAssetId={props.parent_asset_id.trim()}
           />
         </section>
       ) : null}

@@ -1,0 +1,15 @@
+# residual (ci) Single-spawn merge into reading asset (draft | parent)
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(ch) prior | branch_only | campaign inventories
+(ci) spawn merge panel | branch_only | SpawnMergePanel + DeepResearchSessionHost mount; draft_combined / into_parent; open merged HTML window; 15 vitest; tip after commit
+
+PRODUCT PATH:
+floating DR (current spawn) → Create draft combined | Merge into parent → open HTML window
+
+HTML-FIRST: rejects non-html view_format
+
+HARDENX: subpath scans report Missing .gitignore FP; worktree root has .gitignore (see SCRATCH hardenx-*.json)
+
+NEXT: (cj) StartResearch arxiv/substack attach; operator merge PR #465
