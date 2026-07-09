@@ -24,6 +24,7 @@ with the single writer.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from typing import Literal, cast
 
@@ -247,6 +248,54 @@ class CuratedBookResponse(BaseModel):
 class CurateResponse(BaseModel):
     prompt: str
     books: list[CuratedBookResponse]
+
+
+class BookPurchaseRequestIn(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    author: str | None = Field(default=None, max_length=200)
+    source_url: str | None = Field(default=None, max_length=1000)
+    store: Literal["publisher", "amazon", "bookshop", "google_books", "apple_books", "other"] = (
+        "other"
+    )
+    max_price_usd_cents: int = Field(ge=0, le=50_000)
+    desired_format: Literal["epub", "html", "pdf", "kindle", "unknown"] = "unknown"
+    import_target: Literal["antiek_html"] = "antiek_html"
+    acknowledge_manual_purchase_only: bool = False
+
+
+class BookPurchaseRequestOut(BaseModel):
+    request_id: str
+    status: Literal["needs_operator_purchase"]
+    title: str
+    author: str | None
+    store: str
+    source_url: str | None
+    max_price_usd_cents: int
+    desired_format: str
+    import_target: Literal["antiek_html"]
+    purchase_allowed: bool
+    external_call_performed: bool
+    spend_reserved_usd_cents: int
+    charge_attempted: bool
+    ingest_attempted: bool
+    html_hosting_required: bool
+    required_operator_steps: list[str]
+    policy_notes: list[str]
+
+
+def _book_purchase_request_id(req: BookPurchaseRequestIn) -> str:
+    normalized = "|".join(
+        [
+            req.title.strip().casefold(),
+            (req.author or "").strip().casefold(),
+            (req.source_url or "").strip(),
+            req.store,
+            str(req.max_price_usd_cents),
+            req.desired_format,
+            req.import_target,
+        ]
+    )
+    return f"bookreq-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
 
 
 class SpinResearchRequest(BaseModel):
@@ -533,6 +582,55 @@ def register_book_routes(app: FastAPI) -> None:
                     document_id=c.document_id, title=c.title, author=c.author, score=c.score
                 )
                 for c in curated
+            ],
+        )
+
+    @app.post(
+        "/books/marketplace/purchase-request",
+        response_model=BookPurchaseRequestOut,
+        status_code=202,
+        tags=["books"],
+    )
+    async def request_book_purchase(req: BookPurchaseRequestIn) -> BookPurchaseRequestOut:
+        """Prepare a no-spend book acquisition/import request.
+
+        This endpoint is deliberately a PRE-CHECKOUT contract: it records the
+        operator's desired title, budget ceiling, and target HTML import posture
+        without fetching the source URL, calling a store, reserving budget,
+        charging a card, or ingesting the work. A later, explicit operator
+        purchase/import action can consume this envelope once rights and file
+        access are clear.
+        """
+        if not req.acknowledge_manual_purchase_only:
+            raise HTTPException(
+                status_code=400,
+                detail="manual_purchase_ack_required",
+            )
+
+        return BookPurchaseRequestOut(
+            request_id=_book_purchase_request_id(req),
+            status="needs_operator_purchase",
+            title=req.title.strip(),
+            author=req.author.strip() if req.author else None,
+            store=req.store,
+            source_url=req.source_url.strip() if req.source_url else None,
+            max_price_usd_cents=req.max_price_usd_cents,
+            desired_format=req.desired_format,
+            import_target=req.import_target,
+            purchase_allowed=False,
+            external_call_performed=False,
+            spend_reserved_usd_cents=0,
+            charge_attempted=False,
+            ingest_attempted=False,
+            html_hosting_required=True,
+            required_operator_steps=[
+                "Buy or obtain the book outside Antiek using the approved price ceiling.",
+                "Provide the legally obtained file or receipt-backed access in a later import step.",
+                "Convert and host the readable copy as an Antiek HTML asset after the import gate approves it.",
+            ],
+            policy_notes=[
+                "No checkout, store lookup, provider call, URL fetch, budget reservation, charge, or ingest was performed.",
+                "The future reader surface must continue to render HTML-first and keep gated/source material behind the serve gate.",
             ],
         )
 

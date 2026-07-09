@@ -227,6 +227,37 @@ export interface CurateResponse {
   books: CuratedBook[];
 }
 
+export interface BookPurchaseRequestInput {
+  title: string;
+  author?: string | null;
+  source_url?: string | null;
+  store?: "publisher" | "amazon" | "bookshop" | "google_books" | "apple_books" | "other";
+  max_price_usd_cents: number;
+  desired_format?: "epub" | "html" | "pdf" | "kindle" | "unknown";
+  import_target?: "antiek_html";
+  acknowledge_manual_purchase_only: boolean;
+}
+
+export interface BookPurchaseRequestResponse {
+  request_id: string;
+  status: "needs_operator_purchase";
+  title: string;
+  author: string | null;
+  store: string;
+  source_url: string | null;
+  max_price_usd_cents: number;
+  desired_format: string;
+  import_target: "antiek_html";
+  purchase_allowed: boolean;
+  external_call_performed: boolean;
+  spend_reserved_usd_cents: number;
+  charge_attempted: boolean;
+  ingest_attempted: boolean;
+  html_hosting_required: boolean;
+  required_operator_steps: string[];
+  policy_notes: string[];
+}
+
 /** Prompt-to-curate (Read SPR-04). Ranks ONLY servable books by relevance
  * to the prompt — a gated book is never curated into a readable list.
  * Returns 503 if the embedding model isn't available server-side. */
@@ -236,6 +267,22 @@ export async function curateBooks(prompt: string, limit = 20): Promise<CurateRes
   if (resp.status === 503) throw new Error("Curation is temporarily unavailable.");
   if (!resp.ok) throw new Error(`GET /books/curate: HTTP ${resp.status}`);
   return (await resp.json()) as CurateResponse;
+}
+
+/** Prepare a no-spend acquisition/import request. This is not checkout:
+ * the backend returns a receipt proving no external call, charge, budget
+ * reservation, URL fetch, or ingest happened. */
+export async function requestBookPurchase(
+  request: BookPurchaseRequestInput,
+): Promise<BookPurchaseRequestResponse> {
+  const resp = await apiFetch(`${API_BASE}/books/marketplace/purchase-request`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (resp.status === 400) throw new Error("Confirm manual purchase before preparing the request.");
+  if (!resp.ok) throw new Error(`POST /books/marketplace/purchase-request: HTTP ${resp.status}`);
+  return (await resp.json()) as BookPurchaseRequestResponse;
 }
 
 // ── SPR-08 M2: talk-to-book (multi-turn, page-cited) ──────────────────

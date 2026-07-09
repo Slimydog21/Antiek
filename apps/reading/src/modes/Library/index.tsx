@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import type { BookSummary, CorpusStatus } from "../../api/books";
-import { curateBooks, listBooks } from "../../api/books";
+import type { BookPurchaseRequestResponse, BookSummary, CorpusStatus } from "../../api/books";
+import { curateBooks, listBooks, requestBookPurchase } from "../../api/books";
 import { listInvestigations } from "../../lib/api";
 import type { InvestigationSummary } from "../../lib/api";
 import { useInWindow } from "../../components/windows/windowHostContext";
@@ -58,6 +58,13 @@ export default function Library() {
   const [curatedOrder, setCuratedOrder] = useState<string[] | null>(null);
   const [curatePrompt, setCuratePrompt] = useState<string>("");
   const [curateBusy, setCurateBusy] = useState(false);
+  const [purchaseTitle, setPurchaseTitle] = useState("");
+  const [purchaseAuthor, setPurchaseAuthor] = useState("");
+  const [purchaseUrl, setPurchaseUrl] = useState("");
+  const [purchaseMaxUsd, setPurchaseMaxUsd] = useState("25");
+  const [purchaseAck, setPurchaseAck] = useState(false);
+  const [purchaseBusy, setPurchaseBusy] = useState(false);
+  const [purchaseReceipt, setPurchaseReceipt] = useState<BookPurchaseRequestResponse | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -111,6 +118,30 @@ export default function Library() {
     setCuratedOrder(null);
     setCuratePrompt("");
   }, []);
+
+  const onPurchaseRequest = useCallback(async () => {
+    const cents = Math.max(0, Math.round(Number(purchaseMaxUsd || "0") * 100));
+    setPurchaseBusy(true);
+    setError(null);
+    setPurchaseReceipt(null);
+    try {
+      const res = await requestBookPurchase({
+        title: purchaseTitle,
+        author: purchaseAuthor.trim() || null,
+        source_url: purchaseUrl.trim() || null,
+        store: "other",
+        max_price_usd_cents: cents,
+        desired_format: "unknown",
+        import_target: "antiek_html",
+        acknowledge_manual_purchase_only: purchaseAck,
+      });
+      setPurchaseReceipt(res);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPurchaseBusy(false);
+    }
+  }, [purchaseAck, purchaseAuthor, purchaseMaxUsd, purchaseTitle, purchaseUrl]);
 
   // The display order, in three layers of precedence:
   //   1. an ACTIVE CURATE prompt (explicit user query) re-ranks to that order;
@@ -212,8 +243,8 @@ export default function Library() {
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               A licensed shelf of what can be aggregated — public-domain works,
               Antiek originals, and publisher-opted-in titles you can read in
-              full. A library, not a marketplace: everything else is
-              preview-only. {subtitle}.
+              full. Acquisition requests are prepared without checkout here;
+              everything else is preview-only. {subtitle}.
             </p>
           </header>
 
@@ -264,6 +295,80 @@ export default function Library() {
               Meta-read →
             </button>
           </div>
+
+          <form
+            className="rounded-md border border-ice-4 dark:border-charcoal-1 bg-white/70 dark:bg-charcoal-2/70 p-3 space-y-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void onPurchaseRequest();
+            }}
+          >
+            <div className="flex flex-col gap-3 md:flex-row md:items-end">
+              <label className="flex-1 min-w-0 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                Title
+                <input
+                  value={purchaseTitle}
+                  onChange={(event) => setPurchaseTitle(event.target.value)}
+                  required
+                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  placeholder="Book to acquire"
+                />
+              </label>
+              <label className="flex-1 min-w-0 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                Author
+                <input
+                  value={purchaseAuthor}
+                  onChange={(event) => setPurchaseAuthor(event.target.value)}
+                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  placeholder="Optional"
+                />
+              </label>
+              <label className="w-full md:w-28 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                Max USD
+                <input
+                  value={purchaseMaxUsd}
+                  onChange={(event) => setPurchaseMaxUsd(event.target.value)}
+                  min="0"
+                  step="0.01"
+                  type="number"
+                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                />
+              </label>
+            </div>
+            <label className="block text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+              Source URL
+              <input
+                value={purchaseUrl}
+                onChange={(event) => setPurchaseUrl(event.target.value)}
+                className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                placeholder="Optional store or publisher page"
+              />
+            </label>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                <input
+                  type="checkbox"
+                  checked={purchaseAck}
+                  onChange={(event) => setPurchaseAck(event.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>No purchase, fetch, budget reservation, or import runs from this request.</span>
+              </label>
+              <button
+                type="submit"
+                disabled={purchaseBusy || purchaseTitle.trim().length === 0}
+                className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+              >
+                {purchaseBusy ? "Preparing…" : "Prepare request"}
+              </button>
+            </div>
+            {purchaseReceipt && (
+              <p className="text-[13px] font-serif text-ink dark:text-bright" role="status">
+                Request {purchaseReceipt.request_id} is ready for manual purchase; Antiek reserved $
+                {(purchaseReceipt.spend_reserved_usd_cents / 100).toFixed(2)} and performed no external call.
+              </p>
+            )}
+          </form>
 
           {status === "servable" && (
             <CuratePrompt

@@ -9,9 +9,16 @@ import Library from "./index";
 import { WindowHostProvider } from "../../components/windows/windowHostContext";
 
 // Hoisted mocks so the static `import Library` above binds to them.
-const { listBooksMock, curateBooksMock, listInvestigationsMock, navigateMock } = vi.hoisted(() => ({
+const {
+  listBooksMock,
+  curateBooksMock,
+  requestBookPurchaseMock,
+  listInvestigationsMock,
+  navigateMock,
+} = vi.hoisted(() => ({
   listBooksMock: vi.fn(),
   curateBooksMock: vi.fn(),
+  requestBookPurchaseMock: vi.fn(),
   // M1: the active-research signal documentsByTheme ranks the shelf to.
   // Default: no active research → the feed falls back to recency.
   listInvestigationsMock: vi.fn<
@@ -22,7 +29,12 @@ const { listBooksMock, curateBooksMock, listInvestigationsMock, navigateMock } =
 
 vi.mock("../../api/books", async (orig) => {
   const actual = await orig<typeof import("../../api/books")>();
-  return { ...actual, listBooks: listBooksMock, curateBooks: curateBooksMock };
+  return {
+    ...actual,
+    listBooks: listBooksMock,
+    curateBooks: curateBooksMock,
+    requestBookPurchase: requestBookPurchaseMock,
+  };
 });
 
 vi.mock("../../lib/api", async (orig) => {
@@ -59,6 +71,7 @@ const gatedBook: BookSummary = {
 beforeEach(() => {
   listBooksMock.mockReset();
   curateBooksMock.mockReset();
+  requestBookPurchaseMock.mockReset();
   listInvestigationsMock.mockReset();
   listInvestigationsMock.mockResolvedValue({ count: 0, investigations: [] });
   navigateMock.mockReset();
@@ -245,5 +258,59 @@ describe("Library", () => {
     // Curated order: Second Book first, Meditations second.
     const cards = screen.getAllByRole("button", { name: /^Open / });
     expect(cards[0].getAttribute("aria-label")).toMatch(/Second Book/);
+  });
+
+  it("prepares a no-spend book acquisition request from the Library surface", async () => {
+    listBooksMock.mockResolvedValue({ books: [servableBook], count: 1 });
+    requestBookPurchaseMock.mockResolvedValue({
+      request_id: "bookreq-safe123",
+      status: "needs_operator_purchase",
+      title: "The Dream Machine",
+      author: "M. Mitchell Waldrop",
+      store: "other",
+      source_url: "https://example.com/book",
+      max_price_usd_cents: 2500,
+      desired_format: "unknown",
+      import_target: "antiek_html",
+      purchase_allowed: false,
+      external_call_performed: false,
+      spend_reserved_usd_cents: 0,
+      charge_attempted: false,
+      ingest_attempted: false,
+      html_hosting_required: true,
+      required_operator_steps: [],
+      policy_notes: [],
+    });
+    renderLibrary();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Open Meditations/ })).toBeTruthy(),
+    );
+
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "The Dream Machine" },
+    });
+    fireEvent.change(screen.getByLabelText("Author"), {
+      target: { value: "M. Mitchell Waldrop" },
+    });
+    fireEvent.change(screen.getByLabelText("Source URL"), {
+      target: { value: "https://example.com/book" },
+    });
+    fireEvent.change(screen.getByLabelText("Max USD"), {
+      target: { value: "25" },
+    });
+    fireEvent.click(screen.getByLabelText(/No purchase, fetch/));
+    fireEvent.click(screen.getByRole("button", { name: "Prepare request" }));
+
+    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("bookreq-safe123"));
+    expect(requestBookPurchaseMock).toHaveBeenCalledWith({
+      title: "The Dream Machine",
+      author: "M. Mitchell Waldrop",
+      source_url: "https://example.com/book",
+      store: "other",
+      max_price_usd_cents: 2500,
+      desired_format: "unknown",
+      import_target: "antiek_html",
+      acknowledge_manual_purchase_only: true,
+    });
   });
 });
