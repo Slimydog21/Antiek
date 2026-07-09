@@ -23,6 +23,7 @@ from .hardening import (
 from .live_worker import (
     attach_provider_artifacts_to_manifest,
     evaluate_public_export_gate,
+    evaluate_public_publish_blocker,
     plan_provider_artifact_attachment,
     plan_public_export,
     preview_next_live_execution,
@@ -73,6 +74,7 @@ from .read_model import (
     MultimediaPublicExportPlan,
     MultimediaPublicExportReview,
     MultimediaPublicExportReviewRequest,
+    MultimediaPublicPublishBlocker,
     SteeringRequest,
 )
 from .steering import (
@@ -180,6 +182,7 @@ __all__ = [
     "MultimediaPublicExportPlan",
     "MultimediaPublicExportReview",
     "MultimediaPublicExportReviewRequest",
+    "MultimediaPublicPublishBlocker",
     "ShipStatus",
     "evaluate_multimedia_asset",
     # SPR-09 API persistence/read-model
@@ -191,6 +194,7 @@ __all__ = [
     "SteeringRequest",
     "attach_provider_artifacts_to_manifest",
     "evaluate_public_export_gate",
+    "evaluate_public_publish_blocker",
     "plan_public_export",
     "plan_provider_artifact_attachment",
     "preview_next_live_execution",

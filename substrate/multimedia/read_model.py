@@ -228,6 +228,23 @@ class MultimediaPublicExportPlan(_ReadModelBase):
         return self
 
 
+class MultimediaPublicPublishBlocker(_ReadModelBase):
+    """Explicit no-publish boundary for a staged export plan."""
+
+    status: Literal["blocked"] = "blocked"
+    export_id: str
+    attached_file_ids: tuple[str, ...] = Field(min_length=1)
+    required_next_step: Literal["publisher_implementation"] = "publisher_implementation"
+    public_url: None = None
+    reason: str
+
+    @model_validator(mode="after")
+    def blocker_must_not_publish(self) -> MultimediaPublicPublishBlocker:
+        if self.public_url is not None:
+            raise ValueError("publish blockers cannot include public URLs")
+        return self
+
+
 class MultimediaJobRecord(_ReadModelBase):
     """Durable progress record for one multimedia operation.
 
@@ -254,6 +271,7 @@ class MultimediaJobRecord(_ReadModelBase):
     public_export_gate: MultimediaPublicExportGate | None = None
     public_export_review: MultimediaPublicExportReview | None = None
     public_export_plan: MultimediaPublicExportPlan | None = None
+    public_publish_blocker: MultimediaPublicPublishBlocker | None = None
 
 
 class MultimediaAssetSummary(_ReadModelBase):
@@ -549,6 +567,7 @@ class MultimediaAssetStore:
         public_export_gate: MultimediaPublicExportGate | None = None,
         public_export_review: MultimediaPublicExportReview | None = None,
         public_export_plan: MultimediaPublicExportPlan | None = None,
+        public_publish_blocker: MultimediaPublicPublishBlocker | None = None,
     ) -> MultimediaAssetRecord:
         """Append an arbitrary job row (failed/partial provider jobs, retries).
 
@@ -572,6 +591,7 @@ class MultimediaAssetStore:
             public_export_gate=public_export_gate,
             public_export_review=public_export_review,
             public_export_plan=public_export_plan,
+            public_publish_blocker=public_publish_blocker,
         )
         self.save(updated)
         return updated
@@ -598,6 +618,7 @@ class MultimediaAssetStore:
         public_export_gate: MultimediaPublicExportGate | None = None,
         public_export_review: MultimediaPublicExportReview | None = None,
         public_export_plan: MultimediaPublicExportPlan | None = None,
+        public_publish_blocker: MultimediaPublicPublishBlocker | None = None,
     ) -> MultimediaAssetRecord:
         sequence = max((job.sequence for job in record.jobs), default=0) + 1
         job = MultimediaJobRecord(
@@ -618,6 +639,7 @@ class MultimediaAssetStore:
             public_export_gate=public_export_gate,
             public_export_review=public_export_review,
             public_export_plan=public_export_plan,
+            public_publish_blocker=public_publish_blocker,
         )
         return record.model_copy(update={"jobs": record.jobs + (job,)})
 

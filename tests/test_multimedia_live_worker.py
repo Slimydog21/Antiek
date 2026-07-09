@@ -14,6 +14,7 @@ from substrate.multimedia.hardening import (
 from substrate.multimedia.live_worker import (
     attach_provider_artifacts_to_manifest,
     evaluate_public_export_gate,
+    evaluate_public_publish_blocker,
     plan_provider_artifact_attachment,
     plan_public_export,
     preview_next_live_execution,
@@ -898,6 +899,77 @@ def test_public_export_plan_rejects_attachment_ids_changed_after_review(tmp_path
     assert planned.jobs[-1].public_export_plan is None
     assert planned.jobs[-1].public_export_gate is not None
     assert planned.jobs[-1].public_export_review is not None
+
+
+def test_public_publish_blocker_requires_staged_export_plan(tmp_path):
+    store = MultimediaAssetStore(tmp_path)
+    draft = store.create_draft(
+        CreateMultimediaDraftRequest(
+            topic="documentary on airport radar",
+            target_minutes=20,
+            mode="video",
+            route_policy="balanced",
+        )
+    )
+
+    blocked = evaluate_public_publish_blocker(store, draft.asset.asset_id)
+
+    assert blocked.jobs[-1].status == "failed"
+    assert blocked.jobs[-1].error_code == "public_export_plan_missing"
+    assert blocked.jobs[-1].public_publish_blocker is None
+
+
+def test_public_publish_blocker_records_no_publish_boundary(tmp_path, monkeypatch):
+    store, draft = _create_reviewed_public_export_asset(tmp_path, monkeypatch)
+    planned = plan_public_export(store, draft.asset.asset_id)
+    export_plan = planned.jobs[-1].public_export_plan
+    assert export_plan is not None
+
+    blocked = evaluate_public_publish_blocker(store, draft.asset.asset_id)
+    job = blocked.jobs[-1]
+
+    assert job.kind == "export_gate"
+    assert job.status == "partial"
+    assert job.progress_percent == 99
+    assert job.public_export_plan == export_plan
+    assert job.public_publish_blocker is not None
+    assert job.public_publish_blocker.status == "blocked"
+    assert job.public_publish_blocker.export_id == export_plan.export_id
+    assert job.public_publish_blocker.attached_file_ids == export_plan.attached_file_ids
+    assert job.public_publish_blocker.public_url is None
+    assert job.public_publish_blocker.required_next_step == "publisher_implementation"
+    assert "presence-only-not-a-real-secret" not in job.model_dump_json()
+
+    reloaded = MultimediaAssetStore(tmp_path).list_jobs(draft.asset.asset_id)
+    assert reloaded.jobs[-1].public_publish_blocker == job.public_publish_blocker
+
+
+def test_public_publish_blocker_rejects_attachment_ids_changed_after_plan(tmp_path, monkeypatch):
+    store, draft = _create_reviewed_public_export_asset(tmp_path, monkeypatch)
+    plan_public_export(store, draft.asset.asset_id)
+    record = store.get(draft.asset.asset_id)
+    added_file = GeneratedFile(
+        file_id="late-unpublishable-file",
+        kind="video",
+        storage_uri="s3://antiek/multimedia/late-unpublishable-file.mp4",
+        sha256=SHA,
+        mime="video/mp4",
+        provider="krea",
+        duration_seconds=60,
+        width_px=1280,
+        height_px=720,
+    )
+    manifest = record.asset.manifest.model_copy(
+        update={"files": record.asset.manifest.files + (added_file,)}
+    )
+    store.save(record.model_copy(update={"asset": record.asset.model_copy(update={"manifest": manifest})}))
+
+    blocked = evaluate_public_publish_blocker(store, draft.asset.asset_id)
+
+    assert blocked.jobs[-1].status == "failed"
+    assert blocked.jobs[-1].error_code == "public_publish_attachment_mismatch"
+    assert blocked.jobs[-1].public_export_plan is not None
+    assert blocked.jobs[-1].public_publish_blocker is None
 
 
 def test_provider_artifact_attachment_plan_requires_successful_receipt(tmp_path, monkeypatch):

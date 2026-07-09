@@ -27,6 +27,7 @@ from substrate.multimedia.read_model import (
     MultimediaPublicExportPlan,
     MultimediaPublicExportReview,
     MultimediaPublicExportReviewRequest,
+    MultimediaPublicPublishBlocker,
 )
 
 
@@ -292,6 +293,76 @@ def plan_public_export(
         public_export_gate=gate,
         public_export_review=review,
         public_export_plan=export_plan,
+    )
+
+
+def evaluate_public_publish_blocker(
+    store: MultimediaAssetStore,
+    asset_id: str,
+) -> MultimediaAssetRecord:
+    """Record that a staged export plan is not publishable yet."""
+
+    record = store.get(asset_id)
+    gate = _latest_public_export_gate(record)
+    review = _latest_public_export_review(record)
+    export_plan = _latest_public_export_plan(record)
+    if export_plan is None:
+        return store.record_job(
+            asset_id,
+            kind="export_gate",
+            status="failed",
+            progress_percent=99,
+            message="Public publish blocker requires a staged export plan.",
+            error_code="public_export_plan_missing",
+            retryable=False,
+            public_export_gate=gate,
+            public_export_review=review,
+        )
+    if export_plan.publish_enabled or export_plan.public_url is not None:
+        return store.record_job(
+            asset_id,
+            kind="export_gate",
+            status="failed",
+            progress_percent=99,
+            message="Public export plan is invalid because it already contains publish output.",
+            error_code="public_export_plan_publish_output_present",
+            retryable=False,
+            public_export_gate=gate,
+            public_export_review=review,
+            public_export_plan=export_plan,
+        )
+
+    attached_file_ids = tuple(file.file_id for file in record.asset.manifest.files)
+    if attached_file_ids != export_plan.attached_file_ids:
+        return store.record_job(
+            asset_id,
+            kind="export_gate",
+            status="failed",
+            progress_percent=99,
+            message="Public publish blocker found attachment ids that differ from the export plan.",
+            error_code="public_publish_attachment_mismatch",
+            retryable=False,
+            public_export_gate=gate,
+            public_export_review=review,
+            public_export_plan=export_plan,
+        )
+
+    blocker = MultimediaPublicPublishBlocker(
+        export_id=export_plan.export_id,
+        attached_file_ids=export_plan.attached_file_ids,
+        reason="Public publishing is blocked until a separate publisher implementation mints a URL.",
+    )
+    return store.record_job(
+        asset_id,
+        kind="export_gate",
+        status="partial",
+        progress_percent=99,
+        message=blocker.reason,
+        retryable=False,
+        public_export_gate=gate,
+        public_export_review=review,
+        public_export_plan=export_plan,
+        public_publish_blocker=blocker,
     )
 
 
@@ -634,6 +705,13 @@ def _latest_public_export_review(record: MultimediaAssetRecord) -> MultimediaPub
     return None
 
 
+def _latest_public_export_plan(record: MultimediaAssetRecord) -> MultimediaPublicExportPlan | None:
+    for job in reversed(record.jobs):
+        if job.kind == "export_gate" and job.public_export_plan:
+            return job.public_export_plan
+    return None
+
+
 def _attachment_mismatch(
     preview: LiveProviderRoutePreview,
     receipt: LiveProviderArtifactReceipt,
@@ -677,6 +755,7 @@ def _primary_generation_kind(kind: AssetKind) -> GenerationKind:
 __all__ = [
     "attach_provider_artifacts_to_manifest",
     "evaluate_public_export_gate",
+    "evaluate_public_publish_blocker",
     "plan_public_export",
     "plan_provider_artifact_attachment",
     "preview_next_live_execution",
