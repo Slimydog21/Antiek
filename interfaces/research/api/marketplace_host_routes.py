@@ -68,6 +68,32 @@ class PurchaseHostBody(BaseModel):
     seed_twins: bool = True
 
 
+def catalog_honesty_payload(entries: list[dict[str, Any]]) -> dict[str, Any]:
+    """Residual (iq): by_source + license counts for catalog honesty audit.
+
+    Pure over already-serialized entry dicts. Never invents payment rails.
+    """
+    by_source: dict[str, int] = {}
+    by_license: dict[str, int] = {}
+    free_count = 0
+    for e in entries:
+        src = str(e.get("source") or "unknown").strip() or "unknown"
+        lic = str(e.get("license_class") or "unknown").strip() or "unknown"
+        by_source[src] = by_source.get(src, 0) + 1
+        by_license[lic] = by_license.get(lic, 0) + 1
+        if e.get("is_free") is True or lic == "public_domain":
+            free_count += 1
+    return {
+        "by_source": by_source,
+        "by_license": by_license,
+        "public_domain_count": by_license.get("public_domain", 0),
+        "purchased_count": by_license.get("purchased", 0),
+        "free_count": free_count,
+        "payment_rails": "manual_receipt_only",
+        "view_format": "html",
+    }
+
+
 @marketplace_host_router.get("/catalog")
 def get_catalog() -> dict[str, Any]:
     cat = _c()
@@ -84,7 +110,14 @@ def get_catalog() -> dict[str, Any]:
                 "source": e.source,
             }
         )
-    return {"entries": entries, "count": len(entries), "view_format": "html"}
+    # Residual (iq): knowledge-source honesty fields for research marketplace.
+    honesty = catalog_honesty_payload(entries)
+    return {
+        "entries": entries,
+        "count": len(entries),
+        "view_format": "html",
+        **honesty,
+    }
 
 
 def _maybe_seed_twins(
@@ -245,4 +278,5 @@ __all__ = [
     "marketplace_host_router",
     "register_marketplace_host_routes",
     "reset_marketplace_host_store",
+    "catalog_honesty_payload",
 ]

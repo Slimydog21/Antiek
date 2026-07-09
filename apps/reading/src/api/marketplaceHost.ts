@@ -39,11 +39,20 @@ async function readJson<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
-export async function fetchMarketplaceCatalog(): Promise<{
+/** Residual (iq): catalog honesty fields from GET /marketplace/catalog. */
+export type MarketplaceCatalogResponse = {
   entries: CatalogEntryRow[];
   count: number;
   view_format: "html";
-}> {
+  by_source?: Record<string, number>;
+  by_license?: Record<string, number>;
+  public_domain_count?: number;
+  purchased_count?: number;
+  free_count?: number;
+  payment_rails?: string;
+};
+
+export async function fetchMarketplaceCatalog(): Promise<MarketplaceCatalogResponse> {
   const res = await apiFetch(`${API_BASE}/marketplace/catalog`);
   return readJson(res);
 }
