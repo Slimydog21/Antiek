@@ -36,6 +36,8 @@
  * Residual (je): prefill researchTier from Settings depth-tier (parity jd/jc).
  * Residual (jk): session payload research_tier wins when present; chrome Row
  * + data-session-research-tier audit (recorded spawn tier, not only Settings).
+ * Residual (jo): ResearchProgressPanel poll interval scales by research_tier
+ * (fast 2s · deep 4s · wrestle 8s) for multi-minute competitive depth honesty.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -316,12 +318,31 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
           data-testid="deep-research-progress-mount"
           data-view-format="html"
         >
-          <ResearchProgressPanel
-            spawnId={props.spawn_id.trim()}
-            autoLoad
-            autoSeedIfEmpty
-            pollIntervalMs={4000}
-          />
+          {/* Residual (jo): poll cadence follows research_tier intensity. */}
+          <div
+            data-testid="deep-research-progress-tier-poll"
+            data-research-tier={researchTier}
+            data-poll-ms={String(
+              researchTier === "wrestle"
+                ? 8000
+                : researchTier === "fast"
+                  ? 2000
+                  : 4000,
+            )}
+          >
+            <ResearchProgressPanel
+              spawnId={props.spawn_id.trim()}
+              autoLoad
+              autoSeedIfEmpty
+              pollIntervalMs={
+                researchTier === "wrestle"
+                  ? 8000
+                  : researchTier === "fast"
+                    ? 2000
+                    : 4000
+              }
+            />
+          </div>
         </section>
       ) : null}
 

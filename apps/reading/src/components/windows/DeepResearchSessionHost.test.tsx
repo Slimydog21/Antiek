@@ -365,6 +365,27 @@ describe("DeepResearchSessionHost", () => {
     expect(screen.getByTestId("research-progress-panel-stub").textContent).toMatch(
       /spn_launch_1:auto=true:seed=true:poll=4000/,
     );
+    // Residual (jo): default deep → 4s poll.
+    expect(
+      screen.getByTestId("deep-research-progress-tier-poll").getAttribute(
+        "data-poll-ms",
+      ),
+    ).toBe("4000");
+  });
+
+  it("wrestle research_tier uses 8s progress poll cadence (jo)", () => {
+    render(
+      <DeepResearchSessionHost
+        {...FIXTURE}
+        research_tier="wrestle"
+      />,
+    );
+    const wrap = screen.getByTestId("deep-research-progress-tier-poll");
+    expect(wrap.getAttribute("data-research-tier")).toBe("wrestle");
+    expect(wrap.getAttribute("data-poll-ms")).toBe("8000");
+    expect(screen.getByTestId("research-progress-panel-stub").textContent).toMatch(
+      /:poll=8000/,
+    );
   });
 
   it("mounts TwinNotesPanel with autoLoad (cq)", () => {

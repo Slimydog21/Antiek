@@ -1,0 +1,8 @@
+# inventory-jo · progress poll cadence by research_tier
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: jo
+files:
+  apps/reading/src/components/windows/DeepResearchSessionHost.tsx
+  apps/reading/src/components/windows/DeepResearchSessionHost.test.tsx
+proof: DeepResearchSessionHost vitest 25_passed (HONEST_OK)
+invariants: wrestle 8s · deep 4s · fast 2s · multi-minute honesty
