@@ -1,0 +1,9 @@
+# Residual inventory (af) shell registration — 2026-07-09
+# origin/main@b3875724c6223a7cc66a05c5b6d2bba8e5d69b1d
+# branch PR #465 @ 44b54058df11f4d82b523e91cf89aa7defcb47a8 (≥ 44b54058)
+
+(a)–(ae) prior campaign residuals | branch_only | PR #465 through marketplace host product
+(af) shell-register Midnight Oil + Marketplace Host routes | missing→shipping | productModeRoutes + App.tsx + taxonomy
+
+ALREADY_SHIPPED_DO_NOT_REBUILD: mode product logic, APIs, living-roadmap SPR-01..14
+NEXT: ResearchContextPanel shell mount; Settings bench usage summary; operator merge

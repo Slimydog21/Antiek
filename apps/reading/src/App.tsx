@@ -49,6 +49,7 @@ import Stats from "./modes/Stats";
 import TrustCenter from "./modes/TrustCenter";
 import WriteHome from "./modes/Write/WriteHome";
 import WrestleApp from "./modes/WrestleApp";
+import { PRODUCT_MODE_ROUTES } from "./productModeRoutes";
 
 /**
  * Top-level route registry.
@@ -216,6 +217,12 @@ function AuthenticatedRoutes() {
         <Route path="/my-research" element={<MyResearch />} />
         <Route path="/investigations" element={<Navigate to="/my-research" replace />} />
         <Route path="/payouts" element={<PayoutsAudit />} />
+        {/* Campaign product modes (residual af): registry-driven so tests can
+            assert path→component binding without re-listing routes. Midnight Oil
+            + Marketplace Host drive existing product_path APIs; HTML view only. */}
+        {PRODUCT_MODE_ROUTES.map((r) => (
+          <Route key={r.path} path={r.path} element={<r.Component />} />
+        ))}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AppShell>

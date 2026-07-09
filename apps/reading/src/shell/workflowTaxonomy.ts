@@ -224,6 +224,15 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     built: true,
     route: "/backtest/:synthesisId",
   },
+  {
+    id: "MidnightOil",
+    workflow: "research",
+    label: "Midnight Oil",
+    blurb:
+      "Autonomous deep-research swarm: goals + duration → recommended price ceiling → explicit approve (HTML deliverable).",
+    built: true,
+    route: "/midnight-oil",
+  },
 
   // ── READ ──────────────────────────────────────────────────────────
   // Document-wrestling, the library/document index, sources, and the
@@ -240,6 +249,15 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     blurb: "Bring your own PDF — read it, select regions, extract claims (power surface; not the Read door).",
     built: true,
     route: "/wrestle",
+  },
+  {
+    id: "MarketplaceHost",
+    workflow: "read",
+    label: "Marketplace host",
+    blurb:
+      "Catalog → host book into account → HTML library view (PDF may be ingest source only).",
+    built: true,
+    route: "/marketplace/host",
   },
   // Read SPR-06 operator-surface eviction (mirrors Wave E U-03 "operator
   // behind More"): the tier-filtered Documents index and the bulk-ingest
