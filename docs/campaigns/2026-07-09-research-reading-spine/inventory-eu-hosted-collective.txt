@@ -1,0 +1,18 @@
+# residual (eu) collective multi-select on hosted HTML books
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(et) prior | branch_only | campaign inventories
+(eu) hosted collective | branch_only | HostedHtmlDocumentHost collectDeepResearchSpawnIds + CollectiveResearchPanel parent=document_id; onDocMerged remount; 10 vitest
+
+PATHS:
+- apps/reading/src/components/windows/HostedHtmlDocumentHost.tsx
+- apps/reading/src/components/windows/HostedHtmlDocumentHost.test.tsx
+
+INVARIANTS:
+- Mount only when open deep_research_session spawns exist
+- parentAssetId = hosted document_id
+- onDocMerged → onContextNeedsRefresh (ep parity)
+- HTML-first book host only
+
+NEXT: (ev) re-derive; operator merge PR #465

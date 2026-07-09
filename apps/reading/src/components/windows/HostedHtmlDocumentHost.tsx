@@ -17,6 +17,9 @@
  * marketplace/hosted books.
  * Residual (es): launch deep research as full window (view_mode full) as well
  * as floating — north-star “open in full screen” without leaving the hosted book.
+ * Residual (eu): mount CollectiveResearchPanel when open deep_research_session
+ * spawns exist so multi-select merge/analysis runs against this book as parent
+ * (reading ≡ research collective unit).
  *
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
  */
@@ -28,7 +31,10 @@ import {
   hydratePublicationRefs,
   parsePublicationRefs,
 } from "../../modes/ResearchWorkstation/publicationRefs";
+import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
 import type { WindowMode } from "../../workspace/windowsStore";
+import { useWindows } from "../../workspace/windowsStore";
+import { CollectiveResearchPanel } from "../engagement/CollectiveResearchPanel";
 import { DecisionTreeDriverBadge } from "../engagement/DecisionTreeDriverBadge";
 import { ResearchContextPanel } from "../engagement/ResearchContextPanel";
 import {
@@ -78,6 +84,17 @@ export default function HostedHtmlDocumentHost(
   const isHtml = viewFormat === "html";
   const html = props.html?.trim() || "";
   const assetId = props.document_id?.trim() || "";
+
+  // Residual (eu): open DR session spawns for collective multi-select.
+  const windows = useWindows((s) => s.windows);
+  const availableSpawnIds = useMemo(
+    () =>
+      collectDeepResearchSpawnIds({
+        currentSpawnId: null,
+        windows,
+      }),
+    [windows],
+  );
 
   const [highlightText, setHighlightText] = useState("");
   const [pubRefs, setPubRefs] = useState("");
@@ -412,6 +429,22 @@ export default function HostedHtmlDocumentHost(
               autoLoad
             />
           </div>
+        </section>
+      ) : null}
+
+      {/* Residual (eu): multi-select open DR spawns → merge into this book. */}
+      {assetId && isHtml && availableSpawnIds.length > 0 ? (
+        <section
+          className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
+          data-testid="hosted-html-collective-mount"
+          data-view-format="html"
+          data-available-spawn-count={String(availableSpawnIds.length)}
+        >
+          <CollectiveResearchPanel
+            availableSpawnIds={availableSpawnIds}
+            parentAssetId={assetId}
+            onDocMerged={onContextNeedsRefresh}
+          />
         </section>
       ) : null}
     </div>

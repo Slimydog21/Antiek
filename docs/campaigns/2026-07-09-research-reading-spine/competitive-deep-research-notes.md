@@ -38,4 +38,5 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (er, 2026-07-09): hosted book optional arxiv/substack/URL pub refs on float DR (ResearchThis parity).
 - Closed (es, 2026-07-09): hosted book deep research full window mode (floating | full).
 - Closed (et, 2026-07-09): ResearchThis full working-region deep research window (distinct from legacy /inv handoff).
+- Closed (eu, 2026-07-09): hosted book mounts CollectiveResearchPanel over open DR spawns (multi-select merge into the book).
 - Left (env/operator): floating multi-agent *live* collective chat (merge+continue unit ships); live midnight oil multi-provider; paid marketplace rails; live hydrate/seed injectors; operator install of weekly LaunchAgent; PR #465 main merge.

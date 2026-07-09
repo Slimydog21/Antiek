@@ -13,6 +13,7 @@ const parsePublicationRefs = vi.fn((raw: string) =>
     .map((s) => s.trim())
     .filter(Boolean),
 );
+const collectDeepResearchSpawnIds = vi.fn(() => [] as string[]);
 
 vi.mock("./windowHostContext", () => ({
   useInWindow: () => undefined,
@@ -28,6 +29,37 @@ vi.mock("../../modes/ResearchWorkstation/publicationRefs", () => ({
     parsePublicationRefs(...(args as [string])),
   hydratePublicationRefs: (...args: unknown[]) =>
     hydratePublicationRefs(...args),
+}));
+
+vi.mock("../../workspace/collectDeepResearchSpawnIds", () => ({
+  collectDeepResearchSpawnIds: (...args: unknown[]) =>
+    collectDeepResearchSpawnIds(...args),
+}));
+
+vi.mock("../../workspace/windowsStore", () => ({
+  useWindows: (sel: (s: { windows: Record<string, unknown> }) => unknown) =>
+    sel({ windows: {} }),
+}));
+
+vi.mock("../engagement/CollectiveResearchPanel", () => ({
+  CollectiveResearchPanel: (props: {
+    availableSpawnIds: string[];
+    parentAssetId?: string | null;
+    onDocMerged?: (r: { document_id: string }) => void;
+  }) => (
+    <div data-testid="collective-research-panel-stub">
+      {props.parentAssetId}:{props.availableSpawnIds.join(",")}
+      {props.onDocMerged ? (
+        <button
+          type="button"
+          data-testid="collective-doc-merged-notify"
+          onClick={() => props.onDocMerged?.({ document_id: "draft_eu" })}
+        >
+          notify
+        </button>
+      ) : null}
+    </div>
+  ),
 }));
 
 vi.mock("../engagement/TwinNotesPanel", () => ({
@@ -91,6 +123,8 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
   beforeEach(() => {
     launchFloatingDeepResearch.mockReset();
     hydratePublicationRefs.mockReset();
+    collectDeepResearchSpawnIds.mockReset();
+    collectDeepResearchSpawnIds.mockReturnValue([]);
     hydratePublicationRefs.mockResolvedValue({
       ok: [{ handle: "arxiv:1706.03762", asset_id: "pub_1" }],
       failed: [],
@@ -294,6 +328,46 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     });
 
     vi.unstubAllGlobals();
+  });
+
+  it("mounts collective panel when open DR spawns exist (eu)", () => {
+    collectDeepResearchSpawnIds.mockReturnValue(["spn_a", "spn_b"]);
+    render(
+      <HostedHtmlDocumentHost
+        document_id="doc_col"
+        title="Book"
+        view_format="html"
+        html="<p>Body</p>"
+      />,
+    );
+    const mount = screen.getByTestId("hosted-html-collective-mount");
+    expect(mount.getAttribute("data-available-spawn-count")).toBe("2");
+    expect(screen.getByTestId("collective-research-panel-stub").textContent).toMatch(
+      /doc_col:spn_a,spn_b/,
+    );
+    // Residual (eu/ep): onDocMerged remounts context.
+    const before = screen
+      .getByTestId("hosted-html-context-refresh")
+      .getAttribute("data-refresh-key");
+    fireEvent.click(screen.getByTestId("collective-doc-merged-notify"));
+    expect(
+      screen.getByTestId("hosted-html-context-refresh").getAttribute(
+        "data-refresh-key",
+      ),
+    ).not.toBe(before);
+  });
+
+  it("omits collective panel when no open spawns", () => {
+    collectDeepResearchSpawnIds.mockReturnValue([]);
+    render(
+      <HostedHtmlDocumentHost
+        document_id="doc_none"
+        title="Book"
+        view_format="html"
+        html="<p>Body</p>"
+      />,
+    );
+    expect(screen.queryByTestId("hosted-html-collective-mount")).toBeNull();
   });
 
   it("launches deep research in full window mode (es)", async () => {
