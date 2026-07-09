@@ -17,6 +17,13 @@ describe("ResearchProgressPanel", () => {
     seedResearchProgress.mockReset();
   });
 
+  it("links to Settings for driver & budget (ij)", () => {
+    render(<ResearchProgressPanel spawnId="spn_1" />);
+    const link = screen.getByTestId("research-progress-settings-link");
+    expect(link.getAttribute("href")).toBe("/settings");
+    expect(link.textContent).toMatch(/driver & budget/i);
+  });
+
   it("seeds and shows plan→cite pipeline", async () => {
     seedResearchProgress.mockResolvedValue({
       spawn_id: "spn_1",

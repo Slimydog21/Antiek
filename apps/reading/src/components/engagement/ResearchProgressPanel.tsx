@@ -6,6 +6,7 @@
  * competitive multi-minute job visibility without an extra click.
  * Residual (hk): research-progress-metrics machine attrs for multi-minute
  * plan→cite audit (parity twin/flywheel metrics).
+ * Residual (ij): Settings deep-link for driver + budget during multi-minute jobs.
  * HTML-first; never PDF.
  */
 
@@ -118,6 +119,16 @@ export function ResearchProgressPanel({
         <h2>Research progress</h2>
         <p className="meta">
           spawn <code>{spawnId}</code> · plan → gather → synthesize → cite
+        </p>
+        {/* Residual (ij): Settings deep-link for model driver + budget. */}
+        <p className="meta font-mono text-[11px]">
+          <a
+            href="/settings"
+            data-testid="research-progress-settings-link"
+            title="Open Settings for decision-tree driver and daily budget"
+          >
+            Settings · driver & budget
+          </a>
         </p>
       </header>
       <div className="controls" style={{ display: "flex", gap: "0.5rem" }}>
