@@ -48,8 +48,13 @@ describe("SpawnMergePanel residual ci", () => {
       html: "<p>Draft merge HTML</p>",
     });
 
+    const onMerged = vi.fn();
     render(
-      <SpawnMergePanel spawnId="spn_1" parentAssetId="book-1" />,
+      <SpawnMergePanel
+        spawnId="spn_1"
+        parentAssetId="book-1"
+        onMerged={onMerged}
+      />,
     );
     fireEvent.click(screen.getByTestId("spawn-merge-draft"));
     await waitFor(() => {
@@ -78,6 +83,12 @@ describe("SpawnMergePanel residual ci", () => {
       screen.getByTestId("spawn-merge-panel").getAttribute("data-view-format"),
     ).toBe("html");
     expect(screen.getByTestId("spawn-merge-html").innerHTML).toMatch(/Draft merge/);
+    // Residual (eh): parent notified after merge + twin seed.
+    await waitFor(() => {
+      expect(onMerged).toHaveBeenCalled();
+    });
+    expect(onMerged.mock.calls[0][0].document_id).toBe("draft_book-1_abc");
+    expect(onMerged.mock.calls[0][0].view_format).toBe("html");
   });
 
   it("merges into parent and opens HTML window", async () => {

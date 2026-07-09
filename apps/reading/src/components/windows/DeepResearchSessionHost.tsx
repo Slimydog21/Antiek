@@ -28,6 +28,7 @@
  * pack reloads recursive notes for prompts.
  * Residual (ed): remount ResearchContextPanel after publication attach.
  * Residual (ee): remount ResearchContextPanel after session flywheel complete.
+ * Residual (eh): remount ResearchContextPanel after spawn merge.
  */
 
 import { useCallback, useMemo, useState } from "react";
@@ -303,6 +304,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
           <SpawnMergePanel
             spawnId={props.spawn_id.trim()}
             parentAssetId={props.parent_asset_id.trim()}
+            onMerged={onTwinsPromoted}
           />
         </section>
       ) : null}

@@ -5,6 +5,8 @@
  * without multi-select collective friction. Composes shipped
  * mergeSpawnOutputs (draft_combined | into_parent). HTML-first only.
  * Residual (cp): seed twin notes on the merged document_id after success.
+ * Residual (eh): onMerged notifies parent so research context remounts
+ * after draft/parent merge + twin seed.
  */
 
 import { useCallback, useState } from "react";
@@ -19,11 +21,14 @@ import { openWindow } from "../windows/openWindow";
 export type SpawnMergePanelProps = {
   spawnId: string;
   parentAssetId: string;
+  /** Residual (eh): after successful HTML merge (+ twin seed attempt). */
+  onMerged?: (result: MergeProductResponse) => void;
 };
 
 export function SpawnMergePanel({
   spawnId,
   parentAssetId,
+  onMerged,
 }: SpawnMergePanelProps) {
   const [result, setResult] = useState<MergeProductResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -69,14 +74,16 @@ export function SpawnMergePanel({
         } catch {
           notes = [...notes, "Twin seed skipped (API unavailable)."];
         }
-        setResult({ ...out, notes });
+        const final = { ...out, notes };
+        setResult(final);
+        onMerged?.(final);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       } finally {
         setBusy(false);
       }
     },
-    [spawnId, parentAssetId],
+    [spawnId, parentAssetId, onMerged],
   );
 
   return (

@@ -43,9 +43,24 @@ vi.mock("../../api/settings", () => ({
 }));
 
 vi.mock("../engagement/SpawnMergePanel", () => ({
-  SpawnMergePanel: (props: { spawnId: string; parentAssetId: string }) => (
+  SpawnMergePanel: (props: {
+    spawnId: string;
+    parentAssetId: string;
+    onMerged?: (r: { document_id: string }) => void;
+  }) => (
     <div data-testid="spawn-merge-panel-stub">
       {props.spawnId}→{props.parentAssetId}
+      {props.onMerged ? (
+        <button
+          type="button"
+          data-testid="spawn-merge-notify"
+          onClick={() =>
+            props.onMerged?.({ document_id: "draft_from_merge" })
+          }
+        >
+          notify-merge
+        </button>
+      ) : null}
     </div>
   ),
 }));
@@ -180,8 +195,8 @@ describe("DeepResearchSessionHost", () => {
   it("mounts SpawnMergePanel when spawn and parent present (ci)", () => {
     render(<DeepResearchSessionHost {...FIXTURE} />);
     expect(screen.getByTestId("deep-research-spawn-merge-mount")).toBeTruthy();
-    expect(screen.getByTestId("spawn-merge-panel-stub").textContent).toBe(
-      "spn_launch_1→launch-asset",
+    expect(screen.getByTestId("spawn-merge-panel-stub").textContent).toMatch(
+      /spn_launch_1→launch-asset/,
     );
   });
 
@@ -211,6 +226,21 @@ describe("DeepResearchSessionHost", () => {
         .getAttribute("data-refresh-key"),
     ).toBe("0");
     fireEvent.click(screen.getByTestId("session-flywheel-notify"));
+    expect(
+      screen
+        .getByTestId("deep-research-context-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("1");
+  });
+
+  it("remounts research context after spawn merge notify (eh)", () => {
+    render(<DeepResearchSessionHost {...FIXTURE} />);
+    expect(
+      screen
+        .getByTestId("deep-research-context-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("0");
+    fireEvent.click(screen.getByTestId("spawn-merge-notify"));
     expect(
       screen
         .getByTestId("deep-research-context-refresh")
