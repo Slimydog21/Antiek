@@ -36,9 +36,10 @@ class HydratedAsset:
     view_format: str
     html: str | None
     notes: tuple[str, ...]
+    twins: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "asset_id": self.asset_id,
             "ref": self.ref.to_dict(),
             "title": self.title,
@@ -50,6 +51,9 @@ class HydratedAsset:
             "product_panel": "engagement_hydrate",
             "source": "engagement_spine.hydrate",
         }
+        if self.twins is not None:
+            out["twins"] = self.twins
+        return out
 
 
 def asset_id_for_ref(ref: SourceReference) -> str:
@@ -68,12 +72,15 @@ def hydrate_reference(
     fetch_publication: FetchPublication | None = None,
     include_html: bool = True,
     attach_spawn_id: str | None = None,
+    seed_twins: bool = True,
 ) -> HydratedAsset:
     """Parse a publication handle and land an HTML-first asset in the store.
 
     * With ``fetch_publication``: body/title come from the injector (tests or
       acquisition adapters).
     * Without: honest identity-only asset (no fabricated paper abstract).
+    * ``seed_twins`` (default True): offline recursive note-taker seed
+      (insight + question) via ``seed_twins_for_asset`` — residual (bu).
     """
     ref = parse_source_reference(raw)
     asset_id = asset_id_for_ref(ref)
@@ -156,6 +163,30 @@ def hydrate_reference(
         except Exception as exc:
             notes.append(f"attach to spawn failed: {exc}")
 
+    twins_payload: dict[str, Any] | None = None
+    if seed_twins:
+        from .twin import seed_twins_for_asset
+
+        try:
+            twins_payload = seed_twins_for_asset(
+                asset_id,
+                store=store,
+                title=title,
+                body_text=body,
+                source_spawn_id=attach_spawn_id,
+                include_html=include_html,
+            )
+            if twins_payload.get("seeded"):
+                notes.append(
+                    "Seeded offline twin notes (insight + question) — recursive note-taker."
+                )
+            else:
+                notes.append(
+                    f"Twin seed skipped: {twins_payload.get('seed_skipped')}"
+                )
+        except Exception as exc:
+            notes.append(f"twin seed failed: {exc}")
+
     return HydratedAsset(
         asset_id=asset_id,
         ref=ref,
@@ -165,6 +196,7 @@ def hydrate_reference(
         view_format="html",
         html=html,
         notes=tuple(notes),
+        twins=twins_payload,
     )
 
 

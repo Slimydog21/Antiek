@@ -43,6 +43,7 @@ from .twin import (
     record_twin_insight,
     record_twin_product,
     record_twin_question,
+    seed_twins_for_asset,
     twins_product_payload,
 )
 from .twin_promote import (
@@ -176,6 +177,7 @@ __all__ = [
     "record_twin_insight",
     "record_twin_product",
     "record_twin_question",
+    "seed_twins_for_asset",
     "research_context_html",
     "research_context_sections_html",
     "result_to_context_unit",

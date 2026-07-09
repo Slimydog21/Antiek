@@ -166,6 +166,63 @@ def record_twin_product(
     return twins_product_payload(asset_id, store=store, include_html=include_html)
 
 
+def seed_twins_for_asset(
+    asset_id: str,
+    *,
+    store: EngagementStore,
+    title: str,
+    body_text: str = "",
+    source_spawn_id: str | None = None,
+    include_html: bool = False,
+) -> dict[str, Any]:
+    """Recursive note-taker seed: offline insight + question twin for an asset.
+
+    Residual (bu). Idempotent — if any twin notes already exist for
+    ``asset_id``, returns current payload without adding duplicates.
+    Offline stubs only (no live LLM); live note_taker inject later.
+    """
+    aid = (asset_id or "").strip()
+    if not aid:
+        raise ValueError("asset_id is required")
+    existing = list_twin_notes(aid, store=store)
+    if existing:
+        payload = twins_product_payload(aid, store=store, include_html=include_html)
+        payload["seeded"] = False
+        payload["seed_skipped"] = "twins_already_present"
+        return payload
+
+    t = (title or "").strip() or aid
+    body_preview = (body_text or "").strip().replace("\n", " ")
+    if len(body_preview) > 160:
+        body_preview = body_preview[:157] + "…"
+
+    insight = f"Asset identity: {t}."
+    if body_preview:
+        insight += f" Opening: {body_preview}"
+    question = f"What claims in “{t}” should be wrestled or cited next?"
+
+    record_twin_insight(
+        aid,
+        insight,
+        store=store,
+        source_spawn_id=source_spawn_id,
+    )
+    record_twin_question(
+        aid,
+        question,
+        store=store,
+        source_spawn_id=source_spawn_id,
+    )
+    payload = twins_product_payload(aid, store=store, include_html=include_html)
+    payload["seeded"] = True
+    payload["seed_skipped"] = None
+    payload["seed_source"] = "engagement_spine.twin.seed_twins_for_asset"
+    payload["messages"] = list(payload.get("messages") or []) + [
+        "Offline twin seed (insight + question) — recursive note-taker substrate."
+    ]
+    return payload
+
+
 def project_twins_html(payload: dict[str, Any]) -> str:
     """HTML-first twin document view (never PDF)."""
     from .project import project_to_html

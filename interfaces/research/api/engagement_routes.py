@@ -190,6 +190,8 @@ class HydrateRefBody(BaseModel):
     reference: str = Field(min_length=1)
     include_html: bool = True
     attach_spawn_id: str | None = None
+    # Residual (bu): offline recursive note-taker seed (insight + question)
+    seed_twins: bool = True
 
 
 class ProgressRecordBody(BaseModel):
@@ -412,6 +414,7 @@ def post_hydrate_ref(body: HydrateRefBody) -> dict[str, Any]:
             fetch_publication=fetcher,
             include_html=body.include_html,
             attach_spawn_id=body.attach_spawn_id,
+            seed_twins=body.seed_twins,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
