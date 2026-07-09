@@ -7,6 +7,8 @@
  * the recursive note-taker substrate exists without a manual click.
  * Residual (ea): autoPromoteAfterLoad — promote twins into research context
  * after autoLoad/seed so prompts inherit recursive notes without a click.
+ * Residual (fk): twin-notes-metrics data attributes for recursive note-taker
+ * audit (parity ResearchContextPanel ff).
  * HTML-first; never PDF.
  */
 
@@ -278,6 +280,18 @@ export function TwinNotesPanel({
       ) : null}
       {twins ? (
         <div data-testid="twin-notes-summary" className="font-mono text-sm">
+          {/* Residual (fk): machine-readable recursive note-taker metrics. */}
+          <div
+            data-testid="twin-notes-metrics"
+            data-note-count={String(twins.note_count ?? 0)}
+            data-insight-count={String(twins.insight_count ?? 0)}
+            data-question-count={String(twins.question_count ?? 0)}
+            data-view-format="html"
+            role="status"
+          >
+            Recursive note-taker · notes={twins.note_count ?? 0} · insights=
+            {twins.insight_count ?? 0} · questions={twins.question_count ?? 0}
+          </div>
           <p>
             notes={twins.note_count} · insights={twins.insight_count} · questions=
             {twins.question_count}

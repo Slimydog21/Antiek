@@ -52,6 +52,12 @@ describe("TwinNotesPanel", () => {
         /insights=1/,
       );
     });
+    // Residual (fk): machine-readable twin metrics.
+    const metrics = screen.getByTestId("twin-notes-metrics");
+    expect(metrics.getAttribute("data-insight-count")).toBe("1");
+    expect(metrics.getAttribute("data-question-count")).toBe("1");
+    expect(metrics.getAttribute("data-note-count")).toBe("2");
+    expect(metrics.getAttribute("data-view-format")).toBe("html");
     expect(seedTwinNotes).not.toHaveBeenCalled();
   });
 
