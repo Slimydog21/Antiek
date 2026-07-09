@@ -7,6 +7,7 @@ import {
   dispatchMidnightOil,
   dryRunMidnightOil,
   finalArtifactMidnightOil,
+  graphAdapterPlanMidnightOil,
   graphMutationMidnightOil,
   liveRunActivationSettingsMidnightOil,
   preflightMidnightOil,
@@ -22,6 +23,7 @@ import {
   type MidnightOilBudgetReservationReceipt,
   type MidnightOilDispatchReceipt,
   type MidnightOilFinalArtifactReceipt,
+  type MidnightOilGraphAdapterPlanReceipt,
   type MidnightOilGraphMutationReceipt,
   type MidnightOilLiveRunActivationSettingsReceipt,
   type MidnightOilPreflight,
@@ -87,6 +89,8 @@ export default function MidnightOil() {
     useState<MidnightOilProviderExecutorAdapterPlanReceipt | null>(null);
   const [retrievalAdapterPlanReceipt, setRetrievalAdapterPlanReceipt] =
     useState<MidnightOilRetrievalAdapterPlanReceipt | null>(null);
+  const [graphAdapterPlanReceipt, setGraphAdapterPlanReceipt] =
+    useState<MidnightOilGraphAdapterPlanReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -102,6 +106,7 @@ export default function MidnightOil() {
   const [budgetProviderAdapterPlanBusy, setBudgetProviderAdapterPlanBusy] = useState(false);
   const [providerExecutorAdapterPlanBusy, setProviderExecutorAdapterPlanBusy] = useState(false);
   const [retrievalAdapterPlanBusy, setRetrievalAdapterPlanBusy] = useState(false);
+  const [graphAdapterPlanBusy, setGraphAdapterPlanBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
   const [liveSettingsError, setLiveSettingsError] = useState<string | null>(null);
@@ -119,10 +124,17 @@ export default function MidnightOil() {
   const [providerExecutorAdapterPlanError, setProviderExecutorAdapterPlanError] =
     useState<string | null>(null);
   const [retrievalAdapterPlanError, setRetrievalAdapterPlanError] = useState<string | null>(null);
+  const [graphAdapterPlanError, setGraphAdapterPlanError] = useState<string | null>(null);
+
+  function clearGraphAdapterPlan() {
+    setGraphAdapterPlanError(null);
+    setGraphAdapterPlanReceipt(null);
+  }
 
   function clearRetrievalAdapterPlan() {
     setRetrievalAdapterPlanError(null);
     setRetrievalAdapterPlanReceipt(null);
+    clearGraphAdapterPlan();
   }
 
   function clearProviderExecutorAdapterPlan() {
@@ -160,6 +172,7 @@ export default function MidnightOil() {
     setBudgetProviderAdapterPlanError(null);
     setProviderExecutorAdapterPlanError(null);
     setRetrievalAdapterPlanError(null);
+    setGraphAdapterPlanError(null);
     setPreflight(null);
     setDryRunReceipt(null);
     setLiveSettingsReceipt(null);
@@ -176,6 +189,7 @@ export default function MidnightOil() {
     setBudgetProviderAdapterPlanReceipt(null);
     setProviderExecutorAdapterPlanReceipt(null);
     setRetrievalAdapterPlanReceipt(null);
+    setGraphAdapterPlanReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -757,6 +771,7 @@ export default function MidnightOil() {
     setRetrievalAdapterPlanBusy(true);
     setRetrievalAdapterPlanError(null);
     setRetrievalAdapterPlanReceipt(null);
+    clearGraphAdapterPlan();
     try {
       const result = await retrievalAdapterPlanMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -771,6 +786,43 @@ export default function MidnightOil() {
       setRetrievalAdapterPlanError(e instanceof Error ? e.message : String(e));
     } finally {
       setRetrievalAdapterPlanBusy(false);
+    }
+  }
+
+  async function onGraphAdapterPlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerControlPlanReceipt ||
+      !budgetProviderAdapterPlanReceipt ||
+      !providerExecutorAdapterPlanReceipt ||
+      !retrievalAdapterPlanReceipt
+    ) {
+      setGraphAdapterPlanError(
+        "Graph adapter plan requires launch packet, approval receipt, runner handoff, runner control plan receipt, budget provider adapter plan receipt, provider executor adapter plan receipt, and retrieval adapter plan receipt.",
+      );
+      return;
+    }
+
+    setGraphAdapterPlanBusy(true);
+    setGraphAdapterPlanError(null);
+    setGraphAdapterPlanReceipt(null);
+    try {
+      const result = await graphAdapterPlanMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        runner_control_plan_receipt: runnerControlPlanReceipt,
+        budget_provider_adapter_plan_receipt: budgetProviderAdapterPlanReceipt,
+        provider_executor_adapter_plan_receipt: providerExecutorAdapterPlanReceipt,
+        retrieval_adapter_plan_receipt: retrievalAdapterPlanReceipt,
+      });
+      setGraphAdapterPlanReceipt(result);
+    } catch (e) {
+      setGraphAdapterPlanError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setGraphAdapterPlanBusy(false);
     }
   }
 
@@ -2023,6 +2075,88 @@ export default function MidnightOil() {
                   <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
                     Source receipt fields:{" "}
                     {retrievalAdapterPlanReceipt.required_source_receipt_fields.join(", ")}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Graph adapter
+                </p>
+                <button
+                  type="button"
+                  onClick={onGraphAdapterPlanGate}
+                  disabled={
+                    graphAdapterPlanBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !runnerControlPlanReceipt ||
+                    !budgetProviderAdapterPlanReceipt ||
+                    !providerExecutorAdapterPlanReceipt ||
+                    !retrievalAdapterPlanReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {graphAdapterPlanBusy ? "Planning graph..." : "Graph adapter"}
+                </button>
+              </div>
+
+              {graphAdapterPlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {graphAdapterPlanError}
+                </p>
+              )}
+
+              {graphAdapterPlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Graph adapter receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {graphAdapterPlanReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={graphAdapterPlanReceipt.status.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Nodes"
+                      value={`${graphAdapterPlanReceipt.planned_graph_node_ids.length}`}
+                    />
+                    <Metric
+                      label="Edges"
+                      value={`${graphAdapterPlanReceipt.planned_graph_edge_ids.length}`}
+                    />
+                    <Metric
+                      label="Mutated"
+                      value={graphAdapterPlanReceipt.graph_mutated ? "yes" : "no"}
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric label="Writer" value={graphAdapterPlanReceipt.planned_writer_id} />
+                    <Metric
+                      label="Graph ledger"
+                      value={graphAdapterPlanReceipt.planned_graph_ledger_id}
+                    />
+                  </div>
+                  <p className="mt-2 break-all font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Graph nodes: {graphAdapterPlanReceipt.planned_graph_node_ids.join(", ")}
+                  </p>
+                  <p className="mt-1 break-all font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Graph edges: {graphAdapterPlanReceipt.planned_graph_edge_ids.join(", ")}
+                  </p>
+                  <ul className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {graphAdapterPlanReceipt.required_invariants.slice(0, 5).map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Graph receipt fields:{" "}
+                    {graphAdapterPlanReceipt.required_graph_receipt_fields.join(", ")}
                   </p>
                 </div>
               )}

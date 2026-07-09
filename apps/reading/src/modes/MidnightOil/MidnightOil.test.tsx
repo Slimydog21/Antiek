@@ -10,6 +10,7 @@ import {
   dispatchMidnightOil,
   dryRunMidnightOil,
   finalArtifactMidnightOil,
+  graphAdapterPlanMidnightOil,
   graphMutationMidnightOil,
   liveRunActivationSettingsMidnightOil,
   preflightMidnightOil,
@@ -686,6 +687,65 @@ vi.mock("../../api/midnightOil", () => ({
     final_artifact_created: false,
     adapter_plan_notes: ["retrieval adapter plan only: no source connector is configured"],
   })),
+  graphAdapterPlanMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-graph-adapter-plan",
+    runner_control_plan_receipt_id: "midnight-oil-test-runner-control-plan",
+    budget_provider_adapter_plan_receipt_id: "midnight-oil-test-budget-provider-adapter-plan",
+    provider_executor_adapter_plan_receipt_id: "midnight-oil-test-provider-executor-adapter-plan",
+    retrieval_adapter_plan_receipt_id: "midnight-oil-test-retrieval-adapter-plan",
+    runner_readiness_receipt_id: "midnight-oil-test-runner-readiness",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    run_id: "midnight-oil-test",
+    status: "blocked_graph_adapter_unimplemented",
+    adapter_key: "graph_mutation_writer",
+    planned_writer_id: "midnight-oil-test-graph-adapter",
+    planned_graph_ledger_id: "midnight-oil-test-graph-mutation-ledger",
+    planned_graph_node_ids: [
+      "midnight-oil-test-run-node",
+      "midnight-oil-test-arxiv-source-node",
+      "midnight-oil-test-substack-source-node",
+      "midnight-oil-test-operator_corpus-source-node",
+    ],
+    planned_graph_edge_ids: [
+      "midnight-oil-test-arxiv-cites-edge",
+      "midnight-oil-test-substack-cites-edge",
+      "midnight-oil-test-operator_corpus-cites-edge",
+    ],
+    required_invariants: [
+      "graph adapter must require source receipts before any graph write",
+      "graph adapter must write idempotent nodes and edges keyed by run and source receipt",
+      "graph adapter must preserve provenance links to route and source receipts",
+    ],
+    required_graph_receipt_fields: [
+      "graph_receipt_id",
+      "run_id",
+      "node_ids",
+      "edge_ids",
+      "source_receipt_ids",
+      "route_receipt_ids",
+      "content_digest",
+      "idempotency_key",
+      "created_at",
+    ],
+    blocker_reason: "graph_adapter_unimplemented",
+    graph_mutation_allowed: false,
+    graph_mutated: false,
+    source_receipts_created: false,
+    retrieval_allowed: false,
+    retrieval_performed: false,
+    provider_execution_allowed: false,
+    provider_calls_made: false,
+    live_run_allowed: false,
+    dispatch_allowed: false,
+    budget_reservation_allowed: false,
+    budget_reserved: false,
+    final_artifact_allowed: false,
+    dispatch_performed: false,
+    final_artifact_created: false,
+    adapter_plan_notes: ["graph adapter plan only: no graph writer is configured"],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -1179,5 +1239,41 @@ describe("MidnightOil", () => {
       screen.getByText("retrieval adapter must require provider route receipts before source access"),
     ).toBeTruthy();
     expect(screen.getByText(/Source receipt fields:/)).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Graph adapter" }));
+
+    await waitFor(() => expect(graphAdapterPlanMidnightOil).toHaveBeenCalled());
+    expect(graphAdapterPlanMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      runner_control_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-control-plan",
+      }),
+      budget_provider_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-budget-provider-adapter-plan",
+      }),
+      provider_executor_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-provider-executor-adapter-plan",
+      }),
+      retrieval_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-retrieval-adapter-plan",
+      }),
+    });
+    expect(screen.getByText("Graph adapter receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-graph-adapter-plan")).toBeTruthy();
+    expect(screen.getByText("blocked graph adapter unimplemented")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-graph-adapter")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-graph-mutation-ledger")).toBeTruthy();
+    expect(
+      screen.getByText("graph adapter must require source receipts before any graph write"),
+    ).toBeTruthy();
+    expect(screen.getByText(/Graph receipt fields:/)).toBeTruthy();
   });
 });
