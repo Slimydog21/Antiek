@@ -50,6 +50,7 @@ export default function BookReader() {
   const [housePool, setHousePool] = useState<BookSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,7 +81,11 @@ export default function BookReader() {
     return () => {
       cancelled = true;
     };
-  }, [documentId]);
+  }, [documentId, reloadToken]);
+
+  const refreshSourceBody = useCallback(() => {
+    setReloadToken((token) => token + 1);
+  }, []);
 
   const pages = useMemo(
     () => paginate(body?.full_text ?? body?.snippet ?? ""),
@@ -507,6 +512,7 @@ export default function BookReader() {
         documentId={documentId}
         title={book.title}
         readingThreadId={readingThreadId}
+        onSourceBodyChanged={refreshSourceBody}
       />
 
       {/* M2 — the floating bookmark: a book-level MULTI-TURN talk-to-book

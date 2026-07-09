@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
 
 import type { Event } from "../../generated/types";
@@ -105,10 +106,10 @@ afterEach(() => {
   clearChaseDraftHandoffs();
 });
 
-function renderCompanion() {
+function renderCompanion(props: Partial<ComponentProps<typeof ReadingCompanion>> = {}) {
   return render(
     <MemoryRouter>
-      <ReadingCompanion documentId="doc-1" title="Meditations" readingThreadId="read-doc-1" />
+      <ReadingCompanion documentId="doc-1" title="Meditations" readingThreadId="read-doc-1" {...props} />
     </MemoryRouter>,
   );
 }
@@ -599,8 +600,9 @@ describe("ReadingCompanion (Read SPR-06 M2)", () => {
       event_id: "evt-commit",
     });
     useInvestigationMock.mockReturnValue(state({ status: "not_found", events: [] }));
+    const onSourceBodyChanged = vi.fn();
 
-    renderCompanion();
+    renderCompanion({ onSourceBodyChanged });
     fireEvent.click(screen.getByRole("button", { name: /draft ready/i }));
     await screen.findByRole("region", { name: /Draft merge receipt/i });
     fireEvent.click(screen.getByLabelText(/Reviewed draft/i));
@@ -612,6 +614,7 @@ describe("ReadingCompanion (Read SPR-06 M2)", () => {
     fireEvent.click(screen.getByRole("button", { name: /rewrite source/i }));
 
     await waitFor(() => expect(commitSourceMergeMock).toHaveBeenCalledTimes(1));
+    expect(onSourceBodyChanged).toHaveBeenCalledTimes(1);
     expect(commitSourceMergeMock).toHaveBeenCalledWith({
       reviewed_packet: {
         kind: "antiek.reader.source_merge_review_packet",
@@ -726,8 +729,9 @@ describe("ReadingCompanion (Read SPR-06 M2)", () => {
       writes_performed: true,
     });
     useInvestigationMock.mockReturnValue(state({ status: "not_found", events: [] }));
+    const onSourceBodyChanged = vi.fn();
 
-    renderCompanion();
+    renderCompanion({ onSourceBodyChanged });
     fireEvent.click(screen.getByRole("button", { name: /draft ready/i }));
     await screen.findByRole("region", { name: /Draft merge receipt/i });
     fireEvent.click(screen.getByLabelText(/Reviewed draft/i));
@@ -736,12 +740,14 @@ describe("ReadingCompanion (Read SPR-06 M2)", () => {
     fireEvent.click(screen.getByLabelText(/Rewrite source from preview/i));
     fireEvent.click(screen.getByRole("button", { name: /rewrite source/i }));
     await screen.findByRole("region", { name: /Source merge commit/i });
+    expect(onSourceBodyChanged).toHaveBeenCalledTimes(1);
 
     expect((screen.getByRole("button", { name: /^restore$/i }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByLabelText(/Restore previous source body/i));
     fireEvent.click(screen.getByRole("button", { name: /^restore$/i }));
 
     await waitFor(() => expect(restoreSourceMergeMock).toHaveBeenCalledTimes(1));
+    expect(onSourceBodyChanged).toHaveBeenCalledTimes(2);
     expect(restoreSourceMergeMock).toHaveBeenCalledWith({
       document_id: "doc-1",
       parent_reading_thread_id: "read-doc-1",

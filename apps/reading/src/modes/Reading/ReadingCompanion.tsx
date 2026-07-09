@@ -65,6 +65,8 @@ export interface ReadingCompanionProps {
   documentId: string;
   /** The book title, for the rail's human framing (never the raw id). */
   title?: string | null;
+  /** Called after commit/restore changes the served source body. */
+  onSourceBodyChanged?: () => void;
   /**
    * The book's reading thread id (``read-<documentId>``). The companion
    * READS this thread's events for notes; it is the same id the reader's
@@ -77,6 +79,7 @@ export interface ReadingCompanionProps {
 export default function ReadingCompanion({
   documentId,
   title,
+  onSourceBodyChanged,
   readingThreadId,
 }: ReadingCompanionProps) {
   // Read/display only — subscribe to the book's reading thread for notes.
@@ -229,6 +232,7 @@ export default function ReadingCompanion({
       setSourceRestoreAck(false);
       setSourceRestoreReceipt(null);
       setSourceRestoreError(null);
+      onSourceBodyChanged?.();
     } catch (error) {
       setSourceCommitError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -252,6 +256,7 @@ export default function ReadingCompanion({
         operator_reviewer: "reader-companion",
       });
       setSourceRestoreReceipt(result);
+      onSourceBodyChanged?.();
     } catch (error) {
       setSourceRestoreError(error instanceof Error ? error.message : String(error));
     } finally {
