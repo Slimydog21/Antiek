@@ -240,7 +240,8 @@ export async function getHealth(): Promise<{
  * sends the chosen label. Mirrors the closed set in
  * substrate/dispatch/research_tier.py:RESEARCH_TIERS.
  */
-export type ResearchTier = "fast" | "deep";
+/** Curated research-entry tiers (closed set; residual gp adds wrestle). */
+export type ResearchTier = "fast" | "deep" | "wrestle";
 
 export interface StartInvestigationRequest {
   question: string;

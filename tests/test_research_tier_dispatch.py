@@ -180,9 +180,10 @@ def test_smoke_completion_routes_to_each(provider_name, model, base):
 # ── M3: the curated fast/deep tier map ──────────────────────────────────
 
 
-def test_research_tiers_is_closed_two_value_set():
-    assert set(RESEARCH_TIERS) == {"fast", "deep"}
-    assert len(RESEARCH_TIERS) == 2
+def test_research_tiers_is_closed_three_value_set():
+    """Residual (gp): closed set is {fast, deep, wrestle}."""
+    assert set(RESEARCH_TIERS) == {"fast", "deep", "wrestle"}
+    assert len(RESEARCH_TIERS) == 3
 
 
 def test_default_tier_is_deep():
@@ -200,6 +201,19 @@ def test_fast_maps_to_glm_thinking_off_deep_maps_to_glm_thinking_on():
     assert deep.model == "glm-5.2"
     # Different tier ⇒ different provider (the selector actually selects).
     assert fast.provider != deep.provider
+
+
+def test_wrestle_maps_to_thinking_enabled_and_is_queryable(gp_residual=None):
+    """Residual (gp): wrestle shares deep's thinking-enabled provider but
+    is a distinct closed-set value for long-horizon depth recording."""
+    wrestle = resolve_research_tier("wrestle")
+    deep = resolve_research_tier("deep")
+    assert wrestle.provider == "zai_reasoning"
+    assert wrestle.model == "glm-5.2"
+    assert wrestle.tier == "wrestle"
+    assert wrestle.provider == deep.provider
+    assert "wrestle" in wrestle.why.lower() or "long-horizon" in wrestle.why.lower()
+    assert normalize_research_tier("wrestle") == "wrestle"
 
 
 def test_every_tier_has_a_why_rationale():

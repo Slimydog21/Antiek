@@ -181,7 +181,13 @@ export default function ChatInputArea({
       <div className="mt-2" data-testid="chat-input-budget-mount">
         <ResearchLaunchBudgetPanel
           promptText={question}
-          researchTier={researchTier === "fast" ? "fast" : "deep"}
+          researchTier={
+            researchTier === "fast"
+              ? "fast"
+              : researchTier === "wrestle"
+                ? "wrestle"
+                : "deep"
+          }
           allowTierPick
           onProjectionChange={onProjectionChange}
         />

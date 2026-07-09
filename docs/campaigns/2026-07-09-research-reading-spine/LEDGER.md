@@ -92,3 +92,7 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 ## residual (go) workstation depth-tier picker — 2026-07-09
 - allowTierPick on DR session host, ResearchThis, StartResearch, ChatInput
 - tests: DeepResearchSessionHost 22 + ResearchThis 7 + ChatInput budget 1
+## residual (gp) wrestle research tier closed-set — 2026-07-09
+- RESEARCH_TIERS += wrestle; zai_reasoning/glm-5.2
+- StartResearch Fast|Deep|Wrestle; TS ResearchTier
+- tests: test_research_tier_dispatch 23 passed

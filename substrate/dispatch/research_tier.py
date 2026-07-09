@@ -7,10 +7,12 @@ imports ``resolve_research_tier`` from here.
 
 Scope discipline (§16 + master-spec §16.1 REJECT list):
 
-  - This is a CLOSED two-value set ({fast, deep}) offered ONLY at the
-    research entry (StartResearch). It is NOT a raw model dropdown, NOT
-    a per-invocation picker on every surface, and NOT user-facing BYO-
-    model / temperature optionality. Those are explicit OOS rejects.
+  - This is a CLOSED three-value set ({fast, deep, wrestle}) offered at
+    research entry / launch budget projection. It is NOT a raw model
+    dropdown, NOT open-ended BYO-model / temperature optionality.
+    Residual (gp): ``wrestle`` records long-horizon depth (competitive
+    OpenAI Deep Research posture) while reusing the thinking-enabled
+    GLM lane — optionality with a measurable product meaning.
   - It does NOT introduce a second runtime. Both lanes below are
     OpenAI-compatible APIs the dispatch router already calls through the
     one ``OpenAICompatProvider`` adapter (z.ai, same endpoint, two
@@ -47,11 +49,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-# The closed set. Adding a third value is a deliberate edit here, gated
-# by the same scope discipline above — never an open-ended dropdown.
-ResearchTier = Literal["fast", "deep"]
+# The closed set. Expanding requires a deliberate edit here, gated by the
+# same scope discipline above — never an open-ended dropdown.
+ResearchTier = Literal["fast", "deep", "wrestle"]
 
-RESEARCH_TIERS: tuple[ResearchTier, ...] = ("fast", "deep")
+RESEARCH_TIERS: tuple[ResearchTier, ...] = ("fast", "deep", "wrestle")
 
 # Sensible default when the caller doesn't pick. "deep" is the default
 # because a cold research question is the high-value case; the operator
@@ -121,6 +123,18 @@ _RESEARCH_TIER_MAP: dict[ResearchTier, ResearchTierTarget] = {
         why="GLM-5.2 (thinking enabled) — reasoning-heavy lane for "
         "questions worth the deeper reasoning; the default for a cold "
         "research question.",
+    ),
+    # Residual (gp): long-horizon / multi-minute wrestle depth. Same thinking-
+    # enabled GLM primary as deep (no second runtime); distinct tier value so
+    # investigation start events + Antiek-bench task classes can differentiate
+    # competitive "Deep Research" posture from ordinary deep asks.
+    "wrestle": ResearchTierTarget(
+        tier="wrestle",
+        provider="zai_reasoning",  # GLM-5.2 thinking-ENABLED (z.ai DIRECT API)
+        model="glm-5.2",
+        why="GLM-5.2 (thinking enabled) — long-horizon wrestle lane for "
+        "multi-minute synthesis (competitive Deep Research depth); "
+        "same provider as deep, recorded as wrestle for queryability.",
     ),
 }
 

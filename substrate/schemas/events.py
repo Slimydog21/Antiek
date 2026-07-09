@@ -2190,7 +2190,7 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     # "the operator explicitly chose this lane." DEFAULT_RESEARCH_TIER's
     # meaning for the research-runner lane is UNCHANGED — see
     # substrate/dispatch/research_tier.py.
-    research_tier: Literal["fast", "deep"] | None = None
+    research_tier: Literal["fast", "deep", "wrestle"] | None = None
 
 
 class InvestigationChaseHaltedPayload(_PayloadBase):

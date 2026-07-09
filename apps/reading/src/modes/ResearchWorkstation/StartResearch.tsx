@@ -106,6 +106,12 @@ const RESEARCH_TIER_OPTIONS: ReadonlyArray<{
 }> = [
   { value: "fast", label: "Fast", hint: "cheaper, lower-latency" },
   { value: "deep", label: "Deep", hint: "reasoning-heavier" },
+  // Residual (gp): long-horizon wrestle (competitive Deep Research depth).
+  {
+    value: "wrestle",
+    label: "Wrestle",
+    hint: "long-horizon multi-minute synthesis",
+  },
 ];
 const DEFAULT_TIER: ResearchTier = "deep";
 
