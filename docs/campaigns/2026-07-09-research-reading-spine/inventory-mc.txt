@@ -1,0 +1,7 @@
+# inventory-mc · SESSION-ARC marketplace catalog lw–mb handoff
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: mc
+files:
+  docs/campaigns/2026-07-09-research-reading-spine/SESSION-ARC-lw-mb-marketplace-catalog.md
+proof: docs honesty; suite-proposal still 4_passed on branch
+invariants: operator merge PR #465 · fleet handoff · zero-context

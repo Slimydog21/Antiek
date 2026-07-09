@@ -234,3 +234,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (mb, 2026-07-10) **Marketplace host usage_event UI:**
   - HostResultResponse.usage_event types
   - Host land metrics + marketplace-host-usage-event chrome (propose≠promote)
+
+- Closed (mc, 2026-07-10) **SESSION-ARC marketplace catalog lw–mb:**
+  - SESSION-ARC-lw-mb-marketplace-catalog.md zero-context fleet handoff
+  - Offline marketplace filter matrix + bench usage feed product-complete for demo
