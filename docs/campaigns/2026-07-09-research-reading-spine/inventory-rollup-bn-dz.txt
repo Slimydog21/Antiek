@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(dz) · PR #465
+dy: ND advisory refresh after dogfood · dz: marketplace decision-tree driver badge.
+Operator merge still gated. Next residual (ea).

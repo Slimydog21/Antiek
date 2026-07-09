@@ -30,6 +30,12 @@ vi.mock("../../components/windows/openWindow", () => ({
   openWindow,
 }));
 
+vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
+  DecisionTreeDriverBadge: () => (
+    <div data-testid="decision-tree-driver-badge-stub">driver badge</div>
+  ),
+}));
+
 describe("MarketplaceHost mode", () => {
   afterEach(() => cleanup());
   beforeEach(() => {
@@ -86,6 +92,14 @@ describe("MarketplaceHost mode", () => {
     });
 
     render(<MarketplaceHost ownerId="operator" />);
+    // Residual (dz): decision-tree driver badge on marketplace (reading ≡ research).
+    expect(screen.getByTestId("marketplace-driver-badge-mount")).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("marketplace-driver-badge-mount")
+        .getAttribute("data-view-format"),
+    ).toBe("html");
+    expect(screen.getByTestId("decision-tree-driver-badge-stub")).toBeTruthy();
     await waitFor(() => {
       expect(screen.getByText("Pride and Prejudice")).toBeTruthy();
     });

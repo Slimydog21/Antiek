@@ -8,6 +8,8 @@
  * Residual (do): rehydrate document HTML via GET /documents/{id}/html so any
  * library row can open a hosted window without last-host session body.
  * Residual (dq): load account library on mount (not only after host).
+ * Residual (dz): DecisionTreeDriverBadge — active model driver readout before
+ * host/research (reading ≡ research model visibility).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -20,6 +22,7 @@ import {
   type CatalogEntryRow,
   type HostResultResponse,
 } from "../../api/marketplaceHost";
+import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
 import { openWindow } from "../../components/windows/openWindow";
 
 type LibraryDoc = {
@@ -266,13 +269,21 @@ export default function MarketplaceHost({
 
   return (
     <div className="h-full overflow-y-auto p-6" data-view-format="html" data-testid="marketplace-host-mode">
-      <header className="mb-6 space-y-1">
-        <h1 className="text-2xl font-semibold">Marketplace · host into account</h1>
-        <p className="text-sm opacity-80">
-          Host public-domain catalog books into your Antiek library. Purchased
-          titles use a manual receipt token (no live payment rails). Human view
-          is HTML, never PDF.
-        </p>
+      <header className="mb-6 space-y-2">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="space-y-1">
+            <h1 className="text-2xl font-semibold">Marketplace · host into account</h1>
+            <p className="text-sm opacity-80">
+              Host public-domain catalog books into your Antiek library. Purchased
+              titles use a manual receipt token (no live payment rails). Human view
+              is HTML, never PDF.
+            </p>
+          </div>
+          {/* Residual (dz): Settings decision-tree driver (advisory readout). */}
+          <div data-testid="marketplace-driver-badge-mount" data-view-format="html">
+            <DecisionTreeDriverBadge />
+          </div>
+        </div>
       </header>
 
       <div className="flex flex-wrap gap-3 items-end mb-4">
