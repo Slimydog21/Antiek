@@ -99,5 +99,12 @@ only — twin chase → collective cohesive unit path offline-complete.
 
 ## Next residual after this doc
 
-**(oi)+** next thin product residual or operator merge PR #465.
+## Closed since oi (collective bench feed · 2026-07-10)
+
+**(oi–oj)** collective merge usage events + UI chrome; suite rewrite feed
+includes multi-spawn cohesive unit assembly.
+
+## Next residual after this doc
+
+**(ol)+** next thin product residual or operator merge PR #465.
 Infinite continues until STOP.

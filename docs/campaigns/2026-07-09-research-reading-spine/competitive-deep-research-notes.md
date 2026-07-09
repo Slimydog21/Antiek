@@ -457,3 +457,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (oj, 2026-07-10) **Collective usage_event UI chrome:**
   - collective-unit-metrics data-usage-source/task-class
   - collective-doc-merge-usage bench feed status
+
+- Closed (ok, 2026-07-10) **SESSION-ARC oi–oj collective bench feed:**
+  - SESSION-ARC-oi-oj-collective-bench-feed.md fleet handoff
+  - twin chase → collective merge → collective_merge usage → suite rewrite
