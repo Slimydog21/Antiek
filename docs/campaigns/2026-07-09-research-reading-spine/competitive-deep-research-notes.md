@@ -297,3 +297,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (mu, 2026-07-10) **ResearchContext dual-gate checklist link:**
   - Completes dual-gate prep on research context hydrate path
+
+- Closed (mv, 2026-07-10) **SESSION-ARC mp–mu twins dual-gate:**
+  - SESSION-ARC-mp-mu-twins-dualgate.md fleet handoff
