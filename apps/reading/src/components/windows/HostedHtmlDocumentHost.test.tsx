@@ -155,8 +155,17 @@ vi.mock("../engagement/ResearchLaunchBudgetPanel", () => {
 });
 
 vi.mock("../engagement/DecisionTreeDriverBadge", () => ({
-  DecisionTreeDriverBadge: () => (
-    <div data-testid="decision-tree-driver-badge-stub">driver</div>
+  DecisionTreeDriverBadge: (props: {
+    researchTier?: string | null;
+    promptText?: string | null;
+  }) => (
+    <div
+      data-testid="decision-tree-driver-badge-stub"
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+      data-prompt-len={String((props.promptText || "").length)}
+    >
+      driver
+    </div>
   ),
 }));
 
@@ -295,6 +304,14 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     );
 
     expect(screen.getByTestId("decision-tree-driver-badge-stub")).toBeTruthy();
+    // Residual (pj): whole-document selection feeds badge prompt projection.
+    expect(
+      Number(
+        screen
+          .getByTestId("decision-tree-driver-badge-stub")
+          .getAttribute("data-prompt-len") || 0,
+      ),
+    ).toBeGreaterThan(0);
     const launch = screen.getByTestId("hosted-html-research-launch");
     expect(launch.getAttribute("data-view-format")).toBe("html");
     await waitFor(() => {

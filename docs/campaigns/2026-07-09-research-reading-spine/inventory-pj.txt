@@ -1,0 +1,8 @@
+# inventory-pj · HostedHtml DecisionTreeDriverBadge promptText wire
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: pj
+files:
+  apps/reading/src/components/windows/HostedHtmlDocumentHost.tsx
+  apps/reading/src/components/windows/HostedHtmlDocumentHost.test.tsx
+proof: vitest HostedHtmlDocumentHost 12 passed
+invariants: marketplace books ≡ reading · selection + pub refs → badge projection

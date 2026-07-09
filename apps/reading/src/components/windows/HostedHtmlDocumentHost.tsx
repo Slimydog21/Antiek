@@ -8,6 +8,8 @@
  * Residual (cv): ResearchContextPanel autoLoad.
  * Residual (da): DecisionTreeDriverBadge + budget projection + deep research
  * float launch from the hosted book (reading ≡ research).
+ * Residual (pj): DecisionTreeDriverBadge promptText = selection + pub refs
+ * (parity ResearchThis pi / Write ph / MO pg).
  * Residual (dg): soft-gate deep research when budget would exceed.
  * Residual (ec): remount ResearchContextPanel after twin promote.
  * Residual (en): highlight inside hosted HTML body → selection drives float
@@ -267,7 +269,15 @@ export default function HostedHtmlDocumentHost(
           </div>
           {/* Residual (da): driver readout on reading host (parity with DR). */}
           <div className="flex flex-col items-end gap-1">
-            <DecisionTreeDriverBadge researchTier={researchTier} />
+            <DecisionTreeDriverBadge
+              researchTier={researchTier}
+              /* Residual (pj): selection + pub refs cost foresight. */
+              promptText={
+                pubRefs.trim()
+                  ? `${researchSelection}\n\nPublication refs:\n${pubRefs.trim()}`
+                  : researchSelection
+              }
+            />
             {/* Residual (fl): handoff draft HTML into Write mode (import lands later). */}
             {assetId && isHtml ? (
               <a
