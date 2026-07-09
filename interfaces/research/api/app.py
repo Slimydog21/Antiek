@@ -1653,6 +1653,10 @@ def create_app(
     # hardening seams and persist JSON-backed asset records.
     from .multimedia_routes import register_multimedia_routes
     register_multimedia_routes(app)
+    # Settings SPR-01 — model inventory + operator budget readout + prompt
+    # cost projection (honest nulls when pricing/spend unknown).
+    from .settings_budget import register_settings_budget_routes
+    register_settings_budget_routes(app)
     # Read SPR-09 — library catalog (paginated/filtered/searched view over the
     # SAME servable-corpus read path; §9.0 keeps gated bodies out of payloads).
     from .library import register_library_routes
