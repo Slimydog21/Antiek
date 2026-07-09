@@ -56,6 +56,18 @@ describe("ResearchProgressPanel", () => {
     expect(
       screen.getByTestId("research-progress-panel").getAttribute("data-view-format"),
     ).toBe("html");
+    // Residual (hk): machine-readable multi-minute progress metrics.
+    const metrics = screen.getByTestId("research-progress-metrics");
+    expect(metrics.getAttribute("data-spawn-id")).toBe("spn_1");
+    expect(metrics.getAttribute("data-event-count")).toBe("4");
+    expect(metrics.getAttribute("data-latest-stage")).toBe("cite");
+    expect(metrics.getAttribute("data-is-terminal")).toBe("false");
+    expect(metrics.getAttribute("data-view-format")).toBe("html");
+    expect(metrics.getAttribute("data-product-panel")).toBe("research_progress");
+    expect(metrics.getAttribute("data-source")).toBe(
+      "engagement_spine.progress",
+    );
+    expect(metrics.textContent).toMatch(/Research progress/);
   });
 
   it("auto-loads progress on mount (cp)", async () => {

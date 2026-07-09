@@ -4,6 +4,8 @@
  * Residual (ax): plan → gather → synthesize → cite (+ terminal) for a spawn.
  * Residual (cp): autoLoad (and optional empty-pipeline seed) on mount for
  * competitive multi-minute job visibility without an extra click.
+ * Residual (hk): research-progress-metrics machine attrs for multi-minute
+ * plan→cite audit (parity twin/flywheel metrics).
  * HTML-first; never PDF.
  */
 
@@ -143,6 +145,24 @@ export function ResearchProgressPanel({
       ) : null}
       {progress ? (
         <div data-testid="research-progress-summary" className="font-mono text-sm">
+          {/* Residual (hk): machine-readable multi-minute progress metrics. */}
+          <div
+            data-testid="research-progress-metrics"
+            data-spawn-id={progress.spawn_id ?? spawnId}
+            data-event-count={String(progress.event_count ?? 0)}
+            data-latest-stage={progress.latest_stage ?? ""}
+            data-is-terminal={String(Boolean(progress.is_terminal))}
+            data-view-format="html"
+            data-product-panel={
+              progress.product_panel ?? "research_progress"
+            }
+            data-source={progress.source ?? "engagement_spine.progress"}
+            role="status"
+          >
+            Research progress · stage={progress.latest_stage ?? "(none)"} ·
+            events={progress.event_count ?? 0} · terminal=
+            {String(Boolean(progress.is_terminal))}
+          </div>
           <p>
             latest=<strong>{progress.latest_stage ?? "(none)"}</strong> · events=
             {progress.event_count} · terminal={String(progress.is_terminal)}

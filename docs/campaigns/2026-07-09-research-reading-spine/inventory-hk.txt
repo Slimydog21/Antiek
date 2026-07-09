@@ -1,0 +1,11 @@
+# inventory-hk · research progress metrics · residual (hk)
+
+## Delta
+- research-progress-metrics: spawn_id, event_count, latest_stage, is_terminal,
+  view_format, product_panel, source
+
+## Verified
+vitest ResearchProgressPanel 4_passed
+
+## Next
+(hl) re-derive — prefer product surface over metrics-only if higher value
