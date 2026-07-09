@@ -22,6 +22,7 @@ from .hardening import (
 )
 from .live_worker import (
     preview_next_live_execution,
+    record_provider_artifact_receipt,
 )
 from .narration import (
     NarrationParagraph,
@@ -55,6 +56,7 @@ from .provider_router import (
 )
 from .read_model import (
     CreateMultimediaDraftRequest,
+    LiveProviderArtifactReceipt,
     LiveProviderExecutionRequest,
     LiveProviderRoutePreview,
     MultimediaAssetList,
@@ -158,6 +160,7 @@ __all__ = [
     # SPR-08 evaluation + hardening
     "GateFinding",
     "GateResult",
+    "LiveProviderArtifactReceipt",
     "LiveProviderExecutionRequest",
     "LiveProviderRoutePreview",
     "GateStatus",
@@ -172,4 +175,5 @@ __all__ = [
     "MultimediaAssetSummary",
     "SteeringRequest",
     "preview_next_live_execution",
+    "record_provider_artifact_receipt",
 ]

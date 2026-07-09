@@ -15,10 +15,11 @@ import uuid
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from substrate.contracts.multimedia import (
     AssetKind,
+    GeneratedFile,
     MultimediaAssetContract,
     MultimediaStatus,
     RoutePolicy,
@@ -118,6 +119,37 @@ class LiveProviderRoutePreview(_ReadModelBase):
     reason: str
 
 
+class LiveProviderArtifactReceipt(_ReadModelBase):
+    """No-spend provider artifact status observed by polling or webhook.
+
+    This receipt records immutable provider metadata only. It does not attach
+    files to the asset manifest and does not imply publish readiness.
+    """
+
+    provider_job_id: str
+    provider: str
+    status: Literal["queued", "running", "succeeded", "failed"]
+    files: tuple[GeneratedFile, ...] = Field(default_factory=tuple)
+    error_code: str | None = None
+    message: str | None = None
+
+    @field_validator("provider")
+    @classmethod
+    def provider_is_not_secret(cls, value: str) -> str:
+        lowered = value.lower()
+        if "key" in lowered or "secret" in lowered or "token" in lowered:
+            raise ValueError("provider must name a provider, not carry a secret")
+        return value
+
+    @model_validator(mode="after")
+    def terminal_receipts_are_complete(self) -> LiveProviderArtifactReceipt:
+        if self.status == "succeeded" and not self.files:
+            raise ValueError("succeeded artifact receipts require at least one generated file")
+        if self.status == "failed" and not self.error_code:
+            raise ValueError("failed artifact receipts require error_code")
+        return self
+
+
 class MultimediaJobRecord(_ReadModelBase):
     """Durable progress record for one multimedia operation.
 
@@ -139,6 +171,7 @@ class MultimediaJobRecord(_ReadModelBase):
     retryable: bool | None = None
     execution_plan: LiveProviderExecutionPlan | None = None
     route_preview: LiveProviderRoutePreview | None = None
+    artifact_receipt: LiveProviderArtifactReceipt | None = None
 
 
 class MultimediaAssetSummary(_ReadModelBase):
@@ -429,6 +462,7 @@ class MultimediaAssetStore:
         retryable: bool | None = None,
         execution_plan: LiveProviderExecutionPlan | None = None,
         route_preview: LiveProviderRoutePreview | None = None,
+        artifact_receipt: LiveProviderArtifactReceipt | None = None,
     ) -> MultimediaAssetRecord:
         """Append an arbitrary job row (failed/partial provider jobs, retries).
 
@@ -447,6 +481,7 @@ class MultimediaAssetStore:
             retryable=retryable,
             execution_plan=execution_plan,
             route_preview=route_preview,
+            artifact_receipt=artifact_receipt,
         )
         self.save(updated)
         return updated
@@ -468,6 +503,7 @@ class MultimediaAssetStore:
         retryable: bool | None = None,
         execution_plan: LiveProviderExecutionPlan | None = None,
         route_preview: LiveProviderRoutePreview | None = None,
+        artifact_receipt: LiveProviderArtifactReceipt | None = None,
     ) -> MultimediaAssetRecord:
         sequence = max((job.sequence for job in record.jobs), default=0) + 1
         job = MultimediaJobRecord(
@@ -483,6 +519,7 @@ class MultimediaAssetStore:
             retryable=retryable,
             execution_plan=execution_plan,
             route_preview=route_preview,
+            artifact_receipt=artifact_receipt,
         )
         return record.model_copy(update={"jobs": record.jobs + (job,)})
 
@@ -586,6 +623,7 @@ def _missing_provider_families(provider_families: tuple[str, ...]) -> tuple[str,
 
 __all__ = [
     "CreateMultimediaDraftRequest",
+    "LiveProviderArtifactReceipt",
     "LiveProviderExecutionPlan",
     "LiveProviderExecutionRequest",
     "LiveProviderRoutePreview",
