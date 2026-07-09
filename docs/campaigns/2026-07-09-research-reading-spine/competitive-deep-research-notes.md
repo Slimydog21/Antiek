@@ -498,3 +498,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (os, 2026-07-10) **Settings Antiek-bench MO + collective_merge chrome:**
   - data-has-midnight-oil / data-has-collective-merge on known sources + suite feed
   - empty-state copy includes collective merge
+
+- Closed (ot, 2026-07-10) **MO run metrics recent_ring honesty:**
+  - data-recent-ring-count / data-recent-ring-has-run-spawns
+  - moil-run-recent-ring-status copy for collective multi-select path

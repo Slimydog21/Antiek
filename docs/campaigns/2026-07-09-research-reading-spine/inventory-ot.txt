@@ -1,0 +1,8 @@
+# inventory-ot · MO run metrics recent_ring honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ot
+files:
+  apps/reading/src/modes/MidnightOil/index.tsx
+  apps/reading/src/modes/MidnightOil/MidnightOil.test.tsx
+proof: vitest MidnightOil 15 passed
+invariants: offline-honest · data-recent-ring-has-run-spawns · never invent spawn ids

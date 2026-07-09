@@ -42,6 +42,8 @@
  * substrate that feeds the next prompt) — remount on same refresh key as twins.
  * Residual (oq): offline run spawn_ids push recent_ring even when auto_deposit
  * is off so swarm goals remain multi-selectable elsewhere (Write/hosted).
+ * Residual (ot): run-result metrics surface recent_ring honesty (spawn count
+ * remembered for collective multi-select without leaving MO or after navigate).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -958,7 +960,7 @@ export default function MidnightOil() {
                   ? "Live step run result"
                   : "Offline run result"}
               </h3>
-              {/* Residual (hw): machine-readable offline vs live swarm run metrics. */}
+              {/* Residual (hw/ot): machine-readable offline vs live swarm run metrics. */}
               <div
                 data-testid="moil-run-metrics"
                 data-status={runResult.status ?? ""}
@@ -967,14 +969,39 @@ export default function MidnightOil() {
                 data-goals-total={String(runResult.goals_total ?? 0)}
                 data-offline={String(Boolean(runResult.offline))}
                 data-live-step={String(Boolean(runResult.live_step))}
+                data-recent-ring-count={String(recentSpawnIds.length)}
+                data-recent-ring-has-run-spawns={String(
+                  (runResult.spawn_ids || [])
+                    .map((x) => String(x || "").trim())
+                    .filter(Boolean)
+                    .every((sid) => recentSpawnIds.includes(sid)) &&
+                    (runResult.spawn_ids || []).filter(Boolean).length > 0,
+                )}
                 data-view-format="html"
                 role="status"
               >
                 Midnight Oil run · status={runResult.status} · spent=$
                 {Number(runResult.spent_usd ?? 0).toFixed(4)} · spawns=
                 {runResult.spawn_ids?.length ?? 0}/{runResult.goals_total ?? 0} ·
-                offline={String(Boolean(runResult.offline))}
+                offline={String(Boolean(runResult.offline))} · recent_ring=
+                {recentSpawnIds.length}
               </div>
+              {/* Residual (ot): honesty — offline swarm spawns join collective ring. */}
+              {(runResult.spawn_ids || []).filter(Boolean).length > 0 ? (
+                <p
+                  className="text-[11px] font-mono opacity-80"
+                  data-testid="moil-run-recent-ring-status"
+                  data-spawn-count={String(
+                    (runResult.spawn_ids || []).filter(Boolean).length,
+                  )}
+                  data-recent-ring-count={String(recentSpawnIds.length)}
+                  role="status"
+                >
+                  Spawn ids remembered in session recent_ring for collective
+                  multi-select (Write / hosted / ResearchThis / deposit
+                  collective) even if auto-deposit is off.
+                </p>
+              ) : null}
               <p className="font-mono text-sm">
                 status=<strong>{runResult.status}</strong> · spent=$
                 {runResult.spent_usd.toFixed(4)} · spawns=

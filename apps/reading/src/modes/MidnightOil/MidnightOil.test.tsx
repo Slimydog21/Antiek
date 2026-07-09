@@ -902,13 +902,25 @@ describe("MidnightOil mode", () => {
     expect(
       screen.getByTestId("moil-run-result").getAttribute("data-live-step"),
     ).toBe("false");
-    // Residual (hw): machine-readable offline swarm run metrics.
+    // Residual (hw/ot): machine-readable offline swarm run metrics + recent_ring.
     const metrics = screen.getByTestId("moil-run-metrics");
     expect(metrics.getAttribute("data-status")).toBe("complete");
     expect(metrics.getAttribute("data-offline")).toBe("true");
     expect(metrics.getAttribute("data-live-step")).toBe("false");
     expect(metrics.getAttribute("data-view-format")).toBe("html");
+    await waitFor(() => {
+      expect(metrics.getAttribute("data-recent-ring-has-run-spawns")).toBe(
+        "true",
+      );
+    });
+    expect(Number(metrics.getAttribute("data-recent-ring-count") || 0)).toBeGreaterThan(
+      0,
+    );
     expect(metrics.textContent).toMatch(/Midnight Oil run/);
+    expect(metrics.textContent).toMatch(/recent_ring=/);
+    expect(screen.getByTestId("moil-run-recent-ring-status").textContent).toMatch(
+      /recent_ring/i,
+    );
     expect(screen.getByTestId("moil-run-notes").textContent).toMatch(
       /Offline worker|LIVE_STEP/i,
     );
