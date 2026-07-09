@@ -1031,6 +1031,9 @@ export default function Multimedia() {
                   </button>
                 ))}
               </div>
+              <p className="mt-2 text-[11px] leading-snug text-shadow-1 dark:text-moonlight">
+                Route choices update planning preference and estimates only; they do not call providers or spend budget.
+              </p>
             </div>
 
             <Labeled label="Source scope" htmlFor="multimedia-source-scope">

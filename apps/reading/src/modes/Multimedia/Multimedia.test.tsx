@@ -332,6 +332,9 @@ describe("Multimedia workstation", () => {
     expect(
       screen.getByText("Review plan creates a persisted draft only; it does not call providers, export, or publish media."),
     ).toBeTruthy();
+    expect(
+      screen.getByText("Route choices update planning preference and estimates only; they do not call providers or spend budget."),
+    ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /Cheapest/ }));
 
