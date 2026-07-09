@@ -12,9 +12,12 @@
  * host/research (reading ≡ research model visibility).
  * Residual (gi): Open Write HTML draft handoff from host-result + library
  * rows (marketplace → write flywheel; fl path).
+ * Residual (gj): offline twin seed after host/purchase so marketplace books
+ * enter the recursive note-taker substrate (parity with Write fz).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { seedTwinNotes } from "../../api/engagement";
 import {
   fetchAccountLibrary,
   fetchHostedDocumentHtml,
@@ -99,6 +102,8 @@ export default function MarketplaceHost({
 
   /** Residual (dq/dw): hydrate library list on enter so open-rehydrate works. */
   const [libraryLoadNote, setLibraryLoadNote] = useState<string | null>(null);
+  // Residual (gj): twin seed status after host/purchase.
+  const [twinSeedStatus, setTwinSeedStatus] = useState<string | null>(null);
   const loadLibrary = useCallback(async () => {
     try {
       const lib = await fetchAccountLibrary(ownerId);
@@ -199,9 +204,38 @@ export default function MarketplaceHost({
     }
   }
 
+  /** Residual (gj): offline twin seed for hosted book asset (non-fatal). */
+  async function seedHostedTwins(result: HostResultResponse) {
+    setTwinSeedStatus(null);
+    try {
+      const plain = (result.html || "")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 2000);
+      const seeded = await seedTwinNotes({
+        asset_id: result.document_id,
+        title: result.title || result.document_id,
+        body_text: plain || result.title || result.document_id,
+        include_html: false,
+        force_offline: true,
+      });
+      setTwinSeedStatus(
+        seeded.seeded === false
+          ? `Twin seed skipped${seeded.seed_skipped ? `: ${seeded.seed_skipped}` : ""}`
+          : `Twin notes seeded for ${result.document_id}`,
+      );
+    } catch (e) {
+      setTwinSeedStatus(
+        e instanceof Error ? e.message : "Twin seed failed (non-fatal)",
+      );
+    }
+  }
+
   async function onHost(bookId: string) {
     setBusy(true);
     setError(null);
+    setTwinSeedStatus(null);
     try {
       const result = await hostBookIntoAccount({
         owner_id: ownerId,
@@ -214,6 +248,8 @@ export default function MarketplaceHost({
       const lib = await fetchAccountLibrary(ownerId);
       setLibraryHtml(lib.html);
       setLibraryDocs(lib.documents || []);
+      // Residual (gj): recursive note-taker substrate for the book asset.
+      await seedHostedTwins(result);
       // Residual (dk): seamless port into reading surface.
       if (autoOpenWindow) {
         openHostedWindow({
@@ -236,6 +272,7 @@ export default function MarketplaceHost({
   async function onPurchaseAndHost(entry: CatalogEntryRow) {
     setBusy(true);
     setError(null);
+    setTwinSeedStatus(null);
     try {
       const result = await purchaseAndHost({
         owner_id: ownerId,
@@ -251,6 +288,7 @@ export default function MarketplaceHost({
       const lib = await fetchAccountLibrary(ownerId);
       setLibraryHtml(lib.html);
       setLibraryDocs(lib.documents || []);
+      await seedHostedTwins(result);
       if (autoOpenWindow) {
         openHostedWindow({
           document_id: result.document_id,
@@ -439,6 +477,16 @@ export default function MarketplaceHost({
               </a>
             ) : null}
           </div>
+          {/* Residual (gj): twin seed status after host/purchase. */}
+          {twinSeedStatus ? (
+            <p
+              className="text-[11px] font-mono opacity-80"
+              data-testid="marketplace-twin-seed-status"
+              role="status"
+            >
+              {twinSeedStatus}
+            </p>
+          ) : null}
           <div
             className="prose border rounded p-3 text-sm"
             data-testid="hosted-html"

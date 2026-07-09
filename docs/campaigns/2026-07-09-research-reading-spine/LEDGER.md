@@ -70,3 +70,7 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 - marketplace-open-write on host-result
 - library-open-write-{document_id} on library rows
 - tests: MarketplaceHost 5 passed
+## residual (gj) Marketplace host twin seed — 2026-07-09
+- seedTwinNotes force_offline after host/purchase
+- marketplace-twin-seed-status UI
+- tests: MarketplaceHost 5 passed

@@ -9,6 +9,7 @@ const {
   purchaseAndHost,
   fetchHostedDocumentHtml,
   openWindow,
+  seedTwinNotes,
 } = vi.hoisted(() => ({
   fetchMarketplaceCatalog: vi.fn(),
   hostBookIntoAccount: vi.fn(),
@@ -16,6 +17,7 @@ const {
   purchaseAndHost: vi.fn(),
   fetchHostedDocumentHtml: vi.fn(),
   openWindow: vi.fn(() => "win:hosted:hdoc_abc"),
+  seedTwinNotes: vi.fn(),
 }));
 
 vi.mock("../../api/marketplaceHost", () => ({
@@ -24,6 +26,10 @@ vi.mock("../../api/marketplaceHost", () => ({
   fetchAccountLibrary,
   purchaseAndHost,
   fetchHostedDocumentHtml,
+}));
+
+vi.mock("../../api/engagement", () => ({
+  seedTwinNotes: (...args: unknown[]) => seedTwinNotes(...args),
 }));
 
 vi.mock("../../components/windows/openWindow", () => ({
@@ -45,6 +51,14 @@ describe("MarketplaceHost mode", () => {
     purchaseAndHost.mockReset();
     fetchHostedDocumentHtml.mockReset();
     openWindow.mockClear();
+    seedTwinNotes.mockReset().mockResolvedValue({
+      asset_id: "hdoc_abc",
+      seeded: true,
+      view_format: "html",
+      notes: [],
+      insight_count: 1,
+      question_count: 1,
+    });
     // Residual (dq): library loads on mount — default empty honest library.
     fetchAccountLibrary.mockResolvedValue({
       owner_id: "operator",
@@ -117,6 +131,20 @@ describe("MarketplaceHost mode", () => {
     expect(writeLink.getAttribute("href")).toBe("/write?html_draft=hdoc_abc");
     expect(writeLink.getAttribute("data-view-format")).toBe("html");
     expect(writeLink.getAttribute("data-document-id")).toBe("hdoc_abc");
+    // Residual (gj): offline twin seed after host.
+    await waitFor(() => {
+      expect(seedTwinNotes).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "hdoc_abc",
+          force_offline: true,
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("marketplace-twin-seed-status").textContent).toMatch(
+        /Twin notes seeded/,
+      );
+    });
     // Residual (dk): auto-open hosted window after host (default on).
     await waitFor(() => {
       expect(openWindow).toHaveBeenCalledWith(
