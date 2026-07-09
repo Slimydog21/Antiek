@@ -1215,6 +1215,9 @@ describe("Multimedia workstation", () => {
     expect(within(liveSpendReview).getByText("30 min video")).toBeTruthy();
     expect(within(liveSpendReview).getByText("Live worker disabled")).toBeTruthy();
     const readiness = screen.getByTestId("multimedia-provider-readiness");
+    expect(
+      screen.getByText("Readiness copy is evidence only; it does not authorize spend, run workers, export, publish, or call providers."),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Copy readiness" }));
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith(
@@ -1229,6 +1232,7 @@ describe("Multimedia workstation", () => {
           "Activation proof: Worker logs + manual artifact attach",
           "Review audit: Not run in app",
           "Review proof: Manual review notes + rights clearance",
+          "Copy boundary: Readiness copy is evidence only; it does not authorize spend, run workers, export, publish, or call providers.",
         ].join("\n"),
       ),
     );
@@ -1584,6 +1588,7 @@ describe("Multimedia workstation", () => {
           "Activation proof: Worker logs + manual artifact attach",
           "Review audit: Not run in app",
           "Review proof: Manual review notes + rights clearance",
+          "Copy boundary: Readiness copy is evidence only; it does not authorize spend, run workers, export, publish, or call providers.",
         ].join("\n"),
       ),
     );
