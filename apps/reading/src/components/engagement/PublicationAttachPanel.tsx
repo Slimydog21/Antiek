@@ -7,6 +7,7 @@
  * and source refs appear in the context pack / citation trust surface.
  * Residual (hc): surface offline_honest per hydrated asset so operators
  * never confuse identity-only stubs with live publication bodies.
+ * Residual (ia): Settings deep-link for hydrate live-injector readiness (hq).
  * HTML-first; offline hydrate by default.
  */
 
@@ -112,15 +113,26 @@ export function PublicationAttachPanel({
         placeholder={"arxiv:1706.03762\nhttps://…"}
         className="w-full rounded border border-ink/20 bg-transparent px-2 py-1 text-[12px] font-mono dark:border-bright/20"
       />
-      <button
-        type="button"
-        data-testid="publication-attach-submit"
-        disabled={busy || !raw.trim()}
-        onClick={() => void run()}
-        className="rounded border border-ink/30 px-2 py-1 text-[12px] font-mono hover:bg-ink/5 disabled:opacity-50 dark:border-bright/30"
-      >
-        {busy ? "Attaching…" : "Attach + hydrate"}
-      </button>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          data-testid="publication-attach-submit"
+          disabled={busy || !raw.trim()}
+          onClick={() => void run()}
+          className="rounded border border-ink/30 px-2 py-1 text-[12px] font-mono hover:bg-ink/5 disabled:opacity-50 dark:border-bright/30"
+        >
+          {busy ? "Attaching…" : "Attach + hydrate"}
+        </button>
+        {/* Residual (ia): Settings deep-link for env-gated hydrate readiness. */}
+        <a
+          href="/settings"
+          data-testid="publication-attach-settings-link"
+          className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
+          title="Open Settings → Publication hydrate readiness (arxiv/substack injectors)"
+        >
+          Settings · hydrate readiness
+        </a>
+      </div>
       {error ? (
         <p className="text-[11px] font-mono text-emperor" role="alert">
           {error}

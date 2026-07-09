@@ -67,6 +67,10 @@ describe("PublicationAttachPanel residual ck/ed", () => {
     expect(
       screen.getByTestId("publication-attach-panel").getAttribute("data-view-format"),
     ).toBe("html");
+    // Residual (ia): Settings deep-link for hydrate readiness.
+    const settings = screen.getByTestId("publication-attach-settings-link");
+    expect(settings.getAttribute("href")).toBe("/settings");
+    expect(settings.textContent).toMatch(/hydrate readiness/i);
     // Residual (ed): parent notified so research context can remount.
     await waitFor(() => {
       expect(onAttached).toHaveBeenCalled();
