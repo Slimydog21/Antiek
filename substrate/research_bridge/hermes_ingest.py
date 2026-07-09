@@ -274,11 +274,16 @@ def _scan_event_lines(
             continue
         try:
             with path.open("r", encoding="utf-8", errors="replace") as handle:
-                for raw_line in handle:
+                while True:
+                    raw_line = handle.readline(_MAX_LINE_CHARS + 1)
+                    if raw_line == "":
+                        break
                     if not raw_line.strip():
                         continue
                     if len(raw_line) > _MAX_LINE_CHARS:
                         yield None, True
+                        while raw_line and not raw_line.endswith("\n"):
+                            raw_line = handle.readline(_MAX_LINE_CHARS + 1)
                         continue
                     record = parse_hermes_event_line(raw_line)
                     if record is not None:

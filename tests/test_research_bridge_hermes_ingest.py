@@ -276,6 +276,21 @@ def test_invalid_utf8_does_not_abort_sweep(env):
     assert batch.malformed_lines >= 1
 
 
+def test_oversized_line_is_bounded_and_next_event_survives(env):
+    path = os.path.join(env["events"], "oversized.jsonl")
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write('{"event_id":"too-big","investigation_id":"skip","payload":"')
+        handle.write("x" * 80_000)
+        handle.write('"}\n')
+        handle.write(json.dumps(_event("e1", "kept")) + "\n")
+    with connect_write(env["db"]) as con:
+        batch = ingest_hermes_events(
+            con, env["events"], allowed_roots=env["allowed"]
+        )
+    assert batch.malformed_lines == 1
+    assert [r.investigation_id for r in batch.results] == ["kept"]
+
+
 def test_result_is_frozen_dataclass():
     r = HermesIngestResult(
         investigation_id="i",

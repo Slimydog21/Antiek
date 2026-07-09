@@ -131,4 +131,3 @@ __all__ = [
     "ingest_hermes_events",
     "resolve_allowed_events_dir",
 ]
-
