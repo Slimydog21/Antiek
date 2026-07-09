@@ -1,0 +1,17 @@
+# residual (ez) remount twin notes on hosted book after context refresh
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(ey) prior | branch_only | campaign inventories
+(ez) hosted twins remount | branch_only | TwinNotesPanel key with contextRefreshKey; collective merge remounts twins+context; 10 vitest; suite-proposal 4 passed
+
+PATHS:
+- apps/reading/src/components/windows/HostedHtmlDocumentHost.tsx
+- apps/reading/src/components/windows/HostedHtmlDocumentHost.test.tsx
+
+INVARIANTS:
+- Same refresh key as ResearchContextPanel
+- HTML-first host only
+- plan (al) suite-proposal still green on branch
+
+NEXT: (fa) re-derive; operator merge PR #465

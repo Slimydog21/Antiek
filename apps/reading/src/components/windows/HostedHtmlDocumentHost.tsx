@@ -20,6 +20,8 @@
  * Residual (eu): mount CollectiveResearchPanel when open deep_research_session
  * spawns exist so multi-select merge/analysis runs against this book as parent
  * (reading ≡ research collective unit).
+ * Residual (ez): remount TwinNotesPanel on the same refresh key as research
+ * context so collective merge / promote reload recursive note-taker twins.
  *
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
  */
@@ -399,16 +401,25 @@ export default function HostedHtmlDocumentHost(
           data-testid="hosted-html-twins-mount"
           data-view-format="html"
         >
-          <TwinNotesPanel
-            assetId={assetId}
-            spawnId={null}
-            autoLoad
-            autoSeedIfEmpty
-            autoPromoteAfterLoad
-            onPromoted={onContextNeedsRefresh}
-            seedTitle={title}
-            seedBodyText={html ? html.replace(/<[^>]+>/g, " ").slice(0, 500) : title}
-          />
+          {/* Residual (ez): remount twins with context refresh key. */}
+          <div
+            data-testid="hosted-html-twins-refresh"
+            data-refresh-key={String(contextRefreshKey)}
+          >
+            <TwinNotesPanel
+              key={`twins-${assetId}-${contextRefreshKey}`}
+              assetId={assetId}
+              spawnId={null}
+              autoLoad
+              autoSeedIfEmpty
+              autoPromoteAfterLoad
+              onPromoted={onContextNeedsRefresh}
+              seedTitle={title}
+              seedBodyText={
+                html ? html.replace(/<[^>]+>/g, " ").slice(0, 500) : title
+              }
+            />
+          </div>
         </section>
       ) : null}
 

@@ -43,4 +43,5 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (ew, 2026-07-09): Midnight Oil deposit open full working-region HTML window (parity with merge full).
 - Closed (ex, 2026-07-09): Midnight Oil auto-opens deposit HTML floating after deposit/auto-deposit (opt-out checkbox).
 - Closed (ey, 2026-07-09): collective continue-as-unit full working-region window (parity with reading/hosted full DR).
+- Closed (ez, 2026-07-09): hosted TwinNotesPanel remounts with context refresh key after collective merge/promote.
 - Left (env/operator): floating multi-agent *live* collective chat (merge+continue unit ships); live midnight oil multi-provider; paid marketplace rails; live hydrate/seed injectors; operator install of weekly LaunchAgent; PR #465 main merge.

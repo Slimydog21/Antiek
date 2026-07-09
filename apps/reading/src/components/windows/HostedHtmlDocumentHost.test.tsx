@@ -345,16 +345,24 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(screen.getByTestId("collective-research-panel-stub").textContent).toMatch(
       /doc_col:spn_a,spn_b/,
     );
-    // Residual (eu/ep): onDocMerged remounts context.
-    const before = screen
+    // Residual (eu/ep/ez): onDocMerged remounts context + twins.
+    const beforeCtx = screen
       .getByTestId("hosted-html-context-refresh")
+      .getAttribute("data-refresh-key");
+    const beforeTwins = screen
+      .getByTestId("hosted-html-twins-refresh")
       .getAttribute("data-refresh-key");
     fireEvent.click(screen.getByTestId("collective-doc-merged-notify"));
     expect(
       screen.getByTestId("hosted-html-context-refresh").getAttribute(
         "data-refresh-key",
       ),
-    ).not.toBe(before);
+    ).not.toBe(beforeCtx);
+    expect(
+      screen.getByTestId("hosted-html-twins-refresh").getAttribute(
+        "data-refresh-key",
+      ),
+    ).not.toBe(beforeTwins);
   });
 
   it("omits collective panel when no open spawns", () => {
