@@ -11,22 +11,18 @@
 
 | Cycle | Package | Status |
 |---|---|---|
-| 1 | Engagement spine + Midnight oil + model residual + NotDiamond | done |
-| 2 | Marketplace host-into-account | done |
-| 3 | Antiek-bench core | done |
-| 4 | Settings-facing Antiek-bench leaderboard | done |
-| 5 | **Highlight→floating deep-research session** | **done** |
+| 1–5 | spine, midnight oil, marketplace, antiek-bench, leaderboard, floating session | done |
+| 6 | **Decision-tree → real dispatch model_override** | **done** |
 
-## Cycle 5 details
+## Cycle 6 details
 
 | Item | Status |
 |---|---|
-| `open_from_highlight` reserves spine spawn | done |
-| view mode floating ⇄ full | done |
-| complete + merge parent/draft via spine | done |
-| multi-session collective merge | done |
-| HTML session/merge projection | done |
+| `resolve_dispatch_override` both halves | done |
+| `dispatch_with_selected_driver` calls real dispatch path | done |
+| floating session model_id handoff | done |
+| #440 budget projection not duplicated | done |
 
 ## Non-claims
 
-No browser multi-window e2e; no live multi-provider research; operator merges only.
+No Settings React decision-tree UI e2e; no NotDiamond authority; no live multi-provider; operator merges only.

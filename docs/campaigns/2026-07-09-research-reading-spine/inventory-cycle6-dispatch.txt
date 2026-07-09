@@ -1,0 +1,17 @@
+# Residual inventory — decision-tree dispatch override · 2026-07-09
+# origin/main @ b3875724 | PR #465 @ fa709b3e
+# Living-roadmap SPR-01..14: ALREADY SHIPPED — NOT rebuild TODOs.
+
+CAPABILITY | STATUS | EVIDENCE
+(a) engagement spine | branch_only | substrate/engagement_spine/**
+(b) HTML-first | on_main + branch | html_projection/**
+(c) model residual | branch_only partial | model_registration select_driver (model only; needs BOTH halves for dispatch)
+(d) Midnight oil | branch_only | substrate/midnight_oil/**
+(e) marketplace host | branch_only | substrate/marketplace_host/**
+(f) Antiek-bench core | branch_only | substrate/antiek_bench/**
+(g) NotDiamond | branch_only | VERDICT.md
+(h) settings leaderboard | branch_only | leaderboard.py
+(i) floating deep-research session | branch_only | substrate/floating_session/** @ fa709b3e
+(j) decision-tree → real dispatch model_override | missing → THIS CYCLE | dispatch requires provider+model together
+
+CHOSEN: (j) dispatch_bridge resolve both overrides for real dispatch/synthesizer path
