@@ -9,6 +9,7 @@ import {
   budgetReservationMidnightOil,
   dispatchMidnightOil,
   dryRunMidnightOil,
+  finalArtifactAdapterPlanMidnightOil,
   finalArtifactMidnightOil,
   graphAdapterPlanMidnightOil,
   graphMutationMidnightOil,
@@ -746,6 +747,60 @@ vi.mock("../../api/midnightOil", () => ({
     final_artifact_created: false,
     adapter_plan_notes: ["graph adapter plan only: no graph writer is configured"],
   })),
+  finalArtifactAdapterPlanMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-final-artifact-adapter-plan",
+    runner_control_plan_receipt_id: "midnight-oil-test-runner-control-plan",
+    budget_provider_adapter_plan_receipt_id: "midnight-oil-test-budget-provider-adapter-plan",
+    provider_executor_adapter_plan_receipt_id: "midnight-oil-test-provider-executor-adapter-plan",
+    retrieval_adapter_plan_receipt_id: "midnight-oil-test-retrieval-adapter-plan",
+    graph_adapter_plan_receipt_id: "midnight-oil-test-graph-adapter-plan",
+    runner_readiness_receipt_id: "midnight-oil-test-runner-readiness",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    run_id: "midnight-oil-test",
+    status: "blocked_final_artifact_adapter_unimplemented",
+    adapter_key: "final_html_artifact_writer",
+    planned_writer_id: "midnight-oil-test-final-html-artifact-writer",
+    planned_artifact_ledger_id: "midnight-oil-test-artifact-receipt-ledger",
+    planned_artifact_id: "midnight-oil-test-html-research-asset",
+    planned_twin_note_document_id: "midnight-oil-test-twin-note-document",
+    final_format: "html",
+    pdf_allowed: false,
+    required_invariants: [
+      "final artifact adapter must require route, source, and graph receipts before writing HTML",
+      "final artifact adapter must create an Antiek information asset and twin-note document atomically",
+      "final artifact adapter must preserve provenance links to launch, approval, route, source, and graph receipts",
+    ],
+    required_artifact_receipt_fields: [
+      "artifact_receipt_id",
+      "run_id",
+      "artifact_id",
+      "twin_note_document_id",
+      "final_format",
+      "route_receipt_ids",
+      "source_receipt_ids",
+      "graph_receipt_id",
+      "content_digest",
+      "created_at",
+    ],
+    blocker_reason: "final_artifact_adapter_unimplemented",
+    final_artifact_allowed: false,
+    final_artifact_created: false,
+    graph_mutation_allowed: false,
+    graph_mutated: false,
+    source_receipts_created: false,
+    retrieval_allowed: false,
+    retrieval_performed: false,
+    provider_execution_allowed: false,
+    provider_calls_made: false,
+    live_run_allowed: false,
+    dispatch_allowed: false,
+    budget_reservation_allowed: false,
+    budget_reserved: false,
+    dispatch_performed: false,
+    adapter_plan_notes: ["final artifact adapter plan only: no HTML asset writer is configured"],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -1275,5 +1330,48 @@ describe("MidnightOil", () => {
       screen.getByText("graph adapter must require source receipts before any graph write"),
     ).toBeTruthy();
     expect(screen.getByText(/Graph receipt fields:/)).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Final artifact adapter" }));
+
+    await waitFor(() => expect(finalArtifactAdapterPlanMidnightOil).toHaveBeenCalled());
+    expect(finalArtifactAdapterPlanMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      runner_control_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-control-plan",
+      }),
+      budget_provider_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-budget-provider-adapter-plan",
+      }),
+      provider_executor_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-provider-executor-adapter-plan",
+      }),
+      retrieval_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-retrieval-adapter-plan",
+      }),
+      graph_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-graph-adapter-plan",
+      }),
+    });
+    expect(screen.getByText("Final artifact adapter receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-artifact-adapter-plan")).toBeTruthy();
+    expect(screen.getByText("blocked final artifact adapter unimplemented")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-html-artifact-writer")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-artifact-receipt-ledger")).toBeTruthy();
+    expect(screen.getAllByText("midnight-oil-test-html-research-asset").length).toBeGreaterThan(1);
+    expect(screen.getAllByText("midnight-oil-test-twin-note-document").length).toBeGreaterThan(1);
+    expect(
+      screen.getByText(
+        "final artifact adapter must require route, source, and graph receipts before writing HTML",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Artifact receipt fields:/)).toBeTruthy();
   });
 });

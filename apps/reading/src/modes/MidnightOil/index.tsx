@@ -6,6 +6,7 @@ import {
   budgetReservationMidnightOil,
   dispatchMidnightOil,
   dryRunMidnightOil,
+  finalArtifactAdapterPlanMidnightOil,
   finalArtifactMidnightOil,
   graphAdapterPlanMidnightOil,
   graphMutationMidnightOil,
@@ -22,6 +23,7 @@ import {
   type MidnightOilBudgetProviderAdapterPlanReceipt,
   type MidnightOilBudgetReservationReceipt,
   type MidnightOilDispatchReceipt,
+  type MidnightOilFinalArtifactAdapterPlanReceipt,
   type MidnightOilFinalArtifactReceipt,
   type MidnightOilGraphAdapterPlanReceipt,
   type MidnightOilGraphMutationReceipt,
@@ -91,6 +93,8 @@ export default function MidnightOil() {
     useState<MidnightOilRetrievalAdapterPlanReceipt | null>(null);
   const [graphAdapterPlanReceipt, setGraphAdapterPlanReceipt] =
     useState<MidnightOilGraphAdapterPlanReceipt | null>(null);
+  const [finalArtifactAdapterPlanReceipt, setFinalArtifactAdapterPlanReceipt] =
+    useState<MidnightOilFinalArtifactAdapterPlanReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -107,6 +111,7 @@ export default function MidnightOil() {
   const [providerExecutorAdapterPlanBusy, setProviderExecutorAdapterPlanBusy] = useState(false);
   const [retrievalAdapterPlanBusy, setRetrievalAdapterPlanBusy] = useState(false);
   const [graphAdapterPlanBusy, setGraphAdapterPlanBusy] = useState(false);
+  const [finalArtifactAdapterPlanBusy, setFinalArtifactAdapterPlanBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
   const [liveSettingsError, setLiveSettingsError] = useState<string | null>(null);
@@ -125,10 +130,18 @@ export default function MidnightOil() {
     useState<string | null>(null);
   const [retrievalAdapterPlanError, setRetrievalAdapterPlanError] = useState<string | null>(null);
   const [graphAdapterPlanError, setGraphAdapterPlanError] = useState<string | null>(null);
+  const [finalArtifactAdapterPlanError, setFinalArtifactAdapterPlanError] =
+    useState<string | null>(null);
+
+  function clearFinalArtifactAdapterPlan() {
+    setFinalArtifactAdapterPlanError(null);
+    setFinalArtifactAdapterPlanReceipt(null);
+  }
 
   function clearGraphAdapterPlan() {
     setGraphAdapterPlanError(null);
     setGraphAdapterPlanReceipt(null);
+    clearFinalArtifactAdapterPlan();
   }
 
   function clearRetrievalAdapterPlan() {
@@ -173,6 +186,7 @@ export default function MidnightOil() {
     setProviderExecutorAdapterPlanError(null);
     setRetrievalAdapterPlanError(null);
     setGraphAdapterPlanError(null);
+    setFinalArtifactAdapterPlanError(null);
     setPreflight(null);
     setDryRunReceipt(null);
     setLiveSettingsReceipt(null);
@@ -190,6 +204,7 @@ export default function MidnightOil() {
     setProviderExecutorAdapterPlanReceipt(null);
     setRetrievalAdapterPlanReceipt(null);
     setGraphAdapterPlanReceipt(null);
+    setFinalArtifactAdapterPlanReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -808,6 +823,7 @@ export default function MidnightOil() {
     setGraphAdapterPlanBusy(true);
     setGraphAdapterPlanError(null);
     setGraphAdapterPlanReceipt(null);
+    clearFinalArtifactAdapterPlan();
     try {
       const result = await graphAdapterPlanMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -823,6 +839,45 @@ export default function MidnightOil() {
       setGraphAdapterPlanError(e instanceof Error ? e.message : String(e));
     } finally {
       setGraphAdapterPlanBusy(false);
+    }
+  }
+
+  async function onFinalArtifactAdapterPlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerControlPlanReceipt ||
+      !budgetProviderAdapterPlanReceipt ||
+      !providerExecutorAdapterPlanReceipt ||
+      !retrievalAdapterPlanReceipt ||
+      !graphAdapterPlanReceipt
+    ) {
+      setFinalArtifactAdapterPlanError(
+        "Final artifact adapter plan requires launch packet, approval receipt, runner handoff, runner control plan receipt, budget provider adapter plan receipt, provider executor adapter plan receipt, retrieval adapter plan receipt, and graph adapter plan receipt.",
+      );
+      return;
+    }
+
+    setFinalArtifactAdapterPlanBusy(true);
+    setFinalArtifactAdapterPlanError(null);
+    setFinalArtifactAdapterPlanReceipt(null);
+    try {
+      const result = await finalArtifactAdapterPlanMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        runner_control_plan_receipt: runnerControlPlanReceipt,
+        budget_provider_adapter_plan_receipt: budgetProviderAdapterPlanReceipt,
+        provider_executor_adapter_plan_receipt: providerExecutorAdapterPlanReceipt,
+        retrieval_adapter_plan_receipt: retrievalAdapterPlanReceipt,
+        graph_adapter_plan_receipt: graphAdapterPlanReceipt,
+      });
+      setFinalArtifactAdapterPlanReceipt(result);
+    } catch (e) {
+      setFinalArtifactAdapterPlanError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFinalArtifactAdapterPlanBusy(false);
     }
   }
 
@@ -2157,6 +2212,95 @@ export default function MidnightOil() {
                   <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
                     Graph receipt fields:{" "}
                     {graphAdapterPlanReceipt.required_graph_receipt_fields.join(", ")}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Final artifact adapter
+                </p>
+                <button
+                  type="button"
+                  onClick={onFinalArtifactAdapterPlanGate}
+                  disabled={
+                    finalArtifactAdapterPlanBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !runnerControlPlanReceipt ||
+                    !budgetProviderAdapterPlanReceipt ||
+                    !providerExecutorAdapterPlanReceipt ||
+                    !retrievalAdapterPlanReceipt ||
+                    !graphAdapterPlanReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {finalArtifactAdapterPlanBusy
+                    ? "Planning artifact..."
+                    : "Final artifact adapter"}
+                </button>
+              </div>
+
+              {finalArtifactAdapterPlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {finalArtifactAdapterPlanError}
+                </p>
+              )}
+
+              {finalArtifactAdapterPlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Final artifact adapter receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {finalArtifactAdapterPlanReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={finalArtifactAdapterPlanReceipt.status.replaceAll("_", " ")}
+                    />
+                    <Metric label="Format" value={finalArtifactAdapterPlanReceipt.final_format} />
+                    <Metric
+                      label="PDF"
+                      value={finalArtifactAdapterPlanReceipt.pdf_allowed ? "allowed" : "blocked"}
+                    />
+                    <Metric
+                      label="Created"
+                      value={finalArtifactAdapterPlanReceipt.final_artifact_created ? "yes" : "no"}
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Writer"
+                      value={finalArtifactAdapterPlanReceipt.planned_writer_id}
+                    />
+                    <Metric
+                      label="Artifact ledger"
+                      value={finalArtifactAdapterPlanReceipt.planned_artifact_ledger_id}
+                    />
+                    <Metric
+                      label="HTML asset"
+                      value={finalArtifactAdapterPlanReceipt.planned_artifact_id}
+                    />
+                    <Metric
+                      label="Twin note"
+                      value={finalArtifactAdapterPlanReceipt.planned_twin_note_document_id}
+                    />
+                  </div>
+                  <ul className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {finalArtifactAdapterPlanReceipt.required_invariants
+                      .slice(0, 5)
+                      .map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                  </ul>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Artifact receipt fields:{" "}
+                    {finalArtifactAdapterPlanReceipt.required_artifact_receipt_fields.join(", ")}
                   </p>
                 </div>
               )}
