@@ -178,9 +178,20 @@ export function ResearchLaunchBudgetPanel({
         <span className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
           Budget & projection
         </span>
-        {busy ? (
-          <span className="text-[10px] font-mono text-ink-mute">projecting…</span>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {/* Residual (fr): jump to Settings for daily cap + decision-tree. */}
+          <a
+            href="/settings"
+            data-testid="research-launch-budget-settings-link"
+            className="text-[10px] font-mono underline opacity-80 hover:opacity-100"
+            title="Open Settings to set daily budget and decision-tree driver"
+          >
+            Settings
+          </a>
+          {busy ? (
+            <span className="text-[10px] font-mono text-ink-mute">projecting…</span>
+          ) : null}
+        </div>
       </div>
 
       {error ? (

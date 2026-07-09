@@ -78,6 +78,9 @@ describe("ResearchLaunchBudgetPanel", () => {
       /\$1\.00/,
     );
     expect(screen.getByTestId("research-launch-budget-bar-fill")).toBeTruthy();
+    // Residual (fr): Settings deep-link for cap + decision-tree.
+    const settings = screen.getByTestId("research-launch-budget-settings-link");
+    expect(settings.getAttribute("href")).toBe("/settings");
   });
 
   it("projects prompt cost for deep→pro tier", async () => {
