@@ -68,12 +68,21 @@ def search_engagement_context(
             if len(hits) >= lim:
                 break
 
+    # Residual (kg): spawn research_tier when searching with spawn scope.
+    research_tier = None
+    if spawn_id and spawn_id.strip():
+        from substrate.dispatch.research_tier import normalize_research_tier
+
+        row = store.get_spawn(spawn_id.strip()) or {}
+        research_tier = normalize_research_tier(row.get("research_tier"))
+
     payload: dict[str, Any] = {
         "query": q,
         "asset_id": asset_id,
         "spawn_id": spawn_id,
         "hit_count": len(hits),
         "hits": hits[:lim],
+        "research_tier": research_tier,
         "view_format": "html",
         "product_panel": "engagement_context_search",
         "source": "engagement_spine.context_search",

@@ -295,6 +295,7 @@ describe("ResearchContextPanel", () => {
           source: "twin",
         },
       ],
+      research_tier: "wrestle",
       view_format: "html",
       product_panel: "engagement_context_search",
       source: "engagement_spine.context_search",
@@ -317,6 +318,11 @@ describe("ResearchContextPanel", () => {
     expect(metrics.getAttribute("data-hit-count")).toBe("1");
     expect(metrics.getAttribute("data-query")).toBe("attention");
     expect(metrics.textContent).toMatch(/Intelligent search/);
+    // Residual (kg): spawn research_tier on intelligent search results.
+    expect(metrics.getAttribute("data-research-tier")).toBe("wrestle");
+    expect(screen.getByTestId("context-search-research-tier").textContent).toBe(
+      "wrestle",
+    );
     expect(searchEngagementContext).toHaveBeenCalledWith({
       query: "attention",
       asset_id: "paper",

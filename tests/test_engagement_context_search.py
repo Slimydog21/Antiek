@@ -37,6 +37,7 @@ def test_search_finds_twin_and_ref():
     spawn = spawn_from_highlight(
         HighlightSelection(asset_id="asset-s", selection_text="sel"),
         store=store,
+        research_tier="wrestle",
     )
     attach_source_references(
         spawn.spawn_id,
@@ -54,6 +55,8 @@ def test_search_finds_twin_and_ref():
     assert payload["view_format"] == "html"
     assert payload["html"]
     assert "application/pdf" not in payload["html"].lower()
+    # Residual (kg): spawn research_tier on scoped intelligent search.
+    assert payload["research_tier"] == "wrestle"
     kinds = {h["kind"] for h in payload["hits"]}
     assert any(k.startswith("twin_") for k in kinds)
 

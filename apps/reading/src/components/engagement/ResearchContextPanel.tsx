@@ -517,21 +517,39 @@ export function ResearchContextPanel({
           className="context-search-result"
           data-testid="context-search-result"
           data-view-format="html"
+          data-research-tier={
+            (searchHits.research_tier || "").trim().toLowerCase() || ""
+          }
         >
-          {/* Residual (fi): intelligent search metrics over twin/ref substrate. */}
+          {/* Residual (fi/kg): intelligent search metrics + spawn tier. */}
           <div
             className="meta font-mono text-[11px]"
             data-testid="context-search-metrics"
             data-hit-count={String(searchHits.hit_count ?? 0)}
             data-query={searchHits.query ?? ""}
+            data-research-tier={
+              (searchHits.research_tier || "").trim().toLowerCase() || ""
+            }
             role="status"
           >
             Intelligent search · query=
             <code>{searchHits.query}</code> · hits=
             {searchHits.hit_count ?? 0}
+            {searchHits.research_tier
+              ? ` · tier=${searchHits.research_tier}`
+              : ""}
           </div>
           <p className="counts">
             search “{searchHits.query}” · hits={searchHits.hit_count}
+            {searchHits.research_tier ? (
+              <>
+                {" "}
+                · tier=
+                <code data-testid="context-search-research-tier">
+                  {searchHits.research_tier}
+                </code>
+              </>
+            ) : null}
           </p>
           <ul data-testid="context-search-hits">
             {searchHits.hits.map((h) => (

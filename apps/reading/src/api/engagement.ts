@@ -507,6 +507,8 @@ export type ContextSearchResponse = {
     text: string;
     source: string;
   }>;
+  /** Residual (kg): spawn research_tier when search scoped to a spawn. */
+  research_tier?: "fast" | "deep" | "wrestle" | string | null;
   view_format: "html" | string;
   product_panel: string;
   source: string;
