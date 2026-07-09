@@ -253,9 +253,32 @@ export default function Settings() {
       }
       setDepth(d);
       const hints = d.projection_hints;
+      const nextIn =
+        hints?.input_chars != null ? hints.input_chars : inputChars;
+      const nextOut =
+        hints?.expected_output_tokens != null
+          ? hints.expected_output_tokens
+          : outTokens;
       if (hints?.input_chars != null) setInputChars(hints.input_chars);
       if (hints?.expected_output_tokens != null)
         setOutTokens(hints.expected_output_tokens);
+      // Residual (be): auto-project cost with depth-tier hints via #440 API.
+      setEstimating(true);
+      setEstimateError(null);
+      try {
+        const res = await estimatePromptCost({
+          tier: hints?.tier || "pro",
+          provider: selectedProvider || null,
+          model: selectedModel || null,
+          input_chars: nextIn,
+          expected_output_tokens: nextOut,
+        });
+        setEstimate(res);
+      } catch (e) {
+        setEstimateError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setEstimating(false);
+      }
     } catch (e) {
       setDepthError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -334,16 +357,21 @@ export default function Settings() {
     return Math.min(100, (budget.spent_usd / budget.daily_cap_usd) * 100);
   }, [budget]);
 
-  async function onEstimate() {
+  async function onEstimate(opts?: {
+    tier?: string | null;
+    input_chars?: number;
+    expected_output_tokens?: number;
+  }) {
     setEstimating(true);
     setEstimateError(null);
     try {
       const res = await estimatePromptCost({
-        tier: "pro",
+        tier: opts?.tier || depth?.projection_hints?.tier || "pro",
         provider: selectedProvider || null,
         model: selectedModel || null,
-        input_chars: inputChars,
-        expected_output_tokens: outTokens,
+        input_chars: opts?.input_chars ?? inputChars,
+        expected_output_tokens:
+          opts?.expected_output_tokens ?? outTokens,
       });
       setEstimate(res);
     } catch (e) {

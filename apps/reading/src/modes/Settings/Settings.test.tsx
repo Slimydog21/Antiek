@@ -485,6 +485,18 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(
       screen.getByTestId("depth-tier-panel").getAttribute("data-view-format"),
     ).toBe("html");
+    // Residual (be): applying depth tier auto-projects cost via #440 API
+    await waitFor(() => {
+      expect(estimatePromptCost).toHaveBeenCalled();
+    });
+    const est = estimatePromptCost.mock.calls.at(-1)?.[0] as {
+      tier?: string;
+      expected_output_tokens?: number;
+      input_chars?: number;
+    };
+    expect(est.tier).toBe("pro"); // wrestle maps dispatch tier to pro
+    expect(est.expected_output_tokens).toBe(4000);
+    expect(est.input_chars).toBe(1500);
   });
 
   it("loads competitive dogfood fixtures — never auto-promoted", async () => {
