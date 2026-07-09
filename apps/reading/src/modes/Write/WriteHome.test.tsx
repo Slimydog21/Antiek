@@ -97,6 +97,12 @@ vi.mock("../../components/engagement/ResearchContextPanel", () => ({
   ),
 }));
 
+vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
+  DecisionTreeDriverBadge: () => (
+    <div data-testid="decision-tree-driver-badge-stub">driver</div>
+  ),
+}));
+
 vi.mock("./Outline", () => ({
   default: () => <div data-testid="outline-stub">outline</div>,
 }));
@@ -477,6 +483,28 @@ describe("WriteHome — the re-homed door", () => {
         .getByTestId("write-piece-context-refresh")
         .getAttribute("data-refresh-key"),
     ).toBe("1");
+  });
+
+  it("mounts DecisionTreeDriverBadge on open piece (gc)", async () => {
+    getDeliverableMock.mockResolvedValue({
+      deliverable_id: "dlv-drv",
+      title: "Driver piece",
+      deliverable_kind: "general_essay",
+      investigation_root_id: null,
+      status: "draft",
+      sections: [],
+      created_at: null,
+      updated_at: null,
+      section_count: 0,
+    });
+    mountAt("/write/dlv-drv");
+    await waitFor(() => {
+      expect(screen.getByTestId("write-piece-driver-badge")).toBeTruthy();
+    });
+    expect(
+      screen.getByTestId("write-piece-driver-badge").getAttribute("data-view-format"),
+    ).toBe("html");
+    expect(screen.getByTestId("decision-tree-driver-badge-stub")).toBeTruthy();
   });
 
   it("M1 — 'none' auto-spawns a research folder and creates the piece linked to it", async () => {

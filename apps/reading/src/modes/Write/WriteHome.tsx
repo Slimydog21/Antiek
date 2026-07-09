@@ -13,6 +13,7 @@ import {
 } from "../../lib/api";
 import { seedTwinNotes } from "../../api/engagement";
 import { fetchHostedDocumentHtml } from "../../api/marketplaceHost";
+import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
 import { ResearchContextPanel } from "../../components/engagement/ResearchContextPanel";
 import { TwinNotesPanel } from "../../components/engagement/TwinNotesPanel";
 import GlassSurface from "../../shell/GlassSurface";
@@ -63,6 +64,7 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
  * recursive note-taker UI with reading/research hosts.
  * Residual (gb): ResearchContextPanel on open piece + remount after twin
  * promote (reading≡write context flywheel).
+ * Residual (gc): DecisionTreeDriverBadge on open piece (model + budget bar).
  */
 export default function WriteHome() {
   const { deliverableId } = useParams<{ deliverableId?: string }>();
@@ -588,24 +590,34 @@ export default function WriteHome() {
               </p>
             )}
           </div>
-          <div className="flex shrink-0 items-center gap-3">
-            {/* M1: toggle to the imported SPR-03 Canvas of the linked research. */}
-            {detail?.investigation_root_id && (
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            {/* Residual (gc): model driver + budget usage on Write piece. */}
+            <div data-testid="write-piece-driver-badge" data-view-format="html">
+              <DecisionTreeDriverBadge />
+            </div>
+            <div className="flex items-center gap-3">
+              {/* M1: toggle to the imported SPR-03 Canvas of the linked research. */}
+              {detail?.investigation_root_id && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPieceView((v) => (v === "canvas" ? "outline" : "canvas"))
+                  }
+                  className="text-xs text-ink-soft underline hover:text-ink dark:text-starlight"
+                >
+                  {pieceView === "canvas" ? "outline" : "research canvas"}
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => setPieceView((v) => (v === "canvas" ? "outline" : "canvas"))}
+                onClick={() =>
+                  setOnRamp((v) => (v === "context" ? null : "context"))
+                }
                 className="text-xs text-ink-soft underline hover:text-ink dark:text-starlight"
               >
-                {pieceView === "canvas" ? "outline" : "research canvas"}
+                {onRamp === "context" ? "hide brainstorm" : "brainstorm a section"}
               </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setOnRamp((v) => (v === "context" ? null : "context"))}
-              className="text-xs text-ink-soft underline hover:text-ink dark:text-starlight"
-            >
-              {onRamp === "context" ? "hide brainstorm" : "brainstorm a section"}
-            </button>
+            </div>
           </div>
         </header>
 

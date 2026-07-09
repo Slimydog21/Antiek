@@ -72,4 +72,5 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (fz, 2026-07-09): offline twin seed on deliverable after Write HTML draft import (recursive note-taker).
 - Closed (ga, 2026-07-09): TwinNotesPanel mounted on open Write piece (reading≡write note-taker).
 - Closed (gb, 2026-07-09): ResearchContextPanel on open Write piece; remount after twin promote.
+- Closed (gc, 2026-07-09): DecisionTreeDriverBadge on open Write piece (model + budget).
 - Left (env/operator): floating multi-agent *live* collective chat (merge+continue unit ships); live midnight oil multi-provider; paid marketplace rails; live hydrate/seed injectors; operator install of weekly LaunchAgent; PR #465 main merge.
