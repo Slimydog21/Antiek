@@ -1,10 +1,12 @@
 import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { ResearchLaunchBudgetPanel } from "../../components/engagement/ResearchLaunchBudgetPanel";
 import LemonButton from "../../components/lemon/LemonButton";
 import LemonTextarea from "../../components/lemon/LemonTextarea";
 import { track, trackException } from "../../lib/analytics";
 import { startInvestigation } from "../../lib/api";
+import type { ResearchTier } from "../../lib/api";
 
 /**
  * Bottom-of-center chat input. Submit on Cmd/Ctrl+Enter; click "Ask"
@@ -17,10 +19,13 @@ import { startInvestigation } from "../../lib/api";
  *   autoFocus               steal focus on mount
  *   onSubmitted             called with the new investigation_id;
  *                           when omitted, the component navigates itself
+ *   researchTier           optional fast|deep for budget projection (default deep)
  *
  * S5 redesign: now a Lemon-styled docked-bottom panel surface. The
  * surrounding chrome (sun-yellow border, ink offset shadow) is provided
  * by PanelLayoutPanel; this component renders only the inner controls.
+ *
+ * Residual (bq): live budget + #440 projection (parity with StartResearch bp).
  */
 export default function ChatInputArea({
   parentInvestigationId,
@@ -28,12 +33,14 @@ export default function ChatInputArea({
   placeholder,
   autoFocus,
   onSubmitted,
+  researchTier = "deep",
 }: {
   parentInvestigationId?: string;
   spawnContext?: string;
   placeholder?: string;
   autoFocus?: boolean;
   onSubmitted?: (investigationId: string) => void;
+  researchTier?: ResearchTier;
 }) {
   const [question, setQuestion] = useState(spawnContext ?? "");
   const [busy, setBusy] = useState(false);
@@ -92,10 +99,17 @@ export default function ChatInputArea({
           <div className="text-xs font-mono text-emperor mt-2">{error}</div>
         )}
       </div>
+      {/* Residual (bq): same launch budget panel as StartResearch (bp). */}
+      <div className="mt-2" data-testid="chat-input-budget-mount">
+        <ResearchLaunchBudgetPanel
+          promptText={question}
+          researchTier={researchTier === "fast" ? "fast" : "deep"}
+        />
+      </div>
       <div className="mt-2 flex items-center justify-between gap-3">
         <div className="text-[11px] font-mono text-ink-mute dark:text-moonlight">
           <kbd className="border-2 border-ink dark:border-bright rounded px-1.5 text-[10px] font-mono bg-ice-0 dark:bg-charcoal-1 shadow-[2px_2px_0_0_#0F1419] dark:shadow-[2px_2px_0_0_#8A7300] mr-1.5">⌘ ↵</kbd>
-          to submit · ~$0.08-$0.16 / investigation
+          to submit · live projection above
         </div>
         <LemonButton
           variant="primary"

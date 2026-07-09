@@ -1,0 +1,83 @@
+import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+
+import ChatInputArea from "./ChatInputArea";
+
+const {
+  fetchSettingsBudget,
+  estimatePromptCost,
+  fetchDecisionTreeSelection,
+} = vi.hoisted(() => ({
+  fetchSettingsBudget: vi.fn(async () => ({
+    daily_cap_usd: 10,
+    spent_usd: 2,
+    remaining_usd: 8,
+    spent_status: "known" as const,
+    cap_env: null,
+    notes: [],
+  })),
+  estimatePromptCost: vi.fn(async () => ({
+    estimated_usd_low: 0.05,
+    estimated_usd_high: 0.07,
+    would_exceed_budget: false,
+    pricing_known: true,
+    notes: [],
+    assumed_input_tokens: 20,
+    assumed_output_tokens: 2500,
+    tier: "pro",
+    provider: null,
+    model: null,
+  })),
+  fetchDecisionTreeSelection: vi.fn(async () => ({
+    model_id: null,
+    provider_id: null,
+    installed: false,
+    notes: [],
+    source: "test",
+  })),
+}));
+
+vi.mock("../../api/settings", () => ({
+  fetchSettingsBudget,
+  estimatePromptCost,
+  fetchDecisionTreeSelection,
+}));
+
+vi.mock("../../lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/api")>();
+  return {
+    ...actual,
+    startInvestigation: vi.fn(),
+  };
+});
+
+describe("ChatInputArea budget projection (bq)", () => {
+  beforeEach(() => {
+    fetchSettingsBudget.mockClear();
+    estimatePromptCost.mockClear();
+    fetchDecisionTreeSelection.mockClear();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("mounts ResearchLaunchBudgetPanel and retires static cost copy", async () => {
+    render(
+      <MemoryRouter>
+        <ChatInputArea />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("chat-input-budget-mount")).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByTestId("research-launch-budget-panel")).toBeTruthy();
+    });
+    expect(fetchSettingsBudget).toHaveBeenCalled();
+    // Static ~$0.08-$0.16 retired
+    expect(document.body.textContent || "").not.toMatch(
+      /~\$0\.08-\$0\.16/,
+    );
+    expect(document.body.textContent || "").toMatch(/live projection above/);
+  });
+});

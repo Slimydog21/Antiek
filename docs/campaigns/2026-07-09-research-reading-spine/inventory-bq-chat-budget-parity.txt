@@ -1,0 +1,8 @@
+# residual (bq) ChatInputArea budget projection parity
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(bp) prior | branch_only | campaign inventories
+(bq) ChatInputArea budget mount | branch_only | ResearchLaunchBudgetPanel on ChatInputArea; retires static $0.08 copy; ChatInputArea.budget.test; tip after commit
+
+NEXT: (br) Midnight Oil env-gated live step injectors OR NotDiamond install-as-driver; operator merge PR #465
