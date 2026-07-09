@@ -416,6 +416,33 @@ export interface BookHtmlServeGateReviewResponse {
   policy_notes: string[];
 }
 
+export interface BookHtmlPublicationRequestInput {
+  serve_gate_review_id: string;
+  conversion_result_id: string;
+  document_id_hint?: string | null;
+  shelf_visibility?: "private_library" | "workspace_only";
+  acknowledge_publication_intent: boolean;
+  acknowledge_no_ingest_or_serve: boolean;
+}
+
+export interface BookHtmlPublicationRequestResponse {
+  publication_request_id: string;
+  status: "ready_for_explicit_publish_job";
+  serve_gate_review_id: string;
+  conversion_result_id: string;
+  document_id_hint: string | null;
+  shelf_visibility: string;
+  import_target: "antiek_html";
+  publication_intent_recorded: boolean;
+  ingest_attempted: boolean;
+  graph_mutation_performed: boolean;
+  shelf_publication_attempted: boolean;
+  full_text_served: boolean;
+  reader_route_created: boolean;
+  required_operator_steps: string[];
+  policy_notes: string[];
+}
+
 /** Prompt-to-curate (Read SPR-04). Ranks ONLY servable books by relevance
  * to the prompt — a gated book is never curated into a readable list.
  * Returns 503 if the embedding model isn't available server-side. */
@@ -514,6 +541,21 @@ export async function reviewBookHtmlServeGate(
   }
   if (!resp.ok) throw new Error(`POST /books/import/serve-gate-review: HTTP ${resp.status}`);
   return (await resp.json()) as BookHtmlServeGateReviewResponse;
+}
+
+export async function requestBookHtmlPublication(
+  request: BookHtmlPublicationRequestInput,
+): Promise<BookHtmlPublicationRequestResponse> {
+  const resp = await apiFetch(`${API_BASE}/books/import/publication-request`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ shelf_visibility: "private_library", ...request }),
+  });
+  if (resp.status === 400) {
+    throw new Error("Confirm publication intent and no-ingest boundary.");
+  }
+  if (!resp.ok) throw new Error(`POST /books/import/publication-request: HTTP ${resp.status}`);
+  return (await resp.json()) as BookHtmlPublicationRequestResponse;
 }
 
 // ── SPR-08 M2: talk-to-book (multi-turn, page-cited) ──────────────────

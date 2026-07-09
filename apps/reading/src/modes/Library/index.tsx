@@ -6,6 +6,7 @@ import type {
   BookHtmlConversionReviewResponse,
   BookHtmlFileHandoffResponse,
   BookHtmlImportPreflightResponse,
+  BookHtmlPublicationRequestResponse,
   BookHtmlServeGateReviewResponse,
   BookPurchaseRequestResponse,
   BookSummary,
@@ -18,6 +19,7 @@ import {
   preflightBookHtmlImport,
   recordBookHtmlConversionResult,
   requestBookPurchase,
+  requestBookHtmlPublication,
   reviewBookHtmlConversion,
   reviewBookHtmlServeGate,
 } from "../../api/books";
@@ -122,6 +124,15 @@ export default function Library() {
   const [serveNoPublishAck, setServeNoPublishAck] = useState(false);
   const [serveBusy, setServeBusy] = useState(false);
   const [serveReceipt, setServeReceipt] = useState<BookHtmlServeGateReviewResponse | null>(null);
+  const [publicationDocHint, setPublicationDocHint] = useState("");
+  const [publicationVisibility, setPublicationVisibility] = useState<"private_library" | "workspace_only">(
+    "private_library",
+  );
+  const [publicationIntentAck, setPublicationIntentAck] = useState(false);
+  const [publicationNoIngestAck, setPublicationNoIngestAck] = useState(false);
+  const [publicationBusy, setPublicationBusy] = useState(false);
+  const [publicationReceipt, setPublicationReceipt] =
+    useState<BookHtmlPublicationRequestResponse | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -344,6 +355,7 @@ export default function Library() {
         acknowledge_no_publication: serveNoPublishAck,
       });
       setServeReceipt(res);
+      setPublicationReceipt(null);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -358,6 +370,35 @@ export default function Library() {
     serveNoPublishAck,
     serveRightsAck,
     serveRightsBasis,
+  ]);
+
+  const onPublicationRequest = useCallback(async () => {
+    if (!serveReceipt || !outputReceipt) return;
+    setPublicationBusy(true);
+    setError(null);
+    setPublicationReceipt(null);
+    try {
+      const res = await requestBookHtmlPublication({
+        serve_gate_review_id: serveReceipt.serve_gate_review_id,
+        conversion_result_id: outputReceipt.conversion_result_id,
+        document_id_hint: publicationDocHint.trim() || null,
+        shelf_visibility: publicationVisibility,
+        acknowledge_publication_intent: publicationIntentAck,
+        acknowledge_no_ingest_or_serve: publicationNoIngestAck,
+      });
+      setPublicationReceipt(res);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPublicationBusy(false);
+    }
+  }, [
+    outputReceipt,
+    publicationDocHint,
+    publicationIntentAck,
+    publicationNoIngestAck,
+    publicationVisibility,
+    serveReceipt,
   ]);
 
   // The display order, in three layers of precedence:
@@ -1007,6 +1048,85 @@ export default function Library() {
                   {serveReceipt.publication_allowed_next ? "ready for publication request" : "blocked"}; published{" "}
                   {serveReceipt.shelf_publication_attempted ? "yes" : "no"}, served{" "}
                   {serveReceipt.full_text_served ? "yes" : "no"}.
+                </p>
+              )}
+            </form>
+          )}
+
+          {serveReceipt && (
+            <form
+              className="rounded-md border border-ice-4 dark:border-charcoal-1 bg-white/70 dark:bg-charcoal-2/70 p-3 space-y-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void onPublicationRequest();
+              }}
+            >
+              <div>
+                <p className="text-[13px] font-serif text-ink dark:text-bright">
+                  Publication request
+                </p>
+                <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                  Records intent to publish the approved HTML later; no ingest,
+                  graph write, shelf update, reader route, or full-text serve runs here.
+                </p>
+              </div>
+              <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                <label className="flex-1 min-w-0 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Document id hint
+                  <input
+                    value={publicationDocHint}
+                    onChange={(event) => setPublicationDocHint(event.target.value)}
+                    className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                    placeholder="Optional slug for later publish job"
+                  />
+                </label>
+                <label className="w-full md:w-44 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Visibility
+                  <select
+                    value={publicationVisibility}
+                    onChange={(event) =>
+                      setPublicationVisibility(event.target.value as "private_library" | "workspace_only")
+                    }
+                    className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  >
+                    <option value="private_library">Private library</option>
+                    <option value="workspace_only">Workspace only</option>
+                  </select>
+                </label>
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                  <input
+                    type="checkbox"
+                    checked={publicationIntentAck}
+                    onChange={(event) => setPublicationIntentAck(event.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>I intend to publish this reviewed Antiek HTML in a later explicit job.</span>
+                </label>
+                <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                  <input
+                    type="checkbox"
+                    checked={publicationNoIngestAck}
+                    onChange={(event) => setPublicationNoIngestAck(event.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>No ingest, graph write, shelf publication, reader route, or full-text serve runs from this request.</span>
+                </label>
+              </div>
+              <button
+                type="submit"
+                disabled={publicationBusy || !serveReceipt.publication_allowed_next}
+                className="rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+              >
+                {publicationBusy ? "Preparing…" : "Prepare publication"}
+              </button>
+              {publicationReceipt && (
+                <p className="text-[13px] font-serif text-ink dark:text-bright" role="status">
+                  Publication {publicationReceipt.publication_request_id} is ready for an explicit publish job; ingested{" "}
+                  {publicationReceipt.ingest_attempted ? "yes" : "no"}, published{" "}
+                  {publicationReceipt.shelf_publication_attempted ? "yes" : "no"}, served{" "}
+                  {publicationReceipt.full_text_served ? "yes" : "no"}.
                 </p>
               )}
             </form>

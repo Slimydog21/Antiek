@@ -18,6 +18,7 @@ const {
   reviewBookHtmlConversionMock,
   recordBookHtmlConversionResultMock,
   reviewBookHtmlServeGateMock,
+  requestBookHtmlPublicationMock,
   listInvestigationsMock,
   navigateMock,
 } = vi.hoisted(() => ({
@@ -29,6 +30,7 @@ const {
   reviewBookHtmlConversionMock: vi.fn(),
   recordBookHtmlConversionResultMock: vi.fn(),
   reviewBookHtmlServeGateMock: vi.fn(),
+  requestBookHtmlPublicationMock: vi.fn(),
   // M1: the active-research signal documentsByTheme ranks the shelf to.
   // Default: no active research → the feed falls back to recency.
   listInvestigationsMock: vi.fn<
@@ -49,6 +51,7 @@ vi.mock("../../api/books", async (orig) => {
     reviewBookHtmlConversion: reviewBookHtmlConversionMock,
     recordBookHtmlConversionResult: recordBookHtmlConversionResultMock,
     reviewBookHtmlServeGate: reviewBookHtmlServeGateMock,
+    requestBookHtmlPublication: requestBookHtmlPublicationMock,
   };
 });
 
@@ -92,6 +95,7 @@ beforeEach(() => {
   reviewBookHtmlConversionMock.mockReset();
   recordBookHtmlConversionResultMock.mockReset();
   reviewBookHtmlServeGateMock.mockReset();
+  requestBookHtmlPublicationMock.mockReset();
   listInvestigationsMock.mockReset();
   listInvestigationsMock.mockResolvedValue({ count: 0, investigations: [] });
   navigateMock.mockReset();
@@ -334,7 +338,7 @@ describe("Library", () => {
     });
   });
 
-  it("preflights through serve-gate review without publishing or serving", async () => {
+  it("preflights through publication request without ingesting, publishing, or serving", async () => {
     listBooksMock.mockResolvedValue({ books: [servableBook], count: 1 });
     requestBookPurchaseMock.mockResolvedValue({
       request_id: "bookreq-safe123",
@@ -450,6 +454,23 @@ describe("Library", () => {
       shelf_publication_attempted: false,
       full_text_served: false,
       publication_allowed_next: true,
+      required_operator_steps: [],
+      policy_notes: [],
+    });
+    requestBookHtmlPublicationMock.mockResolvedValue({
+      publication_request_id: "bookpub-safe123",
+      status: "ready_for_explicit_publish_job",
+      serve_gate_review_id: "bookserve-safe123",
+      conversion_result_id: "bookout-safe123",
+      document_id_hint: "book-dream-machine",
+      shelf_visibility: "private_library",
+      import_target: "antiek_html",
+      publication_intent_recorded: true,
+      ingest_attempted: false,
+      graph_mutation_performed: false,
+      shelf_publication_attempted: false,
+      full_text_served: false,
+      reader_route_created: false,
       required_operator_steps: [],
       policy_notes: [],
     });
@@ -588,6 +609,29 @@ describe("Library", () => {
       servability_decision: "servable_full_text",
       acknowledge_rights_reviewed: true,
       acknowledge_no_publication: true,
+    });
+
+    fireEvent.change(screen.getByLabelText("Document id hint"), {
+      target: { value: "book-dream-machine" },
+    });
+    fireEvent.change(screen.getByLabelText("Visibility"), {
+      target: { value: "private_library" },
+    });
+    fireEvent.click(screen.getByLabelText(/intend to publish/));
+    fireEvent.click(screen.getAllByLabelText(/No ingest, graph write, shelf publication/).at(-1)!);
+    fireEvent.click(screen.getByRole("button", { name: "Prepare publication" }));
+
+    const publicationStatus = await screen.findByText(/Publication bookpub-safe123/);
+    expect(publicationStatus.textContent).toContain("ingested no");
+    expect(publicationStatus.textContent).toContain("published no");
+    expect(publicationStatus.textContent).toContain("served no");
+    expect(requestBookHtmlPublicationMock).toHaveBeenCalledWith({
+      serve_gate_review_id: "bookserve-safe123",
+      conversion_result_id: "bookout-safe123",
+      document_id_hint: "book-dream-machine",
+      shelf_visibility: "private_library",
+      acknowledge_publication_intent: true,
+      acknowledge_no_ingest_or_serve: true,
     });
   });
 });

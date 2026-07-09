@@ -458,3 +458,78 @@ def test_html_serve_gate_review_blocks_nonservable_decision() -> None:
     assert body["publication_allowed_next"] is False
     assert body["shelf_publication_attempted"] is False
     assert body["full_text_served"] is False
+
+
+def test_html_publication_request_requires_valid_ids_and_acknowledgements() -> None:
+    client = _client()
+
+    invalid_review = client.post(
+        "/books/import/publication-request",
+        json={
+            "serve_gate_review_id": "not-a-serve-gate",
+            "conversion_result_id": "bookout-safe123",
+            "shelf_visibility": "private_library",
+            "acknowledge_publication_intent": True,
+            "acknowledge_no_ingest_or_serve": True,
+        },
+    )
+    assert invalid_review.status_code == 400
+    assert invalid_review.json()["detail"] == "invalid_serve_gate_review_id"
+
+    missing_publication_ack = client.post(
+        "/books/import/publication-request",
+        json={
+            "serve_gate_review_id": "bookserve-safe123",
+            "conversion_result_id": "bookout-safe123",
+            "shelf_visibility": "private_library",
+            "acknowledge_publication_intent": False,
+            "acknowledge_no_ingest_or_serve": True,
+        },
+    )
+    assert missing_publication_ack.status_code == 400
+    assert missing_publication_ack.json()["detail"] == "publication_intent_ack_required"
+
+    missing_no_ingest_ack = client.post(
+        "/books/import/publication-request",
+        json={
+            "serve_gate_review_id": "bookserve-safe123",
+            "conversion_result_id": "bookout-safe123",
+            "shelf_visibility": "private_library",
+            "acknowledge_publication_intent": True,
+            "acknowledge_no_ingest_or_serve": False,
+        },
+    )
+    assert missing_no_ingest_ack.status_code == 400
+    assert missing_no_ingest_ack.json()["detail"] == "no_ingest_or_serve_ack_required"
+
+
+def test_html_publication_request_records_intent_without_ingest_or_serve() -> None:
+    client = _client()
+
+    resp = client.post(
+        "/books/import/publication-request",
+        json={
+            "serve_gate_review_id": "bookserve-safe123",
+            "conversion_result_id": "bookout-safe123",
+            "document_id_hint": "book-dream-machine",
+            "shelf_visibility": "private_library",
+            "acknowledge_publication_intent": True,
+            "acknowledge_no_ingest_or_serve": True,
+        },
+    )
+
+    assert resp.status_code == 202, resp.text
+    body = resp.json()
+    assert body["publication_request_id"].startswith("bookpub-")
+    assert body["status"] == "ready_for_explicit_publish_job"
+    assert body["serve_gate_review_id"] == "bookserve-safe123"
+    assert body["conversion_result_id"] == "bookout-safe123"
+    assert body["document_id_hint"] == "book-dream-machine"
+    assert body["shelf_visibility"] == "private_library"
+    assert body["publication_intent_recorded"] is True
+    assert body["ingest_attempted"] is False
+    assert body["graph_mutation_performed"] is False
+    assert body["shelf_publication_attempted"] is False
+    assert body["full_text_served"] is False
+    assert body["reader_route_created"] is False
+    assert any("Publication intent" in note for note in body["policy_notes"])

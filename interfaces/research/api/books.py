@@ -444,6 +444,33 @@ class BookHtmlServeGateReviewOut(BaseModel):
     policy_notes: list[str]
 
 
+class BookHtmlPublicationRequestIn(BaseModel):
+    serve_gate_review_id: str = Field(min_length=1, max_length=80)
+    conversion_result_id: str = Field(min_length=1, max_length=80)
+    document_id_hint: str | None = Field(default=None, max_length=160)
+    shelf_visibility: Literal["private_library", "workspace_only"] = "private_library"
+    acknowledge_publication_intent: bool = False
+    acknowledge_no_ingest_or_serve: bool = False
+
+
+class BookHtmlPublicationRequestOut(BaseModel):
+    publication_request_id: str
+    status: Literal["ready_for_explicit_publish_job"]
+    serve_gate_review_id: str
+    conversion_result_id: str
+    document_id_hint: str | None
+    shelf_visibility: str
+    import_target: Literal["antiek_html"]
+    publication_intent_recorded: bool
+    ingest_attempted: bool
+    graph_mutation_performed: bool
+    shelf_publication_attempted: bool
+    full_text_served: bool
+    reader_route_created: bool
+    required_operator_steps: list[str]
+    policy_notes: list[str]
+
+
 def _book_purchase_request_id(req: BookPurchaseRequestIn) -> str:
     normalized = "|".join(
         [
@@ -523,6 +550,18 @@ def _book_html_serve_gate_review_id(req: BookHtmlServeGateReviewIn) -> str:
         ]
     )
     return f"bookserve-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _book_html_publication_request_id(req: BookHtmlPublicationRequestIn) -> str:
+    normalized = "|".join(
+        [
+            req.serve_gate_review_id.strip(),
+            req.conversion_result_id.strip(),
+            (req.document_id_hint or "").strip(),
+            req.shelf_visibility,
+        ]
+    )
+    return f"bookpub-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
 
 
 class SpinResearchRequest(BaseModel):
@@ -1126,6 +1165,52 @@ def register_book_routes(app: FastAPI) -> None:
             policy_notes=[
                 "Rights and servability review metadata was recorded; converted HTML was not read.",
                 "No ingest, graph mutation, shelf publication, or full-text serving happened in this review.",
+            ],
+        )
+
+    @app.post(
+        "/books/import/publication-request",
+        response_model=BookHtmlPublicationRequestOut,
+        status_code=202,
+        tags=["books"],
+    )
+    async def book_html_publication_request(
+        req: BookHtmlPublicationRequestIn,
+    ) -> BookHtmlPublicationRequestOut:
+        """Record publication intent without writing substrate/shelf state."""
+        serve_gate_review_id = req.serve_gate_review_id.strip()
+        conversion_result_id = req.conversion_result_id.strip()
+        if not serve_gate_review_id.startswith("bookserve-"):
+            raise HTTPException(status_code=400, detail="invalid_serve_gate_review_id")
+        if not conversion_result_id.startswith("bookout-"):
+            raise HTTPException(status_code=400, detail="invalid_conversion_result_id")
+        if not req.acknowledge_publication_intent:
+            raise HTTPException(status_code=400, detail="publication_intent_ack_required")
+        if not req.acknowledge_no_ingest_or_serve:
+            raise HTTPException(status_code=400, detail="no_ingest_or_serve_ack_required")
+
+        return BookHtmlPublicationRequestOut(
+            publication_request_id=_book_html_publication_request_id(req),
+            status="ready_for_explicit_publish_job",
+            serve_gate_review_id=serve_gate_review_id,
+            conversion_result_id=conversion_result_id,
+            document_id_hint=req.document_id_hint.strip() if req.document_id_hint else None,
+            shelf_visibility=req.shelf_visibility,
+            import_target="antiek_html",
+            publication_intent_recorded=True,
+            ingest_attempted=False,
+            graph_mutation_performed=False,
+            shelf_publication_attempted=False,
+            full_text_served=False,
+            reader_route_created=False,
+            required_operator_steps=[
+                "Run a separate publish job that writes the Antiek HTML asset into substrate.",
+                "Verify the resulting document id through the existing book serve gate.",
+                "Expose the Reader route only after substrate servability state confirms full-text access.",
+            ],
+            policy_notes=[
+                "Publication intent was recorded only; no graph, shelf, or reader state was written.",
+                "No full text was served and no Reader route was created by this request.",
             ],
         )
 
