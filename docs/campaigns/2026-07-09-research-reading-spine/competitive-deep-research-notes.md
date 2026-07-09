@@ -431,3 +431,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (oc, 2026-07-10) **Collective clear recent closed-window spawns:**
   - collective-clear-recent-spawns + data-recent-count
   - onRecentSpawnsCleared parent re-collects available list
+
+- Closed (od, 2026-07-10) **SESSION-ARC ob–oc collective recent spawns:**
+  - SESSION-ARC-ob-oc-collective-recent-spawns.md fleet handoff
