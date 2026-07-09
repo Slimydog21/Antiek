@@ -422,3 +422,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (oa, 2026-07-10) **DecisionTreeDriverBadge dual-gate checklist:**
   - Shared driver+budget chokepoint dual-gate deep-link
+
+- Closed (ob, 2026-07-10) **Recent DR spawns for collective after window close:**
+  - sessionStorage ring (max 24) pushed on launchFloatingDeepResearch
+  - collectDeepResearchSpawnIds merges recent + open windows
+  - twin chase → collective cohesive unit without losing closed spawn ids

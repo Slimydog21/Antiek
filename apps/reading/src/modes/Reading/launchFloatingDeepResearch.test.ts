@@ -1,5 +1,9 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
+import {
+  clearRecentDeepResearchSpawnIds,
+  listRecentDeepResearchSpawnIds,
+} from "../../workspace/recentDeepResearchSpawns";
 import { launchFloatingDeepResearch } from "./launchFloatingDeepResearch";
 
 const openEngagementSession = vi.fn();
@@ -30,6 +34,10 @@ describe("launchFloatingDeepResearch residual cc/cy", () => {
       model_id: null,
       provider_id: null,
     });
+    clearRecentDeepResearchSpawnIds();
+  });
+  afterEach(() => {
+    clearRecentDeepResearchSpawnIds();
   });
 
   it("opens engagement session then floating deep research window", async () => {
@@ -75,6 +83,8 @@ describe("launchFloatingDeepResearch residual cc/cy", () => {
     expect(out.view_format).toBe("html");
     expect(out.session_id).toBe("fsess_1");
     expect(out.model_id).toBeNull();
+    // Residual (ob): spawn ring for collective multi-select after close.
+    expect(listRecentDeepResearchSpawnIds()).toContain("spn_1");
   });
 
   it("passes through Antiek-bench usage_event from session open (nw)", async () => {

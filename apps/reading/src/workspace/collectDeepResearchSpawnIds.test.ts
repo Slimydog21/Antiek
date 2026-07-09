@@ -57,4 +57,19 @@ describe("collectDeepResearchSpawnIds", () => {
       collectDeepResearchSpawnIds(source),
     );
   });
+
+  it("includes recent spawn ids after closed windows (ob)", () => {
+    const ids = collectDeepResearchSpawnIds({
+      currentSpawnId: "spn_current",
+      windows: {
+        w1: win("w1", DEEP_RESEARCH_WINDOW_KIND, "spn_open"),
+      },
+      recentSpawnIds: ["spn_open", "spn_chased_closed", "  "],
+    });
+    expect(ids).toEqual([
+      "spn_current",
+      "spn_open",
+      "spn_chased_closed",
+    ]);
+  });
 });

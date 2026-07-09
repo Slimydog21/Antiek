@@ -29,6 +29,8 @@
  *     (parity TwinNotes multi-select path for cohesive unit assembly).
  * 17. Residual (nl): dual-gate L1–L4 checklist deep-link for L6 live multi-
  *     agent collective prep (never enables injectors).
+ * 18. Residual (ob): available list may include recent closed-window spawns
+ *     (twin chase → collective cohesive unit without losing ids).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -457,6 +459,8 @@ export function CollectiveResearchPanel({
         data-testid="collective-select-controls"
         data-selected-count={String(selected.length)}
         data-available-count={String(availableSpawnIds.length)}
+        data-view-format="html"
+        title="Includes open deep-research windows and recent session opens (twin chase / float)"
       >
         <button
           type="button"

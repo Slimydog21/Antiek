@@ -38,6 +38,7 @@ import {
   parsePublicationRefs,
 } from "../../modes/ResearchWorkstation/publicationRefs";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
+import { listRecentDeepResearchSpawnIds } from "../../workspace/recentDeepResearchSpawns";
 import type { WindowMode } from "../../workspace/windowsStore";
 import { useWindows } from "../../workspace/windowsStore";
 import { CollectiveResearchPanel } from "../engagement/CollectiveResearchPanel";
@@ -92,13 +93,14 @@ export default function HostedHtmlDocumentHost(
   const html = props.html?.trim() || "";
   const assetId = props.document_id?.trim() || "";
 
-  // Residual (eu): open DR session spawns for collective multi-select.
+  // Residual (eu/ob): open + recent DR session spawns for collective multi-select.
   const windows = useWindows((s) => s.windows);
   const availableSpawnIds = useMemo(
     () =>
       collectDeepResearchSpawnIds({
         currentSpawnId: null,
         windows,
+        recentSpawnIds: listRecentDeepResearchSpawnIds(),
       }),
     [windows],
   );

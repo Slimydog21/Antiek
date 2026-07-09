@@ -18,6 +18,7 @@ import {
   parsePublicationRefs,
 } from "../ResearchWorkstation/publicationRefs";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
+import { listRecentDeepResearchSpawnIds } from "../../workspace/recentDeepResearchSpawns";
 import type { WindowMode } from "../../workspace/windowsStore";
 import { useWindows } from "../../workspace/windowsStore";
 import { launchFloatingDeepResearch } from "./launchFloatingDeepResearch";
@@ -58,13 +59,14 @@ export default function ResearchThis({
   passageText,
 }: ResearchThisProps) {
   const navigate = useNavigate();
-  // Residual (fc): open DR session spawns for collective multi-select.
+  // Residual (fc/ob): open + recent DR session spawns for collective multi-select.
   const windows = useWindows((s) => s.windows);
   const availableSpawnIds = useMemo(
     () =>
       collectDeepResearchSpawnIds({
         currentSpawnId: null,
         windows,
+        recentSpawnIds: listRecentDeepResearchSpawnIds(),
       }),
     [windows],
   );

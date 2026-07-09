@@ -62,6 +62,7 @@ import { SpawnMergePanel } from "../engagement/SpawnMergePanel";
 import { TwinNotesPanel } from "../engagement/TwinNotesPanel";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
 import { syncDeepResearchWindowMode } from "../../workspace/deepResearchWindow";
+import { listRecentDeepResearchSpawnIds } from "../../workspace/recentDeepResearchSpawns";
 import { useWindows } from "../../workspace/windowsStore";
 import { useInWindow } from "./windowHostContext";
 
@@ -164,12 +165,14 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
 
   // Subscribe to open windows so multi-session spawns appear in collective list.
   const windows = useWindows((s) => s.windows);
+  // Residual (ob): re-read recent ring when windows change (chase/float opens).
   const availableSpawnIds = useMemo(
     () =>
       collectDeepResearchSpawnIds({
         currentSpawnId: props.spawn_id,
         extraSpawnIds: props.available_spawn_ids,
         windows,
+        recentSpawnIds: listRecentDeepResearchSpawnIds(),
       }),
     [props.spawn_id, props.available_spawn_ids, windows],
   );

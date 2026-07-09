@@ -13,6 +13,7 @@
 import { openEngagementSession } from "../../api/engagement";
 import { fetchDecisionTreeSelection } from "../../api/settings";
 import { openDeepResearchFromHighlight } from "../../workspace/deepResearchWindow";
+import { pushRecentDeepResearchSpawnId } from "../../workspace/recentDeepResearchSpawns";
 import type { WindowMode } from "../../workspace/windowsStore";
 
 export type LaunchFloatingDeepResearchInput = {
@@ -149,6 +150,9 @@ export async function launchFloatingDeepResearch(
     // Residual (jk): carry tier into session host chrome payload.
     research_tier: resolvedTier,
   });
+
+  // Residual (ob): keep spawn id for collective multi-select after window close.
+  pushRecentDeepResearchSpawnId(session.spawn_id);
 
   return {
     session_id: session.session_id,
