@@ -144,3 +144,10 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - (ks) HostedHtml + Write TwinNotes researchTier wire (reading ≡ write ≡ DR)
   Recursive note-taker substrate now inherits closed depth on every major host.
 
+
+- Closed (ku–kv, 2026-07-10) **Decision-tree driver + depth co-display:**
+  - (ku) DecisionTreeDriverBadge researchTier chrome; DR/Hosted/Write hosts
+  - (kv) Midnight Oil create path wires researchTier into driver badge
+  Model driver + daily budget + closed depth share one advisory surface.
+  NotDiamond remains advisory only (L7).
+
