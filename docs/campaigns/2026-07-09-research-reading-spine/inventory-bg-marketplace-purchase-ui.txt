@@ -3,6 +3,6 @@
 
 CAPABILITY | STATUS | EVIDENCE
 (a)–(bf) prior | branch_only | campaign inventories
-(bg) purchase+host UI | branch_only | MarketplaceHost Purchase + host with receipt ref; purchaseAndHost client; MarketplaceHost.test.tsx; THIS CYCLE
+(bg) purchase+host UI | branch_only | MarketplaceHost Purchase + host with receipt ref; purchaseAndHost client; MarketplaceHost.test.tsx; @ 1b8bf234
 
 NEXT: (bh) Midnight Oil progress surface in mode UI; operator merge PR #465
