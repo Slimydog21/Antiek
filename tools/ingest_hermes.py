@@ -62,6 +62,7 @@ DEFAULT_DB_PATH = os.path.expanduser("~/.antiek/antiek.duckdb")
 _ALT_DB_PATH = os.path.expanduser("~/.antiek/research_graph.duckdb")
 DEFAULT_PURPOSE = "hermes_ingest_cli"
 EVIDENCE_SCHEMA = "antiek.hermes_ingest_cli.evidence.v1"
+DISTILL_HANDOFF_SCHEMA = "antiek.hermes_ingest_cli.distill_handoff.v1"
 
 
 def _default_db_path() -> str:
@@ -121,6 +122,35 @@ def _base_receipt(
     }
 
 
+def _distill_handoff_receipt(*, db_path: str, results: list[dict]) -> dict:
+    ready = [
+        {
+            "investigation_id": result["investigation_id"],
+            "document_id": result["document_id"],
+            "document_type": result["document_type"],
+            "events_count": result["events_count"],
+            "source_label": result["source_label"],
+            "was_new": result["was_new"],
+        }
+        for result in results
+        if result.get("document_id") and result.get("status") in {"ok", "cache_hit"}
+    ]
+    return {
+        "schema": DISTILL_HANDOFF_SCHEMA,
+        "db_path": str(Path(db_path).expanduser()),
+        "documents_ready": ready,
+        "documents_ready_count": len(ready),
+        "distillation_run": False,
+        "provider_calls_made": False,
+        "payload_text_included": False,
+        "runner": "substrate.research_bridge.ingest_file.distill_ingested_document",
+        "operator_next_step": (
+            "Run the note-taker document pass over these document_id values "
+            "with an explicit distiller/provider budget."
+        ),
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         prog="ingest_hermes",
@@ -161,12 +191,23 @@ def main(argv: list[str] | None = None) -> int:
             "statuses only; Hermes payload text is never included"
         ),
     )
+    p.add_argument(
+        "--distill-handoff-json",
+        default=None,
+        help=(
+            "write a provider-free handoff listing ingested document ids ready "
+            "for the later note-taker document pass; valid only with --apply"
+        ),
+    )
     args = p.parse_args(argv)
 
     events_dir = args.events_dir or os.environ.get(
         "ANTIEK_HERMES_EVENTS_DIR", DEFAULT_HERMES_EVENTS_DIR
     )
     db_path = args.db_path or _default_db_path()
+    if args.distill_handoff_json and not args.apply:
+        print("ERROR: --distill-handoff-json requires --apply", file=sys.stderr)
+        return 2
 
     print(f"events_dir: {events_dir}")
     print(f"allowed_roots: {', '.join(str(r) for r in default_allowed_roots())}")
@@ -250,6 +291,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.evidence_json:
         _write_evidence(args.evidence_json, receipt)
         print(f"evidence_json: {args.evidence_json}")
+    if args.distill_handoff_json:
+        _write_evidence(
+            args.distill_handoff_json,
+            _distill_handoff_receipt(
+                db_path=db_path,
+                results=receipt["results"],
+            ),
+        )
+        print(f"distill_handoff_json: {args.distill_handoff_json}")
     for result in batch.results:
         if result.status == "error":
             print(

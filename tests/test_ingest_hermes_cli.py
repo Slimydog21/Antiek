@@ -76,6 +76,7 @@ def test_dry_run_writes_evidence_without_payload_text(hermes_dir: Path, tmp_path
 def test_apply_writes_scratch_graph_and_evidence(hermes_dir: Path, tmp_path: Path):
     db = tmp_path / "graph.duckdb"
     receipt = tmp_path / "apply-receipt.json"
+    handoff = tmp_path / "distill-handoff.json"
     init_database_at_path(str(db))
     os.environ["ANTIEK_HERMES_EVENTS_DIR"] = str(hermes_dir)
     try:
@@ -90,6 +91,8 @@ def test_apply_writes_scratch_graph_and_evidence(hermes_dir: Path, tmp_path: Pat
                 "--apply",
                 "--evidence-json",
                 str(receipt),
+                "--distill-handoff-json",
+                str(handoff),
             ]
         )
     finally:
@@ -122,6 +125,48 @@ def test_apply_writes_scratch_graph_and_evidence(hermes_dir: Path, tmp_path: Pat
     ]
     assert data["distillation_run"] is False
     assert data["provider_calls_made"] is False
+    handoff_data = json.loads(handoff.read_text(encoding="utf-8"))
+    assert handoff_data == {
+        "schema": "antiek.hermes_ingest_cli.distill_handoff.v1",
+        "db_path": str(db),
+        "documents_ready": [
+            {
+                "investigation_id": "inv-cli",
+                "document_id": rows[0][0],
+                "document_type": "uploaded_markdown",
+                "events_count": 1,
+                "source_label": "hermes:inv-cli",
+                "was_new": True,
+            }
+        ],
+        "documents_ready_count": 1,
+        "distillation_run": False,
+        "provider_calls_made": False,
+        "payload_text_included": False,
+        "runner": "substrate.research_bridge.ingest_file.distill_ingested_document",
+        "operator_next_step": (
+            "Run the note-taker document pass over these document_id values "
+            "with an explicit distiller/provider budget."
+        ),
+    }
+    assert "what compounds" not in handoff.read_text(encoding="utf-8")
+
+
+def test_distill_handoff_requires_apply(hermes_dir: Path, tmp_path: Path, capsys):
+    os.environ["ANTIEK_HERMES_EVENTS_DIR"] = str(hermes_dir)
+    try:
+        code = main(
+            [
+                "--events-dir",
+                str(hermes_dir),
+                "--distill-handoff-json",
+                str(tmp_path / "handoff.json"),
+            ]
+        )
+    finally:
+        os.environ.pop("ANTIEK_HERMES_EVENTS_DIR", None)
+    assert code == 2
+    assert "--distill-handoff-json requires --apply" in capsys.readouterr().err
 
 
 def test_outside_root_fails(tmp_path: Path):
