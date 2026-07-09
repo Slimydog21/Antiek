@@ -133,6 +133,38 @@ describe("ArtifactOutlineShelf", () => {
     expect(await screen.findByText("/tmp/artifacts/child-draft-merge.html")).toBeTruthy();
   });
 
+  it("keeps child draft-merge controls visible before outline blocks exist", async () => {
+    listState.investigations = [
+      {
+        investigation_id: "inv-child-empty",
+        question: "Early child",
+        status: "completed",
+        started_at: "2026-07-09T12:00:00Z",
+        completed_at: null,
+        cost_usd_total: 0,
+        parent_investigation_id: "inv-a",
+      },
+    ];
+    getResearchArtifactBlocksMock.mockResolvedValue({ investigation_id: "inv-a", blocks: [] });
+    composeResearchArtifactsMock.mockResolvedValue({
+      path: "/tmp/artifacts/compose.html",
+      draft_merge_path: "/tmp/artifacts/early-draft-merge.html",
+      members: [],
+      hash_conflicts: [],
+    });
+
+    render(<ArtifactOutlineShelf investigationId="inv-a" />);
+
+    expect(await screen.findByText(/No outline blocks yet/)).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Early child"));
+    fireEvent.click(screen.getByRole("button", { name: /Draft merge/i }));
+
+    await waitFor(() =>
+      expect(composeResearchArtifactsMock).toHaveBeenCalledWith(["inv-a", "inv-child-empty"], true),
+    );
+    expect(await screen.findByText("/tmp/artifacts/early-draft-merge.html")).toBeTruthy();
+  });
+
   it("refuses a draft merge without a second research id", async () => {
     getResearchArtifactBlocksMock.mockResolvedValue({
       investigation_id: "inv-a",

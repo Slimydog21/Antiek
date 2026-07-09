@@ -119,25 +119,23 @@ export default function ArtifactOutlineShelf({
     );
   };
 
-  if (!blocks.length && !exportPath && !err) {
-    return (
-      <div className="border-t border-rule px-4 py-3 text-sm text-ink-mute" data-testid="artifact-shelf-empty">
-        <p className="mb-2">No outline blocks yet — export after insights land in the graph.</p>
-        <LemonButton size="sm" disabled={busy} onClick={() => void onExport()}>
-          Export research HTML
-        </LemonButton>
-      </div>
-    );
-  }
+  const empty = !blocks.length && !exportPath && !err;
 
   return (
-    <div className="border-t border-rule px-4 py-3" data-testid="artifact-outline-shelf">
+    <div
+      className={`border-t border-rule px-4 py-3 ${empty ? "text-sm text-ink-mute" : ""}`}
+      data-testid={empty ? "artifact-shelf-empty" : "artifact-outline-shelf"}
+    >
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold uppercase tracking-wide text-ink-mute">
-          Write Lego · drag into outline
-        </span>
+        {empty ? (
+          <p>No outline blocks yet — export after insights land in the graph.</p>
+        ) : (
+          <span className="text-xs font-semibold uppercase tracking-wide text-ink-mute">
+            Write Lego · drag into outline
+          </span>
+        )}
         <LemonButton size="sm" disabled={busy} onClick={() => void onExport()}>
-          Export HTML
+          {empty ? "Export research HTML" : "Export HTML"}
         </LemonButton>
         {exportPath ? (
           <span className="truncate font-mono text-[10px] text-ink-mute" title={exportPath}>
@@ -187,20 +185,22 @@ export default function ArtifactOutlineShelf({
         ) : null}
       </div>
       {err ? <p className="text-sm text-emperor">{err}</p> : null}
-      <ul className="flex flex-col gap-1.5 max-h-40 overflow-y-auto">
-        {blocks.map((b) => (
-          <li
-            key={b.node_id}
-            draggable
-            onDragStart={(e) => startDrag(e, b)}
-            className="cursor-grab rounded border border-rule bg-ice-1 px-2 py-1.5 text-sm active:cursor-grabbing"
-            title="Drag to Write outline"
-          >
-            <span className="text-[10px] uppercase text-ocean">{b.kind}</span>
-            <p className="line-clamp-2 text-ink">{b.label}</p>
-          </li>
-        ))}
-      </ul>
+      {blocks.length > 0 ? (
+        <ul className="flex flex-col gap-1.5 max-h-40 overflow-y-auto">
+          {blocks.map((b) => (
+            <li
+              key={b.node_id}
+              draggable
+              onDragStart={(e) => startDrag(e, b)}
+              className="cursor-grab rounded border border-rule bg-ice-1 px-2 py-1.5 text-sm active:cursor-grabbing"
+              title="Drag to Write outline"
+            >
+              <span className="text-[10px] uppercase text-ocean">{b.kind}</span>
+              <p className="line-clamp-2 text-ink">{b.label}</p>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }
