@@ -40,6 +40,14 @@ hydrate/twin/MO live-status readiness surfaces, offline-honest identity paths.
 - NotDiamond never dispatch authority.
 - Offline-honest by default for hydrate, twin seed, MO steps.
 
+
+## Closed since ic (depth-tier product spine · 2026-07-10)
+
+Offline product residuals **jf–jq** closed Settings depth prefill + research_tier
+persistence across reading/research/write/MO/TalkToBook/progress (see
+`competitive-deep-research-notes.md` jf–jo block + inventory-jq). Live L1–L4
+injectors remain operator dual-gate; NotDiamond remains advisory only (L7).
+
 ## Next residual after this doc
 
 **(id)+** implement next thin product residual or operator merge PR #465.
