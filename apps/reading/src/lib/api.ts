@@ -1173,9 +1173,24 @@ export interface ResearchArtifactBlocksResponse {
 export interface ResearchArtifactExportResponse {
   investigation_id: string;
   path: string;
+  twin_notes_path: string;
   content_hash: string;
   size_bytes: number;
   event_id: string | null;
+}
+
+export interface ResearchArtifactComposeMember {
+  investigation_id: string;
+  content_hash: string;
+  artifact_path: string;
+  twin_notes_path: string;
+}
+
+export interface ResearchArtifactComposeResponse {
+  path: string;
+  draft_merge_path: string | null;
+  members: ResearchArtifactComposeMember[];
+  hash_conflicts: string[][];
 }
 
 /** GET /research/{id}/artifact/blocks — Lego refs for Write outline drops. */
@@ -1206,6 +1221,29 @@ export async function exportResearchArtifact(
   if (!resp.ok) {
     throw new ApiError(
       `POST /research/{id}/artifact/export failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+/** POST /research/artifacts/compose — write a no-mutation draft merge review. */
+export async function composeResearchArtifacts(
+  investigationIds: string[],
+  writeDraftMerge = true,
+): Promise<ResearchArtifactComposeResponse> {
+  const resp = await apiFetch(`${API_BASE}/research/artifacts/compose`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      investigation_ids: investigationIds,
+      write_draft_merge: writeDraftMerge,
+    }),
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /research/artifacts/compose failed: HTTP ${resp.status}`,
       resp.status,
       await resp.text(),
     );

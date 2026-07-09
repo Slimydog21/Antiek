@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type DragEvent } from "react";
 
 import {
+  composeResearchArtifacts,
   exportResearchArtifact,
   getResearchArtifactBlocks,
   type ResearchArtifactBlock,
@@ -32,12 +33,23 @@ function startDrag(e: DragEvent, block: ResearchArtifactBlock) {
   e.dataTransfer.effectAllowed = "copy";
 }
 
+function parseSiblingIds(raw: string): string[] {
+  return raw
+    .split(/[,\s]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 export default function ArtifactOutlineShelf({
   investigationId,
 }: ArtifactOutlineShelfProps) {
   const [blocks, setBlocks] = useState<ResearchArtifactBlock[]>([]);
   const [exportPath, setExportPath] = useState<string | null>(null);
+  const [twinNotesPath, setTwinNotesPath] = useState<string | null>(null);
+  const [mergeIds, setMergeIds] = useState("");
+  const [draftMergePath, setDraftMergePath] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [mergeBusy, setMergeBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -61,11 +73,31 @@ export default function ArtifactOutlineShelf({
     try {
       const res = await exportResearchArtifact(investigationId);
       setExportPath(res.path);
+      setTwinNotesPath(res.twin_notes_path);
       await reload();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const onDraftMerge = async () => {
+    const ids = [investigationId, ...parseSiblingIds(mergeIds)];
+    const uniqueIds = Array.from(new Set(ids));
+    if (uniqueIds.length < 2) {
+      setErr("Add at least one other research id to draft a merge.");
+      return;
+    }
+    setMergeBusy(true);
+    setErr(null);
+    try {
+      const res = await composeResearchArtifacts(uniqueIds, true);
+      setDraftMergePath(res.draft_merge_path ?? res.path);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMergeBusy(false);
     }
   };
 
@@ -92,6 +124,28 @@ export default function ArtifactOutlineShelf({
         {exportPath ? (
           <span className="truncate font-mono text-[10px] text-ink-mute" title={exportPath}>
             {exportPath}
+          </span>
+        ) : null}
+        {twinNotesPath ? (
+          <span className="truncate font-mono text-[10px] text-ink-mute" title={twinNotesPath}>
+            notes: {twinNotesPath}
+          </span>
+        ) : null}
+      </div>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <input
+          value={mergeIds}
+          onChange={(e) => setMergeIds(e.target.value)}
+          placeholder="other research ids"
+          aria-label="Other research ids"
+          className="min-w-[180px] flex-1 rounded-hog border border-rule bg-ice-0 px-2 py-1.5 font-mono text-[11px] text-ink outline-none placeholder:text-ink-mute focus:border-sun dark:bg-charcoal-2 dark:text-bright"
+        />
+        <LemonButton size="sm" disabled={mergeBusy} onClick={() => void onDraftMerge()}>
+          Draft merge
+        </LemonButton>
+        {draftMergePath ? (
+          <span className="truncate font-mono text-[10px] text-ink-mute" title={draftMergePath}>
+            {draftMergePath}
           </span>
         ) : null}
       </div>
