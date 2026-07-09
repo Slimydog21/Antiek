@@ -211,3 +211,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - UI domain chips + by_subject metrics (server honesty preferred)
   Live external catalog connectors remain deferred (L1/L2 arxiv/substack dual-gate).
 
+- Closed (lx, 2026-07-10) **Marketplace catalog knowledge-source chips:**
+  - Catalog.filter_by_source substrate (case-insensitive exact)
+  - UI source chips compose free-PD × subject × text filters
+  Offline demo catalog filter matrix product-complete; live connectors still deferred.
+

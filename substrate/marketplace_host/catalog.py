@@ -104,6 +104,22 @@ class Catalog:
         out = [e for e in self.entries.values() if token in e.subjects]
         return sorted(out, key=lambda e: e.book_id)
 
+    def filter_by_source(self, source: str) -> list[CatalogEntry]:
+        """Residual (lx): exact knowledge-source match (case-insensitive).
+
+        Parity with ``filter_by_subject`` so UI source chips and tests share
+        one substrate contract. Empty source → all entries.
+        """
+        token = (source or "").strip().lower()
+        if not token:
+            return sorted(self.entries.values(), key=lambda e: e.book_id)
+        out = [
+            e
+            for e in self.entries.values()
+            if (e.source or "").strip().lower() == token
+        ]
+        return sorted(out, key=lambda e: e.book_id)
+
 
 def make_catalog(entries: list[CatalogEntry] | None = None) -> Catalog:
     cat = Catalog()

@@ -38,6 +38,8 @@
  * Residual (jc): prefill host DR depth tier from Settings depth-tier (parity gt/gs).
  * Residual (lw): research-domain subject tags + domain chip filter + by_subject
  * honesty (STEM PD spine: elements/principia/novum).
+ * Residual (lx): knowledge-source chip filter (parity subject chips; composes
+ * with free-PD + subject + text filter).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -141,6 +143,11 @@ export default function MarketplaceHost({
    * Exact token match against entry.subjects; composes with freePdOnly + filterQuery.
    */
   const [subjectFilter, setSubjectFilter] = useState("");
+  /**
+   * Residual (lx): knowledge-source chip (empty = all sources).
+   * Exact match against entry.source; composes with freePdOnly + subject + filterQuery.
+   */
+  const [sourceFilter, setSourceFilter] = useState("");
   /** Residual (dl): filter over account library document titles/ids. */
   const [libraryFilter, setLibraryFilter] = useState("");
   /** Residual (dk): auto-open hosted HTML window after successful host. */
@@ -149,6 +156,7 @@ export default function MarketplaceHost({
   const filteredEntries = useMemo(() => {
     const q = filterQuery.trim().toLowerCase();
     const subject = subjectFilter.trim().toLowerCase();
+    const source = sourceFilter.trim().toLowerCase();
     return entries.filter((e) => {
       // Residual (is): free public_domain research spine filter.
       if (freePdOnly) {
@@ -159,6 +167,11 @@ export default function MarketplaceHost({
         const subjects = (e.subjects || []).map((s) => s.toLowerCase());
         if (!subjects.includes(subject)) return false;
       }
+      // Residual (lx): exact knowledge-source chip.
+      if (source) {
+        const entrySource = (e.source || "").trim().toLowerCase();
+        if (entrySource !== source) return false;
+      }
       if (!q) return true;
       // Residual (io/lw): include knowledge source + subjects in filter haystack.
       const subjHay = (e.subjects || []).join(" ");
@@ -166,7 +179,7 @@ export default function MarketplaceHost({
         `${e.title} ${e.author} ${e.license_class} ${e.book_id} ${e.source} ${subjHay}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [entries, filterQuery, freePdOnly, subjectFilter]);
+  }, [entries, filterQuery, freePdOnly, subjectFilter, sourceFilter]);
 
   /**
    * Residual (io/ir): by_source breakdown — prefer server honesty when present.
@@ -198,6 +211,11 @@ export default function MarketplaceHost({
   const subjectChipList = useMemo(() => {
     return Object.keys(catalogBySubject).sort((a, b) => a.localeCompare(b));
   }, [catalogBySubject]);
+
+  /** Residual (lx): sorted knowledge-source chips for catalog filter UI. */
+  const sourceChipList = useMemo(() => {
+    return Object.keys(catalogBySource).sort((a, b) => a.localeCompare(b));
+  }, [catalogBySource]);
 
   const filteredLibraryDocs = useMemo(() => {
     const q = libraryFilter.trim().toLowerCase();
@@ -741,6 +759,46 @@ export default function MarketplaceHost({
             </button>
           ))}
         </div>
+        {/* Residual (lx): knowledge-source chips (project_gutenberg / standard_ebooks / …). */}
+        <div
+          className="flex flex-wrap gap-1 items-center pb-1"
+          data-testid="catalog-source-chips"
+          role="group"
+          aria-label="Filter catalog by knowledge source"
+        >
+          <button
+            type="button"
+            data-testid="catalog-source-all"
+            data-active={String(sourceFilter === "")}
+            className={`text-[11px] font-mono border rounded px-2 py-0.5 ${
+              sourceFilter === "" ? "opacity-100 font-semibold" : "opacity-70"
+            }`}
+            onClick={() => setSourceFilter("")}
+            disabled={busy}
+          >
+            all sources
+          </button>
+          {sourceChipList.map((src) => (
+            <button
+              key={src}
+              type="button"
+              data-testid={`catalog-source-${src}`}
+              data-active={String(sourceFilter === src)}
+              className={`text-[11px] font-mono border rounded px-2 py-0.5 ${
+                sourceFilter === src
+                  ? "opacity-100 font-semibold"
+                  : "opacity-70"
+              }`}
+              onClick={() =>
+                setSourceFilter((prev) => (prev === src ? "" : src))
+              }
+              disabled={busy}
+            >
+              {src}
+              {catalogBySource[src] != null ? ` (${catalogBySource[src]})` : ""}
+            </button>
+          ))}
+        </div>
         <label className="flex flex-col gap-1 text-sm font-mono">
           <span className="text-[11px] uppercase opacity-70">
             Purchase receipt ref
@@ -810,6 +868,7 @@ export default function MarketplaceHost({
         data-free-pd-only={String(freePdOnly)}
         data-subject-filter={subjectFilter || "all"}
         data-subject-count={String(Object.keys(catalogBySubject).length)}
+        data-source-filter={sourceFilter || "all"}
         data-view-format="html"
         data-payment-rails={
           catalogHonesty?.payment_rails || "manual_receipt_only"
@@ -897,6 +956,7 @@ export default function MarketplaceHost({
           No catalog matches
           {filterQuery.trim() ? ` for “${filterQuery.trim()}”` : ""}
           {subjectFilter ? ` in domain “${subjectFilter}”` : ""}
+          {sourceFilter ? ` from source “${sourceFilter}”` : ""}
           {freePdOnly ? " (free public-domain only)" : ""}.
         </p>
       ) : null}

@@ -939,4 +939,76 @@ describe("MarketplaceHost mode", () => {
     expect(screen.getByTestId("catalog-entry-pd-pride")).toBeTruthy();
     expect(screen.getByTestId("catalog-entry-pd-novum")).toBeTruthy();
   });
+
+  it("filters catalog by knowledge-source chip (lx)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-elements",
+          title: "Euclid's Elements",
+          author: "Euclid",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: ["mathematics", "science"],
+        },
+        {
+          book_id: "pd-pride",
+          title: "Pride and Prejudice",
+          author: "Jane Austen",
+          license_class: "public_domain",
+          is_free: true,
+          source: "standard_ebooks",
+          subjects: ["literature"],
+        },
+        {
+          book_id: "buy-modern",
+          title: "Modern Systems Research",
+          author: "Example Press",
+          license_class: "purchased",
+          is_free: false,
+          source: "marketplace_stub",
+          subjects: ["technology"],
+        },
+      ],
+      count: 3,
+      view_format: "html",
+      by_source: {
+        project_gutenberg: 1,
+        standard_ebooks: 1,
+        marketplace_stub: 1,
+      },
+      by_subject: {
+        mathematics: 1,
+        science: 1,
+        literature: 1,
+        technology: 1,
+      },
+      free_count: 2,
+      public_domain_count: 2,
+      purchased_count: 1,
+      payment_rails: "manual_receipt_only",
+    });
+    render(<MarketplaceHost ownerId="operator" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("catalog-source-chips")).toBeTruthy();
+      expect(screen.getByTestId("catalog-entry-pd-elements")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("catalog-source-project_gutenberg"));
+    expect(screen.getByTestId("catalog-entry-pd-elements")).toBeTruthy();
+    expect(screen.queryByTestId("catalog-entry-pd-pride")).toBeNull();
+    expect(screen.queryByTestId("purchase-host-buy-modern")).toBeNull();
+    expect(
+      screen
+        .getByTestId("marketplace-catalog-metrics")
+        .getAttribute("data-source-filter"),
+    ).toBe("project_gutenberg");
+    // Compose with free-PD still shows gutenberg PD.
+    fireEvent.click(screen.getByTestId("catalog-free-pd-only"));
+    expect(screen.getByTestId("catalog-entry-pd-elements")).toBeTruthy();
+    // Clear source → free-PD shows pride too.
+    fireEvent.click(screen.getByTestId("catalog-source-all"));
+    expect(screen.getByTestId("catalog-entry-pd-pride")).toBeTruthy();
+    expect(screen.queryByTestId("purchase-host-buy-modern")).toBeNull();
+  });
 });
