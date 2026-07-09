@@ -18,6 +18,41 @@ def _client() -> TestClient:
     return TestClient(create_app(register_wrestling=False, register_providers=False))
 
 
+class _RecordingTalkProvider:
+    def __init__(self, *, name: str, prompts: list[str], reply: str):
+        self.name = name
+        self.prompts = prompts
+        self.reply = reply
+
+    def call(self, *, model, prompt, max_tokens, temperature):
+        from substrate.dispatch import RawProviderResponse
+
+        self.prompts.append(prompt)
+        return RawProviderResponse(
+            text=self.reply,
+            raw_usage={},
+            finish_reason="stop",
+            latency_ms=1,
+        )
+
+    def normalize_usage(self, raw_usage):
+        from substrate.dispatch import NormalizedUsage
+
+        return NormalizedUsage(input_tokens=0, output_tokens=0)
+
+
+def _register_talk_provider(reply: str) -> list[str]:
+    from substrate.dispatch.router import register_provider, reset_provider_registry
+
+    reset_provider_registry()
+    prompts: list[str] = []
+    for provider_name in ("deepseek", "zai", "zai_reasoning", "xiaomi"):
+        register_provider(
+            _RecordingTalkProvider(name=provider_name, prompts=prompts, reply=reply)
+        )
+    return prompts
+
+
 def test_html_publish_chunker_indexes_visible_text_only() -> None:
     chunks = _chunk_book_html_for_research(
         "<article><h1>Wing sweep</h1><p>Delta wings delay shock formation.</p>"
@@ -668,6 +703,7 @@ def test_html_index_job_embeds_published_book_chunks_explicitly() -> None:
     set_default_embedding_provider(provider)
     original_search_embedder = sys.modules["substrate.graph.search"].SentenceTransformerEmbedding
     sys.modules["substrate.graph.search"].SentenceTransformerEmbedding = lambda: provider
+    prompts = _register_talk_provider("The passage says it is vector searchable.")
     try:
         published = client.post(
             "/books/import/publish-job",
@@ -783,6 +819,28 @@ def test_html_index_job_embeds_published_book_chunks_explicitly() -> None:
         assert hit["document_id"] == "book-indexable"
         assert hit["document_title"] == "Indexable Book"
         assert "Vector searchable passage." in hit["snippet"]
+
+        ask = client.post(
+            "/books/book-indexable/ask",
+            json={
+                "question": "What does the passage say?",
+                "history": [],
+                "research_tier": "deep",
+            },
+        )
+        assert ask.status_code == 200, ask.text
+        ask_body = ask.json()
+        assert ask_body["grounded"] is True
+        assert ask_body["context_chunk_count"] == 1
+        assert ask_body["answer"] == "The passage says it is vector searchable."
+        assert ask_body["citations"]
+        assert ask_body["citations"][0]["document_id"] == "book-indexable"
+        assert "Vector searchable passage." in ask_body["citations"][0]["snippet"]
+        assert prompts
+        assert "Vector searchable passage." in prompts[-1]
     finally:
+        from substrate.dispatch.router import reset_provider_registry
+
+        reset_provider_registry()
         sys.modules["substrate.graph.search"].SentenceTransformerEmbedding = original_search_embedder
         _reset_default_provider()
