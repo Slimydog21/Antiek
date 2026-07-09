@@ -170,6 +170,124 @@ def test_post_compose_artifacts_requires_two_ids(api_env):
     assert "at least two" in resp.json()["detail"]
 
 
+def _source_merge_ready_packet(client: TestClient) -> tuple[dict, dict[str, str]]:
+    for iid, text in [("inv-src-a", "Source merge A"), ("inv-src-b", "Source merge B")]:
+        promote_insight(
+            text=text,
+            investigation_id=iid,
+            confidence="moderate",
+            source_document_id="doc-source-merge",
+        )
+    compose = client.post(
+        "/research/artifacts/compose",
+        json={
+            "investigation_ids": ["inv-src-a", "inv-src-b"],
+            "write_draft_merge": True,
+        },
+    )
+    assert compose.status_code == 200
+    body = compose.json()
+    member_hashes = {
+        member["investigation_id"]: member["content_hash"]
+        for member in body["members"]
+    }
+    return (
+        {
+            "kind": "antiek.reader.source_merge_review_packet",
+            "document_id": "doc-source-merge",
+            "title": "Source Merge Book",
+            "parent_reading_thread_id": "read-doc-source-merge",
+            "draft_merge_path": body["draft_merge_path"],
+            "compose_index_path": body["path"],
+            "member_investigation_ids": ["inv-src-a", "inv-src-b"],
+            "requested_investigation_ids": ["inv-src-a", "inv-src-b"],
+            "hash_conflict_count": 0,
+            "hash_conflicts": [],
+            "source_book_mutated": False,
+            "twin_document_mutated": False,
+            "no_spend": True,
+        },
+        member_hashes,
+    )
+
+
+def test_source_merge_apply_requires_operator_acknowledgements(api_env):
+    client = _client()
+    packet, hashes = _source_merge_ready_packet(client)
+
+    resp = client.post(
+        "/research/artifacts/source-merge/apply",
+        json={
+            "reviewed_packet": packet,
+            "expected_content_hashes": hashes,
+        },
+    )
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "source_merge_operator_acknowledgement_required"
+
+
+def test_source_merge_apply_refuses_stale_review_packet(api_env):
+    client = _client()
+    packet, hashes = _source_merge_ready_packet(client)
+    hashes["inv-src-a"] = "stale-" + hashes["inv-src-a"]
+
+    resp = client.post(
+        "/research/artifacts/source-merge/apply",
+        json={
+            "reviewed_packet": packet,
+            "expected_content_hashes": hashes,
+            "acknowledge_reviewed_draft": True,
+            "acknowledge_source_book_mutation": True,
+            "acknowledge_twin_document_mutation": True,
+        },
+    )
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "source_merge_stale_review_packet"
+
+
+def test_source_merge_apply_requires_hash_conflict_acknowledgement(api_env):
+    client = _client()
+    packet, hashes = _source_merge_ready_packet(client)
+    packet["hash_conflict_count"] = 1
+    packet["hash_conflicts"] = [["inv-src-a", "inv-src-b"]]
+
+    resp = client.post(
+        "/research/artifacts/source-merge/apply",
+        json={
+            "reviewed_packet": packet,
+            "expected_content_hashes": hashes,
+            "acknowledge_reviewed_draft": True,
+            "acknowledge_source_book_mutation": True,
+            "acknowledge_twin_document_mutation": True,
+            "acknowledge_hash_conflicts": False,
+        },
+    )
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "source_merge_hash_conflicts_acknowledgement_required"
+
+
+def test_source_merge_apply_contract_stops_before_writer(api_env):
+    client = _client()
+    packet, hashes = _source_merge_ready_packet(client)
+
+    resp = client.post(
+        "/research/artifacts/source-merge/apply",
+        json={
+            "reviewed_packet": packet,
+            "expected_content_hashes": hashes,
+            "acknowledge_reviewed_draft": True,
+            "acknowledge_source_book_mutation": True,
+            "acknowledge_twin_document_mutation": True,
+        },
+    )
+
+    assert resp.status_code == 501
+    assert resp.json()["detail"] == "source_merge_writer_not_implemented"
+
+
 def test_get_compose_draft_merge_html_requires_two_ids(api_env):
     client = _client()
     resp = client.get(

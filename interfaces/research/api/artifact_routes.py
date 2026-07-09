@@ -8,7 +8,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if _PKG_ROOT not in sys.path:
@@ -23,6 +23,7 @@ from substrate.research_artifact import (  # noqa: E402
     list_outline_blocks,
     render_twin_notes_html,
 )
+from substrate.research_artifact.build_body import build_body  # noqa: E402
 from substrate.research_artifact.paths import artifact_path_for  # noqa: E402
 
 artifact_router = APIRouter(prefix="/research", tags=["research-artifact"])
@@ -84,6 +85,90 @@ class ComposeOut(BaseModel):
     draft_merge_path: str | None = None
     members: list[ComposeMemberOut]
     hash_conflicts: list[list[str]]
+
+
+class SourceMergeReviewPacketIn(BaseModel):
+    kind: str
+    document_id: str = Field(min_length=1)
+    title: str | None = None
+    parent_reading_thread_id: str = Field(min_length=1)
+    draft_merge_path: str = Field(min_length=1)
+    compose_index_path: str = Field(min_length=1)
+    member_investigation_ids: list[str] = Field(min_length=2)
+    requested_investigation_ids: list[str] = Field(default_factory=list)
+    hash_conflict_count: int = Field(ge=0)
+    hash_conflicts: list[list[str]] = Field(default_factory=list)
+    source_book_mutated: bool
+    twin_document_mutated: bool
+    no_spend: bool
+
+
+class SourceMergeApplyIn(BaseModel):
+    reviewed_packet: SourceMergeReviewPacketIn
+    expected_content_hashes: dict[str, str] = Field(default_factory=dict)
+    acknowledge_reviewed_draft: bool = False
+    acknowledge_source_book_mutation: bool = False
+    acknowledge_twin_document_mutation: bool = False
+    acknowledge_hash_conflicts: bool = False
+    operator_reviewer: str | None = Field(default=None, max_length=160)
+
+
+class SourceMergeApplyOut(BaseModel):
+    status: str
+    document_id: str
+    source_revision_id: str
+    twin_revision_id: str
+    event_id: str
+    member_investigation_ids: list[str]
+    hash_conflicts_acknowledged: bool
+
+
+def _clean_member_ids(raw_ids: list[str]) -> list[str]:
+    ids: list[str] = []
+    for item in raw_ids:
+        iid = item.strip()
+        if iid and iid not in ids:
+            ids.append(iid)
+    return ids
+
+
+def _raise_source_merge_refusal(detail: str, *, status_code: int = 409) -> None:
+    raise HTTPException(status_code=status_code, detail=detail)
+
+
+def _validate_source_merge_preflight(body: SourceMergeApplyIn, *, db_path: str) -> list[str]:
+    packet = body.reviewed_packet
+    if packet.kind != "antiek.reader.source_merge_review_packet":
+        _raise_source_merge_refusal("invalid_source_merge_review_packet", status_code=400)
+    if packet.source_book_mutated or packet.twin_document_mutated:
+        _raise_source_merge_refusal("source_merge_packet_already_mutated")
+    if not packet.no_spend:
+        _raise_source_merge_refusal("source_merge_packet_must_be_no_spend", status_code=400)
+    member_ids = _clean_member_ids(packet.member_investigation_ids)
+    if len(member_ids) < 2:
+        _raise_source_merge_refusal("source_merge_requires_two_members", status_code=400)
+    if len(packet.hash_conflicts) != packet.hash_conflict_count:
+        _raise_source_merge_refusal("source_merge_conflict_count_mismatch", status_code=400)
+    if (
+        not body.acknowledge_reviewed_draft
+        or not body.acknowledge_source_book_mutation
+        or not body.acknowledge_twin_document_mutation
+    ):
+        _raise_source_merge_refusal("source_merge_operator_acknowledgement_required")
+    if packet.hash_conflicts and not body.acknowledge_hash_conflicts:
+        _raise_source_merge_refusal("source_merge_hash_conflicts_acknowledgement_required")
+
+    missing_hashes = [iid for iid in member_ids if not body.expected_content_hashes.get(iid)]
+    if missing_hashes:
+        _raise_source_merge_refusal("source_merge_expected_content_hashes_required", status_code=400)
+    stale_ids: list[str] = []
+    for iid in member_ids:
+        current_hash = build_body(iid, db_path=db_path).content_hash()
+        if current_hash != body.expected_content_hashes[iid]:
+            stale_ids.append(iid)
+    if stale_ids:
+        _raise_source_merge_refusal("source_merge_stale_review_packet")
+    return member_ids
 
 
 @artifact_router.post("/{investigation_id}/artifact/export", response_model=ExportOut)
@@ -189,6 +274,20 @@ async def post_compose_artifacts(body: ComposeIn) -> ComposeOut:
         ],
         hash_conflicts=[[a, b] for a, b in res.hash_conflicts],
     )
+
+
+@artifact_router.post("/artifacts/source-merge/apply", response_model=SourceMergeApplyOut)
+async def post_source_merge_apply(body: SourceMergeApplyIn) -> SourceMergeApplyOut:
+    """Preflight the irreversible source-book/twin apply boundary.
+
+    SPR-AHT-08 deliberately lands the contract before the writer: this route
+    validates the reviewed packet and all mutation acknowledgements, then
+    refuses with a typed not-implemented response before any source-book or
+    twin-document write can happen.
+    """
+
+    _validate_source_merge_preflight(body, db_path=_db())
+    raise HTTPException(status_code=501, detail="source_merge_writer_not_implemented")
 
 
 @artifact_router.post(

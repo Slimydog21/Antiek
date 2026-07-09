@@ -1202,6 +1202,42 @@ export interface ResearchArtifactComposeResponse {
   hash_conflicts: string[][];
 }
 
+export interface SourceMergeReviewPacket {
+  kind: "antiek.reader.source_merge_review_packet";
+  document_id: string;
+  title: string | null;
+  parent_reading_thread_id: string;
+  draft_merge_path: string;
+  compose_index_path: string;
+  member_investigation_ids: string[];
+  requested_investigation_ids: string[];
+  hash_conflict_count: number;
+  hash_conflicts: string[][];
+  source_book_mutated: boolean;
+  twin_document_mutated: boolean;
+  no_spend: boolean;
+}
+
+export interface SourceMergeApplyRequest {
+  reviewed_packet: SourceMergeReviewPacket;
+  expected_content_hashes: Record<string, string>;
+  acknowledge_reviewed_draft: boolean;
+  acknowledge_source_book_mutation: boolean;
+  acknowledge_twin_document_mutation: boolean;
+  acknowledge_hash_conflicts?: boolean;
+  operator_reviewer?: string | null;
+}
+
+export interface SourceMergeApplyResponse {
+  status: string;
+  document_id: string;
+  source_revision_id: string;
+  twin_revision_id: string;
+  event_id: string;
+  member_investigation_ids: string[];
+  hash_conflicts_acknowledged: boolean;
+}
+
 /** GET /research/{id}/artifact/blocks — Lego refs for Write outline drops. */
 export async function getResearchArtifactBlocks(
   investigationId: string,
@@ -1253,6 +1289,25 @@ export async function composeResearchArtifacts(
   if (!resp.ok) {
     throw new ApiError(
       `POST /research/artifacts/compose failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+/** POST /research/artifacts/source-merge/apply — preflight reviewed source/twin apply. */
+export async function applySourceMerge(
+  request: SourceMergeApplyRequest,
+): Promise<SourceMergeApplyResponse> {
+  const resp = await apiFetch(`${API_BASE}/research/artifacts/source-merge/apply`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /research/artifacts/source-merge/apply failed: HTTP ${resp.status}`,
       resp.status,
       await resp.text(),
     );
