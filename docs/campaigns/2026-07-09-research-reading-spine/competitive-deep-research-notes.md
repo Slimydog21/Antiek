@@ -446,3 +446,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (og, 2026-07-10) **Collective select recent only:**
   - collective-select-recent one-click for recent_ring ∩ available
   - twin-chase batch merge into cohesive unit without checkbox grind
+
+- Closed (oh, 2026-07-10) **SESSION-ARC of–og collective recent select:**
+  - SESSION-ARC-of-og-collective-recent-select.md fleet handoff

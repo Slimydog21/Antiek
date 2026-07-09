@@ -92,5 +92,12 @@ Settings known_sources + by_source API fix; suite proposal feed chrome.
 
 ## Next residual after this doc
 
-**(oa)+** next thin product residual or operator merge PR #465.
+## Closed since ob (collective recent spawns · 2026-07-10)
+
+**(ob–og)** recent DR spawn ring, clear recent, origin badges, select recent
+only — twin chase → collective cohesive unit path offline-complete.
+
+## Next residual after this doc
+
+**(oi)+** next thin product residual or operator merge PR #465.
 Infinite continues until STOP.
