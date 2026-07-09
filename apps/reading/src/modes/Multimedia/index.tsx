@@ -1067,6 +1067,9 @@ export default function Multimedia() {
                 onChange={(event) => setMustCover(event.target.value)}
               />
             </Labeled>
+            <p className="text-[11px] leading-snug text-shadow-1 dark:text-moonlight">
+              Brief fields shape the plan only; editing topic, sources, style, or must-cover items does not call providers or spend budget.
+            </p>
 
             <div className="flex items-center justify-between gap-3 border-t border-rule pt-3 dark:border-charcoal-1">
               <div>

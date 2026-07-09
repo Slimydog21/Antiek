@@ -332,6 +332,9 @@ describe("Multimedia workstation", () => {
     expect(screen.getByText("Duration changes scope and estimates only; it does not call providers or spend budget.")).toBeTruthy();
     expect(screen.getByText("Mode changes requested media type and preview only; it does not call providers or spend budget.")).toBeTruthy();
     expect(
+      screen.getByText("Brief fields shape the plan only; editing topic, sources, style, or must-cover items does not call providers or spend budget."),
+    ).toBeTruthy();
+    expect(
       screen.getByText("Review plan creates a persisted draft only; it does not call providers, export, or publish media."),
     ).toBeTruthy();
     expect(
