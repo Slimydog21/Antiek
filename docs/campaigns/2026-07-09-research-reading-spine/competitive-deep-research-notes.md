@@ -337,3 +337,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (ne, 2026-07-10) **Invert multi-select visible twins:**
   - twin-invert-selection list-filter-aware
   - multi-select UX path product-complete offline
+
+- Closed (nf, 2026-07-10) **SESSION-ARC mx–ne multi-select chase:**
+  - SESSION-ARC-mx-ne-multi-select-chase.md fleet handoff
+  - multi-select promote/chase path offline-complete
