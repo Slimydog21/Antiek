@@ -23,6 +23,37 @@ vi.mock("../../modes/Reading/launchFloatingDeepResearch", () => ({
     launchFloatingDeepResearch(...args),
 }));
 
+vi.mock("./ResearchLaunchBudgetPanel", () => {
+  const React = require("react") as typeof import("react");
+  return {
+    ResearchLaunchBudgetPanel: (props: {
+      promptText: string;
+      onProjectionChange?: (p: {
+        wouldExceedBudget: boolean | null;
+        pricingKnown: boolean;
+        estimatedUsdHigh: number | null;
+        remainingUsd: number | null;
+        modelId: string | null;
+      }) => void;
+    }) => {
+      React.useEffect(() => {
+        props.onProjectionChange?.({
+          wouldExceedBudget: false,
+          pricingKnown: true,
+          estimatedUsdHigh: 0.1,
+          remainingUsd: 5,
+          modelId: null,
+        });
+      }, [props.onProjectionChange]);
+      return (
+        <div data-testid="research-launch-budget-panel-stub">
+          budget len={props.promptText.length}
+        </div>
+      );
+    },
+  };
+});
+
 describe("CollectiveResearchPanel", () => {
   afterEach(() => cleanup());
   beforeEach(() => {
@@ -126,6 +157,8 @@ describe("CollectiveResearchPanel", () => {
     await waitFor(() => {
       expect(screen.getByTestId("collective-continue-as-unit")).toBeTruthy();
     });
+    expect(screen.getByTestId("collective-continue-budget-mount")).toBeTruthy();
+    expect(screen.getByTestId("research-launch-budget-panel-stub")).toBeTruthy();
     fireEvent.click(screen.getByTestId("collective-continue-as-unit"));
     await waitFor(() => {
       expect(launchFloatingDeepResearch).toHaveBeenCalledWith(

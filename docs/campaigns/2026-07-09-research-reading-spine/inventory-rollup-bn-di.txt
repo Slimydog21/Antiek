@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(di) · PR #465
+Budget soft-gate now covers collective continue-as-unit (di).
+Operator merge still gated.

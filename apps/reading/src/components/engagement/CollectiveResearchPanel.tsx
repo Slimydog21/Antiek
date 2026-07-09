@@ -7,6 +7,7 @@
  * 3. Residual (cf): Create written analysis draft (collective + draft document)
  * 4. Residual (dc): Continue the collective prompt as a new floating deep
  *    research session (cohesive unit re-entry).
+ * 5. Residual (di): budget projection + soft-gate on continue-as-unit.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -19,6 +20,10 @@ import {
   type MergeProductResponse,
 } from "../../api/engagement";
 import { launchFloatingDeepResearch } from "../../modes/Reading/launchFloatingDeepResearch";
+import {
+  ResearchLaunchBudgetPanel,
+  type ResearchLaunchBudgetProjection,
+} from "./ResearchLaunchBudgetPanel";
 import { openWindow } from "../windows/openWindow";
 
 export type CollectiveResearchPanelProps = {
@@ -49,6 +54,11 @@ export function CollectiveResearchPanel({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [continueWindowId, setContinueWindowId] = useState<string | null>(null);
+  const [budgetWarn, setBudgetWarn] = useState(false);
+  const [forceOverBudget, setForceOverBudget] = useState(false);
+  const onProjectionChange = useCallback((p: ResearchLaunchBudgetProjection) => {
+    setBudgetWarn(p.wouldExceedBudget === true);
+  }, []);
 
   const toggle = (id: string) => {
     setSelected((prev) =>
@@ -172,6 +182,12 @@ export function CollectiveResearchPanel({
       setError("parentAssetId (or collective asset_ids) required to continue");
       return;
     }
+    if (budgetWarn && !forceOverBudget) {
+      setError(
+        "Projected cost may exceed remaining daily budget — enable force override or reduce scope.",
+      );
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -188,7 +204,7 @@ export function CollectiveResearchPanel({
     } finally {
       setBusy(false);
     }
-  }, [unit, parentAssetId]);
+  }, [unit, parentAssetId, budgetWarn, forceOverBudget]);
 
   return (
     <section
@@ -291,26 +307,57 @@ export function CollectiveResearchPanel({
           <pre className="prompt-block" data-testid="collective-prompt-block">
             {unit.prompt_block}
           </pre>
-          {/* Residual (dc): engage merged unit as next floating deep research. */}
-          <div className="flex flex-wrap items-center gap-2" style={{ marginTop: "0.5rem" }}>
-            <button
-              type="button"
-              data-testid="collective-continue-as-unit"
-              onClick={() => void continueAsCohesiveUnit()}
-              disabled={busy || !unit.prompt_block?.trim()}
-              title="Open a new floating deep research session seeded with this collective prompt"
-            >
-              {busy ? "Opening…" : "Continue as cohesive unit (window)"}
-            </button>
-            {continueWindowId ? (
-              <span
-                className="meta"
-                data-testid="collective-continue-window-id"
-                role="status"
+          {/* Residual (dc/di): continue unit + budget soft-gate. */}
+          <div
+            className="space-y-2"
+            style={{ marginTop: "0.5rem" }}
+            data-testid="collective-continue-budget-mount"
+            data-view-format="html"
+          >
+            <ResearchLaunchBudgetPanel
+              promptText={unit.prompt_block || ""}
+              researchTier="deep"
+              onProjectionChange={onProjectionChange}
+            />
+            {budgetWarn ? (
+              <label
+                className="flex items-center gap-2 text-[11px] font-mono text-emperor"
+                data-testid="collective-over-budget-warn"
               >
-                Window {continueWindowId}
-              </span>
+                <input
+                  type="checkbox"
+                  data-testid="collective-force-over-budget"
+                  checked={forceOverBudget}
+                  onChange={(e) => setForceOverBudget(e.target.checked)}
+                  disabled={busy}
+                />
+                Force continue despite budget projection
+              </label>
             ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                data-testid="collective-continue-as-unit"
+                onClick={() => void continueAsCohesiveUnit()}
+                disabled={
+                  busy ||
+                  !unit.prompt_block?.trim() ||
+                  (budgetWarn && !forceOverBudget)
+                }
+                title="Open a new floating deep research session seeded with this collective prompt"
+              >
+                {busy ? "Opening…" : "Continue as cohesive unit (window)"}
+              </button>
+              {continueWindowId ? (
+                <span
+                  className="meta"
+                  data-testid="collective-continue-window-id"
+                  role="status"
+                >
+                  Window {continueWindowId}
+                </span>
+              ) : null}
+            </div>
           </div>
         </div>
       ) : null}
