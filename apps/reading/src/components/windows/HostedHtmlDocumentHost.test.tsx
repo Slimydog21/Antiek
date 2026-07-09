@@ -1,10 +1,17 @@
-import { describe, expect, it, vi, afterEach } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import HostedHtmlDocumentHost from "./HostedHtmlDocumentHost";
 
+const launchFloatingDeepResearch = vi.fn();
+
 vi.mock("./windowHostContext", () => ({
   useInWindow: () => undefined,
+}));
+
+vi.mock("../../modes/Reading/launchFloatingDeepResearch", () => ({
+  launchFloatingDeepResearch: (...args: unknown[]) =>
+    launchFloatingDeepResearch(...args),
 }));
 
 vi.mock("../engagement/TwinNotesPanel", () => ({
@@ -21,8 +28,32 @@ vi.mock("../engagement/ResearchContextPanel", () => ({
   ),
 }));
 
-describe("HostedHtmlDocumentHost", () => {
+vi.mock("../engagement/ResearchLaunchBudgetPanel", () => ({
+  ResearchLaunchBudgetPanel: (props: {
+    promptText: string;
+    researchTier: string;
+  }) => (
+    <div
+      data-testid="research-launch-budget-panel-stub"
+      data-research-tier={props.researchTier}
+      data-prompt-len={String(props.promptText.length)}
+    >
+      budget
+    </div>
+  ),
+}));
+
+vi.mock("../engagement/DecisionTreeDriverBadge", () => ({
+  DecisionTreeDriverBadge: () => (
+    <div data-testid="decision-tree-driver-badge-stub">driver</div>
+  ),
+}));
+
+describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
   afterEach(() => cleanup());
+  beforeEach(() => {
+    launchFloatingDeepResearch.mockReset();
+  });
 
   it("renders HTML body for hosted book", () => {
     render(
@@ -64,6 +95,57 @@ describe("HostedHtmlDocumentHost", () => {
     );
   });
 
+  it("mounts driver badge + budget + deep research launch (da)", async () => {
+    launchFloatingDeepResearch.mockResolvedValue({
+      session_id: "fsess_h",
+      spawn_id: "spn_h",
+      investigation_id: "inv_h",
+      parent_asset_id: "doc_host",
+      window_id: "wdr_host_1",
+      view_format: "html",
+      view_mode: "floating",
+      status: "reserved",
+      model_id: "claude-opus-4-8",
+    });
+
+    render(
+      <HostedHtmlDocumentHost
+        document_id="doc_host"
+        title="Hosted Book"
+        view_format="html"
+        html="<p>Body</p>"
+      />,
+    );
+
+    expect(screen.getByTestId("decision-tree-driver-badge-stub")).toBeTruthy();
+    const launch = screen.getByTestId("hosted-html-research-launch");
+    expect(launch.getAttribute("data-view-format")).toBe("html");
+    const budget = screen.getByTestId("research-launch-budget-panel-stub");
+    expect(budget.getAttribute("data-research-tier")).toBe("deep");
+    expect(Number(budget.getAttribute("data-prompt-len"))).toBeGreaterThan(3);
+
+    fireEvent.click(screen.getByTestId("hosted-html-deep-research"));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "doc_host",
+          view_mode: "floating",
+        }),
+      );
+    });
+    const call = launchFloatingDeepResearch.mock.calls.at(-1)?.[0] as {
+      selection_text: string;
+      goal_hint: string;
+    };
+    expect(call.selection_text).toMatch(/Hosted Book/);
+    expect(call.goal_hint).toMatch(/Hosted Book/);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("hosted-html-research-window-id").textContent,
+      ).toMatch(/wdr_host_1/);
+    });
+  });
+
   it("rejects non-html view_format", () => {
     render(
       <HostedHtmlDocumentHost
@@ -73,5 +155,6 @@ describe("HostedHtmlDocumentHost", () => {
       />,
     );
     expect(screen.getByTestId("hosted-html-reject-pdf")).toBeTruthy();
+    expect(screen.queryByTestId("hosted-html-research-launch")).toBeNull();
   });
 });

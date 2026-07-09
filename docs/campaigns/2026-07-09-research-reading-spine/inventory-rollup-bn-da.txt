@@ -1,0 +1,4 @@
+# Campaign rollup (bn)–(da) · PR #465
+cx–cz: reading budget/driver + float chokepoint + moil prefill.
+da: hosted HTML book → budget + driver + floating deep research.
+Operator merge still gated.

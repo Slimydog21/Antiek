@@ -1,0 +1,17 @@
+# residual (da) Hosted book deep research launch + driver + budget
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(cz) prior | branch_only | campaign inventories
+(da) hosted research launch | branch_only | HostedHtmlDocumentHost DecisionTreeDriverBadge + ResearchLaunchBudgetPanel + Deep research (window); 4 vitest
+
+## What shipped
+- DecisionTreeDriverBadge in hosted book header (reading ≡ research driver visibility).
+- Budget projection for document-level research selection text.
+- Deep research (window) → launchFloatingDeepResearch (inherits cy model chokepoint).
+- Non-html views omit research launch; twins/context unchanged.
+
+## Why (north star)
+Marketplace-hosted HTML books must support the same research flywheel as reading highlights — budget before fire, decision-tree driver, floating deep research.
+
+NEXT: (db) re-derive; operator merge PR #465

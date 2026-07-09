@@ -5,11 +5,19 @@
  * Residual (bw): mounts TwinNotesPanel + ResearchContextPanel so reading
  * and research share the recursive note-taker / context flywheel on the
  * same document_id used as engagement asset_id after host seed (bv).
+ * Residual (cv): ResearchContextPanel autoLoad.
+ * Residual (da): DecisionTreeDriverBadge + budget projection + deep research
+ * float launch from the hosted book (reading ≡ research).
  *
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
  */
 
+import { useState } from "react";
+
+import { launchFloatingDeepResearch } from "../../modes/Reading/launchFloatingDeepResearch";
+import { DecisionTreeDriverBadge } from "../engagement/DecisionTreeDriverBadge";
 import { ResearchContextPanel } from "../engagement/ResearchContextPanel";
+import { ResearchLaunchBudgetPanel } from "../engagement/ResearchLaunchBudgetPanel";
 import { TwinNotesPanel } from "../engagement/TwinNotesPanel";
 import { useInWindow } from "./windowHostContext";
 
@@ -36,6 +44,39 @@ export default function HostedHtmlDocumentHost(
   const html = props.html?.trim() || "";
   const assetId = props.document_id?.trim() || "";
 
+  // Selection identity for float DR when no highlight: title + asset.
+  const researchSelection = `Deep-research hosted document: ${title} (${assetId || docId})`;
+
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastWindowId, setLastWindowId] = useState<string | null>(null);
+
+  const spinFloating = async () => {
+    if (!assetId) {
+      setError("document_id is required for deep research");
+      return;
+    }
+    if (!isHtml) {
+      setError("view_format must be html");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const out = await launchFloatingDeepResearch({
+        asset_id: assetId,
+        selection_text: researchSelection,
+        goal_hint: `Deep-research the hosted book/document «${title}»`,
+        view_mode: "floating",
+      });
+      setLastWindowId(out.window_id);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div
       className="flex h-full flex-col gap-3 bg-transparent p-6"
@@ -44,15 +85,21 @@ export default function HostedHtmlDocumentHost(
       data-document-id={props.document_id ?? ""}
     >
       <header className="space-y-1 border-b border-black/10 pb-3 dark:border-white/10">
-        <h1 className="font-serif text-lg text-ink dark:text-parchment">
-          {title}
-        </h1>
-        <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
-          {docId}
-          {props.license_class ? ` · ${props.license_class}` : ""}
-          {" · "}
-          content stance: {isHtml ? "HTML" : viewFormat} · not PDF
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h1 className="font-serif text-lg text-ink dark:text-parchment">
+              {title}
+            </h1>
+            <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
+              {docId}
+              {props.license_class ? ` · ${props.license_class}` : ""}
+              {" · "}
+              content stance: {isHtml ? "HTML" : viewFormat} · not PDF
+            </p>
+          </div>
+          {/* Residual (da): driver readout on reading host (parity with DR). */}
+          <DecisionTreeDriverBadge />
+        </div>
       </header>
 
       {!isHtml ? (
@@ -76,6 +123,49 @@ export default function HostedHtmlDocumentHost(
           No HTML body yet — host the book into your account first.
         </p>
       )}
+
+      {/* Residual (da): budget + float deep research from hosted book. */}
+      {assetId && isHtml ? (
+        <section
+          className="mt-2 space-y-2 border-t border-black/10 pt-4 dark:border-white/10"
+          data-testid="hosted-html-research-launch"
+          data-view-format="html"
+        >
+          <ResearchLaunchBudgetPanel
+            promptText={researchSelection}
+            researchTier="deep"
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="rounded border border-ink/20 px-3 py-1.5 text-xs font-mono dark:border-bright/20"
+              data-testid="hosted-html-deep-research"
+              disabled={busy}
+              onClick={() => void spinFloating()}
+            >
+              {busy ? "Opening…" : "Deep research (window)"}
+            </button>
+            {lastWindowId ? (
+              <span
+                className="text-[11px] font-mono text-aurora"
+                data-testid="hosted-html-research-window-id"
+                role="status"
+              >
+                Window {lastWindowId}
+              </span>
+            ) : null}
+            {error ? (
+              <span
+                className="text-[11px] font-mono text-emperor"
+                role="alert"
+                data-testid="hosted-html-research-error"
+              >
+                {error}
+              </span>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
       {assetId ? (
         <section
