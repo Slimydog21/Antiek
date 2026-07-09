@@ -481,7 +481,7 @@ def test_blank_lines_charge_physical_budget(env, monkeypatch):
 
 
 def test_jsonl_file_count_is_capped(env, monkeypatch):
-    """Unbounded rglob must not retain more than _MAX_JSONL_FILES candidates."""
+    """Walk must not retain more than _MAX_JSONL_FILES candidates."""
     from substrate.research_bridge import hermes_ingest as H
 
     monkeypatch.setattr(H, "_MAX_JSONL_FILES", 3)
@@ -494,6 +494,21 @@ def test_jsonl_file_count_is_capped(env, monkeypatch):
     events = list(iter_hermes_events(env["events"], allowed_roots=env["allowed"]))
     # At most 3 files × 1 event each under the cap.
     assert len(events) <= 3
+
+
+def test_walk_entry_cap_stops_non_jsonl_flood(env, monkeypatch):
+    """A flood of non-JSONL entries must not scan forever before finding events."""
+    from substrate.research_bridge import hermes_ingest as H
+
+    monkeypatch.setattr(H, "_MAX_WALK_ENTRIES", 5)
+    for i in range(20):
+        (Path(env["events"]) / f"a-noise-{i:02d}.txt").write_text(
+            "noise\n", encoding="utf-8"
+        )
+    _write_events(env, [_event("late", "late-inv")], filename="z-late.jsonl")
+    events = list(iter_hermes_events(env["events"], allowed_roots=env["allowed"]))
+    # With only 5 walk-entry budget, the late jsonl is never reached.
+    assert events == []
 
 
 def test_aws_key_equals_value_payload_is_redacted():

@@ -61,6 +61,10 @@ _MAX_EVENTS_RETAINED: int = 20_000
 _MAX_LINE_CHARS: int = 64_000
 # Cap file enumeration before any line reads — rglob materialization DoS.
 _MAX_JSONL_FILES: int = 2_000
+# Bound directory *walk* itself: a hostile tree of non-JSONL files must not
+# burn unbounded CPU/IO before any .jsonl match is found.
+_MAX_WALK_ENTRIES: int = 10_000
+_MAX_WALK_DIRS: int = 2_000
 # Physical readline budget (includes blank/skipped lines so they still charge).
 _MAX_PHYSICAL_READS: int = 100_000
 
@@ -227,6 +231,46 @@ def _is_under_root(path: Path, root: Path) -> bool:
         return False
 
 
+def _discover_jsonl_files(root: Path) -> list[Path]:
+    """Return up to ``_MAX_JSONL_FILES`` ``*.jsonl`` paths under ``root``.
+
+    Uses ``os.walk`` with hard caps on directories and filesystem entries so a
+    hostile tree that contains *no* (or late) JSONL files cannot force an
+    unbounded recursive glob. Failures are absorbed — never raises.
+    """
+    found: list[Path] = []
+    entries_seen = 0
+    dirs_seen = 0
+    try:
+        for dirpath, dirnames, filenames in os.walk(
+            root, topdown=True, followlinks=False
+        ):
+            dirs_seen += 1
+            if dirs_seen > _MAX_WALK_DIRS:
+                break
+            # Cap descent breadth: truncate dirnames in-place so os.walk stops
+            # walking children beyond the remaining budget.
+            remaining_dirs = _MAX_WALK_DIRS - dirs_seen
+            if remaining_dirs <= 0:
+                dirnames[:] = []
+            elif len(dirnames) > remaining_dirs:
+                dirnames[:] = sorted(dirnames)[:remaining_dirs]
+            else:
+                dirnames.sort()
+            for name in sorted(filenames):
+                entries_seen += 1
+                if entries_seen > _MAX_WALK_ENTRIES:
+                    return found
+                if not name.endswith(".jsonl"):
+                    continue
+                found.append(Path(dirpath) / name)
+                if len(found) >= _MAX_JSONL_FILES:
+                    return found
+    except (OSError, RuntimeError):
+        return found
+    return found
+
+
 def _open_jsonl_nofollow(path: Path) -> Any:
     """Open a JSONL path without following a final-component symlink (TOCTOU).
 
@@ -308,18 +352,10 @@ def _scan_event_lines(
     root = resolve_allowed_events_dir(events_dir, allowed_roots=allowed_roots)
     if not root.is_dir():
         return
-    # Bound file discovery: never materialize an unbounded rglob list into RAM.
-    # Iterate unsorted (filesystem order) once the cap is hit; sort only the
-    # capped candidate set for deterministic ingest within the budget.
-    candidates: list[Path] = []
-    try:
-        for path in root.rglob("*.jsonl"):
-            candidates.append(path)
-            if len(candidates) >= _MAX_JSONL_FILES:
-                break
-    except (OSError, RuntimeError):
-        # Hostile/broken directory trees must not crash the bridge.
-        return
+    # Bound file discovery: walk with hard entry/dir caps so a hostile tree of
+    # non-JSONL files cannot burn unbounded CPU/IO before any match appears.
+    # Sort only the capped candidate set for deterministic ingest.
+    candidates = list(_discover_jsonl_files(root))
     physical_reads = 0
     for path in sorted(candidates):
         # Reject symlinks up front (Hermes events are plain files). Combined
