@@ -1104,6 +1104,11 @@ describe("Multimedia workstation", () => {
 
     expect(await screen.findByTestId("multimedia-job-panel")).toBeTruthy();
     expect(screen.getByText(/Live execution queued for krea/)).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Refresh jobs reloads status only; Run dry-run worker stays in dry-run mode and does not call Krea/TTS/video providers.",
+      ),
+    ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Run dry-run worker" }));
 
