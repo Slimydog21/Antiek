@@ -29,12 +29,14 @@ import {
   editPlan,
   getPlan,
   launchPlan,
+  preflightSourcePolicy,
   steerResearch,
   type PlanTree,
+  type SourcePolicyPreflightResponse,
   type SteerKind,
 } from "../../api/research";
 import { track } from "../../lib/analytics";
-import type { DistilledNode } from "../../lib/api";
+import type { DistilledNode, ResearchSourcePolicy } from "../../lib/api";
 import CostMeter from "./CostMeter";
 import PlanEditor from "./PlanEditor";
 import ResearchPanel from "./ResearchPanel";
@@ -49,6 +51,16 @@ interface PlanState {
 }
 
 const NO_STARTERS: StarterPanel[] = [];
+const SOURCE_POLICY_OPTIONS: ReadonlyArray<{
+  value: ResearchSourcePolicy;
+  label: string;
+}> = [
+  { value: "operator_corpus", label: "Corpus" },
+  { value: "web", label: "Web" },
+  { value: "arxiv", label: "arXiv" },
+  { value: "substack", label: "Substack" },
+];
+const DEFAULT_SOURCE_POLICY: ResearchSourcePolicy[] = ["operator_corpus", "web"];
 
 export default function DeepResearchWorkspace() {
   return (
@@ -67,6 +79,10 @@ function Workspace() {
   const [problem, setProblem] = useState("");
   const [plan, setPlan] = useState<PlanState | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(routeSessionId ?? null);
+  const [sourcePolicy, setSourcePolicy] = useState<ResearchSourcePolicy[]>(
+    DEFAULT_SOURCE_POLICY,
+  );
+  const [sourcePreflight, setSourcePreflight] = useState<SourcePolicyPreflightResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -120,6 +136,26 @@ function Workspace() {
       setSessionId(r.session_id);
     });
 
+  const handleSourcePreflight = () =>
+    guard(async () => {
+      const r = await preflightSourcePolicy({
+        source_policy: sourcePolicy,
+        root_id: plan?.rootNodeId ?? null,
+        problem: problem.trim() || null,
+      });
+      setSourcePreflight(r);
+    });
+
+  const toggleSourcePolicy = (source: ResearchSourcePolicy) => {
+    setSourcePolicy((current) => {
+      const next = current.includes(source)
+        ? current.filter((item) => item !== source)
+        : [...current, source];
+      return next.length > 0 ? next : current;
+    });
+    setSourcePreflight(null);
+  };
+
   return (
     <div className="flex h-full flex-col gap-4 overflow-auto p-4">
       <ComposeBar problem={problem} setProblem={setProblem} busy={busy} onCreate={handleCreate} />
@@ -127,17 +163,93 @@ function Workspace() {
         <p className="rounded border border-emperor/40 bg-emperor/5 px-3 py-2 text-sm text-emperor">{error}</p>
       )}
       {plan && (
-        <PlanEditor
-          tree={plan.tree}
-          launchable={plan.launchable}
-          busy={busy}
-          onEdit={handleEdit}
-          onApprove={handleApprove}
-          onLaunch={handleLaunch}
-        />
+        <>
+          <SourcePolicyPreflightPanel
+            policy={sourcePolicy}
+            receipt={sourcePreflight}
+            busy={busy}
+            onToggle={toggleSourcePolicy}
+            onPreflight={handleSourcePreflight}
+          />
+          <PlanEditor
+            tree={plan.tree}
+            launchable={plan.launchable}
+            busy={busy}
+            onEdit={handleEdit}
+            onApprove={handleApprove}
+            onLaunch={handleLaunch}
+          />
+        </>
       )}
       {sessionId && <Monitor sessionId={sessionId} busy={busy} />}
     </div>
+  );
+}
+
+export function SourcePolicyPreflightPanel({
+  policy,
+  receipt,
+  busy,
+  onToggle,
+  onPreflight,
+}: {
+  policy: ResearchSourcePolicy[];
+  receipt: SourcePolicyPreflightResponse | null;
+  busy: boolean;
+  onToggle: (source: ResearchSourcePolicy) => void;
+  onPreflight: () => void;
+}) {
+  return (
+    <section className="rounded-md border border-rule bg-ice-0 px-3 py-2 dark:border-charcoal-1 dark:bg-charcoal-2">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+            Source preflight
+          </span>
+          {SOURCE_POLICY_OPTIONS.map((opt) => {
+            const active = policy.includes(opt.value);
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                aria-pressed={active}
+                disabled={busy}
+                onClick={() => onToggle(opt.value)}
+                className={
+                  "rounded border px-2 py-0.5 text-[11px] font-mono disabled:opacity-50 " +
+                  (active
+                    ? "border-aurora bg-aurora/15 text-ink dark:text-bright"
+                    : "border-rule text-ink-mute dark:border-charcoal-1 dark:text-moonlight")
+                }
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+        <LemonButton size="sm" variant="secondary" disabled={busy} onClick={onPreflight}>
+          Check sources
+        </LemonButton>
+      </div>
+      {receipt && (
+        <div className="mt-2 text-[11px] font-mono text-ink-mute dark:text-moonlight">
+          <p>
+            Receipt {receipt.source_receipt_id} · gather {receipt.gather_mode} · external call{" "}
+            {receipt.external_call_performed ? "yes" : "no"} · budget reserved $
+            {receipt.budget_reserved_usd.toFixed(2)}
+          </p>
+          <ul className="mt-1 grid gap-1 sm:grid-cols-2">
+            {receipt.entries.map((entry) => (
+              <li key={entry.source} className="rounded border border-rule px-2 py-1 dark:border-charcoal-1">
+                <span className="text-ink dark:text-bright">{entry.source}</span>{" "}
+                <span>{entry.status}</span>
+                <span className="block font-serif text-[12px]">{entry.note}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
   );
 }
 

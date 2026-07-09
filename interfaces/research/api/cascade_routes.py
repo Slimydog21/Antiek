@@ -41,7 +41,7 @@ import logging
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -315,6 +315,34 @@ class LaunchRequest(BaseModel):
     aggregate_budget_usd: float | None = None
 
 
+SourcePolicy = Literal["arxiv", "substack", "web", "operator_corpus"]
+
+
+class SourcePolicyPreflightRequest(BaseModel):
+    source_policy: list[SourcePolicy] = Field(min_length=1)
+    root_id: str | None = None
+    problem: str | None = Field(default=None, max_length=2000)
+
+
+class SourcePolicyPreflightEntry(BaseModel):
+    source: SourcePolicy
+    status: Literal["ready", "stub", "gated"]
+    runner_consumes_today: bool
+    external_call_would_be_required: bool
+    note: str
+
+
+class SourcePolicyPreflightResponse(BaseModel):
+    source_receipt_id: str
+    source_policy: list[SourcePolicy]
+    gather_mode: str
+    external_call_performed: bool = False
+    connector_execution_allowed: bool = False
+    budget_reserved_usd: float = 0.0
+    entries: list[SourcePolicyPreflightEntry]
+    notes: list[str] = Field(default_factory=list)
+
+
 class SteerRequest(BaseModel):
     kind: str  # pause | resume | stop | redirect | deepen
     payload: dict[str, Any] | None = None
@@ -398,6 +426,84 @@ async def suggestions(limit: int = 8) -> SuggestionsResponse:
                 source_investigation_id=s.source_investigation_id,
             )
             for s in items
+        ],
+    )
+
+
+@cascade_router.post(
+    "/source-policy/preflight",
+    response_model=SourcePolicyPreflightResponse,
+)
+async def source_policy_preflight(
+    req: SourcePolicyPreflightRequest,
+) -> SourcePolicyPreflightResponse:
+    """No-spend source-pack receipt for a future DRW launch.
+
+    This endpoint deliberately does not load plans, run connectors, call Exa,
+    reserve budget, or mutate the graph. It reports what the current runner
+    would be allowed to consume today and which requested sources remain
+    execution-gated. The launch path is still separately explicit.
+    """
+    import hashlib
+
+    seen: set[SourcePolicy] = set()
+    ordered: list[SourcePolicy] = []
+    for source in req.source_policy:
+        if source not in seen:
+            seen.add(source)
+            ordered.append(source)
+
+    gather_mode = os.environ.get("ANTIEK_DRW_GATHER", "stub").strip().lower() or "stub"
+    exa_enabled = gather_mode == "exa"
+    entries: list[SourcePolicyPreflightEntry] = []
+    for source in ordered:
+        if source == "operator_corpus":
+            entries.append(SourcePolicyPreflightEntry(
+                source=source,
+                status="ready",
+                runner_consumes_today=True,
+                external_call_would_be_required=False,
+                note="available through the local corpus/reuse substrate when the runner reads prior knowledge",
+            ))
+        elif source == "web":
+            entries.append(SourcePolicyPreflightEntry(
+                source=source,
+                status="gated" if exa_enabled else "stub",
+                runner_consumes_today=exa_enabled,
+                external_call_would_be_required=exa_enabled,
+                note=(
+                    "ANTIEK_DRW_GATHER=exa would use the env-gated Exa gather loop"
+                    if exa_enabled
+                    else "current gather mode is stub; no public-web call will run"
+                ),
+            ))
+        elif source == "arxiv":
+            entries.append(SourcePolicyPreflightEntry(
+                source=source,
+                status="gated",
+                runner_consumes_today=False,
+                external_call_would_be_required=True,
+                note="paper connector/source-pack execution is not wired into DRW launch yet",
+            ))
+        elif source == "substack":
+            entries.append(SourcePolicyPreflightEntry(
+                source=source,
+                status="gated",
+                runner_consumes_today=False,
+                external_call_would_be_required=True,
+                note="Substack ingestion exists in Sources, but DRW launch does not consume it yet",
+            ))
+
+    basis = "|".join([gather_mode, req.root_id or "", req.problem or "", *ordered])
+    receipt = "srcpf-" + hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
+    return SourcePolicyPreflightResponse(
+        source_receipt_id=receipt,
+        source_policy=ordered,
+        gather_mode=gather_mode,
+        entries=entries,
+        notes=[
+            "preflight only: no connector, provider, retrieval, graph write, or budget reservation ran",
+            "launch remains a separate operator action and still uses the existing approved runner path",
         ],
     )
 

@@ -7,7 +7,7 @@
  * backend's glass-box gate + runner report.
  */
 
-import { API_BASE, ApiError, apiFetch } from "../lib/api";
+import { API_BASE, ApiError, apiFetch, type ResearchSourcePolicy } from "../lib/api";
 
 // ── Plan tree (mirrors roles/cascade_planner PlanTree.to_dict) ──────────
 
@@ -111,6 +111,25 @@ export interface BudgetDefaults {
   host_local_max_concurrency: number;
 }
 
+export interface SourcePolicyPreflightEntry {
+  source: ResearchSourcePolicy;
+  status: "ready" | "stub" | "gated";
+  runner_consumes_today: boolean;
+  external_call_would_be_required: boolean;
+  note: string;
+}
+
+export interface SourcePolicyPreflightResponse {
+  source_receipt_id: string;
+  source_policy: ResearchSourcePolicy[];
+  gather_mode: string;
+  external_call_performed: boolean;
+  connector_execution_allowed: boolean;
+  budget_reserved_usd: number;
+  entries: SourcePolicyPreflightEntry[];
+  notes: string[];
+}
+
 // ── Suggested next researches (SPR-09 — the compounding flywheel) ───────
 //
 // The §7 continuous daemon already computes scored evidentiary gaps. This is
@@ -166,6 +185,14 @@ export function getBudgetDefaults(): Promise<BudgetDefaults> {
  * here. `limit` bounds the displayed count (rank + cap, never a flood). */
 export function getSuggestions(limit = 8): Promise<SuggestionsResponse> {
   return get(`/research/suggestions?limit=${encodeURIComponent(String(limit))}`);
+}
+
+export function preflightSourcePolicy(req: {
+  source_policy: ResearchSourcePolicy[];
+  root_id?: string | null;
+  problem?: string | null;
+}): Promise<SourcePolicyPreflightResponse> {
+  return post("/research/source-policy/preflight", req);
 }
 
 export function createPlan(req: {

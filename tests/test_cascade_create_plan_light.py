@@ -72,3 +72,31 @@ def test_create_plan_decompose_failed_returns_structured_unknown(cascade_client,
     detail = r.json()["detail"]
     assert detail["code"] == "unknown"
     assert "TypeError" not in r.text
+
+
+def test_source_policy_preflight_is_no_spend_and_no_connector(cascade_client):
+    r = cascade_client.post(
+        "/research/source-policy/preflight",
+        json={
+            "source_policy": ["operator_corpus", "web", "arxiv", "substack"],
+            "root_id": "root-1",
+            "problem": "Which sources should the cascade inspect?",
+        },
+    )
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["source_receipt_id"].startswith("srcpf-")
+    assert body["source_policy"] == ["operator_corpus", "web", "arxiv", "substack"]
+    assert body["gather_mode"] == "stub"
+    assert body["external_call_performed"] is False
+    assert body["connector_execution_allowed"] is False
+    assert body["budget_reserved_usd"] == 0.0
+    entries = {entry["source"]: entry for entry in body["entries"]}
+    assert entries["operator_corpus"]["status"] == "ready"
+    assert entries["operator_corpus"]["runner_consumes_today"] is True
+    assert entries["web"]["status"] == "stub"
+    assert entries["web"]["external_call_would_be_required"] is False
+    assert entries["arxiv"]["status"] == "gated"
+    assert entries["substack"]["status"] == "gated"
+    assert "no connector" in body["notes"][0]
