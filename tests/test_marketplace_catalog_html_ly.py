@@ -31,6 +31,11 @@ def test_project_catalog_html_never_pdf() -> None:
     assert "marketplace catalog" in html.lower() or "catalog" in html.lower()
     assert "pd-elements" in html or "Euclid" in html
     assert "manual_receipt_only" in html or "payment" in html.lower()
+    # Residual (mf): honesty lines for source/subject in HTML projection.
+    assert "By source:" in html or "by source" in html.lower()
+    assert "By subject:" in html or "by subject" in html.lower()
+    assert "project_gutenberg" in html
+    assert "mathematics" in html or "science" in html
 
 
 def test_project_catalog_html_filters_compose() -> None:

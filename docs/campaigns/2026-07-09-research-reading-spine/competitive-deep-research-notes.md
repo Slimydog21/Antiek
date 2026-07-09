@@ -246,3 +246,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (me, 2026-07-10) **Midnight Oil approve soft-gate:**
   - Force override when ceiling may_exceed remaining daily budget
   - Unknown remaining never blocks approve
+
+- Closed (mf, 2026-07-10) **Catalog HTML honesty lines:**
+  - project_catalog_html By source / By subject for filtered set

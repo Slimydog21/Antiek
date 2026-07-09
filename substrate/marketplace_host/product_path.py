@@ -207,6 +207,21 @@ def project_catalog_html(
             continue
         filtered.append(e)
 
+    # Residual (mf): by_source / by_subject honesty lines in HTML projection.
+    by_source: dict[str, int] = {}
+    by_subject: dict[str, int] = {}
+    for e in filtered:
+        src = (e.source or "unknown").strip() or "unknown"
+        by_source[src] = by_source.get(src, 0) + 1
+        for s in e.subjects:
+            by_subject[s] = by_subject.get(s, 0) + 1
+    source_line = " · ".join(
+        f"{k}={v}" for k, v in sorted(by_source.items())
+    ) or "(none)"
+    subject_line = " · ".join(
+        f"{k}={v}" for k, v in sorted(by_subject.items())
+    ) or "(none)"
+
     blocks: list[dict[str, Any]] = [
         {
             "type": "heading",
@@ -225,6 +240,24 @@ def project_catalog_html(
                         + (f" · subject={subj_token}" if subj_token else "")
                         + (f" · source={src_token}" if src_token else "")
                     ),
+                }
+            ],
+        },
+        {
+            "type": "paragraph",
+            "content": [
+                {
+                    "type": "text",
+                    "text": f"By source: {source_line}",
+                }
+            ],
+        },
+        {
+            "type": "paragraph",
+            "content": [
+                {
+                    "type": "text",
+                    "text": f"By subject: {subject_line}",
                 }
             ],
         },
