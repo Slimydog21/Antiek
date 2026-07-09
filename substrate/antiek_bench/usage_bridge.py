@@ -152,18 +152,26 @@ def propose_from_recorded_usage(
 
 
 def weekly_usage_summary(*, store: BenchStore) -> dict[str, Any]:
-    """Aggregate recorded usage for settings / Antiek-bench display."""
+    """Aggregate recorded usage for settings / Antiek-bench display.
+
+    Residual (ha): also aggregate ``by_source`` so operators see interactive
+    investigation starts vs Midnight Oil / session flywheel deposits.
+    """
     events = list_usage_events(store=store)
     by_class: dict[str, dict[str, int]] = {}
+    by_source: dict[str, int] = {}
     for e in events:
         tc = str(e.get("task_class") or "unknown")
         oc = str(e.get("outcome") or "unknown")
+        src = str(e.get("source") or "unknown")
         bucket = by_class.setdefault(tc, {"worked": 0, "failed": 0, "total": 0})
         if oc in ("worked", "failed"):
             bucket[oc] += 1
         bucket["total"] += 1
+        by_source[src] = by_source.get(src, 0) + 1
     return {
         "event_count": len(events),
         "by_task_class": by_class,
+        "by_source": by_source,
         "view_format": "html",
     }

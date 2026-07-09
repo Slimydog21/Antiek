@@ -131,3 +131,7 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 ## residual (gz) hydrate offline_honest — 2026-07-09
 - HydratedAsset.offline_honest + store + HTML honesty line
 - tests: test_engagement_hydrate 5 passed
+## residual (ha) usage summary by_source — 2026-07-09
+- weekly_usage_summary + settings payload by_source
+- HTML "By source: investigation_start=…"
+- tests: test_antiek_bench_usage_bridge 4 passed

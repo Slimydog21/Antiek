@@ -55,6 +55,8 @@ def settings_usage_summary_payload(
     payload: dict[str, Any] = {
         "event_count": int(summary.get("event_count") or 0),
         "by_task_class": dict(summary.get("by_task_class") or {}),
+        # Residual (ha): source breakdown (investigation_start vs session_flywheel).
+        "by_source": dict(summary.get("by_source") or {}),
         "view_format": "html",
         "settings_panel": "antiek_bench_usage_weekly",
         "source": "antiek_bench.usage_events",
@@ -71,6 +73,7 @@ def project_usage_summary_html(summary: dict[str, Any]) -> str:
 
     count = int(summary.get("event_count") or 0)
     by_class = summary.get("by_task_class") or {}
+    by_source = summary.get("by_source") or {}
     blocks: list[dict[str, Any]] = [
         {
             "type": "heading",
@@ -87,6 +90,21 @@ def project_usage_summary_html(summary: dict[str, Any]) -> str:
             ],
         },
     ]
+    if by_source:
+        src_bits = ", ".join(
+            f"{src}={n}" for src, n in sorted(by_source.items())
+        )
+        blocks.append(
+            {
+                "type": "paragraph",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"By source: {src_bits}",
+                    }
+                ],
+            }
+        )
     if not by_class:
         blocks.append(
             {
@@ -94,7 +112,10 @@ def project_usage_summary_html(summary: dict[str, Any]) -> str:
                 "content": [
                     {
                         "type": "text",
-                        "text": "(no usage events yet — engagement flywheel deposits feed this summary)",
+                        "text": (
+                            "(no usage events yet — investigation starts + "
+                            "engagement flywheel deposits feed this summary)"
+                        ),
                     }
                 ],
             }
