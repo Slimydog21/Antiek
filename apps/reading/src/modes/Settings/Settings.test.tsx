@@ -15,6 +15,7 @@ const {
   fetchSettingsModels,
   fetchSettingsBudget,
   fetchAntiekBenchUsageSummary,
+  fetchNotDiamondAdvisory,
 } = vi.hoisted(() => {
   const models = {
     models: [
@@ -86,6 +87,24 @@ const {
       notes: [],
       html: "<p>Events recorded: 2</p>",
     })),
+    fetchNotDiamondAdvisory: vi.fn(async () => ({
+      advisory_allowed: true,
+      advisory_verdict: "GO",
+      authority_allowed: false,
+      authority_rejected: true,
+      authority_verdict: "REJECT",
+      dispatch_owner: "hermes_primary_plus_decision_tree",
+      notdiamond_is_dispatch_authority: false,
+      kill_switch_env: "ANTIEK_NOTDIAMOND",
+      kill_switch_enabled: false,
+      default_off: true,
+      view_format: "html",
+      settings_panel: "notdiamond_advisory",
+      source: "docs/htmlspec/notdiamond-verdict/VERDICT.md",
+      verdict_date: "2026-07-09",
+      notes: ["Authority REJECT under §16"],
+      html: "<p>Authority REJECT — not the dispatch authority</p>",
+    })),
   };
 });
 
@@ -97,6 +116,7 @@ vi.mock("../../api/settings", () => ({
   installDecisionTreeSelection,
   clearDecisionTreeSelection,
   fetchAntiekBenchUsageSummary,
+  fetchNotDiamondAdvisory,
 }));
 
 describe("Settings SPR-01 + decision-tree install", () => {
@@ -112,6 +132,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
     fetchSettingsModels.mockClear();
     fetchSettingsBudget.mockClear();
     fetchAntiekBenchUsageSummary.mockClear();
+    fetchNotDiamondAdvisory.mockClear();
   });
 
   it("renders registered providers and budget bar", async () => {
@@ -185,5 +206,27 @@ describe("Settings SPR-01 + decision-tree install", () => {
     );
     expect(screen.getByText(/wrestle/i)).toBeTruthy();
     expect(screen.getByTestId("antiek-bench-usage-html").innerHTML).toContain("2");
+  });
+
+  it("loads NotDiamond advisory posture — authority rejected", async () => {
+    render(<Settings />);
+    await waitFor(() => {
+      expect(screen.getByTestId("notdiamond-advisory-panel")).toBeTruthy();
+    });
+    expect(fetchNotDiamondAdvisory).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("notdiamond-advisory-summary").textContent,
+      ).toMatch(/REJECT/i);
+    });
+    expect(
+      screen.getByTestId("notdiamond-advisory-panel").getAttribute("data-view-format"),
+    ).toBe("html");
+    expect(screen.getByTestId("notdiamond-advisory-summary").textContent).toMatch(
+      /false/i,
+    );
+    expect(screen.getByTestId("notdiamond-advisory-html").innerHTML).toMatch(
+      /authority|REJECT/i,
+    );
   });
 });

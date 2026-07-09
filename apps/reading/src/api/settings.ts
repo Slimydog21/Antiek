@@ -131,3 +131,31 @@ export async function fetchAntiekBenchUsageSummary(opts?: {
   const res = await apiFetch(`${API_BASE}/settings/antiek-bench/usage-summary${q}`);
   return readJson<AntiekBenchUsageSummaryResponse>(res);
 }
+
+/** NotDiamond advisory posture — never authority over dispatch. */
+export type NotDiamondAdvisoryResponse = {
+  advisory_allowed: boolean;
+  advisory_verdict: string;
+  authority_allowed: boolean;
+  authority_rejected: boolean;
+  authority_verdict: string;
+  dispatch_owner: string;
+  notdiamond_is_dispatch_authority: boolean;
+  kill_switch_env: string;
+  kill_switch_enabled: boolean;
+  default_off: boolean;
+  view_format: "html" | string;
+  settings_panel: string;
+  source: string;
+  verdict_date: string;
+  notes: string[];
+  html?: string | null;
+};
+
+export async function fetchNotDiamondAdvisory(opts?: {
+  includeHtml?: boolean;
+}): Promise<NotDiamondAdvisoryResponse> {
+  const q = opts?.includeHtml ? "?include_html=true" : "";
+  const res = await apiFetch(`${API_BASE}/settings/notdiamond/advisory${q}`);
+  return readJson<NotDiamondAdvisoryResponse>(res);
+}

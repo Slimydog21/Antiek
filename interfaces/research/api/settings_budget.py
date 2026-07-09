@@ -467,6 +467,64 @@ def get_antiek_bench_usage_summary(
     )
 
 
+class NotDiamondAdvisoryResponse(BaseModel):
+    """Settings-facing NotDiamond advisory posture (offline; never authority)."""
+
+    advisory_allowed: bool = True
+    advisory_verdict: str = "GO"
+    authority_allowed: bool = False
+    authority_rejected: bool = True
+    authority_verdict: str = "REJECT"
+    dispatch_owner: str = "hermes_primary_plus_decision_tree"
+    notdiamond_is_dispatch_authority: bool = False
+    kill_switch_env: str = "ANTIEK_NOTDIAMOND"
+    kill_switch_enabled: bool = False
+    default_off: bool = True
+    view_format: str = "html"
+    settings_panel: str = "notdiamond_advisory"
+    source: str = "docs/htmlspec/notdiamond-verdict/VERDICT.md"
+    verdict_date: str = "2026-07-09"
+    notes: list[str] = Field(default_factory=list)
+    html: str | None = None
+
+
+@settings_router.get(
+    "/notdiamond/advisory",
+    response_model=NotDiamondAdvisoryResponse,
+)
+def get_notdiamond_advisory(include_html: bool = False) -> NotDiamondAdvisoryResponse:
+    """Return offline NotDiamond advisory posture for Settings.
+
+    Never calls NotDiamond HTTP. Never claims ND owns dispatch.
+    Authority is always rejected; advisory may be GO with kill-switch default off.
+    """
+    from substrate.notdiamond_advisory import notdiamond_advisory_payload
+
+    payload = notdiamond_advisory_payload(include_html=include_html)
+    return NotDiamondAdvisoryResponse(
+        advisory_allowed=bool(payload.get("advisory_allowed")),
+        advisory_verdict=str(payload.get("advisory_verdict") or "GO"),
+        authority_allowed=bool(payload.get("authority_allowed")),
+        authority_rejected=bool(payload.get("authority_rejected")),
+        authority_verdict=str(payload.get("authority_verdict") or "REJECT"),
+        dispatch_owner=str(
+            payload.get("dispatch_owner") or "hermes_primary_plus_decision_tree"
+        ),
+        notdiamond_is_dispatch_authority=bool(
+            payload.get("notdiamond_is_dispatch_authority")
+        ),
+        kill_switch_env=str(payload.get("kill_switch_env") or "ANTIEK_NOTDIAMOND"),
+        kill_switch_enabled=bool(payload.get("kill_switch_enabled")),
+        default_off=bool(payload.get("default_off", True)),
+        view_format=str(payload.get("view_format") or "html"),
+        settings_panel=str(payload.get("settings_panel") or "notdiamond_advisory"),
+        source=str(payload.get("source") or ""),
+        verdict_date=str(payload.get("verdict_date") or ""),
+        notes=list(payload.get("notes") or []),
+        html=payload.get("html"),
+    )
+
+
 class DecisionTreeSelectionRequest(BaseModel):
     """Install operator decision-tree driver for this process."""
 
@@ -567,9 +625,11 @@ __all__ = [
     "PromptCostEstimateResponse",
     "delete_decision_tree_selection",
     "estimate_prompt_cost",
+    "NotDiamondAdvisoryResponse",
     "get_antiek_bench_leaderboard",
     "get_antiek_bench_usage_summary",
     "get_decision_tree_selection",
+    "get_notdiamond_advisory",
     "post_decision_tree_selection",
     "read_operator_budget",
     "register_settings_budget_routes",

@@ -6,6 +6,7 @@ import {
   estimatePromptCost,
   fetchAntiekBenchUsageSummary,
   fetchDecisionTreeSelection,
+  fetchNotDiamondAdvisory,
   fetchSettingsBudget,
   fetchSettingsModels,
   installDecisionTreeSelection,
@@ -13,6 +14,7 @@ import {
   type BudgetResponse,
   type DecisionTreeSelectionResponse,
   type ModelRow,
+  type NotDiamondAdvisoryResponse,
   type PromptCostEstimateResponse,
 } from "../../api/settings";
 
@@ -56,6 +58,8 @@ export default function Settings() {
   );
   const [usageError, setUsageError] = useState<string | null>(null);
   const [usageBusy, setUsageBusy] = useState(false);
+  const [nd, setNd] = useState<NotDiamondAdvisoryResponse | null>(null);
+  const [ndError, setNdError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -100,6 +104,12 @@ export default function Settings() {
       } catch (e) {
         if (!cancelled)
           setUsageError(e instanceof Error ? e.message : String(e));
+      }
+      try {
+        const n = await fetchNotDiamondAdvisory({ includeHtml: true });
+        if (!cancelled) setNd(n);
+      } catch (e) {
+        if (!cancelled) setNdError(e instanceof Error ? e.message : String(e));
       }
     })();
     return () => {
@@ -372,6 +382,65 @@ export default function Settings() {
                 </p>
               ))}
             </div>
+          </div>
+        </LemonCard>
+
+        <LemonCard title="NotDiamond advisory" elevation="z1" colour="glacial">
+          <div
+            className="p-4 space-y-3"
+            data-testid="notdiamond-advisory-panel"
+            data-view-format="html"
+          >
+            <p className="text-sm text-ink dark:text-bright">
+              Campaign verdict: advisory GO (measured wedge only); authoritative
+              dispatch REJECT under §16. NotDiamond is never the dispatch owner
+              — decision-tree + Hermes remain primary.
+            </p>
+            {ndError && (
+              <p className="text-sm text-red-700 dark:text-red-300 font-mono">
+                {ndError}
+              </p>
+            )}
+            {nd && (
+              <div
+                className="font-mono text-[13px] space-y-2"
+                data-testid="notdiamond-advisory-summary"
+              >
+                <Row
+                  label="Advisory"
+                  value={`${nd.advisory_verdict} (allowed=${String(nd.advisory_allowed)})`}
+                />
+                <Row
+                  label="Authority"
+                  value={`${nd.authority_verdict} (rejected=${String(nd.authority_rejected)})`}
+                />
+                <Row
+                  label="Is dispatch authority"
+                  value={String(nd.notdiamond_is_dispatch_authority)}
+                />
+                <Row label="Dispatch owner" value={nd.dispatch_owner} />
+                <Row
+                  label="Kill-switch"
+                  value={`${nd.kill_switch_env}=${nd.kill_switch_enabled ? "on" : "off (default)"}`}
+                />
+                <Row label="View" value={nd.view_format} />
+                {nd.notes?.map((n) => (
+                  <p
+                    key={n}
+                    className="text-[11px] text-ink-soft dark:text-starlight"
+                  >
+                    {n}
+                  </p>
+                ))}
+                {nd.html ? (
+                  <div
+                    className="prose border rounded p-2 text-sm max-h-48 overflow-auto"
+                    data-testid="notdiamond-advisory-html"
+                    dangerouslySetInnerHTML={{ __html: nd.html }}
+                  />
+                ) : null}
+              </div>
+            )}
           </div>
         </LemonCard>
 
