@@ -60,6 +60,26 @@ export interface MidnightOilLaunchPacket {
   launch_notes: string[];
 }
 
+export interface MidnightOilApprovalReceipt {
+  receipt_id: string;
+  launch_packet_id: string;
+  run_id: string;
+  operator_acknowledged_spend: boolean;
+  approved_price_ceiling_usd: number;
+  approved_work_minutes: number;
+  approved_route_mode: MidnightOilRouteMode;
+  approved_source_policy: MidnightOilSourcePolicy[];
+  approved_deliverable: "html_research_asset";
+  planned_budget_usd: number;
+  unallocated_budget_usd: number;
+  approval_scope: "preflight_launch_packet_only";
+  runner_apply_required: boolean;
+  dispatch_allowed: boolean;
+  budget_reserved: boolean;
+  provider_calls_made: boolean;
+  receipt_notes: string[];
+}
+
 export interface MidnightOilPreflight {
   accepted: boolean;
   denial_reason: string | null;
@@ -75,6 +95,7 @@ export interface MidnightOilPreflight {
   role_plans: MidnightOilRolePlan[];
   artifact_contract: MidnightOilArtifactContract;
   launch_packet: MidnightOilLaunchPacket | null;
+  approval_receipt: MidnightOilApprovalReceipt | null;
   notes: string[];
 }
 

@@ -77,6 +77,25 @@ vi.mock("../../api/midnightOil", () => ({
       provider_calls_made: false,
       launch_notes: ["launch packet only: no agents dispatched"],
     },
+    approval_receipt: {
+      receipt_id: "midnight-oil-test-approval-receipt",
+      launch_packet_id: "midnight-oil-test-launch-packet",
+      run_id: "midnight-oil-test",
+      operator_acknowledged_spend: true,
+      approved_price_ceiling_usd: 12,
+      approved_work_minutes: 90,
+      approved_route_mode: "auto_cost",
+      approved_source_policy: ["arxiv", "substack", "operator_corpus"],
+      approved_deliverable: "html_research_asset",
+      planned_budget_usd: 7.2,
+      unallocated_budget_usd: 4.8,
+      approval_scope: "preflight_launch_packet_only",
+      runner_apply_required: true,
+      dispatch_allowed: false,
+      budget_reserved: false,
+      provider_calls_made: false,
+      receipt_notes: ["operator approved the ceiling for this launch packet only"],
+    },
     notes: ["preflight only: no agents launched, no budget reserved, no retrieval performed"],
   })),
 }));
@@ -124,6 +143,10 @@ describe("MidnightOil", () => {
     expect(screen.getByText("midnight-oil-test-launch-packet")).toBeTruthy();
     expect(screen.getByText("Dispatch")).toBeTruthy();
     expect(screen.getByText("disabled")).toBeTruthy();
+    expect(screen.getByText("Approval receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-approval-receipt")).toBeTruthy();
+    expect(screen.getByText("Runner apply")).toBeTruthy();
+    expect(screen.getAllByText("required").length).toBeGreaterThan(0);
     expect(screen.getByText(/no agents launched/i)).toBeTruthy();
   });
 });

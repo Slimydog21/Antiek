@@ -289,6 +289,37 @@ export default function MidnightOil() {
                 </div>
               )}
 
+              {preflight.approval_receipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Approval receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {preflight.approval_receipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Scope"
+                      value={preflight.approval_receipt.approval_scope.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Runner apply"
+                      value={preflight.approval_receipt.runner_apply_required ? "required" : "not required"}
+                    />
+                    <Metric
+                      label="Approved ceiling"
+                      value={`$${preflight.approval_receipt.approved_price_ceiling_usd.toFixed(2)}`}
+                    />
+                  </div>
+                  <p className="mt-2 text-[11px] text-ink-soft dark:text-starlight">
+                    Bound to {preflight.approval_receipt.launch_packet_id}; no dispatch, budget
+                    reservation, provider calls, or graph mutation happens in this receipt.
+                  </p>
+                </div>
+              )}
+
               {preflight.notes.map((note) => (
                 <p key={note} className="text-[11px] text-ink-soft dark:text-starlight">
                   {note}

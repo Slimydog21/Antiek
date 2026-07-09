@@ -25,6 +25,7 @@ def test_no_ack_request_is_denied_before_dispatch() -> None:
     assert result.planned_budget_usd == 0.0
     assert result.unallocated_budget_usd == 25.0
     assert result.launch_packet is None
+    assert result.approval_receipt is None
     assert "denied before dispatch" in result.notes[0]
 
 
@@ -127,6 +128,41 @@ def test_accepted_preflight_emits_no_dispatch_launch_packet() -> None:
     assert "no agents dispatched" in packet.launch_notes[0]
 
 
+def test_accepted_preflight_emits_operator_approval_receipt_bound_to_launch_packet() -> None:
+    result = preflight_midnight_oil(
+        MidnightOilRequest(
+            goal="Compare aircraft engine maintenance capacity constraints.",
+            work_minutes=75,
+            price_ceiling_usd=8.5,
+            route_mode="auto_quality",
+            source_policy=["arxiv", "web"],
+            operator_acknowledged_spend=True,
+        )
+    )
+
+    assert result.launch_packet is not None
+    assert result.approval_receipt is not None
+    receipt = result.approval_receipt
+    packet = result.launch_packet
+    assert receipt.receipt_id == f"{result.run_id}-approval-receipt"
+    assert receipt.launch_packet_id == packet.packet_id
+    assert receipt.run_id == result.run_id
+    assert receipt.operator_acknowledged_spend is True
+    assert receipt.approved_price_ceiling_usd == result.price_ceiling_usd
+    assert receipt.approved_work_minutes == result.work_minutes
+    assert receipt.approved_route_mode == result.route_mode
+    assert receipt.approved_source_policy == result.source_policy
+    assert receipt.approved_deliverable == "html_research_asset"
+    assert receipt.planned_budget_usd == result.planned_budget_usd
+    assert receipt.unallocated_budget_usd == result.unallocated_budget_usd
+    assert receipt.approval_scope == "preflight_launch_packet_only"
+    assert receipt.runner_apply_required is True
+    assert receipt.dispatch_allowed is False
+    assert receipt.budget_reserved is False
+    assert receipt.provider_calls_made is False
+    assert "runner apply is still required" in receipt.receipt_notes[1]
+
+
 def test_final_artifact_contract_is_html_not_pdf_with_twin_note() -> None:
     result = preflight_midnight_oil(
         MidnightOilRequest(
@@ -175,5 +211,11 @@ def test_midnight_oil_preflight_api_contract() -> None:
     assert body["launch_packet"]["role_route_receipt_ids"] == [
         plan["planned_route_receipt_id"] for plan in body["role_plans"]
     ]
+    assert body["approval_receipt"]["launch_packet_id"] == body["launch_packet"]["packet_id"]
+    assert body["approval_receipt"]["approved_price_ceiling_usd"] == body["price_ceiling_usd"]
+    assert body["approval_receipt"]["runner_apply_required"] is True
+    assert body["approval_receipt"]["dispatch_allowed"] is False
+    assert body["approval_receipt"]["budget_reserved"] is False
+    assert body["approval_receipt"]["provider_calls_made"] is False
     assert body["artifact_contract"]["final_format"] == "html"
     assert len(body["role_plans"]) == 4
