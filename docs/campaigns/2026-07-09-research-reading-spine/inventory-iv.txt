@@ -1,0 +1,11 @@
+# inventory-iv · host deep research full window · residual (iv)
+
+## Delta
+- marketplace-host-deep-research-full button (view_mode=full)
+- onDeepResearchHostedBook(result, viewMode)
+
+## Verified
+vitest MarketplaceHost 8_passed
+
+## Next
+(iw) re-derive

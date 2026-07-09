@@ -30,6 +30,7 @@
  * knowledge-dense research books.
  * Residual (iu): host-result one-click floating deep research on hosted book
  * (reading ≡ research flywheel; decision-tree driver chokepoint).
+ * Residual (iv): host-result deep research full window mode (parity hosted es).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -236,10 +237,14 @@ export default function MarketplaceHost({
   }
 
   /**
-   * Residual (iu): one-click floating deep research on hosted HTML book.
+   * Residual (iu/iv): one-click deep research on hosted HTML book.
    * Uses decision-tree driver chokepoint; selection from title/body preview.
+   * viewMode floating | full (parity hosted book DR es).
    */
-  async function onDeepResearchHostedBook(result: HostResultResponse) {
+  async function onDeepResearchHostedBook(
+    result: HostResultResponse,
+    viewMode: "floating" | "full" = "floating",
+  ) {
     if (result.view_format !== "html") {
       setError("view_format must be html — PDF is not a research surface");
       return;
@@ -262,13 +267,13 @@ export default function MarketplaceHost({
         asset_id: result.document_id,
         selection_text: selection,
         goal_hint: `Wrestle claims and cite evidence in “${title}” (marketplace HTML host).`,
-        view_mode: "floating",
+        view_mode: viewMode,
       });
       if (out.view_format !== "html") {
         throw new Error("deep research view_format must be html");
       }
       setHostDrStatus(
-        `Deep research launched · session=${out.session_id} · spawn=${out.spawn_id} · window=${out.window_id}`,
+        `Deep research launched (${viewMode}) · session=${out.session_id} · spawn=${out.spawn_id} · window=${out.window_id}`,
       );
     } catch (e) {
       setHostDrStatus(
@@ -741,23 +746,42 @@ export default function MarketplaceHost({
                 Open Write (HTML draft)
               </a>
             ) : null}
-            {/* Residual (iu): one-click floating deep research on hosted book. */}
+            {/* Residual (iu/iv): deep research floating | full on hosted book. */}
             <button
               type="button"
               data-testid="marketplace-host-deep-research"
               data-view-format="html"
               data-document-id={hosted.document_id}
+              data-view-mode="floating"
               disabled={
                 hostDrBusy ||
                 busy ||
                 hosted.view_format !== "html" ||
                 !hosted.document_id
               }
-              onClick={() => void onDeepResearchHostedBook(hosted)}
+              onClick={() => void onDeepResearchHostedBook(hosted, "floating")}
               className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
               title="Launch floating deep research on this hosted HTML book"
             >
-              {hostDrBusy ? "Launching deep research…" : "Deep research this book"}
+              {hostDrBusy ? "Launching…" : "Deep research (float)"}
+            </button>
+            <button
+              type="button"
+              data-testid="marketplace-host-deep-research-full"
+              data-view-format="html"
+              data-document-id={hosted.document_id}
+              data-view-mode="full"
+              disabled={
+                hostDrBusy ||
+                busy ||
+                hosted.view_format !== "html" ||
+                !hosted.document_id
+              }
+              onClick={() => void onDeepResearchHostedBook(hosted, "full")}
+              className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+              title="Launch full working-region deep research on this hosted HTML book"
+            >
+              {hostDrBusy ? "Launching…" : "Deep research (full)"}
             </button>
           </div>
           {hostDrStatus ? (

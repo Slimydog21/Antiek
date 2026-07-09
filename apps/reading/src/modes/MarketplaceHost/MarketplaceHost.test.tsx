@@ -199,7 +199,22 @@ describe("MarketplaceHost mode", () => {
     });
     await waitFor(() => {
       expect(screen.getByTestId("marketplace-host-dr-status").textContent).toMatch(
-        /Deep research launched/,
+        /Deep research launched \(floating\)/,
+      );
+    });
+    // Residual (iv): full working-region deep research.
+    fireEvent.click(screen.getByTestId("marketplace-host-deep-research-full"));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "hdoc_abc",
+          view_mode: "full",
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("marketplace-host-dr-status").textContent).toMatch(
+        /Deep research launched \(full\)/,
       );
     });
     // Residual (gi): host-result → Write HTML draft handoff.
