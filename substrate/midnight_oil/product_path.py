@@ -278,6 +278,60 @@ def live_step_enabled() -> bool:
     return True
 
 
+def live_step_fn_installed() -> bool:
+    """Residual (hy): True when a process-local live worker step fn is set."""
+    return _live_step_fn is not None
+
+
+def live_step_status_payload(
+    *,
+    environ: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Residual (hy): offline-vs-live Midnight Oil step readiness (never enables)."""
+    env = environ if environ is not None else None
+    if env is not None:
+        raw = str(env.get(ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV) or "").strip().lower()
+        live_env = raw not in ("", "0", "false", "off", "no", "disabled")
+    else:
+        live_env = live_step_enabled()
+    injector = live_step_fn_installed()
+    offline_honest = not (live_env and injector)
+    notes: list[str] = []
+    if offline_honest:
+        notes.append(
+            "Midnight Oil default: offline stub steps — no live multi-provider swarm."
+        )
+    else:
+        notes.append(
+            "Live step dual-gate satisfied (env + injector) — run may use live step_fn."
+        )
+    if live_env and not injector:
+        notes.append(
+            f"{ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV}=on but no process injector "
+            "(configure_midnight_oil_live_step required)."
+        )
+    return {
+        "view_format": "html",
+        "product_panel": "midnight_oil_live_step_status",
+        "source": "substrate.midnight_oil.product_path",
+        "offline_honest": offline_honest,
+        "live_env": live_env,
+        "injector_installed": injector,
+        "live_env_flag": ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV,
+        "notes": notes,
+        "html": (
+            "<section data-view-format=\"html\" "
+            'data-product-panel="midnight_oil_live_step_status">'
+            f"<p>offline_honest={str(offline_honest).lower()} · "
+            f"live_env={str(live_env).lower()} · "
+            f"injector={str(injector).lower()}</p>"
+            "<ul>"
+            + "".join(f"<li>{n}</li>" for n in notes)
+            + "</ul></section>"
+        ),
+    }
+
+
 def resolve_worker_step_fn(
     *,
     spent_per_goal: float = 0.05,

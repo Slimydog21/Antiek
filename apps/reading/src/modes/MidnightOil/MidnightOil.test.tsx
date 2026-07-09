@@ -8,6 +8,7 @@ const {
   depositMidnightOilJob,
   runMidnightOilJob,
   getMidnightOilJob,
+  fetchMidnightOilLiveStepStatus,
   fetchDecisionTreeSelection,
   seedTwinNotes,
 } = vi.hoisted(() => ({
@@ -16,6 +17,19 @@ const {
   depositMidnightOilJob: vi.fn(),
   runMidnightOilJob: vi.fn(),
   getMidnightOilJob: vi.fn(),
+  fetchMidnightOilLiveStepStatus: vi.fn(async () => ({
+    view_format: "html",
+    product_panel: "midnight_oil_live_step_status",
+    source: "substrate.midnight_oil.product_path",
+    offline_honest: true,
+    live_env: false,
+    injector_installed: false,
+    live_env_flag: "ANTIEK_MIDNIGHT_OIL_LIVE_STEP",
+    notes: [
+      "Midnight Oil default: offline stub steps — no live multi-provider swarm.",
+    ],
+    html: "<p>offline_honest=true</p>",
+  })),
   fetchDecisionTreeSelection: vi.fn(),
   seedTwinNotes: vi.fn(),
 }));
@@ -26,6 +40,7 @@ vi.mock("../../api/midnightOil", () => ({
   depositMidnightOilJob,
   runMidnightOilJob,
   getMidnightOilJob,
+  fetchMidnightOilLiveStepStatus,
 }));
 
 vi.mock("../../api/engagement", () => ({
@@ -127,6 +142,7 @@ describe("MidnightOil mode", () => {
   beforeEach(() => {
     createMidnightOilJob.mockReset();
     approveMidnightOilCeiling.mockReset();
+    fetchMidnightOilLiveStepStatus.mockClear();
     seedTwinNotes.mockReset().mockResolvedValue({
       asset_id: "draft_moil_asset_dep_abc",
       seeded: true,
@@ -145,6 +161,21 @@ describe("MidnightOil mode", () => {
       model_id: null,
       provider_id: null,
     });
+  });
+
+  it("surfaces offline-honest live-step status (hy)", async () => {
+    render(<MidnightOil />);
+    await waitFor(() => {
+      expect(fetchMidnightOilLiveStepStatus).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("moil-live-step-status")).toBeTruthy();
+    });
+    const panel = screen.getByTestId("moil-live-step-status");
+    expect(panel.getAttribute("data-offline-honest")).toBe("true");
+    expect(panel.getAttribute("data-live-env")).toBe("false");
+    expect(panel.getAttribute("data-injector-installed")).toBe("false");
+    expect(panel.textContent).toMatch(/offline-honest stub steps/);
   });
 
   it("mounts budget projection panel before create (cs)", () => {

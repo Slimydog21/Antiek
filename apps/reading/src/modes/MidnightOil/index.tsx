@@ -18,6 +18,7 @@
  * Residual (gs): budget-panel depth tier → create research_tier (fast|deep|wrestle).
  * Residual (hn): moil-ceiling-metrics + formula note for recommended price
  * ceiling transparency (goals+duration → approve before swarm work).
+ * Residual (hy): live-step status panel (offline-honest dual-gate readiness).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -26,9 +27,11 @@ import {
   approveMidnightOilCeiling,
   createMidnightOilJob,
   depositMidnightOilJob,
+  fetchMidnightOilLiveStepStatus,
   runMidnightOilJob,
   type MidnightOilDepositResponse,
   type MidnightOilJobResponse,
+  type MidnightOilLiveStepStatusResponse,
   type MidnightOilRunResponse,
 } from "../../api/midnightOil";
 import { fetchDecisionTreeSelection, fetchDepthTiers } from "../../api/settings";
@@ -100,6 +103,9 @@ export default function MidnightOil() {
   const [depositWindowId, setDepositWindowId] = useState<string | null>(null);
   // Residual (gk): twin reseed status after deposit.
   const [twinReseedStatus, setTwinReseedStatus] = useState<string | null>(null);
+  // Residual (hy): live worker step readiness (offline default).
+  const [liveStepStatus, setLiveStepStatus] =
+    useState<MidnightOilLiveStepStatusResponse | null>(null);
 
   const maybeAutoOpenDeposit = useCallback(
     (dep: MidnightOilDepositResponse) => {
@@ -178,6 +184,15 @@ export default function MidnightOil() {
       })
       .catch(() => {
         if (!cancelled) setDriverPrefill("error");
+      });
+    void fetchMidnightOilLiveStepStatus()
+      .then((st) => {
+        if (cancelled) return;
+        if (st.view_format !== "html") return;
+        setLiveStepStatus(st);
+      })
+      .catch(() => {
+        /* non-fatal — offline default still true */
       });
     void fetchDepthTiers()
       .then((resp) => {
@@ -350,6 +365,38 @@ export default function MidnightOil() {
           may run. Deliverable: HTML research asset (never PDF).
         </p>
       </header>
+
+      {/* Residual (hy): live worker step dual-gate readiness (never enables). */}
+      {liveStepStatus ? (
+        <div
+          className="mb-4 max-w-xl space-y-1 rounded border border-ink/15 p-3 font-mono text-[11px] dark:border-bright/15"
+          data-testid="moil-live-step-status"
+          data-offline-honest={String(liveStepStatus.offline_honest)}
+          data-live-env={String(liveStepStatus.live_env)}
+          data-injector-installed={String(liveStepStatus.injector_installed)}
+          data-view-format="html"
+          role="status"
+        >
+          <p>
+            Worker mode:{" "}
+            <strong>
+              {liveStepStatus.offline_honest
+                ? "offline-honest stub steps"
+                : "live step dual-gate ready"}
+            </strong>
+          </p>
+          <p>
+            env <code>{liveStepStatus.live_env_flag}</code>=
+            {String(liveStepStatus.live_env)} · injector=
+            {String(liveStepStatus.injector_installed)}
+          </p>
+          {liveStepStatus.notes.map((n) => (
+            <p key={n} className="opacity-80">
+              {n}
+            </p>
+          ))}
+        </div>
+      ) : null}
 
       <form onSubmit={(e) => void onCreate(e)} className="space-y-4 max-w-xl">
         <label className="block space-y-1">

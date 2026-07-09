@@ -32,6 +32,24 @@ async function readJson<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** Residual (hy): offline-vs-live worker step readiness. */
+export type MidnightOilLiveStepStatusResponse = {
+  view_format: "html" | string;
+  product_panel: string;
+  source: string;
+  offline_honest: boolean;
+  live_env: boolean;
+  injector_installed: boolean;
+  live_env_flag: string;
+  notes: string[];
+  html?: string | null;
+};
+
+export async function fetchMidnightOilLiveStepStatus(): Promise<MidnightOilLiveStepStatusResponse> {
+  const res = await apiFetch(`${API_BASE}/midnight-oil/live-step-status`);
+  return readJson<MidnightOilLiveStepStatusResponse>(res);
+}
+
 export async function createMidnightOilJob(body: {
   goals: string[];
   duration_minutes: number;

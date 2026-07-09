@@ -122,6 +122,14 @@ def post_approve(body: ApproveBody) -> dict[str, Any]:
     return out
 
 
+@midnight_oil_router.get("/live-step-status")
+def get_live_step_status() -> dict[str, Any]:
+    """Residual (hy): offline-vs-live worker step readiness (never enables network)."""
+    from substrate.midnight_oil import live_step_status_payload
+
+    return live_step_status_payload()
+
+
 @midnight_oil_router.get("/jobs/{job_id}")
 def get_job_route(job_id: str) -> dict[str, Any]:
     job = get_job(job_id, store=_store())
