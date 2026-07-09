@@ -1,0 +1,8 @@
+# inventory-jh · WriteHome Settings depth-tier prefill
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: jh
+files:
+  apps/reading/src/modes/Write/WriteHome.tsx
+  apps/reading/src/modes/Write/WriteHome.test.tsx
+proof: WriteHome vitest 20_passed (HONEST_OK)
+invariants: HTML view · soft budget · offline Settings fetch · allowTierPick · reading≡research≡write

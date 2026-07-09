@@ -22,7 +22,7 @@ const {
   startInvestigationMock, createDeliverableMock, fetchHostedDocumentHtmlMock,
   createSectionMock, updateSectionProseMock, seedTwinNotesMock, getDeliverableMock,
   launchFloatingDeepResearchMock, hydratePublicationRefsMock, parsePublicationRefsMock,
-  collectDeepResearchSpawnIdsMock,
+  collectDeepResearchSpawnIdsMock, fetchDepthTiersMock,
 } = vi.hoisted(() => ({
   listDeliverablesMock: vi.fn(),
   getTraceTargetMock: vi.fn(),
@@ -43,6 +43,11 @@ const {
       .filter(Boolean),
   ),
   collectDeepResearchSpawnIdsMock: vi.fn(() => [] as string[]),
+  fetchDepthTiersMock: vi.fn(async () => ({
+    active_depth_tier: null as string | null,
+    active_preset: null,
+    tiers: [],
+  })),
 }));
 
 vi.mock("../../lib/api", async (orig) => ({
@@ -59,6 +64,10 @@ vi.mock("../../lib/api", async (orig) => ({
 vi.mock("../../api/marketplaceHost", () => ({
   fetchHostedDocumentHtml: (...args: unknown[]) =>
     fetchHostedDocumentHtmlMock(...args),
+}));
+
+vi.mock("../../api/settings", () => ({
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiersMock(...args),
 }));
 
 vi.mock("../../api/engagement", () => ({
@@ -117,9 +126,14 @@ vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
 vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", () => ({
   ResearchLaunchBudgetPanel: (props: {
     promptText?: string;
+    researchTier?: string;
+    onResearchTierChange?: (t: string) => void;
     onProjectionChange?: (p: { wouldExceedBudget: boolean }) => void;
   }) => (
-    <div data-testid="research-launch-budget-panel-stub">
+    <div
+      data-testid="research-launch-budget-panel-stub"
+      data-research-tier={props.researchTier ?? ""}
+    >
       budget len={props.promptText?.length ?? 0}
     </div>
   ),
@@ -235,6 +249,11 @@ beforeEach(() => {
   });
   parsePublicationRefsMock.mockClear();
   collectDeepResearchSpawnIdsMock.mockReset().mockReturnValue([]);
+  fetchDepthTiersMock.mockReset().mockResolvedValue({
+    active_depth_tier: null,
+    active_preset: null,
+    tiers: [],
+  });
   // WriteHome now renders through GlassSurface (SPR-03 M2 landing-glass home /
   // M3 solid open-piece), which reads prefers-reduced-motion via
   // window.matchMedia. jsdom lacks it; stub the default (motion allowed → the
@@ -697,7 +716,15 @@ describe("WriteHome — the re-homed door", () => {
     expect(panel.getAttribute("data-from-highlight")).toBe("false");
     expect(screen.getByTestId("write-piece-pub-refs")).toBeTruthy();
     expect(screen.getByTestId("research-launch-budget-panel-stub")).toBeTruthy();
+    expect(screen.getByTestId("write-piece-budget-mount")).toBeTruthy();
     expect(screen.getByTestId("write-piece-selection-fallback")).toBeTruthy();
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("write-piece-budget-mount").getAttribute(
+          "data-depth-prefill",
+        ),
+      ).toBe("none");
+    });
     await userEvent.type(
       screen.getByTestId("write-piece-refs-input"),
       "arxiv:1706.03762",
@@ -737,6 +764,45 @@ describe("WriteHome — the re-homed door", () => {
         }),
       );
     });
+  });
+
+  it("prefills Write piece DR research tier from Settings wrestle depth (jh)", async () => {
+    fetchDepthTiersMock.mockResolvedValue({
+      active_depth_tier: "wrestle",
+      active_preset: null,
+      tiers: [],
+    });
+    getDeliverableMock.mockResolvedValue({
+      deliverable_id: "dlv-depth",
+      title: "Wrestle write piece",
+      deliverable_kind: "general_essay",
+      investigation_root_id: null,
+      status: "draft",
+      sections: [],
+      created_at: null,
+      updated_at: null,
+      section_count: 0,
+    });
+    mountAt("/write/dlv-depth");
+    await waitFor(() => {
+      expect(screen.getByTestId("write-piece-research-launch")).toBeTruthy();
+    });
+    await waitFor(() => {
+      expect(fetchDepthTiersMock).toHaveBeenCalled();
+    });
+    const mount = screen.getByTestId("write-piece-budget-mount");
+    await waitFor(() => {
+      expect(mount.getAttribute("data-depth-prefill")).toBe("installed");
+    });
+    expect(mount.getAttribute("data-research-tier")).toBe("wrestle");
+    expect(
+      screen.getByTestId("research-launch-budget-panel-stub").getAttribute(
+        "data-research-tier",
+      ),
+    ).toBe("wrestle");
+    expect(screen.getByTestId("write-piece-depth-prefill").textContent).toMatch(
+      /installed.*wrestle/,
+    );
   });
 
   it("captures highlight for Write DR budget projection and launch (gh)", async () => {

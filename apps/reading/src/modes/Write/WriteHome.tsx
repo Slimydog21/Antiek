@@ -18,9 +18,12 @@ import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTre
 import {
   ResearchLaunchBudgetPanel,
   type ResearchLaunchBudgetProjection,
+  type ResearchLaunchTier,
 } from "../../components/engagement/ResearchLaunchBudgetPanel";
 import { ResearchContextPanel } from "../../components/engagement/ResearchContextPanel";
 import { TwinNotesPanel } from "../../components/engagement/TwinNotesPanel";
+import { fetchDepthTiers } from "../../api/settings";
+import { mapDepthTierToResearchTier } from "../../lib/researchTier";
 import GlassSurface from "../../shell/GlassSurface";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
 import type { WindowMode } from "../../workspace/windowsStore";
@@ -88,6 +91,8 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
  * context (DR launch / collective merge / promote / re-import) — hosted ez parity.
  * Residual (gh): live selection drives Write DR budget projection + launch
  * (mouseup capture; clear returns to whole-piece fallback).
+ * Residual (jh): Settings depth-tier prefill for Write piece DR budget
+ * (parity jc–jg · reading≡research≡write).
  */
 export default function WriteHome() {
   const { deliverableId } = useParams<{ deliverableId?: string }>();
@@ -134,6 +139,32 @@ export default function WriteHome() {
   const [writeForceOverBudget, setWriteForceOverBudget] = useState(false);
   // Residual (gh): highlight selection for Write DR budget + launch.
   const [writeHighlightText, setWriteHighlightText] = useState("");
+  /** Residual (jh): Settings depth-tier prefill for Write piece DR budget. */
+  const [writeResearchTier, setWriteResearchTier] =
+    useState<ResearchLaunchTier>("deep");
+  const [writeDepthPrefill, setWriteDepthPrefill] = useState<
+    "pending" | "installed" | "none" | "error"
+  >("pending");
+  useEffect(() => {
+    let cancelled = false;
+    void fetchDepthTiers()
+      .then((resp) => {
+        if (cancelled) return;
+        const mapped = mapDepthTierToResearchTier(resp.active_depth_tier);
+        if (mapped) {
+          setWriteResearchTier(mapped);
+          setWriteDepthPrefill("installed");
+        } else {
+          setWriteDepthPrefill("none");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setWriteDepthPrefill("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const onContextNeedsRefresh = useCallback(() => {
     setContextRefreshKey((k) => k + 1);
   }, []);
@@ -951,12 +982,32 @@ export default function WriteHome() {
                 </p>
               ) : null}
             </div>
-            <ResearchLaunchBudgetPanel
-              promptText={writeResearchPromptText}
-              researchTier="deep"
-              allowTierPick
-              onProjectionChange={onWriteDrProjectionChange}
-            />
+            <div
+              data-testid="write-piece-budget-mount"
+              data-view-format="html"
+              data-research-tier={writeResearchTier}
+              data-depth-prefill={writeDepthPrefill}
+            >
+              <p
+                className="text-[11px] font-mono opacity-80"
+                data-testid="write-piece-depth-prefill"
+                role="status"
+              >
+                Depth prefill: {writeDepthPrefill}
+                {writeDepthPrefill === "installed"
+                  ? ` → ${writeResearchTier}`
+                  : writeDepthPrefill === "none"
+                    ? " (default deep)"
+                    : ""}
+              </p>
+              <ResearchLaunchBudgetPanel
+                promptText={writeResearchPromptText}
+                researchTier={writeResearchTier}
+                allowTierPick
+                onResearchTierChange={setWriteResearchTier}
+                onProjectionChange={onWriteDrProjectionChange}
+              />
+            </div>
             {writeBudgetWarn ? (
               <label
                 className="flex items-center gap-2 text-[11px] text-emperor"
