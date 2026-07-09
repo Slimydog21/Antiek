@@ -10,6 +10,7 @@ import {
   dryRunMidnightOil,
   preflightMidnightOil,
   providerRouteMidnightOil,
+  retrievalMidnightOil,
 } from "../../api/midnightOil";
 
 vi.mock("../../api/midnightOil", () => ({
@@ -267,6 +268,35 @@ vi.mock("../../api/midnightOil", () => ({
     final_artifact_created: false,
     provider_route_notes: ["provider route gate only: model/provider route executor is not configured"],
   })),
+  retrievalMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-retrieval",
+    provider_route_receipt_id: "midnight-oil-test-provider-route",
+    budget_reservation_receipt_id: "midnight-oil-test-budget-reservation",
+    activation_checklist_receipt_id: "midnight-oil-test-activation-checklist",
+    dispatch_receipt_id: "midnight-oil-test-dispatch-receipt",
+    applied_run_receipt_id: "midnight-oil-test-applied-run-receipt",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    run_id: "midnight-oil-test",
+    status: "blocked_retrieval_executor_disabled",
+    planned_source_policy: ["arxiv", "substack", "operator_corpus"],
+    planned_source_receipt_ids: [
+      "midnight-oil-test-arxiv-source-receipt",
+      "midnight-oil-test-substack-source-receipt",
+      "midnight-oil-test-operator_corpus-source-receipt",
+    ],
+    blocker_reason: "retrieval_executor_missing",
+    retrieval_allowed: false,
+    source_receipts_created: false,
+    retrieval_performed: false,
+    provider_calls_made: false,
+    budget_reserved: false,
+    dispatch_performed: false,
+    graph_mutated: false,
+    final_artifact_created: false,
+    retrieval_notes: ["retrieval gate only: retrieval executor and source receipt writer are not configured"],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -456,5 +486,40 @@ describe("MidnightOil", () => {
     expect(screen.getByText("blocked provider route executor disabled")).toBeTruthy();
     expect(screen.getByText("provider route executor missing")).toBeTruthy();
     expect(screen.getAllByText("none").length).toBeGreaterThan(1);
+
+    await user.click(screen.getByRole("button", { name: "Retrieval" }));
+
+    await waitFor(() => expect(retrievalMidnightOil).toHaveBeenCalled());
+    expect(retrievalMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      applied_run_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-applied-run-receipt",
+      }),
+      dispatch_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-dispatch-receipt",
+      }),
+      activation_checklist_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-activation-checklist",
+      }),
+      budget_reservation_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-budget-reservation",
+      }),
+      provider_route_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-provider-route",
+      }),
+    });
+    expect(screen.getByText("Retrieval receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-retrieval")).toBeTruthy();
+    expect(screen.getByText("blocked retrieval executor disabled")).toBeTruthy();
+    expect(screen.getByText("retrieval executor missing")).toBeTruthy();
+    expect(screen.getAllByText("none").length).toBeGreaterThan(2);
   });
 });
