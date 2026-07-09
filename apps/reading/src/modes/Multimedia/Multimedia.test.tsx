@@ -860,6 +860,7 @@ describe("Multimedia workstation", () => {
           "Activation proof: Worker logs + manual artifact attach",
           "Review audit: Not run in app",
           "Review proof: Manual review notes + rights clearance",
+          "Copy action: Read-only; no provider worker triggered",
         ].join("\n"),
       ),
     );

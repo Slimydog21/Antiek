@@ -347,6 +347,7 @@ function buildRejectedArtifactAuditItems(asset: MultimediaAssetSummary): Persist
     ...buildArtifactLineageItems(asset),
     ...buildProviderActivationAuditItems(),
     ...buildPublicReviewAuditItems(),
+    { label: "Copy action", value: "Read-only; no provider worker triggered" },
   ];
 }
 
