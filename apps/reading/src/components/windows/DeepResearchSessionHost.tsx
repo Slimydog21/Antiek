@@ -34,6 +34,8 @@
  * Residual (fa): remount TwinNotesPanel on the same contextRefreshKey so
  * recursive note-taker reloads after promote/attach/flywheel/merge (parity ez).
  * Residual (je): prefill researchTier from Settings depth-tier (parity jd/jc).
+ * Residual (jk): session payload research_tier wins when present; chrome Row
+ * + data-session-research-tier audit (recorded spawn tier, not only Settings).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -68,6 +70,8 @@ export type DeepResearchSessionHostProps = {
   model_id?: string;
   region_id?: string;
   goal?: string;
+  /** Residual (jk): research tier from session open payload when present. */
+  research_tier?: string;
   /** Optional extra spawn ids for collective multi-select (tests / handoff). */
   available_spawn_ids?: string[];
   __windowId?: string;
@@ -102,13 +106,29 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
   const viewFormat = (props.view_format?.trim() || "html").toLowerCase();
   const isHtml = viewFormat === "html";
 
-  /** Residual (je): Settings depth-tier prefill for session budget projection. */
-  const [researchTier, setResearchTier] = useState<ResearchLaunchTier>("deep");
+  /** Residual (je/jk): Settings depth-tier prefill; session payload wins. */
+  const sessionTierRaw = (props.research_tier || "").trim().toLowerCase();
+  const sessionTier: ResearchLaunchTier | null =
+    sessionTierRaw === "fast" ||
+    sessionTierRaw === "deep" ||
+    sessionTierRaw === "wrestle"
+      ? sessionTierRaw
+      : null;
+
+  const [researchTier, setResearchTier] = useState<ResearchLaunchTier>(
+    sessionTier ?? "deep",
+  );
   const [depthPrefill, setDepthPrefill] = useState<
-    "pending" | "installed" | "none" | "error"
-  >("pending");
+    "pending" | "installed" | "none" | "error" | "session"
+  >(sessionTier ? "session" : "pending");
 
   useEffect(() => {
+    // Residual (jk): session open payload is the reserved spawn's tier.
+    if (sessionTier) {
+      setResearchTier(sessionTier);
+      setDepthPrefill("session");
+      return;
+    }
     let cancelled = false;
     void fetchDepthTiers()
       .then((resp) => {
@@ -127,7 +147,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [sessionTier]);
 
   // Residuals (ec/ed/ee/eh/ei): shared remount chokepoint for ResearchContextPanel
   // after twin promote, pub attach, flywheel complete, or spawn merge.
@@ -213,6 +233,14 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
         {props.model_id ? <Row label="Model" value={props.model_id} /> : null}
         {props.region_id ? <Row label="Region" value={props.region_id} /> : null}
         {props.goal ? <Row label="Goal" value={props.goal} /> : null}
+        {/* Residual (jk): always show research tier chrome (default deep). */}
+        <div
+          data-testid="deep-research-session-tier"
+          data-session-research-tier={researchTier}
+          data-depth-prefill={depthPrefill}
+        >
+          <Row label="Research tier" value={researchTier} />
+        </div>
       </dl>
 
       <section className="mt-2 space-y-2 border-t border-black/10 pt-4 dark:border-white/10">
@@ -241,7 +269,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
           role="status"
         >
           Depth prefill: {depthPrefill}
-          {depthPrefill === "installed"
+          {depthPrefill === "installed" || depthPrefill === "session"
             ? ` → ${researchTier}`
             : depthPrefill === "none"
               ? " (default deep)"

@@ -1,0 +1,12 @@
+# inventory-jk · research_tier chrome on DeepResearchSessionHost
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: jk
+files:
+  apps/reading/src/workspace/deepResearchWindow.ts
+  apps/reading/src/workspace/deepResearchWindow.test.ts
+  apps/reading/src/modes/Reading/launchFloatingDeepResearch.ts
+  apps/reading/src/modes/Reading/launchFloatingDeepResearch.test.ts
+  apps/reading/src/components/windows/DeepResearchSessionHost.tsx
+  apps/reading/src/components/windows/DeepResearchSessionHost.test.tsx
+proof: vitest 34_passed (HONEST_OK)
+invariants: session payload tier wins · HTML · closed set · Settings fallback when unset

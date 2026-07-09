@@ -53,4 +53,13 @@ describe("openDeepResearchFromHighlight", () => {
       openDeepResearchFromHighlight({ ...FIXTURE, selection_text: "  " }),
     ).toThrow(/selection_text/);
   });
+
+  it("carries research_tier into window payload (jk)", () => {
+    const id = openDeepResearchFromHighlight({
+      ...FIXTURE,
+      research_tier: "wrestle",
+    });
+    const win = useWindows.getState().windows[id];
+    expect(win.payload.research_tier).toBe("wrestle");
+  });
 });

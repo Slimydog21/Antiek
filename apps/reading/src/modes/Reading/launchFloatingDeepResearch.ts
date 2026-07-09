@@ -135,6 +135,8 @@ export async function launchFloatingDeepResearch(
     status: session.status,
     goal: session.goal,
     mode: mode === "full" ? "full" : "floating",
+    // Residual (jk): carry tier into session host chrome payload.
+    research_tier: resolvedTier,
   });
 
   return {

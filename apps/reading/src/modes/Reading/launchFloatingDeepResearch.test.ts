@@ -203,5 +203,9 @@ describe("launchFloatingDeepResearch residual cc/cy", () => {
       expect.objectContaining({ research_tier: "wrestle" }),
     );
     expect(out.research_tier).toBe("wrestle");
+    // Residual (jk): window host payload carries research_tier.
+    expect(openDeepResearchFromHighlight).toHaveBeenCalledWith(
+      expect.objectContaining({ research_tier: "wrestle" }),
+    );
   });
 });

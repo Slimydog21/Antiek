@@ -241,6 +241,40 @@ describe("DeepResearchSessionHost", () => {
     );
   });
 
+  it("session payload research_tier wins over Settings prefill (jk)", async () => {
+    fetchDepthTiers.mockResolvedValue({
+      active_depth_tier: "flash",
+      active_preset: null,
+      presets: [],
+      projection_hints: null,
+      view_format: "html",
+      settings_panel: "depth_tier_presets",
+      source: "test",
+      notes: [],
+    });
+    render(
+      <DeepResearchSessionHost
+        session_id="fsess_sess"
+        spawn_id="spn_sess"
+        parent_asset_id="book-1"
+        selection_text="Reserved wrestle spawn."
+        view_format="html"
+        research_tier="wrestle"
+      />,
+    );
+    const chrome = screen.getByTestId("deep-research-session-tier");
+    expect(chrome.getAttribute("data-session-research-tier")).toBe("wrestle");
+    expect(chrome.getAttribute("data-depth-prefill")).toBe("session");
+    expect(chrome.textContent).toMatch(/wrestle/i);
+    const mount = screen.getByTestId("deep-research-budget-mount");
+    expect(mount.getAttribute("data-depth-prefill")).toBe("session");
+    expect(mount.getAttribute("data-research-tier")).toBe("wrestle");
+    // Session payload wins for host budget even if child panels also fetch Settings.
+    expect(screen.getByTestId("deep-research-depth-prefill").textContent).toMatch(
+      /session.*wrestle/i,
+    );
+  });
+
   it("mounts ResearchLaunchBudgetPanel for goal/selection (bx)", async () => {
     render(<DeepResearchSessionHost {...FIXTURE} />);
     const mount = screen.getByTestId("deep-research-budget-mount");

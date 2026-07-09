@@ -8,7 +8,7 @@
  *   payload: {
  *     session_id, spawn_id, investigation_id, parent_asset_id,
  *     selection_text, status, view_format: "html",
- *     model_id?, region_id?, goal?
+ *     model_id?, region_id?, goal?, research_tier?
  *   }
  *   opts: { id: "wdr_<session_id>", title, mode: "floating" | "full" }
  *
@@ -35,6 +35,8 @@ export type DeepResearchSessionPayload = {
   model_id?: string;
   region_id?: string;
   goal?: string;
+  /** Residual (jk): closed research tier recorded on session open. */
+  research_tier?: "fast" | "deep" | "wrestle" | string;
 };
 
 export type DeepResearchWindowDescriptor = {
@@ -114,6 +116,8 @@ export type HighlightDeepResearchInput = {
   goal?: string;
   mode?: WindowMode;
   title?: string;
+  /** Residual (jk): research tier from session open (fast|deep|wrestle). */
+  research_tier?: "fast" | "deep" | "wrestle" | string;
 };
 
 /**
@@ -151,6 +155,9 @@ export function openDeepResearchFromHighlight(
       ...(input.model_id ? { model_id: input.model_id } : {}),
       ...(input.region_id ? { region_id: input.region_id } : {}),
       ...(input.goal ? { goal: input.goal } : {}),
+      ...(input.research_tier
+        ? { research_tier: input.research_tier }
+        : {}),
     },
   };
   return openDeepResearchWindow(descriptor);
