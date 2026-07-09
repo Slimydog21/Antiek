@@ -11,6 +11,16 @@ CAPABILITY | STATUS | EVIDENCE
 (e) book marketplace + host-into-account | MISSING_SPEC_ONLY | docs/htmlspec/marketplace-host/** (executable htmlspec); acquisition/books/ PD path on main; no live payment rails
 (f) recursive Antiek-bench | MISSING_SPEC_ONLY | docs/htmlspec/antiek-bench-recursive/**; compounding/benchmark/ harness on main (not usage-driven rewrite)
 (g) NotDiamond router usefulness | VERDICT_ON_BRANCH | docs/htmlspec/notdiamond-verdict/VERDICT.md — advisory GO / authority REJECT under §16. integrations.toml draft only on main.
+(h) settings Antiek-bench leaderboard | BRANCH_ONLY | substrate/antiek_bench/leaderboard.py + settings_surface.py
+(i) highlight→floating deep-research session | BRANCH_ONLY | substrate/floating_session/**
+(j) decision-tree → real dispatch override | BRANCH_ONLY | model_registration/dispatch_bridge + research_bridge/llm_dispatch
+(k) session↔window composition | BRANCH_ONLY | floating_session/window_compose.py
+(l) deep-research window host WINDOW_PAGES | BRANCH_ONLY | apps/reading DeepResearchSessionHost
+(m) Settings decision-tree install | BRANCH_ONLY | model_registration/install.py + Settings panel
+(n) highlight → deep-research session window product path | BRANCH_ONLY | floating_session/product_path.py @ b9e152f5
+(o) twin-note → depth-graph promote + search/context | BRANCH_ONLY→shipping | substrate/engagement_spine/twin_promote.py; tests/test_twin_promote_context.py; see inventory-o-twin-promote.txt
+
+NEXT_RESIDUAL: arxiv/substack reference attach on deep-research spawn
 
 ALREADY_SHIPPED_DO_NOT_REBUILD:
 - living-roadmap SPR-01..14 (platform-completion-status-2026-07-01.md)

@@ -30,6 +30,18 @@ from .spawn import (
 )
 from .store import EngagementStore, FileEngagementStore, InMemoryEngagementStore
 from .twin import TwinKind, TwinNote, list_twin_notes, record_twin_insight, record_twin_question
+from .twin_promote import (
+    TwinContextUnit,
+    TwinPromoteContextResult,
+    TwinPromoteResult,
+    expected_graph_node_id,
+    promote_and_context_for_asset,
+    promote_twin_note,
+    promote_twin_notes_for_asset,
+    result_to_context_unit,
+    search_twin_context,
+    twin_context_html,
+)
 
 __all__ = [
     "EngagementStore",
@@ -40,16 +52,26 @@ __all__ = [
     "MergeResult",
     "ResearchSpawn",
     "SpawnStatus",
+    "TwinContextUnit",
     "TwinKind",
     "TwinNote",
+    "TwinPromoteContextResult",
+    "TwinPromoteResult",
     "complete_spawn",
     "ensure_spawn",
+    "expected_graph_node_id",
     "get_spawn",
     "list_spawns_for_asset",
     "list_twin_notes",
     "merge_spawn_outputs",
     "project_to_html",
+    "promote_and_context_for_asset",
+    "promote_twin_note",
+    "promote_twin_notes_for_asset",
     "record_twin_insight",
     "record_twin_question",
+    "result_to_context_unit",
+    "search_twin_context",
     "spawn_from_highlight",
+    "twin_context_html",
 ]

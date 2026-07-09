@@ -2,9 +2,9 @@
 
 The recursive note-taker vision: every asset has a twin substrate of
 insights and questions that can be merged, referenced, and searched.
-This module is the pure write/read path; graph promotion is optional
-via ``insight_question.promote_*`` when the operator wants depth-graph
-nodes.
+This module is the pure write/read path. Depth-graph promotion and
+search/context assembly live in ``twin_promote`` (composes
+``insight_question.promote_*`` without coupling the store to DuckDB).
 """
 
 from __future__ import annotations

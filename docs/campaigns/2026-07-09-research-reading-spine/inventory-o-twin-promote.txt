@@ -1,0 +1,31 @@
+# Twin-promote residual inventory — 2026-07-09
+# vs origin/main@b3875724c6223a7cc66a05c5b6d2bba8e5d69b1d
+# branch of record: campaign/research-reading-spine-2026-07-09-main @ b9e152f5d9e37961b6eec25a89b1b26769376dd8 (pre-commit tip; tip will advance with twin_promote)
+# PR #465 open. Living-roadmap SPR-01..14 on_main — NOT rebuild TODOs.
+
+CAPABILITY | STATUS | EVIDENCE
+(a) research↔reading engagement spine | branch_only | substrate/engagement_spine/** (spawn/twin/merge/store); tests/test_engagement_spine.py; PR #465
+(b) HTML-first human view | on_main + branch | services/html_projection/**; engagement_spine.project_to_html; twin_context_html (this cycle); tests/test_engagement_html_projection.py
+(c) model driver/budget/projection/add-model | on_main partial + branch | #440 settings_budget; substrate/model_registration/** + Settings UI on PR #465
+(d) Midnight oil | branch_only | substrate/midnight_oil/**; tests/test_midnight_oil.py
+(e) book marketplace + host-into-account | spec_only | docs/htmlspec/marketplace-host/**; no live payment rails
+(f) Antiek-bench core | branch_only | substrate/antiek_bench/**; docs/htmlspec/antiek-bench-recursive/**
+(g) NotDiamond usefulness | branch_only verdict | docs/htmlspec/notdiamond-verdict/VERDICT.md — advisory GO / authority REJECT
+(h) settings Antiek-bench leaderboard | branch_only | substrate/antiek_bench/leaderboard.py + settings_surface.py
+(i) highlight→floating deep-research session | branch_only | substrate/floating_session/**
+(j) decision-tree → real dispatch override | branch_only | substrate/model_registration/dispatch_bridge.py + research_bridge/llm_dispatch.py
+(k) session↔window composition | branch_only | floating_session/window_compose.py
+(l) deep-research window host WINDOW_PAGES | branch_only | apps/reading DeepResearchSessionHost + WINDOW_PAGES
+(m) Settings decision-tree install | branch_only | model_registration/install.py + Settings panel @ 4a243a7e
+(n) highlight → deep-research session window product path | branch_only | floating_session/product_path.py @ b9e152f5
+(o) twin-note → depth-graph promote + search/context | missing→shipping this cycle | substrate/engagement_spine/twin_promote.py; tests/test_twin_promote_context.py; product entry promote_and_context_for_asset
+
+ALREADY_SHIPPED_DO_NOT_REBUILD:
+- living-roadmap SPR-01..14
+- settings budget/projection #440
+- html_projection
+- insight_question promote_insight/promote_question (compose only; no second writer)
+- (a)–(n) packages on PR #465 branch of record
+
+NEXT_RESIDUAL_IF_O_LANDS:
+- arxiv/substack reference attach on deep-research spawn (deferred this cycle)
