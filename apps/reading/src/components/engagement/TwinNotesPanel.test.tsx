@@ -20,6 +20,37 @@ describe("TwinNotesPanel", () => {
     promoteTwinsToContext.mockReset();
   });
 
+  it("auto-loads twins on mount when autoLoad (cq)", async () => {
+    fetchTwinNotes.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 2,
+      insight_count: 1,
+      question_count: 1,
+      notes: [
+        {
+          note_id: "twin_1",
+          asset_id: "paper",
+          kind: "insight",
+          text: "Seeded insight",
+        },
+      ],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+      html: "<p>twins</p>",
+    });
+    render(<TwinNotesPanel assetId="paper" autoLoad />);
+    await waitFor(() => {
+      expect(fetchTwinNotes).toHaveBeenCalledWith("paper", { includeHtml: true });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-notes-summary").textContent).toMatch(
+        /insights=1/,
+      );
+    });
+  });
+
   it("records insight and shows twin HTML", async () => {
     recordTwinNote.mockResolvedValue({
       asset_id: "paper",

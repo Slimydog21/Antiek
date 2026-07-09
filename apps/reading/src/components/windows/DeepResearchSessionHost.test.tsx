@@ -75,6 +75,18 @@ vi.mock("../engagement/ResearchProgressPanel", () => ({
   ),
 }));
 
+vi.mock("../engagement/TwinNotesPanel", () => ({
+  TwinNotesPanel: (props: {
+    assetId: string;
+    spawnId?: string | null;
+    autoLoad?: boolean;
+  }) => (
+    <div data-testid="twin-notes-panel-stub">
+      {props.assetId}:auto={String(Boolean(props.autoLoad))}
+    </div>
+  ),
+}));
+
 const FIXTURE = {
   session_id: "fsess_launch_1",
   spawn_id: "spn_launch_1",
@@ -150,6 +162,14 @@ describe("DeepResearchSessionHost", () => {
     expect(screen.getByTestId("deep-research-progress-mount")).toBeTruthy();
     expect(screen.getByTestId("research-progress-panel-stub").textContent).toMatch(
       /spn_launch_1:auto=true:seed=true/,
+    );
+  });
+
+  it("mounts TwinNotesPanel with autoLoad (cq)", () => {
+    render(<DeepResearchSessionHost {...FIXTURE} />);
+    expect(screen.getByTestId("deep-research-twins-mount")).toBeTruthy();
+    expect(screen.getByTestId("twin-notes-panel-stub").textContent).toMatch(
+      /launch-asset:auto=true/,
     );
   });
 

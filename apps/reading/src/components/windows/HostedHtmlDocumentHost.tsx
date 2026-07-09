@@ -83,7 +83,7 @@ export default function HostedHtmlDocumentHost(
           data-testid="hosted-html-twins-mount"
           data-view-format="html"
         >
-          <TwinNotesPanel assetId={assetId} spawnId={null} />
+          <TwinNotesPanel assetId={assetId} spawnId={null} autoLoad />
         </section>
       ) : null}
 

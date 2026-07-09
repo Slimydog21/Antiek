@@ -19,6 +19,7 @@
  * Residual (ck): PublicationAttachPanel — arxiv/substack attach + hydrate.
  * Residual (cl): SessionFlywheelPanel — complete flywheel + twins/usage.
  * Residual (cp): ResearchProgressPanel autoLoad + autoSeedIfEmpty.
+ * Residual (cq): TwinNotesPanel autoLoad.
  */
 
 import { useMemo } from "react";
@@ -227,6 +228,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
           <TwinNotesPanel
             assetId={props.parent_asset_id.trim()}
             spawnId={props.spawn_id?.trim() || null}
+            autoLoad
           />
         </section>
       ) : null}

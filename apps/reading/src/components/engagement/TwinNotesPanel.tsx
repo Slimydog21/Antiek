@@ -2,10 +2,11 @@
  * TwinNotesPanel — recursive note-taker UI for insights/questions on an asset.
  *
  * Residual (ba): every information asset has a twin substrate of LLM/operator
- * notes. HTML-first; never PDF.
+ * notes. Residual (cq): autoLoad twins on mount for DR/hosted windows.
+ * HTML-first; never PDF.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   fetchTwinNotes,
   promoteTwinsToContext,
@@ -17,11 +18,14 @@ import {
 export type TwinNotesPanelProps = {
   assetId: string;
   spawnId?: string | null;
+  /** Residual (cq): fetch twin notes on mount. */
+  autoLoad?: boolean;
 };
 
 export function TwinNotesPanel({
   assetId,
   spawnId = null,
+  autoLoad = false,
 }: TwinNotesPanelProps) {
   const [twins, setTwins] = useState<TwinNotesResponse | null>(null);
   const [promoted, setPromoted] = useState<TwinPromoteContextResponse | null>(
@@ -47,6 +51,13 @@ export function TwinNotesPanel({
       setBusy(false);
     }
   }, [assetId]);
+
+  useEffect(() => {
+    if (!autoLoad || !assetId.trim()) return;
+    void load();
+    // Mount-once per asset when autoLoad is on (residual cq).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoLoad, assetId]);
 
   const record = useCallback(async () => {
     if (!text.trim()) return;
