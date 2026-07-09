@@ -449,3 +449,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (oh, 2026-07-10) **SESSION-ARC of–og collective recent select:**
   - SESSION-ARC-of-og-collective-recent-select.md fleet handoff
+
+- Closed (oi, 2026-07-10) **Collective merge Antiek-bench usage feed:**
+  - record_collective_merge_usage on POST /collective and /merge
+  - source=collective_merge in known feed sources for suite rewrite

@@ -368,6 +368,20 @@ def post_collective(body: CollectiveBody) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(e)) from e
     out = unit.to_dict()
     out["prompt_block"] = unit.prompt_block()
+    # Residual (oi): Antiek-bench usage for multi-spawn cohesive unit merge.
+    try:
+        from substrate.antiek_bench import record_collective_merge_usage
+
+        usage = record_collective_merge_usage(
+            store=get_bench_usage_store(create_if_missing=True),
+            spawn_count=len(body.spawn_ids or []),
+            research_tier=getattr(unit, "recommended_research_tier", None),
+            prompt_hint=(body.query or unit.prompt_block() or "")[:200],
+            mode="prompt_unit",
+        )
+        out["usage_event"] = usage
+    except Exception as exc:  # pragma: no cover — never fail collective on bench
+        out["usage_event_error"] = str(exc)
     return out
 
 
@@ -377,6 +391,7 @@ def post_merge(body: MergeBody) -> dict[str, Any]:
 
     Default mode is ``draft_combined`` so operators can review before full
     parent merge. Calls shipped ``merge_product_payload`` / ``merge_spawn_outputs``.
+    Residual (oi): records Antiek-bench collective_merge usage (best-effort).
     """
     try:
         payload = merge_product_payload(
@@ -392,6 +407,32 @@ def post_merge(body: MergeBody) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    # Residual (oi): document merge / written analysis → bench feed.
+    try:
+        from substrate.antiek_bench import record_collective_merge_usage
+
+        rec_tier = None
+        if isinstance(payload, dict):
+            tiers = payload.get("research_tiers") or []
+            # Prefer wrestle > deep > fast when multi-tier merge.
+            for t in ("wrestle", "deep", "fast"):
+                if t in tiers or payload.get("recommended_research_tier") == t:
+                    rec_tier = t
+                    break
+            if rec_tier is None:
+                rec_tier = payload.get("recommended_research_tier")
+        usage = record_collective_merge_usage(
+            store=get_bench_usage_store(create_if_missing=True),
+            spawn_count=len(body.spawn_ids or []),
+            research_tier=str(rec_tier) if rec_tier else None,
+            prompt_hint=f"parent={body.parent_asset_id}",
+            mode=str(body.mode or "draft_combined"),
+        )
+        if isinstance(payload, dict):
+            payload["usage_event"] = usage
+    except Exception as exc:  # pragma: no cover — never fail merge on bench
+        if isinstance(payload, dict):
+            payload["usage_event_error"] = str(exc)
     return payload
 
 

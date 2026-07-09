@@ -106,6 +106,7 @@ const {
         "marketplace_host",
         "floating_deep_research",
         "twin_chase",
+        "collective_merge",
         "antiek_bench.offline_dogfood",
         "engagement",
       ],

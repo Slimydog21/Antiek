@@ -139,6 +139,43 @@ def record_session_flywheel_usage(
     )
 
 
+def record_collective_merge_usage(
+    *,
+    store: BenchStore,
+    spawn_count: int,
+    research_tier: str | None = None,
+    prompt_hint: str = "",
+    model_id: str | None = None,
+    week_id: str | None = None,
+    mode: str | None = None,
+) -> dict[str, Any]:
+    """Residual (oi): record multi-spawn collective merge → Antiek-bench usage.
+
+    Feeds recursive suite rewrite when operators multi-select chase/float
+    spawns into a cohesive unit (prompt merge, draft_combined, into_parent).
+    task_class prefers research_tier, else synthesize (collective heuristic).
+    """
+    task = research_tier_to_task_class(research_tier) or classify_engagement_task(
+        is_collective=True,
+    )
+    hint = (prompt_hint or "").strip()
+    if mode:
+        hint = f"[{mode}] {hint}".strip()
+    if spawn_count > 0 and "spawn" not in hint.lower():
+        hint = f"{hint} · spawns={spawn_count}".strip(" ·")
+    return record_usage_event(
+        UsageEvent(
+            task_class=task,
+            outcome="worked",
+            prompt_hint=hint[:280],
+            source="collective_merge",
+            model_id=model_id,
+            week_id=week_id,
+        ),
+        store=store,
+    )
+
+
 def propose_from_recorded_usage(
     *,
     store: BenchStore,
@@ -160,6 +197,7 @@ KNOWN_USAGE_FEED_SOURCES: tuple[str, ...] = (
     "marketplace_host",
     "floating_deep_research",
     "twin_chase",
+    "collective_merge",
     "antiek_bench.offline_dogfood",
     "engagement",
 )

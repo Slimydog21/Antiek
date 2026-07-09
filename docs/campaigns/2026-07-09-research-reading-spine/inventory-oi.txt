@@ -1,0 +1,12 @@
+# inventory-oi · collective merge Antiek-bench usage feed
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: oi
+files:
+  substrate/antiek_bench/usage_bridge.py
+  substrate/antiek_bench/__init__.py
+  interfaces/research/api/engagement_routes.py
+  tests/test_collective_merge_usage_oi.py
+  tests/test_engagement_routes.py
+  apps/reading/src/modes/Settings/Settings.test.tsx
+proof: pytest collective_merge_usage + engagement collective/session_open 5 passed
+invariants: HTML-first · best-effort never fail merge · source=collective_merge · propose≠promote

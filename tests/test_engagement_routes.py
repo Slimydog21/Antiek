@@ -98,6 +98,16 @@ def test_spawn_attach_context_collective(client):
     assert col["collective_id"].startswith("col_")
     assert col["spawn_count"] == 2
     assert "prompt_block" in col
+    # Residual (oi): multi-spawn collective feeds Antiek-bench recursive rewrite.
+    assert "usage_event" in col
+    assert col["usage_event"]["source"] == "collective_merge"
+    assert col["usage_event"]["outcome"] == "worked"
+    assert col["usage_event"]["task_class"] in (
+        "synthesize",
+        "distill",
+        "wrestle",
+        "book_qa",
+    )
 
 
 def test_session_open_and_flywheel(client):
