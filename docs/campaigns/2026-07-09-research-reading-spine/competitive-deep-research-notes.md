@@ -502,3 +502,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (ot, 2026-07-10) **MO run metrics recent_ring honesty:**
   - data-recent-ring-count / data-recent-ring-has-run-spawns
   - moil-run-recent-ring-status copy for collective multi-select path
+
+- Closed (ou, 2026-07-10) **ResearchThis recent_ring collective proof:**
+  - data-recent-count on research-this-collective-mount
+  - vitest wires listRecent → collect → CollectiveResearchPanel (parity om)

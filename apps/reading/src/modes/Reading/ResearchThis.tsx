@@ -330,13 +330,14 @@ export default function ResearchThis({
           </span>
         )}
       </div>
-      {/* Residual (fc): multi-select open DR spawns → merge into this book. */}
+      {/* Residual (fc/ou): multi-select open + recent DR spawns → this book. */}
       {documentId.trim() && availableSpawnIds.length > 0 ? (
         <section
           className="mt-2 max-w-md space-y-1 border-t border-ink/10 pt-2 dark:border-bright/10"
           data-testid="research-this-collective-mount"
           data-view-format="html"
           data-available-spawn-count={String(availableSpawnIds.length)}
+          data-recent-count={String(recentSpawnIds.length)}
         >
           <CollectiveResearchPanel
             availableSpawnIds={availableSpawnIds}

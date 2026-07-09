@@ -10,6 +10,7 @@ const navigate = vi.fn();
 const hydratePublicationRefs = vi.fn();
 const parsePublicationRefs = vi.fn();
 const collectDeepResearchSpawnIds = vi.fn(() => [] as string[]);
+const listRecentDeepResearchSpawnIds = vi.fn(() => [] as string[]);
 
 const fetchDepthTiers = vi.hoisted(() =>
   vi.fn(async () => ({
@@ -43,6 +44,11 @@ vi.mock("../../workspace/collectDeepResearchSpawnIds", () => ({
     collectDeepResearchSpawnIds(...args),
 }));
 
+vi.mock("../../workspace/recentDeepResearchSpawns", () => ({
+  listRecentDeepResearchSpawnIds: (...args: unknown[]) =>
+    listRecentDeepResearchSpawnIds(...args),
+}));
+
 vi.mock("../../workspace/windowsStore", () => ({
   useWindows: (sel: (s: { windows: Record<string, unknown> }) => unknown) =>
     sel({ windows: {} }),
@@ -52,8 +58,16 @@ vi.mock("../../components/engagement/CollectiveResearchPanel", () => ({
   CollectiveResearchPanel: (props: {
     availableSpawnIds: string[];
     parentAssetId?: string | null;
+    recentSpawnIds?: readonly string[] | null;
+    onRecentSpawnsCleared?: () => void;
   }) => (
-    <div data-testid="collective-research-panel-stub">
+    <div
+      data-testid="collective-research-panel-stub"
+      data-recent={
+        props.recentSpawnIds != null ? props.recentSpawnIds.join(",") : ""
+      }
+      data-has-clear={props.onRecentSpawnsCleared ? "1" : "0"}
+    >
       {props.parentAssetId}:{props.availableSpawnIds.join(",")}
     </div>
   ),
@@ -133,6 +147,8 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
     parsePublicationRefs.mockReturnValue([]);
     collectDeepResearchSpawnIds.mockReset();
     collectDeepResearchSpawnIds.mockReturnValue([]);
+    listRecentDeepResearchSpawnIds.mockReset();
+    listRecentDeepResearchSpawnIds.mockReturnValue([]);
     fetchDepthTiers.mockReset().mockResolvedValue({
       active_depth_tier: null,
       active_preset: null,
@@ -359,6 +375,41 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
     expect(mount.getAttribute("data-available-spawn-count")).toBe("2");
     expect(screen.getByTestId("collective-research-panel-stub").textContent).toMatch(
       /doc-read:spn_r1,spn_r2/,
+    );
+  });
+
+  it("wires recent_ring into collect + collective mount (ou)", () => {
+    listRecentDeepResearchSpawnIds.mockReturnValue([
+      "spn_chased_closed",
+      "spn_older",
+    ]);
+    collectDeepResearchSpawnIds.mockImplementation(
+      (source: { recentSpawnIds?: readonly string[] | null }) =>
+        [...(source.recentSpawnIds ?? [])],
+    );
+    render(
+      <MemoryRouter>
+        <ResearchThis documentId="doc-recent" pageIndex={0} passageText="hi" />
+      </MemoryRouter>,
+    );
+    expect(collectDeepResearchSpawnIds).toHaveBeenCalled();
+    const lastCall = collectDeepResearchSpawnIds.mock.calls.at(-1)?.[0] as {
+      recentSpawnIds?: readonly string[];
+    };
+    expect(lastCall.recentSpawnIds).toEqual([
+      "spn_chased_closed",
+      "spn_older",
+    ]);
+    const mount = screen.getByTestId("research-this-collective-mount");
+    expect(mount.getAttribute("data-recent-count")).toBe("2");
+    expect(mount.getAttribute("data-available-spawn-count")).toBe("2");
+    const stub = screen.getByTestId("collective-research-panel-stub");
+    expect(stub.getAttribute("data-recent")).toBe(
+      "spn_chased_closed,spn_older",
+    );
+    expect(stub.getAttribute("data-has-clear")).toBe("1");
+    expect(stub.textContent).toMatch(
+      /doc-recent:spn_chased_closed,spn_older/,
     );
   });
 
