@@ -47,6 +47,7 @@
  * continuity after host (parity subject chips).
  * Residual (mi): catalog HTML window id encodes active chips so filter-aware
  * projections do not clobber each other in the workspace.
+ * Residual (mm): dual-gate L1–L4 checklist deep-link (parity mj/ml).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -748,7 +749,7 @@ export default function MarketplaceHost({
           <div data-testid="marketplace-driver-badge-mount" data-view-format="html">
             <DecisionTreeDriverBadge researchTier={hostDrTier} />
             {/* Residual (id): Settings deep-link (driver + twin seed readiness). */}
-            <p className="mt-1 text-[11px] font-mono">
+            <p className="mt-1 text-[11px] font-mono space-x-3">
               <a
                 href="/settings"
                 data-testid="marketplace-settings-link"
@@ -756,6 +757,15 @@ export default function MarketplaceHost({
                 title="Open Settings for decision-tree driver and twin seed readiness"
               >
                 Settings · driver & twin seed
+              </a>
+              {/* Residual (mm): dual-gate checklist prep (never enables L1–L4). */}
+              <a
+                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+                data-testid="marketplace-dual-gate-checklist-link"
+                className="underline opacity-80 hover:opacity-100"
+                title="Dual-gate L1–L4 operator checklist (prep only)"
+              >
+                Dual-gate L1–L4 checklist
               </a>
             </p>
           </div>

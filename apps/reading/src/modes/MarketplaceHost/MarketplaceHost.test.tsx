@@ -228,6 +228,10 @@ describe("MarketplaceHost mode", () => {
     const settings = screen.getByTestId("marketplace-settings-link");
     expect(settings.getAttribute("href")).toBe("/settings");
     expect(settings.textContent).toMatch(/driver & twin seed/i);
+    // Residual (mm): dual-gate checklist (prep only).
+    const dual = screen.getByTestId("marketplace-dual-gate-checklist-link");
+    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4/);
+    expect(dual.textContent).toMatch(/dual-gate/i);
     await waitFor(() => {
       expect(screen.getByText("Pride and Prejudice")).toBeTruthy();
     });

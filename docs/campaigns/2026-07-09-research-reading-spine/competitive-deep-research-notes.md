@@ -267,3 +267,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (ml, 2026-07-10) **Midnight Oil dual-gate checklist link:**
   - Parity mj attach surface; prep only for L4 live step
+
+- Closed (mm, 2026-07-10) **Marketplace dual-gate checklist link:**
+  - Completes dual-gate prep surface on attach + MO + marketplace
