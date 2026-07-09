@@ -10,6 +10,7 @@ rows via ``ensure_spawn`` before ``complete_spawn`` / ``merge_spawn_outputs``.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from typing import Any
 
 from substrate.engagement_spine import (
     InMemoryEngagementStore,
@@ -39,6 +40,9 @@ class DepositResult:
     spawn_ids: tuple[str, ...]
     document_id: str
     draft_combined: bool
+    usage_recorded: bool = False
+    usage_event: dict | None = None
+    progress_seeded: bool = False
 
 
 def _goal_for_index(job: MidnightOilJob, index: int) -> str:
@@ -127,12 +131,18 @@ def deposit_job_results(
     step_outputs: list[WorkerStepResult] | tuple[WorkerStepResult, ...] = (),
     draft_combined: bool = True,
     parent_title: str | None = None,
+    bench_usage_store: Any | None = None,
+    record_progress: bool = True,
 ) -> DepositResult:
     """Write twins + project HTML for a finished (or halted) job.
 
     Materializes any worker-reported ``spawn_id`` that is not yet in the
     engagement store (via ``ensure_spawn``), then completes and merges.
     Twin writes are content-addressed (idempotent note_ids).
+
+    Residual (au): when ``bench_usage_store`` is provided, records an
+    Antiek-bench usage event so suite rewrite can learn from autonomous runs.
+    Optionally seeds progress plan→cite→complete on the first spawn.
     """
     row = job_store.get_job(job_id)
     if row is None:
@@ -260,6 +270,49 @@ def deposit_job_results(
     )
     put_job_state(updated, store=job_store)
 
+    usage_event: dict[str, Any] | None = None
+    usage_recorded = False
+    if bench_usage_store is not None:
+        try:
+            from substrate.antiek_bench import record_session_flywheel_usage
+
+            if job.status in ("failed", "budget_halt", "timeout", "halted"):
+                outcome_status = "failed"
+            else:
+                outcome_status = "complete"
+            usage_event = record_session_flywheel_usage(
+                store=bench_usage_store,
+                twin_count=len(twins),
+                ref_count=0,
+                status=outcome_status,
+                model_id=job.model_id,
+                prompt_hint=(job.goals[0] if job.goals else job.job_id)[:200],
+            )
+            usage_recorded = True
+        except Exception as exc:  # pragma: no cover — never fail deposit on bench
+            usage_event = {"error": str(exc)}
+            usage_recorded = False
+
+    progress_seeded = False
+    if record_progress and spawn_ids:
+        try:
+            from substrate.engagement_spine import (
+                record_progress as _record_progress,
+                seed_default_pipeline,
+            )
+
+            first = spawn_ids[0]
+            seed_default_pipeline(first, store=engagement_store)
+            _record_progress(
+                first,
+                "complete",
+                f"Midnight Oil deposit {job.job_id}",
+                store=engagement_store,
+            )
+            progress_seeded = True
+        except Exception:
+            progress_seeded = False
+
     return DepositResult(
         job_id=job.job_id,
         asset_id=asset_id,
@@ -268,6 +321,9 @@ def deposit_job_results(
         spawn_ids=tuple(spawn_ids),
         document_id=document_id,
         draft_combined=draft_combined,
+        usage_recorded=usage_recorded,
+        usage_event=usage_event,
+        progress_seeded=progress_seeded,
     )
 
 
