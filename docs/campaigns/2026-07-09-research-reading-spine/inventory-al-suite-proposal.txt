@@ -44,7 +44,7 @@ CAPABILITY | STATUS | EVIDENCE
 (ai) Settings weekly Antiek-bench usage summary | branch_only | GET /settings/antiek-bench/usage-summary; settings_usage_summary_payload; Settings Antiek-bench usage panel; tests/test_settings_usage_summary.py; @ 49fb123a
 (aj) durable Antiek-bench usage store | branch_only | resolve_usage_store + ANTIEK_BENCH_USAGE_DIR → FileBenchStore; get_bench_usage_store wired; tests/test_durable_usage_store.py; @ c169d457
 (ak) Settings NotDiamond advisory display | branch_only | substrate/notdiamond_advisory.py; GET /settings/notdiamond/advisory; Settings panel; tests/test_notdiamond_advisory_settings.py; authority REJECT; @ 96e1e0ce (prior tip)
-(al) Settings suite-proposal visibility | branch_only | settings_suite_proposal_payload; GET /settings/antiek-bench/suite-proposal; Settings suite proposal panel; tests/test_settings_suite_proposal.py; status proposed never auto-promoted; THIS CYCLE
+(al) Settings suite-proposal visibility | branch_only | settings_suite_proposal_payload; GET /settings/antiek-bench/suite-proposal; Settings suite proposal panel; tests/test_settings_suite_proposal.py; status proposed never auto-promoted; @ 0f286e35 / 0f286e358d0581e263fe3279c7a6f8152a88ee8c
 
 ALREADY_SHIPPED_DO_NOT_REBUILD:
 - living-roadmap SPR-01..14 (platform-completion-status-2026-07-01.md / origin/main)
@@ -57,5 +57,5 @@ ALREADY_SHIPPED_DO_NOT_REBUILD:
 - usage_bridge classify/record/weekly_usage_summary (composed by settings_suite_proposal_payload)
 - NotDiamond advisory substrate (ak)
 
-THIS_CYCLE_RESIDUAL: (al) Settings suite-proposal visibility — shipping
-NEXT_RESIDUAL: explicit approve/promote settings control OR competitive deep-research notes→spec; operator merge PR #465
+THIS_CYCLE_RESIDUAL: (al) Settings suite-proposal visibility — complete @ 0f286e35
+NEXT_RESIDUAL: (am) explicit approve/promote settings control for suite proposals; or competitive deep-research notes→spec; operator merge PR #465
