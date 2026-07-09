@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(eb) · PR #465
+ea: twin auto-promote · eb: campaign notes refresh.
+Operator merge still gated. Next residual (ec).
