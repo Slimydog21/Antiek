@@ -41,6 +41,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -60,6 +61,7 @@ DEFAULT_DB_PATH = os.path.expanduser("~/.antiek/antiek.duckdb")
 # Mac operator default historically used research_graph.duckdb — fall back.
 _ALT_DB_PATH = os.path.expanduser("~/.antiek/research_graph.duckdb")
 DEFAULT_PURPOSE = "hermes_ingest_cli"
+EVIDENCE_SCHEMA = "antiek.hermes_ingest_cli.evidence.v1"
 
 
 def _default_db_path() -> str:
@@ -87,6 +89,36 @@ def plan(
     if limit is not None and limit >= 0:
         ids = ids[:limit]
     return len(records), len(ids), ids
+
+
+def _write_evidence(path: str | Path, receipt: dict) -> None:
+    output = Path(path).expanduser()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _base_receipt(
+    *,
+    events_dir: str | Path,
+    db_path: str,
+    mode: str,
+    limit: int | None,
+    parsed_events: int,
+    investigation_ids: list[str],
+) -> dict:
+    return {
+        "schema": EVIDENCE_SCHEMA,
+        "events_dir": str(resolve_allowed_events_dir(events_dir)),
+        "db_path": str(Path(db_path).expanduser()),
+        "mode": mode,
+        "limit": limit,
+        "parsed_events": parsed_events,
+        "investigations_in_plan": len(investigation_ids),
+        "investigation_ids": investigation_ids,
+        "payload_text_included": False,
+        "provider_calls_made": False,
+        "distillation_run": False,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -121,6 +153,14 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="MUTATE the named DuckDB. Without it, plan-only (no writes).",
     )
+    p.add_argument(
+        "--evidence-json",
+        default=None,
+        help=(
+            "write a machine-readable smoke receipt with counts and result "
+            "statuses only; Hermes payload text is never included"
+        ),
+    )
     args = p.parse_args(argv)
 
     events_dir = args.events_dir or os.environ.get(
@@ -148,7 +188,20 @@ def main(argv: list[str] | None = None) -> int:
         more = f" … (+{len(ids) - 10} more)" if len(ids) > 10 else ""
         print(f"ids: {', '.join(preview)}{more}")
 
+    receipt = _base_receipt(
+        events_dir=events_dir,
+        db_path=db_path,
+        mode="apply" if args.apply else "dry_run",
+        limit=args.limit,
+        parsed_events=event_count,
+        investigation_ids=ids,
+    )
+
     if not args.apply:
+        receipt["writes_performed"] = False
+        if args.evidence_json:
+            _write_evidence(args.evidence_json, receipt)
+            print(f"evidence_json: {args.evidence_json}")
         print(
             "\n(dry-run) no writes. Re-run with --apply to ingest into the graph."
         )
@@ -171,6 +224,32 @@ def main(argv: list[str] | None = None) -> int:
         f"skip={batch.skipped_count} err={batch.error_count} "
         f"malformed={batch.malformed_lines} results={len(batch.results)}"
     )
+    receipt.update(
+        {
+            "writes_performed": True,
+            "new": batch.new_count,
+            "cache": batch.cache_hit_count,
+            "skip": batch.skipped_count,
+            "err": batch.error_count,
+            "malformed": batch.malformed_lines,
+            "results": [
+                {
+                    "investigation_id": result.investigation_id,
+                    "document_id": result.document_id,
+                    "status": result.status,
+                    "events_count": result.events_count,
+                    "was_new": result.was_new,
+                    "source_label": result.source_label,
+                    "document_type": result.document_type,
+                    "error": result.error_message,
+                }
+                for result in batch.results
+            ],
+        }
+    )
+    if args.evidence_json:
+        _write_evidence(args.evidence_json, receipt)
+        print(f"evidence_json: {args.evidence_json}")
     for result in batch.results:
         if result.status == "error":
             print(
