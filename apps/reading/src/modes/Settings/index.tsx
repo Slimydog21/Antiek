@@ -7,16 +7,35 @@ import {
   fetchSettingsModels,
   type BudgetResponse,
   type ModelRow,
+  type PromptCostEstimateRequest,
   type PromptCostEstimateResponse,
 } from "../../api/settings";
 
 /**
- * Operator Settings — model inventory + budget + prompt projection (SPR-01).
+ * Operator Settings — model inventory + budget + prompt projection.
  *
  * Honesty: spent/pricing may be unknown; UI never invents $0.00 when the
- * ledger or rate table is unset. Full "add model" + decision-tree override
- * land in later sprints.
+ * ledger or rate table is unset.
  */
+type TaskKind = NonNullable<PromptCostEstimateRequest["task_kind"]>;
+type RouteMode = NonNullable<PromptCostEstimateRequest["route_mode"]>;
+
+const TASK_KINDS: Array<{ value: TaskKind; label: string }> = [
+  { value: "research_question", label: "Research question" },
+  { value: "reading_highlight", label: "Reading highlight" },
+  { value: "midnight_oil", label: "Midnight oil" },
+  { value: "synthesis", label: "Synthesis" },
+  { value: "verification", label: "Verification" },
+];
+
+const ROUTE_MODES: Array<{ value: RouteMode; label: string }> = [
+  { value: "auto_balanced", label: "Balanced" },
+  { value: "auto_quality", label: "Quality" },
+  { value: "auto_cost", label: "Cost" },
+  { value: "auto_latency", label: "Latency" },
+  { value: "manual", label: "Manual" },
+];
+
 export default function Settings() {
   const tier = useViewportTier();
   const isDark =
@@ -32,8 +51,12 @@ export default function Settings() {
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [budget, setBudget] = useState<BudgetResponse | null>(null);
   const [budgetError, setBudgetError] = useState<string | null>(null);
-  const [inputChars, setInputChars] = useState(2000);
+  const [promptText, setPromptText] = useState("");
   const [outTokens, setOutTokens] = useState(500);
+  const [taskKind, setTaskKind] = useState<TaskKind>("research_question");
+  const [routeMode, setRouteMode] = useState<RouteMode>("auto_balanced");
+  const [manualRoute, setManualRoute] = useState("");
+  const [sessionCacheKey, setSessionCacheKey] = useState("");
   const [estimate, setEstimate] = useState<PromptCostEstimateResponse | null>(
     null,
   );
@@ -75,13 +98,52 @@ export default function Settings() {
     return Math.min(100, (budget.spent_usd / budget.daily_cap_usd) * 100);
   }, [budget]);
 
+  const modelOptions = useMemo(() => {
+    return (models ?? [])
+      .filter((m) => m.primary_model)
+      .map((m) => ({
+        value: `${m.provider_id}::${m.primary_model}`,
+        label: `${m.provider_id} / ${m.primary_model}`,
+        provider: m.provider_id,
+        model: m.primary_model as string,
+      }));
+  }, [models]);
+
+  const promptChars = promptText.length;
+  const effectiveManualRoute =
+    manualRoute || (modelOptions.length > 0 ? modelOptions[0].value : "");
+  const [manualProvider, manualModel] = effectiveManualRoute.split("::");
+  const selectedLabel = estimate?.selected_candidate
+    ? `${estimate.selected_candidate.provider} / ${estimate.selected_candidate.model} (${estimate.selected_candidate.tier})`
+    : "not projected";
+  const budgetStatus =
+    budget?.daily_cap_usd == null
+      ? "no cap configured"
+      : budget.spent_status !== "known"
+        ? "spend unknown"
+        : budget.remaining_usd != null && budget.remaining_usd < 0
+          ? "cap exceeded"
+          : "within cap";
+
   async function onEstimate() {
     setEstimating(true);
     setEstimateError(null);
     try {
       const res = await estimatePromptCost({
+        task_kind: taskKind,
+        role:
+          taskKind === "verification"
+            ? "verifier"
+            : taskKind === "research_question" || taskKind === "synthesis"
+              ? "synthesizer"
+              : "decomposer",
+        route_mode: routeMode,
+        manual_provider: routeMode === "manual" ? manualProvider || null : null,
+        manual_model: routeMode === "manual" ? manualModel || null : null,
+        session_cache_key: sessionCacheKey.trim() || null,
         tier: "pro",
-        input_chars: inputChars,
+        prompt_chars: promptChars,
+        input_chars: promptChars,
         expected_output_tokens: outTokens,
       });
       setEstimate(res);
@@ -179,10 +241,6 @@ export default function Settings() {
                 ))}
               </ul>
             )}
-            <p className="text-[11px] text-ink-soft dark:text-starlight font-serif italic">
-              Adding API keys / new models lands in SPR-02. Decision-tree
-              per-prompt override lands in SPR-03.
-            </p>
           </div>
         </LemonCard>
 
@@ -230,7 +288,7 @@ export default function Settings() {
                   aria-valuemin={0}
                   aria-valuemax={100}
                   aria-valuenow={spendPct ?? 0}
-                  aria-label="Budget usage"
+                  aria-label={`Budget usage: ${budgetStatus}`}
                 >
                   {spendPct != null ? (
                     <div
@@ -246,6 +304,12 @@ export default function Settings() {
                     Usage bar empty when spend is unknown or cap is unset.
                   </p>
                 )}
+                <p
+                  className="text-[11px] text-ink-soft dark:text-starlight"
+                  aria-live="polite"
+                >
+                  Budget status: {budgetStatus}.
+                </p>
                 {budget.notes.length > 0 && (
                   <ul className="text-[11px] text-ink-soft dark:text-starlight list-disc list-inside space-y-1">
                     {budget.notes.map((n) => (
@@ -260,23 +324,22 @@ export default function Settings() {
 
         <LemonCard title="Prompt cost projection" elevation="z1" colour="glacial">
           <div className="p-4 space-y-3">
-            <p className="text-sm text-ink dark:text-bright">
-              Estimate how a proposed pro-tier prompt would hit today&apos;s
-              remaining budget. Projection uses dispatch config rates —
-              placeholder 0.0 rates yield an honest null, not a fake price.
-            </p>
-            <div className="grid grid-cols-2 gap-3 font-mono text-[13px]">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono text-[13px]">
               <label className="flex flex-col gap-1">
                 <span className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
-                  Input chars
+                  Task kind
                 </span>
-                <input
-                  type="number"
-                  min={0}
-                  value={inputChars}
-                  onChange={(e) => setInputChars(Number(e.target.value) || 0)}
+                <select
+                  value={taskKind}
+                  onChange={(e) => setTaskKind(e.target.value as TaskKind)}
                   className="border border-ink/20 dark:border-bright/20 bg-transparent px-2 py-1 rounded"
-                />
+                >
+                  {TASK_KINDS.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="flex flex-col gap-1">
                 <span className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
@@ -287,6 +350,80 @@ export default function Settings() {
                   min={0}
                   value={outTokens}
                   onChange={(e) => setOutTokens(Number(e.target.value) || 0)}
+                  className="border border-ink/20 dark:border-bright/20 bg-transparent px-2 py-1 rounded"
+                />
+              </label>
+            </div>
+            <label className="flex flex-col gap-1 font-mono text-[13px]">
+              <span className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
+                Prompt
+              </span>
+              <textarea
+                value={promptText}
+                onChange={(e) => setPromptText(e.target.value)}
+                rows={5}
+                className="border border-ink/20 dark:border-bright/20 bg-transparent px-2 py-1 rounded resize-y min-h-28"
+                placeholder="Paste the prompt or question to project."
+              />
+              <span className="text-[11px] text-ink-soft dark:text-starlight">
+                {promptChars} characters
+              </span>
+            </label>
+            <fieldset className="space-y-2">
+              <legend className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight font-mono">
+                Route mode
+              </legend>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2" role="radiogroup">
+                {ROUTE_MODES.map((item) => (
+                  <button
+                    key={item.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={routeMode === item.value}
+                    onClick={() => setRouteMode(item.value)}
+                    className={
+                      "min-h-9 rounded border px-2 py-1 text-xs font-mono " +
+                      (routeMode === item.value
+                        ? "border-ink bg-ink text-white dark:border-bright dark:bg-bright dark:text-space"
+                        : "border-ink/20 dark:border-bright/20 text-ink dark:text-bright")
+                    }
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono text-[13px]">
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
+                  Manual model
+                </span>
+                <select
+                  value={effectiveManualRoute}
+                  disabled={routeMode !== "manual" || modelOptions.length === 0}
+                  onChange={(e) => setManualRoute(e.target.value)}
+                  className="border border-ink/20 dark:border-bright/20 bg-transparent px-2 py-1 rounded disabled:opacity-50"
+                  aria-label="Manual provider and model override"
+                >
+                  {modelOptions.length === 0 ? (
+                    <option value="">No configured model</option>
+                  ) : (
+                    modelOptions.map((item) => (
+                      <option key={item.value} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
+                  Cache key
+                </span>
+                <input
+                  type="text"
+                  value={sessionCacheKey}
+                  onChange={(e) => setSessionCacheKey(e.target.value)}
                   className="border border-ink/20 dark:border-bright/20 bg-transparent px-2 py-1 rounded"
                 />
               </label>
@@ -305,7 +442,27 @@ export default function Settings() {
               </p>
             )}
             {estimate && (
-              <div className="font-mono text-[13px] space-y-1">
+              <div
+                className="font-mono text-[13px] space-y-1"
+                aria-live="polite"
+                aria-label={`Selected route: ${selectedLabel}`}
+              >
+                <Row
+                  label={routeMode === "manual" ? "Manual override" : "Selected route"}
+                  value={selectedLabel}
+                />
+                {estimate.selected_candidate && routeMode !== "manual" && (
+                  <Row
+                    label="Recommendation"
+                    value={estimate.selected_candidate.selection_reason}
+                  />
+                )}
+                {estimate.selected_candidate && (
+                  <Row
+                    label="Cache"
+                    value={estimate.selected_candidate.cache_status}
+                  />
+                )}
                 <Row
                   label="Pricing known"
                   value={estimate.pricing_known ? "yes" : "no"}
@@ -336,6 +493,30 @@ export default function Settings() {
                         : "no"
                   }
                 />
+                {estimate.candidates.length > 0 && (
+                  <div className="pt-2">
+                    <p className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
+                      Candidates
+                    </p>
+                    <ul className="mt-1 space-y-1">
+                      {estimate.candidates.map((candidate) => (
+                        <li
+                          key={`${candidate.provider}-${candidate.model}-${candidate.fallback_chain_index}`}
+                          className="flex flex-wrap justify-between gap-2 border-t border-ink/10 dark:border-bright/10 pt-1"
+                        >
+                          <span>
+                            {candidate.provider} / {candidate.model}
+                          </span>
+                          <span>
+                            {candidate.estimated_usd_high == null
+                              ? "unknown"
+                              : `$${candidate.estimated_usd_high.toFixed(6)}`}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 {estimate.notes.map((n) => (
                   <p
                     key={n}
@@ -347,16 +528,6 @@ export default function Settings() {
               </div>
             )}
           </div>
-        </LemonCard>
-
-        <LemonCard title="Coming later" elevation="z1">
-          <ul className="p-4 space-y-2 text-sm text-ink dark:text-bright list-disc list-inside">
-            <li>Add model + multi-provider secret vault (SPR-02)</li>
-            <li>Decision-tree per-prompt model override (SPR-03)</li>
-            <li>Antiek-bench weekly model quality report</li>
-            <li>Midnight oil: time + goals + price-ceiling approve UI</li>
-            <li>Keyboard map customisation + layout export</li>
-          </ul>
         </LemonCard>
       </div>
     </div>

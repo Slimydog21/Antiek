@@ -1,7 +1,8 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Settings from "./index";
+import { estimatePromptCost, type BudgetResponse } from "../../api/settings";
 
 vi.mock("../../workspace/useViewportTier", () => ({
   useViewportTier: () => "desktop",
@@ -22,40 +23,76 @@ const models = {
   source: "test",
 };
 
-const budget = {
-  daily_cap_usd: 5,
-  spent_usd: 1,
-  remaining_usd: 4,
-  spent_status: "known" as const,
-  cap_env: null,
-  notes: ["test note"],
-};
+const mockState = vi.hoisted((): { budget: BudgetResponse } => ({
+  budget: {
+    daily_cap_usd: 5,
+    spent_usd: 1,
+    remaining_usd: 4,
+    spent_status: "known" as const,
+    cap_env: null,
+    notes: ["test note"],
+  },
+}));
 
 vi.mock("../../api/settings", () => ({
   fetchSettingsModels: vi.fn(async () => models),
-  fetchSettingsBudget: vi.fn(async () => budget),
+  fetchSettingsBudget: vi.fn(async () => mockState.budget),
   estimatePromptCost: vi.fn(async () => ({
-    estimated_usd_low: null,
-    estimated_usd_high: null,
-    would_exceed_budget: null,
-    pricing_known: false,
-    notes: ["tier pricing is 0.0 placeholder"],
+    estimated_usd_low: 0.001,
+    estimated_usd_high: 0.002,
+    would_exceed_budget: false,
+    pricing_known: true,
+    notes: [],
     assumed_input_tokens: 500,
     assumed_output_tokens: 500,
     tier: "pro",
     provider: "zai",
     model: "glm-5.2",
-    task_kind: null,
-    role: null,
-    route_mode: "manual",
-    selected_candidate: null,
-    candidates: [],
+    task_kind: "research_question",
+    role: "synthesizer",
+    route_mode: "auto_balanced",
+    selected_candidate: {
+      provider: "zai",
+      model: "glm-5.2",
+      tier: "pro",
+      fallback_chain_index: 0,
+      estimated_usd_low: 0.001,
+      estimated_usd_high: 0.002,
+      pricing_known: true,
+      cache_status: "cold",
+      selection_reason: "auto_balanced",
+    },
+    candidates: [
+      {
+        provider: "zai",
+        model: "glm-5.2",
+        tier: "pro",
+        fallback_chain_index: 0,
+        estimated_usd_low: 0.001,
+        estimated_usd_high: 0.002,
+        pricing_known: true,
+        cache_status: "cold",
+        selection_reason: "auto_balanced",
+      },
+    ],
   })),
 }));
 
 describe("Settings SPR-01", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockState.budget = {
+      daily_cap_usd: 5,
+      spent_usd: 1,
+      remaining_usd: 4,
+      spent_status: "known",
+      cap_env: null,
+      notes: ["test note"],
+    };
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 
   it("renders registered providers and budget bar", async () => {
@@ -68,18 +105,74 @@ describe("Settings SPR-01", () => {
     expect(screen.getByText("$1.0000")).toBeTruthy();
   });
 
-  it("projects cost and shows honest unknown pricing", async () => {
+  it("changes task kind in the estimator request", async () => {
     const user = userEvent.setup();
     render(<Settings />);
     await waitFor(() => expect(screen.getByText("zai")).toBeTruthy());
-    const buttons = screen.getAllByRole("button");
-    const project = buttons.find((b) => /project cost/i.test(b.textContent ?? ""));
-    expect(project).toBeTruthy();
-    await user.click(project!);
-    await waitFor(() => {
-      expect(
-        screen.getByText(/tier pricing is 0\.0 placeholder/i),
-      ).toBeTruthy();
-    });
+    await user.selectOptions(screen.getByLabelText(/task kind/i), "reading_highlight");
+    await user.type(
+      screen.getByRole("textbox", { name: /prompt/i }),
+      "Explain this excerpt.",
+    );
+    await user.click(screen.getByRole("button", { name: /project cost/i }));
+    await waitFor(() => expect(estimatePromptCost).toHaveBeenCalled());
+    expect(estimatePromptCost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task_kind: "reading_highlight",
+        route_mode: "auto_balanced",
+        prompt_chars: 21,
+      }),
+    );
+    expect(screen.getByLabelText(/selected route: zai \/ glm-5\.2/i)).toBeTruthy();
+  });
+
+  it("manual override displays selected model without auto recommendation text", async () => {
+    const user = userEvent.setup();
+    render(<Settings />);
+    await waitFor(() => expect(screen.getByText("zai")).toBeTruthy());
+    await user.click(screen.getByRole("radio", { name: "Manual" }));
+    await user.click(screen.getByRole("button", { name: /project cost/i }));
+    await waitFor(() => expect(estimatePromptCost).toHaveBeenCalled());
+    expect(estimatePromptCost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        route_mode: "manual",
+        manual_provider: "zai",
+        manual_model: "glm-5.2",
+      }),
+    );
+    expect(screen.getByText("Manual override")).toBeTruthy();
+    expect(screen.queryByText("Recommendation")).toBeNull();
+  });
+
+  it("renders no-cap and unknown-spend budget states accessibly", async () => {
+    mockState.budget = {
+      daily_cap_usd: null,
+      spent_usd: null,
+      remaining_usd: null,
+      spent_status: "no_cap",
+      cap_env: null,
+      notes: ["no cap"],
+    };
+    render(<Settings />);
+    await waitFor(() =>
+      expect(screen.getByText(/budget status: no cap configured/i)).toBeTruthy(),
+    );
+    expect(screen.getByLabelText(/budget usage: no cap configured/i)).toBeTruthy();
+  });
+
+  it("renders cap-exceeded budget state accessibly", async () => {
+    mockState.budget = {
+      daily_cap_usd: 5,
+      spent_usd: 6,
+      remaining_usd: -1,
+      spent_status: "known",
+      cap_env: null,
+      notes: ["over"],
+    };
+    render(<Settings />);
+    await waitFor(() =>
+      expect(screen.getByText(/budget status: cap exceeded/i)).toBeTruthy(),
+    );
+    expect(screen.getByLabelText(/budget usage: cap exceeded/i)).toBeTruthy();
   });
 });
