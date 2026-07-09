@@ -241,9 +241,11 @@ describe("MarketplaceHost mode", () => {
       );
     });
     await waitFor(() => {
-      expect(screen.getByTestId("marketplace-host-dr-status").textContent).toMatch(
-        /Deep research launched \(floating\)/,
-      );
+      const st = screen.getByTestId("marketplace-host-dr-status");
+      expect(st.textContent).toMatch(/Deep research launched \(floating\)/);
+      // Residual (ja): research tier on DR status.
+      expect(st.getAttribute("data-research-tier")).toBe("deep");
+      expect(st.textContent).toMatch(/tier=deep/);
     });
     // Residual (iv): full working-region deep research.
     fireEvent.click(screen.getByTestId("marketplace-host-deep-research-full"));

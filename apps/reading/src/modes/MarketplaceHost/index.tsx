@@ -33,6 +33,7 @@
  * Residual (iv): host-result deep research full window mode (parity hosted es).
  * Residual (iw): library row deep research launch parity (float|full).
  * Residual (iy): budget soft-gate on host/library DR launch (parity di/cs).
+ * Residual (ja): DR status surfaces research_tier used for launch audit.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -296,7 +297,7 @@ export default function MarketplaceHost({
         throw new Error("deep research view_format must be html");
       }
       setHostDrStatus(
-        `Deep research launched (${viewMode}) · session=${out.session_id} · spawn=${out.spawn_id} · window=${out.window_id}`,
+        `Deep research launched (${viewMode}) · tier=${hostDrTier} · session=${out.session_id} · spawn=${out.spawn_id} · window=${out.window_id}`,
       );
     } catch (e) {
       setHostDrStatus(
@@ -907,6 +908,8 @@ export default function MarketplaceHost({
             <p
               className="text-[11px] font-mono opacity-80"
               data-testid="marketplace-host-dr-status"
+              data-research-tier={hostDrTier}
+              data-view-format="html"
               role="status"
             >
               {hostDrStatus}
