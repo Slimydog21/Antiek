@@ -83,3 +83,5 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (io–is, 2026-07-10): knowledge-dense PD catalog expansion; host research substrate; catalog honesty API + server honesty UI; free public-domain research filter.
 
 - Closed (iu–iw, 2026-07-10): marketplace host + library deep research float|full (reading≡research on HTML books).
+
+- Closed (iy, 2026-07-10): marketplace host DR budget soft-gate before fire.
