@@ -187,8 +187,49 @@ def test_multimedia_routes_round_trip_without_provider_secrets(tmp_path, monkeyp
     assert export_gate_job["kind"] == "export_gate"
     assert export_gate_job["public_export_gate"]["public_export_enabled"] is False
 
+    review_created = client.post(
+        "/multimedia/assets",
+        json={
+            "topic": "public export review fixture",
+            "target_minutes": 20,
+            "mode": "audio",
+            "route_policy": "cheapest",
+        },
+    )
+    assert review_created.status_code == 201
+    review_asset_id = review_created.json()["asset"]["asset_id"]
+    assert client.post(f"/multimedia/assets/{review_asset_id}/approve-dry-run").status_code == 200
+    review_gate = client.post(f"/multimedia/assets/{review_asset_id}/evaluate-public-export-gate")
+    assert review_gate.status_code == 200
+    assert review_gate.json()["jobs"][-1]["public_export_gate"]["status"] == "manual_review"
+
+    review = client.post(
+        f"/multimedia/assets/{review_asset_id}/public-export-review",
+        json={
+            "decision": "approved",
+            "gate_ids": ["hardening", "rights_and_publication"],
+            "operator_acknowledged_public_distribution": True,
+            "notes": "Approved for future public export staging; do not publish yet.",
+        },
+    )
+    assert review.status_code == 200
+    review_job = review.json()["jobs"][-1]
+    assert review_job["kind"] == "export_gate"
+    assert review_job["public_export_review"]["decision"] == "approved"
+    assert review_job["public_export_gate"]["public_export_enabled"] is False
+
     missing_export_gate = client.post("/multimedia/assets/mm-missing/evaluate-public-export-gate")
     assert missing_export_gate.status_code == 404
+
+    missing_review = client.post(
+        "/multimedia/assets/mm-missing/public-export-review",
+        json={
+            "decision": "approved",
+            "gate_ids": ["rights_and_publication"],
+            "operator_acknowledged_public_distribution": True,
+        },
+    )
+    assert missing_review.status_code == 404
 
 
 def test_hybrid_approve_does_not_double_count_audio_cost_rows(tmp_path):

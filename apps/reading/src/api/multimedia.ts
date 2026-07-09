@@ -33,6 +33,13 @@ export interface LiveProviderExecutionRequest {
   dry_run_revision_id?: string | null;
 }
 
+export interface MultimediaPublicExportReviewRequest {
+  decision: "approved" | "rejected";
+  gate_ids: string[];
+  operator_acknowledged_public_distribution: boolean;
+  notes?: string | null;
+}
+
 export interface MultimediaAssetSummary {
   asset_id: string;
   revision_id: string;
@@ -99,6 +106,7 @@ export interface MultimediaJobRecord {
   error_code: string | null;
   retryable: boolean | null;
   public_export_gate?: MultimediaPublicExportGate | null;
+  public_export_review?: MultimediaPublicExportReview | null;
 }
 
 export interface MultimediaJobList {
@@ -113,6 +121,14 @@ export interface MultimediaPublicExportGate {
   attached_file_ids: string[];
   required_gate_ids: string[];
   reason: string;
+}
+
+export interface MultimediaPublicExportReview {
+  decision: "approved" | "rejected";
+  gate_ids: string[];
+  attached_file_ids: string[];
+  operator_acknowledged_public_distribution: boolean;
+  notes: string | null;
 }
 
 export interface MultimediaPublicExportStatus {
@@ -229,5 +245,19 @@ export async function evaluateMultimediaPublicExportGate(assetId: string): Promi
   );
   if (resp.status === 404) throw new Error("multimedia_asset_not_found");
   if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/evaluate-public-export-gate: HTTP ${resp.status}`);
+  return (await resp.json()) as MultimediaAssetRecord;
+}
+
+export async function recordMultimediaPublicExportReview(
+  assetId: string,
+  request: MultimediaPublicExportReviewRequest,
+): Promise<MultimediaAssetRecord> {
+  const resp = await apiFetch(`${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/public-export-review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (resp.status === 404) throw new Error("multimedia_asset_not_found");
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/public-export-review: HTTP ${resp.status}`);
   return (await resp.json()) as MultimediaAssetRecord;
 }

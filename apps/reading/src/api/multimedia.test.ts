@@ -20,6 +20,7 @@ import {
   listMultimediaJobs,
   manualGateIds,
   prepareMultimediaLiveExecution,
+  recordMultimediaPublicExportReview,
   runMultimediaHardening,
   steerMultimediaAsset,
 } from "./multimedia";
@@ -90,6 +91,40 @@ const exportGateRecord: MultimediaAssetRecord = {
         attached_file_ids: ["file-mm-1-transcript"],
         required_gate_ids: ["rights_and_publication"],
         reason: "Manual publication review required before public export.",
+      },
+    },
+  ],
+};
+
+const exportReviewRecord: MultimediaAssetRecord = {
+  ...record,
+  jobs: [
+    ...exportGateRecord.jobs,
+    {
+      job_id: "job-mm-1-0003",
+      asset_id: "mm-1",
+      revision_id: "rev-1",
+      sequence: 3,
+      kind: "export_gate",
+      status: "partial",
+      progress_percent: 98,
+      message: "Manual publication review approved; public export remains disabled.",
+      error_code: null,
+      retryable: false,
+      public_export_gate: {
+        status: "ready",
+        public_export_enabled: false,
+        hardening_status: "manual_review",
+        attached_file_ids: ["file-mm-1-transcript"],
+        required_gate_ids: [],
+        reason: "Manual publication review approved; public export remains disabled.",
+      },
+      public_export_review: {
+        decision: "approved",
+        gate_ids: ["rights_and_publication"],
+        attached_file_ids: ["file-mm-1-transcript"],
+        operator_acknowledged_public_distribution: true,
+        notes: "Approved for future public export staging; do not publish yet.",
       },
     },
   ],
@@ -253,6 +288,26 @@ describe("multimedia API client", () => {
     expect(result.jobs.at(-1)?.public_export_gate?.public_export_enabled).toBe(false);
   });
 
+  it("posts public export review to the no-spend endpoint", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, exportReviewRecord));
+    const request = {
+      decision: "approved" as const,
+      gate_ids: ["rights_and_publication"],
+      operator_acknowledged_public_distribution: true,
+      notes: "Approved for future public export staging; do not publish yet.",
+    };
+    const result = await recordMultimediaPublicExportReview("mm-1", request);
+    expect(mockFetch()).toHaveBeenLastCalledWith(
+      "/multimedia/assets/mm-1/public-export-review",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    );
+    expect(result.jobs.at(-1)?.public_export_review?.decision).toBe("approved");
+    expect(result.jobs.at(-1)?.public_export_gate?.public_export_enabled).toBe(false);
+  });
+
   it("surfaces a typed not-found error for a 404 live-execution prep", async () => {
     mockFetch().mockResolvedValueOnce(jsonResponse(404, { detail: "missing" }));
     await expect(
@@ -267,5 +322,16 @@ describe("multimedia API client", () => {
   it("surfaces a typed not-found error for a 404 public export gate evaluation", async () => {
     mockFetch().mockResolvedValueOnce(jsonResponse(404, { detail: "missing" }));
     await expect(evaluateMultimediaPublicExportGate("mm-missing")).rejects.toThrow("multimedia_asset_not_found");
+  });
+
+  it("surfaces a typed not-found error for a 404 public export review", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(404, { detail: "missing" }));
+    await expect(
+      recordMultimediaPublicExportReview("mm-missing", {
+        decision: "approved",
+        gate_ids: ["rights_and_publication"],
+        operator_acknowledged_public_distribution: true,
+      }),
+    ).rejects.toThrow("multimedia_asset_not_found");
   });
 });
