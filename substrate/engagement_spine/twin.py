@@ -30,7 +30,7 @@ class TwinNote:
 
 def _note_id(asset_id: str, kind: TwinKind, text: str) -> str:
     canon = " ".join(text.strip().lower().split())
-    digest = hashlib.sha256(f"{asset_id}:{kind}:{canon}".encode("utf-8")).hexdigest()[:16]
+    digest = hashlib.sha256(f"{asset_id}:{kind}:{canon}".encode()).hexdigest()[:16]
     return f"twin_{digest}"
 
 

@@ -1,0 +1,14 @@
+# Residual inventory — 2026-07-09 cycle (host-into-account)
+# origin/main @ b3875724 | branch of record: campaign/research-reading-spine-2026-07-09-main @ 8c1cdc0e (PR #465 OPEN)
+# Living-roadmap SPR-01..14: ALREADY SHIPPED on main — NOT rebuild TODOs.
+
+CAPABILITY | STATUS | EVIDENCE
+(a) research↔reading engagement spine | branch_only | PR #465 / substrate/engagement_spine/** @ 8c1cdc0e (ensure_spawn included)
+(b) HTML-first human view | on_main + branch_only spine path | services/html_projection/** on main; engagement_spine.project_to_html on branch
+(c) model driver/budget/projection/add-model | on_main + branch residual | #440 settings_budget on main; substrate/model_registration on branch
+(d) Midnight oil | branch_only | substrate/midnight_oil/** @ 8c1cdc0e
+(e) book marketplace + host-into-account | missing → THIS CYCLE (B) | docs/htmlspec/marketplace-host/** present; code to ship substrate/marketplace_host/**
+(f) recursive Antiek-bench | spec_only | docs/htmlspec/antiek-bench-recursive/** (not chosen this cycle)
+(g) NotDiamond usefulness | branch_only | docs/htmlspec/notdiamond-verdict/VERDICT.md advisory GO / authority REJECT
+
+CHOSEN_PACKAGE: B host-into-account

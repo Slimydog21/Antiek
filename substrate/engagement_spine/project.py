@@ -46,10 +46,10 @@ def project_to_html(
     html = render(normalized, ctx)
     if not html or not html.strip():
         raise RuntimeError("HTML projection produced empty output")
-    if "<html" not in html.lower() and "<!doctype" not in html.lower():
-        # Still accept fragment-like output if non-empty body content exists
-        if len(html.strip()) < 8:
-            raise RuntimeError("HTML projection too short to be a view surface")
+    # Still accept fragment-like output if non-empty body content exists.
+    is_document = "<html" in html.lower() or "<!doctype" in html.lower()
+    if not is_document and len(html.strip()) < 8:
+        raise RuntimeError("HTML projection too short to be a view surface")
     return html
 
 

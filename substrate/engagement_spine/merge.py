@@ -19,7 +19,8 @@ from typing import Any, Literal
 
 from .spawn import ResearchSpawn, _from_row
 from .store import EngagementStore
-from .twin import TwinNote, _from_row as twin_from_row
+from .twin import TwinNote
+from .twin import _from_row as twin_from_row
 
 MergeMode = Literal["into_parent", "draft_combined"]
 
@@ -89,7 +90,7 @@ def merge_spawn_outputs(
         document_id = parent_asset_id
     else:
         digest = hashlib.sha256(
-            f"draft:{parent_asset_id}:{','.join(sorted(spawn_ids))}".encode("utf-8")
+            f"draft:{parent_asset_id}:{','.join(sorted(spawn_ids))}".encode()
         ).hexdigest()[:12]
         document_id = f"draft_{parent_asset_id}_{digest}"
 

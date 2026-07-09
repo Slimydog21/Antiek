@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, replace
-from typing import Any, Protocol
+from typing import Protocol
 
 from .job import JobStore, MidnightOilJob, _job_from_row, put_job_state
 

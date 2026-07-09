@@ -1,36 +1,35 @@
-# Campaign ledger — research/reading spine residual (2026-07-09 rebased)
+# Campaign ledger — research/reading residual (2026-07-09+)
 
-**Honest scope statement:** Finite residual slice rebased onto `origin/main` after #440/#442/#443. Does **not** claim infinite platform finish.
+**Honest scope:** Finite residual slices only. Not infinite platform finish.
 
 | Field | Value |
 |---|---|
 | Branch | `campaign/research-reading-spine-2026-07-09-main` |
-| Base SHA | `b3875724` (`origin/main`) |
-| Prior unmerged campaign | `campaign/research-reading-spine-2026-07-09` @ `835757f1` (spine source) |
-| Worktree | `platform/worktrees/campaign-rrs-main` |
-| Orchestrator | Grok Build /infinite goal 019f4744 |
-| Lane claim | `ANTIEK-AGENT-LANES.md` · campaign/research-reading-spine-2026-07-09-rebased |
+| PR | https://github.com/Slimydog21/Antiek/pull/465 |
+| Base | `origin/main` @ `b3875724` |
 
-## Finite slice status
+## Cycle 1 (spine + midnight oil) — shipped on branch
 
-| # | Item | Status | Evidence |
-|---|---|---|---|
-| 1 | Research↔reading engagement spine | **done** | `substrate/engagement_spine/**`; `tests/test_engagement_spine.py` (9) |
-| 2 | HTML-first projection for spine assets | **done** | `project_to_html` → `services.html_projection.render`; `tests/test_engagement_html_projection.py` (3) |
-| 3 | Model driver/budget | **reconciled** | #440 on main (inventory/usage/projection). Residual only: `substrate/model_registration/**` add-model + select_driver → `model_override` (4 tests). No duplicate settings stack. |
-| 4 | Midnight oil (chosen deferred package A) | **done** | `substrate/midnight_oil/**`; `tests/test_midnight_oil.py` (11) — ceiling math, approve gate, budget halt, timeout, HTML+twin deposit |
-| 5 | Book marketplace host-into-account | **deferred-with-spec** | `docs/htmlspec/marketplace-host/` |
-| 6 | Recursive Antiek-bench | **deferred-with-spec** | `docs/htmlspec/antiek-bench-recursive/` |
-| 7 | NotDiamond usefulness | **verdict** | `docs/htmlspec/notdiamond-verdict/VERDICT.md` — advisory GO / authority REJECT |
+| Item | Status | SHA |
+|---|---|---|
+| Engagement spine | done | `34036aa1` + `ensure_spawn` @ `8c1cdc0e` |
+| HTML projection path | done | engagement_spine.project_to_html |
+| Model residual | done | model_registration (no #440 duplicate) |
+| Midnight oil | done | `8c1cdc0e` |
+| NotDiamond verdict | done | advisory GO / authority REJECT |
+
+## Cycle 2 (package B host-into-account) — this cycle
+
+| Item | Status | Evidence |
+|---|---|---|
+| Catalog + license_class | **done** | `substrate/marketplace_host/catalog.py` |
+| host_into_account idempotent | **done** | content-addressed `hdoc_*` per owner |
+| Account library membership | **done** | `AccountLibrary.load` |
+| Manual purchase receipt | **done** | `ManualPurchaseReceipt` (no Stripe/card) |
+| HTML view (not PDF) | **done** | `project_hosted_book_html`; PDF source → HTML placeholder |
+| Antiek-bench | **deferred-with-spec** | `docs/htmlspec/antiek-bench-recursive/` |
 
 ## Non-claims
 
-- Not infinite completion of Antiek.
-- Not full floating-window multi-select collective chat chrome.
-- Not live multi-provider deep research over network.
-- Not commercial payment rails / DRM.
-- Not NotDiamond as authoritative dispatch.
-
-## Inventory
-
-See `inventory.txt` in this directory and `{SCRATCH}/inventory/inventory.txt`.
+- No live Stripe/DRM; no operator merge to main required for this pass.
+- No rebuild of living-roadmap SPR-01..14.
