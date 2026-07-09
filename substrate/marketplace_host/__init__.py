@@ -16,6 +16,13 @@ from __future__ import annotations
 from .catalog import Catalog, CatalogEntry, LicenseClass, make_catalog
 from .host import HostResult, host_into_account
 from .library import AccountLibrary, InMemoryHostStore
+from .product_path import (
+    MarketplaceHostProductResult,
+    default_demo_catalog,
+    host_book_into_account,
+    list_account_library_html,
+    record_purchase_and_host,
+)
 from .purchase import ManualPurchaseReceipt, PurchaseAdapter, PurchaseReceipt
 from .view import project_hosted_book_html
 
@@ -27,9 +34,14 @@ __all__ = [
     "InMemoryHostStore",
     "LicenseClass",
     "ManualPurchaseReceipt",
+    "MarketplaceHostProductResult",
     "PurchaseAdapter",
     "PurchaseReceipt",
+    "default_demo_catalog",
+    "host_book_into_account",
     "host_into_account",
+    "list_account_library_html",
     "make_catalog",
     "project_hosted_book_html",
+    "record_purchase_and_host",
 ]

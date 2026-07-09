@@ -1664,6 +1664,9 @@ def create_app(
     # Midnight Oil — create → recommended price ceiling → explicit approve.
     from .midnight_oil_routes import register_midnight_oil_routes
     register_midnight_oil_routes(app)
+    # Marketplace host-into-account — catalog → host → HTML library view.
+    from .marketplace_host_routes import register_marketplace_host_routes
+    register_marketplace_host_routes(app)
     # Read SPR-09 — library catalog (paginated/filtered/searched view over the
     # SAME servable-corpus read path; §9.0 keeps gated bodies out of payloads).
     from .library import register_library_routes

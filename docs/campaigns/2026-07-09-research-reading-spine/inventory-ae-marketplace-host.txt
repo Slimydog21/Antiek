@@ -1,0 +1,10 @@
+# Residual inventory (ae) marketplace host product — 2026-07-09
+# origin/main@b3875724c6223a7cc66a05c5b6d2bba8e5d69b1d
+# branch PR #465 @ 4bb76e540195c68e23a974ead718014dae00e9c9 (≥ 4bb76e54)
+
+(a)–(ac) engagement/twin/context/collective/flywheel/API | branch_only | PR #465
+(ad) Midnight Oil product path | branch_only | product_path + /midnight-oil @ 4bb76e54
+(ae) marketplace host-into-account PRODUCT path | missing→shipping | host_into_account core exists; product entry/API/chrome this cycle
+
+ALREADY_SHIPPED_DO_NOT_REBUILD: marketplace_host catalog/host/receipt/library/view; living-roadmap SPR-01..14
+NEXT: live commerce rails (operator-gated); operator merge PR #465
