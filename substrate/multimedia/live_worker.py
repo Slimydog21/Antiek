@@ -26,6 +26,67 @@ from substrate.multimedia.read_model import (
 )
 
 
+def attach_provider_artifacts_to_manifest(
+    store: MultimediaAssetStore,
+    asset_id: str,
+) -> MultimediaAssetRecord:
+    """Attach validated provider file metadata to the asset manifest."""
+
+    record = store.get(asset_id)
+    attachment_plan = _latest_attachment_plan(record)
+    if attachment_plan is None:
+        return store.record_job(
+            asset_id,
+            kind="provider_execution",
+            status="failed",
+            progress_percent=90,
+            message="Manifest attachment requires a validated provider attachment plan.",
+            error_code="artifact_attachment_plan_missing",
+            retryable=False,
+        )
+    if attachment_plan.manifest_revision_id != record.asset.revision_id:
+        return store.record_job(
+            asset_id,
+            kind="provider_execution",
+            status="failed",
+            progress_percent=90,
+            message="Provider attachment plan targets a stale manifest revision.",
+            error_code="artifact_attachment_plan_stale",
+            retryable=False,
+            attachment_plan=attachment_plan,
+        )
+
+    existing_file_ids = {file.file_id for file in record.asset.manifest.files}
+    duplicate_file_ids = tuple(file.file_id for file in attachment_plan.files if file.file_id in existing_file_ids)
+    if duplicate_file_ids:
+        return store.record_job(
+            asset_id,
+            kind="provider_execution",
+            status="failed",
+            progress_percent=90,
+            message=f"Provider attachment plan would duplicate manifest file ids: {', '.join(duplicate_file_ids)}.",
+            error_code="artifact_file_duplicate",
+            retryable=False,
+            attachment_plan=attachment_plan,
+        )
+
+    manifest = record.asset.manifest.model_copy(
+        update={"files": record.asset.manifest.files + attachment_plan.files}
+    )
+    asset = record.asset.model_copy(update={"manifest": manifest})
+    updated = store._with_job(
+        record.model_copy(update={"asset": asset}),
+        kind="provider_execution",
+        status="succeeded",
+        progress_percent=100,
+        message=f"Attached {len(attachment_plan.files)} validated provider artifact(s) to the manifest.",
+        retryable=False,
+        attachment_plan=attachment_plan,
+    )
+    store.save(updated)
+    return updated
+
+
 def plan_provider_artifact_attachment(
     store: MultimediaAssetStore,
     asset_id: str,
@@ -283,6 +344,13 @@ def _latest_succeeded_receipt(record: MultimediaAssetRecord) -> LiveProviderArti
     return None
 
 
+def _latest_attachment_plan(record: MultimediaAssetRecord) -> LiveProviderAttachmentPlan | None:
+    for job in reversed(record.jobs):
+        if job.kind == "provider_execution" and job.attachment_plan:
+            return job.attachment_plan
+    return None
+
+
 def _attachment_mismatch(
     preview: LiveProviderRoutePreview,
     receipt: LiveProviderArtifactReceipt,
@@ -324,6 +392,7 @@ def _primary_generation_kind(kind: AssetKind) -> GenerationKind:
 
 
 __all__ = [
+    "attach_provider_artifacts_to_manifest",
     "plan_provider_artifact_attachment",
     "preview_next_live_execution",
     "record_provider_artifact_receipt",

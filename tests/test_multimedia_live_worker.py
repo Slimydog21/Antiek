@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from substrate.contracts.multimedia import GeneratedFile
 from substrate.multimedia.live_worker import (
+    attach_provider_artifacts_to_manifest,
     plan_provider_artifact_attachment,
     preview_next_live_execution,
     record_provider_artifact_receipt,
@@ -243,6 +244,143 @@ def test_provider_artifact_attachment_plan_validates_receipt_without_manifest_mu
 
     reloaded = MultimediaAssetStore(tmp_path).list_jobs(draft.asset.asset_id)
     assert reloaded.jobs[-1].attachment_plan == job.attachment_plan
+
+
+def test_attach_provider_artifacts_to_manifest_after_validated_plan(tmp_path, monkeypatch):
+    monkeypatch.setenv("KREA_API_KEY", "presence-only-not-a-real-secret")
+    store = MultimediaAssetStore(tmp_path)
+    draft = store.create_draft(
+        CreateMultimediaDraftRequest(
+            topic="documentary on composite airframes",
+            target_minutes=20,
+            mode="video",
+            route_policy="balanced",
+            sources=("Composite materials changed fatigue, maintenance, and weight tradeoffs.",),
+        )
+    )
+    approved = store.approve_dry_run(draft.asset.asset_id)
+    store.prepare_live_execution(
+        draft.asset.asset_id,
+        LiveProviderExecutionRequest(
+            max_budget_usd=100,
+            route_policy="balanced",
+            operator_acknowledged_spend=True,
+            dry_run_revision_id=draft.asset.revision_id,
+        ),
+    )
+    previewed = preview_next_live_execution(store, draft.asset.asset_id)
+    route_preview = previewed.jobs[-1].route_preview
+    assert route_preview is not None
+    provider_file = GeneratedFile(
+        file_id="krea-file-attach",
+        kind="video",
+        storage_uri="s3://antiek/multimedia/krea-file-attach.mp4",
+        sha256=SHA,
+        mime="video/mp4",
+        provider="krea",
+        duration_seconds=route_preview.duration_seconds,
+        width_px=route_preview.resolution[0] if route_preview.resolution else None,
+        height_px=route_preview.resolution[1] if route_preview.resolution else None,
+    )
+    record_provider_artifact_receipt(
+        store,
+        draft.asset.asset_id,
+        LiveProviderArtifactReceipt(
+            provider_job_id="krea-job-attach",
+            provider="krea",
+            status="succeeded",
+            files=(provider_file,),
+        ),
+    )
+    planned = plan_provider_artifact_attachment(store, draft.asset.asset_id)
+    attachment_plan = planned.jobs[-1].attachment_plan
+    assert attachment_plan is not None
+
+    attached = attach_provider_artifacts_to_manifest(store, draft.asset.asset_id)
+    job = attached.jobs[-1]
+
+    assert job.status == "succeeded"
+    assert job.progress_percent == 100
+    assert job.attachment_plan == attachment_plan
+    assert attached.asset.manifest.files == approved.asset.manifest.files + (provider_file,)
+    assert attached.asset.manifest.files[-1].storage_uri == "s3://antiek/multimedia/krea-file-attach.mp4"
+
+    reloaded = MultimediaAssetStore(tmp_path).get(draft.asset.asset_id)
+    assert reloaded.asset.manifest.files[-1] == provider_file
+    assert reloaded.jobs[-1].status == "succeeded"
+    for row in reloaded.jobs:
+        assert "presence-only-not-a-real-secret" not in row.model_dump_json()
+
+
+def test_attach_provider_artifacts_to_manifest_requires_attachment_plan(tmp_path):
+    store = MultimediaAssetStore(tmp_path)
+    draft = store.create_draft(
+        CreateMultimediaDraftRequest(
+            topic="documentary on inertial navigation",
+            target_minutes=20,
+            mode="video",
+            route_policy="balanced",
+        )
+    )
+
+    attached = attach_provider_artifacts_to_manifest(store, draft.asset.asset_id)
+
+    assert attached.jobs[-1].status == "failed"
+    assert attached.jobs[-1].error_code == "artifact_attachment_plan_missing"
+    assert attached.jobs[-1].attachment_plan is None
+
+
+def test_attach_provider_artifacts_to_manifest_rejects_duplicate_file_ids(tmp_path, monkeypatch):
+    monkeypatch.setenv("KREA_API_KEY", "presence-only-not-a-real-secret")
+    store = MultimediaAssetStore(tmp_path)
+    draft = store.create_draft(
+        CreateMultimediaDraftRequest(
+            topic="documentary on cockpit voice recorders",
+            target_minutes=20,
+            mode="video",
+            route_policy="balanced",
+        )
+    )
+    approved = store.approve_dry_run(draft.asset.asset_id)
+    existing_file = approved.asset.manifest.files[0]
+    store.prepare_live_execution(
+        draft.asset.asset_id,
+        LiveProviderExecutionRequest(
+            max_budget_usd=100,
+            route_policy="balanced",
+            operator_acknowledged_spend=True,
+            dry_run_revision_id=draft.asset.revision_id,
+        ),
+    )
+    previewed = preview_next_live_execution(store, draft.asset.asset_id)
+    route_preview = previewed.jobs[-1].route_preview
+    assert route_preview is not None
+    duplicate_file = existing_file.model_copy(
+        update={
+            "provider": "krea",
+            "duration_seconds": route_preview.duration_seconds,
+            "width_px": route_preview.resolution[0] if route_preview.resolution else None,
+            "height_px": route_preview.resolution[1] if route_preview.resolution else None,
+        }
+    )
+    record_provider_artifact_receipt(
+        store,
+        draft.asset.asset_id,
+        LiveProviderArtifactReceipt(
+            provider_job_id="krea-job-duplicate",
+            provider="krea",
+            status="succeeded",
+            files=(duplicate_file,),
+        ),
+    )
+    planned = plan_provider_artifact_attachment(store, draft.asset.asset_id)
+    assert planned.jobs[-1].attachment_plan is not None
+
+    attached = attach_provider_artifacts_to_manifest(store, draft.asset.asset_id)
+
+    assert attached.jobs[-1].status == "failed"
+    assert attached.jobs[-1].error_code == "artifact_file_duplicate"
+    assert attached.asset.manifest.files == approved.asset.manifest.files
 
 
 def test_provider_artifact_attachment_plan_requires_successful_receipt(tmp_path, monkeypatch):

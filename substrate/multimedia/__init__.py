@@ -21,6 +21,7 @@ from .hardening import (
     evaluate_multimedia_asset,
 )
 from .live_worker import (
+    attach_provider_artifacts_to_manifest,
     plan_provider_artifact_attachment,
     preview_next_live_execution,
     record_provider_artifact_receipt,
@@ -177,6 +178,7 @@ __all__ = [
     "MultimediaAssetStore",
     "MultimediaAssetSummary",
     "SteeringRequest",
+    "attach_provider_artifacts_to_manifest",
     "plan_provider_artifact_attachment",
     "preview_next_live_execution",
     "record_provider_artifact_receipt",
