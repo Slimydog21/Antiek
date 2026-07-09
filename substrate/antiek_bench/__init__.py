@@ -37,6 +37,15 @@ from .suite import (
     register_suite,
 )
 from .summary import project_run_html
+from .usage_bridge import (
+    UsageEvent,
+    classify_engagement_task,
+    list_usage_events,
+    propose_from_recorded_usage,
+    record_session_flywheel_usage,
+    record_usage_event,
+    weekly_usage_summary,
+)
 
 __all__ = [
     "BenchRunResult",
@@ -50,15 +59,22 @@ __all__ = [
     "SuiteRegistry",
     "TaskClass",
     "TaskScore",
+    "UsageEvent",
     "active_suite",
     "approve_and_promote",
     "build_leaderboard",
+    "classify_engagement_task",
     "default_core_suite",
     "get_suite",
+    "list_usage_events",
     "project_leaderboard_html",
     "project_run_html",
+    "propose_from_recorded_usage",
     "propose_suite_delta",
+    "record_session_flywheel_usage",
+    "record_usage_event",
     "register_suite",
     "run_suite",
     "settings_leaderboard_payload",
+    "weekly_usage_summary",
 ]
