@@ -20,6 +20,7 @@ const {
   fetchDepthTiers,
   applyDepthTier,
   fetchAntiekBenchDogfoodFixtures,
+  fetchAntiekBenchLeaderboard,
   fetchNotDiamondAdvisory,
 } = vi.hoisted(() => {
   const models = {
@@ -236,6 +237,23 @@ const {
       notes: ["Competitive dogfood fixtures are offline prompts only."],
       html: "<p>Suite suite-competitive-dogfood-v1 · items=5</p>",
     })),
+    fetchAntiekBenchLeaderboard: vi.fn(async () => ({
+      week_id: "2026-W28",
+      models: [
+        { model_id: "strong-model", mean_score: 0.95 },
+        { model_id: "weak-model", mean_score: 0.2 },
+      ],
+      task_classes: ["distill", "synthesize"],
+      run_count: 2,
+      suite_versions: ["suite-v1"],
+      recommended_model_id: "strong-model",
+      recommended_mean_score: 0.95,
+      view_format: "html",
+      settings_panel: "antiek_bench_weekly",
+      source: "antiek_bench.offline_runs",
+      notes: [],
+      html: "<p>Leaderboard week 2026-W28 · strong-model</p>",
+    })),
     fetchNotDiamondAdvisory: vi.fn(async () => ({
       advisory_allowed: true,
       advisory_verdict: "GO",
@@ -270,6 +288,7 @@ vi.mock("../../api/settings", () => ({
   fetchDepthTiers,
   applyDepthTier,
   fetchAntiekBenchDogfoodFixtures,
+  fetchAntiekBenchLeaderboard,
   fetchNotDiamondAdvisory,
 }));
 
@@ -291,6 +310,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
     fetchDepthTiers.mockClear();
     applyDepthTier.mockClear();
     fetchAntiekBenchDogfoodFixtures.mockClear();
+    fetchAntiekBenchLeaderboard.mockClear();
     fetchNotDiamondAdvisory.mockClear();
   });
 
@@ -488,6 +508,27 @@ describe("Settings SPR-01 + decision-tree install", () => {
     ).toMatch(/Auto-promoted\s*false/i);
     expect(screen.getByTestId("antiek-bench-dogfood-html").innerHTML).toMatch(
       /items=5|dogfood/i,
+    );
+  });
+
+  it("loads Antiek-bench weekly leaderboard — advisory ranking", async () => {
+    render(<Settings />);
+    await waitFor(() => {
+      expect(screen.getByTestId("antiek-bench-leaderboard-panel")).toBeTruthy();
+    });
+    expect(fetchAntiekBenchLeaderboard).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("antiek-bench-leaderboard-summary").textContent,
+      ).toMatch(/strong-model/);
+    });
+    expect(
+      screen
+        .getByTestId("antiek-bench-leaderboard-panel")
+        .getAttribute("data-view-format"),
+    ).toBe("html");
+    expect(screen.getByTestId("antiek-bench-leaderboard-html").innerHTML).toMatch(
+      /Leaderboard|strong-model/i,
     );
   });
 });

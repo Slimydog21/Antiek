@@ -360,9 +360,11 @@ class AntiekBenchLeaderboardResponse(BaseModel):
     suite_versions: list[str] = Field(default_factory=list)
     recommended_model_id: str | None = None
     recommended_mean_score: float | None = None
+    view_format: str = "html"
     settings_panel: str = "antiek_bench_weekly"
     source: str = "antiek_bench.offline_runs"
     notes: list[str] = Field(default_factory=list)
+    html: str | None = None
 
 
 @settings_router.get(
@@ -372,25 +374,41 @@ class AntiekBenchLeaderboardResponse(BaseModel):
 def get_antiek_bench_leaderboard(
     request: Request,
     week_id: str,
+    include_html: bool = False,
 ) -> AntiekBenchLeaderboardResponse:
     """Return weekly model/task-class leaderboard from offline bench store.
 
-    Requires ``app.state.antiek_bench_store`` (injectable BenchStore). When
-    unset, returns an honest empty snapshot with a note — never invents scores.
-    Does not run live multi-provider benchmarks.
+    Store resolution:
+    1. ``app.state.antiek_bench_store`` when injected (tests / configured app)
+    2. engagement/usage bench store when present
+    3. honest empty snapshot when neither is available
+
+    Does not run live multi-provider benchmarks. HTML-first when include_html.
     """
     store = getattr(request.app.state, "antiek_bench_store", None)
+    notes: list[str] = []
+    if store is None:
+        try:
+            from .engagement_routes import get_bench_usage_store
+
+            store = get_bench_usage_store(create_if_missing=False)
+        except Exception:
+            store = None
     if store is None:
         return AntiekBenchLeaderboardResponse(
             week_id=week_id.strip(),
+            view_format="html",
             notes=[
-                "antiek_bench_store not configured on app.state; "
+                "antiek_bench_store not configured on app.state "
+                "(and no engagement usage store); "
                 "no offline runs available for leaderboard"
             ],
         )
     from substrate.antiek_bench import settings_leaderboard_payload
 
-    payload = settings_leaderboard_payload(week_id, store=store, include_html=False)
+    payload = settings_leaderboard_payload(
+        week_id, store=store, include_html=include_html
+    )
     return AntiekBenchLeaderboardResponse(
         week_id=str(payload.get("week_id") or week_id),
         models=list(payload.get("models") or []),
@@ -399,9 +417,11 @@ def get_antiek_bench_leaderboard(
         suite_versions=list(payload.get("suite_versions") or []),
         recommended_model_id=payload.get("recommended_model_id"),
         recommended_mean_score=payload.get("recommended_mean_score"),
+        view_format=str(payload.get("view_format") or "html"),
         settings_panel=str(payload.get("settings_panel") or "antiek_bench_weekly"),
         source=str(payload.get("source") or "antiek_bench.offline_runs"),
-        notes=[],
+        notes=list(payload.get("notes") or notes),
+        html=payload.get("html"),
     )
 
 

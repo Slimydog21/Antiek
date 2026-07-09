@@ -191,6 +191,41 @@ export async function fetchAntiekBenchUsageSummary(opts?: {
   return readJson<AntiekBenchUsageSummaryResponse>(res);
 }
 
+/** Weekly Antiek-bench leaderboard (offline runs only; advisory model ranking). */
+export type AntiekBenchLeaderboardModelRow = {
+  model_id: string;
+  mean_score?: number;
+  by_task_class?: Record<string, number>;
+  run_count?: number;
+};
+
+export type AntiekBenchLeaderboardResponse = {
+  week_id: string;
+  models: AntiekBenchLeaderboardModelRow[];
+  task_classes: string[];
+  run_count: number;
+  suite_versions: string[];
+  recommended_model_id: string | null;
+  recommended_mean_score: number | null;
+  view_format: "html" | string;
+  settings_panel: string;
+  source: string;
+  notes: string[];
+  html?: string | null;
+};
+
+export async function fetchAntiekBenchLeaderboard(opts: {
+  weekId: string;
+  includeHtml?: boolean;
+}): Promise<AntiekBenchLeaderboardResponse> {
+  const params = new URLSearchParams({ week_id: opts.weekId });
+  if (opts.includeHtml) params.set("include_html", "true");
+  const res = await apiFetch(
+    `${API_BASE}/settings/antiek-bench/leaderboard?${params.toString()}`,
+  );
+  return readJson<AntiekBenchLeaderboardResponse>(res);
+}
+
 /** Competitive dogfood fixtures listing (offline; never auto-promoted). */
 export type AntiekBenchDogfoodFixturesResponse = {
   suite_version: string;

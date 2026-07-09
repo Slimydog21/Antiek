@@ -7,6 +7,7 @@ import {
   clearDecisionTreeSelection,
   estimatePromptCost,
   fetchAntiekBenchDogfoodFixtures,
+  fetchAntiekBenchLeaderboard,
   fetchAntiekBenchSuiteProposal,
   fetchAntiekBenchUsageSummary,
   fetchDecisionTreeSelection,
@@ -16,6 +17,7 @@ import {
   fetchSettingsModels,
   installDecisionTreeSelection,
   type AntiekBenchDogfoodFixturesResponse,
+  type AntiekBenchLeaderboardResponse,
   type AntiekBenchSuiteApproveResponse,
   type AntiekBenchSuiteProposalResponse,
   type AntiekBenchUsageSummaryResponse,
@@ -87,6 +89,19 @@ export default function Settings() {
     useState<AntiekBenchDogfoodFixturesResponse | null>(null);
   const [dogfoodError, setDogfoodError] = useState<string | null>(null);
   const [dogfoodBusy, setDogfoodBusy] = useState(false);
+  const [leaderboard, setLeaderboard] =
+    useState<AntiekBenchLeaderboardResponse | null>(null);
+  const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
+  const [leaderboardBusy, setLeaderboardBusy] = useState(false);
+  const [leaderboardWeek, setLeaderboardWeek] = useState(() => {
+    // ISO-like week id: YYYY-Www (local calendar approximation)
+    const d = new Date();
+    const onejan = new Date(d.getFullYear(), 0, 1);
+    const week = Math.ceil(
+      ((d.getTime() - onejan.getTime()) / 86400000 + onejan.getDay() + 1) / 7,
+    );
+    return `${d.getFullYear()}-W${String(week).padStart(2, "0")}`;
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -168,11 +183,21 @@ export default function Settings() {
         if (!cancelled)
           setDogfoodError(e instanceof Error ? e.message : String(e));
       }
+      try {
+        const lb = await fetchAntiekBenchLeaderboard({
+          weekId: leaderboardWeek,
+          includeHtml: true,
+        });
+        if (!cancelled) setLeaderboard(lb);
+      } catch (e) {
+        if (!cancelled)
+          setLeaderboardError(e instanceof Error ? e.message : String(e));
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [leaderboardWeek]);
 
   async function onRefreshDogfood() {
     setDogfoodBusy(true);
@@ -190,6 +215,25 @@ export default function Settings() {
       setDogfoodError(e instanceof Error ? e.message : String(e));
     } finally {
       setDogfoodBusy(false);
+    }
+  }
+
+  async function onRefreshLeaderboard() {
+    setLeaderboardBusy(true);
+    setLeaderboardError(null);
+    try {
+      const lb = await fetchAntiekBenchLeaderboard({
+        weekId: leaderboardWeek,
+        includeHtml: true,
+      });
+      if (lb.view_format !== "html") {
+        throw new Error("leaderboard view_format must be html");
+      }
+      setLeaderboard(lb);
+    } catch (e) {
+      setLeaderboardError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLeaderboardBusy(false);
     }
   }
 
@@ -660,6 +704,99 @@ export default function Settings() {
                     className="prose border rounded p-2 text-sm max-h-48 overflow-auto"
                     data-testid="notdiamond-advisory-html"
                     dangerouslySetInnerHTML={{ __html: nd.html }}
+                  />
+                ) : null}
+              </div>
+            )}
+          </div>
+        </LemonCard>
+
+        <LemonCard
+          title="Antiek-bench weekly leaderboard"
+          elevation="z1"
+          colour="glacial"
+        >
+          <div
+            className="p-4 space-y-3"
+            data-testid="antiek-bench-leaderboard-panel"
+            data-view-format="html"
+          >
+            <p className="text-sm text-ink dark:text-bright">
+              Offline weekly model ranking by task class (advisory for
+              decision-tree — never auto-routes dispatch). Not a live multi-
+              provider bench run.
+            </p>
+            {leaderboardError && (
+              <p className="text-sm text-red-700 dark:text-red-300 font-mono">
+                {leaderboardError}
+              </p>
+            )}
+            <div className="flex flex-wrap gap-2 items-end">
+              <label className="flex flex-col gap-1 font-mono text-[13px]">
+                <span className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
+                  Week id
+                </span>
+                <input
+                  type="text"
+                  data-testid="antiek-bench-leaderboard-week"
+                  value={leaderboardWeek}
+                  onChange={(e) => setLeaderboardWeek(e.target.value)}
+                  className="border border-ink/20 dark:border-bright/20 bg-transparent px-2 py-1 rounded"
+                />
+              </label>
+              <button
+                type="button"
+                data-testid="antiek-bench-leaderboard-refresh"
+                onClick={() => void onRefreshLeaderboard()}
+                disabled={leaderboardBusy || !leaderboardWeek.trim()}
+                className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+              >
+                {leaderboardBusy ? "Loading…" : "Refresh leaderboard"}
+              </button>
+            </div>
+            {leaderboard && (
+              <div
+                className="font-mono text-[13px] space-y-2"
+                data-testid="antiek-bench-leaderboard-summary"
+              >
+                <Row label="Week" value={leaderboard.week_id} />
+                <Row label="Runs" value={String(leaderboard.run_count)} />
+                <Row
+                  label="Recommended"
+                  value={
+                    leaderboard.recommended_model_id
+                      ? `${leaderboard.recommended_model_id} (${leaderboard.recommended_mean_score ?? "—"})`
+                      : "(none — no offline runs)"
+                  }
+                />
+                <Row label="View" value={leaderboard.view_format} />
+                {(leaderboard.models || []).length === 0 ? (
+                  <p className="text-[11px] text-ink-soft dark:text-starlight">
+                    No offline runs for this week yet.
+                  </p>
+                ) : (
+                  <ul data-testid="antiek-bench-leaderboard-models" className="space-y-1">
+                    {leaderboard.models.map((m) => (
+                      <li key={m.model_id}>
+                        <strong>{m.model_id}</strong>: mean=
+                        {m.mean_score ?? "—"}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {leaderboard.notes?.map((n) => (
+                  <p
+                    key={n}
+                    className="text-[11px] text-ink-soft dark:text-starlight"
+                  >
+                    {n}
+                  </p>
+                ))}
+                {leaderboard.html ? (
+                  <div
+                    className="prose border rounded p-2 text-sm max-h-48 overflow-auto"
+                    data-testid="antiek-bench-leaderboard-html"
+                    dangerouslySetInnerHTML={{ __html: leaderboard.html }}
                   />
                 ) : null}
               </div>
