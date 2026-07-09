@@ -177,6 +177,7 @@ describe("ResearchContextPanel", () => {
       title: "arxiv: 1706.03762",
       body_text: "Publication reference",
       fetched: false,
+      offline_honest: true,
       view_format: "html",
       notes: ["identity-only"],
       product_panel: "engagement_hydrate",
@@ -209,6 +210,13 @@ describe("ResearchContextPanel", () => {
       attach_spawn_id: "spn_1",
     });
     expect(screen.getByTestId("hydrate-ref-html").innerHTML).toMatch(/HTML/);
+    // Residual (hd): offline-honest identity path.
+    expect(
+      screen.getByTestId("hydrate-ref-result").getAttribute("data-offline-honest"),
+    ).toBe("true");
+    expect(
+      screen.getByTestId("hydrate-ref-offline-honest").textContent,
+    ).toMatch(/offline-honest identity/i);
   });
 
   it("runs promote twins → load context flywheel", async () => {

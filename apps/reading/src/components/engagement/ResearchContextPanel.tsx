@@ -427,10 +427,26 @@ export function ResearchContextPanel({
           className="hydrate-result"
           data-testid="hydrate-ref-result"
           data-view-format="html"
+          data-fetched={String(Boolean(hydrated.fetched))}
+          data-offline-honest={
+            hydrated.offline_honest !== false && !hydrated.fetched
+              ? "true"
+              : "false"
+          }
         >
           <p>
             hydrated asset <code>{hydrated.asset_id}</code> · fetched=
             {String(hydrated.fetched)} · {hydrated.title}
+          </p>
+          {/* Residual (hd): offline-honest identity vs injector body. */}
+          <p
+            className="meta font-mono text-[11px]"
+            data-testid="hydrate-ref-offline-honest"
+            role="status"
+          >
+            {hydrated.offline_honest !== false && !hydrated.fetched
+              ? "Hydrate mode: offline-honest identity — no live body; not invented abstract"
+              : "Hydrate mode: injector body landed"}
           </p>
           {hydrated.html ? (
             <div

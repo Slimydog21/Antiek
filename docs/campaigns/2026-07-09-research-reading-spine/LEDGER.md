@@ -143,3 +143,6 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 - HydrateRefResponse.offline_honest
 - publication-attach-offline-honest + per-asset flags
 - tests: PublicationAttachPanel 3 passed
+## residual (hd) ResearchContext hydrate offline_honest — 2026-07-09
+- hydrate-ref-offline-honest status + data attributes
+- tests: ResearchContextPanel 9 passed
