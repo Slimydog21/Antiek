@@ -129,7 +129,7 @@ function Workspace() {
   const handleLaunch = () =>
     guard(async () => {
       if (!plan || !plan.launchable) return;
-      const r = await launchPlan(plan.rootNodeId);
+      const r = await launchPlan(plan.rootNodeId, { source_policy: sourcePolicy });
       track("deep_research_cascade_launched", {
         session_id: r.session_id,
       });

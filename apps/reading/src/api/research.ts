@@ -86,12 +86,16 @@ export interface SessionStatus {
   researches: ResearchStatus[];
   cost?: SessionCost | null;
   all_terminal?: boolean;
+  source_policy?: ResearchSourcePolicy[];
+  source_policy_execution?: "metadata_only" | "runner_consumed";
 }
 
 export interface LaunchResponse {
   session_id: string;
   researches: { investigation_id: string; sub_question: string; question_node_id: string | null }[];
   aggregate_cap_usd: number | null;
+  source_policy?: ResearchSourcePolicy[];
+  source_policy_execution?: "metadata_only" | "runner_consumed";
 }
 
 export type SteerKind = "pause" | "resume" | "stop" | "redirect" | "deepen";
@@ -227,6 +231,7 @@ export function approvePlan(rootId: string, approver = "__operator__"): Promise<
 export function launchPlan(rootId: string, req: {
   per_research_budget_usd?: number;
   aggregate_budget_usd?: number | null;
+  source_policy?: ResearchSourcePolicy[];
 } = {}): Promise<LaunchResponse> {
   return post(`/research/plans/${encodeURIComponent(rootId)}/launch`, req);
 }

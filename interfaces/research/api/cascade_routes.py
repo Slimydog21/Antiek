@@ -90,6 +90,7 @@ cascade_router = APIRouter(prefix="/research", tags=["deep-research"])
 
 _SESSIONS: dict[str, CascadeSession] = {}
 _SESSION_TASKS: dict[str, asyncio.Task[None]] = {}
+_SESSION_SOURCE_POLICIES: dict[str, list[SourcePolicy]] = {}
 
 # Optional hook set by ``create_app`` after Loop 1 handlers register.
 # Runs Path A synthesis tail (phases 6–9) once gather + merge finish.
@@ -310,12 +311,16 @@ class ApproveRequest(BaseModel):
     approver: str = "__operator__"
 
 
+SourcePolicy = Literal["arxiv", "substack", "web", "operator_corpus"]
+
+
 class LaunchRequest(BaseModel):
     per_research_budget_usd: float = Field(default=0.50, gt=0)
     aggregate_budget_usd: float | None = None
-
-
-SourcePolicy = Literal["arxiv", "substack", "web", "operator_corpus"]
+    # Metadata-only source-pack intent for this DRW launch. The runner does
+    # not consume this yet; it is echoed in launch/session responses so the
+    # operator's checked policy survives the launch boundary.
+    source_policy: list[SourcePolicy] = Field(default_factory=list)
 
 
 class SourcePolicyPreflightRequest(BaseModel):
@@ -650,6 +655,7 @@ async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
             with contextlib.suppress(Exception):
                 reuse_substrate.close()
     _SESSIONS[session_id] = session
+    _SESSION_SOURCE_POLICIES[session_id] = req.source_policy
     # Drive the fan-out to completion (join + funnel drain + merge) in the
     # background so the session progresses without a connected stream client.
     _SESSION_TASKS[session_id] = asyncio.create_task(_run_to_completion(session))
@@ -661,6 +667,8 @@ async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
             for leaf in leaves
         ],
         "aggregate_cap_usd": budget.aggregate_cap_usd,
+        "source_policy": req.source_policy,
+        "source_policy_execution": "metadata_only",
     }
 
 
@@ -707,6 +715,8 @@ async def session_status(session_id: str) -> dict[str, Any]:
             # synthesis-tail failure, so a silent terminal failure cannot hide.
             "deep_research_complete": terminal["deep_research_complete"],
             "synthesis_tail_error": terminal["synthesis_tail_error"],
+            "source_policy": _SESSION_SOURCE_POLICIES.get(session_id, []),
+            "source_policy_execution": "metadata_only",
         }
     # Recovery from the event log (durability — session evicted / restart).
     rec = reconstruct_session(session_id)
@@ -720,6 +730,8 @@ async def session_status(session_id: str) -> dict[str, Any]:
             for r in rec.researches
         ],
         "all_terminal": rec.all_terminal,
+        "source_policy": _SESSION_SOURCE_POLICIES.get(session_id, []),
+        "source_policy_execution": "metadata_only",
         # Recovered path: surface only what the event log honestly proves. We do
         # not recompute DeepResearchComplete here (its phase postconditions read
         # research artifacts the recovered view does not load) — null means

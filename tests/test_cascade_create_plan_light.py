@@ -36,6 +36,7 @@ def cascade_client(monkeypatch):
     monkeypatch.setattr(cr, "_embedding_provider", lambda: _StubEmbedding())
     cr._SESSIONS.clear()
     cr._SESSION_TASKS.clear()
+    cr._SESSION_SOURCE_POLICIES.clear()
     app = FastAPI()
     app.include_router(cascade_router)
     yield TestClient(app)
@@ -100,3 +101,18 @@ def test_source_policy_preflight_is_no_spend_and_no_connector(cascade_client):
     assert entries["arxiv"]["status"] == "gated"
     assert entries["substack"]["status"] == "gated"
     assert "no connector" in body["notes"][0]
+
+
+def test_launch_request_accepts_source_policy_as_metadata():
+    req = cr.LaunchRequest(
+        per_research_budget_usd=1.0,
+        source_policy=["operator_corpus", "web"],
+    )
+
+    assert req.source_policy == ["operator_corpus", "web"]
+
+
+def test_session_source_policy_metadata_is_process_local():
+    cr._SESSION_SOURCE_POLICIES["session-root"] = ["operator_corpus", "arxiv"]
+
+    assert cr._SESSION_SOURCE_POLICIES["session-root"] == ["operator_corpus", "arxiv"]
