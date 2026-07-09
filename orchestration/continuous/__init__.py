@@ -43,6 +43,7 @@ from .scoring import (
     normalize_gap_description,
     score_gap,
 )
+from .spawn import event_log_spawn, spawn_fn_from_env
 from .suggestions import (
     DAEMON_SPAWN_POLICY_ID,
     DEFAULT_MAX_SUGGESTIONS,
@@ -64,10 +65,12 @@ __all__ = [
     "SpawnFn",
     "Suggestion",
     "build_suggestions",
+    "event_log_spawn",
     "no_op_spawn",
     "normalize_gap_description",
     "policy_is_daemon",
     "run_one_iteration",
     "score_gap",
+    "spawn_fn_from_env",
     "topic_id_for",
 ]

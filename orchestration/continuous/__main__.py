@@ -12,11 +12,14 @@ Config (env-only — systemd unit reads /etc/antiek/secrets.env):
   used for budget gating (default 0.50).
 - ``ANTIEK_DAEMON_BUDGET_USD_PER_DAY`` — §16 hard cap on total
   spawn spend per UTC day (default 5.0).
+- ``ANTIEK_DAEMON_SPAWN_MODE`` — ``noop``/``dry_run`` by default;
+  ``event_log`` writes daemon-policy start events without calling providers.
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 
@@ -42,19 +45,32 @@ def main() -> int:
 
     # Defer the daemon import so a `--help` invocation doesn't pay
     # the cost of bringing in the substrate module graph.
+    from orchestration.continuous.budget import DaemonBudget
     from orchestration.continuous.daemon import (
         DaemonConfig,
         DaemonState,
+        run_forever,
         run_one_iteration,
     )
-    from orchestration.continuous.daemon import (
-        main as daemon_main,
+    from orchestration.continuous.spawn import spawn_fn_from_env
+
+    config = DaemonConfig(
+        sleep_seconds=float(os.environ.get("ANTIEK_DAEMON_SLEEP_SECONDS", "60")),
+        expected_cost_per_spawn_usd=float(
+            os.environ.get("ANTIEK_DAEMON_EXPECTED_COST_USD", "0.50")
+        ),
     )
+    spawn_fn = spawn_fn_from_env()
 
     if args.once:
-        run_one_iteration(state=DaemonState(), config=DaemonConfig())
+        run_one_iteration(
+            state=DaemonState(),
+            config=config,
+            budget=DaemonBudget.from_env(),
+            spawn_fn=spawn_fn,
+        )
         return 0
-    daemon_main()
+    run_forever(config=config, spawn_fn=spawn_fn)
     return 0
 
 

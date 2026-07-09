@@ -34,9 +34,12 @@ from orchestration.continuous import (  # noqa: E402
     GapEntry,
     GapRegistry,
     ResearchTopic,
+    event_log_spawn,
+    no_op_spawn,
     normalize_gap_description,
     run_one_iteration,
     score_gap,
+    spawn_fn_from_env,
     topic_id_for,
 )
 from orchestration.continuous.daemon import scan_gaps  # noqa: E402
@@ -45,6 +48,7 @@ from orchestration.continuous.scoring import (  # noqa: E402
     MAX_CHASE_COUNT,
     RECENCY_HALF_LIFE_DAYS,
 )
+from substrate.event_log.events import trajectory  # noqa: E402
 
 # ── Fixtures ──────────────────────────────────────────────────────────
 
@@ -403,6 +407,43 @@ def test_run_one_iteration_spawns_with_real_callable(isolated_env):
     assert spawned[0][1]["policy_id"] == "continuous_daemon"
     assert spawned[0][1]["topic_id"].startswith("topic-")
     assert state.chase_counts_by_key  # one entry recorded
+
+
+def test_spawn_fn_from_env_defaults_to_no_op(isolated_env):
+    assert spawn_fn_from_env() is no_op_spawn
+
+
+def test_spawn_fn_from_env_rejects_unknown_mode(isolated_env, monkeypatch):
+    monkeypatch.setenv("ANTIEK_DAEMON_SPAWN_MODE", "http")
+    with pytest.raises(ValueError, match="ANTIEK_DAEMON_SPAWN_MODE"):
+        spawn_fn_from_env()
+
+
+def test_event_log_spawn_writes_daemon_policy_start_event(isolated_env, monkeypatch):
+    monkeypatch.setenv("ANTIEK_DAEMON_SPAWN_MODE", "event_log")
+    spawn_fn = spawn_fn_from_env()
+    assert spawn_fn is event_log_spawn
+
+    new_id = spawn_fn(
+        "which supplier chokepoint should the next research chase?",
+        {
+            "policy_id": "continuous_daemon",
+            "topic_id": "topic-supply-chain",
+            "gap_score": 0.875,
+            "expected_cost_usd": 0.5,
+        },
+    )
+
+    assert new_id is not None
+    rows = trajectory(new_id, events_dir=isolated_env["events_dir"])
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["action_type"] == "investigation.start_requested"
+    assert row["policy_id"] == "continuous_daemon"
+    assert row["role"] == "continuous-daemon"
+    assert row["payload"]["question"].startswith("which supplier chokepoint")
+    assert row["payload"]["spawn_context"] == row["payload"]["question"]
+    assert "topic-supply-chain" in row["payload"]["context"]
 
 
 def test_run_one_iteration_halts_when_daily_cap_exceeded(isolated_env):
