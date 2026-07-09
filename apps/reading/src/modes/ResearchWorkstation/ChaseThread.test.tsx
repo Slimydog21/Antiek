@@ -160,3 +160,38 @@ describe("ChaseThread — honest no-key (M4)", () => {
     expect(screen.queryByText(/following the thread/)).toBeNull();
   });
 });
+
+describe("ChaseThread — draft handoff receipt", () => {
+  it("copies a no-spend handoff that connects the launched child back to its parent and passage", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    startInvestigationMock.mockResolvedValue({
+      investigation_id: "inv-child",
+      status: "in_progress",
+      start_event_id: "e3",
+    });
+    renderChase({
+      spawnContext: "wing sweep delayed transonic drag rise",
+      parentInvestigationId: "read-doc-1",
+    });
+
+    fireEvent.click(screen.getByText("Follow this"));
+    await waitFor(() => expect(screen.getByText(/following the thread/)).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /copy handoff/i }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    const payload = JSON.parse(writeText.mock.calls[0][0]);
+    expect(payload).toMatchObject({
+      kind: "antiek.chase.draft_handoff",
+      child_investigation_id: "inv-child",
+      parent_investigation_id: "read-doc-1",
+      source_passage: "wing sweep delayed transonic drag rise",
+      no_spend: true,
+    });
+    expect(payload.next_step).toMatch(/compose it with its parent/);
+    expect(screen.getByRole("button", { name: /copied/i })).toBeTruthy();
+  });
+});

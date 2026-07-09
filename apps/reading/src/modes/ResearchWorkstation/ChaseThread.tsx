@@ -123,6 +123,8 @@ export default function ChaseThread({
     return (
       <LaunchedThread
         childId={launchedId}
+        parentInvestigationId={parentInvestigationId}
+        spawnContext={spawnContext}
         onOpenInMain={() => navigate(`/inv/${launchedId}`)}
       />
     );
@@ -192,34 +194,63 @@ export default function ChaseThread({
  *  but without the "spawn" vocabulary. */
 function LaunchedThread({
   childId,
+  parentInvestigationId,
+  spawnContext,
   onOpenInMain,
 }: {
   childId: string;
+  parentInvestigationId: string;
+  spawnContext: string;
   onOpenInMain: () => void;
 }) {
   const inv = useInvestigation(childId);
   const getState = useWorkspace.getState;
+  const [copiedHandoff, setCopiedHandoff] = useState(false);
+
+  async function copyDraftHandoff() {
+    const payload = {
+      kind: "antiek.chase.draft_handoff",
+      child_investigation_id: childId,
+      parent_investigation_id: parentInvestigationId,
+      source_passage: spawnContext,
+      next_step: "export the child research artifact, then compose it with its parent before merging into the source asset",
+      no_spend: true,
+    };
+    await navigator.clipboard?.writeText(JSON.stringify(payload, null, 2));
+    setCopiedHandoff(true);
+  }
+
   return (
     <div className="flex flex-col h-full text-ink dark:text-bright">
       <div className="px-3 py-2 border-b border-rule dark:border-charcoal-1 flex items-center justify-between text-xs font-mono">
         <span className="text-shadow-1 dark:text-moonlight">following the thread…</span>
-        <button
-          type="button"
-          onClick={() => {
-            onOpenInMain();
-            // Close THIS chase panel after navigating away.
-            const ws = getState();
-            const me = Object.values(ws.panels).find(
-              (p) =>
-                p.kind === "ChaseThread" &&
-                (p.props as { parentInvestigationId?: string }).parentInvestigationId,
-            );
-            if (me) getState().close(me.id);
-          }}
-          className="text-ink dark:text-bright hover:underline shrink-0 ml-2"
-        >
-          open in main view →
-        </button>
+        <div className="flex items-center gap-2 shrink-0 ml-2">
+          <button
+            type="button"
+            onClick={copyDraftHandoff}
+            className="text-ink dark:text-bright hover:underline"
+            title="Copy a no-spend handoff for later draft merge"
+          >
+            {copiedHandoff ? "copied" : "copy handoff"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onOpenInMain();
+              // Close THIS chase panel after navigating away.
+              const ws = getState();
+              const me = Object.values(ws.panels).find(
+                (p) =>
+                  p.kind === "ChaseThread" &&
+                  (p.props as { parentInvestigationId?: string }).parentInvestigationId,
+              );
+              if (me) getState().close(me.id);
+            }}
+            className="text-ink dark:text-bright hover:underline"
+          >
+            open in main view →
+          </button>
+        </div>
       </div>
       <div className="flex-1 min-h-0 overflow-hidden">
         {/* The child IS a running research — narrate it (SPR-02), raw log
