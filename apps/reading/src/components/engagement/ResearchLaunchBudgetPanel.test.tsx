@@ -294,6 +294,23 @@ describe("ResearchLaunchBudgetPanel", () => {
     });
   });
 
+  it("surfaces intensity factor chrome for wrestle tier (jw)", () => {
+    render(
+      <ResearchLaunchBudgetPanel
+        promptText="Wrestle intensity projection chrome"
+        researchTier="wrestle"
+        allowTierPick
+        debounceMs={0}
+      />,
+    );
+    const intensity = screen.getByTestId("research-launch-tier-intensity");
+    expect(intensity.getAttribute("data-research-tier")).toBe("wrestle");
+    expect(intensity.getAttribute("data-intensity-multiplier")).toBe("2");
+    expect(intensity.getAttribute("data-expected-output-tokens")).toBe("4000");
+    expect(intensity.textContent).toMatch(/2\.0× \(wrestle\)/);
+    expect(intensity.textContent).toMatch(/4000 out tokens/);
+  });
+
   it("does not project when prompt shorter than 3 chars", async () => {
     render(
       <ResearchLaunchBudgetPanel

@@ -14,6 +14,8 @@
  * leaving the research flywheel.
  * Residual (hp): research-launch-projection-metrics machine attrs (usd band,
  * would_exceed, chars, tier) for competitive budget-before-fire audit.
+ * Residual (jw): intensity factor chrome (MO ceiling multipliers shared map)
+ * so launch surfaces show wrestle/fast cost posture next to projection.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -26,6 +28,10 @@ import {
   type DecisionTreeSelectionResponse,
   type PromptCostEstimateResponse,
 } from "../../api/settings";
+import {
+  formatResearchTierCeilingFactor,
+  mapResearchTierToCeilingMultiplier,
+} from "../../lib/researchTier";
 
 export type ResearchLaunchBudgetProjection = {
   wouldExceedBudget: boolean | null;
@@ -271,6 +277,24 @@ export function ResearchLaunchBudgetPanel({
           })}
         </div>
       ) : null}
+
+      {/* Residual (jw): intensity factor from shared MO ceiling multipliers. */}
+      <p
+        className="text-[10px] font-mono opacity-70"
+        data-testid="research-launch-tier-intensity"
+        data-research-tier={activeTier}
+        data-intensity-multiplier={String(
+          mapResearchTierToCeilingMultiplier(activeTier),
+        )}
+        data-expected-output-tokens={String(mapping.expected_output_tokens)}
+        role="status"
+      >
+        Intensity:{" "}
+        <strong>{formatResearchTierCeilingFactor(activeTier)}</strong>
+        {" · "}
+        project ~{mapping.expected_output_tokens} out tokens (
+        {mapping.tier})
+      </p>
 
       {error ? (
         <p
