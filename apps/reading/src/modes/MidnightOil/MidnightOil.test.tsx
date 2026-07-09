@@ -13,6 +13,7 @@ import {
   graphMutationMidnightOil,
   liveRunActivationSettingsMidnightOil,
   preflightMidnightOil,
+  providerExecutorAdapterPlanMidnightOil,
   providerRouteMidnightOil,
   retrievalMidnightOil,
   runnerControlPlanMidnightOil,
@@ -576,6 +577,59 @@ vi.mock("../../api/midnightOil", () => ({
     final_artifact_created: false,
     adapter_plan_notes: ["budget provider adapter plan only: no reservation provider is configured"],
   })),
+  providerExecutorAdapterPlanMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-provider-executor-adapter-plan",
+    runner_control_plan_receipt_id: "midnight-oil-test-runner-control-plan",
+    budget_provider_adapter_plan_receipt_id: "midnight-oil-test-budget-provider-adapter-plan",
+    runner_readiness_receipt_id: "midnight-oil-test-runner-readiness",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    run_id: "midnight-oil-test",
+    status: "blocked_provider_executor_adapter_unimplemented",
+    adapter_key: "model_provider_route_executor",
+    planned_executor_id: "midnight-oil-test-provider-executor-adapter",
+    planned_route_ledger_id: "midnight-oil-test-provider-route-ledger",
+    planned_role_route_receipt_ids: [
+      "midnight-oil-test-planner-route-receipt",
+      "midnight-oil-test-gatherer-route-receipt",
+    ],
+    requested_route_count: 2,
+    route_mode: "auto_cost",
+    provider_policy: "operator_configured_models_only",
+    required_invariants: [
+      "executor must require an active budget reservation before any provider call",
+      "executor must create a route receipt for every planned role before execution",
+      "executor must enforce the operator-approved route mode and source policy",
+    ],
+    required_route_receipt_fields: [
+      "route_receipt_id",
+      "run_id",
+      "role",
+      "route_mode",
+      "provider",
+      "model",
+      "estimated_cost_usd",
+      "budget_reservation_id",
+      "fallback_chain",
+      "created_at",
+    ],
+    blocker_reason: "provider_executor_adapter_unimplemented",
+    provider_execution_allowed: false,
+    provider_calls_made: false,
+    live_run_allowed: false,
+    dispatch_allowed: false,
+    budget_reservation_allowed: false,
+    budget_reserved: false,
+    retrieval_allowed: false,
+    graph_mutation_allowed: false,
+    final_artifact_allowed: false,
+    dispatch_performed: false,
+    retrieval_performed: false,
+    graph_mutated: false,
+    final_artifact_created: false,
+    adapter_plan_notes: ["provider executor adapter plan only: no model/provider executor is configured"],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -1006,5 +1060,35 @@ describe("MidnightOil", () => {
     expect(screen.getByText("midnight-oil-test-budget-reservation-ledger")).toBeTruthy();
     expect(screen.getByText("adapter must reject reservations above the approved price ceiling")).toBeTruthy();
     expect(screen.getByText(/Ledger fields:/)).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Provider executor adapter" }));
+
+    await waitFor(() => expect(providerExecutorAdapterPlanMidnightOil).toHaveBeenCalled());
+    expect(providerExecutorAdapterPlanMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      runner_control_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-control-plan",
+      }),
+      budget_provider_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-budget-provider-adapter-plan",
+      }),
+    });
+    expect(screen.getByText("Provider executor adapter receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-provider-executor-adapter-plan")).toBeTruthy();
+    expect(screen.getByText("blocked provider executor adapter unimplemented")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-provider-executor-adapter")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-provider-route-ledger")).toBeTruthy();
+    expect(
+      screen.getByText("executor must require an active budget reservation before any provider call"),
+    ).toBeTruthy();
+    expect(screen.getByText(/Route receipt fields:/)).toBeTruthy();
   });
 });

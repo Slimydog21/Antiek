@@ -10,6 +10,7 @@ import {
   graphMutationMidnightOil,
   liveRunActivationSettingsMidnightOil,
   preflightMidnightOil,
+  providerExecutorAdapterPlanMidnightOil,
   providerRouteMidnightOil,
   retrievalMidnightOil,
   runnerControlPlanMidnightOil,
@@ -23,6 +24,7 @@ import {
   type MidnightOilGraphMutationReceipt,
   type MidnightOilLiveRunActivationSettingsReceipt,
   type MidnightOilPreflight,
+  type MidnightOilProviderExecutorAdapterPlanReceipt,
   type MidnightOilProviderRouteReceipt,
   type MidnightOilRetrievalReceipt,
   type MidnightOilRunnerControlPlanReceipt,
@@ -79,6 +81,8 @@ export default function MidnightOil() {
     useState<MidnightOilRunnerControlPlanReceipt | null>(null);
   const [budgetProviderAdapterPlanReceipt, setBudgetProviderAdapterPlanReceipt] =
     useState<MidnightOilBudgetProviderAdapterPlanReceipt | null>(null);
+  const [providerExecutorAdapterPlanReceipt, setProviderExecutorAdapterPlanReceipt] =
+    useState<MidnightOilProviderExecutorAdapterPlanReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -92,6 +96,7 @@ export default function MidnightOil() {
   const [runnerReadinessBusy, setRunnerReadinessBusy] = useState(false);
   const [runnerControlPlanBusy, setRunnerControlPlanBusy] = useState(false);
   const [budgetProviderAdapterPlanBusy, setBudgetProviderAdapterPlanBusy] = useState(false);
+  const [providerExecutorAdapterPlanBusy, setProviderExecutorAdapterPlanBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
   const [liveSettingsError, setLiveSettingsError] = useState<string | null>(null);
@@ -106,10 +111,18 @@ export default function MidnightOil() {
   const [runnerControlPlanError, setRunnerControlPlanError] = useState<string | null>(null);
   const [budgetProviderAdapterPlanError, setBudgetProviderAdapterPlanError] =
     useState<string | null>(null);
+  const [providerExecutorAdapterPlanError, setProviderExecutorAdapterPlanError] =
+    useState<string | null>(null);
+
+  function clearProviderExecutorAdapterPlan() {
+    setProviderExecutorAdapterPlanError(null);
+    setProviderExecutorAdapterPlanReceipt(null);
+  }
 
   function clearBudgetProviderAdapterPlan() {
     setBudgetProviderAdapterPlanError(null);
     setBudgetProviderAdapterPlanReceipt(null);
+    clearProviderExecutorAdapterPlan();
   }
 
   function clearRunnerControlPlan() {
@@ -133,6 +146,7 @@ export default function MidnightOil() {
     setFinalArtifactError(null);
     setRunnerControlPlanError(null);
     setBudgetProviderAdapterPlanError(null);
+    setProviderExecutorAdapterPlanError(null);
     setPreflight(null);
     setDryRunReceipt(null);
     setLiveSettingsReceipt(null);
@@ -147,6 +161,7 @@ export default function MidnightOil() {
     setRunnerReadinessReceipt(null);
     setRunnerControlPlanReceipt(null);
     setBudgetProviderAdapterPlanReceipt(null);
+    setProviderExecutorAdapterPlanReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -660,6 +675,7 @@ export default function MidnightOil() {
     setBudgetProviderAdapterPlanBusy(true);
     setBudgetProviderAdapterPlanError(null);
     setBudgetProviderAdapterPlanReceipt(null);
+    clearProviderExecutorAdapterPlan();
     try {
       const result = await budgetProviderAdapterPlanMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -672,6 +688,39 @@ export default function MidnightOil() {
       setBudgetProviderAdapterPlanError(e instanceof Error ? e.message : String(e));
     } finally {
       setBudgetProviderAdapterPlanBusy(false);
+    }
+  }
+
+  async function onProviderExecutorAdapterPlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerControlPlanReceipt ||
+      !budgetProviderAdapterPlanReceipt
+    ) {
+      setProviderExecutorAdapterPlanError(
+        "Provider executor adapter plan requires launch packet, approval receipt, runner handoff, runner control plan receipt, and budget provider adapter plan receipt.",
+      );
+      return;
+    }
+
+    setProviderExecutorAdapterPlanBusy(true);
+    setProviderExecutorAdapterPlanError(null);
+    setProviderExecutorAdapterPlanReceipt(null);
+    try {
+      const result = await providerExecutorAdapterPlanMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        runner_control_plan_receipt: runnerControlPlanReceipt,
+        budget_provider_adapter_plan_receipt: budgetProviderAdapterPlanReceipt,
+      });
+      setProviderExecutorAdapterPlanReceipt(result);
+    } catch (e) {
+      setProviderExecutorAdapterPlanError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setProviderExecutorAdapterPlanBusy(false);
     }
   }
 
@@ -1752,6 +1801,94 @@ export default function MidnightOil() {
                   </ul>
                   <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
                     Ledger fields: {budgetProviderAdapterPlanReceipt.required_ledger_fields.join(", ")}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Provider executor adapter
+                </p>
+                <button
+                  type="button"
+                  onClick={onProviderExecutorAdapterPlanGate}
+                  disabled={
+                    providerExecutorAdapterPlanBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !runnerControlPlanReceipt ||
+                    !budgetProviderAdapterPlanReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {providerExecutorAdapterPlanBusy
+                    ? "Planning executor..."
+                    : "Provider executor adapter"}
+                </button>
+              </div>
+
+              {providerExecutorAdapterPlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {providerExecutorAdapterPlanError}
+                </p>
+              )}
+
+              {providerExecutorAdapterPlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Provider executor adapter receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {providerExecutorAdapterPlanReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={providerExecutorAdapterPlanReceipt.status.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Routes"
+                      value={`${providerExecutorAdapterPlanReceipt.requested_route_count}`}
+                    />
+                    <Metric
+                      label="Calls"
+                      value={providerExecutorAdapterPlanReceipt.provider_calls_made ? "yes" : "no"}
+                    />
+                    <Metric
+                      label="Live run"
+                      value={providerExecutorAdapterPlanReceipt.live_run_allowed ? "allowed" : "blocked"}
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Executor"
+                      value={providerExecutorAdapterPlanReceipt.planned_executor_id}
+                    />
+                    <Metric
+                      label="Route ledger"
+                      value={providerExecutorAdapterPlanReceipt.planned_route_ledger_id}
+                    />
+                  </div>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Route policy: {providerExecutorAdapterPlanReceipt.provider_policy.replaceAll("_", " ")}
+                  </p>
+                  <p className="mt-1 break-all font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Role route receipts:{" "}
+                    {providerExecutorAdapterPlanReceipt.planned_role_route_receipt_ids.join(", ")}
+                  </p>
+                  <ul className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {providerExecutorAdapterPlanReceipt.required_invariants
+                      .slice(0, 5)
+                      .map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                  </ul>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Route receipt fields:{" "}
+                    {providerExecutorAdapterPlanReceipt.required_route_receipt_fields.join(", ")}
                   </p>
                 </div>
               )}
