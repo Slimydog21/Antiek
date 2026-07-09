@@ -1,0 +1,21 @@
+# Antiek OBJECTIVE residual inventory — 2026-07-09
+# Branch of work: campaign/research-reading-spine-2026-07-09-main (off origin/main@b3875724)
+# Prior campaign (unmerged): campaign/research-reading-spine-2026-07-09@835757f1
+# Living-roadmap SPR-01..14: ALREADY SHIPPED on origin/main (2026-07-01 stale-mirage) — NOT TODO rebuilds.
+
+CAPABILITY | STATUS | EVIDENCE
+(a) research↔reading engagement (highlight→spawn, twin, merge/draft) | BRANCH_ONLY→shipping this PR | substrate/engagement_spine/** (ported from 835757f1); tests/test_engagement_spine.py. NOT on origin/main before this branch.
+(b) HTML-first human view of info assets | ON_MAIN + spine path | services/html_projection/** on origin/main; engagement_spine.project_to_html → render; tests/test_engagement_html_projection.py
+(c) model driver choice + usage bar + pre-prompt budget projection + add-models | PARTIAL_ON_MAIN | #440 c1523fae settings_budget.py: inventory + budget bar + prompt-cost projection ON_MAIN. add-model registration + select_driver residual: substrate/model_registration/** this branch (no duplicate budget stack).
+(d) Midnight oil autonomous swarm | MISSING→shipping this PR | substrate/midnight_oil/** + tests/test_midnight_oil.py; specs docs/htmlspec/midnight-oil/
+(e) book marketplace + host-into-account | MISSING_SPEC_ONLY | docs/htmlspec/marketplace-host/** (executable htmlspec); acquisition/books/ PD path on main; no live payment rails
+(f) recursive Antiek-bench | MISSING_SPEC_ONLY | docs/htmlspec/antiek-bench-recursive/**; compounding/benchmark/ harness on main (not usage-driven rewrite)
+(g) NotDiamond router usefulness | VERDICT_ON_BRANCH | docs/htmlspec/notdiamond-verdict/VERDICT.md — advisory GO / authority REJECT under §16. integrations.toml draft only on main.
+
+ALREADY_SHIPPED_DO_NOT_REBUILD:
+- living-roadmap SPR-01..14 (platform-completion-status-2026-07-01.md)
+- settings SPR-01 model inventory/budget/projection (#440)
+- html_projection service (full)
+- insight_question graph promotion (substrate/graph/insight_question.py)
+- research_runner + continuous daemon budgets
+- dispatch model_override kwarg (router.py)

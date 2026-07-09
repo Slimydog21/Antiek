@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><title>Midnight Oil SPR-02</title>
+<style>body{font-family:system-ui;max-width:48rem;margin:2rem auto;line-height:1.5;padding:0 1rem}code{background:#f5f5f4;padding:0 .3em}</style>
+</head><body>
+<h1>SPR-02 — Approve gate + offline worker loop</h1>
+<p><a href="index.html">← master</a></p>
+<h2>Deliverables</h2>
+<ul>
+  <li><code>approve_job(job, ceiling_usd)</code> — requires ceiling ≥ recommended OR explicit force_below flag.</li>
+  <li><code>run_worker_iteration(job, spawn_fn, clock)</code> — one step; injectable clock; stops when duration elapsed or budget exhausted.</li>
+</ul>
+<h2>Acceptance</h2>
+<ol>
+  <li>Start without approve raises.</li>
+  <li>Charge that would exceed approved ceiling halts job with status budget_halted.</li>
+  <li>Fake clock advances duration → status timed_out with partial results retained.</li>
+</ol>
+<h2>Non-goals</h2>
+<p>No real LLM calls in unit tests (inject spawn_fn).</p>
+</body></html>

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Marketplace + host-into-account — master htmlspec</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 52rem; margin: 2rem auto; line-height: 1.55; padding: 0 1rem; color: #1c1917; }
+    h1,h2 { font-family: Charter, Georgia, serif; }
+    code { background: #f5f5f4; padding: 0.1em 0.35em; border-radius: 3px; }
+    .bar { border-left: 4px solid #0369a1; padding-left: 0.75rem; background: #f0f9ff; margin: 1rem 0; }
+    .nongoal { border-left: 4px solid #78716c; padding-left: 0.75rem; }
+  </style>
+</head>
+<body>
+  <p class="bar"><strong>Status:</strong> deferred-with-spec · campaign 2026-07-09 · no commercial payment rails in this package</p>
+  <h1>Book marketplace + seamless host-into-account</h1>
+  <p>When no free PDF/HTML exists, the operator may buy a digital book and have it <strong>hosted in their Antiek account</strong> as an HTML-first reading asset. Public-domain connectors already exist under <code>acquisition/books/</code>; this package adds purchase-intent → ingest → HTML projection → library membership.</p>
+
+  <h2>Seams</h2>
+  <ul>
+    <li><code>acquisition/books/*</code> PD connectors + <code>ingest_servable_book</code></li>
+    <li><code>tools/marketplace/programmatic_gate.py</code></li>
+    <li><code>interfaces/research/api/books.py</code> + library routes</li>
+    <li><code>services/html_projection</code> + engagement spine for reading interaction</li>
+  </ul>
+
+  <h2>Acceptance bars (master)</h2>
+  <ol>
+    <li>Catalog search returns PD + purchasable stubs with license class explicit.</li>
+    <li>Host-into-account path: bytes or licensed URL → staging ingest → live document_id owned by account → HTML view via projection (PDF ingest source OK; view is HTML).</li>
+    <li>Purchase adapter is a pluggable protocol; default is <code>ManualPurchaseReceipt</code> (operator pastes proof) — no Stripe requirement for first ship.</li>
+    <li>Idempotent: same content hash → same document_id; no double-host.</li>
+  </ol>
+
+  <h2 class="nongoal">Non-goals</h2>
+  <ul>
+    <li>Full commercial payment rails, publisher legal contracts, DRM circumvention.</li>
+    <li>Self-hosting DRM-locked Kindle binaries as first-class (out of bounds without legal path).</li>
+  </ul>
+
+  <h2>Ordered sprints</h2>
+  <ol>
+    <li><a href="sprint-01-catalog-and-license.html">SPR-01 — Catalog entry + license class</a></li>
+    <li><a href="sprint-02-host-into-account.html">SPR-02 — Host-into-account ingest + HTML view</a></li>
+    <li><a href="sprint-03-purchase-receipt-adapter.html">SPR-03 — Purchase receipt adapter (manual first)</a></li>
+  </ol>
+</body>
+</html>

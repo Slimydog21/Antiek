@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Midnight Oil — autonomous research swarm (master htmlspec)</title>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, sans-serif; max-width: 52rem; margin: 2rem auto; line-height: 1.55; color: #1c1917; padding: 0 1rem; }
+    h1,h2,h3 { font-family: Charter, Georgia, serif; }
+    code, pre { background: #f5f5f4; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.92em; }
+    pre { padding: 0.75rem 1rem; overflow-x: auto; }
+    .bar { border-left: 4px solid #b45309; padding-left: 0.75rem; margin: 1rem 0; background: #fffbeb; }
+    .nongoal { border-left: 4px solid #78716c; padding-left: 0.75rem; color: #44403c; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+    th, td { border: 1px solid #e7e5e4; padding: 0.4rem 0.6rem; text-align: left; vertical-align: top; }
+    th { background: #fafaf9; }
+    ol.sprints li { margin: 0.35rem 0; }
+  </style>
+</head>
+<body>
+  <p class="bar"><strong>Status:</strong> executable deferred package · campaign 2026-07-09 · does not claim shipped swarm UX</p>
+  <h1>Midnight Oil — autonomous research sub-agent swarm</h1>
+  <p>Users engage deep research <em>without</em> sitting in the workstation. They set a work window and goals; the system recommends a price ceiling; after approval the swarm executes offline-from-UI and deposits HTML artifacts + twin notes.</p>
+
+  <h2>Problem</h2>
+  <p>Interactive cascade requires the operator present. Continuous daemon (<code>orchestration/continuous</code>) chases evidentiary gaps but is not a user-facing “set timer + budget + goals and walk away” product. Midnight Oil is that product surface over existing runner + budget substrate.</p>
+
+  <h2>Seams (reuse, do not rebuild)</h2>
+  <ul>
+    <li><code>runtime/research_runner.BudgetManager</code> — per-research + aggregate USD ceilings</li>
+    <li><code>orchestration/continuous.DaemonBudget</code> — daily + per-investigation caps</li>
+    <li><code>substrate/engagement_spine</code> — reserved spawns, twin notes, merge, HTML project</li>
+    <li><code>substrate/model_control</code> — driver selection + pre-flight cost projection</li>
+    <li><code>orchestration/cascade_session</code> / cascade routes — fan-out investigation trees</li>
+    <li>Acquisition: <code>acquisition/{arxiv,substack,books,urls}</code> as tools, not new connectors</li>
+  </ul>
+
+  <h2>Acceptance bars (master)</h2>
+  <ol>
+    <li>Operator can create a Midnight Oil job: <code>{goals[], duration_minutes, model_id?}</code>.</li>
+    <li>System returns <code>recommended_price_ceiling_usd</code> computed from duration × tier rate × estimated fan-out depth (documented formula), and refuses start without explicit approve of a ceiling ≥ recommended or a lower override with warning.</li>
+    <li>While running: status is queryable; spend never exceeds approved ceiling (hard halt with partial HTML deposit).</li>
+    <li>On complete/timeout: HTML research artifact(s) + twin insights/questions written for a job asset id; optional merge draft.</li>
+    <li>No workstation UI session required after approve (daemon or worker process).</li>
+  </ol>
+
+  <h2 class="nongoal">Non-goals</h2>
+  <ul>
+    <li>Guaranteed quality of prose (quality is eval/Antiek-bench later).</li>
+    <li>Self-hosting models; second runtime beyond Hermes-primary dispatch.</li>
+    <li>Mobile push notifications (optional later).</li>
+    <li>Authoritative third-party routers (NotDiamond authority REJECT).</li>
+  </ul>
+
+  <h2>Ordered sprints</h2>
+  <ol class="sprints">
+    <li><a href="sprint-01-job-schema.html">SPR-01 — Job schema + recommended ceiling math</a></li>
+    <li><a href="sprint-02-approve-and-worker.html">SPR-02 — Approve gate + offline worker loop</a></li>
+    <li><a href="sprint-03-deposit-html-twins.html">SPR-03 — Deposit HTML + twin notes + halt on budget</a></li>
+  </ol>
+
+  <h2>Harness hints</h2>
+  <pre>caffenagent / htmlspec-compatible
+pure math for ceiling in unit tests (no network)
+worker iteration injectable for tests (no sleep)
+deposit path must call engagement_spine + research_artifact, not invent SQL</pre>
+</body>
+</html>

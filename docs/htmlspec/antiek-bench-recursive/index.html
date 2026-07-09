@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Antiek-bench recursive — master htmlspec</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 52rem; margin: 2rem auto; line-height: 1.55; padding: 0 1rem; }
+    h1,h2 { font-family: Charter, Georgia, serif; }
+    code { background: #f5f5f4; padding: 0.1em 0.35em; }
+    .bar { border-left: 4px solid #7c3aed; padding-left: 0.75rem; background: #f5f3ff; margin: 1rem 0; }
+    .nongoal { border-left: 4px solid #78716c; padding-left: 0.75rem; }
+  </style>
+</head>
+<body>
+  <p class="bar"><strong>Status:</strong> deferred-with-spec · extends <code>compounding/benchmark</code> · weekly recursive rewrite</p>
+  <h1>Antiek-bench (recursive)</h1>
+  <p>Weekly benchmark of model performance on differentiating tasks; rewrites itself from usage patterns (what worked / failed) so the decision-tree tab can recommend drivers. Settings surface shows last week’s leaderboard + sub-benchmarks.</p>
+
+  <h2>Seams</h2>
+  <ul>
+    <li><code>compounding/benchmark/</code> harness, profiles, question_set</li>
+    <li><code>substrate/model_control</code> model registry + pricing</li>
+    <li>Dispatch outcome events / preference stream (advisory only)</li>
+  </ul>
+
+  <h2>Acceptance bars (master)</h2>
+  <ol>
+    <li>Fixed core suite runs offline with stub providers; scores persisted with week_id.</li>
+    <li>Sub-benchmarks keyed by task class (distill, synthesize, wrestle, book_qa, …) as platform expands.</li>
+    <li>Weekly rewrite job: ingest usage outcomes → propose question_set deltas → human/operator approve before promote (no silent self-mod of eval truth without gate).</li>
+    <li>Settings read API returns leaderboard JSON for UI bar.</li>
+  </ol>
+
+  <h2 class="nongoal">Non-goals</h2>
+  <ul>
+    <li>Using bench to auto-switch production traffic without operator policy.</li>
+    <li>Training NotDiamond custom router (G8 gated).</li>
+  </ul>
+
+  <h2>Ordered sprints</h2>
+  <ol>
+    <li><a href="sprint-01-core-suite.html">SPR-01 — Core suite + week_id results schema</a></li>
+    <li><a href="sprint-02-task-sub-benchmarks.html">SPR-02 — Task-class sub-benchmarks</a></li>
+    <li><a href="sprint-03-usage-driven-rewrite.html">SPR-03 — Usage-driven rewrite with approve gate</a></li>
+  </ol>
+</body>
+</html>

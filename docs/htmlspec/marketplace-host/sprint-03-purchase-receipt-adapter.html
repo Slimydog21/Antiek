@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><title>Marketplace SPR-03</title>
+<style>body{font-family:system-ui;max-width:48rem;margin:2rem auto;line-height:1.5;padding:0 1rem}code{background:#f5f5f4;padding:0 .3em}</style>
+</head><body>
+<h1>SPR-03 — Purchase receipt adapter (manual first)</h1>
+<p><a href="index.html">← master</a></p>
+<h2>Acceptance</h2>
+<ol>
+  <li>Protocol <code>PurchaseAdapter.record_receipt(...)</code> with ManualPurchaseReceipt implementation.</li>
+  <li>Host path requires receipt when license_class=purchased.</li>
+  <li>No raw card numbers ever stored; receipt is opaque reference string.</li>
+</ol>
+<h2>Non-goals</h2><p>Live payment processors, DRM.</p>
+</body></html>

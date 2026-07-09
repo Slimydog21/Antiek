@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><title>Midnight Oil SPR-03</title>
+<style>body{font-family:system-ui;max-width:48rem;margin:2rem auto;line-height:1.5;padding:0 1rem}code{background:#f5f5f4;padding:0 .3em}</style>
+</head><body>
+<h1>SPR-03 — Deposit HTML + twin notes + halt on budget</h1>
+<p><a href="index.html">← master</a></p>
+<h2>Deliverables</h2>
+<ul>
+  <li>On complete/timeout/budget_halt: write twin insights/questions via <code>engagement_spine</code>; project HTML via <code>project_to_html</code>.</li>
+  <li>Optional <code>merge_spawn_outputs(..., mode="draft_combined")</code> for multi-spawn jobs.</li>
+</ul>
+<h2>Acceptance</h2>
+<ol>
+  <li>Integration test with FileEngagementStore: after deposit, list_twin_notes non-empty; HTML non-empty and not PDF.</li>
+  <li>Idempotent re-deposit does not duplicate twin note_ids.</li>
+</ol>
+<h2>Non-goals</h2>
+<p>No marketplace, no NotDiamond.</p>
+</body></html>
