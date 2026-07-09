@@ -97,6 +97,22 @@ describe("MarketplaceHost mode", () => {
         expect.objectContaining({ id: "win:hosted:hdoc_abc" }),
       );
     });
+    // Residual (dl): structured library list after host.
+    await waitFor(() => {
+      expect(screen.getByTestId("library-doc-list")).toBeTruthy();
+      expect(screen.getByTestId("library-doc-hdoc_abc")).toBeTruthy();
+    });
+    expect(screen.getByTestId("library-filter-count").textContent).toMatch(
+      /Showing 1 of 1/,
+    );
+    fireEvent.change(screen.getByTestId("library-filter"), {
+      target: { value: "hdoc_abc" },
+    });
+    expect(screen.getByTestId("library-doc-hdoc_abc")).toBeTruthy();
+    fireEvent.change(screen.getByTestId("library-filter"), {
+      target: { value: "nope" },
+    });
+    expect(screen.getByTestId("library-filter-empty")).toBeTruthy();
   });
 
   it("filters catalog by title/author substring (dj)", async () => {

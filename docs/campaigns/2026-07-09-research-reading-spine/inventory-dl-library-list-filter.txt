@@ -1,0 +1,12 @@
+# residual (dl) Account library structured list + filter
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(dk) prior | branch_only | campaign inventories
+(dl) library list filter | branch_only | MarketplaceHost libraryDocs list + filter; 4 vitest
+
+## What shipped
+- After host, store library documents array from fetchAccountLibrary.
+- Filter by title/document_id/license; empty state; open window when matches last hosted HTML body.
+
+NEXT: (dm) re-derive; operator merge PR #465

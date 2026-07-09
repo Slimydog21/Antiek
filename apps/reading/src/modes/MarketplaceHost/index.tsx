@@ -4,6 +4,7 @@
  *
  * Residual (dj): client-side catalog filter (title/author/license) so the
  * operator can find a book before host/purchase without a second network hop.
+ * Residual (dl): structured account library list + filter (HTML-first docs).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -16,6 +17,13 @@ import {
   type HostResultResponse,
 } from "../../api/marketplaceHost";
 import { openWindow } from "../../components/windows/openWindow";
+
+type LibraryDoc = {
+  document_id: string;
+  title?: string;
+  license_class?: string;
+  view_format?: string;
+};
 
 export type MarketplaceHostProps = {
   ownerId?: string;
@@ -36,11 +44,14 @@ export default function MarketplaceHost({
   const [entries, setEntries] = useState<CatalogEntryRow[]>([]);
   const [hosted, setHosted] = useState<HostResultResponse | null>(null);
   const [libraryHtml, setLibraryHtml] = useState<string | null>(null);
+  const [libraryDocs, setLibraryDocs] = useState<LibraryDoc[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [receiptRef, setReceiptRef] = useState("manual-order-token-demo");
   /** Residual (dj): substring filter over catalog title/author/license. */
   const [filterQuery, setFilterQuery] = useState("");
+  /** Residual (dl): filter over account library document titles/ids. */
+  const [libraryFilter, setLibraryFilter] = useState("");
   /** Residual (dk): auto-open hosted HTML window after successful host. */
   const [autoOpenWindow, setAutoOpenWindow] = useState(true);
 
@@ -53,6 +64,16 @@ export default function MarketplaceHost({
       return hay.includes(q);
     });
   }, [entries, filterQuery]);
+
+  const filteredLibraryDocs = useMemo(() => {
+    const q = libraryFilter.trim().toLowerCase();
+    if (!q) return libraryDocs;
+    return libraryDocs.filter((d) => {
+      const hay =
+        `${d.title || ""} ${d.document_id} ${d.license_class || ""}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [libraryDocs, libraryFilter]);
 
   const loadCatalog = useCallback(async () => {
     setBusy(true);
@@ -105,6 +126,7 @@ export default function MarketplaceHost({
       setHosted(result);
       const lib = await fetchAccountLibrary(ownerId);
       setLibraryHtml(lib.html);
+      setLibraryDocs(lib.documents || []);
       // Residual (dk): seamless port into reading surface.
       if (autoOpenWindow) {
         openHostedWindow(result);
@@ -133,6 +155,7 @@ export default function MarketplaceHost({
       setHosted(result);
       const lib = await fetchAccountLibrary(ownerId);
       setLibraryHtml(lib.html);
+      setLibraryDocs(lib.documents || []);
       if (autoOpenWindow) {
         openHostedWindow(result);
       }
@@ -281,14 +304,75 @@ export default function MarketplaceHost({
         </section>
       ) : null}
 
-      {libraryHtml ? (
-        <section className="mt-6">
+      {libraryDocs.length > 0 || libraryHtml ? (
+        <section className="mt-6 space-y-3" data-testid="account-library">
           <h2 className="text-lg font-medium">Library</h2>
-          <div
-            className="prose border rounded p-3 text-sm"
-            data-testid="library-html"
-            dangerouslySetInnerHTML={{ __html: libraryHtml }}
-          />
+          {/* Residual (dl): structured list + filter for hosted HTML docs. */}
+          <label className="flex flex-col gap-1 text-sm font-mono max-w-md">
+            <span className="text-[11px] uppercase opacity-70">
+              Filter library
+            </span>
+            <input
+              type="search"
+              data-testid="library-filter"
+              value={libraryFilter}
+              onChange={(e) => setLibraryFilter(e.target.value)}
+              placeholder="Title or document id…"
+              className="border rounded px-2 py-1"
+              aria-label="Filter library"
+            />
+          </label>
+          <p
+            className="text-[11px] font-mono opacity-70"
+            data-testid="library-filter-count"
+          >
+            Showing {filteredLibraryDocs.length} of {libraryDocs.length}
+          </p>
+          <ul className="space-y-2" data-testid="library-doc-list">
+            {filteredLibraryDocs.map((d) => (
+              <li
+                key={d.document_id}
+                className="border rounded p-2 flex flex-wrap justify-between gap-2 items-center"
+                data-testid={`library-doc-${d.document_id}`}
+              >
+                <div className="text-sm">
+                  <strong>{d.title || d.document_id}</strong>
+                  <div className="font-mono text-[11px] opacity-70">
+                    {d.document_id}
+                    {d.license_class ? ` · ${d.license_class}` : ""}
+                    {" · "}
+                    {(d.view_format || "html") === "html" ? "HTML" : d.view_format}
+                    {" · not PDF"}
+                  </div>
+                </div>
+                {hosted &&
+                hosted.document_id === d.document_id &&
+                hosted.html &&
+                hosted.view_format === "html" ? (
+                  <button
+                    type="button"
+                    data-testid={`library-open-${d.document_id}`}
+                    className="text-xs font-mono border rounded px-2 py-1"
+                    onClick={() => openHostedWindow(hosted)}
+                  >
+                    Open window
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          {libraryDocs.length > 0 && filteredLibraryDocs.length === 0 ? (
+            <p className="text-sm opacity-70" data-testid="library-filter-empty">
+              No library matches for “{libraryFilter.trim()}”.
+            </p>
+          ) : null}
+          {libraryHtml ? (
+            <div
+              className="prose border rounded p-3 text-sm"
+              data-testid="library-html"
+              dangerouslySetInnerHTML={{ __html: libraryHtml }}
+            />
+          ) : null}
         </section>
       ) : null}
     </div>

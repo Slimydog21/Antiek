@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(dl) · PR #465
+dk: auto-open hosted window · dl: account library structured list + filter.
+Operator merge still gated. Next residual (dm).
