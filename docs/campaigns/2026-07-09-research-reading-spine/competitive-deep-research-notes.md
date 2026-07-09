@@ -277,3 +277,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (mo, 2026-07-10) **Twin seed domain subjects:**
   - Marketplace host twin seed body prefixes Research domains from catalog subjects
+
+- Closed (mp, 2026-07-10) **Marketplace DR domain-aware launch:**
+  - selection_text + goal_hint include catalog subjects
+  - budget mount data-domains; DR status domains=

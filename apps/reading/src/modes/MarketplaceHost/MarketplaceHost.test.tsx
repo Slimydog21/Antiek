@@ -308,13 +308,21 @@ describe("MarketplaceHost mode", () => {
           .getAttribute("data-depth-prefill"),
       ).toBe("none");
     });
-    // Residual (iu): one-click floating deep research on hosted book.
+    // Residual (mp): budget mount surfaces catalog domains for DR.
+    expect(
+      screen
+        .getByTestId("marketplace-host-dr-budget-mount")
+        .getAttribute("data-domains"),
+    ).toBe("literature");
+    // Residual (iu/mp): one-click floating deep research with domain context.
     fireEvent.click(screen.getByTestId("marketplace-host-deep-research"));
     await waitFor(() => {
       expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
         expect.objectContaining({
           asset_id: "hdoc_abc",
           view_mode: "floating",
+          selection_text: expect.stringMatching(/Research domains: literature/i),
+          goal_hint: expect.stringMatching(/domains=literature/i),
         }),
       );
     });
@@ -324,6 +332,8 @@ describe("MarketplaceHost mode", () => {
       // Residual (ja): research tier on DR status.
       expect(st.getAttribute("data-research-tier")).toBe("deep");
       expect(st.textContent).toMatch(/tier=deep/);
+      // Residual (mp): domains in DR status chrome.
+      expect(st.textContent).toMatch(/domains=literature/);
     });
     // Residual (iv): full working-region deep research.
     fireEvent.click(screen.getByTestId("marketplace-host-deep-research-full"));

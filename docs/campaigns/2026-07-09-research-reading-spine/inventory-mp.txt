@@ -1,0 +1,8 @@
+# inventory-mp · marketplace DR domain-aware goal_hint + selection
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: mp
+files:
+  apps/reading/src/modes/MarketplaceHost/index.tsx
+  apps/reading/src/modes/MarketplaceHost/MarketplaceHost.test.tsx
+proof: vitest MarketplaceHost 13 passed (DR launch domains=literature)
+invariants: HTML-first · domain subjects from catalog · offline demo

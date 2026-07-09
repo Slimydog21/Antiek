@@ -50,6 +50,8 @@
  * Residual (mm): dual-gate L1–L4 checklist deep-link (parity mj/ml).
  * Residual (mo): twin seed body includes catalog subjects for domain-aware
  * recursive note-taker substrate after host.
+ * Residual (mp): deep research goal_hint + prompt preview include catalog
+ * subjects so DR inherits research-domain context (reading ≡ research).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -429,20 +431,37 @@ export default function MarketplaceHost({
   function hostDrSelectionFromHtml(
     html: string,
     title: string,
+    domains?: string[],
   ): string {
     const plain = (html || "")
       .replace(/<[^>]+>/g, " ")
       .replace(/\s+/g, " ")
       .trim()
       .slice(0, 800);
-    if (plain.length >= 3) return plain;
-    return `Key claims and open questions in “${title}” for deep research.`;
+    // Residual (mp): domain prefix for budget projection + selection context.
+    const domainPrefix =
+      domains && domains.length > 0
+        ? `Research domains: ${domains.join(", ")}. `
+        : "";
+    if (plain.length >= 3) return (domainPrefix + plain).slice(0, 900);
+    return (
+      domainPrefix +
+      `Key claims and open questions in “${title}” for deep research.`
+    );
+  }
+
+  /** Residual (mp): catalog subjects for a hosted book_id (empty if unknown). */
+  function catalogSubjectsForBook(bookId: string | undefined): string[] {
+    if (!bookId) return [];
+    const entry = entries.find((e) => e.book_id === bookId);
+    return (entry?.subjects || []).filter(Boolean);
   }
 
   /**
-   * Residual (iu/iv/iy): one-click deep research on hosted HTML book.
+   * Residual (iu/iv/iy/mp): one-click deep research on hosted HTML book.
    * Uses decision-tree driver chokepoint; selection from title/body preview.
    * Soft budget gate when projection would exceed (force override available).
+   * Domain subjects from catalog join goal_hint for domain-aware research.
    */
   async function onDeepResearchHostedBook(
     result: HostResultResponse,
@@ -459,7 +478,14 @@ export default function MarketplaceHost({
       return;
     }
     const title = (result.title || result.document_id || "hosted book").trim();
-    const selection = hostDrSelectionFromHtml(result.html || "", title);
+    const domains = catalogSubjectsForBook(result.book_id);
+    const selection = hostDrSelectionFromHtml(
+      result.html || "",
+      title,
+      domains,
+    );
+    const domainClause =
+      domains.length > 0 ? ` · domains=${domains.join(",")}` : "";
     setHostDrBusy(true);
     setHostDrStatus(null);
     setError(null);
@@ -467,7 +493,7 @@ export default function MarketplaceHost({
       const out = await launchFloatingDeepResearch({
         asset_id: result.document_id,
         selection_text: selection,
-        goal_hint: `Wrestle claims and cite evidence in “${title}” (marketplace HTML host · tier=${hostDrTier}).`,
+        goal_hint: `Wrestle claims and cite evidence in “${title}” (marketplace HTML host · tier=${hostDrTier}${domainClause}).`,
         view_mode: viewMode,
         research_tier: hostDrTier,
       });
@@ -475,7 +501,7 @@ export default function MarketplaceHost({
         throw new Error("deep research view_format must be html");
       }
       setHostDrStatus(
-        `Deep research launched (${viewMode}) · tier=${hostDrTier} · session=${out.session_id} · spawn=${out.spawn_id} · window=${out.window_id}`,
+        `Deep research launched (${viewMode}) · tier=${hostDrTier}${domainClause} · session=${out.session_id} · spawn=${out.spawn_id} · window=${out.window_id}`,
       );
     } catch (e) {
       setHostDrStatus(
@@ -486,7 +512,7 @@ export default function MarketplaceHost({
     }
   }
 
-  /** Residual (iy/jb): keep budget panel prompt in sync; reset force on host change. */
+  /** Residual (iy/jb/mp): keep budget panel prompt in sync; reset force on host change. */
   useEffect(() => {
     // Residual (jb): new host must not inherit prior force-over-budget override.
     setHostDrForceBudget(false);
@@ -497,8 +523,11 @@ export default function MarketplaceHost({
       return;
     }
     const title = (hosted.title || hosted.document_id || "hosted book").trim();
-    setHostDrPromptPreview(hostDrSelectionFromHtml(hosted.html, title));
-  }, [hosted?.document_id, hosted?.html, hosted?.title]);
+    const domains = catalogSubjectsForBook(hosted.book_id);
+    setHostDrPromptPreview(
+      hostDrSelectionFromHtml(hosted.html, title, domains),
+    );
+  }, [hosted?.document_id, hosted?.html, hosted?.title, hosted?.book_id, entries]);
 
   /**
    * Residual (iw): deep research from library row — rehydrate HTML then launch.
@@ -1153,6 +1182,9 @@ export default function MarketplaceHost({
             data-view-format="html"
             data-research-tier={hostDrTier}
             data-depth-prefill={hostDrDepthPrefill}
+            data-domains={
+              catalogSubjectsForBook(hosted.book_id).join(",") || "none"
+            }
           >
             <p
               className="text-[11px] font-mono opacity-80"
