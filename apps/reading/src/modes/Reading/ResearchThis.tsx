@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { LemonButton } from "../../components/lemon";
 import { spinResearch } from "../../api/books";
 import { CollectiveResearchPanel } from "../../components/engagement/CollectiveResearchPanel";
+import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
 import {
   ResearchLaunchBudgetPanel,
   type ResearchLaunchBudgetProjection,
@@ -36,6 +37,7 @@ import { launchFloatingDeepResearch } from "./launchFloatingDeepResearch";
  * Residual (fc): CollectiveResearchPanel when open DR spawns exist so the
  * main reading surface multi-select merges into this document (parity eu).
  * Residual (jg): Settings depth-tier prefill for budget projection (parity jc–jf).
+ * Residual (ll): DecisionTreeDriverBadge researchTier before launch.
  * Full-page workstation handoff remains an explicit tertiary action.
  *
  * Gate-safe: passageText for gated books is still constrained server-side;
@@ -237,6 +239,14 @@ export default function ResearchThis({
               ? " (default deep)"
               : ""}
         </p>
+        {/* Residual (ll): model driver + budget + depth before fire. */}
+        <div
+          data-testid="research-this-driver-badge-mount"
+          data-view-format="html"
+          data-research-tier={researchTier}
+        >
+          <DecisionTreeDriverBadge researchTier={researchTier} />
+        </div>
         <ResearchLaunchBudgetPanel
           promptText={selection}
           researchTier={researchTier}

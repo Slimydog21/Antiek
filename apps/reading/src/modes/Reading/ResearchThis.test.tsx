@@ -59,6 +59,19 @@ vi.mock("../../components/engagement/CollectiveResearchPanel", () => ({
   ),
 }));
 
+vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
+  DecisionTreeDriverBadge: (props: {
+    researchTier?: string | null;
+  }) => (
+    <div
+      data-testid="decision-tree-driver-badge-stub"
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+    >
+      driver badge
+    </div>
+  ),
+}));
+
 vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", () => {
   // Lazy require React inside factory so vitest mock is isolated.
   const React = require("react") as typeof import("react");
@@ -128,6 +141,27 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
   });
 
   afterEach(() => cleanup());
+
+  it("mounts DecisionTreeDriverBadge with researchTier (ll)", async () => {
+    render(
+      <MemoryRouter>
+        <ResearchThis documentId="doc-1" pageIndex={0} passageText="sel" />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("research-this-driver-badge-mount")).toBeTruthy();
+    });
+    expect(
+      screen
+        .getByTestId("research-this-driver-badge-mount")
+        .getAttribute("data-research-tier"),
+    ).toBe("deep");
+    expect(
+      screen
+        .getByTestId("decision-tree-driver-badge-stub")
+        .getAttribute("data-research-tier"),
+    ).toBe("deep");
+  });
 
   it("mounts budget projection panel before float open (cx)", async () => {
     render(

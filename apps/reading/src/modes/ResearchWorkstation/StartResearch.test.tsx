@@ -97,6 +97,19 @@ vi.mock("react-router-dom", async (orig) => {
   return { ...actual, useNavigate: () => navigateMock };
 });
 
+vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
+  DecisionTreeDriverBadge: (props: {
+    researchTier?: string | null;
+  }) => (
+    <div
+      data-testid="decision-tree-driver-badge-stub"
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+    >
+      driver badge
+    </div>
+  ),
+}));
+
 // Mock the cascade child at its boundary: this file is a unit of the toggle,
 // not of the proposal (CascadeProposal has its own test). The stub renders a
 // marker + a launch button so we can prove the toggle mounts it on the same
@@ -174,6 +187,27 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
     const surface = container.querySelector("[data-glass-surface]");
     expect(surface, "the idle home column must render through GlassSurface").toBeTruthy();
     expect(surface!.getAttribute("data-glass-variant")).toBe("glass");
+  });
+
+  it("mounts DecisionTreeDriverBadge with researchTier (ll)", async () => {
+    render(
+      <MemoryRouter>
+        <StartResearch />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("start-research-driver-badge-mount")).toBeTruthy();
+    });
+    expect(
+      screen
+        .getByTestId("start-research-driver-badge-mount")
+        .getAttribute("data-research-tier"),
+    ).toBe("deep");
+    expect(
+      screen
+        .getByTestId("decision-tree-driver-badge-stub")
+        .getAttribute("data-research-tier"),
+    ).toBe("deep");
   });
 
   it("renders a real composer: input + Ask button + example pills", () => {

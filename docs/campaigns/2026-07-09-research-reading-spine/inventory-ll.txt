@@ -1,0 +1,10 @@
+# inventory-ll · ResearchThis + StartResearch DecisionTreeDriverBadge
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ll
+files:
+  apps/reading/src/modes/Reading/ResearchThis.tsx
+  apps/reading/src/modes/Reading/ResearchThis.test.tsx
+  apps/reading/src/modes/ResearchWorkstation/StartResearch.tsx
+  apps/reading/src/modes/ResearchWorkstation/StartResearch.test.tsx
+proof: ResearchThis 11_passed + StartResearch 19_passed (HONEST_OK)
+invariants: HTML · launch path model+depth · NotDiamond advisory · no PDF

@@ -13,6 +13,7 @@ import { ApiError, ingestSource, ingestVoiceNote } from "../../lib/api";
 import type { ResearchTier } from "../../lib/api";
 import { mapDepthTierToResearchTier } from "../../lib/researchTier";
 import { fetchDepthTiers } from "../../api/settings";
+import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
 import {
   ResearchLaunchBudgetPanel,
   type ResearchLaunchBudgetProjection,
@@ -705,9 +706,14 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             </span>
           </div>
 
-          {/* Residual (bp/df): daily budget bar + prompt cost projection +
-              decision-tree driver readout. Uses Settings #440 estimate API;
-              never invents $0 when ledger/rates unknown. Soft-gate Ask on exceed. */}
+          {/* Residual (bp/df/ll): budget projection + DecisionTreeDriverBadge depth. */}
+          <div
+            data-testid="start-research-driver-badge-mount"
+            data-view-format="html"
+            data-research-tier={tier}
+          >
+            <DecisionTreeDriverBadge researchTier={tier} />
+          </div>
           <ResearchLaunchBudgetPanel
             promptText={question}
             researchTier={tier}
