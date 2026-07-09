@@ -4,7 +4,7 @@
  * Residual (ah): mounts CollectiveResearchPanel with available spawn ids.
  * Residual (bx): mounts ResearchLaunchBudgetPanel for goal/selection projection.
  */
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DEEP_RESEARCH_WINDOW_KIND } from "../../workspace/deepResearchWindow";
@@ -83,6 +83,29 @@ describe("DeepResearchSessionHost", () => {
     expect(mount).toBeTruthy();
     expect(mount.getAttribute("data-view-format")).toBe("html");
     expect(screen.getByTestId("research-launch-budget-panel")).toBeTruthy();
+  });
+
+  it("exposes expand full / restore floating controls (ce)", () => {
+    useWindows.getState().reset();
+    const id = openWindow(
+      DEEP_RESEARCH_WINDOW_KIND,
+      { ...FIXTURE },
+      { id: "wdr_fsess_launch_1", title: "Deep research", mode: "floating" },
+    );
+    render(
+      <DeepResearchSessionHost
+        {...FIXTURE}
+        session_id="fsess_launch_1"
+        __windowId={id}
+      />,
+    );
+    expect(screen.getByTestId("deep-research-mode-controls")).toBeTruthy();
+    const expand = screen.getByTestId("deep-research-expand-full");
+    const restore = screen.getByTestId("deep-research-restore-floating");
+    expect((expand as HTMLButtonElement).disabled).toBe(false);
+    expect((restore as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(expand);
+    expect(useWindows.getState().windows[id]?.mode).toBe("full");
   });
 
   it("mounts ResearchContextPanel with parent asset and spawn identity", () => {

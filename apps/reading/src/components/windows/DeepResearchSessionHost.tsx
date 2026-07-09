@@ -14,6 +14,7 @@
  * Residual (ax): mounts ResearchProgressPanel when spawn_id is present.
  * Residual (ba): mounts TwinNotesPanel when parent_asset_id is present.
  * Residual (bx): mounts ResearchLaunchBudgetPanel for goal/selection projection.
+ * Residual (ce): expand full / restore floating mode controls.
  */
 
 import { useMemo } from "react";
@@ -24,6 +25,7 @@ import { ResearchLaunchBudgetPanel } from "../engagement/ResearchLaunchBudgetPan
 import { ResearchProgressPanel } from "../engagement/ResearchProgressPanel";
 import { TwinNotesPanel } from "../engagement/TwinNotesPanel";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
+import { syncDeepResearchWindowMode } from "../../workspace/deepResearchWindow";
 import { useWindows } from "../../workspace/windowsStore";
 import { useInWindow } from "./windowHostContext";
 
@@ -63,7 +65,8 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
   // Defensive: window-only page; full-page mount stays readable.
   useInWindow();
 
-  const sessionId = props.session_id?.trim() || "(missing session_id)";
+  const rawSessionId = props.session_id?.trim() || "";
+  const sessionId = rawSessionId || "(missing session_id)";
   const spawnId = props.spawn_id?.trim() || "(missing spawn_id)";
   const parent = props.parent_asset_id?.trim() || "(missing parent)";
   const selection = props.selection_text?.trim() || "(no selection)";
@@ -83,20 +86,57 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
     [props.spawn_id, props.available_spawn_ids, windows],
   );
 
+  const windowId = props.__windowId?.trim() || "";
+  const hostWindow = windowId ? windows[windowId] : undefined;
+  const isFull = hostWindow?.mode === "full";
+
   return (
     <div
       className="flex h-full flex-col gap-4 bg-transparent p-6"
       data-testid="deep-research-session-host"
       data-view-format={viewFormat}
       data-session-id={props.session_id ?? ""}
+      data-window-mode={hostWindow?.mode ?? "unknown"}
     >
       <header className="space-y-1">
-        <h1 className="font-serif text-lg text-ink dark:text-parchment">
-          Deep research session
-        </h1>
-        <p className="text-xs text-shadow-1 dark:text-moonlight">
-          Window-native host · content stance: {isHtml ? "HTML" : viewFormat} · not PDF
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h1 className="font-serif text-lg text-ink dark:text-parchment">
+              Deep research session
+            </h1>
+            <p className="text-xs text-shadow-1 dark:text-moonlight">
+              Window-native host · content stance: {isHtml ? "HTML" : viewFormat} · not PDF
+            </p>
+          </div>
+          {/* Residual (ce): floating ⇄ full without leaving the host. */}
+          {rawSessionId ? (
+            <div
+              className="flex flex-wrap gap-2"
+              data-testid="deep-research-mode-controls"
+            >
+              <button
+                type="button"
+                data-testid="deep-research-expand-full"
+                disabled={isFull}
+                onClick={() => syncDeepResearchWindowMode(rawSessionId, "full")}
+                className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono hover:bg-ink/5 disabled:opacity-40 dark:border-bright/30"
+              >
+                Expand full
+              </button>
+              <button
+                type="button"
+                data-testid="deep-research-restore-floating"
+                disabled={!isFull}
+                onClick={() =>
+                  syncDeepResearchWindowMode(rawSessionId, "floating")
+                }
+                className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono hover:bg-ink/5 disabled:opacity-40 dark:border-bright/30"
+              >
+                Restore floating
+              </button>
+            </div>
+          ) : null}
+        </div>
       </header>
 
       <dl className="flex flex-col gap-3">

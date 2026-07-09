@@ -1,0 +1,8 @@
+# residual (ce) Deep research expand full / restore floating
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(cd) prior | branch_only | campaign inventories
+(ce) expand/restore mode controls | branch_only | DeepResearchSessionHost mode controls + syncDeepResearchWindowMode; 10 vitest; tip after commit
+
+NEXT: (cf) re-derive; operator merge PR #465
