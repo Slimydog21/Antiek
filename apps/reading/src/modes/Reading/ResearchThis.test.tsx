@@ -384,10 +384,55 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
         <ResearchThis documentId="doc-1" pageIndex={0} passageText="hello world" />
       </MemoryRouter>,
     );
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("research-this-budget-mount").getAttribute(
+          "data-depth-prefill",
+        ),
+      ).toBe("none");
+    });
     fireEvent.click(screen.getByTestId("research-this-full"));
     await waitFor(() => {
-      expect(spinResearch).toHaveBeenCalledWith("doc-1", 0, "hello world");
+      // Residual (jm): opts.researchTier defaults to deep when Settings unset.
+      expect(spinResearch).toHaveBeenCalledWith("doc-1", 0, "hello world", {
+        researchTier: "deep",
+      });
     });
     expect(navigate).toHaveBeenCalledWith("/inv/inv_full");
+  });
+
+  it("full workstation spin forwards Settings wrestle research_tier (jm)", async () => {
+    fetchDepthTiers.mockResolvedValue({
+      active_depth_tier: "wrestle",
+      active_preset: null,
+      tiers: [],
+    });
+    spinResearch.mockResolvedValue({ investigation_id: "inv_wrestle" });
+    render(
+      <MemoryRouter>
+        <ResearchThis
+          documentId="doc-1"
+          pageIndex={0}
+          passageText="Wrestle full workstation"
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("research-this-budget-mount").getAttribute(
+          "data-depth-prefill",
+        ),
+      ).toBe("installed");
+    });
+    fireEvent.click(screen.getByTestId("research-this-full"));
+    await waitFor(() => {
+      expect(spinResearch).toHaveBeenCalledWith(
+        "doc-1",
+        0,
+        "Wrestle full workstation",
+        { researchTier: "wrestle" },
+      );
+    });
+    expect(navigate).toHaveBeenCalledWith("/inv/inv_wrestle");
   });
 });

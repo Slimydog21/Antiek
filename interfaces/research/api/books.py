@@ -255,6 +255,8 @@ class SpinResearchRequest(BaseModel):
     # side and replaced by the bounded snippet — the seed can never carry
     # gated full text, even if the client sends it (defense in depth).
     passage_text: str | None = None
+    # Residual (jm): closed research tier for investigation start event.
+    research_tier: Literal["fast", "deep", "wrestle"] = "deep"
 
 
 class SpinResearchResponse(BaseModel):
@@ -264,6 +266,8 @@ class SpinResearchResponse(BaseModel):
     gated: bool
     servability: str
     seed_preview: str
+    # Residual (jm): echo research_tier recorded on start.
+    research_tier: Literal["fast", "deep", "wrestle"] = "deep"
 
 
 class ImpressionItem(BaseModel):
@@ -680,12 +684,14 @@ def register_book_routes(app: FastAPI) -> None:
 
         investigation_id = f"inv-{_uuid.uuid4().hex[:12]}"
         spawn_context = f"read: passage {document_id} p{req.page_index}"
+        # Residual (jm): record closed research_tier on investigation start.
         event_id = emit_typed(
             investigation_id,
             InvestigationStartRequestedPayload(
                 question=seed.seed_text,
                 context=f"Spun from a book passage. Servability: {seed.servability}.",
                 spawn_context=spawn_context,
+                research_tier=req.research_tier,
             ),
             role="read/spin_research",
             policy_id="read/books/spin_research",
@@ -707,6 +713,7 @@ def register_book_routes(app: FastAPI) -> None:
             gated=seed.gated,
             servability=seed.servability,
             seed_preview=seed.seed_text[:240] + ("…" if len(seed.seed_text) > 240 else ""),
+            research_tier=req.research_tier,
         )
 
     # ── SPR-08 M2 — talk-to-book (multi-turn, page-cited, gate-safe) ──

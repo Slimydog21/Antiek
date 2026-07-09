@@ -166,12 +166,16 @@ export default function ResearchThis({
     setBusy(true);
     setError(null);
     try {
-      const res = await spinResearch(documentId, pageIndex, passageText);
+      // Residual (jm): pass Settings/picker tier onto legacy full workstation spin.
+      const res = await spinResearch(documentId, pageIndex, passageText, {
+        researchTier,
+      });
       track("reading_research_spun", {
         document_id: documentId,
         page_index: pageIndex,
         has_passage: Boolean(passageText),
         mode: "full_workstation",
+        research_tier: researchTier,
       });
       navigate(`/inv/${encodeURIComponent(res.investigation_id)}`);
     } catch (e: unknown) {

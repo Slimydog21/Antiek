@@ -369,7 +369,13 @@ describe("BookReader", () => {
     fireEvent.click(screen.getByRole("button", { name: /Research this page/ }));
     await waitFor(() => expect(spinResearchMock).toHaveBeenCalled());
     // Seeds from the current page index (0) and hands off to the research.
-    expect(spinResearchMock).toHaveBeenCalledWith("doc-1", 0, expect.stringContaining("opening"));
+    // Residual (jm): researchTier opts for closed-tier investigation start.
+    expect(spinResearchMock).toHaveBeenCalledWith(
+      "doc-1",
+      0,
+      expect.stringContaining("opening"),
+      expect.objectContaining({ researchTier: "deep" }),
+    );
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith("/inv/inv-child-xyz"));
   });
 

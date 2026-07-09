@@ -193,15 +193,28 @@ export interface SpinResearchResponse {
  * built server-side and is gate-safe — a gated book's full text never
  * crosses into the research, even if `passageText` is sent. Returns the
  * child investigation id to navigate to. */
+/**
+ * Spin full Research workstation investigation from a book page/passage.
+ * Residual (jm): optional researchTier (fast|deep|wrestle) for start event.
+ */
 export async function spinResearch(
   documentId: string,
   pageIndex: number,
   passageText?: string,
+  opts?: { researchTier?: "fast" | "deep" | "wrestle" },
 ): Promise<SpinResearchResponse> {
+  const body: Record<string, unknown> = {
+    page_index: pageIndex,
+    passage_text: passageText ?? null,
+  };
+  const tier = (opts?.researchTier || "").trim().toLowerCase();
+  if (tier === "fast" || tier === "deep" || tier === "wrestle") {
+    body.research_tier = tier;
+  }
   const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}/spin-research`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ page_index: pageIndex, passage_text: passageText ?? null }),
+    body: JSON.stringify(body),
   });
   if (resp.status === 404) throw new Error("book_not_found");
   if (!resp.ok) throw new Error(`POST /books/{id}/spin-research: HTTP ${resp.status}`);
