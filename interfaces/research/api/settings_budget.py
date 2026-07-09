@@ -302,8 +302,11 @@ def read_operator_budget() -> BudgetResponse:
 
 @settings_router.get("/models", response_model=ModelsResponse)
 def get_settings_models(request: Request) -> ModelsResponse:
-    registered_raw = getattr(request.app.state, "registered_providers", set()) or set()
-    ready_set: set[str] = {str(p) for p in registered_raw}
+    raw_providers = getattr(request.app.state, "registered_providers", None)
+    if isinstance(raw_providers, (set, list, tuple, frozenset)):
+        ready_set: set[str] = {str(p) for p in raw_providers}
+    else:
+        ready_set = set()
     cfg = _load_dispatch_config()
     bindings = _tier_bindings(cfg)
 
