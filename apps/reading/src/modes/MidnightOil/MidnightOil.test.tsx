@@ -548,6 +548,13 @@ describe("MidnightOil mode", () => {
     expect(
       screen.getByTestId("moil-run-result").getAttribute("data-live-step"),
     ).toBe("false");
+    // Residual (hw): machine-readable offline swarm run metrics.
+    const metrics = screen.getByTestId("moil-run-metrics");
+    expect(metrics.getAttribute("data-status")).toBe("complete");
+    expect(metrics.getAttribute("data-offline")).toBe("true");
+    expect(metrics.getAttribute("data-live-step")).toBe("false");
+    expect(metrics.getAttribute("data-view-format")).toBe("html");
+    expect(metrics.textContent).toMatch(/Midnight Oil run/);
     expect(screen.getByTestId("moil-run-notes").textContent).toMatch(
       /Offline worker|LIVE_STEP/i,
     );

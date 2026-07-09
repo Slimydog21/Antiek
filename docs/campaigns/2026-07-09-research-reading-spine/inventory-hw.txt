@@ -1,0 +1,10 @@
+# inventory-hw · Midnight Oil run metrics · residual (hw)
+
+## Delta
+- moil-run-metrics: status, spent_usd, spawn_count, goals_total, offline, live_step
+
+## Verified
+vitest MidnightOil 7_passed
+
+## Next
+(hx) re-derive

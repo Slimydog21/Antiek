@@ -613,6 +613,23 @@ export default function MidnightOil() {
                   ? "Live step run result"
                   : "Offline run result"}
               </h3>
+              {/* Residual (hw): machine-readable offline vs live swarm run metrics. */}
+              <div
+                data-testid="moil-run-metrics"
+                data-status={runResult.status ?? ""}
+                data-spent-usd={String(runResult.spent_usd ?? 0)}
+                data-spawn-count={String(runResult.spawn_ids?.length ?? 0)}
+                data-goals-total={String(runResult.goals_total ?? 0)}
+                data-offline={String(Boolean(runResult.offline))}
+                data-live-step={String(Boolean(runResult.live_step))}
+                data-view-format="html"
+                role="status"
+              >
+                Midnight Oil run · status={runResult.status} · spent=$
+                {Number(runResult.spent_usd ?? 0).toFixed(4)} · spawns=
+                {runResult.spawn_ids?.length ?? 0}/{runResult.goals_total ?? 0} ·
+                offline={String(Boolean(runResult.offline))}
+              </div>
               <p className="font-mono text-sm">
                 status=<strong>{runResult.status}</strong> · spent=$
                 {runResult.spent_usd.toFixed(4)} · spawns=
