@@ -10,11 +10,13 @@
  * float launch from the hosted book (reading ≡ research).
  * Residual (dg): soft-gate deep research when budget would exceed.
  * Residual (ec): remount ResearchContextPanel after twin promote.
+ * Residual (en): highlight inside hosted HTML body → selection drives float
+ * DR + budget projection (fallback: title+asset when no selection).
  *
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { launchFloatingDeepResearch } from "../../modes/Reading/launchFloatingDeepResearch";
 import { DecisionTreeDriverBadge } from "../engagement/DecisionTreeDriverBadge";
@@ -37,6 +39,24 @@ export type HostedHtmlDocumentHostProps = {
   __windowId?: string;
 };
 
+/** Residual (en): highlight passage wins; else whole-document fallback. */
+export function resolveHostedResearchSelection(opts: {
+  title: string;
+  assetId: string;
+  fallbackDocId: string;
+  highlightText?: string | null;
+}): { selection_text: string; from_highlight: boolean } {
+  const highlight = (opts.highlightText || "").trim();
+  if (highlight) {
+    return { selection_text: highlight, from_highlight: true };
+  }
+  const id = opts.assetId || opts.fallbackDocId;
+  return {
+    selection_text: `Deep-research hosted document: ${opts.title} (${id})`,
+    from_highlight: false,
+  };
+}
+
 export default function HostedHtmlDocumentHost(
   props: HostedHtmlDocumentHostProps,
 ) {
@@ -49,15 +69,41 @@ export default function HostedHtmlDocumentHost(
   const html = props.html?.trim() || "";
   const assetId = props.document_id?.trim() || "";
 
-  // Selection identity for float DR when no highlight: title + asset.
-  const researchSelection = `Deep-research hosted document: ${title} (${assetId || docId})`;
-
+  const [highlightText, setHighlightText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastWindowId, setLastWindowId] = useState<string | null>(null);
   const [budgetWarn, setBudgetWarn] = useState(false);
   const [forceOverBudget, setForceOverBudget] = useState(false);
   const [contextRefreshKey, setContextRefreshKey] = useState(0);
+
+  // Residual (en): selection identity for float DR + budget.
+  const { selection_text: researchSelection, from_highlight: fromHighlight } =
+    useMemo(
+      () =>
+        resolveHostedResearchSelection({
+          title,
+          assetId,
+          fallbackDocId: docId,
+          highlightText,
+        }),
+      [title, assetId, docId, highlightText],
+    );
+
+  const captureHighlight = useCallback(() => {
+    if (typeof window === "undefined" || !window.getSelection) return;
+    const text = (window.getSelection()?.toString() || "").trim();
+    // Only replace when the user actually selected something; empty
+    // mouseup (click) keeps the last highlight so budget/DR stay stable.
+    if (text) {
+      setHighlightText(text.slice(0, 8000));
+    }
+  }, []);
+
+  const clearHighlight = useCallback(() => {
+    setHighlightText("");
+  }, []);
+
   const onProjectionChange = useCallback(
     (p: ResearchLaunchBudgetProjection) => {
       setBudgetWarn(p.wouldExceedBudget === true);
@@ -87,10 +133,23 @@ export default function HostedHtmlDocumentHost(
     setBusy(true);
     setError(null);
     try {
+      // Capture latest selection at fire time (mouseup may lag React state).
+      let selection = researchSelection;
+      let goal = fromHighlight
+        ? `Deep-research the highlighted passage from hosted book «${title}»`
+        : `Deep-research the hosted book/document «${title}»`;
+      if (typeof window !== "undefined" && window.getSelection) {
+        const live = (window.getSelection()?.toString() || "").trim();
+        if (live) {
+          selection = live.slice(0, 8000);
+          goal = `Deep-research the highlighted passage from hosted book «${title}»`;
+          setHighlightText(selection);
+        }
+      }
       const out = await launchFloatingDeepResearch({
         asset_id: assetId,
-        selection_text: researchSelection,
-        goal_hint: `Deep-research the hosted book/document «${title}»`,
+        selection_text: selection,
+        goal_hint: goal,
         view_mode: "floating",
       });
       setLastWindowId(out.window_id);
@@ -137,6 +196,9 @@ export default function HostedHtmlDocumentHost(
         <div
           className="prose min-h-0 flex-1 overflow-auto text-sm text-ink dark:text-parchment"
           data-testid="hosted-html-body"
+          // Residual (en): capture highlight for float deep research.
+          onMouseUp={captureHighlight}
+          onKeyUp={captureHighlight}
           dangerouslySetInnerHTML={{ __html: html }}
         />
       ) : (
@@ -148,13 +210,47 @@ export default function HostedHtmlDocumentHost(
         </p>
       )}
 
-      {/* Residual (da): budget + float deep research from hosted book. */}
+      {/* Residual (da/en): budget + float deep research from hosted book. */}
       {assetId && isHtml ? (
         <section
           className="mt-2 space-y-2 border-t border-black/10 pt-4 dark:border-white/10"
           data-testid="hosted-html-research-launch"
           data-view-format="html"
+          data-from-highlight={fromHighlight ? "true" : "false"}
         >
+          <div
+            className="rounded border border-ink/10 p-2 text-[11px] font-mono dark:border-bright/10"
+            data-testid="hosted-html-selection-preview"
+            data-from-highlight={fromHighlight ? "true" : "false"}
+          >
+            <p className="text-shadow-1 dark:text-moonlight">
+              {fromHighlight
+                ? "Deep research will use your highlight:"
+                : "No highlight — deep research uses whole document identity:"}
+            </p>
+            <p
+              className="mt-1 max-h-16 overflow-auto text-ink dark:text-parchment"
+              data-testid="hosted-html-selection-text"
+            >
+              {researchSelection.slice(0, 400)}
+              {researchSelection.length > 400 ? "…" : ""}
+            </p>
+            {fromHighlight ? (
+              <button
+                type="button"
+                className="mt-1 underline"
+                data-testid="hosted-html-clear-highlight"
+                onClick={clearHighlight}
+                disabled={busy}
+              >
+                Clear highlight (use whole document)
+              </button>
+            ) : (
+              <p className="mt-1 text-ink-mute dark:text-moonlight">
+                Select text in the book above, then open deep research.
+              </p>
+            )}
+          </div>
           <ResearchLaunchBudgetPanel
             promptText={researchSelection}
             researchTier="deep"
@@ -183,7 +279,11 @@ export default function HostedHtmlDocumentHost(
               disabled={busy || (budgetWarn && !forceOverBudget)}
               onClick={() => void spinFloating()}
             >
-              {busy ? "Opening…" : "Deep research (window)"}
+              {busy
+                ? "Opening…"
+                : fromHighlight
+                  ? "Deep research highlight (window)"
+                  : "Deep research (window)"}
             </button>
             {lastWindowId ? (
               <span

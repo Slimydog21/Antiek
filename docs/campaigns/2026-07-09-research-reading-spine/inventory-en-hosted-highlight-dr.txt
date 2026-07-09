@@ -1,0 +1,18 @@
+# residual (en) hosted book highlight → floating deep research
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(em) prior | branch_only | campaign inventories
+(en) hosted highlight DR | branch_only | resolveHostedResearchSelection; mouseup capture; live getSelection at fire; budget/preview; 6 vitest
+
+PATHS:
+- apps/reading/src/components/windows/HostedHtmlDocumentHost.tsx
+- apps/reading/src/components/windows/HostedHtmlDocumentHost.test.tsx
+
+INVARIANTS:
+- HTML body only for selection
+- highlight preferred over title fallback
+- clear highlight reverts to whole-document identity
+- reading ≡ research on marketplace/hosted books
+
+NEXT: (eo) re-derive; operator merge PR #465

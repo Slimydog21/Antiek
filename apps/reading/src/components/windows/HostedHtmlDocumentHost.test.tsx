@@ -1,7 +1,9 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import HostedHtmlDocumentHost from "./HostedHtmlDocumentHost";
+import HostedHtmlDocumentHost, {
+  resolveHostedResearchSelection,
+} from "./HostedHtmlDocumentHost";
 
 const launchFloatingDeepResearch = vi.fn();
 
@@ -177,5 +179,95 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     );
     expect(screen.getByTestId("hosted-html-reject-pdf")).toBeTruthy();
     expect(screen.queryByTestId("hosted-html-research-launch")).toBeNull();
+  });
+
+  it("resolveHostedResearchSelection prefers highlight (en)", () => {
+    const hit = resolveHostedResearchSelection({
+      title: "Book",
+      assetId: "doc_1",
+      fallbackDocId: "doc_1",
+      highlightText: "  attention is all you need  ",
+    });
+    expect(hit.from_highlight).toBe(true);
+    expect(hit.selection_text).toBe("attention is all you need");
+    const miss = resolveHostedResearchSelection({
+      title: "Book",
+      assetId: "doc_1",
+      fallbackDocId: "doc_1",
+      highlightText: "   ",
+    });
+    expect(miss.from_highlight).toBe(false);
+    expect(miss.selection_text).toMatch(/Deep-research hosted document: Book/);
+  });
+
+  it("uses window selection for deep research when highlighted (en)", async () => {
+    launchFloatingDeepResearch.mockResolvedValue({
+      session_id: "fsess_sel",
+      spawn_id: "spn_sel",
+      investigation_id: "inv_sel",
+      parent_asset_id: "doc_sel",
+      window_id: "wdr_sel",
+      view_format: "html",
+      view_mode: "floating",
+      status: "reserved",
+      model_id: null,
+    });
+    const getSelection = vi.fn(() => ({
+      toString: () => "Transformers changed NLP forever",
+    }));
+    vi.stubGlobal("getSelection", getSelection);
+
+    render(
+      <HostedHtmlDocumentHost
+        document_id="doc_sel"
+        title="Attention"
+        view_format="html"
+        html="<p>Transformers changed NLP forever in 2017.</p>"
+      />,
+    );
+
+    expect(
+      screen.getByTestId("hosted-html-research-launch").getAttribute(
+        "data-from-highlight",
+      ),
+    ).toBe("false");
+
+    fireEvent.mouseUp(screen.getByTestId("hosted-html-body"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("hosted-html-selection-preview").getAttribute(
+          "data-from-highlight",
+        ),
+      ).toBe("true");
+    });
+    expect(screen.getByTestId("hosted-html-selection-text").textContent).toMatch(
+      /Transformers changed NLP forever/,
+    );
+
+    fireEvent.click(screen.getByTestId("hosted-html-deep-research"));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "doc_sel",
+          selection_text: "Transformers changed NLP forever",
+          view_mode: "floating",
+        }),
+      );
+    });
+    const call = launchFloatingDeepResearch.mock.calls.at(-1)?.[0] as {
+      goal_hint: string;
+    };
+    expect(call.goal_hint).toMatch(/highlighted passage/i);
+
+    fireEvent.click(screen.getByTestId("hosted-html-clear-highlight"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("hosted-html-selection-preview").getAttribute(
+          "data-from-highlight",
+        ),
+      ).toBe("false");
+    });
+
+    vi.unstubAllGlobals();
   });
 });
