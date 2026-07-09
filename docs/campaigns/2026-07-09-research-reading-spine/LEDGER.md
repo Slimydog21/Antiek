@@ -39,3 +39,6 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 - POST /engagement/merge via merge_product_payload
 - draft_combined default; parent left untouched
 - tests/test_engagement_merge_product.py (4)
+## residual (ao) CollectiveResearchPanel document merge UI — 2026-07-09
+- draft_combined + into_parent actions on multi-select panel
+- host passes parentAssetId

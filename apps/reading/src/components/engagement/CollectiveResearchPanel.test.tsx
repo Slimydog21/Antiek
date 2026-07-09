@@ -3,14 +3,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CollectiveResearchPanel } from "./CollectiveResearchPanel";
 
 const fetchCollectiveResearch = vi.fn();
+const mergeSpawnOutputs = vi.fn();
 
 vi.mock("../../api/engagement", () => ({
   fetchCollectiveResearch: (...args: unknown[]) => fetchCollectiveResearch(...args),
+  mergeSpawnOutputs: (...args: unknown[]) => mergeSpawnOutputs(...args),
 }));
 
 describe("CollectiveResearchPanel", () => {
   afterEach(() => cleanup());
-  beforeEach(() => fetchCollectiveResearch.mockReset());
+  beforeEach(() => {
+    fetchCollectiveResearch.mockReset();
+    mergeSpawnOutputs.mockReset();
+  });
 
   it("merges selected spawns into collective prompt", async () => {
     fetchCollectiveResearch.mockResolvedValue({
@@ -34,7 +39,7 @@ describe("CollectiveResearchPanel", () => {
     const boxes = screen.getAllByRole("checkbox");
     fireEvent.click(boxes[0]);
     fireEvent.click(boxes[1]);
-    fireEvent.click(screen.getByRole("button", { name: /merge 2 spawn/i }));
+    fireEvent.click(screen.getByTestId("collective-merge-prompt"));
 
     await waitFor(() => {
       expect(screen.getByTestId("collective-prompt-block").textContent).toContain(
@@ -44,5 +49,66 @@ describe("CollectiveResearchPanel", () => {
     expect(fetchCollectiveResearch).toHaveBeenCalledWith({
       spawn_ids: ["spn_1", "spn_2"],
     });
+  });
+
+  it("merges selected spawns to draft document when parentAssetId set", async () => {
+    mergeSpawnOutputs.mockResolvedValue({
+      mode: "draft_combined",
+      parent_asset_id: "book-1",
+      document_id: "draft_book-1_deadbeef",
+      source_spawn_ids: ["spn_1"],
+      sections_merged: 2,
+      draft_leaves_parent: true,
+      parent_document_id: "book-1",
+      view_format: "html",
+      product_panel: "engagement_merge",
+      source: "engagement_spine.merge_spawn_outputs",
+      notes: ["Draft-combined document; parent asset unchanged until into_parent merge."],
+      html: "<p>Merge mode: draft_combined</p>",
+    });
+
+    render(
+      <CollectiveResearchPanel
+        availableSpawnIds={["spn_1", "spn_2"]}
+        parentAssetId="book-1"
+      />,
+    );
+
+    expect(screen.getByTestId("collective-parent-asset").textContent).toMatch(
+      /book-1/,
+    );
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    fireEvent.click(screen.getByTestId("collective-merge-draft"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("collective-doc-merge-result").textContent).toMatch(
+        /draft_combined/,
+      );
+    });
+    expect(mergeSpawnOutputs).toHaveBeenCalledWith({
+      parent_asset_id: "book-1",
+      spawn_ids: ["spn_1"],
+      mode: "draft_combined",
+      include_html: true,
+    });
+    expect(screen.getByTestId("collective-doc-merge-html").innerHTML).toMatch(
+      /draft_combined/,
+    );
+    expect(
+      screen.getByTestId("collective-research-panel").getAttribute("data-view-format"),
+    ).toBe("html");
+  });
+
+  it("disables document merge without parentAssetId", () => {
+    render(
+      <CollectiveResearchPanel availableSpawnIds={["spn_1"]} />,
+    );
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    expect(
+      (screen.getByTestId("collective-merge-draft") as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByTestId("collective-merge-parent") as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 });

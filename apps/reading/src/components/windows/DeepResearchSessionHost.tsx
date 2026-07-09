@@ -10,6 +10,7 @@
  * Residual (ag): mounts ResearchContextPanel when parent_asset_id is present.
  * Residual (ah): mounts CollectiveResearchPanel with availableSpawnIds from
  * current spawn + open deep_research_session windows.
+ * Residual (ao): passes parentAssetId so draft/parent document merge is enabled.
  */
 
 import { useMemo } from "react";
@@ -140,7 +141,10 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
           data-view-format="html"
           data-available-spawn-count={String(availableSpawnIds.length)}
         >
-          <CollectiveResearchPanel availableSpawnIds={availableSpawnIds} />
+          <CollectiveResearchPanel
+            availableSpawnIds={availableSpawnIds}
+            parentAssetId={props.parent_asset_id?.trim() || null}
+          />
         </section>
       ) : null}
     </div>
