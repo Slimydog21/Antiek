@@ -288,6 +288,38 @@ export interface BookHtmlImportPreflightResponse {
   policy_notes: string[];
 }
 
+export interface BookHtmlFileHandoffInput {
+  import_preflight_id: string;
+  file_name: string;
+  file_format?: "epub" | "html" | "pdf" | "kindle" | "unknown";
+  storage_ref: string;
+  checksum_sha256?: string | null;
+  acknowledge_manual_storage_only: boolean;
+  acknowledge_no_file_read_or_conversion: boolean;
+}
+
+export interface BookHtmlFileHandoffResponse {
+  handoff_id: string;
+  status: "ready_for_conversion_review";
+  import_preflight_id: string;
+  file_name: string;
+  file_format: string;
+  storage_ref: string;
+  checksum_sha256: string | null;
+  import_target: "antiek_html";
+  storage_ref_recorded: boolean;
+  upload_accepted: boolean;
+  external_call_performed: boolean;
+  file_read_attempted: boolean;
+  conversion_attempted: boolean;
+  ingest_attempted: boolean;
+  graph_mutation_performed: boolean;
+  html_conversion_required: boolean;
+  html_hosting_required: boolean;
+  required_operator_steps: string[];
+  policy_notes: string[];
+}
+
 /** Prompt-to-curate (Read SPR-04). Ranks ONLY servable books by relevance
  * to the prompt — a gated book is never curated into a readable list.
  * Returns 503 if the embedding model isn't available server-side. */
@@ -326,6 +358,21 @@ export async function preflightBookHtmlImport(
   if (resp.status === 400) throw new Error("Confirm legal access and the no-upload preflight boundary.");
   if (!resp.ok) throw new Error(`POST /books/import/html-preflight: HTTP ${resp.status}`);
   return (await resp.json()) as BookHtmlImportPreflightResponse;
+}
+
+export async function handoffBookHtmlFile(
+  request: BookHtmlFileHandoffInput,
+): Promise<BookHtmlFileHandoffResponse> {
+  const resp = await apiFetch(`${API_BASE}/books/import/file-handoff`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (resp.status === 400) {
+    throw new Error("Confirm the preflight receipt and no-read file handoff boundary.");
+  }
+  if (!resp.ok) throw new Error(`POST /books/import/file-handoff: HTTP ${resp.status}`);
+  return (await resp.json()) as BookHtmlFileHandoffResponse;
 }
 
 // ── SPR-08 M2: talk-to-book (multi-turn, page-cited) ──────────────────

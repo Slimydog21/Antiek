@@ -113,3 +113,84 @@ def test_html_import_preflight_is_no_upload_no_ingest_contract() -> None:
     assert body["html_conversion_required"] is True
     assert body["html_hosting_required"] is True
     assert any("No upload" in note for note in body["policy_notes"])
+
+
+def test_html_file_handoff_requires_valid_preflight_and_no_read_ack() -> None:
+    client = _client()
+
+    invalid_preflight = client.post(
+        "/books/import/file-handoff",
+        json={
+            "import_preflight_id": "not-a-preflight",
+            "file_name": "dream-machine.epub",
+            "file_format": "epub",
+            "storage_ref": "operator-vault://books/dream-machine.epub",
+            "acknowledge_manual_storage_only": True,
+            "acknowledge_no_file_read_or_conversion": True,
+        },
+    )
+    assert invalid_preflight.status_code == 400
+    assert invalid_preflight.json()["detail"] == "invalid_import_preflight_id"
+
+    missing_manual_ack = client.post(
+        "/books/import/file-handoff",
+        json={
+            "import_preflight_id": "bookimp-safe123",
+            "file_name": "dream-machine.epub",
+            "file_format": "epub",
+            "storage_ref": "operator-vault://books/dream-machine.epub",
+            "acknowledge_manual_storage_only": False,
+            "acknowledge_no_file_read_or_conversion": True,
+        },
+    )
+    assert missing_manual_ack.status_code == 400
+    assert missing_manual_ack.json()["detail"] == "manual_storage_ack_required"
+
+    missing_no_read_ack = client.post(
+        "/books/import/file-handoff",
+        json={
+            "import_preflight_id": "bookimp-safe123",
+            "file_name": "dream-machine.epub",
+            "file_format": "epub",
+            "storage_ref": "operator-vault://books/dream-machine.epub",
+            "acknowledge_manual_storage_only": True,
+            "acknowledge_no_file_read_or_conversion": False,
+        },
+    )
+    assert missing_no_read_ack.status_code == 400
+    assert missing_no_read_ack.json()["detail"] == "file_handoff_no_read_ack_required"
+
+
+def test_html_file_handoff_records_metadata_without_reading_or_converting() -> None:
+    client = _client()
+    checksum = "a" * 64
+
+    resp = client.post(
+        "/books/import/file-handoff",
+        json={
+            "import_preflight_id": "bookimp-safe123",
+            "file_name": "dream-machine.epub",
+            "file_format": "epub",
+            "storage_ref": "operator-vault://books/dream-machine.epub",
+            "checksum_sha256": checksum,
+            "acknowledge_manual_storage_only": True,
+            "acknowledge_no_file_read_or_conversion": True,
+        },
+    )
+
+    assert resp.status_code == 202, resp.text
+    body = resp.json()
+    assert body["handoff_id"].startswith("bookhand-")
+    assert body["status"] == "ready_for_conversion_review"
+    assert body["import_preflight_id"] == "bookimp-safe123"
+    assert body["storage_ref_recorded"] is True
+    assert body["upload_accepted"] is False
+    assert body["external_call_performed"] is False
+    assert body["file_read_attempted"] is False
+    assert body["conversion_attempted"] is False
+    assert body["ingest_attempted"] is False
+    assert body["graph_mutation_performed"] is False
+    assert body["html_conversion_required"] is True
+    assert body["html_hosting_required"] is True
+    assert body["checksum_sha256"] == checksum
+    assert any("No upload bytes" in note for note in body["policy_notes"])

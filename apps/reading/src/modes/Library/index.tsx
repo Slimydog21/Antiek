@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import type {
+  BookHtmlFileHandoffResponse,
   BookHtmlImportPreflightResponse,
   BookPurchaseRequestResponse,
   BookSummary,
@@ -9,6 +10,7 @@ import type {
 } from "../../api/books";
 import {
   curateBooks,
+  handoffBookHtmlFile,
   listBooks,
   preflightBookHtmlImport,
   requestBookPurchase,
@@ -81,6 +83,12 @@ export default function Library() {
   const [importAck, setImportAck] = useState(false);
   const [importBusy, setImportBusy] = useState(false);
   const [importReceipt, setImportReceipt] = useState<BookHtmlImportPreflightResponse | null>(null);
+  const [handoffStorageRef, setHandoffStorageRef] = useState("");
+  const [handoffChecksum, setHandoffChecksum] = useState("");
+  const [handoffManualAck, setHandoffManualAck] = useState(false);
+  const [handoffNoReadAck, setHandoffNoReadAck] = useState(false);
+  const [handoffBusy, setHandoffBusy] = useState(false);
+  const [handoffReceipt, setHandoffReceipt] = useState<BookHtmlFileHandoffResponse | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -176,6 +184,7 @@ export default function Library() {
         acknowledge_no_upload_or_ingest: importAck,
       });
       setImportReceipt(res);
+      setHandoffReceipt(null);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -189,6 +198,36 @@ export default function Library() {
     purchaseAuthor,
     purchaseReceipt,
     purchaseTitle,
+  ]);
+
+  const onFileHandoff = useCallback(async () => {
+    if (!importReceipt) return;
+    setHandoffBusy(true);
+    setError(null);
+    setHandoffReceipt(null);
+    try {
+      const res = await handoffBookHtmlFile({
+        import_preflight_id: importReceipt.import_preflight_id,
+        file_name: importReceipt.file_name ?? importFileName.trim(),
+        file_format: importReceipt.file_format as "epub" | "html" | "pdf" | "kindle" | "unknown",
+        storage_ref: handoffStorageRef,
+        checksum_sha256: handoffChecksum.trim() || null,
+        acknowledge_manual_storage_only: handoffManualAck,
+        acknowledge_no_file_read_or_conversion: handoffNoReadAck,
+      });
+      setHandoffReceipt(res);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setHandoffBusy(false);
+    }
+  }, [
+    handoffChecksum,
+    handoffManualAck,
+    handoffNoReadAck,
+    handoffStorageRef,
+    importFileName,
+    importReceipt,
   ]);
 
   // The display order, in three layers of precedence:
@@ -495,6 +534,84 @@ export default function Library() {
               </p>
             )}
           </form>
+
+          {importReceipt && (
+            <form
+              className="rounded-md border border-ice-4 dark:border-charcoal-1 bg-white/70 dark:bg-charcoal-2/70 p-3 space-y-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void onFileHandoff();
+              }}
+            >
+              <div>
+                <p className="text-[13px] font-serif text-ink dark:text-bright">
+                  File handoff metadata
+                </p>
+                <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                  Records the operator storage reference only; Antiek does not upload,
+                  open, read, convert, ingest, or serve the file here.
+                </p>
+              </div>
+              <label className="block text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                Storage reference
+                <input
+                  value={handoffStorageRef}
+                  onChange={(event) => setHandoffStorageRef(event.target.value)}
+                  required
+                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  placeholder="operator-vault://books/title.epub"
+                />
+              </label>
+              <label className="block text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                SHA-256
+                <input
+                  value={handoffChecksum}
+                  onChange={(event) => setHandoffChecksum(event.target.value)}
+                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  placeholder="Optional 64-character checksum"
+                />
+              </label>
+              <div className="flex flex-col gap-2">
+                <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                  <input
+                    type="checkbox"
+                    checked={handoffManualAck}
+                    onChange={(event) => setHandoffManualAck(event.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>This is a manual storage reference, not a file upload.</span>
+                </label>
+                <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                  <input
+                    type="checkbox"
+                    checked={handoffNoReadAck}
+                    onChange={(event) => setHandoffNoReadAck(event.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>No file open, read, conversion, ingest, graph write, or serve runs from this handoff.</span>
+                </label>
+              </div>
+              <button
+                type="submit"
+                disabled={
+                  handoffBusy ||
+                  handoffStorageRef.trim().length === 0 ||
+                  (importReceipt.file_name ?? importFileName.trim()).trim().length === 0
+                }
+                className="rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+              >
+                {handoffBusy ? "Recording…" : "Record handoff"}
+              </button>
+              {handoffReceipt && (
+                <p className="text-[13px] font-serif text-ink dark:text-bright" role="status">
+                  Handoff {handoffReceipt.handoff_id} is ready for conversion review; file read{" "}
+                  {handoffReceipt.file_read_attempted ? "yes" : "no"}, converted{" "}
+                  {handoffReceipt.conversion_attempted ? "yes" : "no"}, uploaded{" "}
+                  {handoffReceipt.upload_accepted ? "yes" : "no"}.
+                </p>
+              )}
+            </form>
+          )}
 
           {status === "servable" && (
             <CuratePrompt

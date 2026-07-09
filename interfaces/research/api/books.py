@@ -313,6 +313,38 @@ class BookHtmlImportPreflightOut(BaseModel):
     policy_notes: list[str]
 
 
+class BookHtmlFileHandoffIn(BaseModel):
+    import_preflight_id: str = Field(min_length=1, max_length=80)
+    file_name: str = Field(min_length=1, max_length=300)
+    file_format: Literal["epub", "html", "pdf", "kindle", "unknown"] = "unknown"
+    storage_ref: str = Field(min_length=1, max_length=500)
+    checksum_sha256: str | None = Field(default=None, min_length=64, max_length=64)
+    acknowledge_manual_storage_only: bool = False
+    acknowledge_no_file_read_or_conversion: bool = False
+
+
+class BookHtmlFileHandoffOut(BaseModel):
+    handoff_id: str
+    status: Literal["ready_for_conversion_review"]
+    import_preflight_id: str
+    file_name: str
+    file_format: str
+    storage_ref: str
+    checksum_sha256: str | None
+    import_target: Literal["antiek_html"]
+    storage_ref_recorded: bool
+    upload_accepted: bool
+    external_call_performed: bool
+    file_read_attempted: bool
+    conversion_attempted: bool
+    ingest_attempted: bool
+    graph_mutation_performed: bool
+    html_conversion_required: bool
+    html_hosting_required: bool
+    required_operator_steps: list[str]
+    policy_notes: list[str]
+
+
 def _book_purchase_request_id(req: BookPurchaseRequestIn) -> str:
     normalized = "|".join(
         [
@@ -340,6 +372,19 @@ def _book_html_import_preflight_id(req: BookHtmlImportPreflightIn) -> str:
         ]
     )
     return f"bookimp-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _book_html_file_handoff_id(req: BookHtmlFileHandoffIn) -> str:
+    normalized = "|".join(
+        [
+            req.import_preflight_id.strip(),
+            req.file_name.strip(),
+            req.file_format,
+            req.storage_ref.strip(),
+            (req.checksum_sha256 or "").strip().casefold(),
+        ]
+    )
+    return f"bookhand-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
 
 
 class SpinResearchRequest(BaseModel):
@@ -729,6 +774,66 @@ def register_book_routes(app: FastAPI) -> None:
             policy_notes=[
                 "No upload, file read, URL fetch, conversion, graph write, or full-text serve happened in this preflight.",
                 "The readable asset remains HTML-first and must pass the serve gate before Library/Reader access.",
+            ],
+        )
+
+    @app.post(
+        "/books/import/file-handoff",
+        response_model=BookHtmlFileHandoffOut,
+        status_code=202,
+        tags=["books"],
+    )
+    async def book_html_file_handoff(
+        req: BookHtmlFileHandoffIn,
+    ) -> BookHtmlFileHandoffOut:
+        """Record operator file handoff metadata without accepting the file.
+
+        This is the seam between "I legally obtained the file" and a later
+        sandboxed converter. The endpoint stores no bytes, reads no path, fetches
+        no storage reference, converts nothing, and does not mutate the graph.
+        """
+        preflight_id = req.import_preflight_id.strip()
+        if not preflight_id.startswith("bookimp-"):
+            raise HTTPException(status_code=400, detail="invalid_import_preflight_id")
+        if not req.acknowledge_manual_storage_only:
+            raise HTTPException(status_code=400, detail="manual_storage_ack_required")
+        if not req.acknowledge_no_file_read_or_conversion:
+            raise HTTPException(
+                status_code=400,
+                detail="file_handoff_no_read_ack_required",
+            )
+
+        checksum = req.checksum_sha256.strip().casefold() if req.checksum_sha256 else None
+        if checksum is not None and any(ch not in "0123456789abcdef" for ch in checksum):
+            raise HTTPException(status_code=400, detail="invalid_sha256_checksum")
+
+        fmt = req.file_format
+        return BookHtmlFileHandoffOut(
+            handoff_id=_book_html_file_handoff_id(req),
+            status="ready_for_conversion_review",
+            import_preflight_id=preflight_id,
+            file_name=req.file_name.strip(),
+            file_format=fmt,
+            storage_ref=req.storage_ref.strip(),
+            checksum_sha256=checksum,
+            import_target="antiek_html",
+            storage_ref_recorded=True,
+            upload_accepted=False,
+            external_call_performed=False,
+            file_read_attempted=False,
+            conversion_attempted=False,
+            ingest_attempted=False,
+            graph_mutation_performed=False,
+            html_conversion_required=fmt != "html",
+            html_hosting_required=True,
+            required_operator_steps=[
+                "Review the recorded storage reference and checksum before any converter receives access.",
+                "Run a later sandboxed conversion job that reads the file only after explicit operator approval.",
+                "Publish the converted HTML only after the serve gate validates rights and servability.",
+            ],
+            policy_notes=[
+                "No upload bytes were accepted; only operator-supplied storage metadata was recorded.",
+                "No file path, storage reference, or URL was opened, fetched, converted, ingested, or served.",
             ],
         )
 

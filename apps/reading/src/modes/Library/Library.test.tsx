@@ -14,6 +14,7 @@ const {
   curateBooksMock,
   requestBookPurchaseMock,
   preflightBookHtmlImportMock,
+  handoffBookHtmlFileMock,
   listInvestigationsMock,
   navigateMock,
 } = vi.hoisted(() => ({
@@ -21,6 +22,7 @@ const {
   curateBooksMock: vi.fn(),
   requestBookPurchaseMock: vi.fn(),
   preflightBookHtmlImportMock: vi.fn(),
+  handoffBookHtmlFileMock: vi.fn(),
   // M1: the active-research signal documentsByTheme ranks the shelf to.
   // Default: no active research → the feed falls back to recency.
   listInvestigationsMock: vi.fn<
@@ -37,6 +39,7 @@ vi.mock("../../api/books", async (orig) => {
     curateBooks: curateBooksMock,
     requestBookPurchase: requestBookPurchaseMock,
     preflightBookHtmlImport: preflightBookHtmlImportMock,
+    handoffBookHtmlFile: handoffBookHtmlFileMock,
   };
 });
 
@@ -76,6 +79,7 @@ beforeEach(() => {
   curateBooksMock.mockReset();
   requestBookPurchaseMock.mockReset();
   preflightBookHtmlImportMock.mockReset();
+  handoffBookHtmlFileMock.mockReset();
   listInvestigationsMock.mockReset();
   listInvestigationsMock.mockResolvedValue({ count: 0, investigations: [] });
   navigateMock.mockReset();
@@ -318,7 +322,7 @@ describe("Library", () => {
     });
   });
 
-  it("preflights a legally held book file for later Antiek HTML import without uploading or ingesting", async () => {
+  it("preflights and records a manual file handoff without uploading, reading, or converting", async () => {
     listBooksMock.mockResolvedValue({ books: [servableBook], count: 1 });
     requestBookPurchaseMock.mockResolvedValue({
       request_id: "bookreq-safe123",
@@ -351,6 +355,27 @@ describe("Library", () => {
       external_call_performed: false,
       file_uploaded: false,
       file_read_attempted: false,
+      ingest_attempted: false,
+      graph_mutation_performed: false,
+      html_conversion_required: true,
+      html_hosting_required: true,
+      required_operator_steps: [],
+      policy_notes: [],
+    });
+    handoffBookHtmlFileMock.mockResolvedValue({
+      handoff_id: "bookhand-safe123",
+      status: "ready_for_conversion_review",
+      import_preflight_id: "bookimp-safe123",
+      file_name: "dream-machine.epub",
+      file_format: "epub",
+      storage_ref: "operator-vault://books/dream-machine.epub",
+      checksum_sha256: "a".repeat(64),
+      import_target: "antiek_html",
+      storage_ref_recorded: true,
+      upload_accepted: false,
+      external_call_performed: false,
+      file_read_attempted: false,
+      conversion_attempted: false,
       ingest_attempted: false,
       graph_mutation_performed: false,
       html_conversion_required: true,
@@ -394,6 +419,30 @@ describe("Library", () => {
       file_format: "epub",
       has_legal_access: true,
       acknowledge_no_upload_or_ingest: true,
+    });
+
+    fireEvent.change(screen.getByLabelText("Storage reference"), {
+      target: { value: "operator-vault://books/dream-machine.epub" },
+    });
+    fireEvent.change(screen.getByLabelText("SHA-256"), {
+      target: { value: "a".repeat(64) },
+    });
+    fireEvent.click(screen.getByLabelText(/manual storage reference/));
+    fireEvent.click(screen.getByLabelText(/No file open, read/));
+    fireEvent.click(screen.getByRole("button", { name: "Record handoff" }));
+
+    const handoffStatus = await screen.findByText(/Handoff bookhand-safe123/);
+    expect(handoffStatus.textContent).toContain("file read no");
+    expect(handoffStatus.textContent).toContain("converted no");
+    expect(handoffStatus.textContent).toContain("uploaded no");
+    expect(handoffBookHtmlFileMock).toHaveBeenCalledWith({
+      import_preflight_id: "bookimp-safe123",
+      file_name: "dream-machine.epub",
+      file_format: "epub",
+      storage_ref: "operator-vault://books/dream-machine.epub",
+      checksum_sha256: "a".repeat(64),
+      acknowledge_manual_storage_only: true,
+      acknowledge_no_file_read_or_conversion: true,
     });
   });
 });
