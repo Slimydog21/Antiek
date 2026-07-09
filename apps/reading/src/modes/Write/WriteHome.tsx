@@ -81,6 +81,7 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
  * Residual (gd): re-import html_draft into an existing open piece (not only create).
  * Residual (ge): deep research launch + pub refs on open piece (reading≡write
  * parity with hosted HTML host: arxiv/substack grounding, float|full, budget soft-gate).
+ * Residual (if): Settings deep-link beside Write piece driver badge.
  * Residual (gf): CollectiveResearchPanel on open piece when DR spawns exist
  * (multi-select merge/analysis with writing asset as parent).
  * Residual (gg): remount TwinNotesPanel on same refresh key as research
@@ -763,6 +764,17 @@ export default function WriteHome() {
             {/* Residual (gc): model driver + budget usage on Write piece. */}
             <div data-testid="write-piece-driver-badge" data-view-format="html">
               <DecisionTreeDriverBadge />
+              {/* Residual (if): Settings deep-link for driver + budget. */}
+              <p className="mt-1 text-[11px] font-mono">
+                <a
+                  href="/settings"
+                  data-testid="write-piece-settings-link"
+                  className="underline opacity-80 hover:opacity-100"
+                  title="Open Settings for decision-tree driver and daily budget"
+                >
+                  Settings · driver & budget
+                </a>
+              </p>
             </div>
             <div className="flex items-center gap-3">
               {/* M1: toggle to the imported SPR-03 Canvas of the linked research. */}

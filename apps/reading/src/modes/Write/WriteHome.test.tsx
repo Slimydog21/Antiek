@@ -623,6 +623,10 @@ describe("WriteHome — the re-homed door", () => {
       screen.getByTestId("write-piece-driver-badge").getAttribute("data-view-format"),
     ).toBe("html");
     expect(screen.getByTestId("decision-tree-driver-badge-stub")).toBeTruthy();
+    // Residual (if): Settings deep-link for driver + budget.
+    const settings = screen.getByTestId("write-piece-settings-link");
+    expect(settings.getAttribute("href")).toBe("/settings");
+    expect(settings.textContent).toMatch(/driver & budget/i);
   });
 
   it("mounts CollectiveResearchPanel when DR spawns exist (gf)", async () => {

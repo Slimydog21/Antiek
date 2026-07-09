@@ -1,0 +1,10 @@
+# inventory-if · Write piece Settings deep-link · residual (if)
+
+## Delta
+- write-piece-settings-link → /settings (driver + budget)
+
+## Verified
+vitest WriteHome DecisionTreeDriverBadge open piece (gc/if) 1_passed
+
+## Next
+(ig) re-derive
