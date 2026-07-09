@@ -120,6 +120,14 @@ describe("CollectiveResearchPanel", () => {
     expect(fetchCollectiveResearch).toHaveBeenCalledWith({
       spawn_ids: ["spn_1", "spn_2"],
     });
+    // Residual (hm): machine-readable multi-spawn collective metrics.
+    const metrics = screen.getByTestId("collective-unit-metrics");
+    expect(metrics.getAttribute("data-collective-id")).toBe("col_abc");
+    expect(metrics.getAttribute("data-spawn-count")).toBe("2");
+    expect(metrics.getAttribute("data-twin-count")).toBe("0");
+    expect(metrics.getAttribute("data-ref-count")).toBe("0");
+    expect(metrics.getAttribute("data-view-format")).toBe("html");
+    expect(metrics.textContent).toMatch(/Collective unit/);
   });
 
   it("continues collective prompt as floating deep research unit (dc)", async () => {

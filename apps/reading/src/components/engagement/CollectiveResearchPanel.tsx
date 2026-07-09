@@ -18,6 +18,8 @@
  * 9. Residual (ey): continue cohesive unit as full working-region window as
  *    well as floating (parity with ResearchThis et / hosted es).
  * 10. Residual (fn): Open Write handoff for merged draft document_id (fl/fm).
+ * 11. Residual (hm): collective-unit-metrics machine attrs for multi-spawn
+ *     cohesive unit audit (parity twin/flywheel/progress metrics).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -400,6 +402,19 @@ export function CollectiveResearchPanel({
 
       {unit ? (
         <div className="collective-result" data-testid="collective-unit-result">
+          {/* Residual (hm): machine-readable multi-spawn collective metrics. */}
+          <div
+            data-testid="collective-unit-metrics"
+            data-collective-id={unit.collective_id ?? ""}
+            data-spawn-count={String(unit.spawn_count ?? 0)}
+            data-twin-count={String(unit.twin_count ?? 0)}
+            data-ref-count={String(unit.ref_count ?? 0)}
+            data-view-format="html"
+            role="status"
+          >
+            Collective unit · spawns={unit.spawn_count ?? 0} · twins=
+            {unit.twin_count ?? 0} · refs={unit.ref_count ?? 0}
+          </div>
           <p>
             collective <code>{unit.collective_id}</code> · spawns=
             {unit.spawn_count} · twins={unit.twin_count} · refs={unit.ref_count}
