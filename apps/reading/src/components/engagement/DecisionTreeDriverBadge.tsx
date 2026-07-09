@@ -4,23 +4,58 @@
  * Read-only advisory surface: model choice is Settings-owned; this badge
  * makes the active driver visible on research/reading hosts without implying
  * NotDiamond authority.
+ *
+ * Residual (eq): compact daily budget usage bar next to the driver so every
+ * surface that mounts the badge also shows spend vs cap / remaining (honest
+ * unknown when spent_status is unknown). Not a launch soft-gate — that stays
+ * on ResearchLaunchBudgetPanel.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   fetchDecisionTreeSelection,
+  fetchSettingsBudget,
+  type BudgetResponse,
   type DecisionTreeSelectionResponse,
 } from "../../api/settings";
 
+function formatUsd(n: number | null | undefined): string {
+  if (n == null || Number.isNaN(n)) return "—";
+  return `$${n.toFixed(2)}`;
+}
+
+/** Pure helper for tests: spent fraction of daily cap (0–100), or null if unknown. */
+export function budgetUsagePct(budget: BudgetResponse | null): number | null {
+  if (
+    !budget ||
+    budget.daily_cap_usd == null ||
+    budget.spent_usd == null ||
+    budget.daily_cap_usd <= 0 ||
+    budget.spent_status === "unknown" ||
+    budget.spent_status === "no_cap"
+  ) {
+    return null;
+  }
+  return Math.min(100, (budget.spent_usd / budget.daily_cap_usd) * 100);
+}
+
 export function DecisionTreeDriverBadge() {
   const [tree, setTree] = useState<DecisionTreeSelectionResponse | null>(null);
+  const [budget, setBudget] = useState<BudgetResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    void fetchDecisionTreeSelection()
-      .then((t) => {
-        if (!cancelled) setTree(t);
+    void Promise.all([
+      fetchDecisionTreeSelection().catch((e) => {
+        throw e;
+      }),
+      fetchSettingsBudget().catch(() => null),
+    ])
+      .then(([t, b]) => {
+        if (cancelled) return;
+        setTree(t);
+        setBudget(b);
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
@@ -30,9 +65,11 @@ export function DecisionTreeDriverBadge() {
     };
   }, []);
 
+  const pct = useMemo(() => budgetUsagePct(budget), [budget]);
+
   return (
     <div
-      className="text-[11px] font-mono text-shadow-1 dark:text-moonlight"
+      className="space-y-1 text-[11px] font-mono text-shadow-1 dark:text-moonlight"
       data-testid="decision-tree-driver-badge"
       data-view-format="html"
     >
@@ -47,6 +84,60 @@ export function DecisionTreeDriverBadge() {
           Driver: (none — Settings → decision tree)
         </span>
       )}
+
+      {/* Residual (eq): compact usage bar for the operator's daily API budget. */}
+      <div
+        className="space-y-0.5"
+        data-testid="decision-tree-budget-usage"
+        data-spent-status={budget?.spent_status ?? "unknown"}
+      >
+        <div className="flex justify-between gap-2">
+          <span data-testid="decision-tree-budget-spent">
+            Spent{" "}
+            {budget?.spent_status === "known" && budget.spent_usd != null
+              ? formatUsd(budget.spent_usd)
+              : budget?.spent_status === "unknown"
+                ? "unknown"
+                : "—"}
+          </span>
+          <span data-testid="decision-tree-budget-cap">
+            /{" "}
+            {budget?.daily_cap_usd != null
+              ? formatUsd(budget.daily_cap_usd)
+              : "no cap"}
+          </span>
+        </div>
+        <div
+          className="h-1.5 w-full overflow-hidden rounded bg-ink/10 dark:bg-bright/10"
+          data-testid="decision-tree-budget-bar-track"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={pct != null ? Math.round(pct) : undefined}
+          aria-label="Daily API budget usage"
+        >
+          {pct != null ? (
+            <div
+              className="h-full bg-aurora/80"
+              data-testid="decision-tree-budget-bar-fill"
+              style={{ width: `${pct}%` }}
+            />
+          ) : (
+            <div
+              className="h-full w-full bg-ink/5 dark:bg-bright/5"
+              data-testid="decision-tree-budget-bar-unknown"
+            />
+          )}
+        </div>
+        <p data-testid="decision-tree-budget-remaining">
+          Remaining{" "}
+          {budget?.remaining_usd != null
+            ? formatUsd(budget.remaining_usd)
+            : budget?.spent_status === "unknown"
+              ? "unknown"
+              : "—"}
+        </p>
+      </div>
     </div>
   );
 }

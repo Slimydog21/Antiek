@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(eq) · PR #465
+Driver badge shows budget bar (eq); collective flywheel ep/eo; highlight DR en; draft auto-open el/em.
+Operator merge still gated. Next residual (er).
