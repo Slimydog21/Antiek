@@ -3,6 +3,6 @@
 
 CAPABILITY | STATUS | EVIDENCE
 (a)–(bl) prior | branch_only | campaign inventories
-(bm) context flywheel button | branch_only | ResearchContextPanel Promote twins → load context; promoteTwinsToContext then fetchResearchContext; tests; THIS CYCLE
+(bm) context flywheel button | branch_only | ResearchContextPanel Promote twins → load context; promoteTwinsToContext then fetchResearchContext; tests; @ 3cefa498
 
 NEXT: (bn) hardenx/security scan on campaign branch or collective merge+search; operator merge PR #465
