@@ -1303,6 +1303,10 @@ export default function Multimedia() {
                               <p className="mt-1 truncate font-mono text-shadow-2 dark:text-moonlight">
                                 {buildArtifactLineageItems(asset).map((item) => item.value).join(" / ")}
                               </p>
+                              <p className="mt-1 leading-snug text-shadow-1 dark:text-moonlight">
+                                Validation hints describe manual evidence checks only; they do not retry jobs, start workers, fetch artifacts, export, publish,
+                                or call providers.
+                              </p>
                             </div>
                           )}
                           {asset.provider_readiness.status === "manual_attach_ready" && asset.provider_readiness.source_job_id && (
@@ -2469,12 +2473,18 @@ function JobPanel({
           </label>
         </div>
         {validationHints.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1" aria-label="Artifact validation hints">
-            {validationHints.map((hint) => (
-              <span key={hint} className="rounded-md border border-danger bg-danger/10 px-2 py-1 font-mono text-[11px] text-danger">
-                {hint}
-              </span>
-            ))}
+          <div className="mt-2" aria-label="Artifact validation hints">
+            <div className="flex flex-wrap gap-1">
+              {validationHints.map((hint) => (
+                <span key={hint} className="rounded-md border border-danger bg-danger/10 px-2 py-1 font-mono text-[11px] text-danger">
+                  {hint}
+                </span>
+              ))}
+            </div>
+            <p className="mt-1 text-[11px] leading-snug text-shadow-1 dark:text-moonlight">
+              Validation hints describe manual evidence checks only; they do not retry jobs, start workers, fetch artifacts, export, publish,
+              or call providers.
+            </p>
           </div>
         )}
         <LemonButton

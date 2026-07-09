@@ -1846,6 +1846,11 @@ describe("Multimedia workstation", () => {
     expect(within(readiness).getByText("Separate worker activation required")).toBeTruthy();
     expect(within(readiness).getByText("Rejected")).toBeTruthy();
     expect(screen.getByText(/Check the artifact URL, sha256 checksum, and media type/)).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Validation hints describe manual evidence checks only; they do not retry jobs, start workers, fetch artifacts, export, publish, or call providers.",
+      ),
+    ).toBeTruthy();
     expect(screen.queryByText(/Attachment saved for/)).toBeNull();
   });
 
