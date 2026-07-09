@@ -18,6 +18,7 @@
  * status (parity TwinNotes hh).
  * Residual (id): Settings deep-link for driver + twin seed readiness.
  * Residual (il): catalog HTML-first honesty metrics (no payment rails claim).
+ * Residual (im): account library HTML-first metrics strip.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -604,12 +605,25 @@ export default function MarketplaceHost({
           >
             Showing {filteredLibraryDocs.length} of {libraryDocs.length}
           </p>
+          {/* Residual (im): HTML-first account library metrics. */}
+          <div
+            className="text-[11px] font-mono opacity-80"
+            data-testid="marketplace-library-metrics"
+            data-doc-count={String(libraryDocs.length)}
+            data-filtered-count={String(filteredLibraryDocs.length)}
+            data-view-format="html"
+            role="status"
+          >
+            Library · docs={libraryDocs.length} · filtered=
+            {filteredLibraryDocs.length} · human view=HTML
+          </div>
           <ul className="space-y-2" data-testid="library-doc-list">
             {filteredLibraryDocs.map((d) => (
               <li
                 key={d.document_id}
                 className="border rounded p-2 flex flex-wrap justify-between gap-2 items-center"
                 data-testid={`library-doc-${d.document_id}`}
+                data-view-format="html"
               >
                 <div className="text-sm">
                   <strong>{d.title || d.document_id}</strong>

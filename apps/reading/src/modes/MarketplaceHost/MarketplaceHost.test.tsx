@@ -192,6 +192,11 @@ describe("MarketplaceHost mode", () => {
     expect(screen.getByTestId("library-filter-count").textContent).toMatch(
       /Showing 1 of 1/,
     );
+    // Residual (im): HTML-first library metrics.
+    const libMetrics = screen.getByTestId("marketplace-library-metrics");
+    expect(libMetrics.getAttribute("data-doc-count")).toBe("1");
+    expect(libMetrics.getAttribute("data-view-format")).toBe("html");
+    expect(libMetrics.textContent).toMatch(/Library/);
     fireEvent.change(screen.getByTestId("library-filter"), {
       target: { value: "hdoc_abc" },
     });

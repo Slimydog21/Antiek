@@ -1,0 +1,10 @@
+# inventory-im · marketplace library metrics · residual (im)
+
+## Delta
+- marketplace-library-metrics: doc_count, filtered_count, view_format=html
+
+## Verified
+vitest MarketplaceHost 5_passed
+
+## Next
+(in) re-derive
