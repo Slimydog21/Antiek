@@ -1,0 +1,8 @@
+# inventory-on · Midnight Oil deposit collective + recent_ring
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: on
+files:
+  apps/reading/src/modes/MidnightOil/index.tsx
+  apps/reading/src/modes/MidnightOil/MidnightOil.test.tsx
+proof: vitest MidnightOil 14 passed
+invariants: HTML-first · offline-honest MO · deposit spawn_ids → recent_ring · multi-select merge parent=document_id · preferred=first deposit spawn

@@ -471,3 +471,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - listRecentDeepResearchSpawnIds + recentTick + data-recent-count
   - onRecentSpawnsCleared same-tab refresh
   - parity DR host / hosted HTML / ResearchThis (reading≡write)
+
+- Closed (on, 2026-07-10) **Midnight Oil deposit collective + recent_ring:**
+  - CollectiveResearchPanel on deposit (parent=document_id)
+  - deposit spawn_ids push recent_ring for closed-window multi-select
+  - offline swarm → cohesive unit without leaving MO

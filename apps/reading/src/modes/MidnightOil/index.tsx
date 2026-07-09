@@ -32,9 +32,13 @@
  * previous recommended (preserve operator override otherwise).
  * Residual (nr): on Settings depth-tier prefill, soft-apply recommended
  * duration when still at factory default 60m.
+ * Residual (on): CollectiveResearchPanel on deposit when spawn_ids (and/or
+ * open windows / recent_ring) exist — multi-select merge into deposit HTML
+ * asset without leaving Midnight Oil (offline swarm → cohesive unit).
+ * Deposit spawn_ids also push into recent_ring for closed-window merge.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { seedTwinNotes } from "../../api/engagement";
 import {
   approveMidnightOilCeiling,
@@ -57,6 +61,7 @@ import {
   mapResearchTierToProgressPollMs,
   mapResearchTierToRecommendedDurationMinutes,
 } from "../../lib/researchTier";
+import { CollectiveResearchPanel } from "../../components/engagement/CollectiveResearchPanel";
 import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
 import {
   ResearchLaunchBudgetPanel,
@@ -65,6 +70,12 @@ import {
 } from "../../components/engagement/ResearchLaunchBudgetPanel";
 import { ResearchProgressPanel } from "../../components/engagement/ResearchProgressPanel";
 import { openWindow } from "../../components/windows/openWindow";
+import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
+import {
+  listRecentDeepResearchSpawnIds,
+  pushRecentDeepResearchSpawnId,
+} from "../../workspace/recentDeepResearchSpawns";
+import { useWindows } from "../../workspace/windowsStore";
 
 /** HTML-only deposit open (floating | full). Returns window id or null. */
 export function openMidnightOilDepositWindow(
@@ -126,6 +137,46 @@ export default function MidnightOil() {
   // Residual (hy): live worker step readiness (offline default).
   const [liveStepStatus, setLiveStepStatus] =
     useState<MidnightOilLiveStepStatusResponse | null>(null);
+  // Residual (on): deposit spawn → recent_ring + collective multi-select.
+  const windows = useWindows((s) => s.windows);
+  const [recentTick, setRecentTick] = useState(0);
+  const recentSpawnIds = useMemo(
+    () => listRecentDeepResearchSpawnIds(),
+    [windows, recentTick, deposit],
+  );
+  const depositSpawnIds = useMemo(
+    () =>
+      (deposit?.spawn_ids ?? [])
+        .map((x) => String(x || "").trim())
+        .filter(Boolean),
+    [deposit],
+  );
+  const availableSpawnIds = useMemo(
+    () =>
+      collectDeepResearchSpawnIds({
+        currentSpawnId: null,
+        extraSpawnIds: depositSpawnIds,
+        windows,
+        recentSpawnIds,
+      }),
+    [depositSpawnIds, windows, recentSpawnIds],
+  );
+  const depositParentAssetId = useMemo(() => {
+    if (!deposit) return null;
+    return (deposit.document_id || deposit.asset_id || "").trim() || null;
+  }, [deposit]);
+
+  /**
+   * Residual (on): push deposit spawn ids into session recent_ring so they
+   * remain multi-selectable after windows close / navigate away.
+   */
+  useEffect(() => {
+    if (!depositSpawnIds.length) return;
+    for (const sid of depositSpawnIds) {
+      pushRecentDeepResearchSpawnId(sid);
+    }
+    setRecentTick((n) => n + 1);
+  }, [depositSpawnIds]);
 
   const maybeAutoOpenDeposit = useCallback(
     (dep: MidnightOilDepositResponse) => {
@@ -1015,6 +1066,29 @@ export default function MidnightOil() {
                       </div>
                     );
                   })}
+                </section>
+              ) : null}
+              {/* Residual (on): multi-select deposit + recent DR spawns → deposit asset. */}
+              {availableSpawnIds.length > 0 && depositParentAssetId ? (
+                <section
+                  className="space-y-2 border-t border-ink/10 pt-2 dark:border-bright/10"
+                  data-testid="moil-deposit-collective-mount"
+                  data-view-format="html"
+                  data-available-spawn-count={String(availableSpawnIds.length)}
+                  data-recent-count={String(recentSpawnIds.length)}
+                  data-deposit-spawn-count={String(depositSpawnIds.length)}
+                  data-asset-id={depositParentAssetId}
+                >
+                  <p className="text-[10px] font-mono uppercase tracking-wider opacity-70">
+                    Collective research (deposit spawns)
+                  </p>
+                  <CollectiveResearchPanel
+                    availableSpawnIds={availableSpawnIds}
+                    parentAssetId={depositParentAssetId}
+                    recentSpawnIds={recentSpawnIds}
+                    preferredSpawnId={depositSpawnIds[0] ?? null}
+                    onRecentSpawnsCleared={() => setRecentTick((n) => n + 1)}
+                  />
                 </section>
               ) : null}
               {deposit.progress ? (

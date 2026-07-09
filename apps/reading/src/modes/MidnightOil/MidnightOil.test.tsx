@@ -11,6 +11,9 @@ const {
   fetchMidnightOilLiveStepStatus,
   fetchDecisionTreeSelection,
   seedTwinNotes,
+  collectDeepResearchSpawnIdsMock,
+  listRecentDeepResearchSpawnIdsMock,
+  pushRecentDeepResearchSpawnIdMock,
 } = vi.hoisted(() => ({
   createMidnightOilJob: vi.fn(),
   approveMidnightOilCeiling: vi.fn(),
@@ -32,6 +35,36 @@ const {
   })),
   fetchDecisionTreeSelection: vi.fn(),
   seedTwinNotes: vi.fn(),
+  collectDeepResearchSpawnIdsMock: vi.fn(
+    (source: {
+      extraSpawnIds?: readonly string[] | null;
+      recentSpawnIds?: readonly string[] | null;
+    }) => {
+      const seen = new Set<string>();
+      const out: string[] = [];
+      for (const x of [
+        ...(source.extraSpawnIds ?? []),
+        ...(source.recentSpawnIds ?? []),
+      ]) {
+        const id = String(x || "").trim();
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        out.push(id);
+      }
+      return out;
+    },
+  ),
+  listRecentDeepResearchSpawnIdsMock: vi.fn(() => [] as string[]),
+  pushRecentDeepResearchSpawnIdMock: vi.fn((id: string) => {
+    const sid = String(id || "").trim();
+    if (!sid) return listRecentDeepResearchSpawnIdsMock();
+    const prev = listRecentDeepResearchSpawnIdsMock().filter(
+      (x: string) => x !== sid,
+    );
+    const next = [sid, ...prev];
+    listRecentDeepResearchSpawnIdsMock.mockReturnValue(next);
+    return next;
+  }),
 }));
 
 vi.mock("../../api/midnightOil", () => ({
@@ -146,6 +179,47 @@ vi.mock("../../components/engagement/ResearchProgressPanel", () => ({
   ),
 }));
 
+vi.mock("../../components/engagement/CollectiveResearchPanel", () => ({
+  CollectiveResearchPanel: (props: {
+    availableSpawnIds: string[];
+    parentAssetId?: string | null;
+    recentSpawnIds?: readonly string[] | null;
+    preferredSpawnId?: string | null;
+    onRecentSpawnsCleared?: () => void;
+  }) => (
+    <div
+      data-testid="collective-research-panel-stub"
+      data-parent={props.parentAssetId ?? ""}
+      data-spawns={props.availableSpawnIds.join(",")}
+      data-recent={
+        props.recentSpawnIds != null ? props.recentSpawnIds.join(",") : ""
+      }
+      data-preferred={props.preferredSpawnId ?? ""}
+      data-has-clear={props.onRecentSpawnsCleared ? "1" : "0"}
+    >
+      parent={props.parentAssetId ?? ""}:spawns=
+      {props.availableSpawnIds.join(",")}
+    </div>
+  ),
+}));
+
+vi.mock("../../workspace/windowsStore", () => ({
+  useWindows: (sel: (s: { windows: Record<string, unknown> }) => unknown) =>
+    sel({ windows: {} }),
+}));
+
+vi.mock("../../workspace/collectDeepResearchSpawnIds", () => ({
+  collectDeepResearchSpawnIds: (...args: unknown[]) =>
+    collectDeepResearchSpawnIdsMock(...args),
+}));
+
+vi.mock("../../workspace/recentDeepResearchSpawns", () => ({
+  listRecentDeepResearchSpawnIds: (...args: unknown[]) =>
+    listRecentDeepResearchSpawnIdsMock(...args),
+  pushRecentDeepResearchSpawnId: (...args: unknown[]) =>
+    pushRecentDeepResearchSpawnIdMock(...(args as [string])),
+}));
+
 const openWindow = vi.fn(() => "win:moil-deposit:draft_moil_asset_dep_abc");
 vi.mock("../../components/windows/openWindow", () => ({
   openWindow: (...args: unknown[]) => openWindow(...args),
@@ -169,6 +243,20 @@ describe("MidnightOil mode", () => {
     runMidnightOilJob.mockReset();
     getMidnightOilJob.mockReset();
     openWindow.mockClear();
+    collectDeepResearchSpawnIdsMock.mockClear();
+    listRecentDeepResearchSpawnIdsMock.mockReset().mockReturnValue([]);
+    pushRecentDeepResearchSpawnIdMock.mockClear();
+    // Keep ring-update behavior after clear.
+    pushRecentDeepResearchSpawnIdMock.mockImplementation((id: string) => {
+      const sid = String(id || "").trim();
+      if (!sid) return listRecentDeepResearchSpawnIdsMock();
+      const prev = listRecentDeepResearchSpawnIdsMock().filter(
+        (x: string) => x !== sid,
+      );
+      const next = [sid, ...prev];
+      listRecentDeepResearchSpawnIdsMock.mockReturnValue(next);
+      return next;
+    });
     fetchDecisionTreeSelection.mockReset();
     fetchDecisionTreeSelection.mockResolvedValue({
       installed: false,
@@ -556,6 +644,29 @@ describe("MidnightOil mode", () => {
         .getByTestId("research-progress-panel-stub")
         .getAttribute("data-research-tier"),
     ).toBe("deep");
+    // Residual (on): collective multi-select on deposit + recent_ring push.
+    await waitFor(() => {
+      expect(pushRecentDeepResearchSpawnIdMock).toHaveBeenCalledWith("spn_1");
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("moil-deposit-collective-mount")).toBeTruthy();
+    });
+    const collectiveMount = screen.getByTestId("moil-deposit-collective-mount");
+    expect(collectiveMount.getAttribute("data-view-format")).toBe("html");
+    expect(collectiveMount.getAttribute("data-asset-id")).toBe(
+      "draft_moil_asset_dep_abc",
+    );
+    expect(collectiveMount.getAttribute("data-available-spawn-count")).toBe(
+      "1",
+    );
+    expect(collectiveMount.getAttribute("data-deposit-spawn-count")).toBe("1");
+    const collectiveStub = screen.getByTestId("collective-research-panel-stub");
+    expect(collectiveStub.getAttribute("data-parent")).toBe(
+      "draft_moil_asset_dep_abc",
+    );
+    expect(collectiveStub.getAttribute("data-spawns")).toBe("spn_1");
+    expect(collectiveStub.getAttribute("data-preferred")).toBe("spn_1");
+    expect(collectiveStub.getAttribute("data-has-clear")).toBe("1");
     expect(screen.getByTestId("moil-progress-summary").textContent).toMatch(
       /complete/,
     );
