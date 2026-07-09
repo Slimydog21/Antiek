@@ -182,6 +182,8 @@ def default_demo_catalog() -> Catalog:
 
     Residual (io): expand beyond a single PD novel with knowledge-dense
     public-domain works a technology researcher would host HTML-first.
+    Residual (lw): research-domain ``subjects`` tags + STEM PD spine so the
+    marketplace filters by science/mathematics/philosophy for workstation use.
     No network; fixtures only. Purchased stub remains for receipt path.
     """
     from .catalog import make_catalog
@@ -201,6 +203,7 @@ def default_demo_catalog() -> Catalog:
                     "However little known the feelings or views of such a man may be."
                 ),
                 source_format="html",
+                subjects=("literature",),
             ),
             # Residual (io): knowledge-dense PD spine for research workstation.
             CatalogEntry(
@@ -218,6 +221,7 @@ def default_demo_catalog() -> Catalog:
                     "species—that mystery of mysteries."
                 ),
                 source_format="html",
+                subjects=("science", "biology"),
             ),
             CatalogEntry(
                 book_id="pd-wealth",
@@ -235,6 +239,7 @@ def default_demo_catalog() -> Catalog:
                     "who are to consume it, the nation will be better or worse supplied."
                 ),
                 source_format="html",
+                subjects=("economics", "philosophy"),
             ),
             CatalogEntry(
                 book_id="pd-federalist",
@@ -250,6 +255,7 @@ def default_demo_catalog() -> Catalog:
                     "The subject speaks its own importance."
                 ),
                 source_format="html",
+                subjects=("politics", "philosophy"),
             ),
             CatalogEntry(
                 book_id="pd-discourse",
@@ -265,6 +271,7 @@ def default_demo_catalog() -> Catalog:
                     "usually desire a larger measure of this quality than they already possess."
                 ),
                 source_format="html",
+                subjects=("philosophy", "science"),
             ),
             CatalogEntry(
                 book_id="pd-liberty",
@@ -280,6 +287,55 @@ def default_demo_catalog() -> Catalog:
                     "the power which can be legitimately exercised by society over the individual."
                 ),
                 source_format="html",
+                subjects=("philosophy", "politics"),
+            ),
+            # Residual (lw): STEM PD spine for technology researchers.
+            CatalogEntry(
+                book_id="pd-elements",
+                title="Euclid's Elements",
+                author="Euclid",
+                source="project_gutenberg",
+                license_class="public_domain",
+                is_free=True,
+                body_text=(
+                    "A point is that which has no part.\n\n"
+                    "A line is breadthless length.\n\n"
+                    "The extremities of a line are points."
+                ),
+                source_format="html",
+                subjects=("mathematics", "science"),
+            ),
+            CatalogEntry(
+                book_id="pd-principia",
+                title="Philosophiæ Naturalis Principia Mathematica",
+                author="Isaac Newton",
+                source="project_gutenberg",
+                license_class="public_domain",
+                is_free=True,
+                body_text=(
+                    "Every body continues in its state of rest, or of uniform motion "
+                    "in a right line, unless it is compelled to change that state by "
+                    "forces impressed upon it.\n\n"
+                    "The change of motion is proportional to the motive force impressed."
+                ),
+                source_format="html",
+                subjects=("physics", "mathematics", "science"),
+            ),
+            CatalogEntry(
+                book_id="pd-novum",
+                title="Novum Organum",
+                author="Francis Bacon",
+                source="standard_ebooks",
+                license_class="public_domain",
+                is_free=True,
+                body_text=(
+                    "Man, being the servant and interpreter of Nature, can do and "
+                    "understand so much and so much only as he has observed in fact "
+                    "or in thought of the course of nature.\n\n"
+                    "Beyond this he neither knows anything nor can do anything."
+                ),
+                source_format="html",
+                subjects=("philosophy", "science", "method"),
             ),
             CatalogEntry(
                 book_id="buy-modern",
@@ -290,6 +346,7 @@ def default_demo_catalog() -> Catalog:
                 is_free=False,
                 body_text="",
                 source_format="pdf",
+                subjects=("technology", "systems"),
             ),
         ]
     )

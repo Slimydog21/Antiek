@@ -13,6 +13,8 @@ export type CatalogEntryRow = {
   license_class: string;
   is_free: boolean;
   source: string;
+  /** Residual (lw): research-domain tags (science, philosophy, …). */
+  subjects?: string[];
 };
 
 export type HostResultResponse = {
@@ -39,13 +41,15 @@ async function readJson<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
-/** Residual (iq): catalog honesty fields from GET /marketplace/catalog. */
+/** Residual (iq/lw): catalog honesty fields from GET /marketplace/catalog. */
 export type MarketplaceCatalogResponse = {
   entries: CatalogEntryRow[];
   count: number;
   view_format: "html";
   by_source?: Record<string, number>;
   by_license?: Record<string, number>;
+  /** Residual (lw): multi-label research-domain counts. */
+  by_subject?: Record<string, number>;
   public_domain_count?: number;
   purchased_count?: number;
   free_count?: number;

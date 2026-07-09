@@ -36,6 +36,8 @@
  * Residual (ja): DR status surfaces research_tier used for launch audit.
  * Residual (jb): reset budget force override when hosted document changes.
  * Residual (jc): prefill host DR depth tier from Settings depth-tier (parity gt/gs).
+ * Residual (lw): research-domain subject tags + domain chip filter + by_subject
+ * honesty (STEM PD spine: elements/principia/novum).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -93,13 +95,29 @@ export function groupCatalogBySource(
   return out;
 }
 
+/** Residual (lw): multi-label subject counts for research-domain honesty. */
+export function groupCatalogBySubject(
+  rows: CatalogEntryRow[],
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const e of rows) {
+    for (const s of e.subjects || []) {
+      const token = (s || "").trim().toLowerCase();
+      if (!token) continue;
+      out[token] = (out[token] || 0) + 1;
+    }
+  }
+  return out;
+}
+
 export default function MarketplaceHost({
   ownerId = "operator",
 }: MarketplaceHostProps) {
   const [entries, setEntries] = useState<CatalogEntryRow[]>([]);
-  /** Residual (ir): server honesty fields from catalog route (iq). */
+  /** Residual (ir/lw): server honesty fields from catalog route (iq/lw). */
   const [catalogHonesty, setCatalogHonesty] = useState<{
     by_source?: Record<string, number>;
+    by_subject?: Record<string, number>;
     public_domain_count?: number;
     purchased_count?: number;
     free_count?: number;
@@ -118,6 +136,11 @@ export default function MarketplaceHost({
    * Composes with filterQuery; does not invent payment rails.
    */
   const [freePdOnly, setFreePdOnly] = useState(false);
+  /**
+   * Residual (lw): research-domain subject chip (empty = all domains).
+   * Exact token match against entry.subjects; composes with freePdOnly + filterQuery.
+   */
+  const [subjectFilter, setSubjectFilter] = useState("");
   /** Residual (dl): filter over account library document titles/ids. */
   const [libraryFilter, setLibraryFilter] = useState("");
   /** Residual (dk): auto-open hosted HTML window after successful host. */
@@ -125,18 +148,25 @@ export default function MarketplaceHost({
 
   const filteredEntries = useMemo(() => {
     const q = filterQuery.trim().toLowerCase();
+    const subject = subjectFilter.trim().toLowerCase();
     return entries.filter((e) => {
       // Residual (is): free public_domain research spine filter.
       if (freePdOnly) {
         if (!(e.license_class === "public_domain" && e.is_free)) return false;
       }
+      // Residual (lw): exact research-domain subject chip.
+      if (subject) {
+        const subjects = (e.subjects || []).map((s) => s.toLowerCase());
+        if (!subjects.includes(subject)) return false;
+      }
       if (!q) return true;
-      // Residual (io): include knowledge source in filter haystack.
+      // Residual (io/lw): include knowledge source + subjects in filter haystack.
+      const subjHay = (e.subjects || []).join(" ");
       const hay =
-        `${e.title} ${e.author} ${e.license_class} ${e.book_id} ${e.source}`.toLowerCase();
+        `${e.title} ${e.author} ${e.license_class} ${e.book_id} ${e.source} ${subjHay}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [entries, filterQuery, freePdOnly]);
+  }, [entries, filterQuery, freePdOnly, subjectFilter]);
 
   /**
    * Residual (io/ir): by_source breakdown — prefer server honesty when present.
@@ -150,6 +180,24 @@ export default function MarketplaceHost({
     }
     return groupCatalogBySource(entries);
   }, [catalogHonesty, entries]);
+
+  /**
+   * Residual (lw): by_subject breakdown — prefer server honesty when present.
+   */
+  const catalogBySubject = useMemo(() => {
+    if (
+      catalogHonesty?.by_subject &&
+      Object.keys(catalogHonesty.by_subject).length > 0
+    ) {
+      return catalogHonesty.by_subject;
+    }
+    return groupCatalogBySubject(entries);
+  }, [catalogHonesty, entries]);
+
+  /** Residual (lw): sorted domain chips for research filter UI. */
+  const subjectChipList = useMemo(() => {
+    return Object.keys(catalogBySubject).sort((a, b) => a.localeCompare(b));
+  }, [catalogBySubject]);
 
   const filteredLibraryDocs = useMemo(() => {
     const q = libraryFilter.trim().toLowerCase();
@@ -167,9 +215,10 @@ export default function MarketplaceHost({
     try {
       const cat: MarketplaceCatalogResponse = await fetchMarketplaceCatalog();
       setEntries(cat.entries);
-      // Residual (ir): retain server honesty fields when provided.
+      // Residual (ir/lw): retain server honesty fields when provided.
       setCatalogHonesty({
         by_source: cat.by_source,
+        by_subject: cat.by_subject,
         public_domain_count: cat.public_domain_count,
         purchased_count: cat.purchased_count,
         free_count: cat.free_count,
@@ -633,7 +682,7 @@ export default function MarketplaceHost({
             data-testid="catalog-filter"
             value={filterQuery}
             onChange={(e) => setFilterQuery(e.target.value)}
-            placeholder="Title, author, license, source (project_gutenberg…)"
+            placeholder="Title, author, license, source, subject…"
             className="border rounded px-2 py-1 min-w-[16rem]"
             disabled={busy}
             aria-label="Filter catalog"
@@ -650,6 +699,48 @@ export default function MarketplaceHost({
           />
           Free public-domain only
         </label>
+        {/* Residual (lw): research-domain subject chips (STEM / philosophy / …). */}
+        <div
+          className="flex flex-wrap gap-1 items-center pb-1"
+          data-testid="catalog-subject-chips"
+          role="group"
+          aria-label="Filter catalog by research domain"
+        >
+          <button
+            type="button"
+            data-testid="catalog-subject-all"
+            data-active={String(subjectFilter === "")}
+            className={`text-[11px] font-mono border rounded px-2 py-0.5 ${
+              subjectFilter === "" ? "opacity-100 font-semibold" : "opacity-70"
+            }`}
+            onClick={() => setSubjectFilter("")}
+            disabled={busy}
+          >
+            all domains
+          </button>
+          {subjectChipList.map((subj) => (
+            <button
+              key={subj}
+              type="button"
+              data-testid={`catalog-subject-${subj}`}
+              data-active={String(subjectFilter === subj)}
+              className={`text-[11px] font-mono border rounded px-2 py-0.5 ${
+                subjectFilter === subj
+                  ? "opacity-100 font-semibold"
+                  : "opacity-70"
+              }`}
+              onClick={() =>
+                setSubjectFilter((prev) => (prev === subj ? "" : subj))
+              }
+              disabled={busy}
+            >
+              {subj}
+              {catalogBySubject[subj] != null
+                ? ` (${catalogBySubject[subj]})`
+                : ""}
+            </button>
+          ))}
+        </div>
         <label className="flex flex-col gap-1 text-sm font-mono">
           <span className="text-[11px] uppercase opacity-70">
             Purchase receipt ref
@@ -717,6 +808,8 @@ export default function MarketplaceHost({
           catalogHonesty?.by_source ? "server" : "client"
         }
         data-free-pd-only={String(freePdOnly)}
+        data-subject-filter={subjectFilter || "all"}
+        data-subject-count={String(Object.keys(catalogBySubject).length)}
         data-view-format="html"
         data-payment-rails={
           catalogHonesty?.payment_rails || "manual_receipt_only"
@@ -725,7 +818,8 @@ export default function MarketplaceHost({
       >
         <p>
           Catalog · entries={entries.length} · filtered={filteredEntries.length}{" "}
-          · sources={Object.keys(catalogBySource).length} · free=
+          · sources={Object.keys(catalogBySource).length} · subjects=
+          {Object.keys(catalogBySubject).length} · free=
           {catalogHonesty?.free_count ??
             entries.filter((e) => e.is_free).length}{" "}
           · human view=HTML · payment=
@@ -737,6 +831,15 @@ export default function MarketplaceHost({
             By source:{" "}
             {Object.entries(catalogBySource)
               .map(([src, n]) => `${src}=${n}`)
+              .join(" · ")}
+          </p>
+        ) : null}
+        {Object.keys(catalogBySubject).length > 0 ? (
+          <p data-testid="marketplace-catalog-by-subject">
+            By subject:{" "}
+            {Object.entries(catalogBySubject)
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([subj, n]) => `${subj}=${n}`)
               .join(" · ")}
           </p>
         ) : null}
@@ -753,6 +856,7 @@ export default function MarketplaceHost({
             data-is-free={String(Boolean(e.is_free))}
             data-source={e.source || "unknown"}
             data-source-format="html"
+            data-subjects={(e.subjects || []).join(",") || "none"}
           >
             <div>
               <strong>{e.title}</strong>
@@ -761,6 +865,9 @@ export default function MarketplaceHost({
                 {e.is_free ? " · free" : ""}
                 {" · source="}
                 {e.source || "unknown"}
+                {(e.subjects || []).length > 0
+                  ? ` · subjects=${(e.subjects || []).join(",")}`
+                  : ""}
                 {" · HTML host"}
               </div>
             </div>
@@ -787,7 +894,10 @@ export default function MarketplaceHost({
       </ul>
       {entries.length > 0 && filteredEntries.length === 0 ? (
         <p className="text-sm opacity-70" data-testid="catalog-filter-empty">
-          No catalog matches for “{filterQuery.trim()}”.
+          No catalog matches
+          {filterQuery.trim() ? ` for “${filterQuery.trim()}”` : ""}
+          {subjectFilter ? ` in domain “${subjectFilter}”` : ""}
+          {freePdOnly ? " (free public-domain only)" : ""}.
         </p>
       ) : null}
 

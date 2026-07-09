@@ -19,11 +19,22 @@ describe("marketplaceHost client", () => {
     mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({
-        entries: [{ book_id: "pd-pride", title: "Pride", author: "A", license_class: "public_domain", is_free: true, source: "se" }],
+        entries: [
+          {
+            book_id: "pd-pride",
+            title: "Pride",
+            author: "A",
+            license_class: "public_domain",
+            is_free: true,
+            source: "se",
+            subjects: ["literature"],
+          },
+        ],
         count: 1,
         view_format: "html",
-        // Residual (it/iq): honesty fields from catalog route.
+        // Residual (it/iq/lw): honesty fields from catalog route.
         by_source: { se: 1 },
+        by_subject: { literature: 1 },
         public_domain_count: 1,
         purchased_count: 0,
         free_count: 1,
@@ -34,6 +45,8 @@ describe("marketplaceHost client", () => {
     expect(out.count).toBe(1);
     expect(out.view_format).toBe("html");
     expect(out.by_source?.se).toBe(1);
+    expect(out.by_subject?.literature).toBe(1);
+    expect(out.entries[0]?.subjects).toEqual(["literature"]);
     expect(out.public_domain_count).toBe(1);
     expect(out.free_count).toBe(1);
     expect(out.payment_rails).toBe("manual_receipt_only");

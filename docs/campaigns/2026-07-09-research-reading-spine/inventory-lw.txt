@@ -1,0 +1,14 @@
+# inventory-lw · marketplace catalog research-domain subjects + STEM PD
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: lw
+files:
+  substrate/marketplace_host/catalog.py
+  substrate/marketplace_host/product_path.py
+  interfaces/research/api/marketplace_host_routes.py
+  apps/reading/src/api/marketplaceHost.ts
+  apps/reading/src/api/marketplaceHost.test.ts
+  apps/reading/src/modes/MarketplaceHost/index.tsx
+  apps/reading/src/modes/MarketplaceHost/MarketplaceHost.test.tsx
+  tests/test_marketplace_catalog_subjects_lw.py
+proof: pytest subjects/STEM/by_subject green; vitest domain chips green
+invariants: HTML-first · no live payment rails · offline demo catalog · NotDiamond advisory

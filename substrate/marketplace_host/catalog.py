@@ -19,7 +19,12 @@ LicenseClass = Literal["public_domain", "purchased", "unknown"]
 
 @dataclass(frozen=True)
 class CatalogEntry:
-    """One catalog row: identity + license class + optional body for PD fixtures."""
+    """One catalog row: identity + license class + optional body for PD fixtures.
+
+    Residual (lw): ``subjects`` are research-domain tags (science, philosophy, …)
+    so the marketplace can filter knowledge-dense PD for workstation use.
+    Empty subjects is valid (legacy / uncategorized).
+    """
 
     book_id: str
     title: str
@@ -29,11 +34,12 @@ class CatalogEntry:
     is_free: bool
     body_text: str = ""
     source_format: str = "html"  # "html" | "pdf" | "epub" | "text" — ingest source only
+    subjects: tuple[str, ...] = ()
 
 
 @dataclass
 class Catalog:
-    """In-process catalog. Search is substring over title/author/book_id."""
+    """In-process catalog. Search is substring over title/author/book_id/source/subjects."""
 
     entries: dict[str, CatalogEntry] = field(default_factory=dict)
 
@@ -47,6 +53,30 @@ class Catalog:
             raise ValueError("public_domain entries must be is_free=True")
         if entry.license_class == "purchased" and entry.is_free:
             raise ValueError("purchased entries must not be is_free")
+        # Residual (lw): normalize subjects to lowercase tokens (no empties, order-preserving unique).
+        seen: set[str] = set()
+        subjects_list: list[str] = []
+        for s in entry.subjects or ():
+            if not isinstance(s, str):
+                continue
+            token = s.strip().lower()
+            if not token or token in seen:
+                continue
+            seen.add(token)
+            subjects_list.append(token)
+        subjects = tuple(subjects_list)
+        if subjects != entry.subjects:
+            entry = CatalogEntry(
+                book_id=entry.book_id,
+                title=entry.title,
+                author=entry.author,
+                source=entry.source,
+                license_class=entry.license_class,
+                is_free=entry.is_free,
+                body_text=entry.body_text,
+                source_format=entry.source_format,
+                subjects=subjects,
+            )
         self.entries[entry.book_id] = entry
         return entry
 
@@ -59,9 +89,19 @@ class Catalog:
             return sorted(self.entries.values(), key=lambda e: e.book_id)
         out: list[CatalogEntry] = []
         for e in self.entries.values():
-            hay = f"{e.book_id} {e.title} {e.author} {e.source}".lower()
+            # Residual (lw): subjects join the haystack for domain search.
+            subj = " ".join(e.subjects)
+            hay = f"{e.book_id} {e.title} {e.author} {e.source} {subj}".lower()
             if q in hay:
                 out.append(e)
+        return sorted(out, key=lambda e: e.book_id)
+
+    def filter_by_subject(self, subject: str) -> list[CatalogEntry]:
+        """Residual (lw): exact subject token match (normalized lowercase)."""
+        token = (subject or "").strip().lower()
+        if not token:
+            return sorted(self.entries.values(), key=lambda e: e.book_id)
+        out = [e for e in self.entries.values() if token in e.subjects]
         return sorted(out, key=lambda e: e.book_id)
 
 

@@ -29,8 +29,9 @@ hydrate/twin/MO live-status readiness surfaces, offline-honest identity paths.
 2. Competitive long-horizon wrestle progress polish when live step inject lands.
 3. Antiek-bench recursive rewrite already propose-only — keep feed sources + task classes honest.
 4. HTML-first marketplace catalog expansion (sources) without payment rails —
-   **partially closed (io–is)**: knowledge-dense PD spine + by_source honesty +
-   free-PD filter; live external catalog connectors still deferred.
+   **partially closed (io–is, lw)**: knowledge-dense PD + STEM spine + by_source/
+   by_subject honesty + free-PD filter + domain chips; live external catalog
+   connectors still deferred.
 
 ## Invariants (hard to vary)
 
@@ -62,7 +63,12 @@ DR/Hosted/Write hosts (see competitive notes kn–ko, kq–ks).
 Executable operator/agent prep: `DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md`.
 Does not enable live injectors — documents how to enable without silent failure.
 
+## Closed since lv (marketplace catalog subjects · 2026-07-10)
+
+**(lw)** research-domain subjects + STEM PD (elements/principia/novum) + by_subject
+honesty + domain chip filter UI. Live connectors still L1/L2 dual-gate only.
+
 ## Next residual after this doc
 
-**(kz)+** next thin product residual or operator merge PR #465.
+**(lx)+** next thin product residual or operator merge PR #465.
 Infinite continues until STOP.

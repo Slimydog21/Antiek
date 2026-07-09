@@ -1,0 +1,155 @@
+"""Residual (lw): research-domain subjects + STEM PD spine + by_subject honesty."""
+
+from __future__ import annotations
+
+import os
+import sys
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+_REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _REPO not in sys.path:
+    sys.path.insert(0, _REPO)
+
+from interfaces.research.api.marketplace_host_routes import (  # noqa: E402
+    catalog_honesty_payload,
+    register_marketplace_host_routes,
+    reset_marketplace_host_store,
+)
+from substrate.marketplace_host import (  # noqa: E402
+    CatalogEntry,
+    default_demo_catalog,
+    host_book_into_account,
+    InMemoryHostStore,
+    make_catalog,
+)
+
+
+def test_catalog_entry_subjects_normalized_on_add() -> None:
+    cat = make_catalog(
+        [
+            CatalogEntry(
+                book_id="x",
+                title="X",
+                author="A",
+                source="project_gutenberg",
+                license_class="public_domain",
+                is_free=True,
+                body_text="hi",
+                subjects=("Science", "  Math ", "", "science"),
+            )
+        ]
+    )
+    e = cat.get("x")
+    assert e is not None
+    # empty stripped; lowercased; order-preserving unique (Science + science → one).
+    assert e.subjects == ("science", "math")
+    assert "" not in e.subjects
+
+
+def test_filter_by_subject_exact_token() -> None:
+    cat = default_demo_catalog()
+    math = cat.filter_by_subject("mathematics")
+    assert len(math) >= 2  # elements + principia
+    assert all("mathematics" in e.subjects for e in math)
+    science = cat.filter_by_subject("science")
+    assert len(science) >= 3
+    empty = cat.filter_by_subject("")
+    assert len(empty) == len(cat.search(""))
+
+
+def test_search_includes_subjects() -> None:
+    cat = default_demo_catalog()
+    hits = cat.search("mathematics")
+    assert any(e.book_id == "pd-elements" for e in hits)
+    assert any(e.book_id == "pd-principia" for e in hits)
+
+
+def test_stem_pd_spine_in_demo_catalog() -> None:
+    cat = default_demo_catalog()
+    ids = {e.book_id for e in cat.search("")}
+    assert "pd-elements" in ids
+    assert "pd-principia" in ids
+    assert "pd-novum" in ids
+    assert len(ids) >= 10
+    elements = cat.get("pd-elements")
+    assert elements is not None
+    assert elements.license_class == "public_domain"
+    assert elements.is_free is True
+    assert "mathematics" in elements.subjects
+    assert elements.source_format == "html"
+
+
+def test_host_stem_pd_html_first() -> None:
+    store = InMemoryHostStore()
+    cat = default_demo_catalog()
+    r = host_book_into_account(
+        owner_id="researcher",
+        store=store,
+        book_id="pd-principia",
+        catalog=cat,
+    )
+    assert r.view_format == "html"
+    assert not r.html.lstrip().lower().startswith("%pdf")
+    assert "Newton" in r.html or "motion" in r.html.lower() or "body" in r.html.lower()
+
+
+def test_catalog_honesty_by_subject() -> None:
+    rows = [
+        {
+            "book_id": "a",
+            "source": "project_gutenberg",
+            "license_class": "public_domain",
+            "is_free": True,
+            "subjects": ["science", "biology"],
+        },
+        {
+            "book_id": "b",
+            "source": "standard_ebooks",
+            "license_class": "public_domain",
+            "is_free": True,
+            "subjects": ["science", "philosophy"],
+        },
+        {
+            "book_id": "c",
+            "source": "marketplace_stub",
+            "license_class": "purchased",
+            "is_free": False,
+            "subjects": ["technology"],
+        },
+    ]
+    p = catalog_honesty_payload(rows)
+    assert p["by_subject"]["science"] == 2
+    assert p["by_subject"]["biology"] == 1
+    assert p["by_subject"]["philosophy"] == 1
+    assert p["by_subject"]["technology"] == 1
+    assert p["view_format"] == "html"
+
+
+@pytest.fixture
+def client():
+    reset_marketplace_host_store()
+    app = FastAPI()
+    register_marketplace_host_routes(app)
+    return TestClient(app)
+
+
+def test_catalog_route_subjects_and_by_subject(client) -> None:
+    r = client.get("/marketplace/catalog")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["view_format"] == "html"
+    assert body["count"] >= 10
+    assert "by_subject" in body
+    assert body["by_subject"].get("science", 0) >= 1
+    assert body["by_subject"].get("mathematics", 0) >= 1
+    # STEM spine entries present with subjects.
+    by_id = {e["book_id"]: e for e in body["entries"]}
+    assert "pd-elements" in by_id
+    assert "mathematics" in by_id["pd-elements"]["subjects"]
+    assert "pd-principia" in by_id
+    assert "physics" in by_id["pd-principia"]["subjects"]
+    assert "pd-novum" in by_id
+    assert "method" in by_id["pd-novum"]["subjects"]

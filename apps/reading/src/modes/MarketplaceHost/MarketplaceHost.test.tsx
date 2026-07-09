@@ -1,6 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import MarketplaceHost, { groupCatalogBySource } from "./index";
+import MarketplaceHost, {
+  groupCatalogBySource,
+  groupCatalogBySubject,
+} from "./index";
 
 const {
   fetchMarketplaceCatalog,
@@ -817,6 +820,123 @@ describe("MarketplaceHost mode", () => {
     ).toBe("true");
     expect(
       (screen.getByTestId("catalog-filter") as HTMLInputElement).placeholder,
-    ).toMatch(/project_gutenberg/i);
+    ).toMatch(/subject/i);
+  });
+
+  it("groups catalog entries by research subject (lw)", () => {
+    const g = groupCatalogBySubject([
+      {
+        book_id: "pd-elements",
+        title: "Elements",
+        author: "Euclid",
+        license_class: "public_domain",
+        is_free: true,
+        source: "project_gutenberg",
+        subjects: ["mathematics", "science"],
+      },
+      {
+        book_id: "pd-principia",
+        title: "Principia",
+        author: "Newton",
+        license_class: "public_domain",
+        is_free: true,
+        source: "project_gutenberg",
+        subjects: ["physics", "mathematics", "science"],
+      },
+      {
+        book_id: "pd-pride",
+        title: "Pride",
+        author: "Austen",
+        license_class: "public_domain",
+        is_free: true,
+        source: "standard_ebooks",
+        subjects: ["literature"],
+      },
+    ]);
+    expect(g.mathematics).toBe(2);
+    expect(g.science).toBe(2);
+    expect(g.physics).toBe(1);
+    expect(g.literature).toBe(1);
+  });
+
+  it("filters catalog by research-domain subject chip (lw)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-elements",
+          title: "Euclid's Elements",
+          author: "Euclid",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: ["mathematics", "science"],
+        },
+        {
+          book_id: "pd-pride",
+          title: "Pride and Prejudice",
+          author: "Jane Austen",
+          license_class: "public_domain",
+          is_free: true,
+          source: "standard_ebooks",
+          subjects: ["literature"],
+        },
+        {
+          book_id: "pd-novum",
+          title: "Novum Organum",
+          author: "Francis Bacon",
+          license_class: "public_domain",
+          is_free: true,
+          source: "standard_ebooks",
+          subjects: ["philosophy", "science", "method"],
+        },
+      ],
+      count: 3,
+      view_format: "html",
+      by_source: { project_gutenberg: 1, standard_ebooks: 2 },
+      by_subject: {
+        mathematics: 1,
+        science: 2,
+        literature: 1,
+        philosophy: 1,
+        method: 1,
+      },
+      free_count: 3,
+      public_domain_count: 3,
+      purchased_count: 0,
+      payment_rails: "manual_receipt_only",
+    });
+    render(<MarketplaceHost ownerId="operator" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("catalog-entry-pd-elements")).toBeTruthy();
+      expect(screen.getByTestId("catalog-subject-chips")).toBeTruthy();
+    });
+    // Server honesty by_subject strip.
+    expect(
+      screen.getByTestId("marketplace-catalog-by-subject").textContent,
+    ).toMatch(/mathematics=1/);
+    expect(
+      screen.getByTestId("marketplace-catalog-metrics").getAttribute(
+        "data-subject-count",
+      ),
+    ).toBe("5");
+    // Chip filters to mathematics only.
+    fireEvent.click(screen.getByTestId("catalog-subject-mathematics"));
+    expect(screen.getByTestId("catalog-entry-pd-elements")).toBeTruthy();
+    expect(screen.queryByTestId("catalog-entry-pd-pride")).toBeNull();
+    expect(screen.queryByTestId("catalog-entry-pd-novum")).toBeNull();
+    expect(
+      screen
+        .getByTestId("marketplace-catalog-metrics")
+        .getAttribute("data-subject-filter"),
+    ).toBe("mathematics");
+    expect(
+      screen.getByTestId("catalog-entry-pd-elements").getAttribute(
+        "data-subjects",
+      ),
+    ).toBe("mathematics,science");
+    // Clear via all domains.
+    fireEvent.click(screen.getByTestId("catalog-subject-all"));
+    expect(screen.getByTestId("catalog-entry-pd-pride")).toBeTruthy();
+    expect(screen.getByTestId("catalog-entry-pd-novum")).toBeTruthy();
   });
 });

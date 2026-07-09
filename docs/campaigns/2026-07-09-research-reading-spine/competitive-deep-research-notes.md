@@ -204,3 +204,10 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - (lt) SessionFlywheelPanel DecisionTreeDriverBadge (prop → post-complete effective)
   - (lu) DeepResearchSessionHost wires session researchTier into flywheel panel
 
+- Closed (lw, 2026-07-10) **Marketplace catalog research domains + STEM PD:**
+  - CatalogEntry.subjects + filter_by_subject + search haystack
+  - STEM PD spine: pd-elements, pd-principia, pd-novum (HTML-first)
+  - by_subject honesty on GET /marketplace/catalog
+  - UI domain chips + by_subject metrics (server honesty preferred)
+  Live external catalog connectors remain deferred (L1/L2 arxiv/substack dual-gate).
+

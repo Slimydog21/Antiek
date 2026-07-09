@@ -71,10 +71,12 @@ class PurchaseHostBody(BaseModel):
 def catalog_honesty_payload(entries: list[dict[str, Any]]) -> dict[str, Any]:
     """Residual (iq): by_source + license counts for catalog honesty audit.
 
+    Residual (lw): by_subject multi-label counts for research-domain filter.
     Pure over already-serialized entry dicts. Never invents payment rails.
     """
     by_source: dict[str, int] = {}
     by_license: dict[str, int] = {}
+    by_subject: dict[str, int] = {}
     free_count = 0
     for e in entries:
         src = str(e.get("source") or "unknown").strip() or "unknown"
@@ -83,9 +85,19 @@ def catalog_honesty_payload(entries: list[dict[str, Any]]) -> dict[str, Any]:
         by_license[lic] = by_license.get(lic, 0) + 1
         if e.get("is_free") is True or lic == "public_domain":
             free_count += 1
+        # Residual (lw): multi-label subjects (entry may appear in many domains).
+        raw_subjects = e.get("subjects") or []
+        if isinstance(raw_subjects, str):
+            raw_subjects = [raw_subjects]
+        for s in raw_subjects:
+            token = str(s or "").strip().lower()
+            if not token:
+                continue
+            by_subject[token] = by_subject.get(token, 0) + 1
     return {
         "by_source": by_source,
         "by_license": by_license,
+        "by_subject": by_subject,
         "public_domain_count": by_license.get("public_domain", 0),
         "purchased_count": by_license.get("purchased", 0),
         "free_count": free_count,
@@ -108,9 +120,11 @@ def get_catalog() -> dict[str, Any]:
                 "license_class": e.license_class,
                 "is_free": e.is_free,
                 "source": e.source,
+                # Residual (lw): research-domain subjects for workstation filter.
+                "subjects": list(e.subjects),
             }
         )
-    # Residual (iq): knowledge-source honesty fields for research marketplace.
+    # Residual (iq/lw): knowledge-source + subject honesty for research marketplace.
     honesty = catalog_honesty_payload(entries)
     return {
         "entries": entries,
