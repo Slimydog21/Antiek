@@ -66,13 +66,19 @@ class DepositBody(BaseModel):
 
 
 class RunBody(BaseModel):
-    """Run approved job with offline worker (no live multi-provider calls)."""
+    """Run approved job with worker loop.
+
+    Default offline stubs. Live step injector only when env
+    ``ANTIEK_MIDNIGHT_OIL_LIVE_STEP`` is on AND a process injector is
+    configured (residual bs). ``force_offline`` always uses stubs.
+    """
 
     job_id: str
     max_steps: int | None = None
     spent_per_goal: float = 0.05
     auto_deposit: bool = False
     draft_combined: bool = True
+    force_offline: bool = False
 
 
 @midnight_oil_router.post("/create")
@@ -149,6 +155,7 @@ def post_run(body: RunBody) -> dict[str, Any]:
             store=_store(),
             max_steps=body.max_steps,
             spent_per_goal=body.spent_per_goal,
+            force_offline=body.force_offline,
         )
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e

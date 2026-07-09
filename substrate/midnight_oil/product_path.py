@@ -6,6 +6,8 @@ without reimplementing ceiling math or the worker. Human view is HTML-first.
 
 from __future__ import annotations
 
+import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Sequence
 
@@ -241,6 +243,67 @@ def offline_goal_step_fn(
     )
 
 
+# Residual (bs): optional live step injector — default OFF, no silent network.
+# Env ``ANTIEK_MIDNIGHT_OIL_LIVE_STEP``: 0/empty/false → offline only (default).
+# When enabled AND a process-local injector is configured, run uses that
+# step_fn; still never auto-enables without both env + configure call.
+import os
+from collections.abc import Callable
+from typing import Any as _Any
+
+ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV = "ANTIEK_MIDNIGHT_OIL_LIVE_STEP"
+
+_LiveStepFn = Callable[[MidnightOilJob], "WorkerStepResult"]
+_live_step_fn: _LiveStepFn | None = None
+
+
+def configure_midnight_oil_live_step(step_fn: _LiveStepFn | None) -> None:
+    """Install or clear the process-local live worker step injector.
+
+    Does nothing by itself — ``live_step_enabled()`` must also be true
+    for ``run_job_offline`` to use the injector.
+    """
+    global _live_step_fn
+    _live_step_fn = step_fn
+
+
+def clear_midnight_oil_live_step() -> None:
+    configure_midnight_oil_live_step(None)
+
+
+def live_step_enabled() -> bool:
+    """True only when operator explicitly enables live Midnight Oil steps."""
+    raw = (os.environ.get(ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV) or "").strip().lower()
+    if raw in ("", "0", "false", "off", "no", "disabled"):
+        return False
+    return True
+
+
+def resolve_worker_step_fn(
+    *,
+    spent_per_goal: float = 0.05,
+    force_offline: bool = False,
+    step_fn: _LiveStepFn | None = None,
+) -> tuple[_LiveStepFn, bool]:
+    """Return (step_fn, used_live).
+
+    Live path requires: not force_offline, env enabled, and either explicit
+    ``step_fn`` or process-local configured injector. Otherwise offline stub.
+    """
+    if force_offline:
+        return (
+            lambda j: offline_goal_step_fn(j, spent_per_goal=spent_per_goal),
+            False,
+        )
+    candidate = step_fn if step_fn is not None else _live_step_fn
+    if live_step_enabled() and candidate is not None:
+        return (candidate, True)
+    return (
+        lambda j: offline_goal_step_fn(j, spent_per_goal=spent_per_goal),
+        False,
+    )
+
+
 def run_job_offline(
     job_id: str,
     *,
@@ -248,10 +311,16 @@ def run_job_offline(
     max_steps: int | None = None,
     spent_per_goal: float = 0.05,
     advance_ms_per_step: int = 60_000,
+    force_offline: bool = False,
+    step_fn: _LiveStepFn | None = None,
 ) -> dict[str, Any]:
-    """Product entry: run approved job with offline goal step_fn + FakeClock.
+    """Product entry: run approved job with worker loop + FakeClock.
 
-    Does **not** call live models. Returns job summary + step counts for UI.
+    Default is **offline** stub steps (no live models). Live multi-provider
+    injectors only run when:
+      1. ``ANTIEK_MIDNIGHT_OIL_LIVE_STEP`` is explicitly on, AND
+      2. a step_fn is passed or configured via ``configure_midnight_oil_live_step``
+
     Terminal statuses: complete | timed_out | budget_halted | failed.
     """
     from .worker import FakeClock, run_worker_loop
@@ -266,18 +335,30 @@ def run_job_offline(
 
     steps_cap = max_steps if max_steps is not None else max(len(job.goals) + 2, 4)
     clock = FakeClock(0)
-
-    def step_fn(j: MidnightOilJob):
-        return offline_goal_step_fn(j, spent_per_goal=spent_per_goal)
+    resolved_fn, used_live = resolve_worker_step_fn(
+        spent_per_goal=spent_per_goal,
+        force_offline=force_offline,
+        step_fn=step_fn,
+    )
 
     final = run_worker_loop(
         job_id,
         store=store,
-        step_fn=step_fn,
+        step_fn=resolved_fn,
         clock=clock,
         max_steps=steps_cap,
         advance_ms_per_step=advance_ms_per_step,
     )
+    notes_list = [
+        (
+            "Live step injector active (env + configured step_fn)."
+            if used_live
+            else "Offline worker simulation — no live multi-provider calls."
+        ),
+        "Deposit separately to land HTML twins + usage/progress.",
+        f"Live env {ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV}="
+        f"{'on' if live_step_enabled() else 'off (default)'}.",
+    ]
     return {
         "job_id": final.job_id,
         "status": final.status,
@@ -290,12 +371,12 @@ def run_job_offline(
         "notes": final.notes,
         "view_format": "html",
         "runnable": final.status == "approved",
-        "offline": True,
+        "offline": not used_live,
+        "live_step": used_live,
+        "live_step_env": ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV,
+        "live_step_env_enabled": live_step_enabled(),
         "product_panel": "midnight_oil_run",
         "source": "midnight_oil.run_job_offline",
-        "notes_list": [
-            "Offline worker simulation — no live multi-provider calls.",
-            "Deposit separately to land HTML twins + usage/progress.",
-        ],
+        "notes_list": notes_list,
         "html": job_summary_html(final),
     }
