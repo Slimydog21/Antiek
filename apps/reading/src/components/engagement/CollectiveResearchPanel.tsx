@@ -34,6 +34,8 @@
  * 19. Residual (oc): Clear recent closed-window spawns control (session ring).
  * 20. Residual (of): mark available rows from recent_ring (closed chase/float)
  *     so operators can see which multi-select ids survive window close.
+ * 21. Residual (og): Select recent only — one-click multi-select of recent_ring
+ *     rows (twin-chase batch merge path).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -231,6 +233,15 @@ export function CollectiveResearchPanel({
     () => availableSpawnIds.filter((id) => recentSet.has(id)).length,
     [availableSpawnIds, recentSet],
   );
+
+  /**
+   * Residual (og): select only spawns present in both available list and
+   * recent_ring (closed chase/float batch → collective unit).
+   */
+  const selectRecentOnly = useCallback(() => {
+    const next = availableSpawnIds.filter((id) => recentSet.has(id));
+    setSelected(next);
+  }, [availableSpawnIds, recentSet]);
 
   const mergeCollective = useCallback(async () => {
     if (selected.length < 1) return;
@@ -546,6 +557,16 @@ export function CollectiveResearchPanel({
           title="Select all available deep-research spawns"
         >
           Select all ({availableSpawnIds.length})
+        </button>
+        {/* Residual (og): one-click select recent_ring rows only. */}
+        <button
+          type="button"
+          data-testid="collective-select-recent"
+          onClick={() => selectRecentOnly()}
+          disabled={busy || recentInAvailable === 0}
+          title="Select only spawns from the session recent ring (twin chase / float opens)"
+        >
+          Select recent ({recentInAvailable})
         </button>
         <button
           type="button"

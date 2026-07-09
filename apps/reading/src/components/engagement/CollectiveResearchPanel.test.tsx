@@ -614,6 +614,38 @@ describe("CollectiveResearchPanel", () => {
     expect(dual.textContent).toMatch(/Dual-gate/i);
   });
 
+  it("selects only recent_ring spawns in one click (og)", () => {
+    render(
+      <CollectiveResearchPanel
+        availableSpawnIds={["spn_open", "spn_chased", "spn_other"]}
+        parentAssetId="parent"
+        recentSpawnIds={["spn_chased", "spn_other"]}
+      />,
+    );
+    expect(
+      (screen.getByTestId("collective-select-recent") as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    fireEvent.click(screen.getByTestId("collective-select-recent"));
+    expect(
+      screen
+        .getByTestId("collective-selection-count")
+        .getAttribute("data-selected-count"),
+    ).toBe("2");
+    expect(
+      (screen.getByTestId("collective-select-spn_chased") as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    expect(
+      (screen.getByTestId("collective-select-spn_other") as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    expect(
+      (screen.getByTestId("collective-select-spn_open") as HTMLInputElement)
+        .checked,
+    ).toBe(false);
+  });
+
   it("marks available spawns from recent_ring with origin badge (of)", async () => {
     const {
       pushRecentDeepResearchSpawnId,

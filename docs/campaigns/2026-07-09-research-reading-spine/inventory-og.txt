@@ -1,0 +1,8 @@
+# inventory-og · collective select recent only one-click
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: og
+files:
+  apps/reading/src/components/engagement/CollectiveResearchPanel.tsx
+  apps/reading/src/components/engagement/CollectiveResearchPanel.test.tsx
+proof: vitest CollectiveResearchPanel 15 passed
+invariants: HTML-first · select only recent∩available · twin-chase batch merge path

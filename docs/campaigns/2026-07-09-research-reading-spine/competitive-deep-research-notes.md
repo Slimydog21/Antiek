@@ -442,3 +442,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (of, 2026-07-10) **Collective recent_ring origin badges:**
   - data-origin-recent + recent badge on multi-select rows
   - data-recent-in-available on list/controls
+
+- Closed (og, 2026-07-10) **Collective select recent only:**
+  - collective-select-recent one-click for recent_ring ∩ available
+  - twin-chase batch merge into cohesive unit without checkbox grind
