@@ -578,3 +578,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (pm, 2026-07-10) **SESSION-ARC om–pl full session wave:**
   - SESSION-ARC-om-pl-session-wave.md fleet handoff
   - engagement · MO pubs · bench · driver foresight
+
+- Closed (pn, 2026-07-10) **Twin multi-select HTML draft window (V1 partial):**
+  - buildTwinDraftHtml pure helper (escape · questions first)
+  - twin-draft-selected-html opens hosted HTML floating draft

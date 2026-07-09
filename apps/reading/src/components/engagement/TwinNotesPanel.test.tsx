@@ -1,12 +1,17 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { buildTwinChasePayload, TwinNotesPanel } from "./TwinNotesPanel";
+import {
+  buildTwinChasePayload,
+  buildTwinDraftHtml,
+  TwinNotesPanel,
+} from "./TwinNotesPanel";
 
 const fetchTwinNotes = vi.fn();
 const recordTwinNote = vi.fn();
 const promoteTwinsToContext = vi.fn();
 const seedTwinNotes = vi.fn();
 const launchFloatingDeepResearch = vi.fn();
+const openWindow = vi.fn(() => "win:twin-draft:test");
 
 vi.mock("../../api/engagement", () => ({
   fetchTwinNotes: (...args: unknown[]) => fetchTwinNotes(...args),
@@ -18,6 +23,10 @@ vi.mock("../../api/engagement", () => ({
 vi.mock("../../modes/Reading/launchFloatingDeepResearch", () => ({
   launchFloatingDeepResearch: (...args: unknown[]) =>
     launchFloatingDeepResearch(...args),
+}));
+
+vi.mock("../windows/openWindow", () => ({
+  openWindow: (...args: unknown[]) => openWindow(...args),
 }));
 
 vi.mock("./DecisionTreeDriverBadge", () => ({
@@ -80,6 +89,25 @@ vi.mock("./ResearchLaunchBudgetPanel", () => ({
   },
 }));
 
+describe("buildTwinDraftHtml (pn)", () => {
+  it("builds HTML draft with questions first and escaped text", () => {
+    const draft = buildTwinDraftHtml(
+      [
+        { note_id: "i1", kind: "insight", text: "A <b>bold</b> insight" },
+        { note_id: "q1", kind: "question", text: "Why?" },
+      ],
+      "paper-42",
+    );
+    expect(draft.note_ids).toEqual(["q1", "i1"]);
+    expect(draft.title).toMatch(/paper-42/);
+    expect(draft.html).toMatch(/data-twin-draft="true"/);
+    expect(draft.html).toMatch(/data-view-format="html"/);
+    expect(draft.html).toMatch(/data-note-id="q1"/);
+    expect(draft.html).toMatch(/&lt;b&gt;/);
+    expect(draft.html).not.toMatch(/<b>bold<\/b>/);
+  });
+});
+
 describe("buildTwinChasePayload (mz/ni)", () => {
   it("orders questions before insights and builds goal_hint", () => {
     const payload = buildTwinChasePayload(
@@ -118,6 +146,8 @@ describe("TwinNotesPanel", () => {
     fetchTwinNotes.mockReset();
     recordTwinNote.mockReset();
     promoteTwinsToContext.mockReset();
+    openWindow.mockClear();
+    openWindow.mockReturnValue("win:twin-draft:test");
     seedTwinNotes.mockReset();
     launchFloatingDeepResearch.mockReset();
     mockWouldExceed = false;

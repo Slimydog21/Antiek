@@ -39,6 +39,8 @@
  * Residual (ni): note_ids provenance in chase goal_hint (recursive audit).
  * Residual (oe): chase success notes spawn is in recent ring for collective
  * multi-select even if the floating window is closed (parity ob).
+ * Residual (pn): open multi-selected twins as HTML draft window (FUTURE-AGENT
+ * V1 partial — recursive note-taker combine draft before promote/merge).
  * HTML-first; never PDF.
  */
 
@@ -52,6 +54,7 @@ import {
   type TwinPromoteContextResponse,
 } from "../../api/engagement";
 import { launchFloatingDeepResearch } from "../../modes/Reading/launchFloatingDeepResearch";
+import { openWindow } from "../windows/openWindow";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 import {
   ResearchLaunchBudgetPanel,
@@ -97,6 +100,45 @@ export function buildTwinChasePayload(
     `${ordered.length} note(s) (questions=${qCount}, insights=${iCount})` +
     (idsPreview ? ` · note_ids=${idsPreview}` : "");
   return { selection_text, goal_hint, note_ids };
+}
+
+/**
+ * Residual (pn): pure helper — build HTML draft document from multi-selected
+ * twin notes (questions first). Escapes text; never invents content.
+ */
+export function buildTwinDraftHtml(
+  notes: TwinChaseNote[],
+  assetId: string,
+): { html: string; title: string; note_ids: string[] } {
+  const ordered = [...notes].sort((a, b) => {
+    const rank = (k: string) =>
+      k === "question" ? 0 : k === "insight" ? 1 : 2;
+    return rank(a.kind) - rank(b.kind);
+  });
+  const note_ids = ordered.map((n) => n.note_id);
+  const aid = (assetId || "").trim() || "asset";
+  const escape = (s: string) =>
+    String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  const items = ordered
+    .map((n) => {
+      const kind = escape(n.kind || "note");
+      const text = escape(String(n.text || "").trim());
+      const id = escape(n.note_id);
+      return `<li data-note-id="${id}" data-kind="${kind}"><strong>${kind}</strong>: ${text}</li>`;
+    })
+    .join("\n");
+  const title = `Twin draft · ${aid} · ${ordered.length} note(s)`;
+  const html =
+    `<article data-view-format="html" data-twin-draft="true" data-asset-id="${escape(aid)}" data-note-count="${ordered.length}">` +
+    `<h1>${escape(title)}</h1>` +
+    `<p class="meta">Recursive note-taker draft (propose-only combine · not auto-promoted into context).</p>` +
+    `<ul class="twin-draft-notes">\n${items}\n</ul>` +
+    `</article>`;
+  return { html, title, note_ids };
 }
 
 export type TwinNotesPanelProps = {
@@ -836,6 +878,40 @@ export function TwinNotesPanel({
           title="Spin full working-region deep research from multi-selected twin notes"
         >
           Chase full
+        </button>
+        {/* Residual (pn): open multi-selected twins as HTML draft window. */}
+        <button
+          type="button"
+          data-testid="twin-draft-selected-html"
+          onClick={() => {
+            const selected = selectedNotes;
+            if (selected.length < 1) return;
+            const draft = buildTwinDraftHtml(selected, assetId);
+            const winId = openWindow(
+              "hosted_html_document",
+              {
+                document_id: `twin_draft_${assetId.trim() || "asset"}_${Date.now()}`,
+                title: draft.title,
+                html: draft.html,
+                view_format: "html",
+                source: "twin_draft_selected",
+              },
+              {
+                id: `win:twin-draft:${assetId.trim() || "asset"}:${draft.note_ids.slice(0, 3).join("-")}`,
+                title: draft.title,
+                mode: "floating",
+              },
+            );
+            setChaseStatus(
+              winId
+                ? `Opened twin HTML draft (${selected.length} note(s))`
+                : "Twin HTML draft open failed",
+            );
+          }}
+          disabled={busy || selectedNoteIds.size === 0}
+          title="Open multi-selected twin notes as HTML draft window (combine before promote)"
+        >
+          Draft HTML ({selectedNoteIds.size})
         </button>
       </div>
       {/* Residual (na): budget projection soft-gate when multi-select is active. */}

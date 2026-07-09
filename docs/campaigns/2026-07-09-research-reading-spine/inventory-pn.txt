@@ -1,0 +1,8 @@
+# inventory-pn · Twin multi-select HTML draft window (V1 partial)
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: pn
+files:
+  apps/reading/src/components/engagement/TwinNotesPanel.tsx
+  apps/reading/src/components/engagement/TwinNotesPanel.test.tsx
+proof: vitest TwinNotesPanel 23 passed
+invariants: HTML-first · escape text · questions first · propose-only draft · not auto-promote
