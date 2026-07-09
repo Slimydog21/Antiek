@@ -13,12 +13,14 @@
  * Residual (ao): passes parentAssetId so draft/parent document merge is enabled.
  * Residual (ax): mounts ResearchProgressPanel when spawn_id is present.
  * Residual (ba): mounts TwinNotesPanel when parent_asset_id is present.
+ * Residual (bx): mounts ResearchLaunchBudgetPanel for goal/selection projection.
  */
 
 import { useMemo } from "react";
 
 import { CollectiveResearchPanel } from "../engagement/CollectiveResearchPanel";
 import { ResearchContextPanel } from "../engagement/ResearchContextPanel";
+import { ResearchLaunchBudgetPanel } from "../engagement/ResearchLaunchBudgetPanel";
 import { ResearchProgressPanel } from "../engagement/ResearchProgressPanel";
 import { TwinNotesPanel } from "../engagement/TwinNotesPanel";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
@@ -120,6 +122,23 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
         >
           {selection}
         </p>
+      </section>
+
+      {/* Residual (bx): budget bar + prompt projection for goal/selection. */}
+      <section
+        className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
+        data-testid="deep-research-budget-mount"
+        data-view-format="html"
+      >
+        <ResearchLaunchBudgetPanel
+          promptText={
+            (props.goal?.trim() || "") +
+            (selection && selection !== "(no selection)"
+              ? `\n\n${selection}`
+              : "")
+          }
+          researchTier="deep"
+        />
       </section>
 
       {/* Product mount: twin + source-ref research context for this session's

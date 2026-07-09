@@ -1,0 +1,8 @@
+# residual (bx) DeepResearchSessionHost budget + projection mount
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(bw) prior | branch_only | campaign inventories
+(bx) DR session budget panel | branch_only | ResearchLaunchBudgetPanel on DeepResearchSessionHost; 9 vitest; tip after commit
+
+NEXT: (by) re-derive; operator merge PR #465

@@ -2,14 +2,45 @@
  * DeepResearchSessionHost + WINDOW_PAGES eligibility for deep_research_session.
  * Residual (ag): mounts ResearchContextPanel with asset/spawn identity.
  * Residual (ah): mounts CollectiveResearchPanel with available spawn ids.
+ * Residual (bx): mounts ResearchLaunchBudgetPanel for goal/selection projection.
  */
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DEEP_RESEARCH_WINDOW_KIND } from "../../workspace/deepResearchWindow";
 import DeepResearchSessionHost from "./DeepResearchSessionHost";
 import { WINDOW_PAGES, isWindowEligible, openWindow } from "./openWindow";
 import { useWindows } from "../../workspace/windowsStore";
+
+vi.mock("../../api/settings", () => ({
+  fetchSettingsBudget: vi.fn(async () => ({
+    daily_cap_usd: 5,
+    spent_usd: 1,
+    remaining_usd: 4,
+    spent_status: "known",
+    cap_env: null,
+    notes: [],
+  })),
+  estimatePromptCost: vi.fn(async () => ({
+    estimated_usd_low: 0.1,
+    estimated_usd_high: 0.15,
+    would_exceed_budget: false,
+    pricing_known: true,
+    notes: [],
+    assumed_input_tokens: 50,
+    assumed_output_tokens: 2500,
+    tier: "pro",
+    provider: null,
+    model: null,
+  })),
+  fetchDecisionTreeSelection: vi.fn(async () => ({
+    model_id: null,
+    provider_id: null,
+    installed: false,
+    notes: [],
+    source: "test",
+  })),
+}));
 
 const FIXTURE = {
   session_id: "fsess_launch_1",
@@ -44,6 +75,14 @@ describe("DeepResearchSessionHost", () => {
     expect(
       screen.getByTestId("deep-research-session-host").getAttribute("data-view-format"),
     ).toBe("html");
+  });
+
+  it("mounts ResearchLaunchBudgetPanel for goal/selection (bx)", () => {
+    render(<DeepResearchSessionHost {...FIXTURE} />);
+    const mount = screen.getByTestId("deep-research-budget-mount");
+    expect(mount).toBeTruthy();
+    expect(mount.getAttribute("data-view-format")).toBe("html");
+    expect(screen.getByTestId("research-launch-budget-panel")).toBeTruthy();
   });
 
   it("mounts ResearchContextPanel with parent asset and spawn identity", () => {
