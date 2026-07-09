@@ -30,6 +30,13 @@ describe("TwinNotesPanel", () => {
     expect(link.textContent).toMatch(/twin seed readiness/i);
   });
 
+  it("links dual-gate L1–L4 checklist for L3 twin live seed prep (mt)", () => {
+    render(<TwinNotesPanel assetId="paper" />);
+    const dual = screen.getByTestId("twin-notes-dual-gate-checklist-link");
+    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4/);
+    expect(dual.textContent).toMatch(/dual-gate/i);
+  });
+
   it("surfaces researchTier chrome when provided (kr)", async () => {
     fetchTwinNotes.mockResolvedValue({
       asset_id: "paper",

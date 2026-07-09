@@ -22,6 +22,8 @@
  * selective promote) — same kind axis as promoteKinds.
  * Residual (ms): "Promote visible" one-click — align promoteKinds to listFilter
  * then promote (browse→merge path without a second dropdown).
+ * Residual (mt): dual-gate L1–L4 checklist deep-link for L3 twin live seed prep
+ * (parity mj/ml/mm; never enables injectors).
  * HTML-first; never PDF.
  */
 
@@ -317,14 +319,21 @@ export function TwinNotesPanel({
             </>
           ) : null}
         </p>
-        {/* Residual (ib): Settings deep-link for twin seed dual-gate readiness. */}
-        <p className="meta font-mono text-[11px]">
+        {/* Residual (ib/mt): Settings + dual-gate checklist (L3 twin live seed prep). */}
+        <p className="meta font-mono text-[11px] space-x-3">
           <a
             href="/settings"
             data-testid="twin-notes-settings-link"
             title="Open Settings → Twin seed live readiness"
           >
             Settings · twin seed readiness
+          </a>
+          <a
+            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+            data-testid="twin-notes-dual-gate-checklist-link"
+            title="Dual-gate L1–L4 checklist (L3 twin live seed prep; offline default)"
+          >
+            Dual-gate L1–L4 checklist
           </a>
         </p>
         {/* Residual (kr): depth posture when host passes researchTier. */}

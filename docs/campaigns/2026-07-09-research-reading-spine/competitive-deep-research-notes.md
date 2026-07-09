@@ -291,3 +291,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (ms, 2026-07-10) **Promote visible twins:**
   - One-click promote using current list filter (browse→merge)
+
+- Closed (mt, 2026-07-10) **TwinNotes dual-gate checklist link:**
+  - Completes dual-gate prep on attach + MO + marketplace + twins
