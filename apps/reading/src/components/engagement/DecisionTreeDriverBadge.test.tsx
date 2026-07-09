@@ -92,6 +92,17 @@ describe("DecisionTreeDriverBadge residual cw/eq", () => {
     });
   });
 
+  it("links dual-gate L1–L4 checklist (oa)", async () => {
+    render(<DecisionTreeDriverBadge />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("decision-tree-dual-gate-checklist-link"),
+      ).toBeTruthy();
+    });
+    const dual = screen.getByTestId("decision-tree-dual-gate-checklist-link");
+    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4/);
+  });
+
   it("links to Settings for driver install and budget (fj)", async () => {
     fetchDecisionTreeSelection.mockResolvedValue({
       model_id: null,

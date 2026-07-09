@@ -118,5 +118,6 @@ Checklist is linked from engagement surfaces for operator prep only.
 | SessionFlywheel | `session-flywheel-dual-gate-checklist-link` | land → bench feed |
 | Settings Antiek-bench | `antiek-bench-dual-gate-checklist-link` | suite rewrite + L7 ND |
 | ResearchLaunchBudget | `research-launch-budget-dual-gate-checklist-link` | shared launch budget |
+| DecisionTreeDriverBadge | `decision-tree-dual-gate-checklist-link` | shared driver+budget |
 
 L5 payment rails and L6 live multi-agent remain **deferred** (specs only until injectors exist).

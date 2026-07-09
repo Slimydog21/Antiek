@@ -11,6 +11,8 @@
  * on ResearchLaunchBudgetPanel.
  * Residual (fd): manual refresh of driver + budget without remounting the host.
  * Residual (fj): deep-link to Settings decision-tree / model budget controls.
+ * Residual (oa): dual-gate L1–L4 checklist deep-link on shared driver badge
+ * (prep only; every host that mounts the badge can reach live-enable prep).
  * Residual (ku): optional researchTier chrome so model driver + depth posture
  * share one decision-tree surface (not NotDiamond authority).
  */
@@ -122,6 +124,15 @@ export function DecisionTreeDriverBadge({
           title="Open Settings to install decision-tree driver and set daily budget"
         >
           Settings
+        </a>
+        {/* Residual (oa): dual-gate prep on shared driver+budget chokepoint. */}
+        <a
+          href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+          data-testid="decision-tree-dual-gate-checklist-link"
+          className="underline opacity-80 hover:opacity-100"
+          title="Dual-gate L1–L4 checklist (prep only; offline default)"
+        >
+          Dual-gate
         </a>
       </div>
 

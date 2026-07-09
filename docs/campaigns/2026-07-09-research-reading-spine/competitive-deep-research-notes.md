@@ -419,3 +419,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (nz, 2026-07-10) **Suite proposal feed sources chase/DR chrome:**
   - data-has-twin-chase / data-has-floating-dr on suite feed sources
   - empty-state lists floating DR + twin chase as feeders
+
+- Closed (oa, 2026-07-10) **DecisionTreeDriverBadge dual-gate checklist:**
+  - Shared driver+budget chokepoint dual-gate deep-link
