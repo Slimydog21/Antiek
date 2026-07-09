@@ -11,7 +11,7 @@ vi.mock("../../api/engagement", () => ({
   hydratePublicationRef: (...args: unknown[]) => hydratePublicationRef(...args),
 }));
 
-describe("PublicationAttachPanel residual ck", () => {
+describe("PublicationAttachPanel residual ck/ed", () => {
   afterEach(() => cleanup());
   beforeEach(() => {
     attachSourceRefs.mockReset();
@@ -37,7 +37,10 @@ describe("PublicationAttachPanel residual ck", () => {
       html: "<p>Attention</p>",
     });
 
-    render(<PublicationAttachPanel spawnId="spn_1" />);
+    const onAttached = vi.fn();
+    render(
+      <PublicationAttachPanel spawnId="spn_1" onAttached={onAttached} />,
+    );
     fireEvent.change(screen.getByTestId("publication-attach-input"), {
       target: { value: "arxiv:1706.03762" },
     });
@@ -63,6 +66,20 @@ describe("PublicationAttachPanel residual ck", () => {
     expect(
       screen.getByTestId("publication-attach-panel").getAttribute("data-view-format"),
     ).toBe("html");
+    // Residual (ed): parent notified so research context can remount.
+    await waitFor(() => {
+      expect(onAttached).toHaveBeenCalled();
+    });
+    const payload = onAttached.mock.calls[0][0] as {
+      spawnId: string;
+      references: string[];
+      view_format: string;
+      hydrated: Array<{ asset_id: string }>;
+    };
+    expect(payload.spawnId).toBe("spn_1");
+    expect(payload.view_format).toBe("html");
+    expect(payload.references).toEqual(["arxiv:1706.03762"]);
+    expect(payload.hydrated[0].asset_id).toBe("pub_arxiv_abc");
   });
 
   it("surfaces attach failure honestly", async () => {

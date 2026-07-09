@@ -51,8 +51,22 @@ vi.mock("../engagement/SpawnMergePanel", () => ({
 }));
 
 vi.mock("../engagement/PublicationAttachPanel", () => ({
-  PublicationAttachPanel: (props: { spawnId: string }) => (
-    <div data-testid="publication-attach-panel-stub">{props.spawnId}</div>
+  PublicationAttachPanel: (props: {
+    spawnId: string;
+    onAttached?: (r: { spawnId: string }) => void;
+  }) => (
+    <div data-testid="publication-attach-panel-stub">
+      {props.spawnId}
+      {props.onAttached ? (
+        <button
+          type="button"
+          data-testid="publication-attach-notify"
+          onClick={() => props.onAttached?.({ spawnId: props.spawnId })}
+        >
+          notify-attach
+        </button>
+      ) : null}
+    </div>
   ),
 }));
 
@@ -162,8 +176,8 @@ describe("DeepResearchSessionHost", () => {
     expect(
       screen.getByTestId("deep-research-publication-attach-mount"),
     ).toBeTruthy();
-    expect(screen.getByTestId("publication-attach-panel-stub").textContent).toBe(
-      "spn_launch_1",
+    expect(screen.getByTestId("publication-attach-panel-stub").textContent).toMatch(
+      /spn_launch_1/,
     );
   });
 
@@ -199,6 +213,21 @@ describe("DeepResearchSessionHost", () => {
         .getAttribute("data-refresh-key"),
     ).toBe("0");
     fireEvent.click(screen.getByTestId("twin-notes-promote-notify"));
+    expect(
+      screen
+        .getByTestId("deep-research-context-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("1");
+  });
+
+  it("remounts research context after publication attach notify (ed)", () => {
+    render(<DeepResearchSessionHost {...FIXTURE} />);
+    expect(
+      screen
+        .getByTestId("deep-research-context-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("0");
+    fireEvent.click(screen.getByTestId("publication-attach-notify"));
     expect(
       screen
         .getByTestId("deep-research-context-refresh")

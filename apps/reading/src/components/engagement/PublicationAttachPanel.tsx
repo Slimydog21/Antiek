@@ -3,6 +3,8 @@
  *
  * Residual (ck): mid-session knowledge-dense publication attach for deep
  * research windows. Composes attachSourceRefs + hydratePublicationRef.
+ * Residual (ed): onAttached notifies parent so research context remounts
+ * and source refs appear in the context pack / citation trust surface.
  * HTML-first; offline hydrate by default.
  */
 
@@ -16,11 +18,23 @@ import {
   parsePublicationRefs,
 } from "../../modes/ResearchWorkstation/publicationRefs";
 
-export type PublicationAttachPanelProps = {
+export type PublicationAttachResult = {
   spawnId: string;
+  references: string[];
+  hydrated: HydrateRefResponse[];
+  view_format: "html";
 };
 
-export function PublicationAttachPanel({ spawnId }: PublicationAttachPanelProps) {
+export type PublicationAttachPanelProps = {
+  spawnId: string;
+  /** Residual (ed): fire after successful attach+hydrate (HTML assets only). */
+  onAttached?: (result: PublicationAttachResult) => void;
+};
+
+export function PublicationAttachPanel({
+  spawnId,
+  onAttached,
+}: PublicationAttachPanelProps) {
   const [raw, setRaw] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,12 +73,18 @@ export function PublicationAttachPanel({ spawnId }: PublicationAttachPanelProps)
         assets.push(asset);
       }
       setHydrated(assets);
+      onAttached?.({
+        spawnId: sid,
+        references: refs,
+        hydrated: assets,
+        view_format: "html",
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
-  }, [spawnId, raw]);
+  }, [spawnId, raw, onAttached]);
 
   return (
     <section

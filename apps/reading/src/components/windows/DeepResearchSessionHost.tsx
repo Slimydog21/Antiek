@@ -26,6 +26,7 @@
  * Residual (ea): TwinNotesPanel autoPromoteAfterLoad into research context.
  * Residual (ec): remount ResearchContextPanel after twin promote so context
  * pack reloads recursive notes for prompts.
+ * Residual (ed): remount ResearchContextPanel after publication attach.
  */
 
 import { useCallback, useMemo, useState } from "react";
@@ -283,7 +284,10 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
           data-testid="deep-research-publication-attach-mount"
           data-view-format="html"
         >
-          <PublicationAttachPanel spawnId={props.spawn_id.trim()} />
+          <PublicationAttachPanel
+            spawnId={props.spawn_id.trim()}
+            onAttached={onTwinsPromoted}
+          />
         </section>
       ) : null}
 
