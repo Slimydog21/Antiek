@@ -1,8 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 
 import type { Event } from "../../generated/types";
 import type { InvestigationState } from "../../hooks/useInvestigation";
+import {
+  buildChaseDraftHandoff,
+  clearChaseDraftHandoffs,
+  recordChaseDraftHandoff,
+} from "../ResearchWorkstation/chaseHandoffs";
 
 /**
  * ReadingCompanion.test — the Read glass-box (Read SPR-06 M2).
@@ -56,11 +62,16 @@ function state(over: Partial<InvestigationState>): InvestigationState {
 }
 
 beforeEach(() => useInvestigationMock.mockReset());
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  clearChaseDraftHandoffs();
+});
 
 function renderCompanion() {
   return render(
-    <ReadingCompanion documentId="doc-1" title="Meditations" readingThreadId="read-doc-1" />,
+    <MemoryRouter>
+      <ReadingCompanion documentId="doc-1" title="Meditations" readingThreadId="read-doc-1" />
+    </MemoryRouter>,
   );
 }
 
@@ -126,6 +137,42 @@ describe("ReadingCompanion (Read SPR-06 M2)", () => {
     expect(screen.getByText(/No notes yet/)).toBeTruthy();
     // The "AI is working" beat must NOT show for a not-running thread.
     expect(screen.queryByRole("status", { name: /AI is working/i })).toBeNull();
+  });
+
+  it("shows saved book-origin chases and copies a no-spend merge packet", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    recordChaseDraftHandoff(
+      buildChaseDraftHandoff({
+        childInvestigationId: "inv-child-1",
+        parentInvestigationId: "read-doc-1",
+        sourcePassage: "Stoic discipline turns attention into a practice.",
+      }),
+    );
+    useInvestigationMock.mockReturnValue(state({ status: "not_found", events: [] }));
+
+    renderCompanion();
+
+    expect(screen.getByRole("region", { name: /Saved research handoffs/i })).toBeTruthy();
+    expect(screen.getByText(/Stoic discipline turns attention/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: /open research/i }).getAttribute("href")).toBe("/inv/inv-child-1");
+
+    fireEvent.click(screen.getByRole("button", { name: /copy merge packet/i }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    const payload = JSON.parse(writeText.mock.calls[0][0]);
+    expect(payload).toMatchObject({
+      kind: "antiek.reader.chase_merge_packet",
+      document_id: "doc-1",
+      parent_reading_thread_id: "read-doc-1",
+      child_investigation_ids: ["inv-child-1"],
+      source_passages: ["Stoic discipline turns attention into a practice."],
+      no_spend: true,
+    });
+    expect(payload.next_step).toMatch(/draft a merge/);
+    expect(screen.getByRole("button", { name: /copied/i })).toBeTruthy();
   });
 
   it("shows the shared working beat only while the thread is running", () => {

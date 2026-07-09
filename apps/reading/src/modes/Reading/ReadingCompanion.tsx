@@ -1,6 +1,8 @@
-import { useMemo } from "react";
+import { useState, useMemo } from "react";
+import { Link } from "react-router-dom";
 
 import { useInvestigation } from "../../hooks/useInvestigation";
+import { useChaseDraftHandoffs } from "../ResearchWorkstation/chaseHandoffs";
 import { deriveNotes } from "../ResearchWorkstation/NotesPanel";
 import Thinking from "../../shared/Thinking";
 
@@ -64,11 +66,28 @@ export default function ReadingCompanion({
   // Read/display only — subscribe to the book's reading thread for notes.
   const reading = useInvestigation(readingThreadId);
   const notes = useMemo(() => deriveNotes(reading.events), [reading.events]);
+  const handoffs = useChaseDraftHandoffs(readingThreadId);
+  const [copiedMergePacket, setCopiedMergePacket] = useState(false);
 
   // "Working" only when the thread is genuinely running (a distill / talk in
   // flight). A not_found thread (nothing has happened on this book yet) is
   // calm, not "thinking".
   const working = reading.status === "in_progress";
+
+  async function copyMergePacket() {
+    const payload = {
+      kind: "antiek.reader.chase_merge_packet",
+      document_id: documentId,
+      title: title ?? null,
+      parent_reading_thread_id: readingThreadId,
+      child_investigation_ids: handoffs.map((handoff) => handoff.child_investigation_id),
+      source_passages: handoffs.map((handoff) => handoff.source_passage),
+      next_step: "open the child researches, export completed artifacts, then draft a merge before changing the book asset",
+      no_spend: true,
+    };
+    await navigator.clipboard?.writeText(JSON.stringify(payload, null, 2));
+    setCopiedMergePacket(true);
+  }
 
   return (
     <aside
@@ -90,6 +109,45 @@ export default function ReadingCompanion({
           <Thinking size={24} status="thinking it through…" />
         </div>
       )}
+
+      {handoffs.length > 0 ? (
+        <section
+          className="border-b border-rule px-4 py-3 dark:border-charcoal-1"
+          aria-label="Saved research handoffs"
+        >
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="font-mono text-[10px] uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+              Saved chases
+            </p>
+            <button
+              type="button"
+              onClick={copyMergePacket}
+              className="shrink-0 font-mono text-[11px] text-ink hover:underline dark:text-bright"
+              title="Copy a no-spend packet for a later draft merge"
+            >
+              {copiedMergePacket ? "copied" : "copy merge packet"}
+            </button>
+          </div>
+          <ol className="space-y-1.5">
+            {handoffs.map((handoff) => (
+              <li
+                key={`${handoff.parent_investigation_id}:${handoff.child_investigation_id}`}
+                className="rounded-hog border border-rule bg-ice-0 px-2 py-1.5 dark:bg-charcoal-2"
+              >
+                <p className="line-clamp-2 font-serif text-[13px] leading-snug text-ink dark:text-bright">
+                  {handoff.source_passage}
+                </p>
+                <Link
+                  to={`/inv/${handoff.child_investigation_id}`}
+                  className="mt-1 inline-flex font-mono text-[11px] text-shadow-1 hover:text-ink hover:underline dark:text-moonlight dark:hover:text-bright"
+                >
+                  open research
+                </Link>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
 
       <div className="flex-1 min-h-0">
         {notes.length === 0 ? (
