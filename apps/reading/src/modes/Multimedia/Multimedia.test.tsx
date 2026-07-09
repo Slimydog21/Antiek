@@ -400,6 +400,11 @@ describe("Multimedia workstation", () => {
     await reviewPlan();
     fireEvent.click(screen.getByRole("button", { name: "Approve render" }));
     await screen.findByTestId("multimedia-player");
+    expect(
+      screen.getByText(
+        "Playback type, chapter, and source-card controls inspect the draft package only; they do not call providers or spend budget.",
+      ),
+    ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /The engineering constraint stack/ }));
 

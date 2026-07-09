@@ -1643,6 +1643,10 @@ export default function Multimedia() {
                 <div>
                   <p className="font-mono text-[11px] uppercase text-shadow-2 dark:text-moonlight">Asset playback</p>
                   <h2 className="font-serif text-xl text-ink dark:text-bright">Draft render package</h2>
+                  <p className="mt-1 text-[11px] leading-snug text-shadow-1 dark:text-moonlight">
+                    Playback type, chapter, and source-card controls inspect the draft package only; they do not call providers or
+                    spend budget.
+                  </p>
                 </div>
                 <div role="radiogroup" aria-label="Playback type" className="flex gap-2">
                   {(["video", "audio"] as PlayerView[]).map((view) => (
