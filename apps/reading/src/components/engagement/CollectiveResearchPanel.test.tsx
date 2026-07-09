@@ -34,6 +34,18 @@ describe("CollectiveResearchPanel", () => {
     openWindow.mockClear();
   });
 
+  it("auto-selects preferredSpawnId when available (cn)", () => {
+    render(
+      <CollectiveResearchPanel
+        availableSpawnIds={["spn_1", "spn_2"]}
+        preferredSpawnId="spn_2"
+      />,
+    );
+    const boxes = screen.getAllByRole("checkbox") as HTMLInputElement[];
+    expect(boxes[0].checked).toBe(false);
+    expect(boxes[1].checked).toBe(true);
+  });
+
   it("merges selected spawns into collective prompt", async () => {
     fetchCollectiveResearch.mockResolvedValue({
       collective_id: "col_abc",

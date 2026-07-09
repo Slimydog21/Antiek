@@ -7,7 +7,7 @@
  * 3. Residual (cf): Create written analysis draft (collective + draft document)
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   fetchCollectiveResearch,
   mergeSpawnOutputs,
@@ -23,13 +23,24 @@ export type CollectiveResearchPanelProps = {
   availableSpawnIds: string[];
   /** Parent asset for document merge (draft or into_parent). Required for doc merge. */
   parentAssetId?: string | null;
+  /** Residual (cn): pre-select this spawn when present in available list. */
+  preferredSpawnId?: string | null;
 };
 
 export function CollectiveResearchPanel({
   availableSpawnIds,
   parentAssetId = null,
+  preferredSpawnId = null,
 }: CollectiveResearchPanelProps) {
   const [selected, setSelected] = useState<string[]>([]);
+
+  // Auto-select preferred spawn once when available (residual cn).
+  useEffect(() => {
+    const pref = (preferredSpawnId || "").trim();
+    if (!pref) return;
+    if (!availableSpawnIds.includes(pref)) return;
+    setSelected((prev) => (prev.includes(pref) ? prev : [...prev, pref]));
+  }, [preferredSpawnId, availableSpawnIds]);
   const [unit, setUnit] = useState<CollectiveResponse | null>(null);
   const [docMerge, setDocMerge] = useState<MergeProductResponse | null>(null);
   const [error, setError] = useState<string | null>(null);

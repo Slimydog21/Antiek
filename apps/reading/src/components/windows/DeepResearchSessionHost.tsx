@@ -278,6 +278,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
           <CollectiveResearchPanel
             availableSpawnIds={availableSpawnIds}
             parentAssetId={props.parent_asset_id?.trim() || null}
+            preferredSpawnId={props.spawn_id?.trim() || null}
           />
         </section>
       ) : null}
