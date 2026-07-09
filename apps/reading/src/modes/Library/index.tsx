@@ -1351,6 +1351,15 @@ export default function Library() {
                   >
                     Open indexed book
                   </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate(`/read/${encodeURIComponent(indexReceipt.document_id)}?talk=1`)
+                    }
+                    className="rounded-md border border-ice-4 dark:border-charcoal-1 px-3 py-1.5 text-xs font-mono text-ink dark:text-bright"
+                  >
+                    Ask indexed book
+                  </button>
                 </div>
               )}
             </form>

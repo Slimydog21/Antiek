@@ -732,5 +732,8 @@ describe("Library", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open indexed book" }));
     expect(navigateMock).toHaveBeenCalledWith("/read/book-dream-machine");
+
+    fireEvent.click(screen.getByRole("button", { name: "Ask indexed book" }));
+    expect(navigateMock).toHaveBeenCalledWith("/read/book-dream-machine?talk=1");
   });
 });

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { LemonButton, LemonTag } from "../../components/lemon";
 import type { BookDetail, BookSummary, FullTextResponse } from "../../api/books";
@@ -41,6 +41,8 @@ import { emitSourceRead, isRead } from "./sourceRead";
 export default function BookReader() {
   const { documentId = "" } = useParams<{ documentId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const openTalkOnLoad = searchParams.get("talk") === "1";
 
   const [book, setBook] = useState<BookDetail | null>(null);
   const [body, setBody] = useState<FullTextResponse | null>(null);
@@ -552,7 +554,12 @@ export default function BookReader() {
           usePosition precedent). Answers cite pages → jumpToPage moves the
           SPR-07 reader. The SPR-04 selection FloatMenu Dialogue stays one-shot;
           THIS is the new multi-turn surface. */}
-      <TalkToBook documentId={documentId} title={book.title} onJumpToPage={jumpToPage} />
+      <TalkToBook
+        documentId={documentId}
+        title={book.title}
+        initialOpen={openTalkOnLoad}
+        onJumpToPage={jumpToPage}
+      />
     </div>
   );
 }

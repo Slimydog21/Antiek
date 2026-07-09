@@ -36,15 +36,21 @@ import type { TalkMessage } from "./useTalkThread";
 export interface TalkToBookProps {
   documentId: string;
   title: string | null;
+  initialOpen?: boolean;
   /** Jump the reader to a page (the reader passes its windowForTocPage +
    * setPageIndex composition). Reuses the EXISTING page navigation, not a
    * parallel one. */
   onJumpToPage: (pageIndex: number) => void;
 }
 
-export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBookProps) {
+export default function TalkToBook({
+  documentId,
+  title,
+  initialOpen = false,
+  onJumpToPage,
+}: TalkToBookProps) {
   const thread = useTalkThread(documentId);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen);
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
