@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { groupProposedTasksByClass } from "../../lib/suiteProposalTasks";
+import {
+  groupProposedTasksByClass,
+  primaryFeedSourceFromBySource,
+  rankedFeedSourcesFromBySource,
+} from "../../lib/suiteProposalTasks";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import {
@@ -142,6 +146,16 @@ export default function Settings() {
   const [addModelId, setAddModelId] = useState("");
   const [addProviderId, setAddProviderId] = useState("");
   const [addSelectDriver, setAddSelectDriver] = useState(true);
+
+  /** Residual (qa): primary by_source that drove this week's suite rewrite. */
+  const primaryRewriteFeed = useMemo(
+    () => primaryFeedSourceFromBySource(usage?.by_source),
+    [usage?.by_source],
+  );
+  const rankedRewriteFeeds = useMemo(
+    () => rankedFeedSourcesFromBySource(usage?.by_source),
+    [usage?.by_source],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -1772,7 +1786,7 @@ export default function Settings() {
                 NotDiamond: advisory only (L7 · never dispatch authority)
               </span>
             </p>
-            {/* Residual (ht/pe): recursive rewrite metrics + rationale delta. */}
+            {/* Residual (ht/pe/qa): recursive rewrite metrics + primary feed. */}
             {suiteProposal ? (
               <div
                 className="font-mono text-[11px] text-ink-soft dark:text-starlight space-y-1"
@@ -1790,6 +1804,8 @@ export default function Settings() {
                 data-feed-source-count={String(
                   Object.keys(usage?.by_source || {}).length,
                 )}
+                data-primary-feed-source={primaryRewriteFeed?.source ?? ""}
+                data-primary-feed-count={String(primaryRewriteFeed?.count ?? 0)}
                 data-has-rationale={String(
                   Boolean((suiteProposal.rationale || "").trim()),
                 )}
@@ -1802,32 +1818,63 @@ export default function Settings() {
                 {(suiteProposal.added_item_ids || []).length} · status=
                 {suiteProposal.status ?? "—"} · feed_sources=
                 {Object.keys(usage?.by_source || {}).length}
+                {primaryRewriteFeed ? (
+                  <>
+                    {" "}
+                    · primary_feed={primaryRewriteFeed.source}=
+                    {primaryRewriteFeed.count}
+                  </>
+                ) : null}
               </div>
             ) : null}
-            {/* Residual (hf/nz/os): show which usage sources feed this rewrite. */}
+            {/* Residual (hf/nz/os/qa): ranked feed sources + primary rewrite driver. */}
             {Object.keys(usage?.by_source || {}).length > 0 ? (
-              <p
-                className="text-[11px] font-mono text-ink-soft dark:text-starlight"
-                data-testid="antiek-bench-suite-proposal-feed-sources"
-                data-has-twin-chase={String(
-                  Boolean((usage?.by_source || {}).twin_chase),
-                )}
-                data-has-floating-dr={String(
-                  Boolean((usage?.by_source || {}).floating_deep_research),
-                )}
-                data-has-midnight-oil={String(
-                  Boolean((usage?.by_source || {}).midnight_oil),
-                )}
-                data-has-collective-merge={String(
-                  Boolean((usage?.by_source || {}).collective_merge),
-                )}
-                role="status"
-              >
-                Feed sources:{" "}
-                {Object.entries(usage?.by_source || {})
-                  .map(([src, n]) => `${src}=${n}`)
-                  .join(" · ")}
-              </p>
+              <>
+                {primaryRewriteFeed ? (
+                  <p
+                    className="text-[11px] font-mono text-ink-soft dark:text-starlight border border-ink/10 rounded p-2 dark:border-bright/10"
+                    data-testid="antiek-bench-suite-proposal-primary-feed"
+                    data-primary-feed-source={primaryRewriteFeed.source}
+                    data-primary-feed-count={String(primaryRewriteFeed.count)}
+                    data-proposed-task-count={String(
+                      (suiteProposal?.added_item_ids || []).length,
+                    )}
+                    data-propose-not-promote="true"
+                    data-view-format="html"
+                    role="status"
+                  >
+                    Primary rewrite feed (drove this week&apos;s proposal
+                    delta):{" "}
+                    <strong>{primaryRewriteFeed.source}</strong>=
+                    {primaryRewriteFeed.count} event(s) · proposed_tasks=
+                    {(suiteProposal?.added_item_ids || []).length} (not
+                    auto-promoted)
+                  </p>
+                ) : null}
+                <p
+                  className="text-[11px] font-mono text-ink-soft dark:text-starlight"
+                  data-testid="antiek-bench-suite-proposal-feed-sources"
+                  data-has-twin-chase={String(
+                    Boolean((usage?.by_source || {}).twin_chase),
+                  )}
+                  data-has-floating-dr={String(
+                    Boolean((usage?.by_source || {}).floating_deep_research),
+                  )}
+                  data-has-midnight-oil={String(
+                    Boolean((usage?.by_source || {}).midnight_oil),
+                  )}
+                  data-has-collective-merge={String(
+                    Boolean((usage?.by_source || {}).collective_merge),
+                  )}
+                  data-primary-feed-source={primaryRewriteFeed?.source ?? ""}
+                  role="status"
+                >
+                  Feed sources (ranked):{" "}
+                  {rankedRewriteFeeds
+                    .map((x) => `${x.source}=${x.count}`)
+                    .join(" · ")}
+                </p>
+              </>
             ) : (
               <p
                 className="text-[11px] font-mono text-ink-soft dark:text-starlight"
@@ -1836,6 +1883,7 @@ export default function Settings() {
                 data-has-floating-dr="false"
                 data-has-midnight-oil="false"
                 data-has-collective-merge="false"
+                data-primary-feed-source=""
                 role="status"
               >
                 Feed sources: (none yet — investigation starts, floating DR /
@@ -2004,7 +2052,7 @@ export default function Settings() {
                     rationale-only).
                   </p>
                 ) : null}
-                {/* Residual (pe): rewrite rationale chrome (propose≠promote honesty). */}
+                {/* Residual (pe/qa): rewrite rationale + primary feed driver. */}
                 {suiteProposal.rationale ? (
                   <p
                     className="text-[11px] font-mono text-ink-soft dark:text-starlight border border-ink/10 rounded p-2 dark:border-bright/10"
@@ -2016,12 +2064,23 @@ export default function Settings() {
                     data-feed-source-count={String(
                       Object.keys(usage?.by_source || {}).length,
                     )}
+                    data-primary-feed-source={primaryRewriteFeed?.source ?? ""}
+                    data-primary-feed-count={String(
+                      primaryRewriteFeed?.count ?? 0,
+                    )}
                     data-propose-not-promote="true"
                     data-view-format="html"
                     role="status"
                   >
                     Rewrite rationale (proposed, not auto-promoted):{" "}
                     {suiteProposal.rationale}
+                    {primaryRewriteFeed ? (
+                      <>
+                        {" "}
+                        · primary feed {primaryRewriteFeed.source}=
+                        {primaryRewriteFeed.count}
+                      </>
+                    ) : null}
                   </p>
                 ) : null}
                 {suiteProposal.notes?.map((n) => (

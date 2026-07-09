@@ -632,3 +632,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - buildWriteHtmlDraftHref(html_draft + optional twin_seed)
   - MO deposit stores twinWriteSeed source=midnight_oil_deposit
   - Open Write data-has-twin-seed; vitest 24 passed
+
+- Closed (qa, 2026-07-10) **Antiek-bench primary rewrite feed (FUTURE-AGENT V3):**
+  - primaryFeedSourceFromBySource (max by_source count)
+  - Settings primary-feed chrome + ranked feed sources + metrics attrs
+  - vitest 28 passed

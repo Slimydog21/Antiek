@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   groupProposedTasksByClass,
+  primaryFeedSourceFromBySource,
+  rankedFeedSourcesFromBySource,
   taskClassFromProposedItemId,
 } from "./suiteProposalTasks";
 
@@ -31,5 +33,36 @@ describe("suiteProposalTasks residual (hg)", () => {
     expect(g.distill).toBe(2);
     expect(g.wrestle).toBe(1);
     expect(g.other).toBe(1);
+  });
+});
+
+describe("suiteProposalTasks residual (qa / FUTURE-AGENT V3)", () => {
+  it("picks primary by_source by max count (ties → name)", () => {
+    expect(
+      primaryFeedSourceFromBySource({
+        twin_chase: 3,
+        midnight_oil: 1,
+        collective_merge: 2,
+      }),
+    ).toEqual({ source: "twin_chase", count: 3 });
+    // Tie: lexicographic source wins.
+    expect(
+      primaryFeedSourceFromBySource({
+        zebra: 2,
+        alpha: 2,
+      }),
+    ).toEqual({ source: "alpha", count: 2 });
+    expect(primaryFeedSourceFromBySource({})).toBeNull();
+    expect(primaryFeedSourceFromBySource(null)).toBeNull();
+  });
+
+  it("ranks feed sources by count desc", () => {
+    expect(
+      rankedFeedSourcesFromBySource({
+        twin_chase: 3,
+        midnight_oil: 1,
+        collective_merge: 2,
+      }).map((x) => x.source),
+    ).toEqual(["twin_chase", "collective_merge", "midnight_oil"]);
   });
 });

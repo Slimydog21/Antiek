@@ -95,7 +95,8 @@ const {
       by_source: {
         investigation_start: 1,
         session_flywheel: 1,
-        twin_chase: 1,
+        // Residual (qa): twin_chase highest so primary feed is unambiguous.
+        twin_chase: 3,
         floating_deep_research: 1,
         // Residual (os): MO + collective feed honesty after om–oq engagement.
         midnight_oil: 1,
@@ -755,6 +756,37 @@ describe("Settings SPR-01 + decision-tree install", () => {
       0,
     );
     expect(metrics.textContent).toMatch(/feed_sources=/);
+  });
+
+  it("surfaces primary rewrite feed source from by_source max (qa)", async () => {
+    render(<Settings />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("antiek-bench-suite-proposal-primary-feed"),
+      ).toBeTruthy();
+    });
+    const primary = screen.getByTestId(
+      "antiek-bench-suite-proposal-primary-feed",
+    );
+    expect(primary.getAttribute("data-primary-feed-source")).toBe("twin_chase");
+    expect(primary.getAttribute("data-primary-feed-count")).toBe("3");
+    expect(primary.getAttribute("data-propose-not-promote")).toBe("true");
+    expect(primary.textContent).toMatch(/Primary rewrite feed/i);
+    expect(primary.textContent).toMatch(/twin_chase/);
+    const metrics = screen.getByTestId("antiek-bench-suite-proposal-metrics");
+    expect(metrics.getAttribute("data-primary-feed-source")).toBe("twin_chase");
+    expect(metrics.textContent).toMatch(/primary_feed=twin_chase=3/);
+    const feed = screen.getByTestId("antiek-bench-suite-proposal-feed-sources");
+    expect(feed.getAttribute("data-primary-feed-source")).toBe("twin_chase");
+    // Ranked: twin_chase first.
+    expect(feed.textContent).toMatch(/^Feed sources \(ranked\): twin_chase=3/);
+    const rationale = screen.getByTestId(
+      "antiek-bench-suite-proposal-rationale",
+    );
+    expect(rationale.getAttribute("data-primary-feed-source")).toBe(
+      "twin_chase",
+    );
+    expect(rationale.textContent).toMatch(/primary feed twin_chase=3/);
   });
 
   it("groups proposed suite tasks by task class (hg)", async () => {

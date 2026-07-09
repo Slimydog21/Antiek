@@ -1,0 +1,15 @@
+# inventory-qa · FUTURE-AGENT V3 primary rewrite feed chrome
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: qa
+date: 2026-07-10
+
+## Closed
+- primaryFeedSourceFromBySource + rankedFeedSourcesFromBySource pure helpers
+- Settings suite proposal: primary rewrite feed chrome (source+count)
+- Ranked feed sources list; metrics/rationale data-primary-feed-*
+- propose≠promote honesty preserved
+- vitest suiteProposalTasks 5 + Settings 23 = 28 passed
+
+## Files
+- apps/reading/src/lib/suiteProposalTasks.ts (+ .test.ts)
+- apps/reading/src/modes/Settings/index.tsx (+ Settings.test.tsx)
