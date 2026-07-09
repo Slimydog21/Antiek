@@ -9,6 +9,7 @@ const spinResearch = vi.fn();
 const navigate = vi.fn();
 const hydratePublicationRefs = vi.fn();
 const parsePublicationRefs = vi.fn();
+const collectDeepResearchSpawnIds = vi.fn(() => [] as string[]);
 
 vi.mock("./launchFloatingDeepResearch", () => ({
   launchFloatingDeepResearch: (...args: unknown[]) =>
@@ -23,6 +24,27 @@ vi.mock("../ResearchWorkstation/publicationRefs", () => ({
 
 vi.mock("../../api/books", () => ({
   spinResearch: (...args: unknown[]) => spinResearch(...args),
+}));
+
+vi.mock("../../workspace/collectDeepResearchSpawnIds", () => ({
+  collectDeepResearchSpawnIds: (...args: unknown[]) =>
+    collectDeepResearchSpawnIds(...args),
+}));
+
+vi.mock("../../workspace/windowsStore", () => ({
+  useWindows: (sel: (s: { windows: Record<string, unknown> }) => unknown) =>
+    sel({ windows: {} }),
+}));
+
+vi.mock("../../components/engagement/CollectiveResearchPanel", () => ({
+  CollectiveResearchPanel: (props: {
+    availableSpawnIds: string[];
+    parentAssetId?: string | null;
+  }) => (
+    <div data-testid="collective-research-panel-stub">
+      {props.parentAssetId}:{props.availableSpawnIds.join(",")}
+    </div>
+  ),
 }));
 
 vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", () => {
@@ -83,6 +105,8 @@ describe("ResearchThis residual cc/cu/cx", () => {
     hydratePublicationRefs.mockReset();
     parsePublicationRefs.mockReset();
     parsePublicationRefs.mockReturnValue([]);
+    collectDeepResearchSpawnIds.mockReset();
+    collectDeepResearchSpawnIds.mockReturnValue([]);
   });
 
   afterEach(() => cleanup());
@@ -190,6 +214,30 @@ describe("ResearchThis residual cc/cu/cx", () => {
         /Hydrated 1/,
       );
     });
+  });
+
+  it("mounts collective panel when open DR spawns exist (fc)", () => {
+    collectDeepResearchSpawnIds.mockReturnValue(["spn_r1", "spn_r2"]);
+    render(
+      <MemoryRouter>
+        <ResearchThis documentId="doc-read" pageIndex={0} passageText="hi" />
+      </MemoryRouter>,
+    );
+    const mount = screen.getByTestId("research-this-collective-mount");
+    expect(mount.getAttribute("data-available-spawn-count")).toBe("2");
+    expect(screen.getByTestId("collective-research-panel-stub").textContent).toMatch(
+      /doc-read:spn_r1,spn_r2/,
+    );
+  });
+
+  it("omits collective panel when no open spawns", () => {
+    collectDeepResearchSpawnIds.mockReturnValue([]);
+    render(
+      <MemoryRouter>
+        <ResearchThis documentId="doc-read" pageIndex={0} passageText="hi" />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByTestId("research-this-collective-mount")).toBeNull();
   });
 
   it("opens full working-region deep research window (et)", async () => {

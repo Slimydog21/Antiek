@@ -1,8 +1,9 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { LemonButton } from "../../components/lemon";
 import { spinResearch } from "../../api/books";
+import { CollectiveResearchPanel } from "../../components/engagement/CollectiveResearchPanel";
 import {
   ResearchLaunchBudgetPanel,
   type ResearchLaunchBudgetProjection,
@@ -12,7 +13,9 @@ import {
   hydratePublicationRefs,
   parsePublicationRefs,
 } from "../ResearchWorkstation/publicationRefs";
+import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
 import type { WindowMode } from "../../workspace/windowsStore";
+import { useWindows } from "../../workspace/windowsStore";
 import { launchFloatingDeepResearch } from "./launchFloatingDeepResearch";
 
 /**
@@ -27,6 +30,8 @@ import { launchFloatingDeepResearch } from "./launchFloatingDeepResearch";
  * (shared chokepoint with float-menu / HighlightToolbar).
  * Residual (et): full working-region deep_research_session window (view_mode
  * full) — distinct from legacy full-page ResearchWorkstation handoff.
+ * Residual (fc): CollectiveResearchPanel when open DR spawns exist so the
+ * main reading surface multi-select merges into this document (parity eu).
  * Full-page workstation handoff remains an explicit tertiary action.
  *
  * Gate-safe: passageText for gated books is still constrained server-side;
@@ -47,6 +52,16 @@ export default function ResearchThis({
   passageText,
 }: ResearchThisProps) {
   const navigate = useNavigate();
+  // Residual (fc): open DR session spawns for collective multi-select.
+  const windows = useWindows((s) => s.windows);
+  const availableSpawnIds = useMemo(
+    () =>
+      collectDeepResearchSpawnIds({
+        currentSpawnId: null,
+        windows,
+      }),
+    [windows],
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastWindowId, setLastWindowId] = useState<string | null>(null);
@@ -245,6 +260,20 @@ export default function ResearchThis({
           </span>
         )}
       </div>
+      {/* Residual (fc): multi-select open DR spawns → merge into this book. */}
+      {documentId.trim() && availableSpawnIds.length > 0 ? (
+        <section
+          className="mt-2 max-w-md space-y-1 border-t border-ink/10 pt-2 dark:border-bright/10"
+          data-testid="research-this-collective-mount"
+          data-view-format="html"
+          data-available-spawn-count={String(availableSpawnIds.length)}
+        >
+          <CollectiveResearchPanel
+            availableSpawnIds={availableSpawnIds}
+            parentAssetId={documentId.trim()}
+          />
+        </section>
+      ) : null}
     </div>
   );
 }

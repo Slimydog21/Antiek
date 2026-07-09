@@ -24,6 +24,8 @@ for future agents — not a claim that the north star is finished.
 | ey | collective continue-as-unit full |
 | ez | hosted twins remount with context refresh |
 | fa | DR host twins remount with context refresh |
+| fb | next-wave honest gap map |
+| fc | Reading ResearchThis collective multi-select |
 
 ## Operator / env gated (do not fake green)
 
@@ -58,5 +60,5 @@ Prefer thin chokepoint product over parallel UIs:
 
 ## Next residual letter
 
-**(fb)** — re-derive from this map; ship one thin product residual or honest gap spec.
+**(fd)** — re-derive; tip advanced past fc.
 Operator merge still gated.
