@@ -45,3 +45,8 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 ## residual (ap) competitive deep-research notes→spec — 2026-07-09
 - docs/htmlspec/competitive-deep-research/VERDICT.md + index.html
 - backlog aq–av for hydrate/telemetry/evidence/tiers/dogfood
+## residual (gd) Write open-piece HTML re-import — 2026-07-09
+- importHtmlDraftIntoDeliverable shared chokepoint (create + re-import)
+- Load html_draft on open piece; section_index offset; seedTwins:false
+- UI: write-piece-html-reimport / write-piece-reimport-run / status
+- tests: WriteHome.test.tsx 14 passed

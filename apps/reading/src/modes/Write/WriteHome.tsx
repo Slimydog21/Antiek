@@ -65,6 +65,7 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
  * Residual (gb): ResearchContextPanel on open piece + remount after twin
  * promote (reading≡write context flywheel).
  * Residual (gc): DecisionTreeDriverBadge on open piece (model + budget bar).
+ * Residual (gd): re-import html_draft into an existing open piece (not only create).
  */
 export default function WriteHome() {
   const { deliverableId } = useParams<{ deliverableId?: string }>();
@@ -92,6 +93,8 @@ export default function WriteHome() {
   const [htmlDraftError, setHtmlDraftError] = useState<string | null>(null);
   const [htmlDraftBusy, setHtmlDraftBusy] = useState(false);
   const [brainstormSeed, setBrainstormSeed] = useState<string | null>(null);
+  const [reimportBusy, setReimportBusy] = useState(false);
+  const [reimportStatus, setReimportStatus] = useState<string | null>(null);
   // The "start a piece" action — must be declared before html_draft load effect.
   const [starting, setStarting] = useState(false);
   const [newTitle, setNewTitle] = useState("");
@@ -137,11 +140,12 @@ export default function WriteHome() {
       .catch(() => setPieces([]));
   }, [deliverableId]);
 
-  // Residual (fm): load hosted HTML draft when handoff query is present.
+  // Residual (fm/gd): load hosted HTML draft on home OR open piece handoff.
   useEffect(() => {
-    if (deliverableId || !htmlDraftId) {
+    if (!htmlDraftId) {
       setHtmlDraft(null);
       setHtmlDraftError(null);
+      setReimportStatus(null);
       return;
     }
     let cancelled = false;
@@ -157,17 +161,19 @@ export default function WriteHome() {
           title: doc.title,
         });
         setHtmlDraft(prepared);
-        // Prefill piece title when empty so connect-research can proceed.
-        setNewTitle((prev) => (prev.trim() ? prev : prepared.title_hint));
-        // Residual (fp): stamp project-type freeform with HTML draft provenance.
-        setProjectType((prev) =>
-          prev.freeform.trim()
-            ? prev
-            : {
-                ...prev,
-                freeform: `html_draft:${prepared.document_id}`,
-              },
-        );
+        // Prefill only on create-home path (not re-import into open piece).
+        if (!deliverableId) {
+          setNewTitle((prev) => (prev.trim() ? prev : prepared.title_hint));
+          // Residual (fp): stamp project-type freeform with HTML draft provenance.
+          setProjectType((prev) =>
+            prev.freeform.trim()
+              ? prev
+              : {
+                  ...prev,
+                  freeform: `html_draft:${prepared.document_id}`,
+                },
+          );
+        }
       })
       .catch((e) => {
         if (cancelled) return;
@@ -218,6 +224,83 @@ export default function WriteHome() {
   // created WITH its backing investigation_root_id set (the link is set at
   // creation; M1 reads it back to verify it exists).
 
+  /** Residual (ft/fu/fv/fx/gd): land htmlDraft sections into a deliverable. */
+  const importHtmlDraftIntoDeliverable = useCallback(
+    async (
+      targetDeliverableId: string,
+      opts?: { twinTitle?: string; seedTwins?: boolean },
+    ): Promise<number> => {
+      if (!htmlDraft) return 0;
+      const sections =
+        htmlDraft.outline_sections?.length > 0
+          ? htmlDraft.outline_sections
+          : htmlDraft.plain_text?.trim()
+            ? [
+                {
+                  title: (htmlDraft.title_hint || "Imported HTML draft").slice(
+                    0,
+                    120,
+                  ),
+                  plain_text: htmlDraft.plain_text,
+                  section_index: 0,
+                  heading_level: 0,
+                  html_fragment: htmlDraft.html.slice(0, 100_000),
+                },
+              ]
+            : [];
+      // Offset section_index when appending to an existing piece (gd).
+      const indexOffset = opts?.seedTwins === false ? (detail?.sections?.length ?? 0) : 0;
+      const lastIdByLevel: Record<number, string> = {};
+      let imported = 0;
+      for (const s of sections) {
+        if (!s.plain_text?.trim()) continue;
+        const level = s.heading_level ?? 0;
+        let parent_section_id: string | undefined;
+        if (level >= 2) {
+          for (let p = level - 1; p >= 0; p--) {
+            if (lastIdByLevel[p]) {
+              parent_section_id = lastIdByLevel[p];
+              break;
+            }
+          }
+        }
+        const sec = await createSection({
+          deliverable_id: targetDeliverableId,
+          section_index: s.section_index + indexOffset,
+          title: (s.title || "Imported section").slice(0, 120),
+          ...(parent_section_id ? { parent_section_id } : {}),
+        });
+        lastIdByLevel[level] = sec.section_id;
+        for (const k of Object.keys(lastIdByLevel)) {
+          const kl = Number(k);
+          if (kl > level) delete lastIdByLevel[kl];
+        }
+        const prose =
+          (s.html_fragment || "").trim() || s.plain_text.slice(0, 100_000);
+        await updateSectionProse(sec.section_id, {
+          prose_text: prose.slice(0, 100_000),
+          promote_to_graph: false,
+        });
+        imported += 1;
+      }
+      if (opts?.seedTwins !== false) {
+        try {
+          await seedTwinNotes({
+            asset_id: targetDeliverableId,
+            title: opts?.twinTitle || htmlDraft.title_hint,
+            body_text: htmlDraft.plain_text.slice(0, 2000),
+            include_html: false,
+            force_offline: true,
+          });
+        } catch {
+          // Twin seed optional.
+        }
+      }
+      return imported;
+    },
+    [htmlDraft, detail?.sections?.length],
+  );
+
   async function createWithConnection(resolved: { investigationId: string; label: string }) {
     if (!newTitle.trim()) return;
     setStarting(true);
@@ -231,77 +314,12 @@ export default function WriteHome() {
         // investigation_root_id; reused, not a new column — see decision D-1).
         investigation_root_id: resolved.investigationId,
       });
-      // Residual (ft/fu/fv): land HTML draft into outline section(s), nested by level.
-      // Prefer heading-split outline_sections; fall back to single plain body.
       if (htmlDraft) {
         try {
-          const sections =
-            htmlDraft.outline_sections?.length > 0
-              ? htmlDraft.outline_sections
-              : htmlDraft.plain_text?.trim()
-                ? [
-                    {
-                      title: (htmlDraft.title_hint || "Imported HTML draft").slice(
-                        0,
-                        120,
-                      ),
-                      plain_text: htmlDraft.plain_text,
-                      section_index: 0,
-                      heading_level: 0,
-                      html_fragment: htmlDraft.html.slice(0, 100_000),
-                    },
-                  ]
-                : [];
-          // Residual (fv): track last section id per heading level for nesting.
-          const lastIdByLevel: Record<number, string> = {};
-          for (const s of sections) {
-            if (!s.plain_text?.trim()) continue;
-            const level = s.heading_level ?? 0;
-            let parent_section_id: string | undefined;
-            if (level >= 2) {
-              // Prefer parent one level up; walk up if missing.
-              for (let p = level - 1; p >= 0; p--) {
-                if (lastIdByLevel[p]) {
-                  parent_section_id = lastIdByLevel[p];
-                  break;
-                }
-              }
-            }
-            const sec = await createSection({
-              deliverable_id: d.deliverable_id,
-              section_index: s.section_index,
-              title: (s.title || "Imported section").slice(0, 120),
-              ...(parent_section_id
-                ? { parent_section_id }
-                : {}),
-            });
-            lastIdByLevel[level] = sec.section_id;
-            // Clear deeper levels when we place a shallower heading.
-            for (const k of Object.keys(lastIdByLevel)) {
-              const kl = Number(k);
-              if (kl > level) delete lastIdByLevel[kl];
-            }
-            // Residual (fx): HTML-first prose when fragment present.
-            const prose =
-              (s.html_fragment || "").trim() ||
-              s.plain_text.slice(0, 100_000);
-            await updateSectionProse(sec.section_id, {
-              prose_text: prose.slice(0, 100_000),
-              promote_to_graph: false,
-            });
-          }
-          // Residual (fz): recursive note-taker twin on the new writing asset.
-          try {
-            await seedTwinNotes({
-              asset_id: d.deliverable_id,
-              title: newTitle.trim() || htmlDraft.title_hint,
-              body_text: htmlDraft.plain_text.slice(0, 2000),
-              include_html: false,
-              force_offline: true,
-            });
-          } catch {
-            // Twin seed optional; piece + sections already landed.
-          }
+          await importHtmlDraftIntoDeliverable(d.deliverable_id, {
+            twinTitle: newTitle.trim() || htmlDraft.title_hint,
+            seedTwins: true,
+          });
         } catch {
           // Non-fatal: piece still opens; operator can paste from brainstorm seed.
         }
@@ -309,6 +327,28 @@ export default function WriteHome() {
       navigate(`/write/${d.deliverable_id}`);
     } finally {
       setStarting(false);
+    }
+  }
+
+  /** Residual (gd): append html_draft sections into the open piece. */
+  async function importIntoOpenPiece() {
+    if (!detail?.deliverable_id || !htmlDraft) return;
+    setReimportBusy(true);
+    setReimportStatus(null);
+    try {
+      const n = await importHtmlDraftIntoDeliverable(detail.deliverable_id, {
+        twinTitle: detail.title || htmlDraft.title_hint,
+        seedTwins: false, // twins already exist on open piece
+      });
+      setReimportStatus(`Imported ${n} section(s) from HTML draft.`);
+      await refresh();
+      onContextNeedsRefresh();
+    } catch (e) {
+      setReimportStatus(
+        e instanceof Error ? e.message : String(e),
+      );
+    } finally {
+      setReimportBusy(false);
     }
   }
 
@@ -620,6 +660,63 @@ export default function WriteHome() {
             </div>
           </div>
         </header>
+
+        {/* Residual (gd): re-import html_draft into this open piece. */}
+        {htmlDraftId ? (
+          <div
+            className="mb-4 space-y-2 rounded border border-ink/20 p-3 font-mono text-[12px] dark:border-bright/20"
+            data-testid="write-piece-html-reimport"
+            data-view-format="html"
+            data-html-draft={htmlDraftId}
+            data-load-status={
+              htmlDraftBusy
+                ? "loading"
+                : htmlDraftError
+                  ? "error"
+                  : htmlDraft
+                    ? "ready"
+                    : "idle"
+            }
+          >
+            <p>
+              HTML draft re-import: <code>{htmlDraftId}</code>
+              {htmlDraftBusy ? " · loading…" : null}
+            </p>
+            {htmlDraftError ? (
+              <p className="text-emperor" role="alert">
+                {htmlDraftError}
+              </p>
+            ) : null}
+            {htmlDraft ? (
+              <>
+                <p data-testid="write-piece-reimport-title">
+                  {htmlDraft.title} · {htmlDraft.outline_sections?.length ?? 0}{" "}
+                  section(s)
+                </p>
+                <button
+                  type="button"
+                  data-testid="write-piece-reimport-run"
+                  disabled={reimportBusy || !detail?.deliverable_id}
+                  onClick={() => void importIntoOpenPiece()}
+                  className="rounded border border-ink/30 px-2 py-1 text-[11px] hover:bg-ink/5 disabled:opacity-50 dark:border-bright/30"
+                >
+                  {reimportBusy
+                    ? "Importing…"
+                    : "Import HTML draft into this piece"}
+                </button>
+                {reimportStatus ? (
+                  <p
+                    className="text-[11px]"
+                    data-testid="write-piece-reimport-status"
+                    role="status"
+                  >
+                    {reimportStatus}
+                  </p>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+        ) : null}
 
         {onRamp === "context" && (
           <div className="mb-4 rounded-md border border-rule dark:border-charcoal-1">

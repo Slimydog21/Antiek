@@ -1,0 +1,25 @@
+# residual (gd) re-import html_draft into open Write piece
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(gc) prior | branch_only | campaign inventories
+(gd) open-piece HTML re-import | branch_only | write-piece-html-reimport + importHtmlDraftIntoDeliverable shared chokepoint; section_index offset; seedTwins:false; 14 WriteHome vitest
+
+PATHS:
+- apps/reading/src/modes/Write/WriteHome.tsx
+- apps/reading/src/modes/Write/WriteHome.test.tsx
+
+BEHAVIOR:
+- Load ?html_draft= on open piece (not only create-home)
+- Prefill title/provenance only on create-home path
+- importHtmlDraftIntoDeliverable shared by create + re-import
+- Re-import appends sections with indexOffset = existing section count
+- seedTwins:false on re-import (twins already on open piece)
+- UI: write-piece-html-reimport / write-piece-reimport-run / write-piece-reimport-status
+
+INVARIANTS:
+- HTML view_format
+- budget soft-gate / NotDiamond advisory only
+- propose≠promote
+
+NEXT: (ge) re-derive; operator merge PR #465

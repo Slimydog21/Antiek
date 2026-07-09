@@ -507,6 +507,78 @@ describe("WriteHome — the re-homed door", () => {
     expect(screen.getByTestId("decision-tree-driver-badge-stub")).toBeTruthy();
   });
 
+  it("re-imports html_draft into open piece with section index offset (gd)", async () => {
+    getDeliverableMock.mockResolvedValue({
+      deliverable_id: "dlv-open",
+      title: "Existing piece",
+      deliverable_kind: "general_essay",
+      investigation_root_id: "inv-1",
+      status: "draft",
+      sections: [
+        {
+          section_id: "sec_existing",
+          deliverable_id: "dlv-open",
+          section_index: 0,
+          title: "Already there",
+          parent_section_id: null,
+        },
+      ],
+      created_at: null,
+      updated_at: null,
+      section_count: 1,
+    });
+    createSectionMock.mockResolvedValue({
+      section_id: "sec_reimport_0",
+      deliverable_id: "dlv-open",
+      section_index: 1,
+      title: "Merged research draft",
+      parent_section_id: null,
+    });
+    seedTwinNotesMock.mockClear();
+    mountAt("/write/dlv-open?html_draft=draft_merge_abc");
+    await waitFor(() => {
+      expect(fetchHostedDocumentHtmlMock).toHaveBeenCalledWith("draft_merge_abc");
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("write-piece-html-reimport")).toBeTruthy();
+    });
+    const panel = screen.getByTestId("write-piece-html-reimport");
+    expect(panel.getAttribute("data-html-draft")).toBe("draft_merge_abc");
+    expect(panel.getAttribute("data-view-format")).toBe("html");
+    await waitFor(() => {
+      expect(panel.getAttribute("data-load-status")).toBe("ready");
+    });
+    expect(screen.getByTestId("write-piece-reimport-title").textContent).toMatch(
+      /Merged research draft/,
+    );
+    await userEvent.click(screen.getByTestId("write-piece-reimport-run"));
+    await waitFor(() => {
+      expect(createSectionMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          deliverable_id: "dlv-open",
+          // One existing section → append at index 1
+          section_index: 1,
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(updateSectionProseMock).toHaveBeenCalledWith(
+        "sec_reimport_0",
+        expect.objectContaining({
+          prose_text: expect.stringMatching(/Attention is content-addressable/),
+          promote_to_graph: false,
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("write-piece-reimport-status").textContent).toMatch(
+        /Imported 1 section/,
+      );
+    });
+    // Re-import must not re-seed twins (seedTwins:false on open piece).
+    expect(seedTwinNotesMock).not.toHaveBeenCalled();
+  });
+
   it("M1 — 'none' auto-spawns a research folder and creates the piece linked to it", async () => {
     mountAt("/write");
     // Naming the piece reveals the connect-to-research step (M1).
