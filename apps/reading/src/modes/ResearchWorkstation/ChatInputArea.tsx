@@ -1,7 +1,10 @@
 import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { ResearchLaunchBudgetPanel } from "../../components/engagement/ResearchLaunchBudgetPanel";
+import {
+  ResearchLaunchBudgetPanel,
+  type ResearchLaunchBudgetProjection,
+} from "../../components/engagement/ResearchLaunchBudgetPanel";
 import LemonButton from "../../components/lemon/LemonButton";
 import LemonTextarea from "../../components/lemon/LemonTextarea";
 import { track, trackException } from "../../lib/analytics";
@@ -32,6 +35,7 @@ import {
  *
  * Residual (bq): live budget + #440 projection (parity with StartResearch bp).
  * Residual (ct): publication refs (arxiv/substack/url) parity with StartResearch cj.
+ * Residual (df): soft-gate Ask when budget projection would exceed (parity de).
  */
 export default function ChatInputArea({
   parentInvestigationId,
@@ -53,12 +57,24 @@ export default function ChatInputArea({
   const [pubRefStatus, setPubRefStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [budgetWarn, setBudgetWarn] = useState(false);
+  const [forceOverBudget, setForceOverBudget] = useState(false);
   const navigate = useNavigate();
+
+  const onProjectionChange = useCallback((p: ResearchLaunchBudgetProjection) => {
+    setBudgetWarn(p.wouldExceedBudget === true);
+  }, []);
 
   const submit = useCallback(async () => {
     const q = question.trim();
     if (!q || q.length < 3) {
       setError("Question is too short. At least 3 characters.");
+      return;
+    }
+    if (budgetWarn && !forceOverBudget) {
+      setError(
+        "Projected cost may exceed remaining daily budget — enable force override or reduce scope.",
+      );
       return;
     }
     setBusy(true);
@@ -107,6 +123,8 @@ export default function ChatInputArea({
     spawnContext,
     navigate,
     onSubmitted,
+    budgetWarn,
+    forceOverBudget,
   ]);
 
   return (
@@ -159,12 +177,28 @@ export default function ChatInputArea({
           </p>
         ) : null}
       </div>
-      {/* Residual (bq): same launch budget panel as StartResearch (bp). */}
+      {/* Residual (bq/df): same launch budget panel as StartResearch (bp). */}
       <div className="mt-2" data-testid="chat-input-budget-mount">
         <ResearchLaunchBudgetPanel
           promptText={question}
           researchTier={researchTier === "fast" ? "fast" : "deep"}
+          onProjectionChange={onProjectionChange}
         />
+        {budgetWarn ? (
+          <label
+            className="mt-1 flex items-center gap-2 text-[11px] font-mono text-emperor"
+            data-testid="chat-input-over-budget-warn"
+          >
+            <input
+              type="checkbox"
+              data-testid="chat-input-force-over-budget"
+              checked={forceOverBudget}
+              onChange={(e) => setForceOverBudget(e.target.checked)}
+              disabled={busy}
+            />
+            Force Ask despite budget projection
+          </label>
+        ) : null}
       </div>
       <div className="mt-2 flex items-center justify-between gap-3">
         <div className="text-[11px] font-mono text-ink-mute dark:text-moonlight">
@@ -174,7 +208,11 @@ export default function ChatInputArea({
         <LemonButton
           variant="primary"
           onClick={() => void submit()}
-          disabled={busy || question.trim().length < 3}
+          disabled={
+            busy ||
+            question.trim().length < 3 ||
+            (budgetWarn && !forceOverBudget)
+          }
         >
           {busy ? "…" : "Ask"}
         </LemonButton>

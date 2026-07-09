@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(df) · PR #465
+de: ResearchThis budget gate · df: StartResearch + ChatInputArea Ask soft-gate.
+Operator merge still gated.

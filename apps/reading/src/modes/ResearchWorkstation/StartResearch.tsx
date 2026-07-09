@@ -11,7 +11,10 @@ import { CelebrateBurst, useCelebrate } from "../../shared/delight";
 import { useStartInvestigation } from "../../hooks/useStartInvestigation";
 import { ApiError, ingestSource, ingestVoiceNote } from "../../lib/api";
 import type { ResearchTier } from "../../lib/api";
-import { ResearchLaunchBudgetPanel } from "../../components/engagement/ResearchLaunchBudgetPanel";
+import {
+  ResearchLaunchBudgetPanel,
+  type ResearchLaunchBudgetProjection,
+} from "../../components/engagement/ResearchLaunchBudgetPanel";
 import CascadeProposal from "./CascadeProposal";
 import MyResearch from "./MyResearch";
 import VoiceChaseButton from "./VoiceChaseButton";
@@ -158,6 +161,12 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   // Residual (cj): arxiv / substack / URL handles, one per line.
   const [pubRefs, setPubRefs] = useState("");
   const [pubRefStatus, setPubRefStatus] = useState<string | null>(null);
+  // Residual (df): soft-gate Ask when budget projection would exceed.
+  const [budgetWarn, setBudgetWarn] = useState(false);
+  const [forceOverBudget, setForceOverBudget] = useState(false);
+  const onProjectionChange = useCallback((p: ResearchLaunchBudgetProjection) => {
+    setBudgetWarn(p.wouldExceedBudget === true);
+  }, []);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // The research-starts signature beat (U-05 M2) — Werner's one-shot
@@ -180,6 +189,10 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   } = start;
 
   const onSubmit = useCallback(async () => {
+    if (budgetWarn && !forceOverBudget) {
+      // Soft gate — do not start investigation without explicit force.
+      return;
+    }
     const refs = parsePublicationRefs(pubRefs);
     setPubRefStatus(null);
     let launchQuestion = question;
@@ -202,7 +215,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
       setQuestion("");
       // Keep refs visible for follow-up asks; operator clears manually.
     }
-  }, [submit, question, tier, pubRefs]);
+  }, [submit, question, tier, pubRefs, budgetWarn, forceOverBudget]);
 
   const fillExample = useCallback((prompt: string) => {
     setQuestion(prompt);
@@ -653,13 +666,29 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             </span>
           </div>
 
-          {/* Residual (bp): daily budget bar + prompt cost projection +
+          {/* Residual (bp/df): daily budget bar + prompt cost projection +
               decision-tree driver readout. Uses Settings #440 estimate API;
-              never invents $0 when ledger/rates unknown. */}
+              never invents $0 when ledger/rates unknown. Soft-gate Ask on exceed. */}
           <ResearchLaunchBudgetPanel
             promptText={question}
             researchTier={tier}
+            onProjectionChange={onProjectionChange}
           />
+          {budgetWarn ? (
+            <label
+              className="flex items-center gap-2 text-[11px] font-mono text-emperor"
+              data-testid="start-research-over-budget-warn"
+            >
+              <input
+                type="checkbox"
+                data-testid="start-research-force-over-budget"
+                checked={forceOverBudget}
+                onChange={(e) => setForceOverBudget(e.target.checked)}
+                disabled={busy}
+              />
+              Force Ask despite budget projection
+            </label>
+          ) : null}
 
           {/* Residual (cj): knowledge-dense publication handles for deep research. */}
           <div
@@ -717,7 +746,11 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                 variant="secondary"
                 size="lg"
                 onClick={onBreakDown}
-                disabled={busy || question.trim().length < 3}
+                disabled={
+                  busy ||
+                  question.trim().length < 3 ||
+                  (budgetWarn && !forceOverBudget)
+                }
               >
                 Break into sub-questions
               </LemonButton>
@@ -725,7 +758,11 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                 variant="primary"
                 size="lg"
                 onClick={() => void onSubmit()}
-                disabled={busy || question.trim().length < 3}
+                disabled={
+                  busy ||
+                  question.trim().length < 3 ||
+                  (budgetWarn && !forceOverBudget)
+                }
               >
                 {busy ? "Starting…" : "Ask"}
               </LemonButton>
