@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import MidnightOil from "./index";
 import {
   activationChecklistMidnightOil,
+  budgetReservationMidnightOil,
   dispatchMidnightOil,
   dryRunMidnightOil,
   preflightMidnightOil,
@@ -214,6 +215,30 @@ vi.mock("../../api/midnightOil", () => ({
     final_artifact_allowed: false,
     checklist_notes: ["activation checklist only: live execution remains blocked"],
   })),
+  budgetReservationMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-budget-reservation",
+    activation_checklist_receipt_id: "midnight-oil-test-activation-checklist",
+    dispatch_receipt_id: "midnight-oil-test-dispatch-receipt",
+    applied_run_receipt_id: "midnight-oil-test-applied-run-receipt",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    run_id: "midnight-oil-test",
+    status: "blocked_budget_reservation_disabled",
+    requested_reservation_usd: 7.2,
+    approved_price_ceiling_usd: 12,
+    planned_budget_usd: 7.2,
+    unallocated_budget_usd: 4.8,
+    blocker_reason: "budget_reservation_provider_missing",
+    budget_reservation_allowed: false,
+    budget_reserved: false,
+    provider_calls_made: false,
+    dispatch_performed: false,
+    retrieval_performed: false,
+    graph_mutated: false,
+    final_artifact_created: false,
+    reservation_notes: ["budget reservation gate only: reservation provider is not configured"],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -342,5 +367,34 @@ describe("MidnightOil", () => {
     expect(screen.getByText("4 controls")).toBeTruthy();
     expect(screen.getByText("operator live-run activation setting")).toBeTruthy();
     expect(screen.getByText("budget reservation provider")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Budget reservation" }));
+
+    await waitFor(() => expect(budgetReservationMidnightOil).toHaveBeenCalled());
+    expect(budgetReservationMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      applied_run_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-applied-run-receipt",
+      }),
+      dispatch_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-dispatch-receipt",
+      }),
+      activation_checklist_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-activation-checklist",
+      }),
+    });
+    expect(screen.getByText("Budget receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-budget-reservation")).toBeTruthy();
+    expect(screen.getByText("blocked budget reservation disabled")).toBeTruthy();
+    expect(screen.getByText("budget reservation provider missing")).toBeTruthy();
+    expect(screen.getAllByText("$7.20").length).toBeGreaterThan(1);
   });
 });

@@ -2,11 +2,13 @@ import { useState } from "react";
 
 import {
   activationChecklistMidnightOil,
+  budgetReservationMidnightOil,
   dispatchMidnightOil,
   dryRunMidnightOil,
   preflightMidnightOil,
   type MidnightOilActivationChecklistReceipt,
   type MidnightOilAppliedRunReceipt,
+  type MidnightOilBudgetReservationReceipt,
   type MidnightOilDispatchReceipt,
   type MidnightOilPreflight,
   type MidnightOilRouteMode,
@@ -44,14 +46,18 @@ export default function MidnightOil() {
   const [dispatchReceipt, setDispatchReceipt] = useState<MidnightOilDispatchReceipt | null>(null);
   const [activationReceipt, setActivationReceipt] =
     useState<MidnightOilActivationChecklistReceipt | null>(null);
+  const [budgetReservationReceipt, setBudgetReservationReceipt] =
+    useState<MidnightOilBudgetReservationReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [dispatchBusy, setDispatchBusy] = useState(false);
   const [activationBusy, setActivationBusy] = useState(false);
+  const [budgetReservationBusy, setBudgetReservationBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
   const [activationError, setActivationError] = useState<string | null>(null);
+  const [budgetReservationError, setBudgetReservationError] = useState<string | null>(null);
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -60,10 +66,12 @@ export default function MidnightOil() {
     setDryRunError(null);
     setDispatchError(null);
     setActivationError(null);
+    setBudgetReservationError(null);
     setPreflight(null);
     setDryRunReceipt(null);
     setDispatchReceipt(null);
     setActivationReceipt(null);
+    setBudgetReservationReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -123,6 +131,8 @@ export default function MidnightOil() {
     setDispatchReceipt(null);
     setActivationError(null);
     setActivationReceipt(null);
+    setBudgetReservationError(null);
+    setBudgetReservationReceipt(null);
     try {
       const result = await dispatchMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -156,6 +166,8 @@ export default function MidnightOil() {
     setActivationBusy(true);
     setActivationError(null);
     setActivationReceipt(null);
+    setBudgetReservationError(null);
+    setBudgetReservationReceipt(null);
     try {
       const result = await activationChecklistMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -169,6 +181,41 @@ export default function MidnightOil() {
       setActivationError(e instanceof Error ? e.message : String(e));
     } finally {
       setActivationBusy(false);
+    }
+  }
+
+  async function onBudgetReservationGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !preflight.applied_run_receipt ||
+      !dispatchReceipt ||
+      !activationReceipt
+    ) {
+      setBudgetReservationError(
+        "Budget reservation requires launch packet, approval receipt, runner handoff, applied run receipt, dispatch receipt, and activation receipt.",
+      );
+      return;
+    }
+
+    setBudgetReservationBusy(true);
+    setBudgetReservationError(null);
+    setBudgetReservationReceipt(null);
+    try {
+      const result = await budgetReservationMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        applied_run_receipt: preflight.applied_run_receipt,
+        dispatch_receipt: dispatchReceipt,
+        activation_checklist_receipt: activationReceipt,
+      });
+      setBudgetReservationReceipt(result);
+    } catch (e) {
+      setBudgetReservationError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBudgetReservationBusy(false);
     }
   }
 
@@ -658,6 +705,65 @@ export default function MidnightOil() {
                       <li key={item}>{item}</li>
                     ))}
                   </ul>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Budget reservation
+                </p>
+                <button
+                  type="button"
+                  onClick={onBudgetReservationGate}
+                  disabled={
+                    budgetReservationBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !preflight.applied_run_receipt ||
+                    !dispatchReceipt ||
+                    !activationReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {budgetReservationBusy ? "Checking budget..." : "Budget reservation"}
+                </button>
+              </div>
+
+              {budgetReservationError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {budgetReservationError}
+                </p>
+              )}
+
+              {budgetReservationReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Budget receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {budgetReservationReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={budgetReservationReceipt.status.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Requested"
+                      value={`$${budgetReservationReceipt.requested_reservation_usd.toFixed(2)}`}
+                    />
+                    <Metric
+                      label="Blocker"
+                      value={budgetReservationReceipt.blocker_reason.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Reserved"
+                      value={budgetReservationReceipt.budget_reserved ? "yes" : "no"}
+                    />
+                  </div>
                 </div>
               )}
 
