@@ -16,6 +16,19 @@ vi.mock("../windows/openWindow", () => ({
   openWindow: (...args: unknown[]) => openWindow(...args),
 }));
 
+vi.mock("./DecisionTreeDriverBadge", () => ({
+  DecisionTreeDriverBadge: (props: {
+    researchTier?: string | null;
+  }) => (
+    <div
+      data-testid="decision-tree-driver-badge-stub"
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+    >
+      driver badge
+    </div>
+  ),
+}));
+
 describe("SpawnMergePanel residual ci", () => {
   afterEach(() => cleanup());
   beforeEach(() => {
@@ -65,6 +78,12 @@ describe("SpawnMergePanel residual ci", () => {
     const settings = screen.getByTestId("spawn-merge-settings-link");
     expect(settings.getAttribute("href")).toBe("/settings");
     expect(settings.textContent).toMatch(/driver & budget/i);
+    // Residual (lj): driver badge defaults deep pre-merge.
+    expect(
+      screen
+        .getByTestId("spawn-merge-driver-badge-mount")
+        .getAttribute("data-research-tier"),
+    ).toBe("deep");
     fireEvent.click(screen.getByTestId("spawn-merge-draft"));
     await waitFor(() => {
       expect(mergeSpawnOutputs).toHaveBeenCalledWith({
@@ -116,6 +135,17 @@ describe("SpawnMergePanel residual ci", () => {
     expect(screen.getByTestId("spawn-merge-research-tier").textContent).toMatch(
       /long-horizon/i,
     );
+    // Residual (lj): post-merge badge adopts recommended_research_tier.
+    expect(
+      screen
+        .getByTestId("spawn-merge-driver-badge-mount")
+        .getAttribute("data-research-tier"),
+    ).toBe("wrestle");
+    expect(
+      screen
+        .getByTestId("decision-tree-driver-badge-stub")
+        .getAttribute("data-research-tier"),
+    ).toBe("wrestle");
     expect(metrics.textContent).toMatch(/Spawn merge/);
     // Residual (eh): parent notified after merge + twin seed.
     await waitFor(() => {

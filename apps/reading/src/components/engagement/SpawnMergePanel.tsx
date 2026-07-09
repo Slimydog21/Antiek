@@ -15,9 +15,10 @@
  * Residual (ho): spawn-merge-metrics machine attrs for draft/parent merge audit.
  * Residual (ih): Settings deep-link for driver + budget.
  * Residual (kn): surface recommended_research_tier + research_tiers from merge.
+ * Residual (lj): DecisionTreeDriverBadge with merge recommended tier (or prop).
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   mergeSpawnOutputs,
   seedTwinNotes,
@@ -25,6 +26,7 @@ import {
   type MergeProductResponse,
 } from "../../api/engagement";
 import { openWindow } from "../windows/openWindow";
+import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 
 export type OpenMergedResearchWindowOpts = {
   /** Window + payload title stem (default: Merged research). */
@@ -80,6 +82,11 @@ export type SpawnMergePanelProps = {
    * successful draft_combined merge. into_parent never auto-opens.
    */
   autoOpenDraft?: boolean;
+  /**
+   * Residual (lj): optional pre-merge research tier for driver badge;
+   * after merge, recommended_research_tier from product wins.
+   */
+  researchTier?: "fast" | "deep" | "wrestle" | string | null;
 };
 
 export function SpawnMergePanel({
@@ -87,6 +94,7 @@ export function SpawnMergePanel({
   parentAssetId,
   onMerged,
   autoOpenDraft = true,
+  researchTier = null,
 }: SpawnMergePanelProps) {
   const [result, setResult] = useState<MergeProductResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +102,16 @@ export function SpawnMergePanel({
   const [autoOpenedWindowId, setAutoOpenedWindowId] = useState<string | null>(
     null,
   );
+
+  // Residual (lj): post-merge recommended tier wins over prop / default deep.
+  const badgeResearchTier = useMemo(() => {
+    const fromResult = (result?.recommended_research_tier || "")
+      .trim()
+      .toLowerCase();
+    if (fromResult) return fromResult;
+    const fromProp = (researchTier || "").trim().toLowerCase();
+    return fromProp || "deep";
+  }, [result?.recommended_research_tier, researchTier]);
 
   const merge = useCallback(
     async (mode: MergeMode) => {
@@ -195,6 +213,15 @@ export function SpawnMergePanel({
             Settings · driver & budget
           </a>
         </p>
+        {/* Residual (lj): model driver + budget + depth (parity collective lg). */}
+        <div
+          className="mt-1"
+          data-testid="spawn-merge-driver-badge-mount"
+          data-view-format="html"
+          data-research-tier={badgeResearchTier}
+        >
+          <DecisionTreeDriverBadge researchTier={badgeResearchTier} />
+        </div>
       </header>
 
       <div className="flex flex-wrap gap-2">

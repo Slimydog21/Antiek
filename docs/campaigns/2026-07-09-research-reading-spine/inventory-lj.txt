@@ -1,0 +1,8 @@
+# inventory-lj · SpawnMergePanel DecisionTreeDriverBadge recommended tier
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: lj
+files:
+  apps/reading/src/components/engagement/SpawnMergePanel.tsx
+  apps/reading/src/components/engagement/SpawnMergePanel.test.tsx
+proof: SpawnMergePanel vitest 6_passed (HONEST_OK)
+invariants: HTML · post-merge recommended_tier wins · NotDiamond advisory · parity lg
