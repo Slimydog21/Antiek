@@ -73,6 +73,14 @@ from .collective import (
     merge_spawns_collective,
 )
 from .hydrate import HydratedAsset, asset_id_for_ref, hydrate_reference, project_hydrated_html
+from .progress import (
+    ProgressEvent,
+    list_progress,
+    progress_payload,
+    project_progress_html,
+    record_progress,
+    seed_default_pipeline,
+)
 
 __all__ = [
     "CollectiveResearchUnit",
@@ -102,9 +110,11 @@ __all__ = [
     "extract_arxiv_id",
     "filter_references",
     "HydratedAsset",
+    "ProgressEvent",
     "asset_id_for_ref",
     "get_spawn",
     "hydrate_reference",
+    "list_progress",
     "list_source_references",
     "list_spawns_for_asset",
     "list_twin_notes",
@@ -113,9 +123,13 @@ __all__ = [
     "merge_spawns_collective",
     "parse_source_reference",
     "parse_source_references",
+    "progress_payload",
     "project_hydrated_html",
     "project_merge_html",
+    "project_progress_html",
     "project_to_html",
+    "record_progress",
+    "seed_default_pipeline",
     "promote_and_context_for_asset",
     "promote_twin_note",
     "promote_twin_notes_for_asset",

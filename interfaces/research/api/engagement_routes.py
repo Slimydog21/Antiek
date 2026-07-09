@@ -15,6 +15,8 @@ Surfaces:
   POST /engagement/collective
   POST /engagement/merge
   POST /engagement/hydrate-ref
+  POST /engagement/progress
+  GET  /engagement/progress/{spawn_id}
   POST /engagement/sessions/open
   POST /engagement/sessions/complete-flywheel
 """
@@ -36,6 +38,9 @@ from substrate.engagement_spine import (
     hydrate_reference,
     merge_product_payload,
     merge_spawns_collective,
+    progress_payload,
+    record_progress,
+    seed_default_pipeline,
     spawn_from_highlight_with_references,
 )
 from substrate.engagement_spine.store import EngagementStore, FileEngagementStore
@@ -175,6 +180,18 @@ class HydrateRefBody(BaseModel):
     reference: str = Field(min_length=1)
     include_html: bool = True
     attach_spawn_id: str | None = None
+
+
+class ProgressRecordBody(BaseModel):
+    spawn_id: str = Field(min_length=1)
+    stage: Literal["plan", "gather", "synthesize", "cite", "complete", "failed"]
+    message: str = ""
+    include_html: bool = False
+
+
+class ProgressSeedBody(BaseModel):
+    spawn_id: str = Field(min_length=1)
+    include_html: bool = True
 
 
 class SessionOpenBody(HighlightBody):
@@ -332,6 +349,49 @@ def post_hydrate_ref(body: HydrateRefBody) -> dict[str, Any]:
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return asset.to_dict()
+
+
+@engagement_router.post("/progress")
+def post_progress(body: ProgressRecordBody) -> dict[str, Any]:
+    """Append one plan/gather/synthesize/cite (or terminal) progress event."""
+    try:
+        ev = record_progress(
+            body.spawn_id,
+            body.stage,
+            body.message,
+            store=_eng(),
+        )
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    payload = progress_payload(
+        body.spawn_id, store=_eng(), include_html=body.include_html
+    )
+    payload["recorded"] = ev.to_dict()
+    return payload
+
+
+@engagement_router.post("/progress/seed")
+def post_progress_seed(body: ProgressSeedBody) -> dict[str, Any]:
+    """Seed default plan→gather→synthesize→cite skeleton for a spawn."""
+    try:
+        seed_default_pipeline(body.spawn_id, store=_eng())
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return progress_payload(
+        body.spawn_id, store=_eng(), include_html=body.include_html
+    )
+
+
+@engagement_router.get("/progress/{spawn_id}")
+def get_progress(spawn_id: str, include_html: bool = False) -> dict[str, Any]:
+    """Read progress events for a spawn (HTML-capable)."""
+    if _eng().get_spawn(spawn_id) is None:
+        raise HTTPException(status_code=404, detail=f"unknown spawn_id: {spawn_id}")
+    return progress_payload(spawn_id, store=_eng(), include_html=include_html)
 
 
 @engagement_router.post("/sessions/open")
