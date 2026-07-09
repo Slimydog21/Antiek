@@ -23,11 +23,29 @@ vi.mock("../../modes/Reading/launchFloatingDeepResearch", () => ({
     launchFloatingDeepResearch(...args),
 }));
 
+const fetchDepthTiers = vi.hoisted(() =>
+  vi.fn(async () => ({
+    active_depth_tier: null as string | null,
+    active_preset: null,
+    presets: [],
+    projection_hints: null,
+    view_format: "html" as const,
+    settings_panel: "depth_tier_presets",
+    source: "test",
+    notes: [] as string[],
+  })),
+);
+
+vi.mock("../../api/settings", () => ({
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...args),
+}));
+
 vi.mock("./ResearchLaunchBudgetPanel", () => {
   const React = require("react") as typeof import("react");
   return {
     ResearchLaunchBudgetPanel: (props: {
       promptText: string;
+      researchTier?: string;
       allowTierPick?: boolean;
       onProjectionChange?: (p: {
         wouldExceedBudget: boolean | null;
@@ -49,6 +67,7 @@ vi.mock("./ResearchLaunchBudgetPanel", () => {
       return (
         <div
           data-testid="research-launch-budget-panel-stub"
+          data-research-tier={props.researchTier || "deep"}
           data-allow-tier-pick={props.allowTierPick ? "true" : "false"}
         >
           budget len={props.promptText.length}
@@ -61,6 +80,16 @@ vi.mock("./ResearchLaunchBudgetPanel", () => {
 describe("CollectiveResearchPanel", () => {
   afterEach(() => cleanup());
   beforeEach(() => {
+    fetchDepthTiers.mockReset().mockResolvedValue({
+      active_depth_tier: null,
+      active_preset: null,
+      presets: [],
+      projection_hints: null,
+      view_format: "html",
+      settings_panel: "depth_tier_presets",
+      source: "test",
+      notes: [],
+    });
     fetchCollectiveResearch.mockReset();
     mergeSpawnOutputs.mockReset();
     seedTwinNotes.mockReset();
@@ -137,6 +166,60 @@ describe("CollectiveResearchPanel", () => {
     expect(metrics.getAttribute("data-ref-count")).toBe("0");
     expect(metrics.getAttribute("data-view-format")).toBe("html");
     expect(metrics.textContent).toMatch(/Collective unit/);
+    // Residual (jf): depth prefill none when Settings unset.
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId("collective-continue-budget-mount")
+          .getAttribute("data-depth-prefill"),
+      ).toBe("none");
+    });
+  });
+
+  it("prefills collective continue depth from Settings wrestle (jf)", async () => {
+    fetchDepthTiers.mockResolvedValue({
+      active_depth_tier: "wrestle",
+      active_preset: null,
+      presets: [],
+      projection_hints: null,
+      view_format: "html",
+      settings_panel: "depth_tier_presets",
+      source: "test",
+      notes: [],
+    });
+    fetchCollectiveResearch.mockResolvedValue({
+      collective_id: "col_w",
+      spawn_ids: ["spn_1", "spn_2"],
+      asset_ids: ["a", "b"],
+      investigation_ids: [],
+      twin_units: [],
+      source_references: [],
+      view_format: "html",
+      spawn_count: 2,
+      twin_count: 0,
+      ref_count: 0,
+      prompt_block: "# Collective unit col_w\n",
+    });
+    render(
+      <CollectiveResearchPanel availableSpawnIds={["spn_1", "spn_2"]} />,
+    );
+    const boxes = screen.getAllByRole("checkbox");
+    fireEvent.click(boxes[0]);
+    fireEvent.click(boxes[1]);
+    fireEvent.click(screen.getByTestId("collective-merge-prompt"));
+    await waitFor(() => {
+      const mount = screen.getByTestId("collective-continue-budget-mount");
+      expect(mount.getAttribute("data-depth-prefill")).toBe("installed");
+      expect(mount.getAttribute("data-research-tier")).toBe("wrestle");
+    });
+    expect(screen.getByTestId("collective-depth-prefill").textContent).toMatch(
+      /installed.*wrestle/i,
+    );
+    expect(
+      screen
+        .getByTestId("research-launch-budget-panel-stub")
+        .getAttribute("data-research-tier"),
+    ).toBe("wrestle");
   });
 
   it("continues collective prompt as floating deep research unit (dc)", async () => {

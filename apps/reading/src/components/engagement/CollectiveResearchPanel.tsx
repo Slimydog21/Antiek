@@ -21,6 +21,7 @@
  * 11. Residual (hm): collective-unit-metrics machine attrs for multi-spawn
  *     cohesive unit audit (parity twin/flywheel/progress metrics).
  * 12. Residual (ig): Settings deep-link for driver + budget before continue.
+ * 13. Residual (jf): prefill researchTier from Settings depth-tier (parity je).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -32,11 +33,14 @@ import {
   type MergeMode,
   type MergeProductResponse,
 } from "../../api/engagement";
+import { fetchDepthTiers } from "../../api/settings";
+import { mapDepthTierToResearchTier } from "../../lib/researchTier";
 import { launchFloatingDeepResearch } from "../../modes/Reading/launchFloatingDeepResearch";
 import type { WindowMode } from "../../workspace/windowsStore";
 import {
   ResearchLaunchBudgetPanel,
   type ResearchLaunchBudgetProjection,
+  type ResearchLaunchTier,
 } from "./ResearchLaunchBudgetPanel";
 import { openMergedResearchWindow } from "./SpawnMergePanel";
 
@@ -82,6 +86,33 @@ export function CollectiveResearchPanel({
   );
   const [budgetWarn, setBudgetWarn] = useState(false);
   const [forceOverBudget, setForceOverBudget] = useState(false);
+  /** Residual (jf): Settings depth-tier prefill for continue-as-unit budget. */
+  const [researchTier, setResearchTier] = useState<ResearchLaunchTier>("deep");
+  const [depthPrefill, setDepthPrefill] = useState<
+    "pending" | "installed" | "none" | "error"
+  >("pending");
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchDepthTiers()
+      .then((resp) => {
+        if (cancelled) return;
+        const mapped = mapDepthTierToResearchTier(resp.active_depth_tier);
+        if (mapped) {
+          setResearchTier(mapped);
+          setDepthPrefill("installed");
+        } else {
+          setDepthPrefill("none");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setDepthPrefill("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const onProjectionChange = useCallback((p: ResearchLaunchBudgetProjection) => {
     setBudgetWarn(p.wouldExceedBudget === true);
   }, []);
@@ -433,17 +464,32 @@ export function CollectiveResearchPanel({
           <pre className="prompt-block" data-testid="collective-prompt-block">
             {unit.prompt_block}
           </pre>
-          {/* Residual (dc/di): continue unit + budget soft-gate. */}
+          {/* Residual (dc/di/jf): continue unit + budget soft-gate + depth prefill. */}
           <div
             className="space-y-2"
             style={{ marginTop: "0.5rem" }}
             data-testid="collective-continue-budget-mount"
             data-view-format="html"
+            data-research-tier={researchTier}
+            data-depth-prefill={depthPrefill}
           >
+            <p
+              className="text-[11px] font-mono opacity-80"
+              data-testid="collective-depth-prefill"
+              role="status"
+            >
+              Depth prefill: {depthPrefill}
+              {depthPrefill === "installed"
+                ? ` → ${researchTier}`
+                : depthPrefill === "none"
+                  ? " (default deep)"
+                  : ""}
+            </p>
             <ResearchLaunchBudgetPanel
               promptText={unit.prompt_block || ""}
-              researchTier="deep"
+              researchTier={researchTier}
               allowTierPick
+              onResearchTierChange={setResearchTier}
               onProjectionChange={onProjectionChange}
             />
             {budgetWarn ? (
