@@ -195,15 +195,20 @@ export default function BookReader() {
     minLength: 8,
   });
 
-  // Deep-research (residual cd): primary → floating deep_research_session
-  // window via engagement sessions/open + openDeepResearchFromHighlight.
+  // Deep-research (residual cd/fe): primary → floating or full
+  // deep_research_session via launchFloatingDeepResearch.
   // Fallback → in-book ChaseThread if launch fails (degraded path).
   // §9.0: `safeSpawnText` is null when the selection crosses a withheld
   // region — refuse rather than spawn on a withheld body.
   const onDeepResearch = useCallback(
-    (safeSpawnText: string | null, sel: FloatMenuSelection) => {
+    (
+      safeSpawnText: string | null,
+      sel: FloatMenuSelection,
+      opts?: { viewMode?: "floating" | "full" },
+    ) => {
       if (safeSpawnText === null) return;
       window.getSelection()?.removeAllRanges(); // collapse so the menu closes
+      const viewMode = opts?.viewMode === "full" ? "full" : "floating";
       void (async () => {
         try {
           await launchFloatingDeepResearch({
@@ -212,7 +217,7 @@ export default function BookReader() {
             page: pageIndex,
             region_id: sel.provenance.chunkId ?? undefined,
             goal_hint: "Deep-research the highlighted passage from reading",
-            view_mode: "floating",
+            view_mode: viewMode,
           });
         } catch {
           // Degraded: keep the SHIPPED ChaseThread rabbit-hole path.

@@ -63,8 +63,14 @@ export interface FloatMenuProps {
    * The host wires this to the REUSED chase path (ChaseThread/ChaseSlideOver +
    * startInvestigation with parent_investigation_id) — FloatMenu does not
    * re-implement child-investigation creation. The host receives the §9.0-safe
-   * outbound text (null ⇒ withheld; the host must refuse). */
-  onDeepResearch: (safeSpawnText: string | null, selection: FloatMenuSelection) => void;
+   * outbound text (null ⇒ withheld; the host must refuse).
+   * Residual (fe): optional third arg viewMode floating | full for window hosts
+   * that open deep_research_session (HighlightToolbar / Reading FloatMenu). */
+  onDeepResearch: (
+    safeSpawnText: string | null,
+    selection: FloatMenuSelection,
+    opts?: { viewMode?: "floating" | "full" },
+  ) => void;
   /** M4 Hybrid flag (OFF by default). When off, Deep-research launches
    * immediately (= M2). When on, the clarifying-question path is reachable but
    * explicitly marked unfinished. See HYBRID_DECISION.md. */
@@ -200,7 +206,18 @@ export default function FloatMenu({
                 // ChaseThread + startInvestigation). §9.0: hand the host the
                 // guarded outbound text (null ⇒ withheld) so a withheld body
                 // never becomes a child investigation's spawn_context.
-                onDeepResearch(outboundText(selection), selection);
+                onDeepResearch(outboundText(selection), selection, {
+                  viewMode: "floating",
+                });
+              }}
+            />
+            {/* Residual (fe): full working-region deep research (parity et/es). */}
+            <MenuButton
+              label="Deep-research full"
+              onClick={() => {
+                onDeepResearch(outboundText(selection), selection, {
+                  viewMode: "full",
+                });
               }}
             />
           </div>

@@ -152,7 +152,11 @@ function Host({
   editContext,
   onApplyEdit,
 }: {
-  onDeepResearch?: (t: string | null, s: FloatMenuSelection) => void;
+  onDeepResearch?: (
+    t: string | null,
+    s: FloatMenuSelection,
+    opts?: { viewMode?: "floating" | "full" },
+  ) => void;
   hybridEnabled?: boolean;
   investigationId?: string;
   testId?: string;
@@ -413,9 +417,26 @@ describe("DEEP-RESEARCH spawns a child linked to the highlight (M2)", () => {
     // §9.0-safe text (servable) + the full selection are handed to the host,
     // which calls startInvestigation({ parent_investigation_id }) — proven in
     // the api-level test below.
-    const [safeText, sel] = onDeepResearch.mock.calls[0];
+    const [safeText, sel, opts] = onDeepResearch.mock.calls[0];
     expect(safeText).toBe("chase me");
     expect((sel as FloatMenuSelection).text).toBe("chase me");
+    expect(opts).toEqual({ viewMode: "floating" });
+  });
+
+  it("Deep-research full hands host viewMode full (fe)", () => {
+    const onDeepResearch = vi.fn();
+    render(
+      <Host
+        onDeepResearch={onDeepResearch}
+        provenance={{ servable: true, documentId: "d", chunkId: null }}
+      />,
+    );
+    selectTextIn(screen.getByTestId("scope"), "open full");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Deep-research full" }));
+    expect(onDeepResearch).toHaveBeenCalledTimes(1);
+    const [safeText, , opts] = onDeepResearch.mock.calls[0];
+    expect(safeText).toBe("open full");
+    expect(opts).toEqual({ viewMode: "full" });
   });
 
   it("startInvestigation is called with parent_investigation_id (the linked child)", async () => {

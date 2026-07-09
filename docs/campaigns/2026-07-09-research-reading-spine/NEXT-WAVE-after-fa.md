@@ -26,6 +26,8 @@ for future agents — not a claim that the north star is finished.
 | fa | DR host twins remount with context refresh |
 | fb | next-wave honest gap map |
 | fc | Reading ResearchThis collective multi-select |
+| fd | DecisionTreeDriverBadge refresh |
+| fe | FloatMenu Deep-research full |
 
 ## Operator / env gated (do not fake green)
 
@@ -60,5 +62,5 @@ Prefer thin chokepoint product over parallel UIs:
 
 ## Next residual letter
 
-**(fd)** — re-derive; tip advanced past fc.
+**(ff)** — re-derive; tip advanced past fe.
 Operator merge still gated.

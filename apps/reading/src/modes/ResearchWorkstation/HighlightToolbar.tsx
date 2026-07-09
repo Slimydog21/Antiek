@@ -8,8 +8,9 @@ import { launchFloatingDeepResearch } from "../Reading/launchFloatingDeepResearc
  * {@link FloatMenu} (Living Roadmap SPR-04 + residual cd).
  *
  * Deep-research primary path opens a floating deep_research_session window
- * (same product path as Reading). ChaseThread remains the degraded fallback
- * via `onChaseThis` when launch fails.
+ * (same product path as Reading). Residual (fe): Deep-research full opens
+ * view_mode full. ChaseThread remains the degraded fallback via `onChaseThis`
+ * when launch fails.
  *
  * Why a host adapter and not FloatMenu directly in the page: FloatMenu is
  * host-agnostic (it takes a rect prop, reads no DOM, imports nothing from
@@ -39,18 +40,23 @@ export default function HighlightToolbar({
     <FloatMenu
       selection={selection}
       investigationId={investigationId ?? "__research__"}
-      onDeepResearch={(safeSpawnText: string | null, _sel: FloatMenuSelection) => {
+      onDeepResearch={(
+        safeSpawnText: string | null,
+        _sel: FloatMenuSelection,
+        opts?: { viewMode?: "floating" | "full" },
+      ) => {
         // §9.0: `safeSpawnText` is null when the selection crosses a withheld
         // region — the chase MUST NOT receive the withheld body.
         if (safeSpawnText === null) return;
         const assetId = (investigationId || "").trim() || "__research__";
+        const viewMode = opts?.viewMode === "full" ? "full" : "floating";
         void (async () => {
           try {
             await launchFloatingDeepResearch({
               asset_id: assetId,
               selection_text: safeSpawnText,
               goal_hint: "Deep-research the highlighted synthesis passage",
-              view_mode: "floating",
+              view_mode: viewMode,
             });
           } catch {
             onChaseThis(safeSpawnText);
