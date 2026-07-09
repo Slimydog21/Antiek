@@ -8,6 +8,7 @@
  * Residual (ff): recursive note-taker metrics strip — insight/question/other
  * twin breakdown so operators see the twin substrate that feeds prompts.
  * Residual (kd): evidence pack surfaces spawn research_tier (depth posture).
+ * Residual (kl): research context pack surfaces spawn research_tier chrome.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -349,10 +350,18 @@ export function ResearchContextPanel({
       ) : null}
 
       {pack ? (
-        <div className="pack">
+        <div
+          className="pack"
+          data-testid="research-context-pack"
+          data-view-format="html"
+          data-research-tier={
+            (pack.research_tier || "").trim().toLowerCase() || ""
+          }
+        >
           <p className="counts">
             twins={pack.twin_count ?? pack.twin_units?.length ?? 0} · refs=
             {pack.ref_count ?? pack.source_references?.length ?? 0}
+            {pack.research_tier ? ` · tier=${pack.research_tier}` : ""}
           </p>
           {/* Residual (ff): recursive note-taker metrics (insight/question twin substrate). */}
           <div
@@ -362,13 +371,35 @@ export function ResearchContextPanel({
             data-twin-insights={String(twinMetrics.insights)}
             data-twin-questions={String(twinMetrics.questions)}
             data-twin-other={String(twinMetrics.other)}
+            data-research-tier={
+              (pack.research_tier || "").trim().toLowerCase() || ""
+            }
             role="status"
           >
             Recursive note-taker · insights={twinMetrics.insights} · questions=
             {twinMetrics.questions}
             {twinMetrics.other > 0 ? ` · other=${twinMetrics.other}` : ""} ·
             total={twinMetrics.total}
+            {pack.research_tier ? ` · tier=${pack.research_tier}` : ""}
           </div>
+          {/* Residual (kl): spawn research_tier depth posture on context pack. */}
+          {pack.research_tier ? (
+            <p
+              className="meta font-mono text-[11px]"
+              data-testid="research-context-research-tier"
+              data-research-tier={String(pack.research_tier)
+                .trim()
+                .toLowerCase()}
+              role="status"
+            >
+              Research tier: <strong>{pack.research_tier}</strong>
+              {String(pack.research_tier).toLowerCase() === "wrestle"
+                ? " · multi-minute long-horizon depth"
+                : String(pack.research_tier).toLowerCase() === "fast"
+                  ? " · flash / distill depth"
+                  : " · deep / synthesize depth"}
+            </p>
+          ) : null}
           <ul className="twins">
             {(pack.twin_units ?? []).map((u) => (
               <li key={u.unit_id}>

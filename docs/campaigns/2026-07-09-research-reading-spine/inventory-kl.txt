@@ -1,0 +1,10 @@
+# inventory-kl · ResearchContextPanel pack research_tier UI chrome
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: kl
+files:
+  apps/reading/src/components/engagement/ResearchContextPanel.tsx
+  apps/reading/src/components/engagement/ResearchContextPanel.test.tsx
+  apps/reading/src/workspace/researchContextPack.ts
+  apps/reading/src/workspace/researchContextPack.test.ts
+proof: vitest ResearchContextPanel+researchContextPack 15_passed (HONEST_OK)
+invariants: HTML · pack.research_tier · parity evidence kd · no PDF

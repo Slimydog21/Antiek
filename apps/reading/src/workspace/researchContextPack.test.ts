@@ -44,6 +44,15 @@ describe("researchContextPack", () => {
     expect(block).toContain("[arxiv]");
   });
 
+  it("formats research_tier in prompt block when present (kk/kl)", () => {
+    const block = formatResearchContextPromptBlock({
+      ...samplePack,
+      research_tier: "wrestle",
+    });
+    expect(block).toContain("research_tier: wrestle");
+    expect(block).toContain("spawn: spn_abc");
+  });
+
   it("formats collective prompt block", () => {
     const unit: CollectiveResearchUnit = {
       collective_id: "col_xyz",

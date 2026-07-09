@@ -98,7 +98,9 @@ describe("ResearchContextPanel", () => {
       ],
       twin_count: 1,
       ref_count: 1,
-      prompt_block: "# Research context for asset `paper`\n",
+      research_tier: "wrestle",
+      prompt_block:
+        "# Research context for asset `paper`\nresearch_tier: wrestle\n",
     });
 
     render(<ResearchContextPanel assetId="paper" spawnId="spn_1" />);
@@ -118,6 +120,17 @@ describe("ResearchContextPanel", () => {
     expect(metrics.getAttribute("data-twin-questions")).toBe("0");
     expect(metrics.getAttribute("data-twin-total")).toBe("1");
     expect(metrics.textContent).toMatch(/insights=1/);
+    // Residual (kl): pack research_tier chrome (parity evidence kd).
+    expect(metrics.getAttribute("data-research-tier")).toBe("wrestle");
+    expect(
+      screen.getByTestId("research-context-pack").getAttribute("data-research-tier"),
+    ).toBe("wrestle");
+    expect(
+      screen.getByTestId("research-context-research-tier").textContent,
+    ).toMatch(/wrestle/i);
+    expect(
+      screen.getByTestId("research-context-research-tier").textContent,
+    ).toMatch(/long-horizon/i);
   });
 
   it("twinNoteMetrics counts insight/question/other (ff)", () => {

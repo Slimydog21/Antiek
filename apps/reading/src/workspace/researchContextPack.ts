@@ -45,6 +45,8 @@ export type ResearchContextPack = {
   source_references: SourceReference[];
   query?: string | null;
   view_format: "html";
+  /** Residual (kk/kl): reserved spawn research_tier when spawn scoped. */
+  research_tier?: "fast" | "deep" | "wrestle" | string | null;
 };
 
 export type CollectiveResearchUnit = {
@@ -70,6 +72,7 @@ export function formatResearchContextPromptBlock(
   const maxRefs = opts?.maxRefs ?? 12;
   const lines: string[] = [`# Research context for asset \`${pack.asset_id}\``];
   if (pack.spawn_id) lines.push(`spawn: ${pack.spawn_id}`);
+  if (pack.research_tier) lines.push(`research_tier: ${pack.research_tier}`);
   if (pack.investigation_id) lines.push(`investigation: ${pack.investigation_id}`);
   if (pack.query) lines.push(`query filter: ${pack.query}`);
   lines.push("", "## Twin-derived insights & questions");
