@@ -1095,6 +1095,66 @@ describe("TwinNotesPanel", () => {
     });
   });
 
+  it("inverts multi-select over visible notes (ne)", async () => {
+    fetchTwinNotes.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 2,
+      insight_count: 2,
+      question_count: 0,
+      notes: [
+        {
+          note_id: "twin_a",
+          asset_id: "paper",
+          kind: "insight",
+          text: "A",
+        },
+        {
+          note_id: "twin_b",
+          asset_id: "paper",
+          kind: "insight",
+          text: "B",
+        },
+      ],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+      html: "<p>twins</p>",
+    });
+    render(<TwinNotesPanel assetId="paper" autoLoad />);
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-invert-selection")).toBeTruthy();
+    });
+    // Invert empty → select all visible.
+    fireEvent.click(screen.getByTestId("twin-invert-selection"));
+    expect(
+      screen
+        .getByTestId("twin-selection-count")
+        .getAttribute("data-selected-count"),
+    ).toBe("2");
+    // Invert again → clear all visible.
+    fireEvent.click(screen.getByTestId("twin-invert-selection"));
+    expect(
+      screen
+        .getByTestId("twin-selection-count")
+        .getAttribute("data-selected-count"),
+    ).toBe("0");
+    // Select one, invert → only the other remains.
+    fireEvent.click(screen.getByTestId("twin-select-twin_a"));
+    fireEvent.click(screen.getByTestId("twin-invert-selection"));
+    expect(
+      screen
+        .getByTestId("twin-selection-count")
+        .getAttribute("data-selected-count"),
+    ).toBe("1");
+    expect(
+      (screen.getByTestId("twin-select-twin_b") as HTMLInputElement).checked,
+    ).toBe(true);
+    expect(
+      (screen.getByTestId("twin-select-twin_a") as HTMLInputElement).checked,
+    ).toBe(false);
+  });
+
   it("selects all questions or insights in one click (nd)", async () => {
     fetchTwinNotes.mockResolvedValue({
       asset_id: "paper",

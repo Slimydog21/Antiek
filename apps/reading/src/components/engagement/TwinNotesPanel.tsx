@@ -35,6 +35,7 @@
  * for model+budget+depth audit on recursive note-taker chase path.
  * Residual (nd): one-click select questions|insights into multi-select
  * (chase/promote questions path without manual checkbox grind).
+ * Residual (ne): invert multi-select over currently visible notes.
  * HTML-first; never PDF.
  */
 
@@ -402,6 +403,21 @@ export function TwinNotesPanel({
     setSelectedNoteIds(new Set());
   }, []);
 
+  /**
+   * Residual (ne): invert multi-select for currently visible notes only
+   * (list-filter-aware). Notes outside visible set keep prior selection.
+   */
+  const invertVisibleSelection = useCallback(() => {
+    setSelectedNoteIds((prev) => {
+      const next = new Set(prev);
+      for (const n of visibleNotes) {
+        if (next.has(n.note_id)) next.delete(n.note_id);
+        else next.add(n.note_id);
+      }
+      return next;
+    });
+  }, [visibleNotes]);
+
   const promote = useCallback(
     async (
       kindsOverride?: "all" | "insight" | "question",
@@ -741,6 +757,15 @@ export function TwinNotesPanel({
           title="Select all insight twins for promote/merge"
         >
           Select insights
+        </button>
+        <button
+          type="button"
+          data-testid="twin-invert-selection"
+          onClick={() => invertVisibleSelection()}
+          disabled={busy || visibleNotes.length === 0}
+          title="Invert multi-select over currently visible twin notes"
+        >
+          Invert visible
         </button>
         <button
           type="button"

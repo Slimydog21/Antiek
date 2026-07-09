@@ -333,3 +333,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (nd, 2026-07-10) **Select questions|insights one-click:**
   - twin-select-questions / twin-select-insights multi-select helpers
   - union with existing selection for chase/promote path
+
+- Closed (ne, 2026-07-10) **Invert multi-select visible twins:**
+  - twin-invert-selection list-filter-aware
+  - multi-select UX path product-complete offline
