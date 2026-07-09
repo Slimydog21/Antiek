@@ -1,0 +1,17 @@
+# residual (ew) Midnight Oil deposit open full working-region window
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(ev) prior | branch_only | campaign inventories
+(ew) moil deposit full | branch_only | moil-open-deposit-full mode full; floating explicit; 6 MidnightOil vitest
+
+PATHS:
+- apps/reading/src/modes/MidnightOil/index.tsx
+- apps/reading/src/modes/MidnightOil/MidnightOil.test.tsx
+
+INVARIANTS:
+- HTML-only deposit open
+- floating + full both hosted_html_document
+- full id suffix :full
+
+NEXT: (ex) re-derive; operator merge PR #465

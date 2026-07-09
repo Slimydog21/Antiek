@@ -277,6 +277,20 @@ describe("MidnightOil mode", () => {
       }),
       expect.objectContaining({
         id: "win:moil-deposit:draft_moil_asset_dep_abc",
+        mode: "floating",
+      }),
+    );
+    // Residual (ew): full working-region open.
+    fireEvent.click(screen.getByTestId("moil-open-deposit-full"));
+    expect(openWindow).toHaveBeenCalledWith(
+      "hosted_html_document",
+      expect.objectContaining({
+        document_id: "draft_moil_asset_dep_abc",
+        view_format: "html",
+      }),
+      expect.objectContaining({
+        id: "win:moil-deposit:draft_moil_asset_dep_abc:full",
+        mode: "full",
       }),
     );
     await waitFor(() => {

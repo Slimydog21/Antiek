@@ -7,6 +7,7 @@
  * driver the operator configured for workstation prompts.
  * Residual (db): open deposit HTML deliverable in hosted_html_document window
  * so Midnight Oil results join the reading/research flywheel (da host).
+ * Residual (ew): open deposit as full working-region window as well as floating.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -486,7 +487,7 @@ export default function MidnightOil() {
                   dangerouslySetInnerHTML={{ __html: deposit.progress.html }}
                 />
               ) : null}
-              {/* Residual (db): open deposit as hosted HTML reading window. */}
+              {/* Residual (db/ew): open deposit as hosted HTML reading window. */}
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
@@ -501,6 +502,7 @@ export default function MidnightOil() {
                       setError("deposit view_format must be html with body");
                       return;
                     }
+                    const docKey = deposit.document_id || deposit.job_id;
                     const winId = openWindow(
                       "hosted_html_document",
                       {
@@ -511,14 +513,49 @@ export default function MidnightOil() {
                         source: "midnight_oil_deposit",
                       },
                       {
-                        id: `win:moil-deposit:${deposit.document_id || deposit.job_id}`,
+                        id: `win:moil-deposit:${docKey}`,
                         title: `Midnight Oil · ${deposit.job_id}`,
+                        mode: "floating",
                       },
                     );
                     setDepositWindowId(winId);
                   }}
                 >
                   Open deposit in window
+                </button>
+                <button
+                  type="button"
+                  data-testid="moil-open-deposit-full"
+                  disabled={
+                    deposit.view_format !== "html" ||
+                    !deposit.html ||
+                    !deposit.document_id
+                  }
+                  onClick={() => {
+                    if (deposit.view_format !== "html" || !deposit.html) {
+                      setError("deposit view_format must be html with body");
+                      return;
+                    }
+                    const docKey = deposit.document_id || deposit.job_id;
+                    const winId = openWindow(
+                      "hosted_html_document",
+                      {
+                        document_id: deposit.document_id || deposit.asset_id,
+                        title: `Midnight Oil · ${deposit.job_id}`,
+                        html: deposit.html,
+                        view_format: "html",
+                        source: "midnight_oil_deposit",
+                      },
+                      {
+                        id: `win:moil-deposit:${docKey}:full`,
+                        title: `Midnight Oil · ${deposit.job_id}`,
+                        mode: "full",
+                      },
+                    );
+                    setDepositWindowId(winId);
+                  }}
+                >
+                  Open deposit full
                 </button>
                 {depositWindowId ? (
                   <span
