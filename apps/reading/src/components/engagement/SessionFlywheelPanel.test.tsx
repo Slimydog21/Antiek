@@ -10,6 +10,19 @@ vi.mock("../../api/engagement", () => ({
     completeSessionFlywheel(...args),
 }));
 
+vi.mock("./DecisionTreeDriverBadge", () => ({
+  DecisionTreeDriverBadge: (props: {
+    researchTier?: string | null;
+  }) => (
+    <div
+      data-testid="decision-tree-driver-badge-stub"
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+    >
+      driver badge
+    </div>
+  ),
+}));
+
 describe("SessionFlywheelPanel residual cl/ee", () => {
   afterEach(() => cleanup());
   beforeEach(() => {
@@ -45,8 +58,15 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
         sessionId="fsess_1"
         defaultOutputText="Attention is content-addressable memory."
         onCompleted={onCompleted}
+        researchTier="deep"
       />,
     );
+    // Residual (lt): pre-complete badge uses prop (deep).
+    expect(
+      screen
+        .getByTestId("session-flywheel-driver-badge-mount")
+        .getAttribute("data-research-tier"),
+    ).toBe("deep");
     fireEvent.click(screen.getByTestId("session-flywheel-complete"));
     await waitFor(() => {
       expect(completeSessionFlywheel).toHaveBeenCalledWith({
@@ -103,6 +123,17 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
     expect(
       screen.getByTestId("session-flywheel-context-research-tier").textContent,
     ).toMatch(/wrestle/);
+    // Residual (lt): post-complete badge adopts session/pack effective tier.
+    expect(
+      screen
+        .getByTestId("session-flywheel-driver-badge-mount")
+        .getAttribute("data-research-tier"),
+    ).toBe("wrestle");
+    expect(
+      screen
+        .getByTestId("decision-tree-driver-badge-stub")
+        .getAttribute("data-research-tier"),
+    ).toBe("wrestle");
   });
 
   it("falls back to context.research_tier when session tier absent (kq)", async () => {

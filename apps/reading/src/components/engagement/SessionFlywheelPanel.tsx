@@ -12,14 +12,16 @@
  * event so recursive rewrite feed is operator-auditable on flywheel close.
  * Residual (kq): fall back to context.research_tier (pack identity from kk)
  * when session research_tier is absent; expose data-context-research-tier.
+ * Residual (lt): DecisionTreeDriverBadge with pre/post complete tier.
  * Composes shipped completeSessionFlywheel. HTML-first context pack.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   completeSessionFlywheel,
   type SessionFlywheelResponse,
 } from "../../api/engagement";
+import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 
 export type SessionFlywheelPanelProps = {
   sessionId: string;
@@ -27,12 +29,18 @@ export type SessionFlywheelPanelProps = {
   defaultOutputText?: string;
   /** Residual (ee): after successful flywheel complete. */
   onCompleted?: (result: SessionFlywheelResponse) => void;
+  /**
+   * Residual (lt): optional pre-complete research tier for driver badge;
+   * after complete, session||context pack tier wins.
+   */
+  researchTier?: "fast" | "deep" | "wrestle" | string | null;
 };
 
 export function SessionFlywheelPanel({
   sessionId,
   defaultOutputText = "",
   onCompleted,
+  researchTier = null,
 }: SessionFlywheelPanelProps) {
   const [output, setOutput] = useState(defaultOutputText);
   const [recordTwins, setRecordTwins] = useState(true);
@@ -97,11 +105,22 @@ export function SessionFlywheelPanel({
     return { effective: session || pack, pack };
   };
 
+  // Residual (lt): post-complete effective tier wins over prop / default deep.
+  const badgeResearchTier = useMemo(() => {
+    if (result) {
+      const eff = flywheelResearchTier(result).effective;
+      if (eff) return eff;
+    }
+    const fromProp = (researchTier || "").trim().toLowerCase();
+    return fromProp || "deep";
+  }, [result, researchTier]);
+
   return (
     <section
       className="space-y-2"
       data-testid="session-flywheel-panel"
       data-view-format="html"
+      data-research-tier={badgeResearchTier}
       aria-label="Complete research flywheel"
     >
       <header>
@@ -122,6 +141,14 @@ export function SessionFlywheelPanel({
             Settings · driver & budget
           </a>
         </p>
+        {/* Residual (lt): model+budget+depth before/after flywheel complete. */}
+        <div
+          data-testid="session-flywheel-driver-badge-mount"
+          data-view-format="html"
+          data-research-tier={badgeResearchTier}
+        >
+          <DecisionTreeDriverBadge researchTier={badgeResearchTier} />
+        </div>
       </header>
       <textarea
         data-testid="session-flywheel-output"
