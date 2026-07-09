@@ -50,6 +50,7 @@ from .context_bridge import (
     sessions_collective_html,
     sessions_collective_research,
 )
+from .flywheel import SessionFlywheelResult, complete_session_with_context_flywheel
 
 __all__ = [
     "DEEP_RESEARCH_WINDOW_KIND",
@@ -60,8 +61,10 @@ __all__ = [
     "ViewMode",
     "WindowOpenDescriptor",
     "WindowStore",
+    "SessionFlywheelResult",
     "attach_session_source_references",
     "complete_session_research",
+    "complete_session_with_context_flywheel",
     "get_session",
     "list_session_window_descriptors",
     "list_sessions_for_asset",
