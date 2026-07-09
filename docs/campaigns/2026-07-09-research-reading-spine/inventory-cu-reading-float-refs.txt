@@ -1,0 +1,8 @@
+# residual (cu) ResearchThis floating launch + publication refs
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(ct) prior | branch_only | campaign inventories
+(cu) reading float + pub refs | branch_only | ResearchThis refs input; hydrate + launchFloatingDeepResearch.references; 3+ Reading vitest; tip after commit
+
+NEXT: (cv) re-derive; operator merge PR #465

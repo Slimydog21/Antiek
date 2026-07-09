@@ -7,10 +7,18 @@ import ResearchThis from "./ResearchThis";
 const launchFloatingDeepResearch = vi.fn();
 const spinResearch = vi.fn();
 const navigate = vi.fn();
+const hydratePublicationRefs = vi.fn();
+const parsePublicationRefs = vi.fn();
 
 vi.mock("./launchFloatingDeepResearch", () => ({
   launchFloatingDeepResearch: (...args: unknown[]) =>
     launchFloatingDeepResearch(...args),
+}));
+
+vi.mock("../ResearchWorkstation/publicationRefs", () => ({
+  parsePublicationRefs: (...args: unknown[]) => parsePublicationRefs(...args),
+  hydratePublicationRefs: (...args: unknown[]) => hydratePublicationRefs(...args),
+  questionWithPublicationRefs: (q: string) => q,
 }));
 
 vi.mock("../../api/books", () => ({
@@ -34,6 +42,9 @@ describe("ResearchThis residual cc", () => {
     launchFloatingDeepResearch.mockReset();
     spinResearch.mockReset();
     navigate.mockReset();
+    hydratePublicationRefs.mockReset();
+    parsePublicationRefs.mockReset();
+    parsePublicationRefs.mockReturnValue([]);
   });
 
   afterEach(() => cleanup());
@@ -75,6 +86,52 @@ describe("ResearchThis residual cc", () => {
     await waitFor(() => {
       expect(screen.getByTestId("research-this-window-id").textContent).toMatch(
         /wdr_fsess_1/,
+      );
+    });
+  });
+
+  it("hydrates pub refs and passes references to floating launch (cu)", async () => {
+    parsePublicationRefs.mockReturnValue(["arxiv:1706.03762"]);
+    hydratePublicationRefs.mockResolvedValue({
+      ok: [{ asset_id: "pub_1", view_format: "html" }],
+      failed: [],
+      view_format: "html",
+    });
+    launchFloatingDeepResearch.mockResolvedValue({
+      session_id: "fsess_2",
+      spawn_id: "spn_2",
+      investigation_id: "inv_2",
+      parent_asset_id: "doc-1",
+      window_id: "wdr_fsess_2",
+      view_format: "html",
+      view_mode: "floating",
+      status: "reserved",
+    });
+
+    render(
+      <MemoryRouter>
+        <ResearchThis documentId="doc-1" pageIndex={0} passageText="hello world" />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("research-this-pub-refs")).toBeTruthy();
+    fireEvent.change(screen.getByTestId("research-this-refs-input"), {
+      target: { value: "arxiv:1706.03762" },
+    });
+    fireEvent.click(screen.getByTestId("research-this-floating"));
+    await waitFor(() => {
+      expect(hydratePublicationRefs).toHaveBeenCalledWith(["arxiv:1706.03762"]);
+    });
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          references: ["arxiv:1706.03762"],
+          view_mode: "floating",
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("research-this-refs-status").textContent).toMatch(
+        /Hydrated 1/,
       );
     });
   });
