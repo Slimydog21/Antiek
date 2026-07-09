@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,10 +14,11 @@ from interfaces.research.api.settings_budget import (
     estimate_prompt_cost,
     read_operator_budget,
 )
+from orchestration.continuous.budget import DaemonBudget
 
 
 @pytest.fixture
-def client(tmp_path, monkeypatch):
+def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     # Isolate daemon budget sidecar under tmp.
     monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
     monkeypatch.delenv("ANTIEK_OPERATOR_BUDGET_USD", raising=False)
@@ -29,7 +32,7 @@ def client(tmp_path, monkeypatch):
         yield c
 
 
-def test_models_lists_registered_and_configured(client):
+def test_models_lists_registered_and_configured(client: TestClient) -> None:
     r = client.get("/settings/models")
     assert r.status_code == 200
     body = r.json()
@@ -42,18 +45,43 @@ def test_models_lists_registered_and_configured(client):
     assert isinstance(zai["tier_bindings"], list)
 
 
-def test_budget_default_cap_with_known_spend_sidecar(client, tmp_path, monkeypatch):
+def test_budget_default_cap_with_missing_sidecar_keeps_spend_unknown(
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
     r = client.get("/settings/budget")
     assert r.status_code == 200
     body = r.json()
     assert body["daily_cap_usd"] == 5.0
+    assert body["spent_status"] == "unknown"
+    assert body["spent_usd"] is None
+    assert body["remaining_usd"] is None
+    assert any("sidecar missing" in note for note in body["notes"])
+
+
+def test_budget_default_cap_with_known_spend_sidecar(
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    DaemonBudget(daily_cap_usd=5.0).reserve(1.25)
+    r = client.get("/settings/budget")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["daily_cap_usd"] == 5.0
     assert body["spent_status"] == "known"
-    assert body["spent_usd"] == 0.0
-    assert body["remaining_usd"] == 5.0
+    assert body["spent_usd"] == 1.25
+    assert body["remaining_usd"] == 3.75
 
 
-def test_budget_operator_env_cap(client, monkeypatch, tmp_path):
+def test_budget_operator_env_cap(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
     monkeypatch.setenv("ANTIEK_OPERATOR_BUDGET_USD", "12.5")
     r = client.get("/settings/budget")
@@ -63,7 +91,7 @@ def test_budget_operator_env_cap(client, monkeypatch, tmp_path):
     assert body["cap_env"] == "ANTIEK_OPERATOR_BUDGET_USD"
 
 
-def test_prompt_cost_estimate_pricing_placeholder_is_null(client):
+def test_prompt_cost_estimate_pricing_placeholder_is_null(client: TestClient) -> None:
     # Current dispatch config uses 0.0 placeholder rates — must NOT invent $.
     r = client.post(
         "/settings/prompt-cost-estimate",
@@ -81,11 +109,14 @@ def test_prompt_cost_estimate_pricing_placeholder_is_null(client):
     assert any("placeholder" in n.lower() or "0.0" in n for n in body["notes"])
 
 
-def test_estimate_with_synthetic_pricing(monkeypatch, tmp_path):
+def test_estimate_with_synthetic_pricing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     # Unit-level: inject a fake config path via monkeypatch of loader.
     import interfaces.research.api.settings_budget as sb
 
-    fake = {
+    fake: dict[str, Any] = {
         "tiers": {
             "pro": {
                 "provider": "zai",
@@ -115,7 +146,7 @@ def test_estimate_with_synthetic_pricing(monkeypatch, tmp_path):
     assert est.estimated_usd_low < 0.01
 
 
-def test_caddy_allowlist_includes_settings():
+def test_caddy_allowlist_includes_settings() -> None:
     caddy = Path("infrastructure/ansible/templates/Caddyfile.j2").read_text(
         encoding="utf-8"
     )

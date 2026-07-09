@@ -26,6 +26,7 @@ from orchestration.continuous.budget import (
     _ENV_DAILY_CAP,
     DEFAULT_DAILY_CAP_USD,
     DaemonBudget,
+    _budget_path,
 )
 
 settings_router = APIRouter(prefix="/settings", tags=["settings"])
@@ -275,15 +276,21 @@ def read_operator_budget() -> BudgetResponse:
         )
 
     # Prefer daemon budget sidecar when present (shared daily spend signal).
+    # Crucial honesty detail: DaemonBudget.remaining_today() fabricates an
+    # in-memory zero-spend snapshot when the file is absent. Settings is a
+    # readout, not the daemon, so absence of the sidecar means unknown spend.
     spent: float | None = None
     remaining: float | None = None
     spent_status: SpentStatus = "unknown"
     try:
-        bdg = DaemonBudget(daily_cap_usd=float(daily_cap))
-        remaining = float(bdg.remaining_today())
-        spent = max(0.0, float(daily_cap) - remaining)
-        spent_status = "known"
-        notes.append("spent sourced from continuous-daemon daily budget sidecar")
+        if _budget_path().is_file():
+            bdg = DaemonBudget(daily_cap_usd=float(daily_cap))
+            remaining = float(bdg.remaining_today())
+            spent = max(0.0, float(daily_cap) - remaining)
+            spent_status = "known"
+            notes.append("spent sourced from continuous-daemon daily budget sidecar")
+        else:
+            notes.append("spent ledger unavailable: daemon sidecar missing")
     except Exception as exc:  # noqa: BLE001 — honesty over crash
         spent = None
         remaining = None
