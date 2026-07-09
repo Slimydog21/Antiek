@@ -1,0 +1,29 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>SPR-04 Antiek-bench Weekly Scorecards</title></head><body>
+<main>
+<h1>SPR-04 Antiek-bench Weekly Scorecards</h1>
+<p><a href="./index.html">Back to master spec</a></p>
+<h2>Goal</h2>
+<p>Create Antiek-bench as the model-quality feedback loop for research, reading, synthesis, verification, voice, and multimedia tasks.</p>
+<h2>Reuse</h2>
+<ul>
+  <li><code>compounding/benchmark/</code> already owns a question-set/result harness.</li>
+  <li><code>benchmarks/</code> and <code>tools/benchmarks/</code> own performance harnesses; do not mix latency microbenchmarks with model-quality scorecards.</li>
+  <li>Route receipts provide production examples to propose new fixtures.</li>
+</ul>
+<h2>Scorecard Dimensions</h2>
+<ul>
+  <li>Quality: groundedness, citation precision, insight density, synthesis coherence, verifier disagreement.</li>
+  <li>Cost: estimated and actual cost per acceptable answer.</li>
+  <li>Latency: time to first useful token and total completion time.</li>
+  <li>Reliability: provider errors, fallback rate, retry rate, malformed outputs.</li>
+  <li>Task class: research question, reading highlight, merge synthesis, midnight-oil plan, multimedia script, verification.</li>
+</ul>
+<h2>Acceptance Tests</h2>
+<ul>
+  <li>Mock run writes a schema-valid scorecard with at least two task classes.</li>
+  <li>Scorecard never includes raw API keys or full private prompts.</li>
+  <li>Weekly proposal file lists added/retired fixtures with evidence from route receipts.</li>
+  <li>Settings can read the latest scorecard and show best model by task class.</li>
+</ul>
+</main>
+</body></html>

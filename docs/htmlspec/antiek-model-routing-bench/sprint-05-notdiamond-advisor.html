@@ -1,0 +1,31 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>SPR-05 NotDiamond Advisor Spike</title></head><body>
+<main>
+<h1>SPR-05 NotDiamond Advisor Spike</h1>
+<p><a href="./index.html">Back to master spec</a></p>
+<h2>Verdict</h2>
+<p>Useful to evaluate, not safe to hardwire. NotDiamond should be an optional advisor adapter that recommends a route; Antiek still executes through the canonical dispatch router.</p>
+<h2>Why</h2>
+<ul>
+  <li>Current NotDiamond docs fit the objective: per-query model selection for quality, cost, and latency.</li>
+  <li>Their 2026 guide explicitly distinguishes routers from gateways, matching Antiek's need to keep dispatch execution separate.</li>
+  <li>The same guide warns that cache-aware routing is decisive for agentic workloads; Antiek must verify that before trusting recommendations.</li>
+</ul>
+<h2>Spike Contract</h2>
+<ul>
+  <li>Feature flag: <code>ANTIEK_ROUTER_ADVISOR=notdiamond</code>.</li>
+  <li>Input: redacted prompt features, role, task kind, candidate model set, objective, budget ceiling, cache state.</li>
+  <li>Output: recommended provider/model plus confidence/reason if exposed by the API; otherwise record opaque advisor metadata.</li>
+  <li>Execution: map recommendation to an existing dispatch tier or reject with <code>advisor_candidate_unavailable</code>.</li>
+  <li>Fallback: if NotDiamond times out/errors, local policy chooses and receipt records <code>advisor_unavailable</code>.</li>
+</ul>
+<h2>Acceptance Tests</h2>
+<ul>
+  <li>Mock advisor recommendation maps to a configured tier and dispatch still records a normal <code>DispatchCall</code>.</li>
+  <li>Unconfigured recommended model is rejected, not called directly.</li>
+  <li>Advisor timeout falls back to local policy with a route receipt.</li>
+  <li>Cache-aware test rejects a cheaper recommendation when cache loss makes it more expensive.</li>
+</ul>
+<h2>Production Gate</h2>
+<p>Promote only if Antiek-bench shows better cost-per-acceptable-answer than the local policy on research and reading tasks for two consecutive weekly runs.</p>
+</main>
+</body></html>

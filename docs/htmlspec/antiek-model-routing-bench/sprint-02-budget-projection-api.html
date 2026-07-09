@@ -1,0 +1,32 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>SPR-02 Budget Projection API</title></head><body>
+<main>
+<h1>SPR-02 Budget Projection API</h1>
+<p><a href="./index.html">Back to master spec</a></p>
+<h2>Goal</h2>
+<p>Extend the existing Settings cost-estimate path so every prompt composer can ask: what will this likely cost, which model would auto-routing choose, and will it exceed my budget?</p>
+<h2>Existing Reuse</h2>
+<ul>
+  <li>Frontend already has <code>apps/reading/src/api/settings.ts</code> with <code>estimatePromptCost()</code>.</li>
+  <li>Backend already exposes settings model/budget concepts; extend, do not fork.</li>
+  <li><code>substrate/dispatch/config.yaml</code> remains the pricing source of truth until provider pricing sync exists.</li>
+</ul>
+<h2>API Shape</h2>
+<pre>{
+  "task_kind": "research_question|reading_highlight|midnight_oil|synthesis|verification",
+  "role": "synthesizer",
+  "prompt_chars": 12000,
+  "expected_output_tokens": 1800,
+  "route_mode": "manual|auto_quality|auto_balanced|auto_cost|auto_latency",
+  "manual_provider": null,
+  "manual_model": null,
+  "session_cache_key": "optional"
+}</pre>
+<h2>Acceptance Tests</h2>
+<ul>
+  <li>Known pricing returns low/high estimate, selected candidate, and cap impact.</li>
+  <li>Unknown pricing returns honest unknown fields and no false pass.</li>
+  <li>Manual model selection bypasses advisor choice but still computes cap impact.</li>
+  <li>Cache-warm candidate can beat cheaper cold candidate when total projected cost is lower.</li>
+</ul>
+</main>
+</body></html>

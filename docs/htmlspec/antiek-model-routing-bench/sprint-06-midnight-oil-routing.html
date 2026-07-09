@@ -1,0 +1,33 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>SPR-06 Midnight Oil Routing Contract</title></head><body>
+<main>
+<h1>SPR-06 Midnight Oil Routing Contract</h1>
+<p><a href="./index.html">Back to master spec</a></p>
+<h2>Goal</h2>
+<p>Midnight oil runs are autonomous research swarms with explicit time, goals, model route policy, and approved price ceiling.</p>
+<h2>Request Contract</h2>
+<pre>{
+  "goal": "Explain the aircraft supply-chain bottleneck for widebody engines.",
+  "work_minutes": 120,
+  "price_ceiling_usd": 25.0,
+  "route_mode": "auto_balanced",
+  "source_policy": ["arxiv", "substack", "web", "operator_corpus"],
+  "deliverable": "html_research_asset",
+  "operator_acknowledged_spend": true
+}</pre>
+<h2>Execution Invariants</h2>
+<ul>
+  <li>No spend starts without explicit operator acknowledgement and a ceiling.</li>
+  <li>Each subagent inherits the parent ceiling as a remaining-budget allocation.</li>
+  <li>Every subagent answer has route receipts and source receipts.</li>
+  <li>Output is an Antiek HTML information asset plus a twin note document.</li>
+  <li>Research and reading spawned from the output reuse the same asset/thread contract.</li>
+</ul>
+<h2>Acceptance Tests</h2>
+<ul>
+  <li>No-ack request is denied before dispatch.</li>
+  <li>Budget allocation sums never exceed parent ceiling.</li>
+  <li>Mock swarm emits route receipts for planner, gatherer, verifier, and synthesizer roles.</li>
+  <li>Final artifact is HTML, not PDF, and carries source/route receipt links.</li>
+</ul>
+</main>
+</body></html>
