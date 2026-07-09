@@ -10,6 +10,7 @@ const {
   fetchHostedDocumentHtml,
   openWindow,
   seedTwinNotes,
+  launchFloatingDeepResearch,
 } = vi.hoisted(() => ({
   fetchMarketplaceCatalog: vi.fn(),
   hostBookIntoAccount: vi.fn(),
@@ -18,6 +19,7 @@ const {
   fetchHostedDocumentHtml: vi.fn(),
   openWindow: vi.fn(() => "win:hosted:hdoc_abc"),
   seedTwinNotes: vi.fn(),
+  launchFloatingDeepResearch: vi.fn(),
 }));
 
 vi.mock("../../api/marketplaceHost", () => ({
@@ -36,6 +38,10 @@ vi.mock("../../components/windows/openWindow", () => ({
   openWindow,
 }));
 
+vi.mock("../Reading/launchFloatingDeepResearch", () => ({
+  launchFloatingDeepResearch,
+}));
+
 vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
   DecisionTreeDriverBadge: () => (
     <div data-testid="decision-tree-driver-badge-stub">driver badge</div>
@@ -51,6 +57,17 @@ describe("MarketplaceHost mode", () => {
     purchaseAndHost.mockReset();
     fetchHostedDocumentHtml.mockReset();
     openWindow.mockClear();
+    launchFloatingDeepResearch.mockReset().mockResolvedValue({
+      session_id: "fsess_mkt",
+      spawn_id: "spn_mkt",
+      investigation_id: "inv_mkt",
+      parent_asset_id: "hdoc_abc",
+      window_id: "win:dr:mkt",
+      view_format: "html",
+      view_mode: "floating",
+      status: "reserved",
+      model_id: null,
+    });
     seedTwinNotes.mockReset().mockResolvedValue({
       asset_id: "hdoc_abc",
       seeded: true,
@@ -170,6 +187,21 @@ describe("MarketplaceHost mode", () => {
       book_id: "pd-pride",
     });
     expect(screen.getByTestId("hosted-html").innerHTML).toContain("truth");
+    // Residual (iu): one-click floating deep research on hosted book.
+    fireEvent.click(screen.getByTestId("marketplace-host-deep-research"));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "hdoc_abc",
+          view_mode: "floating",
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("marketplace-host-dr-status").textContent).toMatch(
+        /Deep research launched/,
+      );
+    });
     // Residual (gi): host-result → Write HTML draft handoff.
     const writeLink = screen.getByTestId("marketplace-open-write");
     expect(writeLink.getAttribute("href")).toBe("/write?html_draft=hdoc_abc");

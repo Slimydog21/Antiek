@@ -28,6 +28,8 @@
  * payment_rails) when GET /marketplace/catalog provides them (iq).
  * Residual (is): free-PD quick filter + source-aware catalog filter UX for
  * knowledge-dense research books.
+ * Residual (iu): host-result one-click floating deep research on hosted book
+ * (reading ≡ research flywheel; decision-tree driver chokepoint).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -44,6 +46,7 @@ import {
 } from "../../api/marketplaceHost";
 import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
 import { openWindow } from "../../components/windows/openWindow";
+import { launchFloatingDeepResearch } from "../Reading/launchFloatingDeepResearch";
 
 type LibraryDoc = {
   document_id: string;
@@ -179,6 +182,9 @@ export default function MarketplaceHost({
     seedSkipped: string | null;
     assetId: string;
   } | null>(null);
+  /** Residual (iu): floating DR launch status after host. */
+  const [hostDrStatus, setHostDrStatus] = useState<string | null>(null);
+  const [hostDrBusy, setHostDrBusy] = useState(false);
   const loadLibrary = useCallback(async () => {
     try {
       const lib = await fetchAccountLibrary(ownerId);
@@ -227,6 +233,50 @@ export default function MarketplaceHost({
         title: opts.title || "Hosted book",
       },
     );
+  }
+
+  /**
+   * Residual (iu): one-click floating deep research on hosted HTML book.
+   * Uses decision-tree driver chokepoint; selection from title/body preview.
+   */
+  async function onDeepResearchHostedBook(result: HostResultResponse) {
+    if (result.view_format !== "html") {
+      setError("view_format must be html — PDF is not a research surface");
+      return;
+    }
+    const plain = (result.html || "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 800);
+    const title = (result.title || result.document_id || "hosted book").trim();
+    const selection =
+      plain.length >= 3
+        ? plain
+        : `Key claims and open questions in “${title}” for deep research.`;
+    setHostDrBusy(true);
+    setHostDrStatus(null);
+    setError(null);
+    try {
+      const out = await launchFloatingDeepResearch({
+        asset_id: result.document_id,
+        selection_text: selection,
+        goal_hint: `Wrestle claims and cite evidence in “${title}” (marketplace HTML host).`,
+        view_mode: "floating",
+      });
+      if (out.view_format !== "html") {
+        throw new Error("deep research view_format must be html");
+      }
+      setHostDrStatus(
+        `Deep research launched · session=${out.session_id} · spawn=${out.spawn_id} · window=${out.window_id}`,
+      );
+    } catch (e) {
+      setHostDrStatus(
+        e instanceof Error ? e.message : "Deep research launch failed",
+      );
+    } finally {
+      setHostDrBusy(false);
+    }
   }
 
   /** Residual (do): fetch HTML body then open reading window for any library doc. */
@@ -691,7 +741,34 @@ export default function MarketplaceHost({
                 Open Write (HTML draft)
               </a>
             ) : null}
+            {/* Residual (iu): one-click floating deep research on hosted book. */}
+            <button
+              type="button"
+              data-testid="marketplace-host-deep-research"
+              data-view-format="html"
+              data-document-id={hosted.document_id}
+              disabled={
+                hostDrBusy ||
+                busy ||
+                hosted.view_format !== "html" ||
+                !hosted.document_id
+              }
+              onClick={() => void onDeepResearchHostedBook(hosted)}
+              className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+              title="Launch floating deep research on this hosted HTML book"
+            >
+              {hostDrBusy ? "Launching deep research…" : "Deep research this book"}
+            </button>
           </div>
+          {hostDrStatus ? (
+            <p
+              className="text-[11px] font-mono opacity-80"
+              data-testid="marketplace-host-dr-status"
+              role="status"
+            >
+              {hostDrStatus}
+            </p>
+          ) : null}
           {/* Residual (gj)/(hl): twin seed status + offline-honesty attrs. */}
           {twinSeedStatus ? (
             <p
