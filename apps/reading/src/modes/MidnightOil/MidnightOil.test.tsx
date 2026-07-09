@@ -561,5 +561,12 @@ describe("MidnightOil mode", () => {
     expect(screen.getByTestId("moil-deposit-result").textContent).toMatch(
       /twins=2/,
     );
+    // Residual (hx): machine-readable deposit land metrics.
+    const depositMetrics = screen.getByTestId("moil-deposit-metrics");
+    expect(depositMetrics.getAttribute("data-twin-count")).toBe("2");
+    expect(depositMetrics.getAttribute("data-usage-recorded")).toBe("true");
+    expect(depositMetrics.getAttribute("data-progress-seeded")).toBe("true");
+    expect(depositMetrics.getAttribute("data-view-format")).toBe("html");
+    expect(depositMetrics.textContent).toMatch(/Midnight Oil deposit/);
   });
 });

@@ -1,0 +1,11 @@
+# inventory-hx · Midnight Oil deposit metrics · residual (hx)
+
+## Delta
+- moil-deposit-metrics: document_id, asset_id, twin_count, usage_recorded,
+  progress_seeded, spawn_count
+
+## Verified
+vitest MidnightOil 7_passed
+
+## Next
+(hy) re-derive

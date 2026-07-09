@@ -666,6 +666,25 @@ export default function MidnightOil() {
               data-view-format="html"
             >
               <h3 className="font-medium">Deposit result</h3>
+              {/* Residual (hx): machine-readable deposit land metrics. */}
+              <div
+                data-testid="moil-deposit-metrics"
+                data-document-id={deposit.document_id ?? ""}
+                data-asset-id={deposit.asset_id ?? ""}
+                data-twin-count={String(deposit.twin_count ?? 0)}
+                data-usage-recorded={String(Boolean(deposit.usage_recorded))}
+                data-progress-seeded={String(Boolean(deposit.progress_seeded))}
+                data-spawn-count={String(
+                  (deposit.spawn_ids || []).filter(Boolean).length,
+                )}
+                data-view-format="html"
+                role="status"
+              >
+                Midnight Oil deposit · document={deposit.document_id} · twins=
+                {deposit.twin_count ?? 0} · usage=
+                {String(Boolean(deposit.usage_recorded))} · progress_seeded=
+                {String(Boolean(deposit.progress_seeded))}
+              </div>
               <p className="font-mono text-sm">
                 document=<code>{deposit.document_id}</code> · twins=
                 {deposit.twin_count} · usage=
