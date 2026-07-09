@@ -89,6 +89,8 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
  * Residual (gf/om): CollectiveResearchPanel on open piece when DR spawns exist
  * (includes recent_ring so twin-chase closed windows still multi-select).
  * (multi-select merge/analysis with writing asset as parent).
+ * Residual (ph): DecisionTreeDriverBadge promptText = DR selection + pub refs
+ * for cost-vs-remaining projection (parity MO pg / FUTURE-AGENT V4).
  * Residual (gg): remount TwinNotesPanel on same refresh key as research
  * context (DR launch / collective merge / promote / re-import) — hosted ez parity.
  * Residual (gh): live selection drives Write DR budget projection + launch
@@ -803,7 +805,15 @@ export default function WriteHome() {
           <div className="flex shrink-0 flex-col items-end gap-2">
             {/* Residual (gc): model driver + budget usage on Write piece. */}
             <div data-testid="write-piece-driver-badge" data-view-format="html">
-              <DecisionTreeDriverBadge researchTier={writeResearchTier} />
+              <DecisionTreeDriverBadge
+                researchTier={writeResearchTier}
+                /* Residual (ph): project DR selection + pub refs vs daily budget. */
+                promptText={
+                  writePubRefs.trim()
+                    ? `${writeResearchPromptText}\n\nPublication refs:\n${writePubRefs.trim()}`
+                    : writeResearchPromptText
+                }
+              />
               {/* Residual (if): Settings deep-link for driver + budget. */}
               <p className="mt-1 text-[11px] font-mono">
                 <a

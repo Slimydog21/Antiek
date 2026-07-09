@@ -554,3 +554,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - optional promptText → estimatePromptCost vs remaining budget
   - decision-tree-prompt-projection + remaining-after chrome
   - Midnight Oil wires goals+pub refs into badge projection
+
+- Closed (ph, 2026-07-10) **WriteHome driver badge promptText projection:**
+  - DR selection + pub refs → DecisionTreeDriverBadge promptText
+  - writing≡research cost foresight before float/full fire

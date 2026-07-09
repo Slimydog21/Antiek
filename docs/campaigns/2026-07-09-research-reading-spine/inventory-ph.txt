@@ -1,0 +1,8 @@
+# inventory-ph · WriteHome DecisionTreeDriverBadge promptText wire
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ph
+files:
+  apps/reading/src/modes/Write/WriteHome.tsx
+  apps/reading/src/modes/Write/WriteHome.test.tsx
+proof: vitest WriteHome 21 passed
+invariants: reading≡write · DR selection + pub refs → badge projection · advisory only

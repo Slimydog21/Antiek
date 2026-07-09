@@ -125,8 +125,17 @@ vi.mock("../../components/engagement/ResearchContextPanel", () => ({
 }));
 
 vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
-  DecisionTreeDriverBadge: () => (
-    <div data-testid="decision-tree-driver-badge-stub">driver</div>
+  DecisionTreeDriverBadge: (props: {
+    researchTier?: string | null;
+    promptText?: string | null;
+  }) => (
+    <div
+      data-testid="decision-tree-driver-badge-stub"
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+      data-prompt-len={String((props.promptText || "").length)}
+    >
+      driver
+    </div>
   ),
 }));
 
@@ -667,6 +676,14 @@ describe("WriteHome — the re-homed door", () => {
       screen.getByTestId("write-piece-driver-badge").getAttribute("data-view-format"),
     ).toBe("html");
     expect(screen.getByTestId("decision-tree-driver-badge-stub")).toBeTruthy();
+    // Residual (ph): badge receives DR selection prompt for projection.
+    expect(
+      Number(
+        screen
+          .getByTestId("decision-tree-driver-badge-stub")
+          .getAttribute("data-prompt-len") || 0,
+      ),
+    ).toBeGreaterThan(0);
     // Residual (if): Settings deep-link for driver + budget.
     const settings = screen.getByTestId("write-piece-settings-link");
     expect(settings.getAttribute("href")).toBe("/settings");
