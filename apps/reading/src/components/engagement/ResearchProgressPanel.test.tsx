@@ -240,4 +240,16 @@ describe("ResearchProgressPanel", () => {
       );
     });
   });
+
+  it("surfaces wrestle long-horizon posture chrome (jq)", () => {
+    render(
+      <ResearchProgressPanel spawnId="spn_w" researchTier="wrestle" />,
+    );
+    const panel = screen.getByTestId("research-progress-panel");
+    expect(panel.getAttribute("data-research-tier")).toBe("wrestle");
+    expect(screen.getByTestId("research-progress-wrestle-note").textContent).toMatch(
+      /multi-minute long-horizon/i,
+    );
+    expect(panel.textContent).toMatch(/tier=wrestle/);
+  });
 });

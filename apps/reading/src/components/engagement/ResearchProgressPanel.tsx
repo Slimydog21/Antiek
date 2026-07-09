@@ -7,6 +7,7 @@
  * Residual (hk): research-progress-metrics machine attrs for multi-minute
  * plan→cite audit (parity twin/flywheel metrics).
  * Residual (ij): Settings deep-link for driver + budget during multi-minute jobs.
+ * Residual (jq): optional researchTier for long-horizon wrestle posture chrome.
  * HTML-first; never PDF.
  */
 
@@ -31,6 +32,11 @@ export type ResearchProgressPanelProps = {
    * telemetry). 0/undefined disables polling after mount load.
    */
   pollIntervalMs?: number;
+  /**
+   * Residual (jq): closed research tier for competitive posture chrome
+   * (wrestle → multi-minute long-horizon note).
+   */
+  researchTier?: "fast" | "deep" | "wrestle" | string | null;
 };
 
 export function ResearchProgressPanel({
@@ -38,6 +44,7 @@ export function ResearchProgressPanel({
   autoLoad = false,
   autoSeedIfEmpty = false,
   pollIntervalMs = 0,
+  researchTier = null,
 }: ResearchProgressPanelProps) {
   const [progress, setProgress] = useState<ResearchProgressResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -107,19 +114,36 @@ export function ResearchProgressPanel({
     return () => window.clearInterval(id);
   }, [autoLoad, pollIntervalMs, spawnId, progress?.is_terminal, load]);
 
+  const tier = (researchTier || "").trim().toLowerCase();
+  const tierKnown =
+    tier === "fast" || tier === "deep" || tier === "wrestle" ? tier : null;
+
   return (
     <section
       className="research-progress-panel"
       data-testid="research-progress-panel"
       data-view-format="html"
       data-poll-ms={String(pollIntervalMs || 0)}
+      data-research-tier={tierKnown || ""}
       aria-label="Research progress"
     >
       <header>
         <h2>Research progress</h2>
         <p className="meta">
           spawn <code>{spawnId}</code> · plan → gather → synthesize → cite
+          {tierKnown ? ` · tier=${tierKnown}` : ""}
         </p>
+        {/* Residual (jq): long-horizon wrestle posture for competitive multi-minute. */}
+        {tierKnown === "wrestle" ? (
+          <p
+            className="meta font-mono text-[11px]"
+            data-testid="research-progress-wrestle-note"
+            role="status"
+          >
+            Wrestle depth: multi-minute long-horizon synthesis (competitive Deep
+            Research posture) · plan→cite may run longer than deep
+          </p>
+        ) : null}
         {/* Residual (ij): Settings deep-link for model driver + budget. */}
         <p className="meta font-mono text-[11px]">
           <a

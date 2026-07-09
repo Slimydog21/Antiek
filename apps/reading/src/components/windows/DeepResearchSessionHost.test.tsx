@@ -125,11 +125,16 @@ vi.mock("../engagement/ResearchProgressPanel", () => ({
     autoLoad?: boolean;
     autoSeedIfEmpty?: boolean;
     pollIntervalMs?: number;
+    researchTier?: string | null;
   }) => (
-    <div data-testid="research-progress-panel-stub">
+    <div
+      data-testid="research-progress-panel-stub"
+      data-research-tier={props.researchTier ?? ""}
+    >
       {props.spawnId}:auto={String(Boolean(props.autoLoad))}:seed=
       {String(Boolean(props.autoSeedIfEmpty))}:poll=
-      {String(props.pollIntervalMs ?? 0)}
+      {String(props.pollIntervalMs ?? 0)}:tier=
+      {props.researchTier ?? ""}
     </div>
   ),
 }));
@@ -386,6 +391,12 @@ describe("DeepResearchSessionHost", () => {
     expect(screen.getByTestId("research-progress-panel-stub").textContent).toMatch(
       /:poll=8000/,
     );
+    // Residual (jq): progress panel receives researchTier.
+    expect(
+      screen.getByTestId("research-progress-panel-stub").getAttribute(
+        "data-research-tier",
+      ),
+    ).toBe("wrestle");
   });
 
   it("mounts TwinNotesPanel with autoLoad (cq)", () => {

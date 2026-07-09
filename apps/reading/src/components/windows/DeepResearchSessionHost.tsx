@@ -334,6 +334,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
               spawnId={props.spawn_id.trim()}
               autoLoad
               autoSeedIfEmpty
+              researchTier={researchTier}
               pollIntervalMs={
                 researchTier === "wrestle"
                   ? 8000
