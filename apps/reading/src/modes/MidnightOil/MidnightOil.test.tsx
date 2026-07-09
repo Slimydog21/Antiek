@@ -203,6 +203,11 @@ describe("MidnightOil mode", () => {
       view_format: "html",
       runnable: false,
       offline: true,
+      live_step: false,
+      notes_list: [
+        "Offline worker simulation — no live multi-provider calls.",
+        "Live env ANTIEK_MIDNIGHT_OIL_LIVE_STEP=off (default).",
+      ],
       html: "<p>Offline run complete</p>",
       deposit: {
         job_id: "moil_run",
@@ -252,6 +257,15 @@ describe("MidnightOil mode", () => {
         /complete/,
       );
     });
+    expect(
+      screen.getByTestId("moil-run-result").getAttribute("data-offline"),
+    ).toBe("true");
+    expect(
+      screen.getByTestId("moil-run-result").getAttribute("data-live-step"),
+    ).toBe("false");
+    expect(screen.getByTestId("moil-run-notes").textContent).toMatch(
+      /Offline worker|LIVE_STEP/i,
+    );
     expect(screen.getByTestId("moil-deposit-result").textContent).toMatch(
       /twins=2/,
     );

@@ -129,6 +129,10 @@ export type MidnightOilRunResponse = {
   view_format: "html" | string;
   runnable: boolean;
   offline: boolean;
+  /** Residual (bs/by): true when env + injector used live steps */
+  live_step?: boolean;
+  live_step_env?: string;
+  live_step_env_enabled?: boolean;
   product_panel?: string;
   source?: string;
   notes_list?: string[];

@@ -315,14 +315,33 @@ export default function MidnightOil() {
               className="space-y-2 border rounded p-3"
               data-testid="moil-run-result"
               data-view-format="html"
+              data-offline={String(runResult.offline)}
+              data-live-step={String(Boolean(runResult.live_step))}
             >
-              <h3 className="font-medium">Offline run result</h3>
+              <h3 className="font-medium">
+                {runResult.live_step
+                  ? "Live step run result"
+                  : "Offline run result"}
+              </h3>
               <p className="font-mono text-sm">
                 status=<strong>{runResult.status}</strong> · spent=$
                 {runResult.spent_usd.toFixed(4)} · spawns=
                 {runResult.spawn_ids.length}/{runResult.goals_total} · offline=
                 {String(runResult.offline)}
+                {runResult.live_step != null
+                  ? ` · live_step=${String(runResult.live_step)}`
+                  : ""}
               </p>
+              {runResult.notes_list?.length ? (
+                <ul
+                  className="text-[11px] font-mono text-ink-mute space-y-0.5"
+                  data-testid="moil-run-notes"
+                >
+                  {runResult.notes_list.map((n) => (
+                    <li key={n}>{n}</li>
+                  ))}
+                </ul>
+              ) : null}
               {runResult.html ? (
                 <div
                   className="prose border rounded p-3 text-sm max-h-48 overflow-auto"
