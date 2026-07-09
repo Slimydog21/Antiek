@@ -113,3 +113,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - (jz) progress_payload includes spawn research_tier
   - (ka) ResearchProgressPanel API research_tier fallback (prop wins)
 
+
+- Closed (kd–ke, 2026-07-10) **Evidence + collective depth identity:**
+  - (kd) Evidence pack UI research_tier chrome (citation-trust depth posture)
+  - (ke) Collective multi-spawn recommended_research_tier depth-max for continue-as-unit
+
