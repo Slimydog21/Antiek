@@ -24,6 +24,7 @@
  * 13. Residual (jf): prefill researchTier from Settings depth-tier (parity je).
  * 14. Residual (ke): after merge, adopt unit.recommended_research_tier
  *     (depth-max of member spawn tiers) for continue-as-unit budget.
+ * 15. Residual (lg): DecisionTreeDriverBadge with researchTier for model+depth.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -39,6 +40,7 @@ import { fetchDepthTiers } from "../../api/settings";
 import { mapDepthTierToResearchTier } from "../../lib/researchTier";
 import { launchFloatingDeepResearch } from "../../modes/Reading/launchFloatingDeepResearch";
 import type { WindowMode } from "../../workspace/windowsStore";
+import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 import {
   ResearchLaunchBudgetPanel,
   type ResearchLaunchBudgetProjection,
@@ -389,6 +391,15 @@ export function CollectiveResearchPanel({
             Settings · driver & budget
           </a>
         </p>
+        {/* Residual (lg): model driver + budget + depth co-display (parity ku). */}
+        <div
+          className="mt-1"
+          data-testid="collective-driver-badge-mount"
+          data-view-format="html"
+          data-research-tier={researchTier}
+        >
+          <DecisionTreeDriverBadge researchTier={researchTier} />
+        </div>
       </header>
 
       <ul className="spawn-list">

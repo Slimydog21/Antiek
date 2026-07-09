@@ -40,6 +40,19 @@ vi.mock("../../api/settings", () => ({
   fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...args),
 }));
 
+vi.mock("./DecisionTreeDriverBadge", () => ({
+  DecisionTreeDriverBadge: (props: {
+    researchTier?: string | null;
+  }) => (
+    <div
+      data-testid="decision-tree-driver-badge-stub"
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+    >
+      driver badge
+    </div>
+  ),
+}));
+
 vi.mock("./ResearchLaunchBudgetPanel", () => {
   const React = require("react") as typeof import("react");
   return {
@@ -124,6 +137,18 @@ describe("CollectiveResearchPanel", () => {
     const link = screen.getByTestId("collective-settings-link");
     expect(link.getAttribute("href")).toBe("/settings");
     expect(link.textContent).toMatch(/driver & budget/i);
+    // Residual (lg): DecisionTreeDriverBadge mount with researchTier default deep.
+    expect(screen.getByTestId("collective-driver-badge-mount")).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("collective-driver-badge-mount")
+        .getAttribute("data-research-tier"),
+    ).toBe("deep");
+    expect(
+      screen
+        .getByTestId("decision-tree-driver-badge-stub")
+        .getAttribute("data-research-tier"),
+    ).toBe("deep");
   });
 
   it("merges selected spawns into collective prompt", async () => {
