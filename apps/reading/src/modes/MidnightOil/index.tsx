@@ -12,6 +12,7 @@ import {
   preflightMidnightOil,
   providerExecutorAdapterPlanMidnightOil,
   providerRouteMidnightOil,
+  retrievalAdapterPlanMidnightOil,
   retrievalMidnightOil,
   runnerControlPlanMidnightOil,
   runnerReadinessMidnightOil,
@@ -26,6 +27,7 @@ import {
   type MidnightOilPreflight,
   type MidnightOilProviderExecutorAdapterPlanReceipt,
   type MidnightOilProviderRouteReceipt,
+  type MidnightOilRetrievalAdapterPlanReceipt,
   type MidnightOilRetrievalReceipt,
   type MidnightOilRunnerControlPlanReceipt,
   type MidnightOilRunnerReadinessReceipt,
@@ -83,6 +85,8 @@ export default function MidnightOil() {
     useState<MidnightOilBudgetProviderAdapterPlanReceipt | null>(null);
   const [providerExecutorAdapterPlanReceipt, setProviderExecutorAdapterPlanReceipt] =
     useState<MidnightOilProviderExecutorAdapterPlanReceipt | null>(null);
+  const [retrievalAdapterPlanReceipt, setRetrievalAdapterPlanReceipt] =
+    useState<MidnightOilRetrievalAdapterPlanReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -97,6 +101,7 @@ export default function MidnightOil() {
   const [runnerControlPlanBusy, setRunnerControlPlanBusy] = useState(false);
   const [budgetProviderAdapterPlanBusy, setBudgetProviderAdapterPlanBusy] = useState(false);
   const [providerExecutorAdapterPlanBusy, setProviderExecutorAdapterPlanBusy] = useState(false);
+  const [retrievalAdapterPlanBusy, setRetrievalAdapterPlanBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
   const [liveSettingsError, setLiveSettingsError] = useState<string | null>(null);
@@ -113,10 +118,17 @@ export default function MidnightOil() {
     useState<string | null>(null);
   const [providerExecutorAdapterPlanError, setProviderExecutorAdapterPlanError] =
     useState<string | null>(null);
+  const [retrievalAdapterPlanError, setRetrievalAdapterPlanError] = useState<string | null>(null);
+
+  function clearRetrievalAdapterPlan() {
+    setRetrievalAdapterPlanError(null);
+    setRetrievalAdapterPlanReceipt(null);
+  }
 
   function clearProviderExecutorAdapterPlan() {
     setProviderExecutorAdapterPlanError(null);
     setProviderExecutorAdapterPlanReceipt(null);
+    clearRetrievalAdapterPlan();
   }
 
   function clearBudgetProviderAdapterPlan() {
@@ -147,6 +159,7 @@ export default function MidnightOil() {
     setRunnerControlPlanError(null);
     setBudgetProviderAdapterPlanError(null);
     setProviderExecutorAdapterPlanError(null);
+    setRetrievalAdapterPlanError(null);
     setPreflight(null);
     setDryRunReceipt(null);
     setLiveSettingsReceipt(null);
@@ -162,6 +175,7 @@ export default function MidnightOil() {
     setRunnerControlPlanReceipt(null);
     setBudgetProviderAdapterPlanReceipt(null);
     setProviderExecutorAdapterPlanReceipt(null);
+    setRetrievalAdapterPlanReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -708,6 +722,7 @@ export default function MidnightOil() {
     setProviderExecutorAdapterPlanBusy(true);
     setProviderExecutorAdapterPlanError(null);
     setProviderExecutorAdapterPlanReceipt(null);
+    clearRetrievalAdapterPlan();
     try {
       const result = await providerExecutorAdapterPlanMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -721,6 +736,41 @@ export default function MidnightOil() {
       setProviderExecutorAdapterPlanError(e instanceof Error ? e.message : String(e));
     } finally {
       setProviderExecutorAdapterPlanBusy(false);
+    }
+  }
+
+  async function onRetrievalAdapterPlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerControlPlanReceipt ||
+      !budgetProviderAdapterPlanReceipt ||
+      !providerExecutorAdapterPlanReceipt
+    ) {
+      setRetrievalAdapterPlanError(
+        "Retrieval adapter plan requires launch packet, approval receipt, runner handoff, runner control plan receipt, budget provider adapter plan receipt, and provider executor adapter plan receipt.",
+      );
+      return;
+    }
+
+    setRetrievalAdapterPlanBusy(true);
+    setRetrievalAdapterPlanError(null);
+    setRetrievalAdapterPlanReceipt(null);
+    try {
+      const result = await retrievalAdapterPlanMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        runner_control_plan_receipt: runnerControlPlanReceipt,
+        budget_provider_adapter_plan_receipt: budgetProviderAdapterPlanReceipt,
+        provider_executor_adapter_plan_receipt: providerExecutorAdapterPlanReceipt,
+      });
+      setRetrievalAdapterPlanReceipt(result);
+    } catch (e) {
+      setRetrievalAdapterPlanError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRetrievalAdapterPlanBusy(false);
     }
   }
 
@@ -1889,6 +1939,90 @@ export default function MidnightOil() {
                   <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
                     Route receipt fields:{" "}
                     {providerExecutorAdapterPlanReceipt.required_route_receipt_fields.join(", ")}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Retrieval adapter
+                </p>
+                <button
+                  type="button"
+                  onClick={onRetrievalAdapterPlanGate}
+                  disabled={
+                    retrievalAdapterPlanBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !runnerControlPlanReceipt ||
+                    !budgetProviderAdapterPlanReceipt ||
+                    !providerExecutorAdapterPlanReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {retrievalAdapterPlanBusy ? "Planning retrieval..." : "Retrieval adapter"}
+                </button>
+              </div>
+
+              {retrievalAdapterPlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {retrievalAdapterPlanError}
+                </p>
+              )}
+
+              {retrievalAdapterPlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Retrieval adapter receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {retrievalAdapterPlanReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={retrievalAdapterPlanReceipt.status.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Sources"
+                      value={`${retrievalAdapterPlanReceipt.requested_source_count}`}
+                    />
+                    <Metric
+                      label="Retrieved"
+                      value={retrievalAdapterPlanReceipt.retrieval_performed ? "yes" : "no"}
+                    />
+                    <Metric
+                      label="Source receipts"
+                      value={retrievalAdapterPlanReceipt.source_receipts_created ? "yes" : "no"}
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Executor"
+                      value={retrievalAdapterPlanReceipt.planned_executor_id}
+                    />
+                    <Metric
+                      label="Source ledger"
+                      value={retrievalAdapterPlanReceipt.planned_source_ledger_id}
+                    />
+                  </div>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Source policy: {retrievalAdapterPlanReceipt.planned_source_policy.join(", ")}
+                  </p>
+                  <p className="mt-1 break-all font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Source receipts: {retrievalAdapterPlanReceipt.planned_source_receipt_ids.join(", ")}
+                  </p>
+                  <ul className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {retrievalAdapterPlanReceipt.required_invariants.slice(0, 5).map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Source receipt fields:{" "}
+                    {retrievalAdapterPlanReceipt.required_source_receipt_fields.join(", ")}
                   </p>
                 </div>
               )}

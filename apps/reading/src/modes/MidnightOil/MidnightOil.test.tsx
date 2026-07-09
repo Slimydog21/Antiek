@@ -15,6 +15,7 @@ import {
   preflightMidnightOil,
   providerExecutorAdapterPlanMidnightOil,
   providerRouteMidnightOil,
+  retrievalAdapterPlanMidnightOil,
   retrievalMidnightOil,
   runnerControlPlanMidnightOil,
   runnerReadinessMidnightOil,
@@ -630,6 +631,61 @@ vi.mock("../../api/midnightOil", () => ({
     final_artifact_created: false,
     adapter_plan_notes: ["provider executor adapter plan only: no model/provider executor is configured"],
   })),
+  retrievalAdapterPlanMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-retrieval-adapter-plan",
+    runner_control_plan_receipt_id: "midnight-oil-test-runner-control-plan",
+    budget_provider_adapter_plan_receipt_id: "midnight-oil-test-budget-provider-adapter-plan",
+    provider_executor_adapter_plan_receipt_id: "midnight-oil-test-provider-executor-adapter-plan",
+    runner_readiness_receipt_id: "midnight-oil-test-runner-readiness",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    run_id: "midnight-oil-test",
+    status: "blocked_retrieval_adapter_unimplemented",
+    adapter_key: "retrieval_executor_source_receipts",
+    planned_executor_id: "midnight-oil-test-retrieval-adapter",
+    planned_source_ledger_id: "midnight-oil-test-source-receipt-ledger",
+    planned_source_policy: ["arxiv", "substack", "operator_corpus"],
+    planned_source_receipt_ids: [
+      "midnight-oil-test-arxiv-source-receipt",
+      "midnight-oil-test-substack-source-receipt",
+      "midnight-oil-test-operator_corpus-source-receipt",
+    ],
+    requested_source_count: 3,
+    required_invariants: [
+      "retrieval adapter must require provider route receipts before source access",
+      "retrieval adapter must create a source receipt for every approved source policy entry",
+      "retrieval adapter must preserve source URL, title, author, retrieval time, and license metadata",
+    ],
+    required_source_receipt_fields: [
+      "source_receipt_id",
+      "run_id",
+      "source_policy",
+      "source_uri",
+      "title",
+      "author",
+      "retrieved_at",
+      "license",
+      "content_digest",
+      "availability_status",
+    ],
+    blocker_reason: "retrieval_adapter_unimplemented",
+    retrieval_allowed: false,
+    retrieval_performed: false,
+    source_receipts_created: false,
+    provider_execution_allowed: false,
+    provider_calls_made: false,
+    live_run_allowed: false,
+    dispatch_allowed: false,
+    budget_reservation_allowed: false,
+    budget_reserved: false,
+    graph_mutation_allowed: false,
+    final_artifact_allowed: false,
+    dispatch_performed: false,
+    graph_mutated: false,
+    final_artifact_created: false,
+    adapter_plan_notes: ["retrieval adapter plan only: no source connector is configured"],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -1090,5 +1146,38 @@ describe("MidnightOil", () => {
       screen.getByText("executor must require an active budget reservation before any provider call"),
     ).toBeTruthy();
     expect(screen.getByText(/Route receipt fields:/)).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Retrieval adapter" }));
+
+    await waitFor(() => expect(retrievalAdapterPlanMidnightOil).toHaveBeenCalled());
+    expect(retrievalAdapterPlanMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      runner_control_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-control-plan",
+      }),
+      budget_provider_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-budget-provider-adapter-plan",
+      }),
+      provider_executor_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-provider-executor-adapter-plan",
+      }),
+    });
+    expect(screen.getByText("Retrieval adapter receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-retrieval-adapter-plan")).toBeTruthy();
+    expect(screen.getByText("blocked retrieval adapter unimplemented")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-retrieval-adapter")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-source-receipt-ledger")).toBeTruthy();
+    expect(
+      screen.getByText("retrieval adapter must require provider route receipts before source access"),
+    ).toBeTruthy();
+    expect(screen.getByText(/Source receipt fields:/)).toBeTruthy();
   });
 });
