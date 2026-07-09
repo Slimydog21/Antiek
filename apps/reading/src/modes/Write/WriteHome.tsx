@@ -1112,6 +1112,7 @@ export default function WriteHome() {
                   seedTitle={detail.title || detail.deliverable_id}
                   seedBodyText={detail.title || ""}
                   onPromoted={onContextNeedsRefresh}
+                  researchTier={writeResearchTier}
                 />
               </div>
             </section>

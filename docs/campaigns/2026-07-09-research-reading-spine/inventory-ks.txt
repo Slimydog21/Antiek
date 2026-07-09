@@ -1,0 +1,10 @@
+# inventory-ks · HostedHtml + Write TwinNotes researchTier wire
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ks
+files:
+  apps/reading/src/components/windows/HostedHtmlDocumentHost.tsx
+  apps/reading/src/components/windows/HostedHtmlDocumentHost.test.tsx
+  apps/reading/src/modes/Write/WriteHome.tsx
+  apps/reading/src/modes/Write/WriteHome.test.tsx
+proof: HostedHtml 11_passed + WriteHome 20_passed (HONEST_OK)
+invariants: HTML · reading≡write twins depth · parity kr DR host · no PDF

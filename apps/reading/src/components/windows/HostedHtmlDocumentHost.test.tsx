@@ -63,8 +63,17 @@ vi.mock("../engagement/CollectiveResearchPanel", () => ({
 }));
 
 vi.mock("../engagement/TwinNotesPanel", () => ({
-  TwinNotesPanel: (props: { assetId: string }) => (
-    <div data-testid="twin-notes-panel-stub">{props.assetId}</div>
+  TwinNotesPanel: (props: {
+    assetId: string;
+    researchTier?: string | null;
+  }) => (
+    <div
+      data-testid="twin-notes-panel-stub"
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+    >
+      {props.assetId}
+      {props.researchTier ? `:tier=${props.researchTier}` : ""}
+    </div>
   ),
 }));
 
@@ -237,6 +246,10 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(screen.getByTestId("twin-notes-panel-stub").textContent).toMatch(
       /hdoc_xyz/,
     );
+    // Residual (ks): hosted twins inherit researchTier (default deep).
+    expect(
+      screen.getByTestId("twin-notes-panel-stub").getAttribute("data-research-tier"),
+    ).toBe("deep");
     expect(screen.getByTestId("hosted-html-context-mount")).toBeTruthy();
     expect(screen.getByTestId("research-context-panel-stub").textContent).toMatch(
       /hdoc_xyz:auto=true/,

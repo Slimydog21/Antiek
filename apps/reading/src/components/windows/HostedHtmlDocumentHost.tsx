@@ -487,6 +487,7 @@ export default function HostedHtmlDocumentHost(
               seedBodyText={
                 html ? html.replace(/<[^>]+>/g, " ").slice(0, 500) : title
               }
+              researchTier={researchTier}
             />
           </div>
         </section>

@@ -92,10 +92,15 @@ vi.mock("../../components/engagement/TwinNotesPanel", () => ({
   TwinNotesPanel: (props: {
     assetId: string;
     autoLoad?: boolean;
+    researchTier?: string | null;
     onPromoted?: (r: { promoted_count: number }) => void;
   }) => (
-    <div data-testid="twin-notes-panel-stub">
+    <div
+      data-testid="twin-notes-panel-stub"
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+    >
       {props.assetId}:auto={String(Boolean(props.autoLoad))}
+      {props.researchTier ? `:tier=${props.researchTier}` : ""}
       {props.onPromoted ? (
         <button
           type="button"
@@ -539,6 +544,10 @@ describe("WriteHome — the re-homed door", () => {
     expect(screen.getByTestId("twin-notes-panel-stub").textContent).toMatch(
       /dlv-open:auto=true/,
     );
+    // Residual (ks): write piece twins inherit writeResearchTier (default deep).
+    expect(
+      screen.getByTestId("twin-notes-panel-stub").getAttribute("data-research-tier"),
+    ).toBe("deep");
     expect(screen.getByTestId("outline-stub")).toBeTruthy();
     // Residual (gg): twins share refresh key with context (starts at 0).
     expect(
