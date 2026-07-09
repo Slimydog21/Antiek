@@ -9,6 +9,7 @@
  * twin breakdown so operators see the twin substrate that feeds prompts.
  * Residual (kd): evidence pack surfaces spawn research_tier (depth posture).
  * Residual (kl): research context pack surfaces spawn research_tier chrome.
+ * Residual (mu): dual-gate L1–L4 checklist deep-link for hydrate L1/L2 prep.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -239,14 +240,21 @@ export function ResearchContextPanel({
     >
       <header>
         <h2>Research context</h2>
-        {/* Residual (ie): Settings deep-link for hydrate readiness. */}
-        <p className="meta font-mono text-[11px]">
+        {/* Residual (ie/mu): Settings + dual-gate checklist (L1/L2 hydrate prep). */}
+        <p className="meta font-mono text-[11px] space-x-3">
           <a
             href="/settings"
             data-testid="research-context-settings-link"
             title="Open Settings → Publication hydrate readiness"
           >
             Settings · hydrate readiness
+          </a>
+          <a
+            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+            data-testid="research-context-dual-gate-checklist-link"
+            title="Dual-gate L1–L4 checklist (arxiv/substack hydrate prep; offline default)"
+          >
+            Dual-gate L1–L4 checklist
           </a>
         </p>
         <p className="meta">

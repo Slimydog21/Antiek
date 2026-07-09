@@ -33,6 +33,15 @@ describe("ResearchContextPanel", () => {
     promoteTwinsToContext.mockReset();
   });
 
+  it("links dual-gate L1–L4 checklist for hydrate prep (mu)", () => {
+    render(
+      <ResearchContextPanel assetId="a1" spawnId="spn_1" />,
+    );
+    const dual = screen.getByTestId("research-context-dual-gate-checklist-link");
+    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4/);
+    expect(dual.textContent).toMatch(/dual-gate/i);
+  });
+
   it("links to Settings hydrate readiness (ie)", () => {
     render(<ResearchContextPanel assetId="paper" />);
     const link = screen.getByTestId("research-context-settings-link");
