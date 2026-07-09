@@ -1054,6 +1054,60 @@ def test_public_publish_request_is_denied_until_publisher_exists(tmp_path, monke
     assert reloaded.jobs[-1].public_publish_denial == job.public_publish_denial
 
 
+def test_public_export_status_projects_initial_state(tmp_path):
+    store = MultimediaAssetStore(tmp_path)
+    draft = store.create_draft(
+        CreateMultimediaDraftRequest(
+            topic="documentary on weather radar",
+            target_minutes=20,
+            mode="video",
+            route_policy="balanced",
+        )
+    )
+
+    status = draft.public_export_status()
+
+    assert status.asset_id == draft.asset.asset_id
+    assert status.revision_id == draft.asset.revision_id
+    assert status.gate_status is None
+    assert status.review_decision is None
+    assert status.export_id is None
+    assert status.publish_blocked is True
+    assert status.public_url is None
+    assert status.latest_job_status is None
+    assert status.latest_error_code is None
+    assert status.next_required_action == "attach_provider_artifacts"
+
+
+def test_public_export_status_projects_full_no_publish_lifecycle(tmp_path, monkeypatch):
+    store, draft = _create_reviewed_public_export_asset(tmp_path, monkeypatch)
+    planned = plan_public_export(store, draft.asset.asset_id)
+    export_plan = planned.jobs[-1].public_export_plan
+    assert export_plan is not None
+    evaluate_public_publish_blocker(store, draft.asset.asset_id)
+    denied = deny_public_publish_request(
+        store,
+        draft.asset.asset_id,
+        MultimediaPublicPublishRequest(
+            export_id=export_plan.export_id,
+            operator_acknowledged_public_distribution=True,
+        ),
+    )
+
+    status = denied.public_export_status()
+
+    assert status.gate_status == "ready"
+    assert status.review_decision == "approved"
+    assert status.export_id == export_plan.export_id
+    assert status.publish_blocked is True
+    assert status.publish_denial_code == "publisher_unimplemented"
+    assert status.public_url is None
+    assert status.latest_job_status == "failed"
+    assert status.latest_error_code == "publisher_unimplemented"
+    assert status.next_required_action == "publisher_implementation"
+    assert "presence-only-not-a-real-secret" not in status.model_dump_json()
+
+
 def test_provider_artifact_attachment_plan_requires_successful_receipt(tmp_path, monkeypatch):
     monkeypatch.setenv("KREA_API_KEY", "presence-only-not-a-real-secret")
     store = MultimediaAssetStore(tmp_path)

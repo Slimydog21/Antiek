@@ -48,6 +48,14 @@ from substrate.multimedia.video import (
 PlanMode = Literal["video", "audio", "hybrid"]
 JobKind = Literal["render", "steering", "hardening", "provider_execution", "export_gate"]
 JobStatus = Literal["queued", "running", "succeeded", "failed", "canceled", "partial"]
+PublicExportNextAction = Literal[
+    "attach_provider_artifacts",
+    "run_hardening",
+    "manual_publication_review",
+    "stage_export_plan",
+    "record_publish_blocker",
+    "publisher_implementation",
+]
 
 
 class _ReadModelBase(BaseModel):
@@ -276,6 +284,22 @@ class MultimediaPublicPublishDenial(_ReadModelBase):
         return self
 
 
+class MultimediaPublicExportStatus(_ReadModelBase):
+    """Latest public-export/publish audit projection for UI and API callers."""
+
+    asset_id: str
+    revision_id: str
+    gate_status: str | None = None
+    review_decision: str | None = None
+    export_id: str | None = None
+    publish_blocked: bool = True
+    publish_denial_code: str | None = None
+    public_url: None = None
+    latest_job_status: JobStatus | None = None
+    latest_error_code: str | None = None
+    next_required_action: PublicExportNextAction
+
+
 class MultimediaJobRecord(_ReadModelBase):
     """Durable progress record for one multimedia operation.
 
@@ -345,6 +369,33 @@ class MultimediaAssetRecord(_ReadModelBase):
             latest_job_kind=latest_job.kind if latest_job else None,
         )
 
+    def public_export_status(self) -> MultimediaPublicExportStatus:
+        latest_job = self.jobs[-1] if self.jobs else None
+        gate = _latest_public_export_gate(self.jobs)
+        review = _latest_public_export_review(self.jobs)
+        export_plan = _latest_public_export_plan(self.jobs)
+        blocker = _latest_public_publish_blocker(self.jobs)
+        denial = _latest_public_publish_denial(self.jobs)
+        return MultimediaPublicExportStatus(
+            asset_id=self.asset.asset_id,
+            revision_id=self.asset.revision_id,
+            gate_status=gate.status if gate else None,
+            review_decision=review.decision if review else None,
+            export_id=export_plan.export_id if export_plan else None,
+            publish_blocked=True,
+            publish_denial_code=denial.reason_code if denial else None,
+            public_url=None,
+            latest_job_status=latest_job.status if latest_job else None,
+            latest_error_code=latest_job.error_code if latest_job else None,
+            next_required_action=_public_export_next_action(
+                self,
+                gate=gate,
+                review=review,
+                export_plan=export_plan,
+                blocker=blocker,
+            ),
+        )
+
 
 class MultimediaAssetList(_ReadModelBase):
     assets: tuple[MultimediaAssetSummary, ...]
@@ -354,6 +405,64 @@ class MultimediaAssetList(_ReadModelBase):
 class MultimediaJobList(_ReadModelBase):
     jobs: tuple[MultimediaJobRecord, ...]
     count: int
+
+
+def _latest_public_export_gate(jobs: tuple[MultimediaJobRecord, ...]) -> MultimediaPublicExportGate | None:
+    for job in reversed(jobs):
+        if job.kind == "export_gate" and job.public_export_gate:
+            return job.public_export_gate
+    return None
+
+
+def _latest_public_export_review(jobs: tuple[MultimediaJobRecord, ...]) -> MultimediaPublicExportReview | None:
+    for job in reversed(jobs):
+        if job.kind == "export_gate" and job.public_export_review:
+            return job.public_export_review
+    return None
+
+
+def _latest_public_export_plan(jobs: tuple[MultimediaJobRecord, ...]) -> MultimediaPublicExportPlan | None:
+    for job in reversed(jobs):
+        if job.kind == "export_gate" and job.public_export_plan:
+            return job.public_export_plan
+    return None
+
+
+def _latest_public_publish_blocker(jobs: tuple[MultimediaJobRecord, ...]) -> MultimediaPublicPublishBlocker | None:
+    for job in reversed(jobs):
+        if job.kind == "export_gate" and job.public_publish_blocker:
+            return job.public_publish_blocker
+    return None
+
+
+def _latest_public_publish_denial(jobs: tuple[MultimediaJobRecord, ...]) -> MultimediaPublicPublishDenial | None:
+    for job in reversed(jobs):
+        if job.kind == "export_gate" and job.public_publish_denial:
+            return job.public_publish_denial
+    return None
+
+
+def _public_export_next_action(
+    record: MultimediaAssetRecord,
+    *,
+    gate: MultimediaPublicExportGate | None,
+    review: MultimediaPublicExportReview | None,
+    export_plan: MultimediaPublicExportPlan | None,
+    blocker: MultimediaPublicPublishBlocker | None,
+) -> PublicExportNextAction:
+    if not record.asset.manifest.files:
+        return "attach_provider_artifacts"
+    if gate is None:
+        return "run_hardening"
+    if gate.status == "blocked":
+        return "run_hardening"
+    if review is None or review.decision != "approved":
+        return "manual_publication_review"
+    if export_plan is None:
+        return "stage_export_plan"
+    if blocker is None:
+        return "record_publish_blocker"
+    return "publisher_implementation"
 
 
 class MultimediaAssetStore:
