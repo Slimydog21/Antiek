@@ -1710,6 +1710,17 @@ def create_app(
         configure_twin_seed_from_env()
     except Exception:
         pass  # offline seed remains; never block app boot
+    # Residual (hr): env-gated live hydrate injectors for arxiv/substack
+    # (default offline-honest; only wires when ANTIEK_HYDRATE_LIVE_* set).
+    try:
+        from interfaces.research.api import engagement_routes as _eng_mod
+        from substrate.engagement_spine.hydrate_live_wiring import (
+            configure_engagement_hydrate_injectors,
+        )
+
+        configure_engagement_hydrate_injectors(_eng_mod)
+    except Exception:
+        pass  # offline hydrate remains; never block app boot
     # Midnight Oil — create → recommended price ceiling → explicit approve.
     from .midnight_oil_routes import register_midnight_oil_routes
     register_midnight_oil_routes(app)

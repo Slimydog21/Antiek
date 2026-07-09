@@ -1,0 +1,15 @@
+# inventory-hr · hydrate boot wiring · residual (hr)
+
+## Delta
+- app.py boot: configure_engagement_hydrate_injectors(engagement_routes)
+  after twin seed live wiring; env-gated only; never blocks boot
+- tests/test_engagement_hydrate_boot_wiring.py
+
+## Invariants
+offline default · ANTIEK_HYDRATE_LIVE_ARXIV/SUBSTACK opt-in · no silent network
+
+## Verified
+pytest hydrate boot+status 5_passed
+
+## Next
+(hs) re-derive
