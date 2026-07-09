@@ -275,6 +275,44 @@ def test_research_instance_validates_fields():
         ResearchInstance(instance_id="ok", status="completed", confidence=2.0)
 
 
+def test_body_html_escapes_hostile_instance_id():
+    """instance_id is untrusted enough to appear in HTML attrs/text — must escape.
+
+    PoC: x"><img src=x onerror=alert(1)> breaks out of data-instance-id when
+    unescaped and yields live markup. highlight/findings already escaped;
+    instance_id must match that discipline (skeptic gap).
+
+    The test would FAIL on the pre-fix body_html which interpolated
+    instance_id raw into attributes and <h2>.
+    """
+    hostile = 'x"><img src=x onerror=alert(1)>'
+    inst = [
+        ResearchInstance(
+            instance_id=hostile,
+            status="completed",
+            findings="safe findings",
+            highlight="safe highlight",
+            confidence=0.8,
+        ),
+    ]
+    plan = plan_merge(inst, "draft_merge")
+    doc = apply_merge_plan(inst, plan)
+    html = doc.body_html
+
+    # Live markup breakout must not exist (the unescaped PoC form).
+    assert "<img src=x onerror=alert(1)>" not in html
+    assert 'data-instance-id="x">' not in html
+    # Attribute must close only after full escape of the id (no early ").
+    assert 'data-instance-id="x&quot;&gt;&lt;img src=x onerror=alert(1)&gt;"' in html
+    # Text node also escaped.
+    assert "<h2>Instance x&quot;&gt;&lt;img src=x onerror=alert(1)&gt;</h2>" in html
+    # Escaped entity form of the angle-bracketed payload is present.
+    assert "&lt;img src=x onerror=alert(1)&gt;" in html
+    # Benign content still present.
+    assert "safe findings" in html
+    assert "safe highlight" in html
+
+
 # ---------------------------------------------------------------------------
 # Midnight oil
 # ---------------------------------------------------------------------------

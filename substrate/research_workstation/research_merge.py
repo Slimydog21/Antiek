@@ -245,16 +245,21 @@ def _body_markdown(chosen: Sequence[ResearchInstance], plan: MergePlan) -> str:
 def _body_html(chosen: Sequence[ResearchInstance], plan: MergePlan, md: str) -> str:
     # Minimal HTML projection of the merge (HTML-first vision). Not a full
     # markdown parser — structure is known, so we emit intentional HTML.
+    # Every dynamic string (including instance_id) is escaped: untrusted ids
+    # must not break out of attributes or inject markup (see regression test
+    # test_body_html_escapes_hostile_instance_id).
+    mode_esc = _esc_html(plan.mode)
     parts = [
-        f'<article class="antiek-research-merge" data-mode="{plan.mode}">',
-        f"<header><h1>Research merge ({plan.mode})</h1></header>",
+        f'<article class="antiek-research-merge" data-mode="{mode_esc}">',
+        f"<header><h1>Research merge ({mode_esc})</h1></header>",
     ]
     ordered = sorted(chosen, key=lambda i: (-i.confidence, i.instance_id))
     for inst in ordered:
+        iid_esc = _esc_html(inst.instance_id)
         parts.append(
-            f'<section class="instance" data-instance-id="{inst.instance_id}">'
+            f'<section class="instance" data-instance-id="{iid_esc}">'
         )
-        parts.append(f"<h2>Instance {inst.instance_id}</h2>")
+        parts.append(f"<h2>Instance {iid_esc}</h2>")
         if inst.highlight:
             parts.append(f"<p class=\"highlight\">{_esc_html(inst.highlight)}</p>")
         findings = (inst.findings or "").strip() or "No findings recorded."
