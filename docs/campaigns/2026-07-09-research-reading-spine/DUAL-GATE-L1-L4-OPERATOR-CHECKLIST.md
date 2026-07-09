@@ -97,3 +97,23 @@ even if a vendor SDK makes it easy.
 
 - `TWIN-SEED-LIVE.md`, hydrate live wiring residual hr, competitive notes jf–kx
 - Settings panels: hydrate readiness, twin seed readiness, MO live-step status
+
+---
+
+## UI prep deep-links (residual nl–nn · 2026-07-10)
+
+Checklist is linked from engagement surfaces for operator prep only.
+**None of these enable injectors** — they route humans to this document.
+
+| Surface | data-testid | Prep focus |
+|---|---|---|
+| PublicationAttach | `publication-attach-dual-gate-checklist-link` | L1/L2 hydrate |
+| Midnight Oil | `moil-dual-gate-checklist-link` | L4 live step |
+| Marketplace | `marketplace-dual-gate-checklist-link` | host/hydrate path |
+| TwinNotes | `twin-notes-dual-gate-checklist-link` | L3 twin seed |
+| ResearchContext | `research-context-dual-gate-checklist-link` | L1/L2 hydrate |
+| ResearchProgress | `research-progress-dual-gate-checklist-link` | multi-minute job |
+| Collective | `collective-dual-gate-checklist-link` | L6 multi-agent prep |
+| SpawnMerge | `spawn-merge-dual-gate-checklist-link` | merge path prep |
+
+L5 payment rails and L6 live multi-agent remain **deferred** (specs only until injectors exist).

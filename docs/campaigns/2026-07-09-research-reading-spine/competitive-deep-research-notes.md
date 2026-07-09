@@ -373,3 +373,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (nn, 2026-07-10) **SpawnMerge dual-gate checklist link:**
   - Completes dual-gate prep on spawn merge path
+
+- Closed (no, 2026-07-10) **Dual-gate UI prep surface index:**
+  - DUAL-GATE checklist lists all 8 engagement deep-link testids
