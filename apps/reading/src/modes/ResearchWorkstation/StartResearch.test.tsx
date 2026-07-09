@@ -384,8 +384,10 @@ describe("StartResearch — a failed run is surfaced honestly, never a dead rout
       expect(screen.getByText(/research didn’t complete/i)).toBeTruthy(),
     );
     // The composer is back and the question survived the failed run.
-    const input = screen.getByLabelText("Research question") as HTMLTextAreaElement;
-    expect(input.value).toBe(question);
+    await waitFor(() => {
+      const input = screen.getByLabelText("Research question") as HTMLTextAreaElement;
+      expect(input.value).toBe(question);
+    });
     expect(navigateMock).not.toHaveBeenCalled();
   });
 });
