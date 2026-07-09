@@ -647,3 +647,5 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - buildMarketplaceWriteHref + source=marketplace_host
   - host + library Open Write html_draft+twin_seed
   - vitest 20 passed
+
+- Closed (qd, 2026-07-10) **spawn-merge Write dual handoff:** buildMergedDocWriteHref + twin_seed

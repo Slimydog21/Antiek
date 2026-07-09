@@ -13,7 +13,8 @@ export type TwinWriteSeedSource =
   | "twin_draft_selected"
   | "midnight_oil_deposit"
   | "collective_doc_merge"
-  | "marketplace_host";
+  | "marketplace_host"
+  | "spawn_merge";
 
 export type TwinWriteSeedPayload = {
   plain_text: string;
@@ -47,12 +48,17 @@ export function storeTwinWriteSeed(input: {
   if (!plain) return null;
   if (typeof window === "undefined" || !window.sessionStorage) return null;
   const key = makeTwinWriteSeedKey();
-  const source: TwinWriteSeedSource =
-    input.source === "midnight_oil_deposit" ||
-    input.source === "collective_doc_merge" ||
-    input.source === "marketplace_host"
-      ? input.source
-      : "twin_draft_selected";
+  const allowed: TwinWriteSeedSource[] = [
+    "midnight_oil_deposit",
+    "collective_doc_merge",
+    "marketplace_host",
+    "spawn_merge",
+  ];
+  const source: TwinWriteSeedSource = allowed.includes(
+    input.source as TwinWriteSeedSource,
+  )
+    ? (input.source as TwinWriteSeedSource)
+    : "twin_draft_selected";
   const payload: TwinWriteSeedPayload = {
     plain_text: plain.slice(0, 16000),
     html: String(input.html || "").slice(0, 100000),
@@ -82,12 +88,17 @@ export function loadTwinWriteSeed(key: string): TwinWriteSeedPayload | null {
     const plain = String(parsed.plain_text || "").trim();
     if (!plain) return null;
     const srcRaw = String(parsed.source || "twin_draft_selected").trim();
-    const source: TwinWriteSeedSource =
-      srcRaw === "midnight_oil_deposit" ||
-      srcRaw === "collective_doc_merge" ||
-      srcRaw === "marketplace_host"
-        ? srcRaw
-        : "twin_draft_selected";
+    const allowedLoad: TwinWriteSeedSource[] = [
+      "midnight_oil_deposit",
+      "collective_doc_merge",
+      "marketplace_host",
+      "spawn_merge",
+    ];
+    const source: TwinWriteSeedSource = allowedLoad.includes(
+      srcRaw as TwinWriteSeedSource,
+    )
+      ? (srcRaw as TwinWriteSeedSource)
+      : "twin_draft_selected";
     return {
       plain_text: plain,
       html: String(parsed.html || ""),
@@ -163,6 +174,36 @@ export function buildMarketplaceWriteHref(opts: {
     asset_id: doc,
     note_ids: [],
     source: "marketplace_host",
+  });
+  return buildWriteHtmlDraftHref({
+    documentId: doc,
+    twinSeedKey: seedKey,
+  });
+}
+
+/**
+ * Residual (qd): dual Write handoff for spawn-merge / collective draft docs.
+ */
+export function buildMergedDocWriteHref(opts: {
+  documentId: string;
+  title?: string | null;
+  html?: string | null;
+  source?: "spawn_merge" | "collective_doc_merge";
+}): string {
+  const doc = String(opts.documentId || "").trim();
+  if (!doc) return "/write";
+  const plain =
+    plainTextFromHtml(opts.html || "") ||
+    String(opts.title || "").trim() ||
+    doc;
+  const src = opts.source === "collective_doc_merge" ? opts.source : "spawn_merge";
+  const seedKey = storeTwinWriteSeed({
+    plain_text: plain,
+    html: String(opts.html || ""),
+    title: String(opts.title || "").trim() || `Merged research · ${doc}`,
+    asset_id: doc,
+    note_ids: [],
+    source: src,
   });
   return buildWriteHtmlDraftHref({
     documentId: doc,

@@ -236,7 +236,9 @@ describe("SpawnMergePanel residual ci", () => {
       expect(screen.getByTestId("spawn-merge-open-write")).toBeTruthy();
     });
     const link = screen.getByTestId("spawn-merge-open-write");
-    expect(link.getAttribute("href")).toBe("/write?html_draft=draft_for_write");
+    expect(link.getAttribute("href") || "").toMatch(/html_draft=draft_for_write/);
+    expect(link.getAttribute("href") || "").toMatch(/twin_seed=antiek\.twin_write_seed\./);
+    expect(link.getAttribute("data-has-twin-seed")).toBe("1");
     expect(link.getAttribute("data-view-format")).toBe("html");
   });
 

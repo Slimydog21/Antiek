@@ -12,6 +12,7 @@
  * merge stays manual — parent may already be open).
  * Residual (ev): manual re-open as full working-region window after merge.
  * Residual (fn): Open Write handoff link for merged HTML document_id (fl/fm).
+ * Residual (qd): dual handoff html_draft + twin_seed (parity marketplace/MO).
  * Residual (ho): spawn-merge-metrics machine attrs for draft/parent merge audit.
  * Residual (ih): Settings deep-link for driver + budget.
  * Residual (kn): surface recommended_research_tier + research_tiers from merge.
@@ -27,6 +28,7 @@ import {
   type MergeProductResponse,
 } from "../../api/engagement";
 import { openWindow } from "../windows/openWindow";
+import { buildMergedDocWriteHref } from "../../workspace/twinWriteSeed";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 
 export type OpenMergedResearchWindowOpts = {
@@ -370,11 +372,17 @@ export function SpawnMergePanel({
                 </button>
                 {/* Residual (fn): handoff merged HTML draft into Write mode. */}
                 <a
-                  href={`/write?html_draft=${encodeURIComponent(result.document_id)}`}
+                  href={buildMergedDocWriteHref({
+                    documentId: result.document_id,
+                    title: `Merged research · ${result.document_id}`,
+                    html: result.html,
+                    source: "spawn_merge",
+                  })}
                   data-testid="spawn-merge-open-write"
                   data-view-format="html"
+                  data-has-twin-seed="1"
                   className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono underline hover:bg-ink/5 dark:border-bright/30"
-                  title="Open Write with this HTML merge document as draft handoff"
+                  title="Open Write with merged HTML + twin_seed (seeds note-taker when empty)"
                 >
                   Open Write (HTML draft)
                 </a>

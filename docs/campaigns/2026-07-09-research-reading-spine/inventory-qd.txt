@@ -1,0 +1,5 @@
+# inventory-qd · spawn-merge dual Write handoff
+residual: qd · 2026-07-10
+- buildMergedDocWriteHref source=spawn_merge
+- SpawnMergePanel Open Write dual handoff
+- vitest SpawnMerge 6 + twinWriteSeed 7 = 13 passed
