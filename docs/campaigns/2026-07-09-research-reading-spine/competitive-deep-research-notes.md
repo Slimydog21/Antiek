@@ -131,3 +131,9 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   also names closed depth (fast|deep|wrestle) in API + HTML + UI when identity exists.
   NotDiamond remains advisory only (L7). Live hydrate/seed/MO-step injectors dual-gate (L1–L4).
 
+
+- Closed (kn–ko, 2026-07-10) **Merge + publication-attach depth identity:**
+  - (kn) merge_product_payload research_tiers + recommended_research_tier + HTML + SpawnMergePanel
+  - (ko) attach-refs research_tier + PublicationAttachPanel chrome (citation path depth)
+  Completes depth identity on merge-into-asset and mid-session arxiv/substack attach.
+
