@@ -1300,6 +1300,11 @@ describe("Multimedia workstation", () => {
     expect(within(activationHandoff).getAllByText("Review audit").length).toBeGreaterThan(0);
     expect(within(activationHandoff).getAllByText("Review proof").length).toBeGreaterThan(0);
     expect(within(activationHandoff).getAllByText("Manual review notes + rights clearance").length).toBeGreaterThan(0);
+    expect(
+      within(activationHandoff).getByText(
+        "Activation handoff copy is evidence only; copying it does not authorize spend, start workers, export, publish, or call providers.",
+      ),
+    ).toBeTruthy();
     fireEvent.click(within(activationHandoff).getByRole("button", { name: "Copy handoff" }));
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith(
@@ -1339,6 +1344,7 @@ describe("Multimedia workstation", () => {
           "Activation state: Evidence only; provider execution still requires a separate worker activation.",
           "Operator next step: Review this bundle before enabling a live provider worker.",
           "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
+          "Copy boundary: Activation handoff copy is evidence only; copying it does not authorize spend, start workers, export, publish, or call providers.",
         ].join("\n"),
       ),
     );
@@ -1574,6 +1580,7 @@ describe("Multimedia workstation", () => {
           "Activation state: Evidence only; provider execution still requires a separate worker activation.",
           "Operator next step: Review this bundle before enabling a live provider worker.",
           "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
+          "Copy boundary: Activation handoff copy is evidence only; copying it does not authorize spend, start workers, export, publish, or call providers.",
         ].join("\n"),
       ),
     );

@@ -1997,6 +1997,8 @@ function JobPanel({
   const liveSpendCopyBoundary = "Live spend review is evidence only; copying it does not authorize spend, start workers, export, publish, or call providers.";
   const activationChecklistCopyBoundary =
     "Activation checklist copy is evidence only; copying it does not authorize spend, start workers, export, publish, or call providers.";
+  const activationHandoffCopyBoundary =
+    "Activation handoff copy is evidence only; copying it does not authorize spend, start workers, export, publish, or call providers.";
   const liveSpendReviewKey = liveSpendReview.map((item) => `${item.label}:${item.value}`).join("|");
   const activationChecklistKey = activationChecklist.map((item) => `${item.label}:${item.value}`).join("|");
   const activationDecisionKey = activationDecision.map((item) => `${item.label}:${item.value}`).join("|");
@@ -2023,6 +2025,7 @@ function JobPanel({
     "Activation state: Evidence only; provider execution still requires a separate worker activation.",
     "Operator next step: Review this bundle before enabling a live provider worker.",
     "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
+    `Copy boundary: ${activationHandoffCopyBoundary}`,
   ];
   const activationPublicExportKey = activationPublicExportItems.map((item) => `${item.label}:${item.value}`).join("|");
   const activationPublicReviewAuditKey = activationPublicReviewAuditItems.map((item) => `${item.label}:${item.value}`).join("|");
@@ -2310,6 +2313,9 @@ function JobPanel({
               </div>
             ))}
           </dl>
+          <p className="mt-2 text-[11px] leading-snug text-shadow-1 dark:text-moonlight">
+            {activationHandoffCopyBoundary}
+          </p>
           <LemonButton type="button" size="sm" variant="secondary" className="mt-2" onClick={copyActivationHandoff}>
             {activationHandoffCopied ? "Handoff copied" : "Copy handoff"}
           </LemonButton>
