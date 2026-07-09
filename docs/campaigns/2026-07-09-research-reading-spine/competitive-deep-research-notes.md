@@ -151,3 +151,9 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   Model driver + daily budget + closed depth share one advisory surface.
   NotDiamond remains advisory only (L7).
 
+
+- Closed (kx–ky, 2026-07-10) **Marketplace driver depth + dual-gate enablement prep:**
+  - (kx) MarketplaceHost DecisionTreeDriverBadge hostDrTier wire
+  - (ky) DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md for live hydrate/seed/MO-step
+  Completes driver+depth co-display on marketplace and documents honest live enablement.
+
