@@ -692,7 +692,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(nd.textContent).toMatch(/advisory only/i);
   });
 
-  it("shows suite proposal feed sources from usage by_source (hf)", async () => {
+  it("shows suite proposal feed sources from usage by_source (hf/nz)", async () => {
     render(<Settings />);
     await waitFor(() => {
       expect(
@@ -700,12 +700,14 @@ describe("Settings SPR-01 + decision-tree install", () => {
       ).toBeTruthy();
     });
     // Usage mock includes investigation_start + session_flywheel (hb).
-    expect(
-      screen.getByTestId("antiek-bench-suite-proposal-feed-sources").textContent,
-    ).toMatch(/investigation_start/);
-    expect(
-      screen.getByTestId("antiek-bench-suite-proposal-feed-sources").textContent,
-    ).toMatch(/session_flywheel/);
+    const feed = screen.getByTestId("antiek-bench-suite-proposal-feed-sources");
+    expect(feed.textContent).toMatch(/investigation_start/);
+    expect(feed.textContent).toMatch(/session_flywheel/);
+    // Residual (nz): twin_chase + floating_deep_research when recorded.
+    expect(feed.textContent).toMatch(/twin_chase/);
+    expect(feed.textContent).toMatch(/floating_deep_research/);
+    expect(feed.getAttribute("data-has-twin-chase")).toBe("true");
+    expect(feed.getAttribute("data-has-floating-dr")).toBe("true");
     expect(
       screen.getByTestId("antiek-bench-suite-proposal-panel").getAttribute(
         "data-propose-not-promote",

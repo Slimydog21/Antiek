@@ -415,3 +415,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (ny, 2026-07-10) **SESSION-ARC nw–nx Antiek-bench chase feed:**
   - SESSION-ARC-nw-nx-bench-chase-feed.md fleet handoff
+
+- Closed (nz, 2026-07-10) **Suite proposal feed sources chase/DR chrome:**
+  - data-has-twin-chase / data-has-floating-dr on suite feed sources
+  - empty-state lists floating DR + twin chase as feeders

@@ -1791,11 +1791,17 @@ export default function Settings() {
                 {suiteProposal.status ?? "—"}
               </div>
             ) : null}
-            {/* Residual (hf): show which usage sources feed this rewrite. */}
+            {/* Residual (hf/nz): show which usage sources feed this rewrite. */}
             {Object.keys(usage?.by_source || {}).length > 0 ? (
               <p
                 className="text-[11px] font-mono text-ink-soft dark:text-starlight"
                 data-testid="antiek-bench-suite-proposal-feed-sources"
+                data-has-twin-chase={String(
+                  Boolean((usage?.by_source || {}).twin_chase),
+                )}
+                data-has-floating-dr={String(
+                  Boolean((usage?.by_source || {}).floating_deep_research),
+                )}
                 role="status"
               >
                 Feed sources:{" "}
@@ -1807,10 +1813,13 @@ export default function Settings() {
               <p
                 className="text-[11px] font-mono text-ink-soft dark:text-starlight"
                 data-testid="antiek-bench-suite-proposal-feed-sources"
+                data-has-twin-chase="false"
+                data-has-floating-dr="false"
                 role="status"
               >
-                Feed sources: (none yet — investigation starts + engagement
-                flywheel deposits populate usage)
+                Feed sources: (none yet — investigation starts, floating DR /
+                twin chase opens, engagement flywheel, marketplace host, and
+                Midnight Oil populate usage)
               </p>
             )}
             {suiteProposalError && (

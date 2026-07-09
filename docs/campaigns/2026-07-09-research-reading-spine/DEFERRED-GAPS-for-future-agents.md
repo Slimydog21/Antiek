@@ -85,5 +85,12 @@ driver badge + select by kind + invert + note_ids provenance.
 
 ## Next residual after this doc
 
-**(nk)+** next thin product residual or operator merge PR #465.
+## Closed since nw (Antiek-bench chase feed · 2026-07-10)
+
+**(nw–nz)** sessions/open usage for twin_chase/floating_deep_research;
+Settings known_sources + by_source API fix; suite proposal feed chrome.
+
+## Next residual after this doc
+
+**(oa)+** next thin product residual or operator merge PR #465.
 Infinite continues until STOP.
