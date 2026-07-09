@@ -11,6 +11,8 @@
  * audit (parity ResearchContextPanel ff).
  * Residual (hh): offline-seed honesty — machine-readable live_seed /
  * seed_source / offline_honest on seed status (parity ResearchContext hydrate hd).
+ * Residual (hi): twin-promote-metrics data attributes for promote→context
+ * audit (parity twin-notes-metrics fk / context-search-metrics fi).
  * HTML-first; never PDF.
  */
 
@@ -364,6 +366,21 @@ export function TwinNotesPanel({
           data-view-format="html"
           className="font-mono text-sm"
         >
+          {/* Residual (hi): machine-readable promote→context metrics. */}
+          <div
+            data-testid="twin-promote-metrics"
+            data-promoted-count={String(promoted.promoted_count ?? 0)}
+            data-context-unit-count={String(promoted.context_unit_count ?? 0)}
+            data-view-format="html"
+            data-product-panel={
+              promoted.product_panel ?? "twin_promote_context"
+            }
+            data-source={promoted.source ?? "engagement_spine.twin_promote"}
+            role="status"
+          >
+            Twin promote → context · promoted={promoted.promoted_count ?? 0} ·
+            context_units={promoted.context_unit_count ?? 0}
+          </div>
           <p>
             promoted={promoted.promoted_count} · context_units=
             {promoted.context_unit_count}

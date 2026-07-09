@@ -340,5 +340,17 @@ describe("TwinNotesPanel", () => {
     expect(screen.getByTestId("twin-promote-html").innerHTML).toMatch(
       /Attention is routing/,
     );
+    // Residual (hi): machine-readable promote→context metrics.
+    const metrics = screen.getByTestId("twin-promote-metrics");
+    expect(metrics.getAttribute("data-promoted-count")).toBe("1");
+    expect(metrics.getAttribute("data-context-unit-count")).toBe("1");
+    expect(metrics.getAttribute("data-view-format")).toBe("html");
+    expect(metrics.getAttribute("data-product-panel")).toBe(
+      "twin_promote_context",
+    );
+    expect(metrics.getAttribute("data-source")).toBe(
+      "engagement_spine.twin_promote",
+    );
+    expect(metrics.textContent).toMatch(/Twin promote → context/);
   });
 });
