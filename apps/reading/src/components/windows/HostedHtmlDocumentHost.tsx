@@ -226,7 +226,21 @@ export default function HostedHtmlDocumentHost(
             </p>
           </div>
           {/* Residual (da): driver readout on reading host (parity with DR). */}
-          <DecisionTreeDriverBadge />
+          <div className="flex flex-col items-end gap-1">
+            <DecisionTreeDriverBadge />
+            {/* Residual (fl): handoff draft HTML into Write mode (import lands later). */}
+            {assetId && isHtml ? (
+              <a
+                href={`/write?html_draft=${encodeURIComponent(assetId)}`}
+                data-testid="hosted-html-open-write"
+                data-view-format="html"
+                className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
+                title="Open Write with this HTML document as draft handoff (full import residual fl+)"
+              >
+                Open Write (HTML draft handoff)
+              </a>
+            ) : null}
+          </div>
         </div>
       </header>
 

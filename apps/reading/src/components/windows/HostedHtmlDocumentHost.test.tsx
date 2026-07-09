@@ -156,6 +156,9 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(screen.getByTestId("hosted-html-document-host").textContent).toMatch(
       /not PDF/,
     );
+    // Residual (fl): Write handoff for HTML draft.
+    const write = screen.getByTestId("hosted-html-open-write");
+    expect(write.getAttribute("href")).toBe("/write?html_draft=doc_abc");
   });
 
   it("mounts twin notes + research context for document_id (bw/cv)", () => {

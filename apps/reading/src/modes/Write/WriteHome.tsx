@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import {
   createDeliverable,
@@ -37,10 +37,19 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
  * Routing: `/write` lands here with no piece (start one or brainstorm);
  * `/write/:deliverableId` opens onto that piece's outline. No id is ever
  * shown — the piece is named by its title, blocks by their text + provenance.
+ *
+ * Residual (fl): `?html_draft=<document_id>` handoff from hosted HTML merge
+ * drafts — banner only until full HTML→outline import ships (spec-fl).
  */
 export default function WriteHome() {
   const { deliverableId } = useParams<{ deliverableId?: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // Residual (fl): HTML draft handoff from reading/research merge flywheel.
+  const htmlDraftId = useMemo(
+    () => (searchParams.get("html_draft") || "").trim(),
+    [searchParams],
+  );
 
   const [detail, setDetail] = useState<DeliverableDetailResponse | null>(null);
   const [pieces, setPieces] = useState<DeliverableSummary[]>([]);
@@ -146,6 +155,20 @@ export default function WriteHome() {
 
   // ── Home (no piece selected): start one, pick one, or brainstorm. ──
   if (!deliverableId) {
+    const htmlDraftBanner = htmlDraftId ? (
+      <div
+        className="mb-4 rounded border border-ink/20 p-3 font-mono text-[12px] dark:border-bright/20"
+        data-testid="write-html-draft-handoff"
+        data-view-format="html"
+        data-html-draft={htmlDraftId}
+        role="status"
+      >
+        HTML draft handoff from reading/research: document{" "}
+        <code>{htmlDraftId}</code>. Full outline import is residual fl+ (
+        propose≠invent: create a piece below and paste or import when ready).
+      </div>
+    ) : null;
+
     return (
       // Landing-glass (SPR-03 M2): the Write home is a LANDING surface. The
       // root renders through GlassSurface so the <Scene/> (z-0) shows through;
@@ -162,6 +185,8 @@ export default function WriteHome() {
             from them, then edit. Or dump a raw idea and let the blocks fall out.
           </p>
         </header>
+
+        {htmlDraftBanner}
 
         <GlassSurface className="mb-6 space-y-3 rounded-md p-3">
           <input

@@ -1,5 +1,9 @@
 # Spec stub — Write mode lands draft_combined HTML (future residual fl+)
 
+## Status
+- Handoff shipped as residual (fl): hosted → `/write?html_draft=` + WriteHome banner.
+- Full HTML→outline import remains open for (fm)+.
+
 ## Intent
 North star: merged research drafts and written analysis open as HTML in the
 reading flywheel; operators should also be able to **land** a draft_combined

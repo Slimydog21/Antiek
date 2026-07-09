@@ -117,6 +117,16 @@ describe("WriteHome — the re-homed door", () => {
     expect(screen.getByText(/brainstorm from an idea/i)).toBeTruthy();
   });
 
+  it("shows HTML draft handoff banner from reading/research (fl)", async () => {
+    mountAt("/write?html_draft=draft_merge_abc");
+    await screen.findByPlaceholderText(/what are you writing/i);
+    const banner = screen.getByTestId("write-html-draft-handoff");
+    expect(banner.getAttribute("data-html-draft")).toBe("draft_merge_abc");
+    expect(banner.getAttribute("data-view-format")).toBe("html");
+    expect(banner.textContent).toMatch(/HTML draft handoff/);
+    expect(banner.textContent).toMatch(/draft_merge_abc/);
+  });
+
   it("M1 — 'none' auto-spawns a research folder and creates the piece linked to it", async () => {
     mountAt("/write");
     // Naming the piece reveals the connect-to-research step (M1).
