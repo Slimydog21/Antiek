@@ -11,6 +11,14 @@ const hydratePublicationRefs = vi.fn();
 const parsePublicationRefs = vi.fn();
 const collectDeepResearchSpawnIds = vi.fn(() => [] as string[]);
 
+const fetchDepthTiers = vi.hoisted(() =>
+  vi.fn(async () => ({
+    active_depth_tier: null as string | null,
+    active_preset: null,
+    tiers: [],
+  })),
+);
+
 vi.mock("./launchFloatingDeepResearch", () => ({
   launchFloatingDeepResearch: (...args: unknown[]) =>
     launchFloatingDeepResearch(...args),
@@ -24,6 +32,10 @@ vi.mock("../ResearchWorkstation/publicationRefs", () => ({
 
 vi.mock("../../api/books", () => ({
   spinResearch: (...args: unknown[]) => spinResearch(...args),
+}));
+
+vi.mock("../../api/settings", () => ({
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...args),
 }));
 
 vi.mock("../../workspace/collectDeepResearchSpawnIds", () => ({
@@ -54,6 +66,7 @@ vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", () => {
     ResearchLaunchBudgetPanel: (props: {
       promptText: string;
       researchTier: string;
+      onResearchTierChange?: (t: string) => void;
       onProjectionChange?: (p: {
         wouldExceedBudget: boolean | null;
         pricingKnown: boolean;
@@ -97,7 +110,7 @@ vi.mock("../../lib/analytics", () => ({
   track: vi.fn(),
 }));
 
-describe("ResearchThis residual cc/cu/cx", () => {
+describe("ResearchThis residual cc/cu/cx/jg", () => {
   beforeEach(() => {
     launchFloatingDeepResearch.mockReset();
     spinResearch.mockReset();
@@ -107,11 +120,16 @@ describe("ResearchThis residual cc/cu/cx", () => {
     parsePublicationRefs.mockReturnValue([]);
     collectDeepResearchSpawnIds.mockReset();
     collectDeepResearchSpawnIds.mockReturnValue([]);
+    fetchDepthTiers.mockReset().mockResolvedValue({
+      active_depth_tier: null,
+      active_preset: null,
+      tiers: [],
+    });
   });
 
   afterEach(() => cleanup());
 
-  it("mounts budget projection panel before float open (cx)", () => {
+  it("mounts budget projection panel before float open (cx)", async () => {
     render(
       <MemoryRouter>
         <ResearchThis
@@ -124,9 +142,45 @@ describe("ResearchThis residual cc/cu/cx", () => {
     const mount = screen.getByTestId("research-this-budget-mount");
     expect(mount).toBeTruthy();
     expect(mount.getAttribute("data-view-format")).toBe("html");
+    await waitFor(() => {
+      expect(mount.getAttribute("data-depth-prefill")).toBe("none");
+    });
     const stub = screen.getByTestId("research-launch-budget-panel-stub");
     expect(stub.getAttribute("data-research-tier")).toBe("deep");
     expect(Number(stub.getAttribute("data-prompt-len"))).toBeGreaterThan(3);
+  });
+
+  it("prefills research tier from Settings wrestle depth (jg)", async () => {
+    fetchDepthTiers.mockResolvedValue({
+      active_depth_tier: "wrestle",
+      active_preset: null,
+      tiers: [],
+    });
+    render(
+      <MemoryRouter>
+        <ResearchThis
+          documentId="doc-1"
+          pageIndex={0}
+          passageText="Wrestle this claim in the passage."
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(fetchDepthTiers).toHaveBeenCalled();
+    });
+    const mount = screen.getByTestId("research-this-budget-mount");
+    await waitFor(() => {
+      expect(mount.getAttribute("data-depth-prefill")).toBe("installed");
+    });
+    expect(mount.getAttribute("data-research-tier")).toBe("wrestle");
+    expect(
+      screen.getByTestId("research-launch-budget-panel-stub").getAttribute(
+        "data-research-tier",
+      ),
+    ).toBe("wrestle");
+    expect(screen.getByTestId("research-this-depth-prefill").textContent).toMatch(
+      /installed.*wrestle/,
+    );
   });
 
   it("opens floating deep research window from passage", async () => {

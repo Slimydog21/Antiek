@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { LemonButton } from "../../components/lemon";
@@ -7,7 +7,10 @@ import { CollectiveResearchPanel } from "../../components/engagement/CollectiveR
 import {
   ResearchLaunchBudgetPanel,
   type ResearchLaunchBudgetProjection,
+  type ResearchLaunchTier,
 } from "../../components/engagement/ResearchLaunchBudgetPanel";
+import { fetchDepthTiers } from "../../api/settings";
+import { mapDepthTierToResearchTier } from "../../lib/researchTier";
 import { track } from "../../lib/analytics";
 import {
   hydratePublicationRefs,
@@ -32,6 +35,7 @@ import { launchFloatingDeepResearch } from "./launchFloatingDeepResearch";
  * full) — distinct from legacy full-page ResearchWorkstation handoff.
  * Residual (fc): CollectiveResearchPanel when open DR spawns exist so the
  * main reading surface multi-select merges into this document (parity eu).
+ * Residual (jg): Settings depth-tier prefill for budget projection (parity jc–jf).
  * Full-page workstation handoff remains an explicit tertiary action.
  *
  * Gate-safe: passageText for gated books is still constrained server-side;
@@ -69,6 +73,32 @@ export default function ResearchThis({
   const [pubRefStatus, setPubRefStatus] = useState<string | null>(null);
   const [budgetWarn, setBudgetWarn] = useState(false);
   const [forceOverBudget, setForceOverBudget] = useState(false);
+  /** Residual (jg): Settings depth-tier prefill for reading DR budget. */
+  const [researchTier, setResearchTier] = useState<ResearchLaunchTier>("deep");
+  const [depthPrefill, setDepthPrefill] = useState<
+    "pending" | "installed" | "none" | "error"
+  >("pending");
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchDepthTiers()
+      .then((resp) => {
+        if (cancelled) return;
+        const mapped = mapDepthTierToResearchTier(resp.active_depth_tier);
+        if (mapped) {
+          setResearchTier(mapped);
+          setDepthPrefill("installed");
+        } else {
+          setDepthPrefill("none");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setDepthPrefill("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const selection =
     (passageText || "").trim() ||
@@ -180,16 +210,31 @@ export default function ResearchThis({
           </p>
         ) : null}
       </div>
-      {/* Residual (cx): daily budget + prompt projection before float open. */}
+      {/* Residual (cx/jg): daily budget + prompt projection + depth prefill. */}
       <div
         className="max-w-md"
         data-testid="research-this-budget-mount"
         data-view-format="html"
+        data-research-tier={researchTier}
+        data-depth-prefill={depthPrefill}
       >
+        <p
+          className="text-[11px] font-mono opacity-80"
+          data-testid="research-this-depth-prefill"
+          role="status"
+        >
+          Depth prefill: {depthPrefill}
+          {depthPrefill === "installed"
+            ? ` → ${researchTier}`
+            : depthPrefill === "none"
+              ? " (default deep)"
+              : ""}
+        </p>
         <ResearchLaunchBudgetPanel
           promptText={selection}
-          researchTier="deep"
+          researchTier={researchTier}
           allowTierPick
+          onResearchTierChange={setResearchTier}
           onProjectionChange={onProjectionChange}
         />
         {budgetWarn ? (
