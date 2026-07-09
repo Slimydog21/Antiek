@@ -18,7 +18,9 @@ from interfaces.research.api.engagement_routes import (  # noqa: E402
 )
 from interfaces.research.api import engagement_routes as eng_mod  # noqa: E402
 from substrate.engagement_spine import (  # noqa: E402
+    HighlightSelection,
     record_twin_product,
+    spawn_from_highlight,
     twins_product_payload,
 )
 
@@ -53,6 +55,46 @@ def test_twins_product_record_and_list():
     )
     assert payload2["note_count"] == 2
     assert payload2["question_count"] == 1
+
+
+def test_twins_product_surfaces_spawn_research_tier():
+    """Residual (le): list twins with spawn_id carries research_tier."""
+    reset_engagement_stores()
+    store = eng_mod._eng()
+    spawn = spawn_from_highlight(
+        HighlightSelection(
+            asset_id="asset-tier",
+            selection_text="list tier",
+            region_id="lt-1",
+        ),
+        store=store,
+        research_tier="wrestle",
+    )
+    record_twin_product(
+        "asset-tier",
+        store=store,
+        kind="insight",
+        text="Tiered twin insight.",
+    )
+    payload = twins_product_payload(
+        "asset-tier",
+        store=store,
+        include_html=True,
+        spawn_id=spawn.spawn_id,
+    )
+    assert payload["research_tier"] == "wrestle"
+    assert payload["spawn_id"] == spawn.spawn_id
+    assert "tier=wrestle" in (payload.get("html") or "")
+
+    app = FastAPI()
+    register_engagement_routes(app)
+    client = TestClient(app)
+    r = client.get(
+        f"/engagement/twins/asset-tier?include_html=true&spawn_id={spawn.spawn_id}"
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["research_tier"] == "wrestle"
+    assert "tier=wrestle" in (r.json().get("html") or "")
 
 
 def test_api_twins_double_run():

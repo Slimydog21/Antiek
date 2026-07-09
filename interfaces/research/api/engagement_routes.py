@@ -652,11 +652,21 @@ def post_evidence_pack(body: EvidencePackBody) -> dict[str, Any]:
 
 
 @engagement_router.get("/twins/{asset_id}")
-def get_twins(asset_id: str, include_html: bool = False) -> dict[str, Any]:
-    """List twin notes (insights/questions) for an information asset."""
+def get_twins(
+    asset_id: str,
+    include_html: bool = False,
+    spawn_id: str | None = None,
+) -> dict[str, Any]:
+    """List twin notes (insights/questions) for an information asset.
+
+    Residual (le): optional ``spawn_id`` query surfaces reserved research_tier.
+    """
     try:
         return twins_product_payload(
-            asset_id, store=_eng(), include_html=include_html
+            asset_id,
+            store=_eng(),
+            include_html=include_html,
+            spawn_id=spawn_id,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e

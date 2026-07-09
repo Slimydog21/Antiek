@@ -396,9 +396,13 @@ export type TwinNotesResponse = {
 
 export async function fetchTwinNotes(
   assetId: string,
-  opts?: { includeHtml?: boolean },
+  opts?: { includeHtml?: boolean; spawnId?: string | null },
 ): Promise<TwinNotesResponse> {
-  const q = opts?.includeHtml ? "?include_html=true" : "";
+  const params = new URLSearchParams();
+  if (opts?.includeHtml) params.set("include_html", "true");
+  // Residual (le): optional spawn_id scopes research_tier on list payload.
+  if (opts?.spawnId?.trim()) params.set("spawn_id", opts.spawnId.trim());
+  const q = params.toString() ? `?${params.toString()}` : "";
   const res = await apiFetch(
     `${API_BASE}/engagement/twins/${encodeURIComponent(assetId)}${q}`,
   );

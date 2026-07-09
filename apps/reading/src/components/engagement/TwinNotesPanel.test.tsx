@@ -147,7 +147,10 @@ describe("TwinNotesPanel", () => {
     });
     render(<TwinNotesPanel assetId="paper" autoLoad />);
     await waitFor(() => {
-      expect(fetchTwinNotes).toHaveBeenCalledWith("paper", { includeHtml: true });
+      expect(fetchTwinNotes).toHaveBeenCalledWith("paper", {
+        includeHtml: true,
+        spawnId: null,
+      });
     });
     await waitFor(() => {
       expect(screen.getByTestId("twin-notes-summary").textContent).toMatch(

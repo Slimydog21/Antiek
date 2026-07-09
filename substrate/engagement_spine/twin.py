@@ -107,13 +107,25 @@ def twins_product_payload(
     *,
     store: EngagementStore,
     include_html: bool = False,
+    spawn_id: str | None = None,
 ) -> dict[str, Any]:
-    """Product entry: list twin notes for an asset (HTML-capable)."""
+    """Product entry: list twin notes for an asset (HTML-capable).
+
+    Residual (le): optional ``spawn_id`` scopes reserved research_tier onto
+    the list payload + HTML (parity seed la / research-context kk).
+    """
     if not asset_id or not str(asset_id).strip():
         raise ValueError("asset_id is required")
     notes = list_twin_notes(asset_id, store=store)
     insights = [n for n in notes if n.kind == "insight"]
     questions = [n for n in notes if n.kind == "question"]
+    research_tier = None
+    sid = (spawn_id or "").strip() or None
+    if sid:
+        from substrate.dispatch.research_tier import normalize_research_tier
+
+        row = store.get_spawn(sid) or {}
+        research_tier = normalize_research_tier(row.get("research_tier"))
     payload: dict[str, Any] = {
         "asset_id": asset_id.strip(),
         "note_count": len(notes),
@@ -124,6 +136,8 @@ def twins_product_payload(
         "product_panel": "twin_notes",
         "source": "engagement_spine.twin",
         "notes_meta": [],
+        "spawn_id": sid,
+        "research_tier": research_tier,
     }
     # Avoid key collision with note list: use `messages` for operator notes.
     payload["messages"] = (

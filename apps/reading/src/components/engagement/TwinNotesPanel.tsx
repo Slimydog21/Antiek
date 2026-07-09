@@ -98,7 +98,11 @@ export function TwinNotesPanel({
     setBusy(true);
     setError(null);
     try {
-      let t = await fetchTwinNotes(assetId, { includeHtml: true });
+      let t = await fetchTwinNotes(assetId, {
+        includeHtml: true,
+        // Residual (le): scope list research_tier when spawn known.
+        spawnId: spawnId,
+      });
       if (t.view_format !== "html") {
         throw new Error("twin notes view_format must be html");
       }
