@@ -604,4 +604,54 @@ describe("CollectiveResearchPanel", () => {
       "/write?html_draft=draft_analysis_1",
     );
   });
+
+  it("selects all / invert / clear multi-select helpers (nk)", () => {
+    render(
+      <CollectiveResearchPanel
+        availableSpawnIds={["spn_a", "spn_b", "spn_c"]}
+        parentAssetId="parent"
+      />,
+    );
+    expect(screen.getByTestId("collective-select-controls")).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("collective-selection-count")
+        .getAttribute("data-selected-count"),
+    ).toBe("0");
+    fireEvent.click(screen.getByTestId("collective-select-all"));
+    expect(
+      screen
+        .getByTestId("collective-selection-count")
+        .getAttribute("data-selected-count"),
+    ).toBe("3");
+    // Invert all-selected → empty.
+    fireEvent.click(screen.getByTestId("collective-invert-selection"));
+    expect(
+      screen
+        .getByTestId("collective-selection-count")
+        .getAttribute("data-selected-count"),
+    ).toBe("0");
+    // Select one, invert → other two.
+    fireEvent.click(screen.getByTestId("collective-select-spn_a"));
+    fireEvent.click(screen.getByTestId("collective-invert-selection"));
+    expect(
+      screen
+        .getByTestId("collective-selection-count")
+        .getAttribute("data-selected-count"),
+    ).toBe("2");
+    expect(
+      (screen.getByTestId("collective-select-spn_a") as HTMLInputElement)
+        .checked,
+    ).toBe(false);
+    expect(
+      (screen.getByTestId("collective-select-spn_b") as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    fireEvent.click(screen.getByTestId("collective-clear-selection"));
+    expect(
+      screen
+        .getByTestId("collective-selection-count")
+        .getAttribute("data-selected-count"),
+    ).toBe("0");
+  });
 });

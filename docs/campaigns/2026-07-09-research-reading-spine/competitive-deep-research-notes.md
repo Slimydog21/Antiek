@@ -358,3 +358,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (nj, 2026-07-10) **SESSION-ARC ng–ni MO duration + chase provenance:**
   - SESSION-ARC-ng-ni-moil-duration-chase-provenance.md fleet handoff
+
+- Closed (nk, 2026-07-10) **Collective select-all/invert/clear:**
+  - multi-select helpers for cohesive unit assembly
+  - parity TwinNotes multi-select path

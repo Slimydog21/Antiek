@@ -25,6 +25,8 @@
  * 14. Residual (ke): after merge, adopt unit.recommended_research_tier
  *     (depth-max of member spawn tiers) for continue-as-unit budget.
  * 15. Residual (lg): DecisionTreeDriverBadge with researchTier for model+depth.
+ * 16. Residual (nk): select-all / invert / clear multi-select helpers
+ *     (parity TwinNotes multi-select path for cohesive unit assembly).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -153,6 +155,28 @@ export function CollectiveResearchPanel({
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
   };
+
+  /** Residual (nk): select all available spawn ids. */
+  const selectAllSpawns = useCallback(() => {
+    setSelected([...availableSpawnIds]);
+  }, [availableSpawnIds]);
+
+  /** Residual (nk): invert selection over available list. */
+  const invertSpawnSelection = useCallback(() => {
+    setSelected((prev) => {
+      const set = new Set(prev);
+      const next: string[] = [];
+      for (const id of availableSpawnIds) {
+        if (!set.has(id)) next.push(id);
+      }
+      return next;
+    });
+  }, [availableSpawnIds]);
+
+  /** Residual (nk): clear multi-select. */
+  const clearSpawnSelection = useCallback(() => {
+    setSelected([]);
+  }, []);
 
   const mergeCollective = useCallback(async () => {
     if (selected.length < 1) return;
@@ -402,12 +426,13 @@ export function CollectiveResearchPanel({
         </div>
       </header>
 
-      <ul className="spawn-list">
+      <ul className="spawn-list" data-testid="collective-spawn-list">
         {availableSpawnIds.map((id) => (
-          <li key={id}>
+          <li key={id} data-spawn-id={id} data-selected={String(selected.includes(id))}>
             <label>
               <input
                 type="checkbox"
+                data-testid={`collective-select-${id}`}
                 checked={selected.includes(id)}
                 onChange={() => toggle(id)}
                 disabled={busy}
@@ -417,6 +442,47 @@ export function CollectiveResearchPanel({
           </li>
         ))}
       </ul>
+      {/* Residual (nk): multi-select helpers (parity TwinNotes select path). */}
+      <div
+        className="flex flex-wrap gap-2 mb-2"
+        data-testid="collective-select-controls"
+        data-selected-count={String(selected.length)}
+        data-available-count={String(availableSpawnIds.length)}
+      >
+        <button
+          type="button"
+          data-testid="collective-select-all"
+          onClick={() => selectAllSpawns()}
+          disabled={busy || availableSpawnIds.length === 0}
+          title="Select all available deep-research spawns"
+        >
+          Select all ({availableSpawnIds.length})
+        </button>
+        <button
+          type="button"
+          data-testid="collective-invert-selection"
+          onClick={() => invertSpawnSelection()}
+          disabled={busy || availableSpawnIds.length === 0}
+          title="Invert multi-select over available spawns"
+        >
+          Invert
+        </button>
+        <button
+          type="button"
+          data-testid="collective-clear-selection"
+          onClick={() => clearSpawnSelection()}
+          disabled={busy || selected.length === 0}
+        >
+          Clear selection
+        </button>
+        <span
+          className="text-[11px] font-mono opacity-70"
+          data-testid="collective-selection-count"
+          data-selected-count={String(selected.length)}
+        >
+          Selected: {selected.length}/{availableSpawnIds.length}
+        </span>
+      </div>
 
       <div className="collective-actions" style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
         <button
