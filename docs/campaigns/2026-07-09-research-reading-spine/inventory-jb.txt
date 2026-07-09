@@ -1,0 +1,11 @@
+# inventory-jb · reset DR budget force on host change · residual (jb)
+
+## Delta
+- When hosted.document_id/html changes: clear force override, budget warn, DR status
+- Prevents force-over-budget from leaking across books
+
+## Verified
+vitest MarketplaceHost 8_passed (regression)
+
+## Next
+(jc) re-derive

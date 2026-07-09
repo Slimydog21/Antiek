@@ -34,6 +34,7 @@
  * Residual (iw): library row deep research launch parity (float|full).
  * Residual (iy): budget soft-gate on host/library DR launch (parity di/cs).
  * Residual (ja): DR status surfaces research_tier used for launch audit.
+ * Residual (jb): reset budget force override when hosted document changes.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -308,15 +309,19 @@ export default function MarketplaceHost({
     }
   }
 
-  /** Residual (iy): keep budget panel prompt in sync with hosted HTML. */
+  /** Residual (iy/jb): keep budget panel prompt in sync; reset force on host change. */
   useEffect(() => {
+    // Residual (jb): new host must not inherit prior force-over-budget override.
+    setHostDrForceBudget(false);
+    setHostDrBudgetWarn(false);
+    setHostDrStatus(null);
     if (!hosted?.html) {
       setHostDrPromptPreview("");
       return;
     }
     const title = (hosted.title || hosted.document_id || "hosted book").trim();
     setHostDrPromptPreview(hostDrSelectionFromHtml(hosted.html, title));
-  }, [hosted]);
+  }, [hosted?.document_id, hosted?.html, hosted?.title]);
 
   /**
    * Residual (iw): deep research from library row — rehydrate HTML then launch.
