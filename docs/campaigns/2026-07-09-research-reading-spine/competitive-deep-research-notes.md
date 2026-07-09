@@ -189,3 +189,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - (ln) ChatInputArea DecisionTreeDriverBadge with launchTier
   In-investigation follow-on prompts now match StartResearch co-display.
 
+
+- Closed (lp, 2026-07-10) **Graph block DR entry driver+depth:**
+  - (lp) BlockDetail DecisionTreeDriverBadge researchTier
+  Second FloatMenu host (graph node detail) co-displays model+budget+depth.
+

@@ -1,0 +1,7 @@
+# inventory-lq · competitive notes lp + suite-proposal AC
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: lq
+files:
+  docs/campaigns/2026-07-09-research-reading-spine/competitive-deep-research-notes.md
+proof: suite-proposal 4_passed (plan AC); docs honesty
+invariants: operator merge PR #465 · driver+depth hosts · NotDiamond advisory
