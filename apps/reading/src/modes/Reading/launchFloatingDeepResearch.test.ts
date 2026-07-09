@@ -38,6 +38,7 @@ describe("launchFloatingDeepResearch", () => {
       asset_id: "doc-1",
       selection_text: "Attention is content-addressable",
       page: 0,
+      references: ["arxiv:1706.03762", "  "],
     });
 
     expect(openEngagementSession).toHaveBeenCalledWith(
@@ -45,6 +46,7 @@ describe("launchFloatingDeepResearch", () => {
         asset_id: "doc-1",
         selection_text: "Attention is content-addressable",
         view_mode: "floating",
+        references: ["arxiv:1706.03762"],
       }),
     );
     expect(openDeepResearchFromHighlight).toHaveBeenCalledWith(

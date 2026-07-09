@@ -17,6 +17,7 @@ export type LaunchFloatingDeepResearchInput = {
   page?: number | null;
   goal_hint?: string | null;
   model_id?: string | null;
+  /** arxiv/substack/url handles for spawn attach (residual cm) */
   references?: string[];
   view_mode?: WindowMode;
 };
@@ -45,6 +46,10 @@ export async function launchFloatingDeepResearch(
   }
 
   const mode = input.view_mode ?? "floating";
+  const refs = (input.references || [])
+    .map((r) => (r || "").trim())
+    .filter(Boolean);
+
   const session = await openEngagementSession({
     asset_id: assetId,
     selection_text: selection,
@@ -52,7 +57,7 @@ export async function launchFloatingDeepResearch(
     page: input.page,
     goal_hint: input.goal_hint,
     model_id: input.model_id,
-    references: input.references,
+    references: refs.length ? refs : undefined,
     view_mode: mode === "full" ? "full" : "floating",
   });
 

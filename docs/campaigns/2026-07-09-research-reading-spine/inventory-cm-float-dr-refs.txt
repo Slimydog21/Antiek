@@ -1,0 +1,8 @@
+# residual (cm) Floating deep research session carries publication refs
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(cl) prior | branch_only | campaign inventories
+(cm) float DR references | branch_only | launchFloatingDeepResearch passes references to openEngagementSession; 2 vitest; tip after commit
+
+NEXT: (cn) re-derive; operator merge PR #465
