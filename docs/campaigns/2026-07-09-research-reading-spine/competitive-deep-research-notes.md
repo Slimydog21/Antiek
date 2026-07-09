@@ -325,3 +325,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (nb, 2026-07-10) **SESSION-ARC mq–na twins promote/chase:**
   - SESSION-ARC-mq-na-twins-promote-chase.md zero-context fleet handoff
   - note-taker path: filter → multi-select → promote/chase → budget gate
+
+- Closed (nc, 2026-07-10) **TwinNotes driver badge + chase metrics:**
+  - DecisionTreeDriverBadge on recursive note-taker
+  - twin-chase-metrics spawn/model/tier/mode audit attrs

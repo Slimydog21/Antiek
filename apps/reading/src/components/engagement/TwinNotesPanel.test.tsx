@@ -20,6 +20,17 @@ vi.mock("../../modes/Reading/launchFloatingDeepResearch", () => ({
     launchFloatingDeepResearch(...args),
 }));
 
+vi.mock("./DecisionTreeDriverBadge", () => ({
+  DecisionTreeDriverBadge: (props: { researchTier?: string }) => (
+    <div
+      data-testid="mock-decision-tree-driver-badge"
+      data-research-tier={props.researchTier ?? ""}
+    >
+      mock driver badge
+    </div>
+  ),
+}));
+
 // Residual (na): budget panel — controllable soft-gate via onProjectionChange.
 let mockWouldExceed: boolean | null = false;
 vi.mock("./ResearchLaunchBudgetPanel", () => ({
@@ -103,6 +114,9 @@ describe("TwinNotesPanel", () => {
     const link = screen.getByTestId("twin-notes-settings-link");
     expect(link.getAttribute("href")).toBe("/settings");
     expect(link.textContent).toMatch(/twin seed readiness/i);
+    // Residual (nc): driver badge always mounted on note-taker.
+    expect(screen.getByTestId("twin-notes-driver-badge-mount")).toBeTruthy();
+    expect(screen.getByTestId("mock-decision-tree-driver-badge")).toBeTruthy();
   });
 
   it("links dual-gate L1–L4 checklist for L3 twin live seed prep (mt)", () => {
@@ -1003,7 +1017,19 @@ describe("TwinNotesPanel", () => {
       expect(screen.getByTestId("twin-chase-status").textContent).toMatch(
         /spn_chase/,
       );
+      expect(screen.getByTestId("twin-chase-status").textContent).toMatch(
+        /model=model-a/,
+      );
     });
+    // Residual (nc): machine-readable chase metrics.
+    const metrics = screen.getByTestId("twin-chase-metrics");
+    expect(metrics.getAttribute("data-spawn-id")).toBe("spn_chase");
+    expect(metrics.getAttribute("data-session-id")).toBe("sess_chase");
+    expect(metrics.getAttribute("data-model-id")).toBe("model-a");
+    expect(metrics.getAttribute("data-research-tier")).toBe("deep");
+    expect(metrics.getAttribute("data-view-mode")).toBe("floating");
+    expect(metrics.getAttribute("data-note-id-count")).toBe("2");
+    expect(metrics.getAttribute("data-view-format")).toBe("html");
     // Selection cleared after successful chase (parity my).
     expect(
       screen

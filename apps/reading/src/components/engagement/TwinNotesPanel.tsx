@@ -31,6 +31,8 @@
  * (highlight→float DR parity for recursive note-taker questions/insights).
  * Residual (na): budget soft-gate on twin chase (parity marketplace iy) —
  * ResearchLaunchBudgetPanel + force override when projection would exceed.
+ * Residual (nc): DecisionTreeDriverBadge + chase metrics (model/spawn/tier)
+ * for model+budget+depth audit on recursive note-taker chase path.
  * HTML-first; never PDF.
  */
 
@@ -44,6 +46,7 @@ import {
   type TwinPromoteContextResponse,
 } from "../../api/engagement";
 import { launchFloatingDeepResearch } from "../../modes/Reading/launchFloatingDeepResearch";
+import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 import {
   ResearchLaunchBudgetPanel,
   type ResearchLaunchBudgetProjection,
@@ -145,6 +148,20 @@ export function TwinNotesPanel({
   const [promoteStatus, setPromoteStatus] = useState<string | null>(null);
   /** Residual (mz): chase-selected deep research status chrome. */
   const [chaseStatus, setChaseStatus] = useState<string | null>(null);
+  /**
+   * Residual (nc): machine-readable last chase result for audit (parity
+   * twin-promote-metrics / marketplace-host-dr-status).
+   */
+  const [chaseMetrics, setChaseMetrics] = useState<{
+    spawnId: string;
+    sessionId: string;
+    modelId: string | null;
+    researchTier: string;
+    viewMode: string;
+    noteIdCount: number;
+    forceBudget: boolean;
+    viewFormat: string;
+  } | null>(null);
   /**
    * Residual (na): soft budget gate before twin chase launch.
    * wouldExceed → warn + require force checkbox (never invent $0).
@@ -486,6 +503,7 @@ export function TwinNotesPanel({
         if (!payload.selection_text.trim()) {
           throw new Error("Selected twin notes have empty text");
         }
+        const forced = chaseBudgetWarn && chaseForceBudget;
         const out = await launchFloatingDeepResearch({
           asset_id: assetId,
           selection_text: payload.selection_text,
@@ -498,10 +516,24 @@ export function TwinNotesPanel({
         }
         setSelectedNoteIds(new Set());
         setChaseForceBudget(false);
+        // Residual (nc): structured chase metrics for model+spawn audit.
+        setChaseMetrics({
+          spawnId: out.spawn_id,
+          sessionId: out.session_id,
+          modelId: out.model_id ?? null,
+          researchTier: String(out.research_tier || chaseTier),
+          viewMode,
+          noteIdCount: payload.note_ids.length,
+          forceBudget: forced,
+          viewFormat: out.view_format,
+        });
+        const modelLabel = out.model_id?.trim()
+          ? ` · model=${out.model_id.trim()}`
+          : " · model=none";
         setChaseStatus(
           `chased ${payload.note_ids.length} twin note(s) → spawn=${out.spawn_id} · ` +
-            `mode=${viewMode} · tier=${out.research_tier}` +
-            (chaseBudgetWarn && chaseForceBudget ? " · force_budget" : ""),
+            `mode=${viewMode} · tier=${out.research_tier}${modelLabel}` +
+            (forced ? " · force_budget" : ""),
         );
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -570,6 +602,16 @@ export function TwinNotesPanel({
                 : " · deep / synthesize depth"}
           </p>
         ) : null}
+        {/* Residual (nc): model + budget + depth co-display on note-taker. */}
+        <div data-testid="twin-notes-driver-badge-mount">
+          <DecisionTreeDriverBadge
+            researchTier={
+              (chaseTier ||
+                normalizedResearchTier ||
+                undefined) as ResearchLaunchTier | undefined
+            }
+          />
+        </div>
       </header>
       <div className="controls" style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
         <select
@@ -778,6 +820,26 @@ export function TwinNotesPanel({
         >
           {chaseStatus}
         </p>
+      ) : null}
+      {chaseMetrics ? (
+        <div
+          data-testid="twin-chase-metrics"
+          data-spawn-id={chaseMetrics.spawnId}
+          data-session-id={chaseMetrics.sessionId}
+          data-model-id={chaseMetrics.modelId ?? "none"}
+          data-research-tier={chaseMetrics.researchTier}
+          data-view-mode={chaseMetrics.viewMode}
+          data-note-id-count={String(chaseMetrics.noteIdCount)}
+          data-force-budget={String(chaseMetrics.forceBudget)}
+          data-view-format={chaseMetrics.viewFormat}
+          className="font-mono text-[11px] opacity-80"
+          role="status"
+        >
+          Twin chase metrics · spawn={chaseMetrics.spawnId} · model=
+          {chaseMetrics.modelId ?? "none"} · tier={chaseMetrics.researchTier} ·
+          mode={chaseMetrics.viewMode} · notes={chaseMetrics.noteIdCount}
+          {chaseMetrics.forceBudget ? " · force_budget" : ""}
+        </div>
       ) : null}
       {twins ? (
         <div data-testid="twin-notes-summary" className="font-mono text-sm">
