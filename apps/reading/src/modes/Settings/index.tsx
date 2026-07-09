@@ -317,6 +317,24 @@ export default function Settings() {
       } else {
         await onRefreshLeaderboard();
       }
+      // Residual (dv): dogfood usage events → refresh suite proposal panel
+      // (proposed only; never auto-promoted).
+      try {
+        const p = await fetchAntiekBenchSuiteProposal({ includeHtml: true });
+        if (p.view_format !== "html") {
+          throw new Error("suite proposal view_format must be html");
+        }
+        if (p.auto_promoted) {
+          throw new Error("suite proposal must not auto-promote");
+        }
+        setSuiteProposal(p);
+        setSuiteProposalError(null);
+      } catch (pe) {
+        // Non-fatal: offline run still succeeded; proposal refresh is best-effort.
+        setSuiteProposalError(
+          pe instanceof Error ? pe.message : String(pe),
+        );
+      }
     } catch (e) {
       setOfflineRunError(e instanceof Error ? e.message : String(e));
     } finally {

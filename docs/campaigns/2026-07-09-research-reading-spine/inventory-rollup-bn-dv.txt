@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(dv) · PR #465
+Recursive offline flywheel closed in Settings: dogfood → usage events → suite proposal panel refresh.
+Operator merge still gated.
