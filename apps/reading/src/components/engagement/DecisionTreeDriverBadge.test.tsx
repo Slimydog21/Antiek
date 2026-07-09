@@ -62,6 +62,23 @@ describe("DecisionTreeDriverBadge residual cw/eq", () => {
     });
   });
 
+  it("links to Settings for driver install and budget (fj)", async () => {
+    fetchDecisionTreeSelection.mockResolvedValue({
+      model_id: null,
+      provider_id: null,
+      installed: false,
+      notes: [],
+      source: "test",
+    });
+    render(<DecisionTreeDriverBadge />);
+    await waitFor(() => {
+      expect(screen.getByTestId("decision-tree-settings-link")).toBeTruthy();
+    });
+    const link = screen.getByTestId("decision-tree-settings-link");
+    expect(link.getAttribute("href")).toBe("/settings");
+    expect(link.textContent).toMatch(/Settings/);
+  });
+
   it("shows compact budget usage bar next to driver (eq)", async () => {
     fetchDecisionTreeSelection.mockResolvedValue({
       model_id: "claude-opus-4-8",

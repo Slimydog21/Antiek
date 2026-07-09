@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(fj) · PR #465
+Driver Settings link (fj); search metrics (fi); BlockDetail window DR (fh); suite tasks (fg).
+Operator merge still gated. Next residual (fk).

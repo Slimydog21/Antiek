@@ -10,6 +10,7 @@
  * unknown when spent_status is unknown). Not a launch soft-gate — that stays
  * on ResearchLaunchBudgetPanel.
  * Residual (fd): manual refresh of driver + budget without remounting the host.
+ * Residual (fj): deep-link to Settings decision-tree / model budget controls.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -99,6 +100,15 @@ export function DecisionTreeDriverBadge() {
         >
           {refreshing ? "Refreshing…" : "Refresh"}
         </button>
+        {/* Residual (fj): open Settings for model install + daily budget. */}
+        <a
+          href="/settings"
+          data-testid="decision-tree-settings-link"
+          className="underline opacity-80 hover:opacity-100"
+          title="Open Settings to install decision-tree driver and set daily budget"
+        >
+          Settings
+        </a>
       </div>
 
       {/* Residual (eq): compact usage bar for the operator's daily API budget. */}
