@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import MidnightOil from "./index";
 import {
   activationChecklistMidnightOil,
+  budgetProviderAdapterPlanMidnightOil,
   budgetReservationMidnightOil,
   dispatchMidnightOil,
   dryRunMidnightOil,
@@ -524,6 +525,57 @@ vi.mock("../../api/midnightOil", () => ({
     final_artifact_created: false,
     control_plan_notes: ["runner control plan only: implementation requirements recorded"],
   })),
+  budgetProviderAdapterPlanMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-budget-provider-adapter-plan",
+    runner_control_plan_receipt_id: "midnight-oil-test-runner-control-plan",
+    runner_readiness_receipt_id: "midnight-oil-test-runner-readiness",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    run_id: "midnight-oil-test",
+    status: "blocked_budget_provider_adapter_unimplemented",
+    adapter_key: "budget_reservation_provider",
+    planned_adapter_id: "midnight-oil-test-budget-provider-adapter",
+    planned_ledger_id: "midnight-oil-test-budget-reservation-ledger",
+    idempotency_key:
+      "midnight-oil-test-launch-packet:midnight-oil-test-approval-receipt:budget_reservation_provider",
+    approved_price_ceiling_usd: 12,
+    planned_budget_usd: 7.2,
+    unallocated_budget_usd: 4.8,
+    required_invariants: [
+      "adapter must reject reservations above the approved price ceiling",
+      "adapter must be idempotent for the same launch packet and approval receipt",
+      "adapter must write a durable ledger row before any provider execution can proceed",
+    ],
+    required_ledger_fields: [
+      "reservation_id",
+      "run_id",
+      "launch_packet_id",
+      "approval_receipt_id",
+      "approved_price_ceiling_usd",
+      "planned_budget_usd",
+      "reserved_budget_usd",
+      "idempotency_key",
+      "status",
+      "created_at",
+      "released_at",
+    ],
+    blocker_reason: "budget_provider_adapter_unimplemented",
+    budget_reservation_allowed: false,
+    budget_reserved: false,
+    live_run_allowed: false,
+    dispatch_allowed: false,
+    provider_execution_allowed: false,
+    retrieval_allowed: false,
+    graph_mutation_allowed: false,
+    final_artifact_allowed: false,
+    dispatch_performed: false,
+    provider_calls_made: false,
+    retrieval_performed: false,
+    graph_mutated: false,
+    final_artifact_created: false,
+    adapter_plan_notes: ["budget provider adapter plan only: no reservation provider is configured"],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -929,5 +981,30 @@ describe("MidnightOil", () => {
     expect(screen.getAllByText("budget reservation provider").length).toBeGreaterThan(1);
     expect(screen.getByText("Budget reservation provider with idempotent no-overrun holds.")).toBeTruthy();
     expect(screen.getByText("Provider route executor that records route receipts before calls.")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Budget provider adapter" }));
+
+    await waitFor(() => expect(budgetProviderAdapterPlanMidnightOil).toHaveBeenCalled());
+    expect(budgetProviderAdapterPlanMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      runner_control_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-control-plan",
+      }),
+    });
+    expect(screen.getByText("Adapter plan receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-budget-provider-adapter-plan")).toBeTruthy();
+    expect(screen.getByText("blocked budget provider adapter unimplemented")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-budget-provider-adapter")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-budget-reservation-ledger")).toBeTruthy();
+    expect(screen.getByText("adapter must reject reservations above the approved price ceiling")).toBeTruthy();
+    expect(screen.getByText(/Ledger fields:/)).toBeTruthy();
   });
 });

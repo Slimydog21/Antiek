@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import {
   activationChecklistMidnightOil,
+  budgetProviderAdapterPlanMidnightOil,
   budgetReservationMidnightOil,
   dispatchMidnightOil,
   dryRunMidnightOil,
@@ -15,6 +16,7 @@ import {
   runnerReadinessMidnightOil,
   type MidnightOilActivationChecklistReceipt,
   type MidnightOilAppliedRunReceipt,
+  type MidnightOilBudgetProviderAdapterPlanReceipt,
   type MidnightOilBudgetReservationReceipt,
   type MidnightOilDispatchReceipt,
   type MidnightOilFinalArtifactReceipt,
@@ -75,6 +77,8 @@ export default function MidnightOil() {
     useState<MidnightOilRunnerReadinessReceipt | null>(null);
   const [runnerControlPlanReceipt, setRunnerControlPlanReceipt] =
     useState<MidnightOilRunnerControlPlanReceipt | null>(null);
+  const [budgetProviderAdapterPlanReceipt, setBudgetProviderAdapterPlanReceipt] =
+    useState<MidnightOilBudgetProviderAdapterPlanReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -87,6 +91,7 @@ export default function MidnightOil() {
   const [finalArtifactBusy, setFinalArtifactBusy] = useState(false);
   const [runnerReadinessBusy, setRunnerReadinessBusy] = useState(false);
   const [runnerControlPlanBusy, setRunnerControlPlanBusy] = useState(false);
+  const [budgetProviderAdapterPlanBusy, setBudgetProviderAdapterPlanBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
   const [liveSettingsError, setLiveSettingsError] = useState<string | null>(null);
@@ -99,10 +104,18 @@ export default function MidnightOil() {
   const [finalArtifactError, setFinalArtifactError] = useState<string | null>(null);
   const [runnerReadinessError, setRunnerReadinessError] = useState<string | null>(null);
   const [runnerControlPlanError, setRunnerControlPlanError] = useState<string | null>(null);
+  const [budgetProviderAdapterPlanError, setBudgetProviderAdapterPlanError] =
+    useState<string | null>(null);
+
+  function clearBudgetProviderAdapterPlan() {
+    setBudgetProviderAdapterPlanError(null);
+    setBudgetProviderAdapterPlanReceipt(null);
+  }
 
   function clearRunnerControlPlan() {
     setRunnerControlPlanError(null);
     setRunnerControlPlanReceipt(null);
+    clearBudgetProviderAdapterPlan();
   }
 
   async function onSubmit(event: React.FormEvent) {
@@ -119,6 +132,7 @@ export default function MidnightOil() {
     setGraphMutationError(null);
     setFinalArtifactError(null);
     setRunnerControlPlanError(null);
+    setBudgetProviderAdapterPlanError(null);
     setPreflight(null);
     setDryRunReceipt(null);
     setLiveSettingsReceipt(null);
@@ -132,6 +146,7 @@ export default function MidnightOil() {
     setRunnerReadinessError(null);
     setRunnerReadinessReceipt(null);
     setRunnerControlPlanReceipt(null);
+    setBudgetProviderAdapterPlanReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -613,6 +628,7 @@ export default function MidnightOil() {
     setRunnerControlPlanBusy(true);
     setRunnerControlPlanError(null);
     setRunnerControlPlanReceipt(null);
+    clearBudgetProviderAdapterPlan();
     try {
       const result = await runnerControlPlanMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -625,6 +641,37 @@ export default function MidnightOil() {
       setRunnerControlPlanError(e instanceof Error ? e.message : String(e));
     } finally {
       setRunnerControlPlanBusy(false);
+    }
+  }
+
+  async function onBudgetProviderAdapterPlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerControlPlanReceipt
+    ) {
+      setBudgetProviderAdapterPlanError(
+        "Budget provider adapter plan requires launch packet, approval receipt, runner handoff, and runner control plan receipt.",
+      );
+      return;
+    }
+
+    setBudgetProviderAdapterPlanBusy(true);
+    setBudgetProviderAdapterPlanError(null);
+    setBudgetProviderAdapterPlanReceipt(null);
+    try {
+      const result = await budgetProviderAdapterPlanMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        runner_control_plan_receipt: runnerControlPlanReceipt,
+      });
+      setBudgetProviderAdapterPlanReceipt(result);
+    } catch (e) {
+      setBudgetProviderAdapterPlanError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBudgetProviderAdapterPlanBusy(false);
     }
   }
 
@@ -1626,6 +1673,86 @@ export default function MidnightOil() {
                       </li>
                     ))}
                   </ol>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Budget provider adapter
+                </p>
+                <button
+                  type="button"
+                  onClick={onBudgetProviderAdapterPlanGate}
+                  disabled={
+                    budgetProviderAdapterPlanBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !runnerControlPlanReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {budgetProviderAdapterPlanBusy
+                    ? "Planning adapter..."
+                    : "Budget provider adapter"}
+                </button>
+              </div>
+
+              {budgetProviderAdapterPlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {budgetProviderAdapterPlanError}
+                </p>
+              )}
+
+              {budgetProviderAdapterPlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Adapter plan receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {budgetProviderAdapterPlanReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={budgetProviderAdapterPlanReceipt.status.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Ceiling"
+                      value={`$${budgetProviderAdapterPlanReceipt.approved_price_ceiling_usd.toFixed(2)}`}
+                    />
+                    <Metric
+                      label="Planned"
+                      value={`$${budgetProviderAdapterPlanReceipt.planned_budget_usd.toFixed(2)}`}
+                    />
+                    <Metric
+                      label="Reserved"
+                      value={budgetProviderAdapterPlanReceipt.budget_reserved ? "yes" : "no"}
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Adapter"
+                      value={budgetProviderAdapterPlanReceipt.planned_adapter_id}
+                    />
+                    <Metric
+                      label="Ledger"
+                      value={budgetProviderAdapterPlanReceipt.planned_ledger_id}
+                    />
+                  </div>
+                  <p className="mt-2 break-all font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    {budgetProviderAdapterPlanReceipt.idempotency_key}
+                  </p>
+                  <ul className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {budgetProviderAdapterPlanReceipt.required_invariants.slice(0, 5).map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Ledger fields: {budgetProviderAdapterPlanReceipt.required_ledger_fields.join(", ")}
+                  </p>
                 </div>
               )}
 
