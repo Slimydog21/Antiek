@@ -621,3 +621,9 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - Merge draft HTML/full → mergeTwinChaseNotes → openTwinDraft + Write seed
   - metrics data-source=twin_cross_asset_merge · data-merge-assets=A|B
   - TwinNotesPanel vitest 28 passed
+
+- Closed (py, 2026-07-10) **collective cohesive unit membership (FUTURE-AGENT V2):**
+  - sessionStorage map collective_id → spawn_ids (max 24)
+  - store on merge / written analysis (document_id) / continue-as-unit
+  - Restore last unit → multi-select intersection with available
+  - CollectiveResearchPanel + pure helper vitest 22 passed

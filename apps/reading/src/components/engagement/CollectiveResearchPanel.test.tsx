@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearCollectiveUnitMembership } from "../../workspace/collectiveUnitMembership";
 import { CollectiveResearchPanel } from "./CollectiveResearchPanel";
 
 const fetchCollectiveResearch = vi.fn();
@@ -93,6 +94,7 @@ vi.mock("./ResearchLaunchBudgetPanel", () => {
 describe("CollectiveResearchPanel", () => {
   afterEach(() => cleanup());
   beforeEach(() => {
+    clearCollectiveUnitMembership();
     fetchDepthTiers.mockReset().mockResolvedValue({
       active_depth_tier: null,
       active_preset: null,
@@ -835,5 +837,89 @@ describe("CollectiveResearchPanel", () => {
         .getByTestId("collective-selection-count")
         .getAttribute("data-selected-count"),
     ).toBe("0");
+  });
+
+  it("stores unit membership on merge and restores last multi-select (py)", async () => {
+    fetchCollectiveResearch.mockResolvedValue({
+      collective_id: "col_mem",
+      spawn_ids: ["spn_a", "spn_b"],
+      asset_ids: ["asset_x"],
+      investigation_ids: [],
+      twin_units: [],
+      source_references: [],
+      view_format: "html",
+      spawn_count: 2,
+      twin_count: 0,
+      ref_count: 0,
+      prompt_block: "# unit col_mem",
+    });
+
+    const { unmount } = render(
+      <CollectiveResearchPanel
+        availableSpawnIds={["spn_a", "spn_b", "spn_c"]}
+        parentAssetId="asset_x"
+        autoSelectNewestRecent={false}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("collective-select-spn_a"));
+    fireEvent.click(screen.getByTestId("collective-select-spn_b"));
+    fireEvent.click(screen.getByTestId("collective-merge-prompt"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("collective-unit-membership-status"),
+      ).toBeTruthy();
+    });
+    const stored = screen.getByTestId("collective-unit-membership-status");
+    expect(stored.getAttribute("data-action")).toBe("stored");
+    expect(stored.getAttribute("data-collective-id")).toBe("col_mem");
+    expect(stored.getAttribute("data-spawn-count")).toBe("2");
+
+    // Clear selection then restore last unit.
+    fireEvent.click(screen.getByTestId("collective-clear-selection"));
+    expect(
+      screen
+        .getByTestId("collective-selection-count")
+        .getAttribute("data-selected-count"),
+    ).toBe("0");
+    fireEvent.click(screen.getByTestId("collective-restore-last-unit"));
+    expect(
+      screen
+        .getByTestId("collective-selection-count")
+        .getAttribute("data-selected-count"),
+    ).toBe("2");
+    expect(
+      (screen.getByTestId("collective-select-spn_a") as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    expect(
+      (screen.getByTestId("collective-select-spn_b") as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    expect(
+      screen
+        .getByTestId("collective-unit-membership-status")
+        .getAttribute("data-action"),
+    ).toBe("restored");
+    expect(
+      screen
+        .getByTestId("collective-unit-membership-status")
+        .getAttribute("data-restored-count"),
+    ).toBe("2");
+
+    // Re-mount: membership survives sessionStorage for re-open path.
+    unmount();
+    render(
+      <CollectiveResearchPanel
+        availableSpawnIds={["spn_a", "spn_b", "spn_c"]}
+        parentAssetId="asset_x"
+        autoSelectNewestRecent={false}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("collective-restore-last-unit"));
+    expect(
+      screen
+        .getByTestId("collective-selection-count")
+        .getAttribute("data-selected-count"),
+    ).toBe("2");
   });
 });

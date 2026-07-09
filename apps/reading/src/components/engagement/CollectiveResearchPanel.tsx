@@ -40,6 +40,9 @@
  *     (Antiek-bench recursive rewrite audit).
  * 23. Residual (ol): auto-select newest recent_ring spawn when selection is
  *     empty and preferredSpawnId is unset (chase → collective one less click).
+ * 24. Residual (py / FUTURE-AGENT V2): persist cohesive unit membership
+ *     (spawn_ids by collective_id) in sessionStorage; restore last multi-select
+ *     after continue-as-unit re-entry (intersection with available).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -54,6 +57,12 @@ import {
 import { fetchDepthTiers } from "../../api/settings";
 import { mapDepthTierToResearchTier } from "../../lib/researchTier";
 import { launchFloatingDeepResearch } from "../../modes/Reading/launchFloatingDeepResearch";
+import {
+  getLastCollectiveUnitMembership,
+  restoreCollectiveSelection,
+  storeCollectiveUnitMembership,
+  type CollectiveUnitMembership,
+} from "../../workspace/collectiveUnitMembership";
 import {
   clearRecentDeepResearchSpawnIds,
   listRecentDeepResearchSpawnIds,
@@ -158,6 +167,17 @@ export function CollectiveResearchPanel({
   const [depthPrefill, setDepthPrefill] = useState<
     "pending" | "installed" | "none" | "error"
   >("pending");
+  /**
+   * Residual (py): last cohesive unit membership chrome (sessionStorage).
+   * Restored selection is an intersection with availableSpawnIds.
+   */
+  const [membershipStatus, setMembershipStatus] = useState<{
+    collective_id: string;
+    spawn_count: number;
+    restored_count: number;
+    action: "stored" | "restored" | "none";
+    document_id?: string | null;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -274,6 +294,68 @@ export function CollectiveResearchPanel({
     setSelected(next);
   }, [availableSpawnIds, recentSet]);
 
+  /** Residual (py): remember unit membership after merge / analysis / continue. */
+  const rememberUnitMembership = useCallback(
+    (
+      collectiveId: string,
+      spawnIds: readonly string[],
+      opts?: { document_id?: string | null },
+    ): CollectiveUnitMembership | null => {
+      const m = storeCollectiveUnitMembership({
+        collective_id: collectiveId,
+        spawn_ids: spawnIds,
+        parent_asset_id: parentAssetId,
+        document_id: opts?.document_id ?? null,
+      });
+      if (m) {
+        setMembershipStatus({
+          collective_id: m.collective_id,
+          spawn_count: m.spawn_ids.length,
+          restored_count: 0,
+          action: "stored",
+          document_id: m.document_id,
+        });
+      }
+      return m;
+    },
+    [parentAssetId],
+  );
+
+  /**
+   * Residual (py): restore last cohesive unit multi-select (intersection with
+   * available). After continue-as-unit re-entry, one click restores the set.
+   */
+  const restoreLastUnitSelection = useCallback(() => {
+    const last = getLastCollectiveUnitMembership();
+    if (!last) {
+      setError("No cohesive unit membership stored in this session");
+      return;
+    }
+    const restored = restoreCollectiveSelection(last, availableSpawnIds);
+    if (restored.length < 1) {
+      setError(
+        `Last unit ${last.collective_id} has no spawn_ids still available (${last.spawn_ids.length} stored)`,
+      );
+      setMembershipStatus({
+        collective_id: last.collective_id,
+        spawn_count: last.spawn_ids.length,
+        restored_count: 0,
+        action: "restored",
+        document_id: last.document_id,
+      });
+      return;
+    }
+    setSelected(restored);
+    setError(null);
+    setMembershipStatus({
+      collective_id: last.collective_id,
+      spawn_count: last.spawn_ids.length,
+      restored_count: restored.length,
+      action: "restored",
+      document_id: last.document_id,
+    });
+  }, [availableSpawnIds]);
+
   const mergeCollective = useCallback(async () => {
     if (selected.length < 1) return;
     setBusy(true);
@@ -284,6 +366,8 @@ export function CollectiveResearchPanel({
         throw new Error("collective view_format must be html");
       }
       setUnit(result);
+      // Residual (py): persist multi-select membership for re-open.
+      rememberUnitMembership(result.collective_id, selected);
       // Residual (ke): depth-max of member spawn tiers for continue budget.
       const rec = (result.recommended_research_tier || "")
         .toString()
@@ -298,7 +382,7 @@ export function CollectiveResearchPanel({
     } finally {
       setBusy(false);
     }
-  }, [selected]);
+  }, [selected, rememberUnitMembership]);
 
   const mergeDocument = useCallback(
     async (mode: MergeMode) => {
@@ -396,6 +480,10 @@ export function CollectiveResearchPanel({
       if (draft.view_format !== "html") {
         throw new Error("analysis draft view_format must be html");
       }
+      // Residual (py): membership on analysis asset (document_id provenance).
+      rememberUnitMembership(collective.collective_id, selected, {
+        document_id: draft.document_id,
+      });
       // Residual (ch): recursive note-taker seed on the analysis draft asset.
       let twinNote = "";
       try {
@@ -434,7 +522,13 @@ export function CollectiveResearchPanel({
     } finally {
       setBusy(false);
     }
-  }, [selected, parentAssetId, maybeAutoOpenDraft, onDocMerged]);
+  }, [
+    selected,
+    parentAssetId,
+    maybeAutoOpenDraft,
+    onDocMerged,
+    rememberUnitMembership,
+  ]);
 
   /**
    * Residual (dc/ey): re-enter research with the collective prompt as one unit.
@@ -470,13 +564,25 @@ export function CollectiveResearchPanel({
           research_tier: researchTier,
         });
         setContinueWindowId(out.window_id);
+        // Residual (py): re-persist membership at continue so re-open restores set.
+        const fromUnit = (unit.spawn_ids || []).filter(Boolean);
+        const memberSpawns = fromUnit.length > 0 ? fromUnit : selected;
+        rememberUnitMembership(unit.collective_id, memberSpawns);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       } finally {
         setBusy(false);
       }
     },
-    [unit, parentAssetId, budgetWarn, forceOverBudget, researchTier],
+    [
+      unit,
+      parentAssetId,
+      budgetWarn,
+      forceOverBudget,
+      researchTier,
+      selected,
+      rememberUnitMembership,
+    ],
   );
 
   return (
@@ -627,6 +733,16 @@ export function CollectiveResearchPanel({
         >
           Clear recent ({recentCount})
         </button>
+        {/* Residual (py): restore last cohesive unit multi-select. */}
+        <button
+          type="button"
+          data-testid="collective-restore-last-unit"
+          onClick={() => restoreLastUnitSelection()}
+          disabled={busy}
+          title="Restore multi-select from last cohesive unit membership (sessionStorage)"
+        >
+          Restore last unit
+        </button>
         <span
           className="text-[11px] font-mono opacity-70"
           data-testid="collective-selection-count"
@@ -640,6 +756,29 @@ export function CollectiveResearchPanel({
             ? ` · recent_in_list=${recentInAvailable}`
             : ""}
         </span>
+        {membershipStatus ? (
+          <span
+            className="text-[11px] font-mono opacity-80 w-full"
+            data-testid="collective-unit-membership-status"
+            data-action={membershipStatus.action}
+            data-collective-id={membershipStatus.collective_id}
+            data-spawn-count={String(membershipStatus.spawn_count)}
+            data-restored-count={String(membershipStatus.restored_count)}
+            data-document-id={membershipStatus.document_id ?? ""}
+            data-view-format="html"
+            role="status"
+          >
+            Unit membership · {membershipStatus.action} · id=
+            {membershipStatus.collective_id} · stored=
+            {membershipStatus.spawn_count}
+            {membershipStatus.action === "restored"
+              ? ` · restored=${membershipStatus.restored_count}`
+              : ""}
+            {membershipStatus.document_id
+              ? ` · doc=${membershipStatus.document_id}`
+              : ""}
+          </span>
+        ) : null}
       </div>
 
       <div className="collective-actions" style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>

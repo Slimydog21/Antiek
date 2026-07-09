@@ -29,7 +29,7 @@ Highest leverage. Agents never merge main/prod.
 | ID | Gap | Acceptance | Notes |
 |---|---|---|---|
 | V1 | **Recursive twin cross-asset merge UI** | ✅ **pn–px**: multi-select → draft → Write + `mergeTwinChaseNotes` + second asset_id picker UI → merge draft float|full | Closed offline; optional polish multi-asset N>2 later |
-| V2 | **Collective “cohesive unit prompt” history** | After collective continue-as-unit, re-open unit shows prior multi-select spawn set | Ring already max 24; persist unit membership on analysis asset |
+| V2 | **Collective “cohesive unit prompt” history** | ✅ **py**: sessionStorage unit membership + Restore last unit multi-select (merge/analysis/continue) | Optional: server-side membership later |
 | V3 | **Antiek-bench recursive rewrite weekly chrome** | Settings shows last rewrite proposal delta + which by_source drove added tasks | propose≠promote already; polish rewrite rationale UI |
 | V4 | **Model decision-tree “prompt projection vs cap”** | ✅ **Closed pg–pj** DecisionTreeDriverBadge promptText on MO/Write/ResearchThis/Hosted | See SESSION-ARC-pg-pj |
 | V5 | **Marketplace free→account host polish** | One-click host + open hosted HTML + twins auto-seed + DR float from catalog row | Mostly shipped (iu–iw); dogfood any broken deep-links |

@@ -1,0 +1,19 @@
+# inventory-py · FUTURE-AGENT V2 cohesive unit membership
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: py
+date: 2026-07-10
+
+## Closed
+- collectiveUnitMembership sessionStorage module (max 24 units)
+- store on merge prompt + written analysis (document_id) + continue-as-unit
+- Restore last unit multi-select (intersection with available)
+- membership status chrome (stored|restored)
+- vitest: membership 4 + CollectiveResearchPanel 18 = 22 passed
+
+## Files
+- apps/reading/src/workspace/collectiveUnitMembership.ts (+ .test.ts)
+- apps/reading/src/components/engagement/CollectiveResearchPanel.tsx (+ .test.tsx)
+
+## Honesty
+- Never invents spawn ids; restore is intersection only
+- sessionStorage only; offline-honest
