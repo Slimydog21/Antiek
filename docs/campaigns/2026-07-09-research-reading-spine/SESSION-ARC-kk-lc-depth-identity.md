@@ -36,11 +36,13 @@ name closed research depth `fast|deep|wrestle` in **API + HTML + UI**, and the
 | ld–lf | fleet handoff + twins list spawn_id tier + notes |
 | lg–lj | driver badge on collective · TalkToBook · MetaReading · spawn merge |
 | lk–ll | competitive notes + ResearchThis · StartResearch driver badge |
+| ln–lu | ChatInput · BlockDetail · ResearchProgress · SessionFlywheel + DR wire |
 
-## Driver+depth co-display hosts (complete set)
+## Driver+depth co-display hosts (expanded)
 
 DR session · Hosted HTML · Write · Midnight Oil · Marketplace · Collective ·
-Spawn merge · TalkToBook · MetaReading · ResearchThis · StartResearch.
+Spawn merge · TalkToBook · MetaReading · ResearchThis · StartResearch ·
+ChatInputArea · BlockDetail · ResearchProgress · SessionFlywheel.
 
 ## Invariants still hard
 
