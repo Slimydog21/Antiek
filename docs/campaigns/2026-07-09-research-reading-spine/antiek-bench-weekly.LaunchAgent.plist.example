@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Residual (dr) — operator-install LaunchAgent template for weekly Antiek-bench.
+
+  Does NOT auto-promote suite rewrites. Offline dogfood only (no live multi-provider).
+  Operator must:
+    1. Copy to ~/Library/LaunchAgents/com.antiek.bench-weekly.plist
+    2. Set ANTIEK_PLATFORM_ROOT and Week label path below
+    3. launchctl load ~/Library/LaunchAgents/com.antiek.bench-weekly.plist
+
+  Default schedule: Monday 09:00 local (adjust StartCalendarInterval).
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.antiek.bench-weekly</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>exec "$ANTIEK_PLATFORM_ROOT/docs/campaigns/2026-07-09-research-reading-spine/scripts/antiek-bench-weekly.sh"</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>ANTIEK_PLATFORM_ROOT</key>
+    <string>/Users/YOU/Antiek/platform</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key>
+    <integer>1</integer>
+    <key>Hour</key>
+    <integer>9</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/tmp/antiek-bench-weekly.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/antiek-bench-weekly.err.log</string>
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

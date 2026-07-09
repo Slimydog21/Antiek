@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(dr) · PR #465
+dq: library on mount · dr: weekly Antiek-bench offline LaunchAgent template (operator install).
+Operator merge still gated.

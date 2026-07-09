@@ -1,0 +1,19 @@
+# residual (dr) Antiek-bench weekly LaunchAgent template + offline script
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(dq) prior | branch_only | campaign inventories
+(dr) weekly bench LaunchAgent | branch_only | antiek-bench-weekly.sh + LaunchAgent.plist.example; SCRATCH dry-run WEEKLY_OK auto_promoted=false
+
+## What shipped
+- `scripts/antiek-bench-weekly.sh` — offline dogfood + suite-proposal snapshot (never auto-promote).
+- `antiek-bench-weekly.LaunchAgent.plist.example` — operator install template.
+- Dry-run: dogfood 3 models, suite-proposal auto_promoted=false, view_format=html.
+
+## Operator install
+1. Set ANTIEK_PLATFORM_ROOT in the plist.
+2. Copy plist to ~/Library/LaunchAgents/com.antiek.bench-weekly.plist
+3. launchctl load …
+4. Review ~/.antiek/bench-weekly/<week>/suite-proposal.json; promote only in Settings.
+
+NEXT: (ds) re-derive; operator merge PR #465
