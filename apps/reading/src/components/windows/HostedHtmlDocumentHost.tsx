@@ -64,7 +64,8 @@ export default function HostedHtmlDocumentHost(
     },
     [],
   );
-  const onTwinsPromoted = useCallback(() => {
+  // Residual (ej): same naming as DR host context refresh chokepoint.
+  const onContextNeedsRefresh = useCallback(() => {
     setContextRefreshKey((k) => k + 1);
   }, []);
 
@@ -218,7 +219,7 @@ export default function HostedHtmlDocumentHost(
             autoLoad
             autoSeedIfEmpty
             autoPromoteAfterLoad
-            onPromoted={onTwinsPromoted}
+            onPromoted={onContextNeedsRefresh}
             seedTitle={title}
             seedBodyText={html ? html.replace(/<[^>]+>/g, " ").slice(0, 500) : title}
           />
