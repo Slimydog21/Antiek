@@ -88,6 +88,15 @@ describe("CollectiveResearchPanel", () => {
     expect(boxes[1].checked).toBe(true);
   });
 
+  it("links to Settings for driver & budget (ig)", () => {
+    render(
+      <CollectiveResearchPanel availableSpawnIds={["spn_1", "spn_2"]} />,
+    );
+    const link = screen.getByTestId("collective-settings-link");
+    expect(link.getAttribute("href")).toBe("/settings");
+    expect(link.textContent).toMatch(/driver & budget/i);
+  });
+
   it("merges selected spawns into collective prompt", async () => {
     fetchCollectiveResearch.mockResolvedValue({
       collective_id: "col_abc",

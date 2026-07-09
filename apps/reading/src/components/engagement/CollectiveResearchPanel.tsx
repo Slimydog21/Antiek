@@ -20,6 +20,7 @@
  * 10. Residual (fn): Open Write handoff for merged draft document_id (fl/fm).
  * 11. Residual (hm): collective-unit-metrics machine attrs for multi-spawn
  *     cohesive unit audit (parity twin/flywheel/progress metrics).
+ * 12. Residual (ig): Settings deep-link for driver + budget before continue.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -326,6 +327,16 @@ export function CollectiveResearchPanel({
             Parent asset: <code>{parentAssetId}</code>
           </p>
         ) : null}
+        {/* Residual (ig): Settings deep-link for model driver + budget. */}
+        <p className="meta font-mono text-[11px]">
+          <a
+            href="/settings"
+            data-testid="collective-settings-link"
+            title="Open Settings for decision-tree driver and daily budget"
+          >
+            Settings · driver & budget
+          </a>
+        </p>
       </header>
 
       <ul className="spawn-list">
