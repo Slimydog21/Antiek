@@ -12,11 +12,13 @@ import {
   fetchEvidencePack,
   fetchResearchContext,
   hydratePublicationRef,
+  promoteTwinsToContext,
   searchEngagementContext,
   type ContextSearchResponse,
   type EvidencePackResponse,
   type HydrateRefResponse,
   type ResearchContextResponse,
+  type TwinPromoteContextResponse,
 } from "../../api/engagement";
 import { detectSourceKindClient } from "../../workspace/researchContextPack";
 
@@ -38,6 +40,9 @@ export function ResearchContextPanel({
   const [evidence, setEvidence] = useState<EvidencePackResponse | null>(null);
   const [hydrated, setHydrated] = useState<HydrateRefResponse | null>(null);
   const [searchHits, setSearchHits] = useState<ContextSearchResponse | null>(
+    null,
+  );
+  const [flywheel, setFlywheel] = useState<TwinPromoteContextResponse | null>(
     null,
   );
   const [error, setError] = useState<string | null>(null);
@@ -145,6 +150,37 @@ export function ResearchContextPanel({
     }
   }, [query, assetId, spawnId]);
 
+  /** Residual (bm): promote twins → load research context pack in one click. */
+  const runContextFlywheel = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const promoted = await promoteTwinsToContext({
+        asset_id: assetId,
+        query: query.trim() || null,
+        include_html: true,
+      });
+      if (promoted.view_format !== "html") {
+        throw new Error("promote view_format must be html");
+      }
+      setFlywheel(promoted);
+      const ctx = await fetchResearchContext({
+        asset_id: assetId,
+        spawn_id: spawnId,
+        query: query.trim() || null,
+        include_twin_promote: true,
+      });
+      if (ctx.view_format !== "html") {
+        throw new Error("research context view_format must be html");
+      }
+      setPack(ctx);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [assetId, spawnId, query]);
+
   return (
     <section
       className="research-context-panel"
@@ -176,7 +212,12 @@ export function ResearchContextPanel({
             disabled={busy}
           />
         </label>
-        <button type="button" onClick={() => void load()} disabled={busy}>
+        <button
+          type="button"
+          data-testid="load-research-context"
+          onClick={() => void load()}
+          disabled={busy}
+        >
           {busy ? "Loading…" : "Load context"}
         </button>
         <button
@@ -194,6 +235,15 @@ export function ResearchContextPanel({
           disabled={busy || !query.trim()}
         >
           Search twins/refs
+        </button>
+        <button
+          type="button"
+          data-testid="context-flywheel"
+          onClick={() => void runContextFlywheel()}
+          disabled={busy}
+          title="Promote twins then load research context pack"
+        >
+          Promote twins → load context
         </button>
       </div>
 
@@ -325,6 +375,25 @@ export function ResearchContextPanel({
             <div
               data-testid="context-search-html"
               dangerouslySetInnerHTML={{ __html: searchHits.html }}
+            />
+          ) : null}
+        </div>
+      ) : null}
+
+      {flywheel ? (
+        <div
+          className="context-flywheel-result"
+          data-testid="context-flywheel-result"
+          data-view-format="html"
+        >
+          <p className="counts">
+            flywheel promoted={flywheel.promoted_count} · context_units=
+            {flywheel.context_unit_count}
+          </p>
+          {flywheel.html ? (
+            <div
+              data-testid="context-flywheel-html"
+              dangerouslySetInnerHTML={{ __html: flywheel.html }}
             />
           ) : null}
         </div>

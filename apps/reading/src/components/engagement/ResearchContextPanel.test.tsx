@@ -7,6 +7,7 @@ const attachSourceRefs = vi.fn();
 const fetchEvidencePack = vi.fn();
 const hydratePublicationRef = vi.fn();
 const searchEngagementContext = vi.fn();
+const promoteTwinsToContext = vi.fn();
 
 vi.mock("../../api/engagement", () => ({
   fetchResearchContext: (...args: unknown[]) => fetchResearchContext(...args),
@@ -15,6 +16,7 @@ vi.mock("../../api/engagement", () => ({
   hydratePublicationRef: (...args: unknown[]) => hydratePublicationRef(...args),
   searchEngagementContext: (...args: unknown[]) =>
     searchEngagementContext(...args),
+  promoteTwinsToContext: (...args: unknown[]) => promoteTwinsToContext(...args),
 }));
 
 describe("ResearchContextPanel", () => {
@@ -28,6 +30,7 @@ describe("ResearchContextPanel", () => {
     fetchEvidencePack.mockReset();
     hydratePublicationRef.mockReset();
     searchEngagementContext.mockReset();
+    promoteTwinsToContext.mockReset();
   });
 
   it("loads and renders prompt block", async () => {
@@ -59,7 +62,7 @@ describe("ResearchContextPanel", () => {
     });
 
     render(<ResearchContextPanel assetId="paper" spawnId="spn_1" />);
-    fireEvent.click(screen.getByRole("button", { name: /load context/i }));
+    fireEvent.click(screen.getByTestId("load-research-context"));
 
     await waitFor(() => {
       expect(screen.getByTestId("prompt-block").textContent).toContain("paper");
@@ -147,6 +150,60 @@ describe("ResearchContextPanel", () => {
       attach_spawn_id: "spn_1",
     });
     expect(screen.getByTestId("hydrate-ref-html").innerHTML).toMatch(/HTML/);
+  });
+
+  it("runs promote twins → load context flywheel", async () => {
+    promoteTwinsToContext.mockResolvedValue({
+      asset_id: "paper",
+      promoted_count: 1,
+      context_unit_count: 1,
+      promoted: [],
+      context_units: [
+        {
+          unit_id: "u1",
+          twin_note_id: "t1",
+          kind: "insight",
+          text: "Attention is routing.",
+        },
+      ],
+      view_format: "html",
+      product_panel: "twin_promote_context",
+      source: "engagement_spine.twin_promote",
+      notes: [],
+      html: "<p>Twin promote context</p>",
+    });
+    fetchResearchContext.mockResolvedValue({
+      asset_id: "paper",
+      view_format: "html",
+      twin_units: [
+        {
+          unit_id: "u1",
+          twin_note_id: "t1",
+          kind: "insight",
+          text: "Attention is routing.",
+          canonical_text: "attention is routing.",
+          asset_id: "paper",
+          investigation_id: "inv",
+        },
+      ],
+      source_references: [],
+      twin_count: 1,
+      ref_count: 0,
+      prompt_block: "# Research context for asset `paper`\n",
+    });
+
+    render(<ResearchContextPanel assetId="paper" spawnId="spn_1" />);
+    fireEvent.click(screen.getByTestId("context-flywheel"));
+    await waitFor(() => {
+      expect(promoteTwinsToContext).toHaveBeenCalled();
+      expect(fetchResearchContext).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("context-flywheel-result").textContent).toMatch(
+        /promoted=1/,
+      );
+    });
+    expect(screen.getByTestId("prompt-block").textContent).toContain("paper");
   });
 
   it("searches twins/refs via context-search", async () => {
