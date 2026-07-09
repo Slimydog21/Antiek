@@ -6,30 +6,26 @@
 |---|---|
 | Branch | `campaign/research-reading-spine-2026-07-09-main` |
 | PR | https://github.com/Slimydog21/Antiek/pull/465 |
-| Base | `origin/main` @ `b3875724` |
 
-## Cycle 1 (spine + midnight oil) — shipped on branch
+## Cycles
 
-| Item | Status | SHA |
+| Cycle | Package | Status |
 |---|---|---|
-| Engagement spine | done | `34036aa1` + `ensure_spawn` @ `8c1cdc0e` |
-| HTML projection path | done | engagement_spine.project_to_html |
-| Model residual | done | model_registration (no #440 duplicate) |
-| Midnight oil | done | `8c1cdc0e` |
-| NotDiamond verdict | done | advisory GO / authority REJECT |
+| 1 | Engagement spine + Midnight oil + model residual + NotDiamond verdict | done |
+| 2 | Marketplace host-into-account (B) | done |
+| 3 | **Antiek-bench core (C)** | **done** — `substrate/antiek_bench/**` |
 
-## Cycle 2 (package B host-into-account) — this cycle
+## Cycle 3 details (Antiek-bench)
 
-| Item | Status | Evidence |
-|---|---|---|
-| Catalog + license_class | **done** | `substrate/marketplace_host/catalog.py` |
-| host_into_account idempotent | **done** | content-addressed `hdoc_*` per owner |
-| Account library membership | **done** | `AccountLibrary.load` |
-| Manual purchase receipt | **done** | `ManualPurchaseReceipt` (no Stripe/card) |
-| HTML view (not PDF) | **done** | `project_hosted_book_html`; PDF source → HTML placeholder |
-| Antiek-bench | **deferred-with-spec** | `docs/htmlspec/antiek-bench-recursive/` |
+| Item | Status |
+|---|---|
+| Offline suite with week_id + suite_version | done |
+| ≥2 task classes (distill, synthesize) | done |
+| Injectable stub providers | done |
+| propose_suite_delta without activate | done |
+| approve_and_promote explicit gate | done |
+| HTML summary (scores + task labels; not PDF) | done |
 
 ## Non-claims
 
-- No live Stripe/DRM; no operator merge to main required for this pass.
-- No rebuild of living-roadmap SPR-01..14.
+No live multi-provider bench; no auto production traffic switch; operator merges only.
