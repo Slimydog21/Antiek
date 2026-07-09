@@ -11,6 +11,8 @@
  * Residual (ex): auto-open deposit HTML floating after successful deposit /
  * auto-deposit run so Midnight Oil joins the reading flywheel without a click.
  * Residual (fo): Open Write HTML draft handoff for deposit document_id (fl/fm/fn).
+ * Residual (pz / FUTURE-AGENT V6): dual handoff html_draft + twin_seed so Write
+ * create seeds recursive note-taker when empty (parity twin draft → Write).
  * Residual (gk): client offline twin reseed after deposit (ensure recursive
  * note-taker when backend twin_count is thin; non-fatal reinforce).
  * Residual (gl): ResearchProgressPanel on deposit when spawn_ids present
@@ -98,6 +100,11 @@ import {
   listRecentDeepResearchSpawnIds,
   pushRecentDeepResearchSpawnId,
 } from "../../workspace/recentDeepResearchSpawns";
+import {
+  buildWriteHtmlDraftHref,
+  plainTextFromHtml,
+  storeTwinWriteSeed,
+} from "../../workspace/twinWriteSeed";
 import { useWindows } from "../../workspace/windowsStore";
 
 /** HTML-only deposit open (floating | full). Returns window id or null. */
@@ -225,6 +232,31 @@ export default function MidnightOil() {
     },
     [autoOpenDeposit],
   );
+
+  /**
+   * Residual (pz / FUTURE-AGENT V6): Write dual handoff — html_draft document_id
+   * + sessionStorage twin_seed so create seeds twins when empty.
+   */
+  const depositWriteHref = useMemo(() => {
+    if (!deposit || deposit.view_format !== "html" || !deposit.document_id) {
+      return null;
+    }
+    const plain = plainTextFromHtml(deposit.html || "");
+    const seedKey = plain
+      ? storeTwinWriteSeed({
+          plain_text: plain,
+          html: deposit.html || "",
+          title: `Midnight Oil · ${deposit.job_id}`,
+          asset_id: deposit.document_id,
+          note_ids: [],
+          source: "midnight_oil_deposit",
+        })
+      : null;
+    return buildWriteHtmlDraftHref({
+      documentId: deposit.document_id,
+      twinSeedKey: seedKey,
+    });
+  }, [deposit]);
 
   /**
    * Residual (gk): offline twin reseed after deposit lands.
@@ -1427,14 +1459,17 @@ export default function MidnightOil() {
                 >
                   Open deposit full
                 </button>
-                {/* Residual (fo): handoff deposit HTML into Write mode. */}
-                {deposit.view_format === "html" && deposit.document_id ? (
+                {/* Residual (fo/pz): Write dual handoff html_draft + twin_seed. */}
+                {depositWriteHref ? (
                   <a
-                    href={`/write?html_draft=${encodeURIComponent(deposit.document_id)}`}
+                    href={depositWriteHref}
                     data-testid="moil-open-write"
                     data-view-format="html"
+                    data-has-twin-seed={
+                      depositWriteHref.includes("twin_seed=") ? "1" : "0"
+                    }
                     className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono underline hover:bg-ink/5 dark:border-bright/30"
-                    title="Open Write with Midnight Oil deposit as HTML draft handoff"
+                    title="Open Write with Midnight Oil deposit as HTML draft + twin_seed (seeds note-taker when empty)"
                   >
                     Open Write (HTML draft)
                   </a>

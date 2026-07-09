@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   TWIN_WRITE_SEED_KEY_PREFIX,
   buildTwinWriteHref,
+  buildWriteHtmlDraftHref,
   loadTwinWriteSeed,
+  plainTextFromHtml,
   storeTwinWriteSeed,
 } from "./twinWriteSeed";
 
@@ -50,5 +52,37 @@ describe("twinWriteSeed (pp)", () => {
       "/write?twin_seed=antiek.twin_write_seed.abc",
     );
     expect(buildTwinWriteHref("")).toBe("/write");
+  });
+
+  it("builds dual html_draft + twin_seed Write href (pz)", () => {
+    expect(
+      buildWriteHtmlDraftHref({ documentId: "draft_moil_1" }),
+    ).toBe("/write?html_draft=draft_moil_1");
+    expect(
+      buildWriteHtmlDraftHref({
+        documentId: "draft_moil_1",
+        twinSeedKey: "antiek.twin_write_seed.xyz",
+      }),
+    ).toBe(
+      "/write?html_draft=draft_moil_1&twin_seed=antiek.twin_write_seed.xyz",
+    );
+    expect(buildWriteHtmlDraftHref({ documentId: "  " })).toBe("/write");
+  });
+
+  it("strips HTML for MO deposit twin_seed plain text (pz)", () => {
+    expect(plainTextFromHtml("<p>Hello <b>world</b></p>")).toBe("Hello world");
+    expect(plainTextFromHtml("   ")).toBe("");
+  });
+
+  it("stores midnight_oil_deposit source provenance (pz)", () => {
+    const key = storeTwinWriteSeed({
+      plain_text: "MO deposit body",
+      html: "<article>MO deposit body</article>",
+      title: "Midnight Oil · moil_1",
+      asset_id: "draft_moil_1",
+      note_ids: [],
+      source: "midnight_oil_deposit",
+    });
+    expect(loadTwinWriteSeed(key!)?.source).toBe("midnight_oil_deposit");
   });
 });

@@ -33,7 +33,7 @@ Highest leverage. Agents never merge main/prod.
 | V3 | **Antiek-bench recursive rewrite weekly chrome** | Settings shows last rewrite proposal delta + which by_source drove added tasks | propose≠promote already; polish rewrite rationale UI |
 | V4 | **Model decision-tree “prompt projection vs cap”** | ✅ **Closed pg–pj** DecisionTreeDriverBadge promptText on MO/Write/ResearchThis/Hosted | See SESSION-ARC-pg-pj |
 | V5 | **Marketplace free→account host polish** | One-click host + open hosted HTML + twins auto-seed + DR float from catalog row | Mostly shipped (iu–iw); dogfood any broken deep-links |
-| V6 | **HTML draft twin seed after MO deposit write handoff** | Open Write from deposit seeds twins if empty | Write HTML import seeds (fz); verify MO handoff path |
+| V6 | **HTML draft twin seed after MO deposit write handoff** | ✅ **pz**: MO Open Write dual handoff html_draft + twin_seed (midnight_oil_deposit source) | Write create seeds via fz/pq |
 
 ### P2 — Dual-gate live injectors (operator-only)
 

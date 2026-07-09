@@ -627,3 +627,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - store on merge / written analysis (document_id) / continue-as-unit
   - Restore last unit → multi-select intersection with available
   - CollectiveResearchPanel + pure helper vitest 22 passed
+
+- Closed (pz, 2026-07-10) **MO Write dual handoff twin seed (FUTURE-AGENT V6):**
+  - buildWriteHtmlDraftHref(html_draft + optional twin_seed)
+  - MO deposit stores twinWriteSeed source=midnight_oil_deposit
+  - Open Write data-has-twin-seed; vitest 24 passed

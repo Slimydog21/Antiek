@@ -1,0 +1,19 @@
+# inventory-pz · FUTURE-AGENT V6 MO Write dual handoff
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: pz
+date: 2026-07-10
+
+## Closed
+- buildWriteHtmlDraftHref + plainTextFromHtml helpers
+- storeTwinWriteSeed source=midnight_oil_deposit
+- MO deposit Open Write: html_draft + twin_seed dual handoff
+- Write create path already seeds twins (fz/pq) when both params present
+- vitest twinWriteSeed 6 + MidnightOil 18 = 24 passed
+
+## Files
+- apps/reading/src/workspace/twinWriteSeed.ts (+ .test.ts)
+- apps/reading/src/modes/MidnightOil/index.tsx (+ MidnightOil.test.tsx)
+
+## Honesty
+- Never invents deposit body; empty HTML → html_draft only
+- twin seed sessionStorage; offline-honest force_offline on Write create

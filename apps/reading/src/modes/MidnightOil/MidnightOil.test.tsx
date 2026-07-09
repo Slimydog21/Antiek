@@ -850,12 +850,13 @@ describe("MidnightOil mode", () => {
         mode: "full",
       }),
     );
-    // Residual (fo): Write handoff for deposit document.
+    // Residual (fo/pz): Write dual handoff html_draft + twin_seed for empty twin seed.
     const write = screen.getByTestId("moil-open-write");
-    expect(write.getAttribute("href")).toBe(
-      "/write?html_draft=draft_moil_asset_dep_abc",
-    );
+    const href = write.getAttribute("href") || "";
+    expect(href).toMatch(/html_draft=draft_moil_asset_dep_abc/);
+    expect(href).toMatch(/twin_seed=antiek\.twin_write_seed\./);
     expect(write.getAttribute("data-view-format")).toBe("html");
+    expect(write.getAttribute("data-has-twin-seed")).toBe("1");
   });
 
   it("runs offline worker after approve with auto-deposit", async () => {

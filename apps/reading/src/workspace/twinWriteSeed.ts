@@ -9,6 +9,11 @@
 
 export const TWIN_WRITE_SEED_KEY_PREFIX = "antiek.twin_write_seed.";
 
+export type TwinWriteSeedSource =
+  | "twin_draft_selected"
+  | "midnight_oil_deposit"
+  | "collective_doc_merge";
+
 export type TwinWriteSeedPayload = {
   plain_text: string;
   html: string;
@@ -16,7 +21,7 @@ export type TwinWriteSeedPayload = {
   asset_id: string;
   note_ids: string[];
   view_format: "html";
-  source: "twin_draft_selected";
+  source: TwinWriteSeedSource;
 };
 
 /** Build a unique sessionStorage key (never invent twin content). */
@@ -34,11 +39,18 @@ export function storeTwinWriteSeed(input: {
   title: string;
   asset_id: string;
   note_ids: readonly string[];
+  /** Residual (pz): provenance for MO deposit / merge dual handoff. */
+  source?: TwinWriteSeedSource;
 }): string | null {
   const plain = String(input.plain_text || "").trim();
   if (!plain) return null;
   if (typeof window === "undefined" || !window.sessionStorage) return null;
   const key = makeTwinWriteSeedKey();
+  const source: TwinWriteSeedSource =
+    input.source === "midnight_oil_deposit" ||
+    input.source === "collective_doc_merge"
+      ? input.source
+      : "twin_draft_selected";
   const payload: TwinWriteSeedPayload = {
     plain_text: plain.slice(0, 16000),
     html: String(input.html || "").slice(0, 100000),
@@ -46,7 +58,7 @@ export function storeTwinWriteSeed(input: {
     asset_id: String(input.asset_id || "").trim(),
     note_ids: [...input.note_ids].map((x) => String(x || "").trim()).filter(Boolean),
     view_format: "html",
-    source: "twin_draft_selected",
+    source,
   };
   try {
     window.sessionStorage.setItem(key, JSON.stringify(payload));
@@ -67,6 +79,11 @@ export function loadTwinWriteSeed(key: string): TwinWriteSeedPayload | null {
     const parsed = JSON.parse(raw) as Partial<TwinWriteSeedPayload>;
     const plain = String(parsed.plain_text || "").trim();
     if (!plain) return null;
+    const srcRaw = String(parsed.source || "twin_draft_selected").trim();
+    const source: TwinWriteSeedSource =
+      srcRaw === "midnight_oil_deposit" || srcRaw === "collective_doc_merge"
+        ? srcRaw
+        : "twin_draft_selected";
     return {
       plain_text: plain,
       html: String(parsed.html || ""),
@@ -76,7 +93,7 @@ export function loadTwinWriteSeed(key: string): TwinWriteSeedPayload | null {
         ? parsed.note_ids.map((x) => String(x || "").trim()).filter(Boolean)
         : [],
       view_format: "html",
-      source: "twin_draft_selected",
+      source,
     };
   } catch {
     return null;
@@ -88,4 +105,34 @@ export function buildTwinWriteHref(seedKey: string): string {
   const k = String(seedKey || "").trim();
   if (!k) return "/write";
   return `/write?twin_seed=${encodeURIComponent(k)}`;
+}
+
+/**
+ * Residual (pz / FUTURE-AGENT V6): Write URL combining hosted html_draft
+ * document_id with optional twin_seed session key so create seeds twins when
+ * empty (html import + brainstorm seed dual handoff).
+ */
+export function buildWriteHtmlDraftHref(opts: {
+  documentId: string;
+  twinSeedKey?: string | null;
+}): string {
+  const doc = String(opts.documentId || "").trim();
+  if (!doc) return "/write";
+  const params = new URLSearchParams();
+  params.set("html_draft", doc);
+  const seed = String(opts.twinSeedKey || "").trim();
+  if (seed) params.set("twin_seed", seed);
+  return `/write?${params.toString()}`;
+}
+
+/**
+ * Residual (pz): strip tags for twin_seed plain_text from HTML deposit body.
+ * Never invents content; empty HTML → empty string.
+ */
+export function plainTextFromHtml(html: string, maxLen = 16000): string {
+  return String(html || "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLen);
 }
