@@ -405,6 +405,11 @@ describe("Multimedia workstation", () => {
         "Playback type, chapter, and source-card controls inspect the draft package only; they do not call providers or spend budget.",
       ),
     ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Cost and Krea call counts are planning estimates only; viewing the ledger does not call providers or spend budget.",
+      ),
+    ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /The engineering constraint stack/ }));
 

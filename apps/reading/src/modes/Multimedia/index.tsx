@@ -1752,6 +1752,9 @@ export default function Multimedia() {
                       <dt className="text-shadow-1 dark:text-moonlight">Krea calls</dt>
                       <dd className="text-right text-ink dark:text-bright">{tier === "cheapest" ? "1" : tier === "balanced" ? "4" : "9"}</dd>
                     </dl>
+                    <p className="mt-2 text-[11px] leading-snug text-shadow-1 dark:text-moonlight">
+                      Cost and Krea call counts are planning estimates only; viewing the ledger does not call providers or spend budget.
+                    </p>
                   </section>
 
                   <section className="rounded-md border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1">
