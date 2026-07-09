@@ -22,6 +22,8 @@ from substrate.midnight_oil import (
     MidnightOilFinalArtifactRequest,
     MidnightOilGraphMutationReceipt,
     MidnightOilGraphMutationRequest,
+    MidnightOilLiveRunActivationSettingsReceipt,
+    MidnightOilLiveRunActivationSettingsRequest,
     MidnightOilPreflight,
     MidnightOilProviderRouteReceipt,
     MidnightOilProviderRouteRequest,
@@ -34,6 +36,7 @@ from substrate.midnight_oil import (
     dry_run_midnight_oil,
     final_artifact_midnight_oil,
     graph_mutation_midnight_oil,
+    live_run_activation_settings_midnight_oil,
     preflight_midnight_oil,
     provider_route_midnight_oil,
     retrieval_midnight_oil,
@@ -50,6 +53,16 @@ def post_midnight_oil_preflight(req: MidnightOilRequest) -> MidnightOilPreflight
 @midnight_oil_router.post("/dry-run", response_model=MidnightOilAppliedRunReceipt)
 def post_midnight_oil_dry_run(req: MidnightOilDryRunRequest) -> MidnightOilAppliedRunReceipt:
     return dry_run_midnight_oil(req)
+
+
+@midnight_oil_router.post(
+    "/live-run-activation-settings",
+    response_model=MidnightOilLiveRunActivationSettingsReceipt,
+)
+def post_midnight_oil_live_run_activation_settings(
+    req: MidnightOilLiveRunActivationSettingsRequest,
+) -> MidnightOilLiveRunActivationSettingsReceipt:
+    return live_run_activation_settings_midnight_oil(req)
 
 
 @midnight_oil_router.post("/dispatch", response_model=MidnightOilDispatchReceipt)
@@ -111,6 +124,7 @@ __all__ = [
     "post_midnight_oil_dry_run",
     "post_midnight_oil_final_artifact",
     "post_midnight_oil_graph_mutation",
+    "post_midnight_oil_live_run_activation_settings",
     "post_midnight_oil_preflight",
     "post_midnight_oil_provider_route",
     "post_midnight_oil_retrieval",

@@ -140,6 +140,43 @@ export interface MidnightOilPreflight {
   notes: string[];
 }
 
+export interface MidnightOilLiveRunActivationSettingsRequest {
+  launch_packet: MidnightOilLaunchPacket;
+  approval_receipt: MidnightOilApprovalReceipt;
+  runner_handoff: MidnightOilRunnerHandoff;
+  applied_run_receipt: MidnightOilAppliedRunReceipt;
+  requested_live_run_enabled: boolean;
+  requested_price_ceiling_usd: number;
+  requested_work_minutes: number;
+}
+
+export interface MidnightOilLiveRunActivationSettingsReceipt {
+  receipt_id: string;
+  applied_run_receipt_id: string;
+  runner_handoff_id: string;
+  approval_receipt_id: string;
+  launch_packet_id: string;
+  run_id: string;
+  status: "blocked_live_run_activation_disabled";
+  settings_scope: "midnight_oil_live_run_activation";
+  requested_live_run_enabled: boolean;
+  requested_price_ceiling_usd: number;
+  requested_work_minutes: number;
+  approved_price_ceiling_usd: number;
+  approved_work_minutes: number;
+  missing_controls: string[];
+  blocker_reason: "live_run_activation_controls_missing";
+  live_run_activation_allowed: boolean;
+  dispatch_allowed: boolean;
+  dispatch_performed: boolean;
+  budget_reserved: boolean;
+  provider_calls_made: boolean;
+  retrieval_performed: boolean;
+  graph_mutated: boolean;
+  final_artifact_created: boolean;
+  settings_notes: string[];
+}
+
 export interface MidnightOilDryRunRequest {
   launch_packet: MidnightOilLaunchPacket;
   approval_receipt: MidnightOilApprovalReceipt;
@@ -418,6 +455,23 @@ export async function dryRunMidnightOil(
     throw new Error(`POST /research/midnight-oil/dry-run: HTTP ${resp.status}: ${body}`);
   }
   return (await resp.json()) as MidnightOilAppliedRunReceipt;
+}
+
+export async function liveRunActivationSettingsMidnightOil(
+  request: MidnightOilLiveRunActivationSettingsRequest,
+): Promise<MidnightOilLiveRunActivationSettingsReceipt> {
+  const resp = await apiFetch(`${API_BASE}/research/midnight-oil/live-run-activation-settings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(
+      `POST /research/midnight-oil/live-run-activation-settings: HTTP ${resp.status}: ${body}`,
+    );
+  }
+  return (await resp.json()) as MidnightOilLiveRunActivationSettingsReceipt;
 }
 
 export async function dispatchMidnightOil(

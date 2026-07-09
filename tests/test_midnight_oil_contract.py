@@ -13,6 +13,7 @@ from substrate.midnight_oil import (
     MidnightOilDryRunRequest,
     MidnightOilFinalArtifactRequest,
     MidnightOilGraphMutationRequest,
+    MidnightOilLiveRunActivationSettingsRequest,
     MidnightOilProviderRouteRequest,
     MidnightOilRequest,
     MidnightOilRetrievalRequest,
@@ -22,6 +23,7 @@ from substrate.midnight_oil import (
     dry_run_midnight_oil,
     final_artifact_midnight_oil,
     graph_mutation_midnight_oil,
+    live_run_activation_settings_midnight_oil,
     preflight_midnight_oil,
     provider_route_midnight_oil,
     retrieval_midnight_oil,
@@ -385,6 +387,89 @@ def test_dry_run_endpoint_contract_consumes_matching_receipt_chain() -> None:
     assert dry_run.retrieval_performed is False
     assert dry_run.graph_mutated is False
     assert dry_run.final_artifact_created is False
+
+
+def test_live_run_activation_settings_blocks_live_execution_without_side_effects() -> None:
+    preflight = preflight_midnight_oil(
+        MidnightOilRequest(
+            goal="Prepare live activation settings for a midnight oil run about turbofan durability.",
+            work_minutes=120,
+            price_ceiling_usd=25.0,
+            route_mode="auto_balanced",
+            source_policy=["arxiv", "operator_corpus"],
+            operator_acknowledged_spend=True,
+        )
+    )
+
+    assert preflight.launch_packet is not None
+    assert preflight.approval_receipt is not None
+    assert preflight.runner_handoff is not None
+    assert preflight.applied_run_receipt is not None
+    receipt = live_run_activation_settings_midnight_oil(
+        MidnightOilLiveRunActivationSettingsRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            requested_live_run_enabled=True,
+            requested_price_ceiling_usd=20.0,
+            requested_work_minutes=90,
+        )
+    )
+
+    assert receipt.receipt_id == f"{preflight.run_id}-live-run-activation-settings"
+    assert receipt.applied_run_receipt_id == preflight.applied_run_receipt.receipt_id
+    assert receipt.runner_handoff_id == preflight.runner_handoff.handoff_id
+    assert receipt.approval_receipt_id == preflight.approval_receipt.receipt_id
+    assert receipt.launch_packet_id == preflight.launch_packet.packet_id
+    assert receipt.status == "blocked_live_run_activation_disabled"
+    assert receipt.settings_scope == "midnight_oil_live_run_activation"
+    assert receipt.requested_live_run_enabled is True
+    assert receipt.requested_price_ceiling_usd == 20.0
+    assert receipt.requested_work_minutes == 90
+    assert receipt.approved_price_ceiling_usd == 25.0
+    assert receipt.approved_work_minutes == 120
+    assert "budget reservation provider" in receipt.missing_controls
+    assert "final HTML artifact writer" in receipt.missing_controls
+    assert receipt.blocker_reason == "live_run_activation_controls_missing"
+    assert receipt.live_run_activation_allowed is False
+    assert receipt.dispatch_allowed is False
+    assert receipt.dispatch_performed is False
+    assert receipt.budget_reserved is False
+    assert receipt.provider_calls_made is False
+    assert receipt.retrieval_performed is False
+    assert receipt.graph_mutated is False
+    assert receipt.final_artifact_created is False
+
+
+def test_live_run_activation_settings_rejects_ceiling_above_approval() -> None:
+    preflight = preflight_midnight_oil(
+        MidnightOilRequest(
+            goal="Reject inflated activation settings for a midnight oil run.",
+            work_minutes=60,
+            price_ceiling_usd=10.0,
+            source_policy=["web"],
+            operator_acknowledged_spend=True,
+        )
+    )
+
+    assert preflight.launch_packet is not None
+    assert preflight.approval_receipt is not None
+    assert preflight.runner_handoff is not None
+    assert preflight.applied_run_receipt is not None
+    with pytest.raises(
+        ValidationError,
+        match="requested_price_ceiling_usd must not exceed approved ceiling",
+    ):
+        MidnightOilLiveRunActivationSettingsRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            requested_live_run_enabled=True,
+            requested_price_ceiling_usd=10.01,
+            requested_work_minutes=60,
+        )
 
 
 def test_dry_run_rejects_mismatched_receipt_chain() -> None:
@@ -1275,6 +1360,63 @@ def test_midnight_oil_dry_run_api_contract() -> None:
     assert body["approval_receipt_id"] == preflight.approval_receipt.receipt_id
     assert body["launch_packet_id"] == preflight.launch_packet.packet_id
     assert body["status"] == "planned_not_dispatched"
+    assert body["dispatch_performed"] is False
+    assert body["budget_reserved"] is False
+    assert body["provider_calls_made"] is False
+    assert body["retrieval_performed"] is False
+    assert body["graph_mutated"] is False
+    assert body["final_artifact_created"] is False
+
+
+def test_midnight_oil_live_run_activation_settings_api_contract() -> None:
+    from interfaces.research.api.app import create_app
+
+    preflight = preflight_midnight_oil(
+        MidnightOilRequest(
+            goal="Gate live activation settings for midnight oil widebody research.",
+            work_minutes=120,
+            price_ceiling_usd=25.0,
+            route_mode="auto_balanced",
+            source_policy=["arxiv", "web"],
+            operator_acknowledged_spend=True,
+        )
+    )
+
+    assert preflight.launch_packet is not None
+    assert preflight.approval_receipt is not None
+    assert preflight.runner_handoff is not None
+    assert preflight.applied_run_receipt is not None
+    with TestClient(create_app()) as client:
+        r = client.post(
+            "/research/midnight-oil/live-run-activation-settings",
+            json={
+                "launch_packet": preflight.launch_packet.model_dump(mode="json"),
+                "approval_receipt": preflight.approval_receipt.model_dump(mode="json"),
+                "runner_handoff": preflight.runner_handoff.model_dump(mode="json"),
+                "applied_run_receipt": preflight.applied_run_receipt.model_dump(mode="json"),
+                "requested_live_run_enabled": True,
+                "requested_price_ceiling_usd": 20.0,
+                "requested_work_minutes": 90,
+            },
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["applied_run_receipt_id"] == preflight.applied_run_receipt.receipt_id
+    assert body["runner_handoff_id"] == preflight.runner_handoff.handoff_id
+    assert body["approval_receipt_id"] == preflight.approval_receipt.receipt_id
+    assert body["launch_packet_id"] == preflight.launch_packet.packet_id
+    assert body["status"] == "blocked_live_run_activation_disabled"
+    assert body["settings_scope"] == "midnight_oil_live_run_activation"
+    assert body["requested_live_run_enabled"] is True
+    assert body["requested_price_ceiling_usd"] == 20.0
+    assert body["requested_work_minutes"] == 90
+    assert body["approved_price_ceiling_usd"] == 25.0
+    assert body["approved_work_minutes"] == 120
+    assert "budget reservation provider" in body["missing_controls"]
+    assert body["blocker_reason"] == "live_run_activation_controls_missing"
+    assert body["live_run_activation_allowed"] is False
+    assert body["dispatch_allowed"] is False
     assert body["dispatch_performed"] is False
     assert body["budget_reserved"] is False
     assert body["provider_calls_made"] is False
