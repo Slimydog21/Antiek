@@ -164,6 +164,23 @@ def test_multimedia_routes_round_trip_without_provider_secrets(tmp_path, monkeyp
     missing_jobs = client.get("/multimedia/assets/mm-missing/jobs")
     assert missing_jobs.status_code == 404
 
+    public_export_status = client.get(f"/multimedia/assets/{asset_id}/public-export-status")
+    assert public_export_status.status_code == 200
+    public_export_body = public_export_status.json()
+    assert public_export_body["asset_id"] == asset_id
+    assert public_export_body["public_url"] is None
+    assert public_export_body["publish_blocked"] is True
+    assert public_export_body["next_required_action"] in {
+        "run_hardening",
+        "manual_publication_review",
+        "stage_export_plan",
+        "record_publish_blocker",
+        "publisher_implementation",
+    }
+
+    missing_public_export_status = client.get("/multimedia/assets/mm-missing/public-export-status")
+    assert missing_public_export_status.status_code == 404
+
 
 def test_hybrid_approve_does_not_double_count_audio_cost_rows(tmp_path):
     store = MultimediaAssetStore(tmp_path)

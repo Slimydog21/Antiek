@@ -14,14 +14,15 @@ import {
   createMultimediaDraft,
   failedGateIds,
   getMultimediaAsset,
+  getMultimediaPublicExportStatus,
   listMultimediaAssets,
   listMultimediaJobs,
-  prepareMultimediaLiveExecution,
   manualGateIds,
+  prepareMultimediaLiveExecution,
   runMultimediaHardening,
   steerMultimediaAsset,
 } from "./multimedia";
-import type { MultimediaAssetRecord } from "./multimedia";
+import type { MultimediaAssetRecord, MultimediaPublicExportStatus } from "./multimedia";
 
 const record: MultimediaAssetRecord = {
   asset: {
@@ -69,6 +70,20 @@ const record: MultimediaAssetRecord = {
 const jobs = {
   jobs: record.jobs,
   count: 1,
+};
+
+const publicExportStatus: MultimediaPublicExportStatus = {
+  asset_id: "mm-1",
+  revision_id: "rev-1",
+  gate_status: "ready",
+  review_decision: "approved",
+  export_id: "export-mm-1-rev-1",
+  publish_blocked: true,
+  publish_denial_code: "publisher_unimplemented",
+  public_url: null,
+  latest_job_status: "failed",
+  latest_error_code: "publisher_unimplemented",
+  next_required_action: "publisher_implementation",
 };
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -144,9 +159,26 @@ describe("multimedia API client", () => {
     expect(record.jobs.at(-1)?.status).toBe("succeeded");
   });
 
+  it("gets public export status without parsing job rows", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, publicExportStatus));
+    const result = await getMultimediaPublicExportStatus("mm-1");
+    expect(mockFetch()).toHaveBeenLastCalledWith(
+      "/multimedia/assets/mm-1/public-export-status",
+      expect.anything(),
+    );
+    expect(result.publish_blocked).toBe(true);
+    expect(result.public_url).toBeNull();
+    expect(result.next_required_action).toBe("publisher_implementation");
+  });
+
   it("surfaces a typed not-found error for a 404 job list", async () => {
     mockFetch().mockResolvedValueOnce(jsonResponse(404, { detail: "missing" }));
     await expect(listMultimediaJobs("mm-missing")).rejects.toThrow("multimedia_asset_not_found");
+  });
+
+  it("surfaces a typed not-found error for a 404 public export status", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(404, { detail: "missing" }));
+    await expect(getMultimediaPublicExportStatus("mm-missing")).rejects.toThrow("multimedia_asset_not_found");
   });
 
   it("surfaces the typed steering-clarification error on 409", async () => {

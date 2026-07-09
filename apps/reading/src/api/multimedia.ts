@@ -5,6 +5,13 @@ export type MultimediaRoutePolicy = "cheapest" | "balanced" | "highest_quality";
 export type MultimediaKind = "information_video" | "documentary_video" | "audio_experience";
 export type MultimediaJobKind = "render" | "steering" | "hardening" | "provider_execution";
 export type MultimediaJobStatus = "queued" | "running" | "succeeded" | "failed" | "canceled" | "partial";
+export type MultimediaPublicExportNextAction =
+  | "attach_provider_artifacts"
+  | "run_hardening"
+  | "manual_publication_review"
+  | "stage_export_plan"
+  | "record_publish_blocker"
+  | "publisher_implementation";
 
 export interface CreateMultimediaDraftRequest {
   topic: string;
@@ -98,6 +105,20 @@ export interface MultimediaJobList {
   count: number;
 }
 
+export interface MultimediaPublicExportStatus {
+  asset_id: string;
+  revision_id: string;
+  gate_status: string | null;
+  review_decision: string | null;
+  export_id: string | null;
+  publish_blocked: boolean;
+  publish_denial_code: string | null;
+  public_url: null;
+  latest_job_status: MultimediaJobStatus | null;
+  latest_error_code: string | null;
+  next_required_action: MultimediaPublicExportNextAction;
+}
+
 // The API serializes `gates` only; failed_gate_ids/manual_gate_ids are plain
 // @property in hardening.py and are dropped by pydantic v2. Derive client-side.
 export function failedGateIds(report: MultimediaHardeningReport): string[] {
@@ -138,6 +159,13 @@ export async function listMultimediaJobs(assetId: string): Promise<MultimediaJob
   if (resp.status === 404) throw new Error("multimedia_asset_not_found");
   if (!resp.ok) throw new Error(`GET /multimedia/assets/{id}/jobs: HTTP ${resp.status}`);
   return (await resp.json()) as MultimediaJobList;
+}
+
+export async function getMultimediaPublicExportStatus(assetId: string): Promise<MultimediaPublicExportStatus> {
+  const resp = await apiFetch(`${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/public-export-status`);
+  if (resp.status === 404) throw new Error("multimedia_asset_not_found");
+  if (!resp.ok) throw new Error(`GET /multimedia/assets/{id}/public-export-status: HTTP ${resp.status}`);
+  return (await resp.json()) as MultimediaPublicExportStatus;
 }
 
 export async function approveMultimediaDryRun(assetId: string): Promise<MultimediaAssetRecord> {

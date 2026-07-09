@@ -15,6 +15,7 @@ from substrate.multimedia.read_model import (
     MultimediaAssetRecord,
     MultimediaAssetStore,
     MultimediaJobList,
+    MultimediaPublicExportStatus,
     SteeringRequest,
 )
 
@@ -48,6 +49,14 @@ def get_multimedia_asset(asset_id: str) -> MultimediaAssetRecord:
 def list_multimedia_jobs(asset_id: str) -> MultimediaJobList:
     try:
         return get_store().list_jobs(asset_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
+
+
+@multimedia_router.get("/assets/{asset_id}/public-export-status", response_model=MultimediaPublicExportStatus)
+def get_multimedia_public_export_status(asset_id: str) -> MultimediaPublicExportStatus:
+    try:
+        return get_store().get(asset_id).public_export_status()
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
 
