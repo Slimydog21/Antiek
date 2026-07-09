@@ -14,6 +14,8 @@
  * rows (marketplace → write flywheel; fl path).
  * Residual (gj): offline twin seed after host/purchase so marketplace books
  * enter the recursive note-taker substrate (parity with Write fz).
+ * Residual (hl): offline-seed honesty machine attrs on marketplace twin seed
+ * status (parity TwinNotes hh).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -104,6 +106,15 @@ export default function MarketplaceHost({
   const [libraryLoadNote, setLibraryLoadNote] = useState<string | null>(null);
   // Residual (gj): twin seed status after host/purchase.
   const [twinSeedStatus, setTwinSeedStatus] = useState<string | null>(null);
+  /** Residual (hl): machine-readable offline-seed honesty (parity TwinNotes hh). */
+  const [twinSeedHonesty, setTwinSeedHonesty] = useState<{
+    liveSeed: boolean;
+    offlineHonest: boolean;
+    seeded: boolean;
+    seedSource: string;
+    seedSkipped: string | null;
+    assetId: string;
+  } | null>(null);
   const loadLibrary = useCallback(async () => {
     try {
       const lib = await fetchAccountLibrary(ownerId);
@@ -204,9 +215,10 @@ export default function MarketplaceHost({
     }
   }
 
-  /** Residual (gj): offline twin seed for hosted book asset (non-fatal). */
+  /** Residual (gj)/(hl): offline twin seed for hosted book (non-fatal; honest). */
   async function seedHostedTwins(result: HostResultResponse) {
     setTwinSeedStatus(null);
+    setTwinSeedHonesty(null);
     try {
       const plain = (result.html || "")
         .replace(/<[^>]+>/g, " ")
@@ -220,12 +232,34 @@ export default function MarketplaceHost({
         include_html: false,
         force_offline: true,
       });
-      setTwinSeedStatus(
-        seeded.seeded === false
-          ? `Twin seed skipped${seeded.seed_skipped ? `: ${seeded.seed_skipped}` : ""}`
-          : `Twin notes seeded for ${result.document_id}`,
-      );
+      const liveSeed = Boolean(seeded.live_seed);
+      const offlineHonest = !liveSeed;
+      const seedSource =
+        (seeded.seed_source && String(seeded.seed_source)) ||
+        (liveSeed
+          ? "engagement_spine.twin.seed_twins_for_asset.live"
+          : "engagement_spine.twin.seed_twins_for_asset");
+      setTwinSeedHonesty({
+        liveSeed,
+        offlineHonest,
+        seeded: seeded.seeded !== false,
+        seedSource,
+        seedSkipped: seeded.seed_skipped ?? null,
+        assetId: result.document_id,
+      });
+      if (seeded.seeded === false) {
+        setTwinSeedStatus(
+          `Twin seed skipped${seeded.seed_skipped ? `: ${seeded.seed_skipped}` : ""}`,
+        );
+      } else {
+        setTwinSeedStatus(
+          offlineHonest
+            ? `Seed mode: offline-honest identity stubs for ${result.document_id} — recursive note-taker (not live note_taker)`
+            : `Seed mode: live note_taker injector landed for ${result.document_id}`,
+        );
+      }
     } catch (e) {
+      setTwinSeedHonesty(null);
       setTwinSeedStatus(
         e instanceof Error ? e.message : "Twin seed failed (non-fatal)",
       );
@@ -236,6 +270,7 @@ export default function MarketplaceHost({
     setBusy(true);
     setError(null);
     setTwinSeedStatus(null);
+    setTwinSeedHonesty(null);
     try {
       const result = await hostBookIntoAccount({
         owner_id: ownerId,
@@ -273,6 +308,7 @@ export default function MarketplaceHost({
     setBusy(true);
     setError(null);
     setTwinSeedStatus(null);
+    setTwinSeedHonesty(null);
     try {
       const result = await purchaseAndHost({
         owner_id: ownerId,
@@ -477,11 +513,26 @@ export default function MarketplaceHost({
               </a>
             ) : null}
           </div>
-          {/* Residual (gj): twin seed status after host/purchase. */}
+          {/* Residual (gj)/(hl): twin seed status + offline-honesty attrs. */}
           {twinSeedStatus ? (
             <p
               className="text-[11px] font-mono opacity-80"
               data-testid="marketplace-twin-seed-status"
+              data-offline-honest={
+                twinSeedHonesty
+                  ? String(twinSeedHonesty.offlineHonest)
+                  : undefined
+              }
+              data-live-seed={
+                twinSeedHonesty ? String(twinSeedHonesty.liveSeed) : undefined
+              }
+              data-seeded={
+                twinSeedHonesty ? String(twinSeedHonesty.seeded) : undefined
+              }
+              data-seed-source={twinSeedHonesty?.seedSource}
+              data-seed-skipped={twinSeedHonesty?.seedSkipped ?? undefined}
+              data-force-offline="true"
+              data-asset-id={twinSeedHonesty?.assetId}
               role="status"
             >
               {twinSeedStatus}

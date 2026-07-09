@@ -58,6 +58,8 @@ describe("MarketplaceHost mode", () => {
       notes: [],
       insight_count: 1,
       question_count: 1,
+      live_seed: false,
+      seed_source: "engagement_spine.twin.seed_twins_for_asset",
     });
     // Residual (dq): library loads on mount — default empty honest library.
     fetchAccountLibrary.mockResolvedValue({
@@ -141,8 +143,16 @@ describe("MarketplaceHost mode", () => {
       );
     });
     await waitFor(() => {
-      expect(screen.getByTestId("marketplace-twin-seed-status").textContent).toMatch(
-        /Twin notes seeded/,
+      const status = screen.getByTestId("marketplace-twin-seed-status");
+      // Residual (hl): offline-honest copy + machine-readable attrs.
+      expect(status.textContent).toMatch(/offline-honest identity stubs/);
+      expect(status.getAttribute("data-offline-honest")).toBe("true");
+      expect(status.getAttribute("data-live-seed")).toBe("false");
+      expect(status.getAttribute("data-force-offline")).toBe("true");
+      expect(status.getAttribute("data-seeded")).toBe("true");
+      expect(status.getAttribute("data-asset-id")).toBe("hdoc_abc");
+      expect(status.getAttribute("data-seed-source")).toBe(
+        "engagement_spine.twin.seed_twins_for_asset",
       );
     });
     // Residual (dk): auto-open hosted window after host (default on).
