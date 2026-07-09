@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   approveMultimediaDryRun,
   createMultimediaDraft,
+  evaluateMultimediaPublicExportGate,
   failedGateIds,
   getMultimediaAsset,
   getMultimediaPublicExportStatus,
@@ -214,6 +215,15 @@ describe("multimedia API client", () => {
     );
   });
 
+  it("posts public export gate evaluation to the no-spend endpoint", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, record));
+    await evaluateMultimediaPublicExportGate("mm-1");
+    expect(mockFetch()).toHaveBeenLastCalledWith(
+      "/multimedia/assets/mm-1/evaluate-public-export-gate",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it("surfaces a typed not-found error for a 404 live-execution prep", async () => {
     mockFetch().mockResolvedValueOnce(jsonResponse(404, { detail: "missing" }));
     await expect(
@@ -223,5 +233,10 @@ describe("multimedia API client", () => {
         operator_acknowledged_spend: true,
       }),
     ).rejects.toThrow("multimedia_asset_not_found");
+  });
+
+  it("surfaces a typed not-found error for a 404 public export gate evaluation", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(404, { detail: "missing" }));
+    await expect(evaluateMultimediaPublicExportGate("mm-missing")).rejects.toThrow("multimedia_asset_not_found");
   });
 });

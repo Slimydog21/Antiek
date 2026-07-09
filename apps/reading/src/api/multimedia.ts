@@ -211,3 +211,13 @@ export async function prepareMultimediaLiveExecution(
   if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/prepare-live-execution: HTTP ${resp.status}`);
   return (await resp.json()) as MultimediaAssetRecord;
 }
+
+export async function evaluateMultimediaPublicExportGate(assetId: string): Promise<MultimediaAssetRecord> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/evaluate-public-export-gate`,
+    { method: "POST" },
+  );
+  if (resp.status === 404) throw new Error("multimedia_asset_not_found");
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/evaluate-public-export-gate: HTTP ${resp.status}`);
+  return (await resp.json()) as MultimediaAssetRecord;
+}

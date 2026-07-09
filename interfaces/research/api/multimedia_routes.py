@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, FastAPI, HTTPException
 
+from substrate.multimedia.live_worker import evaluate_public_export_gate
 from substrate.multimedia.read_model import (
     CreateMultimediaDraftRequest,
     LiveProviderExecutionRequest,
@@ -94,6 +95,14 @@ def prepare_multimedia_live_execution(
 ) -> MultimediaAssetRecord:
     try:
         return get_store().prepare_live_execution(asset_id, request)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
+
+
+@multimedia_router.post("/assets/{asset_id}/evaluate-public-export-gate", response_model=MultimediaAssetRecord)
+def evaluate_multimedia_public_export_gate(asset_id: str) -> MultimediaAssetRecord:
+    try:
+        return evaluate_public_export_gate(get_store(), asset_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
 
