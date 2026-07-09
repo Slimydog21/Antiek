@@ -661,9 +661,13 @@ def test_html_publish_job_writes_book_through_existing_serve_gate() -> None:
 
 
 def test_html_index_job_embeds_published_book_chunks_explicitly() -> None:
+    import sys
+
     client = _client()
     provider = HashEmbedding(dimension=8)
     set_default_embedding_provider(provider)
+    original_search_embedder = sys.modules["substrate.graph.search"].SentenceTransformerEmbedding
+    sys.modules["substrate.graph.search"].SentenceTransformerEmbedding = lambda: provider
     try:
         published = client.post(
             "/books/import/publish-job",
@@ -764,5 +768,21 @@ def test_html_index_job_embeds_published_book_chunks_explicitly() -> None:
             8,
             embedding_provider_fingerprint(provider),
         )
+
+        search = client.get(
+            "/corpus/search",
+            params={
+                "q": "vector searchable",
+                "document_id": "book-indexable",
+            },
+        )
+        assert search.status_code == 200, search.text
+        search_body = search.json()
+        assert search_body["count"] == 1
+        hit = search_body["hits"][0]
+        assert hit["document_id"] == "book-indexable"
+        assert hit["document_title"] == "Indexable Book"
+        assert "Vector searchable passage." in hit["snippet"]
     finally:
+        sys.modules["substrate.graph.search"].SentenceTransformerEmbedding = original_search_embedder
         _reset_default_provider()

@@ -1339,10 +1339,19 @@ export default function Library() {
                 {indexBusy ? "Indexing…" : "Index chunks"}
               </button>
               {indexReceipt && (
-                <p className="text-[13px] font-serif text-ink dark:text-bright" role="status">
-                  Indexed {indexReceipt.document_id} through {indexReceipt.index_job_id}; vectors{" "}
-                  {indexReceipt.vectors_rewritten}, provider {indexReceipt.provider ?? "unresolved"}.
-                </p>
+                <div className="space-y-2" role="status">
+                  <p className="text-[13px] font-serif text-ink dark:text-bright">
+                    Indexed {indexReceipt.document_id} through {indexReceipt.index_job_id}; vectors{" "}
+                    {indexReceipt.vectors_rewritten}, provider {indexReceipt.provider ?? "unresolved"}.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => open(indexReceipt.document_id)}
+                    className="rounded-md border border-ice-4 dark:border-charcoal-1 px-3 py-1.5 text-xs font-mono text-ink dark:text-bright"
+                  >
+                    Open indexed book
+                  </button>
+                </div>
               )}
             </form>
           )}

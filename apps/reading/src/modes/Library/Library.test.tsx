@@ -729,5 +729,8 @@ describe("Library", () => {
       apply: true,
       acknowledge_embedding_compute: true,
     });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open indexed book" }));
+    expect(navigateMock).toHaveBeenCalledWith("/read/book-dream-machine");
   });
 });
