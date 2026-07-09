@@ -10,6 +10,8 @@ search/context assembly live in ``twin_promote`` (composes
 from __future__ import annotations
 
 import hashlib
+import os
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -166,6 +168,36 @@ def record_twin_product(
     return twins_product_payload(asset_id, store=store, include_html=include_html)
 
 
+# Residual (bz): optional live note_taker for twin seed — default OFF.
+# Env ANTIEK_TWIN_SEED_LIVE + process inject both required (no silent LLM).
+import os
+from collections.abc import Callable
+from typing import Sequence as _Sequence
+
+ANTIEK_TWIN_SEED_LIVE_ENV = "ANTIEK_TWIN_SEED_LIVE"
+
+# (title, body_text) -> sequence of (kind, text) pairs; kinds insight|question
+TwinSeedLiveFn = Callable[[str, str], _Sequence[tuple[str, str]]]
+_twin_seed_live_fn: TwinSeedLiveFn | None = None
+
+
+def configure_twin_seed_live(fn: TwinSeedLiveFn | None) -> None:
+    """Install or clear process-local live note_taker for twin seed."""
+    global _twin_seed_live_fn
+    _twin_seed_live_fn = fn
+
+
+def clear_twin_seed_live() -> None:
+    configure_twin_seed_live(None)
+
+
+def twin_seed_live_enabled() -> bool:
+    raw = (os.environ.get(ANTIEK_TWIN_SEED_LIVE_ENV) or "").strip().lower()
+    if raw in ("", "0", "false", "off", "no", "disabled"):
+        return False
+    return True
+
+
 def seed_twins_for_asset(
     asset_id: str,
     *,
@@ -174,12 +206,16 @@ def seed_twins_for_asset(
     body_text: str = "",
     source_spawn_id: str | None = None,
     include_html: bool = False,
+    force_offline: bool = False,
+    live_fn: TwinSeedLiveFn | None = None,
 ) -> dict[str, Any]:
-    """Recursive note-taker seed: offline insight + question twin for an asset.
+    """Recursive note-taker seed: insight + question twins for an asset.
 
-    Residual (bu). Idempotent — if any twin notes already exist for
-    ``asset_id``, returns current payload without adding duplicates.
-    Offline stubs only (no live LLM); live note_taker inject later.
+    Residual (bu)/(bz). Idempotent when twins already exist.
+    Default: offline identity stubs. Live note_taker only when:
+      1. ``ANTIEK_TWIN_SEED_LIVE`` is on, AND
+      2. ``live_fn`` passed or ``configure_twin_seed_live`` installed, AND
+      3. not ``force_offline``
     """
     aid = (asset_id or "").strip()
     if not aid:
@@ -189,6 +225,7 @@ def seed_twins_for_asset(
         payload = twins_product_payload(aid, store=store, include_html=include_html)
         payload["seeded"] = False
         payload["seed_skipped"] = "twins_already_present"
+        payload["live_seed"] = False
         return payload
 
     t = (title or "").strip() or aid
@@ -196,29 +233,61 @@ def seed_twins_for_asset(
     if len(body_preview) > 160:
         body_preview = body_preview[:157] + "…"
 
-    insight = f"Asset identity: {t}."
-    if body_preview:
-        insight += f" Opening: {body_preview}"
-    question = f"What claims in “{t}” should be wrestled or cited next?"
+    used_live = False
+    pairs: list[tuple[str, str]] = []
+    candidate = live_fn if live_fn is not None else _twin_seed_live_fn
+    if (
+        not force_offline
+        and twin_seed_live_enabled()
+        and candidate is not None
+    ):
+        try:
+            raw_pairs = candidate(t, body_text or "")
+            for kind, text in raw_pairs:
+                k = (kind or "").strip().lower()
+                tx = (text or "").strip()
+                if k in ("insight", "question") and tx:
+                    pairs.append((k, tx))
+            if pairs:
+                used_live = True
+        except Exception:
+            pairs = []
+            used_live = False
 
-    record_twin_insight(
-        aid,
-        insight,
-        store=store,
-        source_spawn_id=source_spawn_id,
-    )
-    record_twin_question(
-        aid,
-        question,
-        store=store,
-        source_spawn_id=source_spawn_id,
-    )
+    if not pairs:
+        insight = f"Asset identity: {t}."
+        if body_preview:
+            insight += f" Opening: {body_preview}"
+        question = f"What claims in “{t}” should be wrestled or cited next?"
+        pairs = [("insight", insight), ("question", question)]
+
+    for kind, text in pairs:
+        if kind == "insight":
+            record_twin_insight(
+                aid, text, store=store, source_spawn_id=source_spawn_id
+            )
+        else:
+            record_twin_question(
+                aid, text, store=store, source_spawn_id=source_spawn_id
+            )
+
     payload = twins_product_payload(aid, store=store, include_html=include_html)
     payload["seeded"] = True
     payload["seed_skipped"] = None
-    payload["seed_source"] = "engagement_spine.twin.seed_twins_for_asset"
+    payload["live_seed"] = used_live
+    payload["seed_source"] = (
+        "engagement_spine.twin.seed_twins_for_asset.live"
+        if used_live
+        else "engagement_spine.twin.seed_twins_for_asset"
+    )
     payload["messages"] = list(payload.get("messages") or []) + [
-        "Offline twin seed (insight + question) — recursive note-taker substrate."
+        (
+            "Live note_taker twin seed (env + injector)."
+            if used_live
+            else "Offline twin seed (insight + question) — recursive note-taker substrate."
+        ),
+        f"Live env {ANTIEK_TWIN_SEED_LIVE_ENV}="
+        f"{'on' if twin_seed_live_enabled() else 'off (default)'}.",
     ]
     return payload
 

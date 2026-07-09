@@ -43,7 +43,11 @@ from .twin import (
     record_twin_insight,
     record_twin_product,
     record_twin_question,
+    ANTIEK_TWIN_SEED_LIVE_ENV,
+    clear_twin_seed_live,
+    configure_twin_seed_live,
     seed_twins_for_asset,
+    twin_seed_live_enabled,
     twins_product_payload,
 )
 from .twin_promote import (
@@ -177,7 +181,11 @@ __all__ = [
     "record_twin_insight",
     "record_twin_product",
     "record_twin_question",
+    "ANTIEK_TWIN_SEED_LIVE_ENV",
+    "clear_twin_seed_live",
+    "configure_twin_seed_live",
     "seed_twins_for_asset",
+    "twin_seed_live_enabled",
     "research_context_html",
     "research_context_sections_html",
     "result_to_context_unit",

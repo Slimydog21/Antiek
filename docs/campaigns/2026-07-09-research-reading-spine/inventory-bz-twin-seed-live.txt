@@ -1,0 +1,10 @@
+# residual (bz) Env-gated live note_taker for twin seed
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(by) prior | branch_only | campaign inventories
+(bz) twin seed live inject | branch_only | ANTIEK_TWIN_SEED_LIVE + configure_twin_seed_live; force_offline; 4 pytest; tip after commit
+
+HONESTY: default offline stubs; env alone insufficient; no silent LLM
+
+NEXT: (ca) re-derive; operator merge PR #465
