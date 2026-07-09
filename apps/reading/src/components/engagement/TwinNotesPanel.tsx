@@ -325,10 +325,19 @@ export function TwinNotesPanel({
           throw new Error("twin promote view_format must be html");
         }
         setPromoted(p);
+        // Residual (my): after multi-select promote, clear selection so the
+        // browse→select→merge loop is ready for the next batch (honest UX).
+        if (note_ids && note_ids.length > 0) {
+          setSelectedNoteIds(new Set());
+        }
         const kindLabel = effective === "all" ? "all kinds" : effective;
+        const echoedIds =
+          Array.isArray(p.note_ids) && p.note_ids.length > 0
+            ? p.note_ids
+            : note_ids;
         const selLabel =
-          note_ids && note_ids.length > 0
-            ? ` · selected=${note_ids.length}`
+          echoedIds && echoedIds.length > 0
+            ? ` · selected=${echoedIds.length}`
             : "";
         setPromoteStatus(
           `promoted ${p.promoted_count} twin unit(s) to context (${kindLabel}${selLabel})`,
@@ -649,13 +658,21 @@ export function TwinNotesPanel({
           data-view-format="html"
           className="font-mono text-sm"
         >
-          {/* Residual (hi): machine-readable promote→context metrics. */}
+          {/* Residual (hi/my): machine-readable promote→context metrics. */}
           <div
             data-testid="twin-promote-metrics"
             data-promoted-count={String(promoted.promoted_count ?? 0)}
             data-context-unit-count={String(promoted.context_unit_count ?? 0)}
             data-promote-kinds={promoteKinds}
             data-selected-count={String(selectedNoteIds.size)}
+            data-promoted-note-ids={
+              Array.isArray(promoted.note_ids) && promoted.note_ids.length > 0
+                ? promoted.note_ids.join(",")
+                : ""
+            }
+            data-promoted-note-id-count={String(
+              Array.isArray(promoted.note_ids) ? promoted.note_ids.length : 0,
+            )}
             data-view-format="html"
             data-product-panel={
               promoted.product_panel ?? "twin_promote_context"
@@ -666,6 +683,9 @@ export function TwinNotesPanel({
             Twin promote → context · promoted={promoted.promoted_count ?? 0} ·
             context_units={promoted.context_unit_count ?? 0}
             {promoteKinds !== "all" ? ` · kinds=${promoteKinds}` : ""}
+            {Array.isArray(promoted.note_ids) && promoted.note_ids.length > 0
+              ? ` · note_ids=${promoted.note_ids.length}`
+              : ""}
           </div>
           <p>
             promoted={promoted.promoted_count} · context_units=

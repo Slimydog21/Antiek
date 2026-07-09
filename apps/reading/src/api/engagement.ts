@@ -485,6 +485,10 @@ export type TwinPromoteContextResponse = {
     graph_node_id?: string;
   }>;
   query?: string | null;
+  /** Residual (mq): kinds filter echoed from promote request. */
+  kinds?: Array<"insight" | "question"> | string[] | null;
+  /** Residual (mx/my): multi-select note_ids echoed for audit honesty. */
+  note_ids?: string[] | null;
   view_format: "html" | string;
   product_panel: string;
   source: string;

@@ -1,0 +1,9 @@
+# inventory-my · clear multi-select after promote + note_ids metrics
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: my
+files:
+  apps/reading/src/api/engagement.ts
+  apps/reading/src/components/engagement/TwinNotesPanel.tsx
+  apps/reading/src/components/engagement/TwinNotesPanel.test.tsx
+proof: vitest TwinNotesPanel 15 passed
+invariants: HTML-first · clear selection only after multi-select success · echo note_ids for audit

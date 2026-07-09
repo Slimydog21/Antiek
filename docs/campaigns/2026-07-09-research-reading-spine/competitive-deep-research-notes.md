@@ -309,3 +309,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - `note_ids` filter on promote-context substrate/API (∩ kinds when both)
   - TwinNotesPanel checkboxes + Select visible / Clear / Promote selected
   - Per-note recursive note-taker merge into research context
+
+- Closed (my, 2026-07-10) **Clear multi-select after promote + note_ids metrics:**
+  - Selection clears after successful note_ids promote (browse→select→merge ready)
+  - twin-promote-metrics data-promoted-note-ids / note_id-count audit honesty

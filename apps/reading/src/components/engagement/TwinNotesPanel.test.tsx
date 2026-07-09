@@ -741,5 +741,118 @@ describe("TwinNotesPanel", () => {
         /selected=1/,
       );
     });
+    // Residual (my): selection clears after successful multi-select promote.
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId("twin-selection-count")
+          .getAttribute("data-selected-count"),
+      ).toBe("0");
+    });
+    const metrics = screen.getByTestId("twin-promote-metrics");
+    expect(metrics.getAttribute("data-promoted-note-ids")).toBe("twin_a");
+    expect(metrics.getAttribute("data-promoted-note-id-count")).toBe("1");
+    expect(metrics.textContent).toMatch(/note_ids=1/);
+  });
+
+  it("clears multi-select and echoes note_ids metrics after promote (my)", async () => {
+    fetchTwinNotes.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 2,
+      insight_count: 1,
+      question_count: 1,
+      notes: [
+        {
+          note_id: "twin_i",
+          asset_id: "paper",
+          kind: "insight",
+          text: "Insight A",
+        },
+        {
+          note_id: "twin_q",
+          asset_id: "paper",
+          kind: "question",
+          text: "Question B",
+        },
+      ],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+      html: "<p>twins</p>",
+    });
+    promoteTwinsToContext.mockResolvedValue({
+      asset_id: "paper",
+      promoted_count: 2,
+      context_unit_count: 2,
+      promoted: [
+        {
+          twin_note_id: "twin_i",
+          graph_node_id: "insight_i",
+          kind: "insight",
+          text: "Insight A",
+        },
+        {
+          twin_note_id: "twin_q",
+          graph_node_id: "question_q",
+          kind: "question",
+          text: "Question B",
+        },
+      ],
+      context_units: [
+        {
+          unit_id: "insight_i",
+          twin_note_id: "twin_i",
+          kind: "insight",
+          text: "Insight A",
+        },
+        {
+          unit_id: "question_q",
+          twin_note_id: "twin_q",
+          kind: "question",
+          text: "Question B",
+        },
+      ],
+      note_ids: ["twin_i", "twin_q"],
+      view_format: "html",
+      product_panel: "twin_promote_context",
+      source: "engagement_spine.twin_promote",
+      notes: [],
+      html: "<p>promoted</p>",
+    });
+    render(<TwinNotesPanel assetId="paper" autoLoad />);
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-select-all-visible")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("twin-select-all-visible"));
+    expect(
+      screen.getByTestId("twin-selection-count").getAttribute("data-selected-count"),
+    ).toBe("2");
+    fireEvent.click(screen.getByTestId("twin-promote-selected"));
+    await waitFor(() => {
+      expect(promoteTwinsToContext).toHaveBeenCalledWith({
+        asset_id: "paper",
+        include_html: true,
+        kinds: null,
+        note_ids: ["twin_i", "twin_q"],
+      });
+    });
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId("twin-selection-count")
+          .getAttribute("data-selected-count"),
+      ).toBe("0");
+    });
+    const metrics = screen.getByTestId("twin-promote-metrics");
+    expect(metrics.getAttribute("data-promoted-note-ids")).toBe(
+      "twin_i,twin_q",
+    );
+    expect(metrics.getAttribute("data-promoted-note-id-count")).toBe("2");
+    // Promote-selected should be disabled again after clear.
+    expect(
+      (screen.getByTestId("twin-promote-selected") as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
   });
 });
