@@ -342,6 +342,23 @@ export default function Settings() {
       } catch (ue) {
         setUsageError(ue instanceof Error ? ue.message : String(ue));
       }
+      // Residual (dy): refresh NotDiamond advisory from new week leaderboard.
+      // Advisory only — never dispatch authority; install remains operator-gated.
+      try {
+        const n = await fetchNotDiamondAdvisory({
+          includeHtml: true,
+          weekId: leaderboardWeek,
+        });
+        if (n.notdiamond_is_dispatch_authority) {
+          throw new Error(
+            "NotDiamond reported dispatch authority — refusing to surface as router",
+          );
+        }
+        setNd(n);
+        setNdError(null);
+      } catch (ne) {
+        setNdError(ne instanceof Error ? ne.message : String(ne));
+      }
     } catch (e) {
       setOfflineRunError(e instanceof Error ? e.message : String(e));
     } finally {

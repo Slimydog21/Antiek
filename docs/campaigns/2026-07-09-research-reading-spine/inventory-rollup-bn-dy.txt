@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(dy) · PR #465
+Offline dogfood Settings flywheel: leaderboard + suite proposal + usage + NotDiamond advisory.
+Operator merge still gated. Next residual (dz).

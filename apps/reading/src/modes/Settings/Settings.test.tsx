@@ -690,7 +690,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("antiek-bench-run-offline-html").innerHTML).toMatch(
       /offline dogfood|2026-W28/i,
     );
-    // Residual (dv/dx): suite proposal + usage summary refreshed after dogfood.
+    // Residual (dv/dx/dy): suite proposal + usage + NotDiamond advisory refreshed.
     await waitFor(() => {
       expect(fetchAntiekBenchSuiteProposal.mock.calls.length).toBeGreaterThanOrEqual(
         2,
@@ -701,6 +701,14 @@ describe("Settings SPR-01 + decision-tree install", () => {
         2,
       );
     });
+    await waitFor(() => {
+      expect(fetchNotDiamondAdvisory.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+    // Never treat ND as dispatch authority after refresh.
+    const ndCall = fetchNotDiamondAdvisory.mock.calls.at(-1)?.[0] as {
+      weekId?: string;
+    };
+    expect(ndCall?.weekId).toBeTruthy();
   });
 
   it("installs recommended leaderboard model as decision-tree driver", async () => {
