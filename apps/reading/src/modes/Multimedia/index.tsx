@@ -252,6 +252,7 @@ function buildQueueAuditFeedback(job: MultimediaJobRecord, preflight: LiveSpendP
       { label: "Activation boundary", value: "Separate worker activation required", tone: "sun" },
       ...buildProviderActivationAuditItems(),
       ...buildPublicReviewAuditItems(),
+      { label: "Copy action", value: "Read-only; no provider worker triggered", tone: "muted" },
     ],
   };
 }
@@ -273,6 +274,7 @@ function buildPersistedQueuedAuditItems(asset: MultimediaAssetSummary): Persiste
     { label: "Activation boundary", value: "Separate worker activation required" },
     ...buildProviderActivationAuditItems(),
     ...buildPublicReviewAuditItems(),
+    { label: "Copy action", value: "Read-only; no provider worker triggered" },
   ];
 }
 

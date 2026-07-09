@@ -478,6 +478,7 @@ describe("Multimedia workstation", () => {
           "Activation proof: Worker logs + manual artifact attach",
           "Review audit: Not run in app",
           "Review proof: Manual review notes + rights clearance",
+          "Copy action: Read-only; no provider worker triggered",
         ].join("\n"),
       ),
     );
@@ -566,6 +567,7 @@ describe("Multimedia workstation", () => {
           "Activation proof: Worker logs + manual artifact attach",
           "Review audit: Not run in app",
           "Review proof: Manual review notes + rights clearance",
+          "Copy action: Read-only; no provider worker triggered",
         ].join("\n"),
       ),
     );
@@ -1457,6 +1459,7 @@ describe("Multimedia workstation", () => {
           "Activation proof: Worker logs + manual artifact attach",
           "Review audit: Not run in app",
           "Review proof: Manual review notes + rights clearance",
+          "Copy action: Read-only; no provider worker triggered",
           "Activation state: Evidence only; provider execution still requires a separate worker activation.",
           "Operator next step: Review this bundle before enabling a live provider worker.",
           "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
@@ -1513,6 +1516,7 @@ describe("Multimedia workstation", () => {
           "Activation proof: Worker logs + manual artifact attach",
           "Review audit: Not run in app",
           "Review proof: Manual review notes + rights clearance",
+          "Copy action: Read-only; no provider worker triggered",
         ].join("\n"),
       ),
     );
@@ -1585,6 +1589,7 @@ describe("Multimedia workstation", () => {
           "Activation proof: Worker logs + manual artifact attach",
           "Review audit: Not run in app",
           "Review proof: Manual review notes + rights clearance",
+          "Copy action: Read-only; no provider worker triggered",
           "Activation state: Evidence only; provider execution still requires a separate worker activation.",
         ].join("\n"),
       ),
