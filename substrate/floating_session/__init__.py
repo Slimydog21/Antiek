@@ -42,6 +42,14 @@ from .window_compose import (
     sync_session_window_mode,
     window_id_for_session,
 )
+from .context_bridge import (
+    attach_session_source_references,
+    open_from_highlight_with_references,
+    session_context_html,
+    session_research_context,
+    sessions_collective_html,
+    sessions_collective_research,
+)
 
 __all__ = [
     "DEEP_RESEARCH_WINDOW_KIND",
@@ -52,6 +60,7 @@ __all__ = [
     "ViewMode",
     "WindowOpenDescriptor",
     "WindowStore",
+    "attach_session_source_references",
     "complete_session_research",
     "get_session",
     "list_session_window_descriptors",
@@ -60,10 +69,15 @@ __all__ = [
     "merge_sessions",
     "open_deep_research_from_highlight",
     "open_from_highlight",
+    "open_from_highlight_with_references",
     "open_session_as_window",
     "open_sessions_as_windows",
     "project_session_html",
+    "session_context_html",
+    "session_research_context",
     "session_to_window_descriptor",
+    "sessions_collective_html",
+    "sessions_collective_research",
     "set_view_mode",
     "sync_session_window_mode",
     "window_id_for_session",
