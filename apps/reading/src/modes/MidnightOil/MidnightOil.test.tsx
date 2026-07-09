@@ -14,6 +14,7 @@ import {
   preflightMidnightOil,
   providerRouteMidnightOil,
   retrievalMidnightOil,
+  runnerReadinessMidnightOil,
 } from "../../api/midnightOil";
 
 vi.mock("../../api/midnightOil", () => ({
@@ -400,6 +401,60 @@ vi.mock("../../api/midnightOil", () => ({
     dispatch_performed: false,
     artifact_notes: ["final artifact gate only: final HTML artifact writer is not configured"],
   })),
+  runnerReadinessMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-runner-readiness",
+    final_artifact_receipt_id: "midnight-oil-test-final-artifact",
+    graph_mutation_receipt_id: "midnight-oil-test-graph-mutation",
+    retrieval_receipt_id: "midnight-oil-test-retrieval",
+    provider_route_receipt_id: "midnight-oil-test-provider-route",
+    budget_reservation_receipt_id: "midnight-oil-test-budget-reservation",
+    activation_checklist_receipt_id: "midnight-oil-test-activation-checklist",
+    live_run_activation_settings_receipt_id: "midnight-oil-test-live-run-activation-settings",
+    dispatch_receipt_id: "midnight-oil-test-dispatch-receipt",
+    applied_run_receipt_id: "midnight-oil-test-applied-run-receipt",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    run_id: "midnight-oil-test",
+    status: "blocked_runner_readiness_controls_missing",
+    completed_receipt_ids: [
+      "midnight-oil-test-launch-packet",
+      "midnight-oil-test-approval-receipt",
+      "midnight-oil-test-runner-handoff",
+      "midnight-oil-test-applied-run-receipt",
+      "midnight-oil-test-live-run-activation-settings",
+      "midnight-oil-test-dispatch-receipt",
+      "midnight-oil-test-activation-checklist",
+      "midnight-oil-test-budget-reservation",
+      "midnight-oil-test-provider-route",
+      "midnight-oil-test-retrieval",
+      "midnight-oil-test-graph-mutation",
+      "midnight-oil-test-final-artifact",
+    ],
+    remaining_blockers: [
+      "budget reservation provider",
+      "model/provider route executor",
+      "retrieval executor with source receipts",
+      "graph mutation writer",
+      "final HTML artifact writer",
+      "operator live-run dispatch enablement",
+    ],
+    blocker_reason: "runner_readiness_controls_missing",
+    live_run_allowed: false,
+    dispatch_allowed: false,
+    budget_reservation_allowed: false,
+    provider_execution_allowed: false,
+    retrieval_allowed: false,
+    graph_mutation_allowed: false,
+    final_artifact_allowed: false,
+    dispatch_performed: false,
+    budget_reserved: false,
+    provider_calls_made: false,
+    retrieval_performed: false,
+    graph_mutated: false,
+    final_artifact_created: false,
+    readiness_notes: ["runner readiness gate only: full no-spend receipt chain has been reviewed"],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -734,5 +789,52 @@ describe("MidnightOil", () => {
     expect(screen.getByText("midnight-oil-test-html-research-asset")).toBeTruthy();
     expect(screen.getByText("midnight-oil-test-twin-note-document")).toBeTruthy();
     expect(screen.getAllByText("not created").length).toBeGreaterThan(1);
+
+    await user.click(screen.getByRole("button", { name: "Runner readiness" }));
+
+    await waitFor(() => expect(runnerReadinessMidnightOil).toHaveBeenCalled());
+    expect(runnerReadinessMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      applied_run_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-applied-run-receipt",
+      }),
+      live_run_activation_settings_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-live-run-activation-settings",
+      }),
+      dispatch_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-dispatch-receipt",
+      }),
+      activation_checklist_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-activation-checklist",
+      }),
+      budget_reservation_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-budget-reservation",
+      }),
+      provider_route_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-provider-route",
+      }),
+      retrieval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-retrieval",
+      }),
+      graph_mutation_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-graph-mutation",
+      }),
+      final_artifact_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-final-artifact",
+      }),
+    });
+    expect(screen.getByText("Readiness receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-runner-readiness")).toBeTruthy();
+    expect(screen.getByText("blocked runner readiness controls missing")).toBeTruthy();
+    expect(screen.getByText("6")).toBeTruthy();
+    expect(screen.getByText("operator live-run dispatch enablement")).toBeTruthy();
   });
 });

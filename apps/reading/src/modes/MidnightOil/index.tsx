@@ -11,6 +11,7 @@ import {
   preflightMidnightOil,
   providerRouteMidnightOil,
   retrievalMidnightOil,
+  runnerReadinessMidnightOil,
   type MidnightOilActivationChecklistReceipt,
   type MidnightOilAppliedRunReceipt,
   type MidnightOilBudgetReservationReceipt,
@@ -21,6 +22,7 @@ import {
   type MidnightOilPreflight,
   type MidnightOilProviderRouteReceipt,
   type MidnightOilRetrievalReceipt,
+  type MidnightOilRunnerReadinessReceipt,
   type MidnightOilRouteMode,
   type MidnightOilSourcePolicy,
 } from "../../api/midnightOil";
@@ -67,6 +69,8 @@ export default function MidnightOil() {
     useState<MidnightOilGraphMutationReceipt | null>(null);
   const [finalArtifactReceipt, setFinalArtifactReceipt] =
     useState<MidnightOilFinalArtifactReceipt | null>(null);
+  const [runnerReadinessReceipt, setRunnerReadinessReceipt] =
+    useState<MidnightOilRunnerReadinessReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -77,6 +81,7 @@ export default function MidnightOil() {
   const [retrievalBusy, setRetrievalBusy] = useState(false);
   const [graphMutationBusy, setGraphMutationBusy] = useState(false);
   const [finalArtifactBusy, setFinalArtifactBusy] = useState(false);
+  const [runnerReadinessBusy, setRunnerReadinessBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
   const [liveSettingsError, setLiveSettingsError] = useState<string | null>(null);
@@ -87,6 +92,7 @@ export default function MidnightOil() {
   const [retrievalError, setRetrievalError] = useState<string | null>(null);
   const [graphMutationError, setGraphMutationError] = useState<string | null>(null);
   const [finalArtifactError, setFinalArtifactError] = useState<string | null>(null);
+  const [runnerReadinessError, setRunnerReadinessError] = useState<string | null>(null);
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -111,6 +117,8 @@ export default function MidnightOil() {
     setRetrievalReceipt(null);
     setGraphMutationReceipt(null);
     setFinalArtifactReceipt(null);
+    setRunnerReadinessError(null);
+    setRunnerReadinessReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -182,6 +190,8 @@ export default function MidnightOil() {
     setGraphMutationReceipt(null);
     setFinalArtifactError(null);
     setFinalArtifactReceipt(null);
+    setRunnerReadinessError(null);
+    setRunnerReadinessReceipt(null);
     try {
       const result = await liveRunActivationSettingsMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -228,6 +238,8 @@ export default function MidnightOil() {
     setGraphMutationReceipt(null);
     setFinalArtifactError(null);
     setFinalArtifactReceipt(null);
+    setRunnerReadinessError(null);
+    setRunnerReadinessReceipt(null);
     try {
       const result = await dispatchMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -272,6 +284,8 @@ export default function MidnightOil() {
     setGraphMutationReceipt(null);
     setFinalArtifactError(null);
     setFinalArtifactReceipt(null);
+    setRunnerReadinessError(null);
+    setRunnerReadinessReceipt(null);
     try {
       const result = await activationChecklistMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -315,6 +329,8 @@ export default function MidnightOil() {
     setGraphMutationReceipt(null);
     setFinalArtifactError(null);
     setFinalArtifactReceipt(null);
+    setRunnerReadinessError(null);
+    setRunnerReadinessReceipt(null);
     try {
       const result = await budgetReservationMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -357,6 +373,8 @@ export default function MidnightOil() {
     setGraphMutationReceipt(null);
     setFinalArtifactError(null);
     setFinalArtifactReceipt(null);
+    setRunnerReadinessError(null);
+    setRunnerReadinessReceipt(null);
     try {
       const result = await providerRouteMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -399,6 +417,8 @@ export default function MidnightOil() {
     setGraphMutationReceipt(null);
     setFinalArtifactError(null);
     setFinalArtifactReceipt(null);
+    setRunnerReadinessError(null);
+    setRunnerReadinessReceipt(null);
     try {
       const result = await retrievalMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -441,6 +461,8 @@ export default function MidnightOil() {
     setGraphMutationReceipt(null);
     setFinalArtifactError(null);
     setFinalArtifactReceipt(null);
+    setRunnerReadinessError(null);
+    setRunnerReadinessReceipt(null);
     try {
       const result = await graphMutationMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -483,6 +505,8 @@ export default function MidnightOil() {
     setFinalArtifactBusy(true);
     setFinalArtifactError(null);
     setFinalArtifactReceipt(null);
+    setRunnerReadinessError(null);
+    setRunnerReadinessReceipt(null);
     try {
       const result = await finalArtifactMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -501,6 +525,53 @@ export default function MidnightOil() {
       setFinalArtifactError(e instanceof Error ? e.message : String(e));
     } finally {
       setFinalArtifactBusy(false);
+    }
+  }
+
+  async function onRunnerReadinessGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !preflight.applied_run_receipt ||
+      !liveSettingsReceipt ||
+      !dispatchReceipt ||
+      !activationReceipt ||
+      !budgetReservationReceipt ||
+      !providerRouteReceipt ||
+      !retrievalReceipt ||
+      !graphMutationReceipt ||
+      !finalArtifactReceipt
+    ) {
+      setRunnerReadinessError(
+        "Runner readiness requires launch packet, approval receipt, runner handoff, applied run receipt, live settings receipt, dispatch receipt, activation receipt, budget reservation receipt, provider route receipt, retrieval receipt, graph mutation receipt, and final artifact receipt.",
+      );
+      return;
+    }
+
+    setRunnerReadinessBusy(true);
+    setRunnerReadinessError(null);
+    setRunnerReadinessReceipt(null);
+    try {
+      const result = await runnerReadinessMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        applied_run_receipt: preflight.applied_run_receipt,
+        live_run_activation_settings_receipt: liveSettingsReceipt,
+        dispatch_receipt: dispatchReceipt,
+        activation_checklist_receipt: activationReceipt,
+        budget_reservation_receipt: budgetReservationReceipt,
+        provider_route_receipt: providerRouteReceipt,
+        retrieval_receipt: retrievalReceipt,
+        graph_mutation_receipt: graphMutationReceipt,
+        final_artifact_receipt: finalArtifactReceipt,
+      });
+      setRunnerReadinessReceipt(result);
+    } catch (e) {
+      setRunnerReadinessError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRunnerReadinessBusy(false);
     }
   }
 
@@ -1361,6 +1432,76 @@ export default function MidnightOil() {
                       value={finalArtifactReceipt.planned_twin_note_document_id}
                     />
                   </div>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Runner readiness
+                </p>
+                <button
+                  type="button"
+                  onClick={onRunnerReadinessGate}
+                  disabled={
+                    runnerReadinessBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !preflight.applied_run_receipt ||
+                    !liveSettingsReceipt ||
+                    !dispatchReceipt ||
+                    !activationReceipt ||
+                    !budgetReservationReceipt ||
+                    !providerRouteReceipt ||
+                    !retrievalReceipt ||
+                    !graphMutationReceipt ||
+                    !finalArtifactReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {runnerReadinessBusy ? "Checking readiness..." : "Runner readiness"}
+                </button>
+              </div>
+
+              {runnerReadinessError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {runnerReadinessError}
+                </p>
+              )}
+
+              {runnerReadinessReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Readiness receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {runnerReadinessReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={runnerReadinessReceipt.status.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Receipts"
+                      value={`${runnerReadinessReceipt.completed_receipt_ids.length}`}
+                    />
+                    <Metric
+                      label="Blockers"
+                      value={`${runnerReadinessReceipt.remaining_blockers.length}`}
+                    />
+                    <Metric
+                      label="Live run"
+                      value={runnerReadinessReceipt.live_run_allowed ? "allowed" : "blocked"}
+                    />
+                  </div>
+                  <ul className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {runnerReadinessReceipt.remaining_blockers.slice(0, 6).map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
                 </div>
               )}
 
