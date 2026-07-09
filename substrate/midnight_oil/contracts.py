@@ -877,6 +877,118 @@ class MidnightOilGraphMutationReceipt(BaseModel):
     graph_notes: list[str] = Field(default_factory=list)
 
 
+class MidnightOilFinalArtifactRequest(BaseModel):
+    launch_packet: MidnightOilLaunchPacket
+    approval_receipt: MidnightOilApprovalReceipt
+    runner_handoff: MidnightOilRunnerHandoff
+    applied_run_receipt: MidnightOilAppliedRunReceipt
+    dispatch_receipt: MidnightOilDispatchReceipt
+    activation_checklist_receipt: MidnightOilActivationChecklistReceipt
+    budget_reservation_receipt: MidnightOilBudgetReservationReceipt
+    provider_route_receipt: MidnightOilProviderRouteReceipt
+    retrieval_receipt: MidnightOilRetrievalReceipt
+    graph_mutation_receipt: MidnightOilGraphMutationReceipt
+
+    @model_validator(mode="after")
+    def _receipt_chain_matches(self) -> MidnightOilFinalArtifactRequest:
+        MidnightOilGraphMutationRequest(
+            launch_packet=self.launch_packet,
+            approval_receipt=self.approval_receipt,
+            runner_handoff=self.runner_handoff,
+            applied_run_receipt=self.applied_run_receipt,
+            dispatch_receipt=self.dispatch_receipt,
+            activation_checklist_receipt=self.activation_checklist_receipt,
+            budget_reservation_receipt=self.budget_reservation_receipt,
+            provider_route_receipt=self.provider_route_receipt,
+            retrieval_receipt=self.retrieval_receipt,
+        )
+        if self.activation_checklist_receipt.final_artifact_allowed:
+            raise ValueError("activation_checklist_receipt must not allow final artifact")
+        if self.graph_mutation_receipt.retrieval_receipt_id != self.retrieval_receipt.receipt_id:
+            raise ValueError("graph_mutation_receipt must reference retrieval_receipt")
+        if (
+            self.graph_mutation_receipt.provider_route_receipt_id
+            != self.provider_route_receipt.receipt_id
+        ):
+            raise ValueError("graph_mutation_receipt must reference provider_route_receipt")
+        if (
+            self.graph_mutation_receipt.budget_reservation_receipt_id
+            != self.budget_reservation_receipt.receipt_id
+        ):
+            raise ValueError("graph_mutation_receipt must reference budget_reservation_receipt")
+        if (
+            self.graph_mutation_receipt.activation_checklist_receipt_id
+            != self.activation_checklist_receipt.receipt_id
+        ):
+            raise ValueError("graph_mutation_receipt must reference activation_checklist_receipt")
+        if self.graph_mutation_receipt.dispatch_receipt_id != self.dispatch_receipt.receipt_id:
+            raise ValueError("graph_mutation_receipt must reference dispatch_receipt")
+        if (
+            self.graph_mutation_receipt.applied_run_receipt_id
+            != self.applied_run_receipt.receipt_id
+        ):
+            raise ValueError("graph_mutation_receipt must reference applied_run_receipt")
+        if self.graph_mutation_receipt.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError("graph_mutation_receipt must reference runner_handoff")
+        if self.graph_mutation_receipt.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError("graph_mutation_receipt must reference approval_receipt")
+        if self.graph_mutation_receipt.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("graph_mutation_receipt must reference launch_packet")
+        if self.graph_mutation_receipt.status != "blocked_graph_mutation_disabled":
+            raise ValueError("graph_mutation_receipt must be blocked_graph_mutation_disabled")
+        if self.graph_mutation_receipt.graph_mutation_allowed:
+            raise ValueError("graph_mutation_receipt must not allow graph mutation")
+        if self.graph_mutation_receipt.graph_mutated:
+            raise ValueError("graph_mutation_receipt must not mutate graph")
+        if self.graph_mutation_receipt.source_receipts_created:
+            raise ValueError("graph_mutation_receipt must not create source receipts")
+        if self.graph_mutation_receipt.retrieval_performed:
+            raise ValueError("graph_mutation_receipt must not perform retrieval")
+        if self.graph_mutation_receipt.provider_calls_made:
+            raise ValueError("graph_mutation_receipt must not include provider calls")
+        if self.graph_mutation_receipt.budget_reserved:
+            raise ValueError("graph_mutation_receipt must not reserve budget")
+        if self.graph_mutation_receipt.dispatch_performed:
+            raise ValueError("graph_mutation_receipt must not dispatch")
+        if self.graph_mutation_receipt.final_artifact_created:
+            raise ValueError("graph_mutation_receipt must not create final artifact")
+        return self
+
+
+class MidnightOilFinalArtifactReceipt(BaseModel):
+    receipt_id: str
+    graph_mutation_receipt_id: str
+    retrieval_receipt_id: str
+    provider_route_receipt_id: str
+    budget_reservation_receipt_id: str
+    activation_checklist_receipt_id: str
+    dispatch_receipt_id: str
+    applied_run_receipt_id: str
+    runner_handoff_id: str
+    approval_receipt_id: str
+    launch_packet_id: str
+    run_id: str
+    status: Literal["blocked_final_artifact_writer_disabled"] = (
+        "blocked_final_artifact_writer_disabled"
+    )
+    planned_artifact_id: str
+    planned_twin_note_document_id: str
+    final_format: Literal["html"] = "html"
+    pdf_allowed: bool = False
+    blocker_reason: Literal["final_html_artifact_writer_missing"] = (
+        "final_html_artifact_writer_missing"
+    )
+    final_artifact_allowed: bool = False
+    final_artifact_created: bool = False
+    graph_mutated: bool = False
+    source_receipts_created: bool = False
+    retrieval_performed: bool = False
+    provider_calls_made: bool = False
+    budget_reserved: bool = False
+    dispatch_performed: bool = False
+    artifact_notes: list[str] = Field(default_factory=list)
+
+
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
     price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
@@ -1156,6 +1268,42 @@ def graph_mutation_midnight_oil(
             "graph mutation gate only: graph writer is not configured",
             "no graph node, graph edge, source receipt, retrieval, or artifact write",
             "future live runner must replace this blocked receipt after graph writer controls",
+        ],
+    )
+
+
+def final_artifact_midnight_oil(
+    req: MidnightOilFinalArtifactRequest,
+) -> MidnightOilFinalArtifactReceipt:
+    return MidnightOilFinalArtifactReceipt(
+        receipt_id=f"{req.launch_packet.run_id}-final-artifact",
+        graph_mutation_receipt_id=req.graph_mutation_receipt.receipt_id,
+        retrieval_receipt_id=req.retrieval_receipt.receipt_id,
+        provider_route_receipt_id=req.provider_route_receipt.receipt_id,
+        budget_reservation_receipt_id=req.budget_reservation_receipt.receipt_id,
+        activation_checklist_receipt_id=req.activation_checklist_receipt.receipt_id,
+        dispatch_receipt_id=req.dispatch_receipt.receipt_id,
+        applied_run_receipt_id=req.applied_run_receipt.receipt_id,
+        runner_handoff_id=req.runner_handoff.handoff_id,
+        approval_receipt_id=req.approval_receipt.receipt_id,
+        launch_packet_id=req.launch_packet.packet_id,
+        run_id=req.launch_packet.run_id,
+        planned_artifact_id=f"{req.launch_packet.run_id}-html-research-asset",
+        planned_twin_note_document_id=f"{req.launch_packet.run_id}-twin-note-document",
+        final_format="html",
+        pdf_allowed=False,
+        final_artifact_allowed=False,
+        final_artifact_created=False,
+        graph_mutated=False,
+        source_receipts_created=False,
+        retrieval_performed=False,
+        provider_calls_made=False,
+        budget_reserved=False,
+        dispatch_performed=False,
+        artifact_notes=[
+            "final artifact gate only: final HTML artifact writer is not configured",
+            "no HTML asset, twin note document, graph write, source receipt, retrieval, or provider call",
+            "future live runner must replace this blocked receipt after artifact writer controls",
         ],
     )
 

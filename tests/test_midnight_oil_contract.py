@@ -11,6 +11,7 @@ from substrate.midnight_oil import (
     MidnightOilBudgetReservationRequest,
     MidnightOilDispatchRequest,
     MidnightOilDryRunRequest,
+    MidnightOilFinalArtifactRequest,
     MidnightOilGraphMutationRequest,
     MidnightOilProviderRouteRequest,
     MidnightOilRequest,
@@ -19,6 +20,7 @@ from substrate.midnight_oil import (
     budget_reservation_midnight_oil,
     dispatch_midnight_oil,
     dry_run_midnight_oil,
+    final_artifact_midnight_oil,
     graph_mutation_midnight_oil,
     preflight_midnight_oil,
     provider_route_midnight_oil,
@@ -96,6 +98,19 @@ def _accepted_midnight_oil_gate_chain(
             provider_route_receipt=provider_route,
         )
     )
+    graph = graph_mutation_midnight_oil(
+        MidnightOilGraphMutationRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            dispatch_receipt=dispatch,
+            activation_checklist_receipt=checklist,
+            budget_reservation_receipt=reservation,
+            provider_route_receipt=provider_route,
+            retrieval_receipt=retrieval,
+        )
+    )
     return {
         "preflight": preflight,
         "dispatch": dispatch,
@@ -103,6 +118,7 @@ def _accepted_midnight_oil_gate_chain(
         "reservation": reservation,
         "provider_route": provider_route,
         "retrieval": retrieval,
+        "graph": graph,
     }
 
 
@@ -1075,6 +1091,80 @@ def test_graph_mutation_gate_rejects_mismatched_retrieval_receipt_chain() -> Non
         )
 
 
+def test_final_artifact_gate_blocks_html_writer_without_side_effects() -> None:
+    chain = _accepted_midnight_oil_gate_chain(
+        goal="Prepare final HTML artifact for a midnight oil run about turbofan durability.",
+        source_policy=["arxiv", "operator_corpus"],
+    )
+
+    artifact = final_artifact_midnight_oil(
+        MidnightOilFinalArtifactRequest(
+            launch_packet=chain["preflight"].launch_packet,
+            approval_receipt=chain["preflight"].approval_receipt,
+            runner_handoff=chain["preflight"].runner_handoff,
+            applied_run_receipt=chain["preflight"].applied_run_receipt,
+            dispatch_receipt=chain["dispatch"],
+            activation_checklist_receipt=chain["checklist"],
+            budget_reservation_receipt=chain["reservation"],
+            provider_route_receipt=chain["provider_route"],
+            retrieval_receipt=chain["retrieval"],
+            graph_mutation_receipt=chain["graph"],
+        )
+    )
+
+    preflight = chain["preflight"]
+    assert preflight.launch_packet is not None
+    assert artifact.receipt_id == f"{preflight.run_id}-final-artifact"
+    assert artifact.graph_mutation_receipt_id == chain["graph"].receipt_id
+    assert artifact.retrieval_receipt_id == chain["retrieval"].receipt_id
+    assert artifact.provider_route_receipt_id == chain["provider_route"].receipt_id
+    assert artifact.budget_reservation_receipt_id == chain["reservation"].receipt_id
+    assert artifact.activation_checklist_receipt_id == chain["checklist"].receipt_id
+    assert artifact.dispatch_receipt_id == chain["dispatch"].receipt_id
+    assert artifact.applied_run_receipt_id == preflight.applied_run_receipt.receipt_id
+    assert artifact.launch_packet_id == preflight.launch_packet.packet_id
+    assert artifact.status == "blocked_final_artifact_writer_disabled"
+    assert artifact.planned_artifact_id == f"{preflight.run_id}-html-research-asset"
+    assert artifact.planned_twin_note_document_id == f"{preflight.run_id}-twin-note-document"
+    assert artifact.final_format == "html"
+    assert artifact.pdf_allowed is False
+    assert artifact.blocker_reason == "final_html_artifact_writer_missing"
+    assert artifact.final_artifact_allowed is False
+    assert artifact.final_artifact_created is False
+    assert artifact.graph_mutated is False
+    assert artifact.source_receipts_created is False
+    assert artifact.retrieval_performed is False
+    assert artifact.provider_calls_made is False
+    assert artifact.budget_reserved is False
+    assert artifact.dispatch_performed is False
+    assert "final HTML artifact writer is not configured" in artifact.artifact_notes[0]
+
+
+def test_final_artifact_gate_rejects_mismatched_graph_mutation_receipt_chain() -> None:
+    chain = _accepted_midnight_oil_gate_chain(
+        goal="Prepare final HTML artifact for a midnight oil run about airline financing.",
+        source_policy=["web"],
+    )
+    bad_graph = chain["graph"].model_copy(update={"retrieval_receipt_id": "wrong-retrieval"})
+
+    with pytest.raises(
+        ValidationError,
+        match="graph_mutation_receipt must reference retrieval_receipt",
+    ):
+        MidnightOilFinalArtifactRequest(
+            launch_packet=chain["preflight"].launch_packet,
+            approval_receipt=chain["preflight"].approval_receipt,
+            runner_handoff=chain["preflight"].runner_handoff,
+            applied_run_receipt=chain["preflight"].applied_run_receipt,
+            dispatch_receipt=chain["dispatch"],
+            activation_checklist_receipt=chain["checklist"],
+            budget_reservation_receipt=chain["reservation"],
+            provider_route_receipt=chain["provider_route"],
+            retrieval_receipt=chain["retrieval"],
+            graph_mutation_receipt=bad_graph,
+        )
+
+
 def test_final_artifact_contract_is_html_not_pdf_with_twin_note() -> None:
     result = preflight_midnight_oil(
         MidnightOilRequest(
@@ -1595,3 +1685,54 @@ def test_midnight_oil_graph_mutation_gate_api_contract() -> None:
     assert body["budget_reserved"] is False
     assert body["dispatch_performed"] is False
     assert body["final_artifact_created"] is False
+
+
+def test_midnight_oil_final_artifact_gate_api_contract() -> None:
+    from interfaces.research.api.app import create_app
+
+    chain = _accepted_midnight_oil_gate_chain(
+        goal="Gate midnight oil final artifact about widebody maintenance.",
+        source_policy=["arxiv", "web"],
+    )
+    preflight = chain["preflight"]
+
+    with TestClient(create_app()) as client:
+        r = client.post(
+            "/research/midnight-oil/final-artifact",
+            json={
+                "launch_packet": preflight.launch_packet.model_dump(mode="json"),
+                "approval_receipt": preflight.approval_receipt.model_dump(mode="json"),
+                "runner_handoff": preflight.runner_handoff.model_dump(mode="json"),
+                "applied_run_receipt": preflight.applied_run_receipt.model_dump(mode="json"),
+                "dispatch_receipt": chain["dispatch"].model_dump(mode="json"),
+                "activation_checklist_receipt": chain["checklist"].model_dump(mode="json"),
+                "budget_reservation_receipt": chain["reservation"].model_dump(mode="json"),
+                "provider_route_receipt": chain["provider_route"].model_dump(mode="json"),
+                "retrieval_receipt": chain["retrieval"].model_dump(mode="json"),
+                "graph_mutation_receipt": chain["graph"].model_dump(mode="json"),
+            },
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["graph_mutation_receipt_id"] == chain["graph"].receipt_id
+    assert body["retrieval_receipt_id"] == chain["retrieval"].receipt_id
+    assert body["provider_route_receipt_id"] == chain["provider_route"].receipt_id
+    assert body["budget_reservation_receipt_id"] == chain["reservation"].receipt_id
+    assert body["activation_checklist_receipt_id"] == chain["checklist"].receipt_id
+    assert body["dispatch_receipt_id"] == chain["dispatch"].receipt_id
+    assert body["launch_packet_id"] == preflight.launch_packet.packet_id
+    assert body["status"] == "blocked_final_artifact_writer_disabled"
+    assert body["planned_artifact_id"] == f"{preflight.run_id}-html-research-asset"
+    assert body["planned_twin_note_document_id"] == f"{preflight.run_id}-twin-note-document"
+    assert body["final_format"] == "html"
+    assert body["pdf_allowed"] is False
+    assert body["blocker_reason"] == "final_html_artifact_writer_missing"
+    assert body["final_artifact_allowed"] is False
+    assert body["final_artifact_created"] is False
+    assert body["graph_mutated"] is False
+    assert body["source_receipts_created"] is False
+    assert body["retrieval_performed"] is False
+    assert body["provider_calls_made"] is False
+    assert body["budget_reserved"] is False
+    assert body["dispatch_performed"] is False

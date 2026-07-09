@@ -347,6 +347,49 @@ export interface MidnightOilGraphMutationReceipt {
   graph_notes: string[];
 }
 
+export interface MidnightOilFinalArtifactRequest {
+  launch_packet: MidnightOilLaunchPacket;
+  approval_receipt: MidnightOilApprovalReceipt;
+  runner_handoff: MidnightOilRunnerHandoff;
+  applied_run_receipt: MidnightOilAppliedRunReceipt;
+  dispatch_receipt: MidnightOilDispatchReceipt;
+  activation_checklist_receipt: MidnightOilActivationChecklistReceipt;
+  budget_reservation_receipt: MidnightOilBudgetReservationReceipt;
+  provider_route_receipt: MidnightOilProviderRouteReceipt;
+  retrieval_receipt: MidnightOilRetrievalReceipt;
+  graph_mutation_receipt: MidnightOilGraphMutationReceipt;
+}
+
+export interface MidnightOilFinalArtifactReceipt {
+  receipt_id: string;
+  graph_mutation_receipt_id: string;
+  retrieval_receipt_id: string;
+  provider_route_receipt_id: string;
+  budget_reservation_receipt_id: string;
+  activation_checklist_receipt_id: string;
+  dispatch_receipt_id: string;
+  applied_run_receipt_id: string;
+  runner_handoff_id: string;
+  approval_receipt_id: string;
+  launch_packet_id: string;
+  run_id: string;
+  status: "blocked_final_artifact_writer_disabled";
+  planned_artifact_id: string;
+  planned_twin_note_document_id: string;
+  final_format: "html";
+  pdf_allowed: boolean;
+  blocker_reason: "final_html_artifact_writer_missing";
+  final_artifact_allowed: boolean;
+  final_artifact_created: boolean;
+  graph_mutated: boolean;
+  source_receipts_created: boolean;
+  retrieval_performed: boolean;
+  provider_calls_made: boolean;
+  budget_reserved: boolean;
+  dispatch_performed: boolean;
+  artifact_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -465,4 +508,19 @@ export async function graphMutationMidnightOil(
     throw new Error(`POST /research/midnight-oil/graph-mutation: HTTP ${resp.status}: ${body}`);
   }
   return (await resp.json()) as MidnightOilGraphMutationReceipt;
+}
+
+export async function finalArtifactMidnightOil(
+  request: MidnightOilFinalArtifactRequest,
+): Promise<MidnightOilFinalArtifactReceipt> {
+  const resp = await apiFetch(`${API_BASE}/research/midnight-oil/final-artifact`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`POST /research/midnight-oil/final-artifact: HTTP ${resp.status}: ${body}`);
+  }
+  return (await resp.json()) as MidnightOilFinalArtifactReceipt;
 }
