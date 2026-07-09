@@ -1733,6 +1733,7 @@ describe("Multimedia workstation", () => {
     mockCreate.mockResolvedValueOnce(queuedProviderRecord);
     await reviewPlan();
 
+    expect(screen.getByText("Attach artifact stores manual evidence only; it does not run providers, publish, or export.")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Artifact URL"), { target: { value: "https://cdn.example.test/mm-1.mp4" } });
     fireEvent.change(screen.getByLabelText("Checksum"), { target: { value: "sha256:abcdef123456" } });
     fireEvent.change(screen.getByLabelText("Media type"), { target: { value: "video/mp4" } });

@@ -2384,6 +2384,9 @@ function JobPanel({
       </div>
       <div className="mt-3 rounded-md border border-rule bg-ice-0 p-2 dark:border-charcoal-1 dark:bg-charcoal-1">
         <p className="font-mono text-[11px] uppercase text-shadow-2 dark:text-moonlight">Manual artifact attach</p>
+        <p className="mt-1 text-[11px] leading-snug text-shadow-1 dark:text-moonlight">
+          Attach artifact stores manual evidence only; it does not run providers, publish, or export.
+        </p>
         <div className="mt-2 grid grid-cols-2 gap-2">
           <label className="col-span-2 text-[12px] text-shadow-1 dark:text-moonlight">
             Artifact job id
