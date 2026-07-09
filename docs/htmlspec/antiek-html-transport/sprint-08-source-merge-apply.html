@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ANT-AHT · Antiek HTML Transport</title>
+<title>SPR-AHT-08 · Source merge apply gate</title>
 <style>
 /* htmlspec — Lemon UI inspired style system
  * Inline this entire file into <style> of every output HTML file.
@@ -580,56 +580,50 @@ hr.divider {
 </style>
 </head>
 <body>
-<main class="page page--wide">
-<header class="hero"><p class="eyebrow">Master spec · ANT-AHT</p>
-<h1>Antiek HTML Transport</h1>
-<p class="tagline">Profile B — agent-friendly HTML lenses on DuckDB truth (Thariq thesis).</p>
-<div class="meta-row"><span class="tag tag--green"><span class="dot"></span>exec-2 complete</span>
-<span class="tag tag--grey">8 sprints · 4 waves · 2026-06-24</span></div></header>
-<section class="block"><h2>Architectural fork (ratified)</h2>
-<ul>
-<li><strong>Canonical truth:</strong> DuckDB graph + typed event log — never HTML-primary.</li>
-<li><strong>Profile A:</strong> htmlspec execution pages (Lemon UI, rigor cards, harness hints).</li>
-<li><strong>Profile B:</strong> <code>ResearchArtifact</code> transport — per-investigation HTML + machine JSON.</li>
-<li><strong>Profile C:</strong> Operator <code>docs/html/</code> (stone §5.5 notebook aesthetic).</li>
-<li><strong>Merge semantics:</strong> graph/pack first; HTML compose = index + content-hash conflicts.</li>
-</ul>
-<p>Landscape catalog: <a href="../../html/html-landscape.html">docs/html/html-landscape.html</a></p>
+<main class="page">
+<header class="hero">
+<p class="eyebrow"><a href="index.html">&larr; Antiek HTML Transport</a> · Sprint 08</p>
+<h1>Source merge apply gate</h1><p class="tagline">Consume a reviewed draft-merge packet and perform the only allowed source-book/twin mutation.</p>
+<div class="meta-row">
+<span class="tag tag--blue"><span class="dot"></span>Wave 4</span>
+<span class="tag tag--yellow"><span class="dot"></span>ready</span>
+<span class="tag tag--grey">Budget: 3 milestones</span></div></header>
+<section class="block"><h2>Parent context</h2><p>Reader chases can already export, compose, and copy review packets; applying that draft to the source book is the first irreversible boundary.</p><p>The apply step must be explicit, conflict-aware, idempotent, and audited. A copied review packet is evidence, not permission by itself.</p>
+<div class="callout callout--info"><strong>Position:</strong> Wave 4 after SPR-AHT-05 compose and the Reader source-merge review packet.</div></section>
+<section class="block"><h2>Goal</h2><p><strong>Consume a reviewed draft-merge packet and perform the only allowed source-book/twin mutation.</strong></p><p>POST /research/artifacts/source-merge/apply accepts a reviewed packet plus operator acknowledgement and returns a mutation receipt.</p></section>
+<section class="block"><h2>Technical milestones</h2>
+<div class="milestone"><div class="num">1</div><div>
+<div class="title">Apply request contract</div><p class="desc">Pydantic request/response models with reviewed packet, acknowledgement, and expected content hashes.</p>
+<div class="criteria"><strong>Acceptance criteria</strong><ul><li>requires document_id, draft_merge_path, compose_index_path, member ids, conflict count, and operator acknowledgement</li></ul></div>
+<div class="files"><span class="file">interfaces/research/api/artifact_routes.py</span><span class="file">apps/reading/src/lib/api.ts</span></div></div></div>
+<div class="milestone"><div class="num">2</div><div>
+<div class="title">Single mutation writer</div><p class="desc">A substrate helper performs source-book revision + notes-twin promotion in one audited transaction.</p>
+<div class="criteria"><strong>Acceptance criteria</strong><ul><li>refuses hash conflicts unless acknowledged</li><li>refuses stale packet/content-hash mismatch</li><li>emits source_merge.applied event with before/after revision ids</li></ul></div>
+<div class="files"><span class="file">substrate/research_artifact/source_merge.py</span><span class="file">substrate/books/model.py</span></div></div></div>
+<div class="milestone"><div class="num">3</div><div>
+<div class="title">Reader apply UI</div><p class="desc">Reader receipt exposes Apply only after review acknowledgement and displays the returned receipt.</p>
+<div class="criteria"><strong>Acceptance criteria</strong><ul><li>button disabled before acknowledgement</li><li>receipt shows source revision, twin revision, member count, conflict acknowledgement</li></ul></div>
+<div class="files"><span class="file">apps/reading/src/modes/Reading/ReadingCompanion.tsx</span><span class="file">apps/reading/src/modes/Reading/ReadingCompanion.test.tsx</span></div></div></div>
 </section>
-<section class="block"><h2>Sprint roster</h2>
-<div class="wave-band">Wave 1 — contract + export</div><div class="sprint-grid"><a class="sprint-card" href="sprint-01-research-artifact-contract.html">
-<span class="id">SPR-AHT-01</span><span class="title">ResearchArtifact v1 contract</span><span class="goal">Dual-channel HTML + JSON block.</span>
-<span class="footer"><span class="tag tag--blue">Wave 1</span>
-<span class="tag tag--grey">3 milestones</span><span class="tag tag--green"><span class="dot"></span>done</span></span></a><a class="sprint-card" href="sprint-02-export-pipeline.html">
-<span class="id">SPR-AHT-02</span><span class="title">Export pipeline</span><span class="goal">Disk write + artifact.generated event.</span>
-<span class="footer"><span class="tag tag--blue">Wave 1</span>
-<span class="tag tag--grey">3 milestones</span><span class="tag tag--green"><span class="dot"></span>done</span></span></a></div>
-<div class="wave-band">Wave 2 — protocol + ingest (URL + book)</div><div class="sprint-grid"><a class="sprint-card" href="sprint-03-agent-transport-protocol.html">
-<span class="id">SPR-AHT-03</span><span class="title">Agent transport protocol</span><span class="goal">Cross-window handoff doc + templates.</span>
-<span class="footer"><span class="tag tag--blue">Wave 2</span>
-<span class="tag tag--grey">2 milestones</span><span class="tag tag--green"><span class="dot"></span>done</span></span></a><a class="sprint-card" href="sprint-04-ingest-reader-snapshot.html">
-<span class="id">SPR-AHT-04</span><span class="title">Ingest reader snapshot</span><span class="goal">Sanitized HTML beside URL ingest.</span>
-<span class="footer"><span class="tag tag--blue">Wave 2</span>
-<span class="tag tag--grey">3 milestones</span><span class="tag tag--green"><span class="dot"></span>done</span></span></a><a class="sprint-card" href="sprint-07-book-reader-snapshot.html">
-<span class="id">SPR-AHT-07</span><span class="title">Book reader snapshot</span><span class="goal">PDF ingest → readable HTML beside chunks.</span>
-<span class="footer"><span class="tag tag--blue">Wave 2</span>
-<span class="tag tag--grey">2 milestones</span><span class="tag tag--green"><span class="dot"></span>done</span></span></a></div>
-<div class="wave-band">Wave 3 — compose + Write bridge</div><div class="sprint-grid"><a class="sprint-card" href="sprint-05-compose-merge.html">
-<span class="id">SPR-AHT-05</span><span class="title">Compose / merge index</span><span class="goal">Multi-investigation HTML index.</span>
-<span class="footer"><span class="tag tag--blue">Wave 3</span>
-<span class="tag tag--grey">2 milestones</span><span class="tag tag--green"><span class="dot"></span>done</span></span></a><a class="sprint-card" href="sprint-06-write-bridge-api.html">
-<span class="id">SPR-AHT-06</span><span class="title">Write bridge + API</span><span class="goal">Outline blocks + FastAPI routes.</span>
-<span class="footer"><span class="tag tag--blue">Wave 3</span>
-<span class="tag tag--grey">3 milestones</span><span class="tag tag--green"><span class="dot"></span>done</span></span></a></div>
-<div class="wave-band">Wave 4 — reviewed apply boundary</div><div class="sprint-grid"><a class="sprint-card" href="sprint-08-source-merge-apply.html">
-<span class="id">SPR-AHT-08</span><span class="title">Source merge apply gate</span><span class="goal">Reviewed draft → explicit source/twin mutation.</span>
-<span class="footer"><span class="tag tag--blue">Wave 4</span>
-<span class="tag tag--grey">3 milestones</span><span class="tag tag--yellow"><span class="dot"></span>ready</span></span></a></div>
-</section>
-<section class="block" id="harness-hint-run" data-harness-default-pattern="inline">
-<h2>Harness</h2><p>Exec-2: pytest ANT-AHT suite + optional <code>ANTIEK_EXPORT_RESEARCH_ARTIFACT</code> post-complete hook.</p>
-<pre><code>./.venv/bin/python -m pytest tests/test_research_artifact_*.py tests/test_reader_snapshot.py tests/test_artifact_routes.py -q</code></pre>
-</section>
+<section class="block"><h2>Rigor — operating manual for this sprint</h2>
+<div class="rigor">
+<div class="rigor-card"><span class="label">1 · Intellectual honesty</span><h4>Calibrate confidence</h4><p>Until this sprint is implemented, no UI may claim a draft has been merged into the book or twin.</p></div>
+<div class="rigor-card"><span class="label">2 · Fairness</span><h4>Steelman rejected alt</h4><p>Steelman auto-apply after draft compose; rejected because source-book mutation needs human review and conflict acknowledgement.</p></div>
+<div class="rigor-card"><span class="label">3 · Rigor</span><h4>Mechanical checks</h4><p>Backend tests must prove no mutation on missing acknowledgement, stale hashes, or unacknowledged conflicts; frontend tests must prove disabled-by-default apply.</p></div>
+<div class="rigor-card"><span class="label">4 · Diligence</span><h4>Read before write</h4><p>Read compose.py, artifact_routes.py, books.py, and the Reader review-packet tests before writing the endpoint.</p></div>
+<div class="rigor-card"><span class="label">5 · Defensibility</span><h4>Survives turnover</h4><p>The mutation receipt is the handoff: exact source revision id, twin revision id, event id, member ids, and conflict decision.</p></div>
+</div></section>
+<section class="block"><h2>Dependencies</h2><div class="two-col">
+<div><h3>Upstream</h3><ul><li>SPR-AHT-05</li><li>SPR-AHT-06</li><li>Reader source-merge review packet</li></ul></div>
+<div><h3>External</h3><ul><li>FastAPI TestClient</li><li>Vitest</li></ul></div></div></section>
+<section class="block"><h2>Out of scope</h2><ul><li>Model/provider calls</li><li>Automatic source mutation on compose</li><li>Git merge of arbitrary HTML bodies</li><li>Applying to gated/taken-down books without the existing servability policy</li></ul></section>
+<section class="block"><h2>Verification gates</h2>
+<table class="spec"><thead><tr><th>Gate</th><th>Command</th><th>Expected</th></tr></thead><tbody><tr><td><strong>Backend apply</strong></td><td><code>./.venv/bin/python -m pytest tests/test_research_artifact_source_merge.py tests/test_artifact_routes.py -k source_merge -q</code></td><td>pass</td></tr><tr><td><strong>Reader apply</strong></td><td><code>npm --prefix apps/reading test -- src/modes/Reading/ReadingCompanion.test.tsx --run</code></td><td>pass</td></tr><tr><td><strong>Typecheck</strong></td><td><code>npm --prefix apps/reading run typecheck</code></td><td>pass</td></tr></tbody></table></section>
+<section class="block" id="harness-hint" data-harness-pattern="classify-and-act"
+ data-harness-fanout-unit="review-packet+apply-receipt" data-harness-verifier-lenses="mutation-boundary|hash-staleness|operator-ack"
+ data-harness-rounds-floor="2" data-harness-rounds-cap="3">
+<h2>Harness hint</h2><p>Pattern <code>classify-and-act</code> · review-packet+apply-receipt</p></section>
+<footer class="spec-footer">SPR-AHT-08 · <a href="index.html">Master spec</a> · 2026-06-24</footer>
 </main>
 </body>
 </html>
