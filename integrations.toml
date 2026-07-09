@@ -191,10 +191,14 @@ spec_doc = "docs/integration_posthog.md"
 
 [notdiamond]
 package = "notdiamond"
-tier = 0
-voucher = ""
-vouched_at = "2026-05-24"
-justification = "Draft spec only at ~/specs/antiek-notdiamond/. ND advisory layer above dispatch; 8 sprints / 4 waves; not yet wired. Per project-antiek-notdiamond-spec memory."
+tier = 2
+voucher = "slimydog"
+vouched_at = "2026-07-09"
+sunset_date = "2026-10-07"
+justification = "Wave 1 advisory adapter (runtime/notdiamond/) — measured wedge only, NEVER an authoritative dispatch provider (§16). Lazy import inside select_model(); optional extra antiek[notdiamond]. Promote to Tier 3 only after §14.4 baseline is beaten with evidence (Wave 3 SPR-05/08); demote to Tier 0 if the wedge fails. Spec: ~/specs/antiek-notdiamond/."
+prod_call_sites = [
+    "runtime/notdiamond/adapter.py",
+]
 spec_doc = "~/specs/antiek-notdiamond/"
 
 [turbopuffer]
