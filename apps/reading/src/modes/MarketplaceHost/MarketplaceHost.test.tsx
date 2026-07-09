@@ -536,4 +536,50 @@ describe("MarketplaceHost mode", () => {
       /project_gutenberg=1/,
     );
   });
+
+  it("filters free public-domain research spine (is)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-origin",
+          title: "On the Origin of Species",
+          author: "Charles Darwin",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+        },
+        {
+          book_id: "buy-modern",
+          title: "Modern Systems Research",
+          author: "Example Press",
+          license_class: "purchased",
+          is_free: false,
+          source: "marketplace_stub",
+        },
+      ],
+      count: 2,
+      view_format: "html",
+      by_source: { project_gutenberg: 1, marketplace_stub: 1 },
+      free_count: 1,
+      public_domain_count: 1,
+      purchased_count: 1,
+      payment_rails: "manual_receipt_only",
+    });
+    render(<MarketplaceHost ownerId="operator" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("catalog-entry-pd-origin")).toBeTruthy();
+      expect(screen.getByTestId("purchase-host-buy-modern")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("catalog-free-pd-only"));
+    expect(screen.getByTestId("catalog-entry-pd-origin")).toBeTruthy();
+    expect(screen.queryByTestId("purchase-host-buy-modern")).toBeNull();
+    expect(
+      screen
+        .getByTestId("marketplace-catalog-metrics")
+        .getAttribute("data-free-pd-only"),
+    ).toBe("true");
+    expect(
+      (screen.getByTestId("catalog-filter") as HTMLInputElement).placeholder,
+    ).toMatch(/project_gutenberg/i);
+  });
 });

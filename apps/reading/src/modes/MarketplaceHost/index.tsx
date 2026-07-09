@@ -26,6 +26,8 @@
  * note-taker substrate note after twin seed.
  * Residual (ir): prefer server catalog honesty (by_source / free_count /
  * payment_rails) when GET /marketplace/catalog provides them (iq).
+ * Residual (is): free-PD quick filter + source-aware catalog filter UX for
+ * knowledge-dense research books.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -93,8 +95,13 @@ export default function MarketplaceHost({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [receiptRef, setReceiptRef] = useState("manual-order-token-demo");
-  /** Residual (dj): substring filter over catalog title/author/license. */
+  /** Residual (dj/is): substring filter over catalog title/author/license/source. */
   const [filterQuery, setFilterQuery] = useState("");
+  /**
+   * Residual (is): when true, show only free public_domain rows (research PD spine).
+   * Composes with filterQuery; does not invent payment rails.
+   */
+  const [freePdOnly, setFreePdOnly] = useState(false);
   /** Residual (dl): filter over account library document titles/ids. */
   const [libraryFilter, setLibraryFilter] = useState("");
   /** Residual (dk): auto-open hosted HTML window after successful host. */
@@ -102,14 +109,18 @@ export default function MarketplaceHost({
 
   const filteredEntries = useMemo(() => {
     const q = filterQuery.trim().toLowerCase();
-    if (!q) return entries;
     return entries.filter((e) => {
+      // Residual (is): free public_domain research spine filter.
+      if (freePdOnly) {
+        if (!(e.license_class === "public_domain" && e.is_free)) return false;
+      }
+      if (!q) return true;
       // Residual (io): include knowledge source in filter haystack.
       const hay =
         `${e.title} ${e.author} ${e.license_class} ${e.book_id} ${e.source}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [entries, filterQuery]);
+  }, [entries, filterQuery, freePdOnly]);
 
   /**
    * Residual (io/ir): by_source breakdown — prefer server honesty when present.
@@ -439,11 +450,22 @@ export default function MarketplaceHost({
             data-testid="catalog-filter"
             value={filterQuery}
             onChange={(e) => setFilterQuery(e.target.value)}
-            placeholder="Title, author, license…"
+            placeholder="Title, author, license, source (project_gutenberg…)"
             className="border rounded px-2 py-1 min-w-[16rem]"
             disabled={busy}
             aria-label="Filter catalog"
           />
+        </label>
+        {/* Residual (is): free public_domain quick filter for research spine. */}
+        <label className="flex items-center gap-2 text-sm font-mono pb-1">
+          <input
+            type="checkbox"
+            data-testid="catalog-free-pd-only"
+            checked={freePdOnly}
+            onChange={(e) => setFreePdOnly(e.target.checked)}
+            disabled={busy}
+          />
+          Free public-domain only
         </label>
         <label className="flex flex-col gap-1 text-sm font-mono">
           <span className="text-[11px] uppercase opacity-70">
@@ -511,6 +533,7 @@ export default function MarketplaceHost({
         data-honesty-source={
           catalogHonesty?.by_source ? "server" : "client"
         }
+        data-free-pd-only={String(freePdOnly)}
         data-view-format="html"
         data-payment-rails={
           catalogHonesty?.payment_rails || "manual_receipt_only"

@@ -1,0 +1,12 @@
+# inventory-is · free public-domain catalog filter · residual (is)
+
+## Delta
+- catalog-free-pd-only checkbox (public_domain + is_free)
+- catalog filter placeholder mentions project_gutenberg source
+- data-free-pd-only on catalog metrics
+
+## Verified
+vitest MarketplaceHost 8_passed
+
+## Next
+(it) re-derive
