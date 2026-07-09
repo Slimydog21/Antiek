@@ -329,6 +329,9 @@ describe("Multimedia workstation", () => {
     render(<Multimedia />);
     await waitForApiReady();
     expect(screen.getByTestId("multimedia-estimated-cost").textContent).toBe("$40.50");
+    expect(
+      screen.getByText("Review plan creates a persisted draft only; it does not call providers, export, or publish media."),
+    ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /Cheapest/ }));
 

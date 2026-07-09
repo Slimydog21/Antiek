@@ -1065,6 +1065,9 @@ export default function Multimedia() {
                 <p className="text-lg font-semibold text-ink dark:text-bright" data-testid="multimedia-estimated-cost">
                   {estimatedCost}
                 </p>
+                <p className="mt-1 text-[11px] leading-snug text-shadow-1 dark:text-moonlight">
+                  Review plan creates a persisted draft only; it does not call providers, export, or publish media.
+                </p>
               </div>
               <LemonButton type="button" variant="primary" onClick={generatePlan} disabled={pendingCommand !== null}>
                 {pendingCommand === "create" ? "Creating..." : "Review plan"}
