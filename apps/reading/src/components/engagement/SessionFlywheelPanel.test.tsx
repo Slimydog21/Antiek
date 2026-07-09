@@ -27,6 +27,7 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
         source_references: [],
         twin_count: 2,
         ref_count: 0,
+        research_tier: "wrestle",
       },
       view_format: "html",
       prompt_block: "# Research context pack\n",
@@ -92,6 +93,56 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
     expect(
       screen.getByTestId("session-flywheel-usage-task-class").textContent,
     ).toMatch(/wrestle/);
+    // Residual (kq): pack context.research_tier chrome.
+    expect(metrics.getAttribute("data-context-research-tier")).toBe("wrestle");
+    expect(
+      screen
+        .getByTestId("session-flywheel-result")
+        .getAttribute("data-context-research-tier"),
+    ).toBe("wrestle");
+    expect(
+      screen.getByTestId("session-flywheel-context-research-tier").textContent,
+    ).toMatch(/wrestle/);
+  });
+
+  it("falls back to context.research_tier when session tier absent (kq)", async () => {
+    completeSessionFlywheel.mockResolvedValue({
+      session_id: "fsess_2",
+      spawn_id: "spn_2",
+      status: "complete",
+      context: {
+        asset_id: "book-2",
+        twin_units: [],
+        source_references: [],
+        twin_count: 0,
+        ref_count: 0,
+        research_tier: "deep",
+      },
+      view_format: "html",
+      prompt_block: "# pack\n",
+      research_tier: null,
+      usage_event: null,
+    });
+    render(
+      <SessionFlywheelPanel
+        sessionId="fsess_2"
+        defaultOutputText="Fallback pack tier path."
+      />,
+    );
+    fireEvent.click(screen.getByTestId("session-flywheel-complete"));
+    await waitFor(() => {
+      expect(screen.getByTestId("session-flywheel-research-tier").textContent).toBe(
+        "deep",
+      );
+    });
+    expect(
+      screen.getByTestId("session-flywheel-metrics").getAttribute("data-research-tier"),
+    ).toBe("deep");
+    expect(
+      screen
+        .getByTestId("session-flywheel-metrics")
+        .getAttribute("data-context-research-tier"),
+    ).toBe("deep");
   });
 
   it("disables complete when output too short", () => {

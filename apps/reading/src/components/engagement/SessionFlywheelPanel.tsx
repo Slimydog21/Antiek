@@ -10,6 +10,8 @@
  * Residual (ii): Settings deep-link for driver + budget before complete.
  * Residual (jt): surface research_tier + Antiek-bench task_class from usage
  * event so recursive rewrite feed is operator-auditable on flywheel close.
+ * Residual (kq): fall back to context.research_tier (pack identity from kk)
+ * when session research_tier is absent; expose data-context-research-tier.
  * Composes shipped completeSessionFlywheel. HTML-first context pack.
  */
 
@@ -82,6 +84,18 @@ export function SessionFlywheelPanel({
     if (Array.isArray(ctx?.source_references)) return ctx.source_references.length;
     return 0;
   };
+  /** Residual (kq): session tier wins; pack context.research_tier is fallback. */
+  const flywheelResearchTier = (
+    r: SessionFlywheelResponse,
+  ): { effective: string; pack: string } => {
+    const pack = String(r.context?.research_tier || "")
+      .trim()
+      .toLowerCase();
+    const session = String(r.research_tier || "")
+      .trim()
+      .toLowerCase();
+    return { effective: session || pack, pack };
+  };
 
   return (
     <section
@@ -147,8 +161,10 @@ export function SessionFlywheelPanel({
           className="space-y-1 rounded border border-ink/10 p-2 text-[11px] font-mono dark:border-bright/10"
           data-testid="session-flywheel-result"
           data-view-format="html"
+          data-research-tier={flywheelResearchTier(result).effective}
+          data-context-research-tier={flywheelResearchTier(result).pack}
         >
-          {/* Residual (hj/jt): machine-readable flywheel close + bench tier. */}
+          {/* Residual (hj/jt/kq): flywheel close + session/pack depth identity. */}
           <div
             data-testid="session-flywheel-metrics"
             data-status={result.status ?? ""}
@@ -158,10 +174,11 @@ export function SessionFlywheelPanel({
             data-ref-count={String(flywheelRefCount(result))}
             data-record-twins={String(recordTwins)}
             data-research-tier={
-              (result.research_tier ||
-                result.usage_event?.task_class ||
-                "") as string
+              flywheelResearchTier(result).effective ||
+              (result.usage_event?.task_class as string) ||
+              ""
             }
+            data-context-research-tier={flywheelResearchTier(result).pack}
             data-usage-task-class={
               (result.usage_event?.task_class || "") as string
             }
@@ -171,8 +188,8 @@ export function SessionFlywheelPanel({
           >
             Session flywheel · status={result.status} · twins=
             {flywheelTwinCount(result)} · refs={flywheelRefCount(result)}
-            {result.research_tier
-              ? ` · tier=${result.research_tier}`
+            {flywheelResearchTier(result).effective
+              ? ` · tier=${flywheelResearchTier(result).effective}`
               : ""}
             {result.usage_event?.task_class
               ? ` · bench=${result.usage_event.task_class}`
@@ -182,15 +199,27 @@ export function SessionFlywheelPanel({
             status=<code>{result.status}</code> · session=
             <code>{result.session_id}</code> · spawn=
             <code>{result.spawn_id}</code>
-            {result.research_tier ? (
+            {flywheelResearchTier(result).effective ? (
               <>
                 {" "}
                 · tier=<code data-testid="session-flywheel-research-tier">
-                  {result.research_tier}
+                  {flywheelResearchTier(result).effective}
                 </code>
               </>
             ) : null}
           </p>
+          {/* Residual (kq): pack context.research_tier when present (parity kk). */}
+          {flywheelResearchTier(result).pack ? (
+            <p
+              className="opacity-80"
+              data-testid="session-flywheel-context-research-tier"
+              data-context-research-tier={flywheelResearchTier(result).pack}
+              role="status"
+            >
+              Context pack research_tier=
+              <code>{flywheelResearchTier(result).pack}</code>
+            </p>
+          ) : null}
           {result.usage_event?.task_class ? (
             <p
               className="opacity-80"
