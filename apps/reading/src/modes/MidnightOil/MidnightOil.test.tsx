@@ -8,6 +8,7 @@ import {
   budgetReservationMidnightOil,
   dispatchMidnightOil,
   dryRunMidnightOil,
+  graphMutationMidnightOil,
   preflightMidnightOil,
   providerRouteMidnightOil,
   retrievalMidnightOil,
@@ -297,6 +298,41 @@ vi.mock("../../api/midnightOil", () => ({
     final_artifact_created: false,
     retrieval_notes: ["retrieval gate only: retrieval executor and source receipt writer are not configured"],
   })),
+  graphMutationMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-graph-mutation",
+    retrieval_receipt_id: "midnight-oil-test-retrieval",
+    provider_route_receipt_id: "midnight-oil-test-provider-route",
+    budget_reservation_receipt_id: "midnight-oil-test-budget-reservation",
+    activation_checklist_receipt_id: "midnight-oil-test-activation-checklist",
+    dispatch_receipt_id: "midnight-oil-test-dispatch-receipt",
+    applied_run_receipt_id: "midnight-oil-test-applied-run-receipt",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    run_id: "midnight-oil-test",
+    status: "blocked_graph_mutation_disabled",
+    planned_graph_node_ids: [
+      "midnight-oil-test-run-node",
+      "midnight-oil-test-arxiv-source-node",
+      "midnight-oil-test-substack-source-node",
+      "midnight-oil-test-operator_corpus-source-node",
+    ],
+    planned_graph_edge_ids: [
+      "midnight-oil-test-arxiv-source-edge",
+      "midnight-oil-test-substack-source-edge",
+      "midnight-oil-test-operator_corpus-source-edge",
+    ],
+    blocker_reason: "graph_mutation_writer_missing",
+    graph_mutation_allowed: false,
+    graph_mutated: false,
+    source_receipts_created: false,
+    retrieval_performed: false,
+    provider_calls_made: false,
+    budget_reserved: false,
+    dispatch_performed: false,
+    final_artifact_created: false,
+    graph_notes: ["graph mutation gate only: graph writer is not configured"],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -521,5 +557,43 @@ describe("MidnightOil", () => {
     expect(screen.getByText("blocked retrieval executor disabled")).toBeTruthy();
     expect(screen.getByText("retrieval executor missing")).toBeTruthy();
     expect(screen.getAllByText("none").length).toBeGreaterThan(2);
+
+    await user.click(screen.getByRole("button", { name: "Graph mutation" }));
+
+    await waitFor(() => expect(graphMutationMidnightOil).toHaveBeenCalled());
+    expect(graphMutationMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      applied_run_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-applied-run-receipt",
+      }),
+      dispatch_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-dispatch-receipt",
+      }),
+      activation_checklist_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-activation-checklist",
+      }),
+      budget_reservation_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-budget-reservation",
+      }),
+      provider_route_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-provider-route",
+      }),
+      retrieval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-retrieval",
+      }),
+    });
+    expect(screen.getByText("Graph receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-graph-mutation")).toBeTruthy();
+    expect(screen.getByText("blocked graph mutation disabled")).toBeTruthy();
+    expect(screen.getByText("graph mutation writer missing")).toBeTruthy();
+    expect(screen.getByText("not mutated")).toBeTruthy();
   });
 });
