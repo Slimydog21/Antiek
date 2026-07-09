@@ -22,11 +22,21 @@ describe("marketplaceHost client", () => {
         entries: [{ book_id: "pd-pride", title: "Pride", author: "A", license_class: "public_domain", is_free: true, source: "se" }],
         count: 1,
         view_format: "html",
+        // Residual (it/iq): honesty fields from catalog route.
+        by_source: { se: 1 },
+        public_domain_count: 1,
+        purchased_count: 0,
+        free_count: 1,
+        payment_rails: "manual_receipt_only",
       }),
     });
     const out = await fetchMarketplaceCatalog();
     expect(out.count).toBe(1);
     expect(out.view_format).toBe("html");
+    expect(out.by_source?.se).toBe(1);
+    expect(out.public_domain_count).toBe(1);
+    expect(out.free_count).toBe(1);
+    expect(out.payment_rails).toBe("manual_receipt_only");
   });
 
   it("hostBookIntoAccount posts host", async () => {

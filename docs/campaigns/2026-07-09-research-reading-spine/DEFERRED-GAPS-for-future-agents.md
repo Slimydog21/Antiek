@@ -28,7 +28,9 @@ hydrate/twin/MO live-status readiness surfaces, offline-honest identity paths.
 1. TwinNotes/ResearchContext/MO deep-links complete (ia/ib); optional MO → Settings budget deep-link.
 2. Competitive long-horizon wrestle progress polish when live step inject lands.
 3. Antiek-bench recursive rewrite already propose-only — keep feed sources + task classes honest.
-4. HTML-first marketplace catalog expansion (sources) without payment rails.
+4. HTML-first marketplace catalog expansion (sources) without payment rails —
+   **partially closed (io–is)**: knowledge-dense PD spine + by_source honesty +
+   free-PD filter; live external catalog connectors still deferred.
 
 ## Invariants (hard to vary)
 
