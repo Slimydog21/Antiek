@@ -1,0 +1,8 @@
+# residual (du) campaign competitive notes refresh (cx–dt closed)
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(dt) prior | branch_only | campaign inventories
+(du) notes refresh | branch_only | competitive-deep-research-notes.md updated for do–dt
+
+NEXT: (dv) re-derive product residual; operator merge PR #465
