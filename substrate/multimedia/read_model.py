@@ -8,6 +8,7 @@ JSON-backed records.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import tempfile
 import uuid
@@ -86,6 +87,23 @@ class LiveProviderExecutionRequest(_ReadModelBase):
     dry_run_revision_id: str | None = None
 
 
+class LiveProviderExecutionPlan(_ReadModelBase):
+    """Worker handoff snapshot for a queued live-provider attempt.
+
+    The read model is still no-spend: this plan is deterministic metadata for a
+    later worker, not permission to call Krea. Persisting it with the queued job
+    prevents future workers from re-reading mutable UI state after approval.
+    """
+
+    execution_id: str
+    asset_id: str
+    revision_id: str
+    route_policy: RoutePolicy
+    max_budget_usd: float = Field(gt=0, le=500)
+    provider_families: tuple[str, ...]
+    idempotency_key: str
+
+
 class MultimediaJobRecord(_ReadModelBase):
     """Durable progress record for one multimedia operation.
 
@@ -105,6 +123,7 @@ class MultimediaJobRecord(_ReadModelBase):
     message: str
     error_code: str | None = None
     retryable: bool | None = None
+    execution_plan: LiveProviderExecutionPlan | None = None
 
 
 class MultimediaAssetSummary(_ReadModelBase):
@@ -369,6 +388,7 @@ class MultimediaAssetStore:
                 retryable=False,
             )
         families = ", ".join(request.provider_families or ("none",))
+        execution_plan = _live_execution_plan(record, request)
         return self.record_job(
             asset_id,
             kind="provider_execution",
@@ -379,6 +399,7 @@ class MultimediaAssetStore:
                 f"and max budget ${request.max_budget_usd:.2f}."
             ),
             retryable=True,
+            execution_plan=execution_plan,
         )
 
     def record_job(
@@ -391,6 +412,7 @@ class MultimediaAssetStore:
         message: str,
         error_code: str | None = None,
         retryable: bool | None = None,
+        execution_plan: LiveProviderExecutionPlan | None = None,
     ) -> MultimediaAssetRecord:
         """Append an arbitrary job row (failed/partial provider jobs, retries).
 
@@ -407,6 +429,7 @@ class MultimediaAssetStore:
             message=message,
             error_code=error_code,
             retryable=retryable,
+            execution_plan=execution_plan,
         )
         self.save(updated)
         return updated
@@ -426,6 +449,7 @@ class MultimediaAssetStore:
         message: str,
         error_code: str | None = None,
         retryable: bool | None = None,
+        execution_plan: LiveProviderExecutionPlan | None = None,
     ) -> MultimediaAssetRecord:
         sequence = max((job.sequence for job in record.jobs), default=0) + 1
         job = MultimediaJobRecord(
@@ -439,6 +463,7 @@ class MultimediaAssetStore:
             message=message,
             error_code=error_code,
             retryable=retryable,
+            execution_plan=execution_plan,
         )
         return record.model_copy(update={"jobs": record.jobs + (job,)})
 
@@ -492,6 +517,33 @@ def _estimated_live_budget_floor(record: MultimediaAssetRecord) -> float:
     return max(ledger_total, duration_estimate)
 
 
+def _live_execution_plan(
+    record: MultimediaAssetRecord,
+    request: LiveProviderExecutionRequest,
+) -> LiveProviderExecutionPlan:
+    families = tuple(family.strip().lower() for family in request.provider_families)
+    fingerprint = _stable_fingerprint(
+        record.asset.asset_id,
+        record.asset.revision_id,
+        request.route_policy,
+        f"{request.max_budget_usd:.2f}",
+        ",".join(families),
+    )
+    return LiveProviderExecutionPlan(
+        execution_id=f"exec-{fingerprint[:16]}",
+        asset_id=record.asset.asset_id,
+        revision_id=record.asset.revision_id,
+        route_policy=request.route_policy,
+        max_budget_usd=round(request.max_budget_usd, 2),
+        provider_families=families,
+        idempotency_key=f"multimedia-live:{fingerprint}",
+    )
+
+
+def _stable_fingerprint(*parts: str) -> str:
+    return hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()
+
+
 _KNOWN_PROVIDER_FAMILIES = frozenset({"krea"})
 
 
@@ -515,6 +567,7 @@ def _missing_provider_families(provider_families: tuple[str, ...]) -> tuple[str,
 
 __all__ = [
     "CreateMultimediaDraftRequest",
+    "LiveProviderExecutionPlan",
     "LiveProviderExecutionRequest",
     "MultimediaAssetList",
     "MultimediaAssetRecord",

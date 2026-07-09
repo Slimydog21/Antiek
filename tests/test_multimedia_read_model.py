@@ -304,6 +304,67 @@ def test_live_provider_budget_gates_without_paid_calls(tmp_path, monkeypatch):
     assert queued.jobs[-1].status == "queued"
     assert queued.jobs[-1].kind == "provider_execution"
     assert queued.jobs[-1].retryable is True
+    assert queued.jobs[-1].execution_plan is not None
+    assert queued.jobs[-1].execution_plan.asset_id == asset_id
+    assert queued.jobs[-1].execution_plan.revision_id == draft.asset.revision_id
+    assert queued.jobs[-1].execution_plan.route_policy == "balanced"
+    assert queued.jobs[-1].execution_plan.max_budget_usd == 25
+    assert queued.jobs[-1].execution_plan.provider_families == ("krea",)
+    assert queued.jobs[-1].execution_plan.idempotency_key.startswith("multimedia-live:")
     # No secret value ever appears in any job message.
     for job in queued.jobs:
         assert "presence-only-not-a-real-secret" not in job.message
+        dumped = job.model_dump_json()
+        assert "presence-only-not-a-real-secret" not in dumped
+
+    reloaded = MultimediaAssetStore(tmp_path).list_jobs(asset_id)
+    assert reloaded.jobs[-1].execution_plan == queued.jobs[-1].execution_plan
+
+
+def test_live_execution_plan_serializes_through_multimedia_api(tmp_path, monkeypatch):
+    monkeypatch.setattr(multimedia_routes, "_STORE", MultimediaAssetStore(tmp_path))
+    monkeypatch.setenv("KREA_API_KEY", "presence-only-not-a-real-secret")
+    app = FastAPI()
+    multimedia_routes.register_multimedia_routes(app)
+    client = TestClient(app)
+
+    created = client.post(
+        "/multimedia/assets",
+        json={
+            "topic": "Ken Burns style history of the 747",
+            "target_minutes": 20,
+            "mode": "video",
+            "route_policy": "balanced",
+            "sources": ["The 747 changed route economics and airport design."],
+        },
+    )
+    assert created.status_code == 201
+    asset_id = created.json()["asset"]["asset_id"]
+    revision_id = created.json()["asset"]["revision_id"]
+    assert client.post(f"/multimedia/assets/{asset_id}/approve-dry-run").status_code == 200
+
+    prepared = client.post(
+        f"/multimedia/assets/{asset_id}/prepare-live-execution",
+        json={
+            "max_budget_usd": 30,
+            "route_policy": "balanced",
+            "operator_acknowledged_spend": True,
+            "provider_families": ["KREA"],
+            "dry_run_revision_id": revision_id,
+        },
+    )
+
+    assert prepared.status_code == 200
+    job = prepared.json()["jobs"][-1]
+    plan = job["execution_plan"]
+    assert job["status"] == "queued"
+    assert plan["asset_id"] == asset_id
+    assert plan["revision_id"] == revision_id
+    assert plan["route_policy"] == "balanced"
+    assert plan["provider_families"] == ["krea"]
+    assert plan["idempotency_key"].startswith("multimedia-live:")
+    assert "presence-only-not-a-real-secret" not in prepared.text
+
+    jobs = client.get(f"/multimedia/assets/{asset_id}/jobs")
+    assert jobs.status_code == 200
+    assert jobs.json()["jobs"][-1]["execution_plan"] == plan
