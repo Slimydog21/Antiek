@@ -574,3 +574,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (pl, 2026-07-10) **DR host driver badge promptText:**
   - selection + goal → DecisionTreeDriverBadge
   - completes cost foresight matrix across all engagement hosts
+
+- Closed (pm, 2026-07-10) **SESSION-ARC om–pl full session wave:**
+  - SESSION-ARC-om-pl-session-wave.md fleet handoff
+  - engagement · MO pubs · bench · driver foresight
