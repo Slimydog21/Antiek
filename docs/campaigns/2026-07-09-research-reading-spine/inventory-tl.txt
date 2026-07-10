@@ -1,0 +1,15 @@
+# inventory-tl · Future-agent tip re-anchor after ta–tk
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: tl
+date: 2026-07-10
+tip: 1285099b
+
+## Closed
+- FUTURE-AGENT-SPEC tip → 1285099b
+- Arc table marketplace free honesty → ta–tk
+
+## Next product residual tm
+Pivot outside marketplace free honesty saturation.
+
+## Not in scope
+- Operator merge PR #465 (gated)
