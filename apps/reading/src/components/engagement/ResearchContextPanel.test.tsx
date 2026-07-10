@@ -786,12 +786,34 @@ describe("ResearchContextPanel", () => {
     expect(
       screen.getByTestId("evidence-citation-chain-hop-strip").textContent,
     ).toMatch(/Insights.*→.*Source/i);
+    // Residual (amc): hop strip deep-links stage sections.
+    const stripInsights = screen.getByTestId(
+      "evidence-citation-hop-strip-link-insights",
+    );
+    expect(stripInsights.getAttribute("href")).toBe(
+      "#citation-hop-stage-insights",
+    );
+    expect(stripInsights.getAttribute("data-stage-anchor")).toBe(
+      "citation-hop-stage-insights",
+    );
+    const stripSources = screen.getByTestId(
+      "evidence-citation-hop-strip-link-sources",
+    );
+    expect(stripSources.getAttribute("href")).toBe(
+      "#citation-hop-stage-sources",
+    );
     expect(
       screen.getByTestId("evidence-citation-hop-stage-insights"),
     ).toBeTruthy();
     expect(
+      screen.getByTestId("evidence-citation-hop-stage-insights").getAttribute("id"),
+    ).toBe("citation-hop-stage-insights");
+    expect(
       screen.getByTestId("evidence-citation-hop-stage-sources"),
     ).toBeTruthy();
+    expect(
+      screen.getByTestId("evidence-citation-hop-stage-sources").getAttribute("id"),
+    ).toBe("citation-hop-stage-sources");
     const insightItem = screen.getByTestId(
       "evidence-citation-hop-item-evidence-insight-0",
     );

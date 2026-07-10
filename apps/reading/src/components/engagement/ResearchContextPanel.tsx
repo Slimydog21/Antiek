@@ -810,33 +810,58 @@ export function ResearchContextPanel({
               data-hop-stage-count={String(evidence.citation_chain!.length)}
               aria-label="Citation chain multi-hop navigation"
             >
-              <p className="opacity-80" data-testid="evidence-citation-chain-hop-strip">
-                Hops:{" "}
-                {(evidence.citation_chain || [])
-                  .map(
-                    (h) =>
-                      `${h.label || h.hop}(${h.count ?? (h.items || []).length})`,
-                  )
-                  .join(" → ")}
-                {" · "}
-                <a
-                  href="/settings#settings-competitive-dr-scorecard"
-                  data-testid="evidence-citation-hops-scorecard-link"
-                  className="underline opacity-90 hover:opacity-100"
-                  title="Multi-hop hop navigation honesty on Settings competitive DR scorecard (air/ais)"
-                >
-                  scorecard · multi-hop hops
-                </a>
+              {/* Residual (amc): hop strip deep-links stage sections (multi-hop nav). */}
+              <p
+                className="opacity-80 flex flex-wrap items-center gap-x-1 gap-y-0.5"
+                data-testid="evidence-citation-chain-hop-strip"
+              >
+                <span className="opacity-80">Hops: </span>
+                {(evidence.citation_chain || []).map((h, si) => {
+                  const hopId = String(h.hop || si);
+                  const stageAnchor = `citation-hop-stage-${hopId}`;
+                  const label = `${h.label || h.hop}(${h.count ?? (h.items || []).length})`;
+                  return (
+                    <span key={`strip-${hopId}-${si}`}>
+                      {si > 0 ? (
+                        <span className="opacity-60" aria-hidden>
+                          {" → "}
+                        </span>
+                      ) : null}
+                      <a
+                        href={`#${stageAnchor}`}
+                        data-testid={`evidence-citation-hop-strip-link-${hopId}`}
+                        data-hop={hopId}
+                        data-stage-anchor={stageAnchor}
+                        className="underline-offset-2 hover:underline"
+                        title={`Jump to citation hop stage: ${h.label || h.hop}`}
+                      >
+                        {label}
+                      </a>
+                    </span>
+                  );
+                })}
+                <span className="opacity-70">
+                  {" · "}
+                  <a
+                    href="/settings#settings-competitive-dr-scorecard"
+                    data-testid="evidence-citation-hops-scorecard-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="Multi-hop hop navigation honesty on Settings competitive DR scorecard (air/ais)"
+                  >
+                    scorecard · multi-hop hops
+                  </a>
+                </span>
               </p>
               {(evidence.citation_chain || []).map((stage, si) => (
                 <section
                   key={`hop-stage-${stage.hop || si}`}
+                  id={`citation-hop-stage-${stage.hop || si}`}
                   data-testid={`evidence-citation-hop-stage-${stage.hop || si}`}
                   data-hop={String(stage.hop || "")}
                   data-hop-count={String(
                     stage.count ?? (stage.items || []).length,
                   )}
-                  className="border border-emperor/20 rounded px-2 py-1 space-y-1"
+                  className="border border-emperor/20 rounded px-2 py-1 space-y-1 scroll-mt-4"
                 >
                   <h4 className="font-semibold opacity-90">
                     {stage.label || stage.hop}

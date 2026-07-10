@@ -1,0 +1,16 @@
+# inventory-amc · citation chain hop strip deep-links stage sections
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: amc
+date: 2026-07-10
+parent_tip: 2728f209 (amb)
+
+## Closed
+- evidence-citation-hop-strip-link-{hop} → #citation-hop-stage-{hop}
+- Stage sections id=citation-hop-stage-* · scroll-mt-4
+- Competitive multi-hop nav: strip → stage (no invented edges)
+- vitest ResearchContext 17 green
+- proof: SCRATCH residual-amc-vitest.log
+
+## Next
+amd+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

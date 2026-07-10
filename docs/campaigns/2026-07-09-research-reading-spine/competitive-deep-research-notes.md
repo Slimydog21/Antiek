@@ -3341,3 +3341,8 @@ P0 operator merge PR #465. Pivot amb+ outside thrash.
 ## Residual amb · 2026-07-10 — SESSION-ARC alx–ama marketplace host substrate complete
 Wave handoff: marketplace host land TwinNotes · ResearchContext · promote remount ·
 seed remount. P0 operator merge PR #465. Pivot amc+ outside thrash.
+
+## Residual amc · 2026-07-10 — citation chain hop strip deep-links stage sections
+Multi-hop citation strip links Insights → Questions → Sources stage sections
+(#citation-hop-stage-*) for competitive claim→source navigation. vitest
+ResearchContext 17 green. P0 operator merge PR #465. Pivot amd+ outside thrash.
