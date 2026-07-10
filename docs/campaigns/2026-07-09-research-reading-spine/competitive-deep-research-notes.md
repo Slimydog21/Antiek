@@ -1190,3 +1190,7 @@ suite-competitive-dogfood-v7 adds dogfood-wrestle-citation-trust-ungrounded.
 Settings posture honesty. Competitive delta: Antiek-bench recursive rewrite
 learns ungrounded → dual-gate hydrate prep as a first-class wrestle task
 (propose≠promote · never invent live bodies).
+
+## Residual ut · 2026-07-10 — FUTURE-AGENT tip re-anchor through us
+FUTURE-AGENT-SPEC tip → 9bc669dc with closed arcs tt–us (26 residual ships).
+Competitive delta: swarm handoff tip-true after dogfood v7 citation-trust wave.

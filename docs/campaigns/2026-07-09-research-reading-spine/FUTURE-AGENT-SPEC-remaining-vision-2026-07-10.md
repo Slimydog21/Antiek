@@ -1,35 +1,36 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** `5ec87cc5` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465**  
+**Campaign tip at write:** `9bc669dc` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **Audience:** next agent swarm (grok / codex / mimo / glm-cc) with zero session memory  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
 
 ## Do not rebuild
 
-Prefer **inventory-uq.txt** + `SESSION-ARC-tt-un-write-seed-stem-select-moil.md` + competitive notes. Tip letters **tt–uq** (24 commits this infinite wave after tt).
+Prefer **inventory-us.txt** + SESSION-ARC-tt-un + competitive notes. Tip letters **tt–us** (26 residual ships).
 
-### Closed arcs (tt–uq)
+### Closed (tt–us) product map
 
-| Arc | Residuals |
-|---|---|
-| Write-seed SSOT + allowlist + dogfood | tt–tu, tv |
-| Free STEM (Boole, Heaviside) + dogfood v5–v6 | tx–tz, ub–ud |
-| Select open multi-float matrix | ue–uf |
-| MO L4 prep + ceiling remaining-after | uh, um–un |
-| arxiv/substack hydrate prep honesty | uj–uk, up–uq |
-| Swarm handoff | tw, ua, ug, ul, uo, ur |
+| Arc | Residuals | What |
+|---|---|---|
+| Write-seed SSOT | **tt–tu, tv** | catalog 15 · allowlist · dogfood v4 collective unit |
+| Free STEM books | **tx–tz, ub–ud** | Boole computing · Heaviside electricity · dogfood v5–v6 |
+| Multi-float Select open | **ue–uf** | openSpawnIds all surfaces |
+| MO autonomous foresight | **uh, um–un** | L4 deep-link · remaining-after recommended+custom |
+| arxiv/substack honesty | **uj–uk, up–uq, us** | Hosted+ResearchThis+evidence+attach prep · dogfood v7 |
+| Swarm handoff | **tw, ua, ug, ul, uo, ur, ut** | FUTURE-AGENT tip re-anchors |
 
-### P0 — Operator merge PR #465 (agents never main/prod)
+### P0 — Operator merge PR #465
+https://github.com/Slimydog21/Antiek/pull/465 — agents never merge main/prod.
 
 ### P2 — Dual-gate live injectors (operator-only)
-L1–L4 offline default · L5 payment · L6 live multi-agent · L7 ND **never** router
+L1 arxiv · L2 Substack · L3 twin seed · L4 MO live step · L5 payment · L6 live multi-agent · L7 ND **never** router
 
-### P1 next offline (residual **us+**)
-Prefer product outside saturated hydrate-prep / MO ceiling / catalog thrash:
-- twin recursive note-taker polish if real gap
-- competitive citation grounded-path polish
-- new domain only with clear north-star leverage
+### P1 next offline (residual **uu+**)
+Outside saturated dogfood/MO/hydrate/catalog:
+- recursive twin note-taker polish if real gap found by inventory
+- competitive grounded citation path polish
+- new free PD domain only with clear tech-researcher leverage
 
 ## Doctrine
 One residual letter/cycle · inventory-first · green tests · campaign push only · complete work never complete goal · Infinite until STOP.
