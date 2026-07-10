@@ -2389,3 +2389,7 @@ vitest ResearchLaunchBudgetPanel 12 green.
 Driver badge on reading/research hosts surfaces Antiek-bench weekly best model
 for depth→task_class (parity launch afb). Advisory only · never auto-routes.
 vitest DecisionTreeDriverBadge 12 green.
+
+## Residual afd · 2026-07-10 — SESSION-ARC afb–afc model quality at fire
+Handoff: Antiek-bench best-by-task advisory at launch (afb) and driver badge
+(afc). Advisory only. P0 operator merge PR #465. Pivot afe+ outside thrash.
