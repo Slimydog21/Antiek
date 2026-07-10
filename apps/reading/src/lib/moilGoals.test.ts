@@ -3,6 +3,7 @@ import {
   appendMoilGoalTemplate,
   MOIL_GOAL_TEMPLATES,
   goalsExceedFanout,
+  moilDepositHtmlReadiness,
   moilPlanReadiness,
   parseMoilGoalLines,
   recommendedFanoutForGoals,
@@ -79,5 +80,41 @@ describe("moilGoals (aof)", () => {
     expect(ready.plan_ready).toBe(true);
     expect(ready.goals_exceed_fanout).toBe(false);
     expect(ready.summary).toMatch(/plan ready/i);
+  });
+
+  it("computes deposit HTML open readiness (ate)", () => {
+    expect(moilDepositHtmlReadiness({}).deposit_html_ready).toBe(false);
+    expect(
+      moilDepositHtmlReadiness({ view_format: "pdf", html: "<p>x</p>" })
+        .view_format_html,
+    ).toBe(false);
+    expect(
+      moilDepositHtmlReadiness({
+        view_format: "html",
+        html: "   ",
+        document_id: "doc_1",
+      }).has_html_body,
+    ).toBe(false);
+    expect(
+      moilDepositHtmlReadiness({
+        view_format: "html",
+        html: "<p>body</p>",
+      }).has_document_id,
+    ).toBe(false);
+    const ready = moilDepositHtmlReadiness({
+      view_format: "html",
+      html: "<p>Deposited</p>",
+      document_id: "draft_moil_1",
+    });
+    expect(ready.deposit_html_ready).toBe(true);
+    expect(ready.summary).toMatch(/html deposit ready/i);
+    expect(ready.open_title).toMatch(/never PDF/i);
+    const noId = moilDepositHtmlReadiness({
+      view_format: "html",
+      html: "<p>x</p>",
+      document_id: "",
+    });
+    expect(noId.deposit_html_ready).toBe(false);
+    expect(noId.open_title).toMatch(/document_id missing/i);
   });
 });

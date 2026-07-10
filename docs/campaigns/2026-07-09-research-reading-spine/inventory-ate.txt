@@ -1,0 +1,22 @@
+# inventory-ate · pure moilDepositHtmlReadiness for deposit open CTAs
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ate
+date: 2026-07-10
+parent_tip: fc77c7a66 (atd)
+
+## Closed
+- moilGoals.moilDepositHtmlReadiness pure helper
+  view_format_html · has_html_body · has_document_id · deposit_html_ready · summary · open_title
+- MidnightOil deposit open actions use pure helper (parity plan ara)
+- data-deposit-open-summary stamp on open-actions group
+- vitest moilGoals 8 + MidnightOil 30 = 38 green
+
+## Doctrine
+Hard-to-vary pure contract: goals+duration plan readiness (ara) + deposit HTML
+open readiness (ate) · never invent PDF/empty/missing-id open · L4 deferred
+
+## Next
+atf+ offline product residual outside thrash
+Avoid: MO deposit readiness thrash after ata/ate · vision feeds · HostedHtml honesty ·
+presets · path-choices · usage-source · dogfood · readiness→CTA stamp waves
+Operator merge PR #465 remains P0 (gated)

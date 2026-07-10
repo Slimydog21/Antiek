@@ -4276,3 +4276,9 @@ VISION_USAGE_FEED_SOURCES += research_progress_complete · session_flywheel_comp
 · twin_cross_asset_merge. wrestle/synthesize task_class maps updated.
 Recursive rewrite tracks asx–atc product wave. vitest suiteProposalTasks 9 green.
 P0 PR #465. Pivot ate+.
+
+## Residual ate · 2026-07-10 — pure moilDepositHtmlReadiness
+moilDepositHtmlReadiness: view_format=html ∧ body ∧ document_id → open ready.
+MidnightOil deposit open CTAs use pure helper (parity plan ara). summary +
+open_title honesty. vitest moilGoals 8 · MidnightOil 30 green. P0 PR #465.
+Pivot atf+.

@@ -1,6 +1,6 @@
 # SESSION-ARC asx–atb · long-horizon progress · agentic pubs · MO open · flywheel
 
-**Wave tip:** residual **atb** · tip `7894b235` (parent chain to asx) · PR **#465**  
+**Wave tip:** residual **ate** · tip (see git log) (parent chain to asx) · PR **#465**  
 **Bar:** Hawkins craft · HTML-first · offline-honest · never invent hops/L3/L4
 
 ## Residuals closed this wave
@@ -12,6 +12,9 @@
 | **asz** | HostedHtml research_progress complete/draft honesty + twin Port path |
 | **ata** | Midnight Oil deposit open float\|full HTML-first deliverable stamps |
 | **atb** | HostedHtml session_flywheel_complete honesty + twin Port path |
+| **atc** | HostedHtml twin_cross_asset_merge honesty + Port path |
+| **atd** | Antiek-bench vision feeds progress · flywheel · twin cross-asset |
+| **ate** | pure moilDepositHtmlReadiness for deposit open CTAs |
 
 ## Competitive delta
 1. Multi-stage plan→cite honesty travels open path → HTML host land.
