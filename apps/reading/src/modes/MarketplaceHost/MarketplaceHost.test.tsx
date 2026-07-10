@@ -862,6 +862,21 @@ describe("MarketplaceHost mode", () => {
     expect(
       (screen.getByTestId("catalog-filter") as HTMLInputElement).placeholder,
     ).toMatch(/subject/i);
+    // Residual (ta): filtered free honesty vs full-catalog free_count.
+    const metrics = screen.getByTestId("marketplace-catalog-metrics");
+    expect(metrics.getAttribute("data-filters-active")).toBe("true");
+    expect(metrics.getAttribute("data-free-count")).toBe("1");
+    expect(metrics.getAttribute("data-filtered-free-count")).toBe("1");
+    expect(metrics.getAttribute("data-filtered-public-domain-count")).toBe("1");
+    const honesty = screen.getByTestId(
+      "marketplace-catalog-filtered-free-honesty",
+    );
+    expect(honesty.getAttribute("data-filtered-free-count")).toBe("1");
+    expect(honesty.getAttribute("data-catalog-free-count")).toBe("1");
+    expect(honesty.getAttribute("data-free-pd-only")).toBe("true");
+    expect(honesty.textContent).toMatch(/visible_free=1/);
+    expect(honesty.textContent).toMatch(/catalog_free=1/);
+    expect(honesty.textContent).toMatch(/free-PD-only=on/);
   });
 
   it("groups catalog entries by research subject (lw)", () => {
@@ -1113,9 +1128,30 @@ describe("MarketplaceHost mode", () => {
     // Compose with free-PD still shows gutenberg PD.
     fireEvent.click(screen.getByTestId("catalog-free-pd-only"));
     expect(screen.getByTestId("catalog-entry-pd-elements")).toBeTruthy();
+    // Residual (ta): source + free-PD filters stamp filtered free honesty.
+    const metrics = screen.getByTestId("marketplace-catalog-metrics");
+    expect(metrics.getAttribute("data-filters-active")).toBe("true");
+    expect(metrics.getAttribute("data-source-filter")).toBe(
+      "project_gutenberg",
+    );
+    expect(metrics.getAttribute("data-filtered-free-count")).toBe("1");
+    expect(metrics.getAttribute("data-free-count")).toBe("2");
+    expect(
+      screen.getByTestId("marketplace-catalog-filtered-free-honesty")
+        .textContent,
+    ).toMatch(/visible_free=1/);
+    expect(
+      screen.getByTestId("marketplace-catalog-filtered-free-honesty")
+        .textContent,
+    ).toMatch(/catalog_free=2/);
     // Clear source → free-PD shows pride too.
     fireEvent.click(screen.getByTestId("catalog-source-all"));
     expect(screen.getByTestId("catalog-entry-pd-pride")).toBeTruthy();
     expect(screen.queryByTestId("purchase-host-buy-modern")).toBeNull();
+    expect(
+      screen
+        .getByTestId("marketplace-catalog-metrics")
+        .getAttribute("data-filtered-free-count"),
+    ).toBe("2");
   });
 });

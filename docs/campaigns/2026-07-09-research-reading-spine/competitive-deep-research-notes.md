@@ -959,3 +959,9 @@ Settings mounts Midnight Oil live-step readiness panel (parity hydrate L1–L2
 and twin seed L3). Offline-honest by default; dual-gate L4 link targets the
 panel. Competitive delta: autonomous research mode readiness is visible in
 the same Settings surface as model driver choice — without silent live enable.
+
+## Residual ta · 2026-07-10 — Marketplace filtered free-PD honesty
+Catalog metrics stamp visible_free under active free-PD/subject/source/text
+filters while preserving full-catalog free_count from server honesty.
+Competitive delta: free research spine browsing never confuses filtered
+list size with whole-catalog free inventory — HTML host only, no live rails.

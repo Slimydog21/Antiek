@@ -55,6 +55,8 @@
  * recursive note-taker substrate after host.
  * Residual (mp): deep research goal_hint + prompt preview include catalog
  * subjects so DR inherits research-domain context (reading ≡ research).
+ * Residual (ta): filtered free-PD honesty — visible free among filtered
+ * rows vs full-catalog free_count when free-only/subject/source/text filters on.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -237,6 +239,34 @@ export default function MarketplaceHost({
   const sourceChipList = useMemo(() => {
     return Object.keys(catalogBySource).sort((a, b) => a.localeCompare(b));
   }, [catalogBySource]);
+
+  /**
+   * Residual (ta): free-PD honesty under active filters.
+   * Full-catalog free_count stays server honesty; filtered free is what the
+   * operator sees in the list right now (never invent free when paid-only).
+   */
+  const catalogFreeCount = useMemo(() => {
+    if (catalogHonesty?.free_count != null) return catalogHonesty.free_count;
+    return entries.filter((e) => e.is_free).length;
+  }, [catalogHonesty?.free_count, entries]);
+
+  const filteredFreeCount = useMemo(() => {
+    return filteredEntries.filter((e) => e.is_free).length;
+  }, [filteredEntries]);
+
+  const filteredPublicDomainCount = useMemo(() => {
+    return filteredEntries.filter((e) => e.license_class === "public_domain")
+      .length;
+  }, [filteredEntries]);
+
+  const catalogFiltersActive = useMemo(() => {
+    return (
+      freePdOnly ||
+      Boolean(subjectFilter.trim()) ||
+      Boolean(sourceFilter.trim()) ||
+      Boolean(filterQuery.trim())
+    );
+  }, [freePdOnly, subjectFilter, sourceFilter, filterQuery]);
 
   const filteredLibraryDocs = useMemo(() => {
     const q = libraryFilter.trim().toLowerCase();
@@ -1012,10 +1042,10 @@ export default function MarketplaceHost({
           catalogHonesty?.public_domain_count ??
             entries.filter((e) => e.license_class === "public_domain").length,
         )}
-        data-free-count={String(
-          catalogHonesty?.free_count ??
-            entries.filter((e) => e.is_free).length,
-        )}
+        data-free-count={String(catalogFreeCount)}
+        data-filtered-free-count={String(filteredFreeCount)}
+        data-filtered-public-domain-count={String(filteredPublicDomainCount)}
+        data-filters-active={String(catalogFiltersActive)}
         data-honesty-source={
           catalogHonesty?.by_source ? "server" : "client"
         }
@@ -1033,12 +1063,32 @@ export default function MarketplaceHost({
           Catalog · entries={entries.length} · filtered={filteredEntries.length}{" "}
           · sources={Object.keys(catalogBySource).length} · subjects=
           {Object.keys(catalogBySubject).length} · free=
-          {catalogHonesty?.free_count ??
-            entries.filter((e) => e.is_free).length}{" "}
+          {catalogFreeCount}{" "}
           · human view=HTML · payment=
           {catalogHonesty?.payment_rails || "manual_receipt_only"} (no live
           rails)
         </p>
+        {/* Residual (ta): free-PD honesty under active filters. */}
+        {catalogFiltersActive ? (
+          <p
+            data-testid="marketplace-catalog-filtered-free-honesty"
+            data-filtered-free-count={String(filteredFreeCount)}
+            data-catalog-free-count={String(catalogFreeCount)}
+            data-filtered-public-domain-count={String(
+              filteredPublicDomainCount,
+            )}
+            data-free-pd-only={String(freePdOnly)}
+            role="status"
+          >
+            Filtered free honesty: visible_free={filteredFreeCount} ·
+            catalog_free={catalogFreeCount} · visible_pd=
+            {filteredPublicDomainCount}
+            {freePdOnly ? " · free-PD-only=on" : ""}
+            {subjectFilter ? ` · subject=${subjectFilter}` : ""}
+            {sourceFilter ? ` · source=${sourceFilter}` : ""}
+            {" · HTML host path only (no live payment rails)"}
+          </p>
+        ) : null}
         {Object.keys(catalogBySource).length > 0 ? (
           <p data-testid="marketplace-catalog-by-source">
             By source:{" "}

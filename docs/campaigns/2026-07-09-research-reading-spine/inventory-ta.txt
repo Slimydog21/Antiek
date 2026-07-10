@@ -1,0 +1,23 @@
+# inventory-ta · Marketplace filtered free-PD honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ta
+date: 2026-07-10
+
+## Closed
+- marketplace-catalog-metrics:
+  - data-filtered-free-count
+  - data-filtered-public-domain-count
+  - data-filters-active
+- marketplace-catalog-filtered-free-honesty strip when any filter active:
+  visible_free vs catalog_free (full-catalog honesty preserved)
+- free-PD-only + subject/source composition stamps honesty
+- vitest MarketplaceHost 13 · SCRATCH residual-tests-ta.log
+
+## Product why
+Operators browsing free public-domain research books must not confuse
+full-catalog free_count with the filtered list under free-PD / domain /
+source chips. HTML host path only; no live payment rails.
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live payment rails (L5)
