@@ -1,0 +1,20 @@
+# inventory-afo · dogfood v16 select-open + unit-restore path
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: afo
+date: 2026-07-10
+parent_tip: 7e840576 (afn)
+
+## Closed
+- COMPETITIVE_DOGFOOD_VERSION → suite-competitive-dogfood-v16
+- dogfood-wrestle-select-open-path
+- dogfood-wrestle-unit-restore-path
+- Settings spine postures (v16) + data-has-select-open-path-posture ·
+  data-has-unit-restore-path-posture
+- pytest dogfood 5 · vitest Settings 36
+
+## Why this residual
+Bench recursive rewrite learns multi-spawn assembly (Select open) + unit
+membership restore after afn/afl product honesty. Outside select-control thrash.
+
+## Not in scope
+- Live L1–L4 · L6 council · auto-promote

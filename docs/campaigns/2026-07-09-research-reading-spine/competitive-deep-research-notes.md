@@ -2446,3 +2446,8 @@ open-in-available · L6 deferred. After click: last-select-mode=open on controls
 + selection count + path status (parent_asset_id · seamless select open copy).
 Multi-spawn assembly open-window path is machine-readable (parity afl restore).
 vitest CollectiveResearchPanel 26 green.
+
+## Residual afo · 2026-07-10 — dogfood v16 select-open + unit-restore
+Suite suite-competitive-dogfood-v16 adds wrestle fixtures for Select open path
+(afn) and restore last unit path (afl). Settings spine postures v16 + summary
+attrs. pytest dogfood 5 · Settings 36 green. propose≠promote.

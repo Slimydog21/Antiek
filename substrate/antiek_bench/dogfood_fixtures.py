@@ -27,7 +27,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (adn): v13 adds wrestle write-seed has-body honesty (title-only → rewrite).
 # Residual (aeu): v14 learns seamless Write path + intelligent search/evidence.
 # Residual (afi): v15 learns written analysis Open Write source + unit continue path.
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v15"
+# Residual (afo): v16 learns Select open multi-select assembly + unit restore path.
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v16"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -404,6 +405,44 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "collective",
                 "seamless",
                 "parent",
+                "deferred",
+            ),
+        ),
+        # Residual (afo/afn): Select open multi-select assembly path honesty.
+        SuiteItem(
+            item_id="dogfood-wrestle-select-open-path",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with Select open multi-select assembly path honesty: when "
+                "Select open stamps data-seamless-select-open · data-last-select-mode=open "
+                "· data-open-in-available and excludes closed recent-only spawns, how "
+                "should Antiek-bench weekly rewrite learn which models keep open-window "
+                "cohesive unit prep machine-readable without inventing L6 live council?"
+            ),
+            expected_keywords=(
+                "select",
+                "open",
+                "seamless",
+                "multi-select",
+                "deferred",
+            ),
+        ),
+        # Residual (afo/afl): restore last unit membership path honesty.
+        SuiteItem(
+            item_id="dogfood-wrestle-unit-restore-path",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with restore last unit path honesty: when Restore last unit "
+                "stamps data-seamless-unit-restore and membership status action=restored "
+                "intersects sessionStorage spawn_ids with available list, how should the "
+                "workstation re-open multi-select cohesive unit membership without claiming "
+                "L6 live multi-agent council is online?"
+            ),
+            expected_keywords=(
+                "restore",
+                "unit",
+                "seamless",
+                "membership",
                 "deferred",
             ),
         ),
