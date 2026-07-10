@@ -19,6 +19,7 @@ import {
   isWriteSeedFeedSource,
 } from "../../lib/writeSeedFeedSources";
 import { competitiveDrOfflineSurfaceCatalog } from "../../workspace/competitiveDrQuality";
+import { decisionTreeInstallReadiness } from "../../workspace/decisionTreeInstallReadiness";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import {
@@ -82,6 +83,8 @@ import {
  * prompt-cost-projection panel (parity launch wa / badge pg / MO um).
  * Residual (auc): budget usage bar on Add model panel (install-path foresight ·
  * soft gate · never invents $0 · parity decision-tree sa).
+ * Residual (aun): pure decisionTreeInstallReadiness drives Install driver CTA
+ * (manual model choice · never auto-route · ND advisory only).
  */
 export default function Settings() {
   const tier = useViewportTier();
@@ -843,6 +846,19 @@ export default function Settings() {
     }
   }
 
+  /**
+   * Residual (aun): pure Install driver CTA readiness (asd gate extract).
+   * Manual model id required · never auto-route · ND advisory only.
+   */
+  const dtInstallReady = useMemo(
+    () =>
+      decisionTreeInstallReadiness({
+        model_id: selectedModel,
+        provider_id: selectedProvider,
+      }),
+    [selectedModel, selectedProvider],
+  );
+
   const spendPct = useMemo(() => {
     if (
       !budget ||
@@ -1560,17 +1576,13 @@ export default function Settings() {
                 type="button"
                 data-testid="decision-tree-install"
                 onClick={onInstallDriver}
-                data-install-ready={String(Boolean(selectedModel.trim()))}
-                data-model-id={selectedModel.trim() || ""}
-                data-provider-id={selectedProvider.trim() || ""}
-                data-never-auto-route="true"
-                data-notdiamond-authority="advisory_only"
-                disabled={treeBusy || !selectedModel.trim()}
-                title={
-                  selectedModel.trim()
-                    ? "Install process-local decision-tree driver (manual · never auto-route · ND advisory only)"
-                    : "Enter a model id before installing the decision-tree driver"
-                }
+                data-install-ready={String(dtInstallReady.install_ready)}
+                data-model-id={dtInstallReady.model_id}
+                data-provider-id={dtInstallReady.provider_id}
+                data-never-auto-route={String(dtInstallReady.never_auto_route)}
+                data-notdiamond-authority={dtInstallReady.notdiamond_authority}
+                disabled={treeBusy || !dtInstallReady.install_ready}
+                title={dtInstallReady.install_title}
                 className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
               >
                 {treeBusy ? "Working…" : "Install driver"}
