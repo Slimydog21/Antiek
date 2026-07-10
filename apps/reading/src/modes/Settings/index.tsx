@@ -3983,6 +3983,96 @@ export default function Settings() {
           </div>
         </LemonCard>
 
+        {/* Residual (aii): competitive DR quality scorecard — honest shipped vs deferred. */}
+        <LemonCard title="Competitive deep-research scorecard" elevation="z1" colour="glacial">
+          <div
+            className="p-4 space-y-2 text-sm text-ink dark:text-bright"
+            data-testid="settings-competitive-dr-scorecard"
+            data-view-format="html"
+            data-propose-not-promote="true"
+            data-html-first="true"
+            role="status"
+          >
+            <p className="text-[11px] font-mono text-ink-soft dark:text-starlight">
+              Honest map of world-class DR patterns vs Antiek spine — never
+              claim live injectors offline. HTML-first · soft budget · ND
+              advisory only.
+            </p>
+            <ul
+              className="space-y-1.5 text-[11px] font-mono"
+              data-testid="settings-competitive-dr-scorecard-rows"
+            >
+              <li data-status="shipped" data-testid="competitive-dr-multiagent-merge">
+                Multi-agent merge unit — <strong>shipped offline</strong>{" "}
+                (collective · continue-as-unit · written analysis)
+              </li>
+              <li data-status="shipped" data-testid="competitive-dr-citation-trust">
+                Citation-trust / evidence pack — <strong>shipped offline</strong>
+              </li>
+              <li data-status="shipped" data-testid="competitive-dr-budget-before-fire">
+                Budget-before-fire · pub-ref foresight chrome —{" "}
+                <strong>shipped offline</strong> (aic–aif · dogfood v27)
+              </li>
+              <li data-status="shipped" data-testid="competitive-dr-html-first">
+                HTML deliverable · free STEM marketplace —{" "}
+                <strong>shipped offline</strong>
+              </li>
+              <li data-status="shipped" data-testid="competitive-dr-source-connectors">
+                Knowledge-dense source quick-call (arxiv/URL) —{" "}
+                <strong>shipped offline</strong> · live hydrate L1/L2 dual-gate
+              </li>
+              <li data-status="shipped" data-testid="competitive-dr-model-choice">
+                Manual model decision-tree + Antiek-bench weekly —{" "}
+                <strong>shipped</strong> · ND never router (L7)
+              </li>
+              <li data-status="shipped" data-testid="competitive-dr-twin-notes">
+                Recursive twin note-taker — <strong>shipped offline</strong> ·
+                L3 live seed dual-gate
+              </li>
+              <li data-status="deferred" data-testid="competitive-dr-live-hydrate">
+                Live arxiv/Substack body hydrate —{" "}
+                <strong>deferred dual-gate L1/L2</strong>
+              </li>
+              <li data-status="deferred" data-testid="competitive-dr-live-moil">
+                Live Midnight Oil multi-provider step —{" "}
+                <strong>deferred dual-gate L4</strong>
+              </li>
+              <li data-status="deferred" data-testid="competitive-dr-live-council">
+                Live multi-agent council —{" "}
+                <strong>deferred dual-gate L6</strong>
+              </li>
+              <li data-status="deferred" data-testid="competitive-dr-payment">
+                Live marketplace payment rails —{" "}
+                <strong>deferred L5</strong> · manual receipt only
+              </li>
+              <li data-status="never" data-testid="competitive-dr-nd-router">
+                NotDiamond as auto-router — <strong>never</strong> (advisory only)
+              </li>
+            </ul>
+            <p className="text-[11px] font-mono space-x-2">
+              <a
+                href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+                data-testid="settings-competitive-dr-future-agent-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Future-agent competitive DR quality brief"
+              >
+                FUTURE-AGENT competitive DR quality
+              </a>
+              <span className="opacity-40" aria-hidden>
+                ·
+              </span>
+              <a
+                href="/docs/campaigns/2026-07-09-research-reading-spine/competitive-deep-research-notes.md"
+                data-testid="settings-competitive-dr-notes-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Campaign competitive deep-research notes"
+              >
+                Competitive notes
+              </a>
+            </p>
+          </div>
+        </LemonCard>
+
         {/* Residual (wc): honest deferred map — never list shipped spine as "coming later". */}
         <LemonCard title="Deferred (honest)" elevation="z1">
           <div

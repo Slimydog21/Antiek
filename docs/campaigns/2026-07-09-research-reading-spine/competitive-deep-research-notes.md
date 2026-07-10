@@ -2848,3 +2848,9 @@ Pivot aih+ outside thrash.
 Executable brief mapping competitor DR patterns to Antiek spine, naming offline
 next residuals (citation chain UI · wrestle progress · quality scorecard) and
 dual-gate live table. P0 operator merge PR #465. Pivot aii+ offline competitive product.
+
+## Residual aii · 2026-07-10 — Settings competitive DR quality scorecard
+Settings surfaces honest competitive DR scorecard (shipped vs deferred vs never).
+Operators see multi-agent merge, budget foresight, source connectors shipped
+offline; live hydrate/MO/council deferred; ND never router. Links FUTURE-AGENT
+competitive brief. vitest Settings 36 green. P0 operator merge PR #465. Pivot aij+.

@@ -880,6 +880,25 @@ describe("Settings SPR-01 + decision-tree install", () => {
     await waitFor(() => {
       expect(screen.getByTestId("settings-deferred-honest")).toBeTruthy();
     });
+    // Residual (aii): competitive DR quality scorecard — honest shipped vs deferred.
+    const scorecard = screen.getByTestId("settings-competitive-dr-scorecard");
+    expect(scorecard.getAttribute("data-view-format")).toBe("html");
+    expect(scorecard.getAttribute("data-html-first")).toBe("true");
+    expect(scorecard.getAttribute("data-propose-not-promote")).toBe("true");
+    expect(
+      screen.getByTestId("competitive-dr-budget-before-fire").getAttribute("data-status"),
+    ).toBe("shipped");
+    expect(
+      screen.getByTestId("competitive-dr-live-hydrate").getAttribute("data-status"),
+    ).toBe("deferred");
+    expect(
+      screen.getByTestId("competitive-dr-nd-router").getAttribute("data-status"),
+    ).toBe("never");
+    expect(
+      screen
+        .getByTestId("settings-competitive-dr-future-agent-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
     const panel = screen.getByTestId("settings-deferred-honest");
     expect(panel.textContent).toMatch(/truly deferred|dual-gate/i);
     expect(screen.getByTestId("settings-deferred-shipped-spine").textContent).toMatch(
