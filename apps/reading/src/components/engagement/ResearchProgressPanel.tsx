@@ -23,6 +23,8 @@
  * jobs (world-class DR honesty map · residual aii).
  * Residual (akt): FUTURE-AGENT competitive DR quality brief deep-link (parity
  * launch/collective/spawn/flywheel/MO FUTURE matrix during multi-minute jobs).
+ * Residual (ape): competitive plan→gather→synthesize→cite→terminal stage
+ * pipeline completeness chrome (world-class DR multi-stage honesty).
  * HTML-first; never PDF.
  */
 
@@ -73,6 +75,100 @@ export function competitiveDurationBand(
   };
 }
 
+/**
+ * Residual (ape): competitive multi-stage deep-research pipeline
+ * (plan → gather → synthesize → cite → terminal). World-class DR honesty —
+ * never invents stages that events do not report.
+ */
+export const COMPETITIVE_DR_PIPELINE_STAGES = [
+  "plan",
+  "gather",
+  "synthesize",
+  "cite",
+  "terminal",
+] as const;
+
+export type CompetitiveDrPipelineStage =
+  (typeof COMPETITIVE_DR_PIPELINE_STAGES)[number];
+
+export type CompetitiveDrStageProgress = {
+  stages: readonly CompetitiveDrPipelineStage[];
+  completed: CompetitiveDrPipelineStage[];
+  current: CompetitiveDrPipelineStage | null;
+  completed_count: number;
+  total: number;
+  coverage_ratio: number;
+  is_terminal: boolean;
+};
+
+/** Normalize free-form stage labels onto closed competitive pipeline tokens. */
+export function normalizeCompetitiveDrStage(
+  stage: string | null | undefined,
+): CompetitiveDrPipelineStage | null {
+  const s = String(stage || "")
+    .trim()
+    .toLowerCase();
+  if (!s) return null;
+  if (s === "plan" || s.includes("plan")) return "plan";
+  if (s === "gather" || s.includes("gather") || s.includes("search"))
+    return "gather";
+  if (s === "synthesize" || s.includes("synth") || s.includes("draft"))
+    return "synthesize";
+  if (s === "cite" || s.includes("cite") || s.includes("citation"))
+    return "cite";
+  if (
+    s === "terminal" ||
+    s.includes("complete") ||
+    s.includes("done") ||
+    s.includes("terminal")
+  ) {
+    return "terminal";
+  }
+  return null;
+}
+
+/**
+ * Residual (ape): derive pipeline completeness from progress events +
+ * latest_stage + is_terminal. Does not invent unreported stages.
+ */
+export function competitiveDrStageProgress(opts: {
+  events?: readonly { stage?: string | null }[] | null;
+  latest_stage?: string | null;
+  is_terminal?: boolean | null;
+}): CompetitiveDrStageProgress {
+  const seen = new Set<CompetitiveDrPipelineStage>();
+  for (const e of opts.events || []) {
+    const n = normalizeCompetitiveDrStage(e?.stage);
+    if (n) seen.add(n);
+  }
+  const latest = normalizeCompetitiveDrStage(opts.latest_stage);
+  if (latest) seen.add(latest);
+  if (opts.is_terminal) seen.add("terminal");
+
+  const completed = COMPETITIVE_DR_PIPELINE_STAGES.filter((s) => seen.has(s));
+  const total = COMPETITIVE_DR_PIPELINE_STAGES.length;
+  const completed_count = completed.length;
+  // Current = latest known non-terminal stage, or terminal when done.
+  let current: CompetitiveDrPipelineStage | null = null;
+  if (opts.is_terminal || seen.has("terminal")) {
+    current = "terminal";
+  } else if (latest && latest !== "terminal") {
+    current = latest;
+  } else if (completed.length > 0) {
+    current = completed[completed.length - 1] ?? null;
+  }
+
+  return {
+    stages: COMPETITIVE_DR_PIPELINE_STAGES,
+    completed,
+    current,
+    completed_count,
+    total,
+    coverage_ratio: total > 0 ? completed_count / total : 0,
+    is_terminal: Boolean(opts.is_terminal) || seen.has("terminal"),
+  };
+}
+
 export type ResearchProgressPanelProps = {
   spawnId: string;
   /** Residual (cp): fetch progress on mount. */
@@ -110,6 +206,17 @@ export function ResearchProgressPanel({
   const [progress, setProgress] = useState<ResearchProgressResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Residual (ape): competitive plan→cite pipeline completeness from events.
+  const stagePipeline = useMemo(
+    () =>
+      competitiveDrStageProgress({
+        events: progress?.events,
+        latest_stage: progress?.latest_stage,
+        is_terminal: progress?.is_terminal,
+      }),
+    [progress?.events, progress?.latest_stage, progress?.is_terminal],
+  );
 
   const load = useCallback(async (): Promise<ResearchProgressResponse | null> => {
     setBusy(true);
@@ -374,6 +481,57 @@ export function ResearchProgressPanel({
             Research progress · stage={progress.latest_stage ?? "(none)"} ·
             events={progress.event_count ?? 0} · terminal=
             {String(Boolean(progress.is_terminal))}
+          </div>
+          {/* Residual (ape): competitive multi-stage pipeline completeness. */}
+          <div
+            className="font-mono text-[11px] space-y-0.5 border border-ink/10 rounded p-2 dark:border-bright/10"
+            data-testid="research-progress-stage-pipeline"
+            data-completed-count={String(stagePipeline.completed_count)}
+            data-total={String(stagePipeline.total)}
+            data-coverage-ratio={String(
+              Math.round(stagePipeline.coverage_ratio * 1000) / 1000,
+            )}
+            data-current={stagePipeline.current ?? ""}
+            data-completed={stagePipeline.completed.join(",") || ""}
+            data-is-terminal={String(stagePipeline.is_terminal)}
+            data-view-format="html"
+            role="status"
+          >
+            <p>
+              Competitive pipeline · {stagePipeline.completed_count}/
+              {stagePipeline.total} stages
+              {stagePipeline.current
+                ? ` · current=${stagePipeline.current}`
+                : ""}
+              {stagePipeline.is_terminal ? " · terminal" : ""}
+            </p>
+            <ol
+              className="flex flex-wrap gap-1 list-none p-0 m-0"
+              data-testid="research-progress-stage-pipeline-list"
+            >
+              {stagePipeline.stages.map((stage) => {
+                const done = stagePipeline.completed.includes(stage);
+                const isCurrent = stagePipeline.current === stage;
+                return (
+                  <li
+                    key={stage}
+                    data-testid={`research-progress-stage-${stage}`}
+                    data-stage={stage}
+                    data-completed={String(done)}
+                    data-current={String(isCurrent)}
+                    className={
+                      done
+                        ? "opacity-100 font-semibold"
+                        : "opacity-50"
+                    }
+                  >
+                    {done ? "✓" : "○"} {stage}
+                    {isCurrent && !stagePipeline.is_terminal ? " ←" : ""}
+                    {stage !== "terminal" ? " ·" : ""}
+                  </li>
+                );
+              })}
+            </ol>
           </div>
           <p>
             latest=<strong>{progress.latest_stage ?? "(none)"}</strong> · events=

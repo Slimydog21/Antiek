@@ -1,6 +1,11 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ResearchProgressPanel } from "./ResearchProgressPanel";
+import {
+  competitiveDrStageProgress,
+  COMPETITIVE_DR_PIPELINE_STAGES,
+  normalizeCompetitiveDrStage,
+  ResearchProgressPanel,
+} from "./ResearchProgressPanel";
 
 const fetchResearchProgress = vi.fn();
 const seedResearchProgress = vi.fn();
@@ -27,6 +32,51 @@ vi.mock("./DecisionTreeDriverBadge", () => ({
     </div>
   ),
 }));
+
+describe("competitive DR stage pipeline pure helpers (ape)", () => {
+  it("normalizes free-form stage labels onto closed pipeline", () => {
+    expect(normalizeCompetitiveDrStage("plan")).toBe("plan");
+    expect(normalizeCompetitiveDrStage("GATHER sources")).toBe("gather");
+    expect(normalizeCompetitiveDrStage("synthesize draft")).toBe("synthesize");
+    expect(normalizeCompetitiveDrStage("citation pass")).toBe("cite");
+    expect(normalizeCompetitiveDrStage("complete")).toBe("terminal");
+    expect(normalizeCompetitiveDrStage("")).toBeNull();
+    expect(normalizeCompetitiveDrStage("mystery")).toBeNull();
+  });
+
+  it("derives pipeline completeness without inventing stages", () => {
+    const mid = competitiveDrStageProgress({
+      events: [
+        { stage: "plan" },
+        { stage: "gather" },
+        { stage: "synthesize" },
+      ],
+      latest_stage: "synthesize",
+      is_terminal: false,
+    });
+    expect(mid.stages).toEqual([...COMPETITIVE_DR_PIPELINE_STAGES]);
+    expect(mid.completed).toEqual(["plan", "gather", "synthesize"]);
+    expect(mid.completed_count).toBe(3);
+    expect(mid.total).toBe(5);
+    expect(mid.current).toBe("synthesize");
+    expect(mid.is_terminal).toBe(false);
+    expect(mid.coverage_ratio).toBeCloseTo(0.6);
+
+    const done = competitiveDrStageProgress({
+      events: [{ stage: "cite" }],
+      latest_stage: "cite",
+      is_terminal: true,
+    });
+    expect(done.completed).toContain("cite");
+    expect(done.completed).toContain("terminal");
+    expect(done.is_terminal).toBe(true);
+    expect(done.current).toBe("terminal");
+
+    const empty = competitiveDrStageProgress({});
+    expect(empty.completed).toEqual([]);
+    expect(empty.current).toBeNull();
+  });
+});
 
 describe("ResearchProgressPanel", () => {
   afterEach(() => cleanup());
@@ -136,6 +186,25 @@ describe("ResearchProgressPanel", () => {
       "engagement_spine.progress",
     );
     expect(metrics.textContent).toMatch(/Research progress/);
+    // Residual (ape): competitive plan→cite pipeline completeness chrome.
+    const pipeline = screen.getByTestId("research-progress-stage-pipeline");
+    expect(pipeline.getAttribute("data-completed-count")).toBe("4");
+    expect(pipeline.getAttribute("data-total")).toBe("5");
+    expect(pipeline.getAttribute("data-current")).toBe("cite");
+    expect(pipeline.getAttribute("data-is-terminal")).toBe("false");
+    expect(pipeline.getAttribute("data-completed") || "").toMatch(/plan/);
+    expect(pipeline.getAttribute("data-completed") || "").toMatch(/cite/);
+    expect(
+      screen.getByTestId("research-progress-stage-plan").getAttribute(
+        "data-completed",
+      ),
+    ).toBe("true");
+    expect(
+      screen.getByTestId("research-progress-stage-terminal").getAttribute(
+        "data-completed",
+      ),
+    ).toBe("false");
+    expect(pipeline.textContent).toMatch(/Competitive pipeline/i);
     // Residual (rp): non-terminal still offers progress draft Write handoff.
     const draftWrite = screen.getByTestId("research-progress-open-write");
     expect(draftWrite.getAttribute("data-is-terminal")).toBe("false");

@@ -3730,3 +3730,8 @@ P0 PR #465. Pivot apd+ outside thrash.
 marketplace-receipt-readiness: receipt ready/demo-default · paid-visible count ·
 L5 live deferred · purchase button stamps. vitest MarketplaceHost 43 green.
 P0 PR #465. Pivot ape+ outside thrash.
+
+## Residual ape · 2026-07-10 — competitive DR stage pipeline completeness
+plan→gather→synthesize→cite→terminal pure helpers + ResearchProgressPanel chrome.
+World-class multi-stage DR honesty · never invents stages. vitest ResearchProgress 12 green.
+P0 PR #465. Pivot apf+ outside thrash.
