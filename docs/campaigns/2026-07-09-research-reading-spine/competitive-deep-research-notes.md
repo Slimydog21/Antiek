@@ -3337,3 +3337,7 @@ P0 operator merge PR #465. Pivot ama+ outside thrash.
 Offline twin seed completion remounts host-land twins + ResearchContext so
 seeded notes appear without manual refresh. vitest MarketplaceHost 41 green.
 P0 operator merge PR #465. Pivot amb+ outside thrash.
+
+## Residual amb · 2026-07-10 — SESSION-ARC alx–ama marketplace host substrate complete
+Wave handoff: marketplace host land TwinNotes · ResearchContext · promote remount ·
+seed remount. P0 operator merge PR #465. Pivot amc+ outside thrash.

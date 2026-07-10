@@ -17,7 +17,7 @@
 | ResearchThis | agq | TwinNotes |
 | HostedHtml book | bw · ez | TwinNotes remount |
 | Write open piece | ga | TwinNotes |
-| Marketplace host/purchase | gj · **aho** | offline seed + free/purchased honesty |
+| Marketplace host/purchase | gj · **aho** · **alx–ama** | offline seed + free/purchased honesty · TwinNotes+ResearchContext host land · promote/seed remount |
 | Spawn merge | cp | seed after merge |
 | Collective merge / analysis | eo | seed after merge |
 | Twin auto-promote to context | ea · aft | promote → remount |
