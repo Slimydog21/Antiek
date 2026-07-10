@@ -1130,12 +1130,14 @@ export default function Settings() {
               data-testid="settings-dual-gate-prep"
               data-l7-notdiamond="advisory_only"
               data-l5-payment-rails="deferred"
+              data-l6-live-multiagent="deferred"
+              data-offline-merge-unit="true"
               data-offline-default="true"
               role="status"
             >
               <p className="text-[11px] font-mono text-ink-soft dark:text-starlight">
-                Dual-gate prep (L1–L4) · L5 payment deferred · offline default ·
-                never silent live injectors
+                Dual-gate prep (L1–L4) · L5 payment deferred · L6 offline merge
+                unit · offline default · never silent live injectors
               </p>
               <p className="text-[11px] font-mono space-x-2">
                 <a
@@ -1179,6 +1181,16 @@ export default function Settings() {
                   title="L5 marketplace payment rails deferred — manual receipt only"
                 >
                   L5 payment deferred
+                </span>
+                {/* Residual (vz): L6 live multi-agent council deferred (parity Collective vx). */}
+                <span
+                  className="opacity-80"
+                  data-testid="settings-dual-gate-l6-collective"
+                  data-l6-live-multiagent="deferred"
+                  data-offline-merge-unit="true"
+                  title="L6 live multi-agent council deferred — offline merge unit only; never silent live council"
+                >
+                  L6 offline merge unit
                 </span>
                 <a
                   href="#notdiamond-advisory"

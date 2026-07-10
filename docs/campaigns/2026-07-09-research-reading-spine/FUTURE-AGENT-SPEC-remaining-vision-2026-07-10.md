@@ -7,7 +7,7 @@
 
 ## Do not rebuild
 
-Prefer **SESSION-ARC-tt-vt-infinite-wave.md** + inventories **tt–vx** + competitive notes. Tip letters **tt–vx** (57 residual ships).
+Prefer **SESSION-ARC-tt-vt-infinite-wave.md** + inventories **tt–vz** + competitive notes. Tip letters **tt–vz** (59 residual ships including tip re-anchors).
 
 ### Closed product (high signal)
 
@@ -19,7 +19,7 @@ Prefer **SESSION-ARC-tt-vt-infinite-wave.md** + inventories **tt–vx** + compet
 | Midnight Oil foresight | L4 · remaining-after · hydrate Settings |
 | arxiv/substack honesty | full matrix |
 | Marketplace L5 | manual_receipt_only + Settings L5 deferred |
-| Collective L6 | deferred · offline merge unit only (vx) |
+| Collective L6 | deferred · offline merge unit only (vx panel + vz Settings dual-gate) |
 | Dogfood recursive | **v4–v9** propose≠promote |
 
 ### P0 — Operator merge PR #465
@@ -28,7 +28,7 @@ Prefer **SESSION-ARC-tt-vt-infinite-wave.md** + inventories **tt–vx** + compet
 ### P2 — Dual-gate live injectors (operator-only)
 L1–L4 offline default · L5 payment deferred · L6 live multi-agent · L7 ND **never** router
 
-### P1 next offline (residual **wx+** / continue lettering)
+### P1 next offline (residual **wa+** / continue lettering)
 Outside saturated write-seed host matrix thrash unless regression. Prefer:
 - real product bugs found by inventory
 - operator-facing polish with load-bearing reason

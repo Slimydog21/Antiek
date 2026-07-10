@@ -1348,3 +1348,8 @@ parity L5 payment deferred honesty.
 FUTURE-AGENT-SPEC tip → 528f5f82 with closed arcs tt–vx (57 residual ships).
 Competitive delta: swarm handoff tip-true; operator merge PR #465 remains
 highest leverage.
+
+## Residual vz · 2026-07-10 — Settings dual-gate L6 deferred honesty
+Settings dual-gate prep stamps L6 live multi-agent deferred · offline merge unit
+(parity Collective vx + L5 payment vt). Competitive delta: decision-tree Settings
+chokepoint never implies live multi-agent council is available.

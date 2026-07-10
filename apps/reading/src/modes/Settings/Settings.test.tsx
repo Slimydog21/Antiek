@@ -756,6 +756,22 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("settings-dual-gate-l5-payment").textContent).toMatch(
       /L5 payment deferred/i,
     );
+    // Residual (vz): L6 live multi-agent deferred honesty (parity Collective vx).
+    expect(prep.getAttribute("data-l6-live-multiagent")).toBe("deferred");
+    expect(prep.getAttribute("data-offline-merge-unit")).toBe("true");
+    expect(
+      screen.getByTestId("settings-dual-gate-l6-collective").getAttribute(
+        "data-l6-live-multiagent",
+      ),
+    ).toBe("deferred");
+    expect(
+      screen.getByTestId("settings-dual-gate-l6-collective").getAttribute(
+        "data-offline-merge-unit",
+      ),
+    ).toBe("true");
+    expect(
+      screen.getByTestId("settings-dual-gate-l6-collective").textContent,
+    ).toMatch(/L6 offline merge unit/i);
     expect(screen.getByTestId("settings-dual-gate-l1-l2-link").getAttribute("href")).toBe(
       "#hydrate-live-status",
     );
