@@ -78,7 +78,9 @@ def test_stem_pd_spine_in_demo_catalog() -> None:
     assert "pd-maxwell-em" in ids
     # Residual (tx): Boole laws of thought computing/logic PD.
     assert "pd-boole-laws-of-thought" in ids
-    assert len(ids) >= 13
+    # Residual (ub): Heaviside electromagnetic theory electricity STEM.
+    assert "pd-heaviside-em" in ids
+    assert len(ids) >= 14
     elements = cat.get("pd-elements")
     assert elements is not None
     assert elements.license_class == "public_domain"
@@ -102,13 +104,14 @@ def test_stem_electricity_subjects_and_free_pd() -> None:
     assert {e.book_id for e in tech} >= {
         "pd-faraday-electricity",
         "pd-maxwell-em",
+        "pd-heaviside-em",
     }
     free_pd = [
         e
         for e in cat.search("")
         if e.license_class == "public_domain" and e.is_free
     ]
-    assert len(free_pd) >= 12
+    assert len(free_pd) >= 13
     physics = cat.filter_by_subject("physics")
     assert any(e.book_id == "pd-faraday-electricity" for e in physics)
     assert any(e.book_id == "pd-maxwell-em" for e in physics)
@@ -143,6 +146,35 @@ def test_boole_computing_logic_pd_html_first() -> None:
     assert not r.html.lstrip().lower().startswith("%pdf")
     assert "application/pdf" not in r.html.lower()
     assert "logic" in r.html.lower() or "calculus" in r.html.lower() or "boole" in r.html.lower()
+
+
+def test_heaviside_electricity_pd_html_first() -> None:
+    """Residual (ub): Heaviside free PD hosts HTML for electricity STEM."""
+    cat = default_demo_catalog()
+    heav = cat.get("pd-heaviside-em")
+    assert heav is not None
+    assert heav.license_class == "public_domain"
+    assert heav.is_free is True
+    assert heav.source_format == "html"
+    assert "electricity" in heav.subjects
+    assert "engineering" in heav.subjects
+    assert "physics" in heav.subjects
+    store = InMemoryHostStore()
+    r = host_book_into_account(
+        owner_id="tech-researcher",
+        store=store,
+        book_id="pd-heaviside-em",
+        catalog=cat,
+    )
+    assert r.view_format == "html"
+    assert r.host.license_class == "public_domain"
+    assert not r.html.lstrip().lower().startswith("%pdf")
+    assert "application/pdf" not in r.html.lower()
+    assert (
+        "heaviside" in r.html.lower()
+        or "maxwell" in r.html.lower()
+        or "electromagnetic" in r.html.lower()
+    )
 
 
 def test_host_stem_pd_html_first() -> None:

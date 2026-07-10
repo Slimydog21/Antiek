@@ -1099,3 +1099,8 @@ book_qa) without auto-promote.
 FUTURE-AGENT-SPEC tip → 89cb9a7d with closed arcs tt–tz (write-seed allowlist,
 dogfood v4–v5, Boole free PD path). Competitive delta: multi-agent swarm
 handoff stays tip-true so parallel engines do not rebuild closed product.
+
+## Residual ub · 2026-07-10 — Heaviside free PD electricity STEM catalog
+pd-heaviside-em joins Faraday/Maxwell free PD electricity spine (HTML ·
+engineering subject). Competitive delta: marketplace free STEM path covers
+Maxwell → Heaviside engineering reformulation without payment rails.

@@ -520,6 +520,31 @@ def default_demo_catalog() -> Catalog:
                     "computing",
                 ),
             ),
+            # Residual (ub): Heaviside electricity STEM PD (extends Faraday/Maxwell).
+            CatalogEntry(
+                book_id="pd-heaviside-em",
+                title="Electromagnetic Theory",
+                author="Oliver Heaviside",
+                source="project_gutenberg",
+                license_class="public_domain",
+                is_free=True,
+                body_text=(
+                    "The electromagnetic theory of light is not a mere speculation, "
+                    "but a well-established theory based upon Maxwell's equations "
+                    "and the experimental verification of electromagnetic waves.\n\n"
+                    "Heaviside's operational calculus and the reformulation of Maxwell's "
+                    "equations into the modern vector form underpin electrical engineering."
+                ),
+                source_format="html",
+                subjects=(
+                    "physics",
+                    "mathematics",
+                    "science",
+                    "technology",
+                    "electricity",
+                    "engineering",
+                ),
+            ),
             CatalogEntry(
                 book_id="buy-modern",
                 title="Modern Systems Research",
