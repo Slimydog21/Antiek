@@ -28,6 +28,7 @@ import {
   runnerDispatchWorkerBootstrapPlanMidnightOil,
   runnerReadinessMidnightOil,
   schedulerLeaseRetryPlanMidnightOil,
+  workerQueueClaimPlanMidnightOil,
   type MidnightOilActivationChecklistReceipt,
   type MidnightOilAppliedRunReceipt,
   type MidnightOilBudgetProviderAdapterPlanReceipt,
@@ -57,6 +58,7 @@ import {
   type MidnightOilRouteMode,
   type MidnightOilSchedulerLeaseRetryPlanReceipt,
   type MidnightOilSourcePolicy,
+  type MidnightOilWorkerQueueClaimPlanReceipt,
 } from "../../api/midnightOil";
 import LemonCard from "../../components/lemon/LemonCard";
 
@@ -141,6 +143,8 @@ export default function MidnightOil() {
   ] = useState<MidnightOilRunnerDispatchWorkerBootstrapPlanReceipt | null>(null);
   const [schedulerLeaseRetryPlanReceipt, setSchedulerLeaseRetryPlanReceipt] =
     useState<MidnightOilSchedulerLeaseRetryPlanReceipt | null>(null);
+  const [workerQueueClaimPlanReceipt, setWorkerQueueClaimPlanReceipt] =
+    useState<MidnightOilWorkerQueueClaimPlanReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -177,6 +181,7 @@ export default function MidnightOil() {
   const [runnerDispatchWorkerBootstrapPlanBusy, setRunnerDispatchWorkerBootstrapPlanBusy] =
     useState(false);
   const [schedulerLeaseRetryPlanBusy, setSchedulerLeaseRetryPlanBusy] = useState(false);
+  const [workerQueueClaimPlanBusy, setWorkerQueueClaimPlanBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
   const [liveSettingsError, setLiveSettingsError] = useState<string | null>(null);
@@ -223,10 +228,17 @@ export default function MidnightOil() {
   ] = useState<string | null>(null);
   const [schedulerLeaseRetryPlanError, setSchedulerLeaseRetryPlanError] =
     useState<string | null>(null);
+  const [workerQueueClaimPlanError, setWorkerQueueClaimPlanError] = useState<string | null>(null);
+
+  function clearWorkerQueueClaimPlan() {
+    setWorkerQueueClaimPlanError(null);
+    setWorkerQueueClaimPlanReceipt(null);
+  }
 
   function clearSchedulerLeaseRetryPlan() {
     setSchedulerLeaseRetryPlanError(null);
     setSchedulerLeaseRetryPlanReceipt(null);
+    clearWorkerQueueClaimPlan();
   }
 
   function clearRunnerDispatchWorkerBootstrapPlan() {
@@ -348,6 +360,7 @@ export default function MidnightOil() {
     setRunnerDispatchSchedulerPlanError(null);
     setRunnerDispatchWorkerBootstrapPlanError(null);
     setSchedulerLeaseRetryPlanError(null);
+    setWorkerQueueClaimPlanError(null);
     setPreflight(null);
     setDryRunReceipt(null);
     setLiveSettingsReceipt(null);
@@ -376,6 +389,7 @@ export default function MidnightOil() {
     setRunnerDispatchSchedulerPlanReceipt(null);
     setRunnerDispatchWorkerBootstrapPlanReceipt(null);
     setSchedulerLeaseRetryPlanReceipt(null);
+    setWorkerQueueClaimPlanReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -1541,6 +1555,7 @@ export default function MidnightOil() {
     setSchedulerLeaseRetryPlanBusy(true);
     setSchedulerLeaseRetryPlanError(null);
     setSchedulerLeaseRetryPlanReceipt(null);
+    clearWorkerQueueClaimPlan();
     try {
       const result = await schedulerLeaseRetryPlanMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -1569,6 +1584,69 @@ export default function MidnightOil() {
       setSchedulerLeaseRetryPlanError(e instanceof Error ? e.message : String(e));
     } finally {
       setSchedulerLeaseRetryPlanBusy(false);
+    }
+  }
+
+  async function onWorkerQueueClaimPlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerControlPlanReceipt ||
+      !budgetProviderAdapterPlanReceipt ||
+      !providerExecutorAdapterPlanReceipt ||
+      !retrievalAdapterPlanReceipt ||
+      !graphAdapterPlanReceipt ||
+      !finalArtifactAdapterPlanReceipt ||
+      !operatorDispatchAdapterPlanReceipt ||
+      !controlLedgerAdapterPlanReceipt ||
+      !controlLedgerPersistencePlanReceipt ||
+      !controlLedgerPersistenceApplyPlanReceipt ||
+      !operatorDispatchActivationReadinessPlanReceipt ||
+      !liveDispatchFinalEnablementPlanReceipt ||
+      !liveDispatchFinalEnablementApplyPlanReceipt ||
+      !runnerDispatchSchedulerPlanReceipt ||
+      !runnerDispatchWorkerBootstrapPlanReceipt ||
+      !schedulerLeaseRetryPlanReceipt
+    ) {
+      setWorkerQueueClaimPlanError(
+        "Worker queue claim plan requires launch packet, approval receipt, runner handoff, runner control plan receipt, budget provider adapter plan receipt, provider executor adapter plan receipt, retrieval adapter plan receipt, graph adapter plan receipt, final artifact adapter plan receipt, operator dispatch adapter plan receipt, control ledger adapter plan receipt, control ledger persistence plan receipt, control ledger persistence apply plan receipt, operator dispatch activation readiness plan receipt, live dispatch final enablement plan receipt, live dispatch final enablement apply plan receipt, runner dispatch scheduler plan receipt, runner dispatch worker bootstrap plan receipt, and scheduler lease retry plan receipt.",
+      );
+      return;
+    }
+
+    setWorkerQueueClaimPlanBusy(true);
+    setWorkerQueueClaimPlanError(null);
+    setWorkerQueueClaimPlanReceipt(null);
+    try {
+      const result = await workerQueueClaimPlanMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        runner_control_plan_receipt: runnerControlPlanReceipt,
+        budget_provider_adapter_plan_receipt: budgetProviderAdapterPlanReceipt,
+        provider_executor_adapter_plan_receipt: providerExecutorAdapterPlanReceipt,
+        retrieval_adapter_plan_receipt: retrievalAdapterPlanReceipt,
+        graph_adapter_plan_receipt: graphAdapterPlanReceipt,
+        final_artifact_adapter_plan_receipt: finalArtifactAdapterPlanReceipt,
+        operator_dispatch_adapter_plan_receipt: operatorDispatchAdapterPlanReceipt,
+        control_ledger_adapter_plan_receipt: controlLedgerAdapterPlanReceipt,
+        control_ledger_persistence_plan_receipt: controlLedgerPersistencePlanReceipt,
+        control_ledger_persistence_apply_plan_receipt: controlLedgerPersistenceApplyPlanReceipt,
+        operator_dispatch_activation_readiness_plan_receipt:
+          operatorDispatchActivationReadinessPlanReceipt,
+        live_dispatch_final_enablement_plan_receipt: liveDispatchFinalEnablementPlanReceipt,
+        live_dispatch_final_enablement_apply_plan_receipt:
+          liveDispatchFinalEnablementApplyPlanReceipt,
+        runner_dispatch_scheduler_plan_receipt: runnerDispatchSchedulerPlanReceipt,
+        runner_dispatch_worker_bootstrap_plan_receipt: runnerDispatchWorkerBootstrapPlanReceipt,
+        scheduler_lease_retry_plan_receipt: schedulerLeaseRetryPlanReceipt,
+      });
+      setWorkerQueueClaimPlanReceipt(result);
+    } catch (e) {
+      setWorkerQueueClaimPlanError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setWorkerQueueClaimPlanBusy(false);
     }
   }
 
@@ -4423,6 +4501,174 @@ export default function MidnightOil() {
                     {schedulerLeaseRetryPlanReceipt.required_lease_retry_receipt_fields.join(
                       ", ",
                     )}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Worker queue claim plan
+                </p>
+                <button
+                  type="button"
+                  onClick={onWorkerQueueClaimPlanGate}
+                  disabled={
+                    workerQueueClaimPlanBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !runnerControlPlanReceipt ||
+                    !budgetProviderAdapterPlanReceipt ||
+                    !providerExecutorAdapterPlanReceipt ||
+                    !retrievalAdapterPlanReceipt ||
+                    !graphAdapterPlanReceipt ||
+                    !finalArtifactAdapterPlanReceipt ||
+                    !operatorDispatchAdapterPlanReceipt ||
+                    !controlLedgerAdapterPlanReceipt ||
+                    !controlLedgerPersistencePlanReceipt ||
+                    !controlLedgerPersistenceApplyPlanReceipt ||
+                    !operatorDispatchActivationReadinessPlanReceipt ||
+                    !liveDispatchFinalEnablementPlanReceipt ||
+                    !liveDispatchFinalEnablementApplyPlanReceipt ||
+                    !runnerDispatchSchedulerPlanReceipt ||
+                    !runnerDispatchWorkerBootstrapPlanReceipt ||
+                    !schedulerLeaseRetryPlanReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {workerQueueClaimPlanBusy
+                    ? "Planning queue claim..."
+                    : "Worker queue claim plan"}
+                </button>
+              </div>
+
+              {workerQueueClaimPlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {workerQueueClaimPlanError}
+                </p>
+              )}
+
+              {workerQueueClaimPlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Worker queue claim receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {workerQueueClaimPlanReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={workerQueueClaimPlanReceipt.status.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Queue claim"
+                      value={
+                        workerQueueClaimPlanReceipt.queue_claim_allowed ? "allowed" : "blocked"
+                      }
+                    />
+                    <Metric
+                      label="Claim"
+                      value={
+                        workerQueueClaimPlanReceipt.queue_claim_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Transaction"
+                      value={
+                        workerQueueClaimPlanReceipt.claim_transaction_committed
+                          ? "committed"
+                          : "not committed"
+                      }
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Lease retry plan"
+                      value={workerQueueClaimPlanReceipt.scheduler_lease_retry_plan_receipt_id}
+                    />
+                    <Metric
+                      label="Worker bootstrap"
+                      value={
+                        workerQueueClaimPlanReceipt
+                          .runner_dispatch_worker_bootstrap_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Queue claim"
+                      value={workerQueueClaimPlanReceipt.planned_queue_claim_id}
+                    />
+                    <Metric
+                      label="Claim transaction"
+                      value={workerQueueClaimPlanReceipt.planned_claim_transaction_id}
+                    />
+                    <Metric
+                      label="Lease token"
+                      value={workerQueueClaimPlanReceipt.planned_claim_lease_token_id}
+                    />
+                    <Metric
+                      label="Claim cursor"
+                      value={workerQueueClaimPlanReceipt.planned_claim_cursor_id}
+                    />
+                    <Metric label="Queue" value={workerQueueClaimPlanReceipt.planned_queue_id} />
+                    <Metric
+                      label="Worker"
+                      value={workerQueueClaimPlanReceipt.planned_worker_id}
+                    />
+                    <Metric
+                      label="Worker lease"
+                      value={workerQueueClaimPlanReceipt.planned_worker_lease_id}
+                    />
+                    <Metric
+                      label="Visibility timeout"
+                      value={`${workerQueueClaimPlanReceipt.planned_visibility_timeout_seconds}s`}
+                    />
+                    <Metric
+                      label="Lease TTL"
+                      value={`${workerQueueClaimPlanReceipt.planned_lease_ttl_seconds}s`}
+                    />
+                    <Metric
+                      label="Heartbeat"
+                      value={`${workerQueueClaimPlanReceipt.planned_heartbeat_interval_seconds}s`}
+                    />
+                    <Metric
+                      label="Max attempts"
+                      value={String(workerQueueClaimPlanReceipt.planned_max_attempts)}
+                    />
+                    <Metric
+                      label="Backoff"
+                      value={workerQueueClaimPlanReceipt.planned_backoff_policy.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                    <Metric
+                      label="Idempotency key"
+                      value={workerQueueClaimPlanReceipt.planned_idempotency_key}
+                    />
+                    <Metric
+                      label="Blocker"
+                      value={workerQueueClaimPlanReceipt.blocker_reason.replaceAll("_", " ")}
+                    />
+                  </div>
+                  <ul className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {workerQueueClaimPlanReceipt.required_queue_claim_invariants
+                      .slice(0, 5)
+                      .map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                  </ul>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Queue claim blockers:{" "}
+                    {workerQueueClaimPlanReceipt.queue_claim_blockers.join(", ")}
+                  </p>
+                  <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Queue claim receipt fields:{" "}
+                    {workerQueueClaimPlanReceipt.required_queue_claim_receipt_fields.join(", ")}
                   </p>
                 </div>
               )}
