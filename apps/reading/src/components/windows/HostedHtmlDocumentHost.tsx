@@ -30,6 +30,8 @@
  * Residual (jd): prefill researchTier from Settings depth-tier (parity marketplace jc).
  * Residual (sh): source=evidence_pack honesty + recursive note-taker seed title
  * when citation-trust evidence floats from ResearchContextPanel (sf/sg).
+ * Residual (tq): source=context_search carries search_query + search_hit_count
+ * honesty chrome (intelligent search over recursive note-taker substrate).
  *
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
  */
@@ -68,6 +70,11 @@ export type HostedHtmlDocumentHostProps = {
   license_class?: string;
   owner_id?: string;
   source?: string;
+  /** Residual (tq): intelligent search query when source=context_search. */
+  search_query?: string | null;
+  /** Residual (tq): hit count when source=context_search. */
+  search_hit_count?: number | null;
+  research_tier?: string | null;
   __windowId?: string;
 };
 
@@ -265,10 +272,19 @@ export default function HostedHtmlDocumentHost(
     payloadSource === "research_progress_complete" ||
     payloadSource === "research_progress_draft";
   const isSessionFlywheel = payloadSource === "session_flywheel_complete";
+  // Residual (tq): intelligent search query + hit count honesty.
+  const searchQuery = String(props.search_query || "").trim();
+  const searchHitCount =
+    typeof props.search_hit_count === "number" &&
+    Number.isFinite(props.search_hit_count)
+      ? Math.max(0, Math.floor(props.search_hit_count))
+      : null;
   const twinSeedTitle = isEvidencePack
     ? `Evidence pack (citation trust) · ${title}`
     : isContextSearch
-      ? `Context search · ${title}`
+      ? searchQuery
+        ? `Context search · “${searchQuery}” · ${title}`
+        : `Context search · ${title}`
       : isPublicationHydrate
         ? `Hydrated publication · ${title}`
         : isResearchContextPack
@@ -291,6 +307,12 @@ export default function HostedHtmlDocumentHost(
       data-source={payloadSource}
       data-evidence-pack={String(isEvidencePack)}
       data-context-search={String(isContextSearch)}
+      data-search-query={isContextSearch ? searchQuery : ""}
+      data-search-hit-count={
+        isContextSearch && searchHitCount != null
+          ? String(searchHitCount)
+          : ""
+      }
       data-research-progress={String(isResearchProgress)}
       data-session-flywheel={String(isSessionFlywheel)}
     >
@@ -306,6 +328,31 @@ export default function HostedHtmlDocumentHost(
               {" · "}
               content stance: {isHtml ? "HTML" : viewFormat} · not PDF
             </p>
+            {/* Residual (tq): intelligent search honesty when floated from ResearchContext. */}
+            {isContextSearch ? (
+              <p
+                className="text-[11px] font-mono opacity-80 mt-1"
+                data-testid="hosted-html-context-search-honesty"
+                data-search-query={searchQuery}
+                data-search-hit-count={
+                  searchHitCount != null ? String(searchHitCount) : ""
+                }
+                data-view-format="html"
+                role="status"
+              >
+                Intelligent search
+                {searchQuery ? (
+                  <>
+                    {" "}
+                    · query=“{searchQuery}”
+                  </>
+                ) : null}
+                {searchHitCount != null ? (
+                  <> · hits={searchHitCount}</>
+                ) : null}{" "}
+                · recursive note-taker substrate · HTML · not PDF
+              </p>
+            ) : null}
           </div>
           {/* Residual (da): driver readout on reading host (parity with DR). */}
           <div className="flex flex-col items-end gap-1">

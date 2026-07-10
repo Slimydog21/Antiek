@@ -1034,3 +1034,9 @@ re-entering domain context by hand (reading ≡ research).
 Hosting Maxwell free PD then launching full deep research puts electricity
 and mathematics domains into goal_hint (parity Faraday float to). Competitive
 delta: full working-region research inherits free STEM catalog domain tags.
+
+## Residual tq · 2026-07-10 — Intelligent search host query+hits honesty
+Context search float|full windows carry search_query and search_hit_count into
+HostedHtmlDocumentHost honesty chrome. Competitive delta: recursive note-taker
+intelligent search results stay query-auditable in the reading flywheel — not
+a dead-end hit list (HTML · not PDF).

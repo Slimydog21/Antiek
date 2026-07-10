@@ -1,0 +1,24 @@
+# inventory-tq · Intelligent search float query+hits host honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: tq
+date: 2026-07-10
+
+## Closed
+- ResearchContextPanel context_search float|full payload:
+  - search_query
+  - search_hit_count
+- HostedHtmlDocumentHost:
+  - data-search-query / data-search-hit-count
+  - hosted-html-context-search-honesty strip
+  - twin seed title includes query when present
+  - Open Write source remains context_search
+- vitest HostedHtml 15 + ResearchContext 12 = 27 · SCRATCH residual-tests-tq.log
+
+## Product why
+Intelligent search over recursive note-taker substrate must remain honest
+when floated into a reading window — operators see query + hit count without
+re-running search (north-star: wrestle information in front of you).
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live L1–L4 dual-gate (operator-only)

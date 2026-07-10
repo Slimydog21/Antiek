@@ -21,6 +21,8 @@
  * Residual (sj): float|full intelligent context search hits as HTML reading windows.
  * Residual (sk): float|full hydrated publication HTML (arxiv/substack identity).
  * Residual (sl): float|full research context pack (prompt_block) as HTML.
+ * Residual (tq): context_search float/full carries search_query + search_hit_count
+ * into HostedHtmlDocumentHost honesty chrome.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -977,6 +979,9 @@ export function ResearchContextPanel({
                       view_format: "html",
                       source: "context_search",
                       research_tier: searchHits.research_tier || null,
+                      // Residual (tq): intelligent search honesty into host.
+                      search_query: searchHits.query || "",
+                      search_hit_count: searchHits.hit_count ?? 0,
                     },
                     {
                       id: `win:context_search:${id}`,
@@ -1009,6 +1014,9 @@ export function ResearchContextPanel({
                       view_format: "html",
                       source: "context_search",
                       research_tier: searchHits.research_tier || null,
+                      // Residual (tq): intelligent search honesty into host.
+                      search_query: searchHits.query || "",
+                      search_hit_count: searchHits.hit_count ?? 0,
                     },
                     {
                       id: `win:context_search:${id}:full`,

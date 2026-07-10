@@ -252,6 +252,42 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     ).toBe("research_progress_complete");
   });
 
+  it("stamps context_search query + hit count honesty (tq)", () => {
+    render(
+      <HostedHtmlDocumentHost
+        document_id="context_search:paper:abc"
+        title="Context search · attention"
+        view_format="html"
+        source="context_search"
+        search_query="attention"
+        search_hit_count={3}
+        html="<p>Query: attention · hits=3</p>"
+      />,
+    );
+    const host = screen.getByTestId("hosted-html-document-host");
+    expect(host.getAttribute("data-source")).toBe("context_search");
+    expect(host.getAttribute("data-context-search")).toBe("true");
+    expect(host.getAttribute("data-search-query")).toBe("attention");
+    expect(host.getAttribute("data-search-hit-count")).toBe("3");
+    const honesty = screen.getByTestId("hosted-html-context-search-honesty");
+    expect(honesty.getAttribute("data-search-query")).toBe("attention");
+    expect(honesty.getAttribute("data-search-hit-count")).toBe("3");
+    expect(honesty.textContent).toMatch(/Intelligent search/i);
+    expect(honesty.textContent).toMatch(/attention/);
+    expect(honesty.textContent).toMatch(/hits=3/);
+    expect(honesty.textContent).toMatch(/not PDF/i);
+    const twins = screen.getByTestId("twin-notes-panel-stub");
+    expect(twins.getAttribute("data-seed-title") || "").toMatch(
+      /Context search/,
+    );
+    expect(twins.getAttribute("data-seed-title") || "").toMatch(/attention/);
+    expect(
+      screen.getByTestId("hosted-html-open-write").getAttribute(
+        "data-write-seed-source",
+      ),
+    ).toBe("context_search");
+  });
+
   it("stamps evidence_pack source and twin seed title (sh/si)", () => {
     render(
       <HostedHtmlDocumentHost
