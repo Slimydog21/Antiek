@@ -59,6 +59,16 @@ describe("ResearchProgressPanel", () => {
         .getByTestId("research-progress-competitive-scorecard-link")
         .getAttribute("href"),
     ).toBe("/settings#settings-competitive-dr-scorecard");
+    // Residual (akt): FUTURE competitive DR quality brief (parity launch/collective).
+    expect(
+      screen
+        .getByTestId("research-progress-competitive-dr-future-agent-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    expect(
+      screen.getByTestId("research-progress-competitive-dr-future-agent-link")
+        .textContent,
+    ).toMatch(/competitive DR quality/i);
     // Residual (akl): multi-minute budget-before-fire → Settings prompt-cost (parity akk).
     expect(
       screen

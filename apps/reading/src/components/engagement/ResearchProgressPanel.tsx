@@ -21,6 +21,8 @@
  * progress.html yields non-empty plain text (parity marketplace/MO/spawn).
  * Residual (aim): Settings competitive DR scorecard deep-link during multi-minute
  * jobs (world-class DR honesty map · residual aii).
+ * Residual (akt): FUTURE-AGENT competitive DR quality brief deep-link (parity
+ * launch/collective/spawn/flywheel/MO FUTURE matrix during multi-minute jobs).
  * HTML-first; never PDF.
  */
 
@@ -292,6 +294,14 @@ export function ResearchProgressPanel({
             title="Settings competitive deep-research scorecard (shipped vs deferred honesty)"
           >
             Settings · competitive DR scorecard
+          </a>
+          {/* Residual (akt): FUTURE competitive DR quality brief during multi-minute jobs. */}
+          <a
+            href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+            data-testid="research-progress-competitive-dr-future-agent-link"
+            title="FUTURE-AGENT competitive deep-research quality brief (long-horizon wrestle · multi-minute plan→cite)"
+          >
+            FUTURE · competitive DR quality
           </a>
           {/* Residual (akl): multi-minute wrestle budget-before-fire → Settings prompt-cost (ake/akk). */}
           <a

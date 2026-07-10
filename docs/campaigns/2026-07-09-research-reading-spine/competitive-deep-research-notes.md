@@ -3173,3 +3173,9 @@ Catalog + host-land L5 honesty stamps payment-adapter Sprint 1 shipped offline
 (akr · DeferredPaymentAdapter · ANTIEK_MARKETPLACE_LIVE_PAYMENT · never $0) and
 Sprint 2 purchase path still deferred. vitest MarketplaceHost 41 green.
 P0 operator merge PR #465. Pivot akt+ outside thrash.
+
+## Residual akt · 2026-07-10 — ResearchProgress FUTURE competitive DR quality deep-link
+Multi-minute wrestle progress navigates FUTURE-AGENT competitive DR quality brief
+(parity launch/collective/spawn/flywheel/MO). Progress nav: scorecard · FUTURE ·
+prompt-cost · dual-gate L4. vitest ResearchProgress 10 green.
+P0 operator merge PR #465. Pivot aku+ outside thrash.
