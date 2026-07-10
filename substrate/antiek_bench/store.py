@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -85,7 +86,21 @@ class FileBenchStore:
 
     def put_proposal(self, proposal_id: str, proposal: dict[str, Any]) -> None:
         path = self.root / "proposals" / f"{proposal_id.replace('/', '_')}.json"
-        path.write_text(json.dumps(proposal, sort_keys=True, indent=2), encoding="utf-8")
+        payload = json.dumps(proposal, sort_keys=True, indent=2).encode()
+        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as handle:
+            temporary = Path(handle.name)
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.replace(temporary, path)
+            directory_fd = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        finally:
+            temporary.unlink(missing_ok=True)
 
     def get_proposal(self, proposal_id: str) -> dict[str, Any] | None:
         path = self.root / "proposals" / f"{proposal_id.replace('/', '_')}.json"

@@ -363,7 +363,12 @@ def settings_approve_suite_proposal_payload(
 
     Calls shipped ``approve_and_promote``. Never implicit from GET propose path.
     """
-    from .rewrite import approve_and_promote
+    from .rewrite import (
+        ProposalIntegrityError,
+        ProposalStateError,
+        StaleSuiteProposalError,
+        approve_and_promote,
+    )
     from .suite import active_suite
 
     pid = str(proposal_id or "").strip()
@@ -400,18 +405,52 @@ def settings_approve_suite_proposal_payload(
             )
         return payload
 
-    suite = approve_and_promote(
-        pid, store=store, registry=registry, approve=approve
-    )
+    try:
+        suite = approve_and_promote(
+            pid, store=store, registry=registry, approve=approve
+        )
+    except (ProposalIntegrityError, ProposalStateError) as exc:
+        after = active_suite(registry=registry)
+        updated = store.get_proposal(pid) or row
+        stale = isinstance(exc, StaleSuiteProposalError)
+        payload = {
+            "ok": False,
+            "proposal_id": pid,
+            "status": str(updated.get("status") or ("stale" if stale else "invalid")),
+            "approved": False,
+            "promoted": False,
+            "active_suite_version": after.suite_version,
+            "active_suite_before": before_version,
+            "proposed_suite_version": updated.get("proposed_suite_version"),
+            "view_format": "html",
+            "settings_panel": "antiek_bench_suite_approve",
+            "source": "antiek_bench.approve_and_promote",
+            "notes": [str(exc)],
+        }
+        if include_html:
+            payload["html"] = project_suite_proposal_html(
+                {
+                    "has_proposal": True,
+                    "proposal_id": pid,
+                    "status": payload["status"],
+                    "base_suite_version": updated.get("base_suite_version"),
+                    "proposed_suite_version": payload["proposed_suite_version"],
+                    "active_suite_version": after.suite_version,
+                    "auto_promoted": False,
+                    "rationale": payload["notes"][0],
+                }
+            )
+        return payload
     after = active_suite(registry=registry)
     updated = store.get_proposal(pid) or {}
     status = str(updated.get("status") or ("approved" if approve else "rejected"))
     promoted = bool(approve) and after.suite_version != before_version
+    replayed_approval = bool(approve) and str(row.get("status")) == "approved"
     payload = {
         "ok": True,
         "proposal_id": pid,
         "status": status,
-        "approved": bool(approve),
+        "approved": status == "approved",
         "promoted": promoted,
         "active_suite_version": after.suite_version,
         "active_suite_before": before_version,
@@ -424,7 +463,9 @@ def settings_approve_suite_proposal_payload(
         "notes": [
             (
                 f"Approved and promoted suite {after.suite_version}"
-                if approve
+                if promoted
+                else f"Approval already recorded; active suite remains {after.suite_version}"
+                if status == "approved" or replayed_approval
                 else f"Rejected proposal {pid}; active suite remains {after.suite_version}"
             )
         ],

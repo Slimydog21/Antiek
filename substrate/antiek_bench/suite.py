@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from threading import RLock
 from typing import Literal
 
 TaskClass = Literal["distill", "synthesize", "wrestle", "book_qa"]
@@ -40,8 +41,13 @@ class SuiteRegistry:
 
     suites: dict[str, SuiteDefinition] = field(default_factory=dict)
     active_version: str | None = None
+    _lock: RLock = field(default_factory=RLock, repr=False, compare=False)
 
     def register(self, suite: SuiteDefinition) -> None:
+        with self._lock:
+            self._register(suite)
+
+    def _register(self, suite: SuiteDefinition) -> None:
         if not suite.suite_version.strip():
             raise ValueError("suite_version is required")
         if not suite.items:
@@ -54,18 +60,31 @@ class SuiteRegistry:
             self.active_version = suite.suite_version
 
     def get(self, version: str) -> SuiteDefinition | None:
-        return self.suites.get(version)
+        with self._lock:
+            return self.suites.get(version)
 
     def active(self) -> SuiteDefinition:
-        if self.active_version is None or self.active_version not in self.suites:
-            raise RuntimeError("no active suite registered")
-        return self.suites[self.active_version]
+        with self._lock:
+            if self.active_version is None or self.active_version not in self.suites:
+                raise RuntimeError("no active suite registered")
+            return self.suites[self.active_version]
 
     def promote(self, version: str) -> SuiteDefinition:
-        if version not in self.suites:
-            raise KeyError(f"unknown suite_version: {version}")
-        self.active_version = version
-        return self.suites[version]
+        with self._lock:
+            if version not in self.suites:
+                raise KeyError(f"unknown suite_version: {version}")
+            self.active_version = version
+            return self.suites[version]
+
+    def register_and_promote_if_active(
+        self, base_version: str, suite: SuiteDefinition
+    ) -> SuiteDefinition | None:
+        with self._lock:
+            if self.active_version != base_version:
+                return None
+            self._register(suite)
+            self.active_version = suite.suite_version
+            return suite
 
 
 # Process-local default registry (tests inject their own).

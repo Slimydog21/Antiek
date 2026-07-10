@@ -3,13 +3,32 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
+from threading import RLock
 from typing import Any, Literal
 
 from .store import BenchStore
 from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, TaskClass, active_suite
 
-ProposalStatus = Literal["proposed", "approved", "rejected"]
+ProposalStatus = Literal["proposed", "approving", "approved", "rejected", "stale"]
+_APPROVAL_LOCK = RLock()
+
+
+class ProposalIntegrityError(ValueError):
+    pass
+
+
+class ProposalMigrationRequiredError(ProposalIntegrityError):
+    pass
+
+
+class ProposalStateError(RuntimeError):
+    pass
+
+
+class StaleSuiteProposalError(ProposalStateError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -21,6 +40,7 @@ class SuiteProposal:
     added_item_ids: tuple[str, ...]
     status: ProposalStatus
     suite: SuiteDefinition
+    proposal_digest: str
     # Residual (acy): structured count of title-only Write seed failures
     # (has_body=false → failed) for Settings / recursive rewrite audit.
     title_only_write_seed_count: int = 0
@@ -36,6 +56,7 @@ class SuiteProposal:
             "rationale": self.rationale,
             "added_item_ids": list(self.added_item_ids),
             "status": self.status,
+            "proposal_digest": self.proposal_digest,
             # Residual (acy): body honesty aggregate (parity rationale acx).
             "title_only_write_seed_count": int(self.title_only_write_seed_count),
             # Residual (adp): with_body + unknown for full rewrite audit matrix.
@@ -62,6 +83,38 @@ def _proposal_id(base: str, usage_fingerprint: str) -> str:
         :16
     ]
     return f"prop_{digest}"
+
+
+def _proposal_digest(
+    *,
+    proposal_id: str,
+    base_suite_version: str,
+    proposed_suite_version: str,
+    suite: SuiteDefinition,
+) -> str:
+    material = json.dumps(
+        {
+            "proposal_id": proposal_id,
+            "base_suite_version": base_suite_version,
+            "proposed_suite_version": proposed_suite_version,
+            "suite": {
+                "suite_version": suite.suite_version,
+                "label": suite.label,
+                "items": [
+                    {
+                        "item_id": item.item_id,
+                        "task_class": item.task_class,
+                        "prompt": item.prompt,
+                        "expected_keywords": item.expected_keywords,
+                    }
+                    for item in suite.items
+                ],
+            },
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return "sha256:" + hashlib.sha256(material.encode()).hexdigest()
 
 
 def _fingerprint_usage(events: list[dict[str, Any]]) -> str:
@@ -172,6 +225,12 @@ def propose_suite_delta(
         added_item_ids=tuple(added),
         status="proposed",
         suite=suite,
+        proposal_digest=_proposal_digest(
+            proposal_id=pid,
+            base_suite_version=base.suite_version,
+            proposed_suite_version=proposed_version,
+            suite=suite,
+        ),
         title_only_write_seed_count=int(title_only_failed),
         with_body_write_seed_count=int(with_body_n),
         body_unknown_write_seed_count=int(body_unknown_n),
@@ -193,17 +252,38 @@ def approve_and_promote(
     When ``registry`` is None, uses the process-default suite registry (same as
     ``active_suite()``) after ensuring the core suite is registered.
     """
-    from .suite import active_suite
-
     reg = registry if registry is not None else _process_registry()
-    # Ensure a baseline active suite exists when using the process default.
     if registry is None:
         active_suite(registry=reg)
+    with _APPROVAL_LOCK:
+        return _approve_locked(
+            proposal_id, store=store, registry=reg, approve=approve
+        )
+
+
+def _approve_locked(
+    proposal_id: str,
+    *,
+    store: BenchStore,
+    registry: SuiteRegistry,
+    approve: bool,
+) -> SuiteDefinition:
+    reg = registry
 
     row = store.get_proposal(proposal_id)
     if row is None:
         raise KeyError(f"unknown proposal_id: {proposal_id}")
+    status = str(row.get("status") or "")
+    active = reg.active()
+    if status == "approved":
+        if not approve:
+            raise ProposalStateError("approved proposal cannot be rejected")
+        return active
+    if status not in {"proposed", "approving"}:
+        raise ProposalStateError(f"proposal is terminal: {status or 'unknown'}")
     if not approve:
+        if status == "approving":
+            raise ProposalStateError("approving proposal cannot be rejected")
         row = dict(row)
         row["status"] = "rejected"
         store.put_proposal(proposal_id, row)
@@ -225,8 +305,43 @@ def approve_and_promote(
         label=str(suite_data.get("label") or "antiek-bench-core"),
         items=tuple(items),
     )
-    reg.register(suite)
-    promoted = reg.promote(suite.suite_version)
+    expected_digest = _proposal_digest(
+        proposal_id=proposal_id,
+        base_suite_version=str(row.get("base_suite_version") or ""),
+        proposed_suite_version=str(row.get("proposed_suite_version") or ""),
+        suite=suite,
+    )
+    if not row.get("proposal_digest"):
+        raise ProposalMigrationRequiredError(
+            "legacy proposal requires explicit digest migration before approval"
+        )
+    if row.get("proposal_digest") != expected_digest or suite.suite_version != row.get(
+        "proposed_suite_version"
+    ):
+        raise ProposalIntegrityError("proposal payload does not match its immutable digest")
+    registered_suite = reg.get(suite.suite_version)
+    if status == "approving" and registered_suite == suite:
+        completed = dict(row)
+        completed["status"] = "approved"
+        store.put_proposal(proposal_id, completed)
+        return reg.active()
+    if status == "proposed":
+        intent = dict(row)
+        intent["status"] = "approving"
+        store.put_proposal(proposal_id, intent)
+        row = intent
+    promoted = reg.register_and_promote_if_active(
+        str(row.get("base_suite_version") or ""), suite
+    )
+    if promoted is None:
+        current = reg.active()
+        row = dict(row)
+        row["status"] = "stale"
+        row["stale_active_suite_version"] = current.suite_version
+        store.put_proposal(proposal_id, row)
+        raise StaleSuiteProposalError(
+            f"proposal base {row.get('base_suite_version')} is not active {current.suite_version}"
+        )
     row = dict(row)
     row["status"] = "approved"
     store.put_proposal(proposal_id, row)

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><title>Antiek-bench SPR-04</title>
+<style>body{font-family:system-ui;max-width:52rem;margin:2rem auto;line-height:1.5;padding:0 1rem}code{background:#f5f5f4;padding:0 .3em}</style>
+</head><body>
+<h1>SPR-04 — Stale-safe proposal approval</h1>
+<p><a href="index.html">← master</a></p>
+<p>Make the operator gate compare-and-promote: recursive learning must never roll evaluation truth back over a newer approved suite.</p>
+<h2>Contract</h2>
+<ol>
+  <li>Persist a deterministic digest over proposal identity and complete suite content.</li>
+  <li>Approve only when the proposal is <code>proposed</code> and its base equals the active suite.</li>
+  <li>Mark a base mismatch <code>stale</code>; leave registry and suite map unchanged.</li>
+  <li>Approved replay is idempotent and never re-promotes after another suite becomes active.</li>
+  <li>Rejected and stale proposals are terminal; tampered payloads fail before registry mutation.</li>
+  <li>Persist <code>approving</code> intent before promotion; replay reconciles a completed registry mutation after a final store-write failure.</li>
+  <li>Legacy proposals without an immutable digest require explicit migration and cannot be mistaken for current tampering.</li>
+</ol>
+<h2>Acceptance</h2>
+<ul>
+  <li>Two proposals from the same base: approving one makes the other stale.</li>
+  <li>Replaying the first approval after a later promotion cannot roll back the active suite.</li>
+  <li>Changed base, proposed version, item, prompt, keywords, or digest cannot promote.</li>
+  <li>Settings JSON/HTML reports stale/tampered outcomes honestly with <code>promoted=false</code>.</li>
+</ul>
+<h2>Non-goals</h2><p>No automatic merge of competing proposals, no silent rebasing, and no routing authority.</p>
+</body></html>
