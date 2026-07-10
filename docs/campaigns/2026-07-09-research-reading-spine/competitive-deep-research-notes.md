@@ -3346,3 +3346,7 @@ seed remount. P0 operator merge PR #465. Pivot amc+ outside thrash.
 Multi-hop citation strip links Insights → Questions → Sources stage sections
 (#citation-hop-stage-*) for competitive claim→source navigation. vitest
 ResearchContext 17 green. P0 operator merge PR #465. Pivot amd+ outside thrash.
+
+## Residual amd · 2026-07-10 — FUTURE competitive citation chain amc note
+Competitive residual #1 names amc hop strip → stage deep-links. P0 operator
+merge PR #465. Pivot ame+ outside thrash.

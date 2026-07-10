@@ -1,0 +1,12 @@
+# inventory-amd · FUTURE competitive citation chain amc note
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: amd
+date: 2026-07-10
+parent_tip: 06946455 (amc)
+
+## Closed
+- FUTURE competitive residual #1 names amc hop strip stage deep-links
+
+## Next
+ame+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

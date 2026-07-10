@@ -41,7 +41,7 @@
 
 ## Highest-value offline product residuals (next)
 
-1. **Citation chain UI** — **Shipped offline** (aij · air · ais · aji · ajk).  
+1. **Citation chain UI** — **Shipped offline** (aij · air · ais · aji · ajk · **amc** hop strip → stage deep-links).  
 2. **Long-horizon wrestle progress** — offline progress HTML ships · live step dual-gate L4.  
 3. **Twin intelligent search defaults** — **Shipped full free PD spine + coverage path** (ahr · aiy · akq · akw · alf · alj–alt · TwinNotes). Prefer new catalog subjects only.  
 4. **Competitive DR quality scorecard** — **Shipped** (aii · navigation matrix aim–ajz). Prefer non-scorecard residuals next.  
