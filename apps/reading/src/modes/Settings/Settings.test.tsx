@@ -476,6 +476,14 @@ describe("Settings SPR-01 + decision-tree install", () => {
     fetchNotDiamondAdvisory.mockClear();
     fetchHydrateLiveStatus.mockClear();
     fetchTwinSeedLiveStatus.mockClear();
+    // Default: no installed decision-tree driver (residual rl delta baseline).
+    fetchDecisionTreeSelection.mockResolvedValue({
+      model_id: null,
+      provider_id: null,
+      installed: false,
+      notes: ["no decision-tree selection installed in this process"],
+      source: "test",
+    });
   });
 
   it("surfaces offline-honest twin seed live status (hs)", async () => {
@@ -629,6 +637,46 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("notdiamond-advisory-html").innerHTML).toMatch(
       /authority|REJECT/i,
     );
+    // Residual (rl): advisory vs installed driver delta (no driver by default).
+    expect(
+      screen.getByTestId("notdiamond-advisory-panel").getAttribute("data-advisory-only"),
+    ).toBe("true");
+    const delta = screen.getByTestId("notdiamond-driver-delta");
+    expect(delta.getAttribute("data-advisory-only")).toBe("true");
+    expect(delta.getAttribute("data-delta-status")).toBe("no_installed");
+    expect(delta.getAttribute("data-suggested")).toBe("stub-strong");
+    expect(delta.getAttribute("data-installed")).toBe("");
+    expect(screen.getByTestId("notdiamond-driver-delta-label").textContent).toMatch(
+      /No driver installed/i,
+    );
+    expect(screen.getByTestId("notdiamond-suggested-driver").textContent).toMatch(
+      /stub-strong/,
+    );
+  });
+
+  it("shows NotDiamond driver delta when installed differs from advisory (rl)", async () => {
+    fetchDecisionTreeSelection.mockResolvedValue({
+      model_id: "glm-5.2",
+      provider_id: "zai",
+      installed: true,
+      notes: [],
+      source: "test",
+    });
+    render(<Settings />);
+    await waitFor(() => {
+      expect(screen.getByTestId("notdiamond-driver-delta")).toBeTruthy();
+    });
+    const delta = screen.getByTestId("notdiamond-driver-delta");
+    expect(delta.getAttribute("data-delta-status")).toBe("differs");
+    expect(delta.getAttribute("data-installed")).toBe("glm-5.2");
+    expect(delta.getAttribute("data-suggested")).toBe("stub-strong");
+    expect(delta.getAttribute("data-advisory-only")).toBe("true");
+    expect(screen.getByTestId("notdiamond-driver-delta-label").textContent).toMatch(
+      /not auto-applied/i,
+    );
+    expect(
+      screen.getByTestId("notdiamond-advisory-panel").getAttribute("data-driver-delta"),
+    ).toBe("differs");
   });
 
   it("refreshes NotDiamond weekly advisory for leaderboard week (he)", async () => {

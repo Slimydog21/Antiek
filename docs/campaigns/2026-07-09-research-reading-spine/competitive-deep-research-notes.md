@@ -747,3 +747,9 @@ path — multi-pub panel or one-off hydrate — seeds writing.
 The research context pack that drives prompts opens Write as twin_seed
 source=research_context_pack. Competitive delta: the same substrate that
 grounds deep-research turns seeds long-form writing without re-export.
+
+## Residual rl · 2026-07-10 — NotDiamond driver delta honesty
+Settings shows installed decision-tree driver vs weekly NotDiamond advisory
+suggestion (match|differs|no_installed|no_suggestion). Competitive delta:
+operators see router-class suggestions without ever granting auto-dispatch
+authority — Antiek decision-tree remains the only install path.

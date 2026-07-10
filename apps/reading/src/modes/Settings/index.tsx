@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  notDiamondDriverDelta,
+  notDiamondDriverDeltaLabel,
+} from "../../lib/notDiamondDriverDelta";
+import {
   groupProposedTasksByClass,
   primaryFeedSourceFromBySource,
   rankedFeedSourcesFromBySource,
@@ -46,6 +50,8 @@ import {
 } from "../../api/engagement";
 
 /**
+ * Residual (rl): NotDiamond advisory vs installed decision-tree driver delta
+ * (weekly honesty; advisory never auto-applies).
  * Operator Settings — model inventory + budget + prompt projection (SPR-01)
  * + decision-tree driver install (process-local registry)
  * + Antiek-bench weekly usage summary (recorded engagement outcomes)
@@ -155,6 +161,16 @@ export default function Settings() {
   const rankedRewriteFeeds = useMemo(
     () => rankedFeedSourcesFromBySource(usage?.by_source),
     [usage?.by_source],
+  );
+
+  /** Residual (rl): advisory suggestion vs installed driver (never auto-route). */
+  const ndDriverDelta = useMemo(
+    () =>
+      notDiamondDriverDelta({
+        suggestedModelId: nd?.suggested_model_id,
+        installedModelId: tree?.model_id,
+      }),
+    [nd?.suggested_model_id, tree?.model_id],
   );
 
   useEffect(() => {
@@ -1265,6 +1281,7 @@ export default function Settings() {
             className="p-4 space-y-3"
             data-testid="notdiamond-advisory-panel"
             data-view-format="html"
+            data-advisory-only="true"
             data-authority-rejected={
               nd?.authority_rejected === true ? "true" : "false"
             }
@@ -1273,6 +1290,7 @@ export default function Settings() {
             }
             data-kill-switch={nd?.kill_switch_enabled ? "on" : "off"}
             data-suggestion-week={nd?.suggestion_week_id || leaderboardWeek || ""}
+            data-driver-delta={ndDriverDelta.status}
           >
             <p className="text-sm text-ink dark:text-bright">
               Campaign verdict: advisory GO (measured wedge only); authoritative
@@ -1348,6 +1366,35 @@ export default function Settings() {
                   label="Suggestion source"
                   value={nd.suggestion_source || "—"}
                 />
+                {/* Residual (rl): installed driver vs weekly advisory delta. */}
+                <div
+                  className="rounded border border-ink/15 p-2 space-y-1 dark:border-bright/15"
+                  data-testid="notdiamond-driver-delta"
+                  data-delta-status={ndDriverDelta.status}
+                  data-suggested={ndDriverDelta.suggested}
+                  data-installed={ndDriverDelta.installed}
+                  data-advisory-only="true"
+                  role="status"
+                >
+                  <p className="text-[11px] font-mono opacity-90">
+                    Installed driver:{" "}
+                    <code data-testid="notdiamond-installed-driver">
+                      {ndDriverDelta.installed || "(none)"}
+                    </code>
+                  </p>
+                  <p className="text-[11px] font-mono opacity-90">
+                    Advisory suggestion:{" "}
+                    <code data-testid="notdiamond-suggested-driver">
+                      {ndDriverDelta.suggested || "(none)"}
+                    </code>
+                  </p>
+                  <p
+                    className="text-[11px] font-mono"
+                    data-testid="notdiamond-driver-delta-label"
+                  >
+                    {notDiamondDriverDeltaLabel(ndDriverDelta)}
+                  </p>
+                </div>
                 <Row label="View" value={nd.view_format} />
                 {nd.suggested_model_id && nd.installable !== false ? (
                   <button
