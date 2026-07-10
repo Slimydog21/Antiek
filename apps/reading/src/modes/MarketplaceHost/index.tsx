@@ -1260,10 +1260,10 @@ export default function MarketplaceHost({
               (hosted.license_class || "") === "public_domain",
             )}
             data-is-free-host={String(
-              (hosted.license_class || "") === "public_domain" ||
-                Boolean(
-                  entries.find((e) => e.book_id === hosted.book_id)?.is_free,
-                ),
+              // Residual (abs): free_host is catalog is_free only (parity abn–abq).
+              Boolean(
+                entries.find((e) => e.book_id === hosted.book_id)?.is_free,
+              ),
             )}
             data-view-format={hosted.view_format ?? "html"}
             data-book-id={hosted.book_id ?? ""}
@@ -1301,7 +1301,7 @@ export default function MarketplaceHost({
                 entries.find((e) => e.book_id === hosted.book_id)?.subjects || []
               ).join(",") || "none"}
             </p>
-            {/* Residual (tc): free/PD host path honesty. */}
+            {/* Residual (tc/abs): free/PD host path honesty — free_host is is_free. */}
             <p
               data-testid="marketplace-host-free-pd-honesty"
               data-license-class={hosted.license_class ?? ""}
@@ -1309,17 +1309,15 @@ export default function MarketplaceHost({
                 (hosted.license_class || "") === "public_domain",
               )}
               data-is-free-host={String(
-                (hosted.license_class || "") === "public_domain" ||
-                  Boolean(
-                    entries.find((e) => e.book_id === hosted.book_id)?.is_free,
-                  ),
+                Boolean(
+                  entries.find((e) => e.book_id === hosted.book_id)?.is_free,
+                ),
               )}
               role="status"
             >
               Free/PD host honesty: license=
               {hosted.license_class || "unknown"} · free_host=
-              {(hosted.license_class || "") === "public_domain" ||
-              Boolean(
+              {Boolean(
                 entries.find((e) => e.book_id === hosted.book_id)?.is_free,
               )
                 ? "true"

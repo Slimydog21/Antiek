@@ -2044,3 +2044,7 @@ SESSION-ARC-abn-abq documents free inventory is_free-only doctrine (API·HTML·U
 FUTURE tip re-anchored after 151 residual ships. Competitive delta: compaction-safe
 multi-agent handoff; operator merge PR #465 highest leverage.
 
+## Residual abs · 2026-07-10 — host-land free_host is is_free only
+Host-land free_host honesty uses catalog is_free only (parity free inventory
+abn–abq). Competitive delta: free host path identity is end-to-end (API·HTML·UI·host land).
+

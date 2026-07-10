@@ -1,0 +1,19 @@
+# inventory-abs · host-land free_host is is_free only
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: abs
+date: 2026-07-10
+tip_before: 8896bc9d (abr)
+
+## Problem
+Host-land free_host stamped public_domain OR catalog is_free — free inventory
+doctrine is is_free only (abn–abq).
+
+## Fix
+- data-is-free-host / free_host copy use catalog entry is_free only
+- MarketplaceHost free/host tests green
+
+## Verified
+vitest MarketplaceHost free|Host land|purchase-host → 14 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)
