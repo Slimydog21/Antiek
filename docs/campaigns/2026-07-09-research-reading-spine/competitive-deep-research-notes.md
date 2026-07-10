@@ -2890,3 +2890,7 @@ PR #465. Pivot aip+.
 Settings decision-tree dual-gate prep strip links competitive DR scorecard.
 Model choice chokepoint navigates world-class DR honesty map. vitest Settings 36 green.
 P0 operator merge PR #465. Pivot aiq+.
+
+## Residual aiq · 2026-07-10 — SESSION-ARC aim–aip navigation deep-links
+Handoff for competitive DR scorecard navigation from progress, TwinNotes, and
+decision-tree dual-gate prep. P0 operator merge PR #465. Pivot air+ outside thrash.
