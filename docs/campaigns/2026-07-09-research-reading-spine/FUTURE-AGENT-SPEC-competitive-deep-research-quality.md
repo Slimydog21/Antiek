@@ -30,7 +30,8 @@
 - Marketplace free STEM HTML + purchase manual receipt · host L5 FUTURE deep-links (akb)  
 - **L5 payment offline-complete Sprint 1–3** (akr adapter · aku purchase path · ala deferred CTA · alb wave)  
 - Knowledge-dense quick-call · pub-ref foresight chrome matrix  
-- Multi-hop citation chain · evidence Write hop honesty · dogfood v29–v33  
+- Multi-hop citation chain · hop strip stage deep-links (amc/ame) · evidence Write hop honesty · dogfood v29–v33  
+- Marketplace host-land TwinNotes+ResearchContext substrate (alx–ama)  
 - Twin promote depth-graph path (UI · substrate · Write · dogfood v32–v33)  
 - Domain-aware twin search free PD full spine (aiy STEM · akq econ/politics/philosophy/eng · akw literature/tech · alf bare science)  
 - Competitive DR scorecard navigation matrix (progress · MO · collective · attach · marketplace · badge · budget · ND)  
