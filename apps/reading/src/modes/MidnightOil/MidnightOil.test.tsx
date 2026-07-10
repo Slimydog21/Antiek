@@ -16,6 +16,7 @@ import {
   finalArtifactGraphCommitPlanMidnightOil,
   finalArtifactMidnightOil,
   finalArtifactPersistencePlanMidnightOil,
+  finalArtifactPublishPlanMidnightOil,
   finalHtmlArtifactAssemblyPlanMidnightOil,
   finalSynthesisDraftPlanMidnightOil,
   graphAdapterPlanMidnightOil,
@@ -3032,6 +3033,114 @@ vi.mock("../../api/midnightOil", () => ({
       "final artifact graph commit plan only: no graph transaction, node commit, edge set, snapshot, lineage index, hosted asset, or final artifact is created",
     ],
   })),
+  finalArtifactPublishPlanMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-final-artifact-publish-plan",
+    final_artifact_graph_commit_plan_receipt_id:
+      "midnight-oil-test-final-artifact-graph-commit-plan",
+    final_artifact_persistence_plan_receipt_id:
+      "midnight-oil-test-final-artifact-persistence-plan",
+    final_html_artifact_assembly_plan_receipt_id:
+      "midnight-oil-test-final-html-artifact-assembly-plan",
+    final_synthesis_draft_plan_receipt_id:
+      "midnight-oil-test-final-synthesis-draft-plan",
+    synthesis_bundle_assembly_plan_receipt_id:
+      "midnight-oil-test-synthesis-bundle-assembly-plan",
+    worker_synthesis_handoff_plan_receipt_id:
+      "midnight-oil-test-worker-synthesis-handoff-plan",
+    worker_output_aggregation_plan_receipt_id:
+      "midnight-oil-test-worker-output-aggregation-plan",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    run_id: "midnight-oil-test",
+    status: "blocked_final_artifact_publish_unimplemented",
+    adapter_key: "final_artifact_publish",
+    planned_final_artifact_publish_receipt_id:
+      "midnight-oil-test-final-artifact-publish-receipt",
+    planned_publish_transaction_id:
+      "midnight-oil-test-final-artifact-publish-transaction",
+    planned_published_information_asset_id:
+      "midnight-oil-test-published-information-asset",
+    planned_account_visible_asset_id: "midnight-oil-test-account-visible-asset",
+    planned_reading_workspace_entry_id: "midnight-oil-test-reading-workspace-entry",
+    planned_twin_notes_workspace_entry_id:
+      "midnight-oil-test-twin-notes-workspace-entry",
+    planned_search_index_entry_id: "midnight-oil-test-search-index-entry",
+    planned_share_policy_id: "midnight-oil-test-private-share-policy",
+    planned_private_read_url_id: "midnight-oil-test-private-read-url",
+    planned_operator_notification_id:
+      "midnight-oil-test-final-artifact-publish-notification",
+    planned_graph_commit_id: "midnight-oil-test-final-artifact-graph-commit",
+    planned_graph_snapshot_id: "midnight-oil-test-final-artifact-graph-snapshot",
+    planned_graph_lineage_index_id:
+      "midnight-oil-test-final-artifact-graph-lineage-index",
+    planned_information_asset_id: "midnight-oil-test-information-asset",
+    planned_hosted_html_asset_id: "midnight-oil-test-hosted-html-asset",
+    planned_final_html_artifact_id: "midnight-oil-test-final-html-artifact",
+    planned_final_html_document_id: "midnight-oil-test-final-html-document",
+    planned_synthesis_source_packet_id: "midnight-oil-test-synthesis-source-packet",
+    planned_synthesis_evidence_map_id: "midnight-oil-test-synthesis-evidence-map",
+    planned_runner_dispatch_id: "midnight-oil-test-midnight-oil-runner-dispatch",
+    planned_idempotency_key: "midnight-oil-test-live-dispatch-final-enable-idempotency-key",
+    final_artifact_publish_blockers: [
+      "final artifact publish receipt writer",
+      "publish transaction writer",
+      "account-visible asset writer",
+      "reading workspace entry writer",
+      "search index entry writer",
+      "private read URL writer",
+      "operator notification writer",
+      "idempotent final artifact publish replay protection",
+    ],
+    required_final_artifact_publish_invariants: [
+      "final artifact publish planner must require final artifact graph commit planning before any account-visible artifact can be published",
+      "final artifact publish planner must preserve source/evidence/citation lineage through the reading workspace entry, search index entry, graph snapshot, and twin notes workspace entry",
+    ],
+    required_final_artifact_publish_receipt_fields: [
+      "final_artifact_publish_plan_receipt_id",
+      "final_artifact_graph_commit_plan_receipt_id",
+      "final_artifact_publish_receipt_id",
+      "publish_transaction_id",
+      "published_information_asset_id",
+      "account_visible_asset_id",
+      "reading_workspace_entry_id",
+      "search_index_entry_id",
+      "private_read_url_id",
+      "information_asset_published",
+      "idempotency_key",
+    ],
+    blocker_reason: "final_artifact_publish_unimplemented",
+    final_artifact_publish_allowed: false,
+    publish_transaction_created: false,
+    information_asset_published: false,
+    account_visible_asset_created: false,
+    reading_workspace_entry_created: false,
+    twin_notes_workspace_entry_created: false,
+    search_index_entry_created: false,
+    share_policy_created: false,
+    private_read_url_created: false,
+    operator_notification_created: false,
+    final_artifact_graph_commit_allowed: false,
+    graph_commit_created: false,
+    graph_transaction_created: false,
+    graph_node_committed: false,
+    graph_edge_set_committed: false,
+    graph_snapshot_created: false,
+    graph_lineage_index_created: false,
+    final_artifact_persisted: false,
+    information_asset_created: false,
+    hosted_html_asset_created: false,
+    graph_mutated: false,
+    final_artifact_created: false,
+    dispatch_performed: false,
+    budget_reserved: false,
+    provider_calls_made: false,
+    retrieval_performed: false,
+    source_receipts_created: false,
+    adapter_plan_notes: [
+      "final artifact publish plan only: no publish transaction, account-visible asset, workspace entry, search index entry, private read URL, notification, graph mutation, or final artifact is created",
+    ],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -5629,5 +5738,53 @@ describe("MidnightOil", () => {
     expect(screen.getByText(/graph_transaction_id/)).toBeTruthy();
     expect(screen.getByText(/graph_snapshot_id/)).toBeTruthy();
     expect(screen.getByText(/graph_lineage_index_id/)).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Final artifact publish plan" }));
+
+    await waitFor(() => expect(finalArtifactPublishPlanMidnightOil).toHaveBeenCalled());
+    expect(finalArtifactPublishPlanMidnightOil).toHaveBeenCalledWith(
+      expect.objectContaining({
+        launch_packet: expect.objectContaining({
+          packet_id: "midnight-oil-test-launch-packet",
+        }),
+        approval_receipt: expect.objectContaining({
+          receipt_id: "midnight-oil-test-approval-receipt",
+        }),
+        runner_handoff: expect.objectContaining({
+          handoff_id: "midnight-oil-test-runner-handoff",
+        }),
+        final_artifact_persistence_plan_receipt: expect.objectContaining({
+          receipt_id: "midnight-oil-test-final-artifact-persistence-plan",
+        }),
+        final_artifact_graph_commit_plan_receipt: expect.objectContaining({
+          receipt_id: "midnight-oil-test-final-artifact-graph-commit-plan",
+        }),
+      }),
+    );
+    expect(screen.getByText("Final artifact publish receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-artifact-publish-plan")).toBeTruthy();
+    expect(screen.getByText("blocked final artifact publish unimplemented")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-artifact-publish-receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-artifact-publish-transaction")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-published-information-asset")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-account-visible-asset")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-reading-workspace-entry")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-twin-notes-workspace-entry")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-search-index-entry")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-private-read-url")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-artifact-publish-notification")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "final artifact publish planner must require final artifact graph commit planning before any account-visible artifact can be published",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Final artifact publish blockers:/)).toBeTruthy();
+    expect(screen.getByText(/publish transaction writer/)).toBeTruthy();
+    expect(screen.getByText(/reading workspace entry writer/)).toBeTruthy();
+    expect(screen.getByText(/private read URL writer/)).toBeTruthy();
+    expect(screen.getByText(/Final artifact publish receipt fields:/)).toBeTruthy();
+    expect(screen.getByText(/account_visible_asset_id/)).toBeTruthy();
+    expect(screen.getByText(/reading_workspace_entry_id/)).toBeTruthy();
+    expect(screen.getByText(/private_read_url_id/)).toBeTruthy();
   });
 });
