@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 from dataclasses import replace
 from pathlib import Path
 from typing import Literal
@@ -47,6 +48,9 @@ def evidence(
     status: Literal["pending", "ok", "failed"] = "ok",
     rubric: str = "qualitative-v1",
 ) -> EvidenceRecord:
+    def digest(value: str) -> str:
+        return "sha256:" + hashlib.sha256(value.encode()).hexdigest()
+
     return EvidenceRecord(
         week_id="2026-W28",
         suite_version="suite-v3",
@@ -55,6 +59,8 @@ def evidence(
         rubric_version=rubric,
         judge_model=judge,
         candidate_hashes=candidates,
+        task_context_hash=digest("calibration task context"),
+        rubric_fingerprint=digest(rubric),
         blinded_order=("A", "B"),
         status=status,
         claimed_at_ms=100,

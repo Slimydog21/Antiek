@@ -4,7 +4,12 @@ from .anchors import AnchorCalibration, AnchorItem, AnchorSet, calibrate_against
 from .blinding import CandidateArtifact, JudgeRequest, PrivateJoin, blind_candidates
 from .calibration import PositionSwapReport, compare_position_swap
 from .disagreement import AxisDisagreement, DisagreementReport, compute_disagreement
-from .journal import EvidenceJournal, EvidenceJournalCorruptionError, EvidenceRecord
+from .journal import (
+    EvidenceJournal,
+    EvidenceJournalCorruptionError,
+    EvidenceRecord,
+    EvidenceSchemaMigrationRequiredError,
+)
 from .rubric import AxisJudgment, Rubric, rubric_for, validate_judgments
 from .runner import (
     JudgeClient,
@@ -31,6 +36,7 @@ __all__ = [
     "EvidenceJournal",
     "EvidenceJournalCorruptionError",
     "EvidenceRecord",
+    "EvidenceSchemaMigrationRequiredError",
     "DisagreementReport",
     "JudgeClient",
     "JudgeRequest",

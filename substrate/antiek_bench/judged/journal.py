@@ -6,6 +6,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -16,11 +17,16 @@ from .rubric import AxisJudgment, rubric_for, validate_judgments
 EvidenceStatus = Literal["pending", "ok", "failed"]
 FailureCode = Literal["invalid_or_failed_response"]
 FAILURE_CODES = frozenset({"invalid_or_failed_response"})
-EVIDENCE_SCHEMA_VERSION = 1
+EVIDENCE_SCHEMA_VERSION = 2
+_SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
 
 class EvidenceJournalCorruptionError(RuntimeError):
     pass
+
+
+class EvidenceSchemaMigrationRequiredError(RuntimeError):
+    """Legacy evidence lacks identity fields that cannot be reconstructed safely."""
 
 
 def evidence_id(
@@ -30,9 +36,20 @@ def evidence_id(
     rubric_version: str,
     judge_model: str,
     candidate_hashes: tuple[str, str],
+    task_context_hash: str,
+    rubric_fingerprint: str,
 ) -> str:
     material = json.dumps(
-        [week_id, suite_version, item_id_hash, rubric_version, judge_model, candidate_hashes],
+        [
+            week_id,
+            suite_version,
+            item_id_hash,
+            rubric_version,
+            judge_model,
+            candidate_hashes,
+            task_context_hash,
+            rubric_fingerprint,
+        ],
         separators=(",", ":"),
     )
     return "je_" + hashlib.sha256(f"judge-evidence:v1:{material}".encode()).hexdigest()
@@ -47,6 +64,8 @@ class EvidenceRecord:
     rubric_version: str
     judge_model: str
     candidate_hashes: tuple[str, str]
+    task_context_hash: str
+    rubric_fingerprint: str
     blinded_order: tuple[str, str]
     status: EvidenceStatus
     claimed_at_ms: int
@@ -65,6 +84,8 @@ class EvidenceRecord:
             self.rubric_version,
             self.judge_model,
             self.candidate_hashes,
+            self.task_context_hash,
+            self.rubric_fingerprint,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -73,6 +94,12 @@ class EvidenceRecord:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> EvidenceRecord:
         values = dict(data)
+        schema_version = values.get("schema_version")
+        if schema_version == 1:
+            raise EvidenceSchemaMigrationRequiredError(
+                f"evidence schema {schema_version} cannot be used as v{EVIDENCE_SCHEMA_VERSION}; "
+                "task context and rubric identity require explicit reconciliation"
+            )
         stored = str(values.pop("evidence_id"))
         for key in ("candidate_hashes", "blinded_order", "scores"):
             values[key] = tuple(
@@ -108,6 +135,14 @@ def _validate(record: EvidenceRecord) -> None:
         or len(record.candidate_hashes) != 2
     ):
         raise ValueError("evidence identity fields are required")
+    for value in (
+        record.item_id_hash,
+        *record.candidate_hashes,
+        record.task_context_hash,
+        record.rubric_fingerprint,
+    ):
+        if _SHA256_RE.fullmatch(value) is None:
+            raise ValueError("evidence hashes must be exact SHA-256 references")
     if record.claimed_at_ms < 0 or record.latency_ms < 0:
         raise ValueError("timing must be non-negative")
     if record.status == "pending" and (
@@ -172,6 +207,8 @@ class EvidenceJournal:
                 ValueError,
             ) as exc:
                 raise EvidenceJournalCorruptionError(f"invalid evidence row {index + 1}") from exc
+            except EvidenceSchemaMigrationRequiredError:
+                raise
         return rows
 
     @staticmethod
@@ -260,6 +297,8 @@ def _claim_metadata(record: EvidenceRecord) -> tuple[object, ...]:
         record.rubric_version,
         record.judge_model,
         record.candidate_hashes,
+        record.task_context_hash,
+        record.rubric_fingerprint,
         record.blinded_order,
         record.claimed_at_ms,
         record.schema_version,

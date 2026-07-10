@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -37,6 +39,22 @@ class Rubric:
     axes: tuple[str, ...]
     minimum: int = MIN_SCORE
     maximum: int = MAX_SCORE
+
+    @property
+    def fingerprint(self) -> str:
+        """Bind evidence identity to the complete qualitative contract."""
+        material = json.dumps(
+            {
+                "version": self.version,
+                "task_class": self.task_class,
+                "axes": self.axes,
+                "minimum": self.minimum,
+                "maximum": self.maximum,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return "sha256:" + hashlib.sha256(material.encode()).hexdigest()
 
 
 def rubric_for(task_class: TaskClass) -> Rubric:

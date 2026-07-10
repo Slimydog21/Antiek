@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import threading
@@ -14,8 +15,10 @@ from substrate.antiek_bench.judged import (
     EvidenceJournal,
     EvidenceJournalCorruptionError,
     EvidenceRecord,
+    EvidenceSchemaMigrationRequiredError,
     JudgeResponse,
     ReconciliationRequiredError,
+    Rubric,
     blind_candidates,
     collect_judge_evidence,
     rubric_for,
@@ -122,6 +125,33 @@ def test_success_persists_evidence_but_no_raw_artifacts(tmp_path: Path) -> None:
     assert "reason for" not in stored and "rationales" not in stored
 
 
+def test_task_context_and_full_rubric_definition_bind_evidence_identity(tmp_path: Path) -> None:
+    client = StubJudge()
+    journal = EvidenceJournal(tmp_path / "identity.jsonl")
+    common = {
+        "enabled": True,
+        "week_id": "2026-W28",
+        "suite_version": "suite-v3",
+        "item_id": "same item",
+        "task_class": "distill",
+        "candidates": candidates(),
+        "judge_model": "judge-model",
+        "salt": "salt",
+        "client": client,
+        "journal": journal,
+        "now_ms": 100,
+    }
+    first = collect_judge_evidence(task_context="Assess fidelity.", **common)  # type: ignore[arg-type]
+    second = collect_judge_evidence(task_context="Assess compression.", **common)  # type: ignore[arg-type]
+    assert first is not None and second is not None
+    assert first.evidence.evidence_id != second.evidence.evidence_id
+    assert client.calls == 2
+
+    rubric = rubric_for("distill")
+    changed = Rubric(rubric.version, rubric.task_class, rubric.axes + ("novel_axis",))
+    assert rubric.fingerprint != changed.fingerprint
+
+
 def test_float_score_is_rejected_even_when_numerically_integral() -> None:
     rubric = rubric_for("distill")
     bad = judgments()
@@ -189,7 +219,11 @@ def test_crash_claim_requires_reconciliation_and_never_recalls(tmp_path: Path) -
     client = StubJudge()
     journal = EvidenceJournal(tmp_path / "evidence.jsonl")
     request, _ = blind_candidates(
-        item_id="i", task_class="distill", candidates=candidates(), salt="s"
+        item_id="i",
+        task_class="distill",
+        candidates=candidates(),
+        salt="s",
+        task_context="Assess concise fidelity.",
     )
     from substrate.antiek_bench.judged.journal import EvidenceRecord
 
@@ -201,6 +235,8 @@ def test_crash_claim_requires_reconciliation_and_never_recalls(tmp_path: Path) -
         request.rubric.version,
         "judge",
         tuple(row.content_hash for row in request.candidates),
+        "sha256:" + hashlib.sha256(request.task_context.encode()).hexdigest(),
+        request.rubric.fingerprint,
         ("A", "B"),
         "pending",
         0,
@@ -332,6 +368,8 @@ def test_journal_rejects_invalid_terminal_and_claim_metadata_mismatch(tmp_path: 
         request.rubric.version,
         "judge",
         tuple(row.content_hash for row in request.candidates),
+        "sha256:" + hashlib.sha256(request.task_context.encode()).hexdigest(),
+        request.rubric.fingerprint,
         ("A", "B"),
         "pending",
         1,
@@ -365,6 +403,8 @@ def test_journal_completes_short_reads_and_writes(
         request.rubric.version,
         "judge",
         tuple(row.content_hash for row in request.candidates),
+        "sha256:" + hashlib.sha256(request.task_context.encode()).hexdigest(),
+        request.rubric.fingerprint,
         ("A", "B"),
         "pending",
         1,
@@ -400,6 +440,8 @@ def test_torn_tail_truncation_is_fsynced_on_duplicate(
         request.rubric.version,
         "judge",
         tuple(row.content_hash for row in request.candidates),
+        "sha256:" + hashlib.sha256(request.task_context.encode()).hexdigest(),
+        request.rubric.fingerprint,
         ("A", "B"),
         "pending",
         1,
@@ -441,5 +483,37 @@ def test_stored_identity_tampering_is_corruption(tmp_path: Path) -> None:
     payload = json.loads(lines[0])
     payload["evidence_id"] = "je_tampered"
     journal.path.write_text(json.dumps(payload) + "\n" + "\n".join(lines[1:]) + "\n")
+    with pytest.raises(EvidenceJournalCorruptionError):
+        journal.replay()
+
+
+def test_legacy_schema_requires_explicit_reconciliation(tmp_path: Path) -> None:
+    path = tmp_path / "legacy.jsonl"
+    path.write_text(json.dumps({"schema_version": 1}) + "\n")
+    with pytest.raises(EvidenceSchemaMigrationRequiredError, match="explicit reconciliation"):
+        EvidenceJournal(path).replay()
+
+
+def test_replay_rejects_malformed_identity_hash(tmp_path: Path) -> None:
+    journal = EvidenceJournal(tmp_path / "malformed.jsonl")
+    client = StubJudge()
+    result = collect_judge_evidence(
+        enabled=True,
+        week_id="w",
+        suite_version="v",
+        item_id="i",
+        task_context="Assess concise fidelity.",
+        task_class="distill",
+        candidates=candidates(),
+        judge_model="judge",
+        salt="s",
+        client=client,
+        journal=journal,
+    )
+    assert result is not None
+    rows = journal.path.read_text().splitlines()
+    payload = json.loads(rows[0])
+    payload["task_context_hash"] = "sha256:not-a-digest"
+    journal.path.write_text(json.dumps(payload) + "\n" + "\n".join(rows[1:]) + "\n")
     with pytest.raises(EvidenceJournalCorruptionError):
         journal.replay()

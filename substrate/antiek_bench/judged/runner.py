@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -80,6 +81,8 @@ def collect_judge_evidence(
             rubric_version=request.rubric.version,
             judge_model=judge_model.strip(),
             candidate_hashes=candidate_hashes,
+            task_context_hash="sha256:" + hashlib.sha256(request.task_context.encode()).hexdigest(),
+            rubric_fingerprint=request.rubric.fingerprint,
             blinded_order=blinded_order,
             status=status,  # type: ignore[arg-type]
             claimed_at_ms=current_ms,
