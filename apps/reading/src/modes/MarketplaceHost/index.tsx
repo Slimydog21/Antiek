@@ -99,6 +99,10 @@ import {
   domainDefaultSubjectCatalog,
   domainSearchCoverage,
 } from "../../workspace/domainSearchDefaults";
+import {
+  MARKETPLACE_DEMO_RECEIPT_DEFAULT,
+  marketplaceReceiptReadiness,
+} from "../../workspace/marketplaceReceiptReadiness";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
 import { listRecentDeepResearchSpawnIds } from "../../workspace/recentDeepResearchSpawns";
 import { useWindows } from "../../workspace/windowsStore";
@@ -209,7 +213,7 @@ export default function MarketplaceHost({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [receiptRef, setReceiptRef] = useState("manual-order-token-demo");
+  const [receiptRef, setReceiptRef] = useState(MARKETPLACE_DEMO_RECEIPT_DEFAULT);
   /** Residual (dj/is): substring filter over catalog title/author/license/source. */
   const [filterQuery, setFilterQuery] = useState("");
   /**
@@ -331,10 +335,17 @@ export default function MarketplaceHost({
     ).length;
   }, [filteredEntries]);
 
-  /** Residual (apd): L5 offline receipt readiness for purchase+host CTA. */
-  const receiptReady = Boolean(receiptRef.trim());
-  const receiptIsDemoDefault =
-    receiptRef.trim() === "manual-order-token-demo";
+  /** Residual (apd/ars): L5 offline receipt readiness via pure helper. */
+  const receiptReadiness = useMemo(
+    () =>
+      marketplaceReceiptReadiness({
+        receiptRef,
+        demoDefault: MARKETPLACE_DEMO_RECEIPT_DEFAULT,
+      }),
+    [receiptRef],
+  );
+  const receiptReady = receiptReadiness.receipt_ready;
+  const receiptIsDemoDefault = receiptReadiness.is_demo_default;
 
   const catalogFiltersActive = useMemo(() => {
     return (
@@ -1328,21 +1339,28 @@ export default function MarketplaceHost({
             data-receipt-demo-default={String(receiptIsDemoDefault)}
             aria-label="Purchase receipt ref for L5 offline purchase+host"
           />
-          {/* Residual (apd): L5 offline receipt readiness for purchase CTA. */}
+          {/* Residual (apd/ars): L5 offline receipt readiness via pure helper. */}
           <span
             className="text-[10px] opacity-80 max-w-[22rem]"
             data-testid="marketplace-receipt-readiness"
-            data-receipt-ready={String(receiptReady)}
-            data-receipt-demo-default={String(receiptIsDemoDefault)}
+            data-receipt-ready={String(receiptReadiness.receipt_ready)}
+            data-receipt-demo-default={String(receiptReadiness.is_demo_default)}
+            data-live-checkout-deferred={String(
+              receiptReadiness.live_checkout_deferred,
+            )}
+            data-never-invent-charge={String(
+              receiptReadiness.never_invent_charge,
+            )}
             data-paid-catalog-visible={String(filteredPaidCount)}
             data-l5-payment-rails="deferred"
             data-live-payment="false"
             data-payment-rails="manual_receipt_only"
             data-view-format="html"
+            data-html-first="true"
             role="status"
           >
-            {receiptReady
-              ? receiptIsDemoDefault
+            {receiptReadiness.receipt_ready
+              ? receiptReadiness.is_demo_default
                 ? `Receipt ready (demo default) · ${filteredPaidCount} paid book(s) can purchase+host · replace token for real orders · L5 live deferred · never invent charge`
                 : `Receipt ready · ${filteredPaidCount} paid book(s) can purchase+host · L5 live deferred · never invent charge`
               : `Enter receipt token to enable Purchase + host · ${filteredPaidCount} paid book(s) visible · L5 live checkout deferred`}

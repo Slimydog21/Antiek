@@ -1102,10 +1102,13 @@ describe("MarketplaceHost mode", () => {
     );
     expect(purchaseBtn.getAttribute("data-receipt-required")).toBe("true");
     expect(screen.getByTestId("purchase-receipt-ref")).toBeTruthy();
-    // Residual (apd): L5 offline receipt readiness chrome (demo default).
+    // Residual (apd/ars): L5 offline receipt readiness chrome (demo default · pure helper).
     const readiness = screen.getByTestId("marketplace-receipt-readiness");
     expect(readiness.getAttribute("data-receipt-ready")).toBe("true");
     expect(readiness.getAttribute("data-receipt-demo-default")).toBe("true");
+    expect(readiness.getAttribute("data-live-checkout-deferred")).toBe("true");
+    expect(readiness.getAttribute("data-never-invent-charge")).toBe("true");
+    expect(readiness.getAttribute("data-html-first")).toBe("true");
     expect(readiness.getAttribute("data-l5-payment-rails")).toBe("deferred");
     expect(readiness.getAttribute("data-live-payment")).toBe("false");
     expect(Number(readiness.getAttribute("data-paid-catalog-visible") || 0)).toBeGreaterThan(
@@ -1113,6 +1116,7 @@ describe("MarketplaceHost mode", () => {
     );
     expect(readiness.textContent).toMatch(/demo default/i);
     expect(readiness.textContent).toMatch(/L5 live deferred/i);
+    expect(readiness.textContent).toMatch(/never invent charge/i);
     expect(purchaseBtn.getAttribute("data-receipt-ready")).toBe("true");
     expect(purchaseBtn.getAttribute("data-receipt-demo-default")).toBe("true");
     // Residual (apg): free-host readiness chrome always present (HTML path).

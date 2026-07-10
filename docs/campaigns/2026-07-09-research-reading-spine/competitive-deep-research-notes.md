@@ -4069,3 +4069,8 @@ Pivot arr+ outside thrash.
 Wire twinSubstrateReadiness into research-context-twin-metrics (parity TwinNotes
 arq). Reading ≡ research recursive note-taker substrate honesty. vitest 21 green.
 P0 PR #465. Pivot ars+ outside thrash.
+
+## Residual ars · 2026-07-10 — marketplace L5 receipt readiness pure helper
+marketplaceReceiptReadiness: receipt_ready · is_demo_default · never invent charge ·
+L5 live deferred. MarketplaceHost wired. Competitive delta: purchase+host path
+is hard-to-vary pure contract. vitest 47 green. P0 PR #465. Pivot art+.

@@ -1,0 +1,15 @@
+# inventory-ars · marketplace L5 receipt readiness pure helper
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ars
+date: 2026-07-10
+parent_tip: fe450bbad (arr)
+
+## Closed
+- marketplaceReceiptReadiness pure helper (demo default · never invent charge)
+- MarketplaceHost wired; L5 live checkout deferred honesty
+- Outside twin-substrate thrash (arq–arr closed)
+- vitest receipt 4 + MarketplaceHost 43 = 47 green
+- evidence: {SCRATCH}/ars-receipt-vitest.txt
+
+## Next
+art+ outside thrash · Operator merge PR #465
