@@ -20,6 +20,7 @@ import {
 } from "../../lib/writeSeedFeedSources";
 import { competitiveDrOfflineSurfaceCatalog } from "../../workspace/competitiveDrQuality";
 import { decisionTreeInstallReadiness } from "../../workspace/decisionTreeInstallReadiness";
+import { notDiamondAdvisoryInstallReadiness } from "../../workspace/notDiamondAdvisoryInstallReadiness";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import {
@@ -85,6 +86,8 @@ import {
  * soft gate · never invents $0 · parity decision-tree sa).
  * Residual (aun): pure decisionTreeInstallReadiness drives Install driver CTA
  * (manual model choice · never auto-route · ND advisory only).
+ * Residual (aut): pure notDiamondAdvisoryInstallReadiness drives Install
+ * advisory pick CTA (decision-tree only · L7 never dispatch authority).
  */
 export default function Settings() {
   const tier = useViewportTier();
@@ -638,12 +641,15 @@ export default function Settings() {
   }
 
   async function onInstallNotDiamondAdvisory() {
-    if (!nd?.suggested_model_id) {
-      setNdError("No advisory suggestion to install");
-      return;
-    }
-    if (nd.notdiamond_is_dispatch_authority) {
-      setNdError("Refusing install: NotDiamond must never be dispatch authority");
+    // Residual (aut): pure gate — suggestion · never dispatch · installable.
+    const gate = notDiamondAdvisoryInstallReadiness({
+      suggested_model_id: nd?.suggested_model_id,
+      suggested_provider_id: nd?.suggested_provider_id,
+      notdiamond_is_dispatch_authority: nd?.notdiamond_is_dispatch_authority,
+      installable: nd?.installable,
+    });
+    if (!gate.install_ready) {
+      setNdError(gate.install_title);
       return;
     }
     setTreeBusy(true);
@@ -651,12 +657,12 @@ export default function Settings() {
     setNdError(null);
     try {
       const provider =
-        nd.suggested_provider_id ||
+        gate.suggested_provider_id ||
         selectedProvider ||
         models?.find((m) => m.ready)?.provider_id ||
         models?.[0]?.provider_id ||
         "offline-stub";
-      const mid = nd.suggested_model_id;
+      const mid = gate.suggested_model_id;
       const result = await installDecisionTreeSelection({
         model_id: mid,
         provider_id: provider,
@@ -857,6 +863,26 @@ export default function Settings() {
         provider_id: selectedProvider,
       }),
     [selectedModel, selectedProvider],
+  );
+
+  /**
+   * Residual (aut): pure NotDiamond advisory-install CTA readiness.
+   * Suggestion required · never dispatch authority · decision-tree only.
+   */
+  const ndInstallReady = useMemo(
+    () =>
+      notDiamondAdvisoryInstallReadiness({
+        suggested_model_id: nd?.suggested_model_id,
+        suggested_provider_id: nd?.suggested_provider_id,
+        notdiamond_is_dispatch_authority: nd?.notdiamond_is_dispatch_authority,
+        installable: nd?.installable,
+      }),
+    [
+      nd?.suggested_model_id,
+      nd?.suggested_provider_id,
+      nd?.notdiamond_is_dispatch_authority,
+      nd?.installable,
+    ],
   );
 
   const spendPct = useMemo(() => {
@@ -2730,27 +2756,37 @@ export default function Settings() {
                   </a>
                 </div>
                 <Row label="View" value={nd.view_format} />
-                {nd.suggested_model_id && nd.installable !== false ? (
+                {ndInstallReady.has_suggested_model &&
+                ndInstallReady.installable ? (
                   <button
                     type="button"
                     data-testid="notdiamond-install-advisory"
-                    // Residual (ajy): machine-readable never-dispatch on install control.
-                    data-never-dispatch-authority="true"
-                    data-install-is-decision-tree-only="true"
-                    data-notdiamond-authority="advisory_only"
+                    // Residual (ajy/aut): pure never-dispatch on install control.
+                    data-never-dispatch-authority={String(
+                      ndInstallReady.never_dispatch_authority,
+                    )}
+                    data-install-is-decision-tree-only={String(
+                      ndInstallReady.install_is_decision_tree_only,
+                    )}
+                    data-notdiamond-authority={
+                      ndInstallReady.notdiamond_authority
+                    }
                     data-is-dispatch-authority={
-                      nd.notdiamond_is_dispatch_authority === true
+                      ndInstallReady.notdiamond_is_dispatch_authority
                         ? "true"
                         : "false"
                     }
+                    data-install-ready={String(ndInstallReady.install_ready)}
+                    data-block-reason={ndInstallReady.block_reason}
+                    data-never-auto-route={String(
+                      ndInstallReady.never_auto_route,
+                    )}
                     disabled={
-                      treeBusy ||
-                      ndBusy ||
-                      nd.notdiamond_is_dispatch_authority
+                      treeBusy || ndBusy || !ndInstallReady.install_ready
                     }
                     onClick={() => void onInstallNotDiamondAdvisory()}
                     className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
-                    title="Install suggested model into decision-tree only — NotDiamond is never dispatch authority"
+                    title={ndInstallReady.install_title}
                   >
                     Install advisory pick as decision-tree driver
                   </button>

@@ -1588,6 +1588,10 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(installBtn.getAttribute("data-is-dispatch-authority")).toBe(
       "false",
     );
+    // Residual (aut): pure install readiness stamps on CTA.
+    expect(installBtn.getAttribute("data-install-ready")).toBe("true");
+    expect(installBtn.getAttribute("data-block-reason")).toBe("ok");
+    expect(installBtn.getAttribute("data-never-auto-route")).toBe("true");
     expect(
       screen
         .getByTestId("notdiamond-competitive-scorecard-link")
