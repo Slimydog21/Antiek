@@ -48,7 +48,7 @@ without silent network, ToS violations, or inventing LLM note-taker content.
 
 ---
 
-## L3 — Live twin note_taker seed
+## L3 — Live twin note_taker seed {#l3-twin}
 
 | Item | Value |
 |---|---|

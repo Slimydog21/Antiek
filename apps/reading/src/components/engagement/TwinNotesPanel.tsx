@@ -989,12 +989,13 @@ export function TwinNotesPanel({
           >
             Settings · twin seed readiness
           </a>
+          {/* Residual (xa): L3 twin live-seed checklist section deep-link. */}
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l3-twin"
             data-testid="twin-notes-dual-gate-checklist-link"
-            title="Dual-gate L1–L4 checklist (L3 twin live seed prep; offline default)"
+            title="Dual-gate L3 twin live seed checklist (prep only · offline default)"
           >
-            Dual-gate L1–L4 checklist
+            Dual-gate L3 twin checklist
           </a>
         </p>
         {/* Residual (kr): depth posture when host passes researchTier. */}

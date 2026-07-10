@@ -1484,3 +1484,8 @@ decision-tree dual-gate prep navigates MO live-step policy section directly.
 ## Residual wz · 2026-07-10 — FUTURE-AGENT tip re-anchor through wy
 FUTURE-AGENT-SPEC tip → f12d6fc4. Competitive delta: swarm handoff tip-true
 after MO L4 deep-links + free STEM compose; operator merge PR #465 highest leverage.
+
+## Residual xa · 2026-07-10 — TwinNotes L3 checklist #l3-twin deep-link
+TwinNotes dual-gate checklist jumps to #l3-twin. Competitive delta: recursive
+note-taker surface navigates live-seed deferred policy without inventing
+injectors (parity MO L4 · Settings L5–L7).

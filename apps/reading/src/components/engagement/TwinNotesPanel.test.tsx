@@ -218,8 +218,9 @@ describe("TwinNotesPanel", () => {
   it("links dual-gate L1–L4 checklist for L3 twin live seed prep (mt)", () => {
     render(<TwinNotesPanel assetId="paper" />);
     const dual = screen.getByTestId("twin-notes-dual-gate-checklist-link");
-    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4/);
-    expect(dual.textContent).toMatch(/dual-gate/i);
+    // Residual (xa): L3 twin checklist section deep-link.
+    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l3-twin/);
+    expect(dual.textContent).toMatch(/L3 twin checklist/i);
   });
 
   it("surfaces researchTier chrome when provided (kr)", async () => {
