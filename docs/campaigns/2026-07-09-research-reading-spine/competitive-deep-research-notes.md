@@ -2719,3 +2719,8 @@ P0 operator merge PR #465. Pivot ahj+ outside thrash.
 17 residuals: Fourier free STEM · seamless merge paths · knowledge-dense pub
 quick-call matrix · paid purchase port honesty · L5 FUTURE brief · budget
 foresight pub-ref counts. P0 operator merge PR #465. Pivot ahk+ outside thrash.
+
+## Residual ahk · 2026-07-10 — FUTURE-AGENT L6 live multi-agent collective spec
+Executable brief for live multi-agent collective council when dual-gate unlocks.
+Anchors offline merge unit (agv · written analysis · continue-as-unit). Does not
+invent live injectors. P0 operator merge PR #465. Pivot ahl+ offline product.

@@ -1,0 +1,15 @@
+# inventory-ahk · FUTURE-AGENT L6 live multi-agent collective spec
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ahk
+date: 2026-07-10
+parent_tip: 1cf402f7 (ahj)
+
+## Closed
+- FUTURE-AGENT-SPEC-l6-live-multiagent-collective.md
+- Anchors offline collective/merge matrix (agv · continue-as-unit · written analysis)
+- Unlock conditions · sprint plan · invariants · anti-patterns
+- Does NOT invent live multi-agent injectors
+
+## Next
+ahl+ offline product residual
+Operator merge PR #465 remains highest leverage (gated)

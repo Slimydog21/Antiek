@@ -35,6 +35,9 @@ This continuation: **270+ residual ships** from vy tip `8e280766` · wave **afn�
 ### L5 digital book port (when unlocked)
 See **FUTURE-AGENT-SPEC-l5-digital-book-seamless-port.md** · offline purchase honesty **ahe**.
 
+### L6 live multi-agent collective (when unlocked)
+See **FUTURE-AGENT-SPEC-l6-live-multiagent-collective.md** · offline merge unit **agv**.
+
 ### P1 next offline (residual **ahk+**)
 Outside thrash: competitive depth · twin flywheel · MO only if non-colliding offline. Leave free-STEM · merge · pub matrix · foresight stamp thrash. See **SESSION-ARC-ags-ahi-fourier-merge-pub-budget.md**.
 
