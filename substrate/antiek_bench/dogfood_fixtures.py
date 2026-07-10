@@ -41,7 +41,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (aig): v27 learns pub-ref foresight chrome matrix (aic–aif).
 # Residual (ail): v28 learns citation chain + competitive DR scorecard honesty.
 # Residual (ais): v29 learns multi-hop citation chain hop navigation (air).
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v29"
+# Residual (ajb): v30 learns expanded domain-aware twin search (aiy biology/method/physics/math).
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v30"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -616,6 +617,26 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "citation_chain",
                 "hops",
                 "sources",
+            ),
+        ),
+        # Residual (ajb/aiy): expanded domain-aware twin intelligent search free STEM.
+        SuiteItem(
+            item_id="dogfood-wrestle-domain-aware-stem-expanded",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with expanded domain-aware twin intelligent search: when "
+                "domainAwareSearchDefault maps biology→micrographia natural history, "
+                "method→novum organum, physics→principia motion forces, and pure mathematics→"
+                "geometry elements axioms (while electricity still precedes bare physics), "
+                "how should Antiek-bench learn models that ground twin search queries in free "
+                "STEM catalog subjects without inventing subjects?"
+            ),
+            expected_keywords=(
+                "domain-aware",
+                "biology",
+                "method",
+                "physics",
+                "mathematics",
             ),
         ),
         # Residual (ail/aii): Settings competitive DR quality scorecard honesty.

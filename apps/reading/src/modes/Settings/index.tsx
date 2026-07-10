@@ -2972,6 +2972,13 @@ export default function Settings() {
                       it.item_id === "dogfood-wrestle-citation-chain-hops",
                   ),
                 )}
+                data-has-domain-aware-stem-expanded-posture={String(
+                  (dogfood.items || []).some(
+                    (it) =>
+                      it.item_id ===
+                      "dogfood-wrestle-domain-aware-stem-expanded",
+                  ),
+                )}
                 data-has-competitive-dr-scorecard-posture={String(
                   (dogfood.items || []).some(
                     (it) =>
@@ -3025,6 +3032,7 @@ export default function Settings() {
                     "dogfood-wrestle-budget-foresight-pub-refs",
                     "dogfood-wrestle-purchase-seamless-port",
                     "dogfood-wrestle-citation-chain-hops",
+                    "dogfood-wrestle-domain-aware-stem-expanded",
                   ].includes(it.item_id),
                 ) ? (
                   <p
@@ -3032,7 +3040,7 @@ export default function Settings() {
                     data-testid="antiek-bench-dogfood-v2-postures"
                     role="status"
                   >
-                    Spine postures (v29): write-seed · float evidence · budget
+                    Spine postures (v30): write-seed · float evidence · budget
                     foresight · Faraday book_qa · collective unit write-seed ·
                     Boole book_qa · Heaviside book_qa · Shannon book_qa ·
                     Turing book_qa · Lovelace book_qa · citation-trust
@@ -3046,7 +3054,7 @@ export default function Settings() {
                     TalkToBook twins · MetaReading twins · ResearchThis twins ·
                     spawn merge path · multi-spawn collective merge ·
                     knowledge-dense pub quick-call matrix · budget foresight with pubs ·
-                    purchase seamless port · domain-aware twin search · collective unit twin seed · MO deposit twin honesty · pub-ref foresight chrome · citation chain · multi-hop citation chain hops · competitive DR scorecard
+                    purchase seamless port · domain-aware twin search · collective unit twin seed · MO deposit twin honesty · pub-ref foresight chrome · citation chain · multi-hop citation chain hops · domain-aware STEM expanded · competitive DR scorecard
                     (listing only · not auto-promoted)
                   </p>
                 ) : null}

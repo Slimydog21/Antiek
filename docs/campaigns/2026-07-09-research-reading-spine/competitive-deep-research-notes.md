@@ -2951,3 +2951,8 @@ Pivot aja+ outside thrash.
 Wave handoff documents multi-hop hops · dogfood v29 · scorecard navigation matrix ·
 domain-aware STEM twin search · collective unit twin seed. P0 operator merge PR #465.
 Pivot ajb+ outside thrash.
+
+## Residual ajb · 2026-07-10 — dogfood v30 domain-aware STEM expanded
+Suite suite-competitive-dogfood-v30 learns expanded domainAwareSearchDefault
+(biology/method/physics/math from aiy). item_count 46 · wrestle=33. pytest dogfood 5 ·
+Settings 36 green. P0 operator merge PR #465. Pivot ajc+ outside thrash.
