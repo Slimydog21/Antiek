@@ -2062,6 +2062,16 @@ export default function Settings() {
             data-item-count={
               dogfood ? String(dogfood.item_count ?? 0) : ""
             }
+            data-book-qa-count={
+              dogfood
+                ? String((dogfood.by_task_class || {}).book_qa ?? 0)
+                : ""
+            }
+            data-wrestle-count={
+              dogfood
+                ? String((dogfood.by_task_class || {}).wrestle ?? 0)
+                : ""
+            }
           >
             <p className="text-sm text-ink dark:text-bright">
               Offline multi-task-class fixtures (distill / synthesize / wrestle
