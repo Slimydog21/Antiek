@@ -1465,6 +1465,11 @@ describe("Settings SPR-01 + decision-tree install", () => {
         screen.getByTestId("antiek-bench-dogfood-summary").textContent,
       ).toMatch(/suite-competitive-dogfood-v12/);
     });
+    // Residual (zh): panel suite version + item count after load.
+    expect(panel.getAttribute("data-suite-version")).toBe(
+      "suite-competitive-dogfood-v12",
+    );
+    expect(panel.getAttribute("data-item-count")).toBe("18");
     const summary = screen.getByTestId("antiek-bench-dogfood-summary");
     // Residual (su/ti/tv/tz/ud/us/ve/vl/wd/wl/xi): v12 spine posture machine attrs.
     expect(summary.getAttribute("data-suite-version")).toBe(

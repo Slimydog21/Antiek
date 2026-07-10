@@ -2055,6 +2055,10 @@ export default function Settings() {
             data-view-format="html"
             data-propose-not-promote="true"
             data-auto-promoted="false"
+            data-suite-version={dogfood?.suite_version || ""}
+            data-item-count={
+              dogfood ? String(dogfood.item_count ?? 0) : ""
+            }
           >
             <p className="text-sm text-ink dark:text-bright">
               Offline multi-task-class fixtures (distill / synthesize / wrestle

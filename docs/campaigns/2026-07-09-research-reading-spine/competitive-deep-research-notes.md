@@ -1749,3 +1749,8 @@ Competitive delta: dogfood fixtures panel never implies auto-promotion
 ## Residual zg · 2026-07-10 — FUTURE-AGENT tip re-anchor through zf
 FUTURE-AGENT-SPEC tip re-anchored after 86 residual ships this continuation.
 Competitive delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
+
+## Residual zh · 2026-07-10 — dogfood panel suite version + item count
+antiek-bench-dogfood-panel stamps data-suite-version and data-item-count after
+fixtures load. Competitive delta: panel shell is suite-identity honest without
+opening summary metrics only.
