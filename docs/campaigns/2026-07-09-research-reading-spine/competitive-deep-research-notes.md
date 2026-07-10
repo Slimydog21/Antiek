@@ -3426,3 +3426,8 @@ vitest TalkToBook 10 green. P0 operator merge PR #465. Pivot amt+ outside thrash
 Meta-reading deliverable mounts ResearchContext next to TwinNotes with Settings
 depth (reading ≡ research). Completes amr–amt reading context substrate.
 vitest MetaReading 13 green. P0 operator merge PR #465. Pivot amu+ outside thrash.
+
+## Residual amu · 2026-07-10 — reading context substrate wave handoff
+Wave handoff: ResearchThis · TalkToBook · MetaReading ResearchContext+depth
+(amr–amt). Host-tier path + reading conversation substrate offline-complete.
+P0 operator merge PR #465. Pivot amv+ outside thrash.
