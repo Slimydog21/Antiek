@@ -2106,6 +2106,18 @@ export default function Settings() {
               >
                 FUTURE-AGENT ND advisory-only
               </a>
+              <span className="opacity-40" aria-hidden>
+                ·
+              </span>
+              {/* Residual (ajy): ND panel → competitive DR honesty map (L7 never router). */}
+              <a
+                href="#settings-competitive-dr-scorecard"
+                className="underline opacity-80 hover:opacity-100"
+                data-testid="notdiamond-competitive-scorecard-link"
+                title="Competitive DR scorecard: model choice shipped · ND never router"
+              >
+                Competitive DR scorecard
+              </a>
             </div>
             {/* Residual (he): weekly advisory refresh tied to leaderboard week. */}
             <div className="flex flex-wrap items-center gap-2">
@@ -2288,6 +2300,15 @@ export default function Settings() {
                   <button
                     type="button"
                     data-testid="notdiamond-install-advisory"
+                    // Residual (ajy): machine-readable never-dispatch on install control.
+                    data-never-dispatch-authority="true"
+                    data-install-is-decision-tree-only="true"
+                    data-notdiamond-authority="advisory_only"
+                    data-is-dispatch-authority={
+                      nd.notdiamond_is_dispatch_authority === true
+                        ? "true"
+                        : "false"
+                    }
                     disabled={
                       treeBusy ||
                       ndBusy ||
@@ -2295,6 +2316,7 @@ export default function Settings() {
                     }
                     onClick={() => void onInstallNotDiamondAdvisory()}
                     className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+                    title="Install suggested model into decision-tree only — NotDiamond is never dispatch authority"
                   >
                     Install advisory pick as decision-tree driver
                   </button>

@@ -3062,3 +3062,8 @@ P0 operator merge PR #465. Pivot ajx+ outside thrash.
 ## Residual ajx · 2026-07-10 — SESSION-ARC ajn–ajw twin depth Write path
 Wave handoff: promote depth-graph UI · substrate · pure helper · public export ·
 Write seed · dogfood v32–v33. P0 operator merge PR #465. Pivot ajy+ outside thrash.
+
+## Residual ajy · 2026-07-10 — NotDiamond install never-dispatch machine honesty
+Install advisory control stamps never-dispatch-authority · decision-tree-only ·
+advisory_only; ND panel links competitive DR scorecard (L7 never router).
+vitest Settings 36 green. P0 operator merge PR #465. Pivot ajz+ outside thrash.

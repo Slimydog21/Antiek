@@ -1300,7 +1300,26 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("notdiamond-advisory-summary").textContent).toMatch(
       /stub-strong/,
     );
-    await user.click(screen.getByTestId("notdiamond-install-advisory"));
+    // Residual (ajy): install control never grants ND dispatch authority.
+    const installBtn = screen.getByTestId("notdiamond-install-advisory");
+    expect(installBtn.getAttribute("data-never-dispatch-authority")).toBe(
+      "true",
+    );
+    expect(installBtn.getAttribute("data-install-is-decision-tree-only")).toBe(
+      "true",
+    );
+    expect(installBtn.getAttribute("data-notdiamond-authority")).toBe(
+      "advisory_only",
+    );
+    expect(installBtn.getAttribute("data-is-dispatch-authority")).toBe(
+      "false",
+    );
+    expect(
+      screen
+        .getByTestId("notdiamond-competitive-scorecard-link")
+        .getAttribute("href"),
+    ).toBe("#settings-competitive-dr-scorecard");
+    await user.click(installBtn);
     await waitFor(() => {
       expect(installDecisionTreeSelection).toHaveBeenCalled();
     });
