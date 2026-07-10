@@ -840,3 +840,10 @@ Settings anchors twin-seed-live-status and hydrate-live-status; TwinNotes /
 PublicationAttach / ResearchContext deep-link there. Competitive delta:
 offline-honest readiness panels are one click from recursive note-taker and
 knowledge-dense pub attach surfaces.
+
+## Residual sf · 2026-07-10 — Evidence pack float HTML window
+ResearchContextPanel opens the citation-trust evidence pack as a floating
+hosted_html_document (HTML-first, never PDF) alongside Open Write twin_seed.
+Competitive delta: Perplexity/OpenAI show citations in chat; Antiek joins
+the evidence pack into the reading/research window flywheel as a first-class
+HTML asset operators can float while wrestling the primary paper.

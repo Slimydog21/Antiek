@@ -8,7 +8,11 @@ const fetchEvidencePack = vi.fn();
 const hydratePublicationRef = vi.fn();
 const searchEngagementContext = vi.fn();
 const promoteTwinsToContext = vi.fn();
+const openWindow = vi.fn(() => "win:evidence:test");
 
+vi.mock("../windows/openWindow", () => ({
+  openWindow: (...args: unknown[]) => openWindow(...args),
+}));
 
 vi.mock("./DecisionTreeDriverBadge", () => ({
   DecisionTreeDriverBadge: (props: {
@@ -46,6 +50,7 @@ describe("ResearchContextPanel", () => {
     hydratePublicationRef.mockReset();
     searchEngagementContext.mockReset();
     promoteTwinsToContext.mockReset();
+    openWindow.mockClear();
   });
 
   it("links dual-gate L1–L4 checklist for hydrate prep (mu)", () => {
@@ -464,6 +469,23 @@ describe("ResearchContextPanel", () => {
     expect(href).not.toMatch(/html_draft=/);
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
     expect(write.getAttribute("data-ref-count")).toBe("1");
+    // Residual (sf): float evidence pack as HTML reading window.
+    const floatBtn = screen.getByTestId("evidence-pack-open-float");
+    expect(floatBtn.getAttribute("data-view-format")).toBe("html");
+    expect(floatBtn.getAttribute("data-ref-count")).toBe("1");
+    fireEvent.click(floatBtn);
+    expect(openWindow).toHaveBeenCalled();
+    const [kind, payload, winOpts] = openWindow.mock.calls.at(-1) as [
+      string,
+      { html?: string; view_format?: string; source?: string; title?: string },
+      { mode?: string },
+    ];
+    expect(kind).toBe("hosted_html_document");
+    expect(payload.view_format).toBe("html");
+    expect(payload.source).toBe("evidence_pack");
+    expect(payload.html).toMatch(/Attention is routing/);
+    expect(payload.title).toMatch(/Evidence pack/i);
+    expect(winOpts.mode).toBe("floating");
   });
 
   it("flags ungrounded evidence when ref_count is zero (dm)", async () => {

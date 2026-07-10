@@ -16,6 +16,7 @@
  * Residual (rf): Open Write twin_seed from intelligent context search hits.
  * Residual (rh): Open Write twin_seed from single hydrate-ref result.
  * Residual (ri): Open Write twin_seed from research context prompt_block.
+ * Residual (sf): float evidence pack as hosted HTML reading window (citation trust).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -39,6 +40,7 @@ import {
   buildPublicationHydrateWriteHref,
   buildResearchContextWriteHref,
 } from "../../workspace/twinWriteSeed";
+import { openWindow } from "../windows/openWindow";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 
 /** Pure twin-kind metrics for recursive note-taker substrate (residual ff). */
@@ -567,6 +569,40 @@ export function ResearchContextPanel({
               Citation trust: grounded · {evidence.ref_count} source ref(s)
             </p>
           )}
+          {/* Residual (sf): float evidence pack as HTML reading window. */}
+          {evidence.html?.trim() ? (
+            <p className="meta font-mono text-[11px]">
+              <button
+                type="button"
+                data-testid="evidence-pack-open-float"
+                data-view-format="html"
+                data-ref-count={String(evidence.ref_count ?? 0)}
+                className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
+                title="Open evidence pack as floating HTML window (citation trust · never PDF)"
+                onClick={() => {
+                  const id = `evidence:${String(evidence.asset_id || assetId).trim()}:${Date.now().toString(36)}`;
+                  openWindow(
+                    "hosted_html_document",
+                    {
+                      document_id: id,
+                      title: "Evidence pack (citation trust)",
+                      html: evidence.html,
+                      view_format: "html",
+                      source: "evidence_pack",
+                      research_tier: evidence.research_tier || null,
+                    },
+                    {
+                      id: `win:evidence:${id}`,
+                      title: "Evidence pack",
+                      mode: "floating",
+                    },
+                  );
+                }}
+              >
+                Open float (evidence HTML)
+              </button>
+            </p>
+          ) : null}
           {/* Residual (rb): evidence pack → Write twin_seed handoff. */}
           {(() => {
             const href = buildEvidencePackWriteHref({
