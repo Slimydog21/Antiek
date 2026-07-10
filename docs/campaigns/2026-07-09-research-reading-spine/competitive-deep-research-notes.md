@@ -4079,3 +4079,8 @@ is hard-to-vary pure contract. vitest 47 green. P0 PR #465. Pivot art+.
 COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES += twin_substrate_insights_questions ·
 marketplace_l5_receipt_readiness. Scorecard inherits. vitest 42 green. P0 PR #465.
 Pivot aru+.
+
+## Residual aru · 2026-07-10 — marketplace free-host readiness pure helper
+marketplaceFreeHostReadiness: host_ready from visible free count · never PDF ·
+no receipt · no live payment. Parity L5 receipt pure helper (ars). vitest 47 green.
+P0 PR #465. Pivot arv+ outside thrash.

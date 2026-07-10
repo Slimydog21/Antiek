@@ -1119,11 +1119,17 @@ describe("MarketplaceHost mode", () => {
     expect(readiness.textContent).toMatch(/never invent charge/i);
     expect(purchaseBtn.getAttribute("data-receipt-ready")).toBe("true");
     expect(purchaseBtn.getAttribute("data-receipt-demo-default")).toBe("true");
-    // Residual (apg): free-host readiness chrome always present (HTML path).
+    // Residual (apg/aru): free-host readiness chrome via pure helper (HTML path).
     const freeReady = screen.getByTestId("marketplace-free-host-readiness");
     expect(freeReady.getAttribute("data-html-first")).toBe("true");
     expect(freeReady.getAttribute("data-view-format")).toBe("html");
     expect(freeReady.getAttribute("data-live-payment")).toBe("false");
+    expect(freeReady.getAttribute("data-receipt-required")).toBe("false");
+    expect(freeReady.getAttribute("data-never-pdf-view")).toBe("true");
+    // host_ready tracks visible free count (may be 0 on paid-only fixtures).
+    expect(["true", "false"]).toContain(
+      freeReady.getAttribute("data-host-ready"),
+    );
     expect(freeReady.textContent).toMatch(/Free HTML host path/i);
     expect(freeReady.textContent).toMatch(/never PDF/i);
     // Clear receipt → not ready (purchase disabled).

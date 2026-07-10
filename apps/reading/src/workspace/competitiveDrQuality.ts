@@ -304,6 +304,8 @@ export const COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES = [
   "research_context_evidence_hop_pipeline",
   "multi_stage_progress_pipeline",
   "marketplace_html_free_host",
+  // Residual (aru): free host readiness pure helper.
+  "marketplace_free_host_readiness",
   // Residual (art): L5 offline receipt readiness (ars).
   "marketplace_l5_receipt_readiness",
   "publication_hydrate_offline_identity",

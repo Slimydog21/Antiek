@@ -99,6 +99,7 @@ import {
   domainDefaultSubjectCatalog,
   domainSearchCoverage,
 } from "../../workspace/domainSearchDefaults";
+import { marketplaceFreeHostReadiness } from "../../workspace/marketplaceFreeHostReadiness";
 import {
   MARKETPLACE_DEMO_RECEIPT_DEFAULT,
   marketplaceReceiptReadiness,
@@ -346,6 +347,15 @@ export default function MarketplaceHost({
   );
   const receiptReady = receiptReadiness.receipt_ready;
   const receiptIsDemoDefault = receiptReadiness.is_demo_default;
+  // Residual (aru): free HTML host path readiness via pure helper (parity ars).
+  const freeHostReadiness = useMemo(
+    () =>
+      marketplaceFreeHostReadiness({
+        freeCatalogVisible: filteredFreeCount,
+        freePdOnlyFilter: freePdOnly,
+      }),
+    [filteredFreeCount, freePdOnly],
+  );
 
   const catalogFiltersActive = useMemo(() => {
     return (
@@ -1365,21 +1375,28 @@ export default function MarketplaceHost({
                 : `Receipt ready · ${filteredPaidCount} paid book(s) can purchase+host · L5 live deferred · never invent charge`
               : `Enter receipt token to enable Purchase + host · ${filteredPaidCount} paid book(s) visible · L5 live checkout deferred`}
           </span>
-          {/* Residual (apg): free HTML host path readiness (no receipt · never PDF). */}
+          {/* Residual (apg/aru): free HTML host path readiness via pure helper. */}
           <span
             className="text-[10px] opacity-80 max-w-[22rem]"
             data-testid="marketplace-free-host-readiness"
-            data-free-catalog-visible={String(filteredFreeCount)}
-            data-free-pd-only={String(freePdOnly)}
-            data-html-first="true"
-            data-view-format="html"
-            data-live-payment="false"
+            data-free-catalog-visible={String(
+              freeHostReadiness.free_catalog_visible,
+            )}
+            data-free-pd-only={String(freeHostReadiness.free_pd_only_filter)}
+            data-host-ready={String(freeHostReadiness.host_ready)}
+            data-receipt-required={String(freeHostReadiness.receipt_required)}
+            data-html-first={String(freeHostReadiness.html_first)}
+            data-view-format={freeHostReadiness.view_format}
+            data-live-payment={String(freeHostReadiness.live_payment)}
+            data-never-pdf-view={String(freeHostReadiness.never_pdf_view)}
             role="status"
           >
-            Free HTML host path · {filteredFreeCount} free book(s) can Host into
-            account
-            {freePdOnly ? " · free-only filter on" : ""} · never PDF view · no
-            receipt required
+            Free HTML host path · {freeHostReadiness.free_catalog_visible} free
+            book(s) can Host into account
+            {freeHostReadiness.free_pd_only_filter
+              ? " · free-only filter on"
+              : ""}{" "}
+            · never PDF view · no receipt required
           </span>
         </label>
         <label
