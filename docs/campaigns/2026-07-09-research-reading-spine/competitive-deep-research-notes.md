@@ -4144,3 +4144,7 @@ moil-run-offline disabled when !runnable or status not approved/running · L4
 live deferred stamps. Competitive delta: approve→run path hard-to-vary pure
 contract (never invent live swarm). vitest MidnightOil 30 green. P0 PR #465.
 Pivot asf+ outside thrash.
+
+## Residual asf · 2026-07-10 — SESSION-ARC asb–ase knowledge · model · MO
+Multi-agent handoff for publication attach · written analysis · decision-tree
+install · MO offline run CTAs. P0 PR #465. Pivot asg+ outside thrash.

@@ -1,0 +1,15 @@
+# inventory-asf · SESSION-ARC asb–ase knowledge · model · MO run handoff
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: asf
+date: 2026-07-10
+parent_tip: c592dd151 (ase)
+
+## Closed
+- SESSION-ARC-asb-ase-knowledge-model-moil.md multi-agent collab handoff
+- Documents publication attach · written analysis · decision-tree install · MO run
+- Thrash list explicit · pure helper → CTA matrix extended
+- P0 PR #465 re-asserted
+
+## Next
+asg+ offline product residual outside thrash
+Operator merge PR #465 remains highest leverage (gated)
