@@ -236,6 +236,12 @@ describe("DeepResearchSessionHost", () => {
     expect(write.textContent).toMatch(/Open Write \(twin seed\)/i);
     // Residual (acv): selection body → has-body true.
     expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
+    // Residual (ael): parent reading asset → seamless reading→research→Write path.
+    expect(write.getAttribute("data-parent-asset-id")).toBe("launch-asset");
+    expect(write.getAttribute("data-seamless-reading-research-write")).toBe(
+      "true",
+    );
+    expect(write.getAttribute("data-spawn-id")).toBe("spn_launch_1");
   });
 
   it("Open Write has-body false when goal-only without selection (acv)", () => {

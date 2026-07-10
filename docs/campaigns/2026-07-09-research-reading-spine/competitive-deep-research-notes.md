@@ -2295,3 +2295,8 @@ foresight end-to-end. vitest Settings 36 green.
 SESSION-ARC documents unit prompt Write twin_seed, engagement has_body builders,
 and Settings decision-tree goes-negative foresight. Tip b1c42e2b · swarm handoff tip-true.
 Competitive delta: multi-agent infinite continues outside thrash; operator merge PR #465 highest leverage.
+
+## Residual ael · 2026-07-10 — DR Open Write seamless reading→research→Write
+Deep research Open Write stamps data-parent-asset-id · data-seamless-reading-research-write
+· data-spawn-id for highlight→float DR→Write path honesty. Competitive delta: operator
+can machine-read when DR session is bound to a reading parent asset. vitest DR host 30 green.

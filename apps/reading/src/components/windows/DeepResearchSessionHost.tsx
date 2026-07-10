@@ -279,7 +279,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
                 </button>
               </div>
             ) : null}
-            {/* Residual (qv/acv): Open Write twin seed from selection+goal + body honesty. */}
+            {/* Residual (qv/acv/ael): Open Write twin seed + reading→research→Write path honesty. */}
             {writeHref ? (
               <a
                 href={writeHref}
@@ -290,6 +290,14 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
                 data-write-seed-has-body={String(
                   Boolean(String(props.selection_text || "").trim()),
                 )}
+                // Residual (ael): parent reading asset provenance for seamless path.
+                data-parent-asset-id={
+                  String(props.parent_asset_id || "").trim() || ""
+                }
+                data-seamless-reading-research-write={String(
+                  Boolean(String(props.parent_asset_id || "").trim()),
+                )}
+                data-spawn-id={String(props.spawn_id || "").trim() || ""}
                 className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
                 title="Open Write with deep research selection+goal as twin_seed (sessionStorage; no invented document_id)"
               >
