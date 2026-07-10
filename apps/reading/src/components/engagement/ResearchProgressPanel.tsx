@@ -132,15 +132,53 @@ export function ResearchProgressPanel({
   const [busy, setBusy] = useState(false);
 
   // Residual (ape): competitive plan→cite pipeline completeness from events.
-  const stagePipeline = useMemo(
-    () =>
-      competitiveDrStageProgress({
+  // Residual (aqd): prefer substrate stage_pipeline when shaped (aqc).
+  const stagePipeline = useMemo(() => {
+    const server = progress?.stage_pipeline;
+    if (
+      server &&
+      typeof server.completed_count === "number" &&
+      typeof server.total === "number" &&
+      Array.isArray(server.completed)
+    ) {
+      return {
+        stages: (server.stages?.length
+          ? server.stages
+          : [
+              "plan",
+              "gather",
+              "synthesize",
+              "cite",
+              "terminal",
+            ]) as readonly string[],
+        completed: server.completed as string[],
+        current: (server.current ?? null) as string | null,
+        completed_count: server.completed_count,
+        total: server.total,
+        coverage_ratio:
+          typeof server.coverage_ratio === "number"
+            ? server.coverage_ratio
+            : server.total > 0
+              ? server.completed_count / server.total
+              : 0,
+        is_terminal: Boolean(server.is_terminal ?? progress?.is_terminal),
+        source: "substrate" as const,
+      };
+    }
+    return {
+      ...competitiveDrStageProgress({
         events: progress?.events,
         latest_stage: progress?.latest_stage,
         is_terminal: progress?.is_terminal,
       }),
-    [progress?.events, progress?.latest_stage, progress?.is_terminal],
-  );
+      source: "client" as const,
+    };
+  }, [
+    progress?.events,
+    progress?.latest_stage,
+    progress?.is_terminal,
+    progress?.stage_pipeline,
+  ]);
 
   const load = useCallback(async (): Promise<ResearchProgressResponse | null> => {
     setBusy(true);
@@ -418,6 +456,7 @@ export function ResearchProgressPanel({
             data-current={stagePipeline.current ?? ""}
             data-completed={stagePipeline.completed.join(",") || ""}
             data-is-terminal={String(stagePipeline.is_terminal)}
+            data-pipeline-source={stagePipeline.source}
             data-view-format="html"
             role="status"
           >

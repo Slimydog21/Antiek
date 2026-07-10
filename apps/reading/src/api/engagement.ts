@@ -407,6 +407,19 @@ export type ResearchProgressResponse = {
   }>;
   latest_stage: string | null;
   is_terminal: boolean;
+  /**
+   * Residual (aqc/aqd): substrate multi-stage pipeline completeness summary
+   * (plan→terminal · never invent stages).
+   */
+  stage_pipeline?: {
+    stages?: string[];
+    completed?: string[];
+    current?: string | null;
+    completed_count?: number;
+    total?: number;
+    coverage_ratio?: number;
+    is_terminal?: boolean;
+  } | null;
   /** Residual (jz/ka): spawn reserved research_tier when present. */
   research_tier?: "fast" | "deep" | "wrestle" | string | null;
   view_format: "html" | string;

@@ -183,6 +183,16 @@ describe("ResearchProgressPanel", () => {
       ],
       latest_stage: "cite",
       is_terminal: false,
+      // Residual (aqd): substrate stage_pipeline (aqc).
+      stage_pipeline: {
+        stages: ["plan", "gather", "synthesize", "cite", "terminal"],
+        completed: ["plan", "gather", "synthesize", "cite"],
+        current: "cite",
+        completed_count: 4,
+        total: 5,
+        coverage_ratio: 0.8,
+        is_terminal: false,
+      },
       view_format: "html",
       product_panel: "research_progress",
       source: "engagement_spine.progress",
@@ -217,7 +227,9 @@ describe("ResearchProgressPanel", () => {
     );
     expect(metrics.textContent).toMatch(/Research progress/);
     // Residual (ape): competitive plan→cite pipeline completeness chrome.
+    // Residual (aqd): prefers substrate stage_pipeline when present.
     const pipeline = screen.getByTestId("research-progress-stage-pipeline");
+    expect(pipeline.getAttribute("data-pipeline-source")).toBe("substrate");
     expect(pipeline.getAttribute("data-completed-count")).toBe("4");
     expect(pipeline.getAttribute("data-total")).toBe("5");
     expect(pipeline.getAttribute("data-current")).toBe("cite");

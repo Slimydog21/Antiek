@@ -3857,3 +3857,8 @@ pytest test_engagement_evidence 5 green. P0 PR #465. Pivot aqc+ outside thrash.
 competitive_stage_pipeline_progress + progress_payload.stage_pipeline + HTML
 Competitive pipeline line (parity frontend ape). Maps complete/failed→terminal.
 pytest test_engagement_progress 4 green. P0 PR #465. Pivot aqd+ outside thrash.
+
+## Residual aqd · 2026-07-10 — wire substrate stage_pipeline into ResearchProgress UI
+ResearchProgressPanel prefers substrate stage_pipeline when present
+(data-pipeline-source=substrate) · client pure helper fallback. Closes multi-stage
+frontend↔substrate loop (ape + aqc). vitest ResearchProgress 13 green. P0 PR #465.

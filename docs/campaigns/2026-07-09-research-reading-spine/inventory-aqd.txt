@@ -1,0 +1,15 @@
+# inventory-aqd · wire substrate stage_pipeline into ResearchProgress UI
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aqd
+date: 2026-07-10
+parent_tip: 4a44880a (aqc)
+
+## Closed
+- ResearchProgressResponse.stage_pipeline type
+- ResearchProgressPanel prefers substrate stage_pipeline when shaped
+- data-pipeline-source=substrate|client honesty
+- vitest ResearchProgressPanel 13 green
+
+## Next
+aqe+ product residual outside thrash
+Operator merge PR #465 remains highest leverage (gated)
