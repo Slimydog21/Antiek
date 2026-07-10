@@ -782,3 +782,9 @@ how many weekly feed sources are recursive note-taker → Write twin_seed paths.
 Competitive delta: Antiek-bench weekly rewrite UI shows substrate composition
 (not only raw by_source names) so operators know write-path coverage without
 auto-promoting suite changes.
+
+## Residual rv · 2026-07-10 — Ranked feed Write-seed row stamps
+Suite proposal ranked by_source list renders per-source rows with
+data-write-seed-feed and "[write seed]" when the source is a recursive
+note-taker → Write twin_seed path. Competitive delta: weekly rewrite
+operators see substrate composition at row level, not only primary feed.

@@ -847,6 +847,14 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(primary.getAttribute("data-primary-feed-source")).toBe("twin_chase");
     expect(primary.getAttribute("data-write-seed-feed")).toBe("false");
     expect(screen.queryByTestId("antiek-bench-primary-feed-write-seed")).toBeNull();
+    // Residual (rv): ranked rows stamp write-seed honestly (default mock has none).
+    expect(feed.getAttribute("data-write-seed-ranked-count")).toBe("0");
+    const rankedRows = screen.getAllByTestId("antiek-bench-ranked-feed-row");
+    expect(rankedRows.length).toBeGreaterThan(0);
+    for (const row of rankedRows) {
+      expect(row.getAttribute("data-write-seed-feed")).toBe("false");
+      expect(row.textContent || "").not.toMatch(/\[write seed\]/);
+    }
   });
 
   it("labels primary rewrite feed when it is a Write seed source (rt)", async () => {
@@ -878,6 +886,19 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("antiek-bench-primary-feed-write-seed").textContent).toMatch(
       /Write seed feed/i,
     );
+    // Residual (rv): ranked write-seed row stamped when primary is Write seed.
+    const feed = screen.getByTestId("antiek-bench-suite-proposal-feed-sources");
+    expect(feed.getAttribute("data-write-seed-ranked-count")).toBe("1");
+    const promoteRow = screen
+      .getAllByTestId("antiek-bench-ranked-feed-row")
+      .find((el) => el.getAttribute("data-feed-source") === "twin_promote_context");
+    expect(promoteRow).toBeTruthy();
+    expect(promoteRow!.getAttribute("data-write-seed-feed")).toBe("true");
+    expect(promoteRow!.textContent).toMatch(/\[write seed\]/);
+    const chaseRow = screen
+      .getAllByTestId("antiek-bench-ranked-feed-row")
+      .find((el) => el.getAttribute("data-feed-source") === "twin_chase");
+    expect(chaseRow?.getAttribute("data-write-seed-feed")).toBe("false");
   });
 
   it("surfaces suite rewrite rationale + feed source count (pe)", async () => {

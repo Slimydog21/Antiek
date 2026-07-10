@@ -1746,12 +1746,31 @@ export default function Settings() {
                   <ul
                     className="space-y-1"
                     data-testid="antiek-bench-usage-sources"
+                    data-write-seed-source-count={String(
+                      Object.keys(usage.by_source || {}).filter((s) =>
+                        isWriteSeedFeedSource(s),
+                      ).length,
+                    )}
                   >
-                    {Object.entries(usage.by_source || {}).map(([src, n]) => (
-                      <li key={src} data-source={src}>
-                        <strong>{src}</strong>: {n}
-                      </li>
-                    ))}
+                    {Object.entries(usage.by_source || {}).map(([src, n]) => {
+                      const writeSeed = isWriteSeedFeedSource(src);
+                      return (
+                        <li
+                          key={src}
+                          data-testid="antiek-bench-usage-source-row"
+                          data-source={src}
+                          data-write-seed-feed={String(writeSeed)}
+                        >
+                          <strong>{src}</strong>: {n}
+                          {writeSeed ? (
+                            <span data-testid="antiek-bench-usage-source-write-seed">
+                              {" "}
+                              [write seed]
+                            </span>
+                          ) : null}
+                        </li>
+                      );
+                    })}
                   </ul>
                 ) : null}
                 {/* Residual (nx/os): known feed sources legend (chase/DR + MO/collective). */}
@@ -2007,12 +2026,31 @@ export default function Settings() {
                     Boolean((usage?.by_source || {}).collective_merge),
                   )}
                   data-primary-feed-source={primaryRewriteFeed?.source ?? ""}
+                  data-write-seed-ranked-count={String(
+                    rankedRewriteFeeds.filter((x) =>
+                      isWriteSeedFeedSource(x.source),
+                    ).length,
+                  )}
                   role="status"
                 >
                   Feed sources (ranked):{" "}
-                  {rankedRewriteFeeds
-                    .map((x) => `${x.source}=${x.count}`)
-                    .join(" · ")}
+                  {rankedRewriteFeeds.map((x, i) => {
+                    const writeSeed = isWriteSeedFeedSource(x.source);
+                    return (
+                      <span key={x.source}>
+                        {i > 0 ? " · " : null}
+                        <span
+                          data-testid="antiek-bench-ranked-feed-row"
+                          data-feed-source={x.source}
+                          data-feed-count={String(x.count)}
+                          data-write-seed-feed={String(writeSeed)}
+                        >
+                          {x.source}={x.count}
+                          {writeSeed ? " [write seed]" : ""}
+                        </span>
+                      </span>
+                    );
+                  })}
                 </p>
               </>
             ) : (
