@@ -1432,3 +1432,8 @@ highest leverage.
 Settings Deferred (honest) L7 links #notdiamond-advisory in-app panel
 alongside checklist. Competitive delta: never-router honesty is one click from
 deferred map without leaving Settings.
+
+## Residual wp · 2026-07-10 — computability subject chip for Turing
+Catalog subject chip computability isolates Turing free PD (parity Boole
+computing chip). Competitive delta: tech researchers domain-filter the free
+STEM spine without text search.

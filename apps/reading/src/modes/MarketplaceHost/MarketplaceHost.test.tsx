@@ -2131,6 +2131,59 @@ describe("MarketplaceHost mode", () => {
     expect(call.goal_hint).toMatch(/Mathematical Theory of Communication/);
   });
 
+  it("filters catalog by computability subject chip for Turing (wp)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-turing-computable-numbers",
+          title: "On Computable Numbers",
+          author: "Alan M. Turing",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: [
+            "mathematics",
+            "science",
+            "technology",
+            "computing",
+            "logic",
+            "computability",
+          ],
+        },
+        {
+          book_id: "pd-pride",
+          title: "Pride and Prejudice",
+          author: "Jane Austen",
+          license_class: "public_domain",
+          is_free: true,
+          source: "standard_ebooks",
+          subjects: ["literature"],
+        },
+      ],
+      count: 2,
+      view_format: "html",
+      free_count: 2,
+      public_domain_count: 2,
+      by_subject: {
+        computability: 1,
+        computing: 1,
+        literature: 1,
+      },
+      payment_rails: "manual_receipt_only",
+    });
+    render(<MarketplaceHost ownerId="tech-researcher" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("catalog-subject-computability")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("catalog-subject-computability"));
+    expect(
+      screen.getByTestId("catalog-entry-pd-turing-computable-numbers"),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("catalog-entry-pd-pride")).toBeNull();
+    const metrics = screen.getByTestId("marketplace-catalog-metrics");
+    expect(metrics.getAttribute("data-subject-filter")).toBe("computability");
+  });
+
   it("hosts Turing free PD with computability subjects on host land (wl)", async () => {
     fetchMarketplaceCatalog.mockResolvedValue({
       entries: [
