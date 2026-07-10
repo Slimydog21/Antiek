@@ -1009,6 +1009,45 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     );
   });
 
+  it("stamps research_context_pack twin seed path honesty (apq)", () => {
+    render(
+      <HostedHtmlDocumentHost
+        document_id="context:paper:apq"
+        title="Research context pack"
+        view_format="html"
+        source="research_context_pack"
+        html="<article><h1>Context</h1><p>Prompt block substrate.</p></article>"
+      />,
+    );
+    const host = screen.getByTestId("hosted-html-document-host");
+    expect(host.getAttribute("data-source")).toBe("research_context_pack");
+    expect(host.getAttribute("data-research-context-pack")).toBe("true");
+    const honesty = screen.getByTestId(
+      "hosted-html-research-context-pack-honesty",
+    );
+    expect(honesty.getAttribute("data-twin-seed-path")).toBe(
+      "research_context_pack",
+    );
+    expect(honesty.textContent).toMatch(/prompt_block substrate/i);
+    expect(honesty.textContent).toMatch(/next deep-research turn/i);
+    expect(honesty.textContent).toMatch(/L3 live twin seed deferred/i);
+    expect(
+      screen
+        .getByTestId("hosted-html-research-context-pack-twin-matrix-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix/);
+    const twins = screen.getByTestId("twin-notes-panel-stub");
+    expect(twins.getAttribute("data-seed-title") || "").toMatch(
+      /Research context pack/,
+    );
+    expect(twins.getAttribute("data-seed-body") || "").toMatch(
+      /Port path: Research context pack float/i,
+    );
+    expect(twins.getAttribute("data-seed-body") || "").toMatch(
+      /source=research_context_pack/,
+    );
+  });
+
   it("stamps spawn_merge twin seed path honesty (app)", () => {
     render(
       <HostedHtmlDocumentHost

@@ -54,6 +54,8 @@
  * completeness (api) when hop strip present (parity ResearchContext chrome).
  * Residual (app): spawn_merge + collective_written_analysis float twin seed
  * path honesty (multi-agent analysis / single-spawn merge · L6 deferred).
+ * Residual (apq): research_context_pack float twin seed path honesty
+ * (prompt substrate that feeds next deep-research turn · recursive flywheel).
  *
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
  */
@@ -549,7 +551,18 @@ export default function HostedHtmlDocumentHost(
                   .filter(Boolean)
                   .join("\n")
                   .slice(0, 900)
-              : twinSeedBodyBase;
+              : isResearchContextPack
+                ? [
+                    twinSeedBodyBase,
+                    "",
+                    "Port path: Research context pack float (prompt_block substrate · twin units + source refs · feeds next deep-research turn · HTML-first · never invent live L3 twin seed).",
+                    assetId ? `document_id=${assetId}` : "",
+                    "source=research_context_pack · twin auto-seed if empty · recursive note-taker / context flywheel.",
+                  ]
+                    .filter(Boolean)
+                    .join("\n")
+                    .slice(0, 900)
+                : twinSeedBodyBase;
 
   return (
     <div
@@ -591,6 +604,7 @@ export default function HostedHtmlDocumentHost(
       }
       data-collective-written-analysis={String(isCollectiveWrittenAnalysis)}
       data-spawn-merge={String(isSpawnMerge)}
+      data-research-context-pack={String(isResearchContextPack)}
       data-research-progress={String(isResearchProgress)}
       data-session-flywheel={String(isSessionFlywheel)}
     >
@@ -932,6 +946,43 @@ export default function HostedHtmlDocumentHost(
                     title="Settings competitive DR scorecard (spawn merge)"
                   >
                     Settings · competitive DR scorecard
+                  </a>
+                </p>
+              </div>
+            ) : null}
+            {/* Residual (apq): research context pack float twin seed honesty. */}
+            {isResearchContextPack ? (
+              <div
+                className="text-[11px] font-mono opacity-80 mt-1 space-y-1"
+                data-testid="hosted-html-research-context-pack-honesty"
+                data-twin-seed-path="research_context_pack"
+                data-auto-seed-if-empty="true"
+                data-html-first="true"
+                data-view-format="html"
+                role="status"
+              >
+                <p>
+                  Research context pack · prompt_block substrate · twin units +
+                  source refs feed next deep-research turn · twin auto-seed if
+                  empty (recursive note-taker) · L3 live twin seed deferred ·
+                  never invent live seed · HTML · not PDF
+                </p>
+                <p className="space-x-3">
+                  <a
+                    href="/settings#settings-competitive-dr-scorecard"
+                    data-testid="hosted-html-research-context-pack-scorecard-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="Settings competitive DR scorecard (context pack · citation trust)"
+                  >
+                    Settings · competitive DR scorecard
+                  </a>
+                  <a
+                    href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md"
+                    data-testid="hosted-html-research-context-pack-twin-matrix-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="FUTURE-AGENT twin note-taker completeness matrix"
+                  >
+                    FUTURE · twin completeness matrix
                   </a>
                 </p>
               </div>
