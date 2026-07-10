@@ -2063,3 +2063,7 @@ Free inventory is_free-only doctrine closed end-to-end (API·HTML·UI·host·lib
 Tip ec8c5e6b · 155 ships. Competitive delta: swarm handoff tip-true; operator merge
 PR #465 highest leverage.
 
+## Residual abw · 2026-07-10 — purchased library is_free false
+Purchase-and-host library row stamps is_free=false (parity free inventory doctrine).
+Competitive delta: paid books never invent free inventory after seamless host port.
+

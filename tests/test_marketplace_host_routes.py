@@ -103,3 +103,11 @@ def test_purchase_and_host(client):
     assert body["receipt_id"].startswith("rcpt_")
     assert body["license_class"] == "purchased"
     assert body["view_format"] == "html"
+    # Residual (abw): purchased library row is never free inventory.
+    lib = client.get("/marketplace/library/user-buy")
+    assert lib.status_code == 200
+    docs = lib.json()["documents"]
+    assert docs
+    bought = next(d for d in docs if d.get("document_id") == body["document_id"])
+    assert bought.get("license_class") == "purchased"
+    assert bought.get("is_free") is False
