@@ -1,0 +1,13 @@
+# inventory-alr · DEFERRED-GAPS L5 + domain-search closures
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: alr
+date: 2026-07-10
+parent_tip: 5e382a73 (alq)
+
+## Closed
+- DEFERRED-GAPS: L5 offline Sprint 1–3 note · domain-search free PD closed offline
+- Live L5 still dual-gate only
+
+## Next
+als+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

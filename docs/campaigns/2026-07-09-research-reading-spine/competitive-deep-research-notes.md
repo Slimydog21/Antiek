@@ -3289,3 +3289,8 @@ Wave handoff: ResearchContext · MarketplaceHost · HostedHtml domain-search cov
 Pure unit tests lock domain-search spine; FUTURE twin matrix gap #3 offline
 product-complete (akq–alo). vitest 2 green. P0 operator merge PR #465.
 Pivot alr+ outside thrash (prefer non-domain-search).
+
+## Residual alr · 2026-07-10 — DEFERRED-GAPS L5 + domain-search closures
+Deferred-gaps brief notes L5 offline Sprint 1–3 complete and free PD domain-search
+closed offline. Live injectors remain dual-gate. P0 operator merge PR #465.
+Pivot als+ outside thrash.

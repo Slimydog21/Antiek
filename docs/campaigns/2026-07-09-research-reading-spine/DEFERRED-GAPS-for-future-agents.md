@@ -19,7 +19,7 @@ hydrate/twin/MO live-status readiness surfaces, offline-honest identity paths.
 | L2 | Live Substack body | Requires explicit `fetch_post` factory (ToS) | Operator injects factory + env |
 | L3 | Live twin note_taker seed | Dual-gate `ANTIEK_TWIN_SEED_LIVE` + `USE_DISPATCH` | Dispatch note_taker green + operator dual-gate |
 | L4 | Live Midnight Oil worker step | Dual-gate `ANTIEK_MIDNIGHT_OIL_LIVE_STEP` + configure | Swarm step_fn + budget halt verified |
-| L5 | Marketplace payment rails | Manual receipt only | Product/legal payment design |
+| L5 | Marketplace payment rails | Manual receipt only · offline Sprint 1–3 complete (akr–ala) | Product/legal payment design + dual-gate live enable |
 | L6 | Live multi-agent collective council | Offline merge unit only | Spec `spec-dn-collective-live-multiagent.md` + injectors |
 | L7 | NotDiamond as router | **Rejected** authority under §16 | Never — advisory only remains correct |
 
