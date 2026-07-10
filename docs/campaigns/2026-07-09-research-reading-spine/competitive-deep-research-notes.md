@@ -3142,3 +3142,8 @@ P0 operator merge PR #465. Pivot akn+ outside thrash.
 Highlight→DR→merge navigates Settings prompt-cost projection. Completes
 budget-before-fire prompt-cost matrix (akk–akn + ake/ajm). vitest SpawnMerge 8 green.
 P0 operator merge PR #465. Pivot ako+ outside thrash.
+
+## Residual ako · 2026-07-10 — SessionFlywheel prompt-cost projection deep-link
+Session land / Antiek-bench flywheel navigates Settings prompt-cost projection.
+Budget-before-fire matrix now includes flywheel (akk–ako). vitest SessionFlywheel 7 green.
+P0 operator merge PR #465. Pivot akp+ outside thrash.

@@ -254,4 +254,13 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
         .getAttribute("href") || "",
     ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
   });
+
+  it("links Settings prompt-cost projection for budget-before-fire (ako)", () => {
+    render(<SessionFlywheelPanel sessionId="fsess_1" />);
+    const link = screen.getByTestId(
+      "session-flywheel-prompt-cost-projection-link",
+    );
+    expect(link.getAttribute("href")).toBe("/settings#prompt-cost-projection");
+    expect(link.textContent).toMatch(/prompt-cost projection/i);
+  });
 });

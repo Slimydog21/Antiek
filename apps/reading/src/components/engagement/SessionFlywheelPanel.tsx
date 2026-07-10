@@ -212,6 +212,15 @@ export function SessionFlywheelPanel({
           >
             FUTURE · competitive DR brief
           </a>
+          {/* Residual (ako): session land budget-before-fire → Settings prompt-cost (akk–akn). */}
+          <a
+            href="/settings#prompt-cost-projection"
+            data-testid="session-flywheel-prompt-cost-projection-link"
+            className="underline opacity-80 hover:opacity-100"
+            title="Settings prompt-cost projection: estimate flywheel synthesis spend vs remaining daily budget"
+          >
+            Settings · prompt-cost projection
+          </a>
         </p>
         {/* Residual (lt): model+budget+depth before/after flywheel complete. */}
         <div

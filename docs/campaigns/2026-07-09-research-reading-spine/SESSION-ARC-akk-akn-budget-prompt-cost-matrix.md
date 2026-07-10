@@ -1,4 +1,4 @@
-# SESSION-ARC akk–akn · budget-before-fire prompt-cost matrix · 2026-07-10
+# SESSION-ARC akk–ako · budget-before-fire prompt-cost matrix · 2026-07-10
 
 **Branch:** `campaign/research-reading-spine-2026-07-09-main` · PR **#465**  
 **Close tip:** (akn this ship)
@@ -10,6 +10,7 @@
 | **akl** | ResearchProgress multi-minute | → `#prompt-cost-projection` |
 | **akm** | Collective multi-agent merge | → `#prompt-cost-projection` |
 | **akn** | SpawnMerge highlight→DR→merge | → `#prompt-cost-projection` |
+| **ako** | SessionFlywheel land | → `#prompt-cost-projection` |
 | **ajm** | ResearchLaunchBudget | competitive scorecard (launch foresight) |
 
 ## Product delta
