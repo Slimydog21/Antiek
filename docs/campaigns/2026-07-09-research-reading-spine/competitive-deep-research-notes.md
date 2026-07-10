@@ -3431,3 +3431,8 @@ vitest MetaReading 13 green. P0 operator merge PR #465. Pivot amu+ outside thras
 Wave handoff: ResearchThis · TalkToBook · MetaReading ResearchContext+depth
 (amr–amt). Host-tier path + reading conversation substrate offline-complete.
 P0 operator merge PR #465. Pivot amv+ outside thrash.
+
+## Residual amv · 2026-07-10 — FUTURE competitive tip re-anchor through amu
+Competitive DR brief tip 975d6eea; offline spine names host-tier path and reading
+conversation ResearchContext substrate (amr–amt). P0 operator merge PR #465.
+Pivot amw+ outside thrash.
