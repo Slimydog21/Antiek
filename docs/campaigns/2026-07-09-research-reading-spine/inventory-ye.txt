@@ -1,0 +1,19 @@
+# inventory-ye · Marketplace dual-gate #l5-payment deep-link
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ye
+date: 2026-07-10
+tip_before: dbe64218 (yd)
+
+## Problem
+Marketplace general dual-gate checklist linked root while L5 payment honesty
+already had #l5-payment (wj) — catalog header dual-gate lagged.
+
+## Fix
+- marketplace-dual-gate-checklist-link → #l5-payment · L5 payment checklist label
+- Test locks href
+
+## Verified
+npm test MarketplaceHost.test.tsx → 38 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

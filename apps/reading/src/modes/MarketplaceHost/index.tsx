@@ -898,13 +898,14 @@ export default function MarketplaceHost({
                 Settings · driver & twin seed
               </a>
               {/* Residual (mm): dual-gate checklist prep (never enables L1–L4). */}
+              {/* Residual (ye): marketplace dual-gate → L5 payment section (host path). */}
               <a
-                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l5-payment"
                 data-testid="marketplace-dual-gate-checklist-link"
                 className="underline opacity-80 hover:opacity-100"
-                title="Dual-gate L1–L4 operator checklist (prep only)"
+                title="Dual-gate L5 payment rails deferred checklist (manual receipt only)"
               >
-                Dual-gate L1–L4 checklist
+                Dual-gate L5 payment checklist
               </a>
             </p>
           </div>
