@@ -7824,6 +7824,222 @@ class MidnightOilFinalArtifactCompletionFinalizationPlanReceipt(BaseModel):
     adapter_plan_notes: list[str] = Field(default_factory=list)
 
 
+class MidnightOilFinalRunClosurePlanRequest(
+    MidnightOilFinalArtifactCompletionFinalizationPlanRequest
+):
+    final_artifact_completion_finalization_plan_receipt: (
+        MidnightOilFinalArtifactCompletionFinalizationPlanReceipt
+    )
+
+    @model_validator(mode="after")
+    def _final_artifact_completion_finalization_plan_matches(
+        self,
+    ) -> MidnightOilFinalRunClosurePlanRequest:
+        completion_plan = self.final_artifact_completion_finalization_plan_receipt
+        publish_plan = self.final_artifact_publish_plan_receipt
+        if (
+            completion_plan.final_artifact_publish_plan_receipt_id
+            != publish_plan.receipt_id
+        ):
+            raise ValueError(
+                "final_artifact_completion_finalization_plan_receipt must reference final_artifact_publish_plan_receipt"
+            )
+        if (
+            completion_plan.final_artifact_graph_commit_plan_receipt_id
+            != self.final_artifact_graph_commit_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "final_artifact_completion_finalization_plan_receipt must reference final_artifact_graph_commit_plan_receipt"
+            )
+        if (
+            completion_plan.final_artifact_persistence_plan_receipt_id
+            != self.final_artifact_persistence_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "final_artifact_completion_finalization_plan_receipt must reference final_artifact_persistence_plan_receipt"
+            )
+        if (
+            completion_plan.final_html_artifact_assembly_plan_receipt_id
+            != self.final_html_artifact_assembly_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "final_artifact_completion_finalization_plan_receipt must reference final_html_artifact_assembly_plan_receipt"
+            )
+        if (
+            completion_plan.final_synthesis_draft_plan_receipt_id
+            != self.final_synthesis_draft_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "final_artifact_completion_finalization_plan_receipt must reference final_synthesis_draft_plan_receipt"
+            )
+        if completion_plan.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError(
+                "final_artifact_completion_finalization_plan_receipt must reference runner_handoff"
+            )
+        if completion_plan.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError(
+                "final_artifact_completion_finalization_plan_receipt must reference approval_receipt"
+            )
+        if completion_plan.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError(
+                "final_artifact_completion_finalization_plan_receipt must reference launch_packet"
+            )
+        if completion_plan.run_id != self.launch_packet.run_id:
+            raise ValueError(
+                "final_artifact_completion_finalization_plan_receipt must reference launch run"
+            )
+        if (
+            completion_plan.status
+            != "blocked_final_artifact_completion_finalization_unimplemented"
+        ):
+            raise ValueError(
+                "final_artifact_completion_finalization_plan_receipt must be blocked_final_artifact_completion_finalization_unimplemented"
+            )
+        if (
+            completion_plan.final_artifact_completion_finalization_allowed
+            or completion_plan.completion_record_created
+            or completion_plan.finalization_transaction_created
+            or completion_plan.artifact_archive_manifest_created
+            or completion_plan.operator_handoff_summary_created
+            or completion_plan.delivery_status_marked_complete
+            or completion_plan.quality_attestation_created
+            or completion_plan.completion_audit_entry_created
+        ):
+            raise ValueError(
+                "final_artifact_completion_finalization_plan_receipt must not create completion or finalization state"
+            )
+        if (
+            completion_plan.final_artifact_publish_allowed
+            or completion_plan.publish_transaction_created
+            or completion_plan.information_asset_published
+            or completion_plan.account_visible_asset_created
+            or completion_plan.reading_workspace_entry_created
+            or completion_plan.search_index_entry_created
+            or completion_plan.private_read_url_created
+            or completion_plan.operator_notification_created
+        ):
+            raise ValueError(
+                "final_artifact_completion_finalization_plan_receipt must not create publish state"
+            )
+        if completion_plan.graph_commit_created or completion_plan.graph_mutated:
+            raise ValueError(
+                "final_artifact_completion_finalization_plan_receipt must not create graph state"
+            )
+        if completion_plan.dispatch_performed:
+            raise ValueError(
+                "final_artifact_completion_finalization_plan_receipt must not dispatch"
+            )
+        if completion_plan.budget_reserved:
+            raise ValueError(
+                "final_artifact_completion_finalization_plan_receipt must not reserve budget"
+            )
+        if completion_plan.provider_calls_made:
+            raise ValueError(
+                "final_artifact_completion_finalization_plan_receipt must not include provider calls"
+            )
+        if completion_plan.retrieval_performed:
+            raise ValueError(
+                "final_artifact_completion_finalization_plan_receipt must not perform retrieval"
+            )
+        if completion_plan.source_receipts_created:
+            raise ValueError(
+                "final_artifact_completion_finalization_plan_receipt must not create source receipts"
+            )
+        if completion_plan.final_artifact_created:
+            raise ValueError(
+                "final_artifact_completion_finalization_plan_receipt must not create final artifact"
+            )
+        return self
+
+
+class MidnightOilFinalRunClosurePlanReceipt(BaseModel):
+    receipt_id: str
+    final_artifact_completion_finalization_plan_receipt_id: str
+    final_artifact_publish_plan_receipt_id: str
+    final_artifact_graph_commit_plan_receipt_id: str
+    final_artifact_persistence_plan_receipt_id: str
+    final_html_artifact_assembly_plan_receipt_id: str
+    final_synthesis_draft_plan_receipt_id: str
+    synthesis_bundle_assembly_plan_receipt_id: str
+    worker_synthesis_handoff_plan_receipt_id: str
+    worker_output_aggregation_plan_receipt_id: str
+    launch_packet_id: str
+    approval_receipt_id: str
+    runner_handoff_id: str
+    run_id: str
+    status: Literal["blocked_final_run_closure_unimplemented"] = (
+        "blocked_final_run_closure_unimplemented"
+    )
+    adapter_key: Literal["final_run_closure"] = "final_run_closure"
+    planned_final_run_closure_receipt_id: str
+    planned_run_closeout_record_id: str
+    planned_operator_delivery_ledger_entry_id: str
+    planned_delivery_notification_id: str
+    planned_workspace_delivery_card_id: str
+    planned_run_retention_manifest_id: str
+    planned_billing_reconciliation_id: str
+    planned_model_usage_rollup_id: str
+    planned_source_lineage_archive_id: str
+    planned_final_artifact_completion_receipt_id: str
+    planned_final_artifact_finalization_receipt_id: str
+    planned_completion_record_id: str
+    planned_artifact_archive_manifest_id: str
+    planned_operator_handoff_summary_id: str
+    planned_delivery_status_id: str
+    planned_quality_attestation_id: str
+    planned_completion_audit_entry_id: str
+    planned_account_visible_asset_id: str
+    planned_reading_workspace_entry_id: str
+    planned_search_index_entry_id: str
+    planned_private_read_url_id: str
+    planned_graph_commit_id: str
+    planned_graph_snapshot_id: str
+    planned_information_asset_id: str
+    planned_hosted_html_asset_id: str
+    planned_runner_dispatch_id: str
+    planned_idempotency_key: str
+    final_run_closure_blockers: list[str]
+    required_final_run_closure_invariants: list[str]
+    required_final_run_closure_receipt_fields: list[str]
+    blocker_reason: Literal["final_run_closure_unimplemented"] = (
+        "final_run_closure_unimplemented"
+    )
+    final_run_closure_allowed: bool = False
+    run_closeout_record_created: bool = False
+    operator_delivery_ledger_entry_created: bool = False
+    delivery_notification_created: bool = False
+    workspace_delivery_card_created: bool = False
+    run_retention_manifest_created: bool = False
+    billing_reconciliation_created: bool = False
+    model_usage_rollup_created: bool = False
+    source_lineage_archive_created: bool = False
+    final_artifact_completion_finalization_allowed: bool = False
+    completion_record_created: bool = False
+    finalization_transaction_created: bool = False
+    artifact_archive_manifest_created: bool = False
+    operator_handoff_summary_created: bool = False
+    delivery_status_marked_complete: bool = False
+    quality_attestation_created: bool = False
+    completion_audit_entry_created: bool = False
+    final_artifact_publish_allowed: bool = False
+    publish_transaction_created: bool = False
+    information_asset_published: bool = False
+    account_visible_asset_created: bool = False
+    reading_workspace_entry_created: bool = False
+    search_index_entry_created: bool = False
+    private_read_url_created: bool = False
+    operator_notification_created: bool = False
+    graph_commit_created: bool = False
+    graph_mutated: bool = False
+    final_artifact_created: bool = False
+    dispatch_performed: bool = False
+    budget_reserved: bool = False
+    provider_calls_made: bool = False
+    retrieval_performed: bool = False
+    source_receipts_created: bool = False
+    adapter_plan_notes: list[str] = Field(default_factory=list)
+
+
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
     price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
@@ -11789,6 +12005,172 @@ def final_artifact_completion_finalization_plan_midnight_oil(
             "final artifact completion finalization plan only: no completion record, finalization transaction, archive manifest, handoff summary, delivery status, quality attestation, audit entry, notification, or final artifact is created",
             "this receipt documents completion and finalization requirements after final artifact publish planning",
             "no activation readiness, live dispatch, scheduler job, worker runtime, budget reservation, provider call, retrieval, source receipt, graph mutation, publish, notification, URL activation, or artifact write is performed",
+        ],
+    )
+
+
+def final_run_closure_plan_midnight_oil(
+    req: MidnightOilFinalRunClosurePlanRequest,
+) -> MidnightOilFinalRunClosurePlanReceipt:
+    run_id = req.launch_packet.run_id
+    completion_plan = req.final_artifact_completion_finalization_plan_receipt
+    return MidnightOilFinalRunClosurePlanReceipt(
+        receipt_id=f"{run_id}-final-run-closure-plan",
+        final_artifact_completion_finalization_plan_receipt_id=(
+            completion_plan.receipt_id
+        ),
+        final_artifact_publish_plan_receipt_id=(
+            completion_plan.final_artifact_publish_plan_receipt_id
+        ),
+        final_artifact_graph_commit_plan_receipt_id=(
+            completion_plan.final_artifact_graph_commit_plan_receipt_id
+        ),
+        final_artifact_persistence_plan_receipt_id=(
+            completion_plan.final_artifact_persistence_plan_receipt_id
+        ),
+        final_html_artifact_assembly_plan_receipt_id=(
+            completion_plan.final_html_artifact_assembly_plan_receipt_id
+        ),
+        final_synthesis_draft_plan_receipt_id=(
+            completion_plan.final_synthesis_draft_plan_receipt_id
+        ),
+        synthesis_bundle_assembly_plan_receipt_id=(
+            completion_plan.synthesis_bundle_assembly_plan_receipt_id
+        ),
+        worker_synthesis_handoff_plan_receipt_id=(
+            completion_plan.worker_synthesis_handoff_plan_receipt_id
+        ),
+        worker_output_aggregation_plan_receipt_id=(
+            completion_plan.worker_output_aggregation_plan_receipt_id
+        ),
+        launch_packet_id=req.launch_packet.packet_id,
+        approval_receipt_id=req.approval_receipt.receipt_id,
+        runner_handoff_id=req.runner_handoff.handoff_id,
+        run_id=run_id,
+        planned_final_run_closure_receipt_id=f"{run_id}-final-run-closure-receipt",
+        planned_run_closeout_record_id=f"{run_id}-run-closeout-record",
+        planned_operator_delivery_ledger_entry_id=(
+            f"{run_id}-operator-delivery-ledger-entry"
+        ),
+        planned_delivery_notification_id=f"{run_id}-delivery-notification",
+        planned_workspace_delivery_card_id=f"{run_id}-workspace-delivery-card",
+        planned_run_retention_manifest_id=f"{run_id}-run-retention-manifest",
+        planned_billing_reconciliation_id=f"{run_id}-billing-reconciliation",
+        planned_model_usage_rollup_id=f"{run_id}-model-usage-rollup",
+        planned_source_lineage_archive_id=f"{run_id}-source-lineage-archive",
+        planned_final_artifact_completion_receipt_id=(
+            completion_plan.planned_final_artifact_completion_receipt_id
+        ),
+        planned_final_artifact_finalization_receipt_id=(
+            completion_plan.planned_final_artifact_finalization_receipt_id
+        ),
+        planned_completion_record_id=completion_plan.planned_completion_record_id,
+        planned_artifact_archive_manifest_id=(
+            completion_plan.planned_artifact_archive_manifest_id
+        ),
+        planned_operator_handoff_summary_id=(
+            completion_plan.planned_operator_handoff_summary_id
+        ),
+        planned_delivery_status_id=completion_plan.planned_delivery_status_id,
+        planned_quality_attestation_id=(
+            completion_plan.planned_quality_attestation_id
+        ),
+        planned_completion_audit_entry_id=(
+            completion_plan.planned_completion_audit_entry_id
+        ),
+        planned_account_visible_asset_id=(
+            completion_plan.planned_account_visible_asset_id
+        ),
+        planned_reading_workspace_entry_id=(
+            completion_plan.planned_reading_workspace_entry_id
+        ),
+        planned_search_index_entry_id=completion_plan.planned_search_index_entry_id,
+        planned_private_read_url_id=completion_plan.planned_private_read_url_id,
+        planned_graph_commit_id=completion_plan.planned_graph_commit_id,
+        planned_graph_snapshot_id=completion_plan.planned_graph_snapshot_id,
+        planned_information_asset_id=completion_plan.planned_information_asset_id,
+        planned_hosted_html_asset_id=completion_plan.planned_hosted_html_asset_id,
+        planned_runner_dispatch_id=completion_plan.planned_runner_dispatch_id,
+        planned_idempotency_key=completion_plan.planned_idempotency_key,
+        final_run_closure_blockers=[
+            *completion_plan.final_artifact_completion_finalization_blockers,
+            "final run closure receipt writer",
+            "run closeout record writer",
+            "operator delivery ledger writer",
+            "delivery notification dispatcher",
+            "workspace delivery card writer",
+            "run retention manifest writer",
+            "billing reconciliation writer",
+            "model usage rollup writer",
+            "source lineage archive writer",
+            "idempotent final run closure replay protection",
+        ],
+        required_final_run_closure_invariants=[
+            "final run closure planner must require final artifact completion finalization planning before any run closeout can be written",
+            "final run closure planner must bind operator delivery, retention, billing reconciliation, model usage rollup, source lineage archive, workspace delivery card, and delivery notification to the same planned completed artifact",
+            "final run closure planner must keep closeout and operator delivery uncreated until completion record, finalization transaction, archive manifest, quality attestation, and audit receipts exist",
+            "final run closure planner must preserve account-visible asset, private read URL, graph commit, hosted HTML asset, source/evidence lineage, and idempotency lineage through the operator delivery ledger entry",
+            "final run closure planner must not dispatch providers, perform retrieval, mutate graph, publish assets, notify operators, activate URLs, close runs, or write final artifacts while planning closure controls",
+        ],
+        required_final_run_closure_receipt_fields=[
+            "final_run_closure_plan_receipt_id",
+            "final_artifact_completion_finalization_plan_receipt_id",
+            "final_run_closure_receipt_id",
+            "run_closeout_record_id",
+            "operator_delivery_ledger_entry_id",
+            "delivery_notification_id",
+            "workspace_delivery_card_id",
+            "run_retention_manifest_id",
+            "billing_reconciliation_id",
+            "model_usage_rollup_id",
+            "source_lineage_archive_id",
+            "completion_record_id",
+            "quality_attestation_id",
+            "completion_audit_entry_id",
+            "account_visible_asset_id",
+            "private_read_url_id",
+            "hosted_html_asset_id",
+            "idempotency_key",
+            "created_at",
+        ],
+        blocker_reason="final_run_closure_unimplemented",
+        final_run_closure_allowed=False,
+        run_closeout_record_created=False,
+        operator_delivery_ledger_entry_created=False,
+        delivery_notification_created=False,
+        workspace_delivery_card_created=False,
+        run_retention_manifest_created=False,
+        billing_reconciliation_created=False,
+        model_usage_rollup_created=False,
+        source_lineage_archive_created=False,
+        final_artifact_completion_finalization_allowed=False,
+        completion_record_created=False,
+        finalization_transaction_created=False,
+        artifact_archive_manifest_created=False,
+        operator_handoff_summary_created=False,
+        delivery_status_marked_complete=False,
+        quality_attestation_created=False,
+        completion_audit_entry_created=False,
+        final_artifact_publish_allowed=False,
+        publish_transaction_created=False,
+        information_asset_published=False,
+        account_visible_asset_created=False,
+        reading_workspace_entry_created=False,
+        search_index_entry_created=False,
+        private_read_url_created=False,
+        operator_notification_created=False,
+        graph_commit_created=False,
+        graph_mutated=False,
+        final_artifact_created=False,
+        dispatch_performed=False,
+        budget_reserved=False,
+        provider_calls_made=False,
+        retrieval_performed=False,
+        source_receipts_created=False,
+        adapter_plan_notes=[
+            "final run closure plan only: no closeout record, operator delivery ledger entry, delivery notification, workspace card, retention manifest, billing reconciliation, model usage rollup, source lineage archive, or final artifact is created",
+            "this receipt documents run closure and operator delivery requirements after final artifact completion finalization planning",
+            "no activation readiness, live dispatch, scheduler job, worker runtime, budget reservation, provider call, retrieval, source receipt, graph mutation, publish, notification, URL activation, run closeout, or artifact write is performed",
         ],
     )
 
