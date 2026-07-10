@@ -75,6 +75,8 @@ from .contracts import (
     MidnightOilWorkerOutputAggregationPlanRequest,
     MidnightOilWorkerQueueClaimPlanReceipt,
     MidnightOilWorkerQueueClaimPlanRequest,
+    MidnightOilWorkerSynthesisHandoffPlanReceipt,
+    MidnightOilWorkerSynthesisHandoffPlanRequest,
     activation_checklist_midnight_oil,
     budget_provider_adapter_plan_midnight_oil,
     budget_reservation_midnight_oil,
@@ -109,6 +111,7 @@ from .contracts import (
     worker_dispatch_lease_heartbeat_plan_midnight_oil,
     worker_output_aggregation_plan_midnight_oil,
     worker_queue_claim_plan_midnight_oil,
+    worker_synthesis_handoff_plan_midnight_oil,
 )
 
 __all__ = [
@@ -186,6 +189,8 @@ __all__ = [
     "MidnightOilWorkerOutputAggregationPlanRequest",
     "MidnightOilWorkerQueueClaimPlanReceipt",
     "MidnightOilWorkerQueueClaimPlanRequest",
+    "MidnightOilWorkerSynthesisHandoffPlanReceipt",
+    "MidnightOilWorkerSynthesisHandoffPlanRequest",
     "activation_checklist_midnight_oil",
     "budget_provider_adapter_plan_midnight_oil",
     "budget_reservation_midnight_oil",
@@ -220,4 +225,5 @@ __all__ = [
     "worker_dispatch_lease_heartbeat_plan_midnight_oil",
     "worker_output_aggregation_plan_midnight_oil",
     "worker_queue_claim_plan_midnight_oil",
+    "worker_synthesis_handoff_plan_midnight_oil",
 ]

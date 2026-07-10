@@ -6104,6 +6104,284 @@ class MidnightOilWorkerOutputAggregationPlanReceipt(BaseModel):
     adapter_plan_notes: list[str] = Field(default_factory=list)
 
 
+class MidnightOilWorkerSynthesisHandoffPlanRequest(
+    MidnightOilWorkerOutputAggregationPlanRequest
+):
+    worker_output_aggregation_plan_receipt: MidnightOilWorkerOutputAggregationPlanReceipt
+
+    @model_validator(mode="after")
+    def _output_aggregation_plan_matches(self) -> MidnightOilWorkerSynthesisHandoffPlanRequest:
+        output_plan = self.worker_output_aggregation_plan_receipt
+        if (
+            output_plan.worker_completion_finalization_plan_receipt_id
+            != self.worker_completion_finalization_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "worker_output_aggregation_plan_receipt must reference worker_completion_finalization_plan_receipt"
+            )
+        if (
+            output_plan.worker_cancellation_abandon_plan_receipt_id
+            != self.worker_cancellation_abandon_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "worker_output_aggregation_plan_receipt must reference worker_cancellation_abandon_plan_receipt"
+            )
+        if (
+            output_plan.worker_dispatch_lease_heartbeat_plan_receipt_id
+            != self.worker_dispatch_lease_heartbeat_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "worker_output_aggregation_plan_receipt must reference worker_dispatch_lease_heartbeat_plan_receipt"
+            )
+        if (
+            output_plan.repository_commit_rollback_plan_receipt_id
+            != self.repository_commit_rollback_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "worker_output_aggregation_plan_receipt must reference repository_commit_rollback_plan_receipt"
+            )
+        if (
+            output_plan.repository_transaction_plan_receipt_id
+            != self.repository_transaction_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "worker_output_aggregation_plan_receipt must reference repository_transaction_plan_receipt"
+            )
+        if (
+            output_plan.worker_queue_claim_plan_receipt_id
+            != self.worker_queue_claim_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "worker_output_aggregation_plan_receipt must reference worker_queue_claim_plan_receipt"
+            )
+        if output_plan.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError(
+                "worker_output_aggregation_plan_receipt must reference runner_handoff"
+            )
+        if output_plan.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError(
+                "worker_output_aggregation_plan_receipt must reference approval_receipt"
+            )
+        if output_plan.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError(
+                "worker_output_aggregation_plan_receipt must reference launch_packet"
+            )
+        if output_plan.run_id != self.launch_packet.run_id:
+            raise ValueError(
+                "worker_output_aggregation_plan_receipt must reference launch run"
+            )
+        if output_plan.status != "blocked_worker_output_aggregation_unimplemented":
+            raise ValueError(
+                "worker_output_aggregation_plan_receipt must be blocked_worker_output_aggregation_unimplemented"
+            )
+        if (
+            output_plan.worker_output_aggregation_allowed
+            or output_plan.worker_output_aggregated
+            or output_plan.worker_output_index_created
+            or output_plan.worker_output_manifest_created
+            or output_plan.worker_output_summary_created
+        ):
+            raise ValueError(
+                "worker_output_aggregation_plan_receipt must not aggregate worker outputs"
+            )
+        if (
+            output_plan.worker_completion_allowed
+            or output_plan.worker_completed
+            or output_plan.worker_finalization_allowed
+            or output_plan.worker_finalized
+            or output_plan.worker_result_manifest_created
+            or output_plan.worker_output_bundle_created
+        ):
+            raise ValueError(
+                "worker_output_aggregation_plan_receipt must not complete or finalize workers"
+            )
+        if (
+            output_plan.worker_cancellation_allowed
+            or output_plan.worker_cancelled
+            or output_plan.worker_abandon_allowed
+            or output_plan.worker_abandoned
+        ):
+            raise ValueError(
+                "worker_output_aggregation_plan_receipt must not cancel or abandon workers"
+            )
+        if (
+            output_plan.worker_lease_heartbeat_allowed
+            or output_plan.worker_lease_heartbeat_recorded
+            or output_plan.worker_lease_renewal_allowed
+            or output_plan.worker_lease_renewed
+            or output_plan.worker_lease_expiry_allowed
+            or output_plan.worker_lease_expired
+        ):
+            raise ValueError(
+                "worker_output_aggregation_plan_receipt must not record heartbeat, renewal, or expiry state"
+            )
+        if output_plan.worker_started:
+            raise ValueError("worker_output_aggregation_plan_receipt must not start worker")
+        if (
+            output_plan.repository_commit_allowed
+            or output_plan.repository_rollback_allowed
+            or output_plan.commit_receipt_created
+            or output_plan.rollback_receipt_created
+        ):
+            raise ValueError(
+                "worker_output_aggregation_plan_receipt must not create commit or rollback receipts"
+            )
+        if (
+            output_plan.repository_transaction_allowed
+            or output_plan.repository_transaction_opened
+            or output_plan.repository_transaction_committed
+        ):
+            raise ValueError(
+                "worker_output_aggregation_plan_receipt must not open or commit transaction"
+            )
+        if (
+            output_plan.queue_claim_allowed
+            or output_plan.queue_claim_created
+            or output_plan.claim_transaction_opened
+            or output_plan.claim_transaction_committed
+        ):
+            raise ValueError(
+                "worker_output_aggregation_plan_receipt must not create queue claim or claim transaction"
+            )
+        if output_plan.scheduler_allowed or output_plan.scheduler_job_created:
+            raise ValueError(
+                "worker_output_aggregation_plan_receipt must not create scheduler job"
+            )
+        if output_plan.runner_dispatch_enqueued:
+            raise ValueError(
+                "worker_output_aggregation_plan_receipt must not enqueue runner dispatch"
+            )
+        if output_plan.dispatch_allowed or output_plan.dispatch_performed:
+            raise ValueError("worker_output_aggregation_plan_receipt must not dispatch")
+        if output_plan.budget_reservation_allowed or output_plan.budget_reserved:
+            raise ValueError(
+                "worker_output_aggregation_plan_receipt must not reserve budget"
+            )
+        if output_plan.provider_execution_allowed or output_plan.provider_calls_made:
+            raise ValueError(
+                "worker_output_aggregation_plan_receipt must not include provider calls"
+            )
+        if output_plan.retrieval_allowed or output_plan.retrieval_performed:
+            raise ValueError(
+                "worker_output_aggregation_plan_receipt must not perform retrieval"
+            )
+        if output_plan.source_receipts_created:
+            raise ValueError(
+                "worker_output_aggregation_plan_receipt must not create source receipts"
+            )
+        if output_plan.graph_mutation_allowed or output_plan.graph_mutated:
+            raise ValueError("worker_output_aggregation_plan_receipt must not mutate graph")
+        if output_plan.final_artifact_allowed or output_plan.final_artifact_created:
+            raise ValueError(
+                "worker_output_aggregation_plan_receipt must not create final artifact"
+            )
+        return self
+
+
+class MidnightOilWorkerSynthesisHandoffPlanReceipt(BaseModel):
+    receipt_id: str
+    worker_output_aggregation_plan_receipt_id: str
+    worker_completion_finalization_plan_receipt_id: str
+    worker_cancellation_abandon_plan_receipt_id: str
+    worker_dispatch_lease_heartbeat_plan_receipt_id: str
+    repository_commit_rollback_plan_receipt_id: str
+    repository_transaction_plan_receipt_id: str
+    worker_queue_claim_plan_receipt_id: str
+    scheduler_lease_retry_plan_receipt_id: str
+    runner_dispatch_worker_bootstrap_plan_receipt_id: str
+    runner_dispatch_scheduler_plan_receipt_id: str
+    runner_control_plan_receipt_id: str
+    runner_readiness_receipt_id: str
+    runner_handoff_id: str
+    approval_receipt_id: str
+    launch_packet_id: str
+    run_id: str
+    status: Literal["blocked_worker_synthesis_handoff_unimplemented"] = (
+        "blocked_worker_synthesis_handoff_unimplemented"
+    )
+    adapter_key: Literal["worker_synthesis_handoff"] = "worker_synthesis_handoff"
+    planned_synthesis_handoff_receipt_id: str
+    planned_synthesis_input_bundle_id: str
+    planned_synthesis_context_manifest_id: str
+    planned_synthesis_outline_id: str
+    planned_synthesis_handoff_ledger_entry_id: str
+    planned_worker_output_aggregation_receipt_id: str
+    planned_worker_output_index_id: str
+    planned_worker_output_manifest_id: str
+    planned_worker_output_summary_id: str
+    planned_worker_result_manifest_id: str
+    planned_worker_output_bundle_id: str
+    planned_queue_claim_id: str
+    planned_claim_lease_token_id: str
+    planned_queue_id: str
+    planned_worker_id: str
+    planned_worker_lease_id: str
+    planned_runner_dispatch_id: str
+    planned_idempotency_key: str
+    worker_synthesis_handoff_blockers: list[str]
+    required_worker_synthesis_handoff_invariants: list[str]
+    required_worker_synthesis_handoff_receipt_fields: list[str]
+    blocker_reason: Literal["worker_synthesis_handoff_unimplemented"] = (
+        "worker_synthesis_handoff_unimplemented"
+    )
+    worker_synthesis_handoff_allowed: bool = False
+    worker_synthesis_handoff_created: bool = False
+    synthesis_input_bundle_created: bool = False
+    synthesis_context_manifest_created: bool = False
+    synthesis_outline_created: bool = False
+    worker_output_aggregation_allowed: bool = False
+    worker_output_aggregated: bool = False
+    worker_output_index_created: bool = False
+    worker_output_manifest_created: bool = False
+    worker_output_summary_created: bool = False
+    worker_completion_allowed: bool = False
+    worker_completed: bool = False
+    worker_finalization_allowed: bool = False
+    worker_finalized: bool = False
+    worker_result_manifest_created: bool = False
+    worker_output_bundle_created: bool = False
+    worker_cancellation_allowed: bool = False
+    worker_cancelled: bool = False
+    worker_abandon_allowed: bool = False
+    worker_abandoned: bool = False
+    worker_lease_heartbeat_allowed: bool = False
+    worker_lease_heartbeat_recorded: bool = False
+    worker_lease_renewal_allowed: bool = False
+    worker_lease_renewed: bool = False
+    worker_lease_expiry_allowed: bool = False
+    worker_lease_expired: bool = False
+    worker_started: bool = False
+    repository_commit_allowed: bool = False
+    repository_rollback_allowed: bool = False
+    commit_receipt_created: bool = False
+    rollback_receipt_created: bool = False
+    repository_transaction_allowed: bool = False
+    repository_transaction_opened: bool = False
+    repository_transaction_committed: bool = False
+    queue_claim_allowed: bool = False
+    queue_claim_created: bool = False
+    claim_transaction_opened: bool = False
+    claim_transaction_committed: bool = False
+    scheduler_allowed: bool = False
+    scheduler_job_created: bool = False
+    runner_dispatch_enqueued: bool = False
+    live_run_allowed: bool = False
+    dispatch_allowed: bool = False
+    dispatch_performed: bool = False
+    budget_reservation_allowed: bool = False
+    budget_reserved: bool = False
+    provider_execution_allowed: bool = False
+    provider_calls_made: bool = False
+    retrieval_allowed: bool = False
+    retrieval_performed: bool = False
+    source_receipts_created: bool = False
+    graph_mutation_allowed: bool = False
+    graph_mutated: bool = False
+    final_artifact_allowed: bool = False
+    final_artifact_created: bool = False
+    adapter_plan_notes: list[str] = Field(default_factory=list)
+
+
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
     price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
@@ -8866,6 +9144,176 @@ def worker_output_aggregation_plan_midnight_oil(
         adapter_plan_notes=[
             "worker output aggregation plan only: no worker output aggregation, output index, output manifest, output summary, worker runtime, scheduler job, or runner dispatch is created",
             "this receipt documents output aggregation, indexing, manifest normalization, and summary requirements after worker completion finalization planning",
+            "no activation readiness, live dispatch, scheduler job, worker runtime, transaction execution, budget reservation, provider call, retrieval, source receipt, graph mutation, or artifact write is performed",
+        ],
+    )
+
+
+def worker_synthesis_handoff_plan_midnight_oil(
+    req: MidnightOilWorkerSynthesisHandoffPlanRequest,
+) -> MidnightOilWorkerSynthesisHandoffPlanReceipt:
+    run_id = req.launch_packet.run_id
+    output_plan = req.worker_output_aggregation_plan_receipt
+    return MidnightOilWorkerSynthesisHandoffPlanReceipt(
+        receipt_id=f"{run_id}-worker-synthesis-handoff-plan",
+        worker_output_aggregation_plan_receipt_id=output_plan.receipt_id,
+        worker_completion_finalization_plan_receipt_id=(
+            output_plan.worker_completion_finalization_plan_receipt_id
+        ),
+        worker_cancellation_abandon_plan_receipt_id=(
+            output_plan.worker_cancellation_abandon_plan_receipt_id
+        ),
+        worker_dispatch_lease_heartbeat_plan_receipt_id=(
+            output_plan.worker_dispatch_lease_heartbeat_plan_receipt_id
+        ),
+        repository_commit_rollback_plan_receipt_id=(
+            output_plan.repository_commit_rollback_plan_receipt_id
+        ),
+        repository_transaction_plan_receipt_id=(
+            output_plan.repository_transaction_plan_receipt_id
+        ),
+        worker_queue_claim_plan_receipt_id=output_plan.worker_queue_claim_plan_receipt_id,
+        scheduler_lease_retry_plan_receipt_id=(
+            output_plan.scheduler_lease_retry_plan_receipt_id
+        ),
+        runner_dispatch_worker_bootstrap_plan_receipt_id=(
+            output_plan.runner_dispatch_worker_bootstrap_plan_receipt_id
+        ),
+        runner_dispatch_scheduler_plan_receipt_id=(
+            output_plan.runner_dispatch_scheduler_plan_receipt_id
+        ),
+        runner_control_plan_receipt_id=output_plan.runner_control_plan_receipt_id,
+        runner_readiness_receipt_id=output_plan.runner_readiness_receipt_id,
+        runner_handoff_id=req.runner_handoff.handoff_id,
+        approval_receipt_id=req.approval_receipt.receipt_id,
+        launch_packet_id=req.launch_packet.packet_id,
+        run_id=run_id,
+        planned_synthesis_handoff_receipt_id=(
+            f"{run_id}-worker-synthesis-handoff-receipt"
+        ),
+        planned_synthesis_input_bundle_id=f"{run_id}-worker-synthesis-input-bundle",
+        planned_synthesis_context_manifest_id=(
+            f"{run_id}-worker-synthesis-context-manifest"
+        ),
+        planned_synthesis_outline_id=f"{run_id}-worker-synthesis-outline",
+        planned_synthesis_handoff_ledger_entry_id=(
+            f"{run_id}-worker-synthesis-handoff-ledger-entry"
+        ),
+        planned_worker_output_aggregation_receipt_id=(
+            output_plan.planned_worker_output_aggregation_receipt_id
+        ),
+        planned_worker_output_index_id=output_plan.planned_worker_output_index_id,
+        planned_worker_output_manifest_id=output_plan.planned_worker_output_manifest_id,
+        planned_worker_output_summary_id=output_plan.planned_worker_output_summary_id,
+        planned_worker_result_manifest_id=output_plan.planned_worker_result_manifest_id,
+        planned_worker_output_bundle_id=output_plan.planned_worker_output_bundle_id,
+        planned_queue_claim_id=output_plan.planned_queue_claim_id,
+        planned_claim_lease_token_id=output_plan.planned_claim_lease_token_id,
+        planned_queue_id=output_plan.planned_queue_id,
+        planned_worker_id=output_plan.planned_worker_id,
+        planned_worker_lease_id=output_plan.planned_worker_lease_id,
+        planned_runner_dispatch_id=output_plan.planned_runner_dispatch_id,
+        planned_idempotency_key=output_plan.planned_idempotency_key,
+        worker_synthesis_handoff_blockers=[
+            *output_plan.worker_output_aggregation_blockers,
+            "worker synthesis handoff receipt writer",
+            "worker synthesis input bundle durable writer",
+            "worker synthesis context manifest builder",
+            "worker synthesis outline planner",
+            "idempotent worker synthesis handoff replay protection",
+        ],
+        required_worker_synthesis_handoff_invariants=[
+            "worker synthesis handoff planner must require worker output aggregation planning before any synthesis input can be handed off",
+            "worker synthesis handoff planner must bind synthesis input bundle, context manifest, outline, output index, output manifest, output summary, result manifest, and output bundle to one worker id, worker lease id, queue claim id, claim lease token id, runner dispatch id, and idempotency key",
+            "worker synthesis handoff planner must keep synthesis handoff receipts uncreated until durable worker output aggregation receipts exist",
+            "worker synthesis handoff planner must make replay protection explicit before aggregated worker outputs can be handed to synthesizers",
+            "worker synthesis handoff planner must not start workers, dispatch providers, perform retrieval, mutate graph, or write final HTML artifacts while planning synthesis handoff controls",
+        ],
+        required_worker_synthesis_handoff_receipt_fields=[
+            "worker_synthesis_handoff_plan_receipt_id",
+            "worker_output_aggregation_plan_receipt_id",
+            "synthesis_handoff_receipt_id",
+            "synthesis_input_bundle_id",
+            "synthesis_context_manifest_id",
+            "synthesis_outline_id",
+            "synthesis_handoff_ledger_entry_id",
+            "worker_output_aggregation_receipt_id",
+            "worker_output_index_id",
+            "worker_output_manifest_id",
+            "worker_output_summary_id",
+            "worker_result_manifest_id",
+            "worker_output_bundle_id",
+            "queue_claim_id",
+            "claim_lease_token_id",
+            "worker_id",
+            "worker_lease_id",
+            "runner_dispatch_id",
+            "idempotency_key",
+            "worker_synthesis_handoff_created",
+            "synthesis_input_bundle_created",
+            "synthesis_context_manifest_created",
+            "synthesis_outline_created",
+            "created_at",
+        ],
+        blocker_reason="worker_synthesis_handoff_unimplemented",
+        worker_synthesis_handoff_allowed=False,
+        worker_synthesis_handoff_created=False,
+        synthesis_input_bundle_created=False,
+        synthesis_context_manifest_created=False,
+        synthesis_outline_created=False,
+        worker_output_aggregation_allowed=False,
+        worker_output_aggregated=False,
+        worker_output_index_created=False,
+        worker_output_manifest_created=False,
+        worker_output_summary_created=False,
+        worker_completion_allowed=False,
+        worker_completed=False,
+        worker_finalization_allowed=False,
+        worker_finalized=False,
+        worker_result_manifest_created=False,
+        worker_output_bundle_created=False,
+        worker_cancellation_allowed=False,
+        worker_cancelled=False,
+        worker_abandon_allowed=False,
+        worker_abandoned=False,
+        worker_lease_heartbeat_allowed=False,
+        worker_lease_heartbeat_recorded=False,
+        worker_lease_renewal_allowed=False,
+        worker_lease_renewed=False,
+        worker_lease_expiry_allowed=False,
+        worker_lease_expired=False,
+        worker_started=False,
+        repository_commit_allowed=False,
+        repository_rollback_allowed=False,
+        commit_receipt_created=False,
+        rollback_receipt_created=False,
+        repository_transaction_allowed=False,
+        repository_transaction_opened=False,
+        repository_transaction_committed=False,
+        queue_claim_allowed=False,
+        queue_claim_created=False,
+        claim_transaction_opened=False,
+        claim_transaction_committed=False,
+        scheduler_allowed=False,
+        scheduler_job_created=False,
+        runner_dispatch_enqueued=False,
+        live_run_allowed=False,
+        dispatch_allowed=False,
+        dispatch_performed=False,
+        budget_reservation_allowed=False,
+        budget_reserved=False,
+        provider_execution_allowed=False,
+        provider_calls_made=False,
+        retrieval_allowed=False,
+        retrieval_performed=False,
+        source_receipts_created=False,
+        graph_mutation_allowed=False,
+        graph_mutated=False,
+        final_artifact_allowed=False,
+        final_artifact_created=False,
+        adapter_plan_notes=[
+            "worker synthesis handoff plan only: no synthesis handoff, synthesis input bundle, context manifest, outline, worker runtime, scheduler job, or runner dispatch is created",
+            "this receipt documents synthesis handoff, input bundle, context manifest, and outline requirements after worker output aggregation planning",
             "no activation readiness, live dispatch, scheduler job, worker runtime, transaction execution, budget reservation, provider call, retrieval, source receipt, graph mutation, or artifact write is performed",
         ],
     )
