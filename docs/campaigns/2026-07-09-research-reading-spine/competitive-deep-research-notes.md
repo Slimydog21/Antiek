@@ -2458,3 +2458,8 @@ recent-in-available · L6 deferred. After click: last-select-mode=recent on
 controls + selection count + path status (parity Select open afn). Twin-chase
 closed-window multi-select assembly path is machine-readable.
 vitest CollectiveResearchPanel 27 green.
+
+## Residual afq · 2026-07-10 — SESSION-ARC afn–afp multi-select assembly
+Handoff: Select open path · dogfood v16 · Select recent path. Multi-select
+assembly matrix (open|recent|restore) complete offline. P0 operator merge
+PR #465. Pivot afr+ outside thrash.
