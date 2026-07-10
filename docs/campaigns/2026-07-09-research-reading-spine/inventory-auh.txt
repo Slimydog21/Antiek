@@ -1,0 +1,23 @@
+# inventory-auh · Self-Consistency knowledge-dense arXiv connector
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: auh
+date: 2026-07-10
+parent_tip: 5637a7def (aug)
+
+## Closed
+- KNOWLEDGE_DENSE_PUBLICATION_PRESETS += self-consistency
+  label: Self-Consistency (arXiv) · arxiv:2203.11171 · kind=arxiv
+- Competitive sample-and-vote decoding paper for multi-path DR quality
+- Insert-only · never auto-hydrate (parity RAG/ReAct/ToT)
+- vitest PublicationAttachPanel 7 green · auh-vitest.log in SCRATCH
+
+## Doctrine
+Knowledge-dense arXiv quick-call expands competitive DR connector spine ·
+HTML-first hydrate offline-honest · dual-gate L1 live operator-only
+
+## Next
+aui+ offline product residual outside thrash
+Avoid: knowledge-dense preset thrash after auh · MO foresight · pure-open ·
+open-stamp · catalog · scorecard · vision · dogfood
+Prefer: model non-budget · competitive non-preset residual
+Operator merge PR #465 remains P0 (gated)

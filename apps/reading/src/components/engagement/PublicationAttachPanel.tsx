@@ -107,6 +107,14 @@ export const KNOWLEDGE_DENSE_PUBLICATION_PRESETS: readonly {
     reference: "arxiv:2305.10601",
     kind: "arxiv",
   },
+  // Residual (auh): Self-Consistency — sample-and-vote decoding for higher-quality
+  // multi-path reasoning (competitive DR quality connector · insert-only).
+  {
+    id: "self-consistency",
+    label: "Self-Consistency (arXiv)",
+    reference: "arxiv:2203.11171",
+    kind: "arxiv",
+  },
   {
     id: "lilian-weng-attention",
     label: "Lilian Weng · Attention",

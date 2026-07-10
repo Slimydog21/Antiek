@@ -142,6 +142,13 @@ describe("PublicationAttachPanel residual ck/ed", () => {
     ).toBe("arxiv:2302.04761");
     // Residual (ati): Tree of Thoughts multi-path deliberate reasoning.
     expect(screen.getByTestId("publication-preset-tree-of-thoughts")).toBeTruthy();
+    // Residual (auh): Self-Consistency sample-and-vote competitive DR connector.
+    expect(screen.getByTestId("publication-preset-self-consistency")).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("publication-preset-self-consistency")
+        .getAttribute("data-preset-id"),
+    ).toBe("self-consistency");
     expect(
       screen
         .getByTestId("publication-preset-tree-of-thoughts")
