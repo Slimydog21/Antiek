@@ -851,8 +851,9 @@ def _session_open_usage_source(goal_hint: str | None) -> str:
     g = (goal_hint or "").strip().lower()
     if g.startswith("twin chase"):
         return "twin_chase"
-    # Residual (asu): HTML reading highlight → float|full DR launch feed.
-    if "highlighted passage" in g:
+    # Residual (asu/asv): HTML reading/workstation highlight → float|full DR launch.
+    # ResearchThis/HostedHtml: "highlighted passage"; HighlightToolbar: "highlighted synthesis".
+    if "highlighted passage" in g or "highlighted synthesis" in g:
         return "highlight_dr_launch"
     return "floating_deep_research"
 

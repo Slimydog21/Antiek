@@ -4224,3 +4224,8 @@ _session_open_usage_source classifies goal_hint with "highlighted passage" as
 highlight_dr_launch (ResearchThis/HostedHtml). KNOWN_USAGE_FEED_SOURCES updated.
 Competitive delta: live usage events feed recursive rewrite for HTML highlight path.
 asu-unit.log green. P0 PR #465. Pivot asv+ outside thrash.
+
+## Residual asv · 2026-07-10 — highlight_dr_launch synthesis HighlightToolbar
+Classifier also matches "highlighted synthesis" (workstation HighlightToolbar).
+Reading ≡ research highlight launches share Antiek-bench feed. asv-unit.log green.
+P0 PR #465. Pivot asw+ outside thrash.

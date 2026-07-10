@@ -178,7 +178,7 @@ def test_session_open_twin_chase_usage_source(client):
 
 
 def test_session_open_highlight_dr_launch_usage_source(client):
-    """Residual (asu): highlighted passage goal_hint → usage source=highlight_dr_launch."""
+    """Residual (asu/asv): highlighted passage/synthesis goal_hint → highlight_dr_launch."""
     r = client.post(
         "/engagement/sessions/open",
         json={
@@ -195,6 +195,22 @@ def test_session_open_highlight_dr_launch_usage_source(client):
     assert body["usage_event"]["task_class"] == "synthesize"
     assert body["usage_event"]["outcome"] == "worked"
     assert "highlighted passage" in (body["usage_event"].get("prompt_hint") or "").lower()
+
+    # Residual (asv): ResearchWorkstation HighlightToolbar synthesis path.
+    r2 = client.post(
+        "/engagement/sessions/open",
+        json={
+            "asset_id": "synth-1",
+            "selection_text": "Synthesis claim under test.",
+            "goal_hint": "Deep-research the highlighted synthesis passage",
+            "view_mode": "full",
+            "research_tier": "wrestle",
+        },
+    )
+    assert r2.status_code == 200
+    body2 = r2.json()
+    assert body2["usage_event"]["source"] == "highlight_dr_launch"
+    assert body2["usage_event"]["task_class"] == "wrestle"
 
 
 def test_attach_unknown_spawn_404(client):
