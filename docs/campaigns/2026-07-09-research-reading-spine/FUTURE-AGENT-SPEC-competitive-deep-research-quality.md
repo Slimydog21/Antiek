@@ -30,16 +30,16 @@
 - Marketplace free STEM HTML + purchase manual receipt · host L5 FUTURE deep-links (akb)  
 - **L5 payment offline-complete Sprint 1–3** (akr adapter · aku purchase path · ala deferred CTA · alb wave)  
 - Knowledge-dense quick-call · pub-ref foresight chrome matrix  
-- Multi-hop citation chain · hop strip stage deep-links (amc/ame) · evidence Write hop honesty · dogfood v29–v33  
+- Multi-hop citation chain · hop strip stage deep-links (amc/ame) · evidence Write hop honesty · dogfood v29–v34  
 - Marketplace host-land TwinNotes+ResearchContext substrate (alx–ama)  
 - Host researchTier prefill on ResearchContext (amj–amq · amp · reading amr–amt)  
 - Reading conversation ResearchContext substrate (ResearchThis · TalkToBook · MetaReading)  
-- Twin promote depth-graph path (UI · substrate · Write · dogfood v32–v33)  
+- Twin promote depth-graph path (UI · substrate · Write · dogfood v32–v34)  
 - Domain-aware twin search free PD full spine (aiy STEM · akq econ/politics/philosophy/eng · akw literature/tech · alf bare science)  
 - Competitive DR scorecard navigation matrix (progress · MO · collective · attach · marketplace · badge · budget · ND)  
 - Budget-before-fire prompt-cost matrix: akk–akp spend + akx driver · aky twin · alc evidence · ald attach  
 - NotDiamond advisory-only install path (ajy–aka) · never router  
-- Antiek-bench dogfood recursive rewrite through **v33** (propose≠promote)  
+- Antiek-bench dogfood recursive rewrite through **v34** (propose≠promote)  
 - FUTURE-AGENT L5/L6/twin/ND briefs  
 
 ## Highest-value offline product residuals (next)

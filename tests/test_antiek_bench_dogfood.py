@@ -98,6 +98,9 @@ def test_dogfood_suite_covers_task_classes():
     assert "dogfood-wrestle-highlight-deep-research-path" in ids
     assert "dogfood-wrestle-talk-to-book-twins" in ids
     assert "dogfood-wrestle-meta-reading-twins" in ids
+    assert "dogfood-wrestle-talk-to-book-collective" in ids
+    assert "dogfood-wrestle-meta-reading-collective" in ids
+    assert "dogfood-wrestle-marketplace-host-collective" in ids
 
 
 def test_dogfood_fixture_payload_includes_shannon_turing_lovelace_v12() -> None:
@@ -106,8 +109,8 @@ def test_dogfood_fixture_payload_includes_shannon_turing_lovelace_v12() -> None:
 
     payload = dogfood_fixture_payload(include_html=True)
     assert payload["suite_version"] == COMPETITIVE_DOGFOOD_VERSION
-    assert payload["suite_version"] == "suite-competitive-dogfood-v33"
-    assert payload["item_count"] >= 49
+    assert payload["suite_version"] == "suite-competitive-dogfood-v34"
+    assert payload["item_count"] >= 52
     assert payload["auto_promoted"] is False
     assert payload["by_task_class"].get("book_qa", 0) >= 9
     ids = {i["item_id"] for i in payload["items"]}
@@ -145,9 +148,12 @@ def test_dogfood_fixture_payload_includes_shannon_turing_lovelace_v12() -> None:
     assert "dogfood-wrestle-highlight-deep-research-path" in ids
     assert "dogfood-wrestle-talk-to-book-twins" in ids
     assert "dogfood-wrestle-meta-reading-twins" in ids
+    assert "dogfood-wrestle-talk-to-book-collective" in ids
+    assert "dogfood-wrestle-meta-reading-collective" in ids
+    assert "dogfood-wrestle-marketplace-host-collective" in ids
     html = (payload.get("html") or "").lower()
     assert (
-        "v33" in html or "twin-promote-write-depth-graph" in html or "v32" in html or "twin-promote-depth-graph" in html or "v31" in html or "evidence-write-multi-hop" in html or "v30" in html or "domain-aware-stem-expanded" in html or "v29" in html or "citation-chain-hops" in html or "multi-hop" in html or "v28" in html or "citation-chain" in html or "scorecard" in html or "v27" in html or "foresight-chrome" in html or "v26" in html or "moil" in html or "collective-unit-twin" in html or "v25" in html or "domain-aware" in html or "v24" in html or "budget-foresight" in html or "purchase" in html or "v23" in html or "quick-call" in html or "publication" in html
+        "v34" in html or "talk-to-book-collective" in html or "v33" in html or "twin-promote-write-depth-graph" in html or "v32" in html or "twin-promote-depth-graph" in html or "v31" in html or "evidence-write-multi-hop" in html or "v30" in html or "domain-aware-stem-expanded" in html or "v29" in html or "citation-chain-hops" in html or "multi-hop" in html or "v28" in html or "citation-chain" in html or "scorecard" in html or "v27" in html or "foresight-chrome" in html or "v26" in html or "moil" in html or "collective-unit-twin" in html or "v25" in html or "domain-aware" in html or "v24" in html or "budget-foresight" in html or "purchase" in html or "v23" in html or "quick-call" in html or "publication" in html
         or "v22" in html or "spawn-merge" in html or "multi-spawn" in html
         or "v21" in html or "fourier" in html or "research-this" in html
         or "v20" in html or "talk-to-book" in html or "meta-reading" in html or "v19" in html or "godel" in html or "v18" in html or "highlight" in html or "v17" in html or "select-recent" in html or "workstation" in html
@@ -192,8 +198,8 @@ def test_payload_and_api_html():
     assert payload["view_format"] == "html"
     # Residual (zj/adn/aeu/afo/ags): v21 STEM + Fourier + ResearchThis twins dogfood.
     assert payload["suite_version"] == COMPETITIVE_DOGFOOD_VERSION
-    assert payload["suite_version"] == "suite-competitive-dogfood-v33"
-    assert payload["item_count"] >= 49
+    assert payload["suite_version"] == "suite-competitive-dogfood-v34"
+    assert payload["item_count"] >= 52
     assert payload["settings_panel"] == "antiek_bench_dogfood_fixtures"
     assert payload["source"] == "antiek_bench.dogfood_fixtures"
     assert payload["html"]
@@ -259,7 +265,7 @@ def test_payload_and_api_html():
     r2 = client.get("/settings/antiek-bench/dogfood-fixtures?include_html=true")
     assert r1.status_code == 200 and r2.status_code == 200
     assert r1.json()["suite_version"] == r2.json()["suite_version"]
-    assert r1.json()["suite_version"] == "suite-competitive-dogfood-v33"
+    assert r1.json()["suite_version"] == "suite-competitive-dogfood-v34"
     assert r1.json()["item_count"] == r2.json()["item_count"]
     assert r1.json()["item_count"] >= 49
     assert r1.json()["by_task_class"]["book_qa"] == 9

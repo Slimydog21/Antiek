@@ -3501,3 +3501,8 @@ Marketplace host land mounts CollectiveResearchPanel when open/recent DR spawns
 exist so multi-select merge/analysis targets the hosted HTML book (reading ≡ research ·
 parity HostedHtml eu · TalkToBook ang · MetaReading anh). vitest MarketplaceHost ani green.
 P0 operator merge PR #465. Pivot anj+ outside thrash (prefer non-collective-mount).
+
+## Residual anj · 2026-07-10 — dogfood v34 reading + marketplace collective matrix
+Suite suite-competitive-dogfood-v34 learns TalkToBook · MetaReading · MarketplaceHost
+collective multi-select paths (ang–ani). item_count 52 · wrestle=39 · Settings spine
+postures v34. propose≠promote. P0 operator merge PR #465. Pivot ank+ outside thrash.

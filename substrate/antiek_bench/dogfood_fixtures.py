@@ -45,7 +45,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (ajk): v31 learns evidence pack Write seed multi-hop hop honesty (aji).
 # Residual (ajq): v32 learns twin promote depth-graph unit≡node honesty (ajn/ajo).
 # Residual (ajw): v33 learns twin promote Write seed depth-graph honesty (ajv).
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v33"
+# Residual (anj): v34 learns reading conversation + marketplace host collective multi-select (ang–ani).
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v34"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -930,6 +931,66 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "reading",
                 "seamless",
                 "asset",
+            ),
+        ),
+        # Residual (anj/ang): TalkToBook collective multi-select merge into book.
+        SuiteItem(
+            item_id="dogfood-wrestle-talk-to-book-collective",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with TalkToBook collective multi-select path (ang): when open "
+                "Talk to this book mounts CollectiveResearchPanel with "
+                "data-seamless-talk-collective · open/recent DR spawn ids · "
+                "parentAssetId=documentId, how should Antiek-bench weekly rewrite learn "
+                "models that multi-select merge/analysis targets the book under "
+                "conversation without inventing live multi-agent council (L6 dual-gate)?"
+            ),
+            expected_keywords=(
+                "talk",
+                "collective",
+                "book",
+                "merge",
+                "spawn",
+            ),
+        ),
+        # Residual (anj/anh): MetaReading collective multi-select into deliverable.
+        SuiteItem(
+            item_id="dogfood-wrestle-meta-reading-collective",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with MetaReading collective multi-select path (anh): when a "
+                "meta-reading deliverable mounts CollectiveResearchPanel with "
+                "data-seamless-meta-collective · open/recent DR spawns · "
+                "parentAssetId=asset_id, how should Antiek-bench learn models that "
+                "keep multi-select merge into the HTML synthesis continuous with "
+                "reading ≡ research twin+context remount?"
+            ),
+            expected_keywords=(
+                "meta",
+                "collective",
+                "reading",
+                "merge",
+                "spawn",
+            ),
+        ),
+        # Residual (anj/ani): Marketplace host-land collective multi-select.
+        SuiteItem(
+            item_id="dogfood-wrestle-marketplace-host-collective",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with MarketplaceHost host-land collective multi-select (ani): "
+                "when hosted free/purchased HTML book mounts CollectiveResearchPanel with "
+                "data-seamless-marketplace-collective · open/recent DR spawns · "
+                "parentAssetId=document_id, how should Antiek-bench weekly rewrite learn "
+                "models that multi-select merge targets the hosted library book while "
+                "L5 payment rails stay offline-honest?"
+            ),
+            expected_keywords=(
+                "marketplace",
+                "collective",
+                "host",
+                "merge",
+                "html",
             ),
         ),
     )

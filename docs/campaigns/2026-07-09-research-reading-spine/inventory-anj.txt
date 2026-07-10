@@ -1,0 +1,18 @@
+# inventory-anj · dogfood v34 reading + marketplace collective matrix
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: anj
+date: 2026-07-10
+parent_tip: f9f56183 (ani)
+
+## Closed
+- suite-competitive-dogfood-v34 (item_count 52 · wrestle=39):
+  - dogfood-wrestle-talk-to-book-collective (ang)
+  - dogfood-wrestle-meta-reading-collective (anh)
+  - dogfood-wrestle-marketplace-host-collective (ani)
+- Settings spine postures v34 + data-has-*-collective-posture attrs
+- offline dogfood suite verify OK · vitest Settings dogfood fixtures green
+- FUTURE twin matrix Marketplace ani row · FUTURE competitive dogfood through v34
+
+## Next
+ank+ product residual outside thrash · prefer non-dogfood · non-collective-mount
+Operator merge PR #465 remains highest leverage (gated)
