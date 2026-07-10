@@ -1,0 +1,17 @@
+# inventory-avi · SESSION-ARC aut–avh pure-gate mega-wave
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: avi
+date: 2026-07-10
+parent_tip: cf139c587 (avh)
+
+## Closed
+- SESSION-ARC-aut-avh-pure-gates-mega.md
+- Consolidates 15+ pure readiness ships (model · bench · L5 · L1–L4 · soft budget)
+- Thrash map for avj+ hard pivot to product residuals
+
+## Next
+avj+ offline product residual outside thrash
+Avoid: Settings pure CTA thrash · dual-gate pure re-extract · catalog · twin/merge ·
+presets · MO · scorecard · vision · dogfood · readiness→CTA · pure-open · HostedHtml
+Prefer: competitive non-catalog · MO non-thrash product · knowledge connector
+Operator merge PR #465 remains P0 (gated)
