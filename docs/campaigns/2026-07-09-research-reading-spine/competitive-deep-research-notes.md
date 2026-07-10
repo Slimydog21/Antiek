@@ -2349,3 +2349,7 @@ Suite bumps to suite-competitive-dogfood-v14 with wrestle fixtures for seamless
 Open Write path honesty and intelligent search/evidence → Write. Settings spine
 postures v14. Recursive rewrite substrate learns differentiating tasks from ael–aet.
 pytest dogfood 5 · Settings 36 green.
+
+## Residual aev · 2026-07-10 — SESSION-ARC aes–aeu context+bench
+Handoff: intelligent search/evidence Open Write (aes–aet) + dogfood v14 (aeu).
+Do not thrash ael–aeu stamps/version pins. P0 remains operator merge PR #465.

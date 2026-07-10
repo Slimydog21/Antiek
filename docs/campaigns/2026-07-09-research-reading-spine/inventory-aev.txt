@@ -1,0 +1,13 @@
+# inventory-aev · SESSION-ARC aes–aeu context+bench handoff
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aev
+date: 2026-07-10
+parent_tip: c7b36f32 (aeu)
+
+## Closed
+- SESSION-ARC-aes-aeu-context-bench-write.md
+- FUTURE + NEXT-WAVE re-anchor for aew+
+- Docs residual (no product code)
+
+## Next (aew+)
+Outside dogfood + seamless-Write stamp thrash · inventory-first
