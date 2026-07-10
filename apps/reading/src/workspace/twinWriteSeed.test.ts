@@ -377,6 +377,8 @@ describe("twinWriteSeed (pp)", () => {
     expect(seed?.plain_text).toMatch(/Deep-research the highlight/);
     expect(seed?.html).toMatch(/data-source="deep_research_session"/);
     expect(seed?.html).toMatch(/data-spawn-id="spn_qv_1"/);
+    // Residual (aei): engagement builders stamp has_body true for rewrite feed.
+    expect(seed?.has_body).toBe(true);
   });
 
   it("returns null for empty deep research selection+goal (qv)", () => {
@@ -594,6 +596,8 @@ describe("twinWriteSeed (pp)", () => {
     expect(seed?.source).toBe("research_progress_draft");
     expect(seed?.plain_text).toMatch(/In-progress stage: gather/);
     expect(seed?.html).toMatch(/data-is-terminal="false"/);
+    // Residual (aei): progress draft has_body true for rewrite feed.
+    expect(seed?.has_body).toBe(true);
   });
 
   it("builds terminal progress Write twin_seed only when isTerminal (qw)", () => {

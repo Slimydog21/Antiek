@@ -1,0 +1,20 @@
+# inventory-aei · engagement Write builders stamp has_body true for rewrite feed
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aei
+date: 2026-07-10
+parent_tip: 7e2d7fca (aeh)
+
+## Closed
+- Explicit has_body:true on storeTwinWriteSeed for:
+  deep_research_session · research_progress_* · evidence_pack ·
+  publication_hydrate · session_flywheel_complete · context_search ·
+  research_context_pack · twin_promote_context
+- (marketplace/merge/hosted keep title-only has_body=false path adq)
+- vitest twinWriteSeed · 34 passed
+
+## Why this residual
+adq default inference is OK for most cases but explicit true on content-bearing
+builders hardens rewrite feed so Write create never mis-classifies body seeds.
+
+## Not in scope
+- Changing title-only marketplace host paths (already has_body false)

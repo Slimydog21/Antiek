@@ -478,6 +478,8 @@ export function buildDeepResearchWriteHref(opts: {
     asset_id: asset,
     note_ids: [],
     source: "deep_research_session",
+    // Residual (aei): builder only returns when plain non-empty → has_body true.
+    has_body: true,
   });
   if (!seedKey) return null;
   return buildTwinWriteHref(seedKey);
@@ -576,6 +578,8 @@ export function buildResearchProgressWriteHref(opts: {
     asset_id: asset,
     note_ids: [],
     source,
+    // Residual (aei): progress seed only when plain non-empty → has_body true.
+    has_body: true,
   });
   if (!seedKey) return null;
   return buildTwinWriteHref(seedKey);
@@ -658,6 +662,8 @@ export function buildEvidencePackWriteHref(opts: {
     asset_id: asset,
     note_ids: [],
     source: "evidence_pack",
+    // Residual (aei): evidence body required for seed → has_body true.
+    has_body: true,
   });
   if (!seedKey) return null;
   return buildTwinWriteHref(seedKey);
@@ -743,6 +749,8 @@ export function buildPublicationHydrateWriteHref(opts: {
     asset_id: firstId,
     note_ids: [],
     source: "publication_hydrate",
+    // Residual (aei): hydrated pub plain required for seed → has_body true.
+    has_body: true,
   });
   if (!seedKey) return null;
   return buildTwinWriteHref(seedKey);
@@ -800,6 +808,8 @@ export function buildSessionFlywheelWriteHref(opts: {
     asset_id: spawn ? `deep_research:${spawn}` : `session:${session}`,
     note_ids: [],
     source: "session_flywheel_complete",
+    // Residual (aei): flywheel output/prompt required for seed → has_body true.
+    has_body: true,
   });
   if (!seedKey) return null;
   return buildTwinWriteHref(seedKey);
@@ -866,6 +876,8 @@ export function buildContextSearchWriteHref(opts: {
     asset_id: asset,
     note_ids: [],
     source: "context_search",
+    // Residual (aei): search hits required for seed → has_body true.
+    has_body: true,
   });
   if (!seedKey) return null;
   return buildTwinWriteHref(seedKey);
@@ -924,6 +936,8 @@ export function buildResearchContextWriteHref(opts: {
     asset_id: asset,
     note_ids: [],
     source: "research_context_pack",
+    // Residual (aei): prompt_block required for seed → has_body true.
+    has_body: true,
   });
   if (!seedKey) return null;
   return buildTwinWriteHref(seedKey);
@@ -995,6 +1009,8 @@ export function buildTwinPromoteWriteHref(opts: {
     asset_id: asset,
     note_ids: noteIds,
     source: "twin_promote_context",
+    // Residual (aei): promoted notes plain required for seed → has_body true.
+    has_body: true,
   });
   if (!seedKey) return null;
   return buildTwinWriteHref(seedKey);

@@ -2278,3 +2278,9 @@ Cohesive unit prompt offers Open Write (unit prompt) with twin_seed source=
 collective_unit_prompt · has_body when prompt_block non-empty · L6 deferred stamp.
 Competitive delta: multi-spawn collective unit → recursive note-taker Write path
 is complete (float|full + Write). vitest CollectiveResearchPanel 25 green.
+
+## Residual aei · 2026-07-10 — engagement Write builders has_body true
+Deep research · progress · evidence · publications · flywheel · context search ·
+context pack · twin promote storeTwinWriteSeed stamp has_body=true (content-bearing
+builders). Competitive delta: recursive rewrite feed is explicit end-to-end for all
+engagement Open Write paths (title-only marketplace/merge keep false). vitest twinWriteSeed 34 green.
