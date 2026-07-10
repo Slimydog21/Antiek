@@ -4148,3 +4148,8 @@ Pivot asf+ outside thrash.
 ## Residual asf · 2026-07-10 — SESSION-ARC asb–ase knowledge · model · MO
 Multi-agent handoff for publication attach · written analysis · decision-tree
 install · MO offline run CTAs. P0 PR #465. Pivot asg+ outside thrash.
+
+## Residual asg · 2026-07-10 — DR float|full CTAs float_full_ready
+expand-full / restore-floating stamp + gate pathChoices.float_full_ready ·
+HTML-first. Competitive delta: highlight→float→full path hard-to-vary pure
+contract. vitest DeepResearchSessionHost 34 green. P0 PR #465. Pivot ash+.

@@ -302,10 +302,18 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
                   data-view-mode-target="full"
                   data-seamless-highlight-dr={String(seamlessHighlightDr)}
                   data-view-format="html"
-                  disabled={isFull}
+                  data-float-full-ready={String(pathChoices.float_full_ready)}
+                  data-html-first="true"
+                  disabled={isFull || !pathChoices.float_full_ready}
                   onClick={() => syncDeepResearchWindowMode(rawSessionId, "full")}
                   className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono hover:bg-ink/5 disabled:opacity-40 dark:border-bright/30"
-                  title="Open this deep research full-screen (highlight→float stays HTML · not PDF)"
+                  title={
+                    !pathChoices.float_full_ready
+                      ? "Session unbound — cannot expand full without window session"
+                      : isFull
+                        ? "Already full-screen"
+                        : "Open this deep research full-screen (highlight→float stays HTML · not PDF)"
+                  }
                 >
                   Expand full
                 </button>
@@ -315,12 +323,20 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
                   data-view-mode-target="floating"
                   data-seamless-highlight-dr={String(seamlessHighlightDr)}
                   data-view-format="html"
-                  disabled={!isFull}
+                  data-float-full-ready={String(pathChoices.float_full_ready)}
+                  data-html-first="true"
+                  disabled={!isFull || !pathChoices.float_full_ready}
                   onClick={() =>
                     syncDeepResearchWindowMode(rawSessionId, "floating")
                   }
                   className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono hover:bg-ink/5 disabled:opacity-40 dark:border-bright/30"
-                  title="Restore floating window (highlight→float path · HTML-first)"
+                  title={
+                    !pathChoices.float_full_ready
+                      ? "Session unbound — cannot restore floating without window session"
+                      : !isFull
+                        ? "Already floating"
+                        : "Restore floating window (highlight→float path · HTML-first)"
+                  }
                 >
                   Restore floating
                 </button>

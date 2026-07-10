@@ -1,0 +1,21 @@
+# inventory-asg · DR float|full CTAs stamp + gate float_full_ready
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: asg
+date: 2026-07-10
+parent_tip: e043bf975 (asf)
+
+## Closed
+- deep-research-expand-full / restore-floating: data-float-full-ready · data-html-first
+- disabled when !pathChoices.float_full_ready (session unbound)
+- Title honesty for unbound / already full / already floating
+- DeepResearchSessionHost.test expand path asserts float-full-ready stamps
+- vitest DeepResearchSessionHost: 34 green
+
+## Doctrine
+highlight → float → full HTML path · pathChoices.float_full_ready drives CTAs
+Never invent session · HTML-first · not PDF
+
+## Next
+ash+ offline product residual outside thrash
+Avoid: float|full thrash after asg · path CTA thrash · SESSION thrash · MO/pub/install gates
+Operator merge PR #465 remains P0 (gated)

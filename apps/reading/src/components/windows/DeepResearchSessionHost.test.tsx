@@ -611,6 +611,10 @@ describe("DeepResearchSessionHost", () => {
     expect(expand.getAttribute("data-view-mode-target")).toBe("full");
     expect(restore.getAttribute("data-view-mode-target")).toBe("floating");
     expect(expand.getAttribute("data-view-format")).toBe("html");
+    // Residual (asg): float|full CTAs stamp pathChoices.float_full_ready.
+    expect(expand.getAttribute("data-float-full-ready")).toBe("true");
+    expect(restore.getAttribute("data-float-full-ready")).toBe("true");
+    expect(expand.getAttribute("data-html-first")).toBe("true");
     const path = screen.getByTestId("deep-research-path-choices");
     expect(path.getAttribute("data-html-first")).toBe("true");
     expect(path.getAttribute("data-float-full-ready")).toBe("true");
