@@ -33,6 +33,7 @@ import { depthTierApplyReadiness } from "../../workspace/depthTierApplyReadiness
 import { hydrateLiveGateReadiness } from "../../workspace/hydrateLiveGateReadiness";
 import { twinSeedLiveGateReadiness } from "../../workspace/twinSeedLiveGateReadiness";
 import { moilLiveStepGateReadiness } from "../../workspace/moilLiveStepGateReadiness";
+import { promptCostEstimateReadiness } from "../../workspace/promptCostEstimateReadiness";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import {
@@ -120,6 +121,8 @@ import {
  * (env · dispatch · injector · offline_honest=false).
  * Residual (avg): pure moilLiveStepGateReadiness drives L4 dual-gate stamps
  * (env · injector · offline_honest=false · Midnight Oil live step).
+ * Residual (avh): pure promptCostEstimateReadiness drives Project cost CTAs
+ * (soft budget foresight · never invent $0 · never auto-route).
  */
 export default function Settings() {
   const tier = useViewportTier();
@@ -1098,6 +1101,19 @@ export default function Settings() {
     ],
   );
 
+  /**
+   * Residual (avh): pure prompt-cost Project estimate CTA readiness.
+   * Soft budget foresight · never invent $0 · never auto-route.
+   */
+  const promptCostReady = useMemo(
+    () =>
+      promptCostEstimateReadiness({
+        input_chars: inputChars,
+        expected_output_tokens: outTokens,
+      }),
+    [inputChars, outTokens],
+  );
+
   const spendPct = useMemo(() => {
     if (
       !budget ||
@@ -1115,6 +1131,15 @@ export default function Settings() {
     input_chars?: number;
     expected_output_tokens?: number;
   }) {
+    // Residual (avh): pure gate — finite non-negative counts · soft budget.
+    const gate = promptCostEstimateReadiness({
+      input_chars: opts?.input_chars ?? inputChars,
+      expected_output_tokens: opts?.expected_output_tokens ?? outTokens,
+    });
+    if (!gate.estimate_ready) {
+      setEstimateError(gate.estimate_title);
+      return;
+    }
     setEstimating(true);
     setEstimateError(null);
     try {
@@ -1122,9 +1147,8 @@ export default function Settings() {
         tier: opts?.tier || depth?.projection_hints?.tier || "pro",
         provider: selectedProvider || null,
         model: selectedModel || null,
-        input_chars: opts?.input_chars ?? inputChars,
-        expected_output_tokens:
-          opts?.expected_output_tokens ?? outTokens,
+        input_chars: gate.input_chars,
+        expected_output_tokens: gate.expected_output_tokens,
       });
       setEstimate(res);
     } catch (e) {
@@ -2036,10 +2060,19 @@ export default function Settings() {
                 <button
                   type="button"
                   data-testid="decision-tree-project-cost"
+                  data-estimate-ready={String(promptCostReady.estimate_ready)}
+                  data-block-reason={promptCostReady.block_reason}
+                  data-soft-budget={String(promptCostReady.soft_budget)}
+                  data-never-invent-zero={String(
+                    promptCostReady.never_invent_zero,
+                  )}
+                  data-never-auto-route={String(
+                    promptCostReady.never_auto_route,
+                  )}
                   onClick={() => void onEstimate()}
-                  disabled={estimating}
+                  disabled={estimating || !promptCostReady.estimate_ready}
                   className="px-2 py-1 rounded border border-ink/40 dark:border-bright/40 text-[11px] font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
-                  title="Project sample prompt cost for selected provider/model vs remaining budget"
+                  title={promptCostReady.estimate_title}
                 >
                   {estimating ? "Estimating…" : "Project sample cost"}
                 </button>
@@ -5031,8 +5064,15 @@ export default function Settings() {
             </div>
             <button
               type="button"
-              onClick={onEstimate}
-              disabled={estimating}
+              data-testid="prompt-cost-project"
+              data-estimate-ready={String(promptCostReady.estimate_ready)}
+              data-block-reason={promptCostReady.block_reason}
+              data-soft-budget={String(promptCostReady.soft_budget)}
+              data-never-invent-zero={String(promptCostReady.never_invent_zero)}
+              data-never-auto-route={String(promptCostReady.never_auto_route)}
+              onClick={() => void onEstimate()}
+              disabled={estimating || !promptCostReady.estimate_ready}
+              title={promptCostReady.estimate_title}
               className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
             >
               {estimating ? "Estimating…" : "Project cost"}
