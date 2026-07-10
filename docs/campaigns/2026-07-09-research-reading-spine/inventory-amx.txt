@@ -1,0 +1,15 @@
+# inventory-amx · ResearchWorkstation context-mount depth honesty stamps
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: amx
+date: 2026-07-10
+parent_tip: 4bdd9026 (amw)
+
+## Closed
+- research-workstation-context-mount data-research-tier · data-seamless-workstation-depth
+- Context + twins mount depth honesty parity (amn stamps both)
+- vitest ResearchWorkstation.collective 7 green
+- proof: SCRATCH residual-amx-vitest.log
+
+## Next
+amy+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

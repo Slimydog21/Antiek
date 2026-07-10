@@ -265,6 +265,17 @@ describe("ResearchWorkstation collective multi-select (afr)", () => {
           .getAttribute("data-research-tier"),
       ).toBe("wrestle");
     });
+    // Residual (amx): context mount stamps Settings depth honesty.
+    expect(
+      screen
+        .getByTestId("research-workstation-context-mount")
+        .getAttribute("data-research-tier"),
+    ).toBe("wrestle");
+    expect(
+      screen
+        .getByTestId("research-workstation-context-mount")
+        .getAttribute("data-seamless-workstation-depth"),
+    ).toBe("true");
     expect(
       screen.getByTestId("twin-notes-panel-stub").getAttribute("data-research-tier"),
     ).toBe("wrestle");

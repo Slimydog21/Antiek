@@ -283,6 +283,8 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
         data-view-format="html"
         data-investigation-id={investigationId}
         data-seamless-workstation-context="true"
+        data-research-tier={researchTier}
+        data-seamless-workstation-depth="true"
       >
         <div
           data-testid="research-workstation-context-refresh"

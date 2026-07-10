@@ -3440,3 +3440,8 @@ Pivot amw+ outside thrash.
 ## Residual amw · 2026-07-10 — FUTURE competitive offline spine host-tier + reading context
 Offline spine lists host-tier ResearchContext path and reading conversation
 substrate. P0 operator merge PR #465. Pivot amx+ outside thrash.
+
+## Residual amx · 2026-07-10 — ResearchWorkstation context-mount depth honesty stamps
+Investigation context mount stamps data-research-tier + data-seamless-workstation-depth
+for Settings depth honesty next to twins. vitest ResearchWorkstation 7 green.
+P0 operator merge PR #465. Pivot amy+ outside thrash.
