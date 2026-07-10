@@ -678,3 +678,5 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - StartResearch vitest asserts prompt-len + pub-refs stamp
 
 - Closed (qq, 2026-07-10) **ResearchContextPanel DecisionTreeDriverBadge** + prompt_block foresight
+
+- Closed (qr, 2026-07-10) **badge ≡ budget** via composeDriverPromptText (ResearchThis/StartResearch/ChatInput + pub refs)

@@ -21,6 +21,7 @@ import {
 import CascadeProposal from "./CascadeProposal";
 import MyResearch from "./MyResearch";
 import VoiceChaseButton from "./VoiceChaseButton";
+import { composeDriverPromptText } from "../../lib/driverPromptText";
 import {
   hydratePublicationRefs,
   parsePublicationRefs,
@@ -706,7 +707,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             </span>
           </div>
 
-          {/* Residual (bp/df/ll/qp): budget + driver badge depth + promptText foresight. */}
+          {/* Residual (bp/df/ll/qp/qr): budget ≡ badge via composeDriverPromptText. */}
           <div
             data-testid="start-research-driver-badge-mount"
             data-view-format="html"
@@ -715,18 +716,11 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             <DecisionTreeDriverBadge
               researchTier={tier}
               /* Residual (qp): question + pub refs cost foresight (parity ResearchThis pi). */
-              promptText={
-                pubRefs.trim()
-                  ? `${question}
-
-Publication refs:
-${pubRefs.trim()}`
-                  : question
-              }
+              promptText={composeDriverPromptText(question, pubRefs)}
             />
           </div>
           <ResearchLaunchBudgetPanel
-            promptText={question}
+            promptText={composeDriverPromptText(question, pubRefs)}
             researchTier={tier}
             allowTierPick
             onResearchTierChange={setTier}

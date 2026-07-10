@@ -13,6 +13,7 @@ import { track, trackException } from "../../lib/analytics";
 import { startInvestigation } from "../../lib/api";
 import type { ResearchTier } from "../../lib/api";
 import { mapDepthTierToResearchTier } from "../../lib/researchTier";
+import { composeDriverPromptText } from "../../lib/driverPromptText";
 import {
   hydratePublicationRefs,
   parsePublicationRefs,
@@ -44,6 +45,7 @@ import {
  * Residual (df): soft-gate Ask when budget projection would exceed (parity de).
  * Residual (ln): DecisionTreeDriverBadge with launchTier (parity StartResearch ll).
  * Residual (qp): DecisionTreeDriverBadge promptText = question + pub refs.
+ * Residual (qr): budget panel shares composeDriverPromptText (badge ≡ budget).
  */
 export default function ChatInputArea({
   parentInvestigationId,
@@ -240,18 +242,11 @@ export default function ChatInputArea({
           <DecisionTreeDriverBadge
             researchTier={launchTier}
             /* Residual (qp): question + pub refs cost foresight. */
-            promptText={
-              pubRefs.trim()
-                ? `${question}
-
-Publication refs:
-${pubRefs.trim()}`
-                : question
-            }
+            promptText={composeDriverPromptText(question, pubRefs)}
           />
         </div>
         <ResearchLaunchBudgetPanel
-          promptText={question}
+          promptText={composeDriverPromptText(question, pubRefs)}
           researchTier={launchTier}
           allowTierPick
           onResearchTierChange={setLaunchTier}

@@ -22,6 +22,7 @@ import { listRecentDeepResearchSpawnIds } from "../../workspace/recentDeepResear
 import type { WindowMode } from "../../workspace/windowsStore";
 import { useWindows } from "../../workspace/windowsStore";
 import { launchFloatingDeepResearch } from "./launchFloatingDeepResearch";
+import { composeDriverPromptText } from "../../lib/driverPromptText";
 
 /**
  * ResearchThis (Read SPR-08 + residual cc/cu/cx/cy/de) — spin deep research from
@@ -40,6 +41,7 @@ import { launchFloatingDeepResearch } from "./launchFloatingDeepResearch";
  * Residual (jg): Settings depth-tier prefill for budget projection (parity jc–jf).
  * Residual (ll): DecisionTreeDriverBadge researchTier before launch.
  * Residual (pi): DecisionTreeDriverBadge promptText = selection + pub refs
+ * Residual (qr): budget panel uses same composeDriverPromptText (badge ≡ budget).
  * for cost-vs-remaining projection (parity MO pg / Write ph).
  * Full-page workstation handoff remains an explicit tertiary action.
  *
@@ -257,15 +259,11 @@ export default function ResearchThis({
           <DecisionTreeDriverBadge
             researchTier={researchTier}
             /* Residual (pi): selection + pub refs cost foresight. */
-            promptText={
-              pubRefs.trim()
-                ? `${selection}\n\nPublication refs:\n${pubRefs.trim()}`
-                : selection
-            }
+            promptText={composeDriverPromptText(selection, pubRefs)}
           />
         </div>
         <ResearchLaunchBudgetPanel
-          promptText={selection}
+          promptText={composeDriverPromptText(selection, pubRefs)}
           researchTier={researchTier}
           allowTierPick
           onResearchTierChange={setResearchTier}
