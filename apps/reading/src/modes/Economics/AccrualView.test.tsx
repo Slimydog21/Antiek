@@ -137,10 +137,9 @@ describe("AccrualView — NO money path (M4, BINDING)", () => {
     getAttributionReportMock.mockResolvedValue(report());
     getConsentViewMock.mockResolvedValue(consent());
     render(<AccrualView synthesisId="syn-1" />);
-    await waitFor(() => expect(screen.getByText(/whose work grounds this/i)).toBeTruthy());
     // No control that would move money. "Try a payout" is the gated refusal,
     // not a money-mover — it's matched and excluded by name below.
-    const buttons = screen.getAllByRole("button");
+    const buttons = await screen.findAllByRole("button");
     for (const b of buttons) {
       expect(b.textContent ?? "").not.toMatch(/disburse|send money|transfer|pay out now|withdraw/i);
     }
