@@ -2729,3 +2729,9 @@ invent live injectors. P0 operator merge PR #465. Pivot ahl+ offline product.
 Hosted free STEM book DR depth mount stamps data-pub-ref-count after knowledge-dense
 quick-call (parity ResearchThis ahi). vitest HostedHtml green.
 P0 operator merge PR #465. Pivot ahm+ outside thrash.
+
+## Residual ahm · 2026-07-10 — MarketplaceHost DR budget foresight with pub refs
+Host-land DR budget panel uses composeDriverPromptText with knowledge-dense
+pub refs; mount stamps data-pub-ref-count. Completes foresight matrix for free
+STEM marketplace path. vitest MarketplaceHost green. P0 operator merge PR #465.
+Pivot ahn+ outside thrash.

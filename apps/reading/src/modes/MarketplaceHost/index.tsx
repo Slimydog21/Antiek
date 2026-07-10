@@ -66,6 +66,7 @@
  * Residual (tc): host-land free/PD honesty stamp (public_domain free host path).
  * Residual (ahe): paid purchase+host seamless port honesty (manual receipt ·
  * L5 deferred · HTML host into account · never invent live checkout).
+ * Residual (ahm): host-land DR budget foresight includes pub-ref count (parity ahl).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -89,6 +90,10 @@ import {
 } from "../../components/engagement/ResearchLaunchBudgetPanel";
 import { fetchDepthTiers } from "../../api/settings";
 import { mapDepthTierToResearchTier } from "../../lib/researchTier";
+import {
+  composeDriverPromptText,
+  countPublicationRefs,
+} from "../../lib/driverPromptText";
 import { openWindow } from "../../components/windows/openWindow";
 import {
   buildMarketplaceWriteHref,
@@ -1510,7 +1515,7 @@ export default function MarketplaceHost({
             {hosted.already_hosted ? "Already hosted" : "Newly hosted"} ·{" "}
             {hosted.license_class} · view_format={hosted.view_format}
           </p>
-          {/* Residual (iy/jc): budget projection soft-gate + Settings depth prefill. */}
+          {/* Residual (iy/jc/ahm): budget projection soft-gate · pub-ref foresight. */}
           <div
             className="space-y-2 border rounded p-3"
             data-testid="marketplace-host-dr-budget-mount"
@@ -1520,6 +1525,14 @@ export default function MarketplaceHost({
             data-domains={
               catalogSubjectsForBook(hosted.book_id).join(",") || "none"
             }
+            data-pub-ref-count={String(countPublicationRefs(hostDrPubRefs))}
+            data-has-pub-refs={String(countPublicationRefs(hostDrPubRefs) > 0)}
+            data-prompt-chars={String(
+              composeDriverPromptText(
+                hostDrPromptPreview || hosted.title || "hosted book",
+                hostDrPubRefs,
+              ).length,
+            )}
           >
             <p
               className="text-[11px] font-mono opacity-80"
@@ -1534,7 +1547,10 @@ export default function MarketplaceHost({
                   : ""}
             </p>
             <ResearchLaunchBudgetPanel
-              promptText={hostDrPromptPreview || hosted.title || "hosted book"}
+              promptText={composeDriverPromptText(
+                hostDrPromptPreview || hosted.title || "hosted book",
+                hostDrPubRefs,
+              )}
               researchTier={hostDrTier}
               allowTierPick
               onResearchTierChange={setHostDrTier}
