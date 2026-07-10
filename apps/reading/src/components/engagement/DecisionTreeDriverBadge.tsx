@@ -15,6 +15,8 @@
  * (prep only; every host that mounts the badge can reach live-enable prep).
  * Residual (ku): optional researchTier chrome so model driver + depth posture
  * share one decision-tree surface (not NotDiamond authority).
+ * Residual (atf): prompt projection stamps competitive long-horizon duration band
+ * for wrestle tier (parity ResearchProgress competitiveDurationBand · budget-before-fire).
  * Residual (pg): optional promptText projects estimated cost impact on remaining
  * daily budget (operator foresight before send; not a hard gate).
  * Residual (rm): Settings deep-link anchors to #notdiamond-advisory so operators
@@ -43,6 +45,7 @@ import {
 } from "../../api/settings";
 import { notDiamondImplementationVerdict } from "../../lib/notDiamondDriverDelta";
 import { benchTaskClassToVisionFeeds } from "../../lib/suiteProposalTasks";
+import { competitiveDurationBand } from "./ResearchProgressPanel";
 import {
   bestModelForTaskClass,
   researchTierToBenchTaskClass,
@@ -121,6 +124,17 @@ export function DecisionTreeDriverBadge({
     () => benchTaskClassToVisionFeeds(benchTaskClass),
     [benchTaskClass],
   );
+  // Residual (atf): competitive long-horizon duration band for budget foresight.
+  const durationBand = useMemo(() => {
+    if (
+      normalizedTier === "fast" ||
+      normalizedTier === "deep" ||
+      normalizedTier === "wrestle"
+    ) {
+      return competitiveDurationBand(normalizedTier);
+    }
+    return null;
+  }, [normalizedTier]);
 
   const onInstallBestForTask = useCallback(async () => {
     if (!bestByTask?.model_id || !benchTaskClass) return;
@@ -539,7 +553,8 @@ export function DecisionTreeDriverBadge({
         </p>
       </div>
 
-      {/* Residual (pg): prompt cost projection vs remaining daily budget. */}
+      {/* Residual (pg/atf): prompt cost projection vs remaining daily budget +
+          competitive long-horizon duration band when tier known. */}
       {promptChars > 0 ? (
         <div
           className="space-y-0.5 border-t border-ink/10 pt-1 dark:border-bright/10"
@@ -561,6 +576,11 @@ export function DecisionTreeDriverBadge({
           data-goes-negative={
             remainingAfter != null ? String(remainingAfter < 0) : "unknown"
           }
+          // Residual (atf): competitive duration band for long-horizon foresight.
+          data-research-tier={normalizedTier || ""}
+          data-long-horizon-band={durationBand?.bandMinutes ?? ""}
+          data-long-horizon-label={durationBand?.label ?? ""}
+          data-long-horizon={String(normalizedTier === "wrestle")}
           data-view-format="html"
           role="status"
         >
@@ -574,6 +594,9 @@ export function DecisionTreeDriverBadge({
               : projection?.would_exceed_budget === false
                 ? " · within remaining budget"
                 : ""}
+            {durationBand
+              ? ` · ${durationBand.label} band ${durationBand.bandMinutes}m`
+              : ""}
           </p>
           {remainingAfter != null ? (
             <p

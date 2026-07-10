@@ -4282,3 +4282,9 @@ moilDepositHtmlReadiness: view_format=html ∧ body ∧ document_id → open rea
 MidnightOil deposit open CTAs use pure helper (parity plan ara). summary +
 open_title honesty. vitest moilGoals 8 · MidnightOil 30 green. P0 PR #465.
 Pivot atf+.
+
+## Residual atf · 2026-07-10 — DecisionTree prompt projection long-horizon band
+Prompt cost projection stamps competitiveDurationBand (wrestle 10–30+ · deep
+3–10 · fast 1–3) with data-long-horizon*. Budget-before-fire + multi-minute
+foresight co-located on driver badge. vitest DecisionTreeDriverBadge 16 green.
+P0 PR #465. Pivot atg+.

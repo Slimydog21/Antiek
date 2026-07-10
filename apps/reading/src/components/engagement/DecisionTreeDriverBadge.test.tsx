@@ -516,6 +516,37 @@ describe("DecisionTreeDriverBadge residual cw/eq", () => {
         .getByTestId("decision-tree-prompt-projection")
         .getAttribute("data-goes-negative"),
     ).toBe("false");
+    // Residual (atf): deep tier stamps competitive duration band on projection.
+    expect(strip.getAttribute("data-research-tier")).toBe("deep");
+    expect(strip.getAttribute("data-long-horizon")).toBe("false");
+    expect(strip.getAttribute("data-long-horizon-label")).toMatch(/deep/i);
+    expect(strip.getAttribute("data-long-horizon-band")).toMatch(/3–10|3-10/);
+    expect(strip.textContent).toMatch(/deep synthesize band/i);
+  });
+
+  it("stamps wrestle long-horizon duration band on prompt projection (atf)", async () => {
+    fetchDecisionTreeSelection.mockResolvedValue({
+      model_id: "glm-5.2",
+      provider_id: "zai",
+      installed: true,
+      notes: [],
+      source: "test",
+    });
+    render(
+      <DecisionTreeDriverBadge
+        researchTier="wrestle"
+        promptText="Wrestle multi-minute long-horizon synthesis prompt"
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("decision-tree-prompt-projection")).toBeTruthy();
+    });
+    const strip = screen.getByTestId("decision-tree-prompt-projection");
+    expect(strip.getAttribute("data-research-tier")).toBe("wrestle");
+    expect(strip.getAttribute("data-long-horizon")).toBe("true");
+    expect(strip.getAttribute("data-long-horizon-label")).toMatch(/wrestle/i);
+    expect(strip.getAttribute("data-long-horizon-band")).toMatch(/10–30|10-30/);
+    expect(strip.textContent).toMatch(/wrestle long-horizon band/i);
   });
 
   it("stamps data-goes-negative when high band burns past remaining (aeb)", async () => {

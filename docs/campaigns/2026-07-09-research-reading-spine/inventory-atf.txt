@@ -1,0 +1,23 @@
+# inventory-atf · DecisionTree prompt projection long-horizon duration band
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: atf
+date: 2026-07-10
+parent_tip: 2702364b7 (ate)
+
+## Closed
+- DecisionTreeDriverBadge prompt projection stamps competitiveDurationBand
+  data-research-tier · data-long-horizon-band · data-long-horizon-label · data-long-horizon
+- Operator-facing copy: "{label} band {minutes}m" on projection line
+- wrestle → long-horizon true · 10–30+ · deep → 3–10 · fast → 1–3
+- Budget-before-fire + competitive long-horizon foresight co-located on driver badge
+- vitest DecisionTreeDriverBadge 16 green
+
+## Doctrine
+Model driver + budget projection + competitive multi-minute band honesty
+before send · soft foresight · never hard block · HTML-first badge
+
+## Next
+atg+ offline product residual outside thrash
+Avoid: decision-tree projection thrash after atf · MO deposit · vision feeds ·
+HostedHtml honesty · presets · path-choices · dogfood · readiness→CTA
+Operator merge PR #465 remains P0 (gated)
