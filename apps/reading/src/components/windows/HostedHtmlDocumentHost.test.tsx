@@ -252,6 +252,30 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     ).toBe("research_progress_complete");
   });
 
+  it("stamps collective_written_analysis Open Write source (vn)", () => {
+    render(
+      <HostedHtmlDocumentHost
+        document_id="analysis:col_1"
+        title="Written analysis · 3 spawns"
+        view_format="html"
+        source="collective_written_analysis"
+        html='<article data-source="collective_written_analysis"><h1>Analysis</h1></article>'
+      />,
+    );
+    expect(
+      screen.getByTestId("hosted-html-open-write").getAttribute(
+        "data-write-seed-source",
+      ),
+    ).toBe("collective_written_analysis");
+    expect(
+      screen.getByTestId("hosted-html-open-write").getAttribute("title") || "",
+    ).toMatch(/written analysis/i);
+    expect(
+      screen.getByTestId("twin-notes-panel-stub").getAttribute("data-seed-title") ||
+        "",
+    ).toMatch(/Collective written analysis/i);
+  });
+
   it("stamps twin_cross_asset_merge Open Write source (vg)", () => {
     render(
       <HostedHtmlDocumentHost

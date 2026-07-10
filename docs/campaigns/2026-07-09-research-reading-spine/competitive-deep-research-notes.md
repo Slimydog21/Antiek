@@ -1289,3 +1289,8 @@ learns multi-spawn written analysis Write seed as first-class wrestle task.
 FUTURE-AGENT-SPEC tip → d2fd555e with closed arcs tt–vl (45 residual ships).
 Competitive delta: swarm handoff tip-true; operator merge PR #465 remains
 highest leverage.
+
+## Residual vn · 2026-07-10 — hosted collective_written_analysis Open Write test
+HostedHtmlDocumentHost stamps Open Write source + twinSeedTitle for
+collective_written_analysis. Competitive delta: multi-spawn analysis host path
+is mechanically proven (parity twin_cross_asset_merge vg).
