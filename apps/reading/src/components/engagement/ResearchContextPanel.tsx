@@ -65,7 +65,6 @@ import {
   buildEvidencePackWriteHref,
   buildPublicationHydrateWriteHref,
   buildResearchContextWriteHref,
-  plainTextFromHtml,
 } from "../../workspace/twinWriteSeed";
 import { openWindow } from "../windows/openWindow";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
@@ -910,9 +909,15 @@ export function ResearchContextPanel({
                 ? {
                     stages: (serverPipe.stages?.length
                       ? serverPipe.stages
-                      : CITATION_HOP_PIPELINE_STAGES) as readonly string[],
-                    present: serverPipe.present as string[],
-                    missing: serverPipe.missing as string[],
+                      : CITATION_HOP_PIPELINE_STAGES) as readonly (
+                      typeof CITATION_HOP_PIPELINE_STAGES
+                    )[number][],
+                    present: serverPipe.present as (
+                      typeof CITATION_HOP_PIPELINE_STAGES
+                    )[number][],
+                    missing: serverPipe.missing as (
+                      typeof CITATION_HOP_PIPELINE_STAGES
+                    )[number][],
                     present_count: serverPipe.present_count,
                     total: serverPipe.total,
                     coverage_ratio:

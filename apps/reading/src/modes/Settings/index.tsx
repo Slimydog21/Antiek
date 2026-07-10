@@ -2166,7 +2166,7 @@ export default function Settings() {
         <LemonCard
           title="Twin seed (recursive note-taker)"
           elevation="z1"
-          colour="parchment"
+          colour="card"
         >
           <div
             className="p-4 space-y-3"
@@ -2342,7 +2342,7 @@ export default function Settings() {
         <LemonCard
           title="Midnight Oil live-step (L4 dual-gate)"
           elevation="z1"
-          colour="parchment"
+          colour="card"
         >
           <div
             id="moil-live-step-status"
@@ -2492,7 +2492,7 @@ export default function Settings() {
         <LemonCard
           title="Publication hydrate (arxiv / substack)"
           elevation="z1"
-          colour="parchment"
+          colour="card"
         >
           <div
             className="p-4 space-y-3"
@@ -4321,11 +4321,6 @@ export default function Settings() {
                     data-has-research-progress-draft={String(
                       (usage.known_sources || []).includes(
                         "research_progress_draft",
-                      ),
-                    )}
-                    data-has-research-progress-complete={String(
-                      (usage.known_sources || []).includes(
-                        "research_progress_complete",
                       ),
                     )}
                     data-has-twin-promote-context={String(

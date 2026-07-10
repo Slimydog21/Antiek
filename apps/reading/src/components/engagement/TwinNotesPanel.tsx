@@ -316,9 +316,6 @@ export function TwinNotesPanel({
   const mergeAssetId = mergeBuckets.length
     ? mergeBuckets[mergeBuckets.length - 1]!.asset_id
     : null;
-  const mergeTwins = mergeBuckets.length
-    ? mergeBuckets[mergeBuckets.length - 1]!.twins
-    : null;
   const mergeSelectedNoteIds = useMemo(() => {
     const s = new Set<string>();
     for (const b of mergeBuckets) {
