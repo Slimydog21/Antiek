@@ -1596,3 +1596,8 @@ path is compose-complete (parity computing quartet xp).
 FUTURE-AGENT-SPEC tip re-anchored after free electricity STEM trio compose +
 computing quartet + dual-gate L1–L7 matrix. Competitive delta: swarm handoff
 tip-true; operator merge PR #465 highest leverage.
+
+## Residual xy · 2026-07-10 — MO pub-refs dual-gate #l1-arxiv
+Midnight Oil pub-refs hydrate dual-gate jumps to #l1-arxiv (parity reading
+hosts xd). Competitive delta: MO knowledge-dense pub-refs prep navigates
+hydrate deferred policy without inventing live body.

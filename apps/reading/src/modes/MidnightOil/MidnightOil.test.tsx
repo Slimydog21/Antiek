@@ -1068,7 +1068,8 @@ describe("MidnightOil mode", () => {
   it("links dual-gate L1–L2 hydrate checklist beside pub refs (pb)", () => {
     render(<MidnightOil />);
     const link = screen.getByTestId("moil-pub-refs-dual-gate-link");
-    expect(link.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4/);
+    // Residual (xy): L1 arxiv checklist section deep-link.
+    expect(link.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
     expect(link.textContent).toMatch(/L1–L2 hydrate/i);
     const offline = screen.getByTestId("moil-pub-refs-offline-default");
     expect(offline.getAttribute("data-offline-honest")).toBe("true");

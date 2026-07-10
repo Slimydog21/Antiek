@@ -715,11 +715,12 @@ export default function MidnightOil() {
             >
               Settings · hydrate readiness
             </a>
+            {/* Residual (xy): L1 arxiv checklist section (pub-refs hydrate prep). */}
             <a
-              href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+              href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
               data-testid="moil-pub-refs-dual-gate-link"
               className="underline opacity-80 hover:opacity-100"
-              title="Dual-gate L1–L2 live hydrate prep only — offline identity default"
+              title="Dual-gate L1 arxiv hydrate checklist (prep only · offline identity default)"
             >
               Dual-gate L1–L2 hydrate checklist
             </a>
