@@ -3,12 +3,16 @@
 ### Status
 DONE
 
+Rework round complete: the independent reviewer demonstrated three forgeable approval
+paths in the original implementation. Both mandatory major findings and all four
+cheap minor findings are now addressed and covered by regression tests.
+
 ### Files touched
-- `substrate/research_brief/model.py` — validated immutable brief, budget placeholder, lifecycle event shapes.
-- `substrate/research_brief/project_html.py` — standalone editable HTML projection and round-trip parser.
+- `substrate/research_brief/model.py` — validated immutable brief, budget placeholder, and structurally consistent lifecycle event trails.
+- `substrate/research_brief/project_html.py` — standalone editable HTML projection and draft-only round-trip parser; HTML edits cannot set lifecycle state.
 - `substrate/research_brief/clarifier.py` — injected 2–3-question generator contract and answer fold.
-- `substrate/research_brief/lifecycle.py` — injected transitions and sole run-token approval gate.
-- `substrate/research_brief/provenance.py` — canonical content hash and local linked run record.
+- `substrate/research_brief/lifecycle.py` — injected transitions and approval gate requiring a final approval event pinned to current content.
+- `substrate/research_brief/provenance.py` — stable content-only canonical hash and local linked run record.
 - `substrate/research_brief/__init__.py` — public package API.
 - `substrate/research_brief/WIRING.md` — exact frozen integration needs and triviality policy.
 - `tests/test_research_brief.py` — red proofs and milestone contract tests.
@@ -21,9 +25,9 @@ DONE
 - [x] M5: Tests + WIRING.md — complete.
 
 ### Verification gate results
-- pytest: pass — `11 passed in 0.17s`.
+- pytest: pass — `16 passed in 0.25s`.
 - mypy strict: pass — `Success: no issues found in 6 source files`.
-- ruff: pass — `All checks passed!` (initial import-order finding was repaired, then the exact gate passed).
+- ruff: pass — `All checks passed!`.
 - seam purity: pass — the exact command emitted only Git's aggregate `9 files changed, 495 insertions(+)` footer; no outside-owned file path was emitted. A path-only structural check was also empty.
 
 ### WIRING.md entries added (frozen-file needs documented, not edited)
@@ -35,6 +39,15 @@ DONE
 - Decision: reject clarifier outputs outside 2–3, rather than clamp; silent truncation could discard the operator's material question.
 - Decision: `deep`, `wrestle`, fan-out, and unattended runs are non-trivial; one-shot non-fan-out `fast` answers may skip the gate to preserve quick-answer latency. W0 evidence would reverse it.
 - Decision: use a local `BudgetTuple` and `BriefRunRecord`; SPR-01 has not landed an importable type on this branch.
+- Rework decision: editable HTML owns content only and must remain draft; approval remains an explicit lifecycle operation.
+- Rework decision: approval events pin the content-only SHA-256 digest. State and events are excluded so HTML round trips reconstruct the same identity, while post-approval content replacement invalidates authorization.
+- Rework decision: `RunToken` validates digest shape, but remains a reference whose authorization is meaningful only when verified against the approved brief.
+
+### Rework red proofs
+- Tampering projected HTML from `data-state="draft"` to `approved` is rejected before a brief can be parsed.
+- Direct construction/replacement into `APPROVED` without an event trail is rejected.
+- Token minting rejects approved content that no longer matches the final approval event's pinned hash.
+- Approved briefs cannot transition again, and malformed token hashes are rejected.
 
 ### Assumptions surfaced (rigor #1)
 - I-9's ≥65% blind preference bar is pending W0 and is not measured by this sprint.
