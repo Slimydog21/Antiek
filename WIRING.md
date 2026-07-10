@@ -137,7 +137,7 @@ parseable with stdlib — no new dependency). A PDF arm belongs behind the same
 `substrate/book_import/pdf.py` gated on the `[pdf]` extra, mirroring
 `acquisition/books/reader.read_pdf` which already exists for native ingest.
 A scanned/no-text-layer PDF must map to the existing typed failure
-`NoTextContent` (`substrate/book_import/errors.py`).
+`NoTextContentError` (`substrate/book_import/errors.py`).
 
 ### W8 — embeddings at publish time
 
