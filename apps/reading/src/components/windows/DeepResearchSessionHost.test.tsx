@@ -234,6 +234,26 @@ describe("DeepResearchSessionHost", () => {
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
     expect(write.getAttribute("data-view-format")).toBe("html");
     expect(write.textContent).toMatch(/Open Write \(twin seed\)/i);
+    // Residual (acv): selection body → has-body true.
+    expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
+  });
+
+  it("Open Write has-body false when goal-only without selection (acv)", () => {
+    render(
+      <DeepResearchSessionHost
+        session_id="fsess_goal"
+        spawn_id="spn_goal"
+        parent_asset_id="book-1"
+        selection_text="  "
+        goal="Goal only meta seed"
+        view_format="html"
+      />,
+    );
+    const write = screen.getByTestId("deep-research-open-write");
+    expect(write.getAttribute("href") || "").toMatch(
+      /^\/write\?twin_seed=antiek\.twin_write_seed\./,
+    );
+    expect(write.getAttribute("data-write-seed-has-body")).toBe("false");
   });
 
   it("hides Open Write when selection and goal are empty (qv)", () => {

@@ -43,6 +43,8 @@
  * Residual (ju): poll ms via mapResearchTierToProgressPollMs (shared closed map).
  * Residual (qv): Open Write twin_seed handoff from selection+goal (no invented
  * document_id; parity twin draft path; recursive note-taker seed).
+ * Residual (acv): data-write-seed-has-body true when selection_text non-empty
+ * (goal-only is meta; selection is body; parity ResearchProgress acp).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -277,13 +279,17 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
                 </button>
               </div>
             ) : null}
-            {/* Residual (qv): Open Write twin seed from selection+goal. */}
+            {/* Residual (qv/acv): Open Write twin seed from selection+goal + body honesty. */}
             {writeHref ? (
               <a
                 href={writeHref}
                 data-testid="deep-research-open-write"
                 data-view-format="html"
                 data-has-twin-seed="1"
+                // Residual (acv): selection is body; goal-only → has-body false.
+                data-write-seed-has-body={String(
+                  Boolean(String(props.selection_text || "").trim()),
+                )}
                 className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
                 title="Open Write with deep research selection+goal as twin_seed (sessionStorage; no invented document_id)"
               >
