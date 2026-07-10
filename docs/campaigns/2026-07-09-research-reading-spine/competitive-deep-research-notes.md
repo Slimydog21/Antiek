@@ -2231,3 +2231,9 @@ vitest researchTier+MO 34 green.
 SESSION-ARC-adx-ady documents live create-form recommended ceiling preview + model-aware
 offline rates. Tip 8fe3b551 · swarm handoff tip-true. Competitive delta: multi-agent
 infinite continues outside closed MO preview arc; operator merge PR #465 highest leverage.
+
+## Residual aea · 2026-07-10 — marketplace seamless port honesty
+Host metrics + marketplace-seamless-port stamp catalog → account library landed →
+HTML host → twin seed status. Competitive delta: operator can audit seamless port
+of purchased/hosted books into Antiek account (HTML-first · L5 still deferred).
+vitest purchase host path green.

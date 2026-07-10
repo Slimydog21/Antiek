@@ -1,0 +1,18 @@
+# inventory-aea · marketplace seamless port honesty (catalog → library → HTML host)
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aea
+date: 2026-07-10
+parent_tip: 43d592cf (adz)
+
+## Closed
+- marketplace-host-metrics: data-seamless-port · data-library-landed · data-account-owner
+- marketplace-seamless-port strip: library=landed · HTML host · twin seed status
+- purchase+host test asserts seamless port true when library contains document
+- vitest MarketplaceHost purchase path green
+
+## Why this residual
+User vision: seamless port so purchased/hosted books land in account as HTML.
+Path existed; operator-facing audit trail for library land was incomplete.
+
+## Not in scope
+- L5 live payment rails

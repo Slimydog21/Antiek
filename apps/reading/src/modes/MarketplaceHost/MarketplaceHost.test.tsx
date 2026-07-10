@@ -801,6 +801,17 @@ describe("MarketplaceHost mode", () => {
     expect(hostMetrics.getAttribute("data-payment-rails")).toBe(
       "manual_receipt_only",
     );
+    // Residual (aea): seamless port catalog → account library → HTML host.
+    expect(hostMetrics.getAttribute("data-seamless-port")).toBe("true");
+    expect(hostMetrics.getAttribute("data-library-landed")).toBe("true");
+    expect(hostMetrics.getAttribute("data-html-first")).toBe("true");
+    expect(hostMetrics.getAttribute("data-view-format")).toBe("html");
+    const seamless = screen.getByTestId("marketplace-seamless-port");
+    expect(seamless.getAttribute("data-seamless-port")).toBe("true");
+    expect(seamless.getAttribute("data-library-landed")).toBe("true");
+    expect(seamless.getAttribute("data-view-format")).toBe("html");
+    expect(seamless.textContent).toMatch(/Seamless port/i);
+    expect(seamless.textContent).toMatch(/account library=landed/);
     const freeHonesty = screen.getByTestId("marketplace-host-free-pd-honesty");
     expect(freeHonesty.getAttribute("data-is-free-host")).toBe("false");
     expect(freeHonesty.getAttribute("data-is-public-domain")).toBe("false");

@@ -1336,6 +1336,20 @@ export default function MarketplaceHost({
             // Residual (adh): L5 payment deferred honesty + HTML-first host land.
             data-l5-payment-rails="deferred"
             data-html-first="true"
+            // Residual (aea): seamless port audit — catalog → account library → HTML host → twins.
+            data-seamless-port={String(
+              (hosted.view_format || "html") === "html" &&
+                Boolean(hosted.document_id) &&
+                (libraryDocs || []).some(
+                  (d) => d.document_id === hosted.document_id,
+                ),
+            )}
+            data-library-landed={String(
+              (libraryDocs || []).some(
+                (d) => d.document_id === hosted.document_id,
+              ),
+            )}
+            data-account-owner={hosted.owner_id || ownerId || ""}
             role="status"
             className="font-mono text-[11px] opacity-80 space-y-0.5"
           >
@@ -1349,6 +1363,46 @@ export default function MarketplaceHost({
               {(
                 entries.find((e) => e.book_id === hosted.book_id)?.subjects || []
               ).join(",") || "none"}
+            </p>
+            {/* Residual (aea): seamless port honesty for account host path. */}
+            <p
+              data-testid="marketplace-seamless-port"
+              data-seamless-port={String(
+                (hosted.view_format || "html") === "html" &&
+                  Boolean(hosted.document_id) &&
+                  (libraryDocs || []).some(
+                    (d) => d.document_id === hosted.document_id,
+                  ),
+              )}
+              data-library-landed={String(
+                (libraryDocs || []).some(
+                  (d) => d.document_id === hosted.document_id,
+                ),
+              )}
+              data-view-format={hosted.view_format ?? "html"}
+              data-twin-seeded={
+                twinSeedStatus
+                  ? twinSeedHonesty?.seeded === false
+                    ? "skipped"
+                    : "true"
+                  : "pending"
+              }
+              data-html-first="true"
+              role="status"
+            >
+              Seamless port: catalog → account library=
+              {(libraryDocs || []).some(
+                (d) => d.document_id === hosted.document_id,
+              )
+                ? "landed"
+                : "pending"}{" "}
+              · HTML host · twin seed=
+              {twinSeedStatus
+                ? twinSeedHonesty?.seeded === false
+                  ? "skipped"
+                  : "seeded"
+                : "pending"}{" "}
+              · owner={hosted.owner_id || ownerId || "—"}
             </p>
             {/* Residual (tc/abs): free/PD host path honesty — free_host is is_free. */}
             <p
