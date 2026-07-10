@@ -320,6 +320,8 @@ export const COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES = [
   "readiness_cta_free_host_twin_path_moil",
   "written_analysis_multi_agent_path",
   "highlight_float_full_path_choices",
+  // Residual (asr): highlight→DR launch readiness pure helper (asq) on reading hosts.
+  "highlight_dr_launch_readiness",
 ] as const;
 
 export type CompetitiveDrOfflineProductSurface =

@@ -90,6 +90,10 @@ describe("competitiveDrQuality workspace pure helpers (apw)", () => {
     expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
       "readiness_cta_free_host_twin_path_moil",
     );
+    // Residual (asr): highlight→DR launch readiness (asq).
+    expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
+      "highlight_dr_launch_readiness",
+    );
     expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
       "marketplace_l5_receipt_readiness",
     );

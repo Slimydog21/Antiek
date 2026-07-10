@@ -4205,3 +4205,7 @@ highlightDrLaunchReadiness: document+HTML → launch_ready · has_highlight hone
 ResearchThis + HostedHtml float|full CTAs gated. Competitive delta: HTML reading
 highlight→float|full path hard-to-vary pure contract · never PDF launch.
 vitest 53 green. P0 PR #465. Pivot asr+ outside thrash.
+
+## Residual asr · 2026-07-10 — offline catalog += highlight_dr_launch_readiness
+COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES tracks asq pure helper for scorecard.
+vitest 5 green. P0 PR #465. Pivot ass+ outside thrash.
