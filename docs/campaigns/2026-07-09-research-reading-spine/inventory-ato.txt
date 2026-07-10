@@ -1,0 +1,20 @@
+# inventory-ato · SESSION-ARC asx–atn long-horizon marketplace twin wave handoff
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ato
+date: 2026-07-10
+parent_tip: eb15cc7b2 (atn)
+
+## Closed
+- SESSION-ARC-asx-atn-long-horizon-marketplace-twin.md multi-agent collab handoff
+- Maps 17 residuals asx→atn · thrash list · competitive delta · P0 PR #465
+- No product code change (wave inventory honesty for next agents)
+
+## Doctrine
+Complete work, never complete the goal · inventory-first · one residual letter/cycle
+
+## Next
+atp+ offline product residual outside thrash
+Prefer: model/bench product depth · competitive non-catalog · non-twin-CTA · non-marketplace-open
+Avoid: offline catalog · marketplace open · twin draft/merge · HostedHtml twin · presets ·
+duration-band · MO deposit · vision · dogfood · readiness→CTA
+Operator merge PR #465 remains P0 (gated)

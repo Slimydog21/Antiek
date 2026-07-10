@@ -4332,3 +4332,8 @@ P0 PR #465. Pivot atn+.
 COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES += marketplace_hosted_open_readiness ·
 competitive_duration_band_foresight · moil_deposit_html_readiness.
 Scorecard honesty tracks pure contracts. vitest 6 green. P0 PR #465. Pivot ato+.
+
+## Residual ato · 2026-07-10 — SESSION-ARC asx–atn wave handoff
+Multi-agent collab map of 17 residuals (long-horizon · agentic pubs · twin ·
+marketplace open · pure helpers · offline catalog). Thrash list explicit.
+P0 PR #465. Pivot atp+ outside thrash.
