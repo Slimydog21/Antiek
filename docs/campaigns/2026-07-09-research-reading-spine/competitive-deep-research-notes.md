@@ -2322,3 +2322,9 @@ machine-readable on the handoff (not only host metrics aea). vitest MarketplaceH
 moil-open-write stamps data-document-id · data-job-id · data-seamless-moil-write
 · data-seamless-host-write so autonomous deposit → Write note-taker is
 machine-readable (parity ael–aeo Write path wave). vitest MidnightOil 24 green.
+
+## Residual aeq · 2026-07-10 — collective Open Write draft vs into_parent path
+Collective multi-spawn Open Write stamps data-mode · data-draft-leaves-parent ·
+data-parent-asset-id · data-spawn-count · data-seamless-merge-write (parity aem
+spawn merge). Competitive delta: multi-select merge→Write note-taker path honesty.
+vitest CollectiveResearchPanel 25 green.

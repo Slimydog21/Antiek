@@ -1047,6 +1047,9 @@ describe("CollectiveResearchPanel", () => {
     mergeSpawnOutputs.mockResolvedValue({
       document_id: "draft_col_qe",
       mode: "draft_combined",
+      parent_asset_id: "asset_x",
+      source_spawn_ids: ["spn_1", "spn_2"],
+      draft_leaves_parent: true,
       view_format: "html",
       html: "<article><p>Collective draft body</p></article>",
       notes: [],
@@ -1073,6 +1076,14 @@ describe("CollectiveResearchPanel", () => {
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
     // Residual (acm): twin_seed body honesty (parity spawn merge acl).
     expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
+    // Residual (aeq): multi-spawn draft_combined path honesty (parity aem).
+    expect(write.getAttribute("data-mode")).toBe("draft_combined");
+    expect(write.getAttribute("data-draft-leaves-parent")).toBe("true");
+    expect(write.getAttribute("data-parent-asset-id")).toBe("asset_x");
+    expect(write.getAttribute("data-document-id")).toBe("draft_col_qe");
+    expect(write.getAttribute("data-spawn-count")).toBe("2");
+    expect(write.getAttribute("data-seamless-merge-write")).toBe("true");
+    expect(write.getAttribute("title") || "").toMatch(/draft_combined/i);
   });
 
 

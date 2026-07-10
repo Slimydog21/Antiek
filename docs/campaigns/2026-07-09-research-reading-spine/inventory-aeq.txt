@@ -1,0 +1,20 @@
+# inventory-aeq · collective Open Write draft vs into_parent path honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aeq
+date: 2026-07-10
+parent_tip: 584b34c0 (aep)
+
+## Closed
+- collective-open-write: data-mode · data-draft-leaves-parent · data-parent-asset-id
+  · data-document-id · data-spawn-count · data-seamless-merge-write
+- title honesty draft_combined vs into_parent
+- vitest CollectiveResearchPanel · 25 passed
+
+## Why this residual
+User vision: multi-select sub-agents → draft combined OR merge into reading
+asset → Write analysis. Spawn merge got path stamps in aem; collective
+multi-spawn Open Write only had has_body. Parity closes the collective→Write path.
+
+## Not in scope
+- L6 live multi-agent chat (deferred)
+- Auto into_parent without operator click

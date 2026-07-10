@@ -19,6 +19,8 @@
  *    well as floating (parity with ResearchThis et / hosted es).
  * 10. Residual (fn): Open Write handoff for merged draft document_id (fl/fm).
  * 25. Residual (qe): dual handoff html_draft + twin_seed on Open Write (parity qd).
+ * 27. Residual (aeq): Open Write stamps mode · draft_leaves_parent · parent
+ *     path honesty (multi-spawn draft vs into_parent; parity aem spawn merge).
  * 11. Residual (hm): collective-unit-metrics machine attrs for multi-spawn
  *     cohesive unit audit (parity twin/flywheel/progress metrics).
  * 12. Residual (ig): Settings deep-link for driver + budget before continue.
@@ -1344,7 +1346,7 @@ export function CollectiveResearchPanel({
               >
                 Open analysis full
               </button>
-              {/* Residual (fn/qe): dual handoff html_draft + twin_seed. */}
+              {/* Residual (fn/qe/aeq): dual handoff + draft vs into_parent path. */}
               <a
                 href={buildMergedDocWriteHref({
                   documentId: docMerge.document_id,
@@ -1362,8 +1364,35 @@ export function CollectiveResearchPanel({
                       plainTextFromHtml(docMerge.html || "").trim(),
                   ),
                 )}
+                // Residual (aeq): multi-spawn draft_combined vs into_parent on Write.
+                data-mode={docMerge.mode}
+                data-draft-leaves-parent={String(
+                  Boolean(docMerge.draft_leaves_parent),
+                )}
+                data-parent-asset-id={
+                  String(
+                    parentAssetId || docMerge.parent_asset_id || "",
+                  ).trim() || ""
+                }
+                data-document-id={docMerge.document_id ?? ""}
+                data-spawn-count={String(
+                  Array.isArray(docMerge.source_spawn_ids)
+                    ? docMerge.source_spawn_ids.filter(Boolean).length
+                    : selected.length,
+                )}
+                data-seamless-merge-write={String(
+                  Boolean(
+                    String(
+                      parentAssetId || docMerge.parent_asset_id || "",
+                    ).trim(),
+                  ),
+                )}
                 className="underline"
-                title="Open Write with collective HTML merge + twin_seed (seeds note-taker when empty)"
+                title={
+                  docMerge.mode === "into_parent"
+                    ? "Open Write with collective into_parent merge HTML + twin_seed (merged into reading asset · seeds note-taker)"
+                    : "Open Write with collective draft_combined HTML + twin_seed (draft leaves parent · seeds note-taker)"
+                }
               >
                 Open Write (HTML draft)
               </a>
