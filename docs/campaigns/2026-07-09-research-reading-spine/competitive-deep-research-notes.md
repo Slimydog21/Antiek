@@ -3058,3 +3058,7 @@ vitest twinWriteSeed 35 · TwinNotes 30 green. P0 operator merge PR #465. Pivot 
 Suite suite-competitive-dogfood-v33 learns promote→Write twin_seed depth-graph
 honesty (ajv). item_count 49 · wrestle=36. pytest dogfood 5 · Settings 36 green.
 P0 operator merge PR #465. Pivot ajx+ outside thrash.
+
+## Residual ajx · 2026-07-10 — SESSION-ARC ajn–ajw twin depth Write path
+Wave handoff: promote depth-graph UI · substrate · pure helper · public export ·
+Write seed · dogfood v32–v33. P0 operator merge PR #465. Pivot ajy+ outside thrash.
