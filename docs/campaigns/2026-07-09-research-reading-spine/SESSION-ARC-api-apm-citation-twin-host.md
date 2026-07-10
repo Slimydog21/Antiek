@@ -43,3 +43,4 @@ one residual/cycle · campaign push only · operator merges PR #465.
 | **aqm** | Antiek-bench leaderboard honesty + deep-links | model-quality matrix closed aqj–aqm |
 | **aqn** | Midnight Oil soft-budget honesty + model deep-links | swarm surface ↔ Settings matrix |
 | **aqo** | NotDiamond advisory honesty + model deep-links | model-quality matrix closed aqj–aqo |
+| **aqp** | MarketplaceHost soft-budget honesty + model deep-links | book host ↔ Settings matrix |

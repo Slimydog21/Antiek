@@ -3916,3 +3916,8 @@ model/budget matrix. vitest MidnightOil green. P0 PR #465. Pivot aqo+ outside th
 ND panel stamps HTML-first · never-auto-route · advisory_only + honesty nav to
 decision-tree · add-model · Antiek-bench · prompt-cost. Closes Settings model-quality
 matrix aqj–aqo (+ MO aqn). vitest Settings ND green. P0 PR #465. Pivot aqp+ outside thrash.
+
+## Residual aqp · 2026-07-10 — MarketplaceHost soft-budget honesty + model deep-links
+Marketplace host stamps HTML-first · soft-budget · L5 deferred · never-auto-route
++ honesty nav to prompt-cost · decision-tree · ND (parity MO aqn). vitest MarketplaceHost
+43 green. P0 PR #465. Pivot aqq+ outside thrash.

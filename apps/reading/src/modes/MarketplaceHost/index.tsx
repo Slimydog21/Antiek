@@ -1059,7 +1059,16 @@ export default function MarketplaceHost({
   }
 
   return (
-    <div className="h-full overflow-y-auto p-6" data-view-format="html" data-testid="marketplace-host-mode">
+    <div
+      className="h-full overflow-y-auto p-6"
+      data-view-format="html"
+      data-html-first="true"
+      data-testid="marketplace-host-mode"
+      data-l5-live-payment="deferred"
+      data-soft-budget="true"
+      data-budget-before-fire="true"
+      data-never-auto-route="true"
+    >
       <header className="mb-6 space-y-2">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="space-y-1">
@@ -1067,7 +1076,51 @@ export default function MarketplaceHost({
             <p className="text-sm opacity-80">
               Host public-domain catalog books into your Antiek library. Purchased
               titles use a manual receipt token (no live payment rails). Human view
-              is HTML, never PDF.
+              is HTML, never PDF. Soft budget foresight on host DR · L5 live
+              payment deferred · never auto-route model choice.
+            </p>
+            {/* Residual (aqp): marketplace honesty nav (parity MO aqn · Settings aqj–aqo). */}
+            <p
+              className="text-[11px] font-mono flex flex-wrap gap-x-3 gap-y-1 opacity-90"
+              data-testid="marketplace-honesty-nav"
+              data-view-format="html"
+              data-html-first="true"
+              data-l5-live-payment="deferred"
+              data-soft-budget="true"
+              data-never-auto-route="true"
+              role="navigation"
+              aria-label="Marketplace host honesty navigation"
+            >
+              <a
+                href="/settings#prompt-cost-projection"
+                data-testid="marketplace-prompt-cost-honesty-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Settings prompt-cost projection (soft budget foresight before host DR)"
+              >
+                Prompt-cost projection
+              </a>
+              <a
+                href="/settings#decision-tree-panel"
+                data-testid="marketplace-decision-tree-honesty-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Settings decision-tree driver (manual model choice · never auto-route)"
+              >
+                Decision-tree driver
+              </a>
+              <a
+                href="/settings#notdiamond-advisory"
+                data-testid="marketplace-notdiamond-honesty-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="NotDiamond advisory only · never dispatch authority"
+              >
+                ND advisory
+              </a>
+              <span
+                className="opacity-70"
+                data-testid="marketplace-soft-budget-hint"
+              >
+                HTML-first · soft budget · L5 deferred · never auto-route
+              </span>
             </p>
           </div>
           {/* Residual (dz): Settings decision-tree driver (advisory readout). */}

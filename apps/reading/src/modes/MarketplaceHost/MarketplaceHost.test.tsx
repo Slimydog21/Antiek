@@ -1188,6 +1188,33 @@ describe("MarketplaceHost mode", () => {
     expect(
       screen.getByTestId("marketplace-host-mode").getAttribute("data-view-format"),
     ).toBe("html");
+    // Residual (aqp): HTML-first · soft budget · L5 deferred · never auto-route.
+    const mktMode = screen.getByTestId("marketplace-host-mode");
+    expect(mktMode.getAttribute("data-html-first")).toBe("true");
+    expect(mktMode.getAttribute("data-soft-budget")).toBe("true");
+    expect(mktMode.getAttribute("data-budget-before-fire")).toBe("true");
+    expect(mktMode.getAttribute("data-l5-live-payment")).toBe("deferred");
+    expect(mktMode.getAttribute("data-never-auto-route")).toBe("true");
+    const honesty = screen.getByTestId("marketplace-honesty-nav");
+    expect(honesty.getAttribute("data-soft-budget")).toBe("true");
+    expect(
+      screen
+        .getByTestId("marketplace-prompt-cost-honesty-link")
+        .getAttribute("href"),
+    ).toBe("/settings#prompt-cost-projection");
+    expect(
+      screen
+        .getByTestId("marketplace-decision-tree-honesty-link")
+        .getAttribute("href"),
+    ).toBe("/settings#decision-tree-panel");
+    expect(
+      screen
+        .getByTestId("marketplace-notdiamond-honesty-link")
+        .getAttribute("href"),
+    ).toBe("/settings#notdiamond-advisory");
+    expect(
+      screen.getByTestId("marketplace-soft-budget-hint").textContent,
+    ).toMatch(/soft budget/i);
     // Residual (tg): purchase-host is NOT free_host (negative honesty).
     const hostMetrics = screen.getByTestId("marketplace-host-metrics");
     expect(hostMetrics.getAttribute("data-license-class")).toBe("purchased");
