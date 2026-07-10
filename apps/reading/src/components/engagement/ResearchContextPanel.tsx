@@ -27,6 +27,8 @@
  * context-pack-open-ready · source=research_context_pack (parity ats flywheel).
  * Residual (atv): context search open float|full|Write stamp html-first ·
  * context-search-open-ready · source=context_search (parity att pack · atu evidence).
+ * Residual (atw): publication hydrate open float|full|Write stamp html-first ·
+ * hydrate-open-ready · source=publication_hydrate · offline-honest (parity atv).
  * Residual (tq): context_search float/full carries search_query + search_hit_count
  * into HostedHtmlDocumentHost honesty chrome.
  * Residual (api): competitive citation hop pipeline completeness
@@ -1455,18 +1457,25 @@ export function ResearchContextPanel({
               ? "Hydrate mode: offline-honest identity — no live body; not invented abstract"
               : "Hydrate mode: injector body landed"}
           </p>
-          {/* Residual (sk): hydrate → float|full HTML reading windows. */}
+          {/* Residual (sk/atw): hydrate → float|full HTML reading windows
+              with html-first · hydrate-open-ready · source · offline-honest stamps. */}
           {hydrated.html?.trim() ? (
             <p className="meta font-mono text-[11px] space-x-3">
               <button
                 type="button"
                 data-testid="hydrate-ref-open-float"
                 data-view-format="html"
+                data-html-first="true"
                 data-window-mode="floating"
                 data-asset-id={hydrated.asset_id}
                 data-fetched={String(Boolean(hydrated.fetched))}
+                data-hydrate-open-ready="true"
+                data-source="publication_hydrate"
+                data-offline-honest={String(
+                  hydrated.offline_honest !== false && !hydrated.fetched,
+                )}
                 className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
-                title="Open hydrated publication as floating HTML window (never PDF)"
+                title="Open hydrated publication as floating HTML window (arxiv/substack · HTML-first · never PDF)"
                 onClick={() => {
                   const id =
                     String(hydrated.asset_id || "").trim() ||
@@ -1496,10 +1505,17 @@ export function ResearchContextPanel({
                 type="button"
                 data-testid="hydrate-ref-open-full"
                 data-view-format="html"
+                data-html-first="true"
                 data-window-mode="full"
                 data-asset-id={hydrated.asset_id}
+                data-hydrate-open-ready="true"
+                data-source="publication_hydrate"
+                data-offline-honest={String(
+                  hydrated.offline_honest !== false && !hydrated.fetched,
+                )}
+                data-fetched={String(Boolean(hydrated.fetched))}
                 className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
-                title="Open hydrated publication as full working-region HTML window (never PDF)"
+                title="Open hydrated publication as full working-region HTML window (arxiv/substack · HTML-first · never PDF)"
                 onClick={() => {
                   const id =
                     String(hydrated.asset_id || "").trim() ||
@@ -1525,7 +1541,7 @@ export function ResearchContextPanel({
               </button>
             </p>
           ) : null}
-          {/* Residual (rh/acr/aet): hydrate → Write + offline-honest path. */}
+          {/* Residual (rh/acr/aet/atw): hydrate → Write + offline-honest path. */}
           {(() => {
             const href = buildPublicationHydrateWriteHref({
               spawnId,
@@ -1543,9 +1559,12 @@ export function ResearchContextPanel({
                   href={href}
                   data-testid="hydrate-ref-open-write"
                   data-view-format="html"
+                  data-html-first="true"
                   data-has-twin-seed="1"
                   data-asset-id={hydrated.asset_id}
                   data-write-seed-has-body={String(hasBody)}
+                  data-hydrate-open-ready={String(hasBody)}
+                  data-source="publication_hydrate"
                   // Residual (aet): arxiv/substack hydrate → Write path honesty.
                   data-spawn-id={String(spawnId || "").trim()}
                   data-fetched={String(Boolean(hydrated.fetched))}
@@ -1556,8 +1575,8 @@ export function ResearchContextPanel({
                   className="underline opacity-90 hover:opacity-100"
                   title={
                     offlineHonest
-                      ? "Open Write with offline-honest hydrate identity as twin_seed (no invented live body)"
-                      : "Open Write with hydrated publication body as twin_seed (injector landed · no invented document_id)"
+                      ? "Open Write with offline-honest hydrate identity as twin_seed (HTML-first · no invented live body · never PDF)"
+                      : "Open Write with hydrated publication body as twin_seed (injector landed · HTML-first · no invented document_id · never PDF)"
                   }
                 >
                   Open Write (hydrated pub)

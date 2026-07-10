@@ -622,7 +622,7 @@ describe("ResearchContextPanel", () => {
     expect(
       screen.getByTestId("hydrate-ref-offline-honest").textContent,
     ).toMatch(/offline-honest identity/i);
-    // Residual (rh/aet): Open Write twin_seed from hydrate-ref + path honesty.
+    // Residual (rh/aet/atw): Open Write twin_seed from hydrate-ref + path honesty.
     const write = screen.getByTestId("hydrate-ref-open-write");
     const href = write.getAttribute("href") || "";
     expect(href).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
@@ -631,14 +631,23 @@ describe("ResearchContextPanel", () => {
     expect(write.getAttribute("data-asset-id")).toBe("pub_arxiv_abc");
     // Residual (acr): body_text/html body → has-body true.
     expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
+    // Residual (atw): publication hydrate Write HTML-first open readiness stamps.
+    expect(write.getAttribute("data-html-first")).toBe("true");
+    expect(write.getAttribute("data-hydrate-open-ready")).toBe("true");
+    expect(write.getAttribute("data-source")).toBe("publication_hydrate");
     // Residual (aet): offline-honest hydrate → Write path honesty.
     expect(write.getAttribute("data-spawn-id")).toBe("spn_1");
     expect(write.getAttribute("data-offline-honest")).toBe("true");
     expect(write.getAttribute("data-fetched")).toBe("false");
     expect(write.getAttribute("data-seamless-context-write")).toBe("true");
     expect(write.getAttribute("title") || "").toMatch(/offline-honest/i);
-    // Residual (sk): float|full hydrated publication HTML.
-    fireEvent.click(screen.getByTestId("hydrate-ref-open-float"));
+    // Residual (sk/atw): float|full hydrated publication HTML readiness stamps.
+    const floatBtn = screen.getByTestId("hydrate-ref-open-float");
+    expect(floatBtn.getAttribute("data-html-first")).toBe("true");
+    expect(floatBtn.getAttribute("data-hydrate-open-ready")).toBe("true");
+    expect(floatBtn.getAttribute("data-source")).toBe("publication_hydrate");
+    expect(floatBtn.getAttribute("data-offline-honest")).toBe("true");
+    fireEvent.click(floatBtn);
     const floatCall = openWindow.mock.calls.at(-1) as [
       string,
       { source?: string; document_id?: string; view_format?: string },
@@ -649,7 +658,12 @@ describe("ResearchContextPanel", () => {
     expect(floatCall[1].document_id).toBe("pub_arxiv_abc");
     expect(floatCall[1].view_format).toBe("html");
     expect(floatCall[2].mode).toBe("floating");
-    fireEvent.click(screen.getByTestId("hydrate-ref-open-full"));
+    const fullBtn = screen.getByTestId("hydrate-ref-open-full");
+    expect(fullBtn.getAttribute("data-html-first")).toBe("true");
+    expect(fullBtn.getAttribute("data-hydrate-open-ready")).toBe("true");
+    expect(fullBtn.getAttribute("data-source")).toBe("publication_hydrate");
+    expect(fullBtn.getAttribute("data-offline-honest")).toBe("true");
+    fireEvent.click(fullBtn);
     const fullCall = openWindow.mock.calls.at(-1) as [
       string,
       { source?: string },
