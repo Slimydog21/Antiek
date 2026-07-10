@@ -68,6 +68,8 @@ from substrate.midnight_oil import (
     MidnightOilRunnerReadinessRequest,
     MidnightOilSchedulerLeaseRetryPlanReceipt,
     MidnightOilSchedulerLeaseRetryPlanRequest,
+    MidnightOilWorkerDispatchLeaseHeartbeatPlanReceipt,
+    MidnightOilWorkerDispatchLeaseHeartbeatPlanRequest,
     MidnightOilWorkerQueueClaimPlanReceipt,
     MidnightOilWorkerQueueClaimPlanRequest,
     activation_checklist_midnight_oil,
@@ -99,6 +101,7 @@ from substrate.midnight_oil import (
     runner_dispatch_worker_bootstrap_plan_midnight_oil,
     runner_readiness_midnight_oil,
     scheduler_lease_retry_plan_midnight_oil,
+    worker_dispatch_lease_heartbeat_plan_midnight_oil,
     worker_queue_claim_plan_midnight_oil,
 )
 
@@ -366,6 +369,16 @@ def post_midnight_oil_repository_commit_rollback_plan(
     return repository_commit_rollback_plan_midnight_oil(req)
 
 
+@midnight_oil_router.post(
+    "/worker-dispatch-lease-heartbeat-plan",
+    response_model=MidnightOilWorkerDispatchLeaseHeartbeatPlanReceipt,
+)
+def post_midnight_oil_worker_dispatch_lease_heartbeat_plan(
+    req: MidnightOilWorkerDispatchLeaseHeartbeatPlanRequest,
+) -> MidnightOilWorkerDispatchLeaseHeartbeatPlanReceipt:
+    return worker_dispatch_lease_heartbeat_plan_midnight_oil(req)
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
@@ -401,6 +414,7 @@ __all__ = [
     "post_midnight_oil_runner_dispatch_worker_bootstrap_plan",
     "post_midnight_oil_runner_readiness",
     "post_midnight_oil_scheduler_lease_retry_plan",
+    "post_midnight_oil_worker_dispatch_lease_heartbeat_plan",
     "post_midnight_oil_worker_queue_claim_plan",
     "register_midnight_oil_routes",
 ]

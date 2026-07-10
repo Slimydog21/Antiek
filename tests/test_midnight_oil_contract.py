@@ -36,6 +36,7 @@ from substrate.midnight_oil import (
     MidnightOilRunnerDispatchWorkerBootstrapPlanRequest,
     MidnightOilRunnerReadinessRequest,
     MidnightOilSchedulerLeaseRetryPlanRequest,
+    MidnightOilWorkerDispatchLeaseHeartbeatPlanRequest,
     MidnightOilWorkerQueueClaimPlanRequest,
     activation_checklist_midnight_oil,
     budget_provider_adapter_plan_midnight_oil,
@@ -66,6 +67,7 @@ from substrate.midnight_oil import (
     runner_dispatch_worker_bootstrap_plan_midnight_oil,
     runner_readiness_midnight_oil,
     scheduler_lease_retry_plan_midnight_oil,
+    worker_dispatch_lease_heartbeat_plan_midnight_oil,
     worker_queue_claim_plan_midnight_oil,
 )
 
@@ -827,6 +829,63 @@ def _accepted_midnight_oil_repository_transaction_plan_chain(
     return {
         **chain,
         "repository_transaction_plan": repository_transaction_plan,
+    }
+
+
+def _accepted_midnight_oil_repository_commit_rollback_plan_chain(
+    *,
+    goal: str,
+    source_policy: list[str],
+    requested_control_scope: list[str],
+) -> dict[str, object]:
+    chain = _accepted_midnight_oil_repository_transaction_plan_chain(
+        goal=goal,
+        source_policy=source_policy,
+        requested_control_scope=requested_control_scope,
+    )
+    preflight = chain["preflight"]
+    repository_commit_rollback_plan = repository_commit_rollback_plan_midnight_oil(
+        MidnightOilRepositoryCommitRollbackPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=chain["control_plan"],
+            budget_provider_adapter_plan_receipt=chain["budget_adapter_plan"],
+            provider_executor_adapter_plan_receipt=chain["provider_adapter_plan"],
+            retrieval_adapter_plan_receipt=chain["retrieval_adapter_plan"],
+            graph_adapter_plan_receipt=chain["graph_adapter_plan"],
+            final_artifact_adapter_plan_receipt=chain["final_artifact_adapter_plan"],
+            operator_dispatch_adapter_plan_receipt=chain["operator_adapter_plan"],
+            control_ledger_adapter_plan_receipt=chain["control_ledger_plan"],
+            control_ledger_persistence_plan_receipt=chain[
+                "control_ledger_persistence_plan"
+            ],
+            control_ledger_persistence_apply_plan_receipt=chain[
+                "control_ledger_persistence_apply_plan"
+            ],
+            operator_dispatch_activation_readiness_plan_receipt=chain[
+                "operator_dispatch_activation_readiness_plan"
+            ],
+            live_dispatch_final_enablement_plan_receipt=chain[
+                "live_dispatch_final_enablement_plan"
+            ],
+            live_dispatch_final_enablement_apply_plan_receipt=chain[
+                "live_dispatch_final_enablement_apply_plan"
+            ],
+            runner_dispatch_scheduler_plan_receipt=chain[
+                "runner_dispatch_scheduler_plan"
+            ],
+            runner_dispatch_worker_bootstrap_plan_receipt=chain[
+                "runner_dispatch_worker_bootstrap_plan"
+            ],
+            scheduler_lease_retry_plan_receipt=chain["scheduler_lease_retry_plan"],
+            worker_queue_claim_plan_receipt=chain["worker_queue_claim_plan"],
+            repository_transaction_plan_receipt=chain["repository_transaction_plan"],
+        )
+    )
+    return {
+        **chain,
+        "repository_commit_rollback_plan": repository_commit_rollback_plan,
     }
 
 
@@ -6145,6 +6204,313 @@ def test_midnight_oil_repository_commit_rollback_plan_api_contract() -> None:
     assert body["transaction_committed"] is False
     assert body["control_ledger_written"] is False
     assert body["audit_log_written"] is False
+    assert body["dispatch_performed"] is False
+    assert body["budget_reserved"] is False
+    assert body["provider_calls_made"] is False
+    assert body["retrieval_performed"] is False
+    assert body["source_receipts_created"] is False
+    assert body["graph_mutated"] is False
+    assert body["final_artifact_created"] is False
+
+
+def test_worker_dispatch_lease_heartbeat_plan_records_disabled_requirements() -> None:
+    chain = _accepted_midnight_oil_repository_commit_rollback_plan_chain(
+        goal="Plan worker lease heartbeat requirements after commit rollback planning.",
+        source_policy=["arxiv", "web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    commit_plan = chain["repository_commit_rollback_plan"]
+    lease_retry_plan = chain["scheduler_lease_retry_plan"]
+
+    heartbeat_plan = worker_dispatch_lease_heartbeat_plan_midnight_oil(
+        MidnightOilWorkerDispatchLeaseHeartbeatPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=chain["control_plan"],
+            budget_provider_adapter_plan_receipt=chain["budget_adapter_plan"],
+            provider_executor_adapter_plan_receipt=chain["provider_adapter_plan"],
+            retrieval_adapter_plan_receipt=chain["retrieval_adapter_plan"],
+            graph_adapter_plan_receipt=chain["graph_adapter_plan"],
+            final_artifact_adapter_plan_receipt=chain["final_artifact_adapter_plan"],
+            operator_dispatch_adapter_plan_receipt=chain["operator_adapter_plan"],
+            control_ledger_adapter_plan_receipt=chain["control_ledger_plan"],
+            control_ledger_persistence_plan_receipt=chain["control_ledger_persistence_plan"],
+            control_ledger_persistence_apply_plan_receipt=chain[
+                "control_ledger_persistence_apply_plan"
+            ],
+            operator_dispatch_activation_readiness_plan_receipt=chain[
+                "operator_dispatch_activation_readiness_plan"
+            ],
+            live_dispatch_final_enablement_plan_receipt=chain[
+                "live_dispatch_final_enablement_plan"
+            ],
+            live_dispatch_final_enablement_apply_plan_receipt=chain[
+                "live_dispatch_final_enablement_apply_plan"
+            ],
+            runner_dispatch_scheduler_plan_receipt=chain[
+                "runner_dispatch_scheduler_plan"
+            ],
+            runner_dispatch_worker_bootstrap_plan_receipt=chain[
+                "runner_dispatch_worker_bootstrap_plan"
+            ],
+            scheduler_lease_retry_plan_receipt=lease_retry_plan,
+            worker_queue_claim_plan_receipt=chain["worker_queue_claim_plan"],
+            repository_transaction_plan_receipt=chain["repository_transaction_plan"],
+            repository_commit_rollback_plan_receipt=commit_plan,
+        )
+    )
+
+    assert heartbeat_plan.receipt_id == (
+        f"{preflight.run_id}-worker-dispatch-lease-heartbeat-plan"
+    )
+    assert heartbeat_plan.repository_commit_rollback_plan_receipt_id == commit_plan.receipt_id
+    assert heartbeat_plan.status == "blocked_worker_dispatch_lease_heartbeat_unimplemented"
+    assert heartbeat_plan.adapter_key == "worker_dispatch_lease_heartbeat"
+    assert heartbeat_plan.planned_heartbeat_receipt_id == (
+        f"{preflight.run_id}-worker-lease-heartbeat-receipt"
+    )
+    assert heartbeat_plan.planned_lease_renewal_receipt_id == (
+        f"{preflight.run_id}-worker-lease-renewal-receipt"
+    )
+    assert heartbeat_plan.planned_lease_expiry_receipt_id == (
+        f"{preflight.run_id}-worker-lease-expiry-receipt"
+    )
+    assert heartbeat_plan.planned_heartbeat_ledger_entry_id == (
+        f"{preflight.run_id}-worker-lease-heartbeat-ledger-entry"
+    )
+    assert heartbeat_plan.planned_queue_claim_id == commit_plan.planned_queue_claim_id
+    assert heartbeat_plan.planned_claim_lease_token_id == (
+        commit_plan.planned_claim_lease_token_id
+    )
+    assert heartbeat_plan.planned_worker_lease_id == commit_plan.planned_worker_lease_id
+    assert heartbeat_plan.planned_runner_dispatch_id == commit_plan.planned_runner_dispatch_id
+    assert heartbeat_plan.planned_visibility_timeout_seconds == (
+        lease_retry_plan.planned_visibility_timeout_seconds
+    )
+    assert heartbeat_plan.planned_lease_ttl_seconds == lease_retry_plan.planned_lease_ttl_seconds
+    assert heartbeat_plan.planned_heartbeat_interval_seconds == (
+        lease_retry_plan.planned_heartbeat_interval_seconds
+    )
+    assert heartbeat_plan.planned_max_missed_heartbeats == 3
+    assert "worker lease heartbeat writer" in (
+        heartbeat_plan.worker_dispatch_lease_heartbeat_blockers
+    )
+    assert "heartbeat_ledger_entry_id" in (
+        heartbeat_plan.required_worker_dispatch_lease_heartbeat_receipt_fields
+    )
+    assert "worker dispatch lease heartbeat planner must require repository commit rollback" in (
+        heartbeat_plan.required_worker_dispatch_lease_heartbeat_invariants[0]
+    )
+    assert heartbeat_plan.blocker_reason == "worker_dispatch_lease_heartbeat_unimplemented"
+    assert heartbeat_plan.worker_lease_heartbeat_allowed is False
+    assert heartbeat_plan.worker_lease_heartbeat_recorded is False
+    assert heartbeat_plan.worker_lease_renewal_allowed is False
+    assert heartbeat_plan.worker_lease_renewed is False
+    assert heartbeat_plan.worker_lease_expiry_allowed is False
+    assert heartbeat_plan.worker_lease_expired is False
+    assert heartbeat_plan.worker_started is False
+    assert heartbeat_plan.repository_transaction_committed is False
+    assert heartbeat_plan.commit_receipt_created is False
+    assert heartbeat_plan.rollback_receipt_created is False
+    assert heartbeat_plan.queue_claim_created is False
+    assert heartbeat_plan.claim_transaction_committed is False
+    assert heartbeat_plan.dispatch_performed is False
+    assert heartbeat_plan.budget_reserved is False
+    assert heartbeat_plan.provider_calls_made is False
+    assert heartbeat_plan.retrieval_performed is False
+    assert heartbeat_plan.source_receipts_created is False
+    assert heartbeat_plan.graph_mutated is False
+    assert heartbeat_plan.final_artifact_created is False
+    assert "no worker heartbeat" in heartbeat_plan.adapter_plan_notes[0]
+
+
+def test_worker_dispatch_lease_heartbeat_plan_rejects_commit_receipt_created() -> None:
+    chain = _accepted_midnight_oil_repository_commit_rollback_plan_chain(
+        goal="Reject commit receipt creation before heartbeat planning.",
+        source_policy=["web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    bad_commit_plan = chain["repository_commit_rollback_plan"].model_copy(
+        update={"commit_receipt_created": True}
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match="repository_commit_rollback_plan_receipt must not create commit or rollback receipts",
+    ):
+        MidnightOilWorkerDispatchLeaseHeartbeatPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=chain["control_plan"],
+            budget_provider_adapter_plan_receipt=chain["budget_adapter_plan"],
+            provider_executor_adapter_plan_receipt=chain["provider_adapter_plan"],
+            retrieval_adapter_plan_receipt=chain["retrieval_adapter_plan"],
+            graph_adapter_plan_receipt=chain["graph_adapter_plan"],
+            final_artifact_adapter_plan_receipt=chain["final_artifact_adapter_plan"],
+            operator_dispatch_adapter_plan_receipt=chain["operator_adapter_plan"],
+            control_ledger_adapter_plan_receipt=chain["control_ledger_plan"],
+            control_ledger_persistence_plan_receipt=chain["control_ledger_persistence_plan"],
+            control_ledger_persistence_apply_plan_receipt=chain[
+                "control_ledger_persistence_apply_plan"
+            ],
+            operator_dispatch_activation_readiness_plan_receipt=chain[
+                "operator_dispatch_activation_readiness_plan"
+            ],
+            live_dispatch_final_enablement_plan_receipt=chain[
+                "live_dispatch_final_enablement_plan"
+            ],
+            live_dispatch_final_enablement_apply_plan_receipt=chain[
+                "live_dispatch_final_enablement_apply_plan"
+            ],
+            runner_dispatch_scheduler_plan_receipt=chain[
+                "runner_dispatch_scheduler_plan"
+            ],
+            runner_dispatch_worker_bootstrap_plan_receipt=chain[
+                "runner_dispatch_worker_bootstrap_plan"
+            ],
+            scheduler_lease_retry_plan_receipt=chain["scheduler_lease_retry_plan"],
+            worker_queue_claim_plan_receipt=chain["worker_queue_claim_plan"],
+            repository_transaction_plan_receipt=chain["repository_transaction_plan"],
+            repository_commit_rollback_plan_receipt=bad_commit_plan,
+        )
+
+
+def test_midnight_oil_worker_dispatch_lease_heartbeat_plan_api_contract() -> None:
+    from interfaces.research.api.app import create_app
+
+    chain = _accepted_midnight_oil_repository_commit_rollback_plan_chain(
+        goal="Expose worker dispatch lease heartbeat planning over the API.",
+        source_policy=["arxiv", "substack"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    commit_plan = chain["repository_commit_rollback_plan"]
+
+    with TestClient(create_app()) as client:
+        r = client.post(
+            "/research/midnight-oil/worker-dispatch-lease-heartbeat-plan",
+            json={
+                "launch_packet": preflight.launch_packet.model_dump(mode="json"),
+                "approval_receipt": preflight.approval_receipt.model_dump(mode="json"),
+                "runner_handoff": preflight.runner_handoff.model_dump(mode="json"),
+                "runner_control_plan_receipt": chain["control_plan"].model_dump(mode="json"),
+                "budget_provider_adapter_plan_receipt": chain[
+                    "budget_adapter_plan"
+                ].model_dump(mode="json"),
+                "provider_executor_adapter_plan_receipt": chain[
+                    "provider_adapter_plan"
+                ].model_dump(mode="json"),
+                "retrieval_adapter_plan_receipt": chain[
+                    "retrieval_adapter_plan"
+                ].model_dump(mode="json"),
+                "graph_adapter_plan_receipt": chain["graph_adapter_plan"].model_dump(
+                    mode="json"
+                ),
+                "final_artifact_adapter_plan_receipt": chain[
+                    "final_artifact_adapter_plan"
+                ].model_dump(mode="json"),
+                "operator_dispatch_adapter_plan_receipt": chain[
+                    "operator_adapter_plan"
+                ].model_dump(mode="json"),
+                "control_ledger_adapter_plan_receipt": chain[
+                    "control_ledger_plan"
+                ].model_dump(mode="json"),
+                "control_ledger_persistence_plan_receipt": chain[
+                    "control_ledger_persistence_plan"
+                ].model_dump(mode="json"),
+                "control_ledger_persistence_apply_plan_receipt": chain[
+                    "control_ledger_persistence_apply_plan"
+                ].model_dump(mode="json"),
+                "operator_dispatch_activation_readiness_plan_receipt": chain[
+                    "operator_dispatch_activation_readiness_plan"
+                ].model_dump(mode="json"),
+                "live_dispatch_final_enablement_plan_receipt": chain[
+                    "live_dispatch_final_enablement_plan"
+                ].model_dump(mode="json"),
+                "live_dispatch_final_enablement_apply_plan_receipt": chain[
+                    "live_dispatch_final_enablement_apply_plan"
+                ].model_dump(mode="json"),
+                "runner_dispatch_scheduler_plan_receipt": chain[
+                    "runner_dispatch_scheduler_plan"
+                ].model_dump(mode="json"),
+                "runner_dispatch_worker_bootstrap_plan_receipt": chain[
+                    "runner_dispatch_worker_bootstrap_plan"
+                ].model_dump(mode="json"),
+                "scheduler_lease_retry_plan_receipt": chain[
+                    "scheduler_lease_retry_plan"
+                ].model_dump(mode="json"),
+                "worker_queue_claim_plan_receipt": chain[
+                    "worker_queue_claim_plan"
+                ].model_dump(mode="json"),
+                "repository_transaction_plan_receipt": chain[
+                    "repository_transaction_plan"
+                ].model_dump(mode="json"),
+                "repository_commit_rollback_plan_receipt": commit_plan.model_dump(
+                    mode="json"
+                ),
+            },
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["receipt_id"] == f"{preflight.run_id}-worker-dispatch-lease-heartbeat-plan"
+    assert body["repository_commit_rollback_plan_receipt_id"] == commit_plan.receipt_id
+    assert body["status"] == "blocked_worker_dispatch_lease_heartbeat_unimplemented"
+    assert body["adapter_key"] == "worker_dispatch_lease_heartbeat"
+    assert body["planned_heartbeat_receipt_id"] == (
+        f"{preflight.run_id}-worker-lease-heartbeat-receipt"
+    )
+    assert body["planned_lease_renewal_receipt_id"] == (
+        f"{preflight.run_id}-worker-lease-renewal-receipt"
+    )
+    assert body["planned_lease_expiry_receipt_id"] == (
+        f"{preflight.run_id}-worker-lease-expiry-receipt"
+    )
+    assert body["planned_heartbeat_ledger_entry_id"] == (
+        f"{preflight.run_id}-worker-lease-heartbeat-ledger-entry"
+    )
+    assert body["planned_worker_lease_id"] == commit_plan.planned_worker_lease_id
+    assert body["planned_runner_dispatch_id"] == commit_plan.planned_runner_dispatch_id
+    assert "worker lease heartbeat writer" in body["worker_dispatch_lease_heartbeat_blockers"]
+    assert "heartbeat_ledger_entry_id" in (
+        body["required_worker_dispatch_lease_heartbeat_receipt_fields"]
+    )
+    assert body["blocker_reason"] == "worker_dispatch_lease_heartbeat_unimplemented"
+    assert body["worker_lease_heartbeat_allowed"] is False
+    assert body["worker_lease_heartbeat_recorded"] is False
+    assert body["worker_lease_renewed"] is False
+    assert body["worker_lease_expired"] is False
+    assert body["worker_started"] is False
+    assert body["repository_transaction_committed"] is False
+    assert body["commit_receipt_created"] is False
+    assert body["rollback_receipt_created"] is False
+    assert body["queue_claim_created"] is False
+    assert body["claim_transaction_committed"] is False
     assert body["dispatch_performed"] is False
     assert body["budget_reserved"] is False
     assert body["provider_calls_made"] is False
