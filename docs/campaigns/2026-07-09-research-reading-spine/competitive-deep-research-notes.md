@@ -3350,3 +3350,8 @@ ResearchContext 17 green. P0 operator merge PR #465. Pivot amd+ outside thrash.
 ## Residual amd · 2026-07-10 — FUTURE competitive citation chain amc note
 Competitive residual #1 names amc hop strip → stage deep-links. P0 operator
 merge PR #465. Pivot ame+ outside thrash.
+
+## Residual ame · 2026-07-10 — citation hop strip navigation landmark
+Hop strip is role=navigation with aria-label for AT/keyboard multi-hop stage
+jumps. vitest ResearchContext 17 green. P0 operator merge PR #465.
+Pivot amf+ outside thrash.

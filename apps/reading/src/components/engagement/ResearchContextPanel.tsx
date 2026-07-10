@@ -811,9 +811,13 @@ export function ResearchContextPanel({
               aria-label="Citation chain multi-hop navigation"
             >
               {/* Residual (amc): hop strip deep-links stage sections (multi-hop nav). */}
+              {/* Residual (ame): nav landmark for hop strip stage jumps. */}
               <p
                 className="opacity-80 flex flex-wrap items-center gap-x-1 gap-y-0.5"
                 data-testid="evidence-citation-chain-hop-strip"
+                role="navigation"
+                aria-label="Citation chain hop stage navigation"
+                data-hop-strip-nav="true"
               >
                 <span className="opacity-80">Hops: </span>
                 {(evidence.citation_chain || []).map((h, si) => {

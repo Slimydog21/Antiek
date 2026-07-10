@@ -786,7 +786,13 @@ describe("ResearchContextPanel", () => {
     expect(
       screen.getByTestId("evidence-citation-chain-hop-strip").textContent,
     ).toMatch(/Insights.*→.*Source/i);
-    // Residual (amc): hop strip deep-links stage sections.
+    // Residual (amc/ame): hop strip deep-links stage sections + nav landmark.
+    const hopStrip = screen.getByTestId("evidence-citation-chain-hop-strip");
+    expect(hopStrip.getAttribute("role")).toBe("navigation");
+    expect(hopStrip.getAttribute("aria-label")).toMatch(
+      /Citation chain hop stage navigation/i,
+    );
+    expect(hopStrip.getAttribute("data-hop-strip-nav")).toBe("true");
     const stripInsights = screen.getByTestId(
       "evidence-citation-hop-strip-link-insights",
     );
