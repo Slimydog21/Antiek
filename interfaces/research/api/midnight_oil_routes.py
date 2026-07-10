@@ -78,6 +78,8 @@ from substrate.midnight_oil import (
     MidnightOilRepositoryTransactionPlanReceipt,
     MidnightOilRepositoryTransactionPlanRequest,
     MidnightOilRequest,
+    MidnightOilRetentionBillingReconciliationPlanReceipt,
+    MidnightOilRetentionBillingReconciliationPlanRequest,
     MidnightOilRetrievalAdapterPlanReceipt,
     MidnightOilRetrievalAdapterPlanRequest,
     MidnightOilRetrievalReceipt,
@@ -142,6 +144,7 @@ from substrate.midnight_oil import (
     provider_route_midnight_oil,
     repository_commit_rollback_plan_midnight_oil,
     repository_transaction_plan_midnight_oil,
+    retention_billing_reconciliation_plan_midnight_oil,
     retrieval_adapter_plan_midnight_oil,
     retrieval_midnight_oil,
     runner_control_plan_midnight_oil,
@@ -613,6 +616,16 @@ def post_midnight_oil_delivery_notification_reconciliation_plan(
     return delivery_notification_reconciliation_plan_midnight_oil(req)
 
 
+@midnight_oil_router.post(
+    "/retention-billing-reconciliation-plan",
+    response_model=MidnightOilRetentionBillingReconciliationPlanReceipt,
+)
+def post_midnight_oil_retention_billing_reconciliation_plan(
+    req: MidnightOilRetentionBillingReconciliationPlanRequest,
+) -> MidnightOilRetentionBillingReconciliationPlanReceipt:
+    return retention_billing_reconciliation_plan_midnight_oil(req)
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
@@ -651,6 +664,7 @@ __all__ = [
     "post_midnight_oil_preflight",
     "post_midnight_oil_provider_executor_adapter_plan",
     "post_midnight_oil_provider_route",
+    "post_midnight_oil_retention_billing_reconciliation_plan",
     "post_midnight_oil_repository_commit_rollback_plan",
     "post_midnight_oil_repository_transaction_plan",
     "post_midnight_oil_retrieval",

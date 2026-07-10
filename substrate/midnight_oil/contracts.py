@@ -9595,6 +9595,345 @@ class MidnightOilDeliveryNotificationReconciliationPlanReceipt(BaseModel):
     adapter_plan_notes: list[str] = Field(default_factory=list)
 
 
+class MidnightOilRetentionBillingReconciliationPlanRequest(
+    MidnightOilDeliveryNotificationReconciliationPlanRequest
+):
+    delivery_notification_reconciliation_plan_receipt: (
+        MidnightOilDeliveryNotificationReconciliationPlanReceipt
+    )
+
+    @model_validator(mode="after")
+    def _delivery_notification_reconciliation_plan_matches(
+        self,
+    ) -> MidnightOilRetentionBillingReconciliationPlanRequest:
+        notification_plan = self.delivery_notification_reconciliation_plan_receipt
+        card_plan = self.workspace_delivery_card_reconciliation_plan_receipt
+        ledger_plan = self.operator_delivery_ledger_reconciliation_plan_receipt
+        result_plan = (
+            self.operator_notification_delivery_result_reconciliation_plan_receipt
+        )
+        if (
+            notification_plan.workspace_delivery_card_reconciliation_plan_receipt_id
+            != card_plan.receipt_id
+        ):
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must reference workspace_delivery_card_reconciliation_plan_receipt"
+            )
+        if (
+            notification_plan.operator_delivery_ledger_reconciliation_plan_receipt_id
+            != ledger_plan.receipt_id
+        ):
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must reference operator_delivery_ledger_reconciliation_plan_receipt"
+            )
+        if (
+            notification_plan.operator_notification_delivery_result_reconciliation_plan_receipt_id
+            != result_plan.receipt_id
+        ):
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must reference operator_notification_delivery_result_reconciliation_plan_receipt"
+            )
+        if (
+            notification_plan.operator_notification_delivery_apply_plan_receipt_id
+            != self.operator_notification_delivery_apply_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must reference operator_notification_delivery_apply_plan_receipt"
+            )
+        if (
+            notification_plan.operator_notification_delivery_readiness_plan_receipt_id
+            != self.operator_notification_delivery_readiness_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must reference operator_notification_delivery_readiness_plan_receipt"
+            )
+        if (
+            notification_plan.final_run_closure_plan_receipt_id
+            != self.final_run_closure_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must reference final_run_closure_plan_receipt"
+            )
+        if (
+            notification_plan.final_artifact_completion_finalization_plan_receipt_id
+            != self.final_artifact_completion_finalization_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must reference final_artifact_completion_finalization_plan_receipt"
+            )
+        if (
+            notification_plan.final_artifact_publish_plan_receipt_id
+            != self.final_artifact_publish_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must reference final_artifact_publish_plan_receipt"
+            )
+        if notification_plan.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must reference runner_handoff"
+            )
+        if notification_plan.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must reference approval_receipt"
+            )
+        if notification_plan.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must reference launch_packet"
+            )
+        if notification_plan.run_id != self.launch_packet.run_id:
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must reference launch run"
+            )
+        if (
+            notification_plan.status
+            != "blocked_delivery_notification_reconciliation_unimplemented"
+        ):
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must be blocked_delivery_notification_reconciliation_unimplemented"
+            )
+        if (
+            notification_plan.delivery_notification_reconciliation_allowed
+            or notification_plan.delivery_notification_status_entry_created
+            or notification_plan.delivery_notification_result_entry_created
+            or notification_plan.delivery_notification_operator_visible_event_created
+            or notification_plan.delivery_notification_created
+        ):
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must not create delivery notification state"
+            )
+        if (
+            notification_plan.workspace_delivery_card_reconciliation_allowed
+            or notification_plan.workspace_delivery_card_result_entry_created
+            or notification_plan.workspace_delivery_card_status_entry_created
+            or notification_plan.workspace_delivery_card_notification_entry_created
+            or notification_plan.workspace_delivery_card_created
+        ):
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must not create workspace card state"
+            )
+        if (
+            notification_plan.operator_delivery_ledger_reconciliation_allowed
+            or notification_plan.operator_delivery_ledger_result_entry_created
+            or notification_plan.operator_delivery_ledger_status_entry_created
+            or notification_plan.operator_delivery_ledger_retry_entry_created
+            or notification_plan.operator_delivery_ledger_dead_letter_entry_created
+            or notification_plan.operator_delivery_ledger_entry_created
+        ):
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must not create ledger state"
+            )
+        if (
+            notification_plan.operator_notification_delivery_result_reconciliation_allowed
+            or notification_plan.operator_notification_delivery_outcome_record_created
+            or notification_plan.operator_notification_delivery_reconciliation_entry_created
+            or notification_plan.operator_notification_delivery_retry_decision_created
+            or notification_plan.operator_notification_dead_letter_entry_created
+        ):
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must not create result reconciliation state"
+            )
+        if (
+            notification_plan.operator_notification_delivery_apply_allowed
+            or notification_plan.operator_notification_delivery_transaction_created
+            or notification_plan.operator_notification_dispatch_created
+            or notification_plan.operator_notification_payload_created
+            or notification_plan.operator_delivery_channel_policy_created
+            or notification_plan.operator_notification_template_created
+            or notification_plan.operator_notification_audit_entry_created
+            or notification_plan.operator_notification_delivery_attempt_created
+            or notification_plan.operator_notification_delivery_result_created
+            or notification_plan.operator_notification_delivery_status_created
+            or notification_plan.operator_notification_retry_policy_created
+            or notification_plan.operator_notification_dead_letter_created
+            or notification_plan.operator_notification_delivery_readiness_allowed
+        ):
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must not create delivery apply state"
+            )
+        if (
+            notification_plan.run_closeout_record_created
+            or notification_plan.final_run_closure_allowed
+            or notification_plan.final_artifact_completion_finalization_allowed
+            or notification_plan.completion_record_created
+            or notification_plan.finalization_transaction_created
+            or notification_plan.artifact_archive_manifest_created
+            or notification_plan.operator_handoff_summary_created
+            or notification_plan.delivery_status_marked_complete
+            or notification_plan.quality_attestation_created
+            or notification_plan.completion_audit_entry_created
+        ):
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must not create completion, finalization, or closure state"
+            )
+        if (
+            notification_plan.final_artifact_publish_allowed
+            or notification_plan.publish_transaction_created
+            or notification_plan.information_asset_published
+            or notification_plan.account_visible_asset_created
+            or notification_plan.reading_workspace_entry_created
+            or notification_plan.search_index_entry_created
+            or notification_plan.private_read_url_created
+            or notification_plan.operator_notification_created
+        ):
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must not create publish or operator notification state"
+            )
+        if notification_plan.graph_commit_created or notification_plan.graph_mutated:
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must not create graph state"
+            )
+        if notification_plan.dispatch_performed:
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must not dispatch"
+            )
+        if notification_plan.budget_reserved:
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must not reserve budget"
+            )
+        if notification_plan.provider_calls_made:
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must not include provider calls"
+            )
+        if notification_plan.retrieval_performed:
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must not perform retrieval"
+            )
+        if notification_plan.source_receipts_created:
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must not create source receipts"
+            )
+        if notification_plan.final_artifact_created:
+            raise ValueError(
+                "delivery_notification_reconciliation_plan_receipt must not create final artifact"
+            )
+        return self
+
+
+class MidnightOilRetentionBillingReconciliationPlanReceipt(BaseModel):
+    receipt_id: str
+    delivery_notification_reconciliation_plan_receipt_id: str
+    workspace_delivery_card_reconciliation_plan_receipt_id: str
+    operator_delivery_ledger_reconciliation_plan_receipt_id: str
+    operator_notification_delivery_result_reconciliation_plan_receipt_id: str
+    operator_notification_delivery_apply_plan_receipt_id: str
+    operator_notification_delivery_readiness_plan_receipt_id: str
+    final_run_closure_plan_receipt_id: str
+    final_artifact_completion_finalization_plan_receipt_id: str
+    final_artifact_publish_plan_receipt_id: str
+    launch_packet_id: str
+    approval_receipt_id: str
+    runner_handoff_id: str
+    run_id: str
+    status: Literal[
+        "blocked_retention_billing_reconciliation_unimplemented"
+    ] = "blocked_retention_billing_reconciliation_unimplemented"
+    adapter_key: Literal["retention_billing_reconciliation"] = (
+        "retention_billing_reconciliation"
+    )
+    planned_retention_billing_reconciliation_receipt_id: str
+    planned_run_retention_manifest_id: str
+    planned_billing_reconciliation_id: str
+    planned_model_usage_rollup_id: str
+    planned_source_lineage_archive_id: str
+    planned_run_retention_manifest_status_entry_id: str
+    planned_billing_reconciliation_status_entry_id: str
+    planned_model_usage_rollup_reconciliation_entry_id: str
+    planned_source_lineage_archive_reconciliation_entry_id: str
+    planned_delivery_notification_reconciliation_receipt_id: str
+    planned_delivery_notification_id: str
+    planned_delivery_notification_status_entry_id: str
+    planned_delivery_notification_result_entry_id: str
+    planned_delivery_notification_operator_visible_event_id: str
+    planned_delivery_notification_replay_guard_id: str
+    planned_workspace_delivery_card_reconciliation_receipt_id: str
+    planned_workspace_delivery_card_id: str
+    planned_operator_delivery_ledger_reconciliation_receipt_id: str
+    planned_operator_delivery_ledger_entry_id: str
+    planned_operator_delivery_ledger_status_entry_id: str
+    planned_operator_notification_delivery_outcome_record_id: str
+    planned_operator_notification_delivery_reconciliation_entry_id: str
+    planned_private_read_url_id: str
+    planned_reading_workspace_entry_id: str
+    planned_hosted_html_asset_id: str
+    planned_idempotency_key: str
+    retention_billing_reconciliation_blockers: list[str]
+    required_retention_billing_reconciliation_invariants: list[str]
+    required_retention_billing_reconciliation_receipt_fields: list[str]
+    blocker_reason: Literal["retention_billing_reconciliation_unimplemented"] = (
+        "retention_billing_reconciliation_unimplemented"
+    )
+    retention_billing_reconciliation_allowed: bool = False
+    run_retention_manifest_created: bool = False
+    billing_reconciliation_created: bool = False
+    model_usage_rollup_created: bool = False
+    source_lineage_archive_created: bool = False
+    run_retention_manifest_status_entry_created: bool = False
+    billing_reconciliation_status_entry_created: bool = False
+    model_usage_rollup_reconciliation_entry_created: bool = False
+    source_lineage_archive_reconciliation_entry_created: bool = False
+    delivery_notification_reconciliation_allowed: bool = False
+    delivery_notification_status_entry_created: bool = False
+    delivery_notification_result_entry_created: bool = False
+    delivery_notification_operator_visible_event_created: bool = False
+    delivery_notification_created: bool = False
+    workspace_delivery_card_reconciliation_allowed: bool = False
+    workspace_delivery_card_result_entry_created: bool = False
+    workspace_delivery_card_status_entry_created: bool = False
+    workspace_delivery_card_notification_entry_created: bool = False
+    workspace_delivery_card_created: bool = False
+    operator_delivery_ledger_reconciliation_allowed: bool = False
+    operator_delivery_ledger_result_entry_created: bool = False
+    operator_delivery_ledger_status_entry_created: bool = False
+    operator_delivery_ledger_retry_entry_created: bool = False
+    operator_delivery_ledger_dead_letter_entry_created: bool = False
+    operator_delivery_ledger_entry_created: bool = False
+    operator_notification_delivery_result_reconciliation_allowed: bool = False
+    operator_notification_delivery_outcome_record_created: bool = False
+    operator_notification_delivery_reconciliation_entry_created: bool = False
+    operator_notification_delivery_retry_decision_created: bool = False
+    operator_notification_dead_letter_entry_created: bool = False
+    operator_notification_delivery_apply_allowed: bool = False
+    operator_notification_delivery_transaction_created: bool = False
+    operator_notification_dispatch_created: bool = False
+    operator_notification_payload_created: bool = False
+    operator_delivery_channel_policy_created: bool = False
+    operator_notification_template_created: bool = False
+    operator_notification_audit_entry_created: bool = False
+    operator_notification_delivery_attempt_created: bool = False
+    operator_notification_delivery_result_created: bool = False
+    operator_notification_delivery_status_created: bool = False
+    operator_notification_retry_policy_created: bool = False
+    operator_notification_dead_letter_created: bool = False
+    operator_notification_delivery_readiness_allowed: bool = False
+    run_closeout_record_created: bool = False
+    final_run_closure_allowed: bool = False
+    final_artifact_completion_finalization_allowed: bool = False
+    completion_record_created: bool = False
+    finalization_transaction_created: bool = False
+    artifact_archive_manifest_created: bool = False
+    operator_handoff_summary_created: bool = False
+    delivery_status_marked_complete: bool = False
+    quality_attestation_created: bool = False
+    completion_audit_entry_created: bool = False
+    final_artifact_publish_allowed: bool = False
+    publish_transaction_created: bool = False
+    information_asset_published: bool = False
+    account_visible_asset_created: bool = False
+    reading_workspace_entry_created: bool = False
+    search_index_entry_created: bool = False
+    private_read_url_created: bool = False
+    operator_notification_created: bool = False
+    graph_commit_created: bool = False
+    graph_mutated: bool = False
+    final_artifact_created: bool = False
+    dispatch_performed: bool = False
+    budget_reserved: bool = False
+    provider_calls_made: bool = False
+    retrieval_performed: bool = False
+    source_receipts_created: bool = False
+    adapter_plan_notes: list[str] = Field(default_factory=list)
+
+
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
     price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
@@ -14867,6 +15206,229 @@ def delivery_notification_reconciliation_plan_midnight_oil(
             "delivery notification reconciliation plan only: no delivery notification, status entry, result entry, operator visible event, workspace card, ledger entry, URL activation, operator notification, or final artifact is created",
             "this receipt documents delivery notification reconciliation requirements after workspace delivery card reconciliation planning",
             "no activation readiness, live dispatch, scheduler job, worker runtime, budget reservation, provider call, retrieval, source receipt, graph mutation, publish, notification, URL activation, run closeout, delivery notification reconciliation, workspace card reconciliation, ledger reconciliation, or artifact write is performed",
+        ],
+    )
+
+
+def retention_billing_reconciliation_plan_midnight_oil(
+    req: MidnightOilRetentionBillingReconciliationPlanRequest,
+) -> MidnightOilRetentionBillingReconciliationPlanReceipt:
+    run_id = req.launch_packet.run_id
+    notification_plan = req.delivery_notification_reconciliation_plan_receipt
+    closure_plan = req.final_run_closure_plan_receipt
+    return MidnightOilRetentionBillingReconciliationPlanReceipt(
+        receipt_id=f"{run_id}-retention-billing-reconciliation-plan",
+        delivery_notification_reconciliation_plan_receipt_id=(
+            notification_plan.receipt_id
+        ),
+        workspace_delivery_card_reconciliation_plan_receipt_id=(
+            notification_plan.workspace_delivery_card_reconciliation_plan_receipt_id
+        ),
+        operator_delivery_ledger_reconciliation_plan_receipt_id=(
+            notification_plan.operator_delivery_ledger_reconciliation_plan_receipt_id
+        ),
+        operator_notification_delivery_result_reconciliation_plan_receipt_id=(
+            notification_plan.operator_notification_delivery_result_reconciliation_plan_receipt_id
+        ),
+        operator_notification_delivery_apply_plan_receipt_id=(
+            notification_plan.operator_notification_delivery_apply_plan_receipt_id
+        ),
+        operator_notification_delivery_readiness_plan_receipt_id=(
+            notification_plan.operator_notification_delivery_readiness_plan_receipt_id
+        ),
+        final_run_closure_plan_receipt_id=notification_plan.final_run_closure_plan_receipt_id,
+        final_artifact_completion_finalization_plan_receipt_id=(
+            notification_plan.final_artifact_completion_finalization_plan_receipt_id
+        ),
+        final_artifact_publish_plan_receipt_id=(
+            notification_plan.final_artifact_publish_plan_receipt_id
+        ),
+        launch_packet_id=req.launch_packet.packet_id,
+        approval_receipt_id=req.approval_receipt.receipt_id,
+        runner_handoff_id=req.runner_handoff.handoff_id,
+        run_id=run_id,
+        planned_retention_billing_reconciliation_receipt_id=(
+            f"{run_id}-retention-billing-reconciliation-receipt"
+        ),
+        planned_run_retention_manifest_id=(
+            closure_plan.planned_run_retention_manifest_id
+        ),
+        planned_billing_reconciliation_id=(
+            closure_plan.planned_billing_reconciliation_id
+        ),
+        planned_model_usage_rollup_id=notification_plan.planned_model_usage_rollup_id,
+        planned_source_lineage_archive_id=(
+            notification_plan.planned_source_lineage_archive_id
+        ),
+        planned_run_retention_manifest_status_entry_id=(
+            f"{run_id}-run-retention-manifest-status-entry"
+        ),
+        planned_billing_reconciliation_status_entry_id=(
+            f"{run_id}-billing-reconciliation-status-entry"
+        ),
+        planned_model_usage_rollup_reconciliation_entry_id=(
+            f"{run_id}-model-usage-rollup-reconciliation-entry"
+        ),
+        planned_source_lineage_archive_reconciliation_entry_id=(
+            f"{run_id}-source-lineage-archive-reconciliation-entry"
+        ),
+        planned_delivery_notification_reconciliation_receipt_id=(
+            notification_plan.planned_delivery_notification_reconciliation_receipt_id
+        ),
+        planned_delivery_notification_id=(
+            notification_plan.planned_delivery_notification_id
+        ),
+        planned_delivery_notification_status_entry_id=(
+            notification_plan.planned_delivery_notification_status_entry_id
+        ),
+        planned_delivery_notification_result_entry_id=(
+            notification_plan.planned_delivery_notification_result_entry_id
+        ),
+        planned_delivery_notification_operator_visible_event_id=(
+            notification_plan.planned_delivery_notification_operator_visible_event_id
+        ),
+        planned_delivery_notification_replay_guard_id=(
+            notification_plan.planned_delivery_notification_replay_guard_id
+        ),
+        planned_workspace_delivery_card_reconciliation_receipt_id=(
+            notification_plan.planned_workspace_delivery_card_reconciliation_receipt_id
+        ),
+        planned_workspace_delivery_card_id=(
+            notification_plan.planned_workspace_delivery_card_id
+        ),
+        planned_operator_delivery_ledger_reconciliation_receipt_id=(
+            notification_plan.planned_operator_delivery_ledger_reconciliation_receipt_id
+        ),
+        planned_operator_delivery_ledger_entry_id=(
+            notification_plan.planned_operator_delivery_ledger_entry_id
+        ),
+        planned_operator_delivery_ledger_status_entry_id=(
+            notification_plan.planned_operator_delivery_ledger_status_entry_id
+        ),
+        planned_operator_notification_delivery_outcome_record_id=(
+            notification_plan.planned_operator_notification_delivery_outcome_record_id
+        ),
+        planned_operator_notification_delivery_reconciliation_entry_id=(
+            notification_plan.planned_operator_notification_delivery_reconciliation_entry_id
+        ),
+        planned_private_read_url_id=notification_plan.planned_private_read_url_id,
+        planned_reading_workspace_entry_id=(
+            notification_plan.planned_reading_workspace_entry_id
+        ),
+        planned_hosted_html_asset_id=notification_plan.planned_hosted_html_asset_id,
+        planned_idempotency_key=notification_plan.planned_idempotency_key,
+        retention_billing_reconciliation_blockers=[
+            *notification_plan.delivery_notification_reconciliation_blockers,
+            "run retention manifest reconciliation receipt writer",
+            "run retention manifest status entry writer",
+            "billing reconciliation receipt writer",
+            "billing reconciliation status entry writer",
+            "model usage rollup reconciliation writer",
+            "source lineage archive reconciliation writer",
+            "retention and billing replay guard",
+        ],
+        required_retention_billing_reconciliation_invariants=[
+            "retention billing reconciliation planner must require delivery notification reconciliation planning before retention, billing, usage, or source lineage rows can be reconciled",
+            "retention billing reconciliation planner must bind run retention manifest, billing reconciliation, model usage rollup, source lineage archive, delivery notification, workspace card, ledger, private read URL, hosted HTML asset, and idempotency key to the same planned closed run",
+            "retention billing reconciliation planner must keep retention, billing, usage, and source lineage rows uncreated until real delivery notification reconciliation rows exist",
+            "retention billing reconciliation planner must preserve operator delivery visibility without notifying, activating URLs, mutating workspace state, billing accounts, or closing the run during planning",
+            "retention billing reconciliation planner must not dispatch providers, perform retrieval, mutate graph, publish assets, notify operators, activate URLs, close runs, write retention, write billing, write usage rollups, write source archives, or write final artifacts while planning reconciliation",
+        ],
+        required_retention_billing_reconciliation_receipt_fields=[
+            "retention_billing_reconciliation_plan_receipt_id",
+            "delivery_notification_reconciliation_plan_receipt_id",
+            "workspace_delivery_card_reconciliation_plan_receipt_id",
+            "operator_delivery_ledger_reconciliation_plan_receipt_id",
+            "retention_billing_reconciliation_receipt_id",
+            "run_retention_manifest_id",
+            "billing_reconciliation_id",
+            "model_usage_rollup_id",
+            "source_lineage_archive_id",
+            "run_retention_manifest_status_entry_id",
+            "billing_reconciliation_status_entry_id",
+            "model_usage_rollup_reconciliation_entry_id",
+            "source_lineage_archive_reconciliation_entry_id",
+            "delivery_notification_id",
+            "workspace_delivery_card_id",
+            "operator_delivery_ledger_entry_id",
+            "private_read_url_id",
+            "idempotency_key",
+            "created_at",
+        ],
+        blocker_reason="retention_billing_reconciliation_unimplemented",
+        retention_billing_reconciliation_allowed=False,
+        run_retention_manifest_created=False,
+        billing_reconciliation_created=False,
+        model_usage_rollup_created=False,
+        source_lineage_archive_created=False,
+        run_retention_manifest_status_entry_created=False,
+        billing_reconciliation_status_entry_created=False,
+        model_usage_rollup_reconciliation_entry_created=False,
+        source_lineage_archive_reconciliation_entry_created=False,
+        delivery_notification_reconciliation_allowed=False,
+        delivery_notification_status_entry_created=False,
+        delivery_notification_result_entry_created=False,
+        delivery_notification_operator_visible_event_created=False,
+        delivery_notification_created=False,
+        workspace_delivery_card_reconciliation_allowed=False,
+        workspace_delivery_card_result_entry_created=False,
+        workspace_delivery_card_status_entry_created=False,
+        workspace_delivery_card_notification_entry_created=False,
+        workspace_delivery_card_created=False,
+        operator_delivery_ledger_reconciliation_allowed=False,
+        operator_delivery_ledger_result_entry_created=False,
+        operator_delivery_ledger_status_entry_created=False,
+        operator_delivery_ledger_retry_entry_created=False,
+        operator_delivery_ledger_dead_letter_entry_created=False,
+        operator_delivery_ledger_entry_created=False,
+        operator_notification_delivery_result_reconciliation_allowed=False,
+        operator_notification_delivery_outcome_record_created=False,
+        operator_notification_delivery_reconciliation_entry_created=False,
+        operator_notification_delivery_retry_decision_created=False,
+        operator_notification_dead_letter_entry_created=False,
+        operator_notification_delivery_apply_allowed=False,
+        operator_notification_delivery_transaction_created=False,
+        operator_notification_dispatch_created=False,
+        operator_notification_payload_created=False,
+        operator_delivery_channel_policy_created=False,
+        operator_notification_template_created=False,
+        operator_notification_audit_entry_created=False,
+        operator_notification_delivery_attempt_created=False,
+        operator_notification_delivery_result_created=False,
+        operator_notification_delivery_status_created=False,
+        operator_notification_retry_policy_created=False,
+        operator_notification_dead_letter_created=False,
+        operator_notification_delivery_readiness_allowed=False,
+        run_closeout_record_created=False,
+        final_run_closure_allowed=False,
+        final_artifact_completion_finalization_allowed=False,
+        completion_record_created=False,
+        finalization_transaction_created=False,
+        artifact_archive_manifest_created=False,
+        operator_handoff_summary_created=False,
+        delivery_status_marked_complete=False,
+        quality_attestation_created=False,
+        completion_audit_entry_created=False,
+        final_artifact_publish_allowed=False,
+        publish_transaction_created=False,
+        information_asset_published=False,
+        account_visible_asset_created=False,
+        reading_workspace_entry_created=False,
+        search_index_entry_created=False,
+        private_read_url_created=False,
+        operator_notification_created=False,
+        graph_commit_created=False,
+        graph_mutated=False,
+        final_artifact_created=False,
+        dispatch_performed=False,
+        budget_reserved=False,
+        provider_calls_made=False,
+        retrieval_performed=False,
+        source_receipts_created=False,
+        adapter_plan_notes=[
+            "retention billing reconciliation plan only: no retention manifest, billing reconciliation, model usage rollup, source lineage archive, delivery notification, workspace card, ledger entry, URL activation, operator notification, or final artifact is created",
+            "this receipt documents retention and billing reconciliation requirements after delivery notification reconciliation planning",
+            "no activation readiness, live dispatch, scheduler job, worker runtime, budget reservation, provider call, retrieval, source receipt, graph mutation, publish, notification, URL activation, run closeout, retention write, billing write, usage write, source archive write, or artifact write is performed",
         ],
     )
 
