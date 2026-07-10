@@ -16,6 +16,7 @@ import {
   finalArtifactMidnightOil,
   graphAdapterPlanMidnightOil,
   graphMutationMidnightOil,
+  liveDispatchFinalEnablementPlanMidnightOil,
   liveRunActivationSettingsMidnightOil,
   operatorDispatchActivationReadinessPlanMidnightOil,
   operatorDispatchAdapterPlanMidnightOil,
@@ -1144,6 +1145,84 @@ vi.mock("../../api/midnightOil", () => ({
       "operator dispatch activation readiness plan only: no live dispatch readiness is granted",
     ],
   })),
+  liveDispatchFinalEnablementPlanMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-live-dispatch-final-enablement-plan",
+    operator_dispatch_activation_readiness_plan_receipt_id:
+      "midnight-oil-test-operator-dispatch-activation-readiness-plan",
+    control_ledger_persistence_apply_plan_receipt_id:
+      "midnight-oil-test-control-ledger-persistence-apply-plan",
+    control_ledger_persistence_plan_receipt_id:
+      "midnight-oil-test-control-ledger-persistence-plan",
+    control_ledger_adapter_plan_receipt_id: "midnight-oil-test-control-ledger-adapter-plan",
+    operator_dispatch_adapter_plan_receipt_id:
+      "midnight-oil-test-operator-dispatch-adapter-plan",
+    runner_control_plan_receipt_id: "midnight-oil-test-runner-control-plan",
+    runner_readiness_receipt_id: "midnight-oil-test-runner-readiness",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    run_id: "midnight-oil-test",
+    status: "blocked_live_dispatch_final_enablement_unimplemented",
+    adapter_key: "live_dispatch_final_enablement",
+    planned_activation_readiness_receipt_id:
+      "midnight-oil-test-operator-dispatch-activation-readiness-receipt",
+    planned_dispatch_enablement_id:
+      "midnight-oil-test-operator-dispatch-live-enable-activation",
+    planned_live_dispatch_receipt_id: "midnight-oil-test-live-dispatch-final-enable-receipt",
+    planned_runner_dispatch_id: "midnight-oil-test-midnight-oil-runner-dispatch",
+    readiness_blockers: [
+      "committed control ledger persistence receipt",
+      "operator activation receipt writer",
+      "live dispatch final enablement implementation",
+    ],
+    required_enablement_invariants: [
+      "final enablement must require an activation readiness receipt that is activation_ready before live dispatch can be enabled",
+      "final enablement must require the committed control ledger receipt and operator activation receipt before any dispatch",
+    ],
+    required_enablement_receipt_fields: [
+      "live_dispatch_receipt_id",
+      "runner_dispatch_id",
+      "run_id",
+      "launch_packet_id",
+      "approval_receipt_id",
+      "activation_readiness_receipt_id",
+      "dispatch_enablement_id",
+      "live_dispatch_enabled",
+      "live_dispatch_ready",
+      "dispatch_performed",
+    ],
+    blocker_reason: "live_dispatch_final_enablement_unimplemented",
+    final_enablement_allowed: false,
+    live_dispatch_enabled: false,
+    live_dispatch_ready: false,
+    activation_readiness_allowed: false,
+    activation_ready: false,
+    transaction_opened: false,
+    transaction_committed: false,
+    setting_persisted: false,
+    control_ledger_written: false,
+    audit_log_written: false,
+    rollback_receipt_created: false,
+    operator_dispatch_allowed: false,
+    operator_live_dispatch_enabled: false,
+    live_run_allowed: false,
+    dispatch_allowed: false,
+    dispatch_performed: false,
+    budget_reservation_allowed: false,
+    budget_reserved: false,
+    provider_execution_allowed: false,
+    provider_calls_made: false,
+    retrieval_allowed: false,
+    retrieval_performed: false,
+    source_receipts_created: false,
+    graph_mutation_allowed: false,
+    graph_mutated: false,
+    final_artifact_allowed: false,
+    final_artifact_created: false,
+    adapter_plan_notes: [
+      "live dispatch final enablement plan only: no enablement is granted and no runner dispatch is created",
+    ],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -1996,5 +2075,66 @@ describe("MidnightOil", () => {
     ).toBeTruthy();
     expect(screen.getByText(/Readiness blockers:/)).toBeTruthy();
     expect(screen.getByText(/Activation receipt fields:/)).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Live dispatch final enablement" }));
+
+    await waitFor(() => expect(liveDispatchFinalEnablementPlanMidnightOil).toHaveBeenCalled());
+    expect(liveDispatchFinalEnablementPlanMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      runner_control_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-control-plan",
+      }),
+      budget_provider_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-budget-provider-adapter-plan",
+      }),
+      provider_executor_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-provider-executor-adapter-plan",
+      }),
+      retrieval_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-retrieval-adapter-plan",
+      }),
+      graph_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-graph-adapter-plan",
+      }),
+      final_artifact_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-final-artifact-adapter-plan",
+      }),
+      operator_dispatch_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-operator-dispatch-adapter-plan",
+      }),
+      control_ledger_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-adapter-plan",
+      }),
+      control_ledger_persistence_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-persistence-plan",
+      }),
+      control_ledger_persistence_apply_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-persistence-apply-plan",
+      }),
+      operator_dispatch_activation_readiness_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-operator-dispatch-activation-readiness-plan",
+      }),
+    });
+    expect(screen.getByText("Live dispatch final enablement receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-live-dispatch-final-enablement-plan")).toBeTruthy();
+    expect(screen.getByText("blocked live dispatch final enablement unimplemented")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-live-dispatch-final-enable-receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-midnight-oil-runner-dispatch")).toBeTruthy();
+    expect(screen.getByText("live dispatch final enablement")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "final enablement must require an activation readiness receipt that is activation_ready before live dispatch can be enabled",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Final blockers:/)).toBeTruthy();
+    expect(screen.getByText(/Enablement receipt fields:/)).toBeTruthy();
   });
 });
