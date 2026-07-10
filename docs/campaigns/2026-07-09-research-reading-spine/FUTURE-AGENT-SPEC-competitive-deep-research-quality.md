@@ -32,6 +32,8 @@
 - Knowledge-dense quick-call · pub-ref foresight chrome matrix  
 - Multi-hop citation chain · hop strip stage deep-links (amc/ame) · evidence Write hop honesty · dogfood v29–v33  
 - Marketplace host-land TwinNotes+ResearchContext substrate (alx–ama)  
+- Host researchTier prefill on ResearchContext (amj–amq · amp · reading amr–amt)  
+- Reading conversation ResearchContext substrate (ResearchThis · TalkToBook · MetaReading)  
 - Twin promote depth-graph path (UI · substrate · Write · dogfood v32–v33)  
 - Domain-aware twin search free PD full spine (aiy STEM · akq econ/politics/philosophy/eng · akw literature/tech · alf bare science)  
 - Competitive DR scorecard navigation matrix (progress · MO · collective · attach · marketplace · badge · budget · ND)  

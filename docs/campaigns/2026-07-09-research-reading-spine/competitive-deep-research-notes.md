@@ -3436,3 +3436,7 @@ P0 operator merge PR #465. Pivot amv+ outside thrash.
 Competitive DR brief tip 975d6eea; offline spine names host-tier path and reading
 conversation ResearchContext substrate (amr–amt). P0 operator merge PR #465.
 Pivot amw+ outside thrash.
+
+## Residual amw · 2026-07-10 — FUTURE competitive offline spine host-tier + reading context
+Offline spine lists host-tier ResearchContext path and reading conversation
+substrate. P0 operator merge PR #465. Pivot amx+ outside thrash.

@@ -1,0 +1,12 @@
+# inventory-amw · FUTURE competitive offline spine host-tier + reading context
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: amw
+date: 2026-07-10
+parent_tip: dc340d3e (amv)
+
+## Closed
+- FUTURE offline spine: host-tier ResearchContext · reading conversation substrate
+
+## Next
+amx+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)
