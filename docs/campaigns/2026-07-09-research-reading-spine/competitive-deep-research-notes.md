@@ -2641,3 +2641,14 @@ auto-hydrate · data-auto-hydrate=false · offline-honest until Attach + hydrate
 Competitive delta: one-click call knowledge-dense pubs into deep research
 (parity competitor source connectors UX without inventing live bodies).
 vitest PublicationAttach 6 green. P0 operator merge PR #465. Pivot agy+ outside thrash.
+
+## Residual agy · 2026-07-10 — StartResearch knowledge-dense pub quick-call
+StartResearch publication-refs panel mounts shared KNOWLEDGE_DENSE_PUBLICATION_PRESETS
+(parity PublicationAttach agx). Quick-call chips insert arxiv/URL with dedupe ·
+data-auto-hydrate=false. Launch-path one-click knowledge-dense refs for deep
+research Ask. vitest StartResearch 22 green. P0 operator merge PR #465.
+
+## Residual SESSION-ARC ags–agy · 2026-07-10
+Wave handoff: Fourier free STEM · heat metrics · seamless single+multi merge ·
+dogfood v22 · pub quick-call launch+mid-session. See
+SESSION-ARC-ags-agy-fourier-merge-pub-quickcall.md. Pivot agz+ outside thrash.

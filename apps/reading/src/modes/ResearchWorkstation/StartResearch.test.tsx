@@ -259,6 +259,42 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
     expect(l2.getAttribute("data-l2-substack")).toBe("deferred");
   });
 
+  it("inserts knowledge-dense quick-call presets into pub refs (agy)", () => {
+    renderStart();
+    const panel = screen.getByTestId("publication-refs-panel");
+    expect(panel.getAttribute("data-seamless-pub-quick-call")).toBe("true");
+    expect(
+      Number(panel.getAttribute("data-knowledge-dense-presets") || 0),
+    ).toBeGreaterThanOrEqual(4);
+    const chips = screen.getByTestId("start-research-publication-quick-call");
+    expect(chips.getAttribute("data-auto-hydrate")).toBe("false");
+    expect(chips.getAttribute("data-seamless-pub-quick-call")).toBe("true");
+    fireEvent.click(
+      screen.getByTestId("start-research-preset-attention-is-all-you-need"),
+    );
+    expect(
+      (screen.getByTestId("publication-refs-input") as HTMLTextAreaElement)
+        .value,
+    ).toMatch(/arxiv:1706\.03762/);
+    fireEvent.click(screen.getByTestId("start-research-preset-bert"));
+    const value = (
+      screen.getByTestId("publication-refs-input") as HTMLTextAreaElement
+    ).value;
+    expect(value).toMatch(/arxiv:1706\.03762/);
+    expect(value).toMatch(/arxiv:1810\.04805/);
+    // Dedupe: second click on Attention does not duplicate.
+    fireEvent.click(
+      screen.getByTestId("start-research-preset-attention-is-all-you-need"),
+    );
+    expect(
+      (
+        screen.getByTestId("publication-refs-input") as HTMLTextAreaElement
+      ).value
+        .split(/\r?\n/)
+        .filter((l) => l.includes("1706.03762")).length,
+    ).toBe(1);
+  });
+
   it("renders a real composer: input + Ask button + example pills", () => {
     renderStart();
     expect(screen.getByLabelText("Research question")).toBeTruthy();

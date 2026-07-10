@@ -27,6 +27,7 @@ import {
   parsePublicationRefs,
   questionWithPublicationRefs,
 } from "./publicationRefs";
+import { KNOWLEDGE_DENSE_PUBLICATION_PRESETS } from "../../components/engagement/PublicationAttachPanel";
 
 /**
  * StartResearch — the Research HOME (S5 redesign fix → Living-Roadmap SPR-05).
@@ -100,6 +101,8 @@ const EXAMPLE_PROMPTS: readonly string[] = [
  * mount below the depth control (ResearchLaunchBudgetPanel). Static
  * "~$0.08–$0.16" copy is retired in favor of honest projection / unknown.
  *
+ * Residual (agx/agy): knowledge-dense publication quick-call presets on launch
+ * (parity mid-session PublicationAttachPanel · insert only · offline hydrate).
  * Residual (cj): publication refs (arxiv/substack/url) hydrate into HTML
  * assets and are appended to the launch question for grounded research.
  */
@@ -742,11 +745,15 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             </label>
           ) : null}
 
-          {/* Residual (cj): knowledge-dense publication handles for deep research. */}
+          {/* Residual (cj/agy): knowledge-dense publication handles for deep research. */}
           <div
             className="space-y-1"
             data-testid="publication-refs-panel"
             data-view-format="html"
+            data-seamless-pub-quick-call="true"
+            data-knowledge-dense-presets={String(
+              KNOWLEDGE_DENSE_PUBLICATION_PRESETS.length,
+            )}
           >
             <label
               className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight"
@@ -754,6 +761,53 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             >
               Publication refs (arxiv / substack / URL)
             </label>
+            {/* Residual (agy): launch-path quick-call presets (parity agx mid-session). */}
+            <div
+              className="flex flex-wrap gap-1 items-center"
+              data-testid="start-research-publication-quick-call"
+              data-preset-count={String(
+                KNOWLEDGE_DENSE_PUBLICATION_PRESETS.length,
+              )}
+              data-seamless-pub-quick-call="true"
+              data-auto-hydrate="false"
+              role="group"
+              aria-label="Knowledge-dense publication quick-call presets"
+            >
+              <span className="text-[10px] font-mono opacity-70 mr-1">
+                Quick-call:
+              </span>
+              {KNOWLEDGE_DENSE_PUBLICATION_PRESETS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  data-testid={`start-research-preset-${p.id}`}
+                  data-preset-id={p.id}
+                  data-kind={p.kind}
+                  data-reference={p.reference}
+                  data-auto-hydrate="false"
+                  disabled={busy}
+                  onClick={() => {
+                    const ref = p.reference.trim();
+                    if (!ref) return;
+                    setPubRefs((prev) => {
+                      const existing = new Set(
+                        prev
+                          .split(/\r?\n/)
+                          .map((l) => l.trim())
+                          .filter(Boolean),
+                      );
+                      if (existing.has(ref)) return prev;
+                      const base = prev.trim();
+                      return base ? `${base}\n${ref}` : ref;
+                    });
+                  }}
+                  className="text-[10px] font-mono border rounded px-1.5 py-0.5 opacity-80 hover:opacity-100 disabled:opacity-50 border-rule dark:border-charcoal-1"
+                  title={`Insert ${p.reference} (hydrates offline-honest on Ask · never auto-live)`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
             <textarea
               id="publication-refs-input"
               data-testid="publication-refs-input"
@@ -765,8 +819,9 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
               className="w-full rounded-hog border border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 px-2 py-1.5 text-[12px] font-mono text-ink dark:text-bright disabled:opacity-50"
             />
             <p className="text-[10px] font-mono text-ink-mute dark:text-moonlight">
-              One handle per line. Hydrated into HTML assets on Ask (offline
-              identity by default; live arxiv/substack via env injectors).
+              One handle per line · quick-call inserts only. Hydrated into HTML
+              assets on Ask (offline identity by default; live arxiv/substack via
+              env injectors).
             </p>
             {/* Residual (agf): dual-gate L1/L2 prep deep-links (never enable injectors). */}
             <nav
