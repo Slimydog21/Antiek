@@ -38,6 +38,8 @@
  * (reading ≡ research flywheel; decision-tree driver chokepoint).
  * Residual (iv): host-result deep research full window mode (parity hosted es).
  * Residual (iw): library row deep research launch parity (float|full).
+ * Residual (auy): pure liveCheckoutDeferredReadiness drives Live checkout CTA
+ * (L5 dual-gate · never invent charge · HTML-first seamless port).
  * Residual (iy): budget soft-gate on host/library DR launch (parity di/cs).
  * Residual (ja): DR status surfaces research_tier used for launch audit.
  * Residual (jb): reset budget force override when hosted document changes.
@@ -105,6 +107,7 @@ import {
   MARKETPLACE_DEMO_RECEIPT_DEFAULT,
   marketplaceReceiptReadiness,
 } from "../../workspace/marketplaceReceiptReadiness";
+import { liveCheckoutDeferredReadiness } from "../../workspace/liveCheckoutDeferredReadiness";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
 import { listRecentDeepResearchSpawnIds } from "../../workspace/recentDeepResearchSpawns";
 import { useWindows } from "../../workspace/windowsStore";
@@ -1669,35 +1672,81 @@ export default function MarketplaceHost({
                 >
                   Purchase + host
                 </button>
-                {/* Residual (ala / L5 Sprint 3 offline): live checkout CTA stays
-                    disabled until dual-gate live rails — never invent charge. */}
-                <button
-                  type="button"
-                  data-testid={`live-checkout-deferred-${e.book_id}`}
-                  data-book-id={e.book_id}
-                  data-l5-payment-rails="deferred"
-                  data-live-payment="false"
-                  data-payment-rails="manual_receipt_only"
-                  data-payment-adapter-sprint="1"
-                  data-payment-adapter-boundary="shipped_offline"
-                  data-checkout-cta="deferred"
-                  data-live-checkout-available="false"
-                  disabled
-                  title="Live checkout deferred (L5 dual-gate ANTIEK_MARKETPLACE_LIVE_PAYMENT · Sprint 1–2 offline · never invent charge)"
-                  aria-disabled="true"
-                >
-                  Live checkout (L5 deferred)
-                </button>
-                <span
-                  className="text-[10px] font-mono opacity-70 max-w-[14rem] text-right"
-                  data-testid={`live-checkout-deferred-note-${e.book_id}`}
-                  data-l5-payment-rails="deferred"
-                  data-live-payment="false"
-                  data-checkout-cta="deferred"
-                >
-                  Use manual receipt token · live rails dual-gate only · zero
-                  upstream until operator enables payment
-                </span>
+                {/* Residual (ala/auy): pure liveCheckoutDeferredReadiness —
+                    offline default deferred · never invent charge · L5. */}
+                {(() => {
+                  const liveGate = liveCheckoutDeferredReadiness({
+                    // Offline-honest: dual-gate env + upstream stay off until
+                    // operator unlock (campaign never invents live rails).
+                    dual_gate_enabled: false,
+                    live_upstream_ready: false,
+                    book_id: e.book_id,
+                  });
+                  return (
+                    <>
+                      <button
+                        type="button"
+                        data-testid={`live-checkout-deferred-${e.book_id}`}
+                        data-book-id={e.book_id}
+                        data-checkout-ready={String(liveGate.checkout_ready)}
+                        data-block-reason={liveGate.block_reason}
+                        data-l5-payment-rails={
+                          liveGate.live_checkout_deferred
+                            ? "deferred"
+                            : "live"
+                        }
+                        data-live-payment={String(liveGate.checkout_ready)}
+                        data-live-checkout-deferred={String(
+                          liveGate.live_checkout_deferred,
+                        )}
+                        data-never-invent-charge={String(
+                          liveGate.never_invent_charge,
+                        )}
+                        data-html-first={String(liveGate.html_first)}
+                        data-dual-gate={liveGate.dual_gate}
+                        data-payment-rails={liveGate.payment_rails}
+                        data-payment-adapter-sprint={
+                          liveGate.payment_adapter_sprint
+                        }
+                        data-payment-adapter-boundary={
+                          liveGate.payment_adapter_boundary
+                        }
+                        data-payment-adapter-env={
+                          liveGate.payment_adapter_env
+                        }
+                        data-checkout-cta={
+                          liveGate.checkout_ready ? "live" : "deferred"
+                        }
+                        data-live-checkout-available={String(
+                          liveGate.checkout_ready,
+                        )}
+                        disabled={!liveGate.checkout_ready}
+                        title={liveGate.checkout_title}
+                        aria-disabled={!liveGate.checkout_ready}
+                      >
+                        {liveGate.checkout_label}
+                      </button>
+                      <span
+                        className="text-[10px] font-mono opacity-70 max-w-[14rem] text-right"
+                        data-testid={`live-checkout-deferred-note-${e.book_id}`}
+                        data-l5-payment-rails={
+                          liveGate.live_checkout_deferred
+                            ? "deferred"
+                            : "live"
+                        }
+                        data-live-payment={String(liveGate.checkout_ready)}
+                        data-checkout-cta={
+                          liveGate.checkout_ready ? "live" : "deferred"
+                        }
+                        data-block-reason={liveGate.block_reason}
+                      >
+                        {liveGate.live_checkout_deferred
+                          ? "Use manual receipt token · live rails dual-gate only · zero upstream until operator enables payment"
+                          : liveGate.summary}
+                      </span>
+                    </>
+                  );
+                })()}
               </div>
             )}
           </li>

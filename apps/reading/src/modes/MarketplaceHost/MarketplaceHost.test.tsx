@@ -1188,8 +1188,13 @@ describe("MarketplaceHost mode", () => {
     fireEvent.change(screen.getByTestId("purchase-receipt-ref"), {
       target: { value: "manual-order-token-demo" },
     });
-    // Residual (ala): L5 Sprint 3 offline live-checkout CTA stays deferred/disabled.
+    // Residual (ala/auy): L5 live-checkout CTA pure-gated deferred/disabled.
     const liveCta = screen.getByTestId("live-checkout-deferred-buy-modern");
+    expect(liveCta.getAttribute("data-checkout-ready")).toBe("false");
+    expect(liveCta.getAttribute("data-block-reason")).toBe("both_deferred");
+    expect(liveCta.getAttribute("data-never-invent-charge")).toBe("true");
+    expect(liveCta.getAttribute("data-html-first")).toBe("true");
+    expect(liveCta.getAttribute("data-dual-gate")).toBe("L5");
     expect(liveCta.getAttribute("data-l5-payment-rails")).toBe("deferred");
     expect(liveCta.getAttribute("data-live-payment")).toBe("false");
     expect(liveCta.getAttribute("data-checkout-cta")).toBe("deferred");
