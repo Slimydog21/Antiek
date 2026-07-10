@@ -1,6 +1,6 @@
 # Future-agent executable brief — competitive deep-research quality
 
-**Campaign tip at write:** residual **alf** · tip `2cf218f1` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465**  
+**Campaign tip at write:** residual **alu** · tip `e1a6cc61` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465**  
 **Bar:** Hawkins craft · five values · HTML-first · offline-honest · budget-before-fire  
 **Operator mandate:** highest quality deep research product in the world — study competition, write specs, execute meaningful code.
 
