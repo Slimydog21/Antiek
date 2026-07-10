@@ -2220,3 +2220,9 @@ estimateMoilRecommendedCeilingUsd (substrate parity default rates) surfaces
 moil-ceiling-preview on create form (duration · fanout · tier · $preview · budget fit).
 Competitive delta: operator sees recommended price ceiling before autonomous swarm
 create — create job remains authoritative. vitest researchTier+MO 32 green.
+
+## Residual ady · 2026-07-10 — model-aware MO ceiling preview offline rates
+MO ceiling preview uses substrate DEFAULT_PRICING offline table (gpt-5.5 · glm-5.2 ·
+composer-2.5 · mimo-v2.5 · default). Competitive delta: decision-tree model prefill
+moves recommended price ceiling preview before create (create remains authoritative).
+vitest researchTier+MO 34 green.

@@ -139,16 +139,48 @@ export function formatResearchTierCeilingFactor(
 }
 
 /**
- * Residual (adx): client preview of Midnight Oil recommended price ceiling.
+ * Residual (ady): offline default combined rates (input+output USD/1M)
+ * mirroring substrate/midnight_oil/ceiling.py DEFAULT_PRICING.
+ * Preview only — never invent live provider rates.
+ */
+export const MOIL_DEFAULT_MODEL_COMBINED_USD_PER_1M: Record<string, number> = {
+  default: 4.0, // 1.0 + 3.0
+  "glm-5.2": 2.0, // 0.5 + 1.5
+  "gpt-5.5": 20.0, // 5.0 + 15.0
+  "composer-2.5": 8.0, // 2.0 + 6.0
+  "mimo-v2.5": 3.2, // 0.8 + 2.4
+};
+
+/** Resolve offline combined rate for MO ceiling preview (ady). */
+export function resolveMoilPreviewCombinedUsdPer1m(
+  modelId?: string | null,
+): { combined: number; pricing_source: string } {
+  const key = String(modelId || "default").trim() || "default";
+  if (key in MOIL_DEFAULT_MODEL_COMBINED_USD_PER_1M) {
+    return {
+      combined: MOIL_DEFAULT_MODEL_COMBINED_USD_PER_1M[key]!,
+      pricing_source: `offline-table:${key}`,
+    };
+  }
+  return {
+    combined: MOIL_DEFAULT_MODEL_COMBINED_USD_PER_1M.default,
+    pricing_source: "offline-table:default",
+  };
+}
+
+/**
+ * Residual (adx/ady): client preview of Midnight Oil recommended price ceiling.
  * Mirrors substrate/midnight_oil/ceiling.py recommend_price_ceiling with
- * default rates (input 1 + output 3 USD/1M) when model rates unknown.
+ * offline model rate table when known; else default 1+3 USD/1M.
  * Preview only — create job remains authoritative server recommendation.
  */
 export function estimateMoilRecommendedCeilingUsd(opts: {
   durationMinutes: number;
   fanoutDepth?: number;
   researchTier?: ResearchTier | string | null;
-  /** Combined input+output USD per 1M tokens; default 4.0 (substrate default). */
+  /** Residual (ady): model id for offline rate table lookup. */
+  modelId?: string | null;
+  /** Combined input+output USD per 1M tokens; overrides model table when set. */
   combinedUsdPer1m?: number;
 }): number | null {
   const duration = Math.floor(Number(opts.durationMinutes));
@@ -158,12 +190,16 @@ export function estimateMoilRecommendedCeilingUsd(opts: {
     Number.isFinite(fanoutRaw) && fanoutRaw > 0
       ? Math.floor(fanoutRaw)
       : MOIL_CEILING_DEFAULT_FANOUT_DEPTH;
-  const combined =
+  let combined: number;
+  if (
     typeof opts.combinedUsdPer1m === "number" &&
     Number.isFinite(opts.combinedUsdPer1m) &&
     opts.combinedUsdPer1m > 0
-      ? opts.combinedUsdPer1m
-      : 4.0; // substrate DEFAULT_PRICING default: 1.0 + 3.0
+  ) {
+    combined = opts.combinedUsdPer1m;
+  } else {
+    combined = resolveMoilPreviewCombinedUsdPer1m(opts.modelId).combined;
+  }
   const mult = mapResearchTierToCeilingMultiplier(opts.researchTier);
   const raw =
     duration *

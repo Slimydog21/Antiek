@@ -89,6 +89,7 @@ import {
   MOIL_CEILING_TOKENS_PER_MINUTE,
   mapResearchTierToProgressPollMs,
   mapResearchTierToRecommendedDurationMinutes,
+  resolveMoilPreviewCombinedUsdPer1m,
 } from "../../lib/researchTier";
 import { CollectiveResearchPanel } from "../../components/engagement/CollectiveResearchPanel";
 import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
@@ -928,12 +929,14 @@ export default function MidnightOil() {
             </label>
           ) : null}
         </div>
-        {/* Residual (adx): live recommended ceiling preview before create. */}
+        {/* Residual (adx/ady): live recommended ceiling preview before create. */}
         {(() => {
+          const pricing = resolveMoilPreviewCombinedUsdPer1m(modelId);
           const previewUsd = estimateMoilRecommendedCeilingUsd({
             durationMinutes,
             fanoutDepth,
             researchTier,
+            modelId,
           });
           if (previewUsd == null) return null;
           let fit: "fits" | "may_exceed" | "unknown" = "unknown";
@@ -948,7 +951,9 @@ export default function MidnightOil() {
               className="font-mono text-[11px] space-y-0.5 border border-ink/15 rounded p-2 dark:border-bright/15"
               data-testid="moil-ceiling-preview"
               data-preview-only="true"
-              data-pricing-source="default-offline"
+              data-pricing-source={pricing.pricing_source}
+              data-model-id={String(modelId || "default").trim() || "default"}
+              data-combined-usd-per-1m={String(pricing.combined)}
               data-duration-minutes={String(durationMinutes)}
               data-fanout-depth={String(
                 Number.isFinite(fanoutDepth) && fanoutDepth > 0
@@ -977,7 +982,8 @@ export default function MidnightOil() {
                 {Number.isFinite(fanoutDepth) && fanoutDepth > 0
                   ? Math.floor(fanoutDepth)
                   : MOIL_CEILING_DEFAULT_FANOUT_DEPTH}{" "}
-                · tier={formatResearchTierCeilingFactor(researchTier)}
+                · tier={formatResearchTierCeilingFactor(researchTier)} · model=
+                {String(modelId || "default").trim() || "default"}
               </p>
               <p className="opacity-80">
                 {fit === "fits"
@@ -988,7 +994,8 @@ export default function MidnightOil() {
                 {remainingAfter != null
                   ? ` · remaining after≈$${remainingAfter.toFixed(2)}`
                   : ""}{" "}
-                · create job remains authoritative · default offline rates
+                · create job remains authoritative · rates=
+                {pricing.pricing_source}
               </p>
             </div>
           );

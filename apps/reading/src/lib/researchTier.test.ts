@@ -120,6 +120,38 @@ describe("researchTier residual (adx) MO ceiling preview estimate", () => {
   });
 });
 
+describe("researchTier residual (ady) model-aware MO ceiling preview rates", () => {
+  it("uses offline table rates for known models (parity substrate DEFAULT_PRICING)", async () => {
+    const {
+      estimateMoilRecommendedCeilingUsd,
+      resolveMoilPreviewCombinedUsdPer1m,
+    } = await import("./researchTier");
+    expect(resolveMoilPreviewCombinedUsdPer1m("gpt-5.5").combined).toBe(20);
+    expect(resolveMoilPreviewCombinedUsdPer1m("glm-5.2").combined).toBe(2);
+    expect(resolveMoilPreviewCombinedUsdPer1m("unknown-x").pricing_source).toBe(
+      "offline-table:default",
+    );
+    // 60 * 4000 * 20/1e6 * 3 * 1.25 * 1.0 = 18.0
+    expect(
+      estimateMoilRecommendedCeilingUsd({
+        durationMinutes: 60,
+        fanoutDepth: 3,
+        researchTier: "deep",
+        modelId: "gpt-5.5",
+      }),
+    ).toBe(18);
+    // 60 * 4000 * 2/1e6 * 3 * 1.25 * 1.0 = 1.8
+    expect(
+      estimateMoilRecommendedCeilingUsd({
+        durationMinutes: 60,
+        fanoutDepth: 3,
+        researchTier: "deep",
+        modelId: "glm-5.2",
+      }),
+    ).toBe(1.8);
+  });
+});
+
 describe("researchTier map residual (ng) MO recommended duration", () => {
   it("maps closed tiers to competitive duration midpoints (parity mw)", () => {
     expect(mapResearchTierToRecommendedDurationMinutes("fast")).toBe(

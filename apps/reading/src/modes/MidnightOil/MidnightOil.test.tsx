@@ -418,8 +418,12 @@ describe("MidnightOil mode", () => {
     render(<MidnightOil />);
     const preview = screen.getByTestId("moil-ceiling-preview");
     expect(preview.getAttribute("data-preview-only")).toBe("true");
-    expect(preview.getAttribute("data-pricing-source")).toBe("default-offline");
-    // Default form: 60m · fanout 3 · deep → $3.60 (substrate parity).
+    // Residual (ady): offline rate table for default model.
+    expect(preview.getAttribute("data-pricing-source")).toBe(
+      "offline-table:default",
+    );
+    expect(preview.getAttribute("data-model-id")).toBe("default");
+    // Default form: 60m · fanout 3 · deep · default rates → $3.60 (substrate parity).
     expect(preview.getAttribute("data-recommended-usd")).toBe("3.6");
     expect(preview.getAttribute("data-duration-minutes")).toBe("60");
     expect(preview.getAttribute("data-fanout-depth")).toBe("3");
@@ -428,6 +432,21 @@ describe("MidnightOil mode", () => {
       /\$3\.60/,
     );
     expect(preview.textContent).toMatch(/create job remains authoritative/i);
+  });
+
+  it("previews model-aware ceiling rates for gpt-5.5 (ady)", async () => {
+    render(<MidnightOil />);
+    const modelInput = screen.getByDisplayValue("default") as HTMLInputElement;
+    fireEvent.change(modelInput, { target: { value: "gpt-5.5" } });
+    await waitFor(() => {
+      const preview = screen.getByTestId("moil-ceiling-preview");
+      expect(preview.getAttribute("data-model-id")).toBe("gpt-5.5");
+      expect(preview.getAttribute("data-pricing-source")).toBe(
+        "offline-table:gpt-5.5",
+      );
+      // 60m · fanout 3 · deep · combined 20 → $18.00
+      expect(preview.getAttribute("data-recommended-usd")).toBe("18");
+    });
   });
 
   it("mounts budget projection panel before create (cs)", () => {
