@@ -1,0 +1,20 @@
+# inventory-acm · collective Open Write twin_seed has-body honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: acm
+date: 2026-07-10
+tip_before: e8bbc011 (acl)
+
+## Problem
+Collective Open Write dual handoff lacked data-write-seed-has-body (parity
+spawn merge acl / MO ack / marketplace acf).
+
+## Fix
+- collective-open-write data-write-seed-has-body from merge HTML plain text
+- CollectiveResearchPanel qe + written analysis tests lock has-body true
+
+## Verified
+vitest Collective qe + written analysis draft → 2 passed
+scratch: residual-acm-tests.log
+
+## Not in scope
+- Operator merge PR #465 (gated)

@@ -686,11 +686,12 @@ describe("CollectiveResearchPanel", () => {
     });
     expect(screen.getByTestId("collective-auto-open-window")).toBeTruthy();
     expect(screen.getByTestId("collective-open-analysis-window")).toBeTruthy();
-    // Residual (fn/qe): Write dual handoff for analysis draft document.
+    // Residual (fn/qe/acm): Write dual handoff for analysis draft document.
     const write = screen.getByTestId("collective-open-write");
     expect(write.getAttribute("href") || "").toMatch(/html_draft=draft_analysis_1/);
     expect(write.getAttribute("href") || "").toMatch(/twin_seed=antiek\.twin_write_seed\./);
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
+    expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
   });
 
   it("links dual-gate L1–L4 checklist for L6 collective prep (nl)", () => {
@@ -1036,10 +1037,13 @@ describe("CollectiveResearchPanel", () => {
     await waitFor(() => {
       expect(screen.getByTestId("collective-open-write")).toBeTruthy();
     });
-    const href = screen.getByTestId("collective-open-write").getAttribute("href") || "";
+    const write = screen.getByTestId("collective-open-write");
+    const href = write.getAttribute("href") || "";
     expect(href).toMatch(/html_draft=draft_col_qe/);
     expect(href).toMatch(/twin_seed=antiek\.twin_write_seed\./);
-    expect(screen.getByTestId("collective-open-write").getAttribute("data-has-twin-seed")).toBe("1");
+    expect(write.getAttribute("data-has-twin-seed")).toBe("1");
+    // Residual (acm): twin_seed body honesty (parity spawn merge acl).
+    expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
   });
 
 

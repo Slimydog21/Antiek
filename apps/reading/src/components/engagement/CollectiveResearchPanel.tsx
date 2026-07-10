@@ -87,7 +87,10 @@ import {
   type ResearchLaunchTier,
 } from "./ResearchLaunchBudgetPanel";
 import { openMergedResearchWindow } from "./SpawnMergePanel";
-import { buildMergedDocWriteHref } from "../../workspace/twinWriteSeed";
+import {
+  buildMergedDocWriteHref,
+  plainTextFromHtml,
+} from "../../workspace/twinWriteSeed";
 
 /** Residual (tr): pure HTML body for cohesive unit prompt (no invented doc id). */
 export function buildCollectiveUnitPromptHtml(opts: {
@@ -1284,6 +1287,13 @@ export function CollectiveResearchPanel({
                 data-testid="collective-open-write"
                 data-view-format="html"
                 data-has-twin-seed="1"
+                // Residual (acm): body honesty on twin_seed (parity spawn merge acl).
+                data-write-seed-has-body={String(
+                  Boolean(
+                    docMerge.view_format === "html" &&
+                      plainTextFromHtml(docMerge.html || "").trim(),
+                  ),
+                )}
                 className="underline"
                 title="Open Write with collective HTML merge + twin_seed (seeds note-taker when empty)"
               >

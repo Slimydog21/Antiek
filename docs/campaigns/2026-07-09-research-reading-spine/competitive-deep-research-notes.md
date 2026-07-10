@@ -2142,3 +2142,8 @@ Spawn merge Open Write stamps data-write-seed-has-body (parity marketplace acf /
 MO ack). Competitive delta: highlight → float DR → merge → Write body honesty
 is machine-readable end-to-end.
 
+## Residual acm · 2026-07-10 — collective Open Write twin_seed has-body honesty
+Collective Open Write stamps data-write-seed-has-body (parity spawn merge acl /
+MO ack / marketplace acf). Competitive delta: multi-spawn collective → Write
+body honesty is machine-readable end-to-end.
+
