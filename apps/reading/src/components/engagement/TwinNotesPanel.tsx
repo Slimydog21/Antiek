@@ -100,10 +100,13 @@ export type TwinChaseNote = {
 /**
  * Residual (mz): pure helper — build selection_text + goal_hint for floating
  * deep research from multi-selected twin notes (questions preferred first).
+ * Residual (aoc): optional domainSubjects append domain-aware chase context
+ * to goal_hint when free PD / STEM hosts pass subjects (never invent domains).
  */
 export function buildTwinChasePayload(
   notes: TwinChaseNote[],
   assetId: string,
+  domainSubjects?: readonly string[] | null,
 ): { selection_text: string; goal_hint: string; note_ids: string[] } {
   const ordered = [...notes].sort((a, b) => {
     // Prefer questions (chase open questions) then insights then other.
@@ -123,10 +126,20 @@ export function buildTwinChasePayload(
     note_ids.length <= 4
       ? note_ids.join(",")
       : `${note_ids.slice(0, 4).join(",")},+${note_ids.length - 4}`;
+  // Residual (aoc): domain-aware chase context when host supplies subjects.
+  const domains = (domainSubjects || [])
+    .map((s) => String(s || "").trim().toLowerCase())
+    .filter(Boolean);
+  const uniqueDomains = [...new Set(domains)];
+  const domainClause =
+    uniqueDomains.length > 0
+      ? ` · research_domains=${uniqueDomains.join(",")}`
+      : "";
   const goal_hint =
     `Twin chase on ${assetId.trim() || "asset"}: ` +
     `${ordered.length} note(s) (questions=${qCount}, insights=${iCount})` +
-    (idsPreview ? ` · note_ids=${idsPreview}` : "");
+    (idsPreview ? ` · note_ids=${idsPreview}` : "") +
+    domainClause;
   return { selection_text, goal_hint, note_ids };
 }
 
@@ -932,7 +945,11 @@ export function TwinNotesPanel({
       setError(null);
       setChaseStatus(null);
       try {
-        const payload = buildTwinChasePayload(selectedNotes, assetId);
+        const payload = buildTwinChasePayload(
+          selectedNotes,
+          assetId,
+          domainSubjects,
+        );
         if (!payload.selection_text.trim()) {
           throw new Error("Selected twin notes have empty text");
         }
@@ -991,6 +1008,7 @@ export function TwinNotesPanel({
       chaseBudgetWarn,
       chaseForceBudget,
       chaseTier,
+      domainSubjects,
       selectedNotes,
     ],
   );

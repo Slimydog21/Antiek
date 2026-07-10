@@ -186,6 +186,41 @@ describe("buildTwinChasePayload (mz/ni)", () => {
     expect(payload.goal_hint).toMatch(/note_ids=/);
     expect(payload.goal_hint).toMatch(/\+2/);
   });
+
+  it("appends research_domains when domainSubjects provided (aoc)", () => {
+    const payload = buildTwinChasePayload(
+      [{ note_id: "q1", kind: "question", text: "Why heat?" }],
+      "pd-fourier",
+      ["Heat", "signal_processing", "heat", "  ", ""],
+    );
+    expect(payload.goal_hint).toMatch(/Twin chase on pd-fourier/);
+    expect(payload.goal_hint).toMatch(
+      /research_domains=heat,signal_processing/,
+    );
+    // Dedupe + lower-case; empty trimmed out; order first-seen.
+    expect(payload.goal_hint).not.toMatch(/Heat/);
+    expect(payload.goal_hint.match(/heat/g)?.length).toBe(1);
+  });
+
+  it("omits research_domains when domainSubjects absent or empty (aoc)", () => {
+    const bare = buildTwinChasePayload(
+      [{ note_id: "q1", kind: "question", text: "Q" }],
+      "paper",
+    );
+    expect(bare.goal_hint).not.toMatch(/research_domains=/);
+    const empty = buildTwinChasePayload(
+      [{ note_id: "q1", kind: "question", text: "Q" }],
+      "paper",
+      [],
+    );
+    expect(empty.goal_hint).not.toMatch(/research_domains=/);
+    const nullish = buildTwinChasePayload(
+      [{ note_id: "q1", kind: "question", text: "Q" }],
+      "paper",
+      null,
+    );
+    expect(nullish.goal_hint).not.toMatch(/research_domains=/);
+  });
 });
 
 describe("TwinNotesPanel", () => {
@@ -1245,6 +1280,66 @@ describe("TwinNotesPanel", () => {
         .getByTestId("twin-selection-count")
         .getAttribute("data-selected-count"),
     ).toBe("0");
+  });
+
+  it("passes domain-aware research_domains into twin chase goal_hint (aoc)", async () => {
+    fetchTwinNotes.mockResolvedValue({
+      asset_id: "pd-fourier",
+      notes: [
+        {
+          note_id: "twin_q",
+          kind: "question",
+          text: "How does heat conduction map?",
+        },
+      ],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+      html: "<p>twins</p>",
+    });
+    launchFloatingDeepResearch.mockResolvedValue({
+      session_id: "sess_domain",
+      spawn_id: "spn_domain",
+      investigation_id: "inv_domain",
+      parent_asset_id: "pd-fourier",
+      window_id: "win_domain",
+      view_format: "html",
+      view_mode: "floating",
+      status: "reserved",
+      model_id: "model-b",
+      research_tier: "standard",
+      usage_event: {
+        task_class: "synthesize",
+        outcome: "worked",
+        source: "twin_chase",
+        prompt_hint: "Twin chase on pd-fourier",
+      },
+    });
+    render(
+      <TwinNotesPanel
+        assetId="pd-fourier"
+        autoLoad
+        researchTier="standard"
+        domainSubjects={["heat", "signal_processing"]}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-select-twin_q")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("twin-select-twin_q"));
+    fireEvent.click(screen.getByTestId("twin-chase-selected"));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "pd-fourier",
+          view_mode: "floating",
+          goal_hint: expect.stringMatching(
+            /research_domains=heat,signal_processing/,
+          ),
+        }),
+      );
+    });
   });
 
   it("chases selected twins in full window mode (mz)", async () => {

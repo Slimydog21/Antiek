@@ -3608,3 +3608,8 @@ P0 operator merge PR #465. Pivot aob+ outside thrash.
 Highlight DR root stamps HTML-first · document-id · research-tier · seamless-research-this
 (parity TalkToBook aoa · MetaReading anz · reading conversation HTML identity).
 vitest ResearchThis 13 green. P0 operator merge PR #465. Pivot aoc+ outside thrash.
+
+## Residual aoc · 2026-07-10 — Twin chase domain-aware goal_hint
+buildTwinChasePayload + chaseSelected append research_domains= from host domainSubjects
+(lower-case dedupe; never invent). Marketplace free STEM hosts already pass subjects.
+vitest TwinNotesPanel 34 green. P0 operator merge PR #465. Pivot aod+ outside thrash.
