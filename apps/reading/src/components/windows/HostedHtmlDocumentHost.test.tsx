@@ -845,6 +845,21 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(launch.getAttribute("data-research-domains")).toBe(
       "heat,signal_processing",
     );
+    // Residual (aoq): deep research buttons stamp domain-aware foresight.
+    expect(
+      screen
+        .getByTestId("hosted-html-deep-research")
+        .getAttribute("data-domain-aware-dr"),
+    ).toBe("true");
+    expect(
+      screen
+        .getByTestId("hosted-html-deep-research")
+        .getAttribute("data-research-domains"),
+    ).toBe("heat,signal_processing");
+    expect(
+      screen.getByTestId("hosted-html-deep-research").getAttribute("title") ||
+        "",
+    ).toMatch(/research_domains=heat,signal_processing/);
     fireEvent.click(screen.getByTestId("hosted-html-deep-research"));
     await waitFor(() => {
       expect(launchFloatingDeepResearch).toHaveBeenCalledWith(

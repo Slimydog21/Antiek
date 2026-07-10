@@ -941,8 +941,19 @@ export default function HostedHtmlDocumentHost(
               type="button"
               className="rounded border border-ink/20 px-3 py-1.5 text-xs font-mono dark:border-bright/20"
               data-testid="hosted-html-deep-research"
+              data-research-domains={
+                normalizeDomainSubjects(props.subjects).join(",") || ""
+              }
+              data-domain-aware-dr={String(
+                normalizeDomainSubjects(props.subjects).length > 0,
+              )}
               disabled={busy || (budgetWarn && !forceOverBudget)}
               onClick={() => void spinDeepResearch("floating")}
+              title={
+                normalizeDomainSubjects(props.subjects).length > 0
+                  ? `Deep research hosted HTML (floating) · research_domains=${normalizeDomainSubjects(props.subjects).join(",")}`
+                  : "Deep research hosted HTML (floating window)"
+              }
             >
               {busy
                 ? "Opening…"
@@ -950,14 +961,24 @@ export default function HostedHtmlDocumentHost(
                   ? "Deep research highlight (window)"
                   : "Deep research (window)"}
             </button>
-            {/* Residual (es): full window over the working region. */}
+            {/* Residual (es/aoq): full window over the working region · domain stamps. */}
             <button
               type="button"
               className="rounded border border-ink/20 px-3 py-1.5 text-xs font-mono dark:border-bright/20"
               data-testid="hosted-html-deep-research-full"
+              data-research-domains={
+                normalizeDomainSubjects(props.subjects).join(",") || ""
+              }
+              data-domain-aware-dr={String(
+                normalizeDomainSubjects(props.subjects).length > 0,
+              )}
               disabled={busy || (budgetWarn && !forceOverBudget)}
               onClick={() => void spinDeepResearch("full")}
-              title="Open deep research expanded to full working region"
+              title={
+                normalizeDomainSubjects(props.subjects).length > 0
+                  ? `Open deep research full working region · research_domains=${normalizeDomainSubjects(props.subjects).join(",")}`
+                  : "Open deep research expanded to full working region"
+              }
             >
               {busy ? "Opening…" : "Deep research (full)"}
             </button>

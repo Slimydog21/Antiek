@@ -3668,3 +3668,7 @@ when domainSubjects set (operator foresight before fire). P0 PR #465. Pivot aop+
 ## Residual aop · 2026-07-10 — Match fan-out to goals (operator click)
 When goals > fanout, explicit Match fan-out to goals button (never auto).
 Completes aoh soft-hint with actionable control. P0 PR #465. Pivot aoq+.
+
+## Residual aoq · 2026-07-10 — HostedHtml DR button domain stamps
+Floating/full deep research buttons stamp data-research-domains + titles (parity twin aoo).
+P0 PR #465. Pivot aor+ outside domain title thrash.
