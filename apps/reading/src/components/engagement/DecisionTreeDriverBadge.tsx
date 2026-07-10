@@ -263,6 +263,15 @@ export function DecisionTreeDriverBadge({
         >
           Dual-gate L7 ND advisory
         </a>
+        {/* Residual (aje): shared driver chokepoint → competitive DR honesty map. */}
+        <a
+          href="/settings#settings-competitive-dr-scorecard"
+          data-testid="decision-tree-competitive-scorecard-link"
+          className="underline opacity-80 hover:opacity-100"
+          title="Settings competitive deep-research scorecard (model choice · ND never router · shipped vs deferred)"
+        >
+          Competitive DR scorecard
+        </a>
       </div>
 
       {/* Residual (ku): depth posture next to model driver (advisory). */}

@@ -200,6 +200,22 @@ describe("DecisionTreeDriverBadge residual cw/eq", () => {
     expect(dual.getAttribute("data-l7-notdiamond")).toBe("advisory_only");
   });
 
+  it("links competitive DR scorecard from driver chokepoint (aje)", async () => {
+    render(<DecisionTreeDriverBadge />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("decision-tree-competitive-scorecard-link"),
+      ).toBeTruthy();
+    });
+    const scorecard = screen.getByTestId(
+      "decision-tree-competitive-scorecard-link",
+    );
+    expect(scorecard.getAttribute("href")).toBe(
+      "/settings#settings-competitive-dr-scorecard",
+    );
+    expect(scorecard.textContent).toMatch(/competitive DR scorecard/i);
+  });
+
   it("links to Settings for driver install and budget (fj)", async () => {
     fetchDecisionTreeSelection.mockResolvedValue({
       model_id: null,

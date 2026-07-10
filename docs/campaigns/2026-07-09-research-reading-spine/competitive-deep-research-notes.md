@@ -2965,3 +2965,8 @@ PublicationAttach 6 green. P0 operator merge PR #465. Pivot ajd+ outside thrash.
 ## Residual ajd · 2026-07-10 — SessionFlywheel competitive DR scorecard deep-links
 Session land / Antiek-bench usage flywheel navigates Settings competitive DR scorecard +
 FUTURE brief. vitest SessionFlywheel 6 green. P0 operator merge PR #465. Pivot aje+.
+
+## Residual aje · 2026-07-10 — DecisionTreeDriverBadge competitive DR scorecard deep-link
+Shared model driver + budget chokepoint navigates competitive DR scorecard
+(ND never router honesty at model choice). vitest DecisionTreeDriverBadge 13 green.
+P0 operator merge PR #465. Pivot ajf+ outside scorecard thrash.
