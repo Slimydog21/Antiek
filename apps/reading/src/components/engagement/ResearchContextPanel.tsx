@@ -31,6 +31,8 @@
  * hydrate-open-ready · source=publication_hydrate · offline-honest (parity atv).
  * Residual (aty): pure contextSearchOpenReadiness · publicationHydrateOpenReadiness
  * drive open stamps (parity ate/atm pure helpers · never invent HTML open).
+ * Residual (aua): pure evidencePackOpenReadiness drives evidence open stamps
+ * (citation-trust · never invent HTML open · parity aty).
  * Residual (tq): context_search float/full carries search_query + search_hit_count
  * into HostedHtmlDocumentHost honesty chrome.
  * Residual (api): competitive citation hop pipeline completeness
@@ -122,6 +124,7 @@ import {
 import { twinSubstrateReadiness } from "../../workspace/twinSubstrateReadiness";
 import { contextSearchOpenReadiness } from "../../workspace/contextSearchOpenReadiness";
 import { publicationHydrateOpenReadiness } from "../../workspace/publicationHydrateOpenReadiness";
+import { evidencePackOpenReadiness } from "../../workspace/evidencePackOpenReadiness";
 
 export type ResearchContextPanelProps = {
   assetId: string;
@@ -1287,24 +1290,33 @@ export function ResearchContextPanel({
               </p>
             </div>
           )}
-          {/* Residual (sf/sg/atu): evidence pack → float|full HTML reading windows
-              with html-first · evidence-open-ready · citation-trust stamps. */}
-          {evidence.html?.trim() ? (
+          {/* Residual (sf/sg/atu/aua): evidence pack → float|full HTML reading windows
+              driven by evidencePackOpenReadiness pure helper. */}
+          {(() => {
+            const evidenceOpen = evidencePackOpenReadiness({
+              html: evidence.html,
+              ref_count: evidence.ref_count,
+              has_insight_text: (evidence.insights || []).some((x) =>
+                Boolean(String(x || "").trim()),
+              ),
+              has_question_text: (evidence.questions || []).some((x) =>
+                Boolean(String(x || "").trim()),
+              ),
+            });
+            return evidenceOpen.open_ready ? (
             <p className="meta font-mono text-[11px] space-x-3">
               <button
                 type="button"
                 data-testid="evidence-pack-open-float"
                 data-view-format="html"
-                data-html-first="true"
+                data-html-first={String(evidenceOpen.html_first)}
                 data-window-mode="floating"
-                data-ref-count={String(evidence.ref_count ?? 0)}
-                data-evidence-open-ready="true"
-                data-source="evidence_pack"
-                data-citation-trust={
-                  (evidence.ref_count ?? 0) > 0 ? "grounded" : "ungrounded"
-                }
+                data-ref-count={String(evidenceOpen.ref_count)}
+                data-evidence-open-ready={String(evidenceOpen.open_ready)}
+                data-source={evidenceOpen.source}
+                data-citation-trust={evidenceOpen.citation_trust}
                 className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
-                title="Open evidence pack as floating HTML window (citation trust · multi-hop · never PDF)"
+                title={evidenceOpen.open_title}
                 onClick={() => {
                   const stem = String(evidence.asset_id || assetId).trim() || "asset";
                   const id = `evidence:${stem}:${Date.now().toString(36)}`;
@@ -1332,16 +1344,14 @@ export function ResearchContextPanel({
                 type="button"
                 data-testid="evidence-pack-open-full"
                 data-view-format="html"
-                data-html-first="true"
+                data-html-first={String(evidenceOpen.html_first)}
                 data-window-mode="full"
-                data-ref-count={String(evidence.ref_count ?? 0)}
-                data-evidence-open-ready="true"
-                data-source="evidence_pack"
-                data-citation-trust={
-                  (evidence.ref_count ?? 0) > 0 ? "grounded" : "ungrounded"
-                }
+                data-ref-count={String(evidenceOpen.ref_count)}
+                data-evidence-open-ready={String(evidenceOpen.open_ready)}
+                data-source={evidenceOpen.source}
+                data-citation-trust={evidenceOpen.citation_trust}
                 className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
-                title="Open evidence pack as full working-region HTML window (citation trust · multi-hop · never PDF)"
+                title={evidenceOpen.open_title}
                 onClick={() => {
                   const stem = String(evidence.asset_id || assetId).trim() || "asset";
                   const id = `evidence:${stem}:full:${Date.now().toString(36)}`;
@@ -1366,9 +1376,20 @@ export function ResearchContextPanel({
                 Open full (evidence HTML)
               </button>
             </p>
-          ) : null}
-          {/* Residual (rb/acr/aet): evidence pack → Write + citation-trust path. */}
+            ) : null;
+          })()}
+          {/* Residual (rb/acr/aet/aua): evidence pack → Write via pure readiness. */}
           {(() => {
+            const evidenceOpen = evidencePackOpenReadiness({
+              html: evidence.html,
+              ref_count: evidence.ref_count,
+              has_insight_text: (evidence.insights || []).some((x) =>
+                Boolean(String(x || "").trim()),
+              ),
+              has_question_text: (evidence.questions || []).some((x) =>
+                Boolean(String(x || "").trim()),
+              ),
+            });
             const href = buildEvidencePackWriteHref({
               assetId: evidence.asset_id || assetId,
               spawnId: evidence.spawn_id || spawnId,
@@ -1378,33 +1399,22 @@ export function ResearchContextPanel({
               html: evidence.html,
               researchTier: evidence.research_tier,
             });
-            const insightBody = (evidence.insights || []).some((x) =>
-              Boolean(String(x || "").trim()),
-            );
-            const questionBody = (evidence.questions || []).some((x) =>
-              Boolean(String(x || "").trim()),
-            );
-            const hasBody = Boolean(
-              insightBody ||
-                questionBody ||
-                plainTextFromHtml(evidence.html || "").trim(),
-            );
+            const hasBody = evidenceOpen.write_ready;
             const evAsset = String(evidence.asset_id || assetId || "").trim();
             const evSpawn = String(evidence.spawn_id || spawnId || "").trim();
-            const citationTrust =
-              (evidence.ref_count ?? 0) > 0 ? "grounded" : "ungrounded";
+            const citationTrust = evidenceOpen.citation_trust;
             return href ? (
               <p className="meta font-mono text-[11px]">
                 <a
                   href={href}
                   data-testid="evidence-pack-open-write"
                   data-view-format="html"
-                  data-html-first="true"
+                  data-html-first={String(evidenceOpen.html_first)}
                   data-has-twin-seed="1"
-                  data-ref-count={String(evidence.ref_count ?? 0)}
+                  data-ref-count={String(evidenceOpen.ref_count)}
                   data-write-seed-has-body={String(hasBody)}
-                  data-evidence-open-ready={String(hasBody)}
-                  data-source="evidence_pack"
+                  data-evidence-open-ready={String(evidenceOpen.write_ready)}
+                  data-source={evidenceOpen.source}
                   // Residual (aet): citation-trust evidence → Write path honesty.
                   data-asset-id={evAsset}
                   data-spawn-id={evSpawn}
