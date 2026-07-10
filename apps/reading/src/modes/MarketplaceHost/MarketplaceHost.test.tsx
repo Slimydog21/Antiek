@@ -406,7 +406,7 @@ describe("MarketplaceHost mode", () => {
     await waitFor(() => {
       expect(screen.getByText("Pride and Prejudice")).toBeTruthy();
     });
-    // Residual (aph): free Host into account stamps HTML-first seamless port.
+    // Residual (aph/arw): free Host into account stamps HTML-first seamless port · CTA gated by freeHostReadiness.
     const freeHost = screen.getByTestId("free-host-pd-pride");
     expect(freeHost.getAttribute("data-html-first")).toBe("true");
     expect(freeHost.getAttribute("data-view-format")).toBe("html");
@@ -414,6 +414,10 @@ describe("MarketplaceHost mode", () => {
     expect(freeHost.getAttribute("data-is-free")).toBe("true");
     expect(freeHost.getAttribute("data-seamless-port")).toBe("true");
     expect(freeHost.getAttribute("data-live-payment")).toBe("false");
+    expect(freeHost.getAttribute("data-receipt-required")).toBe("false");
+    expect(freeHost.getAttribute("data-never-pdf-view")).toBe("true");
+    expect(freeHost.getAttribute("data-host-ready")).toBe("true");
+    expect((freeHost as HTMLButtonElement).disabled).toBe(false);
     expect(freeHost.getAttribute("title") || "").toMatch(/never PDF/i);
     // Residual (il/io): HTML-first catalog honesty + by_source.
     const catMetrics = screen.getByTestId("marketplace-catalog-metrics");
@@ -1119,7 +1123,7 @@ describe("MarketplaceHost mode", () => {
     expect(readiness.textContent).toMatch(/never invent charge/i);
     expect(purchaseBtn.getAttribute("data-receipt-ready")).toBe("true");
     expect(purchaseBtn.getAttribute("data-receipt-demo-default")).toBe("true");
-    // Residual (apg/aru): free-host readiness chrome via pure helper (HTML path).
+    // Residual (apg/aru/arw): free-host readiness chrome via pure helper + CTA gate (HTML path).
     const freeReady = screen.getByTestId("marketplace-free-host-readiness");
     expect(freeReady.getAttribute("data-html-first")).toBe("true");
     expect(freeReady.getAttribute("data-view-format")).toBe("html");
@@ -1132,6 +1136,18 @@ describe("MarketplaceHost mode", () => {
     );
     expect(freeReady.textContent).toMatch(/Free HTML host path/i);
     expect(freeReady.textContent).toMatch(/never PDF/i);
+    // Residual (arw): free-host CTA stamps host_ready parity with readiness chrome (no free rows → no buttons).
+    const freeHostButtons = screen.queryAllByTestId(/^free-host-/);
+    for (const btn of freeHostButtons) {
+      expect(btn.getAttribute("data-host-ready")).toBe(
+        freeReady.getAttribute("data-host-ready"),
+      );
+      expect(btn.getAttribute("data-receipt-required")).toBe("false");
+      expect(btn.getAttribute("data-never-pdf-view")).toBe("true");
+      if (freeReady.getAttribute("data-host-ready") === "false") {
+        expect((btn as HTMLButtonElement).disabled).toBe(true);
+      }
+    }
     // Clear receipt → not ready (purchase disabled).
     fireEvent.change(screen.getByTestId("purchase-receipt-ref"), {
       target: { value: "" },

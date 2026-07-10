@@ -1611,9 +1611,16 @@ export default function MarketplaceHost({
                 data-license-class={e.license_class || ""}
                 data-live-payment="false"
                 data-seamless-port="true"
-                disabled={busy}
+                data-receipt-required="false"
+                data-host-ready={String(freeHostReadiness.host_ready)}
+                data-never-pdf-view={String(freeHostReadiness.never_pdf_view)}
+                disabled={busy || !freeHostReadiness.host_ready}
                 onClick={() => void onHost(e.book_id)}
-                title="Host free HTML book into account (never PDF · no receipt · seamless port)"
+                title={
+                  freeHostReadiness.host_ready
+                    ? "Host free HTML book into account (never PDF · no receipt · seamless port)"
+                    : "No free books visible under current filters · free Host gated · never PDF · no receipt"
+                }
               >
                 Host into account
               </button>

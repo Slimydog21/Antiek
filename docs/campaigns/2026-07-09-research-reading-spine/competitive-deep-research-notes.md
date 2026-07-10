@@ -4088,3 +4088,10 @@ P0 PR #465. Pivot arv+ outside thrash.
 ## Residual arv · 2026-07-10 — SESSION-ARC arq–aru twin + marketplace readiness
 Multi-agent handoff for twin substrate readiness · L5 receipt · free-host pure
 helpers. P0 PR #465. Pivot arw+ outside thrash.
+
+## Residual arw · 2026-07-10 — free-host CTA gated by freeHostReadiness
+free-host-* buttons: disabled when !host_ready · data-host-ready ·
+data-receipt-required=false · data-never-pdf-view · title honesty.
+Parity purchase-host receipt gate. Competitive delta: free HTML host path is
+hard-to-vary pure contract end-to-end (readiness → CTA), never invent free.
+vitest 47 green. P0 PR #465. Pivot arx+ outside thrash.
