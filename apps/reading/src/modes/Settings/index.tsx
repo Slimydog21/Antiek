@@ -4323,7 +4323,17 @@ export default function Settings() {
               </li>
               <li data-status="shipped" data-testid="competitive-dr-citation-trust">
                 Citation-trust / evidence pack / citation chain (aij) · multi-hop
-                hop navigation (air) — <strong>shipped offline</strong>
+                hop navigation (air) · citation hop pipeline completeness
+                insights→questions→sources (api) —{" "}
+                <strong>shipped offline</strong>
+              </li>
+              <li
+                data-status="shipped"
+                data-testid="competitive-dr-stage-pipeline"
+              >
+                Competitive multi-stage DR pipeline plan→gather→synthesize→cite→terminal
+                (ape) · progress × hop-nav (apn) —{" "}
+                <strong>shipped offline</strong>
               </li>
               <li data-status="shipped" data-testid="competitive-dr-budget-before-fire">
                 Budget-before-fire · pub-ref foresight chrome · launch budget

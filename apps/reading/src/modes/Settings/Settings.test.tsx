@@ -919,6 +919,18 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(scorecard.getAttribute("data-view-format")).toBe("html");
     expect(scorecard.getAttribute("data-html-first")).toBe("true");
     expect(scorecard.getAttribute("data-propose-not-promote")).toBe("true");
+    // Residual (apr): citation hop pipeline (api) + multi-stage pipeline (ape) honesty.
+    const citationTrust = screen.getByTestId("competitive-dr-citation-trust");
+    expect(citationTrust.getAttribute("data-status")).toBe("shipped");
+    expect(citationTrust.textContent).toMatch(
+      /citation hop pipeline completeness/i,
+    );
+    expect(citationTrust.textContent).toMatch(/insights.*questions.*sources/i);
+    const stagePipe = screen.getByTestId("competitive-dr-stage-pipeline");
+    expect(stagePipe.getAttribute("data-status")).toBe("shipped");
+    expect(stagePipe.textContent).toMatch(
+      /plan.*gather.*synthesize.*cite.*terminal/i,
+    );
     expect(
       screen.getByTestId("competitive-dr-budget-before-fire").getAttribute("data-status"),
     ).toBe("shipped");

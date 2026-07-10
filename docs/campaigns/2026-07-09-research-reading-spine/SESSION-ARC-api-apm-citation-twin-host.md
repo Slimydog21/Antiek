@@ -19,3 +19,4 @@ one residual/cycle · campaign push only · operator merges PR #465.
 | **apo** | HostedHtml evidence hop pipeline completeness honesty | float path for api hop pipeline |
 | **app** | spawn_merge + collective written analysis twin seed honesty | multi-agent analysis float path |
 | **apq** | research_context_pack twin seed path honesty | prompt substrate float |
+| **apr** | Settings scorecard hop pipeline + stage pipeline honesty | operator-visible ape/api map |

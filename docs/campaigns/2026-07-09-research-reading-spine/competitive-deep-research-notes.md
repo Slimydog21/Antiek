@@ -3798,3 +3798,8 @@ marketplace/MO paths (apk–apm · apj). vitest HostedHtml 36 green. P0 PR #465.
 Context pack float: Port path + honesty (prompt_block substrate · feeds next DR turn ·
 L3 live twin seed deferred). Completes recursive context flywheel float path.
 vitest HostedHtml 37 green. P0 PR #465. Pivot apr+ outside HostedHtml twin-seed thrash.
+
+## Residual apr · 2026-07-10 — Settings scorecard hop pipeline + stage pipeline honesty
+competitive-dr-citation-trust names api hop pipeline; new competitive-dr-stage-pipeline
+row for ape multi-stage + apn nav. Operator-visible world-class DR map tip-true.
+vitest Settings scorecard path green. P0 PR #465. Pivot aps+ outside thrash.
