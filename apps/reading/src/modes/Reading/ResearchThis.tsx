@@ -241,6 +241,9 @@ export default function ResearchThis({
       data-research-tier={researchTier}
       data-seamless-research-this="true"
       data-depth-prefill={depthPrefill}
+      data-soft-budget="true"
+      data-budget-before-fire="true"
+      data-never-auto-route="true"
     >
       {/* Residual (aps): competitive DR map on highlight research path. */}
       <p
@@ -274,6 +277,40 @@ export default function ResearchThis({
           data-testid="research-this-competitive-pipeline-hint"
         >
           hops insights→questions→sources · stages plan→terminal
+        </span>
+      </p>
+      {/* Residual (aqq): soft-budget honesty nav on highlight DR (parity MO/marketplace). */}
+      <p
+        className="text-[10px] font-mono flex flex-wrap gap-x-3 gap-y-1 max-w-md opacity-90"
+        data-testid="research-this-honesty-nav"
+        data-view-format="html"
+        data-soft-budget="true"
+        data-budget-before-fire="true"
+        data-never-auto-route="true"
+        role="navigation"
+        aria-label="Highlight research budget and model honesty navigation"
+      >
+        <a
+          href="/settings#prompt-cost-projection"
+          data-testid="research-this-prompt-cost-honesty-link"
+          className="underline opacity-90 hover:opacity-100"
+          title="Settings prompt-cost projection (soft budget foresight before float DR)"
+        >
+          Prompt-cost projection
+        </a>
+        <a
+          href="/settings#decision-tree-panel"
+          data-testid="research-this-decision-tree-honesty-link"
+          className="underline opacity-90 hover:opacity-100"
+          title="Settings decision-tree driver (manual model choice · never auto-route)"
+        >
+          Decision-tree driver
+        </a>
+        <span
+          className="opacity-70"
+          data-testid="research-this-soft-budget-hint"
+        >
+          soft budget · budget-before-fire · never auto-route
         </span>
       </p>
       <div

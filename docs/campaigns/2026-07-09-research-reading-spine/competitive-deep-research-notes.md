@@ -3921,3 +3921,7 @@ matrix aqj–aqo (+ MO aqn). vitest Settings ND green. P0 PR #465. Pivot aqp+ ou
 Marketplace host stamps HTML-first · soft-budget · L5 deferred · never-auto-route
 + honesty nav to prompt-cost · decision-tree · ND (parity MO aqn). vitest MarketplaceHost
 43 green. P0 PR #465. Pivot aqq+ outside thrash.
+
+## Residual aqq · 2026-07-10 — ResearchThis soft-budget honesty + model deep-links
+Highlight DR stamps soft-budget · budget-before-fire · never-auto-route + honesty nav
+to prompt-cost · decision-tree. vitest ResearchThis 13 green. P0 PR #465. Pivot aqr+.

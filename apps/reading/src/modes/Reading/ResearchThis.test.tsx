@@ -419,6 +419,25 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
     expect(root.getAttribute("data-document-id")).toBe("doc-1");
     expect(root.getAttribute("data-seamless-research-this")).toBe("true");
     expect(root.getAttribute("data-research-tier")).toMatch(/deep|fast|wrestle/);
+    // Residual (aqq): soft budget · budget-before-fire · never auto-route.
+    expect(root.getAttribute("data-soft-budget")).toBe("true");
+    expect(root.getAttribute("data-budget-before-fire")).toBe("true");
+    expect(root.getAttribute("data-never-auto-route")).toBe("true");
+    const honesty = screen.getByTestId("research-this-honesty-nav");
+    expect(honesty.getAttribute("data-soft-budget")).toBe("true");
+    expect(
+      screen
+        .getByTestId("research-this-prompt-cost-honesty-link")
+        .getAttribute("href"),
+    ).toBe("/settings#prompt-cost-projection");
+    expect(
+      screen
+        .getByTestId("research-this-decision-tree-honesty-link")
+        .getAttribute("href"),
+    ).toBe("/settings#decision-tree-panel");
+    expect(
+      screen.getByTestId("research-this-soft-budget-hint").textContent,
+    ).toMatch(/soft budget/i);
     // Residual (aps): competitive DR scorecard + hop/stage pipeline honesty.
     const competitive = screen.getByTestId("research-this-competitive-links");
     expect(competitive.getAttribute("data-html-first")).toBe("true");
