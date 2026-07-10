@@ -1,0 +1,18 @@
+# inventory-auk · SESSION-ARC auh–auj knowledge · MO wire · pure catalog
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: auk
+date: 2026-07-10
+parent_tip: 889ce8f8a (auj)
+
+## Closed
+- SESSION-ARC-auh-auj-knowledge-moil-wire.md wave handoff
+- Documents att–auj infinite session product for future agents
+
+## Doctrine
+Wave handoff · complete work never complete goal
+
+## Next
+aul+ offline product residual outside thrash
+HARD AVOID: listed thrash (presets · MO fit · pure-open · open-stamp · catalog · scorecard)
+Prefer: model non-budget · twin/collective · competitive product residual
+Operator merge PR #465 remains P0 (gated)
