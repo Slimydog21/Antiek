@@ -575,6 +575,9 @@ describe("MarketplaceHost mode", () => {
     await waitFor(() => {
       expect(screen.getByTestId("library-doc-hdoc_old")).toBeTruthy();
     });
+    // Residual (aci): before rehydrate, library Open Write is title-only twin seed.
+    const writeBefore = screen.getByTestId("library-open-write-hdoc_old");
+    expect(writeBefore.getAttribute("data-write-seed-has-body")).toBe("false");
     openWindow.mockClear();
     fireEvent.click(screen.getByTestId("library-open-hdoc_old"));
     await waitFor(() => {

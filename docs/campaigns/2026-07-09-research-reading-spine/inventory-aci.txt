@@ -1,0 +1,20 @@
+# inventory-aci · library Open Write title-only before rehydrate honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aci
+date: 2026-07-10
+tip_before: c59618b8 (ach)
+
+## Problem
+data-write-seed-has-body was only proven true after host/rehydrate; title-only
+pre-rehydrate path needed honesty lock so operators know twin seed lacks body.
+
+## Fix
+- test: library Open Write data-write-seed-has-body=false before rehydrate open
+- closes acf/acg matrix: false → open rehydrate → true + twin seed
+
+## Verified
+vitest loads account library on mount → passed
+scratch: residual-aci-tests.log
+
+## Not in scope
+- Operator merge PR #465 (gated)

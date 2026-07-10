@@ -2122,3 +2122,8 @@ Library rehydrate offline-seeds twin notes (force_offline) so recursive note-tak
 substrate joins library-opened books (parity host/purchase gj). Competitive delta:
 seamless port library → rehydrate → twins → Write is note-taker complete offline.
 
+## Residual aci · 2026-07-10 — library Open Write title-only before rehydrate
+Library Open Write stamps data-write-seed-has-body=false until rehydrate/host
+provides body. Competitive delta: write-seed body honesty matrix complete
+(title-only → rehydrate body → twin seed offline).
+
