@@ -117,7 +117,8 @@ def test_stem_electricity_subjects_and_free_pd() -> None:
         for e in cat.search("")
         if e.license_class == "public_domain" and e.is_free
     ]
-    assert len(free_pd) >= 13
+    # Residual (abh): free PD HTML spine floor after Hooke (abc) ≥17.
+    assert len(free_pd) >= 17
     physics = cat.filter_by_subject("physics")
     assert any(e.book_id == "pd-faraday-electricity" for e in physics)
     assert any(e.book_id == "pd-maxwell-em" for e in physics)

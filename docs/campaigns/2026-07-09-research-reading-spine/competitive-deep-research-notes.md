@@ -1992,3 +1992,7 @@ Marketplace catalog free_count / public_domain_count floor raised to ≥17 after
 Hooke Micrographia free PD HTML. Competitive delta: free STEM catalog non-trivial
 size honesty tracks corpus growth.
 
+## Residual abh · 2026-07-10 — free PD HTML spine floor ≥17
+Offline free_pd catalog spine floor raised to ≥17 free PD HTML hosts after Hooke.
+Competitive delta: free STEM corpus size honesty tracks growth (parity free_count abg).
+
