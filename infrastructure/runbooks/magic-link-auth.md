@@ -110,10 +110,11 @@ session cookie.
 #### Auth probe (staged Layer A/B check)
 
 One command runs health → CORS preflight → `POST /auth/request`
-(dry-run, non-allowlisted email by default) → `GET /auth/me` without
-cookie. Each stage prints one JSON line (`name`, `layer`, `pass`,
-`http_code`, `detail`). Exit `0` all pass, `1` any fail, `2` bad
-`--base-url`.
+(dry-run, non-allowlisted email by default) → public
+`GET /auth/passkey/status` → `GET /auth/me` without cookie. The passkey
+stage proves the route is reachable before login while credential counts stay
+private. Each stage prints one JSON line (`name`, `layer`, `pass`,
+`http_code`, `detail`). Exit `0` all pass, `1` any fail, `2` bad `--base-url`.
 
 ```bash
 python tools/auth_probe.py --base-url https://api.antiek.ai
