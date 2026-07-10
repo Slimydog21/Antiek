@@ -3672,3 +3672,7 @@ Completes aoh soft-hint with actionable control. P0 PR #465. Pivot aoq+.
 ## Residual aoq · 2026-07-10 — HostedHtml DR button domain stamps
 Floating/full deep research buttons stamp data-research-domains + titles (parity twin aoo).
 P0 PR #465. Pivot aor+ outside domain title thrash.
+
+## Residual aor · 2026-07-10 — MO mode multi-goal intro + HTML-first stamps
+midnight-oil-mode multi-goal-swarm · goal-templates · moil-mode-intro · html-first.
+FUTURE remaining vision re-anchored tip aor. vitest MidnightOil 30 green. P0 PR #465. Pivot aos+.

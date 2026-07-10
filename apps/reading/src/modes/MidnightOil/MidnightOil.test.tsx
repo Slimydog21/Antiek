@@ -1135,6 +1135,23 @@ describe("MidnightOil mode", () => {
     expect(
       screen.getByTestId("midnight-oil-mode").getAttribute("data-view-format"),
     ).toBe("html");
+    // Residual (aor): multi-goal swarm intro + HTML-first mode stamps.
+    expect(
+      screen.getByTestId("midnight-oil-mode").getAttribute("data-html-first"),
+    ).toBe("true");
+    expect(
+      screen
+        .getByTestId("midnight-oil-mode")
+        .getAttribute("data-multi-goal-swarm"),
+    ).toBe("true");
+    expect(
+      Number(
+        screen.getByTestId("midnight-oil-mode").getAttribute("data-goal-templates"),
+      ),
+    ).toBeGreaterThanOrEqual(3);
+    expect(screen.getByTestId("moil-mode-intro").textContent).toMatch(
+      /multi-goal|templates|fan-out/i,
+    );
 
     // Residual (ex): auto-open floating hosted HTML after deposit.
     await waitFor(() => {

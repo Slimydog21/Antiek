@@ -1,23 +1,25 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** residual **aog** (wave aoc–aog · tip `44272042`) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
+**Campaign tip at write:** residual **aor** (wave aoc–aor · tip after aor ship) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **URL:** https://github.com/Slimydog21/Antiek/pull/465  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
 
 ## Do not rebuild
 
-Prefer **NEXT-WAVE-after-aog.md** + **inventory-aoc…aog** + **SESSION-ARC-ang-ano** + prior thrash lists.  
-This continuation: **300+ residual ships** · wave **ang–aog** closed on tip (domain-aware chase/DR · MO multi-goal plan).
+Prefer **NEXT-WAVE-after-aor.md** + **SESSION-ARC-aoc-aok-domain-moil-collective.md** + **inventory-aoc…aor** + prior thrash lists.  
+This continuation: **300+ residual ships** · wave **aoc–aor** closed on tip.
 
-### Closed product (high signal · aoc–aog wave)
+### Closed product (high signal · aoc–aor wave)
 
 | Theme | Status |
 |---|---|
-| Twin chase domain-aware goal_hint | **aoc** research_domains= from host subjects |
-| HostedHtml domain-aware float DR | **aod** shared formatResearchDomainsClause |
-| DR session rehydrates domains | **aoe** parse goal → TwinNotes + ResearchContext |
-| Midnight Oil multi-goal plan | **aof** templates + live goal_count · **aog** job receipt plan |
+| Twin chase domain-aware goal_hint | **aoc** research_domains= from host subjects · **aoo** button titles |
+| HostedHtml domain-aware float DR | **aod** shared clause · **aoq** button stamps |
+| DR session rehydrates domains | **aoe** parse goal → TwinNotes/ResearchContext · **aol** chrome |
+| Midnight Oil multi-goal plan | **aof–aop** templates · job plan · fan-out hint/match · mode intro **aor** |
+| Multi-agent written analysis | **aoi** ≥2 spawns · **aom** readiness chrome |
+| Product/scorecard honesty | **aoj** MO blurb · **aok** scorecard · **aon** marketplace blurb |
 
 ### Closed product (high signal · ang–anr wave)
 

@@ -662,14 +662,24 @@ export default function MidnightOil() {
     <div
       className="h-full overflow-y-auto p-6"
       data-view-format="html"
+      data-html-first="true"
       data-testid="midnight-oil-mode"
+      data-multi-goal-swarm="true"
+      data-goal-templates={String(MOIL_GOAL_TEMPLATES.length)}
     >
       <header className="mb-6 space-y-1">
         <h1 className="text-2xl font-semibold">Midnight Oil</h1>
-        <p className="text-sm opacity-80">
-          Autonomous deep research without a live workstation session. Set goals
-          and duration; review the recommended price ceiling; approve before work
-          may run. Deliverable: HTML research asset (never PDF).
+        <p
+          className="text-sm opacity-80"
+          data-testid="moil-mode-intro"
+          data-multi-goal-swarm="true"
+          data-html-first="true"
+        >
+          Autonomous multi-goal deep research without a live workstation session.
+          Set goals (one per line · research templates · fan-out coverage) and
+          duration; review the recommended price ceiling; approve before the
+          swarm may run. Deliverable: HTML research asset (never PDF). L4 live
+          multi-provider step remains dual-gate.
         </p>
       </header>
 
