@@ -3988,3 +3988,8 @@ Pivot arb+ outside thrash.
 Bare history no longer maps to computing; Lovelace computing+history still hits
 computing. Added psychology · law · classics domain defaults. vitest 4 green.
 P0 PR #465. Pivot arc+.
+
+## Residual arc · 2026-07-10 — SESSION-ARC aqs–arb wave handoff
+Compaction-safe handoff for dual-gate · vision feed · path pure-helper · MO
+templates · domain spine. Competitive delta: multi-agent swarm stays tip-true
+after long infinite wave. P0 PR #465. Pivot ard+ outside thrash.
