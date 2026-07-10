@@ -1962,3 +1962,8 @@ Free philosophy subject set len ≥4 all free PD HTML (Novum · Liberty · Disco
 Wealth). Competitive delta: critical-reasoning substrate for tech researchers is
 a non-trivial free corpus (parity science/physics/math domain honesty).
 
+## Residual abb · 2026-07-10 — SESSION-ARC + FUTURE tip through aba
+SESSION-ARC-aat-aba documents dual-gate label honesty + STEM domain size wave.
+FUTURE tip re-anchored after 135+ ships. Competitive delta: compaction-safe
+multi-agent handoff; operator merge PR #465 highest leverage.
+
