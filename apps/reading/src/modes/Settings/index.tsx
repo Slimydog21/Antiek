@@ -6,6 +6,7 @@ import {
   notDiamondDriverDeltaLabel,
 } from "../../lib/notDiamondDriverDelta";
 import {
+  benchTaskClassToVisionFeeds,
   groupProposedTasksByClass,
   primaryFeedSourceFromBySource,
   rankedFeedSourcesFromBySource,
@@ -2617,13 +2618,24 @@ export default function Settings() {
                             auto-routes):
                           </p>
                           <ul data-testid="antiek-bench-leaderboard-task-winners">
-                            {bestByTask.map((row) => (
+                            {bestByTask.map((row) => {
+                              // Residual (apb): vision feeds that train this task_class.
+                              const visionFeeds = benchTaskClassToVisionFeeds(
+                                row.task_class,
+                              );
+                              return (
                               <li
                                 key={row.task_class}
                                 className="flex flex-wrap items-center gap-2"
                                 data-task-class={row.task_class}
                                 data-best-model-id={row.model_id}
                                 data-best-score={String(row.score)}
+                                data-vision-feeds={
+                                  visionFeeds.join(",") || ""
+                                }
+                                data-vision-feed-count={String(
+                                  visionFeeds.length,
+                                )}
                               >
                                 <span>
                                   <strong>{row.task_class}</strong>:{" "}
@@ -2633,13 +2645,28 @@ export default function Settings() {
                                     : "—"}
                                   )
                                 </span>
+                                {visionFeeds.length > 0 ? (
+                                  <span
+                                    className="opacity-80"
+                                    data-testid={`antiek-bench-leaderboard-vision-feeds-${row.task_class}`}
+                                    data-task-class={row.task_class}
+                                    data-vision-feeds={visionFeeds.join(",")}
+                                    title="North-star usage surfaces that train this task class (aoy/apa)"
+                                  >
+                                    trains from: {visionFeeds.join(", ")}
+                                  </span>
+                                ) : null}
                                 {/* Residual (ads): install best-by-task as driver (advisory). */}
                                 <button
                                   type="button"
                                   data-testid={`antiek-bench-leaderboard-install-task-${row.task_class}`}
                                   data-install-model-id={row.model_id}
                                   data-install-task-class={row.task_class}
+                                  data-vision-feeds={
+                                    visionFeeds.join(",") || ""
+                                  }
                                   data-advisory-only="true"
+                                  data-never-auto-route="true"
                                   disabled={treeBusy || leaderboardBusy}
                                   onClick={() =>
                                     void onInstallLeaderboardModelAsDriver(
@@ -2648,12 +2675,13 @@ export default function Settings() {
                                     )
                                   }
                                   className="px-2 py-0.5 rounded border border-ink/40 dark:border-bright/40 text-[10px] font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
-                                  title={`Install ${row.model_id} (best ${row.task_class}) as decision-tree driver — advisory only`}
+                                  title={`Install ${row.model_id} (best ${row.task_class}) as decision-tree driver — trains from ${visionFeeds.join(", ") || "—"} · advisory only · never auto-route`}
                                 >
                                   Install as driver
                                 </button>
                               </li>
-                            ))}
+                              );
+                            })}
                           </ul>
                         </div>
                       );

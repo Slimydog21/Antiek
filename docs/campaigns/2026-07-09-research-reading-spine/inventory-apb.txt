@@ -1,0 +1,15 @@
+# inventory-apb · leaderboard task winners vision feed drill-down
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: apb
+date: 2026-07-10
+parent_tip: 5f1d2d63 (apa)
+
+## Closed
+- antiek-bench-leaderboard-task-winners: data-vision-feeds per task_class
+- trains from chrome + install button never-auto-route + vision feeds stamp
+- vitest Settings leaderboard path green
+- evidence: {SCRATCH}/apb-vitest.txt
+
+## Next
+apc+ product residual outside thrash
+Operator merge PR #465 remains highest leverage (gated)

@@ -2355,6 +2355,28 @@ describe("Settings SPR-01 + decision-tree install", () => {
         "data-best-model-id",
       ),
     ).toBe("strong-model");
+    // Residual (apb): task winners stamp vision feeds that train each task_class.
+    const wrestleRow = winners.querySelector('[data-task-class="wrestle"]');
+    expect(wrestleRow?.getAttribute("data-vision-feeds") || "").toMatch(
+      /twin_chase/,
+    );
+    expect(wrestleRow?.getAttribute("data-vision-feeds") || "").toMatch(
+      /midnight_oil/,
+    );
+    expect(
+      screen.getByTestId("antiek-bench-leaderboard-vision-feeds-wrestle")
+        .textContent,
+    ).toMatch(/trains from/i);
+    expect(
+      screen
+        .getByTestId("antiek-bench-leaderboard-install-task-wrestle")
+        .getAttribute("data-never-auto-route"),
+    ).toBe("true");
+    expect(
+      screen
+        .getByTestId("antiek-bench-leaderboard-install-task-wrestle")
+        .getAttribute("data-vision-feeds") || "",
+    ).toMatch(/twin_chase/);
     const models = screen.getByTestId("antiek-bench-leaderboard-models");
     const strong = models.querySelector('[data-model-id="strong-model"]');
     expect(strong?.getAttribute("data-by-task-class")).toMatch(/wrestle=0\.92/);

@@ -3715,3 +3715,8 @@ P0 PR #465. Pivot apa+ outside thrash.
 benchTaskClassToVisionFeeds pure helper; DecisionTreeDriverBadge trains-from chrome
 + vision feed coverage deep-link. vitest suiteProposalTasks 8 · badge 15 green.
 P0 PR #465. Pivot apb+ outside thrash.
+
+## Residual apb · 2026-07-10 — leaderboard task winners vision feed drill-down
+Best-by-task rows stamp trains-from vision feeds + never-auto-route install.
+Closes aoy/apa flywheel on Settings leaderboard. vitest leaderboard path green.
+P0 PR #465. Pivot apc+ outside thrash.
