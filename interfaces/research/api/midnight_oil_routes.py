@@ -66,6 +66,8 @@ from substrate.midnight_oil import (
     MidnightOilOperatorArchiveHandoffPackagePlanRequest,
     MidnightOilOperatorArchiveHandoffPackageResultReconciliationPlanReceipt,
     MidnightOilOperatorArchiveHandoffPackageResultReconciliationPlanRequest,
+    MidnightOilOperatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt,
+    MidnightOilOperatorArchivePackageDeliveryReportDeliveryConfirmationPlanRequest,
     MidnightOilOperatorArchivePackageDeliveryReportNotificationReadinessPlanReceipt,
     MidnightOilOperatorArchivePackageDeliveryReportNotificationReadinessPlanRequest,
     MidnightOilOperatorArchivePackageDeliveryReportNotificationResultReconciliationPlanReceipt,
@@ -156,6 +158,7 @@ from substrate.midnight_oil import (
     operator_archive_handoff_package_delivery_audit_result_reconciliation_plan_midnight_oil,
     operator_archive_handoff_package_plan_midnight_oil,
     operator_archive_handoff_package_result_reconciliation_plan_midnight_oil,
+    operator_archive_package_delivery_report_delivery_confirmation_plan_midnight_oil,
     operator_archive_package_delivery_report_notification_readiness_plan_midnight_oil,
     operator_archive_package_delivery_report_notification_result_reconciliation_plan_midnight_oil,
     operator_archive_package_delivery_report_plan_midnight_oil,
@@ -751,6 +754,18 @@ def post_midnight_oil_operator_archive_package_delivery_report_notification_resu
     )
 
 
+@midnight_oil_router.post(
+    "/operator-archive-package-delivery-report-delivery-confirmation-plan",
+    response_model=MidnightOilOperatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt,
+)
+def post_midnight_oil_operator_archive_package_delivery_report_delivery_confirmation_plan(
+    req: MidnightOilOperatorArchivePackageDeliveryReportDeliveryConfirmationPlanRequest,
+) -> MidnightOilOperatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt:
+    return operator_archive_package_delivery_report_delivery_confirmation_plan_midnight_oil(
+        req
+    )
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
@@ -785,6 +800,7 @@ __all__ = [
     "post_midnight_oil_operator_archive_handoff_package_delivery_audit_result_reconciliation_plan",
     "post_midnight_oil_operator_archive_handoff_package_plan",
     "post_midnight_oil_operator_archive_handoff_package_result_reconciliation_plan",
+    "post_midnight_oil_operator_archive_package_delivery_report_delivery_confirmation_plan",
     "post_midnight_oil_operator_archive_package_delivery_report_notification_readiness_plan",
     "post_midnight_oil_operator_archive_package_delivery_report_notification_result_reconciliation_plan",
     "post_midnight_oil_operator_archive_package_delivery_report_plan",
