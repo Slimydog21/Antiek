@@ -1921,6 +1921,61 @@ describe("MarketplaceHost mode", () => {
     expect(metrics.getAttribute("data-subject-filter")).toBe("computing");
   });
 
+  it("stamps foundations count + Gödel free PD catalog honesty (agl)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-godel-incompleteness",
+          title: "On Formally Undecidable Propositions",
+          author: "Kurt Gödel",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: ["foundations", "logic", "computing", "mathematics"],
+        },
+        {
+          book_id: "pd-turing-computable-numbers",
+          title: "On Computable Numbers",
+          author: "Alan M. Turing",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: ["computing", "computability"],
+        },
+      ],
+      count: 2,
+      view_format: "html",
+      free_count: 2,
+      public_domain_count: 2,
+      by_subject: { foundations: 1, computing: 2, logic: 1 },
+      payment_rails: "manual_receipt_only",
+    });
+    render(<MarketplaceHost ownerId="foundations-reader" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("marketplace-catalog-metrics")).toBeTruthy();
+    });
+    const metrics = screen.getByTestId("marketplace-catalog-metrics");
+    expect(metrics.getAttribute("data-has-godel-pd")).toBe("true");
+    expect(metrics.getAttribute("data-foundations-count")).toBe("1");
+    expect(metrics.getAttribute("data-view-format")).toBe("html");
+    expect(metrics.textContent).toMatch(/foundations=1/);
+    await waitFor(() => {
+      expect(screen.getByTestId("catalog-subject-foundations")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("catalog-subject-foundations"));
+    expect(
+      screen.getByTestId("catalog-entry-pd-godel-incompleteness"),
+    ).toBeTruthy();
+    expect(
+      screen.queryByTestId("catalog-entry-pd-turing-computable-numbers"),
+    ).toBeNull();
+    expect(
+      screen
+        .getByTestId("marketplace-catalog-metrics")
+        .getAttribute("data-subject-filter"),
+    ).toBe("foundations");
+  });
+
   it("filters catalog by computing subject chip for Boole (ty)", async () => {
     fetchMarketplaceCatalog.mockResolvedValue({
       entries: [

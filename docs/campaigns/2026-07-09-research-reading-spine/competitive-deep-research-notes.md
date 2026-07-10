@@ -2563,3 +2563,8 @@ vitest FloatMenu 28 green.
 ## Residual agk · 2026-07-10 — SESSION-ARC agh–agj free STEM + panels
 Handoff: Gödel free PD + dogfood v19 · Note save path · Dialogue path.
 P0 operator merge PR #465. Pivot agl+ outside thrash.
+
+## Residual agl · 2026-07-10 — marketplace foundations + Gödel catalog honesty
+Marketplace catalog metrics stamp data-foundations-count · data-has-godel-pd and
+show foundations=N copy. Foundations subject chip filters to Gödel free PD HTML.
+vitest MarketplaceHost foundations test green.

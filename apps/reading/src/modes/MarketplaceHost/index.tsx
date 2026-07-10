@@ -1157,6 +1157,11 @@ export default function MarketplaceHost({
         data-payment-rails={
           catalogHonesty?.payment_rails || "manual_receipt_only"
         }
+        // Residual (agl): foundations STEM honesty after Gödel free PD (agh).
+        data-foundations-count={String(catalogBySubject["foundations"] ?? 0)}
+        data-has-godel-pd={String(
+          entries.some((e) => e.book_id === "pd-godel-incompleteness"),
+        )}
         role="status"
       >
         <p>
@@ -1164,6 +1169,7 @@ export default function MarketplaceHost({
           · sources={Object.keys(catalogBySource).length} · subjects=
           {Object.keys(catalogBySubject).length} · free=
           {catalogFreeCount}{" "}
+          · foundations={catalogBySubject["foundations"] ?? 0}{" "}
           · human view=HTML · payment=
           {catalogHonesty?.payment_rails || "manual_receipt_only"} (no live
           rails)
