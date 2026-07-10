@@ -78,6 +78,8 @@ from substrate.midnight_oil import (
     MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryAuditEnvelopePlanRequest,
     MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryAuditEnvelopeResultReconciliationPlanReceipt,
     MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryAuditEnvelopeResultReconciliationPlanRequest,
+    MidnightOilOperatorArchivePackageDeliveryReportFinalDispatchAttestationPlanReceipt,
+    MidnightOilOperatorArchivePackageDeliveryReportFinalDispatchAttestationPlanRequest,
     MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorAcknowledgementPlanReceipt,
     MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorAcknowledgementPlanRequest,
     MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseoutPlanReceipt,
@@ -180,6 +182,7 @@ from substrate.midnight_oil import (
     operator_archive_package_delivery_report_final_closeout_acknowledgement_plan_midnight_oil,
     operator_archive_package_delivery_report_final_delivery_audit_envelope_plan_midnight_oil,
     operator_archive_package_delivery_report_final_delivery_audit_envelope_result_reconciliation_plan_midnight_oil,
+    operator_archive_package_delivery_report_final_dispatch_attestation_plan_midnight_oil,
     operator_archive_package_delivery_report_final_operator_acknowledgement_plan_midnight_oil,
     operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_midnight_oil,
     operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_plan_midnight_oil,
@@ -886,6 +889,18 @@ def post_midnight_oil_operator_archive_package_delivery_report_final_delivery_au
     )
 
 
+@midnight_oil_router.post(
+    "/operator-archive-package-delivery-report-final-dispatch-attestation-plan",
+    response_model=MidnightOilOperatorArchivePackageDeliveryReportFinalDispatchAttestationPlanReceipt,
+)
+def post_midnight_oil_operator_archive_package_delivery_report_final_dispatch_attestation_plan(
+    req: MidnightOilOperatorArchivePackageDeliveryReportFinalDispatchAttestationPlanRequest,
+) -> MidnightOilOperatorArchivePackageDeliveryReportFinalDispatchAttestationPlanReceipt:
+    return operator_archive_package_delivery_report_final_dispatch_attestation_plan_midnight_oil(
+        req
+    )
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
@@ -928,6 +943,7 @@ __all__ = [
     "post_midnight_oil_operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_plan",
     "post_midnight_oil_operator_archive_package_delivery_report_final_delivery_audit_envelope_plan",
     "post_midnight_oil_operator_archive_package_delivery_report_final_delivery_audit_envelope_result_reconciliation_plan",
+    "post_midnight_oil_operator_archive_package_delivery_report_final_dispatch_attestation_plan",
     "post_midnight_oil_operator_archive_package_delivery_report_final_operator_acknowledgement_plan",
     "post_midnight_oil_operator_archive_package_delivery_report_notification_readiness_plan",
     "post_midnight_oil_operator_archive_package_delivery_report_notification_result_reconciliation_plan",
