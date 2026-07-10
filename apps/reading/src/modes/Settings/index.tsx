@@ -2062,6 +2062,44 @@ export default function Settings() {
                     Install recommended as decision-tree driver
                   </button>
                 ) : null}
+                {/* Residual (adf): reciprocal ND vs bench delta (parity ade · both advisory). */}
+                <div
+                  className="rounded border border-ink/15 p-2 space-y-1 dark:border-bright/15"
+                  data-testid="leaderboard-nd-delta"
+                  data-delta-status={ndBenchDelta.status}
+                  data-nd-suggested={ndBenchDelta.nd_suggested}
+                  data-bench-recommended={ndBenchDelta.bench_recommended}
+                  data-advisory-only="true"
+                  data-is-dispatch-authority="false"
+                  role="status"
+                >
+                  <p className="text-[11px] font-mono opacity-90">
+                    NotDiamond advisory:{" "}
+                    <code data-testid="leaderboard-nd-suggested">
+                      {ndBenchDelta.nd_suggested || "(none)"}
+                    </code>
+                  </p>
+                  <p className="text-[11px] font-mono opacity-90">
+                    Antiek-bench weekly:{" "}
+                    <code data-testid="leaderboard-bench-recommended">
+                      {ndBenchDelta.bench_recommended || "(unset)"}
+                    </code>
+                  </p>
+                  <p
+                    className="text-[11px] font-mono"
+                    data-testid="leaderboard-nd-delta-label"
+                  >
+                    {notDiamondBenchDeltaLabel(ndBenchDelta)}
+                  </p>
+                  <a
+                    href="#notdiamond-advisory"
+                    className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
+                    data-testid="leaderboard-nd-advisory-link"
+                    title="Jump to NotDiamond weekly advisory (advisory only · never dispatch authority)"
+                  >
+                    Open NotDiamond advisory
+                  </a>
+                </div>
                 {(leaderboard.models || []).length === 0 ? (
                   <p className="text-[11px] text-ink-soft dark:text-starlight">
                     No offline runs for this week yet.

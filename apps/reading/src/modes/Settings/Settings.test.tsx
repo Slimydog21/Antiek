@@ -1681,6 +1681,19 @@ describe("Settings SPR-01 + decision-tree install", () => {
         .getByTestId("antiek-bench-leaderboard-panel")
         .getAttribute("data-view-format"),
     ).toBe("html");
+    // Residual (adf): reciprocal ND vs bench delta on leaderboard panel.
+    await waitFor(() => {
+      expect(screen.getByTestId("leaderboard-nd-delta")).toBeTruthy();
+    });
+    const lbDelta = screen.getByTestId("leaderboard-nd-delta");
+    expect(lbDelta.getAttribute("data-advisory-only")).toBe("true");
+    expect(lbDelta.getAttribute("data-is-dispatch-authority")).toBe("false");
+    expect(lbDelta.getAttribute("data-delta-status")).toBe("diverge");
+    expect(lbDelta.getAttribute("data-bench-recommended")).toBe("strong-model");
+    expect(lbDelta.getAttribute("data-nd-suggested")).toBe("stub-strong");
+    expect(
+      screen.getByTestId("leaderboard-nd-advisory-link").getAttribute("href"),
+    ).toBe("#notdiamond-advisory");
     expect(screen.getByTestId("antiek-bench-leaderboard-html").innerHTML).toMatch(
       /Leaderboard|strong-model/i,
     );

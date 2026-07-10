@@ -1,0 +1,14 @@
+# inventory-adf · leaderboard reciprocal ND vs bench delta
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: adf
+date: 2026-07-10
+parent_tip: 4ec2854a (ade)
+
+## Closed
+- Antiek-bench leaderboard panel shows leaderboard-nd-delta (same pure helper as ade)
+- Deep-link to #notdiamond-advisory
+- advisory_only · never dispatch authority
+- vitest Settings · 34 passed
+
+## Not in scope
+- NotDiamond router authority
