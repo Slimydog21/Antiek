@@ -2333,3 +2333,8 @@ vitest CollectiveResearchPanel 25 green.
 Handoff matrix: DR · spawn merge · HostedHtml · marketplace · MO deposit ·
 collective Open Write all stamp path honesty. Do not thrash ael–aeq stamps.
 Next: aes+ outside this thrash. PR #465 operator merge remains P0.
+
+## Residual aes · 2026-07-10 — intelligent search + context pack Open Write path
+ResearchContext Open Write (pack + context-search) stamps asset/spawn/query/tier
+· data-seamless-context-write so intelligent search → Write note-taker is
+machine-readable. vitest ResearchContextPanel 12 green.

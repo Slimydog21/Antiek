@@ -583,7 +583,7 @@ export function ResearchContextPanel({
               </button>
             </p>
           ) : null}
-          {/* Residual (ri/acr): context pack prompt_block → Write twin_seed + body honesty. */}
+          {/* Residual (ri/acr/aes): context pack → Write twin_seed + path honesty. */}
           {(() => {
             const href = buildResearchContextWriteHref({
               assetId: pack.asset_id || assetId,
@@ -595,6 +595,8 @@ export function ResearchContextPanel({
               refCount: pack.ref_count,
             });
             const hasBody = Boolean(String(pack.prompt_block || "").trim());
+            const packAsset = String(pack.asset_id || assetId || "").trim();
+            const packSpawn = String(pack.spawn_id || spawnId || "").trim();
             return href ? (
               <p className="meta font-mono text-[11px]">
                 <a
@@ -603,8 +605,16 @@ export function ResearchContextPanel({
                   data-view-format="html"
                   data-has-twin-seed="1"
                   data-write-seed-has-body={String(hasBody)}
+                  // Residual (aes): research context pack → Write path honesty.
+                  data-asset-id={packAsset}
+                  data-spawn-id={packSpawn}
+                  data-research-tier={
+                    (pack.research_tier || "").trim().toLowerCase() || ""
+                  }
+                  data-twin-count={String(pack.twin_count ?? 0)}
+                  data-seamless-context-write={String(Boolean(packAsset))}
                   className="underline opacity-90 hover:opacity-100"
-                  title="Open Write with research context prompt_block as twin_seed (no invented document_id)"
+                  title="Open Write with research context prompt_block as twin_seed (recursive note-taker substrate · no invented document_id)"
                 >
                   Open Write (context pack)
                 </a>
@@ -1124,7 +1134,7 @@ export function ResearchContextPanel({
               </button>
             </p>
           ) : null}
-          {/* Residual (rf/acr): search hits → Write twin_seed + body honesty. */}
+          {/* Residual (rf/acr/aes): search hits → Write + intelligent-search path. */}
           {(() => {
             const href = buildContextSearchWriteHref({
               assetId: searchHits.asset_id || assetId,
@@ -1139,6 +1149,10 @@ export function ResearchContextPanel({
             const hasBody = Boolean(
               hitBody || plainTextFromHtml(searchHits.html || "").trim(),
             );
+            const searchAsset = String(
+              searchHits.asset_id || assetId || "",
+            ).trim();
+            const searchQuery = String(searchHits.query || "").trim();
             return href ? (
               <p className="meta font-mono text-[11px]">
                 <a
@@ -1148,8 +1162,20 @@ export function ResearchContextPanel({
                   data-has-twin-seed="1"
                   data-hit-count={String(searchHits.hit_count ?? 0)}
                   data-write-seed-has-body={String(hasBody)}
+                  // Residual (aes): intelligent search → Write note-taker path.
+                  data-query={searchQuery}
+                  data-asset-id={searchAsset}
+                  data-spawn-id={String(
+                    searchHits.spawn_id || spawnId || "",
+                  ).trim()}
+                  data-research-tier={
+                    (searchHits.research_tier || "").trim().toLowerCase() || ""
+                  }
+                  data-seamless-context-write={String(
+                    Boolean(searchAsset && searchQuery),
+                  )}
                   className="underline opacity-90 hover:opacity-100"
-                  title="Open Write with context search hits as twin_seed (no invented document_id)"
+                  title="Open Write with context search hits as twin_seed (intelligent search · recursive note-taker · no invented document_id)"
                 >
                   Open Write (search hits)
                 </a>

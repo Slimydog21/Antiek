@@ -148,7 +148,7 @@ describe("ResearchContextPanel", () => {
     expect(fetchResearchContext).toHaveBeenCalledWith(
       expect.objectContaining({ asset_id: "paper", spawn_id: "spn_1" }),
     );
-    // Residual (ri): Open Write twin_seed from context pack prompt_block.
+    // Residual (ri/aes): Open Write twin_seed from context pack + path honesty.
     const write = screen.getByTestId("research-context-open-write");
     const href = write.getAttribute("href") || "";
     expect(href).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
@@ -156,6 +156,10 @@ describe("ResearchContextPanel", () => {
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
     // Residual (acr): prompt_block body → has-body true.
     expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
+    // Residual (aes): research context pack → Write path honesty.
+    expect(write.getAttribute("data-asset-id")).toBe("paper");
+    expect(write.getAttribute("data-spawn-id")).toBe("spn_1");
+    expect(write.getAttribute("data-seamless-context-write")).toBe("true");
     // Residual (sl): float|full research context pack HTML.
     fireEvent.click(screen.getByTestId("research-context-open-float"));
     const floatCall = openWindow.mock.calls.at(-1) as [
@@ -428,7 +432,7 @@ describe("ResearchContextPanel", () => {
     expect(screen.getByTestId("context-search-research-tier").textContent).toBe(
       "wrestle",
     );
-    // Residual (rf): Open Write twin_seed from search hits.
+    // Residual (rf/aes): Open Write twin_seed from search hits + path honesty.
     const write = screen.getByTestId("context-search-open-write");
     const href = write.getAttribute("href") || "";
     expect(href).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
@@ -437,6 +441,12 @@ describe("ResearchContextPanel", () => {
     expect(write.getAttribute("data-hit-count")).toBe("1");
     // Residual (acr): hit text body → has-body true.
     expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
+    // Residual (aes): intelligent search → Write path honesty.
+    expect(write.getAttribute("data-query")).toBe("attention");
+    expect(write.getAttribute("data-asset-id")).toBe("paper");
+    expect(write.getAttribute("data-spawn-id")).toBe("spn_1");
+    expect(write.getAttribute("data-research-tier")).toBe("wrestle");
+    expect(write.getAttribute("data-seamless-context-write")).toBe("true");
     // Residual (sj/tq): float|full HTML reading windows for search hits.
     const floatBtn = screen.getByTestId("context-search-open-float");
     expect(floatBtn.getAttribute("data-window-mode")).toBe("floating");
