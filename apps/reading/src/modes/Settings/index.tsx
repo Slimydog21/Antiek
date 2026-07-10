@@ -2439,51 +2439,43 @@ export default function Settings() {
               <div
                 className="space-y-1 font-mono text-[11px]"
                 data-testid="moil-live-step-status-metrics"
-                data-offline-honest={String(moilLive.offline_honest)}
-                data-live-env={String(moilLive.live_env)}
-                data-injector-installed={String(moilLive.injector_installed)}
-                // Residual (aed): composite L4 readiness (env + injector + not offline-only).
-                data-l4-live-ready={String(
-                  moilLive.live_env === true &&
-                    moilLive.injector_installed === true &&
-                    moilLive.offline_honest === false,
+                // Residual (avj): metrics consume pure L4 gate (avg) — hard to vary.
+                data-offline-honest={String(moilGateReady.offline_honest)}
+                data-live-env={String(moilGateReady.live_env)}
+                data-injector-installed={String(
+                  moilGateReady.injector_installed,
                 )}
-                data-l4-gates-live-env={String(moilLive.live_env === true)}
+                data-l4-live-ready={String(moilGateReady.live_ready)}
+                data-l4-gates-live-env={String(moilGateReady.live_env)}
                 data-l4-gates-injector={String(
-                  moilLive.injector_installed === true,
+                  moilGateReady.injector_installed,
                 )}
+                data-gate-summary={moilGateReady.summary}
                 role="status"
               >
                 <p>
                   Mode:{" "}
                   <strong>
-                    {moilLive.offline_honest
+                    {moilGateReady.offline_honest
                       ? "offline-honest stub steps"
                       : "live step dual-gate ready"}
                   </strong>
                 </p>
                 <p>
-                  env <code>{moilLive.live_env_flag}</code>=
-                  {String(moilLive.live_env)} · injector=
-                  {String(moilLive.injector_installed)}
+                  env <code>{moilGateReady.live_env_flag}</code>=
+                  {String(moilGateReady.live_env)} · injector=
+                  {String(moilGateReady.injector_installed)}
                 </p>
                 <p
                   data-testid="moil-live-l4-gate-matrix"
-                  data-l4-live-ready={String(
-                    moilLive.live_env === true &&
-                      moilLive.injector_installed === true &&
-                      moilLive.offline_honest === false,
-                  )}
+                  data-l4-live-ready={String(moilGateReady.live_ready)}
+                  data-gate-summary={moilGateReady.summary}
                 >
                   L4 gate matrix: live_env=
-                  {moilLive.live_env === true ? "on" : "off"} · injector=
-                  {moilLive.injector_installed === true ? "on" : "off"} ·
+                  {moilGateReady.live_env ? "on" : "off"} · injector=
+                  {moilGateReady.injector_installed ? "on" : "off"} ·
                   live_ready=
-                  {moilLive.live_env === true &&
-                  moilLive.injector_installed === true &&
-                  moilLive.offline_honest === false
-                    ? "true"
-                    : "false"}{" "}
+                  {moilGateReady.live_ready ? "true" : "false"}{" "}
                   (env + injector + offline_honest=false required)
                 </p>
                 {moilLive.notes.map((n) => (
