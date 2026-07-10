@@ -1,7 +1,7 @@
 # RED-PROOF-LOG — Midnight Oil Budget Ledger
 
-**Date:** 2026-07-10
-**Branch:** mo/budget-ledger-spr05
+**Date:** 2026-07-10  
+**Branch:** mo/budget-ledger-spr05  
 **Commit:** working tree (not committed)
 
 ## Purpose
@@ -79,7 +79,7 @@ hit = ctx.execute(
 
 ### 3. `_check_role_budget()` — entire body short-circuited
 
-**Before:** full role budget + freed_cents check.
+**Before:** full role budget + freed_cents check.  
 **Neutered:** early `return` after the docstring.
 
 ---
@@ -105,10 +105,10 @@ tmp_path = PosixPath('.../test_hard_ceiling_under_oversp0')
     def test_hard_ceiling_under_overspend(tmp_path: object) -> None:
         ledger = _ledger(tmp_path)
         ledger.reserve("r1", 300)
-
+    
         ledger.debit("r1", 120)
         ledger.debit("r1", 120)
-
+    
 >       with pytest.raises(BudgetCeilingExceeded) as exc_info:
              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 E       Failed: DID NOT RAISE BudgetCeilingExceeded
@@ -178,7 +178,7 @@ is not theater.
 
 ## F1 red-proof: explicit BEGIN/COMMIT transaction wrapper
 
-**Date:** 2026-07-10 (fix-round-1)
+**Date:** 2026-07-10 (fix-round-1)  
 **What:** prove the `_txn(ctx)` transaction wrapper is load-bearing for settle
 atomicity (F1+F2).
 
@@ -272,37 +272,3 @@ FAILED tests/test_midnight_oil_budget_ledger.py::test_release_then_settle_imposs
 
 Without the state machine, a hold can be settled twice and a released hold can still be
 settled — phantom spend consuming a co-outstanding hold's band. The guard is not theater.
-
----
-
-## Round-3 addendum — typed-outcome semantics (CallNotDispatched) proven load-bearing
-
-**Date:** 2026-07-11 (fix-round-3)
-
-FIX-ROUND-3 introduced typed-outcome semantics: `CallNotDispatched` is the only
-exception that releases the hold; all other exceptions transition the hold to
-'unknown' (fail closed — band stays held until `resolve_unknown` is called).
-
-**Neutered:** collapsed `except CallNotDispatched` and `except Exception` into a
-single `except Exception` that releases the hold (old behavior):
-
-```python
-# [RED-PROOF NEUTERED] CallNotDispatched distinction removed.
-# All exceptions release the hold (old behavior).
-except Exception:
-    self._release_hold(hold)
-    raise
-```
-
-**Observed red (verbatim tail):**
-```
-FAILED tests/test_midnight_oil_budget_ledger.py::test_reviewers_repro_defeated - AssertionError: assert 0 == 100
- +  where 0 = RemainingBalance(run_id='r1', ceiling_cents=100, spent_cents=0, held_cents=0, remaining_cents=100, status='reserved').held_cents
-1 failed in 0.27s
-```
-
-**Restored + green:** full suite `28 passed in 6.98s`.
-
-Without the typed-outcome distinction, a TimeoutError (unknown provider outcome)
-releases the hold and re-arms the budget — enabling repeated failures to let external
-spend exceed the ceiling. The guard is not theater.
