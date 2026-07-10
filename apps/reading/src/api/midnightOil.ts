@@ -3687,6 +3687,114 @@ export interface MidnightOilRetentionBillingReconciliationPlanReceipt {
   adapter_plan_notes: string[];
 }
 
+export interface MidnightOilFinalCloseoutArchiveReconciliationPlanRequest
+  extends MidnightOilRetentionBillingReconciliationPlanRequest {
+  retention_billing_reconciliation_plan_receipt: MidnightOilRetentionBillingReconciliationPlanReceipt;
+}
+
+export interface MidnightOilFinalCloseoutArchiveReconciliationPlanReceipt {
+  receipt_id: string;
+  retention_billing_reconciliation_plan_receipt_id: string;
+  delivery_notification_reconciliation_plan_receipt_id: string;
+  workspace_delivery_card_reconciliation_plan_receipt_id: string;
+  operator_delivery_ledger_reconciliation_plan_receipt_id: string;
+  operator_notification_delivery_result_reconciliation_plan_receipt_id: string;
+  operator_notification_delivery_apply_plan_receipt_id: string;
+  operator_notification_delivery_readiness_plan_receipt_id: string;
+  final_run_closure_plan_receipt_id: string;
+  final_artifact_completion_finalization_plan_receipt_id: string;
+  final_artifact_publish_plan_receipt_id: string;
+  launch_packet_id: string;
+  approval_receipt_id: string;
+  runner_handoff_id: string;
+  run_id: string;
+  status: "blocked_final_closeout_archive_reconciliation_unimplemented";
+  adapter_key: "final_closeout_archive_reconciliation";
+  planned_final_closeout_archive_reconciliation_receipt_id: string;
+  planned_final_run_closure_receipt_id: string;
+  planned_run_closeout_record_id: string;
+  planned_artifact_archive_manifest_id: string;
+  planned_operator_handoff_summary_id: string;
+  planned_quality_attestation_id: string;
+  planned_completion_audit_entry_id: string;
+  planned_retention_billing_reconciliation_receipt_id: string;
+  planned_run_retention_manifest_id: string;
+  planned_billing_reconciliation_id: string;
+  planned_model_usage_rollup_id: string;
+  planned_source_lineage_archive_id: string;
+  planned_source_lineage_archive_reconciliation_entry_id: string;
+  planned_delivery_notification_reconciliation_receipt_id: string;
+  planned_delivery_notification_id: string;
+  planned_workspace_delivery_card_id: string;
+  planned_operator_delivery_ledger_entry_id: string;
+  planned_private_read_url_id: string;
+  planned_hosted_html_asset_id: string;
+  planned_idempotency_key: string;
+  final_closeout_archive_reconciliation_blockers: string[];
+  required_final_closeout_archive_reconciliation_invariants: string[];
+  required_final_closeout_archive_reconciliation_receipt_fields: string[];
+  blocker_reason: "final_closeout_archive_reconciliation_unimplemented";
+  final_closeout_archive_reconciliation_allowed: boolean;
+  final_run_closure_receipt_reconciled: boolean;
+  run_closeout_record_reconciled: boolean;
+  artifact_archive_manifest_reconciled: boolean;
+  operator_handoff_summary_reconciled: boolean;
+  quality_attestation_reconciled: boolean;
+  completion_audit_entry_reconciled: boolean;
+  retention_billing_reconciliation_allowed: boolean;
+  run_retention_manifest_created: boolean;
+  billing_reconciliation_created: boolean;
+  model_usage_rollup_created: boolean;
+  source_lineage_archive_created: boolean;
+  run_retention_manifest_status_entry_created: boolean;
+  billing_reconciliation_status_entry_created: boolean;
+  model_usage_rollup_reconciliation_entry_created: boolean;
+  source_lineage_archive_reconciliation_entry_created: boolean;
+  delivery_notification_reconciliation_allowed: boolean;
+  delivery_notification_status_entry_created: boolean;
+  delivery_notification_result_entry_created: boolean;
+  delivery_notification_operator_visible_event_created: boolean;
+  delivery_notification_created: boolean;
+  workspace_delivery_card_reconciliation_allowed: boolean;
+  workspace_delivery_card_result_entry_created: boolean;
+  workspace_delivery_card_status_entry_created: boolean;
+  workspace_delivery_card_notification_entry_created: boolean;
+  workspace_delivery_card_created: boolean;
+  operator_delivery_ledger_reconciliation_allowed: boolean;
+  operator_delivery_ledger_result_entry_created: boolean;
+  operator_delivery_ledger_status_entry_created: boolean;
+  operator_delivery_ledger_retry_entry_created: boolean;
+  operator_delivery_ledger_dead_letter_entry_created: boolean;
+  operator_delivery_ledger_entry_created: boolean;
+  run_closeout_record_created: boolean;
+  final_run_closure_allowed: boolean;
+  final_artifact_completion_finalization_allowed: boolean;
+  completion_record_created: boolean;
+  finalization_transaction_created: boolean;
+  artifact_archive_manifest_created: boolean;
+  operator_handoff_summary_created: boolean;
+  delivery_status_marked_complete: boolean;
+  quality_attestation_created: boolean;
+  completion_audit_entry_created: boolean;
+  final_artifact_publish_allowed: boolean;
+  publish_transaction_created: boolean;
+  information_asset_published: boolean;
+  account_visible_asset_created: boolean;
+  reading_workspace_entry_created: boolean;
+  search_index_entry_created: boolean;
+  private_read_url_created: boolean;
+  operator_notification_created: boolean;
+  graph_commit_created: boolean;
+  graph_mutated: boolean;
+  final_artifact_created: boolean;
+  dispatch_performed: boolean;
+  budget_reserved: boolean;
+  provider_calls_made: boolean;
+  retrieval_performed: boolean;
+  source_receipts_created: boolean;
+  adapter_plan_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -4591,4 +4699,24 @@ export async function retentionBillingReconciliationPlanMidnightOil(
     );
   }
   return (await resp.json()) as MidnightOilRetentionBillingReconciliationPlanReceipt;
+}
+
+export async function finalCloseoutArchiveReconciliationPlanMidnightOil(
+  request: MidnightOilFinalCloseoutArchiveReconciliationPlanRequest,
+): Promise<MidnightOilFinalCloseoutArchiveReconciliationPlanReceipt> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/midnight-oil/final-closeout-archive-reconciliation-plan`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+  );
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(
+      `POST /research/midnight-oil/final-closeout-archive-reconciliation-plan: HTTP ${resp.status}: ${body}`,
+    );
+  }
+  return (await resp.json()) as MidnightOilFinalCloseoutArchiveReconciliationPlanReceipt;
 }

@@ -22,6 +22,7 @@ from substrate.midnight_oil import (
     MidnightOilFinalArtifactPersistencePlanRequest,
     MidnightOilFinalArtifactPublishPlanRequest,
     MidnightOilFinalArtifactRequest,
+    MidnightOilFinalCloseoutArchiveReconciliationPlanRequest,
     MidnightOilFinalHtmlArtifactAssemblyPlanRequest,
     MidnightOilFinalRunClosurePlanRequest,
     MidnightOilFinalSynthesisDraftPlanRequest,
@@ -72,6 +73,7 @@ from substrate.midnight_oil import (
     final_artifact_midnight_oil,
     final_artifact_persistence_plan_midnight_oil,
     final_artifact_publish_plan_midnight_oil,
+    final_closeout_archive_reconciliation_plan_midnight_oil,
     final_html_artifact_assembly_plan_midnight_oil,
     final_run_closure_plan_midnight_oil,
     final_synthesis_draft_plan_midnight_oil,
@@ -12259,6 +12261,412 @@ def test_midnight_oil_retention_billing_reconciliation_plan_api_contract() -> No
     assert body["blocker_reason"] == (
         "retention_billing_reconciliation_unimplemented"
     )
+    assert body["retention_billing_reconciliation_allowed"] is False
+    assert body["run_retention_manifest_created"] is False
+    assert body["billing_reconciliation_created"] is False
+    assert body["model_usage_rollup_created"] is False
+    assert body["source_lineage_archive_created"] is False
+    assert body["delivery_notification_created"] is False
+    assert body["workspace_delivery_card_created"] is False
+    assert body["operator_delivery_ledger_entry_created"] is False
+    assert body["run_closeout_record_created"] is False
+    assert body["operator_notification_created"] is False
+    assert body["private_read_url_created"] is False
+    assert body["graph_mutated"] is False
+    assert body["provider_calls_made"] is False
+    assert body["retrieval_performed"] is False
+    assert body["final_artifact_created"] is False
+
+
+def _final_closeout_archive_reconciliation_request_kwargs(
+    chain: dict[str, object],
+    output_aggregation_plan: object,
+    synthesis_handoff_plan: object,
+    synthesis_bundle_assembly_plan: object,
+    final_synthesis_draft_plan: object,
+    final_html_artifact_assembly_plan: object,
+    final_artifact_persistence_plan: object,
+    final_artifact_graph_commit_plan: object,
+    final_artifact_publish_plan: object,
+    final_artifact_completion_finalization_plan: object,
+    final_run_closure_plan: object,
+    operator_notification_delivery_readiness_plan: object,
+    operator_notification_delivery_apply_plan: object,
+    operator_notification_delivery_result_reconciliation_plan: object,
+    operator_delivery_ledger_reconciliation_plan: object,
+    workspace_delivery_card_reconciliation_plan: object,
+    delivery_notification_reconciliation_plan: object,
+    retention_billing_reconciliation_plan: object,
+) -> dict[str, object]:
+    return {
+        **_retention_billing_reconciliation_request_kwargs(
+            chain,
+            output_aggregation_plan,
+            synthesis_handoff_plan,
+            synthesis_bundle_assembly_plan,
+            final_synthesis_draft_plan,
+            final_html_artifact_assembly_plan,
+            final_artifact_persistence_plan,
+            final_artifact_graph_commit_plan,
+            final_artifact_publish_plan,
+            final_artifact_completion_finalization_plan,
+            final_run_closure_plan,
+            operator_notification_delivery_readiness_plan,
+            operator_notification_delivery_apply_plan,
+            operator_notification_delivery_result_reconciliation_plan,
+            operator_delivery_ledger_reconciliation_plan,
+            workspace_delivery_card_reconciliation_plan,
+            delivery_notification_reconciliation_plan,
+        ),
+        "retention_billing_reconciliation_plan_receipt": (
+            retention_billing_reconciliation_plan
+        ),
+    }
+
+
+def _accepted_midnight_oil_retention_billing_reconciliation_plan_chain(
+    *,
+    goal: str,
+    source_policy: list[str],
+    requested_control_scope: list[str],
+) -> dict[str, object]:
+    chain = _accepted_midnight_oil_delivery_notification_reconciliation_plan_chain(
+        goal=goal,
+        source_policy=source_policy,
+        requested_control_scope=requested_control_scope,
+    )
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+    draft_plan = chain["final_synthesis_draft_plan"]
+    html_plan = chain["final_html_artifact_assembly_plan"]
+    persistence_plan = chain["final_artifact_persistence_plan"]
+    graph_commit_plan = chain["final_artifact_graph_commit_plan"]
+    publish_plan = chain["final_artifact_publish_plan"]
+    completion_plan = chain["final_artifact_completion_finalization_plan"]
+    closure_plan = chain["final_run_closure_plan"]
+    readiness_plan = chain["operator_notification_delivery_readiness_plan"]
+    apply_plan = chain["operator_notification_delivery_apply_plan"]
+    result_plan = chain["operator_notification_delivery_result_reconciliation_plan"]
+    ledger_plan = chain["operator_delivery_ledger_reconciliation_plan"]
+    card_plan = chain["workspace_delivery_card_reconciliation_plan"]
+    notification_plan = chain["delivery_notification_reconciliation_plan"]
+    retention_plan = retention_billing_reconciliation_plan_midnight_oil(
+        MidnightOilRetentionBillingReconciliationPlanRequest(
+            **_retention_billing_reconciliation_request_kwargs(
+                chain,
+                output_plan,
+                handoff_plan,
+                assembly_plan,
+                draft_plan,
+                html_plan,
+                persistence_plan,
+                graph_commit_plan,
+                publish_plan,
+                completion_plan,
+                closure_plan,
+                readiness_plan,
+                apply_plan,
+                result_plan,
+                ledger_plan,
+                card_plan,
+                notification_plan,
+            )
+        )
+    )
+    return {
+        **chain,
+        "retention_billing_reconciliation_plan": retention_plan,
+    }
+
+
+def test_final_closeout_archive_reconciliation_plan_records_disabled_requirements() -> None:
+    chain = _accepted_midnight_oil_retention_billing_reconciliation_plan_chain(
+        goal="Plan final closeout archive reconciliation after retention billing reconciliation planning.",
+        source_policy=["arxiv", "web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+    draft_plan = chain["final_synthesis_draft_plan"]
+    html_plan = chain["final_html_artifact_assembly_plan"]
+    persistence_plan = chain["final_artifact_persistence_plan"]
+    graph_commit_plan = chain["final_artifact_graph_commit_plan"]
+    publish_plan = chain["final_artifact_publish_plan"]
+    completion_plan = chain["final_artifact_completion_finalization_plan"]
+    closure_plan = chain["final_run_closure_plan"]
+    readiness_plan = chain["operator_notification_delivery_readiness_plan"]
+    apply_plan = chain["operator_notification_delivery_apply_plan"]
+    result_plan = chain["operator_notification_delivery_result_reconciliation_plan"]
+    ledger_plan = chain["operator_delivery_ledger_reconciliation_plan"]
+    card_plan = chain["workspace_delivery_card_reconciliation_plan"]
+    notification_plan = chain["delivery_notification_reconciliation_plan"]
+    retention_plan = chain["retention_billing_reconciliation_plan"]
+
+    archive_plan = final_closeout_archive_reconciliation_plan_midnight_oil(
+        MidnightOilFinalCloseoutArchiveReconciliationPlanRequest(
+            **_final_closeout_archive_reconciliation_request_kwargs(
+                chain,
+                output_plan,
+                handoff_plan,
+                assembly_plan,
+                draft_plan,
+                html_plan,
+                persistence_plan,
+                graph_commit_plan,
+                publish_plan,
+                completion_plan,
+                closure_plan,
+                readiness_plan,
+                apply_plan,
+                result_plan,
+                ledger_plan,
+                card_plan,
+                notification_plan,
+                retention_plan,
+            )
+        )
+    )
+
+    assert archive_plan.receipt_id == (
+        f"{preflight.run_id}-final-closeout-archive-reconciliation-plan"
+    )
+    assert (
+        archive_plan.retention_billing_reconciliation_plan_receipt_id
+        == retention_plan.receipt_id
+    )
+    assert (
+        archive_plan.delivery_notification_reconciliation_plan_receipt_id
+        == notification_plan.receipt_id
+    )
+    assert archive_plan.status == (
+        "blocked_final_closeout_archive_reconciliation_unimplemented"
+    )
+    assert archive_plan.adapter_key == "final_closeout_archive_reconciliation"
+    assert archive_plan.planned_final_run_closure_receipt_id == (
+        closure_plan.planned_final_run_closure_receipt_id
+    )
+    assert archive_plan.planned_run_closeout_record_id == (
+        closure_plan.planned_run_closeout_record_id
+    )
+    assert archive_plan.planned_artifact_archive_manifest_id == (
+        closure_plan.planned_artifact_archive_manifest_id
+    )
+    assert archive_plan.planned_operator_handoff_summary_id == (
+        closure_plan.planned_operator_handoff_summary_id
+    )
+    assert archive_plan.planned_quality_attestation_id == (
+        closure_plan.planned_quality_attestation_id
+    )
+    assert archive_plan.planned_completion_audit_entry_id == (
+        closure_plan.planned_completion_audit_entry_id
+    )
+    assert archive_plan.planned_retention_billing_reconciliation_receipt_id == (
+        retention_plan.planned_retention_billing_reconciliation_receipt_id
+    )
+    assert "artifact archive manifest reconciliation writer" in (
+        archive_plan.final_closeout_archive_reconciliation_blockers
+    )
+    assert "artifact_archive_manifest_id" in (
+        archive_plan.required_final_closeout_archive_reconciliation_receipt_fields
+    )
+    assert "must require retention billing reconciliation planning" in (
+        archive_plan.required_final_closeout_archive_reconciliation_invariants[0]
+    )
+    assert archive_plan.blocker_reason == (
+        "final_closeout_archive_reconciliation_unimplemented"
+    )
+    assert archive_plan.final_closeout_archive_reconciliation_allowed is False
+    assert archive_plan.artifact_archive_manifest_reconciled is False
+    assert archive_plan.operator_handoff_summary_reconciled is False
+    assert archive_plan.quality_attestation_reconciled is False
+    assert archive_plan.completion_audit_entry_reconciled is False
+    assert archive_plan.retention_billing_reconciliation_allowed is False
+    assert archive_plan.run_retention_manifest_created is False
+    assert archive_plan.billing_reconciliation_created is False
+    assert archive_plan.model_usage_rollup_created is False
+    assert archive_plan.source_lineage_archive_created is False
+    assert archive_plan.delivery_notification_created is False
+    assert archive_plan.workspace_delivery_card_created is False
+    assert archive_plan.operator_delivery_ledger_entry_created is False
+    assert archive_plan.run_closeout_record_created is False
+    assert archive_plan.operator_notification_created is False
+    assert archive_plan.private_read_url_created is False
+    assert archive_plan.graph_mutated is False
+    assert archive_plan.provider_calls_made is False
+    assert archive_plan.retrieval_performed is False
+    assert archive_plan.final_artifact_created is False
+    assert "no final run closure receipt" in archive_plan.adapter_plan_notes[0]
+
+
+def test_final_closeout_archive_reconciliation_plan_rejects_retention_state() -> None:
+    chain = _accepted_midnight_oil_retention_billing_reconciliation_plan_chain(
+        goal="Reject retention state before final closeout archive reconciliation planning.",
+        source_policy=["web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+    draft_plan = chain["final_synthesis_draft_plan"]
+    html_plan = chain["final_html_artifact_assembly_plan"]
+    persistence_plan = chain["final_artifact_persistence_plan"]
+    graph_commit_plan = chain["final_artifact_graph_commit_plan"]
+    publish_plan = chain["final_artifact_publish_plan"]
+    completion_plan = chain["final_artifact_completion_finalization_plan"]
+    closure_plan = chain["final_run_closure_plan"]
+    readiness_plan = chain["operator_notification_delivery_readiness_plan"]
+    apply_plan = chain["operator_notification_delivery_apply_plan"]
+    result_plan = chain["operator_notification_delivery_result_reconciliation_plan"]
+    ledger_plan = chain["operator_delivery_ledger_reconciliation_plan"]
+    card_plan = chain["workspace_delivery_card_reconciliation_plan"]
+    notification_plan = chain["delivery_notification_reconciliation_plan"]
+    bad_retention_plan = chain[
+        "retention_billing_reconciliation_plan"
+    ].model_copy(update={"billing_reconciliation_created": True})
+
+    with pytest.raises(
+        ValidationError,
+        match=(
+            "retention_billing_reconciliation_plan_receipt must not create "
+            "retention, billing, usage, or source archive state"
+        ),
+    ):
+        MidnightOilFinalCloseoutArchiveReconciliationPlanRequest(
+            **_final_closeout_archive_reconciliation_request_kwargs(
+                chain,
+                output_plan,
+                handoff_plan,
+                assembly_plan,
+                draft_plan,
+                html_plan,
+                persistence_plan,
+                graph_commit_plan,
+                publish_plan,
+                completion_plan,
+                closure_plan,
+                readiness_plan,
+                apply_plan,
+                result_plan,
+                ledger_plan,
+                card_plan,
+                notification_plan,
+                bad_retention_plan,
+            )
+        )
+
+
+def test_midnight_oil_final_closeout_archive_reconciliation_plan_api_contract() -> None:
+    from interfaces.research.api.app import create_app
+
+    chain = _accepted_midnight_oil_retention_billing_reconciliation_plan_chain(
+        goal="Expose final closeout archive reconciliation planning over the API.",
+        source_policy=["arxiv", "substack"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+    draft_plan = chain["final_synthesis_draft_plan"]
+    html_plan = chain["final_html_artifact_assembly_plan"]
+    persistence_plan = chain["final_artifact_persistence_plan"]
+    graph_commit_plan = chain["final_artifact_graph_commit_plan"]
+    publish_plan = chain["final_artifact_publish_plan"]
+    completion_plan = chain["final_artifact_completion_finalization_plan"]
+    closure_plan = chain["final_run_closure_plan"]
+    readiness_plan = chain["operator_notification_delivery_readiness_plan"]
+    apply_plan = chain["operator_notification_delivery_apply_plan"]
+    result_plan = chain["operator_notification_delivery_result_reconciliation_plan"]
+    ledger_plan = chain["operator_delivery_ledger_reconciliation_plan"]
+    card_plan = chain["workspace_delivery_card_reconciliation_plan"]
+    notification_plan = chain["delivery_notification_reconciliation_plan"]
+    retention_plan = chain["retention_billing_reconciliation_plan"]
+    request_json = {
+        key: value.model_dump(mode="json")
+        for key, value in _final_closeout_archive_reconciliation_request_kwargs(
+            chain,
+            output_plan,
+            handoff_plan,
+            assembly_plan,
+            draft_plan,
+            html_plan,
+            persistence_plan,
+            graph_commit_plan,
+            publish_plan,
+            completion_plan,
+            closure_plan,
+            readiness_plan,
+            apply_plan,
+            result_plan,
+            ledger_plan,
+            card_plan,
+            notification_plan,
+            retention_plan,
+        ).items()
+    }
+
+    with TestClient(create_app()) as client:
+        r = client.post(
+            "/research/midnight-oil/final-closeout-archive-reconciliation-plan",
+            json=request_json,
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["receipt_id"] == (
+        f"{preflight.run_id}-final-closeout-archive-reconciliation-plan"
+    )
+    assert (
+        body["retention_billing_reconciliation_plan_receipt_id"]
+        == retention_plan.receipt_id
+    )
+    assert body["status"] == (
+        "blocked_final_closeout_archive_reconciliation_unimplemented"
+    )
+    assert body["adapter_key"] == "final_closeout_archive_reconciliation"
+    assert body["planned_artifact_archive_manifest_id"] == (
+        closure_plan.planned_artifact_archive_manifest_id
+    )
+    assert body["planned_operator_handoff_summary_id"] == (
+        closure_plan.planned_operator_handoff_summary_id
+    )
+    assert "quality attestation reconciliation writer" in body[
+        "final_closeout_archive_reconciliation_blockers"
+    ]
+    assert "completion_audit_entry_id" in (
+        body["required_final_closeout_archive_reconciliation_receipt_fields"]
+    )
+    assert body["blocker_reason"] == (
+        "final_closeout_archive_reconciliation_unimplemented"
+    )
+    assert body["final_closeout_archive_reconciliation_allowed"] is False
+    assert body["artifact_archive_manifest_reconciled"] is False
+    assert body["quality_attestation_reconciled"] is False
+    assert body["completion_audit_entry_reconciled"] is False
     assert body["retention_billing_reconciliation_allowed"] is False
     assert body["run_retention_manifest_created"] is False
     assert body["billing_reconciliation_created"] is False

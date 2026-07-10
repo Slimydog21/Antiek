@@ -9934,6 +9934,283 @@ class MidnightOilRetentionBillingReconciliationPlanReceipt(BaseModel):
     adapter_plan_notes: list[str] = Field(default_factory=list)
 
 
+class MidnightOilFinalCloseoutArchiveReconciliationPlanRequest(
+    MidnightOilRetentionBillingReconciliationPlanRequest
+):
+    retention_billing_reconciliation_plan_receipt: (
+        MidnightOilRetentionBillingReconciliationPlanReceipt
+    )
+
+    @model_validator(mode="after")
+    def _retention_billing_reconciliation_plan_matches(
+        self,
+    ) -> MidnightOilFinalCloseoutArchiveReconciliationPlanRequest:
+        retention_plan = self.retention_billing_reconciliation_plan_receipt
+        notification_plan = self.delivery_notification_reconciliation_plan_receipt
+        if (
+            retention_plan.delivery_notification_reconciliation_plan_receipt_id
+            != notification_plan.receipt_id
+        ):
+            raise ValueError(
+                "retention_billing_reconciliation_plan_receipt must reference delivery_notification_reconciliation_plan_receipt"
+            )
+        if (
+            retention_plan.workspace_delivery_card_reconciliation_plan_receipt_id
+            != self.workspace_delivery_card_reconciliation_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "retention_billing_reconciliation_plan_receipt must reference workspace_delivery_card_reconciliation_plan_receipt"
+            )
+        if (
+            retention_plan.operator_delivery_ledger_reconciliation_plan_receipt_id
+            != self.operator_delivery_ledger_reconciliation_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "retention_billing_reconciliation_plan_receipt must reference operator_delivery_ledger_reconciliation_plan_receipt"
+            )
+        if (
+            retention_plan.final_run_closure_plan_receipt_id
+            != self.final_run_closure_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "retention_billing_reconciliation_plan_receipt must reference final_run_closure_plan_receipt"
+            )
+        if retention_plan.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError(
+                "retention_billing_reconciliation_plan_receipt must reference runner_handoff"
+            )
+        if retention_plan.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError(
+                "retention_billing_reconciliation_plan_receipt must reference approval_receipt"
+            )
+        if retention_plan.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError(
+                "retention_billing_reconciliation_plan_receipt must reference launch_packet"
+            )
+        if retention_plan.run_id != self.launch_packet.run_id:
+            raise ValueError(
+                "retention_billing_reconciliation_plan_receipt must reference launch run"
+            )
+        if (
+            retention_plan.status
+            != "blocked_retention_billing_reconciliation_unimplemented"
+        ):
+            raise ValueError(
+                "retention_billing_reconciliation_plan_receipt must be blocked_retention_billing_reconciliation_unimplemented"
+            )
+        if (
+            retention_plan.retention_billing_reconciliation_allowed
+            or retention_plan.run_retention_manifest_created
+            or retention_plan.billing_reconciliation_created
+            or retention_plan.model_usage_rollup_created
+            or retention_plan.source_lineage_archive_created
+            or retention_plan.run_retention_manifest_status_entry_created
+            or retention_plan.billing_reconciliation_status_entry_created
+            or retention_plan.model_usage_rollup_reconciliation_entry_created
+            or retention_plan.source_lineage_archive_reconciliation_entry_created
+        ):
+            raise ValueError(
+                "retention_billing_reconciliation_plan_receipt must not create retention, billing, usage, or source archive state"
+            )
+        if (
+            retention_plan.delivery_notification_reconciliation_allowed
+            or retention_plan.delivery_notification_status_entry_created
+            or retention_plan.delivery_notification_result_entry_created
+            or retention_plan.delivery_notification_operator_visible_event_created
+            or retention_plan.delivery_notification_created
+        ):
+            raise ValueError(
+                "retention_billing_reconciliation_plan_receipt must not create delivery notification state"
+            )
+        if (
+            retention_plan.workspace_delivery_card_reconciliation_allowed
+            or retention_plan.workspace_delivery_card_result_entry_created
+            or retention_plan.workspace_delivery_card_status_entry_created
+            or retention_plan.workspace_delivery_card_notification_entry_created
+            or retention_plan.workspace_delivery_card_created
+        ):
+            raise ValueError(
+                "retention_billing_reconciliation_plan_receipt must not create workspace card state"
+            )
+        if (
+            retention_plan.operator_delivery_ledger_reconciliation_allowed
+            or retention_plan.operator_delivery_ledger_result_entry_created
+            or retention_plan.operator_delivery_ledger_status_entry_created
+            or retention_plan.operator_delivery_ledger_retry_entry_created
+            or retention_plan.operator_delivery_ledger_dead_letter_entry_created
+            or retention_plan.operator_delivery_ledger_entry_created
+        ):
+            raise ValueError(
+                "retention_billing_reconciliation_plan_receipt must not create ledger state"
+            )
+        if (
+            retention_plan.run_closeout_record_created
+            or retention_plan.final_run_closure_allowed
+            or retention_plan.final_artifact_completion_finalization_allowed
+            or retention_plan.completion_record_created
+            or retention_plan.finalization_transaction_created
+            or retention_plan.artifact_archive_manifest_created
+            or retention_plan.operator_handoff_summary_created
+            or retention_plan.delivery_status_marked_complete
+            or retention_plan.quality_attestation_created
+            or retention_plan.completion_audit_entry_created
+        ):
+            raise ValueError(
+                "retention_billing_reconciliation_plan_receipt must not create completion, finalization, or closure state"
+            )
+        if (
+            retention_plan.final_artifact_publish_allowed
+            or retention_plan.publish_transaction_created
+            or retention_plan.information_asset_published
+            or retention_plan.account_visible_asset_created
+            or retention_plan.reading_workspace_entry_created
+            or retention_plan.search_index_entry_created
+            or retention_plan.private_read_url_created
+            or retention_plan.operator_notification_created
+        ):
+            raise ValueError(
+                "retention_billing_reconciliation_plan_receipt must not create publish or operator notification state"
+            )
+        if retention_plan.graph_commit_created or retention_plan.graph_mutated:
+            raise ValueError(
+                "retention_billing_reconciliation_plan_receipt must not create graph state"
+            )
+        if retention_plan.dispatch_performed:
+            raise ValueError(
+                "retention_billing_reconciliation_plan_receipt must not dispatch"
+            )
+        if retention_plan.budget_reserved:
+            raise ValueError(
+                "retention_billing_reconciliation_plan_receipt must not reserve budget"
+            )
+        if retention_plan.provider_calls_made:
+            raise ValueError(
+                "retention_billing_reconciliation_plan_receipt must not include provider calls"
+            )
+        if retention_plan.retrieval_performed:
+            raise ValueError(
+                "retention_billing_reconciliation_plan_receipt must not perform retrieval"
+            )
+        if retention_plan.source_receipts_created:
+            raise ValueError(
+                "retention_billing_reconciliation_plan_receipt must not create source receipts"
+            )
+        if retention_plan.final_artifact_created:
+            raise ValueError(
+                "retention_billing_reconciliation_plan_receipt must not create final artifact"
+            )
+        return self
+
+
+class MidnightOilFinalCloseoutArchiveReconciliationPlanReceipt(BaseModel):
+    receipt_id: str
+    retention_billing_reconciliation_plan_receipt_id: str
+    delivery_notification_reconciliation_plan_receipt_id: str
+    workspace_delivery_card_reconciliation_plan_receipt_id: str
+    operator_delivery_ledger_reconciliation_plan_receipt_id: str
+    operator_notification_delivery_result_reconciliation_plan_receipt_id: str
+    operator_notification_delivery_apply_plan_receipt_id: str
+    operator_notification_delivery_readiness_plan_receipt_id: str
+    final_run_closure_plan_receipt_id: str
+    final_artifact_completion_finalization_plan_receipt_id: str
+    final_artifact_publish_plan_receipt_id: str
+    launch_packet_id: str
+    approval_receipt_id: str
+    runner_handoff_id: str
+    run_id: str
+    status: Literal[
+        "blocked_final_closeout_archive_reconciliation_unimplemented"
+    ] = "blocked_final_closeout_archive_reconciliation_unimplemented"
+    adapter_key: Literal["final_closeout_archive_reconciliation"] = (
+        "final_closeout_archive_reconciliation"
+    )
+    planned_final_closeout_archive_reconciliation_receipt_id: str
+    planned_final_run_closure_receipt_id: str
+    planned_run_closeout_record_id: str
+    planned_artifact_archive_manifest_id: str
+    planned_operator_handoff_summary_id: str
+    planned_quality_attestation_id: str
+    planned_completion_audit_entry_id: str
+    planned_retention_billing_reconciliation_receipt_id: str
+    planned_run_retention_manifest_id: str
+    planned_billing_reconciliation_id: str
+    planned_model_usage_rollup_id: str
+    planned_source_lineage_archive_id: str
+    planned_source_lineage_archive_reconciliation_entry_id: str
+    planned_delivery_notification_reconciliation_receipt_id: str
+    planned_delivery_notification_id: str
+    planned_workspace_delivery_card_id: str
+    planned_operator_delivery_ledger_entry_id: str
+    planned_private_read_url_id: str
+    planned_hosted_html_asset_id: str
+    planned_idempotency_key: str
+    final_closeout_archive_reconciliation_blockers: list[str]
+    required_final_closeout_archive_reconciliation_invariants: list[str]
+    required_final_closeout_archive_reconciliation_receipt_fields: list[str]
+    blocker_reason: Literal[
+        "final_closeout_archive_reconciliation_unimplemented"
+    ] = "final_closeout_archive_reconciliation_unimplemented"
+    final_closeout_archive_reconciliation_allowed: bool = False
+    final_run_closure_receipt_reconciled: bool = False
+    run_closeout_record_reconciled: bool = False
+    artifact_archive_manifest_reconciled: bool = False
+    operator_handoff_summary_reconciled: bool = False
+    quality_attestation_reconciled: bool = False
+    completion_audit_entry_reconciled: bool = False
+    retention_billing_reconciliation_allowed: bool = False
+    run_retention_manifest_created: bool = False
+    billing_reconciliation_created: bool = False
+    model_usage_rollup_created: bool = False
+    source_lineage_archive_created: bool = False
+    run_retention_manifest_status_entry_created: bool = False
+    billing_reconciliation_status_entry_created: bool = False
+    model_usage_rollup_reconciliation_entry_created: bool = False
+    source_lineage_archive_reconciliation_entry_created: bool = False
+    delivery_notification_reconciliation_allowed: bool = False
+    delivery_notification_status_entry_created: bool = False
+    delivery_notification_result_entry_created: bool = False
+    delivery_notification_operator_visible_event_created: bool = False
+    delivery_notification_created: bool = False
+    workspace_delivery_card_reconciliation_allowed: bool = False
+    workspace_delivery_card_result_entry_created: bool = False
+    workspace_delivery_card_status_entry_created: bool = False
+    workspace_delivery_card_notification_entry_created: bool = False
+    workspace_delivery_card_created: bool = False
+    operator_delivery_ledger_reconciliation_allowed: bool = False
+    operator_delivery_ledger_result_entry_created: bool = False
+    operator_delivery_ledger_status_entry_created: bool = False
+    operator_delivery_ledger_retry_entry_created: bool = False
+    operator_delivery_ledger_dead_letter_entry_created: bool = False
+    operator_delivery_ledger_entry_created: bool = False
+    run_closeout_record_created: bool = False
+    final_run_closure_allowed: bool = False
+    final_artifact_completion_finalization_allowed: bool = False
+    completion_record_created: bool = False
+    finalization_transaction_created: bool = False
+    artifact_archive_manifest_created: bool = False
+    operator_handoff_summary_created: bool = False
+    delivery_status_marked_complete: bool = False
+    quality_attestation_created: bool = False
+    completion_audit_entry_created: bool = False
+    final_artifact_publish_allowed: bool = False
+    publish_transaction_created: bool = False
+    information_asset_published: bool = False
+    account_visible_asset_created: bool = False
+    reading_workspace_entry_created: bool = False
+    search_index_entry_created: bool = False
+    private_read_url_created: bool = False
+    operator_notification_created: bool = False
+    graph_commit_created: bool = False
+    graph_mutated: bool = False
+    final_artifact_created: bool = False
+    dispatch_performed: bool = False
+    budget_reserved: bool = False
+    provider_calls_made: bool = False
+    retrieval_performed: bool = False
+    source_receipts_created: bool = False
+    adapter_plan_notes: list[str] = Field(default_factory=list)
+
+
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
     price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
@@ -15429,6 +15706,201 @@ def retention_billing_reconciliation_plan_midnight_oil(
             "retention billing reconciliation plan only: no retention manifest, billing reconciliation, model usage rollup, source lineage archive, delivery notification, workspace card, ledger entry, URL activation, operator notification, or final artifact is created",
             "this receipt documents retention and billing reconciliation requirements after delivery notification reconciliation planning",
             "no activation readiness, live dispatch, scheduler job, worker runtime, budget reservation, provider call, retrieval, source receipt, graph mutation, publish, notification, URL activation, run closeout, retention write, billing write, usage write, source archive write, or artifact write is performed",
+        ],
+    )
+
+
+def final_closeout_archive_reconciliation_plan_midnight_oil(
+    req: MidnightOilFinalCloseoutArchiveReconciliationPlanRequest,
+) -> MidnightOilFinalCloseoutArchiveReconciliationPlanReceipt:
+    run_id = req.launch_packet.run_id
+    retention_plan = req.retention_billing_reconciliation_plan_receipt
+    closure_plan = req.final_run_closure_plan_receipt
+    completion_plan = req.final_artifact_completion_finalization_plan_receipt
+    return MidnightOilFinalCloseoutArchiveReconciliationPlanReceipt(
+        receipt_id=f"{run_id}-final-closeout-archive-reconciliation-plan",
+        retention_billing_reconciliation_plan_receipt_id=retention_plan.receipt_id,
+        delivery_notification_reconciliation_plan_receipt_id=(
+            retention_plan.delivery_notification_reconciliation_plan_receipt_id
+        ),
+        workspace_delivery_card_reconciliation_plan_receipt_id=(
+            retention_plan.workspace_delivery_card_reconciliation_plan_receipt_id
+        ),
+        operator_delivery_ledger_reconciliation_plan_receipt_id=(
+            retention_plan.operator_delivery_ledger_reconciliation_plan_receipt_id
+        ),
+        operator_notification_delivery_result_reconciliation_plan_receipt_id=(
+            retention_plan.operator_notification_delivery_result_reconciliation_plan_receipt_id
+        ),
+        operator_notification_delivery_apply_plan_receipt_id=(
+            retention_plan.operator_notification_delivery_apply_plan_receipt_id
+        ),
+        operator_notification_delivery_readiness_plan_receipt_id=(
+            retention_plan.operator_notification_delivery_readiness_plan_receipt_id
+        ),
+        final_run_closure_plan_receipt_id=retention_plan.final_run_closure_plan_receipt_id,
+        final_artifact_completion_finalization_plan_receipt_id=(
+            retention_plan.final_artifact_completion_finalization_plan_receipt_id
+        ),
+        final_artifact_publish_plan_receipt_id=(
+            retention_plan.final_artifact_publish_plan_receipt_id
+        ),
+        launch_packet_id=req.launch_packet.packet_id,
+        approval_receipt_id=req.approval_receipt.receipt_id,
+        runner_handoff_id=req.runner_handoff.handoff_id,
+        run_id=run_id,
+        planned_final_closeout_archive_reconciliation_receipt_id=(
+            f"{run_id}-final-closeout-archive-reconciliation-receipt"
+        ),
+        planned_final_run_closure_receipt_id=(
+            closure_plan.planned_final_run_closure_receipt_id
+        ),
+        planned_run_closeout_record_id=closure_plan.planned_run_closeout_record_id,
+        planned_artifact_archive_manifest_id=(
+            closure_plan.planned_artifact_archive_manifest_id
+        ),
+        planned_operator_handoff_summary_id=(
+            closure_plan.planned_operator_handoff_summary_id
+        ),
+        planned_quality_attestation_id=closure_plan.planned_quality_attestation_id,
+        planned_completion_audit_entry_id=(
+            closure_plan.planned_completion_audit_entry_id
+        ),
+        planned_retention_billing_reconciliation_receipt_id=(
+            retention_plan.planned_retention_billing_reconciliation_receipt_id
+        ),
+        planned_run_retention_manifest_id=(
+            retention_plan.planned_run_retention_manifest_id
+        ),
+        planned_billing_reconciliation_id=(
+            retention_plan.planned_billing_reconciliation_id
+        ),
+        planned_model_usage_rollup_id=retention_plan.planned_model_usage_rollup_id,
+        planned_source_lineage_archive_id=(
+            retention_plan.planned_source_lineage_archive_id
+        ),
+        planned_source_lineage_archive_reconciliation_entry_id=(
+            retention_plan.planned_source_lineage_archive_reconciliation_entry_id
+        ),
+        planned_delivery_notification_reconciliation_receipt_id=(
+            retention_plan.planned_delivery_notification_reconciliation_receipt_id
+        ),
+        planned_delivery_notification_id=(
+            retention_plan.planned_delivery_notification_id
+        ),
+        planned_workspace_delivery_card_id=(
+            retention_plan.planned_workspace_delivery_card_id
+        ),
+        planned_operator_delivery_ledger_entry_id=(
+            retention_plan.planned_operator_delivery_ledger_entry_id
+        ),
+        planned_private_read_url_id=retention_plan.planned_private_read_url_id,
+        planned_hosted_html_asset_id=retention_plan.planned_hosted_html_asset_id,
+        planned_idempotency_key=retention_plan.planned_idempotency_key,
+        final_closeout_archive_reconciliation_blockers=[
+            *retention_plan.retention_billing_reconciliation_blockers,
+            "final closeout archive reconciliation receipt writer",
+            "final run closure receipt reconciliation writer",
+            "run closeout record reconciliation writer",
+            "artifact archive manifest reconciliation writer",
+            "operator handoff summary reconciliation writer",
+            "quality attestation reconciliation writer",
+            "completion audit reconciliation writer",
+            "final closeout archive replay guard",
+        ],
+        required_final_closeout_archive_reconciliation_invariants=[
+            "final closeout archive reconciliation planner must require retention billing reconciliation planning before closeout archive rows can be reconciled",
+            "final closeout archive reconciliation planner must bind final run closure receipt, run closeout record, artifact archive manifest, operator handoff summary, quality attestation, completion audit entry, retention manifest, billing reconciliation, model usage rollup, source lineage archive, private read URL, hosted HTML asset, and idempotency key to the same planned closed run",
+            "final closeout archive reconciliation planner must keep closeout archive rows uncreated until real retention, billing, usage, source lineage, delivery notification, workspace card, and ledger reconciliation rows exist",
+            "final closeout archive reconciliation planner must preserve artifact archive and handoff lineage without publishing, notifying, activating URLs, mutating graph state, billing accounts, or closing the run during planning",
+            "final closeout archive reconciliation planner must not dispatch providers, perform retrieval, mutate graph, publish assets, notify operators, activate URLs, close runs, write archive rows, write retention rows, write billing rows, write usage rollups, write source archives, or write final artifacts while planning reconciliation",
+        ],
+        required_final_closeout_archive_reconciliation_receipt_fields=[
+            "final_closeout_archive_reconciliation_plan_receipt_id",
+            "retention_billing_reconciliation_plan_receipt_id",
+            "delivery_notification_reconciliation_plan_receipt_id",
+            "final_closeout_archive_reconciliation_receipt_id",
+            "final_run_closure_receipt_id",
+            "run_closeout_record_id",
+            "artifact_archive_manifest_id",
+            "operator_handoff_summary_id",
+            "quality_attestation_id",
+            "completion_audit_entry_id",
+            "retention_billing_reconciliation_receipt_id",
+            "run_retention_manifest_id",
+            "billing_reconciliation_id",
+            "model_usage_rollup_id",
+            "source_lineage_archive_id",
+            "source_lineage_archive_reconciliation_entry_id",
+            "private_read_url_id",
+            "hosted_html_asset_id",
+            "idempotency_key",
+            "created_at",
+        ],
+        blocker_reason="final_closeout_archive_reconciliation_unimplemented",
+        final_closeout_archive_reconciliation_allowed=False,
+        final_run_closure_receipt_reconciled=False,
+        run_closeout_record_reconciled=False,
+        artifact_archive_manifest_reconciled=False,
+        operator_handoff_summary_reconciled=False,
+        quality_attestation_reconciled=False,
+        completion_audit_entry_reconciled=False,
+        retention_billing_reconciliation_allowed=False,
+        run_retention_manifest_created=False,
+        billing_reconciliation_created=False,
+        model_usage_rollup_created=False,
+        source_lineage_archive_created=False,
+        run_retention_manifest_status_entry_created=False,
+        billing_reconciliation_status_entry_created=False,
+        model_usage_rollup_reconciliation_entry_created=False,
+        source_lineage_archive_reconciliation_entry_created=False,
+        delivery_notification_reconciliation_allowed=False,
+        delivery_notification_status_entry_created=False,
+        delivery_notification_result_entry_created=False,
+        delivery_notification_operator_visible_event_created=False,
+        delivery_notification_created=False,
+        workspace_delivery_card_reconciliation_allowed=False,
+        workspace_delivery_card_result_entry_created=False,
+        workspace_delivery_card_status_entry_created=False,
+        workspace_delivery_card_notification_entry_created=False,
+        workspace_delivery_card_created=False,
+        operator_delivery_ledger_reconciliation_allowed=False,
+        operator_delivery_ledger_result_entry_created=False,
+        operator_delivery_ledger_status_entry_created=False,
+        operator_delivery_ledger_retry_entry_created=False,
+        operator_delivery_ledger_dead_letter_entry_created=False,
+        operator_delivery_ledger_entry_created=False,
+        run_closeout_record_created=False,
+        final_run_closure_allowed=False,
+        final_artifact_completion_finalization_allowed=False,
+        completion_record_created=False,
+        finalization_transaction_created=False,
+        artifact_archive_manifest_created=False,
+        operator_handoff_summary_created=False,
+        delivery_status_marked_complete=False,
+        quality_attestation_created=False,
+        completion_audit_entry_created=False,
+        final_artifact_publish_allowed=False,
+        publish_transaction_created=False,
+        information_asset_published=False,
+        account_visible_asset_created=False,
+        reading_workspace_entry_created=False,
+        search_index_entry_created=False,
+        private_read_url_created=False,
+        operator_notification_created=False,
+        graph_commit_created=False,
+        graph_mutated=False,
+        final_artifact_created=False,
+        dispatch_performed=False,
+        budget_reserved=False,
+        provider_calls_made=False,
+        retrieval_performed=False,
+        source_receipts_created=False,
+        adapter_plan_notes=[
+            "final closeout archive reconciliation plan only: no final run closure receipt, run closeout record, archive manifest, handoff summary, quality attestation, completion audit, retention manifest, billing reconciliation, model usage rollup, source lineage archive, notification, URL activation, or final artifact is created",
+            "this receipt documents final closeout archive reconciliation requirements after retention billing reconciliation planning",
+            "no activation readiness, live dispatch, scheduler job, worker runtime, budget reservation, provider call, retrieval, source receipt, graph mutation, publish, notification, URL activation, run closeout, archive write, retention write, billing write, usage write, source archive write, or artifact write is performed",
+            f"completion plan lineage remains planned-only at {completion_plan.receipt_id}",
         ],
     )
 

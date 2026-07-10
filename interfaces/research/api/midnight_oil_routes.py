@@ -40,6 +40,8 @@ from substrate.midnight_oil import (
     MidnightOilFinalArtifactPublishPlanRequest,
     MidnightOilFinalArtifactReceipt,
     MidnightOilFinalArtifactRequest,
+    MidnightOilFinalCloseoutArchiveReconciliationPlanReceipt,
+    MidnightOilFinalCloseoutArchiveReconciliationPlanRequest,
     MidnightOilFinalHtmlArtifactAssemblyPlanReceipt,
     MidnightOilFinalHtmlArtifactAssemblyPlanRequest,
     MidnightOilFinalRunClosurePlanReceipt,
@@ -125,6 +127,7 @@ from substrate.midnight_oil import (
     final_artifact_midnight_oil,
     final_artifact_persistence_plan_midnight_oil,
     final_artifact_publish_plan_midnight_oil,
+    final_closeout_archive_reconciliation_plan_midnight_oil,
     final_html_artifact_assembly_plan_midnight_oil,
     final_run_closure_plan_midnight_oil,
     final_synthesis_draft_plan_midnight_oil,
@@ -626,6 +629,16 @@ def post_midnight_oil_retention_billing_reconciliation_plan(
     return retention_billing_reconciliation_plan_midnight_oil(req)
 
 
+@midnight_oil_router.post(
+    "/final-closeout-archive-reconciliation-plan",
+    response_model=MidnightOilFinalCloseoutArchiveReconciliationPlanReceipt,
+)
+def post_midnight_oil_final_closeout_archive_reconciliation_plan(
+    req: MidnightOilFinalCloseoutArchiveReconciliationPlanRequest,
+) -> MidnightOilFinalCloseoutArchiveReconciliationPlanReceipt:
+    return final_closeout_archive_reconciliation_plan_midnight_oil(req)
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
@@ -647,6 +660,7 @@ __all__ = [
     "post_midnight_oil_final_artifact_graph_commit_plan",
     "post_midnight_oil_final_artifact_persistence_plan",
     "post_midnight_oil_final_artifact_publish_plan",
+    "post_midnight_oil_final_closeout_archive_reconciliation_plan",
     "post_midnight_oil_final_html_artifact_assembly_plan",
     "post_midnight_oil_final_run_closure_plan",
     "post_midnight_oil_final_synthesis_draft_plan",
