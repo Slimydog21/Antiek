@@ -1,0 +1,24 @@
+# inventory-asz · HostedHtml research_progress long-horizon honesty + twin seed
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: asz
+date: 2026-07-10
+parent_tip: e9735145b (asy)
+
+## Closed
+- HostedHtml research_progress_complete | draft honesty chrome
+  data-testid=hosted-html-research-progress-honesty
+  stamps: twin-seed-path · long-horizon · is-terminal · html-first · progress-source
+- Twin seed body Port path multi-stage plan→cite honesty (complete vs draft)
+- Scorecard + FUTURE competitive DR brief deep-links
+- Completes asx open-path stamps → HTML reading host land honesty
+- vitest HostedHtmlDocumentHost 38 green
+
+## Doctrine
+Competitive long-horizon progress HTML floats join recursive note-taker with
+path honesty · never invent hops · HTML-first · not PDF
+
+## Next
+ata+ offline product residual outside thrash
+Avoid: progress honesty thrash after asx/asz · knowledge-dense preset thrash ·
+path-choices · usage-source · highlight DR · offline catalog · dogfood · readiness→CTA
+Operator merge PR #465 remains P0 (gated)

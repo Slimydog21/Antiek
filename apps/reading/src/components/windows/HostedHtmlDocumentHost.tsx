@@ -374,9 +374,12 @@ export default function HostedHtmlDocumentHost(
   const isPublicationHydrate = payloadSource === "publication_hydrate";
   const isResearchContextPack = payloadSource === "research_context_pack";
   // Residual (so): progress + flywheel float hosts join note-taker seed titles.
+  // Residual (asz): long-horizon progress float twin seed + honesty chrome (asx open stamps).
   const isResearchProgress =
     payloadSource === "research_progress_complete" ||
     payloadSource === "research_progress_draft";
+  const isResearchProgressComplete =
+    payloadSource === "research_progress_complete";
   const isSessionFlywheel = payloadSource === "session_flywheel_complete";
   // Residual (tr): cohesive multi-spawn unit prompt HTML window.
   const isCollectiveUnitPrompt = payloadSource === "collective_unit_prompt";
@@ -579,7 +582,20 @@ export default function HostedHtmlDocumentHost(
                     .filter(Boolean)
                     .join("\n")
                     .slice(0, 900)
-                : twinSeedBodyBase;
+                : isResearchProgress
+                  ? [
+                      twinSeedBodyBase,
+                      "",
+                      isResearchProgressComplete
+                        ? "Port path: Research progress complete float (plan→gather→synthesize→cite→terminal multi-stage · competitive long-horizon · HTML-first · never invent citation hops · hops live on evidence pack)."
+                        : "Port path: Research progress draft float (mid-flight plan→cite multi-stage · competitive long-horizon · HTML-first · never invent terminal stages or hops · hops live on evidence pack).",
+                      assetId ? `document_id=${assetId}` : "",
+                      `source=${payloadSource} · twin auto-seed if empty · recursive note-taker · multi-stage honesty from asx open CTAs.`,
+                    ]
+                      .filter(Boolean)
+                      .join("\n")
+                      .slice(0, 900)
+                  : twinSeedBodyBase;
 
   return (
     <div
@@ -963,6 +979,54 @@ export default function HostedHtmlDocumentHost(
                     title="Settings competitive DR scorecard (spawn merge)"
                   >
                     Settings · competitive DR scorecard
+                  </a>
+                </p>
+              </div>
+            ) : null}
+            {/* Residual (asz): research progress float long-horizon multi-stage honesty. */}
+            {isResearchProgress ? (
+              <div
+                className="text-[11px] font-mono opacity-80 mt-1 space-y-1"
+                data-testid="hosted-html-research-progress-honesty"
+                data-twin-seed-path={
+                  isResearchProgressComplete
+                    ? "research_progress_complete"
+                    : "research_progress_draft"
+                }
+                data-auto-seed-if-empty="true"
+                data-html-first="true"
+                data-view-format="html"
+                data-long-horizon="true"
+                data-is-terminal={String(isResearchProgressComplete)}
+                data-progress-source={payloadSource}
+                role="status"
+              >
+                <p>
+                  Research progress · plan→gather→synthesize→cite→terminal
+                  multi-stage ·{" "}
+                  {isResearchProgressComplete
+                    ? "terminal complete"
+                    : "mid-flight draft"}{" "}
+                  · competitive long-horizon · twin auto-seed if empty
+                  (recursive note-taker) · never invent hops (evidence pack) ·
+                  HTML · not PDF
+                </p>
+                <p className="space-x-3">
+                  <a
+                    href="/settings#settings-competitive-dr-scorecard"
+                    data-testid="hosted-html-research-progress-scorecard-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="Settings competitive DR scorecard (multi-stage long-horizon progress)"
+                  >
+                    Settings · competitive DR scorecard
+                  </a>
+                  <a
+                    href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+                    data-testid="hosted-html-research-progress-future-agent-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="FUTURE-AGENT competitive deep-research quality brief"
+                  >
+                    FUTURE · competitive DR brief
                   </a>
                 </p>
               </div>

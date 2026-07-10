@@ -4247,3 +4247,9 @@ KNOWLEDGE_DENSE_PUBLICATION_PRESETS += arxiv:2210.03629 (ReAct) ·
 arxiv:2302.04761 (Toolformer). Agentic multi-step + tool-use spine for
 competitive DR connectors (insert-only · never auto-hydrate). Shared quick-call
 matrix inherits. vitest PublicationAttach 7 green. P0 PR #465. Pivot asz+.
+
+## Residual asz · 2026-07-10 — HostedHtml research_progress long-horizon honesty
+Progress complete/draft float hosts stamp multi-stage honesty chrome + twin
+seed Port path (plan→cite · long-horizon · never invent hops). Scorecard +
+FUTURE competitive DR deep-links. Completes asx open CTA → HTML host land.
+vitest HostedHtml 38 green. P0 PR #465. Pivot ata+.

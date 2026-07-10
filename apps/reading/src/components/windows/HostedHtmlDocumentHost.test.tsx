@@ -266,7 +266,7 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
   });
 
-  it("stamps research_progress_complete host honesty (so)", () => {
+  it("stamps research_progress_complete host honesty (so/asz)", () => {
     render(
       <HostedHtmlDocumentHost
         document_id="research_progress:spn_1:abc"
@@ -285,6 +285,54 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(
       screen.getByTestId("hosted-html-open-write").getAttribute("data-write-seed-source"),
     ).toBe("research_progress_complete");
+    // Residual (asz): long-horizon multi-stage honesty chrome + twin path.
+    const honesty = screen.getByTestId("hosted-html-research-progress-honesty");
+    expect(honesty.getAttribute("data-twin-seed-path")).toBe(
+      "research_progress_complete",
+    );
+    expect(honesty.getAttribute("data-long-horizon")).toBe("true");
+    expect(honesty.getAttribute("data-is-terminal")).toBe("true");
+    expect(honesty.getAttribute("data-html-first")).toBe("true");
+    expect(honesty.textContent).toMatch(/plan→gather→synthesize→cite→terminal/i);
+    expect(honesty.textContent).toMatch(/terminal complete/i);
+    expect(
+      screen
+        .getByTestId("hosted-html-research-progress-scorecard-link")
+        .getAttribute("href"),
+    ).toBe("/settings#settings-competitive-dr-scorecard");
+    expect(
+      screen
+        .getByTestId("hosted-html-research-progress-future-agent-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    const seedBody =
+      screen.getByTestId("twin-notes-panel-stub").getAttribute("data-seed-body") ||
+      "";
+    expect(seedBody).toMatch(/Port path: Research progress complete/i);
+    expect(seedBody).toMatch(/multi-stage/i);
+  });
+
+  it("stamps research_progress_draft mid-flight honesty (asz)", () => {
+    render(
+      <HostedHtmlDocumentHost
+        document_id="research_progress:spn_2:draft"
+        title="Research progress · draft"
+        view_format="html"
+        source="research_progress_draft"
+        html="<p>Mid-flight plan</p>"
+      />,
+    );
+    const honesty = screen.getByTestId("hosted-html-research-progress-honesty");
+    expect(honesty.getAttribute("data-twin-seed-path")).toBe(
+      "research_progress_draft",
+    );
+    expect(honesty.getAttribute("data-is-terminal")).toBe("false");
+    expect(honesty.getAttribute("data-long-horizon")).toBe("true");
+    expect(honesty.textContent).toMatch(/mid-flight draft/i);
+    const seedBody =
+      screen.getByTestId("twin-notes-panel-stub").getAttribute("data-seed-body") ||
+      "";
+    expect(seedBody).toMatch(/Port path: Research progress draft/i);
   });
 
   it("stamps spawn_merge Open Write source from auto-open float (aah)", () => {
