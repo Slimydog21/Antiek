@@ -44,11 +44,13 @@ def test_requires_exactly_two_distinct_enabled_priced_models() -> None:
 def test_rejects_nonpositive_operating_bounds() -> None:
     a, b = candidate("a"), candidate("b")
     with pytest.raises(ValueError, match="cap_usd"):
-        LiveWedgeConfig("w", (a, b), Decimal("0"), 1, 1)
+        LiveWedgeConfig("2026-W28", (a, b), Decimal("0"), 1, 1)
     with pytest.raises(ValueError, match="timeout_s"):
-        LiveWedgeConfig("w", (a, b), Decimal("1"), 0, 1)
+        LiveWedgeConfig("2026-W28", (a, b), Decimal("1"), 0, 1)
     with pytest.raises(ValueError, match="max_output_tokens"):
-        LiveWedgeConfig("w", (a, b), Decimal("1"), 1, 0)
+        LiveWedgeConfig("2026-W28", (a, b), Decimal("1"), 1, 0)
+    with pytest.raises(ValueError, match="ISO week"):
+        LiveWedgeConfig("2026-W99", (a, b), Decimal("1"), 1, 1)
 
 
 def test_builds_fallback_free_candidate_config_and_conservative_reservation() -> None:
@@ -78,3 +80,11 @@ def test_live_suite_requires_all_four_classes_and_scoring_expectations() -> None
     )
     with pytest.raises(ValueError, match="no scoring expectations"):
         validate_live_suite(empty_expectation)
+    duplicate = SuiteDefinition(
+        suite_version="duplicate",
+        label="bad",
+        items=competitive_dogfood_suite().items
+        + (competitive_dogfood_suite().items[0],),
+    )
+    with pytest.raises(ValueError, match="unique"):
+        validate_live_suite(duplicate)

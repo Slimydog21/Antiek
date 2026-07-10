@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -24,8 +25,8 @@ class LiveWedgeConfig:
     chars_per_input_token: int = 4
 
     def __post_init__(self) -> None:
-        if not self.week_id.strip():
-            raise ValueError("week_id is required")
+        if not re.fullmatch(r"\d{4}-W(?:0[1-9]|[1-4]\d|5[0-3])", self.week_id):
+            raise ValueError("week_id must be an ISO week such as 2026-W28")
         if len(self.candidates) != 2:
             raise ValueError("live wedge requires exactly two candidates")
         if self.candidates[0].model_id == self.candidates[1].model_id:
@@ -89,9 +90,12 @@ def validate_live_suite(suite: SuiteDefinition) -> None:
     missing = REQUIRED_TASK_CLASSES - present
     if missing:
         raise ValueError(f"live suite missing task classes: {sorted(missing)}")
+    item_ids: set[str] = set()
     for item in suite.items:
+        if not item.item_id.strip() or item.item_id in item_ids:
+            raise ValueError(f"suite item_id must be non-empty and unique: {item.item_id!r}")
+        item_ids.add(item.item_id)
         if not item.prompt.strip():
             raise ValueError(f"suite item {item.item_id} has an empty prompt")
         if not item.expected_keywords:
             raise ValueError(f"suite item {item.item_id} has no scoring expectations")
-

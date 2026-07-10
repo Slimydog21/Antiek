@@ -50,10 +50,11 @@ def reservation(**changes: object) -> LiveCallRecord:
 
 
 def test_identity_is_wedge_scoped() -> None:
-    first = deterministic_call_id("wedge", "week-1", "suite-1", "model-a", "item-1")
-    assert first == deterministic_call_id("wedge", "week-1", "suite-1", "model-a", "item-1")
-    assert first != deterministic_call_id("wedge", "week-2", "suite-1", "model-a", "item-1")
-    assert first != deterministic_call_id("wedge", "week-1", "suite-2", "model-a", "item-1")
+    args = ("wedge", "2026-W28", "suite-1", "provider-a", "model-a", "distill", "item-1", "sha256:a")
+    first = deterministic_call_id(*args)
+    assert first == deterministic_call_id(*args)
+    assert first != deterministic_call_id(*args[:3], "provider-b", *args[4:])
+    assert first != deterministic_call_id(*args[:-1], "sha256:b")
 
 
 def test_reservation_and_settlement_round_trip(tmp_path: Path) -> None:

@@ -23,12 +23,24 @@ def deterministic_call_id(
     wedge_id: str,
     week_id: str,
     suite_version: str,
+    requested_provider: str,
     requested_model: str,
+    task_class: str,
     item_id: str,
+    prompt_hash: str,
 ) -> str:
     """Return an identity scoped to a concrete benchmark wedge."""
     material = json.dumps(
-        [wedge_id, week_id, suite_version, requested_model, item_id],
+        [
+            wedge_id,
+            week_id,
+            suite_version,
+            requested_provider,
+            requested_model,
+            task_class,
+            item_id,
+            prompt_hash,
+        ],
         separators=(",", ":"),
     )
     return "lc_" + hashlib.sha256(f"live-call:v2:{material}".encode()).hexdigest()
@@ -65,8 +77,11 @@ class LiveCallRecord:
             self.wedge_id,
             self.week_id,
             self.suite_version,
+            self.requested_provider,
             self.requested_model,
+            self.task_class,
             self.item_id,
+            self.prompt_hash,
         )
 
     @property
