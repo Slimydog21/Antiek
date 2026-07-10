@@ -2683,9 +2683,18 @@ describe("Settings SPR-01 + decision-tree install", () => {
         screen.getByTestId("antiek-bench-leaderboard-install-recommended"),
       ).toBeTruthy();
     });
-    await user.click(
-      screen.getByTestId("antiek-bench-leaderboard-install-recommended"),
+    // Residual (auu): pure install readiness stamps on recommended CTA.
+    const recBtn = screen.getByTestId(
+      "antiek-bench-leaderboard-install-recommended",
     );
+    expect(recBtn.getAttribute("data-install-ready")).toBe("true");
+    expect(recBtn.getAttribute("data-block-reason")).toBe("ok");
+    expect(recBtn.getAttribute("data-never-auto-route")).toBe("true");
+    expect(recBtn.getAttribute("data-advisory-only")).toBe("true");
+    expect(recBtn.getAttribute("data-bench-is-dispatch-authority")).toBe(
+      "false",
+    );
+    await user.click(recBtn);
     await waitFor(() => {
       expect(installDecisionTreeSelection).toHaveBeenCalled();
     });

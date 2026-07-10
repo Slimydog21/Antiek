@@ -21,6 +21,10 @@ import {
 import { competitiveDrOfflineSurfaceCatalog } from "../../workspace/competitiveDrQuality";
 import { decisionTreeInstallReadiness } from "../../workspace/decisionTreeInstallReadiness";
 import { notDiamondAdvisoryInstallReadiness } from "../../workspace/notDiamondAdvisoryInstallReadiness";
+import {
+  leaderboardDriverInstallReadiness,
+  resolveLeaderboardInstallProvider,
+} from "../../workspace/leaderboardDriverInstallReadiness";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import {
@@ -88,6 +92,8 @@ import {
  * (manual model choice · never auto-route · ND advisory only).
  * Residual (aut): pure notDiamondAdvisoryInstallReadiness drives Install
  * advisory pick CTA (decision-tree only · L7 never dispatch authority).
+ * Residual (auu): pure leaderboardDriverInstallReadiness drives Antiek-bench
+ * install recommended / best-by-task CTAs (advisory · never auto-route).
  */
 export default function Settings() {
   const tier = useViewportTier();
@@ -688,35 +694,33 @@ export default function Settings() {
     modelId: string,
     opts?: { taskClass?: string | null },
   ) {
-    const mid = String(modelId || "").trim();
-    if (!mid) {
-      setLeaderboardError("No model id to install");
+    // Residual (auu): pure gate — model + resolvable provider · never auto-route.
+    const provider = resolveLeaderboardInstallProvider({
+      selected_provider_id: selectedProvider,
+      models,
+    });
+    const gate = leaderboardDriverInstallReadiness({
+      model_id: modelId,
+      provider_id: provider,
+      task_class: opts?.taskClass,
+    });
+    if (!gate.install_ready) {
+      setLeaderboardError(gate.install_title);
       return;
     }
     setTreeBusy(true);
     setTreeError(null);
     setLeaderboardError(null);
     try {
-      // Advisory install: use selected provider if set, else first ready provider.
-      const provider =
-        selectedProvider ||
-        models?.find((m) => m.ready)?.provider_id ||
-        models?.[0]?.provider_id ||
-        null;
-      if (!provider) {
-        throw new Error(
-          "Select a provider (or ensure models inventory has one) before installing leaderboard driver",
-        );
-      }
       const result = await installDecisionTreeSelection({
-        model_id: mid,
-        provider_id: provider,
+        model_id: gate.model_id,
+        provider_id: gate.provider_id,
       });
       setTree(result);
-      setSelectedModel(mid);
-      setSelectedProvider(provider);
+      setSelectedModel(gate.model_id);
+      setSelectedProvider(gate.provider_id);
       // Residual (adu): provenance for decision-tree status honesty.
-      const tc = String(opts?.taskClass || "").trim();
+      const tc = gate.task_class;
       setDriverInstallProvenance({
         source: tc ? "leaderboard_task" : "leaderboard_recommended",
         task_class: tc || null,
@@ -884,6 +888,21 @@ export default function Settings() {
       nd?.installable,
     ],
   );
+
+  /**
+   * Residual (auu): pure Antiek-bench leaderboard install-recommended readiness.
+   * Model + resolvable provider · advisory only · never auto-route.
+   */
+  const lbRecommendedInstallReady = useMemo(() => {
+    const provider = resolveLeaderboardInstallProvider({
+      selected_provider_id: selectedProvider,
+      models,
+    });
+    return leaderboardDriverInstallReadiness({
+      model_id: leaderboard?.recommended_model_id,
+      provider_id: provider,
+    });
+  }, [leaderboard?.recommended_model_id, selectedProvider, models]);
 
   const spendPct = useMemo(() => {
     if (
@@ -2999,13 +3018,35 @@ export default function Settings() {
                   }
                 />
                 <Row label="View" value={leaderboard.view_format} />
-                {leaderboard.recommended_model_id ? (
+                {lbRecommendedInstallReady.has_model_id ? (
                   <button
                     type="button"
                     data-testid="antiek-bench-leaderboard-install-recommended"
-                    disabled={treeBusy || leaderboardBusy}
+                    // Residual (auu): pure install readiness stamps.
+                    data-install-ready={String(
+                      lbRecommendedInstallReady.install_ready,
+                    )}
+                    data-block-reason={lbRecommendedInstallReady.block_reason}
+                    data-never-auto-route={String(
+                      lbRecommendedInstallReady.never_auto_route,
+                    )}
+                    data-advisory-only={String(
+                      lbRecommendedInstallReady.advisory_only,
+                    )}
+                    data-install-is-decision-tree-only={String(
+                      lbRecommendedInstallReady.install_is_decision_tree_only,
+                    )}
+                    data-bench-is-dispatch-authority={String(
+                      lbRecommendedInstallReady.bench_is_dispatch_authority,
+                    )}
+                    disabled={
+                      treeBusy ||
+                      leaderboardBusy ||
+                      !lbRecommendedInstallReady.install_ready
+                    }
                     onClick={() => void onInstallRecommendedFromLeaderboard()}
                     className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+                    title={lbRecommendedInstallReady.install_title}
                   >
                     Install recommended as decision-tree driver
                   </button>
@@ -3143,29 +3184,62 @@ export default function Settings() {
                                     trains from: {visionFeeds.join(", ")}
                                   </span>
                                 ) : null}
-                                {/* Residual (ads): install best-by-task as driver (advisory). */}
-                                <button
-                                  type="button"
-                                  data-testid={`antiek-bench-leaderboard-install-task-${row.task_class}`}
-                                  data-install-model-id={row.model_id}
-                                  data-install-task-class={row.task_class}
-                                  data-vision-feeds={
-                                    visionFeeds.join(",") || ""
-                                  }
-                                  data-advisory-only="true"
-                                  data-never-auto-route="true"
-                                  disabled={treeBusy || leaderboardBusy}
-                                  onClick={() =>
-                                    void onInstallLeaderboardModelAsDriver(
-                                      row.model_id,
-                                      { taskClass: row.task_class },
-                                    )
-                                  }
-                                  className="px-2 py-0.5 rounded border border-ink/40 dark:border-bright/40 text-[10px] font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
-                                  title={`Install ${row.model_id} (best ${row.task_class}) as decision-tree driver — trains from ${visionFeeds.join(", ") || "—"} · advisory only · never auto-route`}
-                                >
-                                  Install as driver
-                                </button>
+                                {/* Residual (ads/auu): install best-by-task as driver (advisory). */}
+                                {(() => {
+                                  const taskGate =
+                                    leaderboardDriverInstallReadiness({
+                                      model_id: row.model_id,
+                                      provider_id:
+                                        resolveLeaderboardInstallProvider({
+                                          selected_provider_id:
+                                            selectedProvider,
+                                          models,
+                                        }),
+                                      task_class: row.task_class,
+                                    });
+                                  return (
+                                    <button
+                                      type="button"
+                                      data-testid={`antiek-bench-leaderboard-install-task-${row.task_class}`}
+                                      data-install-model-id={row.model_id}
+                                      data-install-task-class={row.task_class}
+                                      data-vision-feeds={
+                                        visionFeeds.join(",") || ""
+                                      }
+                                      data-install-ready={String(
+                                        taskGate.install_ready,
+                                      )}
+                                      data-block-reason={taskGate.block_reason}
+                                      data-advisory-only={String(
+                                        taskGate.advisory_only,
+                                      )}
+                                      data-never-auto-route={String(
+                                        taskGate.never_auto_route,
+                                      )}
+                                      data-install-is-decision-tree-only={String(
+                                        taskGate.install_is_decision_tree_only,
+                                      )}
+                                      data-bench-is-dispatch-authority={String(
+                                        taskGate.bench_is_dispatch_authority,
+                                      )}
+                                      disabled={
+                                        treeBusy ||
+                                        leaderboardBusy ||
+                                        !taskGate.install_ready
+                                      }
+                                      onClick={() =>
+                                        void onInstallLeaderboardModelAsDriver(
+                                          row.model_id,
+                                          { taskClass: row.task_class },
+                                        )
+                                      }
+                                      className="px-2 py-0.5 rounded border border-ink/40 dark:border-bright/40 text-[10px] font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+                                      title={`${taskGate.install_title} — trains from ${visionFeeds.join(", ") || "—"}`}
+                                    >
+                                      Install as driver
+                                    </button>
+                                  );
+                                })()}
                               </li>
                               );
                             })}
