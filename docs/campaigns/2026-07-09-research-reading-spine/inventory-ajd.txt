@@ -1,0 +1,16 @@
+# inventory-ajd · SessionFlywheel competitive DR scorecard deep-links
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ajd
+date: 2026-07-10
+parent_tip: cb991024 (ajc)
+
+## Closed
+- SessionFlywheelPanel:
+  - session-flywheel-competitive-scorecard-link
+  - session-flywheel-competitive-dr-future-agent-link
+- Session land → Antiek-bench usage flywheel navigates competitive honesty map
+- vitest SessionFlywheel 6 green
+
+## Next
+aje+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

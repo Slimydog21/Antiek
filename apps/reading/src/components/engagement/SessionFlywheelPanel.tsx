@@ -195,6 +195,23 @@ export function SessionFlywheelPanel({
           >
             Dual-gate L2 Substack checklist
           </a>
+          {/* Residual (ajd): session land → competitive DR honesty map (parity progress/MO). */}
+          <a
+            href="/settings#settings-competitive-dr-scorecard"
+            data-testid="session-flywheel-competitive-scorecard-link"
+            className="underline opacity-80 hover:opacity-100"
+            title="Settings competitive deep-research scorecard (usage→Antiek-bench flywheel honesty)"
+          >
+            Settings · competitive DR scorecard
+          </a>
+          <a
+            href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+            data-testid="session-flywheel-competitive-dr-future-agent-link"
+            className="underline opacity-80 hover:opacity-100"
+            title="FUTURE-AGENT competitive deep-research quality brief"
+          >
+            FUTURE · competitive DR brief
+          </a>
         </p>
         {/* Residual (lt): model+budget+depth before/after flywheel complete. */}
         <div

@@ -2961,3 +2961,7 @@ Settings 36 green. P0 operator merge PR #465. Pivot ajc+ outside thrash.
 Knowledge-dense arxiv/substack attach navigates Settings competitive DR scorecard +
 FUTURE brief (source quick-call shipped · L1/L2 live hydrate deferred). vitest
 PublicationAttach 6 green. P0 operator merge PR #465. Pivot ajd+ outside thrash.
+
+## Residual ajd · 2026-07-10 — SessionFlywheel competitive DR scorecard deep-links
+Session land / Antiek-bench usage flywheel navigates Settings competitive DR scorecard +
+FUTURE brief. vitest SessionFlywheel 6 green. P0 operator merge PR #465. Pivot aje+.

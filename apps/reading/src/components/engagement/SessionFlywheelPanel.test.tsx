@@ -240,4 +240,18 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
     expect(dualL2.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
     expect(dualL2.textContent).toMatch(/L2 Substack checklist/i);
   });
+
+  it("links competitive DR scorecard and FUTURE brief (ajd)", () => {
+    render(<SessionFlywheelPanel sessionId="fsess_1" />);
+    expect(
+      screen
+        .getByTestId("session-flywheel-competitive-scorecard-link")
+        .getAttribute("href"),
+    ).toBe("/settings#settings-competitive-dr-scorecard");
+    expect(
+      screen
+        .getByTestId("session-flywheel-competitive-dr-future-agent-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+  });
 });
