@@ -1,0 +1,15 @@
+# inventory-adc · Midnight Oil fan-out depth create control
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: adc
+date: 2026-07-10
+parent_tip: f20d2d30 (adb)
+
+## Closed
+- Create form moil-fanout-depth (default 3, max 12)
+- createMidnightOilJob passes fanout_depth
+- Server echo updates local fanout when returned
+- vitest MidnightOil · 20 passed
+- Completes ada/adb formula honesty with operator-controlled fan-out
+
+## Not in scope
+- Live multi-provider swarm

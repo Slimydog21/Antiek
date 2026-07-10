@@ -543,6 +543,10 @@ describe("MidnightOil mode", () => {
     fireEvent.change(screen.getByLabelText(/^Goals \(one per line\)$/i), {
       target: { value: "Map residual risks" },
     });
+    // Residual (adc): fan-out control defaults to 3 and is passed on create.
+    const fanout = screen.getByTestId("moil-fanout-depth");
+    expect(fanout.getAttribute("data-default-fanout")).toBe("3");
+    fireEvent.change(fanout, { target: { value: "5" } });
     fireEvent.click(
       screen.getByRole("button", { name: /create job \+ recommend ceiling/i }),
     );
@@ -552,6 +556,12 @@ describe("MidnightOil mode", () => {
         "3.60",
       );
     });
+    expect(createMidnightOilJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fanout_depth: 5,
+        duration_minutes: expect.any(Number),
+      }),
+    );
     // Residual (hn): recommended ceiling metrics + formula transparency.
     const metrics = screen.getByTestId("moil-ceiling-metrics");
     expect(metrics.getAttribute("data-job-id")).toBe("moil_test");

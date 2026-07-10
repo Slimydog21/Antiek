@@ -153,6 +153,11 @@ export default function MidnightOil() {
   const [pubRefs, setPubRefs] = useState("");
   const [pubRefStatus, setPubRefStatus] = useState<string | null>(null);
   const [durationMinutes, setDurationMinutes] = useState(60);
+  /**
+   * Residual (adc): operator-controlled fan-out depth for recommended ceiling
+   * (parity substrate DEFAULT_FANOUT_DEPTH=3; root + children).
+   */
+  const [fanoutDepth, setFanoutDepth] = useState(MOIL_CEILING_DEFAULT_FANOUT_DEPTH);
   /** Default until decision-tree prefill (cz); ceiling pricing accepts "default". */
   const [modelId, setModelId] = useState("default");
   const [driverPrefill, setDriverPrefill] = useState<
@@ -444,11 +449,17 @@ export default function MidnightOil() {
             " · HTML-first",
         );
       }
+      const fanout =
+        Number.isFinite(fanoutDepth) && fanoutDepth > 0
+          ? Math.floor(fanoutDepth)
+          : MOIL_CEILING_DEFAULT_FANOUT_DEPTH;
       const created = await createMidnightOilJob({
         goals,
         duration_minutes: durationMinutes,
         model_id: modelId || null,
         research_tier: researchTier,
+        // Residual (adc): pass fan-out into recommended ceiling formula.
+        fanout_depth: fanout,
       });
       if (created.view_format !== "html") {
         throw new Error("Midnight Oil view_format must be html");
@@ -461,6 +472,13 @@ export default function MidnightOil() {
         if (rt === "fast" || rt === "deep" || rt === "wrestle") {
           setResearchTier(rt);
         }
+      }
+      // Residual (adc): echo server fanout when present (formula honesty).
+      if (
+        typeof created.fanout_depth === "number" &&
+        created.fanout_depth > 0
+      ) {
+        setFanoutDepth(created.fanout_depth);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -819,6 +837,27 @@ export default function MidnightOil() {
               </button>
             ))}
           </div>
+        </label>
+        {/* Residual (adc): fan-out depth for recommended price ceiling intensity. */}
+        <label className="block space-y-1">
+          <span className="text-sm font-medium">Fan-out depth</span>
+          <p className="text-[11px] font-mono opacity-70">
+            Investigation tree depth (root + children). Scales recommended
+            ceiling · default {MOIL_CEILING_DEFAULT_FANOUT_DEPTH} · recommendation
+            only.
+          </p>
+          <input
+            type="number"
+            min={1}
+            max={12}
+            className="w-full border rounded p-2"
+            value={fanoutDepth}
+            onChange={(e) => setFanoutDepth(Number(e.target.value))}
+            disabled={busy}
+            data-testid="moil-fanout-depth"
+            data-default-fanout={String(MOIL_CEILING_DEFAULT_FANOUT_DEPTH)}
+            aria-label="Midnight Oil fan-out depth for ceiling formula"
+          />
         </label>
         <label className="block space-y-1">
           <span className="text-sm font-medium">Model id</span>
