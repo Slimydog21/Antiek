@@ -1,11 +1,15 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
+import { CollectiveResearchPanel } from "../../components/engagement/CollectiveResearchPanel";
 import { useInvestigation } from "../../hooks/useInvestigation";
 import type { InvestigationState } from "../../hooks/useInvestigation";
 import { parseSynthesis } from "../../lib/synthesisParser";
 import GlassSurface from "../../shell/GlassSurface";
+import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
 import { PanelHost } from "../../workspace/PanelHost";
+import { listRecentDeepResearchSpawnIds } from "../../workspace/recentDeepResearchSpawns";
+import { useWindows } from "../../workspace/windowsStore";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import type { StarterPanel } from "../../workspace/PanelHost";
 import DistillView from "./DistillView";
@@ -61,6 +65,10 @@ import ThinkingStream from "./ThinkingStream";
  * surrounding NavRail + Topbar + dock zones. HighlightToolbar still
  * lives as a selection-anchored DOM overlay because it's positioned
  * against text, not workspace coordinates.
+ *
+ * Residual (afr): CollectiveResearchPanel on /inv/:id when open or recent
+ * deep_research_session spawns exist — multi-select assembly parity with
+ * reading ResearchThis · Write · MO (reading ≡ research workstation).
  */
 export default function ResearchWorkstation() {
   const params = useParams<{ investigationId?: string }>();
@@ -102,6 +110,32 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
   const investigation = useInvestigation(investigationId);
   const centerRef = useRef<HTMLDivElement>(null);
   const openPanel = useWorkspace((s) => s.open);
+
+  // Residual (afr): open + recent DR session spawns → multi-select on /inv/:id.
+  const windows = useWindows((s) => s.windows);
+  const [recentTick, setRecentTick] = useState(0);
+  const recentSpawnIds = useMemo(
+    () => listRecentDeepResearchSpawnIds(),
+    [windows, recentTick],
+  );
+  /** Residual (afr/ue): currently open DR windows only (parity ResearchThis). */
+  const openSpawnIds = useMemo(
+    () =>
+      collectDeepResearchSpawnIds({
+        currentSpawnId: null,
+        windows,
+      }),
+    [windows],
+  );
+  const availableSpawnIds = useMemo(
+    () =>
+      collectDeepResearchSpawnIds({
+        currentSpawnId: null,
+        windows,
+        recentSpawnIds,
+      }),
+    [windows, recentSpawnIds],
+  );
 
   // SPR-04 M2: highlight → follow this. A raw highlight has no reserved
   // escalation id, so we omit it and the substrate mints a fresh child.
@@ -178,6 +212,26 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
       className="h-full overflow-y-auto relative"
     >
       <CenterContent investigation={investigation} onChaseQuestion={onChaseQuestion} />
+      {/* Residual (afr): multi-select open + recent DR spawns → this investigation. */}
+      {availableSpawnIds.length > 0 ? (
+        <section
+          className="border-t border-rule px-4 py-4 dark:border-charcoal-1"
+          data-testid="research-workstation-collective-mount"
+          data-view-format="html"
+          data-available-spawn-count={String(availableSpawnIds.length)}
+          data-recent-count={String(recentSpawnIds.length)}
+          data-investigation-id={investigationId}
+          data-seamless-workstation-collective="true"
+        >
+          <CollectiveResearchPanel
+            availableSpawnIds={availableSpawnIds}
+            parentAssetId={investigationId}
+            recentSpawnIds={recentSpawnIds}
+            openSpawnIds={openSpawnIds}
+            onRecentSpawnsCleared={() => setRecentTick((n) => n + 1)}
+          />
+        </section>
+      ) : null}
       <HighlightToolbar
         scopeRef={centerRef}
         onChaseThis={onChaseThis}

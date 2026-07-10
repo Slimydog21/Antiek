@@ -2463,3 +2463,9 @@ vitest CollectiveResearchPanel 27 green.
 Handoff: Select open path · dogfood v16 · Select recent path. Multi-select
 assembly matrix (open|recent|restore) complete offline. P0 operator merge
 PR #465. Pivot afr+ outside thrash.
+
+## Residual afr · 2026-07-10 — ResearchWorkstation collective multi-select
+/inv/:id InvestigationCenter mounts CollectiveResearchPanel when open or
+recent deep_research_session spawns exist (openSpawnIds · recent_ring · parent=
+investigationId). Reading ≡ research workstation multi-select assembly.
+vitest ResearchWorkstation collective 3 + feel 3 green.

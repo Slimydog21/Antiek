@@ -23,4 +23,17 @@ describe("ResearchWorkstation — dense IDE exempt from floating stack chrome", 
     expect(src).toMatch(/cardLift/);
     expect(src).toMatch(/from ["'].*design\/motion["']/);
   });
+
+  // Residual (afr): investigation centre wires multi-select collective panel.
+  it("InvestigationCenter mounts CollectiveResearchPanel for multi-select (afr)", () => {
+    const src = readFileSync(
+      resolve(import.meta.dirname, "index.tsx"),
+      "utf8",
+    );
+    expect(src).toMatch(/CollectiveResearchPanel/);
+    expect(src).toMatch(/research-workstation-collective-mount/);
+    expect(src).toMatch(/collectDeepResearchSpawnIds/);
+    expect(src).toMatch(/openSpawnIds/);
+    expect(src).toMatch(/data-seamless-workstation-collective/);
+  });
 });
