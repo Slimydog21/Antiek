@@ -674,6 +674,25 @@ describe("ResearchContextPanel", () => {
       screen.getByTestId("evidence-citation-hop-item-evidence-source-0")
         .textContent,
     ).toMatch(/arxiv|1706\.03762/i);
+    // Residual (ait): evidence pack → competitive DR scorecard deep-links (parity aim).
+    expect(
+      screen
+        .getByTestId("evidence-competitive-scorecard-link")
+        .getAttribute("href"),
+    ).toBe("/settings#settings-competitive-dr-scorecard");
+    expect(
+      screen
+        .getByTestId("evidence-competitive-dr-future-agent-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    expect(
+      screen
+        .getByTestId("evidence-citation-hops-scorecard-link")
+        .getAttribute("href"),
+    ).toBe("/settings#settings-competitive-dr-scorecard");
+    expect(
+      screen.getByTestId("evidence-citation-hops-scorecard-link").textContent,
+    ).toMatch(/multi-hop hops/i);
     // Residual (kd): spawn research_tier chrome on evidence pack.
     expect(metrics.getAttribute("data-research-tier")).toBe("wrestle");
     expect(

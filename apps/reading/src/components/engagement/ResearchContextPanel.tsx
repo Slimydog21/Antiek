@@ -745,6 +745,31 @@ export function ResearchContextPanel({
                 ? " · refs present · seed insights for full chain"
                 : " · incomplete chain · attach pubs / seed twins (never invent sources)"}
           </div>
+          {/* Residual (ait): evidence pack → competitive DR scorecard (parity aim/aio/aip). */}
+          <p
+            className="meta font-mono text-[11px] flex flex-wrap gap-x-3 gap-y-1 opacity-90"
+            data-testid="evidence-competitive-scorecard-nav"
+            data-view-format="html"
+            role="navigation"
+            aria-label="Evidence pack competitive DR scorecard navigation"
+          >
+            <a
+              href="/settings#settings-competitive-dr-scorecard"
+              data-testid="evidence-competitive-scorecard-link"
+              className="underline opacity-90 hover:opacity-100"
+              title="Settings competitive deep-research scorecard (citation chain · multi-hop hops · shipped vs deferred honesty)"
+            >
+              Settings · competitive DR scorecard
+            </a>
+            <a
+              href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+              data-testid="evidence-competitive-dr-future-agent-link"
+              className="underline opacity-80 hover:opacity-100"
+              title="FUTURE-AGENT competitive deep-research quality brief"
+            >
+              FUTURE · competitive DR brief
+            </a>
+          </p>
           {/* Residual (air): multi-hop claim→source navigation (anchors · no invented edges). */}
           {(evidence.citation_chain || []).length > 0 ? (
             <nav
@@ -767,6 +792,15 @@ export function ResearchContextPanel({
                       `${h.label || h.hop}(${h.count ?? (h.items || []).length})`,
                   )
                   .join(" → ")}
+                {" · "}
+                <a
+                  href="/settings#settings-competitive-dr-scorecard"
+                  data-testid="evidence-citation-hops-scorecard-link"
+                  className="underline opacity-90 hover:opacity-100"
+                  title="Multi-hop hop navigation honesty on Settings competitive DR scorecard (air/ais)"
+                >
+                  scorecard · multi-hop hops
+                </a>
               </p>
               {(evidence.citation_chain || []).map((stage, si) => (
                 <section

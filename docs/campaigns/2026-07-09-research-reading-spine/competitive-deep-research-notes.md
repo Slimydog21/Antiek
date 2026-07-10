@@ -2907,3 +2907,10 @@ Suite suite-competitive-dogfood-v29 adds wrestle fixture for multi-hop hop
 navigation (air). Settings v29 postures + scorecard names multi-hop hops.
 item_count 45 · wrestle=32. pytest dogfood 5 · Settings 36 green.
 P0 operator merge PR #465. Pivot ait+ outside thrash.
+
+## Residual ait · 2026-07-10 — evidence pack competitive DR scorecard deep-links
+ResearchContext evidence pack deep-links Settings competitive DR scorecard and
+FUTURE-AGENT competitive DR brief; hop strip links multi-hop hops row (air/ais).
+Parity progress/TwinNotes/decision-tree scorecard navigation. vitest
+ResearchContext 14 green. SESSION-ARC air–ait. P0 operator merge PR #465.
+Pivot aiu+ outside thrash.
