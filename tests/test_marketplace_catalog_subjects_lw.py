@@ -380,6 +380,8 @@ def test_catalog_route_subjects_and_by_subject(client) -> None:
     assert "pd-lovelace-analytical-engine" in by_id
     assert "history" in by_id["pd-lovelace-analytical-engine"]["subjects"]
     assert "computing" in by_id["pd-lovelace-analytical-engine"]["subjects"]
+    # Residual (yr): technology domain honesty spans free STEM electricity+computing.
+    assert body["by_subject"].get("technology", 0) >= 4
 
 
 def test_electricity_chip_filter_includes_faraday_maxwell() -> None:

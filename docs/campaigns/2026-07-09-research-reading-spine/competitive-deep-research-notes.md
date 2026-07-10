@@ -1683,3 +1683,8 @@ cross-electricity/computing free STEM (parity frontend compose yo).
 ## Residual yq · 2026-07-10 — FUTURE-AGENT tip re-anchor through yp
 FUTURE-AGENT-SPEC tip re-anchored after 70 residual ships this continuation.
 Competitive delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
+
+## Residual yr · 2026-07-10 — catalog route by_subject technology count
+Marketplace catalog API by_subject technology ≥4 for free STEM span.
+Competitive delta: technology domain chip is server-honest for tech-researcher
+default path (parity frontend compose yo · substrate yp).
