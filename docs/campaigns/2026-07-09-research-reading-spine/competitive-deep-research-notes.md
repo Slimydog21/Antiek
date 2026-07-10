@@ -3740,3 +3740,8 @@ P0 PR #465. Pivot apf+ outside thrash.
 write-home-mode + write-piece-mode data-html-first · view-format · product-panel.
 HTML vision honesty on writing surface. vitest WriteHome apf path green.
 P0 PR #465. Pivot apg+ outside thrash.
+
+## Residual apg · 2026-07-10 — marketplace free-host readiness chrome
+marketplace-free-host-readiness: free count under filters · HTML-first · never PDF.
+Completes apd L5 paid path with free host path honesty. vitest MarketplaceHost 43 green.
+P0 PR #465. Pivot aph+ outside thrash.

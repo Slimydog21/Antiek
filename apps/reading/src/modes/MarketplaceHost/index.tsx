@@ -68,6 +68,8 @@
  * L5 deferred · HTML host into account · never invent live checkout).
  * Residual (apd): purchase receipt readiness chrome for L5 offline CTA
  * (demo-default honesty · paid-visible count · never invent live charge).
+ * Residual (apg): free-host readiness chrome for free PD / is_free catalog
+ * (HTML host path · never PDF · counts visible free under filters).
  * Residual (ahm): host-land DR budget foresight includes pub-ref count (parity ahl).
  * Residual (aif): operator-visible pub-ref foresight chrome (parity aic–aie).
  * Residual (aho): twin seed body includes free/purchased path honesty for
@@ -1239,6 +1241,22 @@ export default function MarketplaceHost({
                 ? `Receipt ready (demo default) · ${filteredPaidCount} paid book(s) can purchase+host · replace token for real orders · L5 live deferred · never invent charge`
                 : `Receipt ready · ${filteredPaidCount} paid book(s) can purchase+host · L5 live deferred · never invent charge`
               : `Enter receipt token to enable Purchase + host · ${filteredPaidCount} paid book(s) visible · L5 live checkout deferred`}
+          </span>
+          {/* Residual (apg): free HTML host path readiness (no receipt · never PDF). */}
+          <span
+            className="text-[10px] opacity-80 max-w-[22rem]"
+            data-testid="marketplace-free-host-readiness"
+            data-free-catalog-visible={String(filteredFreeCount)}
+            data-free-pd-only={String(freePdOnly)}
+            data-html-first="true"
+            data-view-format="html"
+            data-live-payment="false"
+            role="status"
+          >
+            Free HTML host path · {filteredFreeCount} free book(s) can Host into
+            account
+            {freePdOnly ? " · free-only filter on" : ""} · never PDF view · no
+            receipt required
           </span>
         </label>
         <label

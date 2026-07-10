@@ -1100,6 +1100,13 @@ describe("MarketplaceHost mode", () => {
     expect(readiness.textContent).toMatch(/L5 live deferred/i);
     expect(purchaseBtn.getAttribute("data-receipt-ready")).toBe("true");
     expect(purchaseBtn.getAttribute("data-receipt-demo-default")).toBe("true");
+    // Residual (apg): free-host readiness chrome always present (HTML path).
+    const freeReady = screen.getByTestId("marketplace-free-host-readiness");
+    expect(freeReady.getAttribute("data-html-first")).toBe("true");
+    expect(freeReady.getAttribute("data-view-format")).toBe("html");
+    expect(freeReady.getAttribute("data-live-payment")).toBe("false");
+    expect(freeReady.textContent).toMatch(/Free HTML host path/i);
+    expect(freeReady.textContent).toMatch(/never PDF/i);
     // Clear receipt → not ready (purchase disabled).
     fireEvent.change(screen.getByTestId("purchase-receipt-ref"), {
       target: { value: "" },
