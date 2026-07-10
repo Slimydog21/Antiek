@@ -1606,3 +1606,7 @@ hydrate deferred policy without inventing live body.
 FUTURE-AGENT-SPEC tip re-anchored after 53 residual ships (budget foresight ·
 dual-gate L1–L7 · free STEM electricity+computing · dogfood v12). Competitive
 delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
+
+## Residual ya · 2026-07-10 — dogfood list item_count match honesty
+antiek-bench-dogfood-items stamps data-item-count-matches-listed. Competitive
+delta: Settings never silently diverges listed fixtures from item_count.

@@ -1583,6 +1583,11 @@ describe("Settings SPR-01 + decision-tree install", () => {
     const itemsList = screen.getByTestId("antiek-bench-dogfood-items");
     expect(itemsList.getAttribute("data-truncated")).toBe("false");
     expect(itemsList.getAttribute("data-listed-count")).toBe("14");
+    // Residual (ya): mock has item_count 18 but lists 14 posture rows — honesty stamp.
+    expect(itemsList.getAttribute("data-item-count")).toBe("18");
+    expect(itemsList.getAttribute("data-item-count-matches-listed")).toBe(
+      "false",
+    );
     // Mock lists posture items including Shannon + Turing + Lovelace (v12).
     expect(
       itemsList.querySelector('[data-item-id="dogfood-book-shannon-communication"]'),

@@ -2206,12 +2206,16 @@ export default function Settings() {
                     ),
                   )}
                 </ul>
-                {/* Residual (we): list all dogfood items (no silent top-12 truncate). */}
+                {/* Residual (we/ya): list all dogfood items; stamp count match honesty. */}
                 <ul
                   data-testid="antiek-bench-dogfood-items"
                   className="space-y-1 text-[11px]"
                   data-listed-count={String((dogfood.items || []).length)}
                   data-item-count={String(dogfood.item_count ?? 0)}
+                  data-item-count-matches-listed={String(
+                    (dogfood.items || []).length ===
+                      Number(dogfood.item_count ?? 0),
+                  )}
                   data-truncated="false"
                 >
                   {(dogfood.items || []).map((it) => (
