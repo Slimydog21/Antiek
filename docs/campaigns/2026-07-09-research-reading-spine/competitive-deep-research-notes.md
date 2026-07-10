@@ -2494,3 +2494,8 @@ v17. pytest dogfood 5 · Settings 36 green. propose≠promote.
 FloatMenu Deep-research / Deep-research full stamp data-seamless-highlight-dr
 · view-mode · view-format=html so highlight→floating/full deep research path is
 machine-readable (shared Read/Research FloatMenu host). vitest FloatMenu 25 green.
+
+## Residual afx · 2026-07-10 — highlight → DR window payload path honesty
+openDeepResearchFromHighlight stamps payload.seamless_highlight_dr=true;
+launchFloatingDeepResearch result seamless_highlight_dr; host surfaces
+data-seamless-highlight-dr (parity FloatMenu afw). vitest window 5 + launch 7 green.

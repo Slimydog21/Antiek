@@ -1,0 +1,19 @@
+# inventory-afx · highlight → DR window payload path honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: afx
+date: 2026-07-10
+parent_tip: 397c9c0f (afw)
+
+## Closed
+- DeepResearchSessionPayload.seamless_highlight_dr
+- openDeepResearchFromHighlight always stamps true
+- launchFloatingDeepResearch result seamless_highlight_dr: true
+- DeepResearchSessionHost data-seamless-highlight-dr
+- vitest deepResearchWindow 5 · launchFloatingDeepResearch 7
+
+## Why this residual
+FloatMenu stamped menu actions (afw); window payload + host lacked path
+continuity. Highlight→session→window path is end-to-end machine-readable.
+
+## Not in scope
+- Non-highlight open paths inventing seamless stamp

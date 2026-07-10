@@ -58,6 +58,11 @@ export type LaunchFloatingDeepResearchResult = {
     source?: string;
     model_id?: string | null;
   } | null;
+  /**
+   * Residual (afx): highlight → DR path honesty (parity FloatMenu afw + window
+   * payload seamless_highlight_dr).
+   */
+  seamless_highlight_dr: true;
 };
 
 /**
@@ -167,5 +172,7 @@ export async function launchFloatingDeepResearch(
     research_tier: resolvedTier,
     // Residual (nw): pass through Antiek-bench usage for chase/DR audit.
     usage_event: session.usage_event ?? null,
+    // Residual (afx): highlight → floating DR path honesty.
+    seamless_highlight_dr: true,
   };
 }

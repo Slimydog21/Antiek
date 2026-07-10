@@ -37,6 +37,11 @@ export type DeepResearchSessionPayload = {
   goal?: string;
   /** Residual (jk): closed research tier recorded on session open. */
   research_tier?: "fast" | "deep" | "wrestle" | string;
+  /**
+   * Residual (afx): highlight → DR window path honesty (parity FloatMenu afw).
+   * Always true for openDeepResearchFromHighlight product entry.
+   */
+  seamless_highlight_dr?: boolean;
 };
 
 export type DeepResearchWindowDescriptor = {
@@ -124,6 +129,7 @@ export type HighlightDeepResearchInput = {
  * Product entry: open/focus the deep-research session window for a highlight.
  * Caller supplies reserved session ids (substrate); this only opens the host
  * window with the composition payload (HTML-first).
+ * Residual (afx): payload.seamless_highlight_dr always true (highlight entry).
  */
 export function openDeepResearchFromHighlight(
   input: HighlightDeepResearchInput,
@@ -152,6 +158,8 @@ export function openDeepResearchFromHighlight(
       selection_text: selection,
       status: input.status ?? "reserved",
       view_format: "html",
+      // Residual (afx): highlight → DR path honesty (parity FloatMenu afw).
+      seamless_highlight_dr: true,
       ...(input.model_id ? { model_id: input.model_id } : {}),
       ...(input.region_id ? { region_id: input.region_id } : {}),
       ...(input.goal ? { goal: input.goal } : {}),

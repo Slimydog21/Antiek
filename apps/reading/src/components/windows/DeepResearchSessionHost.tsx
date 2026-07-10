@@ -86,6 +86,11 @@ export type DeepResearchSessionHostProps = {
   goal?: string;
   /** Residual (jk): research tier from session open payload when present. */
   research_tier?: string;
+  /**
+   * Residual (afx): highlight → DR path honesty when opened via FloatMenu /
+   * openDeepResearchFromHighlight (parity seamless-highlight-dr).
+   */
+  seamless_highlight_dr?: boolean | string;
   /** Optional extra spawn ids for collective multi-select (tests / handoff). */
   available_spawn_ids?: string[];
   __windowId?: string;
@@ -220,6 +225,10 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
     ],
   );
 
+  const seamlessHighlightDr =
+    props.seamless_highlight_dr === true ||
+    props.seamless_highlight_dr === "true";
+
   return (
     <div
       className="flex h-full flex-col gap-4 bg-transparent p-6"
@@ -227,6 +236,8 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
       data-view-format={viewFormat}
       data-session-id={props.session_id ?? ""}
       data-window-mode={hostWindow?.mode ?? "unknown"}
+      // Residual (afx): highlight → DR window path honesty.
+      data-seamless-highlight-dr={String(seamlessHighlightDr)}
     >
       <header className="space-y-1">
         <div className="flex flex-wrap items-start justify-between gap-2">

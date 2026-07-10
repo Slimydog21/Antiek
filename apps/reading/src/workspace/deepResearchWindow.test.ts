@@ -62,4 +62,11 @@ describe("openDeepResearchFromHighlight", () => {
     const win = useWindows.getState().windows[id];
     expect(win.payload.research_tier).toBe("wrestle");
   });
+
+  it("stamps seamless_highlight_dr on highlight → DR payload (afx)", () => {
+    const id = openDeepResearchFromHighlight(FIXTURE);
+    const win = useWindows.getState().windows[id];
+    expect(win.payload.seamless_highlight_dr).toBe(true);
+    expect(win.payload.view_format).toBe("html");
+  });
 });
