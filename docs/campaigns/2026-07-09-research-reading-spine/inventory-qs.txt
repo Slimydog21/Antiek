@@ -1,0 +1,11 @@
+# inventory-qs · badge ≡ budget on Write / MO / Hosted
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: qs
+date: 2026-07-10
+
+## Closed
+- WriteHome: badge + budget use composeDriverPromptText(writeResearchPromptText, writePubRefs)
+- MidnightOil: badge + budget use composeDriverPromptText(goalsText, pubRefs)
+- HostedHtmlDocumentHost: badge + budget use composeDriverPromptText(researchSelection, pubRefs)
+- vitest 55 passed (WriteHome 23 + MO 18 + Hosted 12 + driverPromptText 2)
+  SCRATCH residual-tests-qs.log

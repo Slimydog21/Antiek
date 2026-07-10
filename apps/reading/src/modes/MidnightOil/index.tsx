@@ -50,6 +50,7 @@
  * append as grounded goals so offline swarm inherits knowledge-dense sources
  * (parity Write/ResearchThis; offline-honest hydrate default).
  * Residual (pa): budget projection promptText includes pub refs so soft-gate
+ * Residual (qs): badge + budget share composeDriverPromptText (badge ≡ budget).
  * sees grounded-goal length before create (never under-project MO cost).
  * Residual (pb): dual-gate L1–L2 hydrate checklist deep-link beside pub refs
  * (prep only; never enables live arxiv/substack injectors).
@@ -106,6 +107,7 @@ import {
   storeTwinWriteSeed,
 } from "../../workspace/twinWriteSeed";
 import { useWindows } from "../../workspace/windowsStore";
+import { composeDriverPromptText } from "../../lib/driverPromptText";
 
 /** HTML-only deposit open (floating | full). Returns window id or null. */
 export function openMidnightOilDepositWindow(
@@ -793,11 +795,7 @@ export default function MidnightOil() {
             <DecisionTreeDriverBadge
               researchTier={researchTier}
               /* Residual (pg): project goals+pub refs cost vs remaining budget. */
-              promptText={
-                pubRefs.trim()
-                  ? `${goalsText}\n\nPublication refs:\n${pubRefs.trim()}`
-                  : goalsText
-              }
+              promptText={composeDriverPromptText(goalsText, pubRefs)}
             />
             <span className="text-[10px] font-mono opacity-70">
               {driverPrefill === "installed"
@@ -819,11 +817,7 @@ export default function MidnightOil() {
         >
           <ResearchLaunchBudgetPanel
             /* Residual (pa): include pub refs so projection matches create goals. */
-            promptText={
-              pubRefs.trim()
-                ? `${goalsText}\n\nPublication refs:\n${pubRefs.trim()}`
-                : goalsText
-            }
+            promptText={composeDriverPromptText(goalsText, pubRefs)}
             researchTier={researchTier}
             allowTierPick
             onResearchTierChange={onResearchTierChange}

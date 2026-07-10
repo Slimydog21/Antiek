@@ -51,6 +51,7 @@ import {
   type HtmlDraftImportPrepared,
 } from "./htmlDraftImport";
 import { getTraceTarget, type RepositoryHit } from "./writeApi";
+import { composeDriverPromptText } from "../../lib/driverPromptText";
 
 /**
  * Write Home — the Write door (Product Depth SPR-07 M1).
@@ -94,6 +95,7 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
  * (includes recent_ring so twin-chase closed windows still multi-select).
  * (multi-select merge/analysis with writing asset as parent).
  * Residual (ph): DecisionTreeDriverBadge promptText = DR selection + pub refs
+ * Residual (qs): budget panel shares composeDriverPromptText (badge ≡ budget).
  * for cost-vs-remaining projection (parity MO pg / FUTURE-AGENT V4).
  * Residual (pp): `?twin_seed=<sessionStorage key>` handoff from TwinNotes
  * multi-select draft — seeds brainstorm + freeform provenance (HTML-first).
@@ -937,11 +939,7 @@ export default function WriteHome() {
               <DecisionTreeDriverBadge
                 researchTier={writeResearchTier}
                 /* Residual (ph): project DR selection + pub refs vs daily budget. */
-                promptText={
-                  writePubRefs.trim()
-                    ? `${writeResearchPromptText}\n\nPublication refs:\n${writePubRefs.trim()}`
-                    : writeResearchPromptText
-                }
+                promptText={composeDriverPromptText(writeResearchPromptText, writePubRefs)}
               />
               {/* Residual (if): Settings deep-link for driver + budget. */}
               <p className="mt-1 text-[11px] font-mono">
@@ -1149,7 +1147,7 @@ export default function WriteHome() {
                     : ""}
               </p>
               <ResearchLaunchBudgetPanel
-                promptText={writeResearchPromptText}
+                promptText={composeDriverPromptText(writeResearchPromptText, writePubRefs)}
                 researchTier={writeResearchTier}
                 allowTierPick
                 onResearchTierChange={setWriteResearchTier}

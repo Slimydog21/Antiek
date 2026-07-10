@@ -9,6 +9,7 @@
  * Residual (da): DecisionTreeDriverBadge + budget projection + deep research
  * float launch from the hosted book (reading ≡ research).
  * Residual (pj): DecisionTreeDriverBadge promptText = selection + pub refs
+ * Residual (qs): budget panel shares composeDriverPromptText (badge ≡ budget).
  * (parity ResearchThis pi / Write ph / MO pg).
  * Residual (dg): soft-gate deep research when budget would exceed.
  * Residual (ec): remount ResearchContextPanel after twin promote.
@@ -53,6 +54,7 @@ import {
 } from "../engagement/ResearchLaunchBudgetPanel";
 import { TwinNotesPanel } from "../engagement/TwinNotesPanel";
 import { useInWindow } from "./windowHostContext";
+import { composeDriverPromptText } from "../../lib/driverPromptText";
 
 export type HostedHtmlDocumentHostProps = {
   document_id?: string;
@@ -272,11 +274,7 @@ export default function HostedHtmlDocumentHost(
             <DecisionTreeDriverBadge
               researchTier={researchTier}
               /* Residual (pj): selection + pub refs cost foresight. */
-              promptText={
-                pubRefs.trim()
-                  ? `${researchSelection}\n\nPublication refs:\n${pubRefs.trim()}`
-                  : researchSelection
-              }
+              promptText={composeDriverPromptText(researchSelection, pubRefs)}
             />
             {/* Residual (fl): handoff draft HTML into Write mode (import lands later). */}
             {assetId && isHtml ? (
@@ -412,7 +410,7 @@ export default function HostedHtmlDocumentHost(
                   : ""}
             </p>
             <ResearchLaunchBudgetPanel
-              promptText={researchSelection}
+              promptText={composeDriverPromptText(researchSelection, pubRefs)}
               researchTier={researchTier}
               allowTierPick
               onResearchTierChange={setResearchTier}
