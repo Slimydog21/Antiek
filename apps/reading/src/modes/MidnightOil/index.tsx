@@ -18,6 +18,8 @@
  * Residual (gl): ResearchProgressPanel on deposit when spawn_ids present
  * (competitive multi-minute plan→gather→synthesize→cite telemetry).
  * Residual (gs): budget-panel depth tier → create research_tier (fast|deep|wrestle).
+ * Residual (add): ceiling metrics + formula use form fanout when job omits
+ * fanout_depth (operator-selected depth honesty; parity ada–adc).
  * Residual (hn): moil-ceiling-metrics + formula note for recommended price
  * ceiling transparency (goals+duration → approve before swarm work).
  * Residual (hy): live-step status panel (offline-honest dual-gate readiness).
@@ -953,7 +955,23 @@ export default function MidnightOil() {
             Research tier:{" "}
             <strong>{job.research_tier || researchTier}</strong>
           </p>
-          {/* Residual (hn): recommended price ceiling metrics + formula transparency. */}
+          {/* Residual (hn/add): recommended price ceiling metrics + formula transparency. */}
+          {(() => {
+            // Residual (add): job.fanout_depth preferred; else form fanout (create path);
+            // never collapse operator-selected depth to silent default-only.
+            const effectiveFanout =
+              typeof job.fanout_depth === "number" && job.fanout_depth > 0
+                ? Math.floor(job.fanout_depth)
+                : Number.isFinite(fanoutDepth) && fanoutDepth > 0
+                  ? Math.floor(fanoutDepth)
+                  : MOIL_CEILING_DEFAULT_FANOUT_DEPTH;
+            const fanoutSource =
+              typeof job.fanout_depth === "number" && job.fanout_depth > 0
+                ? "job"
+                : Number.isFinite(fanoutDepth) && fanoutDepth > 0
+                  ? "form"
+                  : "default";
+            return (
           <div
             data-testid="moil-ceiling-metrics"
             data-job-id={job.job_id}
@@ -974,6 +992,8 @@ export default function MidnightOil() {
                 : ""
             }
             data-runnable={String(Boolean(job.runnable))}
+            data-fanout-depth={String(effectiveFanout)}
+            data-fanout-source={fanoutSource}
             data-view-format="html"
             role="status"
           >
@@ -984,10 +1004,12 @@ export default function MidnightOil() {
                 String(g || "").startsWith("Ground publication:"),
               ).length
             }{" "}
-            · model=
+            · fanout={effectiveFanout} · model=
             {job.model_id || "default"} · recommended=$
             {job.recommended_price_ceiling_usd.toFixed(2)}
           </div>
+            );
+          })()}
           {/* Residual (pc): grounded publication goals on job receipt. */}
           {(job.goals || []).some((g) =>
             String(g || "").startsWith("Ground publication:"),
@@ -1090,14 +1112,24 @@ export default function MidnightOil() {
           <p
             className="text-[11px] font-mono opacity-70"
             data-testid="moil-ceiling-formula-note"
-            // Residual (ada): machine-readable formula constants (parity substrate ceiling.py).
+            // Residual (ada/add): machine-readable formula constants; fanout
+            // prefers job → form → default (operator depth honesty).
             data-tokens-per-minute={String(MOIL_CEILING_TOKENS_PER_MINUTE)}
             data-safety-factor={String(MOIL_CEILING_SAFETY_FACTOR)}
             data-fanout-depth={String(
               typeof job.fanout_depth === "number" && job.fanout_depth > 0
-                ? job.fanout_depth
-                : MOIL_CEILING_DEFAULT_FANOUT_DEPTH,
+                ? Math.floor(job.fanout_depth)
+                : Number.isFinite(fanoutDepth) && fanoutDepth > 0
+                  ? Math.floor(fanoutDepth)
+                  : MOIL_CEILING_DEFAULT_FANOUT_DEPTH,
             )}
+            data-fanout-source={
+              typeof job.fanout_depth === "number" && job.fanout_depth > 0
+                ? "job"
+                : Number.isFinite(fanoutDepth) && fanoutDepth > 0
+                  ? "form"
+                  : "default"
+            }
             data-research-tier={job.research_tier || researchTier || "deep"}
             data-tier-multiplier={String(
               mapResearchTierToCeilingMultiplier(
@@ -1109,8 +1141,10 @@ export default function MidnightOil() {
             Formula: duration × tokens/min ({MOIL_CEILING_TOKENS_PER_MINUTE}) ×
             model rates × fanout (
             {typeof job.fanout_depth === "number" && job.fanout_depth > 0
-              ? job.fanout_depth
-              : MOIL_CEILING_DEFAULT_FANOUT_DEPTH}
+              ? Math.floor(job.fanout_depth)
+              : Number.isFinite(fanoutDepth) && fanoutDepth > 0
+                ? Math.floor(fanoutDepth)
+                : MOIL_CEILING_DEFAULT_FANOUT_DEPTH}
             ) × {MOIL_CEILING_SAFETY_FACTOR} safety × tier multiplier (fast 0.5 ·
             deep 1.0 · wrestle 2.0)
             (recommendation only — explicit approve required before swarm work)

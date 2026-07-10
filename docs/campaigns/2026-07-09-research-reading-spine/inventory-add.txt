@@ -1,0 +1,14 @@
+# inventory-add · MO ceiling fanout job|form|default honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: add
+date: 2026-07-10
+parent_tip: 7fea214b (adc)
+
+## Closed
+- Ceiling metrics + formula note: effective fanout job → form → default
+- data-fanout-source (job|form|default) machine stamp
+- metrics human line fanout=N
+- vitest MidnightOil · 21 passed (form fallback + job preferred)
+
+## Not in scope
+- Live multi-provider swarm

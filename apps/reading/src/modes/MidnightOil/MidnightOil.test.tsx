@@ -562,7 +562,7 @@ describe("MidnightOil mode", () => {
         duration_minutes: expect.any(Number),
       }),
     );
-    // Residual (hn): recommended ceiling metrics + formula transparency.
+    // Residual (hn/add): recommended ceiling metrics + formula transparency.
     const metrics = screen.getByTestId("moil-ceiling-metrics");
     expect(metrics.getAttribute("data-job-id")).toBe("moil_test");
     expect(metrics.getAttribute("data-status")).toBe("awaiting_approval");
@@ -571,18 +571,23 @@ describe("MidnightOil mode", () => {
     expect(metrics.getAttribute("data-recommended-usd")).toBe("3.6");
     expect(metrics.getAttribute("data-research-tier")).toBe("deep");
     expect(metrics.getAttribute("data-view-format")).toBe("html");
+    // Residual (add): form fanout=5 when job omits fanout_depth (mock has none).
+    expect(metrics.getAttribute("data-fanout-depth")).toBe("5");
+    expect(metrics.getAttribute("data-fanout-source")).toBe("form");
     expect(metrics.textContent).toMatch(/Ceiling audit/);
+    expect(metrics.textContent).toMatch(/fanout=5/);
     const formula = screen.getByTestId("moil-ceiling-formula-note");
     expect(formula.textContent).toMatch(/1\.25 safety/);
-    // Residual (ada): machine-readable ceiling formula constants.
+    // Residual (ada/add): machine-readable ceiling formula constants + form fanout.
     expect(formula.getAttribute("data-tokens-per-minute")).toBe("4000");
     expect(formula.getAttribute("data-safety-factor")).toBe("1.25");
-    expect(formula.getAttribute("data-fanout-depth")).toBe("3");
+    expect(formula.getAttribute("data-fanout-depth")).toBe("5");
+    expect(formula.getAttribute("data-fanout-source")).toBe("form");
     expect(formula.getAttribute("data-tier-multiplier")).toBe("1");
     expect(formula.getAttribute("data-research-tier")).toBe("deep");
     expect(formula.getAttribute("data-view-format")).toBe("html");
     expect(formula.textContent).toMatch(/tokens\/min \(4000\)/);
-    expect(formula.textContent).toMatch(/fanout \(\s*3\s*\)/);
+    expect(formula.textContent).toMatch(/fanout \(\s*5\s*\)/);
     expect(
       screen
         .getByTestId("recommended-ceiling")
@@ -690,6 +695,48 @@ describe("MidnightOil mode", () => {
         use_recommended: true,
       });
     });
+  });
+
+  it("ceiling formula prefers job fanout_depth over form (add)", async () => {
+    createMidnightOilJob.mockResolvedValue({
+      job_id: "moil_fanout_job",
+      goals: ["Job fanout wins"],
+      duration_minutes: 30,
+      status: "awaiting_approval",
+      research_tier: "deep",
+      fanout_depth: 7,
+      recommended_price_ceiling_usd: 2.5,
+      view_format: "html",
+      runnable: false,
+      html: "<p>job fanout</p>",
+    });
+    render(<MidnightOil />);
+    fireEvent.change(screen.getByLabelText(/^Goals \(one per line\)$/i), {
+      target: { value: "Job fanout wins" },
+    });
+    fireEvent.change(screen.getByTestId("moil-fanout-depth"), {
+      target: { value: "2" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /create job \+ recommend ceiling/i }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("moil-ceiling-metrics").getAttribute("data-fanout-source"),
+      ).toBe("job");
+    });
+    expect(
+      screen.getByTestId("moil-ceiling-metrics").getAttribute("data-fanout-depth"),
+    ).toBe("7");
+    expect(screen.getByTestId("moil-ceiling-metrics").textContent).toMatch(
+      /fanout=7/,
+    );
+    expect(
+      screen.getByTestId("moil-ceiling-formula-note").getAttribute("data-fanout-source"),
+    ).toBe("job");
+    expect(
+      screen.getByTestId("moil-ceiling-formula-note").getAttribute("data-fanout-depth"),
+    ).toBe("7");
   });
 
   it("deposits results and shows progress after approve", async () => {
