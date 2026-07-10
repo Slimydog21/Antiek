@@ -1023,7 +1023,11 @@ describe("CollectiveResearchPanel", () => {
         .getByTestId("collective-selection-count")
         .getAttribute("data-selected-count"),
     ).toBe("0");
-    fireEvent.click(screen.getByTestId("collective-restore-last-unit"));
+    // Residual (afl): restore button path honesty.
+    const restoreBtn = screen.getByTestId("collective-restore-last-unit");
+    expect(restoreBtn.getAttribute("data-seamless-unit-restore")).toBe("true");
+    expect(restoreBtn.getAttribute("data-l6-live-multiagent")).toBe("deferred");
+    fireEvent.click(restoreBtn);
     expect(
       screen
         .getByTestId("collective-selection-count")
@@ -1037,16 +1041,16 @@ describe("CollectiveResearchPanel", () => {
       (screen.getByTestId("collective-select-spn_b") as HTMLInputElement)
         .checked,
     ).toBe(true);
-    expect(
-      screen
-        .getByTestId("collective-unit-membership-status")
-        .getAttribute("data-action"),
-    ).toBe("restored");
-    expect(
-      screen
-        .getByTestId("collective-unit-membership-status")
-        .getAttribute("data-restored-count"),
-    ).toBe("2");
+    const restoredStatus = screen.getByTestId(
+      "collective-unit-membership-status",
+    );
+    expect(restoredStatus.getAttribute("data-action")).toBe("restored");
+    expect(restoredStatus.getAttribute("data-restored-count")).toBe("2");
+    // Residual (afl): membership status seamless restore audit.
+    expect(restoredStatus.getAttribute("data-seamless-unit-restore")).toBe(
+      "true",
+    );
+    expect(restoredStatus.textContent).toMatch(/seamless unit restore/i);
 
     // Re-mount: membership survives sessionStorage for re-open path.
     unmount();

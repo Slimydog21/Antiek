@@ -2429,3 +2429,8 @@ dogfood v15. P0 operator merge PR #465. Pivot afk+ outside thrash.
 Post-continue window status stamps collective_id · parent · seamless-unit-continue
 · L6 deferred + offline re-entry copy. Closes unit→DR audit loop after afh.
 vitest CollectiveResearchPanel 25 green.
+
+## Residual afl · 2026-07-10 — restore last unit path honesty
+Restore last unit button + membership status stamp data-seamless-unit-restore
+(and L6 deferred). Closes multi-select unit membership re-open loop with
+continue-as-unit (afh/afk). vitest Collective 25 green.

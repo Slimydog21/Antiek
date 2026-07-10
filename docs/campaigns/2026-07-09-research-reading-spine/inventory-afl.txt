@@ -1,0 +1,19 @@
+# inventory-afl · restore last unit path honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: afl
+date: 2026-07-10
+parent_tip: 5d4260f7 (afk)
+
+## Closed
+- collective-restore-last-unit: data-seamless-unit-restore · L6 deferred
+- membership status: data-seamless-unit-restore when action=restored
+  · data-parent-asset-id · seamless unit restore copy
+- vitest CollectiveResearchPanel · 25 passed
+
+## Why this residual
+User vision: multi-select collective unit survives re-open. Restore path only
+had selection behavior; machine-readable restore honesty closes membership
+loop with continue-as-unit (afh/afk).
+
+## Not in scope
+- L6 live multi-agent

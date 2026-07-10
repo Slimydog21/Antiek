@@ -902,13 +902,17 @@ export function CollectiveResearchPanel({
         >
           Clear recent ({recentCount})
         </button>
-        {/* Residual (py): restore last cohesive unit multi-select. */}
+        {/* Residual (py/afl): restore last cohesive unit multi-select + path. */}
         <button
           type="button"
           data-testid="collective-restore-last-unit"
           onClick={() => restoreLastUnitSelection()}
           disabled={busy}
-          title="Restore multi-select from last cohesive unit membership (sessionStorage)"
+          // Residual (afl): unit membership restore path honesty.
+          data-l6-live-multiagent="deferred"
+          data-view-format="html"
+          data-seamless-unit-restore="true"
+          title="Restore multi-select from last cohesive unit membership (sessionStorage · offline unit · not live L6 council)"
         >
           Restore last unit
         </button>
@@ -938,6 +942,13 @@ export function CollectiveResearchPanel({
             // Residual (adj): offline cohesive unit only — L6 live multi-agent deferred.
             data-l6-live-multiagent="deferred"
             data-research-tier={researchTier || ""}
+            // Residual (afl): membership restore/store path honesty.
+            data-seamless-unit-restore={String(
+              membershipStatus.action === "restored",
+            )}
+            data-parent-asset-id={
+              String(parentAssetId || "").trim() || ""
+            }
             role="status"
           >
             Unit membership · {membershipStatus.action} · id=
@@ -951,6 +962,9 @@ export function CollectiveResearchPanel({
               ? ` · doc=${membershipStatus.document_id}`
               : ""}{" "}
             · L6 live multi-agent deferred
+            {membershipStatus.action === "restored"
+              ? " · seamless unit restore"
+              : ""}
           </span>
         ) : null}
       </div>
