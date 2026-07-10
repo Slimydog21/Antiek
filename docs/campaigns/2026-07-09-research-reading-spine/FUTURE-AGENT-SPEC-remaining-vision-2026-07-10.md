@@ -1,6 +1,6 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** `936ba38f` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465**  
+**Campaign tip at write:** `51a2ff9e` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465**  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **Audience:** next agent swarm (grok / codex / mimo / glm-cc) with zero session memory  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
