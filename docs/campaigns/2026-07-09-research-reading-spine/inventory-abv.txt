@@ -1,0 +1,13 @@
+# inventory-abv · FUTURE tip free inventory through abu
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: abv
+date: 2026-07-10
+tip_sha: ec8c5e6b
+
+## Closed
+- Free inventory doctrine complete: API·HTML·UI·host land·library (abn–abu)
+- FUTURE tip → ec8c5e6b · 155 residual ships this continuation
+- Highest leverage: operator merge PR #465 OPEN
+
+## Not in scope
+- Operator merge PR #465 (gated)

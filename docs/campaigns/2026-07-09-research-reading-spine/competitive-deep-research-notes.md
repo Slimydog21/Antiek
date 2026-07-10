@@ -2058,3 +2058,8 @@ GET /marketplace/library stamps is_free on each document; client library free
 honesty prefers is_free (parity free inventory doctrine abn–abs). Competitive
 delta: account library free spine is identity-honest with catalog free inventory.
 
+## Residual abv · 2026-07-10 — FUTURE tip free inventory doctrine through abu
+Free inventory is_free-only doctrine closed end-to-end (API·HTML·UI·host·library).
+Tip ec8c5e6b · 155 ships. Competitive delta: swarm handoff tip-true; operator merge
+PR #465 highest leverage.
+
