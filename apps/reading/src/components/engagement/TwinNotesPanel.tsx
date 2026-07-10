@@ -88,6 +88,7 @@ import {
   type ResearchLaunchBudgetProjection,
   type ResearchLaunchTier,
 } from "./ResearchLaunchBudgetPanel";
+import { domainSearchCoverage } from "../../workspace/domainSearchDefaults";
 
 /** Minimal twin note shape for residual (mz) chase payload. */
 export type TwinChaseNote = {
@@ -227,6 +228,11 @@ export type TwinNotesPanelProps = {
    * session/host knows spawn identity (fast|deep|wrestle).
    */
   researchTier?: "fast" | "deep" | "wrestle" | string | null;
+  /**
+   * Residual (alt): free PD / STEM catalog subjects for domain-search coverage
+   * honesty on the recursive note-taker (parity ResearchContext alj · HostedHtml alo).
+   */
+  domainSubjects?: readonly string[] | null;
 };
 
 export function TwinNotesPanel({
@@ -239,6 +245,7 @@ export function TwinNotesPanel({
   autoPromoteAfterLoad = false,
   onPromoted,
   researchTier = null,
+  domainSubjects = null,
 }: TwinNotesPanelProps) {
   const [twins, setTwins] = useState<TwinNotesResponse | null>(null);
   const [promoted, setPromoted] = useState<TwinPromoteContextResponse | null>(
@@ -359,6 +366,11 @@ export function TwinNotesPanel({
   const apiResearchTier = (twins?.research_tier || "").trim().toLowerCase() || "";
   const normalizedResearchTier =
     (researchTier || "").trim().toLowerCase() || apiResearchTier;
+  // Residual (alt): domain-search coverage when host passes free PD subjects.
+  const domainCoverage = useMemo(
+    () => domainSearchCoverage(domainSubjects),
+    [domainSubjects],
+  );
 
   // Residual (na): prefill chase tier from host researchTier when closed-set.
   useEffect(() => {
@@ -989,6 +1001,16 @@ export function TwinNotesPanel({
       data-testid="twin-notes-panel"
       data-view-format="html"
       data-research-tier={normalizedResearchTier}
+      data-domain-subjects={(domainSubjects || []).join(",") || ""}
+      data-domain-search-has-default={String(domainCoverage.has_default)}
+      data-domain-search-covered={domainCoverage.covered.join(",") || ""}
+      data-domain-search-uncovered={
+        domainCoverage.uncovered.join(",") || ""
+      }
+      data-domain-search-covered-count={String(domainCoverage.covered.length)}
+      data-domain-search-uncovered-count={String(
+        domainCoverage.uncovered.length,
+      )}
       aria-label="Twin notes"
     >
       <header>
@@ -1050,6 +1072,27 @@ export function TwinNotesPanel({
             Settings · prompt-cost projection
           </a>
         </p>
+        {/* Residual (alt): domain-search coverage on recursive note-taker. */}
+        {(domainSubjects || []).length > 0 ? (
+          <p
+            className="meta font-mono text-[11px] opacity-80"
+            data-testid="twin-notes-domain-search-coverage"
+            data-has-default={String(domainCoverage.has_default)}
+            data-covered-count={String(domainCoverage.covered.length)}
+            data-uncovered-count={String(domainCoverage.uncovered.length)}
+            data-covered={domainCoverage.covered.join(",") || ""}
+            data-uncovered={domainCoverage.uncovered.join(",") || ""}
+            role="status"
+          >
+            Domain-search coverage:{" "}
+            {domainCoverage.has_default
+              ? `default active · covered=${domainCoverage.covered.join(",") || "none"}`
+              : "no domain default (honest empty · never invent query)"}
+            {domainCoverage.uncovered.length > 0
+              ? ` · co-tags=${domainCoverage.uncovered.join(",")}`
+              : ""}
+          </p>
+        ) : null}
         {/* Residual (kr): depth posture when host passes researchTier. */}
         {normalizedResearchTier ? (
           <p

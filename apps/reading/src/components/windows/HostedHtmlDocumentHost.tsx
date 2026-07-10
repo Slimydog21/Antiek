@@ -980,6 +980,7 @@ export default function HostedHtmlDocumentHost(
               seedTitle={twinSeedTitle}
               seedBodyText={twinSeedBody}
               researchTier={researchTier}
+              domainSubjects={props.subjects || null}
             />
           </div>
         </section>

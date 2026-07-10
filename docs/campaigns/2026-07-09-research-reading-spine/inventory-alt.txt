@@ -1,0 +1,16 @@
+# inventory-alt · TwinNotes domainSubjects + domain-search coverage
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: alt
+date: 2026-07-10
+parent_tip: e48c1521 (als)
+
+## Closed
+- TwinNotesPanel.domainSubjects prop + domain-search coverage stamps
+- twin-notes-domain-search-coverage status strip
+- HostedHtml passes props.subjects → TwinNotes (reading ≡ research)
+- vitest TwinNotes 31 · HostedHtml 25 green
+- proof: SCRATCH residual-alt-vitest.log
+
+## Next
+alu+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

@@ -258,6 +258,23 @@ describe("TwinNotesPanel", () => {
     ).toMatch(/prompt-cost projection/i);
   });
 
+  it("stamps domain-search coverage when domainSubjects provided (alt)", () => {
+    render(
+      <TwinNotesPanel
+        assetId="pd-fourier"
+        domainSubjects={["heat", "signal_processing"]}
+      />,
+    );
+    const panel = screen.getByTestId("twin-notes-panel");
+    expect(panel.getAttribute("data-domain-search-has-default")).toBe("true");
+    expect(panel.getAttribute("data-domain-search-covered")).toMatch(/heat/);
+    expect(panel.getAttribute("data-domain-subjects")).toMatch(/heat/);
+    const strip = screen.getByTestId("twin-notes-domain-search-coverage");
+    expect(strip.getAttribute("data-has-default")).toBe("true");
+    expect(strip.textContent).toMatch(/default active/i);
+    expect(strip.textContent).toMatch(/heat/i);
+  });
+
   it("surfaces researchTier chrome when provided (kr)", async () => {
     fetchTwinNotes.mockResolvedValue({
       asset_id: "paper",

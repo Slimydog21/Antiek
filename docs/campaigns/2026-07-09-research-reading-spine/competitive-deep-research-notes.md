@@ -3298,3 +3298,9 @@ Pivot als+ outside thrash.
 ## Residual als · 2026-07-10 — DEFERRED-GAPS domain-search + L5 closed offline notes
 Deferred-gaps items 5–6 record free PD domain-search and L5 Sprint 1–3 offline-closed.
 P0 operator merge PR #465. Pivot alt+ outside thrash.
+
+## Residual alt · 2026-07-10 — TwinNotes domainSubjects + domain-search coverage
+Recursive note-taker accepts free PD subjects and stamps domain-search coverage;
+HostedHtml passes catalog subjects into TwinNotes (reading ≡ research).
+vitest TwinNotes 31 · HostedHtml 25 green. P0 operator merge PR #465.
+Pivot alu+ outside thrash.

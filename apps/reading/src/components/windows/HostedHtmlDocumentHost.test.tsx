@@ -83,6 +83,7 @@ vi.mock("../engagement/TwinNotesPanel", () => ({
     seedTitle?: string | null;
     seedBodyText?: string | null;
     autoSeedIfEmpty?: boolean;
+    domainSubjects?: readonly string[] | null;
   }) => (
     <div
       data-testid="twin-notes-panel-stub"
@@ -90,6 +91,7 @@ vi.mock("../engagement/TwinNotesPanel", () => ({
       data-seed-title={props.seedTitle || ""}
       data-seed-body={props.seedBodyText || ""}
       data-auto-seed={String(Boolean(props.autoSeedIfEmpty))}
+      data-domain-subjects={(props.domainSubjects || []).join(",") || ""}
     >
       {props.assetId}
       {props.researchTier ? `:tier=${props.researchTier}` : ""}
@@ -618,6 +620,12 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(
       Number(mount.getAttribute("data-domain-search-covered-count")),
     ).toBeGreaterThanOrEqual(1);
+    // Residual (alt): twin note-taker receives domainSubjects for coverage.
+    expect(
+      screen
+        .getByTestId("twin-notes-panel-stub")
+        .getAttribute("data-domain-subjects") || "",
+    ).toMatch(/heat/);
     expect(mount.getAttribute("data-domain-subjects")).toMatch(
       /signal_processing/,
     );
