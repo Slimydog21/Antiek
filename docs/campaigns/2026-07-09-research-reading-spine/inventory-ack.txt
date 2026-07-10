@@ -1,0 +1,20 @@
+# inventory-ack · MO deposit Open Write twin_seed has-body honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ack
+date: 2026-07-10
+tip_before: 34834db2 (acj)
+
+## Problem
+Marketplace library Write stamped data-write-seed-has-body (acf–aci); Midnight Oil
+deposit Open Write dual handoff lacked the same body honesty machine attr.
+
+## Fix
+- moil-open-write data-write-seed-has-body from deposit HTML plain text
+- MidnightOil deposit test locks has-body true
+
+## Verified
+vitest deposits results → passed
+scratch: residual-ack-tests.log
+
+## Not in scope
+- Operator merge PR #465 (gated)

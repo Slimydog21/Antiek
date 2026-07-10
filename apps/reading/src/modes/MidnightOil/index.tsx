@@ -1592,6 +1592,13 @@ export default function MidnightOil() {
                     data-has-twin-seed={
                       depositWriteHref.includes("twin_seed=") ? "1" : "0"
                     }
+                    // Residual (ack): body honesty on twin_seed (parity marketplace acf).
+                    data-write-seed-has-body={String(
+                      Boolean(
+                        deposit.view_format === "html" &&
+                          plainTextFromHtml(deposit.html || "").trim(),
+                      ),
+                    )}
                     className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono underline hover:bg-ink/5 dark:border-bright/30"
                     title="Open Write with Midnight Oil deposit as HTML draft + twin_seed (seeds note-taker when empty)"
                   >

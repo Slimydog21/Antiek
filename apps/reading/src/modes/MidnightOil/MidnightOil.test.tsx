@@ -895,13 +895,14 @@ describe("MidnightOil mode", () => {
         mode: "full",
       }),
     );
-    // Residual (fo/pz): Write dual handoff html_draft + twin_seed for empty twin seed.
+    // Residual (fo/pz/ack): Write dual handoff html_draft + twin_seed with body honesty.
     const write = screen.getByTestId("moil-open-write");
     const href = write.getAttribute("href") || "";
     expect(href).toMatch(/html_draft=draft_moil_asset_dep_abc/);
     expect(href).toMatch(/twin_seed=antiek\.twin_write_seed\./);
     expect(write.getAttribute("data-view-format")).toBe("html");
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
+    expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
   });
 
   it("runs offline worker after approve with auto-deposit", async () => {
