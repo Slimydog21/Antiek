@@ -51,6 +51,7 @@ import {
  * Residual (pi): DecisionTreeDriverBadge promptText = selection + pub refs
  * Residual (qr): budget panel uses same composeDriverPromptText (badge ≡ budget).
  * Residual (ahi): budget foresight pub-ref count (parity StartResearch ahg · chat ahh).
+ * Residual (aie): operator-visible pub-ref foresight chrome (parity aic/aid).
  * for cost-vs-remaining projection (parity MO pg / Write ph).
  * Residual (agq): TwinNotes recursive note-taker for this book asset while
  * spinning DR (parity TalkToBook agm · MetaReading agn · reading ≡ research).
@@ -341,6 +342,21 @@ export default function ResearchThis({
           composeDriverPromptText(selection, pubRefs).length,
         )}
       >
+        {/* Residual (aie): operator-visible pub-ref foresight chrome (parity aic). */}
+        {countPublicationRefs(pubRefs) > 0 ? (
+          <p
+            className="text-[10px] font-mono opacity-80 mb-1"
+            data-testid="research-this-pub-ref-foresight-chrome"
+            data-pub-ref-count={String(countPublicationRefs(pubRefs))}
+            role="status"
+          >
+            Knowledge-dense pubs in projection:{" "}
+            <strong>{countPublicationRefs(pubRefs)}</strong> ref
+            {countPublicationRefs(pubRefs) === 1 ? "" : "s"} · chars=
+            {composeDriverPromptText(selection, pubRefs).length} · soft budget
+            below
+          </p>
+        ) : null}
         <p
           className="text-[11px] font-mono opacity-80"
           data-testid="research-this-depth-prefill"

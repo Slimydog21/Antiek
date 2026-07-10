@@ -1,0 +1,14 @@
+# inventory-aie · ResearchThis pub-ref foresight chrome
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aie
+date: 2026-07-10
+parent_tip: 3bb8d3d8 (aid)
+
+## Closed
+- ResearchThis shows operator-visible pub-ref foresight chrome (parity aic/aid)
+- Completes foresight chrome matrix: launch · chase · highlight
+- vitest ResearchThis green
+
+## Next
+aif+ product residual · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

@@ -2826,3 +2826,8 @@ Pivot aid+.
 Chase follow-up shows operator-visible knowledge-dense pub count chrome above
 budget panel (parity StartResearch aic). vitest ChatInputArea.refs green.
 P0 operator merge PR #465. Pivot aie+.
+
+## Residual aie · 2026-07-10 — ResearchThis pub-ref foresight chrome
+Highlight Research-this shows operator-visible knowledge-dense pub chrome
+(parity launch aic · chase aid). Completes foresight chrome matrix.
+vitest ResearchThis green. P0 operator merge PR #465. Pivot aif+.
