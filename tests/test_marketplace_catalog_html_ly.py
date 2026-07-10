@@ -47,6 +47,10 @@ def test_project_catalog_html_never_pdf() -> None:
     m = re.search(r"free_count=(\d+)", free_only)
     assert m is not None
     assert int(m.group(1)) >= 17
+    # Residual (abj): under free_only, free_count == Entries=N of total (identity).
+    entries_m = re.search(r"Entries=(\d+) of (\d+)", free_only)
+    assert entries_m is not None
+    assert int(entries_m.group(1)) == int(m.group(1))
 
 
 def test_project_catalog_html_filters_compose() -> None:
@@ -62,6 +66,28 @@ def test_project_catalog_html_filters_compose() -> None:
     assert "project_gutenberg" in gutenberg
     # standard_ebooks titles should be absent when source-filtered
     assert "pd-pride" not in gutenberg
+
+
+def test_project_catalog_html_free_only_biology_free_count() -> None:
+    """Residual (abj): free_only + biology free_count matches Origin+Hooke pair."""
+    import re
+
+    cat = default_demo_catalog()
+    html = project_catalog_html(cat, free_only=True, subject="biology")
+    assert "pd-origin" in html or "Origin" in html
+    assert (
+        "pd-hooke-micrographia" in html
+        or "Micrographia" in html
+        or "Hooke" in html
+    )
+    m = re.search(r"free_count=(\d+)", html)
+    assert m is not None
+    assert int(m.group(1)) == 2
+    entries_m = re.search(r"Entries=(\d+) of", html)
+    assert entries_m is not None
+    assert int(entries_m.group(1)) == 2
+    assert "subject=biology" in html
+    assert "free_only=True" in html
 
 
 @pytest.fixture

@@ -1,0 +1,20 @@
+# inventory-abj · free_only free_count identity + technology includes Hooke
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: abj
+date: 2026-07-10
+tip_before: 7b89b8d9 (abi)
+
+## Problem
+1. free_only catalog HTML free_count was stamped but not proven equal to Entries.
+2. free technology STEM did not lock Hooke Micrographia (instruments path).
+
+## Fix
+- free_only free_count == Entries under free_only projection
+- free_only + biology free_count=2 (Origin + Hooke)
+- free technology ids include pd-hooke-micrographia · len ≥5
+
+## Verified
+pytest catalog html ly + free technology → 7 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

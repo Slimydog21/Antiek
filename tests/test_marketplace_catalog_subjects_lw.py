@@ -184,11 +184,13 @@ def test_free_technology_includes_electricity_and_computing() -> None:
         "pd-shannon-communication",
         "pd-turing-computable-numbers",
         "pd-lovelace-analytical-engine",
+        # Residual (abj): Hooke Micrographia free technology (instruments · biology).
+        "pd-hooke-micrographia",
     }
     assert all(e.source_format == "html" for e in free_tech if e.book_id in ids)
     assert all("technology" in e.subjects for e in free_tech if e.book_id in ids)
-    # Residual (zw): free technology set is non-trivial for tech researchers.
-    assert len(free_tech) >= 4
+    # Residual (zw/abj): free technology set is non-trivial for tech researchers.
+    assert len(free_tech) >= 5
     assert all(e.is_free for e in free_tech)
 
 

@@ -2001,3 +2001,8 @@ project_catalog_html header stamps free_count + public_domain_count (parity API
 catalog honesty). Competitive delta: filter-aware HTML catalog window is
 identity-honest for free/PD STEM browse without a second network hop.
 
+## Residual abj · 2026-07-10 — free_only free_count identity + technology Hooke
+free_only catalog HTML free_count equals Entries; free_only+biology free_count=2
+(Origin+Hooke); free technology includes Hooke Micrographia (len ≥5). Competitive
+delta: filter-aware free STEM HTML browse is identity-honest end-to-end.
+
