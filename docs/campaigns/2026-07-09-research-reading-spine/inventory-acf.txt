@@ -1,0 +1,24 @@
+# inventory-acf · library Open Write twin_seed body when hosted matches
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: acf
+date: 2026-07-10
+tip_before: fb13cd63 (ace)
+
+## Problem
+Library Open Write always passed html=null so twin_seed was title-only even when
+the same document was just hosted in-session with full HTML body — recursive
+note-taker write handoff dropped body substrate.
+
+## Fix
+- library Open Write uses hosted.html when document_id matches + view html
+- data-write-seed-has-body + data-is-free on write link
+- title honesty for in-session body vs title-only rehydrate
+- MarketplaceHost host test locks acf attrs
+
+## Verified
+vitest MarketplaceHost loads catalog and hosts → passed
+scratch: residual-acf-tests.log
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Rehydrate fetch on every library write click (in-session host body only)

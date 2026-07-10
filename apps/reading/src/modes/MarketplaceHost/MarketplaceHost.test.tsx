@@ -448,12 +448,16 @@ describe("MarketplaceHost mode", () => {
       expect(screen.getByTestId("library-doc-list")).toBeTruthy();
       expect(screen.getByTestId("library-doc-hdoc_abc")).toBeTruthy();
     });
-    // Residual (gi): library row → Write handoff.
+    // Residual (gi/acf): library row → Write dual handoff with in-session body.
     const libWrite = screen.getByTestId("library-open-write-hdoc_abc");
     expect(libWrite.getAttribute("href") || "").toMatch(/html_draft=hdoc_abc/);
     expect(libWrite.getAttribute("href") || "").toMatch(/twin_seed=antiek\.twin_write_seed\./);
     expect(libWrite.getAttribute("data-has-twin-seed")).toBe("1");
     expect(libWrite.getAttribute("data-view-format")).toBe("html");
+    // Residual (acf): after host, library Open Write seeds twin with body (not title-only).
+    expect(libWrite.getAttribute("data-write-seed-has-body")).toBe("true");
+    expect(libWrite.getAttribute("data-is-free")).toBe("true");
+    expect(libWrite.getAttribute("title") || "").toMatch(/in-session host body/i);
     // Residual (iw): library row deep research float|full.
     fireEvent.click(screen.getByTestId("library-deep-research-hdoc_abc"));
     await waitFor(() => {

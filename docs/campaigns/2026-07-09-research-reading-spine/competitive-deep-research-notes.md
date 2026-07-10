@@ -2107,3 +2107,8 @@ Library metrics stamp free_count_source=api|client and library-api-free-count;
 library rows stamp data-is-free + data-license-class (parity catalog). Competitive
 delta: account library free inventory is machine-readable end-to-end after host.
 
+## Residual acf · 2026-07-10 — library Open Write twin_seed body when hosted
+Library Open Write dual handoff seeds twin with in-session host HTML body when
+document matches (not title-only). Competitive delta: marketplace host → library
+→ Write recursive note-taker path keeps body substrate for Antiek-bench write-seed.
+

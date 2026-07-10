@@ -1716,19 +1716,39 @@ export default function MarketplaceHost({
                     >
                       Open window
                     </button>
-                    {/* Residual (gi): library → Write HTML draft handoff. */}
+                    {/* Residual (gi/acf): library → Write dual handoff; when
+                        in-session host body matches this doc, seed twin with body
+                        (recursive note-taker substrate richer than title-only). */}
                     <a
                       href={buildMarketplaceWriteHref({
                         documentId: d.document_id,
                         title: d.title,
-                        html: null,
+                        html:
+                          hosted?.document_id === d.document_id &&
+                          hosted.view_format === "html" &&
+                          hosted.html
+                            ? hosted.html
+                            : null,
                       })}
                       data-testid={`library-open-write-${d.document_id}`}
                       data-view-format="html"
                       data-document-id={d.document_id}
                       data-has-twin-seed="1"
+                      data-write-seed-has-body={String(
+                        Boolean(
+                          hosted?.document_id === d.document_id &&
+                            hosted.view_format === "html" &&
+                            hosted.html?.trim(),
+                        ),
+                      )}
+                      data-is-free={String(libraryDocIsFree(d))}
                       className="text-xs font-mono border rounded px-2 py-1 underline"
-                      title="Open Write with library document as HTML draft + twin_seed"
+                      title={
+                        hosted?.document_id === d.document_id &&
+                        hosted.html?.trim()
+                          ? "Open Write with library HTML body + twin_seed (in-session host body)"
+                          : "Open Write with library document as HTML draft + twin_seed (title seed until rehydrate)"
+                      }
                     >
                       Open Write
                     </a>
