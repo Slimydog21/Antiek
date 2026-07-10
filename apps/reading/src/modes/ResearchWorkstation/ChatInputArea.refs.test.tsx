@@ -166,6 +166,10 @@ describe("ChatInputArea publication refs (ct)", () => {
         .getByTestId("chat-input-driver-badge-mount")
         .getAttribute("data-pub-ref-count"),
     ).toBe("2");
+    // Residual (aid): operator-visible pub-ref foresight chrome.
+    expect(
+      screen.getByTestId("chat-input-pub-ref-foresight-chrome").textContent,
+    ).toMatch(/2 refs/i);
   });
 
   it("hydrates refs and grounds question on Ask", async () => {

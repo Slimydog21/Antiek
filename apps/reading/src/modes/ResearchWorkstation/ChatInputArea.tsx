@@ -53,6 +53,7 @@ import { KNOWLEDGE_DENSE_PUBLICATION_PRESETS } from "../../components/engagement
  * Residual (qp): DecisionTreeDriverBadge promptText = question + pub refs.
  * Residual (qr): budget panel shares composeDriverPromptText (badge ≡ budget).
  * Residual (ahh): budget foresight pub-ref count stamps (parity StartResearch ahg).
+ * Residual (aid): operator-visible pub-ref foresight chrome (parity StartResearch aic).
  */
 export default function ChatInputArea({
   parentInvestigationId,
@@ -334,6 +335,21 @@ export default function ChatInputArea({
             promptText={composeDriverPromptText(question, pubRefs)}
           />
         </div>
+        {/* Residual (aid): operator-visible pub-ref foresight chrome (parity aic). */}
+        {countPublicationRefs(pubRefs) > 0 ? (
+          <p
+            className="text-[10px] font-mono opacity-80 mb-1"
+            data-testid="chat-input-pub-ref-foresight-chrome"
+            data-pub-ref-count={String(countPublicationRefs(pubRefs))}
+            role="status"
+          >
+            Knowledge-dense pubs in projection:{" "}
+            <strong>{countPublicationRefs(pubRefs)}</strong> ref
+            {countPublicationRefs(pubRefs) === 1 ? "" : "s"} · chars=
+            {composeDriverPromptText(question, pubRefs).length} · soft budget
+            below
+          </p>
+        ) : null}
         <ResearchLaunchBudgetPanel
           promptText={composeDriverPromptText(question, pubRefs)}
           researchTier={launchTier}

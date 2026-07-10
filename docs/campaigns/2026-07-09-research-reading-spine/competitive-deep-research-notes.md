@@ -2821,3 +2821,8 @@ Operator-visible chrome when knowledge-dense pubs are in the budget projection
 (N refs · chars · soft budget below). Competitive budget-before-fire UX for
 multi-source grounding. vitest StartResearch green. P0 operator merge PR #465.
 Pivot aid+.
+
+## Residual aid · 2026-07-10 — ChatInputArea pub-ref foresight chrome
+Chase follow-up shows operator-visible knowledge-dense pub count chrome above
+budget panel (parity StartResearch aic). vitest ChatInputArea.refs green.
+P0 operator merge PR #465. Pivot aie+.
