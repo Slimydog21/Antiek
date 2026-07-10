@@ -28,6 +28,7 @@ import {
 import { registerModelReadiness } from "../../workspace/registerModelReadiness";
 import { clearDecisionTreeReadiness } from "../../workspace/clearDecisionTreeReadiness";
 import { suiteProposalApproveReadiness } from "../../workspace/suiteProposalApproveReadiness";
+import { offlineBenchRunReadiness } from "../../workspace/offlineBenchRunReadiness";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import {
@@ -103,6 +104,8 @@ import {
  * (only when installed · never auto-route).
  * Residual (aux): pure suiteProposalApproveReadiness drives Approve/Reject
  * (propose≠promote · never auto-promote).
+ * Residual (ava): pure offlineBenchRunReadiness drives Run offline dogfood CTA
+ * (week required · offline only · never auto-promote).
  */
 export default function Settings() {
   const tier = useViewportTier();
@@ -512,12 +515,18 @@ export default function Settings() {
   }
 
   async function onRunOfflineDogfood() {
+    // Residual (ava): pure gate — week_id required · never auto-promote.
+    const gate = offlineBenchRunReadiness({ week_id: leaderboardWeek });
+    if (!gate.run_ready) {
+      setOfflineRunError(gate.run_title);
+      return;
+    }
     setOfflineRunBusy(true);
     setOfflineRunError(null);
     setLeaderboardError(null);
     try {
       const out = await runAntiekBenchOffline({
-        weekId: leaderboardWeek,
+        weekId: gate.week_id,
         includeHtml: true,
       });
       if (out.view_format !== "html") {
@@ -974,6 +983,15 @@ export default function Settings() {
       suiteProposal?.status,
       suiteProposal?.auto_promoted,
     ],
+  );
+
+  /**
+   * Residual (ava): pure offline dogfood run CTA readiness.
+   * week_id required · offline only · never auto-promote · propose≠promote.
+   */
+  const offlineBenchRunReady = useMemo(
+    () => offlineBenchRunReadiness({ week_id: leaderboardWeek }),
+    [leaderboardWeek],
   );
 
   const spendPct = useMemo(() => {
@@ -3032,12 +3050,25 @@ export default function Settings() {
               <button
                 type="button"
                 data-testid="antiek-bench-run-offline"
+                // Residual (ava): pure offline run readiness stamps.
+                data-run-ready={String(offlineBenchRunReady.run_ready)}
+                data-block-reason={offlineBenchRunReady.block_reason}
+                data-week-id={offlineBenchRunReady.week_id}
+                data-offline-only={String(offlineBenchRunReady.offline_only)}
+                data-never-auto-promote={String(
+                  offlineBenchRunReady.never_auto_promote,
+                )}
+                data-propose-neq-promote={String(
+                  offlineBenchRunReady.propose_neq_promote,
+                )}
+                data-html-first={String(offlineBenchRunReady.html_first)}
                 onClick={() => void onRunOfflineDogfood()}
                 disabled={
                   offlineRunBusy ||
                   leaderboardBusy ||
-                  !leaderboardWeek.trim()
+                  !offlineBenchRunReady.run_ready
                 }
+                title={offlineBenchRunReady.run_title}
                 className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
               >
                 {offlineRunBusy

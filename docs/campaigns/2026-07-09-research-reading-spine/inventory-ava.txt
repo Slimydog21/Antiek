@@ -1,0 +1,25 @@
+# inventory-ava · pure offlineBenchRunReadiness
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ava
+date: 2026-07-10
+parent_tip: 2cd260dbb (auz)
+
+## Closed
+- pure `offlineBenchRunReadiness` (workspace)
+  - week_id required · offline_only · never_auto_promote · propose≠promote · html_first
+- Settings Run offline dogfood suite CTA driven by pure readiness
+- onRunOfflineDogfood early-returns via pure gate
+- 2 pure unit tests + Settings suite green
+
+## Doctrine
+Offline dogfood produces ranking data · never auto-promotes suite ·
+promote is explicit suite approve (aux)
+
+## Next
+avb+ offline product residual outside thrash
+Avoid: offline bench run pure thrash · pure install/approve/checkout aut–auy ·
+catalog · twin/merge · presets · MO · scorecard · vision · dogfood fixtures ·
+readiness→CTA · pure-open · HostedHtml honesty
+Prefer: competitive non-catalog · dual-gate L1–L4 · MO non-thrash ·
+knowledge connector residual
+Operator merge PR #465 remains P0 (gated)
