@@ -1889,3 +1889,8 @@ Host-land pub-refs prep now deep-links #l2-substack (parity Settings xr) in
 addition to #l1-arxiv. Competitive delta: knowledge-dense Substack hydrate prep
 is visible on free STEM book → DR launch path (label honesty, not live enable).
 
+## Residual aam · 2026-07-10 — HostedHtml L2 Substack dual-gate deep-link
+Hosted book/window pub-refs prep deep-links #l2-substack (parity marketplace aal).
+Competitive delta: reading ≡ research HTML host surfaces Substack hydrate prep
+honestly beside arxiv (offline-default dual-gate).
+

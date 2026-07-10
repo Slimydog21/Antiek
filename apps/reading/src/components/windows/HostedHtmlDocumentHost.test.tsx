@@ -926,6 +926,12 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
         .getByTestId("hosted-html-hydrate-dual-gate-link")
         .getAttribute("href") || "",
     ).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    // Residual (aam): L2 Substack checklist (parity marketplace aal).
+    expect(
+      screen
+        .getByTestId("hosted-html-hydrate-dual-gate-l2-link")
+        .getAttribute("href") || "",
+    ).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
     fireEvent.change(screen.getByTestId("hosted-html-refs-input"), {
       target: { value: "arxiv:1706.03762" },
     });
