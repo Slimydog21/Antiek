@@ -1047,3 +1047,8 @@ prompt_block as float|full HTML (source=collective_unit_prompt) without
 inventing a server document_id. Competitive delta: collective research is
 readable HTML workstation material before continue-as-unit or parent merge —
 not only a chat prompt block.
+
+## Residual ts · 2026-07-10 — Collective unit host honesty strip
+HostedHtmlDocumentHost stamps collective_id + spawn_count honesty for
+source=collective_unit_prompt floats. Competitive delta: multi-select
+cohesive unit HTML windows stay membership-auditable in the reading flywheel.

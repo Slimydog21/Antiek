@@ -252,6 +252,40 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     ).toBe("research_progress_complete");
   });
 
+  it("stamps collective_unit_prompt honesty (ts)", () => {
+    render(
+      <HostedHtmlDocumentHost
+        document_id="collective_unit:col_abc:xyz"
+        title="Collective unit · col_abc"
+        view_format="html"
+        source="collective_unit_prompt"
+        collective_id="col_abc"
+        spawn_count={3}
+        html='<article data-source="collective_unit_prompt"><h1>Collective</h1></article>'
+      />,
+    );
+    const host = screen.getByTestId("hosted-html-document-host");
+    expect(host.getAttribute("data-source")).toBe("collective_unit_prompt");
+    expect(host.getAttribute("data-collective-unit-prompt")).toBe("true");
+    expect(host.getAttribute("data-collective-id")).toBe("col_abc");
+    expect(host.getAttribute("data-spawn-count")).toBe("3");
+    const honesty = screen.getByTestId("hosted-html-collective-unit-honesty");
+    expect(honesty.getAttribute("data-collective-id")).toBe("col_abc");
+    expect(honesty.getAttribute("data-spawn-count")).toBe("3");
+    expect(honesty.textContent).toMatch(/Collective cohesive unit/i);
+    expect(honesty.textContent).toMatch(/spawns=3/);
+    expect(honesty.textContent).toMatch(/no invented server doc/i);
+    expect(
+      screen.getByTestId("twin-notes-panel-stub").getAttribute("data-seed-title") ||
+        "",
+    ).toMatch(/Collective cohesive unit/);
+    expect(
+      screen.getByTestId("hosted-html-open-write").getAttribute(
+        "data-write-seed-source",
+      ),
+    ).toBe("collective_unit_prompt");
+  });
+
   it("stamps context_search query + hit count honesty (tq)", () => {
     render(
       <HostedHtmlDocumentHost

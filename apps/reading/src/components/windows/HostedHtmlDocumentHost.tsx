@@ -32,6 +32,8 @@
  * when citation-trust evidence floats from ResearchContextPanel (sf/sg).
  * Residual (tq): source=context_search carries search_query + search_hit_count
  * honesty chrome (intelligent search over recursive note-taker substrate).
+ * Residual (ts): source=collective_unit_prompt honesty strip (collective_id ·
+ * spawn_count) for multi-select cohesive unit HTML windows.
  *
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
  */
@@ -74,6 +76,10 @@ export type HostedHtmlDocumentHostProps = {
   search_query?: string | null;
   /** Residual (tq): hit count when source=context_search. */
   search_hit_count?: number | null;
+  /** Residual (ts): collective cohesive unit id when source=collective_unit_prompt. */
+  collective_id?: string | null;
+  /** Residual (ts): multi-spawn count when source=collective_unit_prompt. */
+  spawn_count?: number | null;
   research_tier?: string | null;
   __windowId?: string;
 };
@@ -281,6 +287,11 @@ export default function HostedHtmlDocumentHost(
     Number.isFinite(props.search_hit_count)
       ? Math.max(0, Math.floor(props.search_hit_count))
       : null;
+  const collectiveId = String(props.collective_id || "").trim();
+  const spawnCount =
+    typeof props.spawn_count === "number" && Number.isFinite(props.spawn_count)
+      ? Math.max(0, Math.floor(props.spawn_count))
+      : null;
   const twinSeedTitle = isEvidencePack
     ? `Evidence pack (citation trust) · ${title}`
     : isContextSearch
@@ -316,6 +327,11 @@ export default function HostedHtmlDocumentHost(
         isContextSearch && searchHitCount != null
           ? String(searchHitCount)
           : ""
+      }
+      data-collective-unit-prompt={String(isCollectiveUnitPrompt)}
+      data-collective-id={isCollectiveUnitPrompt ? collectiveId : ""}
+      data-spawn-count={
+        isCollectiveUnitPrompt && spawnCount != null ? String(spawnCount) : ""
       }
       data-research-progress={String(isResearchProgress)}
       data-session-flywheel={String(isSessionFlywheel)}
@@ -355,6 +371,29 @@ export default function HostedHtmlDocumentHost(
                   <> · hits={searchHitCount}</>
                 ) : null}{" "}
                 · recursive note-taker substrate · HTML · not PDF
+              </p>
+            ) : null}
+            {/* Residual (ts): multi-spawn cohesive unit honesty. */}
+            {isCollectiveUnitPrompt ? (
+              <p
+                className="text-[11px] font-mono opacity-80 mt-1"
+                data-testid="hosted-html-collective-unit-honesty"
+                data-collective-id={collectiveId}
+                data-spawn-count={
+                  spawnCount != null ? String(spawnCount) : ""
+                }
+                data-view-format="html"
+                role="status"
+              >
+                Collective cohesive unit
+                {collectiveId ? (
+                  <>
+                    {" "}
+                    · id={collectiveId}
+                  </>
+                ) : null}
+                {spawnCount != null ? <> · spawns={spawnCount}</> : null} ·
+                multi-select merge · HTML · not PDF · no invented server doc
               </p>
             ) : null}
           </div>

@@ -1,0 +1,15 @@
+# inventory-ts · Collective unit host honesty strip
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ts
+date: 2026-07-10
+
+## Closed
+- HostedHtmlDocumentHost props collective_id + spawn_count
+- data-collective-unit-prompt / data-collective-id / data-spawn-count
+- hosted-html-collective-unit-honesty strip
+- Open Write source=collective_unit_prompt
+- vitest HostedHtml 16 + Collective 22 = 38 · SCRATCH residual-tests-ts.log
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live multi-agent L6
