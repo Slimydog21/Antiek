@@ -2509,3 +2509,8 @@ merge PR #465. Pivot afz+ outside thrash.
 Suite suite-competitive-dogfood-v18 adds wrestle fixture for highlight→floating
 deep research path honesty (afw–afx). Settings spine postures v18. pytest
 dogfood 5 · Settings 36 green. propose≠promote.
+
+## Residual aga · 2026-07-10 — highlight → Search path honesty
+FloatMenu Search control stamps data-seamless-highlight-search · view_format=html;
+SearchPanel surfaces same + hit-count/pending/withheld audit. Highlight→corpus
+search path machine-readable (parity highlight→DR afw). vitest FloatMenu 26 green.

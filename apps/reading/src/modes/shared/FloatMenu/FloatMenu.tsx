@@ -198,7 +198,16 @@ export default function FloatMenu({
           <div className="flex items-stretch divide-x divide-charcoal-2">
             <MenuButton label="Note" onClick={() => setView({ kind: "note" })} />
             <MenuButton label="Dialogue" onClick={() => setView({ kind: "dialogue" })} />
-            <MenuButton label="Search" onClick={() => setView({ kind: "search" })} />
+            <MenuButton
+              label="Search"
+              // Residual (aga): highlight → corpus search path honesty.
+              testId="floatmenu-search"
+              dataAttrs={{
+                "data-seamless-highlight-search": "true",
+                "data-view-format": "html",
+              }}
+              onClick={() => setView({ kind: "search" })}
+            />
             <MenuButton
               label="Deep-research"
               // Residual (afw): highlight → floating DR path honesty.
@@ -601,35 +610,54 @@ function SearchPanel({
     };
   }, [selection]);
 
+  const hitCount = result?.count ?? 0;
+
   return (
-    <Panel title="Search the corpus" onClose={onClose}>
-      {withheld ? (
-        <p className="text-sun-deep" role="alert">
-          {WITHHELD_OUTBOUND_REASON}
-        </p>
-      ) : pending ? (
-        <p className="text-moonlight">Searching…</p>
-      ) : error ? (
-        <p className="text-emperor" role="alert">
-          {error}
-        </p>
-      ) : result && result.count > 0 ? (
-        <ul className="flex flex-col gap-1 max-h-48 overflow-y-auto">
-          {result.hits.map((h, i) => (
-            // Stable, content-derived React key for this async, re-orderable
-            // list — NOT the array index (a React smell on re-orderable data),
-            // and NOT a user-facing substrate noun (copy-lint U-04: the internal
-            // handle is never written here). It hashes the hit's displayed
-            // fields; the trailing `i` only disambiguates exact-duplicate hits.
-            <li key={`${hashHit(h.document_title, h.label)}-${i}`} className="text-bright">
-              <span className="text-moonlight">{h.document_title ?? "—"}</span> · {h.label}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="text-moonlight">No matches in the corpus.</p>
-      )}
-    </Panel>
+    <div
+      data-testid="floatmenu-search-panel"
+      // Residual (aga): highlight → corpus search path audit.
+      data-seamless-highlight-search="true"
+      data-view-format="html"
+      data-pending={String(pending)}
+      data-withheld={String(withheld)}
+      data-hit-count={String(hitCount)}
+      data-has-error={String(Boolean(error))}
+    >
+      <Panel title="Search the corpus" onClose={onClose}>
+        {withheld ? (
+          <p className="text-sun-deep" role="alert">
+            {WITHHELD_OUTBOUND_REASON}
+          </p>
+        ) : pending ? (
+          <p className="text-moonlight">Searching…</p>
+        ) : error ? (
+          <p className="text-emperor" role="alert">
+            {error}
+          </p>
+        ) : result && result.count > 0 ? (
+          <ul className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+            {result.hits.map((h, i) => (
+              // Stable, content-derived React key for this async, re-orderable
+              // list — NOT the array index (a React smell on re-orderable data),
+              // and NOT a user-facing substrate noun (copy-lint U-04: the internal
+              // handle is never written here). It hashes the hit's displayed
+              // fields; the trailing `i` only disambiguates exact-duplicate hits.
+              <li
+                key={`${hashHit(h.document_title, h.label)}-${i}`}
+                className="text-bright"
+              >
+                <span className="text-moonlight">
+                  {h.document_title ?? "—"}
+                </span>{" "}
+                · {h.label}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-moonlight">No matches in the corpus.</p>
+        )}
+      </Panel>
+    </div>
   );
 }
 

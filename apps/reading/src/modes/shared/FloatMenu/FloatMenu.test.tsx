@@ -441,6 +441,25 @@ describe("DEEP-RESEARCH spawns a child linked to the highlight (M2)", () => {
     expect(fullBtn.getAttribute("data-view-format")).toBe("html");
   });
 
+  it("stamps highlight → Search path honesty (aga)", async () => {
+    render(
+      <Host
+        onDeepResearch={vi.fn()}
+        provenance={{ servable: true, documentId: "d", chunkId: null }}
+      />,
+    );
+    selectTextIn(screen.getByTestId("scope"), "search path honesty");
+    const searchBtn = screen.getByTestId("floatmenu-search");
+    expect(searchBtn.getAttribute("data-seamless-highlight-search")).toBe(
+      "true",
+    );
+    expect(searchBtn.getAttribute("data-view-format")).toBe("html");
+    fireEvent.click(searchBtn);
+    const panel = await screen.findByTestId("floatmenu-search-panel");
+    expect(panel.getAttribute("data-seamless-highlight-search")).toBe("true");
+    expect(panel.getAttribute("data-view-format")).toBe("html");
+  });
+
   it("Deep-research full hands host viewMode full (fe)", () => {
     const onDeepResearch = vi.fn();
     render(
