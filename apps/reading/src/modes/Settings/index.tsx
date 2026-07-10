@@ -2078,6 +2078,7 @@ export default function Settings() {
                 className="font-mono text-[13px] space-y-2"
                 data-testid="antiek-bench-dogfood-summary"
                 data-suite-version={dogfood.suite_version || ""}
+                data-label={dogfood.label || ""}
                 data-item-count={String(dogfood.item_count ?? 0)}
                 data-auto-promoted={String(dogfood.auto_promoted === true)}
                 data-view-format={dogfood.view_format || "html"}

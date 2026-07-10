@@ -1,0 +1,19 @@
+# inventory-yx · dogfood summary data-label honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: yx
+date: 2026-07-10
+tip_before: 2658fad5 (yw)
+
+## Problem
+Antiek-bench dogfood summary lacked data-label machine stamp for suite
+identity honesty.
+
+## Fix
+- data-label on antiek-bench-dogfood-summary
+- Test locks antiek-bench-competitive-dogfood
+
+## Verified
+npm test Settings.test.tsx → 34 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

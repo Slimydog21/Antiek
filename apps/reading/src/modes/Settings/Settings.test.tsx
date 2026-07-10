@@ -1465,6 +1465,10 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(summary.getAttribute("data-suite-version")).toBe(
       "suite-competitive-dogfood-v12",
     );
+    // Residual (yx): dogfood label honesty.
+    expect(summary.getAttribute("data-label")).toBe(
+      "antiek-bench-competitive-dogfood",
+    );
     expect(summary.getAttribute("data-item-count")).toBe("18");
     expect(summary.getAttribute("data-auto-promoted")).toBe("false");
     // Residual (yt): HTML-first dogfood view_format honesty.
