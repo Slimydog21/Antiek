@@ -5,7 +5,6 @@ from __future__ import annotations
 import html
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent
 STYLE_SOURCE = Path("/Users/slimydog/.agents/skills/htmlspec/templates/style.css")
 GENERATED = "2026-07-10"
