@@ -1273,30 +1273,51 @@ export function TwinNotesPanel({
         >
           Promote selected ({selectedNoteIds.size})
         </button>
-        {/* Residual (mz): chase multi-selected twins as floating deep research. */}
+        {/* Residual (mz/aoo): chase multi-selected twins as floating deep research.
+            Residual (aoo): titles/stamps surface domain-aware goal_hint when subjects set. */}
         <button
           type="button"
           data-testid="twin-chase-selected"
+          data-research-domains={
+            normalizeDomainSubjects(domainSubjects).join(",") || ""
+          }
+          data-domain-aware-chase={String(
+            normalizeDomainSubjects(domainSubjects).length > 0,
+          )}
           onClick={() => void chaseSelected("floating")}
           disabled={
             busy ||
             selectedNoteIds.size === 0 ||
             (chaseBudgetWarn && !chaseForceBudget)
           }
-          title="Spin floating deep research from multi-selected twin notes (questions preferred)"
+          title={
+            normalizeDomainSubjects(domainSubjects).length > 0
+              ? `Spin floating deep research from multi-selected twin notes (questions preferred · research_domains=${normalizeDomainSubjects(domainSubjects).join(",")})`
+              : "Spin floating deep research from multi-selected twin notes (questions preferred)"
+          }
         >
           Chase selected ({selectedNoteIds.size})
         </button>
         <button
           type="button"
           data-testid="twin-chase-selected-full"
+          data-research-domains={
+            normalizeDomainSubjects(domainSubjects).join(",") || ""
+          }
+          data-domain-aware-chase={String(
+            normalizeDomainSubjects(domainSubjects).length > 0,
+          )}
           onClick={() => void chaseSelected("full")}
           disabled={
             busy ||
             selectedNoteIds.size === 0 ||
             (chaseBudgetWarn && !chaseForceBudget)
           }
-          title="Spin full working-region deep research from multi-selected twin notes"
+          title={
+            normalizeDomainSubjects(domainSubjects).length > 0
+              ? `Spin full working-region deep research from multi-selected twin notes · research_domains=${normalizeDomainSubjects(domainSubjects).join(",")}`
+              : "Spin full working-region deep research from multi-selected twin notes"
+          }
         >
           Chase full
         </button>

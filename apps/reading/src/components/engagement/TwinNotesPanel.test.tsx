@@ -304,6 +304,20 @@ describe("TwinNotesPanel", () => {
     expect(panel.getAttribute("data-domain-search-has-default")).toBe("true");
     expect(panel.getAttribute("data-domain-search-covered")).toMatch(/heat/);
     expect(panel.getAttribute("data-domain-subjects")).toMatch(/heat/);
+    // Residual (aoo): chase buttons stamp domain-aware titles/metrics.
+    const chase = screen.getByTestId("twin-chase-selected");
+    expect(chase.getAttribute("data-domain-aware-chase")).toBe("true");
+    expect(chase.getAttribute("data-research-domains")).toBe(
+      "heat,signal_processing",
+    );
+    expect(chase.getAttribute("title") || "").toMatch(
+      /research_domains=heat,signal_processing/,
+    );
+    expect(
+      screen.getByTestId("twin-chase-selected-full").getAttribute(
+        "data-domain-aware-chase",
+      ),
+    ).toBe("true");
     const strip = screen.getByTestId("twin-notes-domain-search-coverage");
     expect(strip.getAttribute("data-has-default")).toBe("true");
     expect(strip.textContent).toMatch(/default active/i);

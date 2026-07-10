@@ -3660,3 +3660,7 @@ draft guidance). vitest CollectiveResearchPanel 31 green. P0 PR #465. Pivot aon+
 ## Residual aon · 2026-07-10 — marketplace host domain-aware HTML research blurb
 PRODUCT_MODE_ROUTES + taxonomy MarketplaceHost blurb stamps domain-aware twin/DR
 + HTML-first land. vitest productModeRoutes green. P0 PR #465. Pivot aoo+.
+
+## Residual aoo · 2026-07-10 — twin chase domain-aware button titles
+Chase floating/full buttons stamp data-research-domains + domain-aware titles
+when domainSubjects set (operator foresight before fire). P0 PR #465. Pivot aop+.
