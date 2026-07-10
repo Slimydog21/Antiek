@@ -4288,3 +4288,8 @@ Prompt cost projection stamps competitiveDurationBand (wrestle 10–30+ · deep
 3–10 · fast 1–3) with data-long-horizon*. Budget-before-fire + multi-minute
 foresight co-located on driver badge. vitest DecisionTreeDriverBadge 16 green.
 P0 PR #465. Pivot atg+.
+
+## Residual atg · 2026-07-10 — launch budget projection long-horizon band
+ResearchLaunchBudgetPanel projection-metrics stamps competitiveDurationBand
+(parity DecisionTree atf). Launch Ask budget-before-fire includes multi-minute
+horizon honesty. vitest ResearchLaunchBudgetPanel 12 green. P0 PR #465. Pivot ath+.

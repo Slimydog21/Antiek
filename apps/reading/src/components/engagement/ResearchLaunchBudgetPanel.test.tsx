@@ -250,6 +250,11 @@ describe("ResearchLaunchBudgetPanel", () => {
     );
     expect(metrics.getAttribute("data-view-format")).toBe("html");
     expect(metrics.textContent).toMatch(/Projection metrics/);
+    // Residual (atg): competitive duration band on launch projection (parity atf).
+    expect(metrics.getAttribute("data-long-horizon")).toBe("false");
+    expect(metrics.getAttribute("data-long-horizon-label")).toMatch(/deep/i);
+    expect(metrics.getAttribute("data-long-horizon-band")).toMatch(/3–10|3-10/);
+    expect(metrics.textContent).toMatch(/deep synthesize band/i);
     expect(call.expected_output_tokens).toBe(2500);
     expect(call.input_chars).toBeGreaterThan(3);
     expect(call.model).toBe("glm-5.2");

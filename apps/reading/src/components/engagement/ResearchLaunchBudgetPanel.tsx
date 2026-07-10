@@ -23,6 +23,8 @@
  * class (fast→distill · deep→synthesize · wrestle→wrestle) — never auto-routes.
  * Residual (aff): explicit Install best for {task} when best differs (parity
  * driver badge afe · never auto-route).
+ * Residual (atg): projection metrics stamp competitiveDurationBand (parity
+ * DecisionTree atf · budget-before-fire + multi-minute long-horizon foresight).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -42,6 +44,7 @@ import {
   formatResearchTierCeilingFactor,
   mapResearchTierToCeilingMultiplier,
 } from "../../lib/researchTier";
+import { competitiveDurationBand } from "./ResearchProgressPanel";
 
 export type ResearchLaunchBudgetProjection = {
   wouldExceedBudget: boolean | null;
@@ -160,6 +163,11 @@ export function ResearchLaunchBudgetPanel({
   }, [researchTier]);
   const activeTier: ResearchLaunchTier = pickedTier ?? researchTier;
   const benchTaskClass = researchTierToBenchTaskClass(activeTier);
+  // Residual (atg): competitive long-horizon duration band for launch foresight.
+  const durationBand = useMemo(
+    () => competitiveDurationBand(activeTier),
+    [activeTier],
+  );
   const bestByTask = useMemo(
     () => bestModelForTaskClass(leaderboard, benchTaskClass),
     [leaderboard, benchTaskClass],
@@ -626,6 +634,10 @@ export function ResearchLaunchBudgetPanel({
                   ? String(remainingAfterUsd < 0)
                   : "unknown"
               }
+              // Residual (atg): competitive multi-minute band (parity DecisionTree atf).
+              data-long-horizon-band={durationBand.bandMinutes}
+              data-long-horizon-label={durationBand.label}
+              data-long-horizon={String(activeTier === "wrestle")}
               data-view-format="html"
               role="status"
             >
@@ -634,6 +646,8 @@ export function ResearchLaunchBudgetPanel({
               {estimate.would_exceed_budget == null
                 ? "unknown"
                 : String(estimate.would_exceed_budget)}
+              {" · "}
+              {durationBand.label} band {durationBand.bandMinutes}m
             </div>
             <p className="text-[11px] font-mono text-ink dark:text-bright">
               Projected ({mapping.tier}):{" "}
@@ -642,6 +656,8 @@ export function ResearchLaunchBudgetPanel({
               estimate.estimated_usd_high != null
                 ? `${formatUsd(estimate.estimated_usd_low)}–${formatUsd(estimate.estimated_usd_high)}`
                 : "unknown (rates unset)"}
+              {" · "}
+              {durationBand.label} band {durationBand.bandMinutes}m
             </p>
             <p
               className={
