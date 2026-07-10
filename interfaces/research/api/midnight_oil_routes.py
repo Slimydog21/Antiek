@@ -62,6 +62,8 @@ from substrate.midnight_oil import (
     MidnightOilOperatorNotificationDeliveryApplyPlanRequest,
     MidnightOilOperatorNotificationDeliveryReadinessPlanReceipt,
     MidnightOilOperatorNotificationDeliveryReadinessPlanRequest,
+    MidnightOilOperatorNotificationDeliveryResultReconciliationPlanReceipt,
+    MidnightOilOperatorNotificationDeliveryResultReconciliationPlanRequest,
     MidnightOilPreflight,
     MidnightOilProviderExecutorAdapterPlanReceipt,
     MidnightOilProviderExecutorAdapterPlanRequest,
@@ -126,6 +128,7 @@ from substrate.midnight_oil import (
     operator_dispatch_adapter_plan_midnight_oil,
     operator_notification_delivery_apply_plan_midnight_oil,
     operator_notification_delivery_readiness_plan_midnight_oil,
+    operator_notification_delivery_result_reconciliation_plan_midnight_oil,
     preflight_midnight_oil,
     provider_executor_adapter_plan_midnight_oil,
     provider_route_midnight_oil,
@@ -561,6 +564,16 @@ def post_midnight_oil_operator_notification_delivery_apply_plan(
     return operator_notification_delivery_apply_plan_midnight_oil(req)
 
 
+@midnight_oil_router.post(
+    "/operator-notification-delivery-result-reconciliation-plan",
+    response_model=MidnightOilOperatorNotificationDeliveryResultReconciliationPlanReceipt,
+)
+def post_midnight_oil_operator_notification_delivery_result_reconciliation_plan(
+    req: MidnightOilOperatorNotificationDeliveryResultReconciliationPlanRequest,
+) -> MidnightOilOperatorNotificationDeliveryResultReconciliationPlanReceipt:
+    return operator_notification_delivery_result_reconciliation_plan_midnight_oil(req)
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
@@ -593,6 +606,7 @@ __all__ = [
     "post_midnight_oil_operator_dispatch_adapter_plan",
     "post_midnight_oil_operator_notification_delivery_apply_plan",
     "post_midnight_oil_operator_notification_delivery_readiness_plan",
+    "post_midnight_oil_operator_notification_delivery_result_reconciliation_plan",
     "post_midnight_oil_preflight",
     "post_midnight_oil_provider_executor_adapter_plan",
     "post_midnight_oil_provider_route",
