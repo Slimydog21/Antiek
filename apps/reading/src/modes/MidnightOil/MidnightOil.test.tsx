@@ -456,6 +456,16 @@ describe("MidnightOil mode", () => {
     expect(readiness.getAttribute("data-plan-ready")).toBe("false");
     expect(readiness.getAttribute("data-html-first")).toBe("true");
     expect(readiness.textContent).toMatch(/Plan readiness/i);
+    // Residual (ard): create disabled until plan ready (goals+duration).
+    expect(
+      (screen.getByTestId("moil-create-recommend-ceiling") as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      screen
+        .getByTestId("moil-create-recommend-ceiling")
+        .getAttribute("data-plan-ready"),
+    ).toBe("false");
     expect(screen.getByTestId("moil-goal-templates")).toBeTruthy();
     fireEvent.click(screen.getByTestId("moil-goal-template-map_landscape"));
     expect(screen.getByTestId("moil-goals-plan").getAttribute("data-goal-count")).toBe(
@@ -465,6 +475,10 @@ describe("MidnightOil mode", () => {
     expect(
       screen.getByTestId("moil-plan-readiness").getAttribute("data-plan-ready"),
     ).toBe("true");
+    // Residual (ard): create button gated by plan readiness pure helper.
+    const createBtn = screen.getByTestId("moil-create-recommend-ceiling");
+    expect(createBtn.getAttribute("data-plan-ready")).toBe("true");
+    expect((createBtn as HTMLButtonElement).disabled).toBe(false);
     expect(screen.getByTestId("moil-goals-plan-list")).toBeTruthy();
     expect(screen.getByTestId("moil-goals-plan-item-0").textContent).toMatch(
       /competitive landscape/i,

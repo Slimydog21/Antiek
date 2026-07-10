@@ -184,6 +184,19 @@ export default function MidnightOil() {
    * (parity substrate DEFAULT_FANOUT_DEPTH=3; root + children).
    */
   const [fanoutDepth, setFanoutDepth] = useState(MOIL_CEILING_DEFAULT_FANOUT_DEPTH);
+  // Residual (ard): plan readiness gates create (goals+duration · pure helper).
+  const createPlanReadiness = useMemo(
+    () =>
+      moilPlanReadiness({
+        goalsText,
+        durationMinutes,
+        fanoutDepth:
+          Number.isFinite(fanoutDepth) && fanoutDepth > 0
+            ? Math.floor(fanoutDepth)
+            : MOIL_CEILING_DEFAULT_FANOUT_DEPTH,
+      }),
+    [goalsText, durationMinutes, fanoutDepth],
+  );
   /** Default until decision-tree prefill (cz); ceiling pricing accepts "default". */
   const [modelId, setModelId] = useState("default");
   const [driverPrefill, setDriverPrefill] = useState<
@@ -1333,7 +1346,22 @@ export default function MidnightOil() {
         })()}
         <button
           type="submit"
-          disabled={busy || !goalsText.trim() || (budgetWarn && !forceOverBudget)}
+          data-testid="moil-create-recommend-ceiling"
+          data-plan-ready={String(createPlanReadiness.plan_ready)}
+          data-budget-soft-gate={String(budgetWarn && !forceOverBudget)}
+          data-html-first="true"
+          disabled={
+            busy ||
+            !createPlanReadiness.plan_ready ||
+            (budgetWarn && !forceOverBudget)
+          }
+          title={
+            !createPlanReadiness.plan_ready
+              ? createPlanReadiness.summary
+              : budgetWarn && !forceOverBudget
+                ? "Over budget — enable force override before create"
+                : "Create job and receive recommended price ceiling"
+          }
         >
           {busy ? "Working…" : "Create job + recommend ceiling"}
         </button>

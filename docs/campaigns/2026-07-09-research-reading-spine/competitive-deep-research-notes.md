@@ -3993,3 +3993,8 @@ P0 PR #465. Pivot arc+.
 Compaction-safe handoff for dual-gate · vision feed · path pure-helper · MO
 templates · domain spine. Competitive delta: multi-agent swarm stays tip-true
 after long infinite wave. P0 PR #465. Pivot ard+ outside thrash.
+
+## Residual ard · 2026-07-10 — MO create gated by plan readiness
+Create job + recommend ceiling disabled until goals+duration plan ready
+(moilPlanReadiness). Competitive delta: autonomous swarm never fires empty
+plan. vitest 30 green. P0 PR #465. Pivot are+.
