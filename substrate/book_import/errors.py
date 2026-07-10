@@ -86,6 +86,16 @@ class StoredBodyMismatchError(BookImportError):
     reason: ClassVar[str] = "stored_body_mismatch"
 
 
+class MissingPublishedChunksError(BookImportError):
+    """An existing content-addressed document has an incomplete chunk set.
+
+    Republish refuses instead of reporting idempotent success or silently
+    regenerating rows, either of which would hide storage corruption.
+    """
+
+    reason: ClassVar[str] = "missing_published_chunks"
+
+
 class RepublishRightsChangeError(BookImportError):
     """A re-publish of already-published content requested different rights
     state (content_class / rights holder / license basis / provenance) than
@@ -103,6 +113,7 @@ __all__ = [
     "DrmLockedError",
     "ExternalEntityBlockedError",
     "MalformedEpubError",
+    "MissingPublishedChunksError",
     "NoTextContentError",
     "NotAnEpubError",
     "RepublishRightsChangeError",
