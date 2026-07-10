@@ -2837,3 +2837,9 @@ Hosted free STEM book DR and marketplace host-land DR show operator-visible
 knowledge-dense pub chrome (N refs · chars · soft budget below). Completes
 foresight chrome matrix with launch/chase/highlight. vitest HostedHtml 23 ·
 MarketplaceHost 41 green. P0 operator merge PR #465. Pivot aig+ outside thrash.
+
+## Residual aig · 2026-07-10 — dogfood v27 pub-ref foresight chrome matrix
+Suite suite-competitive-dogfood-v27 adds wrestle fixture for operator-visible
+pub-ref foresight chrome matrix (aic–aif). item_count 42 · wrestle=29.
+Settings spine v27. pytest dogfood 5 · Settings 36 green. P0 operator merge PR #465.
+Pivot aih+ outside thrash.

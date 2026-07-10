@@ -38,7 +38,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (ahn): v24 learns budget foresight with pubs + purchase seamless port.
 # Residual (ahs): v25 learns domain-aware twin intelligent search (ahr).
 # Residual (aib): v26 learns collective unit twin seed + MO deposit twin honesty.
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v26"
+# Residual (aig): v27 learns pub-ref foresight chrome matrix (aic–aif).
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v27"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -553,6 +554,26 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "deposit",
                 "twin",
                 "offline",
+            ),
+        ),
+        # Residual (aig/aic–aif): operator-visible pub-ref foresight chrome matrix.
+        SuiteItem(
+            item_id="dogfood-wrestle-pub-ref-foresight-chrome",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with pub-ref foresight chrome: when StartResearch, ChatInputArea, "
+                "ResearchThis, HostedHtml, and MarketplaceHost show operator-visible chrome "
+                "Knowledge-dense pubs in projection: N refs · chars=… · soft budget below after "
+                "knowledge-dense quick-call inserts, how should Antiek-bench learn models that "
+                "keep competitive budget-before-fire honesty for multi-source grounding without "
+                "inventing $0 or hiding over-budget risk?"
+            ),
+            expected_keywords=(
+                "foresight",
+                "chrome",
+                "budget",
+                "refs",
+                "soft",
             ),
         ),
         # Residual (aeu): seamless Write path honesty across reading/research surfaces.

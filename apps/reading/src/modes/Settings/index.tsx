@@ -2946,6 +2946,12 @@ export default function Settings() {
                       it.item_id === "dogfood-wrestle-moil-deposit-twin-honesty",
                   ),
                 )}
+                data-has-pub-ref-foresight-chrome-posture={String(
+                  (dogfood.items || []).some(
+                    (it) =>
+                      it.item_id === "dogfood-wrestle-pub-ref-foresight-chrome",
+                  ),
+                )}
                 data-propose-not-promote="true"
               >
                 <Row label="Suite" value={dogfood.suite_version} />
@@ -2999,7 +3005,7 @@ export default function Settings() {
                     data-testid="antiek-bench-dogfood-v2-postures"
                     role="status"
                   >
-                    Spine postures (v26): write-seed · float evidence · budget
+                    Spine postures (v27): write-seed · float evidence · budget
                     foresight · Faraday book_qa · collective unit write-seed ·
                     Boole book_qa · Heaviside book_qa · Shannon book_qa ·
                     Turing book_qa · Lovelace book_qa · citation-trust
@@ -3013,7 +3019,7 @@ export default function Settings() {
                     TalkToBook twins · MetaReading twins · ResearchThis twins ·
                     spawn merge path · multi-spawn collective merge ·
                     knowledge-dense pub quick-call matrix · budget foresight with pubs ·
-                    purchase seamless port · domain-aware twin search · collective unit twin seed · MO deposit twin honesty
+                    purchase seamless port · domain-aware twin search · collective unit twin seed · MO deposit twin honesty · pub-ref foresight chrome
                     (listing only · not auto-promoted)
                   </p>
                 ) : null}
