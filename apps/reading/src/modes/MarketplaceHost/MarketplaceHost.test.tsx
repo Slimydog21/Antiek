@@ -278,6 +278,18 @@ describe("MarketplaceHost mode", () => {
     expect(hostMetrics.getAttribute("data-subjects")).toBe("literature");
     expect(hostMetrics.textContent).toMatch(/subjects=literature/);
     expect(hostMetrics.textContent).toMatch(/Host land/);
+    // Residual (tc): free/PD host path honesty.
+    expect(hostMetrics.getAttribute("data-license-class")).toBe("public_domain");
+    expect(hostMetrics.getAttribute("data-is-public-domain")).toBe("true");
+    expect(hostMetrics.getAttribute("data-is-free-host")).toBe("true");
+    expect(hostMetrics.getAttribute("data-payment-rails")).toBe(
+      "manual_receipt_only",
+    );
+    const freeHonesty = screen.getByTestId("marketplace-host-free-pd-honesty");
+    expect(freeHonesty.getAttribute("data-is-public-domain")).toBe("true");
+    expect(freeHonesty.getAttribute("data-is-free-host")).toBe("true");
+    expect(freeHonesty.textContent).toMatch(/free_host=true/);
+    expect(freeHonesty.textContent).toMatch(/manual_receipt_only/);
     expect(
       screen.getByTestId("marketplace-host-research-substrate").textContent,
     ).toMatch(/recursive note-taker/i);

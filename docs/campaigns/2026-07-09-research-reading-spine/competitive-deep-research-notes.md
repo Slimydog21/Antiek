@@ -970,3 +970,9 @@ list size with whole-catalog free inventory — HTML host only, no live rails.
 Account library metrics stamp free_pd counts and filtered free honesty when
 text filter is active. Competitive delta: hosted HTML library browsing never
 confuses filtered list size with whole-library free inventory (HTML host only).
+
+## Residual tc · 2026-07-10 — Host-land free/PD honesty
+Host land stamps data-is-public-domain / data-is-free-host and a free/PD
+honesty strip (manual_receipt_only rails). Competitive delta: free research
+spine host path is auditably distinct from purchase+host without inventing
+live payment rails.

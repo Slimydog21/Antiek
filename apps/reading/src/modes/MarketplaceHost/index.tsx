@@ -58,6 +58,7 @@
  * Residual (ta): filtered free-PD honesty — visible free among filtered
  * rows vs full-catalog free_count when free-only/subject/source/text filters on.
  * Residual (tb): library free/PD honesty under text filter (parity catalog ta).
+ * Residual (tc): host-land free/PD honesty stamp (public_domain free host path).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -1191,12 +1192,21 @@ export default function MarketplaceHost({
       {hosted ? (
         <section className="mt-8 space-y-2" data-testid="host-result">
           <h2 className="text-lg font-medium">Hosted {hosted.document_id}</h2>
-          {/* Residual (in/ip): host land metrics + catalog knowledge source. */}
+          {/* Residual (in/ip/tc): host land metrics + free/PD honesty. */}
           <div
             data-testid="marketplace-host-metrics"
             data-document-id={hosted.document_id}
             data-already-hosted={String(Boolean(hosted.already_hosted))}
             data-license-class={hosted.license_class ?? ""}
+            data-is-public-domain={String(
+              (hosted.license_class || "") === "public_domain",
+            )}
+            data-is-free-host={String(
+              (hosted.license_class || "") === "public_domain" ||
+                Boolean(
+                  entries.find((e) => e.book_id === hosted.book_id)?.is_free,
+                ),
+            )}
             data-view-format={hosted.view_format ?? "html"}
             data-book-id={hosted.book_id ?? ""}
             data-catalog-source={
@@ -1218,18 +1228,46 @@ export default function MarketplaceHost({
                   : "true"
                 : "pending"
             }
+            data-payment-rails="manual_receipt_only"
             role="status"
-            className="font-mono text-[11px] opacity-80"
+            className="font-mono text-[11px] opacity-80 space-y-0.5"
           >
-            Host land · document={hosted.document_id} · already=
-            {String(Boolean(hosted.already_hosted))} · view=
-            {hosted.view_format} · catalog_source=
-            {entries.find((e) => e.book_id === hosted.book_id)?.source ||
-              "unknown"}
-            · subjects=
-            {(
-              entries.find((e) => e.book_id === hosted.book_id)?.subjects || []
-            ).join(",") || "none"}
+            <p>
+              Host land · document={hosted.document_id} · already=
+              {String(Boolean(hosted.already_hosted))} · view=
+              {hosted.view_format} · catalog_source=
+              {entries.find((e) => e.book_id === hosted.book_id)?.source ||
+                "unknown"}
+              · subjects=
+              {(
+                entries.find((e) => e.book_id === hosted.book_id)?.subjects || []
+              ).join(",") || "none"}
+            </p>
+            {/* Residual (tc): free/PD host path honesty. */}
+            <p
+              data-testid="marketplace-host-free-pd-honesty"
+              data-license-class={hosted.license_class ?? ""}
+              data-is-public-domain={String(
+                (hosted.license_class || "") === "public_domain",
+              )}
+              data-is-free-host={String(
+                (hosted.license_class || "") === "public_domain" ||
+                  Boolean(
+                    entries.find((e) => e.book_id === hosted.book_id)?.is_free,
+                  ),
+              )}
+              role="status"
+            >
+              Free/PD host honesty: license=
+              {hosted.license_class || "unknown"} · free_host=
+              {(hosted.license_class || "") === "public_domain" ||
+              Boolean(
+                entries.find((e) => e.book_id === hosted.book_id)?.is_free,
+              )
+                ? "true"
+                : "false"}{" "}
+              · HTML host only · payment=manual_receipt_only (no live rails)
+            </p>
           </div>
           {/* Residual (ip): recursive note-taker substrate after host. */}
           <p
