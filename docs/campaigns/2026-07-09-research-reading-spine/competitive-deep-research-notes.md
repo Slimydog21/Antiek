@@ -794,3 +794,9 @@ Weekly usage by_source list stamps data-write-seed-feed / [write seed] per
 source (parity suite ranked feeds). Competitive delta: both Antiek-bench
 Settings panels (usage + suite proposal) show recursive note-taker → Write
 substrate composition for weekly rewrite honesty.
+
+## Residual rx · 2026-07-10 — Usage HTML Write-seed stamps
+project_usage_summary_html marks TWIN_WRITE_SEED_USAGE_SOURCES with
+[write seed] and a Write seed feeds count paragraph. Competitive delta:
+HTML-first weekly Antiek-bench view (not only React Settings) shows whether
+usage substrate is recursive note-taker → Write vs chase/investigation.

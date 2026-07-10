@@ -73,6 +73,10 @@ def project_usage_summary_html(summary: dict[str, Any]) -> str:
     """HTML-first human view of a usage summary (never PDF)."""
     from substrate.engagement_spine.project import project_to_html
 
+    # Residual (rx): Write twin_seed feed honesty in HTML projection
+    # (parity Settings React chrome rt–rw).
+    from substrate.antiek_bench.usage_bridge import TWIN_WRITE_SEED_USAGE_SOURCES
+
     count = int(summary.get("event_count") or 0)
     by_class = summary.get("by_task_class") or {}
     by_source = summary.get("by_source") or {}
@@ -93,9 +97,15 @@ def project_usage_summary_html(summary: dict[str, Any]) -> str:
         },
     ]
     if by_source:
-        src_bits = ", ".join(
-            f"{src}={n}" for src, n in sorted(by_source.items())
-        )
+        write_seed_bits: list[str] = []
+        src_bits_parts: list[str] = []
+        for src, n in sorted(by_source.items()):
+            label = f"{src}={n}"
+            if str(src) in TWIN_WRITE_SEED_USAGE_SOURCES:
+                label = f"{label} [write seed]"
+                write_seed_bits.append(str(src))
+            src_bits_parts.append(label)
+        src_bits = ", ".join(src_bits_parts)
         blocks.append(
             {
                 "type": "paragraph",
@@ -107,16 +117,42 @@ def project_usage_summary_html(summary: dict[str, Any]) -> str:
                 ],
             }
         )
+        if write_seed_bits:
+            blocks.append(
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                "Write seed feeds: "
+                                f"{len(write_seed_bits)} "
+                                "(recursive note-taker → Write): "
+                                + ", ".join(write_seed_bits)
+                            ),
+                        }
+                    ],
+                }
+            )
     # Residual (nx): catalog of known feed sources (twin_chase, floating DR, …).
     known = summary.get("known_sources") or []
     if known:
+        known_write = sum(
+            1 for s in known if str(s) in TWIN_WRITE_SEED_USAGE_SOURCES
+        )
+        known_text = "Known feed sources: " + ", ".join(str(s) for s in known)
+        if known_write:
+            known_text += (
+                f" · Write seed feeds: {known_write} "
+                "(recursive note-taker → Write)"
+            )
         blocks.append(
             {
                 "type": "paragraph",
                 "content": [
                     {
                         "type": "text",
-                        "text": "Known feed sources: " + ", ".join(str(s) for s in known),
+                        "text": known_text,
                     }
                 ],
             }
