@@ -1641,3 +1641,8 @@ Settings dogfood chokepoint.
 antiek-bench-dogfood-summary stamps distill/synthesize/wrestle/book_qa counts
 (v12: 2/2/7/7). Competitive delta: full Antiek-bench dogfood task-class matrix
 is machine-auditable on Settings.
+
+## Residual yi · 2026-07-10 — FUTURE-AGENT tip re-anchor through yh
+FUTURE-AGENT-SPEC tip re-anchored after 62 residual ships (budget foresight ·
+dual-gate L1–L7 · free STEM · dogfood v12 task-class counts). Competitive
+delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
