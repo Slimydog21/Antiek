@@ -915,14 +915,29 @@ describe("MidnightOil mode", () => {
         "may_exceed",
       );
     });
-    fireEvent.click(screen.getByTestId("moil-approve-recommended"));
-    await waitFor(() => {
-      expect(screen.getByRole("alert").textContent).toMatch(
-        /may exceed remaining daily budget/i,
-      );
-    });
+    // Residual (arz): soft-gate is CTA disabled (not only handler error).
+    const approveRec = screen.getByTestId(
+      "moil-approve-recommended",
+    ) as HTMLButtonElement;
+    expect(approveRec.getAttribute("data-may-exceed")).toBe("true");
+    expect(approveRec.getAttribute("data-approve-ready")).toBe("false");
+    expect(approveRec.getAttribute("data-budget-soft-gate")).toBe("true");
+    expect(approveRec.disabled).toBe(true);
+    expect(approveRec.getAttribute("title") || "").toMatch(
+      /may exceed remaining daily budget/i,
+    );
+    fireEvent.click(approveRec);
     expect(approveMidnightOilCeiling).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("moil-force-ceiling-over-budget").querySelector("input")!);
+    await waitFor(() => {
+      expect(
+        (screen.getByTestId("moil-approve-recommended") as HTMLButtonElement)
+          .disabled,
+      ).toBe(false);
+    });
+    expect(
+      screen.getByTestId("moil-approve-recommended").getAttribute("data-approve-ready"),
+    ).toBe("true");
     fireEvent.click(screen.getByTestId("moil-approve-recommended"));
     await waitFor(() => {
       expect(approveMidnightOilCeiling).toHaveBeenCalledWith({

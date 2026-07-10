@@ -4109,3 +4109,10 @@ spawn-merge-draft / spawn-merge-parent honor researchPathChoicesReadiness
 spawn/parent props null-safe. Competitive delta: highlight→DR→merge path is
 hard-to-vary pure contract end-to-end (chrome → CTA · parity collective).
 vitest SpawnMerge 10 green. P0 PR #465. Pivot arz+ outside thrash.
+
+## Residual arz · 2026-07-10 — MO approve CTAs soft-gated on ceiling budget
+moil-approve-recommended / moil-approve-custom disabled when ceiling may_exceed
+remaining without force · invalid custom amount gated · stamps approve-ready.
+Competitive delta: Midnight Oil price-ceiling path is hard-to-vary pure contract
+(goals→ceiling→approve CTA soft-gate · never invent block when remaining unknown).
+vitest MidnightOil 30 green. P0 PR #465. Pivot asa+ outside thrash.

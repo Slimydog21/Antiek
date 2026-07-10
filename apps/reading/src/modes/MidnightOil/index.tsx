@@ -1708,7 +1708,23 @@ export default function MidnightOil() {
 
           {job.status === "awaiting_approval" ? (
             <div className="space-y-2 border rounded p-3">
-              {/* Residual (me): force when ceiling may_exceed remaining budget. */}
+              {/* Residual (me/arz): force when ceiling may_exceed remaining budget · CTA soft-gate. */}
+              {(() => {
+                const rec = Number(job.recommended_price_ceiling_usd);
+                const recValid = Number.isFinite(rec) && rec > 0;
+                const recMayExceed =
+                  recValid && ceilingMayExceedRemaining(rec);
+                const recApproveReady =
+                  recValid && (!recMayExceed || forceCeilingOverBudget);
+                const customAmount = Number(ceilingInput);
+                const customValid =
+                  Number.isFinite(customAmount) && customAmount > 0;
+                const customMayExceed =
+                  customValid && ceilingMayExceedRemaining(customAmount);
+                const customApproveReady =
+                  customValid && (!customMayExceed || forceCeilingOverBudget);
+                return (
+                  <>
               <label
                 className="flex items-center gap-2 text-sm font-mono"
                 data-testid="moil-force-ceiling-over-budget"
@@ -1724,8 +1740,19 @@ export default function MidnightOil() {
               <button
                 type="button"
                 onClick={() => void onApproveRecommended()}
-                disabled={busy}
+                disabled={busy || !recApproveReady}
                 data-testid="moil-approve-recommended"
+                data-approve-ready={String(recApproveReady)}
+                data-may-exceed={String(recMayExceed)}
+                data-force-over-budget={String(forceCeilingOverBudget)}
+                data-budget-soft-gate={String(recMayExceed && !forceCeilingOverBudget)}
+                title={
+                  !recValid
+                    ? "Recommended ceiling unavailable"
+                    : recMayExceed && !forceCeilingOverBudget
+                      ? "Recommended ceiling may exceed remaining daily budget — enable force override or lower duration/tier"
+                      : "Approve Midnight Oil at recommended price ceiling"
+                }
               >
                 Approve at recommended
               </button>
@@ -1752,12 +1779,29 @@ export default function MidnightOil() {
                 <button
                   type="button"
                   onClick={() => void onApproveCustom()}
-                  disabled={busy}
+                  disabled={busy || !customApproveReady}
                   data-testid="moil-approve-custom"
+                  data-approve-ready={String(customApproveReady)}
+                  data-may-exceed={String(customMayExceed)}
+                  data-custom-valid={String(customValid)}
+                  data-force-over-budget={String(forceCeilingOverBudget)}
+                  data-budget-soft-gate={String(
+                    customMayExceed && !forceCeilingOverBudget,
+                  )}
+                  title={
+                    !customValid
+                      ? "Enter a positive custom ceiling amount"
+                      : customMayExceed && !forceCeilingOverBudget
+                        ? "Custom ceiling may exceed remaining daily budget — enable force override or lower the amount"
+                        : "Approve Midnight Oil at custom price ceiling"
+                  }
                 >
                   Approve custom ceiling
                 </button>
               </div>
+                  </>
+                );
+              })()}
               {/* Residual (un): custom ceiling remaining-after projection (parity um). */}
               {(() => {
                 const amount = Number(ceilingInput);
