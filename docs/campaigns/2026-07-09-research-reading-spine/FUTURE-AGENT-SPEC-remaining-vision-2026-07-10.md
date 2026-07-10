@@ -26,7 +26,7 @@ Engagement spine on this branch includes everything below. Prefer **inventory-ss
 | HTML reading flywheel | **sf–so** | Evidence / context search / hydrate / context pack / progress / flywheel → float\|full HTML + host twin-seed honesty |
 | Competitive dogfood v2 | **st–su** | write-seed / float-evidence / budget-foresight postures + Settings honesty |
 | Dual-gate prep strip | **sw–sz** | L1–L4 offline-honest links · MO L4 panel · L7 ND advisory only |
-| Marketplace free honesty | **ta–tg** | filtered free · library free · host free/PD · Faraday/Maxwell STEM · dogfood Faraday · purchase negative |
+| Marketplace free honesty | **ta–tk** | filtered free · library free · host free/PD · Faraday/Maxwell STEM · dogfood Faraday · purchase negative · electricity chips |
 
 Key modules:
 - `apps/reading/src/lib/writeSeedFeedSources.ts`

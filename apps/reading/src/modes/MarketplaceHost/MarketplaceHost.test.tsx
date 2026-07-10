@@ -1287,4 +1287,92 @@ describe("MarketplaceHost mode", () => {
         .getAttribute("data-is-free"),
     ).toBe("true");
   });
+
+  it("hosts Faraday free PD with electricity subjects on host land (tm)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-faraday-electricity",
+          title: "Experimental Researches in Electricity",
+          author: "Michael Faraday",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: ["physics", "science", "technology", "electricity"],
+        },
+      ],
+      count: 1,
+      view_format: "html",
+      by_source: { project_gutenberg: 1 },
+      by_subject: { electricity: 1, physics: 1, technology: 1, science: 1 },
+      free_count: 1,
+      public_domain_count: 1,
+      purchased_count: 0,
+      payment_rails: "manual_receipt_only",
+    });
+    hostBookIntoAccount.mockResolvedValue({
+      document_id: "hdoc_faraday",
+      owner_id: "tech-researcher",
+      book_id: "pd-faraday-electricity",
+      content_hash: "f1",
+      title: "Experimental Researches in Electricity",
+      license_class: "public_domain",
+      already_hosted: false,
+      source_format: "html",
+      library_document_ids: ["hdoc_faraday"],
+      view_format: "html",
+      html: "<p>Induction of electric currents</p>",
+      usage_event: {
+        task_class: "book_qa",
+        outcome: "worked",
+        source: "marketplace_host",
+        prompt_hint: "host pd-faraday-electricity",
+      },
+    });
+    fetchAccountLibrary.mockResolvedValue({
+      owner_id: "tech-researcher",
+      documents: [
+        {
+          document_id: "hdoc_faraday",
+          title: "Experimental Researches in Electricity",
+          license_class: "public_domain",
+          view_format: "html",
+        },
+      ],
+      count: 1,
+      view_format: "html",
+      html: "<p>Library Faraday</p>",
+    });
+    render(<MarketplaceHost ownerId="tech-researcher" />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("catalog-entry-pd-faraday-electricity"),
+      ).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /host into account/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId("host-result").textContent).toContain(
+        "hdoc_faraday",
+      );
+    });
+    const hostMetrics = screen.getByTestId("marketplace-host-metrics");
+    expect(hostMetrics.getAttribute("data-book-id")).toBe(
+      "pd-faraday-electricity",
+    );
+    expect(hostMetrics.getAttribute("data-is-free-host")).toBe("true");
+    expect(hostMetrics.getAttribute("data-is-public-domain")).toBe("true");
+    expect(hostMetrics.getAttribute("data-subjects")).toMatch(/electricity/);
+    expect(hostMetrics.getAttribute("data-catalog-source")).toBe(
+      "project_gutenberg",
+    );
+    expect(
+      screen.getByTestId("marketplace-host-free-pd-honesty").textContent,
+    ).toMatch(/free_host=true/);
+    expect(hostBookIntoAccount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        owner_id: "tech-researcher",
+        book_id: "pd-faraday-electricity",
+      }),
+    );
+  });
 });
