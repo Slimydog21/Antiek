@@ -4238,6 +4238,35 @@ export interface MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorDel
   adapter_plan_notes: string[];
 }
 
+export interface MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryAuditEnvelopePlanRequest
+  extends MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseoutResultReconciliationPlanRequest {
+  operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_plan_receipt: MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseoutResultReconciliationPlanReceipt;
+}
+
+export interface MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryAuditEnvelopePlanReceipt
+  extends Omit<
+    MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseoutResultReconciliationPlanReceipt,
+    "receipt_id" | "status" | "adapter_key" | "blocker_reason" | "adapter_plan_notes"
+  > {
+  receipt_id: string;
+  operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_plan_receipt_id: string;
+  status: "blocked_operator_archive_package_delivery_report_final_delivery_audit_envelope_unimplemented";
+  adapter_key: "operator_archive_package_delivery_report_final_delivery_audit_envelope";
+  planned_operator_archive_package_delivery_report_final_delivery_audit_envelope_receipt_id: string;
+  planned_operator_archive_package_delivery_report_final_delivery_audit_envelope_entry_id: string;
+  planned_operator_archive_package_delivery_report_final_delivery_audit_envelope_status_entry_id: string;
+  planned_operator_archive_package_delivery_report_final_delivery_audit_envelope_audit_entry_id: string;
+  operator_archive_package_delivery_report_final_delivery_audit_envelope_blockers: string[];
+  required_operator_archive_package_delivery_report_final_delivery_audit_envelope_invariants: string[];
+  required_operator_archive_package_delivery_report_final_delivery_audit_envelope_receipt_fields: string[];
+  blocker_reason: "operator_archive_package_delivery_report_final_delivery_audit_envelope_unimplemented";
+  operator_archive_package_delivery_report_final_delivery_audit_envelope_allowed: boolean;
+  operator_archive_package_delivery_report_final_delivery_audit_envelope_entry_created: boolean;
+  operator_archive_package_delivery_report_final_delivery_audit_envelope_status_entry_created: boolean;
+  operator_archive_package_delivery_report_final_delivery_audit_envelope_audit_entry_created: boolean;
+  adapter_plan_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -5462,4 +5491,24 @@ export async function operatorArchivePackageDeliveryReportFinalOperatorDeliveryC
     );
   }
   return (await resp.json()) as MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseoutResultReconciliationPlanReceipt;
+}
+
+export async function operatorArchivePackageDeliveryReportFinalDeliveryAuditEnvelopePlanMidnightOil(
+  request: MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryAuditEnvelopePlanRequest,
+): Promise<MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryAuditEnvelopePlanReceipt> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/midnight-oil/operator-archive-package-delivery-report-final-delivery-audit-envelope-plan`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+  );
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(
+      `POST /research/midnight-oil/operator-archive-package-delivery-report-final-delivery-audit-envelope-plan: HTTP ${resp.status}: ${body}`,
+    );
+  }
+  return (await resp.json()) as MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryAuditEnvelopePlanReceipt;
 }
