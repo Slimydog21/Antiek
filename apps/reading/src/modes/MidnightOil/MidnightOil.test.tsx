@@ -38,6 +38,7 @@ import {
   operatorArchivePackageDeliveryReportFinalDeliveryAuditEnvelopePlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalDeliveryAuditEnvelopeResultReconciliationPlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanMidnightOil,
+  operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationResultReconciliationPlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealPlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalDispatchAttestationPlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalDispatchAttestationResultReconciliationPlanMidnightOil,
@@ -6523,6 +6524,78 @@ vi.mock("../../api/midnightOil", () => ({
         "operator archive package delivery report final delivery evidence seal attestation plan only: no final delivery evidence seal attestation receipt, entry, status entry, audit entry, dispatch, URL activation, or final artifact is created",
       ],
     })),
+  operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationResultReconciliationPlanMidnightOil:
+    vi.fn(async () => ({
+      receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-evidence-seal-attestation-result-reconciliation-plan",
+      operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_plan_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-evidence-seal-attestation-plan",
+      operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_plan_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-operator-archive-seal-acknowledgement-plan",
+      operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-evidence-seal-plan",
+      status:
+        "blocked_operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_result_reconciliation_unimplemented",
+      adapter_key:
+        "operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_result_reconciliation",
+      planned_operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_result_reconciliation_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-evidence-seal-attestation-result-reconciliation-receipt",
+      planned_operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_result_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-evidence-seal-attestation-result-entry",
+      planned_operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_status_result_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-evidence-seal-attestation-status-result-entry",
+      planned_operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_audit_result_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-evidence-seal-attestation-audit-result-entry",
+      operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_result_reconciliation_blockers:
+        [
+          "operator archive package delivery report final delivery evidence seal attestation result reconciliation receipt writer",
+          "operator archive package delivery report final delivery evidence seal attestation result entry writer",
+          "operator archive package delivery report final delivery evidence seal attestation status result entry writer",
+          "operator archive package delivery report final delivery evidence seal attestation audit result entry writer",
+        ],
+      required_operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_result_reconciliation_invariants:
+        [
+          "operator archive package delivery report final delivery evidence seal attestation result reconciliation planner must require final delivery evidence seal attestation planning before final delivery evidence seal attestation result rows can be planned",
+        ],
+      required_operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_result_reconciliation_receipt_fields:
+        [
+          "operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_result_reconciliation_receipt_id",
+          "operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_result_entry_id",
+          "operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_status_result_entry_id",
+          "operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_audit_result_entry_id",
+        ],
+      blocker_reason:
+        "operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_result_reconciliation_unimplemented",
+      operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_result_reconciliation_allowed:
+        false,
+      operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_result_entry_created:
+        false,
+      operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_status_result_entry_created:
+        false,
+      operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_audit_result_entry_created:
+        false,
+      operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_allowed:
+        false,
+      operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_entry_created:
+        false,
+      operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_status_entry_created:
+        false,
+      operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_audit_entry_created:
+        false,
+      operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_allowed:
+        false,
+      operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_entry_created:
+        false,
+      operator_notification_created: false,
+      private_read_url_created: false,
+      graph_mutated: false,
+      provider_calls_made: false,
+      retrieval_performed: false,
+      final_artifact_created: false,
+      adapter_plan_notes: [
+        "operator archive package delivery report final delivery evidence seal attestation result reconciliation plan only: no final delivery evidence seal attestation result receipt, entry, status result entry, audit result entry, dispatch, URL activation, or final artifact is created",
+      ],
+    })),
 }));
 
 describe("MidnightOil", () => {
@@ -11943,6 +12016,104 @@ describe("MidnightOil", () => {
     expect(
       screen.getAllByText(
         /operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_audit_entry_id/,
+      ).length,
+    ).toBeGreaterThan(0);
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Operator archive package delivery report final delivery evidence seal attestation result reconciliation plan",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(
+        operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationResultReconciliationPlanMidnightOil,
+      ).toHaveBeenCalled(),
+    );
+    expect(
+      operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationResultReconciliationPlanMidnightOil,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_plan_receipt:
+          expect.objectContaining({
+            receipt_id:
+              "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-evidence-seal-attestation-plan",
+          }),
+        operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_plan_receipt:
+          expect.objectContaining({
+            receipt_id:
+              "midnight-oil-test-operator-archive-package-delivery-report-final-operator-archive-seal-acknowledgement-plan",
+          }),
+      }),
+    );
+    expect(
+      screen.getByText(
+        "Operator archive package delivery report final delivery evidence seal attestation result reconciliation receipt",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-evidence-seal-attestation-result-reconciliation-plan",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "blocked operator archive package delivery report final delivery evidence seal attestation result reconciliation unimplemented",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-evidence-seal-attestation-result-reconciliation-receipt",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-evidence-seal-attestation-result-entry",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-evidence-seal-attestation-status-result-entry",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-evidence-seal-attestation-audit-result-entry",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "operator archive package delivery report final delivery evidence seal attestation result reconciliation planner must require final delivery evidence seal attestation planning before final delivery evidence seal attestation result rows can be planned",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Operator archive package delivery report final delivery evidence seal attestation result reconciliation blockers:/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /operator archive package delivery report final delivery evidence seal attestation result reconciliation receipt writer/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Operator archive package delivery report final delivery evidence seal attestation result reconciliation receipt fields:/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getAllByText(
+        /operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_result_entry_id/,
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(
+        /operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_status_result_entry_id/,
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(
+        /operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_audit_result_entry_id/,
       ).length,
     ).toBeGreaterThan(0);
   }, 25000);
