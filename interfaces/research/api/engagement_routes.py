@@ -749,6 +749,9 @@ class TwinSeedBody(BaseModel):
     # Residual (qy): twin_write seed provenance → Antiek-bench by_source.
     usage_source: str | None = None
     research_tier: str | None = None
+    # Residual (acw): optional body honesty for recursive suite rewrite feed.
+    # When omitted, inferred from non-empty body_text (title-only → false).
+    has_body: bool | None = None
 
 
 @engagement_router.post("/twins/seed")
@@ -769,7 +772,7 @@ def post_twins_seed(body: TwinSeedBody) -> dict[str, Any]:
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
-    # Residual (qy): DR session / terminal progress Write seeds → bench feed.
+    # Residual (qy/acw): DR session / terminal progress Write seeds → bench feed.
     if body.usage_source:
         try:
             from substrate.antiek_bench import (
@@ -777,14 +780,21 @@ def post_twins_seed(body: TwinSeedBody) -> dict[str, Any]:
                 resolve_usage_store,
             )
 
+            # Residual (acw): explicit has_body or infer from body_text honesty.
+            if body.has_body is not None:
+                has_body = bool(body.has_body)
+            else:
+                has_body = bool(str(body.body_text or "").strip())
             usage = record_twin_write_seed_usage(
                 store=resolve_usage_store(),
                 seed_source=body.usage_source,
                 prompt_hint=(body.title or body.asset_id or "")[:200],
                 research_tier=body.research_tier,
+                has_body=has_body,
             )
             if usage is not None:
                 out["usage_event"] = usage
+                out["usage_has_body"] = has_body
         except Exception as exc:  # noqa: BLE001 — offline-honest soft fail
             out["usage_event_error"] = str(exc)
     return out
