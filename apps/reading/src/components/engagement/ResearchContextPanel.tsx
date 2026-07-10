@@ -25,6 +25,8 @@
  * Residual (sl): float|full research context pack (prompt_block) as HTML.
  * Residual (att): context pack open float|full|Write stamp html-first ·
  * context-pack-open-ready · source=research_context_pack (parity ats flywheel).
+ * Residual (atv): context search open float|full|Write stamp html-first ·
+ * context-search-open-ready · source=context_search (parity att pack · atu evidence).
  * Residual (tq): context_search float/full carries search_query + search_hit_count
  * into HostedHtmlDocumentHost honesty chrome.
  * Residual (api): competitive citation hop pipeline completeness
@@ -1618,17 +1620,22 @@ export function ResearchContextPanel({
               </li>
             ))}
           </ul>
-          {/* Residual (sj): context search → float|full HTML reading windows. */}
+          {/* Residual (sj/atv): context search → float|full HTML reading windows
+              with html-first · context-search-open-ready · source stamps. */}
           {searchHits.html?.trim() ? (
             <p className="meta font-mono text-[11px] space-x-3">
               <button
                 type="button"
                 data-testid="context-search-open-float"
                 data-view-format="html"
+                data-html-first="true"
                 data-window-mode="floating"
                 data-hit-count={String(searchHits.hit_count ?? 0)}
+                data-context-search-open-ready="true"
+                data-source="context_search"
+                data-query={String(searchHits.query || "").trim()}
                 className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
-                title="Open search hits as floating HTML window (intelligent search · never PDF)"
+                title="Open search hits as floating HTML window (intelligent search · HTML-first · never PDF)"
                 onClick={() => {
                   const stem =
                     String(searchHits.asset_id || assetId).trim() || "asset";
@@ -1660,10 +1667,14 @@ export function ResearchContextPanel({
                 type="button"
                 data-testid="context-search-open-full"
                 data-view-format="html"
+                data-html-first="true"
                 data-window-mode="full"
                 data-hit-count={String(searchHits.hit_count ?? 0)}
+                data-context-search-open-ready="true"
+                data-source="context_search"
+                data-query={String(searchHits.query || "").trim()}
                 className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
-                title="Open search hits as full working-region HTML window (never PDF)"
+                title="Open search hits as full working-region HTML window (intelligent search · HTML-first · never PDF)"
                 onClick={() => {
                   const stem =
                     String(searchHits.asset_id || assetId).trim() || "asset";
@@ -1693,7 +1704,7 @@ export function ResearchContextPanel({
               </button>
             </p>
           ) : null}
-          {/* Residual (rf/acr/aes): search hits → Write + intelligent-search path. */}
+          {/* Residual (rf/acr/aes/atv): search hits → Write + intelligent-search path. */}
           {(() => {
             const href = buildContextSearchWriteHref({
               assetId: searchHits.asset_id || assetId,
@@ -1718,9 +1729,12 @@ export function ResearchContextPanel({
                   href={href}
                   data-testid="context-search-open-write"
                   data-view-format="html"
+                  data-html-first="true"
                   data-has-twin-seed="1"
                   data-hit-count={String(searchHits.hit_count ?? 0)}
                   data-write-seed-has-body={String(hasBody)}
+                  data-context-search-open-ready={String(hasBody)}
+                  data-source="context_search"
                   // Residual (aes): intelligent search → Write note-taker path.
                   data-query={searchQuery}
                   data-asset-id={searchAsset}
@@ -1734,7 +1748,7 @@ export function ResearchContextPanel({
                     Boolean(searchAsset && searchQuery),
                   )}
                   className="underline opacity-90 hover:opacity-100"
-                  title="Open Write with context search hits as twin_seed (intelligent search · recursive note-taker · no invented document_id)"
+                  title="Open Write with context search hits as twin_seed (intelligent search · HTML-first · recursive note-taker · never PDF · no invented document_id)"
                 >
                   Open Write (search hits)
                 </a>

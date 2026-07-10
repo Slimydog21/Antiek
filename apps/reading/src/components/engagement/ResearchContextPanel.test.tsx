@@ -756,7 +756,7 @@ describe("ResearchContextPanel", () => {
     expect(screen.getByTestId("context-search-research-tier").textContent).toBe(
       "wrestle",
     );
-    // Residual (rf/aes): Open Write twin_seed from search hits + path honesty.
+    // Residual (rf/aes/atv): Open Write twin_seed from search hits + path honesty.
     const write = screen.getByTestId("context-search-open-write");
     const href = write.getAttribute("href") || "";
     expect(href).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
@@ -765,15 +765,25 @@ describe("ResearchContextPanel", () => {
     expect(write.getAttribute("data-hit-count")).toBe("1");
     // Residual (acr): hit text body → has-body true.
     expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
+    // Residual (atv): context search Write HTML-first open readiness stamps.
+    expect(write.getAttribute("data-html-first")).toBe("true");
+    expect(write.getAttribute("data-context-search-open-ready")).toBe("true");
+    expect(write.getAttribute("data-source")).toBe("context_search");
     // Residual (aes): intelligent search → Write path honesty.
     expect(write.getAttribute("data-query")).toBe("attention");
     expect(write.getAttribute("data-asset-id")).toBe("paper");
     expect(write.getAttribute("data-spawn-id")).toBe("spn_1");
     expect(write.getAttribute("data-research-tier")).toBe("wrestle");
     expect(write.getAttribute("data-seamless-context-write")).toBe("true");
-    // Residual (sj/tq): float|full HTML reading windows for search hits.
+    // Residual (sj/tq/atv): float|full HTML reading windows for search hits.
     const floatBtn = screen.getByTestId("context-search-open-float");
     expect(floatBtn.getAttribute("data-window-mode")).toBe("floating");
+    expect(floatBtn.getAttribute("data-html-first")).toBe("true");
+    expect(floatBtn.getAttribute("data-context-search-open-ready")).toBe(
+      "true",
+    );
+    expect(floatBtn.getAttribute("data-source")).toBe("context_search");
+    expect(floatBtn.getAttribute("data-query")).toBe("attention");
     fireEvent.click(floatBtn);
     expect(openWindow).toHaveBeenCalled();
     const floatCall = openWindow.mock.calls.at(-1) as [
@@ -795,7 +805,12 @@ describe("ResearchContextPanel", () => {
     expect(floatCall[1].search_query).toBe("attention");
     expect(floatCall[1].search_hit_count).toBe(1);
     expect(floatCall[2].mode).toBe("floating");
-    fireEvent.click(screen.getByTestId("context-search-open-full"));
+    const fullBtn = screen.getByTestId("context-search-open-full");
+    expect(fullBtn.getAttribute("data-html-first")).toBe("true");
+    expect(fullBtn.getAttribute("data-context-search-open-ready")).toBe("true");
+    expect(fullBtn.getAttribute("data-source")).toBe("context_search");
+    expect(fullBtn.getAttribute("data-query")).toBe("attention");
+    fireEvent.click(fullBtn);
     const fullCall = openWindow.mock.calls.at(-1) as [
       string,
       {
