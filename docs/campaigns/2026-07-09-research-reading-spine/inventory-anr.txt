@@ -1,0 +1,14 @@
+# inventory-anr · ResearchThis open-vs-recent collective honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: anr
+date: 2026-07-10
+parent_tip: 613a46cc (anq)
+
+## Closed
+- ResearchThis collective mount: data-open-spawn-count · data-seamless-research-this-collective
+- Completes open-vs-recent honesty matrix across reading highlight + conversation + marketplace + DR session
+- vitest ResearchThis collective green
+
+## Next
+ans+ product residual outside thrash · prefer non-honesty-stamp
+Operator merge PR #465 remains highest leverage (gated)

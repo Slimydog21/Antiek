@@ -3546,3 +3546,8 @@ DR session · TalkToBook · MetaReading · MarketplaceHost collective mounts sta
 data-open-spawn-count (parity ResearchThis ou open-vs-recent honesty). DR session
 also stamps data-seamless-dr-session-collective. vitest green.
 P0 operator merge PR #465. Pivot anr+ outside thrash.
+
+## Residual anr · 2026-07-10 — ResearchThis open-vs-recent collective honesty
+ResearchThis collective mount stamps data-open-spawn-count + seamless-research-this-collective
+(completes open-vs-recent matrix with anq). vitest ResearchThis collective green.
+P0 operator merge PR #465. Pivot ans+ outside thrash (prefer non-honesty-stamp).

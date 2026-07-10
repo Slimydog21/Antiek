@@ -527,6 +527,8 @@ export default function ResearchThis({
           data-view-format="html"
           data-available-spawn-count={String(availableSpawnIds.length)}
           data-recent-count={String(recentSpawnIds.length)}
+          data-open-spawn-count={String(openSpawnIds.length)}
+          data-seamless-research-this-collective="true"
         >
           {/* Residual (and): remount twins+context after collective merge (parity promote amy). */}
           <CollectiveResearchPanel

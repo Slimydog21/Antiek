@@ -489,6 +489,11 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
     );
     const mount = screen.getByTestId("research-this-collective-mount");
     expect(mount.getAttribute("data-available-spawn-count")).toBe("2");
+    // Residual (anr): open-vs-recent honesty + seamless ResearchThis collective.
+    expect(mount.getAttribute("data-open-spawn-count")).toMatch(/^\d+$/);
+    expect(mount.getAttribute("data-seamless-research-this-collective")).toBe(
+      "true",
+    );
     expect(screen.getByTestId("collective-research-panel-stub").textContent).toMatch(
       /doc-read:spn_r1,spn_r2/,
     );
