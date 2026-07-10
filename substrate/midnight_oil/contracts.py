@@ -14204,6 +14204,173 @@ class MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealPl
     )
 
 
+class MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorArchiveSealAcknowledgementPlanRequest(
+    MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealPlanRequest
+):
+    operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_receipt: (
+        MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealPlanReceipt
+    )
+
+    @model_validator(mode="after")
+    def _operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_plan_matches(
+        self,
+    ) -> MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorArchiveSealAcknowledgementPlanRequest:
+        seal_plan = (
+            self.operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_receipt
+        )
+        result_plan = (
+            self.operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan_receipt
+        )
+        if (
+            seal_plan.operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan_receipt_id
+            != result_plan.receipt_id
+        ):
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_receipt must reference operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan_receipt"
+            )
+        if (
+            seal_plan.operator_archive_package_delivery_report_final_dispatch_attestation_plan_receipt_id
+            != self.operator_archive_package_delivery_report_final_dispatch_attestation_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_receipt must reference operator_archive_package_delivery_report_final_dispatch_attestation_plan_receipt"
+            )
+        if (
+            seal_plan.operator_archive_package_delivery_report_final_delivery_audit_envelope_result_reconciliation_plan_receipt_id
+            != self.operator_archive_package_delivery_report_final_delivery_audit_envelope_result_reconciliation_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_receipt must reference operator_archive_package_delivery_report_final_delivery_audit_envelope_result_reconciliation_plan_receipt"
+            )
+        if (
+            seal_plan.operator_archive_package_delivery_report_final_delivery_audit_envelope_plan_receipt_id
+            != self.operator_archive_package_delivery_report_final_delivery_audit_envelope_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_receipt must reference operator_archive_package_delivery_report_final_delivery_audit_envelope_plan_receipt"
+            )
+        if (
+            seal_plan.operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_plan_receipt_id
+            != self.operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_receipt must reference operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_plan_receipt"
+            )
+        if seal_plan.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_receipt must reference runner_handoff"
+            )
+        if seal_plan.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_receipt must reference approval_receipt"
+            )
+        if seal_plan.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_receipt must reference launch_packet"
+            )
+        if seal_plan.run_id != self.launch_packet.run_id:
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_receipt must reference launch run"
+            )
+        if (
+            seal_plan.status
+            != "blocked_operator_archive_package_delivery_report_final_delivery_evidence_seal_unimplemented"
+        ):
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_receipt must be blocked_operator_archive_package_delivery_report_final_delivery_evidence_seal_unimplemented"
+            )
+        if (
+            seal_plan.operator_archive_package_delivery_report_final_delivery_evidence_seal_allowed
+            or seal_plan.operator_archive_package_delivery_report_final_delivery_evidence_seal_entry_created
+            or seal_plan.operator_archive_package_delivery_report_final_delivery_evidence_seal_status_entry_created
+            or seal_plan.operator_archive_package_delivery_report_final_delivery_evidence_seal_audit_entry_created
+        ):
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_receipt must not create operator archive delivery report final delivery evidence seal state"
+            )
+        if (
+            seal_plan.operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_allowed
+            or seal_plan.operator_archive_package_delivery_report_final_dispatch_attestation_result_entry_created
+            or seal_plan.operator_archive_package_delivery_report_final_dispatch_attestation_status_result_entry_created
+            or seal_plan.operator_archive_package_delivery_report_final_dispatch_attestation_audit_result_entry_created
+        ):
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_receipt must not create operator archive delivery report final dispatch attestation result state"
+            )
+        if (
+            seal_plan.final_artifact_publish_allowed
+            or seal_plan.publish_transaction_created
+            or seal_plan.information_asset_published
+            or seal_plan.account_visible_asset_created
+            or seal_plan.reading_workspace_entry_created
+            or seal_plan.search_index_entry_created
+            or seal_plan.private_read_url_created
+            or seal_plan.operator_notification_created
+            or seal_plan.graph_commit_created
+            or seal_plan.graph_mutated
+            or seal_plan.dispatch_performed
+            or seal_plan.budget_reserved
+            or seal_plan.provider_calls_made
+            or seal_plan.retrieval_performed
+            or seal_plan.source_receipts_created
+            or seal_plan.final_artifact_created
+        ):
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_receipt must not publish, notify, dispatch, spend, call providers, retrieve, mutate graph, or create final artifacts"
+            )
+        return self
+
+
+class MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorArchiveSealAcknowledgementPlanReceipt(
+    MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealPlanReceipt
+):
+    operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_receipt_id: (
+        str
+    )
+    status: Literal[
+        "blocked_operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_unimplemented"
+    ] = "blocked_operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_unimplemented"
+    adapter_key: Literal[
+        "operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement"
+    ] = "operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement"
+    planned_operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_receipt_id: (
+        str
+    )
+    planned_operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_entry_id: (
+        str
+    )
+    planned_operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_status_entry_id: (
+        str
+    )
+    planned_operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_audit_entry_id: (
+        str
+    )
+    operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_blockers: list[
+        str
+    ]
+    required_operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_invariants: list[
+        str
+    ]
+    required_operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_receipt_fields: list[
+        str
+    ]
+    blocker_reason: Literal[
+        "operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_unimplemented"
+    ] = "operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_unimplemented"
+    operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_allowed: bool = (
+        False
+    )
+    operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_entry_created: bool = (
+        False
+    )
+    operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_status_entry_created: bool = (
+        False
+    )
+    operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_audit_entry_created: bool = (
+        False
+    )
+
+
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
     price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
@@ -21757,6 +21924,107 @@ def operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_m
             "this receipt documents operator archive package delivery report final delivery evidence seal requirements after final dispatch attestation result reconciliation planning",
             "no activation readiness, live dispatch, scheduler job, worker runtime, budget reservation, provider call, retrieval, source receipt, graph mutation, publish, notification, URL activation, run closeout, archive write, package write, package result write, delivery audit write, delivery audit result write, delivery report write, delivery report result write, delivery confirmation write, delivery confirmation result write, final operator acknowledgement write, acknowledgement result write, final closeout acknowledgement write, final operator delivery closeout write, final operator delivery closeout result write, final delivery audit envelope write, final delivery audit envelope result write, final dispatch attestation write, final dispatch attestation result write, final delivery evidence seal write, retention write, billing write, usage write, source archive write, or artifact write is performed",
             f"operator archive package delivery report final dispatch attestation result reconciliation lineage remains planned-only at {result_plan.receipt_id}",
+        ],
+    )
+
+
+def operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_plan_midnight_oil(
+    req: MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorArchiveSealAcknowledgementPlanRequest,
+) -> MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorArchiveSealAcknowledgementPlanReceipt:
+    run_id = req.launch_packet.run_id
+    seal_plan = (
+        req.operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_receipt
+    )
+    seal_kwargs = seal_plan.model_dump(
+        exclude={
+            "receipt_id",
+            "status",
+            "adapter_key",
+            "blocker_reason",
+            "adapter_plan_notes",
+        }
+    )
+    return MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorArchiveSealAcknowledgementPlanReceipt(
+        **seal_kwargs,
+        receipt_id=(
+            f"{run_id}-operator-archive-package-delivery-report-final-operator-archive-seal-acknowledgement-plan"
+        ),
+        operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_receipt_id=(
+            seal_plan.receipt_id
+        ),
+        planned_operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_receipt_id=(
+            f"{run_id}-operator-archive-package-delivery-report-final-operator-archive-seal-acknowledgement-receipt"
+        ),
+        planned_operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_entry_id=(
+            f"{run_id}-operator-archive-package-delivery-report-final-operator-archive-seal-acknowledgement-entry"
+        ),
+        planned_operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_status_entry_id=(
+            f"{run_id}-operator-archive-package-delivery-report-final-operator-archive-seal-acknowledgement-status-entry"
+        ),
+        planned_operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_audit_entry_id=(
+            f"{run_id}-operator-archive-package-delivery-report-final-operator-archive-seal-acknowledgement-audit-entry"
+        ),
+        operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_blockers=[
+            *seal_plan.operator_archive_package_delivery_report_final_delivery_evidence_seal_blockers,
+            "operator archive package delivery report final operator archive seal acknowledgement receipt writer",
+            "operator archive package delivery report final operator archive seal acknowledgement entry writer",
+            "operator archive package delivery report final operator archive seal acknowledgement status entry writer",
+            "operator archive package delivery report final operator archive seal acknowledgement audit entry writer",
+            "operator archive package delivery report final operator archive seal acknowledgement replay guard",
+        ],
+        required_operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_invariants=[
+            "operator archive package delivery report final operator archive seal acknowledgement planner must require final delivery evidence seal planning before final operator archive seal acknowledgement rows can be planned",
+            "operator archive package delivery report final operator archive seal acknowledgement planner must bind final operator archive seal acknowledgement receipt, final operator archive seal acknowledgement entry, final operator archive seal acknowledgement status entry, final operator archive seal acknowledgement audit entry, final delivery evidence seal receipt, final dispatch attestation result receipt, final dispatch attestation receipt, final delivery audit envelope result receipt, final delivery audit envelope receipt, final operator delivery closeout result receipt, final operator delivery closeout receipt, final closeout acknowledgement receipt, acknowledgement result receipt, final acknowledgement receipt, confirmation result receipt, confirmation receipt, notification result receipt, report result receipt, private read URL, hosted HTML asset, and idempotency key to the same planned closed run",
+            "operator archive package delivery report final operator archive seal acknowledgement planner must keep final operator archive seal acknowledgement rows uncreated until real final delivery evidence seal rows exist",
+            "operator archive package delivery report final operator archive seal acknowledgement planner must preserve final delivery evidence seal lineage without sending notifications, publishing assets, activating URLs, mutating graph state, billing accounts, dispatching providers, or closing the run during planning",
+            "operator archive package delivery report final operator archive seal acknowledgement planner must not dispatch providers, perform retrieval, mutate graph, publish assets, notify operators, activate URLs, close runs, write final operator archive seal acknowledgement rows, write final delivery evidence seal rows, write final dispatch attestation result rows, write final dispatch attestation rows, write final delivery audit envelope result rows, write final delivery audit envelope rows, write final operator delivery closeout result rows, write final operator delivery closeout rows, write final closeout acknowledgement rows, write acknowledgement result rows, write acknowledgement rows, write confirmation result rows, write confirmation rows, write notification rows, write archive rows, write package rows, write delivery report rows, write retention rows, write billing rows, write usage rollups, write source archives, or write final artifacts while planning final operator archive seal acknowledgement",
+        ],
+        required_operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_receipt_fields=[
+            "operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_plan_receipt_id",
+            "operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_receipt_id",
+            "operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan_receipt_id",
+            "operator_archive_package_delivery_report_final_dispatch_attestation_plan_receipt_id",
+            "operator_archive_package_delivery_report_final_delivery_audit_envelope_result_reconciliation_plan_receipt_id",
+            "operator_archive_package_delivery_report_final_delivery_audit_envelope_plan_receipt_id",
+            "operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_plan_receipt_id",
+            "operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_receipt_id",
+            "operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_entry_id",
+            "operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_status_entry_id",
+            "operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_audit_entry_id",
+            "operator_archive_package_delivery_report_final_delivery_evidence_seal_receipt_id",
+            "operator_archive_package_delivery_report_final_delivery_evidence_seal_entry_id",
+            "operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_receipt_id",
+            "operator_archive_package_delivery_report_final_dispatch_attestation_result_entry_id",
+            "operator_archive_package_delivery_report_final_dispatch_attestation_receipt_id",
+            "operator_archive_package_delivery_report_final_dispatch_attestation_entry_id",
+            "operator_archive_package_delivery_report_final_delivery_audit_envelope_result_reconciliation_receipt_id",
+            "operator_archive_package_delivery_report_final_delivery_audit_envelope_receipt_id",
+            "operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_receipt_id",
+            "operator_archive_package_delivery_report_final_operator_delivery_closeout_receipt_id",
+            "operator_archive_package_delivery_report_final_closeout_acknowledgement_receipt_id",
+            "operator_archive_package_delivery_report_acknowledgement_result_reconciliation_receipt_id",
+            "operator_archive_package_delivery_report_final_operator_acknowledgement_receipt_id",
+            "operator_archive_package_delivery_report_delivery_confirmation_result_reconciliation_receipt_id",
+            "operator_archive_package_delivery_report_delivery_confirmation_receipt_id",
+            "operator_archive_package_delivery_report_notification_result_reconciliation_receipt_id",
+            "operator_archive_package_delivery_report_result_reconciliation_receipt_id",
+            "private_read_url_id",
+            "hosted_html_asset_id",
+            "idempotency_key",
+            "created_at",
+        ],
+        blocker_reason=(
+            "operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_unimplemented"
+        ),
+        operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_allowed=False,
+        operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_entry_created=False,
+        operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_status_entry_created=False,
+        operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_audit_entry_created=False,
+        adapter_plan_notes=[
+            "operator archive package delivery report final operator archive seal acknowledgement plan only: no final operator archive seal acknowledgement receipt, final operator archive seal acknowledgement entry, final operator archive seal acknowledgement status entry, final operator archive seal acknowledgement audit entry, dispatch, URL activation, or final artifact is created",
+            "this receipt documents operator archive package delivery report final operator archive seal acknowledgement requirements after final delivery evidence seal planning",
+            "no activation readiness, live dispatch, scheduler job, worker runtime, budget reservation, provider call, retrieval, source receipt, graph mutation, publish, notification, URL activation, run closeout, archive write, package write, package result write, delivery audit write, delivery audit result write, delivery report write, delivery report result write, delivery confirmation write, delivery confirmation result write, final operator acknowledgement write, acknowledgement result write, final closeout acknowledgement write, final operator delivery closeout write, final operator delivery closeout result write, final delivery audit envelope write, final delivery audit envelope result write, final dispatch attestation write, final dispatch attestation result write, final delivery evidence seal write, final operator archive seal acknowledgement write, retention write, billing write, usage write, source archive write, or artifact write is performed",
+            f"operator archive package delivery report final delivery evidence seal lineage remains planned-only at {seal_plan.receipt_id}",
         ],
     )
 
