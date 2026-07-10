@@ -1,0 +1,14 @@
+# inventory-qq · ResearchContextPanel driver badge + prompt foresight
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: qq
+date: 2026-07-10
+
+## Closed
+- DecisionTreeDriverBadge on ResearchContextPanel
+- researchTier from pack.research_tier
+- promptText from pack.prompt_block (fallback query / asset label)
+- vitest ResearchContextPanel 12 passed (SCRATCH residual-tests-qq.log)
+
+## Honesty
+Recursive context pack is the substrate that feeds every prompt — cost
+foresight belongs here. Offline-honest · HTML-first · main merge operator-only.

@@ -10,6 +10,8 @@
  * Residual (kd): evidence pack surfaces spawn research_tier (depth posture).
  * Residual (kl): research context pack surfaces spawn research_tier chrome.
  * Residual (mu): dual-gate L1–L4 checklist deep-link for hydrate L1/L2 prep.
+ * Residual (qq): DecisionTreeDriverBadge + promptText from prompt_block / query
+ *     so recursive context pack cost foresight sits next to the substrate.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -27,6 +29,7 @@ import {
   type TwinPromoteContextResponse,
 } from "../../api/engagement";
 import { detectSourceKindClient } from "../../workspace/researchContextPack";
+import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 
 /** Pure twin-kind metrics for recursive note-taker substrate (residual ff). */
 export function twinNoteMetrics(
@@ -266,6 +269,28 @@ export function ResearchContextPanel({
             </>
           ) : null}
         </p>
+        {/* Residual (qq): model + budget + depth co-display over recursive context. */}
+        <div
+          className="mt-1"
+          data-testid="research-context-driver-badge-mount"
+          data-view-format="html"
+          data-research-tier={
+            (pack?.research_tier || "").trim().toLowerCase() || ""
+          }
+        >
+          <DecisionTreeDriverBadge
+            researchTier={
+              ((pack?.research_tier || "").trim().toLowerCase() ||
+                undefined) as "fast" | "deep" | "wrestle" | undefined
+            }
+            promptText={
+              (pack?.prompt_block || "").trim() ||
+              (query.trim()
+                ? `research context query · ${query.trim()}`
+                : `research context · ${assetId}`)
+            }
+          />
+        </div>
       </header>
 
       <div className="controls">

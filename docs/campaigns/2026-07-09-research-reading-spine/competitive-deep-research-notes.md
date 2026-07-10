@@ -676,3 +676,5 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - StartResearch / ChatInputArea: question + pub refs
   - TalkToBook draft · MetaReading prompt · BlockDetail selection/node text
   - StartResearch vitest asserts prompt-len + pub-refs stamp
+
+- Closed (qq, 2026-07-10) **ResearchContextPanel DecisionTreeDriverBadge** + prompt_block foresight

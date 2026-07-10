@@ -9,6 +9,21 @@ const hydratePublicationRef = vi.fn();
 const searchEngagementContext = vi.fn();
 const promoteTwinsToContext = vi.fn();
 
+
+vi.mock("./DecisionTreeDriverBadge", () => ({
+  DecisionTreeDriverBadge: (props: {
+    researchTier?: string | null;
+    promptText?: string | null;
+  }) => (
+    <div
+      data-testid="decision-tree-driver-badge-stub"
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+      data-prompt-len={String((props.promptText || "").length)}
+    >
+      driver badge
+    </div>
+  ),
+}));
 vi.mock("../../api/engagement", () => ({
   fetchResearchContext: (...args: unknown[]) => fetchResearchContext(...args),
   attachSourceRefs: (...args: unknown[]) => attachSourceRefs(...args),
@@ -452,4 +467,38 @@ describe("ResearchContextPanel", () => {
       /ungrounded/i,
     );
   });
+
+  it("mounts DecisionTreeDriverBadge with prompt_block foresight (qq)", async () => {
+    fetchResearchContext.mockResolvedValue({
+      asset_id: "paper",
+      spawn_id: "spn_1",
+      twin_count: 2,
+      ref_count: 0,
+      twin_units: [
+        { unit_id: "u1", kind: "insight", text: "I1" },
+        { unit_id: "u2", kind: "question", text: "Q1" },
+      ],
+      source_references: [],
+      view_format: "html",
+      research_tier: "deep",
+      prompt_block: "# Research context for asset paper\n\n## Twin notes\n- [insight] I1",
+      product_panel: "research_context",
+      source: "engagement_spine.context",
+    });
+    render(
+      <ResearchContextPanel assetId="paper" spawnId="spn_1" autoLoad />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("research-context-driver-badge-mount")).toBeTruthy();
+    });
+    // Before load, badge still mounts with asset fallback prompt.
+    expect(screen.getByTestId("decision-tree-driver-badge-stub")).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByTestId("research-context-pack")).toBeTruthy();
+    });
+    const badge = screen.getByTestId("decision-tree-driver-badge-stub");
+    expect(badge.getAttribute("data-research-tier")).toBe("deep");
+    expect(Number(badge.getAttribute("data-prompt-len") || 0)).toBeGreaterThan(20);
+  });
+
 });
