@@ -1,13 +1,13 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** `2dbaf8a3` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
+**Campaign tip at write:** `4790add4` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **URL:** https://github.com/Slimydog21/Antiek/pull/465  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
 
 ## Do not rebuild
 
-Prefer **SESSION-ARC-vz-xl-budget-stem-dualgate.md** + inventories **vz–yc** + competitive notes.
+Prefer **SESSION-ARC-vz-xl-budget-stem-dualgate.md** + inventories **vz–ye** + competitive notes.
 
 ### Closed product (this continuation · 53 residual ships from vy)
 
@@ -24,7 +24,7 @@ Prefer **SESSION-ARC-vz-xl-budget-stem-dualgate.md** + inventories **vz–yc** +
 ### P2 — Dual-gate live injectors (operator-only)
 L1–L4 offline default · L5 payment deferred · L6 live multi-agent · L7 ND **never** router
 
-### P1 next offline (residual **ye+**)
+### P1 next offline (residual **yg+**)
 Outside dual-gate deep-link thrash and STEM chip thrash unless regression. Prefer:
 - real product bugs found by inventory
 - recursive twin / collective / MO offline product polish

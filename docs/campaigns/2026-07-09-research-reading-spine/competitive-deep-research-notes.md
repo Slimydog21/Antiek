@@ -1627,3 +1627,7 @@ Competitive delta: swarm handoff tip-true; operator merge PR #465 highest levera
 Marketplace catalog dual-gate checklist jumps to #l5-payment (parity L5
 honesty strip wj). Competitive delta: free PD host path dual-gate prep and
 payment honesty share deferred rails policy section.
+
+## Residual yf · 2026-07-10 — FUTURE-AGENT tip re-anchor through ye
+FUTURE-AGENT-SPEC tip re-anchored after 59 residual ships. Competitive delta:
+swarm handoff tip-true; operator merge PR #465 highest leverage.
