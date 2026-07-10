@@ -64,6 +64,12 @@ from .worker import (
     run_worker_iteration,
     run_worker_loop,
 )
+from .mock_execution import (
+    MidnightOilMockExecutionReceipt,
+    MidnightOilMockExecutionRequest,
+    MidnightOilMockRoleOutput,
+    execute_mock_midnight_oil,
+)
 
 __all__ = [
     "ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV",

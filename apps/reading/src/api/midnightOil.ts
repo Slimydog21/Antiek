@@ -5,6 +5,7 @@
  */
 
 import { API_BASE, apiFetch } from "../lib/api";
+import type { RouteReceipt } from "../generated/types";
 
 export type MidnightOilJobResponse = {
   job_id: string;
