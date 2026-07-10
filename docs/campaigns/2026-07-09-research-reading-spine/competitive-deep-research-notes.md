@@ -2434,3 +2434,8 @@ vitest CollectiveResearchPanel 25 green.
 Restore last unit button + membership status stamp data-seamless-unit-restore
 (and L6 deferred). Closes multi-select unit membership re-open loop with
 continue-as-unit (afh/afk). vitest Collective 25 green.
+
+## Residual afm · 2026-07-10 — SESSION-ARC afg–afl collective multi-spawn complete
+Full multi-select unit loop: written analysis Open Write source · continue-as-unit
+· window audit · restore membership · dogfood v15. P0 operator merge PR #465.
+Pivot afn+ outside thrash.
