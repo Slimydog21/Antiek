@@ -90,8 +90,8 @@ const {
     write_seed_by_source: {} as Record<string, number>,
     write_seed_source_count: 0,
     write_seed_event_count: 0,
-    // Residual (aaj): includes marketplace_catalog (18 write-seed sources).
-    write_seed_known_count: 18,
+    // Residual (aaj/anw): includes marketplace_catalog + meta_reading_deliverable (19 write-seed sources).
+    write_seed_known_count: 19,
     // Residual (act/acu): body honesty aggregates for recursive rewrite.
     write_seed_with_body_count: 0,
     write_seed_title_only_count: 0,
@@ -1197,7 +1197,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
     const metrics = screen.getByTestId("antiek-bench-usage-write-seed-metrics");
     expect(metrics.getAttribute("data-write-seed-event-count")).toBe("0");
     expect(metrics.getAttribute("data-write-seed-source-count")).toBe("0");
-    expect(metrics.getAttribute("data-write-seed-known-count")).toBe("18");
+    expect(metrics.getAttribute("data-write-seed-known-count")).toBe("19");
     expect(metrics.textContent).toMatch(/Write seed this week/i);
     expect(metrics.textContent).toMatch(/not auto-promoted/i);
     // Residual (sr): write-seed metrics deep-link suite proposal.
@@ -1476,12 +1476,12 @@ describe("Settings SPR-01 + decision-tree install", () => {
     const writeSeedKnown = Number(
       legend.getAttribute("data-write-seed-known-count") || "0",
     );
-    expect(writeSeedKnown).toBe(18);
+    expect(writeSeedKnown).toBe(19);
     expect(screen.getByTestId("antiek-bench-write-seed-known-count").textContent).toMatch(
       /Write seed feeds/i,
     );
     expect(screen.getByTestId("antiek-bench-write-seed-known-count").textContent).toMatch(
-      "18",
+      "19",
     );
     // Residual (nx): by_source list includes chase open sources when present.
     const sources = screen.getByTestId("antiek-bench-usage-sources");

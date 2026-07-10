@@ -8,6 +8,7 @@ import {
   buildPublicationHydrateWriteHref,
   buildResearchProgressWriteHref,
   buildSessionFlywheelWriteHref,
+  buildMetaReadingWriteHref,
   buildTwinPromoteWriteHref,
   buildTwinWriteHref,
   buildHostedHtmlWriteHref,
@@ -667,6 +668,44 @@ describe("twinWriteSeed (pp)", () => {
     expect(seed?.plain_text).toMatch(/\[cite\] cited/);
     expect(seed?.html).toMatch(/data-source="research_progress_complete"/);
     expect(seed?.html).toMatch(/data-is-terminal="true"/);
+  });
+
+  it("builds meta-reading deliverable Write twin_seed (anw)", () => {
+    expect(
+      buildMetaReadingWriteHref({
+        assetId: "",
+        report: "body",
+      }),
+    ).toBeNull();
+    expect(
+      buildMetaReadingWriteHref({
+        assetId: "mr-empty",
+        report: "",
+        prompt: "",
+      }),
+    ).toBeNull();
+    const href = buildMetaReadingWriteHref({
+      assetId: "mr-abc123",
+      prompt: "free will across my books",
+      report: "A synthesis of your books on free will.",
+      researchTier: "deep",
+      lengthUnit: "pages",
+      lengthAmount: 3,
+    });
+    expect(href).toBeTruthy();
+    expect(href!).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
+    expect(href!).not.toMatch(/html_draft=/);
+    const key = decodeURIComponent(
+      (href!.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    const seed = loadTwinWriteSeed(key);
+    expect(seed?.source).toBe("meta_reading_deliverable");
+    expect(seed?.asset_id).toBe("mr-abc123");
+    expect(seed?.has_body).toBe(true);
+    expect(seed?.plain_text).toMatch(/free will across my books/);
+    expect(seed?.plain_text).toMatch(/synthesis of your books/);
+    expect(seed?.html).toMatch(/data-source="meta_reading_deliverable"/);
+    expect(seed?.html).toMatch(/data-view-format="html"/);
   });
 
 });

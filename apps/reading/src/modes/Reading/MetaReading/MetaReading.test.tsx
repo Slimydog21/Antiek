@@ -284,6 +284,18 @@ describe("MetaReading (M4)", () => {
     expect(mount.getAttribute("data-view-format")).toBe("html");
     expect(mount.getAttribute("data-asset-id")).toBe("mr-abc123");
     expect(mount.getAttribute("data-seamless-meta-twins")).toBe("true");
+    // Residual (anw): Open Write twin_seed from meta-reading HTML synthesis.
+    const writeMount = screen.getByTestId("meta-reading-open-write-mount");
+    expect(writeMount.getAttribute("data-seamless-meta-write")).toBe("true");
+    const write = screen.getByTestId("meta-reading-open-write");
+    expect(write.getAttribute("href") || "").toMatch(
+      /^\/write\?twin_seed=antiek\.twin_write_seed\./,
+    );
+    expect(write.getAttribute("data-write-seed-source")).toBe(
+      "meta_reading_deliverable",
+    );
+    expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
+    expect(write.getAttribute("data-has-twin-seed")).toBe("1");
     const twins = screen.getByTestId("twin-notes-panel-stub");
     expect(twins.getAttribute("data-asset-id")).toBe("mr-abc123");
     expect(twins.getAttribute("data-auto-load")).toBe("true");

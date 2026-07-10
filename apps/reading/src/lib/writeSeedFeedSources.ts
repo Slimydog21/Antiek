@@ -27,6 +27,8 @@ export const WRITE_SEED_FEED_SOURCES: readonly string[] = [
   "twin_cross_asset_merge",
   // Residual (vk): collective written analysis float → Write seed feed.
   "collective_written_analysis",
+  // Residual (anw): MetaReading HTML synthesis → Write seed feed.
+  "meta_reading_deliverable",
 ] as const;
 
 export function isWriteSeedFeedSource(source: string | null | undefined): boolean {

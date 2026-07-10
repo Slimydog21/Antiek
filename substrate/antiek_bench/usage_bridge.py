@@ -273,6 +273,8 @@ KNOWN_USAGE_FEED_SOURCES: tuple[str, ...] = (
     "twin_cross_asset_merge",
     # Residual (vk): collective written analysis float → Write seed feed.
     "collective_written_analysis",
+    # Residual (anw): MetaReading HTML synthesis → Write seed feed.
+    "meta_reading_deliverable",
     "antiek_bench.offline_dogfood",
     "engagement",
 )
@@ -303,6 +305,8 @@ TWIN_WRITE_SEED_USAGE_SOURCES: frozenset[str] = frozenset(
         "twin_cross_asset_merge",
         # Residual (vk): collective written analysis Write seed.
         "collective_written_analysis",
+        # Residual (anw): MetaReading HTML synthesis Write seed.
+        "meta_reading_deliverable",
     }
 )
 

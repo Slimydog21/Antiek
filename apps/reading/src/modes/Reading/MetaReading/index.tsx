@@ -14,6 +14,7 @@ import { acceptPromotion, suggestPromotion } from "../../../lib/researchSuggesti
 import { collectDeepResearchSpawnIds } from "../../../workspace/collectDeepResearchSpawnIds";
 import { listRecentDeepResearchSpawnIds } from "../../../workspace/recentDeepResearchSpawns";
 import { useWindows } from "../../../workspace/windowsStore";
+import { buildMetaReadingWriteHref } from "../../../workspace/twinWriteSeed";
 
 /**
  * MetaReading — the one-shot, READ-ONLY, page-cited synthesis over the OWNED
@@ -43,6 +44,8 @@ import { useWindows } from "../../../workspace/windowsStore";
  * Residual (anh): CollectiveResearchPanel when open/recent DR spawns exist so
  *   multi-select merge/analysis runs against the meta-reading deliverable
  *   (reading ≡ research · parity TalkToBook ang · ResearchThis fc/ou).
+ * Residual (anw): Open Write twin_seed from HTML synthesis deliverable so
+ *   owned-corpus report enters writing flywheel (reading ≡ research ≡ writing).
  *
  * PROPOSED BOUNDARY (operator decision 2, sign-off pending): the surface
  * carries the "proposed (sign-off pending)" banner. Reversible to a soft corpus
@@ -331,6 +334,49 @@ export default function MetaReading() {
               <article className="font-serif text-[15px] leading-[1.7] text-ink dark:text-bright whitespace-pre-wrap rounded-md border border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 px-4 py-3">
                 {deliverable.report}
               </article>
+              {/* Residual (anw): Open Write twin_seed from HTML synthesis. */}
+              {(() => {
+                const writeHref = deliverable.asset_id?.trim()
+                  ? buildMetaReadingWriteHref({
+                      assetId: deliverable.asset_id.trim(),
+                      prompt: prompt.trim() || null,
+                      report: deliverable.report,
+                      researchTier,
+                      lengthUnit: deliverable.length_unit,
+                      lengthAmount: deliverable.length_amount,
+                    })
+                  : null;
+                if (!writeHref) return null;
+                const hasBody = Boolean(
+                  String(deliverable.report || "").trim() ||
+                    prompt.trim(),
+                );
+                return (
+                  <p
+                    className="text-[12px] font-mono"
+                    data-testid="meta-reading-open-write-mount"
+                    data-view-format="html"
+                    data-asset-id={deliverable.asset_id.trim()}
+                    data-seamless-meta-write="true"
+                  >
+                    <a
+                      href={writeHref}
+                      data-testid="meta-reading-open-write"
+                      data-view-format="html"
+                      data-has-twin-seed="1"
+                      data-write-seed-has-body={String(hasBody)}
+                      data-write-seed-source="meta_reading_deliverable"
+                      data-asset-id={deliverable.asset_id.trim()}
+                      data-research-tier={researchTier}
+                      data-seamless-meta-write="true"
+                      className="underline opacity-90 hover:opacity-100"
+                      title="Open Write with meta-reading HTML synthesis as twin_seed (owned corpus · seeds note-taker)"
+                    >
+                      Open Write (meta-reading)
+                    </a>
+                  </p>
+                );
+              })()}
 
               {/* Residual (agn): recursive note-taker twin for meta-reading asset. */}
               {/* Residual (anb): remount after promote so context sees promoted substrate. */}

@@ -32,7 +32,9 @@ export type TwinWriteSeedSource =
   // Residual (vd): recursive note-taker cross-asset merge → Write seed.
   | "twin_cross_asset_merge"
   // Residual (vk): collective written analysis float → Write seed.
-  | "collective_written_analysis";
+  | "collective_written_analysis"
+  // Residual (anw): MetaReading HTML synthesis → Write seed.
+  | "meta_reading_deliverable";
 
 export type TwinWriteSeedPayload = {
   plain_text: string;
@@ -100,6 +102,8 @@ export function storeTwinWriteSeed(input: {
     "twin_cross_asset_merge",
     // Residual (vk): collective written analysis float.
     "collective_written_analysis",
+    // Residual (anw): MetaReading HTML synthesis.
+    "meta_reading_deliverable",
   ];
   const source: TwinWriteSeedSource = allowed.includes(
     input.source as TwinWriteSeedSource,
@@ -173,6 +177,8 @@ export function loadTwinWriteSeed(key: string): TwinWriteSeedPayload | null {
       "twin_cross_asset_merge",
       // Residual (vk): collective written analysis float.
       "collective_written_analysis",
+      // Residual (anw): MetaReading HTML synthesis.
+      "meta_reading_deliverable",
     ];
     const source: TwinWriteSeedSource = allowedLoad.includes(
       srcRaw as TwinWriteSeedSource,
@@ -1096,3 +1102,72 @@ export function buildTwinPromoteWriteHref(opts: {
   return buildTwinWriteHref(seedKey);
 }
 
+
+/**
+ * Residual (anw): Write handoff from MetaReading HTML synthesis deliverable.
+ * twin_seed only — owned-corpus report seeds writing without inventing docs.
+ * HTML-first; reading ≡ research ≡ writing flywheel.
+ */
+export function buildMetaReadingWriteHref(opts: {
+  assetId: string;
+  prompt?: string | null;
+  report?: string | null;
+  researchTier?: string | null;
+  lengthUnit?: string | null;
+  lengthAmount?: number | null;
+}): string | null {
+  const asset = String(opts.assetId || "").trim();
+  const report = String(opts.report || "").trim();
+  const prompt = String(opts.prompt || "").trim();
+  if (!asset) return null;
+  if (!report && !prompt) return null;
+  const tier = String(opts.researchTier || "").trim();
+  const unit = String(opts.lengthUnit || "").trim();
+  const amount =
+    typeof opts.lengthAmount === "number" && Number.isFinite(opts.lengthAmount)
+      ? opts.lengthAmount
+      : null;
+  const plain = [
+    `Meta-reading asset: ${asset}`,
+    prompt ? `Prompt: ${prompt}` : "",
+    unit && amount != null ? `Length box: ${amount} ${unit}` : "",
+    tier ? `Tier: ${tier}` : "",
+    report ? `Report:\n${report}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  const escape = (s: string) =>
+    String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  const html =
+    `<article data-view-format="html" data-source="meta_reading_deliverable" data-asset-id="${escape(asset)}">` +
+    `<h1>Meta-reading · ${escape(asset)}</h1>` +
+    (prompt
+      ? `<p class="prompt"><strong>Prompt:</strong> ${escape(prompt)}</p>`
+      : "") +
+    (unit && amount != null
+      ? `<p class="length"><strong>Length:</strong> ${escape(String(amount))} ${escape(unit)}</p>`
+      : "") +
+    (tier
+      ? `<p class="tier"><strong>Tier:</strong> ${escape(tier)}</p>`
+      : "") +
+    (report
+      ? `<section class="report"><h2>Report</h2><pre>${escape(report)}</pre></section>`
+      : "") +
+    `</article>`;
+  const seedKey = storeTwinWriteSeed({
+    plain_text: plain,
+    html,
+    title: prompt
+      ? `Meta-reading · ${prompt.slice(0, 80)}`
+      : `Meta-reading · ${asset}`,
+    asset_id: asset,
+    note_ids: [],
+    source: "meta_reading_deliverable",
+    has_body: Boolean(report || prompt),
+  });
+  if (!seedKey) return null;
+  return buildTwinWriteHref(seedKey);
+}
