@@ -13,6 +13,7 @@ import {
   dispatchMidnightOil,
   dryRunMidnightOil,
   finalArtifactAdapterPlanMidnightOil,
+  finalArtifactCompletionFinalizationPlanMidnightOil,
   finalArtifactGraphCommitPlanMidnightOil,
   finalArtifactMidnightOil,
   finalArtifactPersistencePlanMidnightOil,
@@ -3141,6 +3142,116 @@ vi.mock("../../api/midnightOil", () => ({
       "final artifact publish plan only: no publish transaction, account-visible asset, workspace entry, search index entry, private read URL, notification, graph mutation, or final artifact is created",
     ],
   })),
+  finalArtifactCompletionFinalizationPlanMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-final-artifact-completion-finalization-plan",
+    final_artifact_publish_plan_receipt_id:
+      "midnight-oil-test-final-artifact-publish-plan",
+    final_artifact_graph_commit_plan_receipt_id:
+      "midnight-oil-test-final-artifact-graph-commit-plan",
+    final_artifact_persistence_plan_receipt_id:
+      "midnight-oil-test-final-artifact-persistence-plan",
+    final_html_artifact_assembly_plan_receipt_id:
+      "midnight-oil-test-final-html-artifact-assembly-plan",
+    final_synthesis_draft_plan_receipt_id:
+      "midnight-oil-test-final-synthesis-draft-plan",
+    synthesis_bundle_assembly_plan_receipt_id:
+      "midnight-oil-test-synthesis-bundle-assembly-plan",
+    worker_synthesis_handoff_plan_receipt_id:
+      "midnight-oil-test-worker-synthesis-handoff-plan",
+    worker_output_aggregation_plan_receipt_id:
+      "midnight-oil-test-worker-output-aggregation-plan",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    run_id: "midnight-oil-test",
+    status: "blocked_final_artifact_completion_finalization_unimplemented",
+    adapter_key: "final_artifact_completion_finalization",
+    planned_final_artifact_completion_receipt_id:
+      "midnight-oil-test-final-artifact-completion-receipt",
+    planned_final_artifact_finalization_receipt_id:
+      "midnight-oil-test-final-artifact-finalization-receipt",
+    planned_completion_record_id:
+      "midnight-oil-test-final-artifact-completion-record",
+    planned_finalization_transaction_id:
+      "midnight-oil-test-final-artifact-finalization-transaction",
+    planned_artifact_archive_manifest_id:
+      "midnight-oil-test-final-artifact-archive-manifest",
+    planned_operator_handoff_summary_id:
+      "midnight-oil-test-final-artifact-operator-handoff-summary",
+    planned_delivery_status_id: "midnight-oil-test-final-artifact-delivery-status",
+    planned_quality_attestation_id:
+      "midnight-oil-test-final-artifact-quality-attestation",
+    planned_completion_audit_entry_id:
+      "midnight-oil-test-final-artifact-completion-audit-entry",
+    planned_publish_transaction_id:
+      "midnight-oil-test-final-artifact-publish-transaction",
+    planned_account_visible_asset_id: "midnight-oil-test-account-visible-asset",
+    planned_reading_workspace_entry_id: "midnight-oil-test-reading-workspace-entry",
+    planned_search_index_entry_id: "midnight-oil-test-search-index-entry",
+    planned_private_read_url_id: "midnight-oil-test-private-read-url",
+    planned_graph_commit_id: "midnight-oil-test-final-artifact-graph-commit",
+    planned_graph_snapshot_id: "midnight-oil-test-final-artifact-graph-snapshot",
+    planned_information_asset_id: "midnight-oil-test-information-asset",
+    planned_hosted_html_asset_id: "midnight-oil-test-hosted-html-asset",
+    planned_runner_dispatch_id: "midnight-oil-test-midnight-oil-runner-dispatch",
+    planned_idempotency_key: "midnight-oil-test-live-dispatch-final-enable-idempotency-key",
+    final_artifact_completion_finalization_blockers: [
+      "final artifact completion receipt writer",
+      "final artifact finalization transaction writer",
+      "artifact archive manifest writer",
+      "operator handoff summary writer",
+      "delivery status finalizer",
+      "quality attestation writer",
+      "completion audit entry writer",
+      "idempotent final artifact completion finalization replay protection",
+    ],
+    required_final_artifact_completion_finalization_invariants: [
+      "final artifact completion finalization planner must require final artifact publish planning before any completion record can be written",
+      "final artifact completion finalization planner must preserve source/evidence/citation lineage through archive manifest, operator handoff summary, quality attestation, and completion audit entry",
+    ],
+    required_final_artifact_completion_finalization_receipt_fields: [
+      "final_artifact_completion_finalization_plan_receipt_id",
+      "final_artifact_publish_plan_receipt_id",
+      "final_artifact_completion_receipt_id",
+      "final_artifact_finalization_receipt_id",
+      "completion_record_id",
+      "finalization_transaction_id",
+      "artifact_archive_manifest_id",
+      "operator_handoff_summary_id",
+      "delivery_status_id",
+      "quality_attestation_id",
+      "completion_audit_entry_id",
+      "idempotency_key",
+    ],
+    blocker_reason: "final_artifact_completion_finalization_unimplemented",
+    final_artifact_completion_finalization_allowed: false,
+    completion_record_created: false,
+    finalization_transaction_created: false,
+    artifact_archive_manifest_created: false,
+    operator_handoff_summary_created: false,
+    delivery_status_marked_complete: false,
+    quality_attestation_created: false,
+    completion_audit_entry_created: false,
+    final_artifact_publish_allowed: false,
+    publish_transaction_created: false,
+    information_asset_published: false,
+    account_visible_asset_created: false,
+    reading_workspace_entry_created: false,
+    search_index_entry_created: false,
+    private_read_url_created: false,
+    operator_notification_created: false,
+    graph_commit_created: false,
+    graph_mutated: false,
+    final_artifact_created: false,
+    dispatch_performed: false,
+    budget_reserved: false,
+    provider_calls_made: false,
+    retrieval_performed: false,
+    source_receipts_created: false,
+    adapter_plan_notes: [
+      "final artifact completion finalization plan only: no completion record, finalization transaction, archive manifest, handoff summary, delivery status, attestation, audit entry, graph mutation, or final artifact is created",
+    ],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -5786,5 +5897,69 @@ describe("MidnightOil", () => {
     expect(screen.getByText(/account_visible_asset_id/)).toBeTruthy();
     expect(screen.getByText(/reading_workspace_entry_id/)).toBeTruthy();
     expect(screen.getByText(/private_read_url_id/)).toBeTruthy();
+
+    await user.click(
+      screen.getByRole("button", { name: "Final artifact completion finalization plan" }),
+    );
+
+    await waitFor(() =>
+      expect(finalArtifactCompletionFinalizationPlanMidnightOil).toHaveBeenCalled(),
+    );
+    expect(finalArtifactCompletionFinalizationPlanMidnightOil).toHaveBeenCalledWith(
+      expect.objectContaining({
+        launch_packet: expect.objectContaining({
+          packet_id: "midnight-oil-test-launch-packet",
+        }),
+        approval_receipt: expect.objectContaining({
+          receipt_id: "midnight-oil-test-approval-receipt",
+        }),
+        runner_handoff: expect.objectContaining({
+          handoff_id: "midnight-oil-test-runner-handoff",
+        }),
+        final_artifact_graph_commit_plan_receipt: expect.objectContaining({
+          receipt_id: "midnight-oil-test-final-artifact-graph-commit-plan",
+        }),
+        final_artifact_publish_plan_receipt: expect.objectContaining({
+          receipt_id: "midnight-oil-test-final-artifact-publish-plan",
+        }),
+      }),
+    );
+    expect(screen.getByText("Final artifact completion finalization receipt")).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-final-artifact-completion-finalization-plan"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("blocked final artifact completion finalization unimplemented"),
+    ).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-artifact-completion-receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-artifact-finalization-receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-artifact-completion-record")).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-final-artifact-finalization-transaction"),
+    ).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-artifact-archive-manifest")).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-final-artifact-operator-handoff-summary"),
+    ).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-artifact-delivery-status")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-artifact-quality-attestation")).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-final-artifact-completion-audit-entry"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "final artifact completion finalization planner must require final artifact publish planning before any completion record can be written",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Final artifact completion finalization blockers:/)).toBeTruthy();
+    expect(screen.getByText(/final artifact completion receipt writer/)).toBeTruthy();
+    expect(screen.getByText(/artifact archive manifest writer/)).toBeTruthy();
+    expect(screen.getByText(/quality attestation writer/)).toBeTruthy();
+    expect(
+      screen.getByText(/Final artifact completion finalization receipt fields:/),
+    ).toBeTruthy();
+    expect(screen.getByText(/completion_record_id/)).toBeTruthy();
+    expect(screen.getByText(/delivery_status_id/)).toBeTruthy();
+    expect(screen.getByText(/quality_attestation_id/)).toBeTruthy();
   });
 });
