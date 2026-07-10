@@ -3459,3 +3459,8 @@ ResearchThis promote remount. P0 operator merge PR #465. Pivot ana+ outside thra
 Talk bookmark remounts TwinNotes + ResearchContext after twin promote (parity
 ResearchThis amy). vitest TalkToBook 10 green.
 P0 operator merge PR #465. Pivot anb+ outside thrash.
+
+## Residual anb · 2026-07-10 — MetaReading remount twins+context after promote
+Meta-reading deliverable remounts TwinNotes + ResearchContext after twin promote
+(parity TalkToBook ana · ResearchThis amy). vitest MetaReading 13 green.
+P0 operator merge PR #465. Pivot anc+ outside thrash.

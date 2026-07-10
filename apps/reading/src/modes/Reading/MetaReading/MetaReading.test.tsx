@@ -61,18 +61,30 @@ vi.mock("../../../components/engagement/TwinNotesPanel", () => ({
     assetId: string;
     autoLoad?: boolean;
     autoSeedIfEmpty?: boolean;
+    autoPromoteAfterLoad?: boolean;
     seedTitle?: string;
     researchTier?: string | null;
+    onPromoted?: () => void;
   }) => (
     <div
       data-testid="twin-notes-panel-stub"
       data-asset-id={props.assetId}
       data-auto-load={String(Boolean(props.autoLoad))}
       data-auto-seed={String(Boolean(props.autoSeedIfEmpty))}
+      data-auto-promote={String(Boolean(props.autoPromoteAfterLoad))}
       data-seed-title={props.seedTitle ?? ""}
       data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
     >
       twins={props.assetId}
+      {props.onPromoted ? (
+        <button
+          type="button"
+          data-testid="meta-reading-twin-promote-notify"
+          onClick={() => props.onPromoted?.()}
+        >
+          notify promote
+        </button>
+      ) : null}
     </div>
   ),
 }));
@@ -233,6 +245,31 @@ describe("MetaReading (M4)", () => {
     expect(ctx.getAttribute("data-asset-id")).toBe("mr-abc123");
     expect(ctx.getAttribute("data-auto-load")).toBe("true");
     expect(ctx.getAttribute("data-research-tier")).toMatch(/deep|fast|wrestle/);
+    // Residual (anb): promote remounts twins + context (parity ana/amy).
+    expect(twins.getAttribute("data-auto-promote")).toBe("true");
+    expect(
+      screen
+        .getByTestId("meta-reading-twins-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("0");
+    expect(
+      screen
+        .getByTestId("meta-reading-context-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("0");
+    fireEvent.click(screen.getByTestId("meta-reading-twin-promote-notify"));
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId("meta-reading-twins-refresh")
+          .getAttribute("data-refresh-key"),
+      ).toBe("1");
+    });
+    expect(
+      screen
+        .getByTestId("meta-reading-context-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("1");
   });
 
   it("the deliverable is generated + saved (the endpoint persists it); the surface shows it read-only", async () => {

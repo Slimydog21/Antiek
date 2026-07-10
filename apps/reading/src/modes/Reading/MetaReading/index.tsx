@@ -35,6 +35,7 @@ import { acceptPromotion, suggestPromotion } from "../../../lib/researchSuggesti
  *   (meta-reading asset twin · reading ≡ research · parity TalkToBook agm).
  * Residual (amt): ResearchContext with researchTier when deliverable exists
  *   (intelligent search over twin substrate · parity amr/ams).
+ * Residual (anb): remount twins + context after twin promote (parity ana/amy).
  *
  * PROPOSED BOUNDARY (operator decision 2, sign-off pending): the surface
  * carries the "proposed (sign-off pending)" banner. Reversible to a soft corpus
@@ -62,6 +63,11 @@ export default function MetaReading() {
   const [promoting, setPromoting] = useState(false);
   // Residual (jy): Settings depth-tier for meta-reading research_tier.
   const { researchTier, depthPrefill } = useSettingsResearchTier();
+  // Residual (anb): remount twins + context after promote (parity ana/amy).
+  const [contextRefreshKey, setContextRefreshKey] = useState(0);
+  const onContextNeedsRefresh = useCallback(() => {
+    setContextRefreshKey((k) => k + 1);
+  }, []);
 
   // Re-open a saved asset by id. Maps the saved shape onto MetaReadingResponse
   // (the read-only render path is identical); the generation-only fields
@@ -295,6 +301,7 @@ export default function MetaReading() {
               </article>
 
               {/* Residual (agn): recursive note-taker twin for meta-reading asset. */}
+              {/* Residual (anb): remount after promote so context sees promoted substrate. */}
               {deliverable.asset_id?.trim() ? (
                 <section
                   className="rounded-md border border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 px-3 py-2"
@@ -304,23 +311,32 @@ export default function MetaReading() {
                   data-seamless-meta-twins="true"
                   data-research-tier={researchTier}
                 >
-                  <TwinNotesPanel
-                    assetId={deliverable.asset_id.trim()}
-                    autoLoad
-                    autoSeedIfEmpty
-                    seedTitle={
-                      prompt.trim() || deliverable.asset_id.trim()
-                    }
-                    seedBodyText={
-                      deliverable.report?.slice(0, 2000) ||
-                      prompt.trim() ||
-                      ""
-                    }
-                    researchTier={researchTier}
-                  />
+                  <div
+                    data-testid="meta-reading-twins-refresh"
+                    data-refresh-key={String(contextRefreshKey)}
+                  >
+                    <TwinNotesPanel
+                      key={`twins-${deliverable.asset_id.trim()}-${contextRefreshKey}`}
+                      assetId={deliverable.asset_id.trim()}
+                      autoLoad
+                      autoSeedIfEmpty
+                      autoPromoteAfterLoad
+                      onPromoted={onContextNeedsRefresh}
+                      seedTitle={
+                        prompt.trim() || deliverable.asset_id.trim()
+                      }
+                      seedBodyText={
+                        deliverable.report?.slice(0, 2000) ||
+                        prompt.trim() ||
+                        ""
+                      }
+                      researchTier={researchTier}
+                    />
+                  </div>
                 </section>
               ) : null}
               {/* Residual (amt): intelligent context over meta-reading twin substrate. */}
+              {/* Residual (anb): remount context after twin promote. */}
               {deliverable.asset_id?.trim() ? (
                 <section
                   className="rounded-md border border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 px-3 py-2"
@@ -329,12 +345,19 @@ export default function MetaReading() {
                   data-asset-id={deliverable.asset_id.trim()}
                   data-seamless-meta-context="true"
                   data-research-tier={researchTier}
+                  data-refresh-key={String(contextRefreshKey)}
                 >
-                  <ResearchContextPanel
-                    assetId={deliverable.asset_id.trim()}
-                    autoLoad
-                    researchTier={researchTier}
-                  />
+                  <div
+                    data-testid="meta-reading-context-refresh"
+                    data-refresh-key={String(contextRefreshKey)}
+                  >
+                    <ResearchContextPanel
+                      key={`ctx-${deliverable.asset_id.trim()}-${contextRefreshKey}`}
+                      assetId={deliverable.asset_id.trim()}
+                      autoLoad
+                      researchTier={researchTier}
+                    />
+                  </div>
                 </section>
               ) : null}
 
