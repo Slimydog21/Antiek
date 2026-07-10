@@ -1211,6 +1211,82 @@ export interface MidnightOilLiveDispatchFinalEnablementApplyPlanReceipt {
   adapter_plan_notes: string[];
 }
 
+export interface MidnightOilRunnerDispatchSchedulerPlanRequest {
+  launch_packet: MidnightOilLaunchPacket;
+  approval_receipt: MidnightOilApprovalReceipt;
+  runner_handoff: MidnightOilRunnerHandoff;
+  runner_control_plan_receipt: MidnightOilRunnerControlPlanReceipt;
+  budget_provider_adapter_plan_receipt: MidnightOilBudgetProviderAdapterPlanReceipt;
+  provider_executor_adapter_plan_receipt: MidnightOilProviderExecutorAdapterPlanReceipt;
+  retrieval_adapter_plan_receipt: MidnightOilRetrievalAdapterPlanReceipt;
+  graph_adapter_plan_receipt: MidnightOilGraphAdapterPlanReceipt;
+  final_artifact_adapter_plan_receipt: MidnightOilFinalArtifactAdapterPlanReceipt;
+  operator_dispatch_adapter_plan_receipt: MidnightOilOperatorDispatchAdapterPlanReceipt;
+  control_ledger_adapter_plan_receipt: MidnightOilControlLedgerAdapterPlanReceipt;
+  control_ledger_persistence_plan_receipt: MidnightOilControlLedgerPersistencePlanReceipt;
+  control_ledger_persistence_apply_plan_receipt: MidnightOilControlLedgerPersistenceApplyPlanReceipt;
+  operator_dispatch_activation_readiness_plan_receipt: MidnightOilOperatorDispatchActivationReadinessPlanReceipt;
+  live_dispatch_final_enablement_plan_receipt: MidnightOilLiveDispatchFinalEnablementPlanReceipt;
+  live_dispatch_final_enablement_apply_plan_receipt: MidnightOilLiveDispatchFinalEnablementApplyPlanReceipt;
+}
+
+export interface MidnightOilRunnerDispatchSchedulerPlanReceipt {
+  receipt_id: string;
+  live_dispatch_final_enablement_apply_plan_receipt_id: string;
+  live_dispatch_final_enablement_plan_receipt_id: string;
+  operator_dispatch_activation_readiness_plan_receipt_id: string;
+  runner_control_plan_receipt_id: string;
+  runner_readiness_receipt_id: string;
+  runner_handoff_id: string;
+  approval_receipt_id: string;
+  launch_packet_id: string;
+  run_id: string;
+  status: "blocked_runner_dispatch_scheduler_unimplemented";
+  adapter_key: "runner_dispatch_scheduler";
+  planned_scheduler_job_id: string;
+  planned_queue_id: string;
+  planned_runner_dispatch_id: string;
+  planned_live_dispatch_receipt_id: string;
+  planned_idempotency_key: string;
+  planned_apply_receipt_id: string;
+  scheduler_blockers: string[];
+  required_scheduler_invariants: string[];
+  required_scheduler_receipt_fields: string[];
+  blocker_reason: "runner_dispatch_scheduler_unimplemented";
+  scheduler_allowed: boolean;
+  scheduler_job_created: boolean;
+  runner_dispatch_enqueued: boolean;
+  final_enablement_apply_allowed: boolean;
+  final_enablement_allowed: boolean;
+  live_dispatch_enabled: boolean;
+  live_dispatch_ready: boolean;
+  activation_readiness_allowed: boolean;
+  activation_ready: boolean;
+  transaction_opened: boolean;
+  transaction_committed: boolean;
+  setting_persisted: boolean;
+  control_ledger_written: boolean;
+  audit_log_written: boolean;
+  rollback_receipt_created: boolean;
+  operator_dispatch_allowed: boolean;
+  operator_live_dispatch_enabled: boolean;
+  live_run_allowed: boolean;
+  dispatch_allowed: boolean;
+  dispatch_performed: boolean;
+  budget_reservation_allowed: boolean;
+  budget_reserved: boolean;
+  provider_execution_allowed: boolean;
+  provider_calls_made: boolean;
+  retrieval_allowed: boolean;
+  retrieval_performed: boolean;
+  source_receipts_created: boolean;
+  graph_mutation_allowed: boolean;
+  graph_mutated: boolean;
+  final_artifact_allowed: boolean;
+  final_artifact_created: boolean;
+  adapter_plan_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -1610,4 +1686,21 @@ export async function liveDispatchFinalEnablementApplyPlanMidnightOil(
     );
   }
   return (await resp.json()) as MidnightOilLiveDispatchFinalEnablementApplyPlanReceipt;
+}
+
+export async function runnerDispatchSchedulerPlanMidnightOil(
+  request: MidnightOilRunnerDispatchSchedulerPlanRequest,
+): Promise<MidnightOilRunnerDispatchSchedulerPlanReceipt> {
+  const resp = await apiFetch(`${API_BASE}/research/midnight-oil/runner-dispatch-scheduler-plan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(
+      `POST /research/midnight-oil/runner-dispatch-scheduler-plan: HTTP ${resp.status}: ${body}`,
+    );
+  }
+  return (await resp.json()) as MidnightOilRunnerDispatchSchedulerPlanReceipt;
 }

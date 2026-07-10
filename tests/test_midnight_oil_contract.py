@@ -30,6 +30,7 @@ from substrate.midnight_oil import (
     MidnightOilRetrievalAdapterPlanRequest,
     MidnightOilRetrievalRequest,
     MidnightOilRunnerControlPlanRequest,
+    MidnightOilRunnerDispatchSchedulerPlanRequest,
     MidnightOilRunnerReadinessRequest,
     activation_checklist_midnight_oil,
     budget_provider_adapter_plan_midnight_oil,
@@ -54,6 +55,7 @@ from substrate.midnight_oil import (
     retrieval_adapter_plan_midnight_oil,
     retrieval_midnight_oil,
     runner_control_plan_midnight_oil,
+    runner_dispatch_scheduler_plan_midnight_oil,
     runner_readiness_midnight_oil,
 )
 
@@ -506,6 +508,51 @@ def _accepted_midnight_oil_live_dispatch_final_enablement_plan_chain(
     return {
         **chain,
         "live_dispatch_final_enablement_plan": final_enablement_plan,
+    }
+
+
+def _accepted_midnight_oil_live_dispatch_final_enablement_apply_plan_chain(
+    *,
+    goal: str,
+    source_policy: list[str],
+    requested_control_scope: list[str],
+) -> dict[str, object]:
+    chain = _accepted_midnight_oil_live_dispatch_final_enablement_plan_chain(
+        goal=goal,
+        source_policy=source_policy,
+        requested_control_scope=requested_control_scope,
+    )
+    preflight = chain["preflight"]
+    final_enablement_apply_plan = live_dispatch_final_enablement_apply_plan_midnight_oil(
+        MidnightOilLiveDispatchFinalEnablementApplyPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=chain["control_plan"],
+            budget_provider_adapter_plan_receipt=chain["budget_adapter_plan"],
+            provider_executor_adapter_plan_receipt=chain["provider_adapter_plan"],
+            retrieval_adapter_plan_receipt=chain["retrieval_adapter_plan"],
+            graph_adapter_plan_receipt=chain["graph_adapter_plan"],
+            final_artifact_adapter_plan_receipt=chain["final_artifact_adapter_plan"],
+            operator_dispatch_adapter_plan_receipt=chain["operator_adapter_plan"],
+            control_ledger_adapter_plan_receipt=chain["control_ledger_plan"],
+            control_ledger_persistence_plan_receipt=chain[
+                "control_ledger_persistence_plan"
+            ],
+            control_ledger_persistence_apply_plan_receipt=chain[
+                "control_ledger_persistence_apply_plan"
+            ],
+            operator_dispatch_activation_readiness_plan_receipt=chain[
+                "operator_dispatch_activation_readiness_plan"
+            ],
+            live_dispatch_final_enablement_plan_receipt=chain[
+                "live_dispatch_final_enablement_plan"
+            ],
+        )
+    )
+    return {
+        **chain,
+        "live_dispatch_final_enablement_apply_plan": final_enablement_apply_plan,
     }
 
 
@@ -4216,6 +4263,229 @@ def test_midnight_oil_live_dispatch_final_enablement_apply_plan_api_contract() -
     assert body["operator_dispatch_allowed"] is False
     assert body["operator_live_dispatch_enabled"] is False
     assert body["live_run_allowed"] is False
+    assert body["dispatch_allowed"] is False
+    assert body["dispatch_performed"] is False
+    assert body["budget_reserved"] is False
+    assert body["provider_calls_made"] is False
+    assert body["retrieval_performed"] is False
+    assert body["source_receipts_created"] is False
+    assert body["graph_mutated"] is False
+    assert body["final_artifact_created"] is False
+
+
+def test_runner_dispatch_scheduler_plan_records_disabled_requirements() -> None:
+    chain = _accepted_midnight_oil_live_dispatch_final_enablement_apply_plan_chain(
+        goal="Plan runner dispatch scheduler requirements after final enablement apply planning.",
+        source_policy=["arxiv", "web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    apply_plan = chain["live_dispatch_final_enablement_apply_plan"]
+
+    scheduler_plan = runner_dispatch_scheduler_plan_midnight_oil(
+        MidnightOilRunnerDispatchSchedulerPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=chain["control_plan"],
+            budget_provider_adapter_plan_receipt=chain["budget_adapter_plan"],
+            provider_executor_adapter_plan_receipt=chain["provider_adapter_plan"],
+            retrieval_adapter_plan_receipt=chain["retrieval_adapter_plan"],
+            graph_adapter_plan_receipt=chain["graph_adapter_plan"],
+            final_artifact_adapter_plan_receipt=chain["final_artifact_adapter_plan"],
+            operator_dispatch_adapter_plan_receipt=chain["operator_adapter_plan"],
+            control_ledger_adapter_plan_receipt=chain["control_ledger_plan"],
+            control_ledger_persistence_plan_receipt=chain["control_ledger_persistence_plan"],
+            control_ledger_persistence_apply_plan_receipt=chain[
+                "control_ledger_persistence_apply_plan"
+            ],
+            operator_dispatch_activation_readiness_plan_receipt=chain[
+                "operator_dispatch_activation_readiness_plan"
+            ],
+            live_dispatch_final_enablement_plan_receipt=chain[
+                "live_dispatch_final_enablement_plan"
+            ],
+            live_dispatch_final_enablement_apply_plan_receipt=apply_plan,
+        )
+    )
+
+    assert scheduler_plan.receipt_id == f"{preflight.run_id}-runner-dispatch-scheduler-plan"
+    assert scheduler_plan.live_dispatch_final_enablement_apply_plan_receipt_id == (
+        apply_plan.receipt_id
+    )
+    assert scheduler_plan.status == "blocked_runner_dispatch_scheduler_unimplemented"
+    assert scheduler_plan.adapter_key == "runner_dispatch_scheduler"
+    assert scheduler_plan.planned_scheduler_job_id == (
+        f"{preflight.run_id}-runner-dispatch-scheduler-job"
+    )
+    assert scheduler_plan.planned_queue_id == f"{preflight.run_id}-runner-dispatch-queue"
+    assert scheduler_plan.planned_runner_dispatch_id == apply_plan.planned_runner_dispatch_id
+    assert scheduler_plan.planned_live_dispatch_receipt_id == (
+        apply_plan.planned_live_dispatch_receipt_id
+    )
+    assert scheduler_plan.planned_idempotency_key == apply_plan.planned_idempotency_key
+    assert "durable runner dispatch queue" in scheduler_plan.scheduler_blockers
+    assert "scheduler_job_id" in scheduler_plan.required_scheduler_receipt_fields
+    assert "scheduler planner must require a final enablement apply receipt" in (
+        scheduler_plan.required_scheduler_invariants[0]
+    )
+    assert scheduler_plan.blocker_reason == "runner_dispatch_scheduler_unimplemented"
+    assert scheduler_plan.scheduler_allowed is False
+    assert scheduler_plan.scheduler_job_created is False
+    assert scheduler_plan.runner_dispatch_enqueued is False
+    assert scheduler_plan.final_enablement_apply_allowed is False
+    assert scheduler_plan.live_dispatch_enabled is False
+    assert scheduler_plan.dispatch_allowed is False
+    assert scheduler_plan.dispatch_performed is False
+    assert scheduler_plan.budget_reserved is False
+    assert scheduler_plan.provider_calls_made is False
+    assert scheduler_plan.retrieval_performed is False
+    assert scheduler_plan.source_receipts_created is False
+    assert scheduler_plan.graph_mutated is False
+    assert scheduler_plan.final_artifact_created is False
+    assert "no scheduler job is created" in scheduler_plan.adapter_plan_notes[0]
+
+
+def test_runner_dispatch_scheduler_plan_rejects_dispatching_apply_plan() -> None:
+    chain = _accepted_midnight_oil_live_dispatch_final_enablement_apply_plan_chain(
+        goal="Reject dispatching apply receipts before scheduler planning.",
+        source_policy=["web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    bad_apply_plan = chain["live_dispatch_final_enablement_apply_plan"].model_copy(
+        update={"dispatch_performed": True}
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match="live_dispatch_final_enablement_apply_plan_receipt must not dispatch",
+    ):
+        MidnightOilRunnerDispatchSchedulerPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=chain["control_plan"],
+            budget_provider_adapter_plan_receipt=chain["budget_adapter_plan"],
+            provider_executor_adapter_plan_receipt=chain["provider_adapter_plan"],
+            retrieval_adapter_plan_receipt=chain["retrieval_adapter_plan"],
+            graph_adapter_plan_receipt=chain["graph_adapter_plan"],
+            final_artifact_adapter_plan_receipt=chain["final_artifact_adapter_plan"],
+            operator_dispatch_adapter_plan_receipt=chain["operator_adapter_plan"],
+            control_ledger_adapter_plan_receipt=chain["control_ledger_plan"],
+            control_ledger_persistence_plan_receipt=chain["control_ledger_persistence_plan"],
+            control_ledger_persistence_apply_plan_receipt=chain[
+                "control_ledger_persistence_apply_plan"
+            ],
+            operator_dispatch_activation_readiness_plan_receipt=chain[
+                "operator_dispatch_activation_readiness_plan"
+            ],
+            live_dispatch_final_enablement_plan_receipt=chain[
+                "live_dispatch_final_enablement_plan"
+            ],
+            live_dispatch_final_enablement_apply_plan_receipt=bad_apply_plan,
+        )
+
+
+def test_midnight_oil_runner_dispatch_scheduler_plan_api_contract() -> None:
+    from interfaces.research.api.app import create_app
+
+    chain = _accepted_midnight_oil_live_dispatch_final_enablement_apply_plan_chain(
+        goal="Expose runner dispatch scheduler planning over the API.",
+        source_policy=["arxiv", "substack"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    apply_plan = chain["live_dispatch_final_enablement_apply_plan"]
+
+    with TestClient(create_app()) as client:
+        r = client.post(
+            "/research/midnight-oil/runner-dispatch-scheduler-plan",
+            json={
+                "launch_packet": preflight.launch_packet.model_dump(mode="json"),
+                "approval_receipt": preflight.approval_receipt.model_dump(mode="json"),
+                "runner_handoff": preflight.runner_handoff.model_dump(mode="json"),
+                "runner_control_plan_receipt": chain["control_plan"].model_dump(mode="json"),
+                "budget_provider_adapter_plan_receipt": chain[
+                    "budget_adapter_plan"
+                ].model_dump(mode="json"),
+                "provider_executor_adapter_plan_receipt": chain[
+                    "provider_adapter_plan"
+                ].model_dump(mode="json"),
+                "retrieval_adapter_plan_receipt": chain[
+                    "retrieval_adapter_plan"
+                ].model_dump(mode="json"),
+                "graph_adapter_plan_receipt": chain["graph_adapter_plan"].model_dump(
+                    mode="json"
+                ),
+                "final_artifact_adapter_plan_receipt": chain[
+                    "final_artifact_adapter_plan"
+                ].model_dump(mode="json"),
+                "operator_dispatch_adapter_plan_receipt": chain[
+                    "operator_adapter_plan"
+                ].model_dump(mode="json"),
+                "control_ledger_adapter_plan_receipt": chain[
+                    "control_ledger_plan"
+                ].model_dump(mode="json"),
+                "control_ledger_persistence_plan_receipt": chain[
+                    "control_ledger_persistence_plan"
+                ].model_dump(mode="json"),
+                "control_ledger_persistence_apply_plan_receipt": chain[
+                    "control_ledger_persistence_apply_plan"
+                ].model_dump(mode="json"),
+                "operator_dispatch_activation_readiness_plan_receipt": chain[
+                    "operator_dispatch_activation_readiness_plan"
+                ].model_dump(mode="json"),
+                "live_dispatch_final_enablement_plan_receipt": chain[
+                    "live_dispatch_final_enablement_plan"
+                ].model_dump(mode="json"),
+                "live_dispatch_final_enablement_apply_plan_receipt": apply_plan.model_dump(
+                    mode="json"
+                ),
+            },
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["receipt_id"] == f"{preflight.run_id}-runner-dispatch-scheduler-plan"
+    assert body["live_dispatch_final_enablement_apply_plan_receipt_id"] == (
+        apply_plan.receipt_id
+    )
+    assert body["status"] == "blocked_runner_dispatch_scheduler_unimplemented"
+    assert body["adapter_key"] == "runner_dispatch_scheduler"
+    assert body["planned_scheduler_job_id"] == (
+        f"{preflight.run_id}-runner-dispatch-scheduler-job"
+    )
+    assert body["planned_queue_id"] == f"{preflight.run_id}-runner-dispatch-queue"
+    assert body["planned_runner_dispatch_id"] == apply_plan.planned_runner_dispatch_id
+    assert "durable runner dispatch queue" in body["scheduler_blockers"]
+    assert "scheduler_job_id" in body["required_scheduler_receipt_fields"]
+    assert body["blocker_reason"] == "runner_dispatch_scheduler_unimplemented"
+    assert body["scheduler_allowed"] is False
+    assert body["scheduler_job_created"] is False
+    assert body["runner_dispatch_enqueued"] is False
+    assert body["live_dispatch_enabled"] is False
     assert body["dispatch_allowed"] is False
     assert body["dispatch_performed"] is False
     assert body["budget_reserved"] is False
