@@ -252,11 +252,12 @@ KNOWN_USAGE_FEED_SOURCES: tuple[str, ...] = (
     "research_progress_complete",
     "evidence_pack",
     "publication_hydrate",
+    "session_flywheel_complete",
     "antiek_bench.offline_dogfood",
     "engagement",
 )
 
-# Twin-write seed sources that feed Antiek-bench by_source (qy/ra/rb/rc).
+# Twin-write seed sources that feed Antiek-bench by_source (qy/ra/rb/rc/re).
 # twin_draft_selected omitted — multi-select draft already covered by twin_chase.
 TWIN_WRITE_SEED_USAGE_SOURCES: frozenset[str] = frozenset(
     {
@@ -269,6 +270,7 @@ TWIN_WRITE_SEED_USAGE_SOURCES: frozenset[str] = frozenset(
         "hosted_html_document",
         "evidence_pack",
         "publication_hydrate",
+        "session_flywheel_complete",
     }
 )
 

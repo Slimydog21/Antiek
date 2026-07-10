@@ -123,6 +123,13 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
     expect(
       screen.getByTestId("session-flywheel-context-research-tier").textContent,
     ).toMatch(/wrestle/);
+    // Residual (re): Open Write twin_seed after flywheel complete.
+    const write = screen.getByTestId("session-flywheel-open-write");
+    const href = write.getAttribute("href") || "";
+    expect(href).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
+    expect(href).not.toMatch(/html_draft=/);
+    expect(write.getAttribute("data-has-twin-seed")).toBe("1");
+    expect(write.getAttribute("data-status")).toBe("complete");
     // Residual (lt): post-complete badge adopts session/pack effective tier.
     expect(
       screen

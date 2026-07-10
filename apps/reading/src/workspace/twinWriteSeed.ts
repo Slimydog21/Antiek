@@ -19,7 +19,8 @@ export type TwinWriteSeedSource =
   | "deep_research_session"
   | "research_progress_complete"
   | "evidence_pack"
-  | "publication_hydrate";
+  | "publication_hydrate"
+  | "session_flywheel_complete";
 
 export type TwinWriteSeedPayload = {
   plain_text: string;
@@ -63,6 +64,7 @@ export function storeTwinWriteSeed(input: {
     "research_progress_complete",
     "evidence_pack",
     "publication_hydrate",
+    "session_flywheel_complete",
   ];
   const source: TwinWriteSeedSource = allowed.includes(
     input.source as TwinWriteSeedSource,
@@ -108,6 +110,7 @@ export function loadTwinWriteSeed(key: string): TwinWriteSeedPayload | null {
       "research_progress_complete",
       "evidence_pack",
       "publication_hydrate",
+      "session_flywheel_complete",
     ];
     const source: TwinWriteSeedSource = allowedLoad.includes(
       srcRaw as TwinWriteSeedSource,
@@ -557,6 +560,63 @@ export function buildPublicationHydrateWriteHref(opts: {
     asset_id: firstId,
     note_ids: [],
     source: "publication_hydrate",
+  });
+  if (!seedKey) return null;
+  return buildTwinWriteHref(seedKey);
+}
+
+/**
+ * Residual (re): Write handoff after session flywheel complete.
+ * twin_seed only — output + prompt block seed recursive note-taker Write path.
+ */
+export function buildSessionFlywheelWriteHref(opts: {
+  sessionId: string;
+  spawnId?: string | null;
+  outputText?: string | null;
+  promptBlock?: string | null;
+  status?: string | null;
+  researchTier?: string | null;
+}): string | null {
+  const session = String(opts.sessionId || "").trim();
+  const output = String(opts.outputText || "").trim();
+  const prompt = String(opts.promptBlock || "").trim();
+  if (!session) return null;
+  if (!output && !prompt) return null;
+  const spawn = String(opts.spawnId || "").trim();
+  const status = String(opts.status || "").trim();
+  const tier = String(opts.researchTier || "").trim();
+  const plain = [
+    `Session: ${session}`,
+    spawn ? `Spawn: ${spawn}` : "",
+    status ? `Status: ${status}` : "",
+    tier ? `Tier: ${tier}` : "",
+    output ? `Output:\n${output}` : "",
+    prompt ? `Prompt block:\n${prompt}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  const escape = (s: string) =>
+    String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  const html =
+    `<article data-view-format="html" data-source="session_flywheel_complete" data-session-id="${escape(session)}"` +
+    (spawn ? ` data-spawn-id="${escape(spawn)}"` : "") +
+    `>` +
+    `<h1>Session complete · ${escape(session)}</h1>` +
+    (status ? `<p class="status"><strong>Status:</strong> ${escape(status)}</p>` : "") +
+    (tier ? `<p class="tier"><strong>Tier:</strong> ${escape(tier)}</p>` : "") +
+    (output ? `<section class="output"><h2>Output</h2><pre>${escape(output)}</pre></section>` : "") +
+    (prompt ? `<section class="prompt"><h2>Prompt block</h2><pre>${escape(prompt)}</pre></section>` : "") +
+    `</article>`;
+  const seedKey = storeTwinWriteSeed({
+    plain_text: plain,
+    html,
+    title: `Session complete · ${session}`,
+    asset_id: spawn ? `deep_research:${spawn}` : `session:${session}`,
+    note_ids: [],
+    source: "session_flywheel_complete",
   });
   if (!seedKey) return null;
   return buildTwinWriteHref(seedKey);

@@ -15,6 +15,7 @@
  * Residual (lt): DecisionTreeDriverBadge with pre/post complete tier.
  * Residual (qn): DecisionTreeDriverBadge promptText from session output.
  * Residual (np): dual-gate L1–L4 checklist deep-link (prep only).
+ * Residual (re): Open Write twin_seed after flywheel complete.
  * Composes shipped completeSessionFlywheel. HTML-first context pack.
  */
 
@@ -23,6 +24,7 @@ import {
   completeSessionFlywheel,
   type SessionFlywheelResponse,
 } from "../../api/engagement";
+import { buildSessionFlywheelWriteHref } from "../../workspace/twinWriteSeed";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 
 export type SessionFlywheelPanelProps = {
@@ -283,6 +285,32 @@ export function SessionFlywheelPanel({
               {result.prompt_block}
             </pre>
           ) : null}
+          {/* Residual (re): flywheel complete → Write twin_seed. */}
+          {(() => {
+            const href = buildSessionFlywheelWriteHref({
+              sessionId: result.session_id || sessionId,
+              spawnId: result.spawn_id,
+              outputText: output,
+              promptBlock: result.prompt_block,
+              status: result.status,
+              researchTier: flywheelResearchTier(result).effective,
+            });
+            return href ? (
+              <p>
+                <a
+                  href={href}
+                  data-testid="session-flywheel-open-write"
+                  data-view-format="html"
+                  data-has-twin-seed="1"
+                  data-status={result.status ?? ""}
+                  className="underline opacity-90 hover:opacity-100"
+                  title="Open Write with session flywheel output as twin_seed (no invented document_id)"
+                >
+                  Open Write (session complete)
+                </a>
+              </p>
+            ) : null;
+          })()}
         </div>
       ) : null}
     </section>

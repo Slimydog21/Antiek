@@ -5,6 +5,7 @@ import {
   buildEvidencePackWriteHref,
   buildPublicationHydrateWriteHref,
   buildResearchProgressWriteHref,
+  buildSessionFlywheelWriteHref,
   buildTwinWriteHref,
   buildHostedHtmlWriteHref,
   buildMarketplaceWriteHref,
@@ -168,6 +169,26 @@ describe("twinWriteSeed (pp)", () => {
       (href!.match(/twin_seed=([^&]+)/) || [])[1] || "",
     );
     expect(loadTwinWriteSeed(key)?.asset_id).toBe("deep_research:spn_orphan");
+  });
+
+  it("builds session flywheel Write twin_seed (re)", () => {
+    const href = buildSessionFlywheelWriteHref({
+      sessionId: "fsess_1",
+      spawnId: "spn_1",
+      outputText: "Attention is routing.",
+      promptBlock: "# pack",
+      status: "complete",
+      researchTier: "wrestle",
+    });
+    expect(href).toBeTruthy();
+    expect(href!).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
+    const key = decodeURIComponent(
+      (href!.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    const seed = loadTwinWriteSeed(key);
+    expect(seed?.source).toBe("session_flywheel_complete");
+    expect(seed?.plain_text).toMatch(/Attention is routing/);
+    expect(seed?.html).toMatch(/data-source="session_flywheel_complete"/);
   });
 
   it("builds publication hydrate Write twin_seed (rc)", () => {

@@ -727,3 +727,8 @@ HTML-first and feed the recursive note-taker writing path + Antiek-bench.
 Attached arxiv/substack/URL hydrates hand off into Write as twin_seed
 source=publication_hydrate. Competitive delta: knowledge-dense pubs never
 dead-end in a sidebar — they seed the recursive note-taker writing path.
+
+## Residual re · 2026-07-10 — Session flywheel complete → Write
+After complete_session flywheel, operators Open Write with output + prompt
+block as twin_seed (source=session_flywheel_complete). Competitive delta:
+float research session never dead-ends — it becomes writing substrate.
