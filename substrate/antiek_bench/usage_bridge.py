@@ -250,6 +250,7 @@ KNOWN_USAGE_FEED_SOURCES: tuple[str, ...] = (
     "hosted_html_document",
     "deep_research_session",
     "research_progress_complete",
+    "research_progress_draft",
     "evidence_pack",
     "publication_hydrate",
     "session_flywheel_complete",
@@ -265,6 +266,7 @@ TWIN_WRITE_SEED_USAGE_SOURCES: frozenset[str] = frozenset(
     {
         "deep_research_session",
         "research_progress_complete",
+        "research_progress_draft",
         "midnight_oil_deposit",
         "marketplace_host",
         "spawn_merge",

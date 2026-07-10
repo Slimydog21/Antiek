@@ -102,8 +102,13 @@ describe("ResearchProgressPanel", () => {
       "engagement_spine.progress",
     );
     expect(metrics.textContent).toMatch(/Research progress/);
-    // Non-terminal: no Write handoff (qw).
-    expect(screen.queryByTestId("research-progress-open-write")).toBeNull();
+    // Residual (rp): non-terminal still offers progress draft Write handoff.
+    const draftWrite = screen.getByTestId("research-progress-open-write");
+    expect(draftWrite.getAttribute("data-is-terminal")).toBe("false");
+    expect(draftWrite.textContent).toMatch(/progress draft/i);
+    expect(draftWrite.getAttribute("href") || "").toMatch(
+      /^\/write\?twin_seed=antiek\.twin_write_seed\./,
+    );
   });
 
   it("links Open Write twin_seed when progress is terminal (qw)", async () => {

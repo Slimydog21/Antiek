@@ -15,6 +15,7 @@
  * (fast/deep/wrestle) for long-horizon Deep Research posture.
  * Residual (qw): Open Write twin_seed when progress is terminal (progress
  * events/HTML seed recursive note-taker; no invented document_id).
+ * Residual (rp): mid-flight Open Write (progress draft) while non-terminal.
  * HTML-first; never PDF.
  */
 
@@ -187,15 +188,16 @@ export function ResearchProgressPanel({
       ? pollIntervalMs
       : mapResearchTierToProgressPollMs(tierKnown);
 
-  /** Residual (qw): terminal progress → Write twin_seed handoff. */
+  /** Residual (qw/rp): progress → Write twin_seed (terminal or mid-flight draft). */
   const writeHref = useMemo(() => {
-    if (!progress?.is_terminal) return null;
+    if (!progress) return null;
     return buildResearchProgressWriteHref({
       spawnId: progress.spawn_id || spawnId,
       parentAssetId,
       researchTier: tierKnown,
       latestStage: progress.latest_stage,
-      isTerminal: true,
+      isTerminal: Boolean(progress.is_terminal),
+      allowInProgress: true,
       events: progress.events,
       html: progress.html,
       goal,
@@ -341,7 +343,7 @@ export function ResearchProgressPanel({
             latest=<strong>{progress.latest_stage ?? "(none)"}</strong> · events=
             {progress.event_count} · terminal={String(progress.is_terminal)}
           </p>
-          {/* Residual (qw): terminal → Open Write twin seed. */}
+          {/* Residual (qw/rp): terminal or mid-flight → Open Write twin seed. */}
           {writeHref ? (
             <p className="meta font-mono text-[11px]">
               <a
@@ -349,11 +351,17 @@ export function ResearchProgressPanel({
                 data-testid="research-progress-open-write"
                 data-view-format="html"
                 data-has-twin-seed="1"
-                data-is-terminal="true"
+                data-is-terminal={String(Boolean(progress.is_terminal))}
                 className="underline opacity-90 hover:opacity-100"
-                title="Open Write with terminal research progress as twin_seed (sessionStorage; no invented document_id)"
+                title={
+                  progress.is_terminal
+                    ? "Open Write with terminal research progress as twin_seed (sessionStorage; no invented document_id)"
+                    : "Open Write with in-progress plan→cite draft as twin_seed (sessionStorage; no invented document_id)"
+                }
               >
-                Open Write (research complete)
+                {progress.is_terminal
+                  ? "Open Write (research complete)"
+                  : "Open Write (progress draft)"}
               </a>
             </p>
           ) : null}

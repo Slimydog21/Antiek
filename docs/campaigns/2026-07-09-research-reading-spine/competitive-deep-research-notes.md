@@ -758,3 +758,8 @@ authority — Antiek decision-tree remains the only install path.
 Every DecisionTreeDriverBadge mounts "ND advisory" → /settings#notdiamond-advisory
 so research hosts reach weekly suggestion-vs-installed delta without granting
 router authority. Competitive delta: model choice stays operator-owned.
+
+## Residual rp · 2026-07-10 — Progress draft → Write mid-flight
+Non-terminal multi-minute plan→cite progress offers Open Write (progress draft)
+with source=research_progress_draft. Competitive delta: operators capture
+synthesis substrate during long-horizon jobs without waiting for terminal.

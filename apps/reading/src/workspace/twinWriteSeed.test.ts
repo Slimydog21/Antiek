@@ -327,6 +327,24 @@ describe("twinWriteSeed (pp)", () => {
     ).toBe("twin_seed:twin_draft_selected:2:paper-pp");
   });
 
+  it("builds mid-flight progress draft Write twin_seed when allowInProgress (rp)", () => {
+    const href = buildResearchProgressWriteHref({
+      spawnId: "spn_draft",
+      isTerminal: false,
+      allowInProgress: true,
+      latestStage: "gather",
+      events: [{ stage: "plan", message: "planned" }, { stage: "gather", message: "g" }],
+    });
+    expect(href).toBeTruthy();
+    const key = decodeURIComponent(
+      (href!.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    const seed = loadTwinWriteSeed(key);
+    expect(seed?.source).toBe("research_progress_draft");
+    expect(seed?.plain_text).toMatch(/In-progress stage: gather/);
+    expect(seed?.html).toMatch(/data-is-terminal="false"/);
+  });
+
   it("builds terminal progress Write twin_seed only when isTerminal (qw)", () => {
     expect(
       buildResearchProgressWriteHref({

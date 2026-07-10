@@ -18,6 +18,7 @@ export type TwinWriteSeedSource =
   | "hosted_html_document"
   | "deep_research_session"
   | "research_progress_complete"
+  | "research_progress_draft"
   | "evidence_pack"
   | "publication_hydrate"
   | "session_flywheel_complete"
@@ -64,6 +65,7 @@ export function storeTwinWriteSeed(input: {
     "hosted_html_document",
     "deep_research_session",
     "research_progress_complete",
+    "research_progress_draft",
     "evidence_pack",
     "publication_hydrate",
     "session_flywheel_complete",
@@ -112,6 +114,7 @@ export function loadTwinWriteSeed(key: string): TwinWriteSeedPayload | null {
       "hosted_html_document",
       "deep_research_session",
       "research_progress_complete",
+      "research_progress_draft",
       "evidence_pack",
       "publication_hydrate",
       "session_flywheel_complete",
@@ -323,8 +326,8 @@ export function buildDeepResearchWriteHref(opts: {
 
 /**
  * Residual (qw): Write handoff when research progress reaches terminal.
- * twin_seed only — progress HTML/events seed the recursive note-taker;
- * does not invent a server document_id until Write create.
+ * Residual (rp): mid-flight draft seed when allowInProgress + events/html.
+ * twin_seed only — does not invent a server document_id until Write create.
  */
 export function buildResearchProgressWriteHref(opts: {
   spawnId: string;
@@ -332,6 +335,8 @@ export function buildResearchProgressWriteHref(opts: {
   researchTier?: string | null;
   latestStage?: string | null;
   isTerminal: boolean;
+  /** Residual (rp): allow non-terminal plan→cite draft Write seed. */
+  allowInProgress?: boolean;
   events?: ReadonlyArray<{
     stage?: string | null;
     message?: string | null;
@@ -340,9 +345,12 @@ export function buildResearchProgressWriteHref(opts: {
   html?: string | null;
   goal?: string | null;
 }): string | null {
-  if (!opts.isTerminal) return null;
+  if (!opts.isTerminal && !opts.allowInProgress) return null;
   const spawn = String(opts.spawnId || "").trim();
   if (!spawn) return null;
+  const source: TwinWriteSeedSource = opts.isTerminal
+    ? "research_progress_complete"
+    : "research_progress_draft";
   const goal = String(opts.goal || "").trim();
   const stage = String(opts.latestStage || "").trim();
   const tier = String(opts.researchTier || "").trim();
@@ -355,10 +363,17 @@ export function buildResearchProgressWriteHref(opts: {
       return st ? `[${st}] ${msg}` : msg;
     })
     .filter(Boolean);
+  const stageLabel = opts.isTerminal
+    ? stage
+      ? `Terminal stage: ${stage}`
+      : "Terminal: complete"
+    : stage
+      ? `In-progress stage: ${stage}`
+      : "In-progress: draft";
   const plainParts = [
     goal ? `Goal: ${goal}` : "",
     `Spawn: ${spawn}`,
-    stage ? `Terminal stage: ${stage}` : "Terminal: complete",
+    stageLabel,
     tier ? `Tier: ${tier}` : "",
     ...eventLines,
   ].filter(Boolean);
@@ -379,10 +394,13 @@ export function buildResearchProgressWriteHref(opts: {
     String(opts.html || "").trim() ||
     (eventHtml
       ? `<ol class="progress-events">${eventHtml}</ol>`
-      : `<p>Deep research terminal · ${escape(spawn)}</p>`);
+      : `<p>Deep research ${opts.isTerminal ? "terminal" : "draft"} · ${escape(spawn)}</p>`);
+  const title = opts.isTerminal
+    ? `Research complete · ${spawn}`
+    : `Research draft · ${spawn}`;
   const html =
-    `<article data-view-format="html" data-source="research_progress_complete" data-spawn-id="${escape(spawn)}" data-is-terminal="true">` +
-    `<h1>Research complete · ${escape(spawn)}</h1>` +
+    `<article data-view-format="html" data-source="${source}" data-spawn-id="${escape(spawn)}" data-is-terminal="${opts.isTerminal ? "true" : "false"}">` +
+    `<h1>${escape(title)}</h1>` +
     (goal ? `<p class="goal"><strong>Goal:</strong> ${escape(goal)}</p>` : "") +
     (stage
       ? `<p class="stage"><strong>Stage:</strong> ${escape(stage)}</p>`
@@ -395,10 +413,10 @@ export function buildResearchProgressWriteHref(opts: {
   const seedKey = storeTwinWriteSeed({
     plain_text: plain,
     html,
-    title: `Research complete · ${spawn}`,
+    title,
     asset_id: asset,
     note_ids: [],
-    source: "research_progress_complete",
+    source,
   });
   if (!seedKey) return null;
   return buildTwinWriteHref(seedKey);
