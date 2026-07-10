@@ -43,6 +43,7 @@ import {
   operatorArchivePackageDeliveryReportFinalDispatchAttestationPlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalDispatchAttestationResultReconciliationPlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalOperatorArchiveSealAcknowledgementPlanMidnightOil,
+  operatorArchivePackageDeliveryReportFinalOperatorDeliveryAcknowledgementBundlePlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalCloseoutAcknowledgementPlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseoutPlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseoutResultReconciliationPlanMidnightOil,
@@ -6596,6 +6597,72 @@ vi.mock("../../api/midnightOil", () => ({
         "operator archive package delivery report final delivery evidence seal attestation result reconciliation plan only: no final delivery evidence seal attestation result receipt, entry, status result entry, audit result entry, dispatch, URL activation, or final artifact is created",
       ],
     })),
+  operatorArchivePackageDeliveryReportFinalOperatorDeliveryAcknowledgementBundlePlanMidnightOil:
+    vi.fn(async () => ({
+      receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-operator-delivery-acknowledgement-bundle-plan",
+      operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_result_reconciliation_plan_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-evidence-seal-attestation-result-reconciliation-plan",
+      operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_plan_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-evidence-seal-attestation-plan",
+      status:
+        "blocked_operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle_unimplemented",
+      adapter_key:
+        "operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle",
+      planned_operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-operator-delivery-acknowledgement-bundle-receipt",
+      planned_operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-operator-delivery-acknowledgement-bundle-entry",
+      planned_operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle_status_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-operator-delivery-acknowledgement-bundle-status-entry",
+      planned_operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle_audit_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-operator-delivery-acknowledgement-bundle-audit-entry",
+      operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle_blockers:
+        [
+          "operator archive package delivery report final operator delivery acknowledgement bundle receipt writer",
+          "operator archive package delivery report final operator delivery acknowledgement bundle entry writer",
+          "operator archive package delivery report final operator delivery acknowledgement bundle status entry writer",
+          "operator archive package delivery report final operator delivery acknowledgement bundle audit entry writer",
+        ],
+      required_operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle_invariants:
+        [
+          "operator archive package delivery report final operator delivery acknowledgement bundle planner must require final delivery evidence seal attestation result reconciliation before final operator delivery acknowledgement bundle rows can be planned",
+        ],
+      required_operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle_receipt_fields:
+        [
+          "operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle_receipt_id",
+          "operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle_entry_id",
+          "operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle_status_entry_id",
+          "operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle_audit_entry_id",
+        ],
+      blocker_reason:
+        "operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle_unimplemented",
+      operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle_allowed:
+        false,
+      operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle_entry_created:
+        false,
+      operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle_status_entry_created:
+        false,
+      operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle_audit_entry_created:
+        false,
+      operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_result_reconciliation_allowed:
+        false,
+      operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_result_entry_created:
+        false,
+      operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_allowed:
+        false,
+      operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_entry_created:
+        false,
+      operator_notification_created: false,
+      private_read_url_created: false,
+      graph_mutated: false,
+      provider_calls_made: false,
+      retrieval_performed: false,
+      final_artifact_created: false,
+      adapter_plan_notes: [
+        "operator archive package delivery report final operator delivery acknowledgement bundle plan only: no final operator delivery acknowledgement bundle receipt, entry, status entry, audit entry, dispatch, URL activation, or final artifact is created",
+      ],
+    })),
 }));
 
 describe("MidnightOil", () => {
@@ -12114,6 +12181,104 @@ describe("MidnightOil", () => {
     expect(
       screen.getAllByText(
         /operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_audit_result_entry_id/,
+      ).length,
+    ).toBeGreaterThan(0);
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Operator archive package delivery report final operator delivery acknowledgement bundle plan",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(
+        operatorArchivePackageDeliveryReportFinalOperatorDeliveryAcknowledgementBundlePlanMidnightOil,
+      ).toHaveBeenCalled(),
+    );
+    expect(
+      operatorArchivePackageDeliveryReportFinalOperatorDeliveryAcknowledgementBundlePlanMidnightOil,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_result_reconciliation_plan_receipt:
+          expect.objectContaining({
+            receipt_id:
+              "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-evidence-seal-attestation-result-reconciliation-plan",
+          }),
+        operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_plan_receipt:
+          expect.objectContaining({
+            receipt_id:
+              "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-evidence-seal-attestation-plan",
+          }),
+      }),
+    );
+    expect(
+      screen.getByText(
+        "Operator archive package delivery report final operator delivery acknowledgement bundle receipt",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-final-operator-delivery-acknowledgement-bundle-plan",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "blocked operator archive package delivery report final operator delivery acknowledgement bundle unimplemented",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-final-operator-delivery-acknowledgement-bundle-receipt",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-final-operator-delivery-acknowledgement-bundle-entry",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-final-operator-delivery-acknowledgement-bundle-status-entry",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-final-operator-delivery-acknowledgement-bundle-audit-entry",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "operator archive package delivery report final operator delivery acknowledgement bundle planner must require final delivery evidence seal attestation result reconciliation before final operator delivery acknowledgement bundle rows can be planned",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Operator archive package delivery report final operator delivery acknowledgement bundle blockers:/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /operator archive package delivery report final operator delivery acknowledgement bundle receipt writer/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Operator archive package delivery report final operator delivery acknowledgement bundle receipt fields:/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getAllByText(
+        /operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle_entry_id/,
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(
+        /operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle_status_entry_id/,
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(
+        /operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle_audit_entry_id/,
       ).length,
     ).toBeGreaterThan(0);
   }, 25000);
