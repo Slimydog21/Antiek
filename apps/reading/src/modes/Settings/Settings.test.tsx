@@ -933,6 +933,32 @@ describe("Settings SPR-01 + decision-tree install", () => {
         .getByTestId("competitive-dr-payment-l5-future-link")
         .getAttribute("href") || "",
     ).toMatch(/FUTURE-AGENT-SPEC-l5-digital-book-seamless-port/);
+    // Residual (akh): deferred live rows deep-link dual-gate L1/L2/L4/L6 prep.
+    expect(
+      screen
+        .getByTestId("competitive-dr-live-hydrate-l1-link")
+        .getAttribute("href") || "",
+    ).toMatch(/#l1-arxiv/);
+    expect(
+      screen
+        .getByTestId("competitive-dr-live-hydrate-l2-link")
+        .getAttribute("href") || "",
+    ).toMatch(/#l2-substack/);
+    expect(
+      screen
+        .getByTestId("competitive-dr-live-moil-l4-link")
+        .getAttribute("href") || "",
+    ).toMatch(/#l4-moil/);
+    expect(
+      screen
+        .getByTestId("competitive-dr-live-council-l6-link")
+        .getAttribute("href") || "",
+    ).toMatch(/#l6-collective/);
+    expect(
+      screen
+        .getByTestId("competitive-dr-live-council-l6-future-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-l6-live-multiagent-collective/);
     expect(
       screen
         .getByTestId("settings-competitive-dr-future-agent-link")

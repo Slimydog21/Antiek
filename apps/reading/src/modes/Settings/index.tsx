@@ -4182,15 +4182,57 @@ export default function Settings() {
               </li>
               <li data-status="deferred" data-testid="competitive-dr-live-hydrate">
                 Live arxiv/Substack body hydrate —{" "}
-                <strong>deferred dual-gate L1/L2</strong>
+                <strong>deferred dual-gate L1/L2</strong> ·{" "}
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
+                  data-testid="competitive-dr-live-hydrate-l1-link"
+                  className="underline opacity-90 hover:opacity-100"
+                  title="Dual-gate L1 arxiv hydrate checklist (prep only · offline default)"
+                >
+                  L1 arxiv
+                </a>
+                {" · "}
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l2-substack"
+                  data-testid="competitive-dr-live-hydrate-l2-link"
+                  className="underline opacity-90 hover:opacity-100"
+                  title="Dual-gate L2 Substack hydrate checklist (prep only · factory + ToS)"
+                >
+                  L2 Substack
+                </a>
               </li>
               <li data-status="deferred" data-testid="competitive-dr-live-moil">
                 Live Midnight Oil multi-provider step —{" "}
-                <strong>deferred dual-gate L4</strong>
+                <strong>deferred dual-gate L4</strong> ·{" "}
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l4-moil"
+                  data-testid="competitive-dr-live-moil-l4-link"
+                  className="underline opacity-90 hover:opacity-100"
+                  title="Dual-gate L4 Midnight Oil live-step checklist (prep only · offline default)"
+                >
+                  L4 Midnight Oil checklist
+                </a>
               </li>
               <li data-status="deferred" data-testid="competitive-dr-live-council">
                 Live multi-agent council —{" "}
-                <strong>deferred dual-gate L6</strong>
+                <strong>deferred dual-gate L6</strong> ·{" "}
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l6-collective"
+                  data-testid="competitive-dr-live-council-l6-link"
+                  className="underline opacity-90 hover:opacity-100"
+                  title="Dual-gate L6 live multi-agent collective checklist (prep only · offline merge unit)"
+                >
+                  L6 collective checklist
+                </a>
+                {" · "}
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-l6-live-multiagent-collective.md"
+                  data-testid="competitive-dr-live-council-l6-future-link"
+                  className="underline opacity-90 hover:opacity-100"
+                  title="FUTURE-AGENT L6 live multi-agent collective brief"
+                >
+                  FUTURE L6 multi-agent
+                </a>
               </li>
               <li data-status="deferred" data-testid="competitive-dr-payment">
                 Live marketplace payment rails —{" "}

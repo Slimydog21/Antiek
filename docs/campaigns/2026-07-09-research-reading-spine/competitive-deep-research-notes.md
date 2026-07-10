@@ -3107,3 +3107,8 @@ P0 operator merge PR #465. Pivot akg+ outside thrash.
 Wave handoff: ND decision-tree provenance · marketplace L5 host · FUTURE brief ·
 prompt-cost scorecard · scorecard L5 FUTURE link. P0 operator merge PR #465.
 Pivot akh+ outside thrash.
+
+## Residual akh · 2026-07-10 — scorecard deferred live dual-gate deep-links
+Competitive DR scorecard deferred live rows deep-link dual-gate L1/L2 hydrate,
+L4 Midnight Oil, L6 collective checklist + FUTURE L6 multi-agent brief.
+vitest Settings 37 green. P0 operator merge PR #465. Pivot aki+ outside thrash.
