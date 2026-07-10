@@ -105,6 +105,11 @@ export type ResearchContextPanelProps = {
    * (competitive citation-trust surface without extra clicks).
    */
   autoLoad?: boolean;
+  /**
+   * Residual (amj): host-known research depth when pack/spawn tier is empty
+   * (marketplace host land · HostedHtml · reading ≡ research).
+   */
+  researchTier?: "fast" | "deep" | "wrestle" | string | null;
 };
 
 export function ResearchContextPanel({
@@ -113,6 +118,7 @@ export function ResearchContextPanel({
   initialQuery = "",
   domainSubjects = null,
   autoLoad = false,
+  researchTier = null,
 }: ResearchContextPanelProps) {
   const [query, setQuery] = useState(
     () =>
@@ -139,6 +145,12 @@ export function ResearchContextPanel({
     () => domainSearchCoverage(domainSubjects),
     [domainSubjects],
   );
+  // Residual (amj): pack/spawn tier wins; host prop is prefill fallback.
+  const resolvedResearchTier = useMemo(() => {
+    const fromPack = (pack?.research_tier || "").trim().toLowerCase();
+    if (fromPack) return fromPack;
+    return (researchTier || "").trim().toLowerCase();
+  }, [pack?.research_tier, researchTier]);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -330,14 +342,22 @@ export function ResearchContextPanel({
           className="mt-1"
           data-testid="research-context-driver-badge-mount"
           data-view-format="html"
-          data-research-tier={
-            (pack?.research_tier || "").trim().toLowerCase() || ""
+          data-research-tier={resolvedResearchTier}
+          data-research-tier-source={
+            (pack?.research_tier || "").trim()
+              ? "pack"
+              : (researchTier || "").trim()
+                ? "host"
+                : "none"
           }
         >
           <DecisionTreeDriverBadge
             researchTier={
-              ((pack?.research_tier || "").trim().toLowerCase() ||
-                undefined) as "fast" | "deep" | "wrestle" | undefined
+              (resolvedResearchTier || undefined) as
+                | "fast"
+                | "deep"
+                | "wrestle"
+                | undefined
             }
             promptText={
               (pack?.prompt_block || "").trim() ||
@@ -347,6 +367,25 @@ export function ResearchContextPanel({
             }
           />
         </div>
+        {/* Residual (amj): host-prefill depth stamp when host prop supplied. */}
+        {(researchTier || "").trim() ? (
+          <p
+            className="meta font-mono text-[11px] opacity-80"
+            data-testid="research-context-host-tier-prefill"
+            data-research-tier={resolvedResearchTier || ""}
+            data-host-tier={(researchTier || "").trim().toLowerCase()}
+            data-source={
+              (pack?.research_tier || "").trim() ? "pack" : "host"
+            }
+            role="status"
+          >
+            Host depth prefill:{" "}
+            <strong>{(researchTier || "").trim().toLowerCase()}</strong>
+            {(pack?.research_tier || "").trim()
+              ? ` · pack wins (${resolvedResearchTier})`
+              : " · active until pack loads"}
+          </p>
+        ) : null}
       </header>
 
       <div

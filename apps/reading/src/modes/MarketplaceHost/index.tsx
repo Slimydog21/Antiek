@@ -78,6 +78,7 @@
  * (intelligent search + evidence over twin substrate · parity HostedHtml).
  * Residual (alz): remount twins + context after promote (parity HostedHtml ez/ec).
  * Residual (ama): remount twins + context after offline twin seed completes.
+ * Residual (amj): host-land ResearchContext inherits hostDrTier depth posture.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -1761,6 +1762,7 @@ export default function MarketplaceHost({
                   assetId={hosted.document_id.trim()}
                   autoLoad
                   domainSubjects={catalogSubjectsForBook(hosted.book_id)}
+                  researchTier={hostDrTier}
                 />
               </div>
             </section>

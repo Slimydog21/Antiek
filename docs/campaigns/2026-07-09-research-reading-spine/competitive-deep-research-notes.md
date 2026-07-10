@@ -3372,3 +3372,9 @@ P0 operator merge PR #465. Pivot ami+ outside thrash.
 ## Residual ami · 2026-07-10 — SESSION-ARC amc–amh citation hop nav complete
 Wave handoff: multi-hop citation strip→stage deep-links + accessibility landmarks.
 P0 operator merge PR #465. Pivot amj+ outside thrash.
+
+## Residual amj · 2026-07-10 — ResearchContext host researchTier prefill + marketplace wire
+ResearchContext accepts host researchTier prefill (pack wins when present);
+MarketplaceHost host-land context passes hostDrTier depth posture.
+vitest ResearchContext 18 · MarketplaceHost 41 green.
+P0 operator merge PR #465. Pivot amk+ outside thrash.

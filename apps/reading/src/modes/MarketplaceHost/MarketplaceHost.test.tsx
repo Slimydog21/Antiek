@@ -129,12 +129,14 @@ vi.mock("../../components/engagement/ResearchContextPanel", () => ({
     assetId: string;
     autoLoad?: boolean;
     domainSubjects?: readonly string[] | null;
+    researchTier?: string | null;
   }) => (
     <div
       data-testid="research-context-panel-stub"
       data-asset-id={props.assetId}
       data-domain-subjects={(props.domainSubjects || []).join(",") || ""}
       data-auto-load={String(Boolean(props.autoLoad))}
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
     >
       context={props.assetId}
     </div>
@@ -468,6 +470,8 @@ describe("MarketplaceHost mode", () => {
     expect(ctxStub.getAttribute("data-asset-id")).toBe("hdoc_abc");
     expect(ctxStub.getAttribute("data-domain-subjects")).toMatch(/literature/);
     expect(ctxStub.getAttribute("data-auto-load")).toBe("true");
+    // Residual (amj): host depth prefill into ResearchContext.
+    expect(ctxStub.getAttribute("data-research-tier")).toMatch(/deep|wrestle|fast/);
     // Residual (alz/ama): remount after seed then promote (parity HostedHtml).
     expect(twinsStub.getAttribute("data-auto-promote")).toBe("true");
     // Residual (ama): offline twin seed completion bumps refresh key.

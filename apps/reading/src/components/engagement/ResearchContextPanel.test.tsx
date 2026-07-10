@@ -152,6 +152,53 @@ describe("ResearchContextPanel", () => {
     ).toMatch(/literature novel manners/i);
   });
 
+  it("prefills research tier from host prop when pack has none (amj)", async () => {
+    fetchResearchContext.mockResolvedValue({
+      asset_id: "book-1",
+      twin_count: 0,
+      twin_units: [],
+      source_ref_count: 0,
+      source_refs: [],
+      prompt_block: "",
+      view_format: "html",
+      // no research_tier on pack
+    });
+    fetchEvidencePack.mockResolvedValue({
+      asset_id: "book-1",
+      insight_count: 0,
+      question_count: 0,
+      ref_count: 0,
+      view_format: "html",
+    });
+    render(
+      <ResearchContextPanel
+        assetId="book-1"
+        autoLoad
+        researchTier="wrestle"
+      />,
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("research-context-host-tier-prefill"),
+      ).toBeTruthy();
+    });
+    const prefill = screen.getByTestId("research-context-host-tier-prefill");
+    expect(prefill.getAttribute("data-host-tier")).toBe("wrestle");
+    expect(prefill.getAttribute("data-source")).toBe("host");
+    expect(prefill.textContent).toMatch(/Host depth prefill/i);
+    expect(prefill.textContent).toMatch(/wrestle/i);
+    expect(
+      screen
+        .getByTestId("research-context-driver-badge-mount")
+        .getAttribute("data-research-tier"),
+    ).toBe("wrestle");
+    expect(
+      screen
+        .getByTestId("research-context-driver-badge-mount")
+        .getAttribute("data-research-tier-source"),
+    ).toBe("host");
+  });
+
   it("prefills intelligent search from free PD economics subjects (akq)", () => {
     render(
       <ResearchContextPanel
