@@ -1,0 +1,13 @@
+# inventory-sx · Future-agent tip re-anchor after sw
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: sx
+date: 2026-07-10
+tip: 936ba38f
+
+## Closed
+- FUTURE-AGENT-SPEC tip → 936ba38f
+- Arc table includes st–su dogfood v2 + sw dual-gate prep
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live L1–L4 injectors (operator-only)
