@@ -466,6 +466,48 @@ describe("MidnightOil mode", () => {
     expect(input.value.split("\n").filter(Boolean)).toHaveLength(2);
   });
 
+  it("lists full swarm goals on job receipt after create (aog)", async () => {
+    createMidnightOilJob.mockResolvedValueOnce({
+      job_id: "moil_goals_plan",
+      goals: [
+        "Map competitive landscape",
+        "Build evidence chain",
+        "Ground publication: arxiv:1706.03762",
+      ],
+      duration_minutes: 60,
+      model_id: "default",
+      research_tier: "deep",
+      fanout_depth: 3,
+      status: "awaiting_approval",
+      recommended_price_ceiling_usd: 3.6,
+      view_format: "html",
+      runnable: false,
+      notes: "created",
+    });
+    render(<MidnightOil />);
+    fireEvent.change(screen.getByLabelText(/^Goals \(one per line\)$/i), {
+      target: {
+        value: "Map competitive landscape\nBuild evidence chain",
+      },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /create job \+ recommend ceiling/i }),
+    );
+    await waitFor(() => expect(screen.getByTestId("moil-job")).toBeTruthy());
+    const jobPlan = screen.getByTestId("moil-job-goals-plan");
+    expect(jobPlan.getAttribute("data-goal-count")).toBe("3");
+    expect(jobPlan.getAttribute("data-research-goal-count")).toBe("2");
+    expect(jobPlan.getAttribute("data-grounded-pub-goal-count")).toBe("1");
+    expect(screen.getByTestId("moil-job-goals-plan-item-0").textContent).toMatch(
+      /Map competitive landscape/,
+    );
+    expect(
+      screen
+        .getByTestId("moil-job-goals-plan-item-2")
+        .getAttribute("data-grounded-pub"),
+    ).toBe("true");
+  });
+
   it("previews recommended ceiling before create (adx)", () => {
     render(<MidnightOil />);
     const preview = screen.getByTestId("moil-ceiling-preview");

@@ -3628,3 +3628,7 @@ vitest domainSearchDefaults 4 · DR host 33 green. P0 operator merge PR #465. Pi
 parseMoilGoalLines + professional research templates + live goal_count plan list
 (one line = one autonomous swarm goal · never invent). vitest moilGoals 3 · MO 28 green.
 P0 operator merge PR #465. Pivot aog+ outside thrash.
+
+## Residual aog · 2026-07-10 — MO job receipt full swarm goals plan
+moil-job-goals-plan stamps research vs grounded_pub counts + numbered list
+(create→job audit · completes aof). vitest MidnightOil 29 green. P0 PR #465. Pivot aoh+.

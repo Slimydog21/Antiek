@@ -70,6 +70,8 @@
  * so operator audits knowledge-dense swarm grounding after create.
  * Residual (aof): multi-goal swarm plan chrome — live goal_count + numbered
  * preview + professional research templates (one line = one swarm goal).
+ * Residual (aog): job receipt lists full swarm goals (research + grounded pubs)
+ * so create→job plan is auditable after recommend-ceiling (parity aof plan).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -1290,6 +1292,62 @@ export default function MidnightOil() {
           </div>
             );
           })()}
+          {/* Residual (aog): full swarm goal plan on job receipt (create→job audit). */}
+          {(job.goals || []).length > 0 ? (
+            <div
+              className="space-y-1 font-mono text-[11px]"
+              data-testid="moil-job-goals-plan"
+              data-goal-count={String((job.goals || []).length)}
+              data-research-goal-count={String(
+                (job.goals || []).filter(
+                  (g) => !String(g || "").startsWith("Ground publication:"),
+                ).length,
+              )}
+              data-grounded-pub-goal-count={String(
+                (job.goals || []).filter((g) =>
+                  String(g || "").startsWith("Ground publication:"),
+                ).length,
+              )}
+              data-view-format="html"
+              role="status"
+            >
+              <p className="opacity-80">
+                Job swarm plan · {(job.goals || []).length} goal
+                {(job.goals || []).length === 1 ? "" : "s"} (
+                {
+                  (job.goals || []).filter(
+                    (g) => !String(g || "").startsWith("Ground publication:"),
+                  ).length
+                }{" "}
+                research ·{" "}
+                {
+                  (job.goals || []).filter((g) =>
+                    String(g || "").startsWith("Ground publication:"),
+                  ).length
+                }{" "}
+                grounded pubs)
+              </p>
+              <ol
+                className="list-decimal pl-5 space-y-0.5 opacity-90"
+                data-testid="moil-job-goals-plan-list"
+              >
+                {(job.goals || []).map((g, i) => {
+                  const text = String(g || "").trim();
+                  const grounded = text.startsWith("Ground publication:");
+                  return (
+                    <li
+                      key={`${i}-${text.slice(0, 32)}`}
+                      data-testid={`moil-job-goals-plan-item-${i}`}
+                      data-goal-index={String(i)}
+                      data-grounded-pub={String(grounded)}
+                    >
+                      {text.length > 200 ? `${text.slice(0, 197)}…` : text}
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
+          ) : null}
           {/* Residual (pc): grounded publication goals on job receipt. */}
           {(job.goals || []).some((g) =>
             String(g || "").startsWith("Ground publication:"),

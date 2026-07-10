@@ -1,0 +1,14 @@
+# inventory-aog · Midnight Oil job receipt full swarm goals plan
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aog
+date: 2026-07-10
+parent_tip: 59fdd4df (aof)
+
+## Closed
+- moil-job-goals-plan: goal_count · research vs grounded_pub counts · numbered list
+- Completes aof create-form plan → job receipt audit flywheel
+- vitest MidnightOil 29 green (aof + aog)
+
+## Next
+aoh+ product residual outside thrash · prefer non-domain · non-MO-goals thrash
+Operator merge PR #465 remains highest leverage (gated)
