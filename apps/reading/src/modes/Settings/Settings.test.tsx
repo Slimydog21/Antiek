@@ -2380,11 +2380,32 @@ describe("Settings SPR-01 + decision-tree install", () => {
         screen.getByTestId("antiek-bench-leaderboard-summary").textContent,
       ).toMatch(/strong-model/);
     });
+    const lbPanel = screen.getByTestId("antiek-bench-leaderboard-panel");
+    expect(lbPanel.getAttribute("data-view-format")).toBe("html");
+    // Residual (aqm): HTML-first · never-auto-route · propose≠promote honesty.
+    expect(lbPanel.getAttribute("data-html-first")).toBe("true");
+    expect(lbPanel.getAttribute("data-never-auto-route")).toBe("true");
+    expect(lbPanel.getAttribute("data-propose-not-promote")).toBe("true");
+    expect(lbPanel.getAttribute("data-notdiamond-authority")).toBe(
+      "advisory_only",
+    );
+    const honesty = screen.getByTestId("antiek-bench-honesty-nav");
+    expect(honesty.getAttribute("data-propose-not-promote")).toBe("true");
     expect(
-      screen
-        .getByTestId("antiek-bench-leaderboard-panel")
-        .getAttribute("data-view-format"),
-    ).toBe("html");
+      screen.getByTestId("antiek-bench-decision-tree-link").getAttribute("href"),
+    ).toBe("#decision-tree-panel");
+    expect(
+      screen.getByTestId("antiek-bench-add-model-link").getAttribute("href"),
+    ).toBe("#add-model-panel");
+    expect(
+      screen.getByTestId("antiek-bench-notdiamond-link").getAttribute("href"),
+    ).toBe("#notdiamond-advisory");
+    expect(
+      screen.getByTestId("antiek-bench-prompt-cost-link").getAttribute("href"),
+    ).toBe("#prompt-cost-projection");
+    expect(
+      screen.getByTestId("antiek-bench-propose-not-promote-hint").textContent,
+    ).toMatch(/propose≠promote|propose.*promote/i);
     // Residual (adf): reciprocal ND vs bench delta on leaderboard panel.
     await waitFor(() => {
       expect(screen.getByTestId("leaderboard-nd-delta")).toBeTruthy();

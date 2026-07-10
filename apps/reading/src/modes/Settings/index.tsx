@@ -2499,11 +2499,65 @@ export default function Settings() {
             className="p-4 space-y-3"
             data-testid="antiek-bench-leaderboard-panel"
             data-view-format="html"
+            data-html-first="true"
+            data-never-auto-route="true"
+            data-propose-not-promote="true"
+            data-notdiamond-authority="advisory_only"
           >
             <p className="text-sm text-ink dark:text-bright">
               Offline weekly model ranking by task class (advisory for
               decision-tree — never auto-routes dispatch). Not a live multi-
-              provider bench run.
+              provider bench run. Propose≠promote · recursive rewrite proposes
+              suite changes only.
+            </p>
+            {/* Residual (aqm): Antiek-bench path honesty + model-choice deep-links. */}
+            <p
+              className="text-[11px] font-mono flex flex-wrap gap-x-3 gap-y-1 opacity-90"
+              data-testid="antiek-bench-honesty-nav"
+              data-view-format="html"
+              data-never-auto-route="true"
+              data-propose-not-promote="true"
+              role="navigation"
+              aria-label="Antiek-bench weekly leaderboard honesty navigation"
+            >
+              <a
+                href="#decision-tree-panel"
+                data-testid="antiek-bench-decision-tree-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Install recommended model into decision-tree (explicit operator click)"
+              >
+                Decision-tree driver
+              </a>
+              <a
+                href="#add-model-panel"
+                data-testid="antiek-bench-add-model-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Register a model into the process-local registry"
+              >
+                Add model
+              </a>
+              <a
+                href="#notdiamond-advisory"
+                data-testid="antiek-bench-notdiamond-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="NotDiamond weekly advisory (advisory only · never dispatch authority)"
+              >
+                ND advisory
+              </a>
+              <a
+                href="#prompt-cost-projection"
+                data-testid="antiek-bench-prompt-cost-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Prompt-cost projection before installing a recommended model"
+              >
+                Prompt-cost projection
+              </a>
+              <span
+                className="opacity-70"
+                data-testid="antiek-bench-propose-not-promote-hint"
+              >
+                propose≠promote · never auto-route · ND advisory only
+              </span>
             </p>
             {leaderboardError && (
               <p className="text-sm text-red-700 dark:text-red-300 font-mono">

@@ -3901,3 +3901,8 @@ vitest Settings decision-tree green. P0 PR #465. Pivot aql+ outside thrash.
 Prompt-cost panel stamps HTML-first · never-invent-price · soft-budget + add-model link.
 Closes model/budget Settings matrix with aqj/aqk. vitest Settings prompt-cost green.
 P0 PR #465. Pivot aqm+ outside thrash.
+
+## Residual aqm · 2026-07-10 — Antiek-bench leaderboard honesty + model-choice deep-links
+Leaderboard stamps HTML-first · never-auto-route · propose≠promote · ND advisory
++ honesty nav to decision-tree · add-model · ND · prompt-cost. Closes Settings
+model-quality matrix aqj–aqm. vitest Settings leaderboard green. P0 PR #465. Pivot aqn+.
