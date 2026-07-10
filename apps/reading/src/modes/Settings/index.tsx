@@ -2934,6 +2934,18 @@ export default function Settings() {
                       it.item_id === "dogfood-wrestle-domain-aware-twin-search",
                   ),
                 )}
+                data-has-collective-unit-twin-seed-posture={String(
+                  (dogfood.items || []).some(
+                    (it) =>
+                      it.item_id === "dogfood-wrestle-collective-unit-twin-seed",
+                  ),
+                )}
+                data-has-moil-deposit-twin-honesty-posture={String(
+                  (dogfood.items || []).some(
+                    (it) =>
+                      it.item_id === "dogfood-wrestle-moil-deposit-twin-honesty",
+                  ),
+                )}
                 data-propose-not-promote="true"
               >
                 <Row label="Suite" value={dogfood.suite_version} />
@@ -2987,7 +2999,7 @@ export default function Settings() {
                     data-testid="antiek-bench-dogfood-v2-postures"
                     role="status"
                   >
-                    Spine postures (v25): write-seed · float evidence · budget
+                    Spine postures (v26): write-seed · float evidence · budget
                     foresight · Faraday book_qa · collective unit write-seed ·
                     Boole book_qa · Heaviside book_qa · Shannon book_qa ·
                     Turing book_qa · Lovelace book_qa · citation-trust
@@ -3001,7 +3013,7 @@ export default function Settings() {
                     TalkToBook twins · MetaReading twins · ResearchThis twins ·
                     spawn merge path · multi-spawn collective merge ·
                     knowledge-dense pub quick-call matrix · budget foresight with pubs ·
-                    purchase seamless port · domain-aware twin search
+                    purchase seamless port · domain-aware twin search · collective unit twin seed · MO deposit twin honesty
                     (listing only · not auto-promoted)
                   </p>
                 ) : null}

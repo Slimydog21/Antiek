@@ -1,0 +1,17 @@
+# inventory-aib · dogfood v26 collective unit twin + MO deposit twin honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aib
+date: 2026-07-10
+parent_tip: 37e67903 (aia)
+
+## Closed
+- Antiek-bench competitive dogfood v26:
+  - dogfood-wrestle-collective-unit-twin-seed (aht)
+  - dogfood-wrestle-moil-deposit-twin-honesty (ahu)
+  - item_count 41 · wrestle=28 · book_qa=9
+- Settings spine postures v26
+- pytest dogfood 5 · Settings 36 green
+
+## Next
+aic+ product residual · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

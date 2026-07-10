@@ -37,7 +37,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (ahd): v23 learns knowledge-dense publication quick-call matrix (agx–ahc).
 # Residual (ahn): v24 learns budget foresight with pubs + purchase seamless port.
 # Residual (ahs): v25 learns domain-aware twin intelligent search (ahr).
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v25"
+# Residual (aib): v26 learns collective unit twin seed + MO deposit twin honesty.
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v26"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -515,6 +516,43 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "search",
                 "subjects",
                 "heat",
+            ),
+        ),
+        # Residual (aib/aht): collective unit HTML twin seed offline honesty.
+        SuiteItem(
+            item_id="dogfood-wrestle-collective-unit-twin-seed",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with collective unit HTML twin seed: when opening multi-spawn cohesive "
+                "unit prompt as float|full HTML seeds twin notes with force_offline and body "
+                "port honesty multi-spawn cohesive unit prompt (never invent live L6 council), "
+                "how should Antiek-bench learn models that keep recursive note-taker substrate "
+                "honest for multi-select unit windows without claiming live multi-agent council?"
+            ),
+            expected_keywords=(
+                "collective",
+                "unit",
+                "twin",
+                "offline",
+                "seed",
+            ),
+        ),
+        # Residual (aib/ahu): Midnight Oil deposit twin port honesty.
+        SuiteItem(
+            item_id="dogfood-wrestle-moil-deposit-twin-honesty",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with Midnight Oil deposit twin honesty: when reseedDepositTwins prefixes "
+                "body with Port path Midnight Oil deposit HTML offline-honest and L4 live worker "
+                "dual-gate deferred, how should Antiek-bench learn models that record MO provenance "
+                "in recursive note-taker substrate without inventing live multi-provider worker steps?"
+            ),
+            expected_keywords=(
+                "midnight",
+                "oil",
+                "deposit",
+                "twin",
+                "offline",
             ),
         ),
         # Residual (aeu): seamless Write path honesty across reading/research surfaces.

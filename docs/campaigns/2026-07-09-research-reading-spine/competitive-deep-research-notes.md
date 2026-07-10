@@ -2809,3 +2809,9 @@ vitest Settings 36 green. P0 operator merge PR #465. Pivot aia+.
 Deferred map links FUTURE-AGENT twin note-taker completeness matrix. Completes
 Settings chokepoint navigation for L5/L6/L7/twin FUTURE-AGENT doctrine.
 vitest Settings 36 green. P0 operator merge PR #465. Pivot aib+.
+
+## Residual aib · 2026-07-10 — dogfood v26 collective unit twin + MO deposit twin honesty
+Suite suite-competitive-dogfood-v26 adds wrestle fixtures for collective unit
+HTML twin seed (aht) and MO deposit twin honesty (ahu). item_count 41 · wrestle=28.
+Settings spine v26. pytest dogfood 5 · Settings 36 green. P0 operator merge PR #465.
+Pivot aic+ outside thrash.
