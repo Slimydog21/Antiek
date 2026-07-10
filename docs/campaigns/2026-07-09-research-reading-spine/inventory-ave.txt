@@ -1,0 +1,24 @@
+# inventory-ave · pure hydrateLiveGateReadiness
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ave
+date: 2026-07-10
+parent_tip: 63d76014f (avd)
+
+## Closed
+- pure `hydrateLiveGateReadiness` (workspace)
+  - L1 arxiv + L2 substack legs: env_enabled ∧ injector_installed
+  - offline_honest when neither live · never_enables_live · html_first
+- Settings hydrate-live-status panel stamps driven by pure readiness
+- 4 pure unit tests + Settings suite green
+
+## Doctrine
+Dual-gate L1/L2 · Settings never enables live injectors · offline-honest default
+
+## Next
+avf+ offline product residual outside thrash
+Avoid: hydrate gate pure thrash · Settings pure CTA cascade · catalog · twin/merge ·
+presets · MO · scorecard · vision · dogfood · readiness→CTA · pure-open ·
+HostedHtml honesty
+Prefer: competitive non-catalog · L3/L4 dual-gate pure parity · MO non-thrash ·
+knowledge connector residual
+Operator merge PR #465 remains P0 (gated)

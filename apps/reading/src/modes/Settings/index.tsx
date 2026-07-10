@@ -30,6 +30,7 @@ import { clearDecisionTreeReadiness } from "../../workspace/clearDecisionTreeRea
 import { suiteProposalApproveReadiness } from "../../workspace/suiteProposalApproveReadiness";
 import { offlineBenchRunReadiness } from "../../workspace/offlineBenchRunReadiness";
 import { depthTierApplyReadiness } from "../../workspace/depthTierApplyReadiness";
+import { hydrateLiveGateReadiness } from "../../workspace/hydrateLiveGateReadiness";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import {
@@ -111,6 +112,8 @@ import {
  * (hard-to-vary reuse · no second pure for identical week contract).
  * Residual (avc): pure depthTierApplyReadiness drives depth-tier Apply CTAs
  * (tier required · optional driver install · never auto-route).
+ * Residual (ave): pure hydrateLiveGateReadiness drives L1/L2 dual-gate stamps
+ * (env + injector · offline-honest · never enables live).
  */
 export default function Settings() {
   const tier = useViewportTier();
@@ -1018,6 +1021,31 @@ export default function Settings() {
   const offlineBenchRunReady = useMemo(
     () => offlineBenchRunReadiness({ week_id: leaderboardWeek }),
     [leaderboardWeek],
+  );
+
+  /**
+   * Residual (ave): pure L1/L2 hydrate dual-gate readiness from live status.
+   * Offline-honest when neither arxiv nor substack is fully gated on.
+   */
+  const hydrateGateReady = useMemo(
+    () =>
+      hydrateLiveGateReadiness({
+        arxiv_env_flag: hydrateLive?.arxiv?.env_flag,
+        arxiv_env_enabled: hydrateLive?.arxiv?.env_enabled,
+        arxiv_injector_installed: hydrateLive?.arxiv?.injector_installed,
+        substack_env_flag: hydrateLive?.substack?.env_flag,
+        substack_env_enabled: hydrateLive?.substack?.env_enabled,
+        substack_injector_installed:
+          hydrateLive?.substack?.injector_installed,
+      }),
+    [
+      hydrateLive?.arxiv?.env_flag,
+      hydrateLive?.arxiv?.env_enabled,
+      hydrateLive?.arxiv?.injector_installed,
+      hydrateLive?.substack?.env_flag,
+      hydrateLive?.substack?.env_enabled,
+      hydrateLive?.substack?.injector_installed,
+    ],
   );
 
   const spendPct = useMemo(() => {
@@ -2412,31 +2440,24 @@ export default function Settings() {
             id="hydrate-live-status"
             data-testid="hydrate-live-status-panel"
             data-view-format="html"
-            data-html-first="true"
-            data-never-enables-live="true"
-            data-offline-honest={
-              hydrateLive ? String(hydrateLive.offline_honest) : undefined
-            }
-            data-any-live-injector={
-              hydrateLive ? String(hydrateLive.any_live_injector) : undefined
-            }
-            // Residual (aee): L1 arxiv live ready / L2 substack live ready composites.
-            data-l1-arxiv-live-ready={
-              hydrateLive
-                ? String(
-                    hydrateLive.arxiv.env_enabled === true &&
-                      hydrateLive.arxiv.injector_installed === true,
-                  )
-                : undefined
-            }
-            data-l2-substack-live-ready={
-              hydrateLive
-                ? String(
-                    hydrateLive.substack.env_enabled === true &&
-                      hydrateLive.substack.injector_installed === true,
-                  )
-                : undefined
-            }
+            data-html-first={String(hydrateGateReady.html_first)}
+            data-never-enables-live={String(
+              hydrateGateReady.never_enables_live,
+            )}
+            // Residual (ave): pure L1/L2 dual-gate readiness stamps.
+            data-offline-honest={String(hydrateGateReady.offline_honest)}
+            data-any-live-injector={String(hydrateGateReady.any_live_ready)}
+            data-any-live-ready={String(hydrateGateReady.any_live_ready)}
+            data-dual-gate={hydrateGateReady.dual_gate}
+            data-l1-arxiv-live-ready={String(
+              hydrateGateReady.arxiv.live_ready,
+            )}
+            data-l2-substack-live-ready={String(
+              hydrateGateReady.substack.live_ready,
+            )}
+            data-l1-summary={hydrateGateReady.arxiv.summary}
+            data-l2-summary={hydrateGateReady.substack.summary}
+            data-gate-summary={hydrateGateReady.summary}
           >
             <p className="text-sm text-ink dark:text-bright">
               Knowledge-dense refs hydrate offline-honest by default (identity
