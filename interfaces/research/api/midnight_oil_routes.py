@@ -54,6 +54,8 @@ from substrate.midnight_oil import (
     MidnightOilLiveDispatchFinalEnablementPlanRequest,
     MidnightOilLiveRunActivationSettingsReceipt,
     MidnightOilLiveRunActivationSettingsRequest,
+    MidnightOilOperatorDeliveryLedgerReconciliationPlanReceipt,
+    MidnightOilOperatorDeliveryLedgerReconciliationPlanRequest,
     MidnightOilOperatorDispatchActivationReadinessPlanReceipt,
     MidnightOilOperatorDispatchActivationReadinessPlanRequest,
     MidnightOilOperatorDispatchAdapterPlanReceipt,
@@ -124,6 +126,7 @@ from substrate.midnight_oil import (
     live_dispatch_final_enablement_apply_plan_midnight_oil,
     live_dispatch_final_enablement_plan_midnight_oil,
     live_run_activation_settings_midnight_oil,
+    operator_delivery_ledger_reconciliation_plan_midnight_oil,
     operator_dispatch_activation_readiness_plan_midnight_oil,
     operator_dispatch_adapter_plan_midnight_oil,
     operator_notification_delivery_apply_plan_midnight_oil,
@@ -574,6 +577,16 @@ def post_midnight_oil_operator_notification_delivery_result_reconciliation_plan(
     return operator_notification_delivery_result_reconciliation_plan_midnight_oil(req)
 
 
+@midnight_oil_router.post(
+    "/operator-delivery-ledger-reconciliation-plan",
+    response_model=MidnightOilOperatorDeliveryLedgerReconciliationPlanReceipt,
+)
+def post_midnight_oil_operator_delivery_ledger_reconciliation_plan(
+    req: MidnightOilOperatorDeliveryLedgerReconciliationPlanRequest,
+) -> MidnightOilOperatorDeliveryLedgerReconciliationPlanReceipt:
+    return operator_delivery_ledger_reconciliation_plan_midnight_oil(req)
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
@@ -602,6 +615,7 @@ __all__ = [
     "post_midnight_oil_live_dispatch_final_enablement_apply_plan",
     "post_midnight_oil_live_dispatch_final_enablement_plan",
     "post_midnight_oil_live_run_activation_settings",
+    "post_midnight_oil_operator_delivery_ledger_reconciliation_plan",
     "post_midnight_oil_operator_dispatch_activation_readiness_plan",
     "post_midnight_oil_operator_dispatch_adapter_plan",
     "post_midnight_oil_operator_notification_delivery_apply_plan",
