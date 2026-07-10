@@ -1109,3 +1109,9 @@ Maxwell → Heaviside engineering reformulation without payment rails.
 MarketplaceHost free-PD host honesty and float DR goal_hint carry
 domains=electricity,engineering for Heaviside. Competitive delta: free
 engineering STEM PD feeds domain-aware research (parity Faraday to · Boole ty).
+
+## Residual ud · 2026-07-10 — dogfood v6 Heaviside book_qa
+suite-competitive-dogfood-v6 adds dogfood-book-heaviside-em. Settings
+data-has-heaviside-book-qa-posture. Competitive delta: Antiek-bench recursive
+rewrite covers free electricity engineering PD (Maxwell → Heaviside line)
+without auto-promote.

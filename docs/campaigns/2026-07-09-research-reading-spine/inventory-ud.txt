@@ -1,0 +1,17 @@
+# inventory-ud · dogfood v6 Heaviside book_qa electricity engineering
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ud
+date: 2026-07-10
+
+## Closed
+- COMPETITIVE_DOGFOOD_VERSION → suite-competitive-dogfood-v6
+- SuiteItem dogfood-book-heaviside-em (book_qa)
+- Settings data-has-heaviside-book-qa-posture + v6 posture copy
+- pytest dogfood 4 · vitest Settings 32 green
+
+## Product why
+Closes ub–uc Heaviside marketplace path into Antiek-bench recursive rewrite
+(parity Faraday + Boole book_qa). propose≠promote.
+
+## Not in scope
+- Operator merge PR #465 (gated)

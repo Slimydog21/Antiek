@@ -17,7 +17,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (tf): v3 adds book_qa electricity STEM (Faraday/Maxwell free PD).
 # Residual (tv): v4 adds multi-spawn collective unit → Write twin_seed posture.
 # Residual (tz): v5 adds book_qa computing/logic (Boole free PD).
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v5"
+# Residual (ud): v6 adds book_qa electricity engineering (Heaviside free PD).
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v6"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -167,6 +168,24 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "logic",
                 "calculus",
                 "computing",
+                "html",
+            ),
+        ),
+        # Residual (ud): free electricity engineering PD → book_qa (Heaviside).
+        SuiteItem(
+            item_id="dogfood-book-heaviside-em",
+            task_class="book_qa",
+            prompt=(
+                "From Heaviside Electromagnetic Theory (free PD HTML): how did "
+                "Heaviside reformulate Maxwell's equations for electrical engineering, "
+                "and why does free public-domain hosting of engineering STEM texts "
+                "matter for technology research workstations?"
+            ),
+            expected_keywords=(
+                "heaviside",
+                "maxwell",
+                "electromagnetic",
+                "engineering",
                 "html",
             ),
         ),
