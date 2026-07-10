@@ -232,12 +232,15 @@ def test_overrun_records_true_spend_and_fails_job():
     out = run_worker_iteration(
         job.job_id,
         store=store,
-        step_fn=lambda _job: WorkerStepResult(spent_usd=0.90),
+        step_fn=lambda _job: WorkerStepResult(
+            spent_usd=0.90, spawn_id="spn_rejected_overrun"
+        ),
         project_fn=lambda _job: 0.20,
         clock=FakeClock(),
     )
     assert out.status == "failed"
     assert out.spent_usd == 0.90
+    assert "spn_rejected_overrun" not in out.spawn_ids
     # Projection overrun is auditable even when total spend remains below cap.
     import duckdb
 
