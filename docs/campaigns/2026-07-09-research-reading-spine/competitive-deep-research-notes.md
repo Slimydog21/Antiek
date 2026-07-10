@@ -2307,3 +2307,8 @@ SpawnMerge Open Write stamps data-mode · data-draft-leaves-parent · data-paren
 into_parent is machine-readable on the Write handoff (not only metrics). Competitive
 delta: merge→Write note-taker path honesty parity with ael reading→DR→Write. vitest
 SpawnMergePanel 8 green.
+
+## Residual aen · 2026-07-10 — HostedHtml Open Write seamless host→Write
+HostedHtmlDocumentHost Open Write stamps data-document-id · data-seamless-host-write
+so reading HTML host → Write note-taker path is machine-readable (parity ael/aem).
+vitest HostedHtmlDocumentHost 23 green.

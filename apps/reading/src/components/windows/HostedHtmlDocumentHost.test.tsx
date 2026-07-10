@@ -230,6 +230,26 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(href).toMatch(/twin_seed=antiek\.twin_write_seed\./);
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
     expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
+    // Residual (aen): seamless host→Write path on Open Write link.
+    expect(write.getAttribute("data-document-id")).toBe("doc_abc");
+    expect(write.getAttribute("data-seamless-host-write")).toBe("true");
+  });
+
+  it("stamps seamless host→Write path on marketplace_host Open Write (aen)", () => {
+    render(
+      <HostedHtmlDocumentHost
+        document_id="hdoc_seamless"
+        title="Hosted book seamless"
+        view_format="html"
+        source="marketplace_host"
+        html="<p>Seamless host body</p>"
+      />,
+    );
+    const write = screen.getByTestId("hosted-html-open-write");
+    expect(write.getAttribute("data-document-id")).toBe("hdoc_seamless");
+    expect(write.getAttribute("data-seamless-host-write")).toBe("true");
+    expect(write.getAttribute("data-write-seed-source")).toBe("marketplace_host");
+    expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
   });
 
   it("stamps research_progress_complete host honesty (so)", () => {

@@ -1,0 +1,19 @@
+# inventory-aen · HostedHtml Open Write seamless host→Write path honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aen
+date: 2026-07-10
+parent_tip: 0120ee39 (aem)
+
+## Closed
+- hosted-html-open-write: data-document-id · data-seamless-host-write
+- marketplace_host Open Write path test
+- vitest HostedHtmlDocumentHost · 23 passed
+
+## Why this residual
+Reading HTML host (marketplace books, merge floats, MO deposits, research
+HTML) is the primary reading surface. Open Write had has_body + source but
+not machine-readable document_id/seamless-host-write on the link itself
+(parity ael DR path + aem merge path).
+
+## Not in scope
+- Marketplace mode-level open-write seamless-port (aeo candidate)

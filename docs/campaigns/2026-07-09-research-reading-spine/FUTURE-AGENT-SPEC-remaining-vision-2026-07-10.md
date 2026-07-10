@@ -1,14 +1,14 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** residual **aem** (spawn-merge Open Write draft vs into_parent path) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
+**Campaign tip at write:** residual **aen** (HostedHtml Open Write seamless host→Write) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **URL:** https://github.com/Slimydog21/Antiek/pull/465  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
 
 ## Do not rebuild
 
-Prefer **inventory-aem** + **NEXT-WAVE-after-aem** + **SESSION-ARC-aeh-aej-collective-write-budget.md**.  
-This continuation: **224 residual ships** from vy tip `8e280766`.
+Prefer **inventory-aen** + **NEXT-WAVE-after-aen** + **SESSION-ARC-aeh-aej-collective-write-budget.md**.  
+This continuation: **225 residual ships** from vy tip `8e280766`.
 
 ### Closed product (high signal)
 
@@ -17,6 +17,7 @@ This continuation: **224 residual ships** from vy tip `8e280766`.
 | Write-seed body honesty | **adn–aei** |
 | Reading→research→Write path | DR Open Write parent provenance **ael** |
 | Merge→Write path honesty | draft_combined vs into_parent on Open Write **aem** |
+| Host→Write path honesty | HostedHtml data-seamless-host-write **aen** |
 | Collective cohesive unit | float|full + Write unit **aeh** |
 | Budget foresight | **aeb** + Settings **aej** |
 | Midnight Oil ceiling | **adx–aeg** |
@@ -27,8 +28,8 @@ This continuation: **224 residual ships** from vy tip `8e280766`.
 ### P0 — Operator merge PR #465
 **Highest leverage remaining.** Agents never merge main/prod.
 
-### P1 next offline (residual **aen+**)
-HostedHtml Open Write seamless host→Write · marketplace library/host Open Write seamless-port · float merge UX. Leave thrash.
+### P1 next offline (residual **aeo+**)
+Marketplace library/host Open Write seamless-port · float merge UX. Leave thrash.
 
 ## Doctrine
 One residual letter/cycle · inventory-first · green tests · campaign push only · complete work never complete goal · Infinite until STOP.

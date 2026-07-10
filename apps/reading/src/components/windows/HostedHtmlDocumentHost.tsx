@@ -38,6 +38,8 @@
  * spawn_count) for multi-select cohesive unit HTML windows.
  * Residual (tu): Open Write title + twin_seed source preserve collective_unit_prompt
  * (store/load allowlist; no collapse to twin_draft_selected).
+ * Residual (aen): Open Write stamps document_id + seamless-host-write path
+ * honesty (hosted HTML reading surface → Write note-taker; parity ael/aem).
  *
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
  */
@@ -472,6 +474,11 @@ export default function HostedHtmlDocumentHost(
                 // Residual (acn): body honesty on twin_seed (parity acf/ack/acl/acm).
                 data-write-seed-has-body={String(
                   Boolean(isHtml && plainTextFromHtml(html || "").trim()),
+                )}
+                // Residual (aen): host document path honesty on Open Write link.
+                data-document-id={assetId || ""}
+                data-seamless-host-write={String(
+                  Boolean(assetId && isHtml),
                 )}
                 data-write-seed-source={
                   isEvidencePack
