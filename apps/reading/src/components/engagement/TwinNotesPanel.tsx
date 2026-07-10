@@ -22,6 +22,7 @@
  * selective promote) — same kind axis as promoteKinds.
  * Residual (ms): "Promote visible" one-click — align promoteKinds to listFilter
  * then promote (browse→merge path without a second dropdown).
+ * Residual (aio): FUTURE-AGENT twin completeness + competitive scorecard deep-links.
  * Residual (mt): dual-gate L1–L4 checklist deep-link for L3 twin live seed prep
  * (parity mj/ml/mm; never enables injectors).
  * Residual (mx): multi-select by note_id — promote only checked twin notes.
@@ -1017,6 +1018,21 @@ export function TwinNotesPanel({
             title="Dual-gate L3 twin live seed checklist (prep only · offline default)"
           >
             Dual-gate L3 twin checklist
+          </a>
+          {/* Residual (aio): twin completeness FUTURE brief + competitive scorecard. */}
+          <a
+            href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md"
+            data-testid="twin-notes-future-agent-matrix-link"
+            title="Future-agent twin note-taker completeness matrix"
+          >
+            FUTURE-AGENT twin matrix
+          </a>
+          <a
+            href="/settings#settings-competitive-dr-scorecard"
+            data-testid="twin-notes-competitive-scorecard-link"
+            title="Settings competitive deep-research scorecard"
+          >
+            Competitive DR scorecard
           </a>
         </p>
         {/* Residual (kr): depth posture when host passes researchTier. */}

@@ -2880,3 +2880,8 @@ ResearchProgress green. P0 operator merge PR #465. Pivot ain+.
 Wave handoff: pub-ref foresight chrome matrix complete · competitive DR quality
 brief · Settings scorecard · citation chain · progress deep-link · dogfood v27–v28.
 P0 operator merge PR #465. Pivot aio+ outside thrash.
+
+## Residual aio · 2026-07-10 — TwinNotes FUTURE matrix + competitive scorecard deep-links
+Recursive note-taker TwinNotesPanel links FUTURE-AGENT twin completeness matrix
+and Settings competitive DR scorecard. vitest TwinNotes green. P0 operator merge
+PR #465. Pivot aip+.

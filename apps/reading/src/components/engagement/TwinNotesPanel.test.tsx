@@ -227,6 +227,17 @@ describe("TwinNotesPanel", () => {
     // Residual (xa): L3 twin checklist section deep-link.
     expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l3-twin/);
     expect(dual.textContent).toMatch(/L3 twin checklist/i);
+    // Residual (aio): FUTURE-AGENT twin matrix + competitive scorecard deep-links.
+    expect(
+      screen
+        .getByTestId("twin-notes-future-agent-matrix-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix/);
+    expect(
+      screen
+        .getByTestId("twin-notes-competitive-scorecard-link")
+        .getAttribute("href"),
+    ).toBe("/settings#settings-competitive-dr-scorecard");
   });
 
   it("surfaces researchTier chrome when provided (kr)", async () => {
