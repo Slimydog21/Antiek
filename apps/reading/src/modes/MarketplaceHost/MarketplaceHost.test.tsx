@@ -601,6 +601,20 @@ describe("MarketplaceHost mode", () => {
         /in-session host body/i,
       );
     });
+    // Residual (ach): offline twin seed after library rehydrate (recursive note-taker).
+    await waitFor(() => {
+      expect(seedTwinNotes).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "hdoc_old",
+          force_offline: true,
+        }),
+      );
+    });
+    await waitFor(() => {
+      const status = screen.getByTestId("marketplace-twin-seed-status");
+      expect(status.getAttribute("data-offline-honest")).toBe("true");
+      expect(status.getAttribute("data-asset-id")).toBe("hdoc_old");
+    });
   });
 
   it("filters catalog by title/author substring (dj)", async () => {

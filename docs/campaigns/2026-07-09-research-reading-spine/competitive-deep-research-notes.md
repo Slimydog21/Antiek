@@ -2117,3 +2117,8 @@ Library rehydrate sets hosted state with HTML body so Open Write twin_seed has
 body after rehydrate open (parity acf host path). Competitive delta: seamless
 port library → rehydrate → Write recursive note-taker keeps full HTML substrate.
 
+## Residual ach · 2026-07-10 — library rehydrate offline twin seed
+Library rehydrate offline-seeds twin notes (force_offline) so recursive note-taker
+substrate joins library-opened books (parity host/purchase gj). Competitive delta:
+seamless port library → rehydrate → twins → Write is note-taker complete offline.
+

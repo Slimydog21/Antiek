@@ -726,7 +726,7 @@ export default function MarketplaceHost({
       const licenseClass = body.license_class || doc.license_class || "unknown";
       // Residual (acg): retain rehydrated body in hosted state so library Open Write
       // twin_seed can use full HTML (parity acf in-session host body path).
-      setHosted({
+      const rehydratedHost: HostResultResponse = {
         document_id: documentId,
         owner_id: ownerId,
         book_id: documentId,
@@ -738,7 +738,8 @@ export default function MarketplaceHost({
         library_document_ids: [documentId],
         view_format: "html",
         html: body.html,
-      });
+      };
+      setHosted(rehydratedHost);
       openHostedWindow({
         document_id: documentId,
         title,
@@ -748,6 +749,9 @@ export default function MarketplaceHost({
         owner_id: ownerId,
         source: "marketplace_library_rehydrate",
       });
+      // Residual (ach): offline twin seed after library rehydrate so recursive
+      // note-taker substrate joins library-opened books (parity host/purchase gj).
+      await seedHostedTwins(rehydratedHost);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
