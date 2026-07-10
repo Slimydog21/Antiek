@@ -382,6 +382,9 @@ def test_catalog_route_subjects_and_by_subject(client) -> None:
     assert "computing" in by_id["pd-lovelace-analytical-engine"]["subjects"]
     # Residual (yr): technology domain honesty spans free STEM electricity+computing.
     assert body["by_subject"].get("technology", 0) >= 4
+    # Residual (zb): free_count honesty includes full free PD catalog (STEM expanded).
+    assert body.get("free_count", 0) >= 16
+    assert body.get("public_domain_count", 0) >= 16
 
 
 def test_electricity_chip_filter_includes_faraday_maxwell() -> None:
