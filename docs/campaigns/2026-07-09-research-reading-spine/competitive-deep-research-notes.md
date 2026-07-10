@@ -3216,3 +3216,8 @@ Paid catalog rows show disabled Live checkout (L5 deferred) CTA + honesty note;
 manual Purchase + host remains the only active paid path. Never invents charge.
 FUTURE L5 Sprint 3 offline stub. vitest MarketplaceHost 41 green.
 P0 operator merge PR #465. Pivot alb+ outside thrash.
+
+## Residual alb · 2026-07-10 — SESSION-ARC akr–ala L5 payment complete offline
+Wave handoff: L5 Sprint 1 adapter · Sprint 1 honesty · Sprint 2 purchase path ·
+Sprint 3 deferred CTA — offline product-complete for digital book payment.
+P0 operator merge PR #465. Pivot alc+ outside thrash (prefer non-L5).
