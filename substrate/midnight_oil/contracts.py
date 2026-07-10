@@ -7185,6 +7185,220 @@ class MidnightOilFinalArtifactPersistencePlanReceipt(BaseModel):
     adapter_plan_notes: list[str] = Field(default_factory=list)
 
 
+class MidnightOilFinalArtifactGraphCommitPlanRequest(
+    MidnightOilFinalArtifactPersistencePlanRequest
+):
+    final_artifact_persistence_plan_receipt: (
+        MidnightOilFinalArtifactPersistencePlanReceipt
+    )
+
+    @model_validator(mode="after")
+    def _final_artifact_persistence_plan_matches(
+        self,
+    ) -> MidnightOilFinalArtifactGraphCommitPlanRequest:
+        persistence_plan = self.final_artifact_persistence_plan_receipt
+        html_plan = self.final_html_artifact_assembly_plan_receipt
+        if (
+            persistence_plan.final_html_artifact_assembly_plan_receipt_id
+            != html_plan.receipt_id
+        ):
+            raise ValueError(
+                "final_artifact_persistence_plan_receipt must reference final_html_artifact_assembly_plan_receipt"
+            )
+        if (
+            persistence_plan.final_synthesis_draft_plan_receipt_id
+            != self.final_synthesis_draft_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "final_artifact_persistence_plan_receipt must reference final_synthesis_draft_plan_receipt"
+            )
+        if (
+            persistence_plan.synthesis_bundle_assembly_plan_receipt_id
+            != self.synthesis_bundle_assembly_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "final_artifact_persistence_plan_receipt must reference synthesis_bundle_assembly_plan_receipt"
+            )
+        if (
+            persistence_plan.worker_synthesis_handoff_plan_receipt_id
+            != self.worker_synthesis_handoff_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "final_artifact_persistence_plan_receipt must reference worker_synthesis_handoff_plan_receipt"
+            )
+        if (
+            persistence_plan.worker_output_aggregation_plan_receipt_id
+            != self.worker_output_aggregation_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "final_artifact_persistence_plan_receipt must reference worker_output_aggregation_plan_receipt"
+            )
+        if persistence_plan.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError(
+                "final_artifact_persistence_plan_receipt must reference runner_handoff"
+            )
+        if persistence_plan.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError(
+                "final_artifact_persistence_plan_receipt must reference approval_receipt"
+            )
+        if persistence_plan.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError(
+                "final_artifact_persistence_plan_receipt must reference launch_packet"
+            )
+        if persistence_plan.run_id != self.launch_packet.run_id:
+            raise ValueError(
+                "final_artifact_persistence_plan_receipt must reference launch run"
+            )
+        if (
+            persistence_plan.status
+            != "blocked_final_artifact_persistence_unimplemented"
+        ):
+            raise ValueError(
+                "final_artifact_persistence_plan_receipt must be blocked_final_artifact_persistence_unimplemented"
+            )
+        if (
+            persistence_plan.final_artifact_persistence_allowed
+            or persistence_plan.final_artifact_persisted
+            or persistence_plan.information_asset_created
+            or persistence_plan.hosted_html_asset_created
+            or persistence_plan.account_asset_binding_created
+            or persistence_plan.twin_notes_binding_created
+            or persistence_plan.citation_index_binding_created
+            or persistence_plan.artifact_ledger_entry_created
+        ):
+            raise ValueError(
+                "final_artifact_persistence_plan_receipt must not create final artifact persistence state"
+            )
+        if (
+            persistence_plan.graph_node_created
+            or persistence_plan.graph_edge_set_created
+            or persistence_plan.graph_mutated
+        ):
+            raise ValueError(
+                "final_artifact_persistence_plan_receipt must not create graph state"
+            )
+        if (
+            persistence_plan.final_html_artifact_assembled
+            or persistence_plan.final_html_document_created
+            or persistence_plan.final_html_twin_notes_document_created
+            or persistence_plan.final_html_citation_index_created
+        ):
+            raise ValueError(
+                "final_artifact_persistence_plan_receipt must not create final HTML artifact state"
+            )
+        if persistence_plan.final_synthesis_draft_created:
+            raise ValueError(
+                "final_artifact_persistence_plan_receipt must not create final synthesis state"
+            )
+        if persistence_plan.worker_started:
+            raise ValueError(
+                "final_artifact_persistence_plan_receipt must not start worker"
+            )
+        if persistence_plan.runner_dispatch_enqueued:
+            raise ValueError(
+                "final_artifact_persistence_plan_receipt must not enqueue runner dispatch"
+            )
+        if persistence_plan.dispatch_performed:
+            raise ValueError(
+                "final_artifact_persistence_plan_receipt must not dispatch"
+            )
+        if persistence_plan.budget_reserved:
+            raise ValueError(
+                "final_artifact_persistence_plan_receipt must not reserve budget"
+            )
+        if persistence_plan.provider_calls_made:
+            raise ValueError(
+                "final_artifact_persistence_plan_receipt must not include provider calls"
+            )
+        if persistence_plan.retrieval_performed:
+            raise ValueError(
+                "final_artifact_persistence_plan_receipt must not perform retrieval"
+            )
+        if persistence_plan.source_receipts_created:
+            raise ValueError(
+                "final_artifact_persistence_plan_receipt must not create source receipts"
+            )
+        if persistence_plan.final_artifact_created:
+            raise ValueError(
+                "final_artifact_persistence_plan_receipt must not create final artifact"
+            )
+        return self
+
+
+class MidnightOilFinalArtifactGraphCommitPlanReceipt(BaseModel):
+    receipt_id: str
+    final_artifact_persistence_plan_receipt_id: str
+    final_html_artifact_assembly_plan_receipt_id: str
+    final_synthesis_draft_plan_receipt_id: str
+    synthesis_bundle_assembly_plan_receipt_id: str
+    worker_synthesis_handoff_plan_receipt_id: str
+    worker_output_aggregation_plan_receipt_id: str
+    launch_packet_id: str
+    approval_receipt_id: str
+    runner_handoff_id: str
+    run_id: str
+    status: Literal["blocked_final_artifact_graph_commit_unimplemented"] = (
+        "blocked_final_artifact_graph_commit_unimplemented"
+    )
+    adapter_key: Literal["final_artifact_graph_commit"] = (
+        "final_artifact_graph_commit"
+    )
+    planned_final_artifact_graph_commit_receipt_id: str
+    planned_graph_commit_id: str
+    planned_graph_transaction_id: str
+    planned_graph_node_id: str
+    planned_graph_edge_set_id: str
+    planned_graph_snapshot_id: str
+    planned_graph_lineage_index_id: str
+    planned_information_asset_id: str
+    planned_hosted_html_asset_id: str
+    planned_artifact_ledger_entry_id: str
+    planned_final_html_artifact_id: str
+    planned_final_html_document_id: str
+    planned_final_synthesis_draft_id: str
+    planned_synthesis_bundle_id: str
+    planned_synthesis_source_packet_id: str
+    planned_synthesis_evidence_map_id: str
+    planned_worker_id: str
+    planned_runner_dispatch_id: str
+    planned_idempotency_key: str
+    final_artifact_graph_commit_blockers: list[str]
+    required_final_artifact_graph_commit_invariants: list[str]
+    required_final_artifact_graph_commit_receipt_fields: list[str]
+    blocker_reason: Literal["final_artifact_graph_commit_unimplemented"] = (
+        "final_artifact_graph_commit_unimplemented"
+    )
+    final_artifact_graph_commit_allowed: bool = False
+    graph_commit_created: bool = False
+    graph_transaction_created: bool = False
+    graph_node_committed: bool = False
+    graph_edge_set_committed: bool = False
+    graph_snapshot_created: bool = False
+    graph_lineage_index_created: bool = False
+    final_artifact_persistence_allowed: bool = False
+    final_artifact_persisted: bool = False
+    information_asset_created: bool = False
+    hosted_html_asset_created: bool = False
+    artifact_ledger_entry_created: bool = False
+    graph_node_created: bool = False
+    graph_edge_set_created: bool = False
+    final_html_artifact_assembled: bool = False
+    final_synthesis_draft_created: bool = False
+    synthesis_bundle_assembled: bool = False
+    worker_output_aggregated: bool = False
+    worker_started: bool = False
+    scheduler_job_created: bool = False
+    runner_dispatch_enqueued: bool = False
+    dispatch_performed: bool = False
+    budget_reserved: bool = False
+    provider_calls_made: bool = False
+    retrieval_performed: bool = False
+    source_receipts_created: bool = False
+    graph_mutated: bool = False
+    final_artifact_created: bool = False
+    adapter_plan_notes: list[str] = Field(default_factory=list)
+
+
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
     price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
@@ -10730,6 +10944,141 @@ def final_artifact_persistence_plan_midnight_oil(
         adapter_plan_notes=[
             "final artifact persistence plan only: no hosted HTML asset, information asset, account binding, graph node, ledger entry, or final artifact is created",
             "this receipt documents persistence requirements after final HTML artifact assembly planning",
+            "no activation readiness, live dispatch, scheduler job, worker runtime, budget reservation, provider call, retrieval, source receipt, graph mutation, or artifact write is performed",
+        ],
+    )
+
+
+def final_artifact_graph_commit_plan_midnight_oil(
+    req: MidnightOilFinalArtifactGraphCommitPlanRequest,
+) -> MidnightOilFinalArtifactGraphCommitPlanReceipt:
+    run_id = req.launch_packet.run_id
+    persistence_plan = req.final_artifact_persistence_plan_receipt
+    return MidnightOilFinalArtifactGraphCommitPlanReceipt(
+        receipt_id=f"{run_id}-final-artifact-graph-commit-plan",
+        final_artifact_persistence_plan_receipt_id=persistence_plan.receipt_id,
+        final_html_artifact_assembly_plan_receipt_id=(
+            persistence_plan.final_html_artifact_assembly_plan_receipt_id
+        ),
+        final_synthesis_draft_plan_receipt_id=(
+            persistence_plan.final_synthesis_draft_plan_receipt_id
+        ),
+        synthesis_bundle_assembly_plan_receipt_id=(
+            persistence_plan.synthesis_bundle_assembly_plan_receipt_id
+        ),
+        worker_synthesis_handoff_plan_receipt_id=(
+            persistence_plan.worker_synthesis_handoff_plan_receipt_id
+        ),
+        worker_output_aggregation_plan_receipt_id=(
+            persistence_plan.worker_output_aggregation_plan_receipt_id
+        ),
+        launch_packet_id=req.launch_packet.packet_id,
+        approval_receipt_id=req.approval_receipt.receipt_id,
+        runner_handoff_id=req.runner_handoff.handoff_id,
+        run_id=run_id,
+        planned_final_artifact_graph_commit_receipt_id=(
+            f"{run_id}-final-artifact-graph-commit-receipt"
+        ),
+        planned_graph_commit_id=f"{run_id}-final-artifact-graph-commit",
+        planned_graph_transaction_id=f"{run_id}-final-artifact-graph-transaction",
+        planned_graph_node_id=persistence_plan.planned_graph_node_id,
+        planned_graph_edge_set_id=persistence_plan.planned_graph_edge_set_id,
+        planned_graph_snapshot_id=f"{run_id}-final-artifact-graph-snapshot",
+        planned_graph_lineage_index_id=(
+            f"{run_id}-final-artifact-graph-lineage-index"
+        ),
+        planned_information_asset_id=persistence_plan.planned_information_asset_id,
+        planned_hosted_html_asset_id=persistence_plan.planned_hosted_html_asset_id,
+        planned_artifact_ledger_entry_id=(
+            persistence_plan.planned_artifact_ledger_entry_id
+        ),
+        planned_final_html_artifact_id=(
+            persistence_plan.planned_final_html_artifact_id
+        ),
+        planned_final_html_document_id=(
+            persistence_plan.planned_final_html_document_id
+        ),
+        planned_final_synthesis_draft_id=(
+            persistence_plan.planned_final_synthesis_draft_id
+        ),
+        planned_synthesis_bundle_id=persistence_plan.planned_synthesis_bundle_id,
+        planned_synthesis_source_packet_id=(
+            persistence_plan.planned_synthesis_source_packet_id
+        ),
+        planned_synthesis_evidence_map_id=(
+            persistence_plan.planned_synthesis_evidence_map_id
+        ),
+        planned_worker_id=persistence_plan.planned_worker_id,
+        planned_runner_dispatch_id=persistence_plan.planned_runner_dispatch_id,
+        planned_idempotency_key=persistence_plan.planned_idempotency_key,
+        final_artifact_graph_commit_blockers=[
+            *persistence_plan.final_artifact_persistence_blockers,
+            "final artifact graph commit receipt writer",
+            "graph transaction writer",
+            "graph node commit writer",
+            "graph edge set commit writer",
+            "graph lineage index writer",
+            "graph snapshot writer",
+            "idempotent final artifact graph commit replay protection",
+        ],
+        required_final_artifact_graph_commit_invariants=[
+            "final artifact graph commit planner must require final artifact persistence planning before any graph commit can be written",
+            "final artifact graph commit planner must bind the graph transaction, graph node, graph edge set, graph snapshot, and graph lineage index to the same information asset, hosted HTML asset, source packet, evidence map, runner dispatch id, and idempotency key",
+            "final artifact graph commit planner must keep graph commits uncreated until durable final artifact persistence receipts exist",
+            "final artifact graph commit planner must preserve source/evidence/citation lineage through the final artifact graph node, edge set, snapshot, and lineage index",
+            "final artifact graph commit planner must not dispatch providers, perform retrieval, mutate graph, or write final artifacts while planning graph commit controls",
+        ],
+        required_final_artifact_graph_commit_receipt_fields=[
+            "final_artifact_graph_commit_plan_receipt_id",
+            "final_artifact_persistence_plan_receipt_id",
+            "final_artifact_graph_commit_receipt_id",
+            "graph_commit_id",
+            "graph_transaction_id",
+            "graph_node_id",
+            "graph_edge_set_id",
+            "graph_snapshot_id",
+            "graph_lineage_index_id",
+            "information_asset_id",
+            "hosted_html_asset_id",
+            "synthesis_source_packet_id",
+            "synthesis_evidence_map_id",
+            "runner_dispatch_id",
+            "idempotency_key",
+            "graph_commit_created",
+            "created_at",
+        ],
+        blocker_reason="final_artifact_graph_commit_unimplemented",
+        final_artifact_graph_commit_allowed=False,
+        graph_commit_created=False,
+        graph_transaction_created=False,
+        graph_node_committed=False,
+        graph_edge_set_committed=False,
+        graph_snapshot_created=False,
+        graph_lineage_index_created=False,
+        final_artifact_persistence_allowed=False,
+        final_artifact_persisted=False,
+        information_asset_created=False,
+        hosted_html_asset_created=False,
+        artifact_ledger_entry_created=False,
+        graph_node_created=False,
+        graph_edge_set_created=False,
+        final_html_artifact_assembled=False,
+        final_synthesis_draft_created=False,
+        synthesis_bundle_assembled=False,
+        worker_output_aggregated=False,
+        worker_started=False,
+        scheduler_job_created=False,
+        runner_dispatch_enqueued=False,
+        dispatch_performed=False,
+        budget_reserved=False,
+        provider_calls_made=False,
+        retrieval_performed=False,
+        source_receipts_created=False,
+        graph_mutated=False,
+        final_artifact_created=False,
+        adapter_plan_notes=[
+            "final artifact graph commit plan only: no graph transaction, node commit, edge set, snapshot, lineage index, hosted asset, or final artifact is created",
+            "this receipt documents graph commit requirements after final artifact persistence planning",
             "no activation readiness, live dispatch, scheduler job, worker runtime, budget reservation, provider call, retrieval, source receipt, graph mutation, or artifact write is performed",
         ],
     )

@@ -2641,6 +2641,79 @@ export interface MidnightOilFinalArtifactPersistencePlanReceipt {
   adapter_plan_notes: string[];
 }
 
+export interface MidnightOilFinalArtifactGraphCommitPlanRequest
+  extends MidnightOilFinalArtifactPersistencePlanRequest {
+  final_artifact_persistence_plan_receipt: MidnightOilFinalArtifactPersistencePlanReceipt;
+}
+
+export interface MidnightOilFinalArtifactGraphCommitPlanReceipt {
+  receipt_id: string;
+  final_artifact_persistence_plan_receipt_id: string;
+  final_html_artifact_assembly_plan_receipt_id: string;
+  final_synthesis_draft_plan_receipt_id: string;
+  synthesis_bundle_assembly_plan_receipt_id: string;
+  worker_synthesis_handoff_plan_receipt_id: string;
+  worker_output_aggregation_plan_receipt_id: string;
+  launch_packet_id: string;
+  approval_receipt_id: string;
+  runner_handoff_id: string;
+  run_id: string;
+  status: "blocked_final_artifact_graph_commit_unimplemented";
+  adapter_key: "final_artifact_graph_commit";
+  planned_final_artifact_graph_commit_receipt_id: string;
+  planned_graph_commit_id: string;
+  planned_graph_transaction_id: string;
+  planned_graph_node_id: string;
+  planned_graph_edge_set_id: string;
+  planned_graph_snapshot_id: string;
+  planned_graph_lineage_index_id: string;
+  planned_information_asset_id: string;
+  planned_hosted_html_asset_id: string;
+  planned_artifact_ledger_entry_id: string;
+  planned_final_html_artifact_id: string;
+  planned_final_html_document_id: string;
+  planned_final_synthesis_draft_id: string;
+  planned_synthesis_bundle_id: string;
+  planned_synthesis_source_packet_id: string;
+  planned_synthesis_evidence_map_id: string;
+  planned_worker_id: string;
+  planned_runner_dispatch_id: string;
+  planned_idempotency_key: string;
+  final_artifact_graph_commit_blockers: string[];
+  required_final_artifact_graph_commit_invariants: string[];
+  required_final_artifact_graph_commit_receipt_fields: string[];
+  blocker_reason: "final_artifact_graph_commit_unimplemented";
+  final_artifact_graph_commit_allowed: boolean;
+  graph_commit_created: boolean;
+  graph_transaction_created: boolean;
+  graph_node_committed: boolean;
+  graph_edge_set_committed: boolean;
+  graph_snapshot_created: boolean;
+  graph_lineage_index_created: boolean;
+  final_artifact_persistence_allowed: boolean;
+  final_artifact_persisted: boolean;
+  information_asset_created: boolean;
+  hosted_html_asset_created: boolean;
+  artifact_ledger_entry_created: boolean;
+  graph_node_created: boolean;
+  graph_edge_set_created: boolean;
+  final_html_artifact_assembled: boolean;
+  final_synthesis_draft_created: boolean;
+  synthesis_bundle_assembled: boolean;
+  worker_output_aggregated: boolean;
+  worker_started: boolean;
+  scheduler_job_created: boolean;
+  runner_dispatch_enqueued: boolean;
+  dispatch_performed: boolean;
+  budget_reserved: boolean;
+  provider_calls_made: boolean;
+  retrieval_performed: boolean;
+  source_receipts_created: boolean;
+  graph_mutated: boolean;
+  final_artifact_created: boolean;
+  adapter_plan_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -3325,4 +3398,24 @@ export async function finalArtifactPersistencePlanMidnightOil(
     );
   }
   return (await resp.json()) as MidnightOilFinalArtifactPersistencePlanReceipt;
+}
+
+export async function finalArtifactGraphCommitPlanMidnightOil(
+  request: MidnightOilFinalArtifactGraphCommitPlanRequest,
+): Promise<MidnightOilFinalArtifactGraphCommitPlanReceipt> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/midnight-oil/final-artifact-graph-commit-plan`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+  );
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(
+      `POST /research/midnight-oil/final-artifact-graph-commit-plan: HTTP ${resp.status}: ${body}`,
+    );
+  }
+  return (await resp.json()) as MidnightOilFinalArtifactGraphCommitPlanReceipt;
 }
