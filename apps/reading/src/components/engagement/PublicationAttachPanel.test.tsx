@@ -116,9 +116,21 @@ describe("PublicationAttachPanel residual ck/ed", () => {
         .getByTestId("publication-attach-result")
         .getAttribute("data-citation-trust"),
     ).toBe("grounded");
+    const trust = screen.getByTestId("publication-attach-citation-trust");
+    expect(trust.textContent).toMatch(/grounded/i);
+    // Residual (vb): grounded attach still deep-links hydrate maintain-prep.
+    expect(trust.getAttribute("data-citation-trust")).toBe("grounded");
+    expect(trust.getAttribute("data-offline-hydrate-default")).toBe("true");
     expect(
-      screen.getByTestId("publication-attach-citation-trust").textContent,
-    ).toMatch(/grounded/i);
+      screen
+        .getByTestId("publication-attach-hydrate-settings-link")
+        .getAttribute("href"),
+    ).toBe("/settings#hydrate-live-status");
+    expect(
+      screen
+        .getByTestId("publication-attach-hydrate-dual-gate-link")
+        .getAttribute("href") || "",
+    ).toMatch(/DUAL-GATE-L1-L4/);
     // Residual (hz): machine-readable attach+hydrate metrics.
     const metrics = screen.getByTestId("publication-attach-metrics");
     expect(metrics.getAttribute("data-attached-count")).toBe("1");

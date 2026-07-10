@@ -1228,3 +1228,8 @@ PR #465.
 Grounded evidence packs deep-link Settings hydrate readiness + dual-gate L1–L2
 (parity ungrounded up). Competitive delta: citation trust success still exposes
 prep for live injectors — never silent capability.
+
+## Residual vb · 2026-07-10 — grounded attach hydrate maintain-prep
+PublicationAttachPanel always shows Settings hydrate + dual-gate links
+(grounded and ungrounded). Competitive delta: attach success stays L1/L2
+prep-visible — full citation-trust matrix with evidence pack va.
