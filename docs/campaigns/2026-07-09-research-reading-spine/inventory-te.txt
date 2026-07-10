@@ -1,0 +1,14 @@
+# inventory-te · Host Faraday/Maxwell as HTML free PD
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: te
+date: 2026-07-10
+
+## Closed
+- test_host_faraday_maxwell_html_first_electricity
+- host_book_into_account → view_format=html · license public_domain · body needles
+- never %PDF / application/pdf in projected HTML
+- pytest marketplace catalog subjects 9 · SCRATCH residual-tests-te.log
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live external catalog connectors

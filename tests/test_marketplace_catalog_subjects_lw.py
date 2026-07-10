@@ -128,6 +128,27 @@ def test_host_stem_pd_html_first() -> None:
     assert "Newton" in r.html or "motion" in r.html.lower() or "body" in r.html.lower()
 
 
+def test_host_faraday_maxwell_html_first_electricity() -> None:
+    """Residual (te): Faraday/Maxwell host as HTML free PD (not PDF)."""
+    store = InMemoryHostStore()
+    cat = default_demo_catalog()
+    for book_id, needle in (
+        ("pd-faraday-electricity", "Induction"),
+        ("pd-maxwell-em", "electromagnetic"),
+    ):
+        r = host_book_into_account(
+            owner_id="tech-researcher",
+            store=store,
+            book_id=book_id,
+            catalog=cat,
+        )
+        assert r.view_format == "html"
+        assert r.host.license_class == "public_domain"
+        assert not r.html.lstrip().lower().startswith("%pdf")
+        assert needle.lower() in r.html.lower()
+        assert "application/pdf" not in r.html.lower()
+
+
 def test_catalog_honesty_by_subject() -> None:
     rows = [
         {

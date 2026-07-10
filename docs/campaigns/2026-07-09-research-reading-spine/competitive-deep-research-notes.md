@@ -983,3 +983,8 @@ Electricity and Magnetism as free HTML public-domain hosts (physics +
 technology + electricity subjects). Competitive delta: free research spine
 for tech researchers expands beyond Euclid/Newton/Bacon without inventing
 live bookstore connectors.
+
+## Residual te · 2026-07-10 — Host Faraday/Maxwell HTML free PD
+host_book_into_account projects Faraday and Maxwell free PD bodies as HTML
+(not PDF). Competitive delta: knowledge-dense electricity spine is hostable
+into the Antiek account library as HTML reading assets for tech researchers.
