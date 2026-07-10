@@ -1,0 +1,17 @@
+# inventory-aab · catalog free_count matches entry is_free flags
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aab
+date: 2026-07-10
+tip_before: c1a39a03
+
+## Problem
+Catalog free_count could silently drift from entry-level is_free flags.
+
+## Fix
+- test_catalog_route_subjects_and_by_subject asserts free_count == sum(is_free)
+
+## Verified
+pytest test_catalog_route_subjects_and_by_subject → passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

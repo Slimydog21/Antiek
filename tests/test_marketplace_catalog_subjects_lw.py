@@ -394,6 +394,9 @@ def test_catalog_route_subjects_and_by_subject(client) -> None:
     # Residual (zb): free_count honesty includes full free PD catalog (STEM expanded).
     assert body.get("free_count", 0) >= 16
     assert body.get("public_domain_count", 0) >= 16
+    # Residual (aab): free_count matches entry-level free flags (no silent drift).
+    free_from_entries = sum(1 for e in body["entries"] if e.get("is_free"))
+    assert body["free_count"] == free_from_entries
 
 
 def test_electricity_chip_filter_includes_faraday_maxwell() -> None:

@@ -1835,3 +1835,7 @@ Competitive delta: swarm handoff tip-true; operator merge PR #465 highest levera
 free electricity subject set len ≥3 all free PD HTML. Competitive delta:
 tech-researcher electricity domain is non-trivial free STEM corpus (parity
 computing/technology size honesty).
+
+## Residual aab · 2026-07-10 — catalog free_count matches entry is_free
+Marketplace catalog free_count equals sum of entry is_free flags. Competitive
+delta: free PD honesty has no silent aggregate drift.
