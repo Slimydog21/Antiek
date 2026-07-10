@@ -216,6 +216,33 @@ describe("DecisionTreeDriverBadge residual cw/eq", () => {
     expect(scorecard.textContent).toMatch(/competitive DR scorecard/i);
   });
 
+  it("links FUTURE competitive DR + prompt-cost from driver chokepoint (akx)", async () => {
+    render(<DecisionTreeDriverBadge />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("decision-tree-competitive-dr-future-agent-link"),
+      ).toBeTruthy();
+    });
+    expect(
+      screen
+        .getByTestId("decision-tree-competitive-dr-future-agent-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    expect(
+      screen.getByTestId("decision-tree-competitive-dr-future-agent-link")
+        .textContent,
+    ).toMatch(/competitive DR quality/i);
+    expect(
+      screen
+        .getByTestId("decision-tree-prompt-cost-projection-link")
+        .getAttribute("href"),
+    ).toBe("/settings#prompt-cost-projection");
+    expect(
+      screen.getByTestId("decision-tree-prompt-cost-projection-link")
+        .textContent,
+    ).toMatch(/prompt-cost projection/i);
+  });
+
   it("links to Settings for driver install and budget (fj)", async () => {
     fetchDecisionTreeSelection.mockResolvedValue({
       model_id: null,

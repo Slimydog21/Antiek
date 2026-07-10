@@ -3195,3 +3195,9 @@ Intelligent twin search defaults complete free PD catalog subject spine:
 literature (Pride) · bare technology (after STEM precedence). FUTURE twin matrix
 gap #3 expanded. vitest ResearchContext 16 green.
 P0 operator merge PR #465. Pivot akx+ outside thrash.
+
+## Residual akx · 2026-07-10 — DecisionTreeDriverBadge FUTURE competitive DR + prompt-cost
+Shared model-driver chokepoint navigates FUTURE competitive DR quality brief and
+Settings prompt-cost projection (budget-before-fire + competitive map at every
+driver badge mount). vitest DecisionTreeDriverBadge 14 green.
+P0 operator merge PR #465. Pivot aky+ outside thrash.

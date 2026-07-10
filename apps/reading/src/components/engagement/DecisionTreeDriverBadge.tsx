@@ -272,6 +272,23 @@ export function DecisionTreeDriverBadge({
         >
           Competitive DR scorecard
         </a>
+        {/* Residual (akx): FUTURE competitive DR quality + prompt-cost at driver chokepoint. */}
+        <a
+          href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+          data-testid="decision-tree-competitive-dr-future-agent-link"
+          className="underline opacity-80 hover:opacity-100"
+          title="FUTURE-AGENT competitive deep-research quality brief (model choice · ND advisory only · budget-before-fire)"
+        >
+          FUTURE · competitive DR quality
+        </a>
+        <a
+          href="/settings#prompt-cost-projection"
+          data-testid="decision-tree-prompt-cost-projection-link"
+          className="underline opacity-80 hover:opacity-100"
+          title="Settings prompt-cost projection: estimate how this driver+prompt hits remaining daily budget"
+        >
+          Settings · prompt-cost projection
+        </a>
       </div>
 
       {/* Residual (ku): depth posture next to model driver (advisory). */}

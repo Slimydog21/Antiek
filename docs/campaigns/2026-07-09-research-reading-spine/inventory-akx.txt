@@ -1,0 +1,17 @@
+# inventory-akx · DecisionTreeDriverBadge FUTURE competitive DR + prompt-cost deep-links
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: akx
+date: 2026-07-10
+parent_tip: 0812c5a5 (akw)
+
+## Closed
+- decision-tree-competitive-dr-future-agent-link
+  → FUTURE-AGENT-SPEC-competitive-deep-research-quality.md
+- decision-tree-prompt-cost-projection-link → /settings#prompt-cost-projection
+- Shared model-driver chokepoint nav: Settings · ND · dual-gate L7 · scorecard · FUTURE · prompt-cost
+- vitest DecisionTreeDriverBadge 14 green
+- proof: SCRATCH residual-akx-vitest.log
+
+## Next
+aky+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)
