@@ -3795,6 +3795,35 @@ export interface MidnightOilFinalCloseoutArchiveReconciliationPlanReceipt {
   adapter_plan_notes: string[];
 }
 
+export interface MidnightOilOperatorArchiveHandoffPackagePlanRequest
+  extends MidnightOilFinalCloseoutArchiveReconciliationPlanRequest {
+  final_closeout_archive_reconciliation_plan_receipt: MidnightOilFinalCloseoutArchiveReconciliationPlanReceipt;
+}
+
+export interface MidnightOilOperatorArchiveHandoffPackagePlanReceipt
+  extends Omit<
+    MidnightOilFinalCloseoutArchiveReconciliationPlanReceipt,
+    "receipt_id" | "status" | "adapter_key" | "blocker_reason" | "adapter_plan_notes"
+  > {
+  receipt_id: string;
+  final_closeout_archive_reconciliation_plan_receipt_id: string;
+  status: "blocked_operator_archive_handoff_package_unimplemented";
+  adapter_key: "operator_archive_handoff_package";
+  planned_operator_archive_handoff_package_receipt_id: string;
+  planned_operator_archive_package_id: string;
+  planned_operator_archive_manifest_id: string;
+  planned_operator_handoff_bundle_id: string;
+  operator_archive_handoff_package_blockers: string[];
+  required_operator_archive_handoff_package_invariants: string[];
+  required_operator_archive_handoff_package_receipt_fields: string[];
+  blocker_reason: "operator_archive_handoff_package_unimplemented";
+  operator_archive_handoff_package_allowed: boolean;
+  operator_archive_package_created: boolean;
+  operator_archive_manifest_created: boolean;
+  operator_handoff_bundle_created: boolean;
+  adapter_plan_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -4719,4 +4748,24 @@ export async function finalCloseoutArchiveReconciliationPlanMidnightOil(
     );
   }
   return (await resp.json()) as MidnightOilFinalCloseoutArchiveReconciliationPlanReceipt;
+}
+
+export async function operatorArchiveHandoffPackagePlanMidnightOil(
+  request: MidnightOilOperatorArchiveHandoffPackagePlanRequest,
+): Promise<MidnightOilOperatorArchiveHandoffPackagePlanReceipt> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/midnight-oil/operator-archive-handoff-package-plan`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+  );
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(
+      `POST /research/midnight-oil/operator-archive-handoff-package-plan: HTTP ${resp.status}: ${body}`,
+    );
+  }
+  return (await resp.json()) as MidnightOilOperatorArchiveHandoffPackagePlanReceipt;
 }

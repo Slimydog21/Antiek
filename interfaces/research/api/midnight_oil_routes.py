@@ -58,6 +58,8 @@ from substrate.midnight_oil import (
     MidnightOilLiveDispatchFinalEnablementPlanRequest,
     MidnightOilLiveRunActivationSettingsReceipt,
     MidnightOilLiveRunActivationSettingsRequest,
+    MidnightOilOperatorArchiveHandoffPackagePlanReceipt,
+    MidnightOilOperatorArchiveHandoffPackagePlanRequest,
     MidnightOilOperatorDeliveryLedgerReconciliationPlanReceipt,
     MidnightOilOperatorDeliveryLedgerReconciliationPlanRequest,
     MidnightOilOperatorDispatchActivationReadinessPlanReceipt,
@@ -136,6 +138,7 @@ from substrate.midnight_oil import (
     live_dispatch_final_enablement_apply_plan_midnight_oil,
     live_dispatch_final_enablement_plan_midnight_oil,
     live_run_activation_settings_midnight_oil,
+    operator_archive_handoff_package_plan_midnight_oil,
     operator_delivery_ledger_reconciliation_plan_midnight_oil,
     operator_dispatch_activation_readiness_plan_midnight_oil,
     operator_dispatch_adapter_plan_midnight_oil,
@@ -639,6 +642,16 @@ def post_midnight_oil_final_closeout_archive_reconciliation_plan(
     return final_closeout_archive_reconciliation_plan_midnight_oil(req)
 
 
+@midnight_oil_router.post(
+    "/operator-archive-handoff-package-plan",
+    response_model=MidnightOilOperatorArchiveHandoffPackagePlanReceipt,
+)
+def post_midnight_oil_operator_archive_handoff_package_plan(
+    req: MidnightOilOperatorArchiveHandoffPackagePlanRequest,
+) -> MidnightOilOperatorArchiveHandoffPackagePlanReceipt:
+    return operator_archive_handoff_package_plan_midnight_oil(req)
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
@@ -669,6 +682,7 @@ __all__ = [
     "post_midnight_oil_live_dispatch_final_enablement_apply_plan",
     "post_midnight_oil_live_dispatch_final_enablement_plan",
     "post_midnight_oil_live_run_activation_settings",
+    "post_midnight_oil_operator_archive_handoff_package_plan",
     "post_midnight_oil_operator_delivery_ledger_reconciliation_plan",
     "post_midnight_oil_operator_dispatch_activation_readiness_plan",
     "post_midnight_oil_operator_dispatch_adapter_plan",
