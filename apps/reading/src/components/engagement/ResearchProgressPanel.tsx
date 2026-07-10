@@ -27,6 +27,10 @@
  * + competitive FUTURE brief (world-class DR bar: multi-stage + multi-hop).
  * Residual (ape): competitive plan→gather→synthesize→cite→terminal stage
  * pipeline completeness chrome (world-class DR multi-stage honesty).
+ * Residual (asx): float|full|Write progress CTAs stamp multi-stage pipeline
+ * completeness (completed/total · coverage · multi_stage_ready · long-horizon)
+ * so open HTML reading paths carry competitive long-horizon honesty without
+ * inventing hops (hops remain evidence pack).
  * HTML-first; never PDF.
  */
 
@@ -179,6 +183,32 @@ export function ResearchProgressPanel({
     progress?.is_terminal,
     progress?.stage_pipeline,
   ]);
+
+  /**
+   * Residual (asx): multi-stage pipeline stamps for long-horizon open CTAs
+   * (float · full · Write). Pure derivation from stagePipeline; never invents hops.
+   */
+  const longHorizonOpenStamps = useMemo(() => {
+    const coverage =
+      Math.round(stagePipeline.coverage_ratio * 1000) / 1000;
+    const wc = competitiveDrWorldClassReadiness({
+      stage_coverage_ratio: stagePipeline.coverage_ratio,
+      hop_coverage_ratio: null,
+      stage_is_terminal: stagePipeline.is_terminal,
+    });
+    const stageLabel = `${stagePipeline.completed_count}/${stagePipeline.total} stages`;
+    return {
+      completed_count: stagePipeline.completed_count,
+      total: stagePipeline.total,
+      coverage_ratio: coverage,
+      current: stagePipeline.current ?? "",
+      is_terminal: stagePipeline.is_terminal,
+      pipeline_source: stagePipeline.source,
+      multi_stage_ready: wc.multi_stage_ready,
+      world_class_bar: wc.world_class_bar,
+      stage_label: stageLabel,
+    };
+  }, [stagePipeline]);
 
   const load = useCallback(async (): Promise<ResearchProgressResponse | null> => {
     setBusy(true);
@@ -597,29 +627,44 @@ export function ResearchProgressPanel({
             latest=<strong>{progress.latest_stage ?? "(none)"}</strong> · events=
             {progress.event_count} · terminal={String(progress.is_terminal)}
           </p>
-          {/* Residual (sm): progress HTML → float|full reading windows. */}
+          {/* Residual (sm/asx): progress HTML → float|full reading windows with
+              multi-stage long-horizon pipeline stamps on open CTAs. */}
           {progress.html?.trim() ? (
             <p className="meta font-mono text-[11px] space-x-3">
               <button
                 type="button"
                 data-testid="research-progress-open-float"
                 data-view-format="html"
+                data-html-first="true"
                 data-window-mode="floating"
                 data-is-terminal={String(Boolean(progress.is_terminal))}
+                data-stage-completed-count={String(
+                  longHorizonOpenStamps.completed_count,
+                )}
+                data-stage-total={String(longHorizonOpenStamps.total)}
+                data-stage-coverage-ratio={String(
+                  longHorizonOpenStamps.coverage_ratio,
+                )}
+                data-stage-current={longHorizonOpenStamps.current}
+                data-pipeline-source={longHorizonOpenStamps.pipeline_source}
+                data-multi-stage-ready={String(
+                  longHorizonOpenStamps.multi_stage_ready,
+                )}
+                data-world-class-bar={longHorizonOpenStamps.world_class_bar}
+                data-long-horizon="true"
                 className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
-                title="Open plan→cite progress as floating HTML window (never PDF)"
+                title={`Open plan→cite progress as floating HTML window · ${longHorizonOpenStamps.stage_label} · multi-stage=${longHorizonOpenStamps.multi_stage_ready ? "ready" : "incomplete"} · never PDF`}
                 onClick={() => {
                   const id = `research_progress:${spawnId}:${Date.now().toString(36)}`;
                   const source = progress.is_terminal
                     ? "research_progress_complete"
                     : "research_progress_draft";
+                  const status = progress.is_terminal ? "complete" : "draft";
                   openWindow(
                     "hosted_html_document",
                     {
                       document_id: id,
-                      title: progress.is_terminal
-                        ? `Research progress · complete · ${spawnId}`
-                        : `Research progress · draft · ${spawnId}`,
+                      title: `Research progress · ${longHorizonOpenStamps.stage_label} · ${status} · ${spawnId}`,
                       html: progress.html,
                       view_format: "html",
                       source,
@@ -627,7 +672,7 @@ export function ResearchProgressPanel({
                     },
                     {
                       id: `win:progress:${id}`,
-                      title: "Research progress",
+                      title: `Research progress · ${longHorizonOpenStamps.stage_label}`,
                       mode: "floating",
                     },
                   );
@@ -639,22 +684,36 @@ export function ResearchProgressPanel({
                 type="button"
                 data-testid="research-progress-open-full"
                 data-view-format="html"
+                data-html-first="true"
                 data-window-mode="full"
                 data-is-terminal={String(Boolean(progress.is_terminal))}
+                data-stage-completed-count={String(
+                  longHorizonOpenStamps.completed_count,
+                )}
+                data-stage-total={String(longHorizonOpenStamps.total)}
+                data-stage-coverage-ratio={String(
+                  longHorizonOpenStamps.coverage_ratio,
+                )}
+                data-stage-current={longHorizonOpenStamps.current}
+                data-pipeline-source={longHorizonOpenStamps.pipeline_source}
+                data-multi-stage-ready={String(
+                  longHorizonOpenStamps.multi_stage_ready,
+                )}
+                data-world-class-bar={longHorizonOpenStamps.world_class_bar}
+                data-long-horizon="true"
                 className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
-                title="Open plan→cite progress as full working-region HTML window (never PDF)"
+                title={`Open plan→cite progress as full working-region HTML window · ${longHorizonOpenStamps.stage_label} · multi-stage=${longHorizonOpenStamps.multi_stage_ready ? "ready" : "incomplete"} · never PDF`}
                 onClick={() => {
                   const id = `research_progress:${spawnId}:full:${Date.now().toString(36)}`;
                   const source = progress.is_terminal
                     ? "research_progress_complete"
                     : "research_progress_draft";
+                  const status = progress.is_terminal ? "complete" : "draft";
                   openWindow(
                     "hosted_html_document",
                     {
                       document_id: id,
-                      title: progress.is_terminal
-                        ? `Research progress · complete · ${spawnId} (full)`
-                        : `Research progress · draft · ${spawnId} (full)`,
+                      title: `Research progress · ${longHorizonOpenStamps.stage_label} · ${status} · ${spawnId} (full)`,
                       html: progress.html,
                       view_format: "html",
                       source,
@@ -662,7 +721,7 @@ export function ResearchProgressPanel({
                     },
                     {
                       id: `win:progress:${id}:full`,
-                      title: "Research progress (full)",
+                      title: `Research progress · ${longHorizonOpenStamps.stage_label} (full)`,
                       mode: "full",
                     },
                   );
@@ -672,13 +731,15 @@ export function ResearchProgressPanel({
               </button>
             </p>
           ) : null}
-          {/* Residual (qw/rp/acp/aex): terminal or mid-flight → Open Write + path. */}
+          {/* Residual (qw/rp/acp/aex/asx): terminal or mid-flight → Open Write + path
+              + multi-stage long-horizon pipeline stamps. */}
           {writeHref ? (
             <p className="meta font-mono text-[11px]">
               <a
                 href={writeHref}
                 data-testid="research-progress-open-write"
                 data-view-format="html"
+                data-html-first="true"
                 data-has-twin-seed="1"
                 data-is-terminal={String(Boolean(progress.is_terminal))}
                 // Residual (acp): body honesty on twin_seed (parity marketplace acf / MO ack / HostedHtml acn).
@@ -705,11 +766,26 @@ export function ResearchProgressPanel({
                 data-seamless-progress-write={String(
                   Boolean(String(spawnId || "").trim()),
                 )}
+                // Residual (asx): multi-stage long-horizon pipeline on Write CTA.
+                data-stage-completed-count={String(
+                  longHorizonOpenStamps.completed_count,
+                )}
+                data-stage-total={String(longHorizonOpenStamps.total)}
+                data-stage-coverage-ratio={String(
+                  longHorizonOpenStamps.coverage_ratio,
+                )}
+                data-stage-current={longHorizonOpenStamps.current}
+                data-pipeline-source={longHorizonOpenStamps.pipeline_source}
+                data-multi-stage-ready={String(
+                  longHorizonOpenStamps.multi_stage_ready,
+                )}
+                data-world-class-bar={longHorizonOpenStamps.world_class_bar}
+                data-long-horizon="true"
                 className="underline opacity-90 hover:opacity-100"
                 title={
                   progress.is_terminal
-                    ? "Open Write with terminal research progress as twin_seed (plan→cite complete · no invented document_id)"
-                    : "Open Write with in-progress plan→cite draft as twin_seed (mid-flight · no invented document_id)"
+                    ? `Open Write with terminal research progress as twin_seed · ${longHorizonOpenStamps.stage_label} · multi-stage=${longHorizonOpenStamps.multi_stage_ready ? "ready" : "incomplete"} · no invented document_id`
+                    : `Open Write with in-progress plan→cite draft as twin_seed · ${longHorizonOpenStamps.stage_label} · multi-stage=${longHorizonOpenStamps.multi_stage_ready ? "ready" : "incomplete"} · mid-flight · no invented document_id`
                 }
               >
                 {progress.is_terminal

@@ -4234,3 +4234,10 @@ P0 PR #465. Pivot asw+ outside thrash.
 draft_merge_ready / into_parent_ready drive Merge to draft / into parent CTAs
 (parity SpawnMerge ary · written analysis asc). HTML multi-spawn merge path
 hard-to-vary pure contract. vitest Collective 31 green. P0 PR #465. Pivot asx+.
+
+## Residual asx · 2026-07-10 — long-horizon progress open CTAs multi-stage stamps
+ResearchProgressPanel float|full|Write CTAs stamp stage completed/total ·
+coverage · multi_stage_ready · world_class_bar · long-horizon · html-first.
+Window titles carry N/M stages. Competitive delta: multi-stage plan→cite
+honesty travels with HTML open paths without inventing hops.
+vitest ResearchProgressPanel 13 green. P0 PR #465. Pivot asy+.

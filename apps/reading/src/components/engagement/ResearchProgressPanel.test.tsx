@@ -293,6 +293,15 @@ describe("ResearchProgressPanel", () => {
     );
     // Residual (acp): progress.html body → has-body true (parity marketplace/MO).
     expect(draftWrite.getAttribute("data-write-seed-has-body")).toBe("true");
+    // Residual (asx): multi-stage long-horizon pipeline stamps on Write CTA.
+    expect(draftWrite.getAttribute("data-stage-completed-count")).toBe("4");
+    expect(draftWrite.getAttribute("data-stage-total")).toBe("5");
+    expect(draftWrite.getAttribute("data-pipeline-source")).toBe("substrate");
+    expect(draftWrite.getAttribute("data-multi-stage-ready")).toBe("true");
+    expect(draftWrite.getAttribute("data-long-horizon")).toBe("true");
+    expect(draftWrite.getAttribute("data-html-first")).toBe("true");
+    expect(draftWrite.getAttribute("data-world-class-bar")).toBe("multi_stage");
+    expect(draftWrite.getAttribute("title") || "").toMatch(/4\/5 stages/i);
   });
 
   it("links Open Write twin_seed when progress is terminal (qw)", async () => {
@@ -351,25 +360,36 @@ describe("ResearchProgressPanel", () => {
       "research_progress_complete",
     );
     expect(write.getAttribute("data-seamless-progress-write")).toBe("true");
-    // Residual (sm): float|full progress HTML reading windows.
-    fireEvent.click(screen.getByTestId("research-progress-open-float"));
+    // Residual (sm/asx): float|full progress HTML reading windows + pipeline stamps.
+    const floatBtn = screen.getByTestId("research-progress-open-float");
+    expect(floatBtn.getAttribute("data-long-horizon")).toBe("true");
+    expect(floatBtn.getAttribute("data-html-first")).toBe("true");
+    expect(floatBtn.getAttribute("data-stage-total")).toBe("5");
+    expect(floatBtn.getAttribute("data-multi-stage-ready")).toBe("true");
+    expect(floatBtn.getAttribute("title") || "").toMatch(/stages/i);
+    fireEvent.click(floatBtn);
     const floatCall = openWindow.mock.calls.at(-1) as [
       string,
-      { source?: string; html?: string; view_format?: string },
-      { mode?: string },
+      { source?: string; html?: string; view_format?: string; title?: string },
+      { mode?: string; title?: string },
     ];
     expect(floatCall[0]).toBe("hosted_html_document");
     expect(floatCall[1].source).toBe("research_progress_complete");
     expect(floatCall[1].view_format).toBe("html");
     expect(floatCall[1].html).toMatch(/Final synthesis/);
+    expect(floatCall[1].title || "").toMatch(/stages/i);
     expect(floatCall[2].mode).toBe("floating");
-    fireEvent.click(screen.getByTestId("research-progress-open-full"));
+    const fullBtn = screen.getByTestId("research-progress-open-full");
+    expect(fullBtn.getAttribute("data-long-horizon")).toBe("true");
+    expect(fullBtn.getAttribute("data-stage-total")).toBe("5");
+    fireEvent.click(fullBtn);
     const fullCall = openWindow.mock.calls.at(-1) as [
       string,
-      { source?: string },
+      { source?: string; title?: string },
       { mode?: string },
     ];
     expect(fullCall[1].source).toBe("research_progress_complete");
+    expect(fullCall[1].title || "").toMatch(/stages/i);
     expect(fullCall[2].mode).toBe("full");
   });
 
