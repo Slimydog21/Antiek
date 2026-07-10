@@ -1472,9 +1472,12 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(panel.getAttribute("data-label")).toBe(
       "antiek-bench-competitive-dogfood",
     );
-    // Residual (zo): panel source honesty after load.
+    // Residual (zo/zq): panel source + settings_panel honesty after load.
     expect(panel.getAttribute("data-source")).toBe(
       "antiek_bench.dogfood_fixtures",
+    );
+    expect(panel.getAttribute("data-settings-panel")).toBe(
+      "antiek_bench_dogfood_fixtures",
     );
     expect(panel.getAttribute("data-item-count")).toBe("18");
     const summary = screen.getByTestId("antiek-bench-dogfood-summary");
