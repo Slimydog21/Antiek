@@ -3529,3 +3529,8 @@ P0 operator merge PR #465. Pivot ann+ outside thrash (prefer non-catalog).
 Catalog honesty tests raise free_count / free_pd / public_domain floors to ≥20
 after Nicomachean Ethics (anm). Prevents silent free inventory drift. P0 operator
 merge PR #465. Pivot ano+ outside thrash (prefer non-catalog count floors).
+
+## Residual ano · 2026-07-10 — dogfood v35 Nicomachean Ethics book_qa
+Suite suite-competitive-dogfood-v35 learns free PD Nicomachean Ethics philosophy
+book_qa (anm catalog). item_count 53 · book_qa=10 · Settings spine postures v35.
+propose≠promote. P0 operator merge PR #465. Pivot anp+ outside thrash.

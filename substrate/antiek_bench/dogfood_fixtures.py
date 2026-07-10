@@ -46,7 +46,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (ajq): v32 learns twin promote depth-graph unit≡node honesty (ajn/ajo).
 # Residual (ajw): v33 learns twin promote Write seed depth-graph honesty (ajv).
 # Residual (anj): v34 learns reading conversation + marketplace host collective multi-select (ang–ani).
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v34"
+# Residual (ano): v35 learns free PD Nicomachean Ethics philosophy book_qa (anm).
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v35"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -991,6 +992,24 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "host",
                 "merge",
                 "html",
+            ),
+        ),
+        # Residual (ano/anm): free PD Nicomachean Ethics philosophy book_qa.
+        SuiteItem(
+            item_id="dogfood-book-nicomachean-ethics",
+            task_class="book_qa",
+            prompt=(
+                "Book QA over free public-domain HTML Nicomachean Ethics (Aristotle): "
+                "what is the chief good at which all arts and inquiries aim, and how "
+                "should Antiek HTML-first reading + twin note-taker capture eudaimonia "
+                "insights without inventing live payment rails or PDF view?"
+            ),
+            expected_keywords=(
+                "ethics",
+                "good",
+                "html",
+                "philosophy",
+                "aristotle",
             ),
         ),
     )

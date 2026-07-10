@@ -2853,6 +2853,11 @@ export default function Settings() {
                       it.item_id === "dogfood-book-godel-incompleteness",
                   ),
                 )}
+                data-has-nicomachean-ethics-book-qa-posture={String(
+                  (dogfood.items || []).some(
+                    (it) => it.item_id === "dogfood-book-nicomachean-ethics",
+                  ),
+                )}
                 data-has-fourier-book-qa-posture={String(
                   (dogfood.items || []).some(
                     (it) => it.item_id === "dogfood-book-fourier-heat",
@@ -3068,6 +3073,7 @@ export default function Settings() {
                     (it) =>
                       it.item_id ===
                       "dogfood-wrestle-marketplace-host-collective",
+                    "dogfood-book-nicomachean-ethics",
                   ),
                 )}
                 data-has-competitive-dr-scorecard-posture={String(
@@ -3130,6 +3136,7 @@ export default function Settings() {
                     "dogfood-wrestle-talk-to-book-collective",
                     "dogfood-wrestle-meta-reading-collective",
                     "dogfood-wrestle-marketplace-host-collective",
+                    "dogfood-book-nicomachean-ethics",
                   ].includes(it.item_id),
                 ) ? (
                   <p
@@ -3137,7 +3144,7 @@ export default function Settings() {
                     data-testid="antiek-bench-dogfood-v2-postures"
                     role="status"
                   >
-                    Spine postures (v34): write-seed · float evidence · budget
+                    Spine postures (v35): write-seed · float evidence · budget
                     foresight · Faraday book_qa · collective unit write-seed ·
                     Boole book_qa · Heaviside book_qa · Shannon book_qa ·
                     Turing book_qa · Lovelace book_qa · citation-trust
@@ -3151,7 +3158,7 @@ export default function Settings() {
                     TalkToBook twins · MetaReading twins · ResearchThis twins ·
                     spawn merge path · multi-spawn collective merge ·
                     knowledge-dense pub quick-call matrix · budget foresight with pubs ·
-                    purchase seamless port · domain-aware twin search · collective unit twin seed · MO deposit twin honesty · pub-ref foresight chrome · citation chain · multi-hop citation chain hops · domain-aware STEM expanded · evidence Write multi-hop · twin promote depth-graph · twin promote Write depth-graph · TalkToBook collective · MetaReading collective · MarketplaceHost collective · competitive DR scorecard
+                    purchase seamless port · domain-aware twin search · collective unit twin seed · MO deposit twin honesty · pub-ref foresight chrome · citation chain · multi-hop citation chain hops · domain-aware STEM expanded · evidence Write multi-hop · twin promote depth-graph · twin promote Write depth-graph · TalkToBook collective · MetaReading collective · MarketplaceHost collective · Nicomachean Ethics book_qa · competitive DR scorecard
                     (listing only · not auto-promoted)
                   </p>
                 ) : null}

@@ -1,0 +1,16 @@
+# inventory-ano · dogfood v35 Nicomachean Ethics book_qa
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ano
+date: 2026-07-10
+parent_tip: 635440f2 (ann)
+
+## Closed
+- suite-competitive-dogfood-v35 (item_count 53 · book_qa=10):
+  - dogfood-book-nicomachean-ethics
+- Settings spine postures v35 + data-has-nicomachean-ethics-book-qa-posture
+- offline suite verify + vitest Settings dogfood fixtures green
+- Antiek-bench recursive rewrite learns free PD philosophy book_qa (anm catalog)
+
+## Next
+anp+ product residual outside thrash · prefer non-dogfood · non-catalog
+Operator merge PR #465 remains highest leverage (gated)
