@@ -528,12 +528,14 @@ export default function ResearchThis({
           data-available-spawn-count={String(availableSpawnIds.length)}
           data-recent-count={String(recentSpawnIds.length)}
         >
+          {/* Residual (and): remount twins+context after collective merge (parity promote amy). */}
           <CollectiveResearchPanel
             availableSpawnIds={availableSpawnIds}
             parentAssetId={documentId.trim()}
             recentSpawnIds={recentSpawnIds}
             openSpawnIds={openSpawnIds}
             onRecentSpawnsCleared={() => setRecentTick((n) => n + 1)}
+            onDocMerged={onContextNeedsRefresh}
           />
         </section>
       ) : null}

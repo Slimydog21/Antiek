@@ -60,6 +60,7 @@ vi.mock("../../components/engagement/CollectiveResearchPanel", () => ({
     parentAssetId?: string | null;
     recentSpawnIds?: readonly string[] | null;
     onRecentSpawnsCleared?: () => void;
+    onDocMerged?: () => void;
   }) => (
     <div
       data-testid="collective-research-panel-stub"
@@ -67,8 +68,18 @@ vi.mock("../../components/engagement/CollectiveResearchPanel", () => ({
         props.recentSpawnIds != null ? props.recentSpawnIds.join(",") : ""
       }
       data-has-clear={props.onRecentSpawnsCleared ? "1" : "0"}
+      data-has-merged={props.onDocMerged ? "1" : "0"}
     >
       {props.parentAssetId}:{props.availableSpawnIds.join(",")}
+      {props.onDocMerged ? (
+        <button
+          type="button"
+          data-testid="research-this-collective-merge-notify"
+          onClick={() => props.onDocMerged?.()}
+        >
+          notify merge
+        </button>
+      ) : null}
     </div>
   ),
 }));
@@ -469,7 +480,7 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
     });
   });
 
-  it("mounts collective panel when open DR spawns exist (fc)", () => {
+  it("mounts collective panel when open DR spawns exist (fc)", async () => {
     collectDeepResearchSpawnIds.mockReturnValue(["spn_r1", "spn_r2"]);
     render(
       <MemoryRouter>
@@ -481,6 +492,30 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
     expect(screen.getByTestId("collective-research-panel-stub").textContent).toMatch(
       /doc-read:spn_r1,spn_r2/,
     );
+    // Residual (and): collective merge remounts twins+context (parity promote amy).
+    expect(
+      screen
+        .getByTestId("collective-research-panel-stub")
+        .getAttribute("data-has-merged"),
+    ).toBe("1");
+    expect(
+      screen
+        .getByTestId("research-this-context-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("0");
+    fireEvent.click(screen.getByTestId("research-this-collective-merge-notify"));
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId("research-this-context-refresh")
+          .getAttribute("data-refresh-key"),
+      ).toBe("1");
+    });
+    expect(
+      screen
+        .getByTestId("research-this-twins-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("1");
   });
 
   it("wires recent_ring into collect + collective mount (ou)", () => {

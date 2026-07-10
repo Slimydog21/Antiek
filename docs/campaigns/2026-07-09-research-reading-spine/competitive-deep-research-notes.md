@@ -3469,3 +3469,8 @@ P0 operator merge PR #465. Pivot anc+ outside thrash.
 FUTURE twin completeness matrix names ResearchThis · TalkToBook · MetaReading
 promote remount path offline-complete (amy · ana · anb).
 P0 operator merge PR #465. Pivot and+ outside thrash.
+
+## Residual and · 2026-07-10 — ResearchThis collective merge remount twins+context
+Collective multi-select merge on highlight DR path remounts TwinNotes + ResearchContext
+(parity promote amy). vitest ResearchThis 13 green.
+P0 operator merge PR #465. Pivot ane+ outside thrash.
