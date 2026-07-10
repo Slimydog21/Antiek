@@ -1,0 +1,16 @@
+# inventory-amt · MetaReading ResearchContext mount with researchTier
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: amt
+date: 2026-07-10
+parent_tip: 2a9c86e3 (ams)
+
+## Closed
+- meta-reading-context-mount on deliverable
+- ResearchContextPanel autoLoad · researchTier from Settings
+- data-seamless-meta-context · reading ≡ research on corpus synthesis
+- vitest MetaReading 13 green
+- proof: SCRATCH residual-amt-vitest.log
+
+## Next
+amu+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

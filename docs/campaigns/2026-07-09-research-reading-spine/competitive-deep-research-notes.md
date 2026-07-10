@@ -3421,3 +3421,8 @@ P0 operator merge PR #465. Pivot ams+ outside thrash.
 Talk bookmark mounts ResearchContext next to TwinNotes with Settings depth so
 intelligent search sits on multi-turn book conversation (reading ≡ research).
 vitest TalkToBook 10 green. P0 operator merge PR #465. Pivot amt+ outside thrash.
+
+## Residual amt · 2026-07-10 — MetaReading ResearchContext mount with researchTier
+Meta-reading deliverable mounts ResearchContext next to TwinNotes with Settings
+depth (reading ≡ research). Completes amr–amt reading context substrate.
+vitest MetaReading 13 green. P0 operator merge PR #465. Pivot amu+ outside thrash.

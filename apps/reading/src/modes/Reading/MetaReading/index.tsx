@@ -5,6 +5,7 @@ import { LemonButton } from "../../../components/lemon";
 import { generateMetaReading, getSavedMetaReading } from "../../../api/books";
 import type { BookCitation, MetaReadingResponse } from "../../../api/books";
 import { DecisionTreeDriverBadge } from "../../../components/engagement/DecisionTreeDriverBadge";
+import { ResearchContextPanel } from "../../../components/engagement/ResearchContextPanel";
 import { TwinNotesPanel } from "../../../components/engagement/TwinNotesPanel";
 import { useSettingsResearchTier } from "../../../lib/useSettingsResearchTier";
 import ReadAloud from "../../../components/voice/ReadAloud";
@@ -32,6 +33,8 @@ import { acceptPromotion, suggestPromotion } from "../../../lib/researchSuggesti
  * Residual (qp): DecisionTreeDriverBadge promptText from meta-reading prompt.
  * Residual (agn): TwinNotes recursive note-taker when deliverable exists
  *   (meta-reading asset twin · reading ≡ research · parity TalkToBook agm).
+ * Residual (amt): ResearchContext with researchTier when deliverable exists
+ *   (intelligent search over twin substrate · parity amr/ams).
  *
  * PROPOSED BOUNDARY (operator decision 2, sign-off pending): the surface
  * carries the "proposed (sign-off pending)" banner. Reversible to a soft corpus
@@ -313,6 +316,23 @@ export default function MetaReading() {
                       prompt.trim() ||
                       ""
                     }
+                    researchTier={researchTier}
+                  />
+                </section>
+              ) : null}
+              {/* Residual (amt): intelligent context over meta-reading twin substrate. */}
+              {deliverable.asset_id?.trim() ? (
+                <section
+                  className="rounded-md border border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 px-3 py-2"
+                  data-testid="meta-reading-context-mount"
+                  data-view-format="html"
+                  data-asset-id={deliverable.asset_id.trim()}
+                  data-seamless-meta-context="true"
+                  data-research-tier={researchTier}
+                >
+                  <ResearchContextPanel
+                    assetId={deliverable.asset_id.trim()}
+                    autoLoad
                     researchTier={researchTier}
                   />
                 </section>
