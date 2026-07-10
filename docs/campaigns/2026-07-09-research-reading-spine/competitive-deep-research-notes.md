@@ -2994,3 +2994,8 @@ vitest twinWriteSeed 35 green. P0 operator merge PR #465. Pivot ajj+ outside thr
 ## Residual ajj · 2026-07-10 — SESSION-ARC air–aji multi-hop write path
 Wave handoff: substrate hops → UI → dogfood → public API → Write twin_seed.
 P0 operator merge PR #465. Pivot ajk+ outside thrash.
+
+## Residual ajk · 2026-07-10 — dogfood v31 evidence Write multi-hop honesty
+Suite suite-competitive-dogfood-v31 learns evidence pack → Write twin_seed multi-hop
+hop honesty (aji). item_count 47 · wrestle=34. pytest dogfood 5 · Settings 36 green.
+P0 operator merge PR #465. Pivot ajl+ outside thrash.

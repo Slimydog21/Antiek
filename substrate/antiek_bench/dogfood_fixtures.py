@@ -42,7 +42,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (ail): v28 learns citation chain + competitive DR scorecard honesty.
 # Residual (ais): v29 learns multi-hop citation chain hop navigation (air).
 # Residual (ajb): v30 learns expanded domain-aware twin search (aiy biology/method/physics/math).
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v30"
+# Residual (ajk): v31 learns evidence pack Write seed multi-hop hop honesty (aji).
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v31"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -637,6 +638,25 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "method",
                 "physics",
                 "mathematics",
+            ),
+        ),
+        # Residual (ajk/aji): evidence pack Write twin_seed multi-hop hop honesty.
+        SuiteItem(
+            item_id="dogfood-wrestle-evidence-write-multi-hop",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with evidence pack → Write twin_seed multi-hop honesty: when "
+                "buildEvidencePackWriteHref stamps data-chain-complete, data-citation-chain-hops, "
+                "and plain_text anchors (evidence-insight-N / evidence-source-N) without inventing "
+                "supported_by edges or empty packs, how should Antiek-bench learn models that "
+                "preserve claim→source multi-hop grounding into the recursive note-taker?"
+            ),
+            expected_keywords=(
+                "multi-hop",
+                "twin_seed",
+                "chain_complete",
+                "evidence_pack",
+                "write",
             ),
         ),
         # Residual (ail/aii): Settings competitive DR quality scorecard honesty.
