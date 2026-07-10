@@ -99,6 +99,8 @@ type LibraryDoc = {
   title?: string;
   license_class?: string;
   view_format?: string;
+  /** Residual (abu): free inventory for library free honesty (parity free doctrine). */
+  is_free?: boolean;
 };
 
 export type MarketplaceHostProps = {
@@ -287,21 +289,19 @@ export default function MarketplaceHost({
     });
   }, [libraryDocs, libraryFilter]);
 
-  /** Residual (tb): library free/PD honesty under filter. */
+  /** Residual (tb/abu): library free honesty — is_free first (parity free doctrine). */
+  const libraryDocIsFree = (d: LibraryDoc) =>
+    d.is_free === true ||
+    (d.is_free == null &&
+      (d.license_class === "public_domain" ||
+        (d.license_class || "").toLowerCase() === "free"));
+
   const libraryFreeCount = useMemo(() => {
-    return libraryDocs.filter(
-      (d) =>
-        d.license_class === "public_domain" ||
-        (d.license_class || "").toLowerCase() === "free",
-    ).length;
+    return libraryDocs.filter(libraryDocIsFree).length;
   }, [libraryDocs]);
 
   const libraryFilteredFreeCount = useMemo(() => {
-    return filteredLibraryDocs.filter(
-      (d) =>
-        d.license_class === "public_domain" ||
-        (d.license_class || "").toLowerCase() === "free",
-    ).length;
+    return filteredLibraryDocs.filter(libraryDocIsFree).length;
   }, [filteredLibraryDocs]);
 
   const libraryFiltersActive = useMemo(

@@ -2053,3 +2053,8 @@ FUTURE + SESSION-ARC free inventory is_free-only doctrine closed API·HTML·UI·
 (abn–abs). Tip ccb433c2 · 153 ships. Competitive delta: swarm handoff tip-true;
 operator merge PR #465 highest leverage.
 
+## Residual abu · 2026-07-10 — library documents is_free free inventory
+GET /marketplace/library stamps is_free on each document; client library free
+honesty prefers is_free (parity free inventory doctrine abn–abs). Competitive
+delta: account library free spine is identity-honest with catalog free inventory.
+

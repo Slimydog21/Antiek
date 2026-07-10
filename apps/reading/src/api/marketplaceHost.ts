@@ -124,6 +124,8 @@ export async function fetchAccountLibrary(ownerId: string): Promise<{
     title?: string;
     license_class?: string;
     view_format?: string;
+    /** Residual (abu): free inventory for library free honesty (parity free doctrine). */
+    is_free?: boolean;
   }>;
   count: number;
   view_format: "html";

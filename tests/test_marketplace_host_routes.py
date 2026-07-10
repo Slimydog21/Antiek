@@ -57,6 +57,10 @@ def test_catalog_and_host_pd(client):
     assert lib.status_code == 200
     assert lib.json()["count"] >= 1
     assert any(d["document_id"] == doc_id for d in lib.json()["documents"])
+    # Residual (abu): library documents stamp is_free for free inventory honesty.
+    pride = next(d for d in lib.json()["documents"] if d["document_id"] == doc_id)
+    assert pride.get("license_class") == "public_domain"
+    assert pride.get("is_free") is True
 
     html = client.get(f"/marketplace/documents/{doc_id}/html")
     assert html.status_code == 200

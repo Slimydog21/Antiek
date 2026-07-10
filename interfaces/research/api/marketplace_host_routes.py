@@ -328,12 +328,17 @@ def get_library(owner_id: str) -> dict[str, Any]:
     docs = []
     for doc_id in lib.document_ids:
         doc = store.get_document(doc_id) or {}
+        lic = str(doc.get("license_class") or "").strip()
+        # Residual (abu): is_free inventory for library free honesty (parity free doctrine).
+        # Hosted public_domain is free host path; purchased never free.
+        is_free = lic == "public_domain"
         docs.append(
             {
                 "document_id": doc_id,
                 "title": doc.get("title"),
                 "license_class": doc.get("license_class"),
                 "view_format": doc.get("view_format", "html"),
+                "is_free": is_free,
             }
         )
     return {
