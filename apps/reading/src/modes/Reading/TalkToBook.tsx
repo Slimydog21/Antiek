@@ -26,6 +26,7 @@ import type { TalkMessage } from "./useTalkThread";
  *   • reads any answer aloud via the SPR-14 shared TTS service (`ReadAloud`).
  * Residual (jn): Settings depth-tier → researchTier on each ask (parity DR).
  * Residual (lh): DecisionTreeDriverBadge researchTier (reading ≡ research).
+ * Residual (qp): DecisionTreeDriverBadge promptText from draft question.
  *
  * §9.0: a withheld region can never be cited — the backend search gate keeps a
  * withheld body out of the model context and the citation set, so this surface
@@ -143,7 +144,10 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
           data-view-format="html"
           data-research-tier={researchTier}
         >
-          <DecisionTreeDriverBadge researchTier={researchTier} />
+          <DecisionTreeDriverBadge
+            researchTier={researchTier}
+            promptText={draft.trim() || undefined}
+          />
         </div>
       </header>
 

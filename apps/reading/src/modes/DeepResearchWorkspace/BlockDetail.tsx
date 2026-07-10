@@ -30,6 +30,7 @@ import { launchFloatingDeepResearch } from "../Reading/launchFloatingDeepResearc
  * remains the degraded fallback when float launch fails.
  * Residual (jj): Settings depth-tier → research_tier on launch (parity ji).
  * Residual (lp): DecisionTreeDriverBadge researchTier (graph block DR entry).
+ * Residual (qp): DecisionTreeDriverBadge promptText from live selection or block text.
  */
 export default function BlockDetail({
   node,
@@ -116,7 +117,12 @@ export default function BlockDetail({
         data-view-format="html"
         data-research-tier={researchTier}
       >
-        <DecisionTreeDriverBadge researchTier={researchTier} />
+        <DecisionTreeDriverBadge
+          researchTier={researchTier}
+          promptText={
+            (selection?.text || node.text || "").trim() || undefined
+          }
+        />
       </div>
       {/* The scope container the float-menu narrows to — select text here. */}
       <div ref={scopeRef} className="font-serif text-base leading-relaxed">

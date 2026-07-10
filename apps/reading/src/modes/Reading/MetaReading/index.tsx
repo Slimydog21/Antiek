@@ -28,6 +28,7 @@ import { acceptPromotion, suggestPromotion } from "../../../lib/researchSuggesti
  *   • a SUGGEST-NOT-AUTOSHIP promote-into-Research link (never auto).
  * Residual (jy): Settings depth-tier → research_tier on generate (parity DR).
  * Residual (lh): DecisionTreeDriverBadge researchTier (reading ≡ research).
+ * Residual (qp): DecisionTreeDriverBadge promptText from meta-reading prompt.
  *
  * PROPOSED BOUNDARY (operator decision 2, sign-off pending): the surface
  * carries the "proposed (sign-off pending)" banner. Reversible to a soft corpus
@@ -192,7 +193,10 @@ export default function MetaReading() {
               data-view-format="html"
               data-research-tier={researchTier}
             >
-              <DecisionTreeDriverBadge researchTier={researchTier} />
+              <DecisionTreeDriverBadge
+                researchTier={researchTier}
+                promptText={prompt.trim() || undefined}
+              />
             </div>
           </header>
 

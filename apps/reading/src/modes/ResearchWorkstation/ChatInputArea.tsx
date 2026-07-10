@@ -43,6 +43,7 @@ import {
  * Residual (ct): publication refs (arxiv/substack/url) parity with StartResearch cj.
  * Residual (df): soft-gate Ask when budget projection would exceed (parity de).
  * Residual (ln): DecisionTreeDriverBadge with launchTier (parity StartResearch ll).
+ * Residual (qp): DecisionTreeDriverBadge promptText = question + pub refs.
  */
 export default function ChatInputArea({
   parentInvestigationId,
@@ -236,7 +237,18 @@ export default function ChatInputArea({
           data-view-format="html"
           data-research-tier={launchTier}
         >
-          <DecisionTreeDriverBadge researchTier={launchTier} />
+          <DecisionTreeDriverBadge
+            researchTier={launchTier}
+            /* Residual (qp): question + pub refs cost foresight. */
+            promptText={
+              pubRefs.trim()
+                ? `${question}
+
+Publication refs:
+${pubRefs.trim()}`
+                : question
+            }
+          />
         </div>
         <ResearchLaunchBudgetPanel
           promptText={question}

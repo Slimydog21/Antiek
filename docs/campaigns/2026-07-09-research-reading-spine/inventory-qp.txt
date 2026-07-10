@@ -1,0 +1,20 @@
+# inventory-qp · workstation + reading DR entry promptText matrix
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: qp
+date: 2026-07-10
+
+## Closed
+DecisionTreeDriverBadge promptText on core launch surfaces still missing foresight:
+- StartResearch: question + publication refs (parity ResearchThis pi)
+- ChatInputArea: question + publication refs
+- TalkToBook: draft question
+- MetaReading: meta-reading prompt
+- BlockDetail: live selection text or block body
+
+## Verified
+vitest StartResearch 20 + ChatInputArea.budget 4 + TalkToBook 9 + MetaReading 12 + BlockDetail 6
+= 51 tests (StartResearch includes qp promptText test)
+SCRATCH residual-tests-qp.log
+
+## Honesty
+HTML-first · soft budget · NotDiamond advisory · offline-honest · main merge operator-only

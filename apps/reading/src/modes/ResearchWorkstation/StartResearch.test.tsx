@@ -100,10 +100,15 @@ vi.mock("react-router-dom", async (orig) => {
 vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
   DecisionTreeDriverBadge: (props: {
     researchTier?: string | null;
+    promptText?: string | null;
   }) => (
     <div
       data-testid="decision-tree-driver-badge-stub"
       data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+      data-prompt-len={String((props.promptText || "").length)}
+      data-has-pub-refs={
+        (props.promptText || "").includes("Publication refs:") ? "1" : "0"
+      }
     >
       driver badge
     </div>
@@ -208,6 +213,36 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
         .getByTestId("decision-tree-driver-badge-stub")
         .getAttribute("data-research-tier"),
     ).toBe("deep");
+  });
+
+  it("passes question + pub refs as driver badge promptText (qp)", async () => {
+    render(
+      <MemoryRouter>
+        <StartResearch />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("decision-tree-driver-badge-stub")).toBeTruthy();
+    });
+    const input = screen.getByLabelText("Research question");
+    fireEvent.change(input, {
+      target: { value: "What is the state of retrieval-augmented generation?" },
+    });
+    expect(
+      Number(
+        screen
+          .getByTestId("decision-tree-driver-badge-stub")
+          .getAttribute("data-prompt-len") || 0,
+      ),
+    ).toBeGreaterThan(20);
+    fireEvent.change(screen.getByTestId("publication-refs-input"), {
+      target: { value: "arxiv:1706.03762" },
+    });
+    const badge = screen.getByTestId("decision-tree-driver-badge-stub");
+    expect(badge.getAttribute("data-has-pub-refs")).toBe("1");
+    expect(Number(badge.getAttribute("data-prompt-len") || 0)).toBeGreaterThan(
+      30,
+    );
   });
 
   it("renders a real composer: input + Ask button + example pills", () => {

@@ -706,13 +706,24 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             </span>
           </div>
 
-          {/* Residual (bp/df/ll): budget projection + DecisionTreeDriverBadge depth. */}
+          {/* Residual (bp/df/ll/qp): budget + driver badge depth + promptText foresight. */}
           <div
             data-testid="start-research-driver-badge-mount"
             data-view-format="html"
             data-research-tier={tier}
           >
-            <DecisionTreeDriverBadge researchTier={tier} />
+            <DecisionTreeDriverBadge
+              researchTier={tier}
+              /* Residual (qp): question + pub refs cost foresight (parity ResearchThis pi). */
+              promptText={
+                pubRefs.trim()
+                  ? `${question}
+
+Publication refs:
+${pubRefs.trim()}`
+                  : question
+              }
+            />
           </div>
           <ResearchLaunchBudgetPanel
             promptText={question}
