@@ -73,6 +73,25 @@ vi.mock("../../components/engagement/CollectiveResearchPanel", () => ({
   ),
 }));
 
+vi.mock("../../components/engagement/TwinNotesPanel", () => ({
+  TwinNotesPanel: (props: {
+    assetId: string;
+    autoLoad?: boolean;
+    autoSeedIfEmpty?: boolean;
+    seedBodyText?: string;
+  }) => (
+    <div
+      data-testid="twin-notes-panel-stub"
+      data-asset-id={props.assetId}
+      data-auto-load={String(Boolean(props.autoLoad))}
+      data-auto-seed={String(Boolean(props.autoSeedIfEmpty))}
+      data-body-len={String((props.seedBodyText || "").length)}
+    >
+      twins={props.assetId}
+    </div>
+  ),
+}));
+
 vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
   DecisionTreeDriverBadge: (props: {
     researchTier?: string | null;
@@ -550,5 +569,31 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
       );
     });
     expect(navigate).toHaveBeenCalledWith("/inv/inv_wrestle");
+  });
+
+  it("mounts TwinNotes recursive note-taker for the book asset (agq)", async () => {
+    render(
+      <MemoryRouter>
+        <ResearchThis
+          documentId="doc-twins"
+          pageIndex={2}
+          passageText="Selection for twin seed body"
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("research-this-twins-mount")).toBeTruthy();
+    });
+    const mount = screen.getByTestId("research-this-twins-mount");
+    expect(mount.getAttribute("data-view-format")).toBe("html");
+    expect(mount.getAttribute("data-document-id")).toBe("doc-twins");
+    expect(mount.getAttribute("data-seamless-research-this-twins")).toBe(
+      "true",
+    );
+    const twins = screen.getByTestId("twin-notes-panel-stub");
+    expect(twins.getAttribute("data-asset-id")).toBe("doc-twins");
+    expect(twins.getAttribute("data-auto-load")).toBe("true");
+    expect(twins.getAttribute("data-auto-seed")).toBe("true");
+    expect(Number(twins.getAttribute("data-body-len") || 0)).toBeGreaterThan(0);
   });
 });

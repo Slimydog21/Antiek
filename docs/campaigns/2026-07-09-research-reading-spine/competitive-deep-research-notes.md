@@ -2588,3 +2588,8 @@ surface twins complete offline. P0 operator merge PR #465. Pivot agp+ outside th
 Suite suite-competitive-dogfood-v20 adds wrestle fixtures for TalkToBook twins
 (agm) and MetaReading twins (agn). Settings spine postures v20. pytest dogfood 5 ·
 Settings 36 green. propose≠promote.
+
+## Residual agq · 2026-07-10 — ResearchThis TwinNotes recursive note-taker
+ResearchThis mounts TwinNotesPanel for documentId while spinning deep research
+(autoLoad · autoSeedIfEmpty · seed from selection). Book DR launch surface gets
+twin substrate (parity TalkToBook/MetaReading). vitest ResearchThis 13 green.

@@ -1,0 +1,18 @@
+# inventory-agq · ResearchThis TwinNotes recursive note-taker
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: agq
+date: 2026-07-10
+parent_tip: 1ea3d5ed (agp)
+
+## Closed
+- research-this-twins-mount when documentId set
+- TwinNotesPanel assetId=documentId · seed selection body
+- seamless-research-this-twins · research_tier
+- vitest ResearchThis · 13 passed
+
+## Why this residual
+ResearchThis had collective multi-select but not twins. Completes reading DR
+launch surface twin note-taker (agm Talk · agn Meta · agq ResearchThis).
+
+## Not in scope
+- Live L3 · autoPromote into context pack

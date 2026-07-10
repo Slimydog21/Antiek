@@ -10,6 +10,7 @@ import {
   type ResearchLaunchBudgetProjection,
   type ResearchLaunchTier,
 } from "../../components/engagement/ResearchLaunchBudgetPanel";
+import { TwinNotesPanel } from "../../components/engagement/TwinNotesPanel";
 import { fetchDepthTiers } from "../../api/settings";
 import { mapDepthTierToResearchTier } from "../../lib/researchTier";
 import { track } from "../../lib/analytics";
@@ -44,6 +45,8 @@ import { composeDriverPromptText } from "../../lib/driverPromptText";
  * Residual (pi): DecisionTreeDriverBadge promptText = selection + pub refs
  * Residual (qr): budget panel uses same composeDriverPromptText (badge ≡ budget).
  * for cost-vs-remaining projection (parity MO pg / Write ph).
+ * Residual (agq): TwinNotes recursive note-taker for this book asset while
+ * spinning DR (parity TalkToBook agm · MetaReading agn · reading ≡ research).
  * Full-page workstation handoff remains an explicit tertiary action.
  *
  * Gate-safe: passageText for gated books is still constrained server-side;
@@ -379,6 +382,26 @@ export default function ResearchThis({
           </span>
         )}
       </div>
+      {/* Residual (agq): recursive note-taker twin for this book while launching DR. */}
+      {documentId.trim() ? (
+        <section
+          className="mt-2 max-w-md space-y-1 border-t border-ink/10 pt-2 dark:border-bright/10"
+          data-testid="research-this-twins-mount"
+          data-view-format="html"
+          data-document-id={documentId.trim()}
+          data-seamless-research-this-twins="true"
+          data-research-tier={researchTier}
+        >
+          <TwinNotesPanel
+            assetId={documentId.trim()}
+            autoLoad
+            autoSeedIfEmpty
+            seedTitle={documentId.trim()}
+            seedBodyText={selection.trim() || documentId.trim()}
+            researchTier={researchTier}
+          />
+        </section>
+      ) : null}
       {/* Residual (fc/ou): multi-select open + recent DR spawns → this book. */}
       {documentId.trim() && availableSpawnIds.length > 0 ? (
         <section
