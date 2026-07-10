@@ -1513,3 +1513,8 @@ policy (parity reading host hydrate matrix xd).
 FUTURE-AGENT-SPEC tip → b94b4c37. Competitive delta: dual-gate L1–L7 section
 deep-link matrix complete across engagement surfaces; operator merge PR #465
 highest leverage.
+
+## Residual xg · 2026-07-10 — Collective dual-gate checklist #l6-collective
+Collective dual-gate checklist prep link jumps to #l6-collective (parity L6
+honesty strip wi). Competitive delta: multi-select collective dual-gate prep
+and honesty strip share the same deferred live-council policy section.

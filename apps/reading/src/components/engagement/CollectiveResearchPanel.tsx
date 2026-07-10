@@ -738,9 +738,9 @@ export function CollectiveResearchPanel({
             Settings · driver & budget
           </a>
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l6-collective"
             data-testid="collective-dual-gate-checklist-link"
-            title="Dual-gate L1–L4 checklist (L6 live multi-agent collective prep; offline default)"
+            title="Dual-gate L6 live multi-agent checklist (prep only · offline merge unit)"
           >
             Dual-gate L1–L4 checklist
           </a>

@@ -698,7 +698,8 @@ describe("CollectiveResearchPanel", () => {
       <CollectiveResearchPanel availableSpawnIds={["spn_1"]} parentAssetId="p" />,
     );
     const dual = screen.getByTestId("collective-dual-gate-checklist-link");
-    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4/);
+    // Residual (xg): L6 collective checklist section deep-link.
+    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l6-collective/);
     expect(dual.textContent).toMatch(/Dual-gate/i);
   });
 
