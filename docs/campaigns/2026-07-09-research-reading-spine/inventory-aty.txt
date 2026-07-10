@@ -1,0 +1,27 @@
+# inventory-aty · pure contextSearch + publicationHydrate open readiness
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aty
+date: 2026-07-10
+parent_tip: 8bd15b70c (atx)
+
+## Closed
+- workspace/contextSearchOpenReadiness.ts pure helper
+  open_ready · write_ready · html_first · never_pdf · source=context_search
+- workspace/publicationHydrateOpenReadiness.ts pure helper
+  open_ready · write_ready · offline_honest · source=publication_hydrate
+- ResearchContextPanel wires pure helpers for open stamps (atv/atw path)
+- Never invent HTML open when body empty · dual-gate hydrate honesty
+- Parity ate moilDepositHtmlReadiness · atm marketplaceHostedOpenReadiness
+- vitest 28 green (7 pure + 21 panel) · aty-vitest.log in SCRATCH
+
+## Doctrine
+Pure helpers hard to vary · open CTAs driven by readiness · HTML-first ·
+offline-honest hydrate · never invent PDF
+
+## Next
+atz+ offline product residual outside thrash
+Avoid: pure-open-readiness thrash after aty · vision/usage atx · open-stamp wave ·
+catalog · scorecard · dogfood · readiness→CTA · presets
+Prefer: SESSION-ARC att–aty open-path wave · competitive catalog surfaces for aty ·
+model install depth
+Operator merge PR #465 remains P0 (gated)

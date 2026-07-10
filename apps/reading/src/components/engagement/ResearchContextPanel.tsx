@@ -29,6 +29,8 @@
  * context-search-open-ready · source=context_search (parity att pack · atu evidence).
  * Residual (atw): publication hydrate open float|full|Write stamp html-first ·
  * hydrate-open-ready · source=publication_hydrate · offline-honest (parity atv).
+ * Residual (aty): pure contextSearchOpenReadiness · publicationHydrateOpenReadiness
+ * drive open stamps (parity ate/atm pure helpers · never invent HTML open).
  * Residual (tq): context_search float/full carries search_query + search_hit_count
  * into HostedHtmlDocumentHost honesty chrome.
  * Residual (api): competitive citation hop pipeline completeness
@@ -118,6 +120,8 @@ import {
   domainSearchCoverage,
 } from "../../workspace/domainSearchDefaults";
 import { twinSubstrateReadiness } from "../../workspace/twinSubstrateReadiness";
+import { contextSearchOpenReadiness } from "../../workspace/contextSearchOpenReadiness";
+import { publicationHydrateOpenReadiness } from "../../workspace/publicationHydrateOpenReadiness";
 
 export type ResearchContextPanelProps = {
   assetId: string;
@@ -1457,25 +1461,31 @@ export function ResearchContextPanel({
               ? "Hydrate mode: offline-honest identity — no live body; not invented abstract"
               : "Hydrate mode: injector body landed"}
           </p>
-          {/* Residual (sk/atw): hydrate → float|full HTML reading windows
-              with html-first · hydrate-open-ready · source · offline-honest stamps. */}
-          {hydrated.html?.trim() ? (
+          {/* Residual (sk/atw/aty): hydrate → float|full HTML reading windows
+              driven by publicationHydrateOpenReadiness pure helper. */}
+          {(() => {
+            const hydrateOpen = publicationHydrateOpenReadiness({
+              html: hydrated.html,
+              body_text: hydrated.body_text,
+              asset_id: hydrated.asset_id,
+              fetched: hydrated.fetched,
+              offline_honest: hydrated.offline_honest,
+            });
+            return hydrateOpen.open_ready ? (
             <p className="meta font-mono text-[11px] space-x-3">
               <button
                 type="button"
                 data-testid="hydrate-ref-open-float"
                 data-view-format="html"
-                data-html-first="true"
+                data-html-first={String(hydrateOpen.html_first)}
                 data-window-mode="floating"
                 data-asset-id={hydrated.asset_id}
-                data-fetched={String(Boolean(hydrated.fetched))}
-                data-hydrate-open-ready="true"
-                data-source="publication_hydrate"
-                data-offline-honest={String(
-                  hydrated.offline_honest !== false && !hydrated.fetched,
-                )}
+                data-fetched={String(hydrateOpen.fetched)}
+                data-hydrate-open-ready={String(hydrateOpen.open_ready)}
+                data-source={hydrateOpen.source}
+                data-offline-honest={String(hydrateOpen.offline_honest)}
                 className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
-                title="Open hydrated publication as floating HTML window (arxiv/substack · HTML-first · never PDF)"
+                title={hydrateOpen.open_title}
                 onClick={() => {
                   const id =
                     String(hydrated.asset_id || "").trim() ||
@@ -1505,17 +1515,15 @@ export function ResearchContextPanel({
                 type="button"
                 data-testid="hydrate-ref-open-full"
                 data-view-format="html"
-                data-html-first="true"
+                data-html-first={String(hydrateOpen.html_first)}
                 data-window-mode="full"
                 data-asset-id={hydrated.asset_id}
-                data-hydrate-open-ready="true"
-                data-source="publication_hydrate"
-                data-offline-honest={String(
-                  hydrated.offline_honest !== false && !hydrated.fetched,
-                )}
-                data-fetched={String(Boolean(hydrated.fetched))}
+                data-hydrate-open-ready={String(hydrateOpen.open_ready)}
+                data-source={hydrateOpen.source}
+                data-offline-honest={String(hydrateOpen.offline_honest)}
+                data-fetched={String(hydrateOpen.fetched)}
                 className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
-                title="Open hydrated publication as full working-region HTML window (arxiv/substack · HTML-first · never PDF)"
+                title={hydrateOpen.open_title}
                 onClick={() => {
                   const id =
                     String(hydrated.asset_id || "").trim() ||
@@ -1540,41 +1548,44 @@ export function ResearchContextPanel({
                 Open full (hydrated HTML)
               </button>
             </p>
-          ) : null}
-          {/* Residual (rh/acr/aet/atw): hydrate → Write + offline-honest path. */}
+            ) : null;
+          })()}
+          {/* Residual (rh/acr/aet/atw/aty): hydrate → Write via pure readiness. */}
           {(() => {
+            const hydrateOpen = publicationHydrateOpenReadiness({
+              html: hydrated.html,
+              body_text: hydrated.body_text,
+              asset_id: hydrated.asset_id,
+              fetched: hydrated.fetched,
+              offline_honest: hydrated.offline_honest,
+            });
             const href = buildPublicationHydrateWriteHref({
               spawnId,
               assets: [hydrated],
             });
-            const hasBody = Boolean(
-              String(hydrated.body_text || "").trim() ||
-                plainTextFromHtml(hydrated.html || "").trim(),
-            );
-            const offlineHonest =
-              hydrated.offline_honest !== false && !hydrated.fetched;
+            const hasBody = hydrateOpen.write_ready;
             return href ? (
               <p className="meta font-mono text-[11px]">
                 <a
                   href={href}
                   data-testid="hydrate-ref-open-write"
                   data-view-format="html"
-                  data-html-first="true"
+                  data-html-first={String(hydrateOpen.html_first)}
                   data-has-twin-seed="1"
                   data-asset-id={hydrated.asset_id}
                   data-write-seed-has-body={String(hasBody)}
-                  data-hydrate-open-ready={String(hasBody)}
-                  data-source="publication_hydrate"
+                  data-hydrate-open-ready={String(hydrateOpen.write_ready)}
+                  data-source={hydrateOpen.source}
                   // Residual (aet): arxiv/substack hydrate → Write path honesty.
                   data-spawn-id={String(spawnId || "").trim()}
-                  data-fetched={String(Boolean(hydrated.fetched))}
-                  data-offline-honest={String(offlineHonest)}
+                  data-fetched={String(hydrateOpen.fetched)}
+                  data-offline-honest={String(hydrateOpen.offline_honest)}
                   data-seamless-context-write={String(
                     Boolean(String(hydrated.asset_id || "").trim()),
                   )}
                   className="underline opacity-90 hover:opacity-100"
                   title={
-                    offlineHonest
+                    hydrateOpen.offline_honest
                       ? "Open Write with offline-honest hydrate identity as twin_seed (HTML-first · no invented live body · never PDF)"
                       : "Open Write with hydrated publication body as twin_seed (injector landed · HTML-first · no invented document_id · never PDF)"
                   }
@@ -1639,22 +1650,31 @@ export function ResearchContextPanel({
               </li>
             ))}
           </ul>
-          {/* Residual (sj/atv): context search → float|full HTML reading windows
-              with html-first · context-search-open-ready · source stamps. */}
-          {searchHits.html?.trim() ? (
+          {/* Residual (sj/atv/aty): context search → float|full HTML reading windows
+              driven by contextSearchOpenReadiness pure helper. */}
+          {(() => {
+            const searchOpen = contextSearchOpenReadiness({
+              html: searchHits.html,
+              query: searchHits.query,
+              hit_count: searchHits.hit_count,
+              has_hit_text: (searchHits.hits || []).some((h) =>
+                Boolean(String(h?.text || "").trim()),
+              ),
+            });
+            return searchOpen.open_ready ? (
             <p className="meta font-mono text-[11px] space-x-3">
               <button
                 type="button"
                 data-testid="context-search-open-float"
                 data-view-format="html"
-                data-html-first="true"
+                data-html-first={String(searchOpen.html_first)}
                 data-window-mode="floating"
-                data-hit-count={String(searchHits.hit_count ?? 0)}
-                data-context-search-open-ready="true"
-                data-source="context_search"
+                data-hit-count={String(searchOpen.hit_count)}
+                data-context-search-open-ready={String(searchOpen.open_ready)}
+                data-source={searchOpen.source}
                 data-query={String(searchHits.query || "").trim()}
                 className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
-                title="Open search hits as floating HTML window (intelligent search · HTML-first · never PDF)"
+                title={searchOpen.open_title}
                 onClick={() => {
                   const stem =
                     String(searchHits.asset_id || assetId).trim() || "asset";
@@ -1686,14 +1706,14 @@ export function ResearchContextPanel({
                 type="button"
                 data-testid="context-search-open-full"
                 data-view-format="html"
-                data-html-first="true"
+                data-html-first={String(searchOpen.html_first)}
                 data-window-mode="full"
-                data-hit-count={String(searchHits.hit_count ?? 0)}
-                data-context-search-open-ready="true"
-                data-source="context_search"
+                data-hit-count={String(searchOpen.hit_count)}
+                data-context-search-open-ready={String(searchOpen.open_ready)}
+                data-source={searchOpen.source}
                 data-query={String(searchHits.query || "").trim()}
                 className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
-                title="Open search hits as full working-region HTML window (intelligent search · HTML-first · never PDF)"
+                title={searchOpen.open_title}
                 onClick={() => {
                   const stem =
                     String(searchHits.asset_id || assetId).trim() || "asset";
@@ -1722,9 +1742,18 @@ export function ResearchContextPanel({
                 Open full (search HTML)
               </button>
             </p>
-          ) : null}
-          {/* Residual (rf/acr/aes/atv): search hits → Write + intelligent-search path. */}
+            ) : null;
+          })()}
+          {/* Residual (rf/acr/aes/atv/aty): search hits → Write via pure readiness. */}
           {(() => {
+            const searchOpen = contextSearchOpenReadiness({
+              html: searchHits.html,
+              query: searchHits.query,
+              hit_count: searchHits.hit_count,
+              has_hit_text: (searchHits.hits || []).some((h) =>
+                Boolean(String(h?.text || "").trim()),
+              ),
+            });
             const href = buildContextSearchWriteHref({
               assetId: searchHits.asset_id || assetId,
               query: searchHits.query,
@@ -1732,12 +1761,7 @@ export function ResearchContextPanel({
               html: searchHits.html,
               researchTier: searchHits.research_tier,
             });
-            const hitBody = (searchHits.hits || []).some((h) =>
-              Boolean(String(h?.text || "").trim()),
-            );
-            const hasBody = Boolean(
-              hitBody || plainTextFromHtml(searchHits.html || "").trim(),
-            );
+            const hasBody = searchOpen.write_ready;
             const searchAsset = String(
               searchHits.asset_id || assetId || "",
             ).trim();
@@ -1748,12 +1772,12 @@ export function ResearchContextPanel({
                   href={href}
                   data-testid="context-search-open-write"
                   data-view-format="html"
-                  data-html-first="true"
+                  data-html-first={String(searchOpen.html_first)}
                   data-has-twin-seed="1"
-                  data-hit-count={String(searchHits.hit_count ?? 0)}
+                  data-hit-count={String(searchOpen.hit_count)}
                   data-write-seed-has-body={String(hasBody)}
-                  data-context-search-open-ready={String(hasBody)}
-                  data-source="context_search"
+                  data-context-search-open-ready={String(searchOpen.write_ready)}
+                  data-source={searchOpen.source}
                   // Residual (aes): intelligent search → Write note-taker path.
                   data-query={searchQuery}
                   data-asset-id={searchAsset}
