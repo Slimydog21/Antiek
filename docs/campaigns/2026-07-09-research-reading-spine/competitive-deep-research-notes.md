@@ -923,3 +923,9 @@ and suite rewrite review sit one click apart without auto-promoting.
 FUTURE-AGENT-SPEC re-anchored to tip after write-seed SSOT (rt–rz), driver
 foresight (sa–sr), and HTML reading flywheel (sf–so). Competitive delta:
 next swarm starts from accurate inventory — no rebuild thrash on closed arcs.
+
+## Residual st · 2026-07-10 — Competitive dogfood v2
+Antiek-bench offline dogfood suite gains write-seed, float-evidence, and
+budget-foresight task postures (v2). Competitive delta: weekly recursive
+bench rewrite can learn from the same product surfaces that differentiate
+Antiek from chat-export deep research — without auto-promoting suites.

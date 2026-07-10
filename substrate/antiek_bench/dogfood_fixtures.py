@@ -13,7 +13,9 @@ from typing import Any
 
 from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v1"
+# Residual (st): v2 adds write-seed / float HTML / budget foresight postures
+# from the research-reading spine campaign (rt–sr, sf–so).
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v2"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -62,6 +64,55 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "refs land in an evidence pack without inventing sources?"
             ),
             expected_keywords=("arxiv", "substack", "citation", "evidence", "source"),
+        ),
+        # Residual (st): recursive note-taker → Write twin_seed posture.
+        SuiteItem(
+            item_id="dogfood-wrestle-write-seed",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with the recursive note-taker Write path: why should "
+                "deep research sessions seed twin_seed HTML writing assets "
+                "that feed Antiek-bench by_source without auto-promoting suites?"
+            ),
+            expected_keywords=(
+                "twin_seed",
+                "write",
+                "recursive",
+                "bench",
+                "promote",
+            ),
+        ),
+        # Residual (st): float HTML evidence / reading flywheel posture.
+        SuiteItem(
+            item_id="dogfood-synth-float-evidence",
+            task_class="synthesize",
+            prompt=(
+                "Synthesize how floating HTML evidence packs and context search "
+                "windows beat chat-export PDFs for a personal research workstation."
+            ),
+            expected_keywords=(
+                "html",
+                "evidence",
+                "float",
+                "pdf",
+                "workstation",
+            ),
+        ),
+        # Residual (st): soft budget foresight at model driver choice.
+        SuiteItem(
+            item_id="dogfood-distill-budget-foresight",
+            task_class="distill",
+            prompt=(
+                "Distill why decision-tree model install should show budget "
+                "usage and sample cost projection without inventing $0 pricing."
+            ),
+            expected_keywords=(
+                "budget",
+                "projection",
+                "decision-tree",
+                "pricing",
+                "soft",
+            ),
         ),
     )
 
