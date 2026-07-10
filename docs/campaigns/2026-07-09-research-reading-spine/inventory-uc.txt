@@ -1,0 +1,18 @@
+# inventory-uc · Heaviside host free-PD honesty + DR goal_hint domains
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: uc
+date: 2026-07-10
+
+## Closed
+- MarketplaceHost host land free-PD honesty for pd-heaviside-em
+- data-subjects electricity + engineering
+- Float DR goal_hint domains=electricity,engineering
+- vitest MarketplaceHost 23 green · /tmp/residual-tests-uc.log
+
+## Product why
+Parity Faraday (to) / Boole (ty): free electricity STEM PD must feed
+domain-aware deep research. Catalog alone (ub) incomplete without workstation
+host + DR inheritance.
+
+## Not in scope
+- Operator merge PR #465 (gated)

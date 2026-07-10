@@ -1804,4 +1804,150 @@ describe("MarketplaceHost mode", () => {
     expect(call.goal_hint).toMatch(/marketplace HTML host/);
     expect(call.goal_hint).toMatch(/Laws of Thought/);
   });
+
+  it("hosts Heaviside free PD with electricity subjects on host land (uc)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-heaviside-em",
+          title: "Electromagnetic Theory",
+          author: "Oliver Heaviside",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: [
+            "physics",
+            "mathematics",
+            "science",
+            "technology",
+            "electricity",
+            "engineering",
+          ],
+        },
+      ],
+      count: 1,
+      view_format: "html",
+      free_count: 1,
+      public_domain_count: 1,
+      by_subject: {
+        electricity: 1,
+        engineering: 1,
+        physics: 1,
+      },
+      payment_rails: "manual_receipt_only",
+    });
+    hostBookIntoAccount.mockResolvedValue({
+      document_id: "hdoc_heaviside",
+      owner_id: "tech-researcher",
+      book_id: "pd-heaviside-em",
+      content_hash: "h1",
+      title: "Electromagnetic Theory",
+      license_class: "public_domain",
+      already_hosted: false,
+      source_format: "html",
+      library_document_ids: ["hdoc_heaviside"],
+      view_format: "html",
+      html: "<p>Heaviside operational calculus and Maxwell vector form</p>",
+    });
+    fetchAccountLibrary.mockResolvedValue({
+      owner_id: "tech-researcher",
+      documents: [],
+      count: 0,
+      view_format: "html",
+      html: "<p>Library Heaviside</p>",
+    });
+    render(<MarketplaceHost ownerId="tech-researcher" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("catalog-entry-pd-heaviside-em")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /host into account/i }));
+    await waitFor(() => {
+      expect(hostBookIntoAccount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          owner_id: "tech-researcher",
+          book_id: "pd-heaviside-em",
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("marketplace-host-metrics")).toBeTruthy();
+    });
+    const hostMetrics = screen.getByTestId("marketplace-host-metrics");
+    expect(hostMetrics.getAttribute("data-subjects")).toMatch(/electricity/);
+    expect(hostMetrics.getAttribute("data-subjects")).toMatch(/engineering/);
+    expect(
+      screen.getByTestId("marketplace-host-free-pd-honesty").textContent,
+    ).toMatch(/free_host=true/);
+  });
+
+  it("launches Heaviside DR with electricity+engineering domains in goal_hint (uc)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-heaviside-em",
+          title: "Electromagnetic Theory",
+          author: "Oliver Heaviside",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: [
+            "physics",
+            "mathematics",
+            "science",
+            "technology",
+            "electricity",
+            "engineering",
+          ],
+        },
+      ],
+      count: 1,
+      view_format: "html",
+      free_count: 1,
+      public_domain_count: 1,
+      payment_rails: "manual_receipt_only",
+    });
+    hostBookIntoAccount.mockResolvedValue({
+      document_id: "hdoc_heaviside_dr",
+      owner_id: "tech-researcher",
+      book_id: "pd-heaviside-em",
+      content_hash: "h2",
+      title: "Electromagnetic Theory",
+      license_class: "public_domain",
+      already_hosted: false,
+      source_format: "html",
+      library_document_ids: ["hdoc_heaviside_dr"],
+      view_format: "html",
+      html: "<p>Electromagnetic waves and operational calculus</p>",
+    });
+    fetchAccountLibrary.mockResolvedValue({
+      owner_id: "tech-researcher",
+      documents: [],
+      count: 0,
+      view_format: "html",
+      html: "",
+    });
+    render(<MarketplaceHost ownerId="tech-researcher" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("catalog-entry-pd-heaviside-em")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /host into account/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId("marketplace-host-deep-research")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("marketplace-host-deep-research"));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalled();
+    });
+    const call = launchFloatingDeepResearch.mock.calls.at(-1)?.[0] as {
+      asset_id: string;
+      goal_hint: string;
+      view_mode: string;
+    };
+    expect(call.asset_id).toBe("hdoc_heaviside_dr");
+    expect(call.view_mode).toBe("floating");
+    expect(call.goal_hint).toMatch(/domains=.*electricity/);
+    expect(call.goal_hint).toMatch(/domains=.*engineering/);
+    expect(call.goal_hint).toMatch(/marketplace HTML host/);
+    expect(call.goal_hint).toMatch(/Electromagnetic Theory/);
+  });
 });

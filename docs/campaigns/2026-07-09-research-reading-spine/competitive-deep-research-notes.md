@@ -1104,3 +1104,8 @@ handoff stays tip-true so parallel engines do not rebuild closed product.
 pd-heaviside-em joins Faraday/Maxwell free PD electricity spine (HTML ·
 engineering subject). Competitive delta: marketplace free STEM path covers
 Maxwell → Heaviside engineering reformulation without payment rails.
+
+## Residual uc · 2026-07-10 — Heaviside host + DR electricity/engineering domains
+MarketplaceHost free-PD host honesty and float DR goal_hint carry
+domains=electricity,engineering for Heaviside. Competitive delta: free
+engineering STEM PD feeds domain-aware research (parity Faraday to · Boole ty).
