@@ -566,6 +566,58 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     ).toBe("midnight_oil_deposit");
   });
 
+  it("stamps marketplace_catalog twin seed path honesty (apm)", () => {
+    render(
+      <HostedHtmlDocumentHost
+        document_id="marketplace-catalog-freepd_science_any-source"
+        title="Marketplace catalog (HTML) · freepd_science"
+        view_format="html"
+        source="marketplace_catalog"
+        html="<article><h1>Catalog</h1><p>Filter-aware free PD listing.</p></article>"
+      />,
+    );
+    const host = screen.getByTestId("hosted-html-document-host");
+    expect(host.getAttribute("data-source")).toBe("marketplace_catalog");
+    expect(host.getAttribute("data-marketplace-catalog")).toBe("true");
+    expect(host.getAttribute("data-marketplace-host")).toBe("false");
+    const honesty = screen.getByTestId(
+      "hosted-html-marketplace-catalog-honesty",
+    );
+    expect(honesty.getAttribute("data-twin-seed-path")).toBe(
+      "marketplace_catalog",
+    );
+    expect(honesty.getAttribute("data-auto-seed-if-empty")).toBe("true");
+    expect(honesty.getAttribute("data-l5-live-payment")).toBe("deferred");
+    expect(honesty.textContent).toMatch(/filter-aware HTML listing/i);
+    expect(honesty.textContent).toMatch(/not a hosted book/i);
+    expect(honesty.textContent).toMatch(/never invent host entitlement/i);
+    expect(
+      screen
+        .getByTestId("hosted-html-marketplace-catalog-l5-future-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-l5-digital-book-seamless-port/);
+    const twinsMount = screen.getByTestId("hosted-html-twins-mount");
+    expect(twinsMount.getAttribute("data-marketplace-catalog")).toBe("true");
+    const twins = screen.getByTestId("twin-notes-panel-stub");
+    expect(twins.getAttribute("data-seed-title") || "").toMatch(
+      /Marketplace catalog/,
+    );
+    expect(twins.getAttribute("data-seed-body") || "").toMatch(
+      /Port path: marketplace catalog HTML projection/i,
+    );
+    expect(twins.getAttribute("data-seed-body") || "").toMatch(
+      /source=marketplace_catalog/,
+    );
+    expect(twins.getAttribute("data-seed-body") || "").toMatch(
+      /not a hosted book/i,
+    );
+    expect(
+      screen.getByTestId("hosted-html-open-write").getAttribute(
+        "data-write-seed-source",
+      ),
+    ).toBe("marketplace_catalog");
+  });
+
   it("stamps marketplace_catalog Open Write source (aaj)", () => {
     render(
       <HostedHtmlDocumentHost

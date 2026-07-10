@@ -48,6 +48,8 @@
  * (parity aiz collective unit · FUTURE twin matrix gap #1 · offline · L4 deferred).
  * Residual (apk): marketplace_host twin seed free/purchased path honesty on float
  * (parity aho mode seed · apj MO float · L5 live payment deferred).
+ * Residual (apm): marketplace_catalog filter-aware listing float twin seed path
+ * honesty (not a hosted book · HTML projection · never invent entitlement).
  *
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
  */
@@ -494,7 +496,18 @@ export default function HostedHtmlDocumentHost(
             .filter(Boolean)
             .join("\n")
             .slice(0, 900)
-        : twinSeedBodyBase;
+        : isMarketplaceCatalog
+          ? [
+              twinSeedBodyBase,
+              "",
+              "Port path: marketplace catalog HTML projection (filter-aware listing · not a hosted book · free_only/subject/source chips · never invent host entitlement · L5 live payment deferred).",
+              assetId ? `document_id=${assetId}` : "",
+              "source=marketplace_catalog · HTML-first · twin auto-seed if empty · recursive note-taker over catalog view.",
+            ]
+              .filter(Boolean)
+              .join("\n")
+              .slice(0, 900)
+          : twinSeedBodyBase;
 
   return (
     <div
@@ -524,6 +537,7 @@ export default function HostedHtmlDocumentHost(
       }
       data-midnight-oil-deposit={String(isMidnightOilDeposit)}
       data-marketplace-host={String(isMarketplaceHost)}
+      data-marketplace-catalog={String(isMarketplaceCatalog)}
       data-marketplace-path-kind={isMarketplaceHost ? marketplacePathKind : ""}
       data-is-free={
         isMarketplaceHost && marketplaceIsFree != null
@@ -755,6 +769,44 @@ export default function HostedHtmlDocumentHost(
                     title="Dual-gate L5 payment rails (operator only)"
                   >
                     Dual-gate · L5 payment
+                  </a>
+                </p>
+              </div>
+            ) : null}
+            {/* Residual (apm): marketplace catalog listing float twin seed honesty. */}
+            {isMarketplaceCatalog ? (
+              <div
+                className="text-[11px] font-mono opacity-80 mt-1 space-y-1"
+                data-testid="hosted-html-marketplace-catalog-honesty"
+                data-twin-seed-path="marketplace_catalog"
+                data-auto-seed-if-empty="true"
+                data-l5-live-payment="deferred"
+                data-html-first="true"
+                data-view-format="html"
+                role="status"
+              >
+                <p>
+                  Marketplace catalog · filter-aware HTML listing · not a hosted
+                  book · twin auto-seed if empty (recursive note-taker over
+                  catalog view) · never invent host entitlement · L5 live
+                  payment deferred · not PDF
+                </p>
+                <p className="space-x-3">
+                  <a
+                    href="/settings#settings-competitive-dr-scorecard"
+                    data-testid="hosted-html-marketplace-catalog-scorecard-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="Settings competitive DR scorecard (HTML-first marketplace catalog)"
+                  >
+                    Settings · competitive DR scorecard
+                  </a>
+                  <a
+                    href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-l5-digital-book-seamless-port.md"
+                    data-testid="hosted-html-marketplace-catalog-l5-future-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="FUTURE-AGENT L5 digital book seamless port brief"
+                  >
+                    FUTURE · L5 seamless port
                   </a>
                 </p>
               </div>
@@ -1176,6 +1228,7 @@ export default function HostedHtmlDocumentHost(
           data-collective-unit-prompt={String(isCollectiveUnitPrompt)}
           data-midnight-oil-deposit={String(isMidnightOilDeposit)}
           data-marketplace-host={String(isMarketplaceHost)}
+          data-marketplace-catalog={String(isMarketplaceCatalog)}
           data-marketplace-path-kind={isMarketplaceHost ? marketplacePathKind : ""}
           data-auto-seed-if-empty="true"
         >
@@ -1184,12 +1237,14 @@ export default function HostedHtmlDocumentHost(
           {/* Residual (aiz): collective_unit_prompt twin seed path honesty. */}
           {/* Residual (apj): midnight_oil_deposit twin seed path honesty. */}
           {/* Residual (apk): marketplace_host free/purchased twin seed path honesty. */}
+          {/* Residual (apm): marketplace_catalog listing twin seed path honesty. */}
           <div
             data-testid="hosted-html-twins-refresh"
             data-refresh-key={String(contextRefreshKey)}
             data-collective-unit-prompt={String(isCollectiveUnitPrompt)}
             data-midnight-oil-deposit={String(isMidnightOilDeposit)}
             data-marketplace-host={String(isMarketplaceHost)}
+            data-marketplace-catalog={String(isMarketplaceCatalog)}
             data-marketplace-path-kind={
               isMarketplaceHost ? marketplacePathKind : ""
             }
