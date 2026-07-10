@@ -3280,3 +3280,7 @@ P0 operator merge PR #465. Pivot alo+ outside thrash.
 Pure domainSearchDefaults util; HostedHtml reading host stamps coverage; marketplace
 imports pure path. Domain coverage path: ResearchContext · MarketplaceHost · HostedHtml.
 vitest 83 green. P0 operator merge PR #465. Pivot alp+ outside thrash.
+
+## Residual alp · 2026-07-10 — SESSION-ARC alj–alo domain coverage full path
+Wave handoff: ResearchContext · MarketplaceHost · HostedHtml domain-search coverage
++ pure util extract. P0 operator merge PR #465. Pivot alq+ outside thrash.
