@@ -1,0 +1,18 @@
+# inventory-uh · MO Settings L4 live-step deep-link prep polish
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: uh
+date: 2026-07-10
+
+## Closed
+- Midnight Oil → /settings#moil-live-step-status deep-link
+- data-l4-prep + data-never-enables-live honesty on moil-live-step-status
+- vitest MidnightOil 19 green · /tmp/residual-tests-uh.log
+
+## Product why
+Operator vision: Midnight Oil autonomous swarm with recommended price ceiling
+and dual-gate L4. MO mode now deep-links Settings L4 readiness without enabling
+live worker — offline-honest prep craftsmanship.
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Enabling live step injectors (operator dual-gate only)

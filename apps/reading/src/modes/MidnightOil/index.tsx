@@ -21,6 +21,7 @@
  * Residual (hn): moil-ceiling-metrics + formula note for recommended price
  * ceiling transparency (goals+duration → approve before swarm work).
  * Residual (hy): live-step status panel (offline-honest dual-gate readiness).
+ * Residual (uh): Settings L4 live-step deep-link from MO mode (prep only).
  * Residual (ic): Settings deep-link for decision-tree driver + daily budget.
  * Residual (js): deposit progress panels pass researchTier + tier poll cadence.
  * Residual (md): recommended ceiling vs remaining daily budget fit chrome
@@ -616,6 +617,8 @@ export default function MidnightOil() {
           data-offline-honest={String(liveStepStatus.offline_honest)}
           data-live-env={String(liveStepStatus.live_env)}
           data-injector-installed={String(liveStepStatus.injector_installed)}
+          data-l4-prep="true"
+          data-never-enables-live="true"
           data-view-format="html"
           role="status"
         >
@@ -641,7 +644,7 @@ export default function MidnightOil() {
       ) : null}
 
 
-      {/* Residual (ic/ml): Settings + dual-gate checklist (prep only). */}
+      {/* Residual (ic/ml/uh): Settings + L4 live-step + dual-gate checklist (prep only). */}
       <p className="mb-4 max-w-xl text-[11px] font-mono space-x-3">
         <a
           href="/settings#decision-tree-panel"
@@ -650,6 +653,14 @@ export default function MidnightOil() {
           title="Open Settings decision-tree: driver, budget bar, sample cost projection"
         >
           Settings · model driver & budget
+        </a>
+        <a
+          href="/settings#moil-live-step-status"
+          data-testid="moil-settings-l4-live-step-link"
+          className="underline opacity-80 hover:opacity-100"
+          title="Open Settings Midnight Oil L4 live-step readiness (offline default · never enables live worker)"
+        >
+          Settings · L4 MO live-step
         </a>
         <a
           href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"

@@ -1130,3 +1130,8 @@ delta: multi-float cohesive unit UX is surface-complete, not host-only.
 ## Residual ug · 2026-07-10 — FUTURE-AGENT tip re-anchor through uf
 FUTURE-AGENT-SPEC tip → e31d9dce with closed arcs tt–uf. Competitive delta:
 swarm handoff stays tip-true after Select open + free STEM + dogfood v6.
+
+## Residual uh · 2026-07-10 — MO Settings L4 live-step deep-link
+Midnight Oil mode links Settings #moil-live-step-status with data-l4-prep and
+data-never-enables-live. Competitive delta: autonomous swarm prep is one click
+from MO without silent live enable — offline-honest dual-gate craftsmanship.

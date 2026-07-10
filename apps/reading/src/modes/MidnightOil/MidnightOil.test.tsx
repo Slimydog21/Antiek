@@ -400,6 +400,19 @@ describe("MidnightOil mode", () => {
     expect(dual.textContent).toMatch(/dual-gate/i);
   });
 
+  it("links Settings L4 MO live-step readiness (uh)", async () => {
+    render(<MidnightOil />);
+    await waitFor(() => {
+      expect(screen.getByTestId("moil-live-step-status")).toBeTruthy();
+    });
+    const panel = screen.getByTestId("moil-live-step-status");
+    expect(panel.getAttribute("data-l4-prep")).toBe("true");
+    expect(panel.getAttribute("data-never-enables-live")).toBe("true");
+    const l4 = screen.getByTestId("moil-settings-l4-live-step-link");
+    expect(l4.getAttribute("href")).toBe("/settings#moil-live-step-status");
+    expect(l4.textContent).toMatch(/L4 MO live-step/i);
+  });
+
   it("mounts budget projection panel before create (cs)", () => {
     render(<MidnightOil />);
     expect(screen.getByTestId("moil-budget-mount")).toBeTruthy();
