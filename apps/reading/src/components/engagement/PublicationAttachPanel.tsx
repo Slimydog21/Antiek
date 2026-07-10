@@ -36,98 +36,16 @@ import {
   buildPublicationHydrateWriteHref,
   plainTextFromHtml,
 } from "../../workspace/twinWriteSeed";
+// Residual (auj): pure catalog lives in workspace — re-export for existing imports.
+import { KNOWLEDGE_DENSE_PUBLICATION_PRESETS } from "../../workspace/knowledgeDensePresets";
+export {
+  KNOWLEDGE_DENSE_PUBLICATION_PRESETS,
+  knowledgeDensePresetById,
+  knowledgeDensePresetCount,
+  type KnowledgeDensePublicationPreset,
+  type KnowledgeDensePublicationKind,
+} from "../../workspace/knowledgeDensePresets";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
-
-/**
- * Residual (agx): curated knowledge-dense publication handles for deep research.
- * Presets only insert refs into the textarea — never auto-hydrate or claim live body.
- */
-export const KNOWLEDGE_DENSE_PUBLICATION_PRESETS: readonly {
-  id: string;
-  label: string;
-  reference: string;
-  kind: "arxiv" | "substack" | "url";
-}[] = [
-  {
-    id: "attention-is-all-you-need",
-    label: "Attention (arXiv)",
-    reference: "arxiv:1706.03762",
-    kind: "arxiv",
-  },
-  {
-    id: "bert",
-    label: "BERT (arXiv)",
-    reference: "arxiv:1810.04805",
-    kind: "arxiv",
-  },
-  {
-    id: "gpt-3",
-    label: "GPT-3 (arXiv)",
-    reference: "arxiv:2005.14165",
-    kind: "arxiv",
-  },
-  {
-    id: "scaling-laws",
-    label: "Scaling laws (arXiv)",
-    reference: "arxiv:2001.08361",
-    kind: "arxiv",
-  },
-  // Residual (ask): RAG + Constitutional AI — knowledge-dense deep research spine.
-  {
-    id: "retrieval-augmented-generation",
-    label: "RAG (arXiv)",
-    reference: "arxiv:2005.11401",
-    kind: "arxiv",
-  },
-  {
-    id: "constitutional-ai",
-    label: "Constitutional AI (arXiv)",
-    reference: "arxiv:2212.08073",
-    kind: "arxiv",
-  },
-  // Residual (asy): ReAct + Toolformer — agentic multi-step / tool-use DR spine
-  // (competitive long-horizon connectors; insert-only · never auto-hydrate).
-  {
-    id: "react-synergizing-reasoning",
-    label: "ReAct (arXiv)",
-    reference: "arxiv:2210.03629",
-    kind: "arxiv",
-  },
-  {
-    id: "toolformer",
-    label: "Toolformer (arXiv)",
-    reference: "arxiv:2302.04761",
-    kind: "arxiv",
-  },
-  // Residual (ati): Tree of Thoughts — multi-path deliberate reasoning for
-  // competitive long-horizon deep research (insert-only · never auto-hydrate).
-  {
-    id: "tree-of-thoughts",
-    label: "Tree of Thoughts (arXiv)",
-    reference: "arxiv:2305.10601",
-    kind: "arxiv",
-  },
-  // Residual (auh): Self-Consistency — sample-and-vote decoding for higher-quality
-  // multi-path reasoning (competitive DR quality connector · insert-only).
-  {
-    id: "self-consistency",
-    label: "Self-Consistency (arXiv)",
-    reference: "arxiv:2203.11171",
-    kind: "arxiv",
-  },
-  {
-    id: "lilian-weng-attention",
-    label: "Lilian Weng · Attention",
-    reference: "https://lilianweng.github.io/posts/2018-06-24-attention/",
-    kind: "url",
-  },
-  {
-    id: "substack-example",
-    label: "Substack (example URL)",
-    reference: "https://www.lesswrong.com/posts/7MCqRnZzvszsxgtJi/mysteries-of-mode-collapse",
-    kind: "substack",
-  },
-] as const;
 
 export type PublicationAttachResult = {
   spawnId: string;

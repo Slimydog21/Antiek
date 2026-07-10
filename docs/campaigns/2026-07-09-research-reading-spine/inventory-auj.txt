@@ -1,0 +1,24 @@
+# inventory-auj · extract knowledgeDensePresets pure catalog
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: auj
+date: 2026-07-10
+parent_tip: 331b0ee95 (aui)
+
+## Closed
+- workspace/knowledgeDensePresets.ts pure catalog
+  KNOWLEDGE_DENSE_PUBLICATION_PRESETS · knowledgeDensePresetCount ·
+  knowledgeDensePresetById (never invents missing)
+- PublicationAttachPanel re-exports for back-compat imports
+- Parity competitiveDrQuality extract (apw) · hard to vary connectors
+- vitest 9 green (2 pure + 7 panel) · auj-vitest.log in SCRATCH
+
+## Doctrine
+Knowledge-dense arxiv/substack/url connectors as pure importable catalog ·
+insert-only · never auto-hydrate · dual-gate L1/L2 live operator-only
+
+## Next
+auk+ offline product residual outside thrash
+Avoid: preset-catalog extract thrash after auj · presets · MO ceiling · pure-open ·
+catalog · scorecard · vision · dogfood
+Prefer: model non-budget · twin/collective · competitive non-extract residual
+Operator merge PR #465 remains P0 (gated)
