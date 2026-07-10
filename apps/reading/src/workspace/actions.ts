@@ -52,7 +52,22 @@ export function openNotebook(opts: {
   );
 }
 
-/** Open a PDF region as a floating PDF panel jumped to a page. */
+/** Open the canonical HTML reader at an optional stable anchor. */
+export function openReader(opts: {
+  documentId: string;
+  anchorId?: string;
+  investigationId?: string;
+  title?: string;
+}): string {
+  const id = `reader:${opts.documentId}${opts.anchorId ? `:${opts.anchorId}` : ""}`;
+  return useWorkspace.getState().open(
+    "HtmlReader",
+    { documentId: opts.documentId, anchorId: opts.anchorId, investigationId: opts.investigationId },
+    { mode: "floating", title: opts.title ?? `Reader · ${opts.documentId.slice(-6)}`, id },
+  );
+}
+
+/** @deprecated Compatibility for unmigrated notebook/PDF producers only. */
 export function openPdfPanel(opts: {
   documentId: string;
   page?: number;

@@ -10,9 +10,9 @@
  *
  *     @@actions
  *     [
- *       {"kind": "open_panel", "panel_kind": "PdfViewer",
- *        "props": {"documentId": "doc-123", "initialPage": 12},
- *        "mode": "floating", "title": "Q4 risk model · p.12"},
+ *       {"kind": "open_panel", "panel_kind": "HtmlReader",
+ *        "props": {"documentId": "doc-123", "anchorId": "antiek-anchor-risk"},
+ *        "mode": "floating", "title": "Q4 risk model"},
  *       {"kind": "add_to_notebook",
  *        "notebook_id": "scratch",
  *        "block": {"kind": "note", "text": "Worth chasing."}}
@@ -129,6 +129,19 @@ const VALID_ACTION_KINDS = new Set<AiAction["kind"]>([
   "toast",
 ]);
 
+function validateOpenPanel(item: Record<string, unknown>): string | null {
+  if (item.panel_kind === "PdfViewer") return "PdfViewer is deprecated; use HtmlReader";
+  if (item.panel_kind !== "HtmlReader") return null;
+  const props = item.props;
+  if (typeof props !== "object" || props === null || Array.isArray(props)) return "HtmlReader requires props";
+  const values = props as Record<string, unknown>;
+  if (typeof values.documentId !== "string" || values.documentId.length === 0) return "HtmlReader requires documentId";
+  if ("page" in values || "initialPage" in values) return "HtmlReader does not accept page props; use anchorId";
+  if (values.anchorId !== undefined && typeof values.anchorId !== "string") return "HtmlReader anchorId must be a string";
+  if (values.investigationId !== undefined && typeof values.investigationId !== "string") return "HtmlReader investigationId must be a string";
+  return null;
+}
+
 /**
  * Parse an assistant reply. Returns the stripped prose + structured
  * actions. Tolerant of:
@@ -179,6 +192,10 @@ export function parseAssistantReply(raw: string): ParsedAssistantReply {
     if (typeof k !== "string" || !VALID_ACTION_KINDS.has(k as AiAction["kind"])) {
       errors.push(`Unknown action kind: ${JSON.stringify(k)}`);
       continue;
+    }
+    if (k === "open_panel") {
+      const problem = validateOpenPanel(item as Record<string, unknown>);
+      if (problem) { errors.push(`Invalid open_panel action: ${problem}`); continue; }
     }
     // Light shape validation — defer the strict typing to the executor.
     actions.push(item as AiAction);
@@ -346,6 +363,8 @@ export function dispatchAiAction(
 
   switch (action.kind) {
     case "open_panel": {
+      const problem = validateOpenPanel(action as unknown as Record<string, unknown>);
+      if (problem) throw new Error(`Refused invalid open_panel action: ${problem}`);
       // Idempotent — re-firing the same action focuses the existing panel.
       const id =
         action.id ??
@@ -710,6 +729,7 @@ export function workspaceContextPrompt(): string {
     `containing a JSON array of structured actions to dispatch. The\n` +
     `closed set of action kinds:\n\n` +
     `  open_panel       { panel_kind, props?, mode?, title?, id? }\n` +
+    `                   HtmlReader props: { documentId, anchorId?, investigationId? }; never page/initialPage\n` +
     `  focus_panel      { id }\n` +
     `  close_panel      { id }\n` +
     `  set_panel_mode   { id, mode }     // docked-left / -right / -bottom / floating / popout\n` +

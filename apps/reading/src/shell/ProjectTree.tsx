@@ -79,7 +79,7 @@ const panelKindForNode = (n: TreeNode) => {
     case "investigation":
       return "Trajectory" as const;
     case "document":
-      return "PdfViewer" as const;
+      return "HtmlReader" as const;
     case "notebook":
       return "Notebook" as const;
   }
@@ -184,7 +184,7 @@ export function ProjectTree({
   const onItemClick = (n: TreeNode, e: React.MouseEvent) => {
     if (e.metaKey || e.ctrlKey) {
       e.preventDefault();
-      openPanel(panelKindForNode(n), { id: n.id }, { mode: "floating", title: n.title });
+      openPanel(panelKindForNode(n), n.kind === "document" ? { documentId: n.id } : { id: n.id }, { mode: "floating", title: n.title });
       return;
     }
     navigate(routeForNode(n));

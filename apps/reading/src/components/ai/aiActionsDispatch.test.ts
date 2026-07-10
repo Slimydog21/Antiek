@@ -13,8 +13,7 @@ import { EMPTY_SNAPSHOT } from "../../workspace/panel.types";
  * behavior: an assistant reply containing @@actions, when piped
  * through both stages, produces the expected store mutation.
  *
- * Spec acceptance (S8 WP-8.4): "When the AI asks 'open this PDF',
- * it dispatches a workspace open(PdfViewer, ...) action."
+ * Canonical reader actions dispatch HtmlReader with document lineage.
  */
 
 beforeEach(() => {
@@ -23,6 +22,16 @@ beforeEach(() => {
   // Silence the deferred LemonToast dynamic-import — we test the
   // dispatched action records, not the toast renderer.
   vi.useFakeTimers();
+  const values = new Map<string, string>();
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+      clear: () => values.clear(),
+    },
+  });
 });
 
 afterEach(() => {
@@ -36,8 +45,8 @@ describe("AI tool-call · full dispatch round-trip", () => {
       JSON.stringify([
         {
           kind: "open_panel",
-          panel_kind: "FakeNotebook",
-          props: { documentId: "doc-1", initialPage: 12 },
+          panel_kind: "HtmlReader",
+          props: { documentId: "doc-1", anchorId: "antiek-anchor-12", investigationId: "inv-1" },
           mode: "floating",
           title: "Q4 risk",
           id: "ai:test:open",
@@ -56,10 +65,10 @@ describe("AI tool-call · full dispatch round-trip", () => {
 
     const panel = useWorkspace.getState().panels["ai:test:open"];
     expect(panel).toBeTruthy();
-    expect(panel.kind).toBe("FakeNotebook");
+    expect(panel.kind).toBe("HtmlReader");
     expect(panel.mode).toBe("floating");
     expect(panel.title).toBe("Q4 risk");
-    expect(panel.props).toEqual({ documentId: "doc-1", initialPage: 12 });
+    expect(panel.props).toEqual({ documentId: "doc-1", anchorId: "antiek-anchor-12", investigationId: "inv-1" });
   });
 
   it("undo reverses an open_panel dispatch", () => {
@@ -79,6 +88,10 @@ describe("AI tool-call · full dispatch round-trip", () => {
     expect(useWorkspace.getState().panels["ai:test:undo"]).toBeTruthy();
     r.undo!();
     expect(useWorkspace.getState().panels["ai:test:undo"]).toBeFalsy();
+  });
+
+  it("dispatcher independently refuses deprecated PdfViewer actions", () => {
+    expect(() => dispatchAiAction({ kind: "open_panel", panel_kind: "PdfViewer", props: { documentId: "doc-1", page: 1 } } as never)).toThrow(/deprecated/);
   });
 
   it("close_panel removes a previously-open panel", () => {

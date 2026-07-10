@@ -38,6 +38,8 @@ export type PanelKind =
   | "Chat"
   | "Chase"
   | "ChaseThread"
+  | "HtmlReader"
+  /** @deprecated Compatibility only for the unmigrated notebook region embed. */
   | "PdfViewer"
   | "Notes"
   | "CrossDocs"

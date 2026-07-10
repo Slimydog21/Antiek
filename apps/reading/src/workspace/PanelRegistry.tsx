@@ -35,6 +35,7 @@ import { FakeSidebar } from "./__fakes__/FakeSidebar";
 // not move module into another chunk." Make the registry match
 // reality: these renderers ship in the main bundle either way.
 import PdfViewer from "../components/PdfViewer";
+import HtmlReaderPanel from "../components/HtmlReaderPanel";
 import NotebookPage from "../modes/Notebook";
 import MasterMdViewer from "../modes/ResearchWorkstation/MasterMdViewer";
 import TrajectoryView from "../modes/ResearchWorkstation/TrajectoryView";
@@ -65,6 +66,8 @@ export const PanelRegistry: Record<PanelKind, Renderer> = {
   // S6 — wrestling-workstation surfaces. PdfViewer is a direct child
   // of WrestleApp's main slot → eager. Notes / CrossDocs /
   // ClaimInspector are panel-only → lazy.
+  HtmlReader: HtmlReaderPanel,
+  // Deprecated compatibility for the unmigrated Notebook RegionEmbedBlock.
   PdfViewer,
   Notes: lazy(() => import("../components/NotesPanel")),
   CrossDocs: lazy(() => import("../components/CrossDocSidebar")),

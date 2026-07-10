@@ -16,8 +16,8 @@ describe("parseAssistantReply — fence detection", () => {
       JSON.stringify([
         {
           kind: "open_panel",
-          panel_kind: "PdfViewer",
-          props: { documentId: "doc-1" },
+          panel_kind: "HtmlReader",
+          props: { documentId: "doc-1", anchorId: "antiek-anchor-1", investigationId: "inv-1" },
           mode: "floating",
         },
       ]) +
@@ -41,7 +41,7 @@ describe("parseAssistantReply — schema enforcement", () => {
     const raw =
       "Reply.\n\n@@actions\n" +
       JSON.stringify([
-        { kind: "open_panel", panel_kind: "PdfViewer" },
+        { kind: "open_panel", panel_kind: "HtmlReader", props: { documentId: "doc-1" } },
         { kind: "rm_rf_root", target: "/" },
       ]) +
       "\n@@end";
@@ -80,6 +80,17 @@ describe("parseAssistantReply — schema enforcement", () => {
 });
 
 describe("parseAssistantReply — closed-enum hardening", () => {
+  it("accepts HTML reader lineage and rejects legacy PDF/page actions", () => {
+    const raw = "X.\n\n@@actions\n" + JSON.stringify([
+      { kind: "open_panel", panel_kind: "HtmlReader", props: { documentId: "doc-1", anchorId: "antiek-anchor-2", investigationId: "inv-2" } },
+      { kind: "open_panel", panel_kind: "PdfViewer", props: { documentId: "doc-1", page: 2 } },
+      { kind: "open_panel", panel_kind: "HtmlReader", props: { documentId: "doc-1", page: 2 } },
+    ]) + "\n@@end";
+    const r = parseAssistantReply(raw);
+    expect(r.actions).toHaveLength(1);
+    expect(r.parseErrors).toHaveLength(2);
+  });
+
   it("never returns an action with an unknown kind, even if the model insists", () => {
     const raw =
       "X.\n\n@@actions\n" +
