@@ -3083,3 +3083,7 @@ After catalog host land, operators navigate FUTURE L5 digital book seamless port
 brief, dual-gate L5 checklist, and competitive DR scorecard (HTML-first ·
 manual_receipt_only · live rails deferred). vitest MarketplaceHost 41 green.
 P0 operator merge PR #465. Pivot akc+ outside thrash.
+
+## Residual akc · 2026-07-10 — SESSION-ARC ajy–akb ND never-dispatch + L5 honesty
+Wave handoff: ND install→decision-tree never-dispatch path · marketplace host
+FUTURE L5 seamless port. P0 operator merge PR #465. Pivot akd+ outside thrash.
