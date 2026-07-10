@@ -40,6 +40,10 @@ ADAPTER_NAME = "KreaProviderAdapter"
 AUTHORIZED_TRANSPORT_CALLSITES: frozenset[str] = frozenset()
 
 
+def _is_test_module(path: Path) -> bool:
+    return path.name.startswith("test_") or path.name.endswith("_test.py")
+
+
 def _shipped_multimedia_files() -> list[Path]:
     """Shipped multimedia production surface: substrate/multimedia/** plus any
     interfaces/**/multimedia*.py (routes land in a later PR — guard them forward).
@@ -55,7 +59,7 @@ def _shipped_multimedia_files() -> list[Path]:
         files.extend(api_dir.glob("multimedia*.py"))
 
     def _keep(p: Path) -> bool:
-        return "test" not in p.name
+        return not _is_test_module(p)
 
     return sorted({p for p in files if _keep(p)})
 
@@ -127,3 +131,9 @@ def test_guard_ignores_dry_run_construction_without_transport() -> None:
         "adapter = KreaProviderAdapter(api_key='k')\n"
     )
     assert _transport_wired_callsites(dry, "<synthetic-dry>") == []
+
+
+def test_shipped_filename_containing_test_is_not_misclassified() -> None:
+    assert not _is_test_module(Path("latest_renderer.py"))
+    assert _is_test_module(Path("test_provider.py"))
+    assert _is_test_module(Path("provider_test.py"))
