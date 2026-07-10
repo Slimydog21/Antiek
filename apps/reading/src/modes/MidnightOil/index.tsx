@@ -16,6 +16,7 @@ import {
   finalArtifactMidnightOil,
   finalArtifactPersistencePlanMidnightOil,
   finalArtifactPublishPlanMidnightOil,
+  finalCloseoutArchiveReconciliationPlanMidnightOil,
   finalRunClosurePlanMidnightOil,
   finalHtmlArtifactAssemblyPlanMidnightOil,
   finalSynthesisDraftPlanMidnightOil,
@@ -66,6 +67,7 @@ import {
   type MidnightOilFinalArtifactReceipt,
   type MidnightOilFinalArtifactPersistencePlanReceipt,
   type MidnightOilFinalArtifactPublishPlanReceipt,
+  type MidnightOilFinalCloseoutArchiveReconciliationPlanReceipt,
   type MidnightOilFinalRunClosurePlanReceipt,
   type MidnightOilFinalHtmlArtifactAssemblyPlanReceipt,
   type MidnightOilFinalSynthesisDraftPlanReceipt,
@@ -251,6 +253,10 @@ export default function MidnightOil() {
     retentionBillingReconciliationPlanReceipt,
     setRetentionBillingReconciliationPlanReceipt,
   ] = useState<MidnightOilRetentionBillingReconciliationPlanReceipt | null>(null);
+  const [
+    finalCloseoutArchiveReconciliationPlanReceipt,
+    setFinalCloseoutArchiveReconciliationPlanReceipt,
+  ] = useState<MidnightOilFinalCloseoutArchiveReconciliationPlanReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -339,6 +345,10 @@ export default function MidnightOil() {
   const [
     retentionBillingReconciliationPlanBusy,
     setRetentionBillingReconciliationPlanBusy,
+  ] = useState(false);
+  const [
+    finalCloseoutArchiveReconciliationPlanBusy,
+    setFinalCloseoutArchiveReconciliationPlanBusy,
   ] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
@@ -446,10 +456,20 @@ export default function MidnightOil() {
     retentionBillingReconciliationPlanError,
     setRetentionBillingReconciliationPlanError,
   ] = useState<string | null>(null);
+  const [
+    finalCloseoutArchiveReconciliationPlanError,
+    setFinalCloseoutArchiveReconciliationPlanError,
+  ] = useState<string | null>(null);
+
+  function clearFinalCloseoutArchiveReconciliationPlan() {
+    setFinalCloseoutArchiveReconciliationPlanError(null);
+    setFinalCloseoutArchiveReconciliationPlanReceipt(null);
+  }
 
   function clearRetentionBillingReconciliationPlan() {
     setRetentionBillingReconciliationPlanError(null);
     setRetentionBillingReconciliationPlanReceipt(null);
+    clearFinalCloseoutArchiveReconciliationPlan();
   }
 
   function clearDeliveryNotificationReconciliationPlan() {
@@ -726,6 +746,7 @@ export default function MidnightOil() {
     setWorkspaceDeliveryCardReconciliationPlanError(null);
     setDeliveryNotificationReconciliationPlanError(null);
     setRetentionBillingReconciliationPlanError(null);
+    setFinalCloseoutArchiveReconciliationPlanError(null);
     setPreflight(null);
     setDryRunReceipt(null);
     setLiveSettingsReceipt(null);
@@ -777,6 +798,7 @@ export default function MidnightOil() {
     setWorkspaceDeliveryCardReconciliationPlanReceipt(null);
     setDeliveryNotificationReconciliationPlanReceipt(null);
     setRetentionBillingReconciliationPlanReceipt(null);
+    setFinalCloseoutArchiveReconciliationPlanReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -3925,6 +3947,7 @@ export default function MidnightOil() {
     setRetentionBillingReconciliationPlanBusy(true);
     setRetentionBillingReconciliationPlanError(null);
     setRetentionBillingReconciliationPlanReceipt(null);
+    clearFinalCloseoutArchiveReconciliationPlan();
     try {
       const result = await retentionBillingReconciliationPlanMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -3985,6 +4008,125 @@ export default function MidnightOil() {
       );
     } finally {
       setRetentionBillingReconciliationPlanBusy(false);
+    }
+  }
+
+  async function onFinalCloseoutArchiveReconciliationPlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerControlPlanReceipt ||
+      !budgetProviderAdapterPlanReceipt ||
+      !providerExecutorAdapterPlanReceipt ||
+      !retrievalAdapterPlanReceipt ||
+      !graphAdapterPlanReceipt ||
+      !finalArtifactAdapterPlanReceipt ||
+      !operatorDispatchAdapterPlanReceipt ||
+      !controlLedgerAdapterPlanReceipt ||
+      !controlLedgerPersistencePlanReceipt ||
+      !controlLedgerPersistenceApplyPlanReceipt ||
+      !operatorDispatchActivationReadinessPlanReceipt ||
+      !liveDispatchFinalEnablementPlanReceipt ||
+      !liveDispatchFinalEnablementApplyPlanReceipt ||
+      !runnerDispatchSchedulerPlanReceipt ||
+      !runnerDispatchWorkerBootstrapPlanReceipt ||
+      !schedulerLeaseRetryPlanReceipt ||
+      !workerQueueClaimPlanReceipt ||
+      !repositoryTransactionPlanReceipt ||
+      !repositoryCommitRollbackPlanReceipt ||
+      !workerDispatchLeaseHeartbeatPlanReceipt ||
+      !workerCancellationAbandonPlanReceipt ||
+      !workerCompletionFinalizationPlanReceipt ||
+      !workerOutputAggregationPlanReceipt ||
+      !workerSynthesisHandoffPlanReceipt ||
+      !synthesisBundleAssemblyPlanReceipt ||
+      !finalSynthesisDraftPlanReceipt ||
+      !finalHtmlArtifactAssemblyPlanReceipt ||
+      !finalArtifactPersistencePlanReceipt ||
+      !finalArtifactGraphCommitPlanReceipt ||
+      !finalArtifactPublishPlanReceipt ||
+      !finalArtifactCompletionFinalizationPlanReceipt ||
+      !finalRunClosurePlanReceipt ||
+      !operatorNotificationDeliveryReadinessPlanReceipt ||
+      !operatorNotificationDeliveryApplyPlanReceipt ||
+      !operatorNotificationDeliveryResultReconciliationPlanReceipt ||
+      !operatorDeliveryLedgerReconciliationPlanReceipt ||
+      !workspaceDeliveryCardReconciliationPlanReceipt ||
+      !deliveryNotificationReconciliationPlanReceipt ||
+      !retentionBillingReconciliationPlanReceipt
+    ) {
+      setFinalCloseoutArchiveReconciliationPlanError(
+        "Final closeout archive reconciliation plan requires launch packet, approval receipt, runner handoff, runner control plan receipt, budget provider adapter plan receipt, provider executor adapter plan receipt, retrieval adapter plan receipt, graph adapter plan receipt, final artifact adapter plan receipt, operator dispatch adapter plan receipt, control ledger adapter plan receipt, control ledger persistence plan receipt, control ledger persistence apply plan receipt, operator dispatch activation readiness plan receipt, live dispatch final enablement plan receipt, live dispatch final enablement apply plan receipt, runner dispatch scheduler plan receipt, runner dispatch worker bootstrap plan receipt, scheduler lease retry plan receipt, worker queue claim plan receipt, repository transaction plan receipt, repository commit rollback plan receipt, worker lease heartbeat plan receipt, worker cancellation abandon plan receipt, worker completion finalization plan receipt, worker output aggregation plan receipt, worker synthesis handoff plan receipt, synthesis bundle assembly plan receipt, final synthesis draft plan receipt, final HTML artifact assembly plan receipt, final artifact persistence plan receipt, final artifact graph commit plan receipt, final artifact publish plan receipt, final artifact completion finalization plan receipt, final run closure plan receipt, operator notification delivery readiness plan receipt, operator notification delivery apply plan receipt, operator notification delivery result reconciliation plan receipt, operator delivery ledger reconciliation plan receipt, workspace delivery card reconciliation plan receipt, delivery notification reconciliation plan receipt, and retention billing reconciliation plan receipt.",
+      );
+      return;
+    }
+
+    setFinalCloseoutArchiveReconciliationPlanBusy(true);
+    setFinalCloseoutArchiveReconciliationPlanError(null);
+    setFinalCloseoutArchiveReconciliationPlanReceipt(null);
+    try {
+      const result = await finalCloseoutArchiveReconciliationPlanMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        runner_control_plan_receipt: runnerControlPlanReceipt,
+        budget_provider_adapter_plan_receipt: budgetProviderAdapterPlanReceipt,
+        provider_executor_adapter_plan_receipt: providerExecutorAdapterPlanReceipt,
+        retrieval_adapter_plan_receipt: retrievalAdapterPlanReceipt,
+        graph_adapter_plan_receipt: graphAdapterPlanReceipt,
+        final_artifact_adapter_plan_receipt: finalArtifactAdapterPlanReceipt,
+        operator_dispatch_adapter_plan_receipt: operatorDispatchAdapterPlanReceipt,
+        control_ledger_adapter_plan_receipt: controlLedgerAdapterPlanReceipt,
+        control_ledger_persistence_plan_receipt: controlLedgerPersistencePlanReceipt,
+        control_ledger_persistence_apply_plan_receipt: controlLedgerPersistenceApplyPlanReceipt,
+        operator_dispatch_activation_readiness_plan_receipt:
+          operatorDispatchActivationReadinessPlanReceipt,
+        live_dispatch_final_enablement_plan_receipt: liveDispatchFinalEnablementPlanReceipt,
+        live_dispatch_final_enablement_apply_plan_receipt:
+          liveDispatchFinalEnablementApplyPlanReceipt,
+        runner_dispatch_scheduler_plan_receipt: runnerDispatchSchedulerPlanReceipt,
+        runner_dispatch_worker_bootstrap_plan_receipt: runnerDispatchWorkerBootstrapPlanReceipt,
+        scheduler_lease_retry_plan_receipt: schedulerLeaseRetryPlanReceipt,
+        worker_queue_claim_plan_receipt: workerQueueClaimPlanReceipt,
+        repository_transaction_plan_receipt: repositoryTransactionPlanReceipt,
+        repository_commit_rollback_plan_receipt: repositoryCommitRollbackPlanReceipt,
+        worker_dispatch_lease_heartbeat_plan_receipt: workerDispatchLeaseHeartbeatPlanReceipt,
+        worker_cancellation_abandon_plan_receipt: workerCancellationAbandonPlanReceipt,
+        worker_completion_finalization_plan_receipt: workerCompletionFinalizationPlanReceipt,
+        worker_output_aggregation_plan_receipt: workerOutputAggregationPlanReceipt,
+        worker_synthesis_handoff_plan_receipt: workerSynthesisHandoffPlanReceipt,
+        synthesis_bundle_assembly_plan_receipt: synthesisBundleAssemblyPlanReceipt,
+        final_synthesis_draft_plan_receipt: finalSynthesisDraftPlanReceipt,
+        final_html_artifact_assembly_plan_receipt: finalHtmlArtifactAssemblyPlanReceipt,
+        final_artifact_persistence_plan_receipt: finalArtifactPersistencePlanReceipt,
+        final_artifact_graph_commit_plan_receipt: finalArtifactGraphCommitPlanReceipt,
+        final_artifact_publish_plan_receipt: finalArtifactPublishPlanReceipt,
+        final_artifact_completion_finalization_plan_receipt:
+          finalArtifactCompletionFinalizationPlanReceipt,
+        final_run_closure_plan_receipt: finalRunClosurePlanReceipt,
+        operator_notification_delivery_readiness_plan_receipt:
+          operatorNotificationDeliveryReadinessPlanReceipt,
+        operator_notification_delivery_apply_plan_receipt:
+          operatorNotificationDeliveryApplyPlanReceipt,
+        operator_notification_delivery_result_reconciliation_plan_receipt:
+          operatorNotificationDeliveryResultReconciliationPlanReceipt,
+        operator_delivery_ledger_reconciliation_plan_receipt:
+          operatorDeliveryLedgerReconciliationPlanReceipt,
+        workspace_delivery_card_reconciliation_plan_receipt:
+          workspaceDeliveryCardReconciliationPlanReceipt,
+        delivery_notification_reconciliation_plan_receipt:
+          deliveryNotificationReconciliationPlanReceipt,
+        retention_billing_reconciliation_plan_receipt:
+          retentionBillingReconciliationPlanReceipt,
+      });
+      setFinalCloseoutArchiveReconciliationPlanReceipt(result);
+    } catch (e) {
+      setFinalCloseoutArchiveReconciliationPlanError(
+        e instanceof Error ? e.message : String(e),
+      );
+    } finally {
+      setFinalCloseoutArchiveReconciliationPlanBusy(false);
     }
   }
 
@@ -12667,6 +12809,265 @@ export default function MidnightOil() {
                   <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
                     Retention billing reconciliation receipt fields:{" "}
                     {retentionBillingReconciliationPlanReceipt.required_retention_billing_reconciliation_receipt_fields.join(
+                      ", ",
+                    )}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Final closeout archive reconciliation plan
+                </p>
+                <button
+                  type="button"
+                  onClick={onFinalCloseoutArchiveReconciliationPlanGate}
+                  disabled={
+                    finalCloseoutArchiveReconciliationPlanBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !runnerControlPlanReceipt ||
+                    !budgetProviderAdapterPlanReceipt ||
+                    !providerExecutorAdapterPlanReceipt ||
+                    !retrievalAdapterPlanReceipt ||
+                    !graphAdapterPlanReceipt ||
+                    !finalArtifactAdapterPlanReceipt ||
+                    !operatorDispatchAdapterPlanReceipt ||
+                    !controlLedgerAdapterPlanReceipt ||
+                    !controlLedgerPersistencePlanReceipt ||
+                    !controlLedgerPersistenceApplyPlanReceipt ||
+                    !operatorDispatchActivationReadinessPlanReceipt ||
+                    !liveDispatchFinalEnablementPlanReceipt ||
+                    !liveDispatchFinalEnablementApplyPlanReceipt ||
+                    !runnerDispatchSchedulerPlanReceipt ||
+                    !runnerDispatchWorkerBootstrapPlanReceipt ||
+                    !schedulerLeaseRetryPlanReceipt ||
+                    !workerQueueClaimPlanReceipt ||
+                    !repositoryTransactionPlanReceipt ||
+                    !repositoryCommitRollbackPlanReceipt ||
+                    !workerDispatchLeaseHeartbeatPlanReceipt ||
+                    !workerCancellationAbandonPlanReceipt ||
+                    !workerCompletionFinalizationPlanReceipt ||
+                    !workerOutputAggregationPlanReceipt ||
+                    !workerSynthesisHandoffPlanReceipt ||
+                    !synthesisBundleAssemblyPlanReceipt ||
+                    !finalSynthesisDraftPlanReceipt ||
+                    !finalHtmlArtifactAssemblyPlanReceipt ||
+                    !finalArtifactPersistencePlanReceipt ||
+                    !finalArtifactGraphCommitPlanReceipt ||
+                    !finalArtifactPublishPlanReceipt ||
+                    !finalArtifactCompletionFinalizationPlanReceipt ||
+                    !finalRunClosurePlanReceipt ||
+                    !operatorNotificationDeliveryReadinessPlanReceipt ||
+                    !operatorNotificationDeliveryApplyPlanReceipt ||
+                    !operatorNotificationDeliveryResultReconciliationPlanReceipt ||
+                    !operatorDeliveryLedgerReconciliationPlanReceipt ||
+                    !workspaceDeliveryCardReconciliationPlanReceipt ||
+                    !deliveryNotificationReconciliationPlanReceipt ||
+                    !retentionBillingReconciliationPlanReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {finalCloseoutArchiveReconciliationPlanBusy
+                    ? "Planning closeout archive..."
+                    : "Final closeout archive reconciliation plan"}
+                </button>
+              </div>
+
+              {finalCloseoutArchiveReconciliationPlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {finalCloseoutArchiveReconciliationPlanError}
+                </p>
+              )}
+
+              {finalCloseoutArchiveReconciliationPlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Final closeout archive reconciliation receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {finalCloseoutArchiveReconciliationPlanReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={finalCloseoutArchiveReconciliationPlanReceipt.status.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                    <Metric
+                      label="Closeout archive"
+                      value={
+                        finalCloseoutArchiveReconciliationPlanReceipt.final_closeout_archive_reconciliation_allowed
+                          ? "allowed"
+                          : "blocked"
+                      }
+                    />
+                    <Metric
+                      label="Closure receipt"
+                      value={
+                        finalCloseoutArchiveReconciliationPlanReceipt.final_run_closure_receipt_reconciled
+                          ? "reconciled"
+                          : "not reconciled"
+                      }
+                    />
+                    <Metric
+                      label="Closeout record"
+                      value={
+                        finalCloseoutArchiveReconciliationPlanReceipt.run_closeout_record_reconciled
+                          ? "reconciled"
+                          : "not reconciled"
+                      }
+                    />
+                    <Metric
+                      label="Archive manifest"
+                      value={
+                        finalCloseoutArchiveReconciliationPlanReceipt.artifact_archive_manifest_reconciled
+                          ? "reconciled"
+                          : "not reconciled"
+                      }
+                    />
+                    <Metric
+                      label="Operator handoff"
+                      value={
+                        finalCloseoutArchiveReconciliationPlanReceipt.operator_handoff_summary_reconciled
+                          ? "reconciled"
+                          : "not reconciled"
+                      }
+                    />
+                    <Metric
+                      label="Quality attestation"
+                      value={
+                        finalCloseoutArchiveReconciliationPlanReceipt.quality_attestation_reconciled
+                          ? "reconciled"
+                          : "not reconciled"
+                      }
+                    />
+                    <Metric
+                      label="Completion audit"
+                      value={
+                        finalCloseoutArchiveReconciliationPlanReceipt.completion_audit_entry_reconciled
+                          ? "reconciled"
+                          : "not reconciled"
+                      }
+                    />
+                    <Metric
+                      label="Retention billing"
+                      value={
+                        finalCloseoutArchiveReconciliationPlanReceipt.retention_billing_reconciliation_allowed
+                          ? "allowed"
+                          : "blocked"
+                      }
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Retention billing plan"
+                      value={
+                        finalCloseoutArchiveReconciliationPlanReceipt.retention_billing_reconciliation_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Closeout archive receipt"
+                      value={
+                        finalCloseoutArchiveReconciliationPlanReceipt.planned_final_closeout_archive_reconciliation_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Final run closure receipt"
+                      value={
+                        finalCloseoutArchiveReconciliationPlanReceipt.planned_final_run_closure_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Run closeout record"
+                      value={
+                        finalCloseoutArchiveReconciliationPlanReceipt.planned_run_closeout_record_id
+                      }
+                    />
+                    <Metric
+                      label="Artifact archive manifest"
+                      value={
+                        finalCloseoutArchiveReconciliationPlanReceipt.planned_artifact_archive_manifest_id
+                      }
+                    />
+                    <Metric
+                      label="Operator handoff summary"
+                      value={
+                        finalCloseoutArchiveReconciliationPlanReceipt.planned_operator_handoff_summary_id
+                      }
+                    />
+                    <Metric
+                      label="Quality attestation"
+                      value={
+                        finalCloseoutArchiveReconciliationPlanReceipt.planned_quality_attestation_id
+                      }
+                    />
+                    <Metric
+                      label="Completion audit"
+                      value={
+                        finalCloseoutArchiveReconciliationPlanReceipt.planned_completion_audit_entry_id
+                      }
+                    />
+                    <Metric
+                      label="Retention billing receipt"
+                      value={
+                        finalCloseoutArchiveReconciliationPlanReceipt.planned_retention_billing_reconciliation_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Source lineage reconciliation"
+                      value={
+                        finalCloseoutArchiveReconciliationPlanReceipt.planned_source_lineage_archive_reconciliation_entry_id
+                      }
+                    />
+                    <Metric
+                      label="Private URL"
+                      value={
+                        finalCloseoutArchiveReconciliationPlanReceipt.planned_private_read_url_id
+                      }
+                    />
+                    <Metric
+                      label="Hosted HTML asset"
+                      value={
+                        finalCloseoutArchiveReconciliationPlanReceipt.planned_hosted_html_asset_id
+                      }
+                    />
+                    <Metric
+                      label="Adapter"
+                      value={finalCloseoutArchiveReconciliationPlanReceipt.adapter_key.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                    <Metric
+                      label="Blocker"
+                      value={finalCloseoutArchiveReconciliationPlanReceipt.blocker_reason.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                  </div>
+                  <ul className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {finalCloseoutArchiveReconciliationPlanReceipt.required_final_closeout_archive_reconciliation_invariants
+                      .slice(0, 5)
+                      .map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                  </ul>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Final closeout archive reconciliation blockers:{" "}
+                    {finalCloseoutArchiveReconciliationPlanReceipt.final_closeout_archive_reconciliation_blockers.join(
+                      ", ",
+                    )}
+                  </p>
+                  <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Final closeout archive reconciliation receipt fields:{" "}
+                    {finalCloseoutArchiveReconciliationPlanReceipt.required_final_closeout_archive_reconciliation_receipt_fields.join(
                       ", ",
                     )}
                   </p>
