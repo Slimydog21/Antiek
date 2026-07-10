@@ -1,0 +1,18 @@
+# inventory-xp · free-PD + computing chip across Boole Shannon Turing Lovelace
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: xp
+date: 2026-07-10
+tip_before: dddd2c2a (xo)
+
+## Problem
+Computing free STEM spine (Boole/Shannon/Turing/Lovelace) needed compose proof
+that free-PD-only + computing chip surfaces all four and excludes paid stubs.
+
+## Fix
+- MarketplaceHost test compose free-PD + computing → four free PD · no buy-modern
+
+## Verified
+npm test MarketplaceHost.test.tsx → 37 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

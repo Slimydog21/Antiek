@@ -1630,6 +1630,89 @@ describe("MarketplaceHost mode", () => {
     expect(call.goal_hint).toMatch(/Treatise on Electricity/);
   });
 
+  it("composes free-PD-only + computing chip across Boole Shannon Turing Lovelace (xp)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-boole-laws-of-thought",
+          title: "An Investigation of the Laws of Thought",
+          author: "George Boole",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: ["computing", "logic", "mathematics"],
+        },
+        {
+          book_id: "pd-shannon-communication",
+          title: "A Mathematical Theory of Communication",
+          author: "Claude E. Shannon",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: ["computing", "information_theory"],
+        },
+        {
+          book_id: "pd-turing-computable-numbers",
+          title: "On Computable Numbers",
+          author: "Alan M. Turing",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: ["computing", "computability"],
+        },
+        {
+          book_id: "pd-lovelace-analytical-engine",
+          title: "Sketch of the Analytical Engine",
+          author: "Ada Lovelace",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: ["computing", "history"],
+        },
+        {
+          book_id: "buy-modern",
+          title: "Modern Systems Research",
+          author: "Example Press",
+          license_class: "purchased",
+          is_free: false,
+          source: "marketplace_stub",
+          subjects: ["computing", "technology"],
+        },
+      ],
+      count: 5,
+      view_format: "html",
+      free_count: 4,
+      public_domain_count: 4,
+      by_subject: { computing: 5 },
+      payment_rails: "manual_receipt_only",
+    });
+    render(<MarketplaceHost ownerId="tech-researcher" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("catalog-free-pd-only")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("catalog-free-pd-only"));
+    await waitFor(() => {
+      expect(screen.getByTestId("catalog-subject-computing")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("catalog-subject-computing"));
+    expect(
+      screen.getByTestId("catalog-entry-pd-boole-laws-of-thought"),
+    ).toBeTruthy();
+    expect(
+      screen.getByTestId("catalog-entry-pd-shannon-communication"),
+    ).toBeTruthy();
+    expect(
+      screen.getByTestId("catalog-entry-pd-turing-computable-numbers"),
+    ).toBeTruthy();
+    expect(
+      screen.getByTestId("catalog-entry-pd-lovelace-analytical-engine"),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("catalog-entry-buy-modern")).toBeNull();
+    const metrics = screen.getByTestId("marketplace-catalog-metrics");
+    expect(metrics.getAttribute("data-free-pd-only")).toBe("true");
+    expect(metrics.getAttribute("data-subject-filter")).toBe("computing");
+  });
+
   it("filters catalog by computing subject chip for Boole (ty)", async () => {
     fetchMarketplaceCatalog.mockResolvedValue({
       entries: [

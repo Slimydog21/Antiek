@@ -1551,3 +1551,8 @@ Competitive delta: multi-spawn merge prep shares deferred live-council policy.
 ## Residual xo · 2026-07-10 — catalog route by_subject Lovelace history
 Marketplace catalog API by_subject stamps history with Lovelace entry.
 Competitive delta: history domain chip is server-honest (parity Shannon/Turing).
+
+## Residual xp · 2026-07-10 — free-PD + computing chip STEM quartet
+free-PD-only composed with computing chip surfaces Boole · Shannon · Turing ·
+Lovelace and excludes paid stubs. Competitive delta: tech-researcher free
+computing STEM path is compose-complete on HTML-first marketplace.
