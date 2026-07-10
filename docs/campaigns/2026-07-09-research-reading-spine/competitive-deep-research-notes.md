@@ -1376,3 +1376,8 @@ Catalog hosts A Mathematical Theory of Communication (HTML free PD) with
 computing + information_theory subjects; dogfood v10 book_qa Shannon;
 Settings posture honesty. Competitive delta: tech-researcher STEM spine now
 covers electricity + logic + information theory on HTML-first free path.
+
+## Residual we · 2026-07-10 — dogfood items full list honesty
+Settings dogfood fixtures list no longer silently truncates to top-12.
+Competitive delta: recursive rewrite feed postures (incl. Shannon v10) remain
+operator-visible as the suite grows — no silent caps.

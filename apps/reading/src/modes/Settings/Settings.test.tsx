@@ -1503,6 +1503,14 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
       /Shannon book_qa/i,
     );
+    // Residual (we): full dogfood item list — no silent top-12 truncate.
+    const itemsList = screen.getByTestId("antiek-bench-dogfood-items");
+    expect(itemsList.getAttribute("data-truncated")).toBe("false");
+    expect(itemsList.getAttribute("data-listed-count")).toBe("12");
+    // Mock lists 12 posture items including Shannon (v10).
+    expect(
+      itemsList.querySelector('[data-item-id="dogfood-book-shannon-communication"]'),
+    ).toBeTruthy();
     expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
       /Heaviside book_qa/i,
     );

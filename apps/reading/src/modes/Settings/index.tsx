@@ -2152,8 +2152,15 @@ export default function Settings() {
                     ),
                   )}
                 </ul>
-                <ul data-testid="antiek-bench-dogfood-items" className="space-y-1 text-[11px]">
-                  {(dogfood.items || []).slice(0, 12).map((it) => (
+                {/* Residual (we): list all dogfood items (no silent top-12 truncate). */}
+                <ul
+                  data-testid="antiek-bench-dogfood-items"
+                  className="space-y-1 text-[11px]"
+                  data-listed-count={String((dogfood.items || []).length)}
+                  data-item-count={String(dogfood.item_count ?? 0)}
+                  data-truncated="false"
+                >
+                  {(dogfood.items || []).map((it) => (
                     <li
                       key={it.item_id}
                       data-item-id={it.item_id}

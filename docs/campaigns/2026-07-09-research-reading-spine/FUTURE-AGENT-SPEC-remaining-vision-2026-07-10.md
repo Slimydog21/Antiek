@@ -1,13 +1,13 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** `9afdcba4` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
+**Campaign tip at write:** `d1336697` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **URL:** https://github.com/Slimydog21/Antiek/pull/465  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
 
 ## Do not rebuild
 
-Prefer **SESSION-ARC-tt-vt-infinite-wave.md** + inventories **tt–wd** + competitive notes. Tip letters **tt–wd** (63 residual ships including tip re-anchors).
+Prefer **SESSION-ARC-tt-vt-infinite-wave.md** + inventories **tt–we** + competitive notes. Tip letters **tt–we** (64 residual ships including tip re-anchors).
 
 ### Closed product (high signal)
 

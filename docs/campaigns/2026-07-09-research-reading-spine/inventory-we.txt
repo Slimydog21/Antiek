@@ -1,0 +1,21 @@
+# inventory-we · dogfood items list no silent top-12 truncate
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: we
+date: 2026-07-10
+tip_before: d1336697 (wd)
+
+## Problem
+Settings Antiek-bench dogfood items list used .slice(0, 12). With dogfood v10
+(16 items), Shannon and later postures were silently dropped from the UI list
+while item_count still reported 16 — silent truncation vs infinite doctrine.
+
+## Fix
+- Render full dogfood.items (data-truncated=false)
+- data-listed-count + data-item-count honesty attrs
+- Test: Shannon item present in list · truncated=false
+
+## Verified
+npm test -- --run src/modes/Settings/Settings.test.tsx → 34 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)
