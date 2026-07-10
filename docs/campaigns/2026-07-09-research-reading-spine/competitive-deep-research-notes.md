@@ -4028,3 +4028,8 @@ vitest 46 green. P0 PR #465. Pivot arj+.
 notDiamondImplementationVerdict hard-codes L7: useful weekly advisor; never
 dispatch router (decision-tree sovereignty · Antiek-bench local truth).
 Settings verdict chrome. vitest 46 green. P0 PR #465. Pivot ark+.
+
+## Residual ark · 2026-07-10 — SESSION-ARC aqs–arj infinite wave handoff
+Compaction-safe multi-agent handoff through dual-gate · path · MO plan · free-PD
+domain · knowledge-dense vision · NotDiamond L7 advisor-only verdict. P0 PR #465.
+Pivot arl+ outside thrash.
