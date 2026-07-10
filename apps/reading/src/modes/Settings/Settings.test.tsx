@@ -1875,6 +1875,18 @@ describe("Settings SPR-01 + decision-tree install", () => {
     };
     expect(call.model_id).toBe("book-specialist");
     expect(call.provider_id).toBeTruthy();
+    // Residual (adu): decision-tree status stamps install provenance.
+    await waitFor(() => {
+      const status = screen.getByTestId("decision-tree-status");
+      expect(status.getAttribute("data-install-source")).toBe(
+        "leaderboard_task",
+      );
+      expect(status.getAttribute("data-install-task-class")).toBe("book_qa");
+    });
+    const prov = screen.getByTestId("decision-tree-install-provenance");
+    expect(prov.getAttribute("data-install-source")).toBe("leaderboard_task");
+    expect(prov.getAttribute("data-install-task-class")).toBe("book_qa");
+    expect(prov.textContent).toMatch(/best book_qa/i);
   });
 
   it("registers an operator model via Add model panel", async () => {

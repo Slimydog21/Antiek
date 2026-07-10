@@ -1,0 +1,20 @@
+# inventory-adu · decision-tree install provenance honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: adu
+date: 2026-07-10
+parent_tip: 1f6762d7 (adt)
+
+## Closed
+- driverInstallProvenance state (manual | leaderboard_recommended | leaderboard_task | notdiamond)
+- decision-tree-status data-install-source + data-install-task-class
+- decision-tree-install-provenance human chrome
+- best-by-task install (ads) stamps leaderboard_task · book_qa
+- vitest Settings · 35 passed
+
+## Why this residual
+ads install had no operator-visible trail on decision-tree status that the
+driver came from best-by-task weekly rank — provenance honesty incomplete.
+
+## Not in scope
+- Server-persisted install provenance
+- Auto-routing by task class

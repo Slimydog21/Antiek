@@ -103,6 +103,21 @@ export default function Settings() {
   const [tree, setTree] = useState<DecisionTreeSelectionResponse | null>(null);
   const [treeError, setTreeError] = useState<string | null>(null);
   const [treeBusy, setTreeBusy] = useState(false);
+  /**
+   * Residual (adu): client install provenance for decision-tree driver.
+   * Tracks whether the active install came from manual pick, overall
+   * leaderboard recommend, best-by-task (ads), or NotDiamond advisory.
+   * Never implies auto-routing — honesty chrome only.
+   */
+  const [driverInstallProvenance, setDriverInstallProvenance] = useState<{
+    source:
+      | "manual"
+      | "leaderboard_recommended"
+      | "leaderboard_task"
+      | "notdiamond"
+      | null;
+    task_class: string | null;
+  }>({ source: null, task_class: null });
   const [usage, setUsage] = useState<AntiekBenchUsageSummaryResponse | null>(
     null,
   );
@@ -634,6 +649,8 @@ export default function Settings() {
       setTree(result);
       setSelectedModel(mid);
       setSelectedProvider(provider);
+      // Residual (adu): NotDiamond advisory install provenance (never authority).
+      setDriverInstallProvenance({ source: "notdiamond", task_class: null });
     } catch (e) {
       setNdError(e instanceof Error ? e.message : String(e));
       setTreeError(e instanceof Error ? e.message : String(e));
@@ -677,16 +694,18 @@ export default function Settings() {
       setTree(result);
       setSelectedModel(mid);
       setSelectedProvider(provider);
+      // Residual (adu): provenance for decision-tree status honesty.
+      const tc = String(opts?.taskClass || "").trim();
+      setDriverInstallProvenance({
+        source: tc ? "leaderboard_task" : "leaderboard_recommended",
+        task_class: tc || null,
+      });
       // Keep registry list in sync when add-model path shares process registry
       try {
         const rm = await fetchRegisteredModels();
         setRegistered(rm);
       } catch {
         /* optional */
-      }
-      // Surface task-class provenance for best-by-task installs (ads).
-      if (opts?.taskClass) {
-        setLeaderboardError(null);
       }
     } catch (e) {
       setLeaderboardError(e instanceof Error ? e.message : String(e));
@@ -861,6 +880,8 @@ export default function Settings() {
         provider_id: selectedProvider.trim() || null,
       });
       setTree(res);
+      // Residual (adu): manual install provenance.
+      setDriverInstallProvenance({ source: "manual", task_class: null });
     } catch (e) {
       setTreeError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -874,6 +895,8 @@ export default function Settings() {
     try {
       const res = await clearDecisionTreeSelection();
       setTree(res);
+      // Residual (adu): clear install provenance with driver.
+      setDriverInstallProvenance({ source: null, task_class: null });
     } catch (e) {
       setTreeError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1342,7 +1365,19 @@ export default function Settings() {
                 Clear
               </button>
             </div>
-            <div className="font-mono text-[13px] space-y-1" data-testid="decision-tree-status">
+            <div
+              className="font-mono text-[13px] space-y-1"
+              data-testid="decision-tree-status"
+              // Residual (adu): install provenance honesty (manual | leaderboard | ND).
+              data-install-source={driverInstallProvenance.source || ""}
+              data-install-task-class={
+                driverInstallProvenance.task_class || ""
+              }
+              data-installed={String(Boolean(tree?.installed))}
+              data-model-id={tree?.model_id || ""}
+              data-provider-id={tree?.provider_id || ""}
+              data-advisory-only="true"
+            >
               <Row
                 label="Installed"
                 value={
@@ -1351,6 +1386,23 @@ export default function Settings() {
                     : "none"
                 }
               />
+              {driverInstallProvenance.source ? (
+                <p
+                  className="text-[11px] text-ink-soft dark:text-starlight"
+                  data-testid="decision-tree-install-provenance"
+                  data-install-source={driverInstallProvenance.source}
+                  data-install-task-class={
+                    driverInstallProvenance.task_class || ""
+                  }
+                  role="status"
+                >
+                  Install source: {driverInstallProvenance.source}
+                  {driverInstallProvenance.task_class
+                    ? ` · best ${driverInstallProvenance.task_class}`
+                    : ""}{" "}
+                  (advisory only · never auto-routes)
+                </p>
+              ) : null}
               {tree?.notes?.map((n) => (
                 <p
                   key={n}

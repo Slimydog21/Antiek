@@ -2197,3 +2197,9 @@ SESSION-ARC-adn-ads documents write-seed body honesty (adn–adq) + weekly model
 quality per task (adr–ads). Tip 6d5a12b0 · swarm handoff tip-true. Competitive
 delta: multi-agent infinite continues outside closed arcs; operator merge PR #465
 highest leverage.
+
+## Residual adu · 2026-07-10 — decision-tree install provenance honesty
+Decision-tree status stamps data-install-source (manual | leaderboard_recommended |
+leaderboard_task | notdiamond) + data-install-task-class after ads best-by-task install.
+Competitive delta: operator can audit why a driver is installed (weekly task winner)
+without implying auto-routing. vitest Settings 35 green.
