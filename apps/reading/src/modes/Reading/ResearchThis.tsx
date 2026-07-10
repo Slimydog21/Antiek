@@ -59,6 +59,8 @@ import {
  * Residual (amr): ResearchContextPanel with researchTier prefill on highlight
  * DR path so intelligent search over twins sits next to launch (parity host-tier).
  * Residual (amy): remount twins + context after twin promote (parity marketplace alz).
+ * Residual (aob): HTML-first root stamps + document identity on highlight DR
+ * surface (parity TalkToBook aoa · MetaReading anz · reading ≡ research).
  * Full-page workstation handoff remains an explicit tertiary action.
  *
  * Gate-safe: passageText for gated books is still constrained server-side;
@@ -228,7 +230,16 @@ export default function ResearchThis({
   };
 
   return (
-    <div className="flex flex-col gap-2" data-testid="research-this">
+    <div
+      className="flex flex-col gap-2"
+      data-testid="research-this"
+      data-view-format="html"
+      data-html-first="true"
+      data-document-id={documentId}
+      data-research-tier={researchTier}
+      data-seamless-research-this="true"
+      data-depth-prefill={depthPrefill}
+    >
       <div
         className="space-y-1 max-w-md"
         data-testid="research-this-pub-refs"

@@ -412,6 +412,13 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
         <ResearchThis documentId="doc-1" pageIndex={0} passageText="hello world" />
       </MemoryRouter>,
     );
+    // Residual (aob): HTML-first highlight DR surface stamps.
+    const root = screen.getByTestId("research-this");
+    expect(root.getAttribute("data-view-format")).toBe("html");
+    expect(root.getAttribute("data-html-first")).toBe("true");
+    expect(root.getAttribute("data-document-id")).toBe("doc-1");
+    expect(root.getAttribute("data-seamless-research-this")).toBe("true");
+    expect(root.getAttribute("data-research-tier")).toMatch(/deep|fast|wrestle/);
     const pubRefs = screen.getByTestId("research-this-pub-refs");
     expect(pubRefs).toBeTruthy();
     // Residual (uk): L1/L2 hydrate prep honesty + deep-links (parity uj).

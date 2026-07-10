@@ -3603,3 +3603,8 @@ Talk bookmark stamps HTML-first · seamless-talk-bookmark · document identity a
 mounts competitive scorecard + FUTURE DR quality + twin completeness deep-links
 (parity MetaReading anz). vitest TalkToBook 13 green.
 P0 operator merge PR #465. Pivot aob+ outside thrash.
+
+## Residual aob · 2026-07-10 — ResearchThis HTML-first surface stamps
+Highlight DR root stamps HTML-first · document-id · research-tier · seamless-research-this
+(parity TalkToBook aoa · MetaReading anz · reading conversation HTML identity).
+vitest ResearchThis 13 green. P0 operator merge PR #465. Pivot aoc+ outside thrash.
