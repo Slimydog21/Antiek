@@ -600,11 +600,21 @@ describe("CollectiveResearchPanel", () => {
     expect(
       screen.getByTestId("collective-merge-draft").getAttribute("data-seamless-merge-draft"),
     ).toBe("true");
+    // Residual (asc): written analysis needs ≥2 — single selection is draft-ready only.
+    expect(
+      screen
+        .getByTestId("collective-written-analysis")
+        .getAttribute("data-written-analysis-ready"),
+    ).toBe("false");
     expect(
       screen
         .getByTestId("collective-written-analysis")
         .getAttribute("data-seamless-written-analysis"),
-    ).toBe("true");
+    ).toBe("false");
+    expect(
+      (screen.getByTestId("collective-written-analysis") as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
     expect(
       screen
         .getByTestId("collective-parent-asset")
@@ -746,7 +756,7 @@ describe("CollectiveResearchPanel", () => {
     ).toBe(true);
   });
 
-  it("requires ≥2 spawns for multi-agent written analysis (aoi)", () => {
+  it("requires ≥2 spawns for multi-agent written analysis (aoi/asc)", () => {
     render(
       <CollectiveResearchPanel
         availableSpawnIds={["spn_only"]}
@@ -762,11 +772,19 @@ describe("CollectiveResearchPanel", () => {
     expect(analysis.getAttribute("data-min-spawns")).toBe("2");
     expect(Number(analysis.getAttribute("data-selected-count"))).toBeLessThan(2);
     expect(analysis.getAttribute("data-multi-agent-analysis")).toBe("false");
+    expect(analysis.getAttribute("data-written-analysis-ready")).toBe("false");
+    expect(analysis.getAttribute("data-path-choices-source")).toBe(
+      "researchPathChoicesReadiness",
+    );
     expect(analysis.disabled).toBe(true);
     expect(analysis.getAttribute("title") || "").toMatch(/≥2 spawns/i);
-    // Residual (aom): readiness chrome guides single-spawn operators.
+    // Residual (aom/asc): readiness chrome guides single-spawn operators via pathChoices.
     const ready = screen.getByTestId("collective-written-analysis-readiness");
     expect(ready.getAttribute("data-ready")).toBe("false");
+    expect(ready.getAttribute("data-written-analysis-ready")).toBe("false");
+    expect(ready.getAttribute("data-path-choices-source")).toBe(
+      "researchPathChoicesReadiness",
+    );
     expect(ready.textContent).toMatch(/Merge draft|≥2 spawns/i);
     // Draft merge remains available for single-spawn path.
     expect(

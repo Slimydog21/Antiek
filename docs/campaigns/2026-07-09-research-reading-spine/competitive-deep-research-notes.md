@@ -4127,3 +4127,9 @@ publicationAttachReadiness: spawn_bound + ref_count → attach_ready · HTML-fir
 never auto-hydrate · live L1/L2 deferred. Attach+hydrate CTA gated. Competitive
 delta: knowledge-dense arxiv/substack path hard-to-vary pure contract.
 vitest 10 green. P0 PR #465. Pivot asc+ outside thrash.
+
+## Residual asc · 2026-07-10 — collective written analysis pathChoices CTA
+written_analysis_ready (parent + ≥2) drives Create written analysis CTA + chrome.
+Fixed honesty: seamless-written-analysis no longer aliases draft_merge_ready.
+Competitive delta: multi-agent analysis path hard-to-vary pure contract.
+vitest Collective 31 green. P0 PR #465. Pivot asd+ outside thrash.

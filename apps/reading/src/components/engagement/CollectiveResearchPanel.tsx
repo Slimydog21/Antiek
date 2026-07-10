@@ -1260,46 +1260,63 @@ export function CollectiveResearchPanel({
         <button
           type="button"
           data-testid="collective-written-analysis"
-          data-seamless-written-analysis={String(seamlessCollectiveMergeReady)}
+          data-seamless-written-analysis={String(
+            pathChoices.written_analysis_ready,
+          )}
+          data-written-analysis-ready={String(
+            pathChoices.written_analysis_ready,
+          )}
           data-budget-soft-gate={String(budgetWarn && !forceOverBudget)}
-          data-selected-count={String(selected.length)}
+          data-selected-count={String(pathChoices.selected_count)}
           data-min-spawns="2"
-          data-multi-agent-analysis={String(selected.length >= 2)}
+          data-multi-agent-analysis={String(
+            pathChoices.selected_count >= 2,
+          )}
+          data-parent-bound={String(pathChoices.parent_bound)}
+          data-path-choices-source="researchPathChoicesReadiness"
           onClick={() => void createWrittenAnalysis()}
           disabled={
             busy ||
-            selected.length < 2 ||
-            !parentAssetId ||
+            !pathChoices.written_analysis_ready ||
             (budgetWarn && !forceOverBudget)
           }
           title={
-            parentAssetId
-              ? budgetWarn && !forceOverBudget
-                ? "Over budget — enable force override before written analysis"
-                : selected.length < 2
+            !pathChoices.written_analysis_ready
+              ? pathChoices.selected_count >= 2 && !pathChoices.parent_bound
+                ? "Written analysis needs parentAssetId (multi-agent selection ok)"
+                : pathChoices.selected_count === 1
                   ? "Select ≥2 spawns for multi-agent written analysis (use Merge draft for one)"
-                  : "Collective prompt unit + draft-combined HTML analysis · seamless multi-spawn path"
-              : "Requires parentAssetId"
+                  : pathChoices.selected_count < 1
+                    ? "Select ≥2 spawns for multi-agent written analysis"
+                    : pathChoices.summary
+              : budgetWarn && !forceOverBudget
+                ? "Over budget — enable force override before written analysis"
+                : "Collective prompt unit + draft-combined HTML analysis · seamless multi-spawn path"
           }
         >
           Create written analysis
         </button>
       </div>
-      {/* Residual (aom): multi-agent written analysis readiness chrome. */}
+      {/* Residual (aom/asc): multi-agent written analysis readiness via pathChoices. */}
       <p
         className="font-mono text-[11px] opacity-80"
         data-testid="collective-written-analysis-readiness"
-        data-selected-count={String(selected.length)}
+        data-selected-count={String(pathChoices.selected_count)}
         data-min-spawns="2"
-        data-ready={String(selected.length >= 2 && Boolean(parentAssetId))}
-        data-multi-agent-analysis={String(selected.length >= 2)}
+        data-ready={String(pathChoices.written_analysis_ready)}
+        data-written-analysis-ready={String(
+          pathChoices.written_analysis_ready,
+        )}
+        data-multi-agent-analysis={String(pathChoices.selected_count >= 2)}
+        data-parent-bound={String(pathChoices.parent_bound)}
+        data-path-choices-source="researchPathChoicesReadiness"
         role="status"
       >
-        {selected.length >= 2 && parentAssetId
-          ? `Written analysis ready · multi-agent unit of ${selected.length} spawns`
-          : selected.length >= 2 && !parentAssetId
+        {pathChoices.written_analysis_ready
+          ? `Written analysis ready · multi-agent unit of ${pathChoices.selected_count} spawns`
+          : pathChoices.selected_count >= 2 && !pathChoices.parent_bound
             ? "Written analysis needs parentAssetId (multi-agent selection ok)"
-            : selected.length === 1
+            : pathChoices.selected_count === 1
               ? "Written analysis needs ≥2 spawns · use Merge draft for this single spawn"
               : "Select ≥2 spawns for multi-agent written analysis"}
       </p>
