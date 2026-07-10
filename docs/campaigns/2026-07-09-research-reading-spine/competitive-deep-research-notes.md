@@ -2946,3 +2946,8 @@ HostedHtml collective_unit_prompt stamps twin seed Port path honesty (multi-spaw
 L6 deferred · no invented doc id) + scorecard/twin matrix deep-links. FUTURE twin
 matrix gap #2 shipped offline. vitest HostedHtml 24 green. P0 operator merge PR #465.
 Pivot aja+ outside thrash.
+
+## Residual aja · 2026-07-10 — SESSION-ARC air–aiz multi-hop twin scorecard wave
+Wave handoff documents multi-hop hops · dogfood v29 · scorecard navigation matrix ·
+domain-aware STEM twin search · collective unit twin seed. P0 operator merge PR #465.
+Pivot ajb+ outside thrash.
