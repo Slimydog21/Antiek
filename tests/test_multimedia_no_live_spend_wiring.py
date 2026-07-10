@@ -66,8 +66,8 @@ def _shipped_multimedia_files() -> list[Path]:
 
 def _transport_wired_callsites(source: str, rel_name: str) -> list[str]:
     """Return "rel_name:lineno" for every ``KreaProviderAdapter(...)`` call that
-    passes a ``transport`` keyword (covers ``transport=`` and ``**{...}`` is left
-    to review — a literal keyword is the realistic wiring shape)."""
+    passes ``transport=`` or an opaque ``**kwargs`` spread. A spread must fail
+    closed because static analysis cannot prove it excludes ``transport``."""
     tree = ast.parse(source, filename=rel_name)
     hits: list[str] = []
     for node in ast.walk(tree):
@@ -81,7 +81,7 @@ def _transport_wired_callsites(source: str, rel_name: str) -> list[str]:
         )
         if name != ADAPTER_NAME:
             continue
-        if any(kw.arg == "transport" for kw in node.keywords):
+        if any(kw.arg in {None, "transport"} for kw in node.keywords):
             hits.append(f"{rel_name}:{node.lineno}")
     return hits
 
@@ -116,11 +116,15 @@ def test_guard_detects_a_spliced_live_callsite() -> None:
         "import substrate.multimedia.provider_router as pr\n"
         "adapter = pr.KreaProviderAdapter(transport=some_transport)\n"
     )
+    spread = "adapter = KreaProviderAdapter(**provider_kwargs)\n"
     assert _transport_wired_callsites(bare, "<synthetic-bare>"), (
         "guard failed to detect a bare-name transport-wired construction"
     )
     assert _transport_wired_callsites(attr, "<synthetic-attr>"), (
         "guard failed to detect an attribute-access transport-wired construction"
+    )
+    assert _transport_wired_callsites(spread, "<synthetic-spread>"), (
+        "guard failed closed on an opaque keyword spread"
     )
 
 
