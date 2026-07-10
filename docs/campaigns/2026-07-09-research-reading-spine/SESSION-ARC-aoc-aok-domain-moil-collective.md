@@ -34,3 +34,12 @@ Operator merge **PR #465**
 
 ## P1 next (aov+)
 Competitive DR product depth · Antiek-bench recursive rewrite polish · model decision-tree install UX · marketplace L5 offline CTA · live dual-gate injectors (operator only)
+
+## Wave extension aoy–apg · 2026-07-10
+
+| Residual | Product |
+|---|---|
+| **aoy–apc** | Antiek-bench recursive rewrite flywheel (vision coverage · install best · task→feeds · leaderboard · training coverage) |
+| **apd–apg** | Marketplace L5 receipt readiness + free-host readiness · competitive DR stage pipeline · Write HTML-first stamps |
+
+**Tip:** `f95ae04f` · **P0:** PR #465 · **Next:** aph+ outside thrash
