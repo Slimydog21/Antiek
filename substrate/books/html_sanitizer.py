@@ -45,6 +45,19 @@ What is provably inert after sanitization (red-proof tests in
 - CSS vectors — ``style`` attributes and ``<style>`` blocks are dropped
   entirely, so ``expression(...)`` and ``url(javascript:...)`` cannot ride in.
 - comments, processing instructions, and declarations — dropped.
+
+Trust-marker THREAT MODEL (judge r1 F6 — read before relying on the bit):
+the ``content_sanitized`` provenance is a PROCESS-LEVEL marker, not a
+cryptographic one. It protects against *unsanitized code paths* — a write
+site that forgot to sanitize will not have stamped the bit, so the serve-side
+``is_trusted_sanitized`` gate refuses its body as HTML. It does NOT protect
+against a malicious in-process writer: anyone who can forge
+``documents.metadata`` can equally write ``raw_text`` directly, so signing the
+marker would add ceremony, not security. The one real hole this leaves is a
+write path that persists CLIENT-SUPPLIED metadata verbatim — a client could
+relay a forged ``content_sanitized: true`` through it. Therefore any path
+that stores client-supplied metadata MUST pass it through
+:func:`strip_trust_markers` before persisting (mandatory; see WIRING.md W2).
 """
 
 from __future__ import annotations
@@ -60,7 +73,9 @@ from urllib.parse import urlsplit
 # Version pinned into provenance so a future defect in this sanitizer is
 # auditable ("which rows were sanitized with the vulnerable version"). Bump on
 # ANY behavioural change to the allowlists or URL policy.
-SANITIZER_VERSION = "books-allowlist/1.0.0"
+# 1.1.0 (judge r1 F5): suppression is a matching STACK — a mismatched foreign
+# close (</svg> against an open <math>) no longer ends the wrong suppression.
+SANITIZER_VERSION = "books-allowlist/1.1.0"
 
 # documents.metadata keys of the trusted-HTML contract. A serve path may emit
 # a stored body AS HTML only when is_trusted_sanitized(metadata) is True.
@@ -187,7 +202,13 @@ class _SanitizingParser(HTMLParser):
         super().__init__(convert_charrefs=True)
         self._out: list[str] = []
         self._open: list[str] = []
-        self._suppress = 0
+        # Suppression STACK of currently-open drop-with-content containers,
+        # mirroring the _open repair semantics. A stack (not a counter) so a
+        # MISMATCHED foreign close cannot end a different container's
+        # suppression: in <svg><math></svg>, </svg> pops through the unclosed
+        # <math>; a stray </math> with nothing matching on the stack is a
+        # no-op and suppression stands (judge r1 F5).
+        self._drop_stack: list[str] = []
 
     # -- serialization helpers ------------------------------------------------
 
@@ -212,9 +233,9 @@ class _SanitizingParser(HTMLParser):
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
         if tag in _DROP_WITH_CONTENT:
-            self._suppress += 1
+            self._drop_stack.append(tag)
             return
-        if self._suppress:
+        if self._drop_stack:
             return
         if tag not in ALLOWED_TAGS:
             return  # tag dropped, children keep flowing
@@ -226,7 +247,7 @@ class _SanitizingParser(HTMLParser):
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
-        if tag in _DROP_WITH_CONTENT or self._suppress or tag not in ALLOWED_TAGS:
+        if tag in _DROP_WITH_CONTENT or self._drop_stack or tag not in ALLOWED_TAGS:
             return
         if tag in VOID_TAGS:
             self._emit_start(tag, attrs, void=True)
@@ -237,10 +258,15 @@ class _SanitizingParser(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
         if tag in _DROP_WITH_CONTENT:
-            if self._suppress:
-                self._suppress -= 1
+            # Pop up to and including the MATCHING container if present
+            # (repair semantics, same as _open); a close with no matching
+            # open container is a no-op — suppression stands.
+            if tag in self._drop_stack:
+                while self._drop_stack:
+                    if self._drop_stack.pop() == tag:
+                        break
             return
-        if self._suppress or tag not in ALLOWED_TAGS or tag in VOID_TAGS:
+        if self._drop_stack or tag not in ALLOWED_TAGS or tag in VOID_TAGS:
             return
         if tag not in self._open:
             return  # stray close for a tag we never opened
@@ -252,7 +278,7 @@ class _SanitizingParser(HTMLParser):
                 break
 
     def handle_data(self, data: str) -> None:
-        if self._suppress:
+        if self._drop_stack:
             return
         self._out.append(html.escape(data, quote=False))
 
@@ -342,6 +368,25 @@ def is_trusted_sanitized(metadata: Mapping[str, Any] | str | None) -> bool:
     return isinstance(version, str) and bool(version.strip())
 
 
+def strip_trust_markers(metadata: Mapping[str, Any]) -> dict[str, Any]:
+    """Remove the trusted-HTML contract keys from CLIENT-SUPPLIED metadata.
+
+    MANDATORY on any write path that persists metadata a client sent: the
+    trust marker is process-level (see the module docstring's threat model),
+    so a client could otherwise relay a forged ``content_sanitized: true``
+    straight into ``documents.metadata`` and launder an unsanitized body past
+    the serve gate. Stripping first — then stamping via
+    :func:`sanitized_html_provenance` ONLY at the same write that actually
+    ran :func:`sanitize_book_html` — keeps the bit meaningful. Returns a new
+    dict; the input mapping is not mutated.
+    """
+    return {
+        key: value
+        for key, value in metadata.items()
+        if key not in (CONTENT_SANITIZED_KEY, SANITIZER_VERSION_KEY)
+    }
+
+
 __all__ = [
     "ALLOWED_TAGS",
     "CONTENT_SANITIZED_KEY",
@@ -351,4 +396,5 @@ __all__ = [
     "is_trusted_sanitized",
     "sanitize_book_html",
     "sanitized_html_provenance",
+    "strip_trust_markers",
 ]

@@ -67,6 +67,19 @@ already stamps the bit on every row it writes, so rows are ready for the
 gate before the gate exists (sanitize-on-write makes the stored bytes safe
 for every consumer either way).
 
+**Trust-marker threat model + the strip requirement (judge r1 F6).** The
+`content_sanitized` bit is a PROCESS-LEVEL marker: it protects against
+unsanitized *code paths*, not against a malicious in-process writer (anyone
+who can forge `documents.metadata` can write `raw_text` directly — signing
+the bit would add ceremony, not security). The one relay hole is a write
+path that persists CLIENT-SUPPLIED metadata verbatim: a client could smuggle
+a forged `content_sanitized: true` through it. Therefore any endpoint/write
+path that stores client-supplied metadata (the future #496 publish job's
+`metadata` field is exactly this shape) MUST pass it through
+`substrate.books.html_sanitizer.strip_trust_markers` BEFORE persisting, and
+stamp `sanitized_html_provenance()` only at the same write that actually ran
+`sanitize_book_html`. Mandatory, not advisory.
+
 ### W3 — `acquisition/snapshot/reader_html.py` is a regex denylist (known-weak)
 
 `sanitize_html_fragment` strips only paired `<script>`/`<style>` via regex:

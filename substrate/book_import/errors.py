@@ -77,6 +77,27 @@ class NoTextContentError(BookImportError):
     reason: ClassVar[str] = "no_text_content"
 
 
+class StoredBodyMismatchError(BookImportError):
+    """A document row already exists under this content-addressed id but its
+    stored ``raw_text`` is NOT byte-equal to the body being published — an id
+    shadow (collision or tampering). Refused: publish never overwrites or
+    silently adopts a body it did not write (judge r1 F1/F2)."""
+
+    reason: ClassVar[str] = "stored_body_mismatch"
+
+
+class RepublishRightsChangeError(BookImportError):
+    """A re-publish of already-published content requested different rights
+    state (content_class / rights holder / license basis / provenance) than
+    what is stored. Refused: converting or re-importing a file NEVER changes
+    rights — rights transitions go through the dedicated rights path
+    (``substrate.rights.register`` / ``substrate.books.ingest.register_book``
+    under an explicit operator decision), not through an import re-run
+    (judge r1 F1)."""
+
+    reason: ClassVar[str] = "republish_rights_change"
+
+
 __all__ = [
     "BookImportError",
     "DrmLockedError",
@@ -84,6 +105,8 @@ __all__ = [
     "MalformedEpubError",
     "NoTextContentError",
     "NotAnEpubError",
+    "RepublishRightsChangeError",
+    "StoredBodyMismatchError",
     "UnsafeArchivePathError",
     "ZipBombSuspectedError",
 ]
