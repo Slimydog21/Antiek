@@ -1396,3 +1396,8 @@ from engagement surfaces reach a complete deferred map — not L1–L4-only sile
 Settings L5/L6 stamps link into dual-gate checklist sections; L7 checklist
 link joins ND advisory panel link. Competitive delta: operator dual-gate
 chokepoint is navigable end-to-end for deferred + never-router honesty.
+
+## Residual wi · 2026-07-10 — Collective L6 checklist deep-link
+CollectiveResearchPanel L6 honesty strip links dual-gate #l6-collective
+(parity Settings wh). Competitive delta: multi-select collective surface
+navigates deferred live-council policy without inventing injectors.

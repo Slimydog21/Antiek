@@ -697,7 +697,7 @@ export function CollectiveResearchPanel({
     >
       <header>
         <h2>Collective deep research</h2>
-        {/* Residual (vx): L6 live multi-agent council deferred honesty. */}
+        {/* Residual (vx/wi): L6 live multi-agent deferred honesty + checklist deep-link. */}
         <p
           className="meta font-mono text-[11px] opacity-80"
           data-testid="collective-l6-honesty"
@@ -706,7 +706,15 @@ export function CollectiveResearchPanel({
           role="status"
         >
           L6 live multi-agent council: deferred · offline merge unit only · never
-          silent live council
+          silent live council ·{" "}
+          <a
+            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l6-collective"
+            data-testid="collective-l6-checklist-link"
+            className="underline opacity-90 hover:opacity-100"
+            title="L6 live multi-agent deferred — dual-gate checklist (offline merge unit only)"
+          >
+            L6 checklist
+          </a>
         </p>
         <p className="meta">
           Merge multiple subagent instances into one prompt unit, or into a

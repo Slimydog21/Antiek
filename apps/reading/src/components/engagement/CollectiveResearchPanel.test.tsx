@@ -140,7 +140,7 @@ describe("CollectiveResearchPanel", () => {
     expect(boxes[1].checked).toBe(true);
   });
 
-  it("stamps L6 live multi-agent deferred honesty (vx)", () => {
+  it("stamps L6 live multi-agent deferred honesty + checklist deep-link (vx/wi)", () => {
     render(
       <CollectiveResearchPanel availableSpawnIds={["spn_1", "spn_2"]} />,
     );
@@ -152,6 +152,10 @@ describe("CollectiveResearchPanel", () => {
     expect(honesty.getAttribute("data-offline-merge-unit")).toBe("true");
     expect(honesty.textContent).toMatch(/L6 live multi-agent council/i);
     expect(honesty.textContent).toMatch(/offline merge unit only/i);
+    // Residual (wi): L6 checklist deep-link (parity Settings dual-gate wh).
+    const l6 = screen.getByTestId("collective-l6-checklist-link");
+    expect(l6.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l6-collective/);
+    expect(l6.textContent).toMatch(/L6 checklist/i);
   });
 
   it("links to Settings for driver & budget (ig)", () => {
