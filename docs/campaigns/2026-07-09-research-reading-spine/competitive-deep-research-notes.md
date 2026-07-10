@@ -1586,3 +1586,8 @@ policy without inventing injectors.
 default_demo_catalog filter_by_subject(electricity) free PD includes Faraday ·
 Maxwell · Heaviside as HTML. Competitive delta: free electricity STEM spine is
 substrate-true (parity computing quartet xt).
+
+## Residual xw · 2026-07-10 — free-PD + electricity chip STEM trio
+free-PD-only composed with electricity chip surfaces Faraday · Maxwell ·
+Heaviside and excludes paid stubs. Competitive delta: free electricity STEM
+path is compose-complete (parity computing quartet xp).

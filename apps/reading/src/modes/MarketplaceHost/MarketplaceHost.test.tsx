@@ -1243,6 +1243,71 @@ describe("MarketplaceHost mode", () => {
     ).toBe("2");
   });
 
+  it("composes free-PD-only + electricity chip across Faraday Maxwell Heaviside (xw)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-faraday-electricity",
+          title: "Experimental Researches in Electricity",
+          author: "Michael Faraday",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: ["electricity", "physics", "technology"],
+        },
+        {
+          book_id: "pd-maxwell-em",
+          title: "A Treatise on Electricity and Magnetism",
+          author: "James Clerk Maxwell",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: ["electricity", "physics", "mathematics"],
+        },
+        {
+          book_id: "pd-heaviside-em",
+          title: "Electromagnetic Theory",
+          author: "Oliver Heaviside",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: ["electricity", "engineering", "physics"],
+        },
+        {
+          book_id: "buy-modern",
+          title: "Modern Systems Research",
+          author: "Example Press",
+          license_class: "purchased",
+          is_free: false,
+          source: "marketplace_stub",
+          subjects: ["electricity", "technology"],
+        },
+      ],
+      count: 4,
+      view_format: "html",
+      free_count: 3,
+      public_domain_count: 3,
+      by_subject: { electricity: 4 },
+      payment_rails: "manual_receipt_only",
+    });
+    render(<MarketplaceHost ownerId="tech-researcher" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("catalog-free-pd-only")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("catalog-free-pd-only"));
+    await waitFor(() => {
+      expect(screen.getByTestId("catalog-subject-electricity")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("catalog-subject-electricity"));
+    expect(screen.getByTestId("catalog-entry-pd-faraday-electricity")).toBeTruthy();
+    expect(screen.getByTestId("catalog-entry-pd-maxwell-em")).toBeTruthy();
+    expect(screen.getByTestId("catalog-entry-pd-heaviside-em")).toBeTruthy();
+    expect(screen.queryByTestId("catalog-entry-buy-modern")).toBeNull();
+    const metrics = screen.getByTestId("marketplace-catalog-metrics");
+    expect(metrics.getAttribute("data-free-pd-only")).toBe("true");
+    expect(metrics.getAttribute("data-subject-filter")).toBe("electricity");
+  });
+
   it("filters catalog by electricity subject chip for Faraday/Maxwell (tk)", async () => {
     fetchMarketplaceCatalog.mockResolvedValue({
       entries: [
