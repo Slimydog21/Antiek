@@ -1894,3 +1894,8 @@ Hosted book/window pub-refs prep deep-links #l2-substack (parity marketplace aal
 Competitive delta: reading ≡ research HTML host surfaces Substack hydrate prep
 honestly beside arxiv (offline-default dual-gate).
 
+## Residual aan · 2026-07-10 — Midnight Oil L2 Substack dual-gate deep-link
+MO create-form pub-refs prep deep-links #l2-substack (parity aal/aam). Competitive
+delta: autonomous midnight-oil swarm grounding surfaces Substack hydrate prep
+beside arxiv before goals+duration approve (offline-default dual-gate).
+

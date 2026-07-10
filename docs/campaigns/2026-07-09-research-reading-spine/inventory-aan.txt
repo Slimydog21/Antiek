@@ -1,0 +1,22 @@
+# inventory-aan · Midnight Oil L2 Substack dual-gate deep-link
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aan
+date: 2026-07-10
+tip_before: d6ff0794 (aam)
+
+## Problem
+Midnight Oil pub-refs labeled L1–L2 hydrate checklist but only linked #l1-arxiv
+(parity aal marketplace · aam HostedHtml). Autonomous swarm grounding missed
+Substack ToS/factory prep deep-link.
+
+## Fix
+- moil-pub-refs-dual-gate-l2-link → #l2-substack
+- L1 copy honesty: Dual-gate L1 arxiv checklist
+- MidnightOil.test locks both anchors
+
+## Verified
+npm test MidnightOil.test.tsx → 20 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live L1/L2 injectors · live MO step L4

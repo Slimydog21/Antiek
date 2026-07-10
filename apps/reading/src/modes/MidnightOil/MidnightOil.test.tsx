@@ -1070,7 +1070,11 @@ describe("MidnightOil mode", () => {
     const link = screen.getByTestId("moil-pub-refs-dual-gate-link");
     // Residual (xy): L1 arxiv checklist section deep-link.
     expect(link.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
-    expect(link.textContent).toMatch(/L1–L2 hydrate/i);
+    expect(link.textContent).toMatch(/L1 arxiv checklist/i);
+    // Residual (aan): L2 Substack checklist (parity aal/aam).
+    const l2 = screen.getByTestId("moil-pub-refs-dual-gate-l2-link");
+    expect(l2.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
+    expect(l2.textContent).toMatch(/L2 Substack checklist/i);
     const offline = screen.getByTestId("moil-pub-refs-offline-default");
     expect(offline.getAttribute("data-offline-honest")).toBe("true");
     expect(offline.textContent).toMatch(/offline identity default/i);
