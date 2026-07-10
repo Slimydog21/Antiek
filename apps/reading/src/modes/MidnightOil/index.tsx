@@ -94,6 +94,7 @@ import type { ResearchTier } from "../../lib/api";
 import {
   appendMoilGoalTemplate,
   MOIL_GOAL_TEMPLATES,
+  goalsExceedFanout,
   parseMoilGoalLines,
   recommendedFanoutForGoals,
 } from "../../lib/moilGoals";
@@ -858,7 +859,11 @@ export default function MidnightOil() {
                     Number.isFinite(fanoutDepth) && fanoutDepth > 0
                       ? Math.floor(fanoutDepth)
                       : MOIL_CEILING_DEFAULT_FANOUT_DEPTH;
-                  const exceeds = goalLines.length > effectiveFanout;
+                  // Residual (aox): pure exceeds predicate (parity aow match target).
+                  const exceeds = goalsExceedFanout(
+                    goalLines.length,
+                    effectiveFanout,
+                  );
                   // Residual (aow): pure helper for Match fan-out target (cap 12).
                   const matchTarget = recommendedFanoutForGoals(
                     goalLines.length,

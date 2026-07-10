@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   appendMoilGoalTemplate,
   MOIL_GOAL_TEMPLATES,
+  goalsExceedFanout,
   parseMoilGoalLines,
   recommendedFanoutForGoals,
 } from "./moilGoals";
@@ -36,5 +37,12 @@ describe("moilGoals (aof)", () => {
     expect(recommendedFanoutForGoals(20)).toBe(12);
     expect(recommendedFanoutForGoals(20, 8)).toBe(8);
     expect(recommendedFanoutForGoals(-1)).toBe(1);
+  });
+
+  it("detects goals exceeding fan-out (aox)", () => {
+    expect(goalsExceedFanout(0, 3)).toBe(false);
+    expect(goalsExceedFanout(3, 3)).toBe(false);
+    expect(goalsExceedFanout(4, 3)).toBe(true);
+    expect(goalsExceedFanout(2, 0)).toBe(true);
   });
 });

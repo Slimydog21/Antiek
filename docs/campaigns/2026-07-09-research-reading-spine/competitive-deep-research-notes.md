@@ -3695,3 +3695,7 @@ P0 PR #465. Pivot aow+ product residual outside thrash.
 
 ## Residual aow · 2026-07-10 — recommendedFanoutForGoals pure helper
 Extract Match fan-out target into moilGoals (cap 12 · never invent). P0 PR #465. Pivot aox+.
+
+## Residual aox · 2026-07-10 — goalsExceedFanout pure helper
+Pure predicate for multi-goal coverage gap (empty goals never exceed).
+P0 PR #465. Pivot aoy+ product residual outside thrash.

@@ -68,3 +68,18 @@ export function recommendedFanoutForGoals(
   const max = Math.max(minFanout, Math.floor(Number(maxFanout)) || 12);
   return Math.min(max, Math.max(minFanout, n));
 }
+
+/**
+ * Residual (aox): true when goal_count exceeds fan-out depth (coverage gap).
+ * Empty goals never "exceed" (no soft-hint spam).
+ */
+export function goalsExceedFanout(
+  goalCount: number,
+  fanoutDepth: number,
+): boolean {
+  const goals = Math.floor(Number(goalCount));
+  const fanout = Math.floor(Number(fanoutDepth));
+  if (!Number.isFinite(goals) || goals <= 0) return false;
+  if (!Number.isFinite(fanout) || fanout <= 0) return true;
+  return goals > fanout;
+}
