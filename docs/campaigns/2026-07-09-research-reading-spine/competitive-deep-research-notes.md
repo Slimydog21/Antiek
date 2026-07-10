@@ -1566,3 +1566,8 @@ highest leverage.
 Settings L2 checklist deep-links #l2-substack (completes L1–L2 pair with xh).
 Competitive delta: decision-tree dual-gate prep navigates Substack ToS factory
 deferred policy section.
+
+## Residual xs · 2026-07-10 — FUTURE-AGENT tip re-anchor through xr
+FUTURE-AGENT-SPEC tip re-anchored after Settings L2 checklist + free STEM
+quartet. Competitive delta: swarm handoff tip-true; operator merge PR #465
+highest leverage.
