@@ -2006,3 +2006,8 @@ free_only catalog HTML free_count equals Entries; free_only+biology free_count=2
 (Origin+Hooke); free technology includes Hooke Micrographia (len ≥5). Competitive
 delta: filter-aware free STEM HTML browse is identity-honest end-to-end.
 
+## Residual abk · 2026-07-10 — free technology HTML + free physics Hooke
+free_only+technology catalog HTML free_count ≥5 includes Hooke; free physics
+set includes Hooke (len ≥5); API technology by_subject ≥5. Competitive delta:
+instrumented-observation STEM joins tech-researcher free technology/physics filters.
+

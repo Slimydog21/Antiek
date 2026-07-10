@@ -232,9 +232,11 @@ def test_free_physics_stem_set_size() -> None:
         "pd-faraday-electricity",
         "pd-maxwell-em",
         "pd-heaviside-em",
+        # Residual (abk): Hooke Micrographia free physics (instrumented observation).
+        "pd-hooke-micrographia",
     }
     assert all(e.source_format == "html" for e in free_phys if e.book_id in ids)
-    assert len(free_phys) >= 4
+    assert len(free_phys) >= 5
     assert all(e.is_free for e in free_phys)
 
 
@@ -554,8 +556,8 @@ def test_catalog_route_subjects_and_by_subject(client) -> None:
     assert "pd-lovelace-analytical-engine" in by_id
     assert "history" in by_id["pd-lovelace-analytical-engine"]["subjects"]
     assert "computing" in by_id["pd-lovelace-analytical-engine"]["subjects"]
-    # Residual (yr): technology domain honesty spans free STEM electricity+computing.
-    assert body["by_subject"].get("technology", 0) >= 4
+    # Residual (yr/abk): technology domain honesty includes Hooke + free STEM.
+    assert body["by_subject"].get("technology", 0) >= 5
     # Residual (zb): free_count honesty includes full free PD catalog (STEM expanded).
     # Residual (abg): free_count floor after Hooke Micrographia (abc) ≥17 free PD.
     assert body.get("free_count", 0) >= 17

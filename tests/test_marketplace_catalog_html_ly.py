@@ -90,6 +90,25 @@ def test_project_catalog_html_free_only_biology_free_count() -> None:
     assert "free_only=True" in html
 
 
+def test_project_catalog_html_free_only_technology_includes_hooke() -> None:
+    """Residual (abk): free_only + technology free STEM includes Hooke instruments."""
+    import re
+
+    cat = default_demo_catalog()
+    html = project_catalog_html(cat, free_only=True, subject="technology")
+    assert "pd-hooke-micrographia" in html or "Micrographia" in html or "Hooke" in html
+    assert "pd-shannon" in html or "Shannon" in html or "pd-faraday" in html
+    m = re.search(r"free_count=(\d+)", html)
+    assert m is not None
+    assert int(m.group(1)) >= 5
+    entries_m = re.search(r"Entries=(\d+) of", html)
+    assert entries_m is not None
+    assert int(entries_m.group(1)) == int(m.group(1))
+    assert "subject=technology" in html
+    assert "free_only=True" in html
+    assert "buy-modern" not in html
+
+
 @pytest.fixture
 def client():
     reset_marketplace_host_store()

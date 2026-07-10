@@ -1,0 +1,20 @@
+# inventory-abk · free technology HTML + free physics Hooke
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: abk
+date: 2026-07-10
+tip_before: e7fb34d2 (abj)
+
+## Problem
+free_only+technology HTML browse and free physics set did not lock Hooke
+Micrographia; API technology by_subject floor still ≥4 after Hooke.
+
+## Fix
+- free_only+technology HTML free_count ≥5 · includes Hooke · free_count==Entries
+- free physics ids include pd-hooke-micrographia · len ≥5
+- catalog route by_subject.technology ≥5
+
+## Verified
+pytest 3 targeted green
+
+## Not in scope
+- Operator merge PR #465 (gated)
