@@ -8,7 +8,7 @@ from decimal import Decimal
 from hashlib import sha256
 from typing import Any
 
-from .model import ResearchBrief
+from .model import BudgetTuple, ResearchBrief
 
 
 def _json_default(value: object) -> str:
@@ -18,9 +18,22 @@ def _json_default(value: object) -> str:
 
 
 def brief_content_hash(brief: ResearchBrief) -> str:
-    """Hash all content and lifecycle fields using canonical JSON."""
+    """Hash editable content only, excluding lifecycle state and events."""
+    budget = brief.budget
+    assert isinstance(budget, BudgetTuple)
     payload = json.dumps(
-        asdict(brief), sort_keys=True, separators=(",", ":"), default=_json_default
+        {
+            "question": brief.question,
+            "scope": brief.scope,
+            "exclusions": brief.exclusions,
+            "source_preferences": brief.source_preferences,
+            "budget": asdict(budget),
+            "price_ceiling": brief.price_ceiling,
+            "unattended": brief.unattended,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        default=_json_default,
     ).encode()
     return sha256(payload).hexdigest()
 

@@ -1,5 +1,6 @@
 """Contract tests for the research-brief approval gate."""
 
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -17,6 +18,7 @@ from substrate.research_brief import (
     project_to_html,
     run_token,
 )
+from substrate.research_brief.lifecycle import RunToken
 
 
 def _draft(*, unattended: bool = False, price_ceiling: Decimal | None = None) -> ResearchBrief:
@@ -37,6 +39,17 @@ def test_run_token_on_draft_raises() -> None:
 
     with pytest.raises(ValueError, match="approved"):
         run_token(brief)
+
+
+def test_tampered_html_state_cannot_yield_run_token() -> None:
+    html = project_to_html(_draft()).replace('data-state="draft"', 'data-state="approved"')
+    with pytest.raises(ValueError, match="draft state"):
+        parse_html(html)
+
+
+def test_constructed_approved_brief_without_events_is_rejected() -> None:
+    with pytest.raises(ValueError, match="event trail"):
+        replace(_draft(), state=BriefState.APPROVED)
 
 
 def test_unattended_brief_without_price_ceiling_raises() -> None:
@@ -92,7 +105,8 @@ def test_clarifier_rejects_question_counts_outside_two_to_three(count: int) -> N
 
 
 def test_lifecycle_records_injected_actor_and_time() -> None:
-    amended = amend(_draft(), actor="editor", occurred_at="t1")
+    draft = _draft()
+    amended = amend(draft, actor="editor", occurred_at="t1")
     approved = approve(amended, actor="operator", occurred_at="t2")
     assert approved.state is BriefState.APPROVED
     assert [(e.action, e.actor, e.occurred_at) for e in approved.events] == [
@@ -102,6 +116,25 @@ def test_lifecycle_records_injected_actor_and_time() -> None:
     token = run_token(approved)
     assert token.brief_id == approved.brief_id
     assert token.brief_hash == brief_content_hash(approved)
+    assert token.brief_hash == brief_content_hash(draft)
+
+
+def test_approved_is_terminal() -> None:
+    approved = approve(_draft(), actor="operator", occurred_at="t1")
+    with pytest.raises(ValueError, match="cannot transition"):
+        amend(approved, actor="editor", occurred_at="t2")
+
+
+def test_approved_content_cannot_change_before_token_minting() -> None:
+    approved = approve(_draft(), actor="operator", occurred_at="t1")
+    altered = replace(approved, question="A different question")
+    with pytest.raises(ValueError, match="matching final approval"):
+        run_token(altered)
+
+
+def test_run_token_rejects_malformed_hash() -> None:
+    with pytest.raises(ValueError, match="SHA-256"):
+        RunToken("brief-1", "deadbeef")
 
 
 def test_hash_is_stable_and_every_field_edit_changes_it() -> None:

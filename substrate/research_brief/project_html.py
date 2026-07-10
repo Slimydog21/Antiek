@@ -65,11 +65,13 @@ class _BriefParser(HTMLParser):
 
 
 def parse_html(html: str) -> ResearchBrief:
-    """Parse fields from a projected document after operator edits."""
+    """Parse editable content; lifecycle state must remain draft."""
     parser = _BriefParser()
     parser.feed(html)
     if parser.brief_id is None or parser.state is None:
         raise ValueError("not a projected research brief")
+    if parser.state != BriefState.DRAFT.value:
+        raise ValueError("editable HTML must remain in draft state")
     fields = parser.fields
     ceiling = fields["price_ceiling"].strip()
     return ResearchBrief(
@@ -85,5 +87,4 @@ def parse_html(html: str) -> ResearchBrief:
         ),
         price_ceiling=None if not ceiling else Decimal(ceiling),
         unattended=fields["unattended"].strip().lower() == "true",
-        state=BriefState(parser.state),
     )

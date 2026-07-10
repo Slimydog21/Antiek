@@ -31,6 +31,7 @@ class LifecycleEvent:
     action: str
     actor: str
     occurred_at: str
+    content_hash: str | None = None
 
 
 @dataclass(frozen=True)
@@ -57,3 +58,11 @@ class ResearchBrief:
             object.__setattr__(self, "budget", BudgetTuple(*self.budget))
         if self.price_ceiling is not None and self.price_ceiling <= 0:
             raise ValueError("price_ceiling must be positive")
+        if self.state is BriefState.DRAFT:
+            if self.events:
+                raise ValueError("draft brief cannot have lifecycle events")
+            return
+        if not self.events or self.events[-1].action != self.state.value:
+            raise ValueError("non-draft brief requires a consistent lifecycle event trail")
+        if any(not event.actor.strip() or not event.occurred_at.strip() for event in self.events):
+            raise ValueError("lifecycle events require actor and occurred_at")
