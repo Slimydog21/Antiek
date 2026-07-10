@@ -2363,3 +2363,8 @@ machine-readable. vitest TwinNotesPanel 30 green.
 Progress Open Write stamps spawn · progress-source · seamless-progress-write.
 Flywheel Open Write stamps session/spawn · seamless-flywheel-write. Plan→cite
 and session complete → Write note-taker path honesty. vitest 15 green.
+
+## Residual aey · 2026-07-10 — SESSION-ARC ael–aex Open Write path complete
+Full matrix of Open Write path honesty closed (DR→merge→host→marketplace→MO→
+collective→context→evidence→twins→progress/flywheel) + dogfood v14. Pivot aez+
+outside path thrash. P0 operator merge PR #465.

@@ -1,34 +1,30 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** residual **aex** (progress + flywheel Open Write path) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
+**Campaign tip at write:** residual **aey** (SESSION-ARC ael–aex Open Write path complete) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **URL:** https://github.com/Slimydog21/Antiek/pull/465  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
 
 ## Do not rebuild
 
-Prefer **inventory-aex** + **SESSION-ARC-aes-aeu-context-bench-write.md** + **SESSION-ARC-ael-aeq-seamless-write-path.md**.  
-This continuation: **235 residual ships** from vy tip `8e280766`.
+Prefer **inventory-aey** + **SESSION-ARC-ael-aex-write-path-complete.md**.  
+This continuation: **236 residual ships** from vy tip `8e280766`.
 
 ### Closed product (high signal)
 
 | Theme | Status |
 |---|---|
 | Write-seed body honesty | **adn–aei** |
-| Seamless Write path wave | **ael–aeq** · context **aes–aet** · twin **aew** · progress/flywheel **aex** |
-| Context + dogfood | **aeu** v14 (SESSION-ARC **aev**) |
-| Collective cohesive unit | float|full + Write unit **aeh** |
-| Budget foresight | **aeb** + Settings **aej** |
-| Midnight Oil ceiling | **adx–aeg** |
-| Marketplace seamless port | **aea–aeb** + Open Write **aeo** |
-| Dual-gate readiness Settings | L1–L4 **aec–aee** |
+| Open Write path honesty | **ael–aex** complete (SESSION-ARC **aey**) |
+| Dogfood v14 | **aeu** (seamless + intelligent search fixtures) |
+| Collective / budget / MO / marketplace / dual-gate | Prior arcs closed |
 | NotDiamond | Advisory only · never router |
 
 ### P0 — Operator merge PR #465
 **Highest leverage remaining.** Agents never merge main/prod.
 
-### P1 next offline (residual **aey+**)
-Outside Open Write path thrash: ND advisory · MO live env · product depth. Leave thrash.
+### P1 next offline (residual **aez+**)
+**Outside** Open Write path thrash: ND advisory polish · MO live multi-provider · competitive depth · paid L5. Leave thrash.
 
 ## Doctrine
 One residual letter/cycle · inventory-first · green tests · campaign push only · complete work never complete goal · Infinite until STOP.
