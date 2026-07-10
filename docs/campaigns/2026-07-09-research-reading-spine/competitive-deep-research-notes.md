@@ -1736,3 +1736,7 @@ Competitive delta: swarm handoff tip-true; operator merge PR #465 highest levera
 ## Residual zd · 2026-07-10 — dogfood items list data-view-format html
 antiek-bench-dogfood-items stamps data-view-format=html. Competitive delta:
 dogfood fixture list is HTML-first (parity summary yt).
+
+## Residual ze · 2026-07-10 — FUTURE-AGENT tip re-anchor through zd
+FUTURE-AGENT-SPEC tip re-anchored after 84 residual ships this continuation.
+Competitive delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
