@@ -32,6 +32,7 @@ import {
   operatorArchiveHandoffPackageDeliveryAuditResultReconciliationPlanMidnightOil,
   operatorArchiveHandoffPackagePlanMidnightOil,
   operatorArchiveHandoffPackageResultReconciliationPlanMidnightOil,
+  operatorArchivePackageDeliveryReportDeliveryConfirmationPlanMidnightOil,
   operatorArchivePackageDeliveryReportPlanMidnightOil,
   operatorArchivePackageDeliveryReportNotificationReadinessPlanMidnightOil,
   operatorArchivePackageDeliveryReportNotificationResultReconciliationPlanMidnightOil,
@@ -5420,6 +5421,98 @@ vi.mock("../../api/midnightOil", () => ({
         "operator archive package delivery report notification result reconciliation plan only: no notification result entry, status entry, audit status entry, dispatch, URL activation, or final artifact is created",
       ],
     })),
+  operatorArchivePackageDeliveryReportDeliveryConfirmationPlanMidnightOil: vi.fn(
+    async () => ({
+      receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-delivery-confirmation-plan",
+      operator_archive_package_delivery_report_notification_result_reconciliation_plan_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-notification-result-reconciliation-plan",
+      operator_archive_package_delivery_report_notification_readiness_plan_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-notification-readiness-plan",
+      operator_archive_package_delivery_report_result_reconciliation_plan_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-result-reconciliation-plan",
+      operator_archive_package_delivery_report_plan_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-plan",
+      status:
+        "blocked_operator_archive_package_delivery_report_delivery_confirmation_unimplemented",
+      adapter_key: "operator_archive_package_delivery_report_delivery_confirmation",
+      planned_operator_archive_package_delivery_report_delivery_confirmation_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-delivery-confirmation-receipt",
+      planned_operator_archive_package_delivery_report_delivery_confirmation_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-delivery-confirmation-entry",
+      planned_operator_archive_package_delivery_report_delivery_confirmation_status_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-delivery-confirmation-status-entry",
+      planned_operator_archive_package_delivery_report_delivery_confirmation_audit_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-delivery-confirmation-audit-entry",
+      planned_operator_archive_package_delivery_report_notification_result_reconciliation_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-notification-result-reconciliation-receipt",
+      planned_operator_archive_package_delivery_report_notification_result_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-notification-result-entry",
+      planned_operator_archive_package_delivery_report_notification_status_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-notification-status-entry",
+      planned_operator_archive_package_delivery_report_notification_audit_status_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-notification-audit-status-entry",
+      operator_archive_package_delivery_report_delivery_confirmation_blockers: [
+        "operator archive package delivery report delivery confirmation receipt writer",
+        "operator archive package delivery report delivery confirmation entry writer",
+        "operator archive package delivery report delivery confirmation status entry writer",
+        "operator archive package delivery report delivery confirmation audit entry writer",
+        "operator archive package delivery report delivery confirmation replay guard",
+      ],
+      required_operator_archive_package_delivery_report_delivery_confirmation_invariants:
+        [
+          "operator archive package delivery report delivery confirmation planner must require notification result reconciliation planning before delivery confirmation rows can be planned",
+        ],
+      required_operator_archive_package_delivery_report_delivery_confirmation_receipt_fields:
+        [
+          "operator_archive_package_delivery_report_delivery_confirmation_receipt_id",
+          "operator_archive_package_delivery_report_delivery_confirmation_entry_id",
+          "operator_archive_package_delivery_report_delivery_confirmation_status_entry_id",
+          "operator_archive_package_delivery_report_delivery_confirmation_audit_entry_id",
+        ],
+      blocker_reason:
+        "operator_archive_package_delivery_report_delivery_confirmation_unimplemented",
+      operator_archive_package_delivery_report_delivery_confirmation_allowed:
+        false,
+      operator_archive_package_delivery_report_delivery_confirmation_entry_created:
+        false,
+      operator_archive_package_delivery_report_delivery_confirmation_status_entry_created:
+        false,
+      operator_archive_package_delivery_report_delivery_confirmation_audit_entry_created:
+        false,
+      operator_archive_package_delivery_report_notification_result_reconciliation_allowed:
+        false,
+      operator_archive_package_delivery_report_notification_result_entry_created:
+        false,
+      operator_archive_package_delivery_report_notification_status_entry_created:
+        false,
+      operator_archive_package_delivery_report_notification_audit_status_entry_created:
+        false,
+      operator_archive_package_delivery_report_notification_readiness_allowed:
+        false,
+      operator_archive_package_delivery_report_notification_payload_created: false,
+      operator_archive_package_delivery_report_notification_channel_policy_created:
+        false,
+      operator_archive_package_delivery_report_notification_audit_created: false,
+      operator_archive_package_delivery_report_result_reconciliation_allowed:
+        false,
+      operator_archive_package_delivery_report_result_entry_created: false,
+      operator_archive_manifest_delivery_report_status_entry_created: false,
+      operator_handoff_bundle_delivery_report_status_entry_created: false,
+      operator_archive_delivery_report_evidence_status_entry_created: false,
+      operator_archive_package_delivery_report_allowed: false,
+      operator_archive_package_delivery_report_entry_created: false,
+      operator_notification_created: false,
+      private_read_url_created: false,
+      graph_mutated: false,
+      provider_calls_made: false,
+      retrieval_performed: false,
+      final_artifact_created: false,
+      adapter_plan_notes: [
+        "operator archive package delivery report delivery confirmation plan only: no confirmation receipt, entry, status entry, audit entry, dispatch, URL activation, or final artifact is created",
+      ],
+    }),
+  ),
 }));
 
 describe("MidnightOil", () => {
@@ -9453,6 +9546,109 @@ describe("MidnightOil", () => {
     expect(
       screen.getAllByText(
         /operator_archive_package_delivery_report_notification_audit_status_entry_id/,
+      ).length,
+    ).toBeGreaterThan(0);
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Operator archive package delivery report delivery confirmation plan",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(
+        operatorArchivePackageDeliveryReportDeliveryConfirmationPlanMidnightOil,
+      ).toHaveBeenCalled(),
+    );
+    expect(
+      operatorArchivePackageDeliveryReportDeliveryConfirmationPlanMidnightOil,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operator_archive_package_delivery_report_notification_result_reconciliation_plan_receipt:
+          expect.objectContaining({
+            receipt_id:
+              "midnight-oil-test-operator-archive-package-delivery-report-notification-result-reconciliation-plan",
+          }),
+        operator_archive_package_delivery_report_notification_readiness_plan_receipt:
+          expect.objectContaining({
+            receipt_id:
+              "midnight-oil-test-operator-archive-package-delivery-report-notification-readiness-plan",
+          }),
+      }),
+    );
+    expect(
+      screen.getByText(
+        "Operator archive package delivery report delivery confirmation receipt",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-delivery-confirmation-plan",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "blocked operator archive package delivery report delivery confirmation unimplemented",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-delivery-confirmation-receipt",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-delivery-confirmation-entry",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-delivery-confirmation-status-entry",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-delivery-confirmation-audit-entry",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "operator archive package delivery report delivery confirmation planner must require notification result reconciliation planning before delivery confirmation rows can be planned",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Operator archive package delivery report delivery confirmation blockers:/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /operator archive package delivery report delivery confirmation receipt writer/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /operator archive package delivery report delivery confirmation entry writer/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Operator archive package delivery report delivery confirmation receipt fields:/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getAllByText(
+        /operator_archive_package_delivery_report_delivery_confirmation_entry_id/,
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(
+        /operator_archive_package_delivery_report_delivery_confirmation_status_entry_id/,
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(
+        /operator_archive_package_delivery_report_delivery_confirmation_audit_entry_id/,
       ).length,
     ).toBeGreaterThan(0);
   }, 15000);

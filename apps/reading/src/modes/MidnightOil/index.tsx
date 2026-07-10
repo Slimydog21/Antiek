@@ -29,6 +29,7 @@ import {
   operatorArchiveHandoffPackageDeliveryAuditResultReconciliationPlanMidnightOil,
   operatorArchiveHandoffPackagePlanMidnightOil,
   operatorArchiveHandoffPackageResultReconciliationPlanMidnightOil,
+  operatorArchivePackageDeliveryReportDeliveryConfirmationPlanMidnightOil,
   operatorArchivePackageDeliveryReportPlanMidnightOil,
   operatorArchivePackageDeliveryReportNotificationReadinessPlanMidnightOil,
   operatorArchivePackageDeliveryReportNotificationResultReconciliationPlanMidnightOil,
@@ -88,6 +89,7 @@ import {
   type MidnightOilOperatorArchiveHandoffPackageDeliveryAuditResultReconciliationPlanReceipt,
   type MidnightOilOperatorArchiveHandoffPackagePlanReceipt,
   type MidnightOilOperatorArchiveHandoffPackageResultReconciliationPlanReceipt,
+  type MidnightOilOperatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt,
   type MidnightOilOperatorArchivePackageDeliveryReportPlanReceipt,
   type MidnightOilOperatorArchivePackageDeliveryReportNotificationReadinessPlanReceipt,
   type MidnightOilOperatorArchivePackageDeliveryReportNotificationResultReconciliationPlanReceipt,
@@ -322,6 +324,13 @@ export default function MidnightOil() {
     useState<MidnightOilOperatorArchivePackageDeliveryReportNotificationResultReconciliationPlanReceipt | null>(
       null,
     );
+  const [
+    operatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt,
+    setOperatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt,
+  ] =
+    useState<MidnightOilOperatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt | null>(
+      null,
+    );
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -446,6 +455,10 @@ export default function MidnightOil() {
   const [
     operatorArchivePackageDeliveryReportNotificationResultReconciliationPlanBusy,
     setOperatorArchivePackageDeliveryReportNotificationResultReconciliationPlanBusy,
+  ] = useState(false);
+  const [
+    operatorArchivePackageDeliveryReportDeliveryConfirmationPlanBusy,
+    setOperatorArchivePackageDeliveryReportDeliveryConfirmationPlanBusy,
   ] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
@@ -589,12 +602,22 @@ export default function MidnightOil() {
     operatorArchivePackageDeliveryReportNotificationResultReconciliationPlanError,
     setOperatorArchivePackageDeliveryReportNotificationResultReconciliationPlanError,
   ] = useState<string | null>(null);
+  const [
+    operatorArchivePackageDeliveryReportDeliveryConfirmationPlanError,
+    setOperatorArchivePackageDeliveryReportDeliveryConfirmationPlanError,
+  ] = useState<string | null>(null);
+
+  function clearOperatorArchivePackageDeliveryReportDeliveryConfirmationPlan() {
+    setOperatorArchivePackageDeliveryReportDeliveryConfirmationPlanError(null);
+    setOperatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt(null);
+  }
 
   function clearOperatorArchivePackageDeliveryReportNotificationResultReconciliationPlan() {
     setOperatorArchivePackageDeliveryReportNotificationResultReconciliationPlanError(null);
     setOperatorArchivePackageDeliveryReportNotificationResultReconciliationPlanReceipt(
       null,
     );
+    clearOperatorArchivePackageDeliveryReportDeliveryConfirmationPlan();
   }
 
   function clearOperatorArchivePackageDeliveryReportNotificationReadinessPlan() {
@@ -5428,6 +5451,163 @@ export default function MidnightOil() {
       setOperatorArchivePackageDeliveryReportNotificationResultReconciliationPlanBusy(
         false,
       );
+    }
+  }
+
+  async function onOperatorArchivePackageDeliveryReportDeliveryConfirmationPlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerControlPlanReceipt ||
+      !budgetProviderAdapterPlanReceipt ||
+      !providerExecutorAdapterPlanReceipt ||
+      !retrievalAdapterPlanReceipt ||
+      !graphAdapterPlanReceipt ||
+      !finalArtifactAdapterPlanReceipt ||
+      !operatorDispatchAdapterPlanReceipt ||
+      !controlLedgerAdapterPlanReceipt ||
+      !controlLedgerPersistencePlanReceipt ||
+      !controlLedgerPersistenceApplyPlanReceipt ||
+      !operatorDispatchActivationReadinessPlanReceipt ||
+      !liveDispatchFinalEnablementPlanReceipt ||
+      !liveDispatchFinalEnablementApplyPlanReceipt ||
+      !runnerDispatchSchedulerPlanReceipt ||
+      !runnerDispatchWorkerBootstrapPlanReceipt ||
+      !schedulerLeaseRetryPlanReceipt ||
+      !workerQueueClaimPlanReceipt ||
+      !repositoryTransactionPlanReceipt ||
+      !repositoryCommitRollbackPlanReceipt ||
+      !workerDispatchLeaseHeartbeatPlanReceipt ||
+      !workerCancellationAbandonPlanReceipt ||
+      !workerCompletionFinalizationPlanReceipt ||
+      !workerOutputAggregationPlanReceipt ||
+      !workerSynthesisHandoffPlanReceipt ||
+      !synthesisBundleAssemblyPlanReceipt ||
+      !finalSynthesisDraftPlanReceipt ||
+      !finalHtmlArtifactAssemblyPlanReceipt ||
+      !finalArtifactPersistencePlanReceipt ||
+      !finalArtifactGraphCommitPlanReceipt ||
+      !finalArtifactPublishPlanReceipt ||
+      !finalArtifactCompletionFinalizationPlanReceipt ||
+      !finalRunClosurePlanReceipt ||
+      !operatorNotificationDeliveryReadinessPlanReceipt ||
+      !operatorNotificationDeliveryApplyPlanReceipt ||
+      !operatorNotificationDeliveryResultReconciliationPlanReceipt ||
+      !operatorDeliveryLedgerReconciliationPlanReceipt ||
+      !workspaceDeliveryCardReconciliationPlanReceipt ||
+      !deliveryNotificationReconciliationPlanReceipt ||
+      !retentionBillingReconciliationPlanReceipt ||
+      !finalCloseoutArchiveReconciliationPlanReceipt ||
+      !operatorArchiveHandoffPackagePlanReceipt ||
+      !operatorArchiveHandoffPackageResultReconciliationPlanReceipt ||
+      !operatorArchiveHandoffPackageDeliveryAuditPlanReceipt ||
+      !operatorArchiveHandoffPackageDeliveryAuditResultReconciliationPlanReceipt ||
+      !operatorArchivePackageDeliveryReportPlanReceipt ||
+      !operatorArchivePackageDeliveryReportResultReconciliationPlanReceipt ||
+      !operatorArchivePackageDeliveryReportNotificationReadinessPlanReceipt ||
+      !operatorArchivePackageDeliveryReportNotificationResultReconciliationPlanReceipt
+    ) {
+      setOperatorArchivePackageDeliveryReportDeliveryConfirmationPlanError(
+        "Operator archive package delivery report delivery confirmation plan requires launch packet, approval receipt, runner handoff, runner control plan receipt, budget provider adapter plan receipt, provider executor adapter plan receipt, retrieval adapter plan receipt, graph adapter plan receipt, final artifact adapter plan receipt, operator dispatch adapter plan receipt, control ledger adapter plan receipt, control ledger persistence plan receipt, control ledger persistence apply plan receipt, operator dispatch activation readiness plan receipt, live dispatch final enablement plan receipt, live dispatch final enablement apply plan receipt, runner dispatch scheduler plan receipt, runner dispatch worker bootstrap plan receipt, scheduler lease retry plan receipt, worker queue claim plan receipt, repository transaction plan receipt, repository commit rollback plan receipt, worker lease heartbeat plan receipt, worker cancellation abandon plan receipt, worker completion finalization plan receipt, worker output aggregation plan receipt, worker synthesis handoff plan receipt, synthesis bundle assembly plan receipt, final synthesis draft plan receipt, final HTML artifact assembly plan receipt, final artifact persistence plan receipt, final artifact graph commit plan receipt, final artifact publish plan receipt, final artifact completion finalization plan receipt, final run closure plan receipt, operator notification delivery readiness plan receipt, operator notification delivery apply plan receipt, operator notification delivery result reconciliation plan receipt, operator delivery ledger reconciliation plan receipt, workspace delivery card reconciliation plan receipt, delivery notification reconciliation plan receipt, retention billing reconciliation plan receipt, final closeout archive reconciliation plan receipt, operator archive handoff package plan receipt, operator archive handoff package result reconciliation plan receipt, operator archive handoff package delivery audit plan receipt, operator archive handoff package delivery audit result reconciliation plan receipt, operator archive package delivery report plan receipt, operator archive package delivery report result reconciliation plan receipt, operator archive package delivery report notification readiness plan receipt, and operator archive package delivery report notification result reconciliation plan receipt.",
+      );
+      return;
+    }
+
+    setOperatorArchivePackageDeliveryReportDeliveryConfirmationPlanBusy(true);
+    setOperatorArchivePackageDeliveryReportDeliveryConfirmationPlanError(null);
+    setOperatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt(null);
+    try {
+      const result =
+        await operatorArchivePackageDeliveryReportDeliveryConfirmationPlanMidnightOil(
+          {
+            launch_packet: preflight.launch_packet,
+            approval_receipt: preflight.approval_receipt,
+            runner_handoff: preflight.runner_handoff,
+            runner_control_plan_receipt: runnerControlPlanReceipt,
+            budget_provider_adapter_plan_receipt: budgetProviderAdapterPlanReceipt,
+            provider_executor_adapter_plan_receipt: providerExecutorAdapterPlanReceipt,
+            retrieval_adapter_plan_receipt: retrievalAdapterPlanReceipt,
+            graph_adapter_plan_receipt: graphAdapterPlanReceipt,
+            final_artifact_adapter_plan_receipt: finalArtifactAdapterPlanReceipt,
+            operator_dispatch_adapter_plan_receipt: operatorDispatchAdapterPlanReceipt,
+            control_ledger_adapter_plan_receipt: controlLedgerAdapterPlanReceipt,
+            control_ledger_persistence_plan_receipt: controlLedgerPersistencePlanReceipt,
+            control_ledger_persistence_apply_plan_receipt:
+              controlLedgerPersistenceApplyPlanReceipt,
+            operator_dispatch_activation_readiness_plan_receipt:
+              operatorDispatchActivationReadinessPlanReceipt,
+            live_dispatch_final_enablement_plan_receipt:
+              liveDispatchFinalEnablementPlanReceipt,
+            live_dispatch_final_enablement_apply_plan_receipt:
+              liveDispatchFinalEnablementApplyPlanReceipt,
+            runner_dispatch_scheduler_plan_receipt: runnerDispatchSchedulerPlanReceipt,
+            runner_dispatch_worker_bootstrap_plan_receipt:
+              runnerDispatchWorkerBootstrapPlanReceipt,
+            scheduler_lease_retry_plan_receipt: schedulerLeaseRetryPlanReceipt,
+            worker_queue_claim_plan_receipt: workerQueueClaimPlanReceipt,
+            repository_transaction_plan_receipt: repositoryTransactionPlanReceipt,
+            repository_commit_rollback_plan_receipt: repositoryCommitRollbackPlanReceipt,
+            worker_dispatch_lease_heartbeat_plan_receipt:
+              workerDispatchLeaseHeartbeatPlanReceipt,
+            worker_cancellation_abandon_plan_receipt: workerCancellationAbandonPlanReceipt,
+            worker_completion_finalization_plan_receipt:
+              workerCompletionFinalizationPlanReceipt,
+            worker_output_aggregation_plan_receipt: workerOutputAggregationPlanReceipt,
+            worker_synthesis_handoff_plan_receipt: workerSynthesisHandoffPlanReceipt,
+            synthesis_bundle_assembly_plan_receipt: synthesisBundleAssemblyPlanReceipt,
+            final_synthesis_draft_plan_receipt: finalSynthesisDraftPlanReceipt,
+            final_html_artifact_assembly_plan_receipt:
+              finalHtmlArtifactAssemblyPlanReceipt,
+            final_artifact_persistence_plan_receipt: finalArtifactPersistencePlanReceipt,
+            final_artifact_graph_commit_plan_receipt: finalArtifactGraphCommitPlanReceipt,
+            final_artifact_publish_plan_receipt: finalArtifactPublishPlanReceipt,
+            final_artifact_completion_finalization_plan_receipt:
+              finalArtifactCompletionFinalizationPlanReceipt,
+            final_run_closure_plan_receipt: finalRunClosurePlanReceipt,
+            operator_notification_delivery_readiness_plan_receipt:
+              operatorNotificationDeliveryReadinessPlanReceipt,
+            operator_notification_delivery_apply_plan_receipt:
+              operatorNotificationDeliveryApplyPlanReceipt,
+            operator_notification_delivery_result_reconciliation_plan_receipt:
+              operatorNotificationDeliveryResultReconciliationPlanReceipt,
+            operator_delivery_ledger_reconciliation_plan_receipt:
+              operatorDeliveryLedgerReconciliationPlanReceipt,
+            workspace_delivery_card_reconciliation_plan_receipt:
+              workspaceDeliveryCardReconciliationPlanReceipt,
+            delivery_notification_reconciliation_plan_receipt:
+              deliveryNotificationReconciliationPlanReceipt,
+            retention_billing_reconciliation_plan_receipt:
+              retentionBillingReconciliationPlanReceipt,
+            final_closeout_archive_reconciliation_plan_receipt:
+              finalCloseoutArchiveReconciliationPlanReceipt,
+            operator_archive_handoff_package_plan_receipt:
+              operatorArchiveHandoffPackagePlanReceipt,
+            operator_archive_handoff_package_result_reconciliation_plan_receipt:
+              operatorArchiveHandoffPackageResultReconciliationPlanReceipt,
+            operator_archive_handoff_package_delivery_audit_plan_receipt:
+              operatorArchiveHandoffPackageDeliveryAuditPlanReceipt,
+            operator_archive_handoff_package_delivery_audit_result_reconciliation_plan_receipt:
+              operatorArchiveHandoffPackageDeliveryAuditResultReconciliationPlanReceipt,
+            operator_archive_package_delivery_report_plan_receipt:
+              operatorArchivePackageDeliveryReportPlanReceipt,
+            operator_archive_package_delivery_report_result_reconciliation_plan_receipt:
+              operatorArchivePackageDeliveryReportResultReconciliationPlanReceipt,
+            operator_archive_package_delivery_report_notification_readiness_plan_receipt:
+              operatorArchivePackageDeliveryReportNotificationReadinessPlanReceipt,
+            operator_archive_package_delivery_report_notification_result_reconciliation_plan_receipt:
+              operatorArchivePackageDeliveryReportNotificationResultReconciliationPlanReceipt,
+          },
+        );
+      setOperatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt(
+        result,
+      );
+    } catch (e) {
+      setOperatorArchivePackageDeliveryReportDeliveryConfirmationPlanError(
+        e instanceof Error ? e.message : String(e),
+      );
+    } finally {
+      setOperatorArchivePackageDeliveryReportDeliveryConfirmationPlanBusy(false);
     }
   }
 
@@ -16006,6 +16186,172 @@ export default function MidnightOil() {
                     Operator archive package delivery report notification result
                     reconciliation receipt fields:{" "}
                     {operatorArchivePackageDeliveryReportNotificationResultReconciliationPlanReceipt.required_operator_archive_package_delivery_report_notification_result_reconciliation_receipt_fields.join(
+                      ", ",
+                    )}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Operator archive package delivery report delivery confirmation
+                  plan
+                </p>
+                <button
+                  type="button"
+                  onClick={
+                    onOperatorArchivePackageDeliveryReportDeliveryConfirmationPlanGate
+                  }
+                  disabled={
+                    operatorArchivePackageDeliveryReportDeliveryConfirmationPlanBusy ||
+                    !operatorArchivePackageDeliveryReportNotificationResultReconciliationPlanReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {operatorArchivePackageDeliveryReportDeliveryConfirmationPlanBusy
+                    ? "Planning confirmation..."
+                    : "Operator archive package delivery report delivery confirmation plan"}
+                </button>
+              </div>
+
+              {operatorArchivePackageDeliveryReportDeliveryConfirmationPlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {operatorArchivePackageDeliveryReportDeliveryConfirmationPlanError}
+                </p>
+              )}
+
+              {operatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Operator archive package delivery report delivery
+                      confirmation receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {
+                        operatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt.receipt_id
+                      }
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={operatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt.status.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                    <Metric
+                      label="Confirmation"
+                      value={
+                        operatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt.operator_archive_package_delivery_report_delivery_confirmation_allowed
+                          ? "allowed"
+                          : "blocked"
+                      }
+                    />
+                    <Metric
+                      label="Confirmation entry"
+                      value={
+                        operatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt.operator_archive_package_delivery_report_delivery_confirmation_entry_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Status entry"
+                      value={
+                        operatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt.operator_archive_package_delivery_report_delivery_confirmation_status_entry_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Audit entry"
+                      value={
+                        operatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt.operator_archive_package_delivery_report_delivery_confirmation_audit_entry_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Notification result"
+                      value={
+                        operatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt.operator_archive_package_delivery_report_notification_result_reconciliation_allowed
+                          ? "allowed"
+                          : "blocked"
+                      }
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Notification result plan"
+                      value={
+                        operatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt.operator_archive_package_delivery_report_notification_result_reconciliation_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Readiness plan"
+                      value={
+                        operatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt.operator_archive_package_delivery_report_notification_readiness_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Confirmation receipt"
+                      value={
+                        operatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt.planned_operator_archive_package_delivery_report_delivery_confirmation_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Confirmation entry id"
+                      value={
+                        operatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt.planned_operator_archive_package_delivery_report_delivery_confirmation_entry_id
+                      }
+                    />
+                    <Metric
+                      label="Status entry id"
+                      value={
+                        operatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt.planned_operator_archive_package_delivery_report_delivery_confirmation_status_entry_id
+                      }
+                    />
+                    <Metric
+                      label="Audit entry id"
+                      value={
+                        operatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt.planned_operator_archive_package_delivery_report_delivery_confirmation_audit_entry_id
+                      }
+                    />
+                    <Metric
+                      label="Adapter"
+                      value={operatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt.adapter_key.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                    <Metric
+                      label="Blocker"
+                      value={operatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt.blocker_reason.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                  </div>
+                  <ul className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {operatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt.required_operator_archive_package_delivery_report_delivery_confirmation_invariants
+                      .slice(0, 5)
+                      .map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                  </ul>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Operator archive package delivery report delivery confirmation
+                    blockers:{" "}
+                    {operatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt.operator_archive_package_delivery_report_delivery_confirmation_blockers.join(
+                      ", ",
+                    )}
+                  </p>
+                  <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Operator archive package delivery report delivery confirmation
+                    receipt fields:{" "}
+                    {operatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt.required_operator_archive_package_delivery_report_delivery_confirmation_receipt_fields.join(
                       ", ",
                     )}
                   </p>
