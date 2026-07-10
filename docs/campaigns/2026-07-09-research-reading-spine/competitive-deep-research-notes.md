@@ -706,3 +706,9 @@ Twin seed freeform is twin_seed:{source}:{n}:{asset} so deep_research_session
 and research_progress_complete are visible on writing assets. Competitive
 delta: most tools lose origin of "export to doc"; Antiek keeps HTML-first
 source tags on the recursive note-taker → Write path for later bench rewrite.
+
+## Residual qy · 2026-07-10 — Write seeds feed Antiek-bench by_source
+deep_research_session and research_progress_complete are known usage feed
+sources; Write create → twins/seed records them when usage_source is set.
+Competitive delta: weekly recursive suite rewrite can learn from highlight→
+float DR→Write paths, not only investigation_start / midnight_oil / chase.

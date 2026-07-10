@@ -176,6 +176,44 @@ def record_collective_merge_usage(
     )
 
 
+def record_twin_write_seed_usage(
+    *,
+    store: BenchStore,
+    seed_source: str,
+    prompt_hint: str = "",
+    model_id: str | None = None,
+    week_id: str | None = None,
+    research_tier: str | None = None,
+) -> dict[str, Any] | None:
+    """Residual (qy): record Write twin_seed handoff → Antiek-bench usage.
+
+    Only deep_research_session and research_progress_complete feed the
+    recursive suite rewrite by_source (selection seed + terminal progress).
+    Other twin_seed sources return None (twin_draft_selected already has
+    twin_chase / twin paths elsewhere).
+    """
+    src = str(seed_source or "").strip()
+    if src not in TWIN_WRITE_SEED_USAGE_SOURCES:
+        return None
+    task = research_tier_to_task_class(research_tier) or classify_engagement_task(
+        has_twins=True,
+    )
+    hint = (prompt_hint or "").strip()
+    if src and src not in hint:
+        hint = f"[{src}] {hint}".strip()
+    return record_usage_event(
+        UsageEvent(
+            task_class=task,
+            outcome="worked",
+            prompt_hint=hint[:280],
+            source=src,
+            model_id=model_id,
+            week_id=week_id,
+        ),
+        store=store,
+    )
+
+
 def propose_from_recorded_usage(
     *,
     store: BenchStore,
@@ -190,6 +228,8 @@ def propose_from_recorded_usage(
 
 # Residual (nx): known engagement feed sources for Settings honesty legend.
 # Includes twin_chase + floating_deep_research from residual (nw).
+# Residual (qy): deep_research_session + research_progress_complete from
+# Write twin_seed handoffs (qv/qw recursive note-taker → Write path).
 KNOWN_USAGE_FEED_SOURCES: tuple[str, ...] = (
     "investigation_start",
     "session_flywheel",
@@ -198,8 +238,18 @@ KNOWN_USAGE_FEED_SOURCES: tuple[str, ...] = (
     "floating_deep_research",
     "twin_chase",
     "collective_merge",
+    "deep_research_session",
+    "research_progress_complete",
     "antiek_bench.offline_dogfood",
     "engagement",
+)
+
+# Twin-write seed sources that feed Antiek-bench by_source (qy).
+TWIN_WRITE_SEED_USAGE_SOURCES: frozenset[str] = frozenset(
+    {
+        "deep_research_session",
+        "research_progress_complete",
+    }
 )
 
 

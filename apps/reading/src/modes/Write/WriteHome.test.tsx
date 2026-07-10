@@ -1178,6 +1178,41 @@ describe("WriteHome — the re-homed door", () => {
           force_offline: true,
           body_text: expect.stringMatching(/\[question\] Why\?/),
           title: "Twin-seeded essay",
+          usage_source: "twin_draft_selected",
+        }),
+      );
+    });
+    window.sessionStorage.removeItem(key);
+  });
+
+  it("passes deep_research_session usage_source on create seed (qy)", async () => {
+    const key = "antiek.twin_write_seed.qy_dr";
+    window.sessionStorage.setItem(
+      key,
+      JSON.stringify({
+        plain_text: "Selection.\n\nGoal: research",
+        html: '<article data-source="deep_research_session"><p>x</p></article>',
+        title: "Deep research · spn_qy",
+        asset_id: "book-qy",
+        note_ids: [],
+        view_format: "html",
+        source: "deep_research_session",
+      }),
+    );
+    seedTwinNotesMock.mockClear();
+    mountAt(`/write?twin_seed=${encodeURIComponent(key)}`);
+    await waitFor(() => {
+      expect(screen.getByTestId("write-twin-seed-ready")).toBeTruthy();
+    });
+    const title = await screen.findByPlaceholderText(/what are you writing/i);
+    await userEvent.clear(title);
+    await userEvent.type(title, "DR-seeded essay");
+    await userEvent.click(await screen.findByText(/start without a project/i));
+    await waitFor(() => {
+      expect(seedTwinNotesMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "dlv-new",
+          usage_source: "deep_research_session",
         }),
       );
     });

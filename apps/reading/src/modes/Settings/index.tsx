@@ -1718,6 +1718,16 @@ export default function Settings() {
                     data-has-collective-merge={String(
                       (usage.known_sources || []).includes("collective_merge"),
                     )}
+                    data-has-deep-research-session={String(
+                      (usage.known_sources || []).includes(
+                        "deep_research_session",
+                      ),
+                    )}
+                    data-has-research-progress-complete={String(
+                      (usage.known_sources || []).includes(
+                        "research_progress_complete",
+                      ),
+                    )}
                     role="status"
                   >
                     Known feed sources: {(usage.known_sources || []).join(", ")}

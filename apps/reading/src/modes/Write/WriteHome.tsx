@@ -486,6 +486,8 @@ export default function WriteHome() {
             body_text: twinSeed.plain_text.slice(0, 2000),
             include_html: false,
             force_offline: true,
+            // Residual (qy): feed Antiek-bench by_source for DR write seeds.
+            usage_source: twinSeed.source,
           });
         } catch {
           // Non-fatal: piece still opens; operator has brainstorm seed.

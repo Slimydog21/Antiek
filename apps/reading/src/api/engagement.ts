@@ -470,6 +470,9 @@ export async function seedTwinNotes(body: {
   source_spawn_id?: string | null;
   include_html?: boolean;
   force_offline?: boolean;
+  /** Residual (qy): twin write seed source → Antiek-bench by_source. */
+  usage_source?: string | null;
+  research_tier?: string | null;
 }): Promise<
   TwinNotesResponse & {
     seeded?: boolean;
@@ -478,6 +481,8 @@ export async function seedTwinNotes(body: {
     /** Residual (hh): offline seed path id vs live note_taker. */
     seed_source?: string | null;
     force_offline?: boolean;
+    usage_event?: Record<string, unknown> | null;
+    usage_event_error?: string | null;
   }
 > {
   const res = await apiFetch(`${API_BASE}/engagement/twins/seed`, {
@@ -490,6 +495,8 @@ export async function seedTwinNotes(body: {
       source_spawn_id: body.source_spawn_id ?? null,
       include_html: body.include_html ?? true,
       force_offline: Boolean(body.force_offline),
+      usage_source: body.usage_source ?? null,
+      research_tier: body.research_tier ?? null,
     }),
   });
   return readJson(res);

@@ -746,6 +746,9 @@ class TwinSeedBody(BaseModel):
     source_spawn_id: str | None = None
     include_html: bool = True
     force_offline: bool = False
+    # Residual (qy): twin_write seed provenance → Antiek-bench by_source.
+    usage_source: str | None = None
+    research_tier: str | None = None
 
 
 @engagement_router.post("/twins/seed")
@@ -754,7 +757,7 @@ def post_twins_seed(body: TwinSeedBody) -> dict[str, Any]:
     from substrate.engagement_spine import seed_twins_for_asset
 
     try:
-        return seed_twins_for_asset(
+        out = seed_twins_for_asset(
             body.asset_id,
             store=_eng(),
             title=body.title or body.asset_id,
@@ -765,6 +768,26 @@ def post_twins_seed(body: TwinSeedBody) -> dict[str, Any]:
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+
+    # Residual (qy): DR session / terminal progress Write seeds → bench feed.
+    if body.usage_source:
+        try:
+            from substrate.antiek_bench import (
+                record_twin_write_seed_usage,
+                resolve_usage_store,
+            )
+
+            usage = record_twin_write_seed_usage(
+                store=resolve_usage_store(),
+                seed_source=body.usage_source,
+                prompt_hint=(body.title or body.asset_id or "")[:200],
+                research_tier=body.research_tier,
+            )
+            if usage is not None:
+                out["usage_event"] = usage
+        except Exception as exc:  # noqa: BLE001 — offline-honest soft fail
+            out["usage_event_error"] = str(exc)
+    return out
 
 
 @engagement_router.post("/twins/promote-context")
