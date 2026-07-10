@@ -1145,3 +1145,8 @@ HostedHtmlDocumentHost pub-refs panel stamps offline-default hydrate prep and
 deep-links Settings hydrate readiness + dual-gate L1–L4 checklist. Competitive
 delta: arxiv/substack grounding on free STEM books is dual-gate honest — never
 silent live hydrate.
+
+## Residual uk · 2026-07-10 — ResearchThis pub-refs L1/L2 hydrate prep honesty
+ResearchThis pub-refs panel parity with hosted books (uj). Competitive delta:
+main reading surface arxiv/substack grounding is dual-gate honest — reading ≡
+hosted research workstation.

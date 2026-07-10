@@ -31,6 +31,7 @@ import { composeDriverPromptText } from "../../lib/driverPromptText";
  * Residual (cc): primary path opens a **floating** deep_research_session
  * window via engagement sessions/open + openDeepResearchFromHighlight.
  * Residual (cu): optional arxiv/substack/URL refs hydrate + attach on open.
+ * Residual (uk): pub-refs dual-gate L1/L2 hydrate readiness deep-links (parity uj).
  * Residual (cx): budget projection before fire (parity with StartResearch).
  * Residual (cy): decision-tree model_id resolved inside launchFloatingDeepResearch
  * (shared chokepoint with float-menu / HighlightToolbar).
@@ -212,12 +213,14 @@ export default function ResearchThis({
         className="space-y-1 max-w-md"
         data-testid="research-this-pub-refs"
         data-view-format="html"
+        data-offline-default="true"
+        data-l1-l2-hydrate-prep="true"
       >
         <label
           className="text-[10px] font-mono uppercase tracking-wider text-ink-mute dark:text-moonlight"
           htmlFor="research-this-refs-input"
         >
-          Ground with pubs (optional)
+          Ground with pubs (optional · arxiv / substack / URL)
         </label>
         <textarea
           id="research-this-refs-input"
@@ -229,6 +232,25 @@ export default function ResearchThis({
           placeholder={"arxiv:1706.03762\nhttps://…"}
           className="w-full rounded border border-ink/20 bg-transparent px-2 py-1 text-[11px] font-mono dark:border-bright/20"
         />
+        {/* Residual (uk): L1/L2 hydrate prep deep-links (parity hosted uj). */}
+        <p className="text-[10px] font-mono space-x-2 opacity-80">
+          <a
+            href="/settings#hydrate-live-status"
+            data-testid="research-this-hydrate-settings-link"
+            className="underline hover:opacity-100"
+            title="Settings publication hydrate readiness (arxiv/substack injectors · offline default)"
+          >
+            Settings · hydrate readiness
+          </a>
+          <a
+            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+            data-testid="research-this-hydrate-dual-gate-link"
+            className="underline hover:opacity-100"
+            title="Dual-gate L1–L4 checklist (arxiv/substack hydrate prep; offline default)"
+          >
+            Dual-gate L1–L2 hydrate checklist
+          </a>
+        </p>
         {pubRefStatus ? (
           <p
             className="text-[10px] font-mono text-aurora"

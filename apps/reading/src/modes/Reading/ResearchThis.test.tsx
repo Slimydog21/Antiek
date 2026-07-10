@@ -351,7 +351,21 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
         <ResearchThis documentId="doc-1" pageIndex={0} passageText="hello world" />
       </MemoryRouter>,
     );
-    expect(screen.getByTestId("research-this-pub-refs")).toBeTruthy();
+    const pubRefs = screen.getByTestId("research-this-pub-refs");
+    expect(pubRefs).toBeTruthy();
+    // Residual (uk): L1/L2 hydrate prep honesty + deep-links (parity uj).
+    expect(pubRefs.getAttribute("data-offline-default")).toBe("true");
+    expect(pubRefs.getAttribute("data-l1-l2-hydrate-prep")).toBe("true");
+    expect(
+      screen
+        .getByTestId("research-this-hydrate-settings-link")
+        .getAttribute("href"),
+    ).toBe("/settings#hydrate-live-status");
+    expect(
+      screen
+        .getByTestId("research-this-hydrate-dual-gate-link")
+        .getAttribute("href") || "",
+    ).toMatch(/DUAL-GATE-L1-L4/);
     fireEvent.change(screen.getByTestId("research-this-refs-input"), {
       target: { value: "arxiv:1706.03762" },
     });
