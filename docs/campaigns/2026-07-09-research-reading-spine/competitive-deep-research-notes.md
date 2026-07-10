@@ -1442,3 +1442,7 @@ STEM spine without text search.
 Catalog subject chip information_theory isolates Shannon free PD (parity
 Turing computability chip). Competitive delta: free STEM domain chips cover
 electricity · computing · information theory · computability.
+
+## Residual wr · 2026-07-10 — FUTURE-AGENT tip re-anchor through wq
+FUTURE-AGENT-SPEC tip → 24a54cf7. Competitive delta: swarm handoff tip-true
+after Shannon/Turing STEM domain chips + dual-gate honesty wave.
