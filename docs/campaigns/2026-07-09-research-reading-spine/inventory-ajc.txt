@@ -1,0 +1,16 @@
+# inventory-ajc · PublicationAttach competitive DR scorecard deep-links
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ajc
+date: 2026-07-10
+parent_tip: b07d20db (ajb)
+
+## Closed
+- PublicationAttachPanel:
+  - publication-attach-competitive-scorecard-link
+  - publication-attach-competitive-dr-future-agent-link
+- Knowledge-dense arxiv/substack attach navigates source quick-call honesty map
+- vitest PublicationAttach 6 green
+
+## Next
+ajd+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

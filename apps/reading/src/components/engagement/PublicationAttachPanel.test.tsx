@@ -122,6 +122,17 @@ describe("PublicationAttachPanel residual ck/ed", () => {
     const dualL2 = screen.getByTestId("publication-attach-dual-gate-l2-link");
     expect(dualL2.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
     expect(dualL2.textContent).toMatch(/L2 Substack checklist/i);
+    // Residual (ajc): knowledge-dense attach → competitive DR honesty map.
+    expect(
+      screen
+        .getByTestId("publication-attach-competitive-scorecard-link")
+        .getAttribute("href"),
+    ).toBe("/settings#settings-competitive-dr-scorecard");
+    expect(
+      screen
+        .getByTestId("publication-attach-competitive-dr-future-agent-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
     // Residual (ed): parent notified so research context can remount.
     await waitFor(() => {
       expect(onAttached).toHaveBeenCalled();

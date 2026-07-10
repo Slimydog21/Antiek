@@ -2956,3 +2956,8 @@ Pivot ajb+ outside thrash.
 Suite suite-competitive-dogfood-v30 learns expanded domainAwareSearchDefault
 (biology/method/physics/math from aiy). item_count 46 · wrestle=33. pytest dogfood 5 ·
 Settings 36 green. P0 operator merge PR #465. Pivot ajc+ outside thrash.
+
+## Residual ajc · 2026-07-10 — PublicationAttach competitive DR scorecard deep-links
+Knowledge-dense arxiv/substack attach navigates Settings competitive DR scorecard +
+FUTURE brief (source quick-call shipped · L1/L2 live hydrate deferred). vitest
+PublicationAttach 6 green. P0 operator merge PR #465. Pivot ajd+ outside thrash.

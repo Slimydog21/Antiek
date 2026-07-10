@@ -302,6 +302,23 @@ export function PublicationAttachPanel({
         >
           Dual-gate L2 Substack checklist
         </a>
+        {/* Residual (ajc): knowledge-dense attach → competitive DR honesty map. */}
+        <a
+          href="/settings#settings-competitive-dr-scorecard"
+          data-testid="publication-attach-competitive-scorecard-link"
+          className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
+          title="Settings competitive deep-research scorecard (source quick-call shipped · live hydrate L1/L2 deferred)"
+        >
+          Settings · competitive DR scorecard
+        </a>
+        <a
+          href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+          data-testid="publication-attach-competitive-dr-future-agent-link"
+          className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
+          title="FUTURE-AGENT competitive deep-research quality brief"
+        >
+          FUTURE · competitive DR brief
+        </a>
       </div>
       {error ? (
         <p className="text-[11px] font-mono text-emperor" role="alert">
