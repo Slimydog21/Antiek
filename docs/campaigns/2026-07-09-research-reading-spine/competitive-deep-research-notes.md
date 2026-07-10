@@ -4174,3 +4174,8 @@ Pivot ask+ outside thrash.
 Quick-call spine += arxiv:2005.11401 · arxiv:2212.08073 · insert-only never
 auto-hydrate. Competitive delta: world-class DR source connectors expand offline.
 vitest 7 green. P0 PR #465. Pivot asl+ outside thrash.
+
+## Residual asl · 2026-07-10 — write-seed feeds free-host + publication_attach
+WRITE_SEED_FEED_SOURCES + TWIN_WRITE_SEED_USAGE_SOURCES += marketplace_free_host ·
+publication_attach. Competitive delta: reading≡writing flywheel tracks free host
+and knowledge-dense attach. Frontend↔substrate parity. P0 PR #465. Pivot asm+.

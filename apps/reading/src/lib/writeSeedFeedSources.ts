@@ -12,11 +12,15 @@ export const WRITE_SEED_FEED_SOURCES: readonly string[] = [
   "marketplace_host",
   // Residual (aaj): catalog HTML projection → Write seed feed.
   "marketplace_catalog",
+  // Residual (asl): free HTML host-into-account path → Write seed feed (parity asj vision).
+  "marketplace_free_host",
   "spawn_merge",
   "collective_doc_merge",
   "hosted_html_document",
   "evidence_pack",
   "publication_hydrate",
+  // Residual (asl): knowledge-dense attach path → Write seed feed (parity asj vision).
+  "publication_attach",
   "session_flywheel_complete",
   "context_search",
   "research_context_pack",

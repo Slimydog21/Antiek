@@ -17,6 +17,9 @@ describe("writeSeedFeedSources (rt/ru)", () => {
     // Residual (vk): collective written analysis Write seed.
     expect(WRITE_SEED_FEED_SOURCES).toContain("collective_written_analysis");
     expect(WRITE_SEED_FEED_SOURCES).toContain("marketplace_catalog");
+    // Residual (asl): free-host + publication_attach Write seed feeds.
+    expect(WRITE_SEED_FEED_SOURCES).toContain("marketplace_free_host");
+    expect(WRITE_SEED_FEED_SOURCES).toContain("publication_attach");
     expect(WRITE_SEED_FEED_SOURCES).not.toContain("twin_draft_selected");
   });
 

@@ -291,11 +291,15 @@ TWIN_WRITE_SEED_USAGE_SOURCES: frozenset[str] = frozenset(
         "marketplace_host",
         # Residual (aaj): catalog HTML projection Write seed.
         "marketplace_catalog",
+        # Residual (asl): free HTML host-into-account Write seed (parity asj vision).
+        "marketplace_free_host",
         "spawn_merge",
         "collective_doc_merge",
         "hosted_html_document",
         "evidence_pack",
         "publication_hydrate",
+        # Residual (asl): knowledge-dense attach path Write seed (parity asj vision).
+        "publication_attach",
         "session_flywheel_complete",
         "context_search",
         "research_context_pack",
