@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -78,3 +79,45 @@ def test_create_approve_deposit_progress_double_run():
     assert d2.status_code == 200
     assert d2.json()["view_format"] == "html"
     assert d2.json()["job_id"] == job_id
+
+
+def test_deposit_mark_complete_absorbs_orphaned_reservation():
+    # SPR-05 refutation regression: a job that crashed mid-step (reservation
+    # persisted, settle never ran) must NOT be finalized with the reservation
+    # stranded — the deposit finalizer charges it into spent_usd.
+    from dataclasses import replace
+
+    from substrate.midnight_oil.job import (
+        InMemoryJobStore,
+        approve_job,
+        create_job,
+        put_job_state,
+    )
+
+    store = InMemoryJobStore()
+    reset_midnight_oil_store(store)
+    reset_engagement_stores()
+    app = FastAPI()
+    register_midnight_oil_routes(app)
+    register_engagement_routes(app)
+    client = TestClient(app)
+
+    job = create_job(["goal"], 30, store=store)
+    job = approve_job(job.job_id, 1.0, store=store, force_below=True)
+    put_job_state(
+        replace(job, status="running", started_at_ms=0, reserved_usd=0.3),
+        store=store,
+    )
+
+    resp = client.post(
+        "/midnight-oil/deposit",
+        json={"job_id": job.job_id, "mark_complete": True},
+    )
+    assert resp.status_code == 200, resp.text
+
+    row = store.get_job(job.job_id)
+    assert row is not None
+    assert row["status"] == "complete"
+    assert row["spent_usd"] == pytest.approx(0.3)
+    assert row["reserved_usd"] == 0.0
+    assert "orphaned_reservation_absorbed" in row["notes"]

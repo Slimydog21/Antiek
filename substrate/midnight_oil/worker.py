@@ -1,7 +1,12 @@
 """Offline worker loop for Midnight Oil jobs.
 
 Injectable clock and step function — unit tests never sleep or hit the
-network. Hard-halts when spend would exceed the approved ceiling.
+network. Reserves the projected step cost BEFORE dispatch and halts when the
+reservation would exceed the approved ceiling — a step whose conservative
+projection would breach is never attempted (SPR-05 reserve-before-spend).
+Honest bound: if a step's ACTUAL cost exceeds its projection, the full actual
+is still recorded and the next iteration halts — overshoot is bounded by a
+single step's (actual − projected), not eliminated by fiat.
 """
 
 from __future__ import annotations
@@ -11,6 +16,13 @@ from dataclasses import dataclass, replace
 from typing import Protocol
 
 from .job import JobStore, MidnightOilJob, _job_from_row, put_job_state
+from .reservation import (
+    BudgetCeilingExceeded,
+    absorb_orphaned_reservation,
+    project_step_cost,
+    reserve_step,
+    settle_step,
+)
 
 
 class Clock(Protocol):
@@ -56,6 +68,7 @@ def run_worker_iteration(
     step_fn: StepFn,
     clock: Clock,
     on_spawn: Callable[[MidnightOilJob, WorkerStepResult], None] | None = None,
+    project_fn: Callable[[MidnightOilJob], float] | None = None,
 ) -> MidnightOilJob:
     """Run one worker step. Hard-halts on budget; times out on duration.
 
@@ -85,6 +98,10 @@ def run_worker_iteration(
         elapsed = max(0, now - job.started_at_ms)
         job = replace(job, status="running", elapsed_ms=elapsed)
 
+    # Absorb before ANY terminal return: a timed-out recovery must still charge
+    # the unknown prior outcome, or spent_usd understates the conservative truth.
+    job = absorb_orphaned_reservation(job, store=store)
+
     if job.elapsed_ms >= _duration_ms(job):
         job = replace(job, status="timed_out")
         return put_job_state(job, store=store)
@@ -94,27 +111,27 @@ def run_worker_iteration(
         job = replace(job, status="budget_halted")
         return put_job_state(job, store=store)
 
-    result = step_fn(job)
-    projected = job.spent_usd + float(result.spent_usd)
-    if projected > ceiling + 1e-12:
-        # Hard halt: do not accept the charge; keep prior spend + partial state.
+    projected = (project_fn or project_step_cost)(job)
+    try:
+        job = reserve_step(job, projected, store=store)
+    except BudgetCeilingExceeded:
         job = replace(
             job,
             status="budget_halted",
-            notes=(
-                (job.notes + " | " if job.notes else "")
-                + f"budget_halt: step wanted {result.spent_usd}, "
-                f"spent={job.spent_usd}, ceiling={job.approved_ceiling_usd}"
-            ),
+            notes=(job.notes + " | " if job.notes else "")
+            + f"budget_halt_preflight: projected={projected} spent={job.spent_usd} "
+            f"reserved={job.reserved_usd} ceiling={ceiling}",
         )
         return put_job_state(job, store=store)
+
+    result = step_fn(job)
+    job = settle_step(job, float(result.spent_usd), store=store)
 
     spawn_ids = job.spawn_ids
     if result.spawn_id and result.spawn_id not in spawn_ids:
         spawn_ids = spawn_ids + (result.spawn_id,)
     job = replace(
         job,
-        spent_usd=projected,
         spawn_ids=spawn_ids,
         elapsed_ms=max(0, clock.now_ms() - (job.started_at_ms or clock.now_ms())),
     )
@@ -137,6 +154,7 @@ def run_worker_loop(
     max_steps: int = 100,
     advance_ms_per_step: int = 60_000,
     on_spawn: Callable[[MidnightOilJob, WorkerStepResult], None] | None = None,
+    project_fn: Callable[[MidnightOilJob], float] | None = None,
 ) -> MidnightOilJob:
     """Drive iterations until terminal status or max_steps.
 
@@ -145,7 +163,12 @@ def run_worker_loop(
     """
     for _ in range(max_steps):
         job = run_worker_iteration(
-            job_id, store=store, step_fn=step_fn, clock=clock, on_spawn=on_spawn
+            job_id,
+            store=store,
+            step_fn=step_fn,
+            clock=clock,
+            on_spawn=on_spawn,
+            project_fn=project_fn,
         )
         if job.status in ("complete", "timed_out", "budget_halted", "failed"):
             return job

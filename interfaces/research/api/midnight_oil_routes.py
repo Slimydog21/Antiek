@@ -6,6 +6,7 @@ InMemoryJobStore by default; tests call reset_midnight_oil_store().
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Any
 
 from fastapi import APIRouter, FastAPI, HTTPException
@@ -21,6 +22,7 @@ from substrate.midnight_oil import (
     run_job_offline,
 )
 from substrate.midnight_oil.job import InMemoryJobStore, JobStore, _job_from_row, put_job_state
+from substrate.midnight_oil.reservation import absorb_orphaned_reservation
 
 midnight_oil_router = APIRouter(prefix="/midnight-oil", tags=["midnight-oil"])
 
@@ -210,9 +212,11 @@ def post_deposit(body: DepositBody) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"unknown job_id: {body.job_id}")
 
     if body.mark_complete and job.status in ("approved", "running"):
-        row = dict(_store().get_job(body.job_id) or {})
-        row["status"] = "complete"
-        put_job_state(_job_from_row(row), store=_store())
+        live = _job_from_row(dict(_store().get_job(body.job_id) or {}))
+        # SPR-05: a finalizer must charge an orphaned reservation (crashed
+        # mid-step), never silently release it, before the terminal flip.
+        live = absorb_orphaned_reservation(live, store=_store())
+        put_job_state(dataclasses.replace(live, status="complete"), store=_store())
 
     try:
         deposit = deposit_job_results(

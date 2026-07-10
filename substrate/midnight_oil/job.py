@@ -35,6 +35,7 @@ class MidnightOilJob:
     status: JobStatus
     approved_ceiling_usd: float | None = None
     spent_usd: float = 0.0
+    reserved_usd: float = 0.0
     asset_id: str | None = None
     spawn_ids: tuple[str, ...] = ()
     started_at_ms: int | None = None
@@ -75,6 +76,7 @@ def _job_to_row(job: MidnightOilJob) -> dict[str, Any]:
         "status": job.status,
         "approved_ceiling_usd": job.approved_ceiling_usd,
         "spent_usd": job.spent_usd,
+        "reserved_usd": job.reserved_usd,
         "asset_id": job.asset_id,
         "spawn_ids": list(job.spawn_ids),
         "started_at_ms": job.started_at_ms,
@@ -103,6 +105,7 @@ def _job_from_row(row: dict[str, Any]) -> MidnightOilJob:
             else float(row["approved_ceiling_usd"])
         ),
         spent_usd=float(row.get("spent_usd") or 0.0),
+        reserved_usd=float(row.get("reserved_usd") or 0.0),
         asset_id=row.get("asset_id"),
         spawn_ids=tuple(row.get("spawn_ids") or ()),
         started_at_ms=row.get("started_at_ms"),

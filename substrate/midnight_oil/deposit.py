@@ -29,6 +29,7 @@ from substrate.engagement_spine.spawn import HighlightSelection, ResearchSpawn
 from substrate.engagement_spine.store import EngagementStore
 
 from .job import JobStore, MidnightOilJob, _job_from_row, put_job_state
+from .reservation import absorb_orphaned_reservation
 from .worker import WorkerStepResult
 
 
@@ -149,6 +150,10 @@ def deposit_job_results(
     if row is None:
         raise KeyError(f"unknown job_id: {job_id}")
     job = _job_from_row(row)
+    # SPR-05: depositing is a finalization surface — charge any orphaned
+    # reservation (crashed mid-step) rather than re-persisting it stranded.
+    # No-op when reserved_usd == 0 (the settled/normal path).
+    job = absorb_orphaned_reservation(job, store=job_store)
     asset_id = job.asset_id or f"moil_asset_{job.job_id}"
 
     spawn_ids: list[str] = []

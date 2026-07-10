@@ -182,11 +182,17 @@ def test_worker_budget_hard_halt():
             done=False,
         )
 
-    j1 = run_worker_iteration(job.job_id, store=store, step_fn=step, clock=clock)
+    def projection(_job):
+        return 0.6
+    j1 = run_worker_iteration(
+        job.job_id, store=store, step_fn=step, clock=clock, project_fn=projection
+    )
     assert j1.status == "running"
     assert j1.spent_usd == pytest.approx(0.6)
-    # Second step wants 0.6 more → would exceed 1.0 → halt without charging
-    j2 = run_worker_iteration(job.job_id, store=store, step_fn=step, clock=clock)
+    # SPR-05: halt is now pre-flight (reserve-before-spend).
+    j2 = run_worker_iteration(
+        job.job_id, store=store, step_fn=step, clock=clock, project_fn=projection
+    )
     assert j2.status == "budget_halted"
     assert j2.spent_usd == pytest.approx(0.6)
     assert "budget_halt" in j2.notes
@@ -411,4 +417,3 @@ def test_tier_multiplier_contract_matches_closed_set():
     assert tier_multiplier("wrestle") == 2.0
     assert tier_multiplier(None) == 1.0
     assert tier_multiplier("turbo") == 1.0  # normalize → deep
-
