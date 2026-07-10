@@ -18,18 +18,20 @@ from .budget import HardBudget
 from .call_runner import LiveCallRunner, ProviderResult, TimeoutRunner
 from .journal import (
     Journal,
+    JournalCorruptionError,
     LiveCallRecord,
     Status,
-    _deterministic_call_id,  # noqa: PLC2701
+    deterministic_call_id,
 )
 
 __all__ = [
     "HardBudget",
     "Journal",
+    "JournalCorruptionError",
     "LiveCallRecord",
     "LiveCallRunner",
     "ProviderResult",
     "Status",
     "TimeoutRunner",
-    "_deterministic_call_id",
+    "deterministic_call_id",
 ]

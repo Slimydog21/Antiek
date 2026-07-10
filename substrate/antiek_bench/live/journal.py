@@ -1,22 +1,4 @@
-"""Append-only JSONL journal with deterministic call identity.
-
-Each record carries a deterministic ``call_id`` derived from the call
-parameters (requested_model + task_class + item_id) — no random run
-identifiers.  The journal is the single source of truth for realized
-spend, crash recovery, and idempotency.
-
-Design invariants (per sprint rigor):
-
-* **fsync append** — every write is flushed + fsynced before the lock
-  is released, so a crash mid-write produces at most one torn tail.
-* **torn-tail recovery** — ``replay()`` silently drops the last line
-  if it fails to parse; all preceding complete rows survive.
-* **idempotency** — ``append()`` rejects a duplicate ``call_id``.
-* **deterministic identity** — ``call_id`` is a pure function of
-  (requested_model, task_class, item_id).
-* **secret-free** — no environment values, API credentials, or raw
-  response text is persisted; failure text is bounded.
-"""
+"""Crash-conservative append-only journal for measured model calls."""
 
 from __future__ import annotations
 
@@ -24,218 +6,231 @@ import fcntl
 import hashlib
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal
 
-# Call statuses — the closed set the record round-trips.
-Status = Literal["ok", "timeout", "error"]
-
-#: Maximum failure text length persisted to the journal (chars).
-_FAILURE_TEXT_LIMIT = 500
+Status = Literal["reserved", "ok", "failed", "timeout", "skipped_budget"]
+TerminalStatus = Literal["ok", "failed", "timeout", "skipped_budget"]
 
 
-def _deterministic_call_id(
+class JournalCorruptionError(RuntimeError):
+    """The durable journal contains corruption before its final line."""
+
+
+def deterministic_call_id(
+    wedge_id: str,
+    week_id: str,
+    suite_version: str,
     requested_model: str,
-    task_class: str,
     item_id: str,
 ) -> str:
-    """Stable hash identity from call parameters — no randomness."""
-    digest = hashlib.sha256(
-        f"live-call:v1:{requested_model}:{task_class}:{item_id}".encode()
-    ).hexdigest()[:16]
-    return f"lc_{digest}"
+    """Return an identity scoped to a concrete benchmark wedge."""
+    material = json.dumps(
+        [wedge_id, week_id, suite_version, requested_model, item_id],
+        separators=(",", ":"),
+    )
+    return "lc_" + hashlib.sha256(f"live-call:v2:{material}".encode()).hexdigest()
 
 
 @dataclass(frozen=True)
 class LiveCallRecord:
-    """One append-only call record.
+    """One reservation or settlement event for a provider call."""
 
-    ``call_id`` is a computed property — deterministic from the three
-    identity fields, never stored or serialized.  This is the pattern
-    ``run.py::_run_id`` establishes for Antiek-bench run identifiers.
-    """
-
-    # Identity (deterministic — call_id derives from these three).
+    wedge_id: str
+    week_id: str
+    suite_version: str
+    requested_provider: str
     requested_model: str
-    actual_model: str
     task_class: str
     item_id: str
-
-    # Measured outcome.
-    prompt_tokens: int
-    completion_tokens: int
-    cost_usd: Decimal
-    latency_ms: int
     status: Status
-
-    # Failure detail (bounded, secret-free).
+    reserved_usd: Decimal
+    actual_provider: str = ""
+    actual_model: str = ""
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    cost_usd: Decimal = Decimal("0")
+    latency_ms: int = 0
+    prompt_hash: str = ""
+    response_hash: str = ""
     failure_text: str = ""
+    schema_version: int = 2
 
     @property
     def call_id(self) -> str:
-        """Deterministic identity — pure function of call parameters."""
-        return _deterministic_call_id(
-            self.requested_model, self.task_class, self.item_id,
+        return deterministic_call_id(
+            self.wedge_id,
+            self.week_id,
+            self.suite_version,
+            self.requested_model,
+            self.item_id,
         )
+
+    @property
+    def is_terminal(self) -> bool:
+        return self.status != "reserved"
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize for JSONL persistence.
-
-        ``call_id`` is NOT stored — it is re-derived on replay.
-        """
-        return {
-            "requested_model": self.requested_model,
-            "actual_model": self.actual_model,
-            "task_class": self.task_class,
-            "item_id": self.item_id,
-            "prompt_tokens": self.prompt_tokens,
-            "completion_tokens": self.completion_tokens,
-            "cost_usd": str(self.cost_usd),
-            "latency_ms": self.latency_ms,
-            "status": self.status,
-            "failure_text": self.failure_text[:_FAILURE_TEXT_LIMIT],
-        }
+        data = asdict(self)
+        data["reserved_usd"] = str(self.reserved_usd)
+        data["cost_usd"] = str(self.cost_usd)
+        data["call_id"] = self.call_id
+        return data
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> LiveCallRecord:
-        """Reconstruct from persisted dict.
-
-        Raises ``ValueError`` if required fields are missing or status
-        is outside the closed set.  ``call_id`` is re-derived, not read.
-        """
-        status = d.get("status")
-        if status not in ("ok", "timeout", "error"):
-            raise ValueError(f"invalid status: {status!r}")
-        return cls(
-            requested_model=str(d["requested_model"]),
-            actual_model=str(d["actual_model"]),
-            task_class=str(d["task_class"]),
-            item_id=str(d["item_id"]),
-            prompt_tokens=int(d["prompt_tokens"]),
-            completion_tokens=int(d["completion_tokens"]),
-            cost_usd=Decimal(str(d["cost_usd"])),
-            latency_ms=int(d["latency_ms"]),
-            status=status,
-            failure_text=str(d.get("failure_text", ""))[:_FAILURE_TEXT_LIMIT],
-        )
+    def from_dict(cls, data: dict[str, Any]) -> LiveCallRecord:
+        values = dict(data)
+        stored_id = str(values.pop("call_id"))
+        values["reserved_usd"] = Decimal(str(values["reserved_usd"]))
+        values["cost_usd"] = Decimal(str(values.get("cost_usd", "0")))
+        record = cls(**values)
+        if stored_id != record.call_id:
+            raise ValueError("stored call_id does not match deterministic identity")
+        _validate_record(record)
+        return record
 
 
 def _validate_record(record: LiveCallRecord) -> None:
-    """Pre-append sanity — fail loud, not silent."""
-    if not record.requested_model.strip():
-        raise ValueError("requested_model must not be blank")
-    if not record.actual_model.strip():
-        raise ValueError("actual_model must not be blank")
-    if not record.task_class.strip():
-        raise ValueError("task_class must not be blank")
-    if not record.item_id.strip():
-        raise ValueError("item_id must not be blank")
-    if record.cost_usd < 0:
-        raise ValueError("cost_usd must be non-negative")
-    if record.prompt_tokens < 0:
-        raise ValueError("prompt_tokens must be non-negative")
-    if record.completion_tokens < 0:
-        raise ValueError("completion_tokens must be non-negative")
+    for name in (
+        "wedge_id",
+        "week_id",
+        "suite_version",
+        "requested_provider",
+        "requested_model",
+        "task_class",
+        "item_id",
+    ):
+        if not str(getattr(record, name)).strip():
+            raise ValueError(f"{name} must not be blank")
+    if record.schema_version != 2:
+        raise ValueError("unsupported schema_version")
+    if record.status not in {"reserved", "ok", "failed", "timeout", "skipped_budget"}:
+        raise ValueError(f"invalid status: {record.status!r}")
+    if min(record.reserved_usd, record.cost_usd) < 0:
+        raise ValueError("costs must be non-negative")
+    if min(record.prompt_tokens, record.completion_tokens, record.latency_ms) < 0:
+        raise ValueError("usage and latency must be non-negative")
+    if record.status == "reserved" and record.cost_usd:
+        raise ValueError("a reservation cannot have realized cost")
 
 
 class Journal:
-    """Append-only JSONL journal with fsync persistence and torn-tail recovery.
-
-    The journal is a single-writer append-only file.  Each line is a
-    JSON object representing one ``LiveCallRecord``.  ``call_id`` is
-    never stored — it is re-derived from the identity fields on replay.
-
-    Thread safety: follows the existing Antiek single-writer convention
-    (one process owns the journal; no cross-process locking).
-    """
+    """JSONL event journal; reservation and settlement share a call id."""
 
     def __init__(self, path: Path | str) -> None:
         self._path = Path(path)
-        # Ensure parent directory exists (convention from FileBenchStore).
         self._path.parent.mkdir(parents=True, exist_ok=True)
 
     @property
     def path(self) -> Path:
         return self._path
 
+    @staticmethod
+    def _fold(events: list[LiveCallRecord]) -> dict[str, LiveCallRecord]:
+        records: dict[str, LiveCallRecord] = {}
+        phases: dict[str, set[str]] = {}
+        for event in events:
+            phase = "terminal" if event.is_terminal else "reserved"
+            seen = phases.setdefault(event.call_id, set())
+            if phase in seen or (phase == "terminal" and "reserved" not in seen):
+                raise JournalCorruptionError(f"invalid event sequence for {event.call_id}")
+            seen.add(phase)
+            records[event.call_id] = event
+        return records
+
+    @staticmethod
+    def _parse(raw: bytes) -> list[LiveCallRecord]:
+        if not raw:
+            return []
+        lines = raw.splitlines(keepends=True)
+        events: list[LiveCallRecord] = []
+        for index, raw_line in enumerate(lines):
+            if not raw_line.strip():
+                continue
+            complete = raw_line.endswith(b"\n")
+            if index == len(lines) - 1 and not complete:
+                break
+            try:
+                decoded = json.loads(raw_line)
+                if not isinstance(decoded, dict):
+                    raise ValueError("journal row must be an object")
+                events.append(LiveCallRecord.from_dict(decoded))
+            except (
+                UnicodeDecodeError,
+                json.JSONDecodeError,
+                KeyError,
+                TypeError,
+                ValueError,
+            ) as exc:
+                raise JournalCorruptionError(f"invalid journal row {index + 1}") from exc
+        return events
+
+    def replay(self) -> dict[str, LiveCallRecord]:
+        if not self._path.exists():
+            return {}
+        return self._fold(self._parse(self._path.read_bytes()))
+
     def append(self, record: LiveCallRecord) -> None:
-        """Append one record to the journal.
-
-        Raises ``ValueError`` on duplicate ``call_id`` (idempotency) or
-        invalid record fields.  The write is fsync-backed: once this
-        returns, the record is durable.
-        """
+        """Validate and append while holding one lock across check and write."""
         _validate_record(record)
-        existing = self.replay()
-        if record.call_id in existing:
-            raise ValueError(
-                f"duplicate call_id: {record.call_id} "
-                f"(requested_model={record.requested_model!r}, "
-                f"item_id={record.item_id!r})"
-            )
-        self._fsync_append(record)
-
-    def _fsync_append(self, record: LiveCallRecord) -> None:
-        """Atomic JSONL append with fsync.
-
-        Opens the file in append mode, acquires an exclusive lock,
-        writes one JSON line, flushes, fsyncs, then releases the lock.
-        A crash after the write but before fsync still produces a
-        complete line (OS page cache); a crash mid-write produces at
-        most one torn tail that ``replay()`` drops.
-        """
-        line = json.dumps(record.to_dict(), sort_keys=True, separators=(",", ":")) + "\n"
-        fd = os.open(
-            str(self._path),
-            os.O_WRONLY | os.O_APPEND | os.O_CREAT,
-            0o644,
-        )
+        fd = os.open(str(self._path), os.O_RDWR | os.O_APPEND | os.O_CREAT, 0o600)
         try:
             fcntl.flock(fd, fcntl.LOCK_EX)
-            os.write(fd, line.encode("utf-8"))
+            os.lseek(fd, 0, os.SEEK_SET)
+            raw = os.read(fd, os.fstat(fd).st_size)
+            events = self._parse(raw)
+            if raw and not raw.endswith(b"\n"):
+                # The ignored torn suffix must be removed before appending or it
+                # would be joined to the next JSON object permanently.
+                valid_end = raw.rfind(b"\n") + 1
+                os.ftruncate(fd, valid_end)
+            current = self._fold(events).get(record.call_id)
+            if current is None and record.status != "reserved":
+                raise ValueError("terminal event requires a durable reservation")
+            if current is not None and (current.is_terminal or record.status == "reserved"):
+                raise ValueError(f"duplicate event for call_id: {record.call_id}")
+            line = json.dumps(record.to_dict(), sort_keys=True, separators=(",", ":"))
+            os.write(fd, (line + "\n").encode())
             os.fsync(fd)
         finally:
             fcntl.flock(fd, fcntl.LOCK_UN)
             os.close(fd)
 
-    def replay(self) -> dict[str, LiveCallRecord]:
-        """Replay the journal, returning a map of call_id → record.
-
-        Handles torn tails: if the last line fails to parse (truncated
-        write from a crash), it is silently dropped.  All preceding
-        complete lines are returned.
-        """
-        if not self._path.exists():
-            return {}
-        records: dict[str, LiveCallRecord] = {}
-        lines = self._path.read_text(encoding="utf-8").splitlines()
-        for i, line in enumerate(lines):
-            stripped = line.strip()
-            if not stripped:
-                continue
-            try:
-                d = json.loads(stripped)
-                rec = LiveCallRecord.from_dict(d)
-                records[rec.call_id] = rec
-            except (json.JSONDecodeError, KeyError, ValueError):
-                # Torn tail: if this is the last non-empty line, drop
-                # it silently (crash recovery).  If it's a mid-file
-                # corruption, still drop — we don't have a repair path.
-                if i == len(lines) - 1:
-                    # Expected torn tail from crash — silent drop.
-                    pass
-                else:
-                    # Mid-file corruption — drop but could log in future.
-                    pass
-        return records
+    def reserve_within_cap(self, record: LiveCallRecord, cap_usd: Decimal) -> bool:
+        """Atomically admit and persist a reservation under a hard cap."""
+        _validate_record(record)
+        if record.status != "reserved":
+            raise ValueError("reserve_within_cap requires a reservation")
+        fd = os.open(str(self._path), os.O_RDWR | os.O_APPEND | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            os.lseek(fd, 0, os.SEEK_SET)
+            raw = os.read(fd, os.fstat(fd).st_size)
+            events = self._parse(raw)
+            if raw and not raw.endswith(b"\n"):
+                os.ftruncate(fd, raw.rfind(b"\n") + 1)
+            current = self._fold(events)
+            if record.call_id in current:
+                return False
+            charged = sum(
+                (max(event.reserved_usd, event.cost_usd) for event in current.values()),
+                Decimal("0"),
+            )
+            if charged + record.reserved_usd > cap_usd:
+                return False
+            line = json.dumps(record.to_dict(), sort_keys=True, separators=(",", ":"))
+            os.write(fd, (line + "\n").encode())
+            os.fsync(fd)
+            return True
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
 
     def lookup(self, call_id: str) -> LiveCallRecord | None:
-        """Deterministic lookup by call_id."""
         return self.replay().get(call_id)
 
     def clear(self) -> None:
-        """Remove the journal file (test utility only)."""
         if self._path.exists():
             self._path.unlink()
