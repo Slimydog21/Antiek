@@ -33,6 +33,7 @@ import {
   operatorArchiveHandoffPackagePlanMidnightOil,
   operatorArchiveHandoffPackageResultReconciliationPlanMidnightOil,
   operatorArchivePackageDeliveryReportPlanMidnightOil,
+  operatorArchivePackageDeliveryReportNotificationReadinessPlanMidnightOil,
   operatorArchivePackageDeliveryReportResultReconciliationPlanMidnightOil,
   operatorDeliveryLedgerReconciliationPlanMidnightOil,
   operatorDispatchActivationReadinessPlanMidnightOil,
@@ -5194,6 +5195,133 @@ vi.mock("../../api/midnightOil", () => ({
       ],
     }),
   ),
+  operatorArchivePackageDeliveryReportNotificationReadinessPlanMidnightOil: vi.fn(
+    async () => ({
+      receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-notification-readiness-plan",
+      operator_archive_package_delivery_report_result_reconciliation_plan_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-result-reconciliation-plan",
+      operator_archive_package_delivery_report_plan_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-plan",
+      operator_archive_handoff_package_delivery_audit_result_reconciliation_plan_receipt_id:
+        "midnight-oil-test-operator-archive-handoff-package-delivery-audit-result-reconciliation-plan",
+      operator_archive_handoff_package_delivery_audit_plan_receipt_id:
+        "midnight-oil-test-operator-archive-handoff-package-delivery-audit-plan",
+      operator_archive_handoff_package_result_reconciliation_plan_receipt_id:
+        "midnight-oil-test-operator-archive-handoff-package-result-reconciliation-plan",
+      operator_archive_handoff_package_plan_receipt_id:
+        "midnight-oil-test-operator-archive-handoff-package-plan",
+      final_closeout_archive_reconciliation_plan_receipt_id:
+        "midnight-oil-test-final-closeout-archive-reconciliation-plan",
+      retention_billing_reconciliation_plan_receipt_id:
+        "midnight-oil-test-retention-billing-reconciliation-plan",
+      launch_packet_id: "midnight-oil-test-launch-packet",
+      approval_receipt_id: "midnight-oil-test-approval-receipt",
+      runner_handoff_id: "midnight-oil-test-runner-handoff",
+      run_id: "midnight-oil-test",
+      status:
+        "blocked_operator_archive_package_delivery_report_notification_readiness_unimplemented",
+      adapter_key: "operator_archive_package_delivery_report_notification_readiness",
+      planned_operator_archive_package_delivery_report_notification_readiness_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-notification-readiness-receipt",
+      planned_operator_archive_package_delivery_report_notification_payload_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-notification-payload",
+      planned_operator_archive_package_delivery_report_notification_channel_policy_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-notification-channel-policy",
+      planned_operator_archive_package_delivery_report_notification_audit_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-notification-audit",
+      planned_operator_archive_package_delivery_report_result_reconciliation_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-result-reconciliation-receipt",
+      planned_operator_archive_package_delivery_report_result_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-result-entry",
+      planned_operator_archive_manifest_delivery_report_status_entry_id:
+        "midnight-oil-test-operator-archive-manifest-delivery-report-status-entry",
+      planned_operator_handoff_bundle_delivery_report_status_entry_id:
+        "midnight-oil-test-operator-handoff-bundle-delivery-report-status-entry",
+      planned_operator_archive_delivery_report_evidence_status_entry_id:
+        "midnight-oil-test-operator-archive-delivery-report-evidence-status-entry",
+      planned_operator_archive_package_delivery_report_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-receipt",
+      planned_operator_archive_package_delivery_report_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-entry",
+      planned_operator_archive_manifest_delivery_report_entry_id:
+        "midnight-oil-test-operator-archive-manifest-delivery-report-entry",
+      planned_operator_handoff_bundle_delivery_report_entry_id:
+        "midnight-oil-test-operator-handoff-bundle-delivery-report-entry",
+      planned_operator_archive_delivery_report_evidence_bundle_id:
+        "midnight-oil-test-operator-archive-delivery-report-evidence-bundle",
+      planned_operator_archive_handoff_package_delivery_audit_result_reconciliation_receipt_id:
+        "midnight-oil-test-operator-archive-handoff-package-delivery-audit-result-reconciliation-receipt",
+      planned_operator_archive_package_delivery_audit_result_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-audit-result-entry",
+      planned_operator_archive_manifest_delivery_audit_status_entry_id:
+        "midnight-oil-test-operator-archive-manifest-delivery-audit-status-entry",
+      planned_operator_handoff_bundle_delivery_audit_status_entry_id:
+        "midnight-oil-test-operator-handoff-bundle-delivery-audit-status-entry",
+      planned_operator_archive_delivery_audit_evidence_status_entry_id:
+        "midnight-oil-test-operator-archive-delivery-audit-evidence-status-entry",
+      planned_operator_archive_handoff_package_delivery_audit_receipt_id:
+        "midnight-oil-test-operator-archive-handoff-package-delivery-audit-receipt",
+      planned_operator_archive_package_delivery_audit_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-audit-entry",
+      planned_operator_archive_manifest_delivery_audit_entry_id:
+        "midnight-oil-test-operator-archive-manifest-delivery-audit-entry",
+      planned_operator_handoff_bundle_delivery_audit_entry_id:
+        "midnight-oil-test-operator-handoff-bundle-delivery-audit-entry",
+      planned_operator_archive_delivery_audit_evidence_bundle_id:
+        "midnight-oil-test-operator-archive-delivery-audit-evidence-bundle",
+      operator_archive_package_delivery_report_notification_readiness_blockers: [
+        "operator archive package delivery report notification readiness receipt writer",
+        "operator archive package delivery report notification payload writer",
+        "operator archive package delivery report notification channel policy writer",
+        "operator archive package delivery report notification audit writer",
+        "operator archive package delivery report notification readiness replay guard",
+      ],
+      required_operator_archive_package_delivery_report_notification_readiness_invariants:
+        [
+          "operator archive package delivery report notification readiness planner must require report result reconciliation planning before notification payloads can be planned",
+        ],
+      required_operator_archive_package_delivery_report_notification_readiness_receipt_fields:
+        [
+          "operator_archive_package_delivery_report_notification_readiness_receipt_id",
+          "operator_archive_package_delivery_report_notification_payload_id",
+          "operator_archive_package_delivery_report_notification_channel_policy_id",
+          "operator_archive_package_delivery_report_notification_audit_id",
+        ],
+      blocker_reason:
+        "operator_archive_package_delivery_report_notification_readiness_unimplemented",
+      operator_archive_package_delivery_report_notification_readiness_allowed:
+        false,
+      operator_archive_package_delivery_report_notification_payload_created: false,
+      operator_archive_package_delivery_report_notification_channel_policy_created:
+        false,
+      operator_archive_package_delivery_report_notification_audit_created: false,
+      operator_archive_package_delivery_report_result_reconciliation_allowed:
+        false,
+      operator_archive_package_delivery_report_result_entry_created: false,
+      operator_archive_manifest_delivery_report_status_entry_created: false,
+      operator_handoff_bundle_delivery_report_status_entry_created: false,
+      operator_archive_delivery_report_evidence_status_entry_created: false,
+      operator_archive_package_delivery_report_allowed: false,
+      operator_archive_package_delivery_report_entry_created: false,
+      operator_archive_manifest_delivery_report_entry_created: false,
+      operator_handoff_bundle_delivery_report_entry_created: false,
+      operator_archive_delivery_report_evidence_bundle_created: false,
+      operator_archive_package_delivery_audit_result_entry_created: false,
+      operator_archive_package_delivery_audit_entry_created: false,
+      operator_archive_package_result_entry_created: false,
+      operator_archive_package_created: false,
+      operator_notification_created: false,
+      private_read_url_created: false,
+      graph_mutated: false,
+      provider_calls_made: false,
+      retrieval_performed: false,
+      final_artifact_created: false,
+      adapter_plan_notes: [
+        "operator archive package delivery report notification readiness plan only: no notification readiness receipt, payload, channel policy, audit, notification dispatch, URL activation, or final artifact is created",
+      ],
+    }),
+  ),
 }));
 
 describe("MidnightOil", () => {
@@ -9017,6 +9145,114 @@ describe("MidnightOil", () => {
     expect(
       screen.getAllByText(/operator_archive_delivery_report_evidence_status_entry_id/)
         .length,
+    ).toBeGreaterThan(0);
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Operator archive package delivery report notification readiness plan",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(
+        operatorArchivePackageDeliveryReportNotificationReadinessPlanMidnightOil,
+      ).toHaveBeenCalled(),
+    );
+    expect(
+      operatorArchivePackageDeliveryReportNotificationReadinessPlanMidnightOil,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operator_archive_package_delivery_report_result_reconciliation_plan_receipt:
+          expect.objectContaining({
+            receipt_id:
+              "midnight-oil-test-operator-archive-package-delivery-report-result-reconciliation-plan",
+          }),
+        operator_archive_package_delivery_report_plan_receipt:
+          expect.objectContaining({
+            receipt_id:
+              "midnight-oil-test-operator-archive-package-delivery-report-plan",
+          }),
+      }),
+    );
+    expect(
+      screen.getByText(
+        "Operator archive package delivery report notification readiness receipt",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-notification-readiness-plan",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "blocked operator archive package delivery report notification readiness unimplemented",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-notification-readiness-receipt",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-notification-payload",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-notification-channel-policy",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-notification-audit",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "operator archive package delivery report notification readiness planner must require report result reconciliation planning before notification payloads can be planned",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Operator archive package delivery report notification readiness blockers:/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /operator archive package delivery report notification readiness receipt writer/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /operator archive package delivery report notification payload writer/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /operator archive package delivery report notification channel policy writer/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Operator archive package delivery report notification readiness receipt fields:/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getAllByText(
+        /operator_archive_package_delivery_report_notification_payload_id/,
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(
+        /operator_archive_package_delivery_report_notification_channel_policy_id/,
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(
+        /operator_archive_package_delivery_report_notification_audit_id/,
+      ).length,
     ).toBeGreaterThan(0);
   }, 15000);
 });
