@@ -1,0 +1,28 @@
+# inventory-auw · pure clearDecisionTreeReadiness
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: auw
+date: 2026-07-10
+parent_tip: 0941a55dd (auv)
+
+## Closed
+- pure `clearDecisionTreeReadiness` (workspace)
+  - clear_ready only when installed flag or model_id present
+  - block_reason: ok | not_installed
+  - never_auto_route · notdiamond_authority advisory_only
+- Settings decision-tree Clear CTA driven by pure readiness
+  - data-clear-ready · data-block-reason · data-is-installed
+  - onClearDriver early-returns via pure gate
+- 4 pure unit tests + full Settings suite green
+
+## Doctrine
+Clear restores empty selection · next prompt needs explicit Install ·
+never auto-route · ND/bench remain advisory forever
+
+## Next
+aux+ offline product residual outside thrash
+Avoid: model install pure thrash after aut–auw wave · catalog · twin/merge ·
+presets · MO · scorecard · vision · dogfood · readiness→CTA · pure-open ·
+HostedHtml honesty
+Prefer: SESSION-ARC aut–auw handoff · dual-gate honesty · marketplace HTML ·
+competitive non-catalog · MO non-thrash product
+Operator merge PR #465 remains P0 (gated)

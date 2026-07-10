@@ -26,6 +26,7 @@ import {
   resolveLeaderboardInstallProvider,
 } from "../../workspace/leaderboardDriverInstallReadiness";
 import { registerModelReadiness } from "../../workspace/registerModelReadiness";
+import { clearDecisionTreeReadiness } from "../../workspace/clearDecisionTreeReadiness";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import {
@@ -97,6 +98,8 @@ import {
  * install recommended / best-by-task CTAs (advisory · never auto-route).
  * Residual (auv): pure registerModelReadiness drives Add model Register CTA
  * (model+provider required · select-as-driver never auto-routes).
+ * Residual (auw): pure clearDecisionTreeReadiness drives Clear CTA
+ * (only when installed · never auto-route).
  */
 export default function Settings() {
   const tier = useViewportTier();
@@ -927,6 +930,20 @@ export default function Settings() {
     [addModelId, addProviderId, addSelectDriver],
   );
 
+  /**
+   * Residual (auw): pure Clear driver CTA readiness.
+   * Only when a process-local driver is installed · never auto-route.
+   */
+  const dtClearReady = useMemo(
+    () =>
+      clearDecisionTreeReadiness({
+        installed: tree?.installed,
+        model_id: tree?.model_id,
+        provider_id: tree?.provider_id,
+      }),
+    [tree?.installed, tree?.model_id, tree?.provider_id],
+  );
+
   const spendPct = useMemo(() => {
     if (
       !budget ||
@@ -986,6 +1003,16 @@ export default function Settings() {
   }
 
   async function onClearDriver() {
+    // Residual (auw): pure gate — only clear when a driver is installed.
+    const gate = clearDecisionTreeReadiness({
+      installed: tree?.installed,
+      model_id: tree?.model_id,
+      provider_id: tree?.provider_id,
+    });
+    if (!gate.clear_ready) {
+      setTreeError(gate.clear_title);
+      return;
+    }
     setTreeBusy(true);
     setTreeError(null);
     try {
@@ -1671,8 +1698,15 @@ export default function Settings() {
               <button
                 type="button"
                 data-testid="decision-tree-clear"
-                onClick={onClearDriver}
-                disabled={treeBusy}
+                // Residual (auw): pure clear readiness stamps.
+                data-clear-ready={String(dtClearReady.clear_ready)}
+                data-block-reason={dtClearReady.block_reason}
+                data-never-auto-route={String(dtClearReady.never_auto_route)}
+                data-notdiamond-authority={dtClearReady.notdiamond_authority}
+                data-is-installed={String(dtClearReady.is_installed)}
+                onClick={() => void onClearDriver()}
+                disabled={treeBusy || !dtClearReady.clear_ready}
+                title={dtClearReady.clear_title}
                 className="px-3 py-1.5 rounded border border-ink/40 dark:border-bright/40 text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
               >
                 Clear
