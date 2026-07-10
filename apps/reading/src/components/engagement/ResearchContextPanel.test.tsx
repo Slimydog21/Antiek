@@ -444,7 +444,7 @@ describe("ResearchContextPanel", () => {
     expect(fetchResearchContext).toHaveBeenCalledWith(
       expect.objectContaining({ asset_id: "paper", spawn_id: "spn_1" }),
     );
-    // Residual (ri/aes): Open Write twin_seed from context pack + path honesty.
+    // Residual (ri/aes/att): Open Write twin_seed from context pack + path honesty.
     const write = screen.getByTestId("research-context-open-write");
     const href = write.getAttribute("href") || "";
     expect(href).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
@@ -452,12 +452,21 @@ describe("ResearchContextPanel", () => {
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
     // Residual (acr): prompt_block body → has-body true.
     expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
+    // Residual (att): context pack open HTML-first readiness.
+    expect(write.getAttribute("data-html-first")).toBe("true");
+    expect(write.getAttribute("data-context-pack-open-ready")).toBe("true");
+    expect(write.getAttribute("data-source")).toBe("research_context_pack");
     // Residual (aes): research context pack → Write path honesty.
     expect(write.getAttribute("data-asset-id")).toBe("paper");
     expect(write.getAttribute("data-spawn-id")).toBe("spn_1");
     expect(write.getAttribute("data-seamless-context-write")).toBe("true");
-    // Residual (sl): float|full research context pack HTML.
-    fireEvent.click(screen.getByTestId("research-context-open-float"));
+    // Residual (sl/att): float|full research context pack HTML.
+    const openFloat = screen.getByTestId("research-context-open-float");
+    expect(openFloat.getAttribute("data-html-first")).toBe("true");
+    expect(openFloat.getAttribute("data-context-pack-open-ready")).toBe("true");
+    expect(openFloat.getAttribute("data-source")).toBe("research_context_pack");
+    expect(openFloat.getAttribute("title") || "").toMatch(/never PDF/i);
+    fireEvent.click(openFloat);
     const floatCall = openWindow.mock.calls.at(-1) as [
       string,
       { source?: string; html?: string; view_format?: string },
@@ -469,7 +478,10 @@ describe("ResearchContextPanel", () => {
     expect(floatCall[1].html).toMatch(/Research context pack/);
     expect(floatCall[1].html).toMatch(/data-source="research_context_pack"/);
     expect(floatCall[2].mode).toBe("floating");
-    fireEvent.click(screen.getByTestId("research-context-open-full"));
+    const openFull = screen.getByTestId("research-context-open-full");
+    expect(openFull.getAttribute("data-html-first")).toBe("true");
+    expect(openFull.getAttribute("data-context-pack-open-ready")).toBe("true");
+    fireEvent.click(openFull);
     const fullCall = openWindow.mock.calls.at(-1) as [
       string,
       { source?: string },

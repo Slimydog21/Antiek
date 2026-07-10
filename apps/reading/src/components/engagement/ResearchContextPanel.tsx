@@ -23,6 +23,8 @@
  * Residual (sj): float|full intelligent context search hits as HTML reading windows.
  * Residual (sk): float|full hydrated publication HTML (arxiv/substack identity).
  * Residual (sl): float|full research context pack (prompt_block) as HTML.
+ * Residual (att): context pack open float|full|Write stamp html-first ·
+ * context-pack-open-ready · source=research_context_pack (parity ats flywheel).
  * Residual (tq): context_search float/full carries search_query + search_hit_count
  * into HostedHtmlDocumentHost honesty chrome.
  * Residual (api): competitive citation hop pipeline completeness
@@ -646,18 +648,22 @@ export function ResearchContextPanel({
           <pre className="prompt-block" data-testid="prompt-block">
             {pack.prompt_block}
           </pre>
-          {/* Residual (sl): context pack → float|full HTML reading windows. */}
+          {/* Residual (sl/att): context pack → float|full HTML reading windows
+              with html-first · open-ready · source honesty stamps. */}
           {(pack.prompt_block || "").trim() ? (
             <p className="meta font-mono text-[11px] space-x-3">
               <button
                 type="button"
                 data-testid="research-context-open-float"
                 data-view-format="html"
+                data-html-first="true"
                 data-window-mode="floating"
                 data-twin-count={String(pack.twin_count ?? 0)}
                 data-ref-count={String(pack.ref_count ?? 0)}
+                data-context-pack-open-ready="true"
+                data-source="research_context_pack"
                 className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
-                title="Open research context pack as floating HTML window (never PDF)"
+                title="Open research context pack as floating HTML window (recursive note-taker substrate · never PDF)"
                 onClick={() => {
                   const stem =
                     String(pack.asset_id || assetId).trim() || "asset";
@@ -702,11 +708,14 @@ export function ResearchContextPanel({
                 type="button"
                 data-testid="research-context-open-full"
                 data-view-format="html"
+                data-html-first="true"
                 data-window-mode="full"
                 data-twin-count={String(pack.twin_count ?? 0)}
                 data-ref-count={String(pack.ref_count ?? 0)}
+                data-context-pack-open-ready="true"
+                data-source="research_context_pack"
                 className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
-                title="Open research context pack as full working-region HTML window (never PDF)"
+                title="Open research context pack as full working-region HTML window (recursive note-taker substrate · never PDF)"
                 onClick={() => {
                   const stem =
                     String(pack.asset_id || assetId).trim() || "asset";
@@ -769,8 +778,11 @@ export function ResearchContextPanel({
                   href={href}
                   data-testid="research-context-open-write"
                   data-view-format="html"
+                  data-html-first="true"
                   data-has-twin-seed="1"
                   data-write-seed-has-body={String(hasBody)}
+                  data-context-pack-open-ready={String(hasBody)}
+                  data-source="research_context_pack"
                   // Residual (aes): research context pack → Write path honesty.
                   data-asset-id={packAsset}
                   data-spawn-id={packSpawn}
@@ -780,7 +792,7 @@ export function ResearchContextPanel({
                   data-twin-count={String(pack.twin_count ?? 0)}
                   data-seamless-context-write={String(Boolean(packAsset))}
                   className="underline opacity-90 hover:opacity-100"
-                  title="Open Write with research context prompt_block as twin_seed (recursive note-taker substrate · no invented document_id)"
+                  title="Open Write with research context prompt_block as twin_seed (recursive note-taker substrate · HTML-first · no invented document_id · never PDF)"
                 >
                   Open Write (context pack)
                 </a>
