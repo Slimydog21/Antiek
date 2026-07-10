@@ -1,6 +1,6 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** `e07ce94a` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
+**Campaign tip at write:** `0edc1430` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **URL:** https://github.com/Slimydog21/Antiek/pull/465  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
@@ -24,7 +24,7 @@ Prefer **SESSION-ARC-vz-wt-budget-stem-dualgate.md** + inventories **vz–xl** +
 ### P2 — Dual-gate live injectors (operator-only)
 L1–L4 offline default · L5 payment deferred · L6 live multi-agent · L7 ND **never** router
 
-### P1 next offline (residual **xt+**)
+### P1 next offline (residual **xy+**)
 Outside dual-gate deep-link thrash unless regression. Prefer real product bugs,
 midnight oil / collective / twin polish offline, operator-facing load-bearing work.
 

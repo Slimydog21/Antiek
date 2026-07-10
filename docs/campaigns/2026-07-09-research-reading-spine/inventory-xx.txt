@@ -1,0 +1,12 @@
+# inventory-xx · FUTURE tip re-anchor through xw
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: xx
+date: 2026-07-10
+tip_sha: 0edc1430
+
+## Closed
+- FUTURE-AGENT tip → 0edc1430 · 51 residual ships this continuation from vy
+- Highest leverage: operator merge PR #465 OPEN
+
+## Not in scope
+- Operator merge PR #465 (gated)
