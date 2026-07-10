@@ -1333,3 +1333,8 @@ delta: compaction-safe handoff; operator merge PR #465 remains highest leverage.
 HostedHtmlDocumentHost tests lock marketplace_host and midnight_oil_deposit
 Open Write sources. Competitive delta: book host and MO deposit Write paths are
 mechanically proven (parity vn).
+
+## Residual vw · 2026-07-10 — FUTURE-AGENT tip re-anchor through vv
+FUTURE-AGENT-SPEC tip → 4bce4ada with closed arcs tt–vv (55 residual ships).
+Competitive delta: swarm handoff tip-true; operator merge PR #465 remains
+highest leverage.
