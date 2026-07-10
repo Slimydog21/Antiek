@@ -1938,3 +1938,8 @@ Free physics subject set len ≥4 all free PD HTML (Principia + Faraday/Maxwell/
 Heaviside). Competitive delta: tech-researcher physics domain is non-trivial free
 STEM corpus (parity electricity/computing/technology size honesty).
 
+## Residual aaw · 2026-07-10 — free mathematics STEM set size honesty
+Free mathematics subject set len ≥4 all free PD HTML (Elements · Principia ·
+Boole · Lovelace). Competitive delta: tech-researcher mathematics domain is
+non-trivial free STEM corpus (parity physics aav).
+

@@ -1,0 +1,19 @@
+# inventory-aaw · free mathematics STEM set size honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aaw
+date: 2026-07-10
+tip_before: 43fb0abe (aav)
+
+## Problem
+Free physics/computing/electricity/technology had set-size honesty; free
+mathematics lacked an explicit ≥4 free PD HTML guarantee.
+
+## Fix
+- test_free_mathematics_stem_set_size: Elements · Principia · Boole · Lovelace
+- len ≥4 · all free PD · source_format html
+
+## Verified
+pytest test_free_mathematics_stem_set_size → passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

@@ -235,6 +235,30 @@ def test_free_physics_stem_set_size() -> None:
     assert all(e.is_free for e in free_phys)
 
 
+def test_free_mathematics_stem_set_size() -> None:
+    """Residual (aaw): free mathematics subject is non-trivial for tech researchers.
+
+    Elements + Principia + Boole + Lovelace (+ EM math) free PD HTML.
+    Parity physics/computing domain size honesty.
+    """
+    cat = default_demo_catalog()
+    free_math = [
+        e
+        for e in cat.filter_by_subject("mathematics")
+        if e.is_free and e.license_class == "public_domain"
+    ]
+    ids = {e.book_id for e in free_math}
+    assert ids >= {
+        "pd-elements",
+        "pd-principia",
+        "pd-boole-laws-of-thought",
+        "pd-lovelace-analytical-engine",
+    }
+    assert all(e.source_format == "html" for e in free_math if e.book_id in ids)
+    assert len(free_math) >= 4
+    assert all(e.is_free for e in free_math)
+
+
 def test_turing_computability_subjects_and_free_pd() -> None:
     """Residual (wl): Turing tagged computing+computability, free PD."""
     cat = default_demo_catalog()
