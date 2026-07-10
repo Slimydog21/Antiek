@@ -2026,6 +2026,8 @@ export default function Settings() {
             id="hydrate-live-status"
             data-testid="hydrate-live-status-panel"
             data-view-format="html"
+            data-html-first="true"
+            data-never-enables-live="true"
             data-offline-honest={
               hydrateLive ? String(hydrateLive.offline_honest) : undefined
             }
@@ -2053,7 +2055,42 @@ export default function Settings() {
             <p className="text-sm text-ink dark:text-bright">
               Knowledge-dense refs hydrate offline-honest by default (identity
               only). Live arXiv/Substack injectors are env-gated process
-              installs — never silent network from this UI.
+              installs — never silent network from this UI. Dual-gate L1/L2 ·
+              never enables live from this panel.
+            </p>
+            {/* Residual (aqs): hydrate dual-gate honesty + knowledge-dense product deep-links. */}
+            <p
+              className="text-[11px] font-mono flex flex-wrap gap-x-3 gap-y-1 opacity-90"
+              data-testid="hydrate-live-honesty-nav"
+              data-view-format="html"
+              data-html-first="true"
+              data-never-enables-live="true"
+              data-dual-gate="L1-L2"
+              role="navigation"
+              aria-label="Publication hydrate dual-gate honesty navigation"
+            >
+              <a
+                href="#decision-tree-panel"
+                data-testid="hydrate-live-decision-tree-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Decision-tree driver used when hydrate attach feeds DR prompts"
+              >
+                Decision-tree driver
+              </a>
+              <a
+                href="#prompt-cost-projection"
+                data-testid="hydrate-live-prompt-cost-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Prompt-cost projection when hydrated refs enter research prompts"
+              >
+                Prompt-cost projection
+              </a>
+              <span
+                className="opacity-70"
+                data-testid="hydrate-live-never-enables-hint"
+              >
+                offline-honest default · never enables live · L1/L2 dual-gate
+              </span>
             </p>
             {/* Residual (aee): in-panel L1/L2 checklist deep-links (parity aec/aed). */}
             <div

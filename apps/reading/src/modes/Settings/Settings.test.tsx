@@ -637,6 +637,22 @@ describe("Settings SPR-01 + decision-tree install", () => {
     const panel = screen.getByTestId("hydrate-live-status-panel");
     expect(panel.getAttribute("data-offline-honest")).toBe("true");
     expect(panel.getAttribute("data-any-live-injector")).toBe("false");
+    // Residual (aqs): HTML-first · never-enables-live honesty on hydrate panel.
+    expect(panel.getAttribute("data-view-format")).toBe("html");
+    expect(panel.getAttribute("data-html-first")).toBe("true");
+    expect(panel.getAttribute("data-never-enables-live")).toBe("true");
+    const honesty = screen.getByTestId("hydrate-live-honesty-nav");
+    expect(honesty.getAttribute("data-never-enables-live")).toBe("true");
+    expect(honesty.getAttribute("data-dual-gate")).toBe("L1-L2");
+    expect(
+      screen.getByTestId("hydrate-live-decision-tree-link").getAttribute("href"),
+    ).toBe("#decision-tree-panel");
+    expect(
+      screen.getByTestId("hydrate-live-prompt-cost-link").getAttribute("href"),
+    ).toBe("#prompt-cost-projection");
+    expect(
+      screen.getByTestId("hydrate-live-never-enables-hint").textContent,
+    ).toMatch(/offline-honest|never enables live/i);
     // Residual (aee): offline default — neither L1 nor L2 live ready.
     expect(panel.getAttribute("data-l1-arxiv-live-ready")).toBe("false");
     expect(panel.getAttribute("data-l2-substack-live-ready")).toBe("false");

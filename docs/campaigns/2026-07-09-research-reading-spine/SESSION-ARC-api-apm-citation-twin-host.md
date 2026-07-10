@@ -46,3 +46,4 @@ one residual/cycle · campaign push only · operator merges PR #465.
 | **aqp** | MarketplaceHost soft-budget honesty + model deep-links | book host ↔ Settings matrix |
 | **aqq** | ResearchThis soft-budget honesty + model deep-links | highlight DR ↔ Settings matrix |
 | **aqr** | WriteHome soft-budget honesty + model deep-links | writing surface matrix closed |
+| **aqs** | hydrate-live dual-gate honesty + product deep-links | L1/L2 knowledge-dense prep |

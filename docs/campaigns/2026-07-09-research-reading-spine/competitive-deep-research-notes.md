@@ -3930,3 +3930,8 @@ to prompt-cost · decision-tree. vitest ResearchThis 13 green. P0 PR #465. Pivot
 Write home stamps soft-budget · budget-before-fire · never-auto-route + honesty nav.
 Completes reading ≡ research ≡ writing soft-budget matrix. vitest WriteHome green.
 P0 PR #465. Pivot aqs+ outside thrash.
+
+## Residual aqs · 2026-07-10 — hydrate-live dual-gate honesty + product deep-links
+Hydrate L1/L2 panel stamps HTML-first · never-enables-live + honesty nav to
+decision-tree · prompt-cost. Hard pivot into dual-gate knowledge-dense prep.
+vitest Settings hydrate green. P0 PR #465. Pivot aqt+ outside thrash.
