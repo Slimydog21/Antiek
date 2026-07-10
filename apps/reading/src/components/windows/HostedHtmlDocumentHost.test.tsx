@@ -432,6 +432,74 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     );
   });
 
+  it("stamps marketplace_library free path honesty for twin seed (apl)", () => {
+    render(
+      <HostedHtmlDocumentHost
+        document_id="hdoc_lib_free_apl"
+        title="Library free book"
+        view_format="html"
+        source="marketplace_library"
+        is_free={true}
+        license_class="public_domain"
+        html="<p>Library-opened free PD body.</p>"
+      />,
+    );
+    const host = screen.getByTestId("hosted-html-document-host");
+    expect(host.getAttribute("data-source")).toBe("marketplace_library");
+    expect(host.getAttribute("data-marketplace-host")).toBe("true");
+    expect(host.getAttribute("data-marketplace-path-kind")).toBe("free");
+    const honesty = screen.getByTestId("hosted-html-marketplace-host-honesty");
+    expect(honesty.getAttribute("data-twin-seed-path")).toBe(
+      "marketplace_library",
+    );
+    expect(honesty.getAttribute("data-path-kind")).toBe("free");
+    const twins = screen.getByTestId("twin-notes-panel-stub");
+    expect(twins.getAttribute("data-seed-title") || "").toMatch(
+      /Marketplace host/,
+    );
+    expect(twins.getAttribute("data-seed-body") || "").toMatch(
+      /path_kind=free/,
+    );
+    expect(twins.getAttribute("data-seed-body") || "").toMatch(
+      /source=marketplace_library/,
+    );
+    expect(
+      screen.getByTestId("hosted-html-open-write").getAttribute(
+        "data-write-seed-source",
+      ),
+    ).toBe("marketplace_host");
+  });
+
+  it("stamps marketplace_library_rehydrate purchased path honesty (apl)", () => {
+    render(
+      <HostedHtmlDocumentHost
+        document_id="hdoc_lib_paid_apl"
+        title="Library purchased book"
+        view_format="html"
+        source="marketplace_library_rehydrate"
+        is_free={false}
+        html="<p>Rehydrated purchased body.</p>"
+      />,
+    );
+    const host = screen.getByTestId("hosted-html-document-host");
+    expect(host.getAttribute("data-source")).toBe(
+      "marketplace_library_rehydrate",
+    );
+    expect(host.getAttribute("data-marketplace-path-kind")).toBe("purchased");
+    const honesty = screen.getByTestId("hosted-html-marketplace-host-honesty");
+    expect(honesty.getAttribute("data-twin-seed-path")).toBe(
+      "marketplace_library_rehydrate",
+    );
+    expect(honesty.getAttribute("data-path-kind")).toBe("purchased");
+    const twins = screen.getByTestId("twin-notes-panel-stub");
+    expect(twins.getAttribute("data-seed-body") || "").toMatch(
+      /path_kind=purchased/,
+    );
+    expect(twins.getAttribute("data-seed-body") || "").toMatch(
+      /source=marketplace_library_rehydrate/,
+    );
+  });
+
   it("stamps midnight_oil_deposit twin seed path honesty (apj)", () => {
     render(
       <HostedHtmlDocumentHost

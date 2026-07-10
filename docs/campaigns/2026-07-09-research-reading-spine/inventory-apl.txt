@@ -1,0 +1,16 @@
+# inventory-apl · library open/rehydrate free/purchased twin seed honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: apl
+date: 2026-07-10
+parent_tip: 685d561a (apk)
+
+## Closed
+- MarketplaceHost library open + rehydrate pass is_free into HostedHtml float
+- resolveLibraryIsFree pure path (true/false/null · never invent free)
+- HostedHtml marketplace_library / _rehydrate path honesty tests
+- Completes apk free/purchased flywheel for account library surface
+- vitest HostedHtml 32 · MarketplaceHost 43 green
+
+## Next
+apm+ product residual outside thrash
+Operator merge PR #465 remains highest leverage (gated)

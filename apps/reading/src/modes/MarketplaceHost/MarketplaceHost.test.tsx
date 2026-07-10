@@ -910,12 +910,18 @@ describe("MarketplaceHost mode", () => {
           document_id: "hdoc_old",
           view_format: "html",
           source: "marketplace_library_rehydrate",
+          // Residual (apl): free/purchased honesty into float twin seed.
+          is_free: true,
         }),
         expect.objectContaining({ id: "win:hosted:hdoc_old" }),
       );
     });
-    const payload = openWindow.mock.calls.at(-1)?.[1] as { html?: string };
+    const payload = openWindow.mock.calls.at(-1)?.[1] as {
+      html?: string;
+      is_free?: boolean | null;
+    };
     expect(payload.html).toMatch(/Rehydrated body/);
+    expect(payload.is_free).toBe(true);
     // Residual (acg): after rehydrate, library Open Write twin_seed has body.
     await waitFor(() => {
       const libWrite = screen.getByTestId("library-open-write-hdoc_old");

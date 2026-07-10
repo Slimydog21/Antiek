@@ -3766,3 +3766,8 @@ vitest HostedHtmlDocumentHost 28 green. P0 PR #465. Pivot apk+ outside thrash.
 marketplace_host float: free vs purchased Port path + honesty chrome (L5 deferred ·
 never invent entitlement) · openHostedWindow passes is_free. Parity aho mode seed · apj MO float.
 vitest HostedHtmlDocumentHost 30 green. P0 PR #465. Pivot apl+ outside thrash.
+
+## Residual apl · 2026-07-10 — library open/rehydrate free/purchased twin seed honesty
+marketplace_library + marketplace_library_rehydrate openHostedWindow pass is_free
+via resolveLibraryIsFree (never invent free). Completes apk float path for account library.
+vitest HostedHtml 32 · MarketplaceHost 43 green. P0 PR #465. Pivot apm+ outside thrash.

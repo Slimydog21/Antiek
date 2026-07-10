@@ -68,6 +68,8 @@
  * L5 deferred · HTML host into account · never invent live checkout).
  * Residual (apd): purchase receipt readiness chrome for L5 offline CTA
  * (demo-default honesty · paid-visible count · never invent live charge).
+ * Residual (apl): library open/rehydrate windows pass is_free for HostedHtml
+ * free/purchased twin seed honesty (parity apk host path).
  * Residual (apg): free-host readiness chrome for free PD / is_free catalog
  * (HTML host path · never PDF · counts visible free under filters).
  * Residual (ahm): host-land DR budget foresight includes pub-ref count (parity ahl).
@@ -353,6 +355,22 @@ export default function MarketplaceHost({
     (d.is_free == null &&
       (d.license_class === "public_domain" ||
         (d.license_class || "").toLowerCase() === "free"));
+
+  /**
+   * Residual (apl): resolve free/purchased for library → HostedHtml float twin seed.
+   * true | false | null (unknown — never invent free entitlement).
+   */
+  const resolveLibraryIsFree = (d: LibraryDoc): boolean | null => {
+    if (d.is_free === true) return true;
+    if (d.is_free === false) return false;
+    if (
+      d.license_class === "public_domain" ||
+      (d.license_class || "").toLowerCase() === "free"
+    ) {
+      return true;
+    }
+    return null;
+  };
 
   const libraryFreeCount = useMemo(() => {
     // Residual (acc): prefer server free_count aggregate when loaded.
@@ -819,6 +837,9 @@ export default function MarketplaceHost({
           license_class: hosted.license_class || doc.license_class,
           owner_id: hosted.owner_id || ownerId,
           source: "marketplace_library",
+          // Residual (apl): free/purchased honesty into float twin seed.
+          is_free: resolveLibraryIsFree(doc),
+          book_id: hosted.book_id || doc.document_id,
         });
         return;
       }
@@ -856,6 +877,9 @@ export default function MarketplaceHost({
         license_class: licenseClass,
         owner_id: ownerId,
         source: "marketplace_library_rehydrate",
+        // Residual (apl): free/purchased honesty into float twin seed.
+        is_free: resolveLibraryIsFree(doc),
+        book_id: documentId,
       });
       // Residual (ach): offline twin seed after library rehydrate so recursive
       // note-taker substrate joins library-opened books (parity host/purchase gj).
