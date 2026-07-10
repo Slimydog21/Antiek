@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 from dataclasses import replace
 from pathlib import Path
@@ -348,6 +349,76 @@ def test_journal_rejects_invalid_terminal_and_claim_metadata_mismatch(tmp_path: 
     )
     with pytest.raises(ValueError, match="metadata"):
         journal.settle(mismatch)
+
+
+def test_journal_completes_short_reads_and_writes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    request, _ = blind_candidates(
+        item_id="i", task_class="distill", candidates=candidates(), salt="s"
+    )
+    pending = EvidenceRecord(
+        "w",
+        "v",
+        request.item_id_hash,
+        "distill",
+        request.rubric.version,
+        "judge",
+        tuple(row.content_hash for row in request.candidates),
+        ("A", "B"),
+        "pending",
+        1,
+    )
+    journal = EvidenceJournal(tmp_path / "short-io.jsonl")
+    real_write = os.write
+    monkeypatch.setattr(
+        os,
+        "write",
+        lambda fd, payload: real_write(fd, payload[: max(1, len(payload) // 3)]),
+    )
+    assert journal.claim(pending)
+    monkeypatch.setattr(os, "write", real_write)
+    original = journal.path.read_bytes()
+    real_read = os.read
+    monkeypatch.setattr(os, "read", lambda fd, size: real_read(fd, min(size, 13)))
+    assert journal.claim(pending) is False
+    assert journal.path.read_bytes() == original
+
+
+def test_torn_tail_truncation_is_fsynced_on_duplicate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    journal = EvidenceJournal(tmp_path / "torn-fsync.jsonl")
+    request, _ = blind_candidates(
+        item_id="i", task_class="distill", candidates=candidates(), salt="s"
+    )
+    pending = EvidenceRecord(
+        "w",
+        "v",
+        request.item_id_hash,
+        "distill",
+        request.rubric.version,
+        "judge",
+        tuple(row.content_hash for row in request.candidates),
+        ("A", "B"),
+        "pending",
+        1,
+    )
+    assert journal.claim(pending)
+    with journal.path.open("ab") as handle:
+        handle.write(b'{"torn":')
+    calls = 0
+    real_fsync = os.fsync
+
+    def observe(fd: int) -> None:
+        nonlocal calls
+        calls += 1
+        real_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", observe)
+    assert journal.claim(pending) is False
+    assert calls == 1
+    assert journal.path.read_bytes().endswith(b"\n")
 
 
 def test_stored_identity_tampering_is_corruption(tmp_path: Path) -> None:

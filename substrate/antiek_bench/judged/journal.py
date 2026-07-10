@@ -137,7 +137,18 @@ def _validate(record: EvidenceRecord) -> None:
 class EvidenceJournal:
     def __init__(self, path: Path | str) -> None:
         self.path = Path(path)
+        parent_existed = self.path.parent.exists()
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        if not parent_existed:
+            self._fsync_directory(self.path.parent.parent)
+
+    @staticmethod
+    def _fsync_directory(path: Path) -> None:
+        fd = os.open(str(path), os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
 
     @staticmethod
     def _parse(raw: bytes) -> list[EvidenceRecord]:
@@ -190,10 +201,20 @@ class EvidenceJournal:
         try:
             fcntl.flock(fd, fcntl.LOCK_EX)
             os.lseek(fd, 0, os.SEEK_SET)
-            raw = os.read(fd, os.fstat(fd).st_size)
+            target_size = os.fstat(fd).st_size
+            chunks: list[bytes] = []
+            remaining = target_size
+            while remaining:
+                chunk = os.read(fd, remaining)
+                if not chunk:
+                    raise OSError("evidence journal read ended before captured size")
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            raw = b"".join(chunks)
             current = self._fold(self._parse(raw))
             if raw and not raw.endswith(b"\n"):
                 os.ftruncate(fd, raw.rfind(b"\n") + 1)
+                os.fsync(fd)
             old = current.get(record.evidence_id)
             if claim:
                 if record.status != "pending":
@@ -205,8 +226,16 @@ class EvidenceJournal:
             elif _claim_metadata(old) != _claim_metadata(record):
                 raise ValueError("settlement metadata does not match claim")
             line = json.dumps(record.to_dict(), sort_keys=True, separators=(",", ":"))
-            os.write(fd, (line + "\n").encode())
+            payload = (line + "\n").encode()
+            offset = 0
+            while offset < len(payload):
+                written = os.write(fd, payload[offset:])
+                if written <= 0:
+                    raise OSError("evidence journal append made no progress")
+                offset += written
             os.fsync(fd)
+            if target_size == 0:
+                self._fsync_directory(self.path.parent)
             return True
         finally:
             fcntl.flock(fd, fcntl.LOCK_UN)
