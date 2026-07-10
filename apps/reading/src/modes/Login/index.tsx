@@ -213,6 +213,12 @@ export default function Login() {
                 </span>
                 <span className="antiek-login__arrow" aria-hidden="true">→</span>
               </button>
+              {errorMsg && (
+                <div className="antiek-login__error" role="alert">
+                  <strong>{errorMsg}</strong>
+                  {errorHint && <span>{errorHint}</span>}
+                </div>
+              )}
               <button className="antiek-login__quiet" type="button" onClick={() => navigate(nextPath, { replace: true })}>
                 Do this later
               </button>

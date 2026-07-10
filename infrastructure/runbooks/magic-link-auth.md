@@ -264,6 +264,15 @@ branch and recovery states are covered by `apps/reading/e2e/login-magic-link.spe
 ./.venv/bin/python -m pytest tests/test_magic_link_auth.py tests/test_passkey_auth.py -v
 ```
 
+The browser-cryptography gate starts a real local FastAPI service plus Vite,
+enrolls a credential in Chromium's virtual platform authenticator, clears the
+session, and proves the next unlock succeeds without email:
+
+```bash
+cd apps/reading
+npm run e2e:passkey
+```
+
 ---
 
 ## Companion docs
