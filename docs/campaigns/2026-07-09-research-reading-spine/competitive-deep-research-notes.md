@@ -1456,3 +1456,8 @@ not client-invented.
 dogfood_fixture_payload lists suite-competitive-dogfood-v11 with Shannon and
 Turing book_qa items. Competitive delta: Settings dogfood postures are
 substrate-true (propose≠promote).
+
+## Residual wu · 2026-07-10 — SESSION-ARC + FUTURE tip through wt
+SESSION-ARC-vz-wt + FUTURE tip → 741abb13 (21 residual ships this continuation).
+Competitive delta: compaction-safe multi-agent handoff; operator merge PR #465
+remains highest leverage.

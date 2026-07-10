@@ -1,0 +1,13 @@
+# inventory-wu · SESSION-ARC + FUTURE tip re-anchor through wt
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: wu
+date: 2026-07-10
+tip_sha: 741abb13
+
+## Closed
+- SESSION-ARC-vz-wt-budget-stem-dualgate.md
+- FUTURE-AGENT tip → 741abb13 · 21 residual ships this continuation
+- Highest leverage: operator merge PR #465 OPEN
+
+## Not in scope
+- Operator merge PR #465 (gated)
