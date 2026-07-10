@@ -23,7 +23,7 @@ from .blinding import (
     BlindingContext,
     blind_candidates,
 )
-from .client import JudgeClient, score_and_persist
+from .client import JudgeClient, JudgeReconciliationRequiredError, score_and_persist
 from .journal import (
     JudgeEvidenceJournal,
     JudgeEvidenceRecord,
@@ -48,6 +48,7 @@ __all__ = [
     "JudgeEvidenceRecord",
     "JudgeJournalCorruptionError",
     "JudgeResult",
+    "JudgeReconciliationRequiredError",
     "RubricAxis",
     "RubricVersion",
     "blind_candidates",

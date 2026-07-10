@@ -9,19 +9,26 @@ leakage rejection, and authority-surface checks.
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import multiprocessing
+import os
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from substrate.antiek_bench.judged.blinding import (
+    BlindedCandidate,
     BlindedJudgeRequest,
     BlindingContext,
     blind_candidates,
 )
-from substrate.antiek_bench.judged.client import score_and_persist
+from substrate.antiek_bench.judged.client import (
+    JudgeReconciliationRequiredError,
+    score_and_persist,
+)
 from substrate.antiek_bench.judged.journal import (
     JudgeEvidenceJournal,
     JudgeEvidenceRecord,
@@ -94,9 +101,7 @@ class FakeJudgeClient:
         self.call_count = 0
         self.last_request: BlindedJudgeRequest | None = None
 
-    def score(
-        self, request: BlindedJudgeRequest, rubric_version: RubricVersion
-    ) -> JudgeResult:
+    def score(self, request: BlindedJudgeRequest, rubric_version: RubricVersion) -> JudgeResult:
         self.call_count += 1
         self.last_request = request
         if self._error is not None:
@@ -106,12 +111,13 @@ class FakeJudgeClient:
 
 
 def default_client() -> FakeJudgeClient:
-    return FakeJudgeClient(
-        JudgeResult(axis_scores=scores(), latency_ms=150, failure_code="")
-    )
+    return FakeJudgeClient(JudgeResult(axis_scores=scores(), latency_ms=150, failure_code=""))
 
 
 def default_record(**overrides: object) -> JudgeEvidenceRecord:
+    def digest(value: str) -> str:
+        return "sha256:" + hashlib.sha256(value.encode()).hexdigest()
+
     defaults = {
         "week_id": "2026-W28",
         "suite_version": "suite-v1",
@@ -120,9 +126,31 @@ def default_record(**overrides: object) -> JudgeEvidenceRecord:
         "judge_model": "judge-model-a",
         "blinded_candidate_a": "A",
         "blinded_candidate_b": "B",
+        "task_class": "synthesize",
+        "task_context_hash": digest("context"),
+        "rubric_fingerprint": digest("rubric"),
+        "candidate_a_hash": digest("candidate-a"),
+        "candidate_b_hash": digest("candidate-b"),
         "status": "pending",
     }
     defaults.update(overrides)
+    status = defaults["status"]
+    if status == "scored":
+        score_json = json.dumps(
+            [{"axis": "x", "rationale_hash": digest("rationale"), "score": 1}],
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        defaults.setdefault("axis_scores_json", score_json)
+        defaults.setdefault("evidence_hash", digest(score_json))
+    elif status == "failed":
+        defaults.setdefault("failure_code", "judge_failure")
+    elif status == "timeout":
+        defaults.setdefault("failure_code", "judge_timeout")
+    elif status == "schema_error":
+        defaults.setdefault("failure_code", "invalid_judge_schema")
+    elif status == "stale_claim":
+        defaults.setdefault("failure_code", "reconciliation_required")
     return JudgeEvidenceRecord(**defaults)  # type: ignore[arg-type]
 
 
@@ -137,6 +165,16 @@ class TestRubricValidation:
         assert r.axis_names == ("synthesis_quality", "source_handling", "nuance")
         assert r.axis("synthesis_quality").min_score == 1
         assert r.axis("synthesis_quality").max_score == 5
+
+    @pytest.mark.parametrize("value", [True, False, 3.5])
+    def test_non_integer_scores_are_rejected(self, value: object) -> None:
+        with pytest.raises(ValueError, match="integer"):
+            AxisScore(axis="quality", score=value, rationale="evidence")  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize("value", [True, 1.5])
+    def test_non_integer_bounds_are_rejected(self, value: object) -> None:
+        with pytest.raises(ValueError, match="integers"):
+            RubricAxis("quality", value, 5, True)  # type: ignore[arg-type]
 
     def test_unknown_axis_fails_validation(self) -> None:
         r = rubric()
@@ -189,8 +227,12 @@ class TestRubricValidation:
             version="rubric-v2",
             task_class="synthesize",
             axes=(
-                RubricAxis(name="synthesis_quality", min_score=1, max_score=5, requires_evidence=True),
-                RubricAxis(name="source_handling", min_score=1, max_score=5, requires_evidence=True),
+                RubricAxis(
+                    name="synthesis_quality", min_score=1, max_score=5, requires_evidence=True
+                ),
+                RubricAxis(
+                    name="source_handling", min_score=1, max_score=5, requires_evidence=True
+                ),
                 RubricAxis(name="nuance", min_score=0, max_score=3, requires_evidence=False),
             ),
         )
@@ -201,8 +243,12 @@ class TestRubricValidation:
             version="rubric-v3",
             task_class="synthesize",
             axes=(
-                RubricAxis(name="synthesis_quality", min_score=1, max_score=10, requires_evidence=True),
-                RubricAxis(name="source_handling", min_score=1, max_score=5, requires_evidence=True),
+                RubricAxis(
+                    name="synthesis_quality", min_score=1, max_score=10, requires_evidence=True
+                ),
+                RubricAxis(
+                    name="source_handling", min_score=1, max_score=5, requires_evidence=True
+                ),
                 RubricAxis(name="nuance", min_score=0, max_score=3, requires_evidence=False),
             ),
         )
@@ -243,10 +289,11 @@ class TestBlinding:
         c2 = blind_candidates("content-a", "content-b", salt="s", order=("B", "A"))
         assert c1[0].blinded_id == "A"
         assert c1[1].blinded_id == "B"
-        assert c2[0].blinded_id == "B"
-        assert c2[1].blinded_id == "A"
+        assert c2[0].blinded_id == "A"
+        assert c2[1].blinded_id == "B"
         assert c1[0].content_hash == c2[1].content_hash
         assert c1[1].content_hash == c2[0].content_hash
+        assert c1[0].content == c2[1].content
 
     def test_deterministic_hashing(self) -> None:
         c1 = blind_candidates("x", "y", salt="s")
@@ -341,15 +388,7 @@ class TestJudgeJournal:
     def test_pending_record_must_not_have_scores(self, tmp_path: Path) -> None:
         """A pending record with scores is invalid and rejected at claim time."""
         journal = JudgeEvidenceJournal(tmp_path / "judge.jsonl")
-        bad = JudgeEvidenceRecord(
-            week_id="w",
-            suite_version="s",
-            item_id="i",
-            rubric_version="r",
-            judge_model="j",
-            blinded_candidate_a="A",
-            blinded_candidate_b="B",
-            status="pending",
+        bad = default_record(
             axis_scores_json='[{"axis":"x","score":1,"rationale":"r"}]',
         )
         with pytest.raises(ValueError, match="pending record must not have scores"):
@@ -375,6 +414,80 @@ class TestJudgeJournal:
         with journal.path.open("ab") as handle:
             handle.write(b'{"torn":')
         assert len(journal.replay()) == 1
+
+    def test_torn_tail_recovery_is_fsynced_on_duplicate(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        journal = JudgeEvidenceJournal(tmp_path / "judge.jsonl")
+        record = default_record()
+        journal.claim(record)
+        with journal.path.open("ab") as handle:
+            handle.write(b'{"torn":')
+        calls = 0
+        real_fsync = os.fsync
+
+        def observing_fsync(fd: int) -> None:
+            nonlocal calls
+            calls += 1
+            real_fsync(fd)
+
+        monkeypatch.setattr(os, "fsync", observing_fsync)
+        assert journal.claim(record) is False
+        assert calls == 1
+        assert journal.path.read_bytes().endswith(b"\n")
+
+    def test_short_write_is_completed_before_claim_returns(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        journal = JudgeEvidenceJournal(tmp_path / "judge.jsonl")
+        real_write = os.write
+        writes = 0
+
+        def short_write(fd: int, payload: bytes) -> int:
+            nonlocal writes
+            writes += 1
+            prefix = payload[: max(1, len(payload) // 3)]
+            return real_write(fd, prefix)
+
+        monkeypatch.setattr(os, "write", short_write)
+        assert journal.claim(default_record()) is True
+        assert writes > 1
+        assert len(journal.replay()) == 1
+
+    def test_short_reads_never_truncate_a_valid_claim(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        journal = JudgeEvidenceJournal(tmp_path / "judge.jsonl")
+        record = default_record()
+        assert journal.claim(record) is True
+        original = journal.path.read_bytes()
+        real_read = os.read
+
+        def short_read(fd: int, size: int) -> bytes:
+            return real_read(fd, min(size, 17))
+
+        monkeypatch.setattr(os, "read", short_read)
+        assert journal.claim(record) is False
+        assert journal.path.read_bytes() == original
+
+    @pytest.mark.parametrize("attack", ["boolean_score", "forged_evidence_hash"])
+    def test_replay_rejects_forged_scored_evidence(self, tmp_path: Path, attack: str) -> None:
+        path = tmp_path / "judge.jsonl"
+        payload = default_record(status="scored").to_dict()
+        if attack == "boolean_score":
+            scores_payload = json.loads(payload["axis_scores_json"])
+            scores_payload[0]["score"] = True
+            payload["axis_scores_json"] = json.dumps(
+                scores_payload, sort_keys=True, separators=(",", ":")
+            )
+            payload["evidence_hash"] = (
+                "sha256:" + hashlib.sha256(payload["axis_scores_json"].encode()).hexdigest()
+            )
+        else:
+            payload["evidence_hash"] = "sha256:" + "0" * 64
+        path.write_text(json.dumps(payload) + "\n")
+        with pytest.raises(JudgeJournalCorruptionError):
+            JudgeEvidenceJournal(path).replay()
 
     def test_corruption_before_final_line_is_loud(self, tmp_path: Path) -> None:
         journal = JudgeEvidenceJournal(tmp_path / "judge.jsonl")
@@ -477,6 +590,7 @@ class TestJudgeJournal:
             week_id="2026-W28",
             suite_version="suite-v1",
             judge_model="judge-a",
+            candidate_models=("candidate-a", "candidate-b"),
         )
         content = journal.path.read_text()
         for sentinel in (
@@ -496,6 +610,141 @@ class TestJudgeJournal:
 
 
 class TestScoreAndPersist:
+    def test_rejects_self_judging_before_claim(self, tmp_path: Path) -> None:
+        journal = JudgeEvidenceJournal(tmp_path / "judge.jsonl")
+        client = default_client()
+        with pytest.raises(ValueError, match="may not judge"):
+            score_and_persist(
+                request=blinded_request(),
+                rubric=rubric(),
+                client=client,
+                journal=journal,
+                week_id="2026-W28",
+                suite_version="suite-v1",
+                judge_model="candidate-a",
+                candidate_models=("candidate-a", "candidate-b"),
+            )
+        assert client.call_count == 0
+        assert not journal.path.exists()
+
+    @pytest.mark.parametrize(
+        "judge_request",
+        [
+            replace(blinded_request(), rubric_version="other"),
+            replace(blinded_request(), task_class="wrestle"),
+        ],
+    )
+    def test_rejects_request_rubric_mismatch(
+        self, tmp_path: Path, judge_request: BlindedJudgeRequest
+    ) -> None:
+        with pytest.raises(ValueError, match="differ"):
+            score_and_persist(
+                request=judge_request,
+                rubric=rubric(),
+                client=default_client(),
+                journal=JudgeEvidenceJournal(tmp_path / "judge.jsonl"),
+                week_id="2026-W28",
+                suite_version="suite-v1",
+                judge_model="judge-a",
+                candidate_models=("candidate-a", "candidate-b"),
+            )
+
+    def test_exact_content_context_and_rubric_definition_bind_identity(
+        self, tmp_path: Path
+    ) -> None:
+        journal = JudgeEvidenceJournal(tmp_path / "judge.jsonl")
+        client = default_client()
+        base = blinded_request()
+        changed_content = BlindedJudgeRequest(
+            task_class=base.task_class,
+            item_id=base.item_id,
+            task_context=base.task_context,
+            candidates=blind_candidates("changed", "Candidate B content", salt="test-salt"),
+            rubric_version=base.rubric_version,
+        )
+        changed_context = replace(base, task_context="different qualitative task context")
+        changed_rubric = make_rubric(
+            version="rubric-v1",
+            task_class="synthesize",
+            axes=(RubricAxis("quality", 0, 5, True),),
+        )
+        for request, current_rubric in (
+            (base, rubric()),
+            (changed_content, rubric()),
+            (changed_context, rubric()),
+            (base, changed_rubric),
+        ):
+            score_and_persist(
+                request=request,
+                rubric=current_rubric,
+                client=client,
+                journal=journal,
+                week_id="2026-W28",
+                suite_version="suite-v1",
+                judge_model="judge-a",
+                candidate_models=("candidate-a", "candidate-b"),
+            )
+        assert client.call_count == 4
+        assert len(journal.replay()) == 4
+
+    def test_forged_content_hash_cannot_alias_different_body(self, tmp_path: Path) -> None:
+        journal = JudgeEvidenceJournal(tmp_path / "judge.jsonl")
+        client = default_client()
+        base = blinded_request()
+        candidate_a, candidate_b = base.candidates
+        forged = replace(
+            base,
+            candidates=(
+                BlindedCandidate("A", candidate_a.content_hash, "forged different body"),
+                candidate_b,
+            ),
+        )
+        for request in (base, forged):
+            score_and_persist(
+                request=request,
+                rubric=rubric(),
+                client=client,
+                journal=journal,
+                week_id="2026-W28",
+                suite_version="suite-v1",
+                judge_model="judge-a",
+                candidate_models=("candidate-a", "candidate-b"),
+            )
+        assert client.call_count == 2
+        assert len(journal.replay()) == 2
+
+    def test_judge_receives_content_but_storage_keeps_only_hashes(self, tmp_path: Path) -> None:
+        journal = JudgeEvidenceJournal(tmp_path / "judge.jsonl")
+        client = default_client()
+        request = blinded_request()
+        score_and_persist(
+            request=request,
+            rubric=rubric(),
+            client=client,
+            journal=journal,
+            week_id="2026-W28",
+            suite_version="suite-v1",
+            judge_model="judge-a",
+            candidate_models=("candidate-a", "candidate-b"),
+        )
+        assert client.last_request is not None
+        assert [candidate.content for candidate in client.last_request.candidates] == [
+            "Candidate A content",
+            "Candidate B content",
+        ]
+        persisted = journal.path.read_text()
+        for forbidden in (
+            "Candidate A content",
+            "Candidate B content",
+            "Compare synthesis quality",
+            "Good synthesis",
+            "Adequate",
+            "Minor nuance captured",
+            "candidate-a",
+            "candidate-b",
+        ):
+            assert forbidden not in persisted
+
     def test_successful_score_and_persist(self, tmp_path: Path) -> None:
         journal = JudgeEvidenceJournal(tmp_path / "judge.jsonl")
         req = blinded_request()
@@ -508,7 +757,7 @@ class TestScoreAndPersist:
             week_id="2026-W28",
             suite_version="suite-v1",
             judge_model="judge-a",
-            now_ms=1000,
+            candidate_models=("candidate-a", "candidate-b"),
         )
         assert record is not None
         assert record.status == "scored"
@@ -529,6 +778,7 @@ class TestScoreAndPersist:
             week_id="2026-W28",
             suite_version="suite-v1",
             judge_model="judge-a",
+            candidate_models=("candidate-a", "candidate-b"),
         )
         r2 = score_and_persist(
             request=req,
@@ -538,9 +788,10 @@ class TestScoreAndPersist:
             week_id="2026-W28",
             suite_version="suite-v1",
             judge_model="judge-a",
+            candidate_models=("candidate-a", "candidate-b"),
         )
         assert r1 is not None
-        assert r2 is None
+        assert r2 == r1
         assert client.call_count == 1  # only one external call
 
     def test_schema_error_persists_failure_code(self, tmp_path: Path) -> None:
@@ -558,10 +809,11 @@ class TestScoreAndPersist:
             week_id="2026-W28",
             suite_version="suite-v1",
             judge_model="judge-a",
+            candidate_models=("candidate-a", "candidate-b"),
         )
         assert record is not None
         assert record.status == "schema_error"
-        assert "unknown axis" in record.failure_code
+        assert record.failure_code == "invalid_judge_schema"
 
     def test_judge_failure_persists_fixed_failure_code(self, tmp_path: Path) -> None:
         journal = JudgeEvidenceJournal(tmp_path / "judge.jsonl")
@@ -575,6 +827,7 @@ class TestScoreAndPersist:
             week_id="2026-W28",
             suite_version="suite-v1",
             judge_model="judge-a",
+            candidate_models=("candidate-a", "candidate-b"),
         )
         assert record is not None
         assert record.status == "failed"
@@ -593,6 +846,7 @@ class TestScoreAndPersist:
             week_id="2026-W28",
             suite_version="suite-v1",
             judge_model="judge-a",
+            candidate_models=("candidate-a", "candidate-b"),
         )
         assert record is not None
         assert record.status == "timeout"
@@ -601,7 +855,7 @@ class TestScoreAndPersist:
     def test_judge_client_failure_code_persisted(self, tmp_path: Path) -> None:
         journal = JudgeEvidenceJournal(tmp_path / "judge.jsonl")
         client = FakeJudgeClient(
-            JudgeResult(axis_scores=(), latency_ms=5, failure_code="model_unavailable")
+            JudgeResult(axis_scores=(), latency_ms=5, failure_code="judge_unavailable")
         )
         req = blinded_request()
         record = score_and_persist(
@@ -612,10 +866,11 @@ class TestScoreAndPersist:
             week_id="2026-W28",
             suite_version="suite-v1",
             judge_model="judge-a",
+            candidate_models=("candidate-a", "candidate-b"),
         )
         assert record is not None
         assert record.status == "failed"
-        assert record.failure_code == "model_unavailable"
+        assert record.failure_code == "judge_unavailable"
 
     def test_different_order_produces_different_claim_id(self, tmp_path: Path) -> None:
         journal = JudgeEvidenceJournal(tmp_path / "judge.jsonl")
@@ -630,6 +885,7 @@ class TestScoreAndPersist:
             week_id="2026-W28",
             suite_version="suite-v1",
             judge_model="judge-a",
+            candidate_models=("candidate-a", "candidate-b"),
         )
         r2 = score_and_persist(
             request=req2,
@@ -639,6 +895,7 @@ class TestScoreAndPersist:
             week_id="2026-W28",
             suite_version="suite-v1",
             judge_model="judge-a",
+            candidate_models=("candidate-a", "candidate-b"),
         )
         assert r1 is not None
         assert r2 is not None
@@ -657,6 +914,7 @@ class TestScoreAndPersist:
             week_id="2026-W28",
             suite_version="suite-v1",
             judge_model="judge-a",
+            candidate_models=("candidate-a", "candidate-b"),
         )
         content = journal.path.read_text()
         for sentinel in ("sk-SECRETKEY123", "private-sentinel", "Candidate A content"):
@@ -682,9 +940,9 @@ class TestAuthorityBoundary:
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
                     for alias in node.names:
-                        assert not any(
-                            alias.name.startswith(mod) for mod in forbidden_modules
-                        ), f"{module_path} imports forbidden module {alias.name}"
+                        assert not any(alias.name.startswith(mod) for mod in forbidden_modules), (
+                            f"{module_path} imports forbidden module {alias.name}"
+                        )
                 elif isinstance(node, ast.ImportFrom):
                     assert not any(
                         (node.module or "").startswith(mod) for mod in forbidden_modules
@@ -740,6 +998,7 @@ class TestIntegration:
             week_id="2026-W28",
             suite_version="suite-v1",
             judge_model="judge-a",
+            candidate_models=("candidate-a", "candidate-b"),
         )
         assert rec1 is not None
         assert rec1.status == "scored"
@@ -756,11 +1015,12 @@ class TestIntegration:
             week_id="2026-W28",
             suite_version="suite-v1",
             judge_model="judge-a",
+            candidate_models=("candidate-a", "candidate-b"),
         )
         assert rec2 is not None
         assert rec2.status == "scored"
-        assert rec2.blinded_candidate_a == "B"
-        assert rec2.blinded_candidate_b == "A"
+        assert rec2.blinded_candidate_a == "A"
+        assert rec2.blinded_candidate_b == "B"
 
         # Two distinct records in journal
         records = list(journal.replay().values())
@@ -773,30 +1033,28 @@ class TestIntegration:
         journal = JudgeEvidenceJournal(tmp_path / "judge.jsonl")
         req = blinded_request()
         # Simulate crash: claim but never settle
-        pending = JudgeEvidenceRecord(
-            week_id="2026-W28",
-            suite_version="suite-v1",
-            item_id=req.item_id,
-            rubric_version=req.rubric_version,
+        pending = default_record(
             judge_model="judge-a",
-            blinded_candidate_a=req.candidates[0].blinded_id,
-            blinded_candidate_b=req.candidates[1].blinded_id,
-            status="pending",
+            task_context_hash="sha256:" + hashlib.sha256(req.task_context.encode()).hexdigest(),
+            rubric_fingerprint=rubric().fingerprint,
+            candidate_a_hash=req.candidates[0].content_binding,
+            candidate_b_hash=req.candidates[1].content_binding,
         )
         journal.claim(pending)
 
         # Second attempt: claim fails (duplicate)
         client = default_client()
-        result = score_and_persist(
-            request=req,
-            rubric=rubric(),
-            client=client,
-            journal=journal,
-            week_id="2026-W28",
-            suite_version="suite-v1",
-            judge_model="judge-a",
-        )
-        assert result is None
+        with pytest.raises(JudgeReconciliationRequiredError):
+            score_and_persist(
+                request=req,
+                rubric=rubric(),
+                client=client,
+                journal=journal,
+                week_id="2026-W28",
+                suite_version="suite-v1",
+                judge_model="judge-a",
+                candidate_models=("candidate-a", "candidate-b"),
+            )
         assert client.call_count == 0
 
     def test_concurrent_scoring_race(self, tmp_path: Path) -> None:
@@ -816,15 +1074,14 @@ class TestIntegration:
                     week_id="2026-W28",
                     suite_version="suite-v1",
                     judge_model="judge-a",
+                    candidate_models=("candidate-a", "candidate-b"),
                 )
             )
 
         with ThreadPoolExecutor(max_workers=2) as pool:
             list(pool.map(lambda _: attempt(), range(2)))
-        settled = [r for r in results if r is not None]
-        duplicates = [r for r in results if r is None]
-        assert len(settled) == 1
-        assert len(duplicates) == 1
+        assert len(results) == 2
+        assert results[0] == results[1]
         assert client.call_count == 1
 
     def test_multiprocess_claim_race(self, tmp_path: Path) -> None:
@@ -832,10 +1089,7 @@ class TestIntegration:
         path = str(tmp_path / "judge.jsonl")
         ctx = multiprocessing.get_context("spawn")
         queue: multiprocessing.Queue[bool] = ctx.Queue()
-        workers = [
-            ctx.Process(target=_attempt_judge_claim, args=(path, queue))
-            for _ in range(2)
-        ]
+        workers = [ctx.Process(target=_attempt_judge_claim, args=(path, queue)) for _ in range(2)]
         for w in workers:
             w.start()
         for w in workers:
@@ -857,6 +1111,7 @@ class TestIntegration:
             week_id="2026-W28",
             suite_version="suite-v1",
             judge_model="judge-a",
+            candidate_models=("candidate-a", "candidate-b"),
         )
         assert record is not None
         parsed = json.loads(record.axis_scores_json)
@@ -870,12 +1125,24 @@ class TestIntegration:
         journal2 = JudgeEvidenceJournal(tmp_path / "j2.jsonl")
         req = blinded_request()
         r1 = score_and_persist(
-            request=req, rubric=rubric(), client=default_client(), journal=journal1,
-            week_id="w", suite_version="s", judge_model="j",
+            request=req,
+            rubric=rubric(),
+            client=default_client(),
+            journal=journal1,
+            week_id="w",
+            suite_version="s",
+            judge_model="j",
+            candidate_models=("candidate-a", "candidate-b"),
         )
         r2 = score_and_persist(
-            request=req, rubric=rubric(), client=default_client(), journal=journal2,
-            week_id="w", suite_version="s", judge_model="j",
+            request=req,
+            rubric=rubric(),
+            client=default_client(),
+            journal=journal2,
+            week_id="w",
+            suite_version="s",
+            judge_model="j",
+            candidate_models=("candidate-a", "candidate-b"),
         )
         assert r1 is not None and r2 is not None
         assert r1.evidence_hash == r2.evidence_hash

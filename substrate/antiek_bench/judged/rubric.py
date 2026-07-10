@@ -8,8 +8,12 @@ invalidates old evidence by design.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from typing import Literal
+
+JudgeFailureCode = Literal["", "judge_unavailable", "judge_refused"]
 
 
 @dataclass(frozen=True)
@@ -24,6 +28,8 @@ class RubricAxis:
     def __post_init__(self) -> None:
         if not self.name.strip():
             raise ValueError("axis name must not be blank")
+        if type(self.min_score) is not int or type(self.max_score) is not int:
+            raise ValueError("score bounds must be integers")
         if self.min_score >= self.max_score:
             raise ValueError("min_score must be less than max_score")
 
@@ -64,23 +70,36 @@ class RubricVersion:
                 return a
         raise KeyError(f"unknown axis: {name}")
 
-
-def now_iso() -> str:
-    """UTC ISO-8601 timestamp, second precision."""
-    return datetime.now(UTC).replace(microsecond=0).isoformat()
+    @property
+    def fingerprint(self) -> str:
+        material = json.dumps(
+            {
+                "version": self.version,
+                "task_class": self.task_class,
+                "axes": [
+                    [axis.name, axis.min_score, axis.max_score, axis.requires_evidence]
+                    for axis in self.axes
+                ],
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return "sha256:" + hashlib.sha256(material.encode()).hexdigest()
 
 
 def make_rubric(
     version: str,
     task_class: str,
     axes: tuple[RubricAxis, ...],
+    *,
+    created_at: str = "",
 ) -> RubricVersion:
-    """Construct a rubric with a generated creation timestamp."""
+    """Construct a rubric without ambient-clock input."""
     return RubricVersion(
         version=version,
         task_class=task_class,
         axes=axes,
-        created_at=now_iso(),
+        created_at=created_at,
     )
 
 
@@ -95,6 +114,10 @@ class AxisScore:
     def __post_init__(self) -> None:
         if not self.axis.strip():
             raise ValueError("axis must not be blank")
+        if type(self.score) is not int:
+            raise ValueError("score must be an integer")
+        if len(self.rationale) > 4_000:
+            raise ValueError("rationale must not exceed 4000 characters")
 
 
 @dataclass(frozen=True)
@@ -103,7 +126,13 @@ class JudgeResult:
 
     axis_scores: tuple[AxisScore, ...]
     latency_ms: int
-    failure_code: str
+    failure_code: JudgeFailureCode
+
+    def __post_init__(self) -> None:
+        if self.latency_ms < 0:
+            raise ValueError("latency_ms must be non-negative")
+        if self.failure_code not in {"", "judge_unavailable", "judge_refused"}:
+            raise ValueError("invalid judge failure code")
 
     @property
     def ok(self) -> bool:
@@ -129,8 +158,7 @@ def validate_scores(
             continue
         if not axis.min_score <= score.score <= axis.max_score:
             errors.append(
-                f"axis {score.axis}: {score.score} outside "
-                f"[{axis.min_score}, {axis.max_score}]"
+                f"axis {score.axis}: {score.score} outside [{axis.min_score}, {axis.max_score}]"
             )
         if axis.requires_evidence and not score.rationale.strip():
             errors.append(f"axis {score.axis}: evidence required but rationale is blank")

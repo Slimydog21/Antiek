@@ -13,12 +13,14 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal
 
 Phase = Literal["claim", "settle"]
 JudgeStatus = Literal["pending", "scored", "failed", "timeout", "schema_error", "stale_claim"]
+_SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
 
 class JudgeJournalCorruptionError(RuntimeError):
@@ -33,6 +35,11 @@ def _claim_id(
     judge_model: str,
     blinded_candidate_a: str,
     blinded_candidate_b: str,
+    task_class: str,
+    task_context_hash: str,
+    rubric_fingerprint: str,
+    candidate_a_hash: str,
+    candidate_b_hash: str,
 ) -> str:
     """Deterministic identity over the full evaluation scope."""
     material = json.dumps(
@@ -44,6 +51,11 @@ def _claim_id(
             judge_model,
             blinded_candidate_a,
             blinded_candidate_b,
+            task_class,
+            task_context_hash,
+            rubric_fingerprint,
+            candidate_a_hash,
+            candidate_b_hash,
         ],
         separators=(",", ":"),
     )
@@ -61,6 +73,11 @@ class JudgeEvidenceRecord:
     judge_model: str
     blinded_candidate_a: str
     blinded_candidate_b: str
+    task_class: str
+    task_context_hash: str
+    rubric_fingerprint: str
+    candidate_a_hash: str
+    candidate_b_hash: str
     status: JudgeStatus
     axis_scores_json: str = ""
     evidence_hash: str = ""
@@ -78,6 +95,11 @@ class JudgeEvidenceRecord:
             self.judge_model,
             self.blinded_candidate_a,
             self.blinded_candidate_b,
+            self.task_class,
+            self.task_context_hash,
+            self.rubric_fingerprint,
+            self.candidate_a_hash,
+            self.candidate_b_hash,
         )
 
     @property
@@ -109,6 +131,11 @@ def _validate_record(record: JudgeEvidenceRecord) -> None:
         "judge_model",
         "blinded_candidate_a",
         "blinded_candidate_b",
+        "task_class",
+        "task_context_hash",
+        "rubric_fingerprint",
+        "candidate_a_hash",
+        "candidate_b_hash",
     ):
         if not str(getattr(record, name)).strip():
             raise ValueError(f"{name} must not be blank")
@@ -124,11 +151,56 @@ def _validate_record(record: JudgeEvidenceRecord) -> None:
         raise ValueError(f"invalid status: {record.status!r}")
     if record.latency_ms < 0:
         raise ValueError("latency_ms must be non-negative")
+    for name in (
+        "task_context_hash",
+        "rubric_fingerprint",
+        "candidate_a_hash",
+        "candidate_b_hash",
+    ):
+        if _SHA256_RE.fullmatch(str(getattr(record, name))) is None:
+            raise ValueError(f"{name} must be an exact SHA-256 reference")
     if record.status == "pending":
         if record.axis_scores_json:
             raise ValueError("pending record must not have scores")
         if record.evidence_hash:
             raise ValueError("pending record must not have evidence_hash")
+        if record.failure_code:
+            raise ValueError("pending record must not have failure_code")
+    failure_codes = {
+        "scored": {""},
+        "failed": {"judge_unavailable", "judge_refused", "judge_failure"},
+        "timeout": {"judge_timeout"},
+        "schema_error": {"invalid_judge_schema"},
+        "stale_claim": {"reconciliation_required"},
+        "pending": {""},
+    }
+    if record.failure_code not in failure_codes[record.status]:
+        raise ValueError("failure_code is not allowed for status")
+    if record.status == "scored":
+        if not record.axis_scores_json or _SHA256_RE.fullmatch(record.evidence_hash) is None:
+            raise ValueError("scored record requires scores and evidence hash")
+        expected_evidence_hash = (
+            "sha256:" + hashlib.sha256(record.axis_scores_json.encode()).hexdigest()
+        )
+        if record.evidence_hash != expected_evidence_hash:
+            raise ValueError("evidence_hash does not match persisted scores")
+        decoded = json.loads(record.axis_scores_json)
+        if not isinstance(decoded, list) or not decoded:
+            raise ValueError("scored record requires a non-empty score list")
+        for score in decoded:
+            if not isinstance(score, dict) or set(score) != {"axis", "score", "rationale_hash"}:
+                raise ValueError("persisted score has invalid shape")
+            if not isinstance(score["axis"], str) or not score["axis"].strip():
+                raise ValueError("persisted score axis is invalid")
+            if type(score["score"]) is not int:
+                raise ValueError("persisted score value must be an integer")
+            if (
+                not isinstance(score["rationale_hash"], str)
+                or _SHA256_RE.fullmatch(score["rationale_hash"]) is None
+            ):
+                raise ValueError("persisted rationale hash is invalid")
+    elif record.axis_scores_json or record.evidence_hash:
+        raise ValueError("non-scored record must not persist scores")
 
 
 class JudgeEvidenceJournal:
@@ -143,7 +215,10 @@ class JudgeEvidenceJournal:
 
     def __init__(self, path: Path | str) -> None:
         self._path = Path(path)
+        parent_existed = self._path.parent.exists()
         self._path.parent.mkdir(parents=True, exist_ok=True)
+        if not parent_existed:
+            self._fsync_directory(self._path.parent.parent)
 
     @property
     def path(self) -> Path:
@@ -173,9 +248,7 @@ class JudgeEvidenceJournal:
                 TypeError,
                 ValueError,
             ) as exc:
-                raise JudgeJournalCorruptionError(
-                    f"invalid journal row {index + 1}"
-                ) from exc
+                raise JudgeJournalCorruptionError(f"invalid journal row {index + 1}") from exc
         return events
 
     @staticmethod
@@ -187,9 +260,7 @@ class JudgeEvidenceJournal:
             phase = "terminal" if event.is_terminal else "pending"
             seen = phases.setdefault(cid, set())
             if phase in seen or (phase == "terminal" and "pending" not in seen):
-                raise JudgeJournalCorruptionError(
-                    f"invalid event sequence for {cid}"
-                )
+                raise JudgeJournalCorruptionError(f"invalid event sequence for {cid}")
             seen.add(phase)
             records[cid] = event
         return records
@@ -197,18 +268,47 @@ class JudgeEvidenceJournal:
     def _read_records(self, fd: int) -> tuple[list[JudgeEvidenceRecord], int]:
         """Parse existing journal content, returning events and valid end offset."""
         os.lseek(fd, 0, os.SEEK_SET)
-        raw = os.read(fd, os.fstat(fd).st_size)
+        target_size = os.fstat(fd).st_size
+        chunks: list[bytes] = []
+        remaining = target_size
+        while remaining:
+            chunk = os.read(fd, remaining)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        raw = b"".join(chunks)
+        if len(raw) != target_size:
+            raise OSError("journal read ended before captured file size")
         events = self._parse(raw)
         if raw and not raw.endswith(b"\n"):
             valid_end = raw.rfind(b"\n") + 1
             os.ftruncate(fd, valid_end)
+            os.fsync(fd)
             return events, valid_end
         return events, len(raw)
 
     def _append_locked(self, fd: int, record: JudgeEvidenceRecord) -> None:
         line = json.dumps(record.to_dict(), sort_keys=True, separators=(",", ":"))
-        os.write(fd, (line + "\n").encode())
+        payload = (line + "\n").encode()
+        offset = 0
+        while offset < len(payload):
+            written = os.write(fd, payload[offset:])
+            if written <= 0:
+                raise OSError("journal append made no progress")
+            offset += written
         os.fsync(fd)
+
+    @staticmethod
+    def _fsync_directory(path: Path) -> None:
+        directory_fd = os.open(str(path), os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+
+    def _fsync_parent(self) -> None:
+        self._fsync_directory(self._path.parent)
 
     def claim(self, record: JudgeEvidenceRecord) -> bool:
         """Atomically claim one judge evaluation before calling the judge.
@@ -219,6 +319,7 @@ class JudgeEvidenceJournal:
         if record.status != "pending":
             raise ValueError("claim requires pending status")
         _validate_record(record)
+        created = not self._path.exists()
         fd = os.open(str(self._path), os.O_RDWR | os.O_APPEND | os.O_CREAT, 0o600)
         try:
             fcntl.flock(fd, fcntl.LOCK_EX)
@@ -227,23 +328,22 @@ class JudgeEvidenceJournal:
             if record.computed_claim_id in current:
                 return False
             self._append_locked(fd, record)
+            if created:
+                self._fsync_parent()
             return True
         finally:
             fcntl.flock(fd, fcntl.LOCK_UN)
             os.close(fd)
 
-    def settle(
-        self, record: JudgeEvidenceRecord, stale_ttl_ms: int = 600_000
-    ) -> bool:
+    def settle(self, record: JudgeEvidenceRecord) -> bool:
         """Atomically settle a pending claim.
 
         Returns True if settlement succeeded.  Returns False if:
         - The claim is already terminal (duplicate settlement), or
         - No pending claim exists (nothing to settle).
 
-        If the pending claim's age exceeds ``stale_ttl_ms``, it is marked
-        reconciliation-required (stale_claim) and the caller's settlement is
-        silently discarded — the stale claim is never retried.
+        Crash-orphaned pending claims are reconciled explicitly through
+        ``mark_stale`` and are never retried implicitly.
         """
         if record.status == "pending":
             raise ValueError("settlement must be terminal")
@@ -290,6 +390,11 @@ class JudgeEvidenceJournal:
                 judge_model=existing.judge_model,
                 blinded_candidate_a=existing.blinded_candidate_a,
                 blinded_candidate_b=existing.blinded_candidate_b,
+                task_class=existing.task_class,
+                task_context_hash=existing.task_context_hash,
+                rubric_fingerprint=existing.rubric_fingerprint,
+                candidate_a_hash=existing.candidate_a_hash,
+                candidate_b_hash=existing.candidate_b_hash,
                 status="stale_claim",
                 failure_code="reconciliation_required",
             )

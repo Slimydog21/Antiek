@@ -22,10 +22,23 @@ def _content_hash(content: str, salt: str) -> str:
 
 @dataclass(frozen=True)
 class BlindedCandidate:
-    """One blinded candidate with a content hash.  No provider/model identity."""
+    """One candidate body labeled only by its position."""
 
     blinded_id: str
     content_hash: str
+    content: str
+
+    def __post_init__(self) -> None:
+        if self.blinded_id not in {"A", "B"}:
+            raise ValueError("blinded_id must be A or B")
+        if not self.content_hash.startswith("sha256:"):
+            raise ValueError("content_hash must be a SHA-256 reference")
+
+    @property
+    def content_binding(self) -> str:
+        """Bind the supplied body to its salted hash, even for manual instances."""
+        material = json.dumps([self.content_hash, self.content], separators=(",", ":"))
+        return "sha256:" + hashlib.sha256(material.encode()).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -53,6 +66,8 @@ class BlindedJudgeRequest:
             raise ValueError("task_class must not be blank")
         if not self.item_id.strip():
             raise ValueError("item_id must not be blank")
+        if not self.task_context.strip():
+            raise ValueError("task_context must not be blank")
         if not self.rubric_version.strip():
             raise ValueError("rubric_version must not be blank")
 
@@ -63,7 +78,11 @@ class BlindedJudgeRequest:
             "item_id": self.item_id,
             "task_context": self.task_context,
             "candidates": [
-                {"blinded_id": c.blinded_id, "content_hash": c.content_hash}
+                {
+                    "blinded_id": c.blinded_id,
+                    "content_hash": c.content_hash,
+                    "content": c.content,
+                }
                 for c in self.candidates
             ],
             "rubric_version": self.rubric_version,
@@ -83,20 +102,24 @@ def blind_candidates(
     content maps to which label; swapping order produces a distinct judge
     request for position-bias measurement.
     """
-    if len(order) != 2 or len(set(order)) != 2:
-        raise ValueError("order must contain two distinct labels")
+    if set(order) != {"A", "B"}:
+        raise ValueError("order must contain the two distinct labels A and B")
+    if not salt:
+        raise ValueError("salt must not be blank")
     contents = {"A": content_a, "B": content_b}
+    positions = ("A", "B")
     cands = tuple(
         BlindedCandidate(
-            blinded_id=label,
-            content_hash=_content_hash(contents[label], salt),
+            blinded_id=position,
+            content_hash=_content_hash(contents[source], salt),
+            content=contents[source],
         )
-        for label in order
+        for position, source in zip(positions, order, strict=True)
     )
     return cands[0], cands[1]
 
 
-@dataclass(frozen=True)
+@dataclass
 class BlindingContext:
     """Private join map: blinded_id → physical identity.  Never serialized."""
 
@@ -106,4 +129,5 @@ class BlindingContext:
         self.join_map[blinded_id] = {"provider": provider, "model": model}
 
     def lookup(self, blinded_id: str) -> dict[str, str] | None:
-        return self.join_map.get(blinded_id)
+        identity = self.join_map.get(blinded_id)
+        return dict(identity) if identity is not None else None
