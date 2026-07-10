@@ -335,6 +335,46 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(seedBody).toMatch(/Port path: Research progress draft/i);
   });
 
+  it("stamps session_flywheel_complete host honesty (atb)", () => {
+    render(
+      <HostedHtmlDocumentHost
+        document_id="session_flywheel:sess_1"
+        title="Session flywheel synthesis"
+        view_format="html"
+        source="session_flywheel_complete"
+        html="<p>Session findings</p>"
+      />,
+    );
+    const host = screen.getByTestId("hosted-html-document-host");
+    expect(host.getAttribute("data-session-flywheel")).toBe("true");
+    expect(host.getAttribute("data-source")).toBe("session_flywheel_complete");
+    const honesty = screen.getByTestId("hosted-html-session-flywheel-honesty");
+    expect(honesty.getAttribute("data-twin-seed-path")).toBe(
+      "session_flywheel_complete",
+    );
+    expect(honesty.getAttribute("data-html-first")).toBe("true");
+    expect(honesty.getAttribute("data-session-complete")).toBe("true");
+    expect(honesty.textContent).toMatch(/Session flywheel complete/i);
+    expect(honesty.textContent).toMatch(/recursive note-taker/i);
+    expect(
+      screen
+        .getByTestId("hosted-html-session-flywheel-scorecard-link")
+        .getAttribute("href"),
+    ).toBe("/settings#settings-competitive-dr-scorecard");
+    expect(
+      screen
+        .getByTestId("hosted-html-session-flywheel-twin-matrix-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix/);
+    const seedBody =
+      screen.getByTestId("twin-notes-panel-stub").getAttribute("data-seed-body") ||
+      "";
+    expect(seedBody).toMatch(/Port path: Session flywheel complete/i);
+    expect(
+      screen.getByTestId("hosted-html-open-write").getAttribute("data-write-seed-source"),
+    ).toBe("session_flywheel_complete");
+  });
+
   it("stamps spawn_merge Open Write source from auto-open float (aah)", () => {
     // Residual (aah): openMergedResearchWindow defaults to source=spawn_merge so
     // HostedHtml Open Write preserves Antiek-bench write-seed provenance.

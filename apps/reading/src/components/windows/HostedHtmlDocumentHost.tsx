@@ -380,6 +380,7 @@ export default function HostedHtmlDocumentHost(
     payloadSource === "research_progress_draft";
   const isResearchProgressComplete =
     payloadSource === "research_progress_complete";
+  // Residual (atb): session flywheel complete float twin seed + honesty (parity asz progress).
   const isSessionFlywheel = payloadSource === "session_flywheel_complete";
   // Residual (tr): cohesive multi-spawn unit prompt HTML window.
   const isCollectiveUnitPrompt = payloadSource === "collective_unit_prompt";
@@ -595,7 +596,18 @@ export default function HostedHtmlDocumentHost(
                       .filter(Boolean)
                       .join("\n")
                       .slice(0, 900)
-                  : twinSeedBodyBase;
+                  : isSessionFlywheel
+                    ? [
+                        twinSeedBodyBase,
+                        "",
+                        "Port path: Session flywheel complete float (session synthesis substrate · recursive note-taker · HTML-first · never invent live L3 twin seed · feeds next deep-research turn).",
+                        assetId ? `document_id=${assetId}` : "",
+                        "source=session_flywheel_complete · twin auto-seed if empty · session→prompt flywheel honesty.",
+                      ]
+                        .filter(Boolean)
+                        .join("\n")
+                        .slice(0, 900)
+                    : twinSeedBodyBase;
 
   return (
     <div
@@ -1027,6 +1039,44 @@ export default function HostedHtmlDocumentHost(
                     title="FUTURE-AGENT competitive deep-research quality brief"
                   >
                     FUTURE · competitive DR brief
+                  </a>
+                </p>
+              </div>
+            ) : null}
+            {/* Residual (atb): session flywheel complete float twin seed honesty. */}
+            {isSessionFlywheel ? (
+              <div
+                className="text-[11px] font-mono opacity-80 mt-1 space-y-1"
+                data-testid="hosted-html-session-flywheel-honesty"
+                data-twin-seed-path="session_flywheel_complete"
+                data-auto-seed-if-empty="true"
+                data-html-first="true"
+                data-view-format="html"
+                data-session-complete="true"
+                role="status"
+              >
+                <p>
+                  Session flywheel complete · session synthesis substrate ·
+                  twin auto-seed if empty (recursive note-taker) · feeds next
+                  deep-research turn · never invent live L3 seed · HTML · not
+                  PDF
+                </p>
+                <p className="space-x-3">
+                  <a
+                    href="/settings#settings-competitive-dr-scorecard"
+                    data-testid="hosted-html-session-flywheel-scorecard-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="Settings competitive DR scorecard (session flywheel)"
+                  >
+                    Settings · competitive DR scorecard
+                  </a>
+                  <a
+                    href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md"
+                    data-testid="hosted-html-session-flywheel-twin-matrix-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="FUTURE-AGENT twin note-taker completeness matrix"
+                  >
+                    FUTURE · twin completeness matrix
                   </a>
                 </p>
               </div>
