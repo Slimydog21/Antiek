@@ -1338,3 +1338,8 @@ mechanically proven (parity vn).
 FUTURE-AGENT-SPEC tip → 4bce4ada with closed arcs tt–vv (55 residual ships).
 Competitive delta: swarm handoff tip-true; operator merge PR #465 remains
 highest leverage.
+
+## Residual vx · 2026-07-10 — collective L6 live multi-agent deferred honesty
+CollectiveResearchPanel stamps L6 deferred · offline merge unit only. Competitive
+delta: multi-select collective is not a silent live multi-agent council —
+parity L5 payment deferred honesty.

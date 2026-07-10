@@ -41,6 +41,8 @@
  *     rows (twin-chase batch merge path).
  * 29. Residual (ue): Select open only — multi-select currently open
  *     deep_research_session windows (excludes closed recent-only ids).
+ * 30. Residual (vx): L6 live multi-agent council deferred honesty stamp
+ *     (offline merge unit only · never silent live council).
  * 22. Residual (oj): surface usage_event from collective/merge on metrics
  *     (Antiek-bench recursive rewrite audit).
  * 23. Residual (ol): auto-select newest recent_ring spawn when selection is
@@ -689,10 +691,23 @@ export function CollectiveResearchPanel({
       data-view-format="html"
       data-testid="collective-research-panel"
       data-auto-open-draft={autoOpenDraft ? "true" : "false"}
+      data-l6-live-multiagent="deferred"
+      data-offline-merge-unit="true"
       aria-label="Collective deep research"
     >
       <header>
         <h2>Collective deep research</h2>
+        {/* Residual (vx): L6 live multi-agent council deferred honesty. */}
+        <p
+          className="meta font-mono text-[11px] opacity-80"
+          data-testid="collective-l6-honesty"
+          data-l6-live-multiagent="deferred"
+          data-offline-merge-unit="true"
+          role="status"
+        >
+          L6 live multi-agent council: deferred · offline merge unit only · never
+          silent live council
+        </p>
         <p className="meta">
           Merge multiple subagent instances into one prompt unit, or into a
           draft-combined / parent HTML document

@@ -140,6 +140,20 @@ describe("CollectiveResearchPanel", () => {
     expect(boxes[1].checked).toBe(true);
   });
 
+  it("stamps L6 live multi-agent deferred honesty (vx)", () => {
+    render(
+      <CollectiveResearchPanel availableSpawnIds={["spn_1", "spn_2"]} />,
+    );
+    const panel = screen.getByTestId("collective-research-panel");
+    expect(panel.getAttribute("data-l6-live-multiagent")).toBe("deferred");
+    expect(panel.getAttribute("data-offline-merge-unit")).toBe("true");
+    const honesty = screen.getByTestId("collective-l6-honesty");
+    expect(honesty.getAttribute("data-l6-live-multiagent")).toBe("deferred");
+    expect(honesty.getAttribute("data-offline-merge-unit")).toBe("true");
+    expect(honesty.textContent).toMatch(/L6 live multi-agent council/i);
+    expect(honesty.textContent).toMatch(/offline merge unit only/i);
+  });
+
   it("links to Settings for driver & budget (ig)", () => {
     render(
       <CollectiveResearchPanel availableSpawnIds={["spn_1", "spn_2"]} />,

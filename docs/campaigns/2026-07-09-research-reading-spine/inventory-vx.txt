@@ -1,0 +1,17 @@
+# inventory-vx · collective L6 live multi-agent deferred honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: vx
+date: 2026-07-10
+
+## Closed
+- collective-research-panel data-l6-live-multiagent=deferred · data-offline-merge-unit=true
+- collective-l6-honesty status strip
+- vitest Collective 25 green · /tmp/residual-tests-vx.log
+
+## Product why
+North star multi-agent collective council is L6 deferred. Panel now stamps
+offline merge unit only — never silent live council (parity L5/L7 honesty).
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live multi-agent council L6
