@@ -77,6 +77,62 @@ def test_budget_default_cap_with_known_spend_sidecar(
     assert body["remaining_usd"] == 3.75
 
 
+def test_budget_operator_cap_differs_from_daemon_cap_stays_consistent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Regression (#704): the sidecar records spend against the daemon cap,
+    but the operator's Settings cap takes precedence and may differ. spent
+    and remaining must both be baselined on the Settings cap.
+
+    Sidecar: daemon cap $5, spent $4 (remaining_today == $1). Operator sets a
+    $200 Settings budget. Before the fix, remaining was read straight from
+    remaining_today() ($1, daemon-cap baseline) and spent was re-based on the
+    Settings cap ($200 - $1 = $199) — the bar reads 99.5% consumed and
+    would_exceed fires on nearly every prompt though only $4 was spent.
+
+    Calls read_operator_budget() directly (no FastAPI app) — the readout is a
+    plain function and the defect lives entirely in it.
+    """
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    monkeypatch.delenv("ANTIEK_DAEMON_HOURLY_BUDGET_USD", raising=False)
+    # $4 spend on the daemon's default $5 cap (per-investigation cap is $2).
+    daemon = DaemonBudget(daily_cap_usd=5.0)
+    daemon.reserve(2.0)
+    daemon.reserve(2.0)
+    monkeypatch.setenv("ANTIEK_OPERATOR_BUDGET_USD", "200")
+
+    budget = read_operator_budget()
+
+    assert budget.daily_cap_usd == 200.0
+    assert budget.spent_status == "known"
+    # spend is cap-independent; remaining re-bases on the $200 Settings cap.
+    assert budget.spent_usd == 4.0
+    assert budget.remaining_usd == 196.0
+
+    # The fix propagates to the guard: a $150 prompt no longer falsely trips
+    # would_exceed against the phantom $1 remaining.
+    est = estimate_prompt_cost(
+        PromptCostEstimateRequest(tier="research", prompt_chars=10),
+        budget=budget,
+    )
+    if est.estimated_usd_high is not None:  # pricing is 0.0 placeholder today
+        assert est.would_exceed_budget is (est.estimated_usd_high > 196.0)
+
+
+def test_budget_spent_today_is_cap_independent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`spent_today()` reports raw recorded spend regardless of the cap it is
+    constructed with — the property `read_operator_budget` relies on to keep
+    spent + remaining on one baseline."""
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    DaemonBudget(daily_cap_usd=5.0).reserve(1.5)
+    # A DaemonBudget with a *different* cap still reads the same recorded spend.
+    assert DaemonBudget(daily_cap_usd=200.0).spent_today() == 1.5
+    assert DaemonBudget(daily_cap_usd=1.0).spent_today() == 1.5
+
+
 def test_budget_operator_env_cap(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,

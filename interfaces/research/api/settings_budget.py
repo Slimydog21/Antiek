@@ -279,14 +279,22 @@ def read_operator_budget() -> BudgetResponse:
     # Crucial honesty detail: DaemonBudget.remaining_today() fabricates an
     # in-memory zero-spend snapshot when the file is absent. Settings is a
     # readout, not the daemon, so absence of the sidecar means unknown spend.
+    #
+    # Baseline BOTH numbers on the operator's Settings cap. The sidecar records
+    # spend against the *daemon's* cap (ANTIEK_DAEMON_HOURLY_BUDGET_USD); the
+    # Settings cap (ANTIEK_OPERATOR_BUDGET_USD) takes precedence and may differ.
+    # Reading spend directly (not via the cap-folding remaining_today) keeps
+    # spent + remaining consistent against `daily_cap` regardless of the sidecar
+    # cap — otherwise remaining is baselined on the daemon cap while spent is
+    # baselined on the Settings cap, and the bar + would_exceed go wrong.
     spent: float | None = None
     remaining: float | None = None
     spent_status: SpentStatus = "unknown"
     try:
         if _budget_path().is_file():
             bdg = DaemonBudget(daily_cap_usd=float(daily_cap))
-            remaining = float(bdg.remaining_today())
-            spent = max(0.0, float(daily_cap) - remaining)
+            spent = bdg.spent_today()
+            remaining = max(0.0, float(daily_cap) - spent)
             spent_status = "known"
             notes.append("spent sourced from continuous-daemon daily budget sidecar")
         else:

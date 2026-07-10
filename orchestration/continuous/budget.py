@@ -141,6 +141,18 @@ class DaemonBudget:
         snap = _read_snapshot(_utc_date_stamp(now), self.daily_cap_usd)
         return max(0.0, snap.cap_usd - snap.spent_usd)
 
+    def spent_today(self, *, now: datetime | None = None) -> float:
+        """Today's recorded spend, independent of any cap.
+
+        ``remaining_today()`` folds cap and spend together; a reader that
+        re-bases *remaining* on a different cap than the sidecar recorded
+        (Settings' operator budget vs the daemon's own cap) must read spend
+        directly, or the two numbers end up computed against different
+        baselines and disagree. This accessor is that cap-independent read.
+        """
+        snap = _read_snapshot(_utc_date_stamp(now), self.daily_cap_usd)
+        return max(0.0, snap.spent_usd)
+
     def reserve(
         self,
         expected_cost_usd: float,
