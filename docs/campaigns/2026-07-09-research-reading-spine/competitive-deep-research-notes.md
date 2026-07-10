@@ -3976,3 +3976,10 @@ to vary. vitest 14 green. P0 PR #465. Pivot aqz+ outside path thrash.
 DeepResearchSessionHost + CollectiveResearchPanel consume pure helper
 (data-path-choices-source). Single readiness contract across three surfaces.
 vitest 79 green. P0 PR #465. HARD PIVOT ara+ outside path thrash.
+
+## Residual ara · 2026-07-10 — Midnight Oil north-star templates + plan readiness
+MOIL templates += knowledge-dense refs · multi-agent analysis · budget wrestle ·
+reading merge. Pure moilPlanReadiness (goals+duration → ceiling-ready).
+Competitive delta: autonomous swarm operators start from workstation north-star
+goals with honest plan readiness before price ceiling. vitest 37 green. P0 PR #465.
+Pivot arb+ outside thrash.

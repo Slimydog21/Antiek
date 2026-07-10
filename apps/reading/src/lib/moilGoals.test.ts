@@ -3,6 +3,7 @@ import {
   appendMoilGoalTemplate,
   MOIL_GOAL_TEMPLATES,
   goalsExceedFanout,
+  moilPlanReadiness,
   parseMoilGoalLines,
   recommendedFanoutForGoals,
 } from "./moilGoals";
@@ -31,6 +32,15 @@ describe("moilGoals (aof)", () => {
     }
   });
 
+  it("ships north-star workstation templates (ara)", () => {
+    const ids = MOIL_GOAL_TEMPLATES.map((t) => t.id);
+    expect(ids).toContain("knowledge_dense_refs");
+    expect(ids).toContain("multi_agent_analysis");
+    expect(ids).toContain("budget_wrestle");
+    expect(ids).toContain("reading_merge");
+    expect(MOIL_GOAL_TEMPLATES.length).toBeGreaterThanOrEqual(8);
+  });
+
   it("recommends fan-out to cover goal count (aow)", () => {
     expect(recommendedFanoutForGoals(0)).toBe(1);
     expect(recommendedFanoutForGoals(4)).toBe(4);
@@ -44,5 +54,30 @@ describe("moilGoals (aof)", () => {
     expect(goalsExceedFanout(3, 3)).toBe(false);
     expect(goalsExceedFanout(4, 3)).toBe(true);
     expect(goalsExceedFanout(2, 0)).toBe(true);
+  });
+
+  it("computes plan readiness before ceiling (ara)", () => {
+    expect(moilPlanReadiness({}).plan_ready).toBe(false);
+    expect(moilPlanReadiness({ goalsText: "A" }).plan_ready).toBe(false);
+    expect(
+      moilPlanReadiness({ goalsText: "A\nB", durationMinutes: 30 }).plan_ready,
+    ).toBe(true);
+    const under = moilPlanReadiness({
+      goalsText: "A\nB\nC\nD",
+      durationMinutes: 60,
+      fanoutDepth: 2,
+    });
+    expect(under.goal_count).toBe(4);
+    expect(under.goals_exceed_fanout).toBe(true);
+    expect(under.recommended_fanout).toBe(4);
+    expect(under.summary).toMatch(/under-covers|recommend/i);
+    const ready = moilPlanReadiness({
+      goalsText: "A\nB",
+      durationMinutes: 45,
+      fanoutDepth: 2,
+    });
+    expect(ready.plan_ready).toBe(true);
+    expect(ready.goals_exceed_fanout).toBe(false);
+    expect(ready.summary).toMatch(/plan ready/i);
   });
 });

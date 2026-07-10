@@ -95,6 +95,7 @@ import {
   appendMoilGoalTemplate,
   MOIL_GOAL_TEMPLATES,
   goalsExceedFanout,
+  moilPlanReadiness,
   parseMoilGoalLines,
   recommendedFanoutForGoals,
 } from "../../lib/moilGoals";
@@ -847,6 +848,15 @@ export default function MidnightOil() {
               (outside label so getByLabelText stays unique for goals field). */}
           {(() => {
             const goalLines = parseMoilGoalLines(goalsText);
+            // Residual (ara): pure plan readiness before create + ceiling.
+            const planReady = moilPlanReadiness({
+              goalsText,
+              durationMinutes,
+              fanoutDepth:
+                Number.isFinite(fanoutDepth) && fanoutDepth > 0
+                  ? Math.floor(fanoutDepth)
+                  : MOIL_CEILING_DEFAULT_FANOUT_DEPTH,
+            });
             return (
               <div
                 className="space-y-1 font-mono text-[11px]"
@@ -854,8 +864,26 @@ export default function MidnightOil() {
                 data-goal-count={String(goalLines.length)}
                 data-template-count={String(MOIL_GOAL_TEMPLATES.length)}
                 data-view-format="html"
+                data-plan-ready={String(planReady.plan_ready)}
+                data-duration-ready={String(planReady.duration_ready)}
+                data-goals-ready={String(planReady.goals_ready)}
                 role="status"
               >
+                <p
+                  className="opacity-80"
+                  data-testid="moil-plan-readiness"
+                  data-plan-ready={String(planReady.plan_ready)}
+                  data-goal-count={String(planReady.goal_count)}
+                  data-duration-minutes={String(planReady.duration_minutes)}
+                  data-fanout-depth={String(planReady.fanout_depth)}
+                  data-goals-exceed-fanout={String(
+                    planReady.goals_exceed_fanout,
+                  )}
+                  data-recommended-fanout={String(planReady.recommended_fanout)}
+                  data-html-first="true"
+                >
+                  Plan readiness · {planReady.summary}
+                </p>
                 <p className="opacity-80">
                   Swarm plan · {goalLines.length} goal
                   {goalLines.length === 1 ? "" : "s"}

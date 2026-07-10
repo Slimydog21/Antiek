@@ -444,11 +444,27 @@ describe("MidnightOil mode", () => {
     expect(Number(plan.getAttribute("data-template-count"))).toBeGreaterThanOrEqual(
       3,
     );
+    // Residual (ara): north-star templates + plan readiness pure helper chrome.
+    expect(Number(plan.getAttribute("data-template-count") || 0)).toBeGreaterThanOrEqual(
+      8,
+    );
+    expect(screen.getByTestId("moil-goal-template-knowledge_dense_refs")).toBeTruthy();
+    expect(screen.getByTestId("moil-goal-template-multi_agent_analysis")).toBeTruthy();
+    expect(screen.getByTestId("moil-goal-template-budget_wrestle")).toBeTruthy();
+    expect(screen.getByTestId("moil-goal-template-reading_merge")).toBeTruthy();
+    const readiness = screen.getByTestId("moil-plan-readiness");
+    expect(readiness.getAttribute("data-plan-ready")).toBe("false");
+    expect(readiness.getAttribute("data-html-first")).toBe("true");
+    expect(readiness.textContent).toMatch(/Plan readiness/i);
     expect(screen.getByTestId("moil-goal-templates")).toBeTruthy();
     fireEvent.click(screen.getByTestId("moil-goal-template-map_landscape"));
     expect(screen.getByTestId("moil-goals-plan").getAttribute("data-goal-count")).toBe(
       "1",
     );
+    // Default duration 60m → plan ready once ≥1 goal.
+    expect(
+      screen.getByTestId("moil-plan-readiness").getAttribute("data-plan-ready"),
+    ).toBe("true");
     expect(screen.getByTestId("moil-goals-plan-list")).toBeTruthy();
     expect(screen.getByTestId("moil-goals-plan-item-0").textContent).toMatch(
       /competitive landscape/i,

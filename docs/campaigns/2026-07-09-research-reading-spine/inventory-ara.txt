@@ -1,0 +1,20 @@
+# inventory-ara · Midnight Oil north-star templates + plan readiness
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ara
+date: 2026-07-10
+parent_tip: 8198d8604 (aqz)
+
+## Closed
+- MOIL_GOAL_TEMPLATES += knowledge_dense_refs · multi_agent_analysis ·
+  budget_wrestle · reading_merge
+- moilPlanReadiness pure helper (goals + duration → plan ready for ceiling)
+- MidnightOil plan-readiness chrome (data-plan-ready · summary)
+- HARD PIVOT outside path thrash (aqw–aqz)
+- vitest moilGoals 7 + MidnightOil 30 = 37 green
+- evidence: {SCRATCH}/ara-moil-vitest.txt
+
+## Next
+arb+ product residual outside thrash
+Prefer: free catalog · marketplace · competitive · twin · dogfood
+Avoid: path-choices · dual-gate honesty · soft-budget · MO template thrash after ara
+Operator merge PR #465 remains highest leverage (gated)
