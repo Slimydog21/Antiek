@@ -35,7 +35,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (ags): v21 learns Fourier heat free PD book_qa + ResearchThis twins.
 # Residual (agw): v22 learns seamless spawn merge + multi-spawn collective merge paths.
 # Residual (ahd): v23 learns knowledge-dense publication quick-call matrix (agx–ahc).
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v23"
+# Residual (ahn): v24 learns budget foresight with pubs + purchase seamless port.
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v24"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -453,6 +454,46 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "quick",
                 "hydrate",
                 "offline",
+            ),
+        ),
+        # Residual (ahn/ahg–ahm): budget foresight when multi-source pubs ground a prompt.
+        SuiteItem(
+            item_id="dogfood-wrestle-budget-foresight-pub-refs",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with budget foresight when knowledge-dense pubs ground a prompt: when "
+                "StartResearch, ChatInputArea, ResearchThis, HostedHtml, and MarketplaceHost stamp "
+                "data-pub-ref-count · data-has-pub-refs · data-prompt-chars and budget panels use "
+                "composeDriverPromptText(body, pubRefs) so multi-ref quick-call increases projected "
+                "spend before Ask/DR fire, how should Antiek-bench learn models that keep soft "
+                "budget honesty without inventing $0 or silent over-budget launches?"
+            ),
+            expected_keywords=(
+                "budget",
+                "foresight",
+                "publication",
+                "projection",
+                "soft",
+            ),
+        ),
+        # Residual (ahn/ahe): paid digital book seamless port honesty (L5 deferred).
+        SuiteItem(
+            item_id="dogfood-wrestle-purchase-seamless-port",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with paid digital book seamless port: when MarketplaceHost purchase+host "
+                "stamps data-seamless-purchase-port · data-l5-payment-rails=deferred · "
+                "data-live-payment=false · manual_receipt_only and host land stamps purchased-path "
+                "for non-PD books as HTML, how should Antiek-bench learn models that never invent "
+                "live checkout rails while preserving HTML-first account port and recursive "
+                "note-taker twin seed after purchase?"
+            ),
+            expected_keywords=(
+                "purchase",
+                "seamless",
+                "receipt",
+                "html",
+                "payment",
             ),
         ),
         # Residual (aeu): seamless Write path honesty across reading/research surfaces.

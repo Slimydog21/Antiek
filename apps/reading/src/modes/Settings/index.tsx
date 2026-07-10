@@ -2904,6 +2904,18 @@ export default function Settings() {
                       it.item_id === "dogfood-wrestle-pub-quick-call-matrix",
                   ),
                 )}
+                data-has-budget-foresight-pub-refs-posture={String(
+                  (dogfood.items || []).some(
+                    (it) =>
+                      it.item_id === "dogfood-wrestle-budget-foresight-pub-refs",
+                  ),
+                )}
+                data-has-purchase-seamless-port-posture={String(
+                  (dogfood.items || []).some(
+                    (it) =>
+                      it.item_id === "dogfood-wrestle-purchase-seamless-port",
+                  ),
+                )}
                 data-propose-not-promote="true"
               >
                 <Row label="Suite" value={dogfood.suite_version} />
@@ -2948,6 +2960,8 @@ export default function Settings() {
                     "dogfood-wrestle-spawn-merge-path",
                     "dogfood-wrestle-collective-multi-spawn-merge",
                     "dogfood-wrestle-pub-quick-call-matrix",
+                    "dogfood-wrestle-budget-foresight-pub-refs",
+                    "dogfood-wrestle-purchase-seamless-port",
                   ].includes(it.item_id),
                 ) ? (
                   <p
@@ -2955,7 +2969,7 @@ export default function Settings() {
                     data-testid="antiek-bench-dogfood-v2-postures"
                     role="status"
                   >
-                    Spine postures (v23): write-seed · float evidence · budget
+                    Spine postures (v24): write-seed · float evidence · budget
                     foresight · Faraday book_qa · collective unit write-seed ·
                     Boole book_qa · Heaviside book_qa · Shannon book_qa ·
                     Turing book_qa · Lovelace book_qa · citation-trust
@@ -2968,7 +2982,8 @@ export default function Settings() {
                     highlight → DR path · Gödel book_qa · Fourier book_qa ·
                     TalkToBook twins · MetaReading twins · ResearchThis twins ·
                     spawn merge path · multi-spawn collective merge ·
-                    knowledge-dense pub quick-call matrix
+                    knowledge-dense pub quick-call matrix · budget foresight with pubs ·
+                    purchase seamless port
                     (listing only · not auto-promoted)
                   </p>
                 ) : null}

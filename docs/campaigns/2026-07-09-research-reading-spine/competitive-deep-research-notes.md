@@ -2735,3 +2735,9 @@ Host-land DR budget panel uses composeDriverPromptText with knowledge-dense
 pub refs; mount stamps data-pub-ref-count. Completes foresight matrix for free
 STEM marketplace path. vitest MarketplaceHost green. P0 operator merge PR #465.
 Pivot ahn+ outside thrash.
+
+## Residual ahn · 2026-07-10 — dogfood v24 budget foresight + purchase seamless port
+Suite suite-competitive-dogfood-v24 adds wrestle fixtures for budget foresight
+with multi-source pubs (ahg–ahm) and paid purchase seamless port honesty (ahe).
+item_count 38 · wrestle=25. Settings spine v24. pytest dogfood 5 · Settings 36 green.
+P0 operator merge PR #465. Pivot aho+ outside thrash.
