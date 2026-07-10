@@ -166,11 +166,20 @@ export default function Settings() {
     () => rankedFeedSourcesFromBySource(usage?.by_source),
     [usage?.by_source],
   );
-  /** Residual (ru): known feed sources that are Write twin_seed paths. */
-  const writeSeedKnownCount = useMemo(
-    () => countWriteSeedKnownSources(usage?.known_sources),
-    [usage?.known_sources],
-  );
+  /**
+   * Residual (ru/ry): known feed sources that are Write twin_seed paths.
+   * Prefer substrate write_seed_known_count (ry) when present.
+   */
+  const writeSeedKnownCount = useMemo(() => {
+    if (
+      usage != null &&
+      typeof usage.write_seed_known_count === "number" &&
+      Number.isFinite(usage.write_seed_known_count)
+    ) {
+      return usage.write_seed_known_count;
+    }
+    return countWriteSeedKnownSources(usage?.known_sources);
+  }, [usage?.known_sources, usage?.write_seed_known_count]);
 
   /** Residual (rl): advisory suggestion vs installed driver (never auto-route). */
   const ndDriverDelta = useMemo(

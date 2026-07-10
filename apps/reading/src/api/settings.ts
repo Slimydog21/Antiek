@@ -231,6 +231,14 @@ export type AntiekBenchUsageSummaryResponse = {
    * floating_deep_research (session open residual nw).
    */
   known_sources?: string[];
+  /**
+   * Residual (ry): Write twin_seed aggregates from substrate SSOT
+   * (TWIN_WRITE_SEED_USAGE_SOURCES). Prefer over client re-classification.
+   */
+  write_seed_by_source?: Record<string, number>;
+  write_seed_source_count?: number;
+  write_seed_event_count?: number;
+  write_seed_known_count?: number;
   view_format: "html" | string;
   settings_panel: string;
   source: string;

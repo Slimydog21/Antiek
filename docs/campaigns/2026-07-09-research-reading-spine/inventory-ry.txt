@@ -1,0 +1,19 @@
+# inventory-ry · Write-seed aggregates on usage summary (SSOT)
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ry
+date: 2026-07-10
+
+## Closed
+- weekly_usage_summary + settings_usage_summary_payload expose:
+  - write_seed_by_source
+  - write_seed_source_count
+  - write_seed_event_count
+  - write_seed_known_count
+- Frontend AntiekBenchUsageSummaryResponse types
+- Settings writeSeedKnownCount prefers substrate write_seed_known_count
+- tests/test_usage_write_seed_aggregates_ry.py
+- pytest 9 + vitest 28 · SCRATCH residual-tests-ry.log
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live L1–L4 dual-gate (operator-only)

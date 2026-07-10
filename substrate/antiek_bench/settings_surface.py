@@ -59,6 +59,11 @@ def settings_usage_summary_payload(
         "by_source": dict(summary.get("by_source") or {}),
         # Residual (nx): known feed source legend (incl twin_chase / floating DR).
         "known_sources": list(summary.get("known_sources") or []),
+        # Residual (ry): Write twin_seed aggregates (substrate SSOT for Settings).
+        "write_seed_by_source": dict(summary.get("write_seed_by_source") or {}),
+        "write_seed_source_count": int(summary.get("write_seed_source_count") or 0),
+        "write_seed_event_count": int(summary.get("write_seed_event_count") or 0),
+        "write_seed_known_count": int(summary.get("write_seed_known_count") or 0),
         "view_format": "html",
         "settings_panel": "antiek_bench_usage_weekly",
         "source": "antiek_bench.usage_events",

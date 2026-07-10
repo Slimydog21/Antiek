@@ -303,11 +303,28 @@ def weekly_usage_summary(*, store: BenchStore) -> dict[str, Any]:
             bucket[oc] += 1
         bucket["total"] += 1
         by_source[src] = by_source.get(src, 0) + 1
+    # Residual (ry): Write twin_seed aggregates — single source of truth for
+    # Settings + HTML honesty (parity frontend WRITE_SEED_FEED_SOURCES).
+    write_seed_by_source = {
+        src: n
+        for src, n in by_source.items()
+        if src in TWIN_WRITE_SEED_USAGE_SOURCES and n > 0
+    }
+    write_seed_source_count = len(write_seed_by_source)
+    write_seed_event_count = int(sum(write_seed_by_source.values()))
+    known = list(KNOWN_USAGE_FEED_SOURCES)
+    write_seed_known_count = sum(
+        1 for s in known if s in TWIN_WRITE_SEED_USAGE_SOURCES
+    )
     return {
         "event_count": len(events),
         "by_task_class": by_class,
         "by_source": by_source,
         # Residual (nx): closed catalog of feed sources (not counts).
-        "known_sources": list(KNOWN_USAGE_FEED_SOURCES),
+        "known_sources": known,
+        "write_seed_by_source": write_seed_by_source,
+        "write_seed_source_count": write_seed_source_count,
+        "write_seed_event_count": write_seed_event_count,
+        "write_seed_known_count": write_seed_known_count,
         "view_format": "html",
     }

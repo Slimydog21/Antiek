@@ -81,6 +81,11 @@ const {
       "antiek_bench.offline_dogfood",
       "engagement",
     ],
+    // Residual (ry): substrate Write-seed aggregates (SSOT).
+    write_seed_by_source: {} as Record<string, number>,
+    write_seed_source_count: 0,
+    write_seed_event_count: 0,
+    write_seed_known_count: 14,
     view_format: "html" as const,
     settings_panel: "antiek_bench_usage_weekly",
     source: "antiek_bench.usage_events",
@@ -786,16 +791,16 @@ describe("Settings SPR-01 + decision-tree install", () => {
     // Residual (rs): twin promote Write seed in known legend.
     expect(legend.getAttribute("data-has-twin-promote-context")).toBe("true");
     expect(legend.textContent).toMatch(/twin_promote_context/);
-    // Residual (ru): aggregate Write seed known-count honesty.
+    // Residual (ru/ry): aggregate Write seed known-count honesty (substrate SSOT).
     const writeSeedKnown = Number(
       legend.getAttribute("data-write-seed-known-count") || "0",
     );
-    expect(writeSeedKnown).toBeGreaterThan(0);
+    expect(writeSeedKnown).toBe(14);
     expect(screen.getByTestId("antiek-bench-write-seed-known-count").textContent).toMatch(
       /Write seed feeds/i,
     );
     expect(screen.getByTestId("antiek-bench-write-seed-known-count").textContent).toMatch(
-      String(writeSeedKnown),
+      "14",
     );
     // Residual (nx): by_source list includes chase open sources when present.
     const sources = screen.getByTestId("antiek-bench-usage-sources");
@@ -872,6 +877,10 @@ describe("Settings SPR-01 + decision-tree install", () => {
         twin_chase: 2,
       },
       known_sources: ["twin_promote_context", "twin_chase"],
+      write_seed_by_source: { twin_promote_context: 9 },
+      write_seed_source_count: 1,
+      write_seed_event_count: 9,
+      write_seed_known_count: 1,
       view_format: "html",
       settings_panel: "antiek_bench_usage_weekly",
       source: "antiek_bench.usage_events",

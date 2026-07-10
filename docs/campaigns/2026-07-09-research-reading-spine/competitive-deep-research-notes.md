@@ -800,3 +800,9 @@ project_usage_summary_html marks TWIN_WRITE_SEED_USAGE_SOURCES with
 [write seed] and a Write seed feeds count paragraph. Competitive delta:
 HTML-first weekly Antiek-bench view (not only React Settings) shows whether
 usage substrate is recursive note-taker → Write vs chase/investigation.
+
+## Residual ry · 2026-07-10 — Write-seed aggregates SSOT
+weekly_usage_summary exposes write_seed_by_source / counts so Settings and
+HTML clients share one substrate source of truth (TWIN_WRITE_SEED_USAGE_SOURCES).
+Competitive delta: recursive note-taker → Write feed composition is machine-
+readable for weekly rewrite without client-side source lists drifting.
