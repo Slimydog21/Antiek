@@ -130,6 +130,22 @@ describe("ResearchLaunchBudgetPanel", () => {
     // Residual (sc): deep-link to decision-tree panel (driver + budget foresight).
     expect(settings.getAttribute("href")).toBe("/settings#decision-tree-panel");
     expect(settings.textContent).toMatch(/driver/i);
+    // Residual (ajm): budget-before-fire chokepoint → competitive DR honesty map.
+    expect(
+      screen
+        .getByTestId("research-launch-budget-competitive-scorecard-link")
+        .getAttribute("href"),
+    ).toBe("/settings#settings-competitive-dr-scorecard");
+    expect(
+      screen
+        .getByTestId("research-launch-budget-competitive-scorecard-link")
+        .textContent,
+    ).toMatch(/competitive DR scorecard/i);
+    expect(
+      screen
+        .getByTestId("research-launch-budget-competitive-dr-future-agent-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
     // Residual (afb): deep→synthesize best-by-task advisory (never auto-route).
     await waitFor(() => {
       expect(fetchAntiekBenchLeaderboard).toHaveBeenCalled();

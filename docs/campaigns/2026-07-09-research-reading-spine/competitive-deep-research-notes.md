@@ -3004,3 +3004,9 @@ P0 operator merge PR #465. Pivot ajl+ outside thrash.
 Free STEM HTML marketplace navigates Settings competitive DR scorecard + FUTURE brief
 (HTML-first free STEM shipped · L5 payment deferred). vitest MarketplaceHost 41 green.
 P0 operator merge PR #465. Pivot ajm+ outside thrash.
+
+## Residual ajm · 2026-07-10 — ResearchLaunchBudget competitive DR scorecard deep-links
+Budget-before-fire launch panel navigates Settings competitive DR scorecard + FUTURE
+brief (soft foresight · ND never router). Scorecard budget row names launch panel.
+vitest ResearchLaunchBudget 12 · Settings 36 green. P0 operator merge PR #465.
+Pivot ajn+ outside thrash.

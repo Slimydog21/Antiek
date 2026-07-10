@@ -4054,8 +4054,9 @@ export default function Settings() {
                 hop navigation (air) — <strong>shipped offline</strong>
               </li>
               <li data-status="shipped" data-testid="competitive-dr-budget-before-fire">
-                Budget-before-fire · pub-ref foresight chrome —{" "}
-                <strong>shipped offline</strong> (aic–aif · dogfood v27)
+                Budget-before-fire · pub-ref foresight chrome · launch budget
+                panel (ajm) — <strong>shipped offline</strong> (aic–aif · dogfood
+                v27)
               </li>
               <li data-status="shipped" data-testid="competitive-dr-html-first">
                 HTML deliverable · free STEM marketplace —{" "}

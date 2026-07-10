@@ -334,6 +334,23 @@ export function ResearchLaunchBudgetPanel({
           >
             Dual-gate L7 ND advisory
           </a>
+          {/* Residual (ajm): budget-before-fire chokepoint → competitive DR honesty map. */}
+          <a
+            href="/settings#settings-competitive-dr-scorecard"
+            data-testid="research-launch-budget-competitive-scorecard-link"
+            className="text-[10px] font-mono underline opacity-80 hover:opacity-100"
+            title="Settings competitive deep-research scorecard (budget-before-fire · soft foresight shipped · ND never router)"
+          >
+            Competitive DR scorecard
+          </a>
+          <a
+            href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+            data-testid="research-launch-budget-competitive-dr-future-agent-link"
+            className="text-[10px] font-mono underline opacity-80 hover:opacity-100"
+            title="FUTURE-AGENT competitive deep-research quality brief (budget-capped autonomous runs)"
+          >
+            FUTURE · competitive DR brief
+          </a>
           {busy ? (
             <span className="text-[10px] font-mono text-ink-mute">projecting…</span>
           ) : null}
