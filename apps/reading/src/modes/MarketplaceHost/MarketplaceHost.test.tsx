@@ -85,7 +85,7 @@ vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
   ),
 }));
 
-// Residual (alx): TwinNotes on host land — stub avoids engagement API surface.
+// Residual (alx/aly): TwinNotes + ResearchContext on host land — stub APIs.
 vi.mock("../../components/engagement/TwinNotesPanel", () => ({
   TwinNotesPanel: (props: {
     assetId: string;
@@ -105,6 +105,46 @@ vi.mock("../../components/engagement/TwinNotesPanel", () => ({
       twins={props.assetId}
     </div>
   ),
+}));
+
+vi.mock("../../components/engagement/ResearchContextPanel", () => ({
+  ResearchContextPanel: (props: {
+    assetId: string;
+    autoLoad?: boolean;
+    domainSubjects?: readonly string[] | null;
+  }) => (
+    <div
+      data-testid="research-context-panel-stub"
+      data-asset-id={props.assetId}
+      data-domain-subjects={(props.domainSubjects || []).join(",") || ""}
+      data-auto-load={String(Boolean(props.autoLoad))}
+    >
+      context={props.assetId}
+    </div>
+  ),
+  domainSearchCoverage: (
+    subjects?: readonly string[] | null,
+  ): {
+    subjects: string[];
+    has_default: boolean;
+    default_query: string;
+    covered: string[];
+    uncovered: string[];
+  } => {
+    // Prefer pure util if present — marketplace imports domainSearchCoverage
+    // from workspace/domainSearchDefaults, not this module. Stub unused.
+    const list = (subjects || [])
+      .map((s) => String(s || "").trim().toLowerCase())
+      .filter(Boolean);
+    return {
+      subjects: list,
+      has_default: list.length > 0,
+      default_query: list.join(" "),
+      covered: list,
+      uncovered: [],
+    };
+  },
+  domainAwareSearchDefault: () => "",
 }));
 
 vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", async () => {
@@ -397,6 +437,20 @@ describe("MarketplaceHost mode", () => {
     );
     expect(twinsStub.getAttribute("data-auto-load")).toBe("true");
     expect(twinsStub.getAttribute("data-auto-seed")).toBe("true");
+    // Residual (aly): ResearchContext intelligent search on host land.
+    const ctxMount = screen.getByTestId("marketplace-host-context-mount");
+    expect(ctxMount.getAttribute("data-document-id")).toBe("hdoc_abc");
+    expect(ctxMount.getAttribute("data-domain-subjects")).toMatch(/literature/);
+    expect(ctxMount.getAttribute("data-domain-search-has-default")).toBe(
+      "true",
+    );
+    expect(ctxMount.getAttribute("data-seamless-marketplace-context")).toBe(
+      "true",
+    );
+    const ctxStub = screen.getByTestId("research-context-panel-stub");
+    expect(ctxStub.getAttribute("data-asset-id")).toBe("hdoc_abc");
+    expect(ctxStub.getAttribute("data-domain-subjects")).toMatch(/literature/);
+    expect(ctxStub.getAttribute("data-auto-load")).toBe("true");
     // Residual (tc): free/PD host path honesty.
     expect(hostMetrics.getAttribute("data-license-class")).toBe("public_domain");
     expect(hostMetrics.getAttribute("data-is-public-domain")).toBe("true");

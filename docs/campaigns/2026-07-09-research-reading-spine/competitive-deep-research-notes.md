@@ -3321,3 +3321,8 @@ P0 operator merge PR #465. Pivot alx+ outside thrash (prefer code product).
 After catalog host land, TwinNotesPanel mounts with free PD domainSubjects so
 recursive note-taker is available without opening HostedHtml (reading ≡ research).
 vitest MarketplaceHost 41 green. P0 operator merge PR #465. Pivot aly+ outside thrash.
+
+## Residual aly · 2026-07-10 — MarketplaceHost ResearchContext host-land with domainSubjects
+Host land mounts ResearchContextPanel with free PD domainSubjects (parity
+HostedHtml). Substrate: TwinNotes (alx) + ResearchContext (aly) without window.
+vitest MarketplaceHost 41 green. P0 operator merge PR #465. Pivot alz+ outside thrash.

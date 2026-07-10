@@ -1,0 +1,17 @@
+# inventory-aly · MarketplaceHost ResearchContext host-land with domainSubjects
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aly
+date: 2026-07-10
+parent_tip: f0f7d8e1 (alx)
+
+## Closed
+- marketplace-host-context-mount after host land (parity HostedHtml)
+- ResearchContextPanel autoLoad · domainSubjects from catalog
+- data-seamless-marketplace-context · domain-search-has-default
+- Host land substrate: TwinNotes (alx) + ResearchContext (aly) without window
+- vitest MarketplaceHost 41 green
+- proof: SCRATCH residual-aly-vitest.log
+
+## Next
+alz+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

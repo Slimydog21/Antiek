@@ -74,10 +74,13 @@
  * catalog subjects map to intelligent twin-search defaults after host.
  * Residual (alx): TwinNotesPanel on host land with catalog domainSubjects
  * (reading ≡ research recursive note-taker without requiring open window).
+ * Residual (aly): ResearchContextPanel on host land with domainSubjects
+ * (intelligent search + evidence over twin substrate · parity HostedHtml).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { seedTwinNotes } from "../../api/engagement";
+import { ResearchContextPanel } from "../../components/engagement/ResearchContextPanel";
 import { TwinNotesPanel } from "../../components/engagement/TwinNotesPanel";
 import { domainSearchCoverage } from "../../workspace/domainSearchDefaults";
 import {
@@ -1731,6 +1734,33 @@ export default function MarketplaceHost({
                     ""
                   }
                   researchTier={hostDrTier}
+                  domainSubjects={catalogSubjectsForBook(hosted.book_id)}
+                />
+              </div>
+              {/* Residual (aly): research context + intelligent search over twins. */}
+              <div
+                className="mt-2"
+                data-testid="marketplace-host-context-mount"
+                data-view-format="html"
+                data-document-id={hosted.document_id.trim()}
+                data-domain-subjects={
+                  catalogSubjectsForBook(hosted.book_id).join(",") || "none"
+                }
+                data-domain-search-has-default={String(
+                  Boolean(hostedDomainCoverage?.has_default),
+                )}
+                data-seamless-marketplace-context="true"
+              >
+                <ResearchContextPanel
+                  key={`mkt-ctx-${hosted.document_id.trim()}-${
+                    twinSeedStatus
+                      ? twinSeedHonesty?.seeded === false
+                        ? "skipped"
+                        : "seeded"
+                      : "pending"
+                  }`}
+                  assetId={hosted.document_id.trim()}
+                  autoLoad
                   domainSubjects={catalogSubjectsForBook(hosted.book_id)}
                 />
               </div>
