@@ -2664,3 +2664,10 @@ Hosted book deep-research ground-with-pubs mounts shared quick-call presets
 (parity launch/chase/attach). Reading ≡ research: Fourier free STEM HTML books
 can one-click ground float DR with arxiv handles. Insert-only · offline hydrate.
 vitest HostedHtml 23 green. P0 operator merge PR #465. Pivot ahb+ outside thrash.
+
+## Residual ahb · 2026-07-10 — marketplace host DR knowledge-dense pub quick-call
+MarketplaceHost host-land DR ground-with-pubs mounts shared quick-call presets
+(parity hosted aha). Completes knowledge-dense pub quick-call matrix across
+launch · chase · mid-session · hosted book · marketplace free STEM.
+vitest MarketplaceHost 41 green. See SESSION-ARC-agx-ahb-pub-quickcall-matrix.md.
+P0 operator merge PR #465. Pivot ahc+ outside thrash.

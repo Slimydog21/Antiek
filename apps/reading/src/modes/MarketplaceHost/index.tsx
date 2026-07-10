@@ -79,6 +79,7 @@ import {
   type MarketplaceCatalogResponse,
 } from "../../api/marketplaceHost";
 import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
+import { KNOWLEDGE_DENSE_PUBLICATION_PRESETS } from "../../components/engagement/PublicationAttachPanel";
 import {
   ResearchLaunchBudgetPanel,
   type ResearchLaunchBudgetProjection,
@@ -1525,13 +1526,17 @@ export default function MarketplaceHost({
                 Force deep research despite budget projection
               </label>
             ) : null}
-            {/* Residual (uu): ground marketplace DR with arxiv/substack/URL refs. */}
+            {/* Residual (uu/ahb): ground marketplace DR with arxiv/substack/URL refs. */}
             <div
               className="space-y-1"
               data-testid="marketplace-host-pub-refs"
               data-view-format="html"
               data-offline-default="true"
               data-l1-l2-hydrate-prep="true"
+              data-seamless-pub-quick-call="true"
+              data-knowledge-dense-presets={String(
+                KNOWLEDGE_DENSE_PUBLICATION_PRESETS.length,
+              )}
             >
               <label
                 className="text-[10px] font-mono uppercase tracking-wider opacity-80"
@@ -1539,6 +1544,53 @@ export default function MarketplaceHost({
               >
                 Ground with pubs (optional · arxiv / substack / URL)
               </label>
+              {/* Residual (ahb): marketplace host DR quick-call (parity hosted aha). */}
+              <div
+                className="flex flex-wrap gap-1 items-center"
+                data-testid="marketplace-host-publication-quick-call"
+                data-preset-count={String(
+                  KNOWLEDGE_DENSE_PUBLICATION_PRESETS.length,
+                )}
+                data-seamless-pub-quick-call="true"
+                data-auto-hydrate="false"
+                role="group"
+                aria-label="Knowledge-dense publication quick-call presets"
+              >
+                <span className="text-[10px] font-mono opacity-70 mr-1">
+                  Quick-call:
+                </span>
+                {KNOWLEDGE_DENSE_PUBLICATION_PRESETS.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    data-testid={`marketplace-host-preset-${p.id}`}
+                    data-preset-id={p.id}
+                    data-kind={p.kind}
+                    data-reference={p.reference}
+                    data-auto-hydrate="false"
+                    disabled={hostDrBusy || busy}
+                    onClick={() => {
+                      const ref = p.reference.trim();
+                      if (!ref) return;
+                      setHostDrPubRefs((prev) => {
+                        const existing = new Set(
+                          prev
+                            .split(/\r?\n/)
+                            .map((l) => l.trim())
+                            .filter(Boolean),
+                        );
+                        if (existing.has(ref)) return prev;
+                        const base = prev.trim();
+                        return base ? `${base}\n${ref}` : ref;
+                      });
+                    }}
+                    className="text-[10px] font-mono border rounded px-1.5 py-0.5 opacity-80 hover:opacity-100 disabled:opacity-50 border-ink/20 dark:border-bright/20"
+                    title={`Insert ${p.reference} (hydrates offline-honest on DR launch · never auto-live)`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
               <textarea
                 id="marketplace-host-refs-input"
                 data-testid="marketplace-host-refs-input"

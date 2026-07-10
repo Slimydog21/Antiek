@@ -3245,6 +3245,16 @@ describe("MarketplaceHost mode", () => {
     const pubRefs = screen.getByTestId("marketplace-host-pub-refs");
     expect(pubRefs.getAttribute("data-offline-default")).toBe("true");
     expect(pubRefs.getAttribute("data-l1-l2-hydrate-prep")).toBe("true");
+    // Residual (ahb): marketplace host DR knowledge-dense quick-call.
+    expect(pubRefs.getAttribute("data-seamless-pub-quick-call")).toBe("true");
+    expect(
+      Number(pubRefs.getAttribute("data-knowledge-dense-presets") || 0),
+    ).toBeGreaterThanOrEqual(4);
+    expect(
+      screen
+        .getByTestId("marketplace-host-publication-quick-call")
+        .getAttribute("data-auto-hydrate"),
+    ).toBe("false");
     expect(
       screen
         .getByTestId("marketplace-host-hydrate-settings-link")
@@ -3262,9 +3272,13 @@ describe("MarketplaceHost mode", () => {
         .getByTestId("marketplace-host-hydrate-dual-gate-l2-link")
         .getAttribute("href") || "",
     ).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
-    fireEvent.change(screen.getByTestId("marketplace-host-refs-input"), {
-      target: { value: "arxiv:1706.03762" },
-    });
+    fireEvent.click(
+      screen.getByTestId("marketplace-host-preset-attention-is-all-you-need"),
+    );
+    expect(
+      (screen.getByTestId("marketplace-host-refs-input") as HTMLTextAreaElement)
+        .value,
+    ).toMatch(/arxiv:1706\.03762/);
     fireEvent.click(screen.getByTestId("marketplace-host-deep-research"));
     await waitFor(() => {
       expect(hydratePublicationRefs).toHaveBeenCalledWith(["arxiv:1706.03762"]);
