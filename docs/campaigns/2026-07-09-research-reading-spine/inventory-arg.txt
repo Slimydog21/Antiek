@@ -1,0 +1,14 @@
+# inventory-arg · ResearchContext twin-search default catalog honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: arg
+date: 2026-07-10
+parent_tip: 3b28ec2f6 (arf)
+
+## Closed
+- research-context-query-controls stamps domain-default-count · all-ready · twin-search-defaults
+- parity Marketplace (arf) · pure catalog (are)
+- vitest ResearchContextPanel 21 green
+- evidence: {SCRATCH}/arg-context-domain-vitest.txt
+
+## Next
+arh+ outside thrash · Operator merge PR #465

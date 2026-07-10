@@ -318,6 +318,15 @@ describe("ResearchContextPanel", () => {
     expect(
       Number(controls.getAttribute("data-domain-search-covered-count")),
     ).toBeGreaterThanOrEqual(1);
+    // Residual (arg): free-PD twin-search default catalog honesty (parity are/arf).
+    expect(controls.getAttribute("data-html-first")).toBe("true");
+    expect(controls.getAttribute("data-twin-search-defaults")).toBe("true");
+    expect(controls.getAttribute("data-domain-defaults-all-ready")).toBe(
+      "true",
+    );
+    expect(
+      Number(controls.getAttribute("data-domain-default-count") || 0),
+    ).toBeGreaterThanOrEqual(40);
     const strip = screen.getByTestId("research-context-domain-search-coverage");
     expect(strip.getAttribute("data-has-default")).toBe("true");
     expect(strip.textContent).toMatch(/default active/i);

@@ -4008,3 +4008,8 @@ P0 PR #465. Pivot arf+.
 Catalog subject chips stamp domainDefaultSubjectCatalog count + all-ready.
 Reading ≡ marketplace twin-search spine is operator-visible. vitest 43 green.
 P0 PR #465. Pivot arg+.
+
+## Residual arg · 2026-07-10 — ResearchContext twin-search default catalog honesty
+Query controls stamp domainDefaultSubjectCatalog (parity Marketplace arf).
+Reading ≡ research twin-search spine operator-visible. vitest 21 green.
+P0 PR #465. Pivot arh+.

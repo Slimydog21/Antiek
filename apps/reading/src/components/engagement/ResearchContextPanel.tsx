@@ -103,10 +103,12 @@ import {
 // for existing test/import paths (ResearchContextPanel tests · alj/akq/akw).
 export {
   domainAwareSearchDefault,
+  domainDefaultSubjectCatalog,
   domainSearchCoverage,
 } from "../../workspace/domainSearchDefaults";
 import {
   domainAwareSearchDefault,
+  domainDefaultSubjectCatalog,
   domainSearchCoverage,
 } from "../../workspace/domainSearchDefaults";
 
@@ -165,6 +167,8 @@ export function ResearchContextPanel({
     () => domainSearchCoverage(domainSubjects),
     [domainSubjects],
   );
+  // Residual (arg): closed free-PD twin-search default catalog (parity are/arf).
+  const domainDefaultCatalog = useMemo(() => domainDefaultSubjectCatalog(), []);
   // Residual (amj): pack/spawn tier wins; host prop is prefill fallback.
   const resolvedResearchTier = useMemo(() => {
     const fromPack = (pack?.research_tier || "").trim().toLowerCase();
@@ -424,6 +428,12 @@ export function ResearchContextPanel({
         data-domain-search-uncovered-count={String(
           domainCoverage.uncovered.length,
         )}
+        data-domain-default-count={String(domainDefaultCatalog.count)}
+        data-domain-defaults-all-ready={String(
+          domainDefaultCatalog.all_have_default,
+        )}
+        data-twin-search-defaults="true"
+        data-html-first="true"
         data-query={query}
       >
         {/* Residual (alj): machine-readable domain-search coverage honesty. */}
