@@ -1,0 +1,22 @@
+# inventory-asb · publication attach readiness pure helper + CTA gate
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: asb
+date: 2026-07-10
+parent_tip: 59a931b43 (asa)
+
+## Closed
+- workspace/publicationAttachReadiness.ts pure helper (spawn_bound · ref_count · attach_ready)
+- PublicationAttachPanel chrome + Attach+hydrate CTA gated by attach_ready
+- Stamps: data-attach-ready · data-spawn-bound · data-ref-count · never-auto-hydrate · live-hydrate-deferred
+- spawnId optional-null-safe
+- vitest pure + panel: 10 green
+
+## Doctrine
+Knowledge-dense arxiv/substack/URL path: bind spawn + refs → attach+hydrate HTML
+Never auto-hydrate · never invent live body · L1/L2 dual-gate deferred
+Readiness→CTA parity arw–arz wave
+
+## Next
+asc+ offline product residual outside thrash
+Avoid: pub-attach readiness thrash after asb · free-host · twin promote · path CTA · MO approve
+Operator merge PR #465 remains P0 (gated)

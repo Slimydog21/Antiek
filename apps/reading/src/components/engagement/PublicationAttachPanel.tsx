@@ -31,6 +31,7 @@ import {
 import {
   parsePublicationRefs,
 } from "../../modes/ResearchWorkstation/publicationRefs";
+import { publicationAttachReadiness } from "../../workspace/publicationAttachReadiness";
 import {
   buildPublicationHydrateWriteHref,
   plainTextFromHtml,
@@ -93,7 +94,8 @@ export type PublicationAttachResult = {
 };
 
 export type PublicationAttachPanelProps = {
-  spawnId: string;
+  /** Residual (asb): optional until bound — CTA gates on publicationAttachReadiness. */
+  spawnId?: string | null;
   /** Residual (ed): fire after successful attach+hydrate (HTML assets only). */
   onAttached?: (result: PublicationAttachResult) => void;
   /**
@@ -104,7 +106,7 @@ export type PublicationAttachPanelProps = {
 };
 
 export function PublicationAttachPanel({
-  spawnId,
+  spawnId = "",
   onAttached,
   researchTier: researchTierProp = null,
 }: PublicationAttachPanelProps) {
@@ -124,8 +126,18 @@ export function PublicationAttachPanel({
     return (attachResearchTier || "").trim().toLowerCase() || null;
   }, [researchTierProp, attachResearchTier]);
 
+  // Residual (asb): knowledge-dense attach+hydrate readiness (spawn + refs).
+  const attachReadiness = useMemo(
+    () =>
+      publicationAttachReadiness({
+        spawnId,
+        refCount: parsePublicationRefs(raw).length,
+      }),
+    [spawnId, raw],
+  );
+
   const run = useCallback(async () => {
-    const sid = spawnId.trim();
+    const sid = String(spawnId || "").trim();
     if (!sid) {
       setError("spawnId is required");
       return;
@@ -201,6 +213,13 @@ export function PublicationAttachPanel({
         KNOWLEDGE_DENSE_PUBLICATION_PRESETS.length,
       )}
       data-seamless-pub-quick-call="true"
+      data-attach-ready={String(attachReadiness.attach_ready)}
+      data-spawn-bound={String(attachReadiness.spawn_bound)}
+      data-ref-count={String(attachReadiness.ref_count)}
+      data-live-hydrate-deferred={String(
+        attachReadiness.live_hydrate_deferred,
+      )}
+      data-never-auto-hydrate={String(attachReadiness.never_auto_hydrate)}
       aria-label="Attach publication references"
     >
       <header className="space-y-1">
@@ -265,12 +284,40 @@ export function PublicationAttachPanel({
         placeholder={"arxiv:1706.03762\nhttps://…"}
         className="w-full rounded border border-ink/20 bg-transparent px-2 py-1 text-[12px] font-mono dark:border-bright/20"
       />
+      <p
+        className="text-[10px] font-mono opacity-80"
+        data-testid="publication-attach-readiness"
+        data-attach-ready={String(attachReadiness.attach_ready)}
+        data-spawn-bound={String(attachReadiness.spawn_bound)}
+        data-ref-count={String(attachReadiness.ref_count)}
+        data-view-format={attachReadiness.view_format}
+        data-html-first={String(attachReadiness.html_first)}
+        data-live-hydrate-deferred={String(
+          attachReadiness.live_hydrate_deferred,
+        )}
+        data-never-auto-hydrate={String(attachReadiness.never_auto_hydrate)}
+        role="status"
+        title="Knowledge-dense attach path: spawn bound + ≥1 ref · offline hydrate · never auto-hydrate"
+      >
+        Attach readiness · {attachReadiness.summary}
+      </p>
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           data-testid="publication-attach-submit"
-          disabled={busy || !raw.trim()}
+          data-attach-ready={String(attachReadiness.attach_ready)}
+          data-spawn-bound={String(attachReadiness.spawn_bound)}
+          data-ref-count={String(attachReadiness.ref_count)}
+          data-view-format="html"
+          data-never-auto-hydrate="true"
+          data-live-hydrate-deferred="true"
+          disabled={busy || !attachReadiness.attach_ready}
           onClick={() => void run()}
+          title={
+            attachReadiness.attach_ready
+              ? "Attach refs to spawn + hydrate HTML assets (offline-honest · never invent live body)"
+              : attachReadiness.summary
+          }
           className="rounded border border-ink/30 px-2 py-1 text-[12px] font-mono hover:bg-ink/5 disabled:opacity-50 dark:border-bright/30"
         >
           {busy ? "Attaching…" : "Attach + hydrate"}

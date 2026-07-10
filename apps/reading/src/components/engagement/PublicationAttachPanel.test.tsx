@@ -31,6 +31,46 @@ describe("PublicationAttachPanel residual ck/ed", () => {
     hydratePublicationRef.mockReset();
   });
 
+  it("gates Attach+hydrate on spawn + refs readiness (asb)", () => {
+    const { unmount } = render(<PublicationAttachPanel spawnId="" />);
+    const submitEmpty = screen.getByTestId(
+      "publication-attach-submit",
+    ) as HTMLButtonElement;
+    expect(submitEmpty.getAttribute("data-attach-ready")).toBe("false");
+    expect(submitEmpty.disabled).toBe(true);
+    expect(
+      screen.getByTestId("publication-attach-readiness").getAttribute(
+        "data-attach-ready",
+      ),
+    ).toBe("false");
+    expect(
+      screen.getByTestId("publication-attach-readiness").textContent,
+    ).toMatch(/bind spawn/i);
+    unmount();
+
+    render(<PublicationAttachPanel spawnId="spn_asb" />);
+    const submitNoRefs = screen.getByTestId(
+      "publication-attach-submit",
+    ) as HTMLButtonElement;
+    expect(submitNoRefs.getAttribute("data-spawn-bound")).toBe("true");
+    expect(submitNoRefs.getAttribute("data-attach-ready")).toBe("false");
+    expect(submitNoRefs.disabled).toBe(true);
+    fireEvent.click(
+      screen.getByTestId("publication-preset-attention-is-all-you-need"),
+    );
+    const submitReady = screen.getByTestId(
+      "publication-attach-submit",
+    ) as HTMLButtonElement;
+    expect(submitReady.getAttribute("data-attach-ready")).toBe("true");
+    expect(submitReady.getAttribute("data-ref-count")).toBe("1");
+    expect(submitReady.disabled).toBe(false);
+    expect(
+      screen.getByTestId("publication-attach-readiness").textContent,
+    ).toMatch(/attach ready/i);
+    expect(submitReady.getAttribute("data-never-auto-hydrate")).toBe("true");
+    expect(submitReady.getAttribute("data-live-hydrate-deferred")).toBe("true");
+  });
+
   it("attaches refs to spawn and hydrates HTML assets", async () => {
     attachSourceRefs.mockResolvedValue({
       spawn_id: "spn_1",

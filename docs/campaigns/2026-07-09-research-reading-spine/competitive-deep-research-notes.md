@@ -4121,3 +4121,9 @@ vitest MidnightOil 30 green. P0 PR #465. Pivot asa+ outside thrash.
 Multi-agent handoff for readiness pure helpers driving product CTAs
 (free-host · twin promote · SpawnMerge path · MO approve). P0 PR #465.
 Pivot asb+ outside thrash.
+
+## Residual asb · 2026-07-10 — publication attach readiness pure + CTA
+publicationAttachReadiness: spawn_bound + ref_count → attach_ready · HTML-first ·
+never auto-hydrate · live L1/L2 deferred. Attach+hydrate CTA gated. Competitive
+delta: knowledge-dense arxiv/substack path hard-to-vary pure contract.
+vitest 10 green. P0 PR #465. Pivot asc+ outside thrash.
