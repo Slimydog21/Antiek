@@ -367,6 +367,10 @@ export const COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES = [
   "competitive_duration_band_foresight",
   // Residual (atn): MO deposit HTML open pure readiness (ate).
   "moil_deposit_html_readiness",
+  // Residual (atz): intelligent context search open pure readiness (aty).
+  "context_search_open_readiness",
+  // Residual (atz): publication hydrate open pure readiness (aty · offline-honest).
+  "publication_hydrate_open_readiness",
 ] as const;
 
 export type CompetitiveDrOfflineProductSurface =

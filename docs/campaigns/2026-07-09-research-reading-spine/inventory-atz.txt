@@ -1,0 +1,22 @@
+# inventory-atz · SESSION-ARC att–aty + offline catalog aty pure surfaces
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: atz
+date: 2026-07-10
+parent_tip: d957bc1ea (aty)
+
+## Closed
+- SESSION-ARC-att-aty-open-path-rewrite.md wave handoff
+- COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES +=
+  context_search_open_readiness · publication_hydrate_open_readiness
+- competitiveDrQuality.test tracks aty pure surfaces
+- Closes open-path product wave into scorecard-honest catalog
+
+## Doctrine
+Wave handoff for future agents · catalog never invents live · ND never router
+
+## Next
+aua+ offline product residual outside thrash
+Avoid: catalog thrash after atz · SESSION-ARC thrash · open-stamp · pure-open ·
+vision · scorecard · dogfood · readiness→CTA
+Prefer: model install depth · competitive non-catalog · Midnight Oil product residual
+Operator merge PR #465 remains P0 (gated)
