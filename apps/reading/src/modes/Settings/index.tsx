@@ -1729,12 +1729,45 @@ export default function Settings() {
             data-injector-installed={
               moilLive ? String(moilLive.injector_installed) : undefined
             }
+            // Residual (aed): L4 live ready only when env + injector true and not offline-only.
+            data-l4-live-ready={
+              moilLive
+                ? String(
+                    moilLive.live_env === true &&
+                      moilLive.injector_installed === true &&
+                      moilLive.offline_honest === false,
+                  )
+                : undefined
+            }
           >
             <p className="text-sm text-ink dark:text-bright">
               Autonomous Midnight Oil worker steps default offline. Live step
               requires dual env gate + injector — this panel never enables the
               live worker.
             </p>
+            {/* Residual (aed): in-panel L4 checklist deep-link (parity twin L3 aec / MO wx). */}
+            <div
+              className="flex flex-wrap items-center gap-2 text-[11px]"
+              data-testid="moil-live-l4-prep"
+              data-dual-gate="L4"
+              role="navigation"
+              aria-label="L4 Midnight Oil live-step dual-gate prep"
+            >
+              <a
+                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l4-moil"
+                className="underline opacity-80 hover:opacity-100"
+                data-testid="moil-live-l4-checklist-link"
+                title="Dual-gate L4 Midnight Oil live-step checklist (prep only · offline default)"
+              >
+                Dual-gate L4 MO checklist
+              </a>
+              <span className="opacity-40" aria-hidden>
+                ·
+              </span>
+              <span className="font-mono opacity-70">
+                prep only · never enables live worker from this panel
+              </span>
+            </div>
             <button
               type="button"
               data-testid="moil-live-step-status-refresh"
@@ -1756,6 +1789,16 @@ export default function Settings() {
                 data-offline-honest={String(moilLive.offline_honest)}
                 data-live-env={String(moilLive.live_env)}
                 data-injector-installed={String(moilLive.injector_installed)}
+                // Residual (aed): composite L4 readiness (env + injector + not offline-only).
+                data-l4-live-ready={String(
+                  moilLive.live_env === true &&
+                    moilLive.injector_installed === true &&
+                    moilLive.offline_honest === false,
+                )}
+                data-l4-gates-live-env={String(moilLive.live_env === true)}
+                data-l4-gates-injector={String(
+                  moilLive.injector_installed === true,
+                )}
                 role="status"
               >
                 <p>
@@ -1770,6 +1813,25 @@ export default function Settings() {
                   env <code>{moilLive.live_env_flag}</code>=
                   {String(moilLive.live_env)} · injector=
                   {String(moilLive.injector_installed)}
+                </p>
+                <p
+                  data-testid="moil-live-l4-gate-matrix"
+                  data-l4-live-ready={String(
+                    moilLive.live_env === true &&
+                      moilLive.injector_installed === true &&
+                      moilLive.offline_honest === false,
+                  )}
+                >
+                  L4 gate matrix: live_env=
+                  {moilLive.live_env === true ? "on" : "off"} · injector=
+                  {moilLive.injector_installed === true ? "on" : "off"} ·
+                  live_ready=
+                  {moilLive.live_env === true &&
+                  moilLive.injector_installed === true &&
+                  moilLive.offline_honest === false
+                    ? "true"
+                    : "false"}{" "}
+                  (env + injector + offline_honest=false required)
                 </p>
                 {moilLive.notes.map((n) => (
                   <p key={n} className="opacity-80">

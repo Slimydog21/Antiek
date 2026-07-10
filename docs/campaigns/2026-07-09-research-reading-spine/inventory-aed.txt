@@ -1,0 +1,18 @@
+# inventory-aed · Settings MO L4 gate matrix + checklist (parity twin L3 aec)
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aed
+date: 2026-07-10
+parent_tip: d0518a88 (aec)
+
+## Closed
+- moil-live-step-status panel: data-l4-live-ready composite
+- In-panel Dual-gate L4 MO checklist (#l4-moil)
+- Metrics: data-l4-gates-live-env | injector + gate matrix chrome
+- vitest Settings · 35 passed
+
+## Why this residual
+Parity with twin L3 readiness (aec) for Midnight Oil live-step dual-gate prep
+on the Settings readiness panel itself.
+
+## Not in scope
+- Enabling live MO worker (operator env + injector only)

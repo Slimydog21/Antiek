@@ -940,10 +940,24 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(panel.id).toBe("moil-live-step-status");
     expect(panel.getAttribute("data-offline-honest")).toBe("true");
     expect(panel.getAttribute("data-injector-installed")).toBe("false");
+    // Residual (aed): offline default is not L4 live ready.
+    expect(panel.getAttribute("data-l4-live-ready")).toBe("false");
     const metrics = screen.getByTestId("moil-live-step-status-metrics");
     expect(metrics.getAttribute("data-offline-honest")).toBe("true");
     expect(metrics.getAttribute("data-live-env")).toBe("false");
+    expect(metrics.getAttribute("data-l4-live-ready")).toBe("false");
+    expect(metrics.getAttribute("data-l4-gates-live-env")).toBe("false");
+    expect(metrics.getAttribute("data-l4-gates-injector")).toBe("false");
     expect(metrics.textContent).toMatch(/offline-honest stub steps/i);
+    // Residual (aed): in-panel L4 checklist + gate matrix.
+    expect(screen.getByTestId("moil-live-l4-prep")).toBeTruthy();
+    expect(
+      screen.getByTestId("moil-live-l4-checklist-link").getAttribute("href"),
+    ).toMatch(/DUAL-GATE-L1-L4.*#l4-moil/);
+    const gateMatrix = screen.getByTestId("moil-live-l4-gate-matrix");
+    expect(gateMatrix.getAttribute("data-l4-live-ready")).toBe("false");
+    expect(gateMatrix.textContent).toMatch(/L4 gate matrix/i);
+    expect(gateMatrix.textContent).toMatch(/live_ready=false/);
   });
 
   it("loads Antiek-bench weekly usage summary in Settings", async () => {
