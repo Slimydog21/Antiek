@@ -1160,3 +1160,8 @@ Midnight Oil shows projected remaining daily budget if full recommended
 ceiling is spent (remaining − ceiling). Competitive delta: approve foresight
 beyond binary fit — operator sees how the swarm price ceiling affects the
 daily cap before fire (never invent $0 when remaining unknown).
+
+## Residual un · 2026-07-10 — MO custom ceiling remaining-after projection
+Custom ceiling input projects remaining-after as the operator types (parity
+recommended um). Competitive delta: custom approve path has the same budget
+foresight as recommended — no silent over-budget custom approve without chrome.

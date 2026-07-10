@@ -1,0 +1,16 @@
+# inventory-un · MO custom ceiling remaining-after projection
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: un
+date: 2026-07-10
+
+## Closed
+- moil-custom-ceiling-remaining-after live projection as operator edits ceiling
+- data-testid moil-custom-ceiling-input / moil-approve-custom
+- vitest MidnightOil 19 green · /tmp/residual-tests-un.log
+
+## Product why
+Parity um for custom approve path — operator sees how a typed ceiling affects
+daily remaining before fire (fits/may_exceed + remaining-after).
+
+## Not in scope
+- Operator merge PR #465 (gated)

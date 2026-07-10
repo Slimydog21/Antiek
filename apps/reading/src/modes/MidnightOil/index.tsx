@@ -27,6 +27,7 @@
  * Residual (md): recommended ceiling vs remaining daily budget fit chrome
  * (fits | may_exceed | unknown) — never invent $0 remaining.
  * Residual (um): remaining-after-ceiling projection (how approve affects daily cap).
+ * Residual (un): custom ceiling remaining-after projection (parity um).
  * Residual (me): soft-gate approve when ceiling may_exceed remaining budget
  * (force override required; unknown remaining never blocks).
  * Residual (ml): dual-gate L1–L4 checklist deep-link (parity mj; prep only).
@@ -1092,6 +1093,7 @@ export default function MidnightOil() {
                   value={ceilingInput}
                   onChange={(e) => setCeilingInput(e.target.value)}
                   disabled={busy}
+                  data-testid="moil-custom-ceiling-input"
                 />
                 <label className="text-sm">
                   <input
@@ -1106,10 +1108,65 @@ export default function MidnightOil() {
                   type="button"
                   onClick={() => void onApproveCustom()}
                   disabled={busy}
+                  data-testid="moil-approve-custom"
                 >
                   Approve custom ceiling
                 </button>
               </div>
+              {/* Residual (un): custom ceiling remaining-after projection (parity um). */}
+              {(() => {
+                const amount = Number(ceilingInput);
+                const valid = Number.isFinite(amount) && amount > 0;
+                let remainingAfter: number | null = null;
+                let fit: "fits" | "may_exceed" | "unknown" = "unknown";
+                if (
+                  valid &&
+                  budgetRemainingUsd != null &&
+                  Number.isFinite(budgetRemainingUsd)
+                ) {
+                  remainingAfter = budgetRemainingUsd - amount;
+                  fit =
+                    amount <= budgetRemainingUsd + 1e-9
+                      ? "fits"
+                      : "may_exceed";
+                } else if (!valid) {
+                  fit = "unknown";
+                }
+                return (
+                  <p
+                    className="text-[11px] font-mono opacity-80 w-full"
+                    data-testid="moil-custom-ceiling-remaining-after"
+                    data-remaining-after-usd={
+                      remainingAfter != null
+                        ? String(remainingAfter)
+                        : "unknown"
+                    }
+                    data-custom-usd={valid ? String(amount) : "invalid"}
+                    data-remaining-usd={
+                      budgetRemainingUsd != null
+                        ? String(budgetRemainingUsd)
+                        : "unknown"
+                    }
+                    data-fit={fit}
+                    data-view-format="html"
+                    role="status"
+                  >
+                    Custom after approve (projection):{" "}
+                    <strong data-testid="moil-custom-ceiling-remaining-after-label">
+                      {!valid
+                        ? "enter a positive ceiling"
+                        : remainingAfter != null
+                          ? `remaining≈$${remainingAfter.toFixed(2)}`
+                          : "unknown (remaining budget unset)"}
+                    </strong>
+                    {valid && remainingAfter != null
+                      ? ` · if full custom $${amount.toFixed(2)} is spent`
+                      : valid
+                        ? " · never invent $0"
+                        : ""}
+                  </p>
+                );
+              })()}
             </div>
           ) : null}
 
