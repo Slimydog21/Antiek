@@ -256,9 +256,9 @@ export function ResearchContextPanel({
         {/* Residual (ie/mu): Settings + dual-gate checklist (L1/L2 hydrate prep). */}
         <p className="meta font-mono text-[11px] space-x-3">
           <a
-            href="/settings"
+            href="/settings#hydrate-live-status"
             data-testid="research-context-settings-link"
-            title="Open Settings → Publication hydrate readiness"
+            title="Open Settings → Publication hydrate readiness (arxiv/substack injectors)"
           >
             Settings · hydrate readiness
           </a>

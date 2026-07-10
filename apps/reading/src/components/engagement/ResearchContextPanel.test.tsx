@@ -60,7 +60,7 @@ describe("ResearchContextPanel", () => {
   it("links to Settings hydrate readiness (ie)", () => {
     render(<ResearchContextPanel assetId="paper" />);
     const link = screen.getByTestId("research-context-settings-link");
-    expect(link.getAttribute("href")).toBe("/settings");
+    expect(link.getAttribute("href")).toBe("/settings#hydrate-live-status");
     expect(link.textContent).toMatch(/hydrate readiness/i);
   });
 

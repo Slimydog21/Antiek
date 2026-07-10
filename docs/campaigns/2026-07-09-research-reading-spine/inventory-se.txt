@@ -1,0 +1,14 @@
+# inventory-se · Hydrate + twin-seed Settings deep-link anchors
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: se
+date: 2026-07-10
+
+## Closed
+- Settings id="twin-seed-live-status" + id="hydrate-live-status"
+- TwinNotesPanel → #twin-seed-live-status
+- PublicationAttachPanel + ResearchContextPanel → #hydrate-live-status
+- vitest 74 · SCRATCH residual-tests-se.log
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live L1–L4 dual-gate (operator-only)

@@ -1271,6 +1271,7 @@ export default function Settings() {
         >
           <div
             className="p-4 space-y-3"
+            id="twin-seed-live-status"
             data-testid="twin-seed-live-status-panel"
             data-view-format="html"
             data-offline-honest={
@@ -1346,6 +1347,7 @@ export default function Settings() {
         >
           <div
             className="p-4 space-y-3"
+            id="hydrate-live-status"
             data-testid="hydrate-live-status-panel"
             data-view-format="html"
             data-offline-honest={

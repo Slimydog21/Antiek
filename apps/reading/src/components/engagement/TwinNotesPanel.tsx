@@ -979,9 +979,9 @@ export function TwinNotesPanel({
         {/* Residual (ib/mt): Settings + dual-gate checklist (L3 twin live seed prep). */}
         <p className="meta font-mono text-[11px] space-x-3">
           <a
-            href="/settings"
+            href="/settings#twin-seed-live-status"
             data-testid="twin-notes-settings-link"
-            title="Open Settings → Twin seed live readiness"
+            title="Open Settings → Twin seed live readiness (offline-honest)"
           >
             Settings · twin seed readiness
           </a>

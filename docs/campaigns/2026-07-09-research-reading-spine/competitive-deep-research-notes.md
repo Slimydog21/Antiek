@@ -834,3 +834,9 @@ Engagement surfaces labeled driver & budget (badge, collective, progress,
 spawn merge, flywheel, Write, MO, marketplace) deep-link
 /settings#decision-tree-panel. Competitive delta: model choice + budget
 foresight is one click from any research host.
+
+## Residual se · 2026-07-10 — Hydrate + twin-seed Settings anchors
+Settings anchors twin-seed-live-status and hydrate-live-status; TwinNotes /
+PublicationAttach / ResearchContext deep-link there. Competitive delta:
+offline-honest readiness panels are one click from recursive note-taker and
+knowledge-dense pub attach surfaces.

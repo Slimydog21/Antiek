@@ -90,7 +90,7 @@ describe("PublicationAttachPanel residual ck/ed", () => {
     ).toBe("html");
     // Residual (ia): Settings deep-link for hydrate readiness.
     const settings = screen.getByTestId("publication-attach-settings-link");
-    expect(settings.getAttribute("href")).toBe("/settings");
+    expect(settings.getAttribute("href")).toBe("/settings#hydrate-live-status");
     expect(settings.textContent).toMatch(/hydrate readiness/i);
     // Residual (mj): dual-gate checklist link (prep only; never enables injectors).
     const dual = screen.getByTestId("publication-attach-dual-gate-checklist-link");

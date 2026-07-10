@@ -208,7 +208,7 @@ describe("TwinNotesPanel", () => {
   it("links to Settings twin seed readiness (ib)", () => {
     render(<TwinNotesPanel assetId="paper" />);
     const link = screen.getByTestId("twin-notes-settings-link");
-    expect(link.getAttribute("href")).toBe("/settings");
+    expect(link.getAttribute("href")).toBe("/settings#twin-seed-live-status");
     expect(link.textContent).toMatch(/twin seed readiness/i);
     // Residual (nc): driver badge always mounted on note-taker.
     expect(screen.getByTestId("twin-notes-driver-badge-mount")).toBeTruthy();

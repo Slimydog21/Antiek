@@ -170,7 +170,7 @@ export function PublicationAttachPanel({
         </button>
         {/* Residual (ia): Settings deep-link for env-gated hydrate readiness. */}
         <a
-          href="/settings"
+          href="/settings#hydrate-live-status"
           data-testid="publication-attach-settings-link"
           className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
           title="Open Settings → Publication hydrate readiness (arxiv/substack injectors)"
