@@ -4,6 +4,7 @@ import { LemonButton } from "../../components/lemon";
 import { askBook } from "../../api/books";
 import type { BookCitation } from "../../api/books";
 import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
+import { ResearchContextPanel } from "../../components/engagement/ResearchContextPanel";
 import { TwinNotesPanel } from "../../components/engagement/TwinNotesPanel";
 import { useSettingsResearchTier } from "../../lib/useSettingsResearchTier";
 import ReadAloud from "../../components/voice/ReadAloud";
@@ -30,6 +31,8 @@ import type { TalkMessage } from "./useTalkThread";
  * Residual (qp): DecisionTreeDriverBadge promptText from draft question.
  * Residual (agm): TwinNotes recursive note-taker for this book asset when open
  *   (reading ≡ research · every information asset has twin substrate).
+ * Residual (ams): ResearchContext with researchTier on talk bookmark so
+ *   intelligent search over twins sits next to multi-turn ask (parity amr).
  *
  * §9.0: a withheld region can never be cited — the backend search gate keeps a
  * withheld body out of the model context and the citation set, so this surface
@@ -243,6 +246,21 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
           autoSeedIfEmpty
           seedTitle={title?.trim() || documentId}
           seedBodyText={title?.trim() || documentId}
+          researchTier={researchTier}
+        />
+      </section>
+      {/* Residual (ams): intelligent context over twins on talk bookmark. */}
+      <section
+        className="max-h-48 overflow-y-auto border-t border-rule dark:border-charcoal-1 px-3 py-2"
+        data-testid="talk-to-book-context-mount"
+        data-view-format="html"
+        data-document-id={documentId}
+        data-seamless-talk-context="true"
+        data-research-tier={researchTier}
+      >
+        <ResearchContextPanel
+          assetId={documentId}
+          autoLoad
           researchTier={researchTier}
         />
       </section>

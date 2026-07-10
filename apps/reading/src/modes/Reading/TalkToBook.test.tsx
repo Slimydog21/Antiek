@@ -70,6 +70,7 @@ vi.mock("../../components/engagement/TwinNotesPanel", () => ({
     autoLoad?: boolean;
     autoSeedIfEmpty?: boolean;
     seedTitle?: string;
+    researchTier?: string | null;
   }) => (
     <div
       data-testid="twin-notes-panel-stub"
@@ -77,8 +78,26 @@ vi.mock("../../components/engagement/TwinNotesPanel", () => ({
       data-auto-load={String(Boolean(props.autoLoad))}
       data-auto-seed={String(Boolean(props.autoSeedIfEmpty))}
       data-seed-title={props.seedTitle ?? ""}
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
     >
       twins={props.assetId}
+    </div>
+  ),
+}));
+
+vi.mock("../../components/engagement/ResearchContextPanel", () => ({
+  ResearchContextPanel: (props: {
+    assetId: string;
+    autoLoad?: boolean;
+    researchTier?: string | null;
+  }) => (
+    <div
+      data-testid="research-context-panel-stub"
+      data-asset-id={props.assetId}
+      data-auto-load={String(Boolean(props.autoLoad))}
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+    >
+      context={props.assetId}
     </div>
   ),
 }));
@@ -279,5 +298,16 @@ describe("TalkToBook (M2)", () => {
     expect(twins.getAttribute("data-auto-load")).toBe("true");
     expect(twins.getAttribute("data-auto-seed")).toBe("true");
     expect(twins.getAttribute("data-seed-title")).toBe("Twin Book");
+    // Residual (ams): ResearchContext on talk bookmark with depth prefill.
+    const ctxMount = screen.getByTestId("talk-to-book-context-mount");
+    expect(ctxMount.getAttribute("data-document-id")).toBe("doc-twin");
+    expect(ctxMount.getAttribute("data-seamless-talk-context")).toBe("true");
+    expect(ctxMount.getAttribute("data-research-tier")).toMatch(
+      /deep|fast|wrestle/,
+    );
+    const ctx = screen.getByTestId("research-context-panel-stub");
+    expect(ctx.getAttribute("data-asset-id")).toBe("doc-twin");
+    expect(ctx.getAttribute("data-auto-load")).toBe("true");
+    expect(ctx.getAttribute("data-research-tier")).toMatch(/deep|fast|wrestle/);
   });
 });

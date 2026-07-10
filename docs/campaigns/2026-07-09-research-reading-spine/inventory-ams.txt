@@ -1,0 +1,16 @@
+# inventory-ams · TalkToBook ResearchContext mount with researchTier
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ams
+date: 2026-07-10
+parent_tip: 01f3a636 (amr)
+
+## Closed
+- talk-to-book-context-mount on open bookmark
+- ResearchContextPanel autoLoad · researchTier from Settings
+- data-seamless-talk-context · reading ≡ research on multi-turn ask
+- vitest TalkToBook 10 green
+- proof: SCRATCH residual-ams-vitest.log
+
+## Next
+amt+ MetaReading context or product residual · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

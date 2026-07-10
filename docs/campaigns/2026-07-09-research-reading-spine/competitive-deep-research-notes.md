@@ -3416,3 +3416,8 @@ P0 operator merge PR #465. Pivot amr+ outside thrash.
 Highlight DR path mounts ResearchContext next to TwinNotes with depth prefill so
 intelligent search sits beside launch (reading ≡ research). vitest ResearchThis 13 green.
 P0 operator merge PR #465. Pivot ams+ outside thrash.
+
+## Residual ams · 2026-07-10 — TalkToBook ResearchContext mount with researchTier
+Talk bookmark mounts ResearchContext next to TwinNotes with Settings depth so
+intelligent search sits on multi-turn book conversation (reading ≡ research).
+vitest TalkToBook 10 green. P0 operator merge PR #465. Pivot amt+ outside thrash.
