@@ -108,8 +108,39 @@ describe("ResearchContextPanel", () => {
     expect(
       domainAwareSearchDefault(["engineering", "electricity"]),
     ).toMatch(/electricity electromagnetism/i);
+    // Residual (akw): free PD literature + bare technology.
+    expect(domainAwareSearchDefault(["literature"])).toMatch(
+      /literature novel manners/i,
+    );
+    expect(domainAwareSearchDefault(["fiction", "novel"])).toMatch(
+      /literature novel manners/i,
+    );
+    // Bare technology (no computing/electricity/heat) → instruments methods.
+    expect(domainAwareSearchDefault(["technology"])).toMatch(
+      /technology instruments research methods/i,
+    );
+    // Computing still wins over bare technology when both present.
+    expect(domainAwareSearchDefault(["technology", "computing"])).toMatch(
+      /computing analytical engine/i,
+    );
     expect(domainAwareSearchDefault([])).toBe("");
     expect(domainAwareSearchDefault(null)).toBe("");
+  });
+
+  it("prefills intelligent search from free PD literature subjects (akw)", () => {
+    render(
+      <ResearchContextPanel
+        assetId="pd-pride"
+        domainSubjects={["literature"]}
+      />,
+    );
+    const controls = screen.getByTestId("research-context-query-controls");
+    expect(controls.getAttribute("data-domain-aware-default")).toBe("true");
+    expect(controls.getAttribute("data-domain-subjects")).toMatch(/literature/);
+    expect(
+      (screen.getByTestId("research-context-query-input") as HTMLInputElement)
+        .value,
+    ).toMatch(/literature novel manners/i);
   });
 
   it("prefills intelligent search from free PD economics subjects (akq)", () => {

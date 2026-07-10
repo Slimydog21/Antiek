@@ -1,0 +1,18 @@
+# inventory-akw · domain-aware twin search free PD literature + bare technology
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: akw
+date: 2026-07-10
+parent_tip: 520e73ca (akv)
+
+## Closed
+- domainAwareSearchDefault expands:
+  - literature / fiction / novel → literature novel manners society
+  - technology / tech (after STEM) → technology instruments research methods
+- Computing still precedence over bare technology
+- FUTURE twin matrix gap #3 expanded (akw)
+- vitest ResearchContext 16 green
+- proof: SCRATCH residual-akw-vitest.log
+
+## Next
+akx+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

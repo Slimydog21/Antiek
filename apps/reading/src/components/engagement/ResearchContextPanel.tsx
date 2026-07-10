@@ -87,6 +87,8 @@ export function twinNoteMetrics(
  * Residual (akq): free PD economics / politics / philosophy / engineering pairs
  * (Wealth of Nations · Federalist · Discourse/Liberty · Heaviside engineering)
  * so intelligent search covers the full offline marketplace subject spine.
+ * Residual (akw): free PD literature + bare technology (Pride · tech spine when
+ * not already matched by computing/electricity/heat).
  */
 export function domainAwareSearchDefault(
   subjects?: readonly string[] | null,
@@ -143,6 +145,15 @@ export function domainAwareSearchDefault(
   // (Heaviside EM engineering tags; Fourier engineering yields to heat above).
   if (set.has("engineering") || set.has("electrical_engineering")) {
     return "engineering electromagnetic operational calculus twin insights";
+  }
+  // Residual (akw): free PD literature (Pride and Prejudice · Austen spine).
+  if (set.has("literature") || set.has("fiction") || set.has("novel")) {
+    return "literature novel manners society twin insights";
+  }
+  // Residual (akw): bare technology when computing/electricity/heat did not match
+  // (catalog tech tags on Faraday/Hooke/Boole still yield earlier STEM defaults).
+  if (set.has("technology") || set.has("tech")) {
+    return "technology instruments research methods twin insights";
   }
   return "";
 }
