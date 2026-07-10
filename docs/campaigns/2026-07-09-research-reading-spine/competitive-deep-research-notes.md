@@ -3284,3 +3284,8 @@ vitest 83 green. P0 operator merge PR #465. Pivot alp+ outside thrash.
 ## Residual alp · 2026-07-10 — SESSION-ARC alj–alo domain coverage full path
 Wave handoff: ResearchContext · MarketplaceHost · HostedHtml domain-search coverage
 + pure util extract. P0 operator merge PR #465. Pivot alq+ outside thrash.
+
+## Residual alq · 2026-07-10 — pure domainSearchDefaults unit tests + twin matrix complete
+Pure unit tests lock domain-search spine; FUTURE twin matrix gap #3 offline
+product-complete (akq–alo). vitest 2 green. P0 operator merge PR #465.
+Pivot alr+ outside thrash (prefer non-domain-search).

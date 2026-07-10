@@ -1,0 +1,15 @@
+# inventory-alq · pure domainSearchDefaults unit tests + twin matrix complete
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: alq
+date: 2026-07-10
+parent_tip: 2a585acb (alp)
+
+## Closed
+- workspace/domainSearchDefaults.test.ts pure unit tests (2)
+- FUTURE twin matrix gap #3 marked offline product-complete (akq–alo)
+- vitest domainSearchDefaults 2 green
+- proof: SCRATCH residual-alq-vitest.log
+
+## Next
+alr+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)
