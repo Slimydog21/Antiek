@@ -3243,3 +3243,8 @@ Intelligent twin search defaults bare science/natural_philosophy after specific
 STEM domains (never overrides biology/physics/math). Completes free PD science
 spine catch-all. FUTURE twin matrix gap #3 expanded. vitest ResearchContext 16 green.
 P0 operator merge PR #465. Pivot alg+ outside thrash.
+
+## Residual alg · 2026-07-10 — FUTURE competitive DR quality brief tip re-anchor
+Executable competitive DR brief refreshed with tip alf 2cf218f1 and shipped map
+through L5 Sprint 1–3 · free PD domain search spine · budget matrix extension.
+P0 operator merge PR #465. Pivot alh+ outside thrash.
