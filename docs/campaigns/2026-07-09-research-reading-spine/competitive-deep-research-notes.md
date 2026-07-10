@@ -3020,3 +3020,7 @@ matrix deep-link. vitest TwinNotes 30 green. P0 operator merge PR #465. Pivot aj
 twin_promote_context_payload emits graph_node_ids · unique counts ·
 content_addressed_alignment; HTML depth-graph strip. Substrate parity with UI
 ajn. pytest twin promote 15 green. P0 operator merge PR #465. Pivot ajp+.
+
+## Residual ajp · 2026-07-10 — SESSION-ARC ajm–ajo budget twin depth
+Wave handoff: launch budget scorecard · twin promote UI depth-graph · substrate
+payload depth-graph honesty. P0 operator merge PR #465. Pivot ajq+ outside thrash.
