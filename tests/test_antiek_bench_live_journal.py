@@ -165,7 +165,7 @@ def test_success_is_reserved_before_dispatch_and_replayed(tmp_path: Path) -> Non
     assert (
         result.response_hash == "0db52f4076c082518412afd3dd3576e2cb0c63703fd7fed5e23ade60efef31d9"
     )
-    assert budget.total_charged == Decimal("0.25")
+    assert budget.total_charged == Decimal("0.20")
     assert runner.execute(**kwargs) == result
 
 

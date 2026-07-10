@@ -86,10 +86,10 @@ def _score_response(response: str, expected: tuple[str, ...]) -> tuple[float, tu
     return (len(hits) / float(len(expected)), hits)
 
 
-def _run_id(week_id: str, suite_version: str, model_id: str) -> str:
-    digest = hashlib.sha256(
-        f"run:v1:{week_id}:{suite_version}:{model_id}".encode()
-    ).hexdigest()[:16]
+def bench_run_id(week_id: str, suite_version: str, model_id: str) -> str:
+    digest = hashlib.sha256(f"run:v1:{week_id}:{suite_version}:{model_id}".encode()).hexdigest()[
+        :16
+    ]
     return f"brun_{digest}"
 
 
@@ -120,9 +120,7 @@ def run_suite(
     elif providers is not None and mid in providers:
         fn = providers[mid]
     else:
-        raise ValueError(
-            f"no provider for model_id={mid!r}; pass provider_fn or providers map"
-        )
+        raise ValueError(f"no provider for model_id={mid!r}; pass provider_fn or providers map")
 
     scores: list[TaskScore] = []
     class_buckets: dict[str, list[float]] = {}
@@ -143,11 +141,9 @@ def run_suite(
         )
         class_buckets.setdefault(item.task_class, []).append(score)
 
-    by_class = {
-        tc: round(sum(vs) / len(vs), 6) for tc, vs in sorted(class_buckets.items())
-    }
+    by_class = {tc: round(sum(vs) / len(vs), 6) for tc, vs in sorted(class_buckets.items())}
     mean = round(sum(s.score for s in scores) / len(scores), 6) if scores else 0.0
-    rid = _run_id(wid, suite_def.suite_version, mid)
+    rid = bench_run_id(wid, suite_def.suite_version, mid)
     result = BenchRunResult(
         run_id=rid,
         week_id=wid,

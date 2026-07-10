@@ -27,6 +27,7 @@ class ProviderResult:
     latency_ms: int
     response_text: str = ""
     provider_id: str = ""
+    scoring_text: str = ""
 
     @property
     def total_tokens(self) -> int:
@@ -108,6 +109,7 @@ class LiveCallRunner:
                 cost_usd=result.cost_usd,
                 latency_ms=result.latency_ms,
                 response_hash=hashlib.sha256(result.response_text.encode()).hexdigest(),
+                scoring_text=result.scoring_text,
             )
         except TimeoutError:
             settlement = replace(

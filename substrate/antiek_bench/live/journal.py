@@ -55,6 +55,7 @@ class LiveCallRecord:
     latency_ms: int = 0
     prompt_hash: str = ""
     response_hash: str = ""
+    scoring_text: str = ""
     failure_text: str = ""
     schema_version: int = 2
 
@@ -215,7 +216,10 @@ class Journal:
             if record.call_id in current:
                 return False
             charged = sum(
-                (max(event.reserved_usd, event.cost_usd) for event in current.values()),
+                (
+                    event.cost_usd if event.status == "ok" else event.reserved_usd
+                    for event in current.values()
+                ),
                 Decimal("0"),
             )
             if charged + record.reserved_usd > cap_usd:

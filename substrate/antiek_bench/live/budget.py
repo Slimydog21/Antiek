@@ -26,10 +26,10 @@ class HardBudget:
     def total_charged(self) -> Decimal:
         total = Decimal("0")
         for record in self._journal.replay().values():
-            # Outstanding reservations, timeouts, and failures are conservatively
-            # charged at the reservation. Successful calls use at least that amount:
-            # underestimation must never make the approved ceiling porous.
-            total += max(record.reserved_usd, record.cost_usd)
+            # A successful settlement releases unused headroom because the
+            # provider-enforced maximum has resolved to measured spend. Unknown
+            # outcomes retain their full reservation.
+            total += record.cost_usd if record.status == "ok" else record.reserved_usd
         return total
 
     @property
