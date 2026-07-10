@@ -1199,3 +1199,7 @@ Competitive delta: swarm handoff tip-true after dogfood v7 citation-trust wave.
 MarketplaceHost host-land deep research accepts optional arxiv/substack/URL
 refs with offline-default hydrate prep deep-links (parity HostedHtml er/uj).
 Competitive delta: free STEM catalog books ground DR without leaving host land.
+
+## Residual uv · 2026-07-10 — FUTURE-AGENT tip re-anchor through uu
+FUTURE-AGENT-SPEC tip → 22129e6b with closed arcs tt–uu (28 residual ships).
+Competitive delta: swarm handoff tip-true after marketplace host pub-refs wave.
