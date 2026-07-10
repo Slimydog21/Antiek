@@ -1129,12 +1129,13 @@ export default function Settings() {
               className="border border-ink/10 rounded p-2 space-y-1 dark:border-bright/10"
               data-testid="settings-dual-gate-prep"
               data-l7-notdiamond="advisory_only"
+              data-l5-payment-rails="deferred"
               data-offline-default="true"
               role="status"
             >
               <p className="text-[11px] font-mono text-ink-soft dark:text-starlight">
-                Dual-gate prep (L1–L4) · offline default · never silent live
-                injectors
+                Dual-gate prep (L1–L4) · L5 payment deferred · offline default ·
+                never silent live injectors
               </p>
               <p className="text-[11px] font-mono space-x-2">
                 <a
@@ -1169,6 +1170,16 @@ export default function Settings() {
                 >
                   L4 checklist
                 </a>
+                {/* Residual (vt): L5 payment rails honesty (marketplace manual receipt). */}
+                <span
+                  className="opacity-80"
+                  data-testid="settings-dual-gate-l5-payment"
+                  data-l5-payment-rails="deferred"
+                  data-live-payment="false"
+                  title="L5 marketplace payment rails deferred — manual receipt only"
+                >
+                  L5 payment deferred
+                </span>
                 <a
                   href="#notdiamond-advisory"
                   className="underline opacity-80 hover:opacity-100"

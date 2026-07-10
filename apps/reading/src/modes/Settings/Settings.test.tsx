@@ -746,6 +746,16 @@ describe("Settings SPR-01 + decision-tree install", () => {
     const prep = screen.getByTestId("settings-dual-gate-prep");
     expect(prep.getAttribute("data-offline-default")).toBe("true");
     expect(prep.getAttribute("data-l7-notdiamond")).toBe("advisory_only");
+    // Residual (vt): L5 payment rails deferred honesty.
+    expect(prep.getAttribute("data-l5-payment-rails")).toBe("deferred");
+    expect(
+      screen.getByTestId("settings-dual-gate-l5-payment").getAttribute(
+        "data-live-payment",
+      ),
+    ).toBe("false");
+    expect(screen.getByTestId("settings-dual-gate-l5-payment").textContent).toMatch(
+      /L5 payment deferred/i,
+    );
     expect(screen.getByTestId("settings-dual-gate-l1-l2-link").getAttribute("href")).toBe(
       "#hydrate-live-status",
     );

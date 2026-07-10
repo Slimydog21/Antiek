@@ -1319,3 +1319,8 @@ Write provenance when Open Write is used from the host.
 FUTURE-AGENT-SPEC tip → 5986da30 with closed arcs tt–vr (51 residual ships).
 Competitive delta: swarm handoff tip-true; operator merge PR #465 remains
 highest leverage.
+
+## Residual vt · 2026-07-10 — Settings dual-gate L5 payment deferred
+Settings dual-gate prep strip stamps L5 payment deferred / live_payment=false.
+Competitive delta: deferred marketplace rails are visible on Settings chokepoint
+(parity marketplace uy L5 honesty).
