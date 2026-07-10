@@ -288,8 +288,8 @@ def configure_midnight_oil_live_step(
 
     A live step spends real money, so installing one REQUIRES a matching
     ``project_fn`` declaring each step's projected maximum cost — the worker
-    reserves that projection against the approved ceiling before the step
-    runs. Passing ``step_fn=None`` clears both.
+    places that projection in the durable budget ledger before the step runs.
+    Passing ``step_fn=None`` clears both.
 
     Does nothing by itself — ``live_step_enabled()`` must also be true
     for ``run_job_offline`` to use the injector.
