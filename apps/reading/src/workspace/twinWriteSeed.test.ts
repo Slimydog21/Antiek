@@ -417,7 +417,7 @@ describe("twinWriteSeed (pp)", () => {
     expect(loadTwinWriteSeed(key)?.asset_id).toBe("deep_research:spn_orphan");
   });
 
-  it("builds twin promote Write twin_seed (rr)", () => {
+  it("builds twin promote Write twin_seed (rr/ajv)", () => {
     const href = buildTwinPromoteWriteHref({
       assetId: "paper-1",
       query: "attention",
@@ -427,6 +427,8 @@ describe("twinWriteSeed (pp)", () => {
       ],
       noteIds: ["n1", "n2"],
       promotedCount: 2,
+      graphNodeIds: ["u1", "u2"],
+      contentAddressedAlignment: true,
     });
     expect(href).toBeTruthy();
     expect(href!).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
@@ -436,8 +438,15 @@ describe("twinWriteSeed (pp)", () => {
     const seed = loadTwinWriteSeed(key);
     expect(seed?.source).toBe("twin_promote_context");
     expect(seed?.note_ids).toEqual(["n1", "n2"]);
-    expect(seed?.plain_text).toMatch(/\[insight\] Attention is routing/);
+    expect(seed?.plain_text).toMatch(/\[insight\].*Attention is routing/);
     expect(seed?.html).toMatch(/data-source="twin_promote_context"/);
+    // Residual (ajv): depth-graph honesty on promote Write seed.
+    expect(seed?.plain_text).toMatch(/\[depth_graph\]/);
+    expect(seed?.plain_text).toMatch(/content_addressed_alignment=true/);
+    expect(seed?.plain_text).toMatch(/unique_nodes=2/);
+    expect(seed?.html).toMatch(/data-content-addressed-alignment="true"/);
+    expect(seed?.html).toMatch(/data-unique-graph-node-count="2"/);
+    expect(seed?.html).toMatch(/Depth-graph/);
   });
 
   it("builds research context pack Write twin_seed (ri)", () => {

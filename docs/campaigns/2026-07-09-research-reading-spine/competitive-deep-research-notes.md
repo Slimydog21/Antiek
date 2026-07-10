@@ -3048,3 +3048,8 @@ Pivot aju+ outside thrash.
 engagement_spine exports pure depth_graph_honesty_fields (ajt) for agent-readable
 promote depth-graph audit. pytest public import green. P0 operator merge PR #465.
 Pivot ajv+ outside thrash.
+
+## Residual ajv · 2026-07-10 — twin promote Write seed depth-graph honesty
+buildTwinPromoteWriteHref stamps depth-graph unique_nodes + unit≡node alignment
+into twin_seed for recursive note-taker Write (parity aji multi-hop Write).
+vitest twinWriteSeed 35 · TwinNotes 30 green. P0 operator merge PR #465. Pivot ajw+.

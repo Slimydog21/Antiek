@@ -999,10 +999,14 @@ export function buildTwinPromoteWriteHref(opts: {
     text?: string | null;
     unit_id?: string | null;
     twin_note_id?: string | null;
+    graph_node_id?: string | null;
   } | null | undefined>;
   noteIds?: ReadonlyArray<string | null | undefined> | null;
   html?: string | null;
   promotedCount?: number | null;
+  /** Residual (ajv/ajo): content-addressed depth-graph honesty into Write seed. */
+  graphNodeIds?: ReadonlyArray<string | null | undefined> | null;
+  contentAddressedAlignment?: boolean | null;
 }): string | null {
   const asset = String(opts.assetId || "").trim();
   if (!asset) return null;
@@ -1011,8 +1015,10 @@ export function buildTwinPromoteWriteHref(opts: {
       if (!u) return "";
       const kind = String(u.kind || "").trim();
       const text = String(u.text || "").trim();
+      const node = String(u.unit_id || u.graph_node_id || "").trim();
       if (!text) return "";
-      return kind ? `[${kind}] ${text}` : text;
+      const head = kind ? `[${kind}]` : "[unit]";
+      return node ? `${head} [${node}] ${text}` : `${head} ${text}`;
     })
     .filter(Boolean);
   const plainFromHtml = plainTextFromHtml(opts.html || "");
@@ -1021,10 +1027,33 @@ export function buildTwinPromoteWriteHref(opts: {
   const noteIds = (opts.noteIds || [])
     .map((x) => String(x || "").trim())
     .filter(Boolean);
+  // Residual (ajv): depth-graph honesty strip for recursive note-taker Write seed.
+  const graphIdsFromUnits = (opts.contextUnits || [])
+    .map((u) => String(u?.unit_id || u?.graph_node_id || "").trim())
+    .filter(Boolean);
+  const graphNodeIds = Array.from(
+    new Set(
+      [
+        ...((opts.graphNodeIds || [])
+          .map((x) => String(x || "").trim())
+          .filter(Boolean) as string[]),
+        ...graphIdsFromUnits,
+      ],
+    ),
+  );
+  const alignment =
+    typeof opts.contentAddressedAlignment === "boolean"
+      ? opts.contentAddressedAlignment
+      : graphNodeIds.length > 0 &&
+        graphIdsFromUnits.length > 0 &&
+        graphNodeIds.every((id) => graphIdsFromUnits.includes(id));
   const plain = [
     query ? `Query: ${query}` : "",
     n > 0 ? `Promoted units: ${n}` : "",
     noteIds.length ? `note_ids: ${noteIds.join(",")}` : "",
+    graphNodeIds.length
+      ? `[depth_graph] unique_nodes=${graphNodeIds.length} · content_addressed_alignment=${String(alignment).toLowerCase()} · nodes=${graphNodeIds.join(",")}`
+      : "",
     ...units,
     plainFromHtml,
   ]
@@ -1041,9 +1070,16 @@ export function buildTwinPromoteWriteHref(opts: {
     `<ul class="context-units">${units.map((u) => `<li>${escape(u)}</li>`).join("")}</ul>`;
   const html =
     `<article data-view-format="html" data-source="twin_promote_context" data-asset-id="${escape(asset)}"` +
-    ` data-promoted-count="${n}">` +
+    ` data-promoted-count="${n}"` +
+    (graphNodeIds.length
+      ? ` data-unique-graph-node-count="${graphNodeIds.length}" data-content-addressed-alignment="${String(alignment).toLowerCase()}"`
+      : "") +
+    `>` +
     `<h1>Twin promote · ${escape(asset)}</h1>` +
     (query ? `<p class="query"><strong>Query:</strong> ${escape(query)}</p>` : "") +
+    (graphNodeIds.length
+      ? `<p class="depth-graph">Depth-graph · unique_nodes=${graphNodeIds.length} · content_addressed_alignment=${String(alignment).toLowerCase()}</p>`
+      : "") +
     bodyHtml +
     `</article>`;
   const seedKey = storeTwinWriteSeed({

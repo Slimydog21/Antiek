@@ -1815,6 +1815,9 @@ export function TwinNotesPanel({
               noteIds: promoted.note_ids,
               html: promoted.html,
               promotedCount: promoted.promoted_count,
+              // Residual (ajv): pass substrate depth-graph honesty into Write seed.
+              graphNodeIds: promoted.graph_node_ids,
+              contentAddressedAlignment: promoted.content_addressed_alignment,
             });
             const unitBody = (promoted.context_units || []).some((u) =>
               Boolean(String(u?.text || "").trim()),
