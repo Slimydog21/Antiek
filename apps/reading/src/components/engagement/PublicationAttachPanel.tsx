@@ -85,6 +85,20 @@ export const KNOWLEDGE_DENSE_PUBLICATION_PRESETS: readonly {
     reference: "arxiv:2212.08073",
     kind: "arxiv",
   },
+  // Residual (asy): ReAct + Toolformer — agentic multi-step / tool-use DR spine
+  // (competitive long-horizon connectors; insert-only · never auto-hydrate).
+  {
+    id: "react-synergizing-reasoning",
+    label: "ReAct (arXiv)",
+    reference: "arxiv:2210.03629",
+    kind: "arxiv",
+  },
+  {
+    id: "toolformer",
+    label: "Toolformer (arXiv)",
+    reference: "arxiv:2302.04761",
+    kind: "arxiv",
+  },
   {
     id: "lilian-weng-attention",
     label: "Lilian Weng · Attention",

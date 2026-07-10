@@ -4241,3 +4241,9 @@ coverage · multi_stage_ready · world_class_bar · long-horizon · html-first.
 Window titles carry N/M stages. Competitive delta: multi-stage plan→cite
 honesty travels with HTML open paths without inventing hops.
 vitest ResearchProgressPanel 13 green. P0 PR #465. Pivot asy+.
+
+## Residual asy · 2026-07-10 — knowledge-dense presets ReAct + Toolformer
+KNOWLEDGE_DENSE_PUBLICATION_PRESETS += arxiv:2210.03629 (ReAct) ·
+arxiv:2302.04761 (Toolformer). Agentic multi-step + tool-use spine for
+competitive DR connectors (insert-only · never auto-hydrate). Shared quick-call
+matrix inherits. vitest PublicationAttach 7 green. P0 PR #465. Pivot asz+.

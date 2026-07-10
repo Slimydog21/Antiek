@@ -125,6 +125,24 @@ describe("PublicationAttachPanel residual ck/ed", () => {
         .getByTestId("publication-preset-constitutional-ai")
         .getAttribute("data-reference"),
     ).toBe("arxiv:2212.08073");
+    // Residual (asy): ReAct + Toolformer agentic multi-step / tool-use spine.
+    expect(
+      screen.getByTestId("publication-preset-react-synergizing-reasoning"),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("publication-preset-react-synergizing-reasoning")
+        .getAttribute("data-reference"),
+    ).toBe("arxiv:2210.03629");
+    expect(screen.getByTestId("publication-preset-toolformer")).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("publication-preset-toolformer")
+        .getAttribute("data-reference"),
+    ).toBe("arxiv:2302.04761");
+    expect(Number(panel.getAttribute("data-knowledge-dense-presets"))).toBeGreaterThanOrEqual(
+      8,
+    );
     fireEvent.click(
       screen.getByTestId("publication-preset-attention-is-all-you-need"),
     );
