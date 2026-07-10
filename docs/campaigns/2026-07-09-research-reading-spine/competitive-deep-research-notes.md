@@ -1126,3 +1126,7 @@ operator can merge what is on screen now.
 Write piece and Midnight Oil deposit mount CollectiveResearchPanel with
 openSpawnIds so Select open works across reading ≡ write ≡ MO. Competitive
 delta: multi-float cohesive unit UX is surface-complete, not host-only.
+
+## Residual ug · 2026-07-10 — FUTURE-AGENT tip re-anchor through uf
+FUTURE-AGENT-SPEC tip → e31d9dce with closed arcs tt–uf. Competitive delta:
+swarm handoff stays tip-true after Select open + free STEM + dogfood v6.

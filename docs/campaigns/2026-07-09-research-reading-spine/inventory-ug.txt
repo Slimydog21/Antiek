@@ -1,0 +1,16 @@
+# inventory-ug · FUTURE-AGENT tip re-anchor through uf
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ug
+date: 2026-07-10
+tip_sha: e31d9dce
+
+## Closed
+- FUTURE-AGENT-SPEC tip → e31d9dce with closed arcs tt–uf
+- Do-not-rebuild: write-seed, dogfood v6, Boole/Heaviside, Select open matrix
+- Next: MO L4 prep polish or arxiv/substack honesty (outside catalog thrash)
+
+## Product why
+Parallel swarm needs tip truth after multi-float Select open + free STEM paths.
+
+## Not in scope
+- Operator merge PR #465 (gated)
