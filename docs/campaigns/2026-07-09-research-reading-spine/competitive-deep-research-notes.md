@@ -2343,3 +2343,9 @@ machine-readable. vitest ResearchContextPanel 12 green.
 Evidence pack Open Write stamps citation-trust · research_tier · seamless-context-write.
 Hydrate Open Write stamps offline-honest · fetched · spawn_id. Competitive
 citation bar on Write handoff (grounded vs ungrounded). vitest ResearchContext 12 green.
+
+## Residual aeu · 2026-07-10 — Antiek-bench dogfood v14 seamless Write path
+Suite bumps to suite-competitive-dogfood-v14 with wrestle fixtures for seamless
+Open Write path honesty and intelligent search/evidence → Write. Settings spine
+postures v14. Recursive rewrite substrate learns differentiating tasks from ael–aet.
+pytest dogfood 5 · Settings 36 green.

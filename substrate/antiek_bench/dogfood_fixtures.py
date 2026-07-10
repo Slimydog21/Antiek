@@ -25,7 +25,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (wl): v11 adds book_qa computability (Turing free PD).
 # Residual (xi): v12 adds book_qa computing history (Lovelace free PD).
 # Residual (adn): v13 adds wrestle write-seed has-body honesty (title-only → rewrite).
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v13"
+# Residual (aeu): v14 learns seamless Write path + intelligent search/evidence.
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v14"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -325,6 +326,46 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "engine",
                 "babbage",
                 "html",
+            ),
+        ),
+        # Residual (aeu): seamless Write path honesty across reading/research surfaces.
+        SuiteItem(
+            item_id="dogfood-wrestle-seamless-write-path",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with seamless Open Write path honesty: how should "
+                "data-seamless-reading-research-write (deep research parent asset), "
+                "data-seamless-merge-write (draft_combined vs into_parent), "
+                "data-seamless-host-write (HostedHtml), data-seamless-port "
+                "(marketplace library), and data-seamless-moil-write (Midnight Oil "
+                "deposit) differ as machine-readable handoffs into the recursive "
+                "note-taker without inventing document ids or auto-merging?"
+            ),
+            expected_keywords=(
+                "seamless",
+                "write",
+                "draft_combined",
+                "into_parent",
+                "html",
+            ),
+        ),
+        # Residual (aeu): intelligent search + evidence citation-trust → Write.
+        SuiteItem(
+            item_id="dogfood-wrestle-intelligent-search-context-write",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with intelligent search and evidence → Write: when context_search "
+                "or evidence_pack Open Write stamps data-seamless-context-write, "
+                "data-query, data-hit-count, and data-citation-trust grounded vs "
+                "ungrounded, how should Antiek-bench weekly rewrite learn which models "
+                "preserve citation honesty and recursive note-taker substrate quality?"
+            ),
+            expected_keywords=(
+                "search",
+                "citation",
+                "context",
+                "twin_seed",
+                "honesty",
             ),
         ),
     )

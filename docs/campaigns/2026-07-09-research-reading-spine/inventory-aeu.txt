@@ -1,0 +1,21 @@
+# inventory-aeu · Antiek-bench dogfood v14 seamless Write + intelligent search
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aeu
+date: 2026-07-10
+parent_tip: 45916631 (aet)
+
+## Closed
+- COMPETITIVE_DOGFOOD_VERSION → suite-competitive-dogfood-v14
+- dogfood-wrestle-seamless-write-path
+- dogfood-wrestle-intelligent-search-context-write
+- Settings postures + machine attrs (v14 spine)
+- pytest test_antiek_bench_dogfood 5 · Settings vitest 36 · offline 3
+
+## Why this residual
+User vision: Antiek-bench recursive rewrite learns from weekly usage what
+worked. ael–aet closed seamless Write + intelligent search path honesty;
+dogfood suite must encode those tasks so offline runs + suite rewrite
+proposals optimize models for those differentiating tasks.
+
+## Not in scope
+- Auto-promote suite (propose≠promote)
