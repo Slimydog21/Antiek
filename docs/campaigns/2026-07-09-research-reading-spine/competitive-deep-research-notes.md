@@ -1299,3 +1299,8 @@ is mechanically proven (parity twin_cross_asset_merge vg).
 SESSION-ARC-tt-vn documents 47 residual ships for multi-agent swarm handoff.
 Competitive delta: compaction-safe wave map; operator merge PR #465 remains
 highest leverage.
+
+## Residual vp · 2026-07-10 — spawn/collective merge hosted Open Write sources
+buildHostedHtmlWriteHref + HostedHtml preserve spawn_merge and
+collective_doc_merge. Competitive delta: auto-opened merge draft floats keep
+Write provenance when operator Open Writes from the host.

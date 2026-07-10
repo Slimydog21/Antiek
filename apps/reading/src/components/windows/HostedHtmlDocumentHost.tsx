@@ -299,6 +299,9 @@ export default function HostedHtmlDocumentHost(
   // Residual (vk): multi-select written analysis float (not doc merge).
   const isCollectiveWrittenAnalysis =
     payloadSource === "collective_written_analysis";
+  // Residual (vp): spawn/collective document merge floats.
+  const isSpawnMerge = payloadSource === "spawn_merge";
+  const isCollectiveDocMerge = payloadSource === "collective_doc_merge";
   // Residual (tq): intelligent search query + hit count honesty.
   const searchQuery = String(props.search_query || "").trim();
   const searchHitCount =
@@ -333,7 +336,11 @@ export default function HostedHtmlDocumentHost(
                     ? `Twin multi-select draft · ${title}`
                     : isCollectiveWrittenAnalysis
                       ? `Collective written analysis · ${title}`
-                      : title;
+                      : isSpawnMerge
+                        ? `Spawn merge · ${title}`
+                        : isCollectiveDocMerge
+                          ? `Collective document merge · ${title}`
+                          : title;
   const twinSeedBody = html
     ? html.replace(/<[^>]+>/g, " ").slice(0, 500)
     : twinSeedTitle;
@@ -463,7 +470,11 @@ export default function HostedHtmlDocumentHost(
                                     ? "twin_draft_selected"
                                     : isCollectiveWrittenAnalysis
                                       ? "collective_written_analysis"
-                                      : "hosted_html_document"
+                                      : isSpawnMerge
+                                        ? "spawn_merge"
+                                        : isCollectiveDocMerge
+                                          ? "collective_doc_merge"
+                                          : "hosted_html_document"
                 }
                 className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
                 title={
@@ -483,9 +494,13 @@ export default function HostedHtmlDocumentHost(
                                 ? "Open Write with twin multi-select draft HTML + twin_seed (seeds note-taker)"
                                 : isCollectiveWrittenAnalysis
                                   ? "Open Write with collective written analysis HTML + twin_seed (multi-spawn analysis · seeds note-taker)"
-                                  : isResearchProgress || isSessionFlywheel
-                                    ? "Open Write with research HTML + twin_seed (seeds note-taker)"
-                                    : "Open Write with hosted HTML + twin_seed (seeds note-taker when empty)"
+                                  : isSpawnMerge
+                                    ? "Open Write with spawn merge HTML + twin_seed (seeds note-taker)"
+                                    : isCollectiveDocMerge
+                                      ? "Open Write with collective document merge HTML + twin_seed (seeds note-taker)"
+                                      : isResearchProgress || isSessionFlywheel
+                                        ? "Open Write with research HTML + twin_seed (seeds note-taker)"
+                                        : "Open Write with hosted HTML + twin_seed (seeds note-taker when empty)"
                 }
               >
                 Open Write (HTML draft handoff)

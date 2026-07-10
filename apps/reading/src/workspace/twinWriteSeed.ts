@@ -314,6 +314,9 @@ export function buildHostedHtmlWriteHref(opts: {
     "twin_cross_asset_merge",
     // Residual (vk): collective written analysis float → Write seed.
     "collective_written_analysis",
+    // Residual (vp): spawn/collective document merge floats → Write seed.
+    "spawn_merge",
+    "collective_doc_merge",
   ]);
   const source = KNOWN_HOST_WRITE_SOURCES.has(srcRaw)
     ? srcRaw
@@ -340,7 +343,11 @@ export function buildHostedHtmlWriteHref(opts: {
                       ? `Twin draft · ${doc}`
                       : source === "collective_written_analysis"
                         ? `Collective written analysis · ${doc}`
-                        : `Hosted HTML · ${doc}`;
+                        : source === "spawn_merge"
+                          ? `Spawn merge · ${doc}`
+                          : source === "collective_doc_merge"
+                            ? `Collective document merge · ${doc}`
+                            : `Hosted HTML · ${doc}`;
   const seedKey = storeTwinWriteSeed({
     plain_text: plain,
     html: String(opts.html || ""),

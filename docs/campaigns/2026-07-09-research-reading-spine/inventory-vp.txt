@@ -1,0 +1,16 @@
+# inventory-vp · spawn_merge + collective_doc_merge hosted Open Write sources
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: vp
+date: 2026-07-10
+
+## Closed
+- KNOWN_HOST_WRITE_SOURCES += spawn_merge · collective_doc_merge
+- HostedHtml Open Write data-write-seed-source + twinSeedTitle
+- vitest twinWriteSeed 29 green · /tmp/residual-tests-vp.log
+
+## Product why
+Auto-opened merge draft floats carry source stamps; Open Write on host must not
+collapse spawn_merge / collective_doc_merge to hosted_html_document.
+
+## Not in scope
+- Operator merge PR #465 (gated)

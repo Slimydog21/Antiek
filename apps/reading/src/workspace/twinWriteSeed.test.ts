@@ -91,6 +91,30 @@ describe("twinWriteSeed (pp)", () => {
     expect(seed?.title).toMatch(/Written analysis|Collective written analysis/i);
   });
 
+  it("builds hosted spawn_merge and collective_doc_merge Write seed sources (vp)", () => {
+    const hrefSpawn = buildHostedHtmlWriteHref({
+      documentId: "merge_spawn_1",
+      title: "Spawn merge",
+      html: "<p>Merged spawns.</p>",
+      source: "spawn_merge",
+    });
+    const keySpawn = decodeURIComponent(
+      (hrefSpawn.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    expect(loadTwinWriteSeed(keySpawn)?.source).toBe("spawn_merge");
+
+    const hrefCol = buildHostedHtmlWriteHref({
+      documentId: "merge_col_1",
+      title: "Collective merge",
+      html: "<p>Merged collective docs.</p>",
+      source: "collective_doc_merge",
+    });
+    const keyCol = decodeURIComponent(
+      (hrefCol.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    expect(loadTwinWriteSeed(keyCol)?.source).toBe("collective_doc_merge");
+  });
+
   it("rejects empty plain_text and foreign keys", () => {
     expect(
       storeTwinWriteSeed({
