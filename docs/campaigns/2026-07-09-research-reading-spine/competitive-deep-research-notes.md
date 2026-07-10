@@ -907,3 +907,9 @@ Settings honors SPA hash anchors (decision-tree, twin-seed, hydrate,
 NotDiamond, prompt projection) on mount and hashchange. Competitive delta:
 driver/budget/readiness deep-links from research hosts actually land on the
 panel — not just change the URL bar.
+
+## Residual sq · 2026-07-10 — Decision-tree → weekly leaderboard
+Decision-tree budget panel deep-links to #antiek-bench-leaderboard so operators
+can compare weekly Antiek-bench rankings when choosing a model driver.
+Competitive delta: model choice sits next to recursive bench evidence without
+granting auto-route authority (propose≠promote · ND advisory only).

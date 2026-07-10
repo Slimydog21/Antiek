@@ -1258,6 +1258,15 @@ export default function Settings() {
                 >
                   Full projection
                 </a>
+                {/* Residual (sq): jump to weekly Antiek-bench leaderboard (advisory). */}
+                <a
+                  href="#antiek-bench-leaderboard"
+                  className="text-[11px] underline opacity-80 hover:opacity-100"
+                  data-testid="decision-tree-leaderboard-link"
+                  title="Weekly Antiek-bench leaderboard (advisory · never auto-routes)"
+                >
+                  Weekly leaderboard
+                </a>
               </div>
               {estimate ? (
                 <p
@@ -1613,6 +1622,7 @@ export default function Settings() {
           colour="glacial"
         >
           <div
+            id="antiek-bench-leaderboard"
             className="p-4 space-y-3"
             data-testid="antiek-bench-leaderboard-panel"
             data-view-format="html"

@@ -639,6 +639,18 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(mini.textContent).toMatch(/never invents \$0/i);
   });
 
+  it("deep-links decision-tree to weekly leaderboard (sq)", async () => {
+    render(<Settings />);
+    await waitFor(() => {
+      expect(screen.getByTestId("decision-tree-leaderboard-link")).toBeTruthy();
+    });
+    const link = screen.getByTestId("decision-tree-leaderboard-link");
+    expect(link.getAttribute("href")).toBe("#antiek-bench-leaderboard");
+    expect(screen.getByTestId("antiek-bench-leaderboard-panel").id).toBe(
+      "antiek-bench-leaderboard",
+    );
+  });
+
   it("loads Antiek-bench weekly usage summary in Settings", async () => {
     render(<Settings />);
     await waitFor(() => {
