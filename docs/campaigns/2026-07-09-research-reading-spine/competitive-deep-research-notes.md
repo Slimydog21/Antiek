@@ -1121,3 +1121,8 @@ CollectiveResearchPanel Select open (N) selects currently open deep_research
 windows without closed recent-ring-only ids. Competitive delta: multi-float
 cohesive unit assembly distinguishes live floats from session history —
 operator can merge what is on screen now.
+
+## Residual uf · 2026-07-10 — Write + Midnight Oil openSpawnIds parity
+Write piece and Midnight Oil deposit mount CollectiveResearchPanel with
+openSpawnIds so Select open works across reading ≡ write ≡ MO. Competitive
+delta: multi-float cohesive unit UX is surface-complete, not host-only.

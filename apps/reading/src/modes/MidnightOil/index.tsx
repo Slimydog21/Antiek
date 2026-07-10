@@ -191,6 +191,16 @@ export default function MidnightOil() {
         .filter(Boolean),
     [deposit],
   );
+  /** Residual (uf): open DR windows + deposit spawns (no recent-ring closed). */
+  const openSpawnIds = useMemo(
+    () =>
+      collectDeepResearchSpawnIds({
+        currentSpawnId: null,
+        extraSpawnIds: depositSpawnIds,
+        windows,
+      }),
+    [depositSpawnIds, windows],
+  );
   const availableSpawnIds = useMemo(
     () =>
       collectDeepResearchSpawnIds({
@@ -1382,6 +1392,7 @@ export default function MidnightOil() {
                     availableSpawnIds={availableSpawnIds}
                     parentAssetId={depositParentAssetId}
                     recentSpawnIds={recentSpawnIds}
+                    openSpawnIds={openSpawnIds}
                     preferredSpawnId={depositSpawnIds[0] ?? null}
                     onDocMerged={onContextNeedsRefresh}
                     onRecentSpawnsCleared={() => setRecentTick((n) => n + 1)}

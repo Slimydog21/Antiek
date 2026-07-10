@@ -160,6 +160,7 @@ vi.mock("../../components/engagement/CollectiveResearchPanel", () => ({
     availableSpawnIds: string[];
     parentAssetId?: string | null;
     recentSpawnIds?: readonly string[] | null;
+    openSpawnIds?: readonly string[] | null;
     onRecentSpawnsCleared?: () => void;
   }) => (
     <div
@@ -167,6 +168,10 @@ vi.mock("../../components/engagement/CollectiveResearchPanel", () => ({
       data-recent={
         props.recentSpawnIds != null ? props.recentSpawnIds.join(",") : ""
       }
+      data-open={
+        props.openSpawnIds != null ? props.openSpawnIds.join(",") : ""
+      }
+      data-has-open-spawn-ids={props.openSpawnIds != null ? "1" : "0"}
       data-has-clear={props.onRecentSpawnsCleared ? "1" : "0"}
     >
       parent={props.parentAssetId ?? ""}:spawns={props.availableSpawnIds.join(",")}
@@ -818,6 +823,12 @@ describe("WriteHome — the re-homed door", () => {
     expect(screen.getByTestId("collective-research-panel-stub").textContent).toMatch(
       /parent=dlv-coll:spawns=spawn_a,spawn_b/,
     );
+    // Residual (uf): openSpawnIds wired for Select open only (parity ue).
+    expect(
+      screen
+        .getByTestId("collective-research-panel-stub")
+        .getAttribute("data-has-open-spawn-ids"),
+    ).toBe("1");
   });
 
   it("wires recent_ring into collect + collective mount (om)", async () => {

@@ -209,6 +209,7 @@ vi.mock("../../components/engagement/CollectiveResearchPanel", () => ({
     availableSpawnIds: string[];
     parentAssetId?: string | null;
     recentSpawnIds?: readonly string[] | null;
+    openSpawnIds?: readonly string[] | null;
     preferredSpawnId?: string | null;
     onRecentSpawnsCleared?: () => void;
     onDocMerged?: (r: { document_id: string }) => void;
@@ -220,6 +221,10 @@ vi.mock("../../components/engagement/CollectiveResearchPanel", () => ({
       data-recent={
         props.recentSpawnIds != null ? props.recentSpawnIds.join(",") : ""
       }
+      data-open={
+        props.openSpawnIds != null ? props.openSpawnIds.join(",") : ""
+      }
+      data-has-open-spawn-ids={props.openSpawnIds != null ? "1" : "0"}
       data-preferred={props.preferredSpawnId ?? ""}
       data-has-clear={props.onRecentSpawnsCleared ? "1" : "0"}
       data-has-merged={props.onDocMerged ? "1" : "0"}
@@ -809,6 +814,8 @@ describe("MidnightOil mode", () => {
     expect(collectiveStub.getAttribute("data-preferred")).toBe("spn_1");
     expect(collectiveStub.getAttribute("data-has-clear")).toBe("1");
     expect(collectiveStub.getAttribute("data-has-merged")).toBe("1");
+    // Residual (uf): openSpawnIds wired for Select open only (parity ue).
+    expect(collectiveStub.getAttribute("data-has-open-spawn-ids")).toBe("1");
     expect(screen.getByTestId("moil-progress-summary").textContent).toMatch(
       /complete/,
     );

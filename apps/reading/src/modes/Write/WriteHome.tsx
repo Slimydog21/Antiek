@@ -134,6 +134,15 @@ export default function WriteHome() {
     () => listRecentDeepResearchSpawnIds(),
     [windows, recentTick],
   );
+  /** Residual (uf): currently open DR windows only (parity ue Select open). */
+  const openSpawnIds = useMemo(
+    () =>
+      collectDeepResearchSpawnIds({
+        currentSpawnId: null,
+        windows,
+      }),
+    [windows],
+  );
   const availableSpawnIds = useMemo(
     () =>
       collectDeepResearchSpawnIds({
@@ -1305,6 +1314,7 @@ export default function WriteHome() {
                   availableSpawnIds={availableSpawnIds}
                   parentAssetId={detail.deliverable_id}
                   recentSpawnIds={recentSpawnIds}
+                  openSpawnIds={openSpawnIds}
                   onDocMerged={onContextNeedsRefresh}
                   onRecentSpawnsCleared={() => setRecentTick((n) => n + 1)}
                 />
