@@ -1,0 +1,14 @@
+# inventory-aip · decision-tree dual-gate prep competitive scorecard link
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aip
+date: 2026-07-10
+parent_tip: 33f79fe2 (aio)
+
+## Closed
+- Decision-tree dual-gate prep strip links competitive DR scorecard
+- Model choice chokepoint navigates world-class DR honesty map
+- vitest Settings 36 green
+
+## Next
+aiq+ product residual · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

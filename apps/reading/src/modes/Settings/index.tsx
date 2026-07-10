@@ -1298,6 +1298,15 @@ export default function Settings() {
                 >
                   L7 checklist
                 </a>
+                {/* Residual (aip): competitive DR scorecard from decision-tree chokepoint. */}
+                <a
+                  href="#settings-competitive-dr-scorecard"
+                  className="underline opacity-80 hover:opacity-100"
+                  data-testid="settings-dual-gate-competitive-scorecard-link"
+                  title="Competitive deep-research quality scorecard (shipped vs deferred honesty)"
+                >
+                  Competitive DR scorecard
+                </a>
               </p>
             </div>
             {treeError && (

@@ -2885,3 +2885,8 @@ P0 operator merge PR #465. Pivot aio+ outside thrash.
 Recursive note-taker TwinNotesPanel links FUTURE-AGENT twin completeness matrix
 and Settings competitive DR scorecard. vitest TwinNotes green. P0 operator merge
 PR #465. Pivot aip+.
+
+## Residual aip · 2026-07-10 — decision-tree dual-gate prep competitive scorecard link
+Settings decision-tree dual-gate prep strip links competitive DR scorecard.
+Model choice chokepoint navigates world-class DR honesty map. vitest Settings 36 green.
+P0 operator merge PR #465. Pivot aiq+.

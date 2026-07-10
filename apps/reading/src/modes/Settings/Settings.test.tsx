@@ -1050,6 +1050,12 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(
       screen.getByTestId("settings-dual-gate-l7-checklist-link").getAttribute("href"),
     ).toMatch(/DUAL-GATE-L1-L4.*#l7-notdiamond/);
+    // Residual (aip): competitive DR scorecard from decision-tree dual-gate prep.
+    expect(
+      screen
+        .getByTestId("settings-dual-gate-competitive-scorecard-link")
+        .getAttribute("href"),
+    ).toBe("#settings-competitive-dr-scorecard");
   });
 
   it("surfaces offline-honest Midnight Oil live-step status (sz)", async () => {
