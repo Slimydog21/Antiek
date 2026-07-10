@@ -3034,3 +3034,7 @@ P0 operator merge PR #465. Pivot ajr+ outside thrash.
 twin-promote-metrics prefers substrate graph_node_ids / content_addressed_alignment
 when present (ajo) with data-depth-graph-source=api. vitest TwinNotes 30 green.
 P0 operator merge PR #465. Pivot ajs+ outside thrash.
+
+## Residual ajs · 2026-07-10 — SESSION-ARC ajn–ajr twin depth-graph path
+Wave handoff: UI metrics · substrate payload · dogfood v32 · API-first field prefer.
+P0 operator merge PR #465. Pivot ajt+ outside thrash.
