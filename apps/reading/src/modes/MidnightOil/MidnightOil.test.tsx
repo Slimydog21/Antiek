@@ -522,10 +522,13 @@ describe("MidnightOil mode", () => {
     expect(hint.getAttribute("data-goal-count")).toBe("4");
     expect(hint.getAttribute("data-exceeds-fanout")).toBe("true");
     expect(hint.textContent).toMatch(/raise fan-out/i);
-    // Raise fan-out clears the soft exceed state.
-    fireEvent.change(screen.getByTestId("moil-fanout-depth"), {
-      target: { value: "5" },
-    });
+    // Residual (aop): operator click matches fan-out to goal count.
+    const matchBtn = screen.getByTestId("moil-match-fanout-to-goals");
+    expect(matchBtn.getAttribute("data-match-target")).toBe("4");
+    fireEvent.click(matchBtn);
+    expect(
+      (screen.getByTestId("moil-fanout-depth") as HTMLInputElement).value,
+    ).toBe("4");
     expect(
       screen.getByTestId("moil-goals-fanout-hint").getAttribute(
         "data-exceeds-fanout",
@@ -534,6 +537,7 @@ describe("MidnightOil mode", () => {
     expect(
       screen.getByTestId("moil-goals-fanout-hint").textContent,
     ).toMatch(/coverage ok/i);
+    expect(screen.queryByTestId("moil-match-fanout-to-goals")).toBeNull();
   });
 
   it("previews recommended ceiling before create (adx)", () => {

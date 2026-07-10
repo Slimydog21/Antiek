@@ -3664,3 +3664,7 @@ PRODUCT_MODE_ROUTES + taxonomy MarketplaceHost blurb stamps domain-aware twin/DR
 ## Residual aoo · 2026-07-10 — twin chase domain-aware button titles
 Chase floating/full buttons stamp data-research-domains + domain-aware titles
 when domainSubjects set (operator foresight before fire). P0 PR #465. Pivot aop+.
+
+## Residual aop · 2026-07-10 — Match fan-out to goals (operator click)
+When goals > fanout, explicit Match fan-out to goals button (never auto).
+Completes aoh soft-hint with actionable control. P0 PR #465. Pivot aoq+.

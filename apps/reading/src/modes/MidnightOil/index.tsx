@@ -840,28 +840,54 @@ export default function MidnightOil() {
                     </button>
                   ))}
                 </div>
-                {/* Residual (aoh): soft-hint when goals exceed fan-out depth. */}
+                {/* Residual (aoh): soft-hint when goals exceed fan-out depth.
+                    Residual (aop): explicit Match fan-out action (operator click only). */}
                 {(() => {
                   const effectiveFanout =
                     Number.isFinite(fanoutDepth) && fanoutDepth > 0
                       ? Math.floor(fanoutDepth)
                       : MOIL_CEILING_DEFAULT_FANOUT_DEPTH;
                   const exceeds = goalLines.length > effectiveFanout;
+                  const matchTarget = Math.min(
+                    12,
+                    Math.max(goalLines.length, MOIL_CEILING_DEFAULT_FANOUT_DEPTH),
+                  );
                   return (
-                    <p
-                      className="opacity-80"
-                      data-testid="moil-goals-fanout-hint"
+                    <div
+                      className="space-y-1"
+                      data-testid="moil-goals-fanout-coverage"
                       data-goal-count={String(goalLines.length)}
                       data-fanout-depth={String(effectiveFanout)}
                       data-exceeds-fanout={String(exceeds)}
-                      role="status"
                     >
-                      {exceeds
-                        ? `Soft hint: ${goalLines.length} goals > fan-out depth ${effectiveFanout} — raise fan-out so multi-goal swarm can branch (never auto-changed)`
-                        : goalLines.length > 0
-                          ? `Fan-out depth ${effectiveFanout} covers ${goalLines.length} goal${goalLines.length === 1 ? "" : "s"} (coverage ok)`
-                          : `Fan-out depth ${effectiveFanout} · add goals for swarm coverage audit`}
-                    </p>
+                      <p
+                        className="opacity-80"
+                        data-testid="moil-goals-fanout-hint"
+                        data-goal-count={String(goalLines.length)}
+                        data-fanout-depth={String(effectiveFanout)}
+                        data-exceeds-fanout={String(exceeds)}
+                        role="status"
+                      >
+                        {exceeds
+                          ? `Soft hint: ${goalLines.length} goals > fan-out depth ${effectiveFanout} — raise fan-out so multi-goal swarm can branch (never auto-changed)`
+                          : goalLines.length > 0
+                            ? `Fan-out depth ${effectiveFanout} covers ${goalLines.length} goal${goalLines.length === 1 ? "" : "s"} (coverage ok)`
+                            : `Fan-out depth ${effectiveFanout} · add goals for swarm coverage audit`}
+                      </p>
+                      {exceeds ? (
+                        <button
+                          type="button"
+                          data-testid="moil-match-fanout-to-goals"
+                          data-match-target={String(matchTarget)}
+                          disabled={busy}
+                          className="px-2 py-0.5 rounded border text-[11px]"
+                          title={`Set fan-out depth to ${matchTarget} to cover ${goalLines.length} goals (operator click · never auto)`}
+                          onClick={() => setFanoutDepth(matchTarget)}
+                        >
+                          Match fan-out to goals ({matchTarget})
+                        </button>
+                      ) : null}
+                    </div>
                   );
                 })()}
               </div>
