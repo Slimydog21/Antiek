@@ -387,6 +387,10 @@ export const COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES = [
   "twin_promote_context_readiness",
   // Residual (auo): decision-tree Install driver pure readiness (aun).
   "decision_tree_install_readiness",
+  // Residual (aur): spawn-merge HTML open pure readiness (aup).
+  "spawn_merge_html_open_readiness",
+  // Residual (aur): twin multi-select chase pure readiness (auq).
+  "twin_chase_selection_readiness",
 ] as const;
 
 export type CompetitiveDrOfflineProductSurface =

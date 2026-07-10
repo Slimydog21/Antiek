@@ -159,6 +159,13 @@ describe("competitiveDrQuality workspace pure helpers (apw)", () => {
     expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
       "decision_tree_install_readiness",
     );
+    // Residual (aur): aup/auq pure readiness surfaces.
+    expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
+      "spawn_merge_html_open_readiness",
+    );
+    expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
+      "twin_chase_selection_readiness",
+    );
     const cat = competitiveDrOfflineSurfaceCatalog();
     expect(cat.live_injectors_deferred).toBe(true);
     expect(cat.notdiamond_is_router).toBe(false);
