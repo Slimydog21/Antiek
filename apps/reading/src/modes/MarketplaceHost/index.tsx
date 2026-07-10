@@ -1522,6 +1522,42 @@ export default function MarketplaceHost({
               · HTML host only · payment=manual_receipt_only · L5 rails deferred
               (no live rails)
             </p>
+            {/* Residual (akb): host land → FUTURE L5 digital book port + dual-gate L5. */}
+            <p
+              className="space-x-3"
+              data-testid="marketplace-host-l5-nav"
+              data-l5-payment-rails="deferred"
+              data-payment-rails="manual_receipt_only"
+              data-html-first="true"
+              data-view-format="html"
+              role="navigation"
+              aria-label="Marketplace host L5 payment honesty navigation"
+            >
+              <a
+                href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-l5-digital-book-seamless-port.md"
+                data-testid="marketplace-host-l5-future-agent-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Future-agent L5 digital book seamless port brief (manual receipt · live rails deferred)"
+              >
+                FUTURE · L5 digital book seamless port
+              </a>
+              <a
+                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l5-payment"
+                data-testid="marketplace-host-l5-dual-gate-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Dual-gate L5 payment rails checklist (prep only · manual receipt only)"
+              >
+                Dual-gate L5 payment checklist
+              </a>
+              <a
+                href="/settings#settings-competitive-dr-scorecard"
+                data-testid="marketplace-host-competitive-scorecard-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Settings competitive DR scorecard (HTML-first free STEM · L5 payment deferred)"
+              >
+                Settings · competitive DR scorecard
+              </a>
+            </p>
           </div>
           {/* Residual (ip): recursive note-taker substrate after host. */}
           <p

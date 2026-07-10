@@ -347,6 +347,26 @@ describe("MarketplaceHost mode", () => {
     expect(freeHonesty.getAttribute("data-html-first")).toBe("true");
     expect(freeHonesty.textContent).toMatch(/free_host=true/);
     expect(freeHonesty.textContent).toMatch(/manual_receipt_only/);
+    // Residual (akb): host land L5 FUTURE + dual-gate + scorecard navigation.
+    const l5nav = screen.getByTestId("marketplace-host-l5-nav");
+    expect(l5nav.getAttribute("data-l5-payment-rails")).toBe("deferred");
+    expect(l5nav.getAttribute("data-payment-rails")).toBe("manual_receipt_only");
+    expect(l5nav.getAttribute("data-html-first")).toBe("true");
+    expect(
+      screen
+        .getByTestId("marketplace-host-l5-future-agent-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-l5-digital-book-seamless-port/);
+    expect(
+      screen
+        .getByTestId("marketplace-host-l5-dual-gate-link")
+        .getAttribute("href") || "",
+    ).toMatch(/DUAL-GATE-L1-L4.*#l5-payment/);
+    expect(
+      screen
+        .getByTestId("marketplace-host-competitive-scorecard-link")
+        .getAttribute("href"),
+    ).toBe("/settings#settings-competitive-dr-scorecard");
     expect(freeHonesty.textContent).toMatch(/L5 rails deferred/i);
     expect(
       screen.getByTestId("marketplace-host-research-substrate").textContent,

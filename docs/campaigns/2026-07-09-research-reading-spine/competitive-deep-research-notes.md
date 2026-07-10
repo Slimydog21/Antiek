@@ -3077,3 +3077,9 @@ vitest Settings 36 green. P0 operator merge PR #465. Pivot aka+ outside thrash.
 After NotDiamond advisory install, decision-tree provenance stamps
 never-dispatch-authority · decision-tree-only · advisory_only (parity ajy install).
 vitest Settings 36 green. P0 operator merge PR #465. Pivot akb+ outside thrash.
+
+## Residual akb · 2026-07-10 — marketplace host-result L5 FUTURE seamless port deep-links
+After catalog host land, operators navigate FUTURE L5 digital book seamless port
+brief, dual-gate L5 checklist, and competitive DR scorecard (HTML-first ·
+manual_receipt_only · live rails deferred). vitest MarketplaceHost 41 green.
+P0 operator merge PR #465. Pivot akc+ outside thrash.
