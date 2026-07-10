@@ -61,6 +61,8 @@ def test_catalog_and_host_pd(client):
     pride = next(d for d in lib.json()["documents"] if d["document_id"] == doc_id)
     assert pride.get("license_class") == "public_domain"
     assert pride.get("is_free") is True
+    # Residual (acb): library free_count aggregate matches free inventory.
+    assert lib.json().get("free_count") == 1
 
     html = client.get(f"/marketplace/documents/{doc_id}/html")
     assert html.status_code == 200

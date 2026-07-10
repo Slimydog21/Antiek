@@ -1,0 +1,20 @@
+# inventory-acb · library API free_count aggregate
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: acb
+date: 2026-07-10
+tip_before: e9348e5e (aca)
+
+## Problem
+GET /marketplace/library stamped per-doc is_free but no free_count aggregate for
+library free inventory honesty (parity catalog free_count).
+
+## Fix
+- free_count on library response
+- TS type free_count optional
+- host routes test free_count==1 after PD host
+
+## Verified
+pytest test_marketplace_host_routes → 3 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

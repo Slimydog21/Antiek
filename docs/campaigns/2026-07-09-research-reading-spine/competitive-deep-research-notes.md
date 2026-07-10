@@ -2087,3 +2087,8 @@ Free inventory is_free-only doctrine complete end-to-end including operator-faci
 free-only chip copy (abn–abz). Tip 2ff4fe73 · 160 ships. Competitive delta: swarm
 handoff tip-true; operator merge PR #465 highest leverage; next residuals leave free thrash.
 
+## Residual acb · 2026-07-10 — library API free_count aggregate
+GET /marketplace/library returns free_count aggregate (parity catalog free_count).
+Competitive delta: account library free inventory honesty is machine-readable
+for Settings/metrics without re-summing documents.
+

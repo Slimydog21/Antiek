@@ -326,12 +326,15 @@ def get_library(owner_id: str) -> dict[str, Any]:
 
     lib = AccountLibrary.load(owner_id, store=store)
     docs = []
+    free_count = 0
     for doc_id in lib.document_ids:
         doc = store.get_document(doc_id) or {}
         lic = str(doc.get("license_class") or "").strip()
         # Residual (abu): is_free inventory for library free honesty (parity free doctrine).
         # Hosted public_domain is free host path; purchased never free.
         is_free = lic == "public_domain"
+        if is_free:
+            free_count += 1
         docs.append(
             {
                 "document_id": doc_id,
@@ -345,6 +348,8 @@ def get_library(owner_id: str) -> dict[str, Any]:
         "owner_id": owner_id,
         "documents": docs,
         "count": len(docs),
+        # Residual (acb): free_count aggregate for library free inventory honesty.
+        "free_count": free_count,
         "view_format": "html",
         "html": list_account_library_html(owner_id, store=store),
     }

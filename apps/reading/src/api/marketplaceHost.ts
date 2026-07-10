@@ -128,6 +128,8 @@ export async function fetchAccountLibrary(ownerId: string): Promise<{
     is_free?: boolean;
   }>;
   count: number;
+  /** Residual (acb): free inventory aggregate for library honesty. */
+  free_count?: number;
   view_format: "html";
   html: string;
 }> {
