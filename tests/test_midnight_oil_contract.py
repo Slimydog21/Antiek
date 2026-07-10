@@ -41,6 +41,7 @@ from substrate.midnight_oil import (
     MidnightOilOperatorArchivePackageDeliveryReportFinalCloseoutAcknowledgementPlanRequest,
     MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryAuditEnvelopePlanRequest,
     MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryAuditEnvelopeResultReconciliationPlanRequest,
+    MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealPlanRequest,
     MidnightOilOperatorArchivePackageDeliveryReportFinalDispatchAttestationPlanRequest,
     MidnightOilOperatorArchivePackageDeliveryReportFinalDispatchAttestationResultReconciliationPlanRequest,
     MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorAcknowledgementPlanRequest,
@@ -111,6 +112,7 @@ from substrate.midnight_oil import (
     operator_archive_package_delivery_report_final_closeout_acknowledgement_plan_midnight_oil,
     operator_archive_package_delivery_report_final_delivery_audit_envelope_plan_midnight_oil,
     operator_archive_package_delivery_report_final_delivery_audit_envelope_result_reconciliation_plan_midnight_oil,
+    operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_midnight_oil,
     operator_archive_package_delivery_report_final_dispatch_attestation_plan_midnight_oil,
     operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan_midnight_oil,
     operator_archive_package_delivery_report_final_operator_acknowledgement_plan_midnight_oil,
@@ -10454,6 +10456,62 @@ def _operator_archive_package_delivery_report_final_dispatch_attestation_result_
     )
 
 
+def _operator_archive_package_delivery_report_final_delivery_evidence_seal_request_kwargs(
+    chain: dict[str, object],
+    *,
+    operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan: object,
+) -> dict[str, object]:
+    return {
+        **_operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_request_from_chain(
+            chain
+        ).model_dump(),
+        "operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan_receipt": (
+            operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan
+        ),
+    }
+
+
+def _accepted_midnight_oil_operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan_chain(
+    *,
+    goal: str,
+    source_policy: list[str],
+    requested_control_scope: list[str],
+) -> dict[str, object]:
+    chain = _accepted_midnight_oil_operator_archive_package_delivery_report_final_dispatch_attestation_plan_chain(
+        goal=goal,
+        source_policy=source_policy,
+        requested_control_scope=requested_control_scope,
+    )
+    result = operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan_midnight_oil(
+        _operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_request_from_chain(
+            chain
+        )
+    )
+    return {
+        **chain,
+        "operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan": result,
+    }
+
+
+def _operator_archive_package_delivery_report_final_delivery_evidence_seal_request_from_chain(
+    chain: dict[str, object],
+    *,
+    operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan: object
+    | None = None,
+) -> MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealPlanRequest:
+    return MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealPlanRequest(
+        **_operator_archive_package_delivery_report_final_delivery_evidence_seal_request_kwargs(
+            chain,
+            operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan=(
+                operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan
+                or chain[
+                    "operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan"
+                ]
+            ),
+        )
+    )
+
+
 def test_operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_records_disabled_requirements() -> None:
     chain = _accepted_midnight_oil_operator_archive_package_delivery_report_final_closeout_acknowledgement_plan_chain(
         goal="Plan operator archive package delivery report final operator delivery closeout after final closeout acknowledgement.",
@@ -12057,6 +12115,199 @@ def test_midnight_oil_operator_archive_package_delivery_report_final_dispatch_at
     assert (
         body[
             "operator_archive_package_delivery_report_final_dispatch_attestation_entry_created"
+        ]
+        is False
+    )
+    assert body["operator_notification_created"] is False
+    assert body["private_read_url_created"] is False
+    assert body["graph_mutated"] is False
+    assert body["provider_calls_made"] is False
+    assert body["retrieval_performed"] is False
+    assert body["final_artifact_created"] is False
+
+
+def test_operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_records_disabled_requirements() -> None:
+    chain = _accepted_midnight_oil_operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan_chain(
+        goal="Plan operator archive package delivery report final delivery evidence seal.",
+        source_policy=["arxiv", "web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    result = chain[
+        "operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan"
+    ]
+
+    seal = operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_midnight_oil(
+        _operator_archive_package_delivery_report_final_delivery_evidence_seal_request_from_chain(
+            chain
+        )
+    )
+
+    assert seal.receipt_id == (
+        f"{preflight.run_id}-operator-archive-package-delivery-report-final-delivery-evidence-seal-plan"
+    )
+    assert (
+        seal.operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan_receipt_id
+        == result.receipt_id
+    )
+    assert seal.status == (
+        "blocked_operator_archive_package_delivery_report_final_delivery_evidence_seal_unimplemented"
+    )
+    assert (
+        seal.adapter_key
+        == "operator_archive_package_delivery_report_final_delivery_evidence_seal"
+    )
+    assert (
+        seal.planned_operator_archive_package_delivery_report_final_delivery_evidence_seal_receipt_id
+        == f"{preflight.run_id}-operator-archive-package-delivery-report-final-delivery-evidence-seal-receipt"
+    )
+    assert "operator archive package delivery report final delivery evidence seal entry writer" in (
+        seal.operator_archive_package_delivery_report_final_delivery_evidence_seal_blockers
+    )
+    assert "operator_archive_package_delivery_report_final_delivery_evidence_seal_status_entry_id" in (
+        seal.required_operator_archive_package_delivery_report_final_delivery_evidence_seal_receipt_fields
+    )
+    assert seal.required_operator_archive_package_delivery_report_final_delivery_evidence_seal_invariants[
+        0
+    ].startswith(
+        "operator archive package delivery report final delivery evidence seal planner must require final dispatch attestation result reconciliation"
+    )
+    assert seal.blocker_reason == (
+        "operator_archive_package_delivery_report_final_delivery_evidence_seal_unimplemented"
+    )
+    assert seal.operator_archive_package_delivery_report_final_delivery_evidence_seal_allowed is False
+    assert (
+        seal.operator_archive_package_delivery_report_final_delivery_evidence_seal_entry_created
+        is False
+    )
+    assert (
+        seal.operator_archive_package_delivery_report_final_dispatch_attestation_result_entry_created
+        is False
+    )
+    assert seal.operator_notification_created is False
+    assert seal.private_read_url_created is False
+    assert seal.graph_mutated is False
+    assert seal.provider_calls_made is False
+    assert seal.retrieval_performed is False
+    assert seal.final_artifact_created is False
+
+
+def test_operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_rejects_dispatch_attestation_result_state() -> None:
+    chain = _accepted_midnight_oil_operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan_chain(
+        goal="Reject final dispatch attestation result state before final delivery evidence seal planning.",
+        source_policy=["web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    bad_result = chain[
+        "operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan"
+    ].model_copy(
+        update={
+            "operator_archive_package_delivery_report_final_dispatch_attestation_result_entry_created": True
+        }
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match=(
+            "operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan_receipt "
+            "must not create operator archive delivery report final dispatch attestation result state"
+        ),
+    ):
+        _operator_archive_package_delivery_report_final_delivery_evidence_seal_request_from_chain(
+            chain,
+            operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan=bad_result,
+        )
+
+
+def test_midnight_oil_operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_api_contract() -> None:
+    from interfaces.research.api.app import create_app
+
+    chain = _accepted_midnight_oil_operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan_chain(
+        goal="Expose operator archive package delivery report final delivery evidence seal planning over the API.",
+        source_policy=["arxiv", "substack"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    result = chain[
+        "operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan"
+    ]
+    request_json = _operator_archive_package_delivery_report_final_delivery_evidence_seal_request_from_chain(
+        chain
+    ).model_dump(mode="json")
+
+    with TestClient(create_app()) as client:
+        r = client.post(
+            "/research/midnight-oil/operator-archive-package-delivery-report-final-delivery-evidence-seal-plan",
+            json=request_json,
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["receipt_id"] == (
+        f"{preflight.run_id}-operator-archive-package-delivery-report-final-delivery-evidence-seal-plan"
+    )
+    assert (
+        body[
+            "operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan_receipt_id"
+        ]
+        == result.receipt_id
+    )
+    assert body["status"] == (
+        "blocked_operator_archive_package_delivery_report_final_delivery_evidence_seal_unimplemented"
+    )
+    assert (
+        body["adapter_key"]
+        == "operator_archive_package_delivery_report_final_delivery_evidence_seal"
+    )
+    assert body[
+        "planned_operator_archive_package_delivery_report_final_delivery_evidence_seal_entry_id"
+    ] == f"{preflight.run_id}-operator-archive-package-delivery-report-final-delivery-evidence-seal-entry"
+    assert body[
+        "planned_operator_archive_package_delivery_report_final_delivery_evidence_seal_status_entry_id"
+    ] == f"{preflight.run_id}-operator-archive-package-delivery-report-final-delivery-evidence-seal-status-entry"
+    assert "operator archive package delivery report final delivery evidence seal receipt writer" in body[
+        "operator_archive_package_delivery_report_final_delivery_evidence_seal_blockers"
+    ]
+    assert "operator_archive_package_delivery_report_final_delivery_evidence_seal_audit_entry_id" in body[
+        "required_operator_archive_package_delivery_report_final_delivery_evidence_seal_receipt_fields"
+    ]
+    assert body["blocker_reason"] == (
+        "operator_archive_package_delivery_report_final_delivery_evidence_seal_unimplemented"
+    )
+    assert (
+        body["operator_archive_package_delivery_report_final_delivery_evidence_seal_allowed"]
+        is False
+    )
+    assert (
+        body[
+            "operator_archive_package_delivery_report_final_delivery_evidence_seal_entry_created"
+        ]
+        is False
+    )
+    assert (
+        body[
+            "operator_archive_package_delivery_report_final_dispatch_attestation_result_entry_created"
         ]
         is False
     )
