@@ -36,6 +36,8 @@ from substrate.midnight_oil import (
     MidnightOilGraphMutationRequest,
     MidnightOilLiveRunActivationSettingsReceipt,
     MidnightOilLiveRunActivationSettingsRequest,
+    MidnightOilOperatorDispatchActivationReadinessPlanReceipt,
+    MidnightOilOperatorDispatchActivationReadinessPlanRequest,
     MidnightOilOperatorDispatchAdapterPlanReceipt,
     MidnightOilOperatorDispatchAdapterPlanRequest,
     MidnightOilPreflight,
@@ -65,6 +67,7 @@ from substrate.midnight_oil import (
     graph_adapter_plan_midnight_oil,
     graph_mutation_midnight_oil,
     live_run_activation_settings_midnight_oil,
+    operator_dispatch_activation_readiness_plan_midnight_oil,
     operator_dispatch_adapter_plan_midnight_oil,
     preflight_midnight_oil,
     provider_executor_adapter_plan_midnight_oil,
@@ -249,6 +252,16 @@ def post_midnight_oil_control_ledger_persistence_apply_plan(
     return control_ledger_persistence_apply_plan_midnight_oil(req)
 
 
+@midnight_oil_router.post(
+    "/operator-dispatch-activation-readiness-plan",
+    response_model=MidnightOilOperatorDispatchActivationReadinessPlanReceipt,
+)
+def post_midnight_oil_operator_dispatch_activation_readiness_plan(
+    req: MidnightOilOperatorDispatchActivationReadinessPlanRequest,
+) -> MidnightOilOperatorDispatchActivationReadinessPlanReceipt:
+    return operator_dispatch_activation_readiness_plan_midnight_oil(req)
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
@@ -268,6 +281,7 @@ __all__ = [
     "post_midnight_oil_graph_adapter_plan",
     "post_midnight_oil_graph_mutation",
     "post_midnight_oil_live_run_activation_settings",
+    "post_midnight_oil_operator_dispatch_activation_readiness_plan",
     "post_midnight_oil_operator_dispatch_adapter_plan",
     "post_midnight_oil_preflight",
     "post_midnight_oil_provider_executor_adapter_plan",
