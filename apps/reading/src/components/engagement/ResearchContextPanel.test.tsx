@@ -261,6 +261,13 @@ describe("ResearchContextPanel", () => {
     expect(
       screen.getByTestId("hydrate-ref-offline-honest").textContent,
     ).toMatch(/offline-honest identity/i);
+    // Residual (rh): Open Write twin_seed from hydrate-ref result.
+    const write = screen.getByTestId("hydrate-ref-open-write");
+    const href = write.getAttribute("href") || "";
+    expect(href).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
+    expect(href).not.toMatch(/html_draft=/);
+    expect(write.getAttribute("data-has-twin-seed")).toBe("1");
+    expect(write.getAttribute("data-asset-id")).toBe("pub_arxiv_abc");
   });
 
   it("runs promote twins → load context flywheel", async () => {

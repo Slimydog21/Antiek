@@ -737,3 +737,8 @@ float research session never dead-ends — it becomes writing substrate.
 Context search hits hand off into Write as twin_seed source=context_search.
 Competitive delta: intelligent search over the recursive note-taker substrate
 becomes writing fuel, not a dead-end results list.
+
+## Residual rh · 2026-07-10 — Hydrate-ref → Write
+ResearchContextPanel single hydrate result opens Write twin_seed (reuses
+publication_hydrate source). Competitive delta: every arxiv/substack attach
+path — multi-pub panel or one-off hydrate — seeds writing.

@@ -14,6 +14,7 @@
  *     so recursive context pack cost foresight sits next to the substrate.
  * Residual (rb): Open Write twin_seed from evidence pack (insights/questions/refs).
  * Residual (rf): Open Write twin_seed from intelligent context search hits.
+ * Residual (rh): Open Write twin_seed from single hydrate-ref result.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -34,6 +35,7 @@ import { detectSourceKindClient } from "../../workspace/researchContextPack";
 import {
   buildContextSearchWriteHref,
   buildEvidencePackWriteHref,
+  buildPublicationHydrateWriteHref,
 } from "../../workspace/twinWriteSeed";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 
@@ -600,6 +602,28 @@ export function ResearchContextPanel({
               ? "Hydrate mode: offline-honest identity — no live body; not invented abstract"
               : "Hydrate mode: injector body landed"}
           </p>
+          {/* Residual (rh): single hydrate → Write twin_seed. */}
+          {(() => {
+            const href = buildPublicationHydrateWriteHref({
+              spawnId,
+              assets: [hydrated],
+            });
+            return href ? (
+              <p className="meta font-mono text-[11px]">
+                <a
+                  href={href}
+                  data-testid="hydrate-ref-open-write"
+                  data-view-format="html"
+                  data-has-twin-seed="1"
+                  data-asset-id={hydrated.asset_id}
+                  className="underline opacity-90 hover:opacity-100"
+                  title="Open Write with hydrated publication as twin_seed (no invented document_id)"
+                >
+                  Open Write (hydrated pub)
+                </a>
+              </p>
+            ) : null;
+          })()}
           {hydrated.html ? (
             <div
               data-testid="hydrate-ref-html"
