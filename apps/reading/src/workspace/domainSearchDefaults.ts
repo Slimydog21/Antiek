@@ -109,6 +109,86 @@ export function domainAwareSearchDefault(
 }
 
 /**
+ * Residual (are): closed set of free-PD subject tokens that alone yield a
+ * domain-aware twin-search default. Honesty catalog only — never invents
+ * catalog rows or auto-filters marketplace.
+ */
+export const DOMAIN_SUBJECTS_WITH_DEFAULTS = [
+  "heat",
+  "signal_processing",
+  "foundations",
+  "computability",
+  "logic",
+  "electricity",
+  "electromagnetism",
+  "information_theory",
+  "communication",
+  "computing",
+  "analytical_engine",
+  "biology",
+  "instruments",
+  "method",
+  "observation",
+  "physics",
+  "mathematics",
+  "economics",
+  "political_economy",
+  "politics",
+  "government",
+  "constitution",
+  "philosophy",
+  "liberty",
+  "ethics",
+  "engineering",
+  "electrical_engineering",
+  "literature",
+  "fiction",
+  "novel",
+  "technology",
+  "tech",
+  "science",
+  "natural_philosophy",
+  "history",
+  "chronology",
+  "historiography",
+  "psychology",
+  "mind",
+  "cognition",
+  "law",
+  "jurisprudence",
+  "legal",
+  "classics",
+  "classical",
+  "antiquity",
+] as const;
+
+export type DomainSubjectWithDefault =
+  (typeof DOMAIN_SUBJECTS_WITH_DEFAULTS)[number];
+
+/**
+ * Residual (are): verify each catalog token still produces a non-empty default
+ * (regression guard for free-PD twin-search spine). Empty tokens never listed.
+ */
+export function domainDefaultSubjectCatalog(): {
+  subjects: DomainSubjectWithDefault[];
+  count: number;
+  all_have_default: boolean;
+  missing_defaults: string[];
+} {
+  const subjects = [...DOMAIN_SUBJECTS_WITH_DEFAULTS];
+  const missing_defaults: string[] = [];
+  for (const s of subjects) {
+    if (!domainAwareSearchDefault([s])) missing_defaults.push(s);
+  }
+  return {
+    subjects,
+    count: subjects.length,
+    all_have_default: missing_defaults.length === 0,
+    missing_defaults,
+  };
+}
+
+/**
  * Residual (alj): report which asset subjects map to a domain-aware twin-search
  * default vs remain uncovered (honest empty default — never invent a query).
  */

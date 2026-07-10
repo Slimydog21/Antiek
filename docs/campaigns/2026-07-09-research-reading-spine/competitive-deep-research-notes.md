@@ -3998,3 +3998,8 @@ after long infinite wave. P0 PR #465. Pivot ard+ outside thrash.
 Create job + recommend ceiling disabled until goals+duration plan ready
 (moilPlanReadiness). Competitive delta: autonomous swarm never fires empty
 plan. vitest 30 green. P0 PR #465. Pivot are+.
+
+## Residual are · 2026-07-10 — free-PD domain default subject catalog
+DOMAIN_SUBJECTS_WITH_DEFAULTS + domainDefaultSubjectCatalog regression guard
+so twin-search spine cannot silently drop free-PD domains. vitest 5 green.
+P0 PR #465. Pivot arf+.

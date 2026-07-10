@@ -4,7 +4,9 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  DOMAIN_SUBJECTS_WITH_DEFAULTS,
   domainAwareSearchDefault,
+  domainDefaultSubjectCatalog,
   domainSearchCoverage,
   formatResearchDomainsClause,
   normalizeDomainSubjects,
@@ -12,6 +14,22 @@ import {
 } from "./domainSearchDefaults";
 
 describe("domainSearchDefaults pure module (alq)", () => {
+  it("ships a closed free-PD domain default catalog (are)", () => {
+    expect(DOMAIN_SUBJECTS_WITH_DEFAULTS.length).toBeGreaterThanOrEqual(40);
+    expect(DOMAIN_SUBJECTS_WITH_DEFAULTS).toContain("history");
+    expect(DOMAIN_SUBJECTS_WITH_DEFAULTS).toContain("psychology");
+    expect(DOMAIN_SUBJECTS_WITH_DEFAULTS).toContain("law");
+    expect(DOMAIN_SUBJECTS_WITH_DEFAULTS).toContain("classics");
+    const cat = domainDefaultSubjectCatalog();
+    expect(cat.all_have_default).toBe(true);
+    expect(cat.missing_defaults).toEqual([]);
+    expect(cat.count).toBe(DOMAIN_SUBJECTS_WITH_DEFAULTS.length);
+    // Every listed token alone must produce a non-empty default (never invent).
+    for (const s of DOMAIN_SUBJECTS_WITH_DEFAULTS) {
+      expect(domainAwareSearchDefault([s]).length).toBeGreaterThan(0);
+    }
+  });
+
   it("maps free PD spine subjects with precedence", () => {
     expect(domainAwareSearchDefault(["heat", "engineering"])).toMatch(
       /heat signal processing/i,
