@@ -3512,3 +3512,9 @@ Multi-select document merge (draft · into_parent) and written analysis soft-gat
 on budget projection before fire (parity continue-as-unit di). Merge-budget
 foresight mount when spawns selected. vitest CollectiveResearchPanel 30 green.
 P0 operator merge PR #465. Pivot anl+ outside thrash.
+
+## Residual anl · 2026-07-10 — SpawnMergePanel budget soft-gate
+Single-spawn draft/parent merge soft-gates on budget projection before fire
+(parity collective ank). Completes budget-before-fire on spawn merge + collective
+merge/analysis paths. vitest SpawnMergePanel 9 green.
+P0 operator merge PR #465. Pivot anm+ outside thrash (prefer non-budget-gate).

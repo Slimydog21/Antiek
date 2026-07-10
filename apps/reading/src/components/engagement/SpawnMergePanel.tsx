@@ -23,6 +23,8 @@
  * Residual (nn): dual-gate L1–L4 checklist deep-link (prep only).
  * Residual (agu): seamless highlight→DR→merge path honesty stamps when
  * spawn + parent reading asset are bound (draft vs into_parent choices).
+ * Residual (anl): budget soft-gate on draft/parent merge (budget-before-fire ·
+ * parity collective merge ank · continue-as-unit di).
  */
 
 import { useCallback, useMemo, useState } from "react";
@@ -38,6 +40,11 @@ import {
   plainTextFromHtml,
 } from "../../workspace/twinWriteSeed";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
+import {
+  ResearchLaunchBudgetPanel,
+  type ResearchLaunchBudgetProjection,
+  type ResearchLaunchTier,
+} from "./ResearchLaunchBudgetPanel";
 
 export type OpenMergedResearchWindowOpts = {
   /** Window + payload title stem (default: Merged research). */
@@ -117,6 +124,16 @@ export function SpawnMergePanel({
   const [autoOpenedWindowId, setAutoOpenedWindowId] = useState<string | null>(
     null,
   );
+  // Residual (anl): budget soft-gate before single-spawn merge (parity ank).
+  const [budgetWarn, setBudgetWarn] = useState(false);
+  const [forceOverBudget, setForceOverBudget] = useState(false);
+  const [mergeTier, setMergeTier] = useState<ResearchLaunchTier>(() => {
+    const t = (researchTier || "").trim().toLowerCase();
+    return t === "fast" || t === "deep" || t === "wrestle" ? t : "deep";
+  });
+  const onProjectionChange = useCallback((p: ResearchLaunchBudgetProjection) => {
+    setBudgetWarn(p.wouldExceedBudget === true);
+  }, []);
 
   // Residual (lj): post-merge recommended tier wins over prop / default deep.
   const badgeResearchTier = useMemo(() => {
@@ -125,8 +142,16 @@ export function SpawnMergePanel({
       .toLowerCase();
     if (fromResult) return fromResult;
     const fromProp = (researchTier || "").trim().toLowerCase();
-    return fromProp || "deep";
-  }, [result?.recommended_research_tier, researchTier]);
+    return fromProp || mergeTier || "deep";
+  }, [result?.recommended_research_tier, researchTier, mergeTier]);
+
+  const mergePromptText = useMemo(() => {
+    if (result?.html) {
+      const plain = plainTextFromHtml(result.html).trim();
+      if (plain) return plain.slice(0, 4000);
+    }
+    return `spawn merge · ${spawnId.trim()} → ${parentAssetId.trim()}`;
+  }, [result?.html, spawnId, parentAssetId]);
 
   const merge = useCallback(
     async (mode: MergeMode) => {
@@ -134,6 +159,13 @@ export function SpawnMergePanel({
       const parent = parentAssetId.trim();
       if (!sid || !parent) {
         setError("spawnId and parentAssetId are required");
+        return;
+      }
+      // Residual (anl): budget-before-fire on single-spawn document merge.
+      if (budgetWarn && !forceOverBudget) {
+        setError(
+          "Projected cost may exceed remaining daily budget — enable force override or reduce scope before spawn merge.",
+        );
         return;
       }
       setBusy(true);
@@ -196,7 +228,14 @@ export function SpawnMergePanel({
         setBusy(false);
       }
     },
-    [spawnId, parentAssetId, onMerged, autoOpenDraft],
+    [
+      spawnId,
+      parentAssetId,
+      onMerged,
+      autoOpenDraft,
+      budgetWarn,
+      forceOverBudget,
+    ],
   );
 
   const parentBound = Boolean(String(parentAssetId || "").trim());
@@ -284,33 +323,71 @@ export function SpawnMergePanel({
         >
           <DecisionTreeDriverBadge
             researchTier={badgeResearchTier}
-            promptText={
-              (result?.html
-                ? plainTextFromHtml(result.html)
-                : "") ||
-              `spawn merge · ${spawnId.trim()} → ${parentAssetId.trim()}`
-            }
+            promptText={mergePromptText}
           />
         </div>
       </header>
+
+      {/* Residual (anl): budget foresight before single-spawn draft/parent merge. */}
+      <div
+        className="space-y-2"
+        data-testid="spawn-merge-budget-mount"
+        data-view-format="html"
+        data-research-tier={badgeResearchTier}
+        data-budget-warn={String(budgetWarn)}
+        data-budget-soft-gate="true"
+      >
+        <ResearchLaunchBudgetPanel
+          promptText={mergePromptText}
+          researchTier={
+            badgeResearchTier === "fast" ||
+            badgeResearchTier === "deep" ||
+            badgeResearchTier === "wrestle"
+              ? badgeResearchTier
+              : mergeTier
+          }
+          allowTierPick
+          onResearchTierChange={setMergeTier}
+          onProjectionChange={onProjectionChange}
+        />
+        {budgetWarn ? (
+          <label
+            className="flex items-center gap-2 text-[11px] font-mono text-emperor"
+            data-testid="spawn-merge-over-budget-warn"
+          >
+            <input
+              type="checkbox"
+              data-testid="spawn-merge-force-over-budget"
+              checked={forceOverBudget}
+              onChange={(e) => setForceOverBudget(e.target.checked)}
+              disabled={busy}
+            />
+            Force spawn merge despite budget projection
+          </label>
+        ) : null}
+      </div>
 
       <div
         className="flex flex-wrap gap-2"
         data-testid="spawn-merge-actions"
         data-seamless-spawn-merge={String(seamlessSpawnMerge)}
+        data-budget-soft-gate={String(budgetWarn && !forceOverBudget)}
       >
         <button
           type="button"
           data-testid="spawn-merge-draft"
           data-seamless-merge-draft={String(seamlessSpawnMerge)}
           data-mode="draft_combined"
-          disabled={busy}
+          data-budget-soft-gate={String(budgetWarn && !forceOverBudget)}
+          disabled={busy || (budgetWarn && !forceOverBudget)}
           onClick={() => void merge("draft_combined")}
           className="rounded border border-ink/30 px-2 py-1 text-[12px] font-mono hover:bg-ink/5 disabled:opacity-50 dark:border-bright/30"
           title={
-            seamlessSpawnMerge
-              ? "Create draft-combined HTML (leaves parent reading asset · seamless path)"
-              : "Create draft-combined HTML"
+            budgetWarn && !forceOverBudget
+              ? "Over budget — enable force override before draft merge"
+              : seamlessSpawnMerge
+                ? "Create draft-combined HTML (leaves parent reading asset · seamless path)"
+                : "Create draft-combined HTML"
           }
         >
           {busy ? "Merging…" : "Create draft combined"}
@@ -320,13 +397,16 @@ export function SpawnMergePanel({
           data-testid="spawn-merge-parent"
           data-seamless-merge-parent={String(seamlessSpawnMerge)}
           data-mode="into_parent"
-          disabled={busy}
+          data-budget-soft-gate={String(budgetWarn && !forceOverBudget)}
+          disabled={busy || (budgetWarn && !forceOverBudget)}
           onClick={() => void merge("into_parent")}
           className="rounded border border-ink/30 px-2 py-1 text-[12px] font-mono hover:bg-ink/5 disabled:opacity-50 dark:border-bright/30"
           title={
-            seamlessSpawnMerge
-              ? "Merge into parent reading asset (HTML · seamless highlight→DR→merge)"
-              : "Merge into parent reading asset"
+            budgetWarn && !forceOverBudget
+              ? "Over budget — enable force override before parent merge"
+              : seamlessSpawnMerge
+                ? "Merge into parent reading asset (HTML · seamless highlight→DR→merge)"
+                : "Merge into parent reading asset"
           }
         >
           {busy ? "Merging…" : "Merge into parent"}

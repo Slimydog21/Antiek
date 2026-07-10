@@ -31,9 +31,51 @@ vi.mock("./DecisionTreeDriverBadge", () => ({
   ),
 }));
 
+const budgetProjection = vi.hoisted(() => ({
+  wouldExceedBudget: false as boolean,
+}));
+
+vi.mock("./ResearchLaunchBudgetPanel", () => {
+  const React = require("react") as typeof import("react");
+  return {
+    ResearchLaunchBudgetPanel: (props: {
+      promptText: string;
+      researchTier?: string;
+      allowTierPick?: boolean;
+      onProjectionChange?: (p: {
+        wouldExceedBudget: boolean | null;
+        pricingKnown: boolean;
+        estimatedUsdHigh: number | null;
+        remainingUsd: number | null;
+        modelId: string | null;
+      }) => void;
+    }) => {
+      React.useEffect(() => {
+        props.onProjectionChange?.({
+          wouldExceedBudget: budgetProjection.wouldExceedBudget,
+          pricingKnown: true,
+          estimatedUsdHigh: budgetProjection.wouldExceedBudget ? 99 : 0.1,
+          remainingUsd: budgetProjection.wouldExceedBudget ? 0.5 : 5,
+          modelId: null,
+        });
+      }, [props.onProjectionChange, props.promptText]);
+      return (
+        <div
+          data-testid="research-launch-budget-panel-stub"
+          data-research-tier={props.researchTier || "deep"}
+          data-would-exceed={String(budgetProjection.wouldExceedBudget)}
+        >
+          budget len={props.promptText.length}
+        </div>
+      );
+    },
+  };
+});
+
 describe("SpawnMergePanel residual ci", () => {
   afterEach(() => cleanup());
   beforeEach(() => {
+    budgetProjection.wouldExceedBudget = false;
     mergeSpawnOutputs.mockReset();
     seedTwinNotes.mockReset();
     seedTwinNotes.mockResolvedValue({
@@ -445,6 +487,47 @@ describe("SpawnMergePanel residual ci", () => {
     const badge = screen.getByTestId("decision-tree-driver-badge-stub");
     expect(Number(badge.getAttribute("data-prompt-len") || 0)).toBeGreaterThan(5);
     expect(badge.getAttribute("data-prompt-len")).not.toBe("0");
+  });
+
+  it("soft-gates draft and parent merge on budget projection (anl)", async () => {
+    budgetProjection.wouldExceedBudget = true;
+    mergeSpawnOutputs.mockResolvedValue({
+      document_id: "draft_over",
+      mode: "draft_combined",
+      draft_leaves_parent: true,
+      view_format: "html",
+      html: "<p>should not merge without force</p>",
+      notes: [],
+    });
+    render(<SpawnMergePanel spawnId="spn_over" parentAssetId="book_over" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("spawn-merge-budget-mount")).toBeTruthy();
+    });
+    expect(
+      screen.getByTestId("spawn-merge-budget-mount").getAttribute("data-budget-soft-gate"),
+    ).toBe("true");
+    await waitFor(() => {
+      expect(screen.getByTestId("spawn-merge-over-budget-warn")).toBeTruthy();
+    });
+    const draftBtn = screen.getByTestId("spawn-merge-draft") as HTMLButtonElement;
+    const parentBtn = screen.getByTestId(
+      "spawn-merge-parent",
+    ) as HTMLButtonElement;
+    expect(draftBtn.disabled).toBe(true);
+    expect(parentBtn.disabled).toBe(true);
+    expect(draftBtn.getAttribute("data-budget-soft-gate")).toBe("true");
+    fireEvent.click(draftBtn);
+    expect(mergeSpawnOutputs).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("spawn-merge-force-over-budget"));
+    await waitFor(() => {
+      expect(
+        (screen.getByTestId("spawn-merge-draft") as HTMLButtonElement).disabled,
+      ).toBe(false);
+    });
+    fireEvent.click(screen.getByTestId("spawn-merge-draft"));
+    await waitFor(() => {
+      expect(mergeSpawnOutputs).toHaveBeenCalled();
+    });
   });
 
 });

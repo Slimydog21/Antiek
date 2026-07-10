@@ -1,0 +1,16 @@
+# inventory-anl · SpawnMergePanel budget soft-gate
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: anl
+date: 2026-07-10
+parent_tip: f41bfb49 (ank)
+
+## Closed
+- SpawnMergePanel mounts ResearchLaunchBudgetPanel foresight before merge
+- Soft-gate draft_combined + into_parent when projection exceeds budget
+- Force override unlocks (parity collective ank · continue-as-unit di)
+- Completes budget-before-fire on single-spawn + multi-select merge paths
+- vitest SpawnMergePanel 9 green
+
+## Next
+anm+ product residual outside thrash · prefer non-budget-soft-gate
+Operator merge PR #465 remains highest leverage (gated)
