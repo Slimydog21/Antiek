@@ -285,6 +285,30 @@ def test_free_science_stem_set_size() -> None:
     assert all(e.is_free for e in free_sci)
 
 
+def test_free_philosophy_set_size() -> None:
+    """Residual (aba): free philosophy subject is non-trivial for researchers.
+
+    Method + liberty + discourse + political economy free PD HTML.
+    Supports tech-researcher critical-reasoning substrate (parity science aay).
+    """
+    cat = default_demo_catalog()
+    free_phil = [
+        e
+        for e in cat.filter_by_subject("philosophy")
+        if e.is_free and e.license_class == "public_domain"
+    ]
+    ids = {e.book_id for e in free_phil}
+    assert ids >= {
+        "pd-novum",
+        "pd-liberty",
+        "pd-discourse",
+        "pd-wealth",
+    }
+    assert all(e.source_format == "html" for e in free_phil if e.book_id in ids)
+    assert len(free_phil) >= 4
+    assert all(e.is_free for e in free_phil)
+
+
 def test_turing_computability_subjects_and_free_pd() -> None:
     """Residual (wl): Turing tagged computing+computability, free PD."""
     cat = default_demo_catalog()

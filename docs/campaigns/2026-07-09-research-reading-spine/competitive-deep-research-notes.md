@@ -1957,3 +1957,8 @@ DecisionTreeDriverBadge + ResearchLaunchBudgetPanel dual-gate links deep-link
 #l7-notdiamond (advisory only · never dispatch authority). Competitive delta:
 shared driver+budget chokepoints land operators on ND-never-router doctrine.
 
+## Residual aba · 2026-07-10 — free philosophy set size honesty
+Free philosophy subject set len ≥4 all free PD HTML (Novum · Liberty · Discourse ·
+Wealth). Competitive delta: critical-reasoning substrate for tech researchers is
+a non-trivial free corpus (parity science/physics/math domain honesty).
+

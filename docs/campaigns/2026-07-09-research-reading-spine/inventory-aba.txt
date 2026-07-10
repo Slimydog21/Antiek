@@ -1,0 +1,19 @@
+# inventory-aba · free philosophy set size honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aba
+date: 2026-07-10
+tip_before: c914ef3c (aaz)
+
+## Problem
+Free science/physics/math had set-size honesty; free philosophy (method + liberty
++ discourse + wealth) lacked explicit ≥4 free PD HTML guarantee.
+
+## Fix
+- test_free_philosophy_set_size: Novum · Liberty · Discourse · Wealth
+- len ≥4 · free PD HTML
+
+## Verified
+pytest test_free_philosophy_set_size → passed
+
+## Not in scope
+- Operator merge PR #465 (gated)
