@@ -275,6 +275,8 @@ export default function MidnightOil() {
           asset_id: deposit.document_id,
           note_ids: [],
           source: "midnight_oil_deposit",
+          // Residual (adv): HTML deposit body → has_body true for rewrite feed.
+          has_body: true,
         })
       : null;
     return buildWriteHtmlDraftHref({

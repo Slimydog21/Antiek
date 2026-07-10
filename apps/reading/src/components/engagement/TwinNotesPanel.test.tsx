@@ -1279,6 +1279,8 @@ describe("TwinNotesPanel", () => {
         asset_id: "paper",
         plain_text: expect.stringMatching(/\[question\] Open Q/),
         note_ids: expect.arrayContaining(["twin_q", "twin_i"]),
+        // Residual (adv): explicit has_body into twin write seed.
+        has_body: true,
       }),
     );
     const metrics = screen.getByTestId("twin-draft-metrics");
@@ -1666,6 +1668,7 @@ describe("TwinNotesPanel", () => {
       expect.objectContaining({
         asset_id: "paper-a+paper-b",
         note_ids: expect.arrayContaining(["twin_a_q", "twin_b_q", "twin_b_i"]),
+        has_body: true,
       }),
     );
 
@@ -1822,6 +1825,7 @@ describe("TwinNotesPanel", () => {
     expect(storeTwinWriteSeed).toHaveBeenCalledWith(
       expect.objectContaining({
         asset_id: "paper-a+paper-b+paper-c",
+        has_body: true,
       }),
     );
   });

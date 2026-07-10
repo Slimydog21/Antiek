@@ -2203,3 +2203,9 @@ Decision-tree status stamps data-install-source (manual | leaderboard_recommende
 leaderboard_task | notdiamond) + data-install-task-class after ads best-by-task install.
 Competitive delta: operator can audit why a driver is installed (weekly task winner)
 without implying auto-routing. vitest Settings 35 green.
+
+## Residual adv · 2026-07-10 — TwinNotes + MO storeTwinWriteSeed has_body feed
+TwinNotes draft storeTwinWriteSeed passes explicit has_body; MO deposit seed stamps
+has_body=true when HTML body present. Competitive delta: recursive note-taker Open
+Write → Write create usage feed is honest for twin draft and MO deposit paths (closes
+adq gap on engagement store call sites). vitest TwinNotesPanel 30 green.

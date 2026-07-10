@@ -852,6 +852,11 @@ export function TwinNotesPanel({
           mode,
         },
       );
+      // Residual (acq/adv): body honesty before store so adq feed gets explicit has_body.
+      const hasBody = Boolean(
+        String(chase.selection_text || "").trim() ||
+          plainTextFromHtml(html || "").trim(),
+      );
       // Residual (vd): pass source so cross-asset merge does not collapse to twin_draft_selected.
       const seedKey = storeTwinWriteSeed({
         plain_text: chase.selection_text,
@@ -862,13 +867,10 @@ export function TwinNotesPanel({
         source: source as
           | "twin_draft_selected"
           | "twin_cross_asset_merge",
+        // Residual (adv): explicit has_body into session seed (parity Open Write stamp).
+        has_body: hasBody,
       });
       const writeHref = seedKey ? buildTwinWriteHref(seedKey) : null;
-      // Residual (acq): body honesty — note selection text or stripped HTML body.
-      const hasBody = Boolean(
-        String(chase.selection_text || "").trim() ||
-          plainTextFromHtml(html || "").trim(),
-      );
       setDraftMetrics({
         note_count: selected.length,
         note_ids: draft.note_ids,
