@@ -15,6 +15,8 @@
  * rows (marketplace → write flywheel; fl path).
  * Residual (qc / FUTURE-AGENT V5): dual handoff html_draft + twin_seed on host
  * and library Open Write (parity MO pz; seeds note-taker when empty).
+ * Residual (aeo): Open Write data-seamless-port · library-landed · seamless-host-write
+ * (catalog→account→Write path honesty; parity aea metrics + aen HostedHtml).
  * Residual (gj): offline twin seed after host/purchase so marketplace books
  * enter the recursive note-taker substrate (parity with Write fz).
  * Residual (hl): offline-seed honesty machine attrs on marketplace twin seed
@@ -1596,7 +1598,7 @@ export default function MarketplaceHost({
             >
               Open hosted book in window
             </button>
-            {/* Residual (gi): handoff hosted HTML into Write mode (fl path). */}
+            {/* Residual (gi/aeo): handoff hosted HTML into Write + seamless-port path. */}
             {hosted.view_format === "html" && hosted.document_id ? (
               <a
                 href={buildMarketplaceWriteHref({
@@ -1608,8 +1610,28 @@ export default function MarketplaceHost({
                 data-view-format="html"
                 data-document-id={hosted.document_id}
                 data-has-twin-seed="1"
+                // Residual (aeo): body + seamless port honesty on host Open Write.
+                data-write-seed-has-body={String(
+                  Boolean(
+                    hosted.view_format === "html" &&
+                      Boolean(hosted.html?.trim()),
+                  ),
+                )}
+                data-seamless-port={String(
+                  (hosted.view_format || "html") === "html" &&
+                    Boolean(hosted.document_id) &&
+                    (libraryDocs || []).some(
+                      (d) => d.document_id === hosted.document_id,
+                    ),
+                )}
+                data-library-landed={String(
+                  (libraryDocs || []).some(
+                    (d) => d.document_id === hosted.document_id,
+                  ),
+                )}
+                data-seamless-host-write="true"
                 className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono underline hover:bg-ink/5 dark:hover:bg-bright/10"
-                title="Open Write with hosted book as HTML draft + twin_seed (seeds note-taker when empty)"
+                title="Open Write with hosted book as HTML draft + twin_seed (seamless port · seeds note-taker when empty)"
               >
                 Open Write (HTML draft)
               </a>
@@ -1824,13 +1846,25 @@ export default function MarketplaceHost({
                             hosted.html?.trim(),
                         ),
                       )}
+                      // Residual (aeo): library row is always account-landed;
+                      // seamless-port true when in-session host body is present.
+                      data-library-landed="true"
+                      data-seamless-port={String(
+                        (d.view_format || "html") === "html" &&
+                          hosted?.document_id === d.document_id &&
+                          hosted.view_format === "html" &&
+                          Boolean(hosted.html?.trim()),
+                      )}
+                      data-seamless-host-write={String(
+                        (d.view_format || "html") === "html",
+                      )}
                       data-is-free={String(libraryDocIsFree(d))}
                       className="text-xs font-mono border rounded px-2 py-1 underline"
                       title={
                         hosted?.document_id === d.document_id &&
                         hosted.html?.trim()
-                          ? "Open Write with library HTML body + twin_seed (in-session host body)"
-                          : "Open Write with library document as HTML draft + twin_seed (title seed until rehydrate)"
+                          ? "Open Write with library HTML body + twin_seed (seamless port · in-session host body)"
+                          : "Open Write with library document as HTML draft + twin_seed (title seed until rehydrate · library-landed)"
                       }
                     >
                       Open Write

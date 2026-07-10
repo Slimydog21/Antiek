@@ -2312,3 +2312,8 @@ SpawnMergePanel 8 green.
 HostedHtmlDocumentHost Open Write stamps data-document-id · data-seamless-host-write
 so reading HTML host → Write note-taker path is machine-readable (parity ael/aem).
 vitest HostedHtmlDocumentHost 23 green.
+
+## Residual aeo · 2026-07-10 — marketplace Open Write seamless-port
+Host + library Open Write stamp data-seamless-port · data-library-landed ·
+data-seamless-host-write · has_body so catalog→account→Write path is
+machine-readable on the handoff (not only host metrics aea). vitest MarketplaceHost 39 green.

@@ -416,13 +416,17 @@ describe("MarketplaceHost mode", () => {
         /Deep research launched \(full\)/,
       );
     });
-    // Residual (gi): host-result → Write HTML draft handoff.
+    // Residual (gi/aeo): host-result → Write HTML draft + seamless-port path.
     const writeLink = screen.getByTestId("marketplace-open-write");
     expect(writeLink.getAttribute("href") || "").toMatch(/html_draft=hdoc_abc/);
     expect(writeLink.getAttribute("href") || "").toMatch(/twin_seed=antiek\.twin_write_seed\./);
     expect(writeLink.getAttribute("data-has-twin-seed")).toBe("1");
     expect(writeLink.getAttribute("data-view-format")).toBe("html");
     expect(writeLink.getAttribute("data-document-id")).toBe("hdoc_abc");
+    expect(writeLink.getAttribute("data-write-seed-has-body")).toBe("true");
+    expect(writeLink.getAttribute("data-seamless-host-write")).toBe("true");
+    expect(writeLink.getAttribute("data-seamless-port")).toBe("true");
+    expect(writeLink.getAttribute("data-library-landed")).toBe("true");
     // Residual (gj/mo): offline twin seed after host with domain subjects.
     await waitFor(() => {
       expect(seedTwinNotes).toHaveBeenCalledWith(
@@ -472,6 +476,10 @@ describe("MarketplaceHost mode", () => {
     expect(libWrite.getAttribute("data-write-seed-has-body")).toBe("true");
     expect(libWrite.getAttribute("data-is-free")).toBe("true");
     expect(libWrite.getAttribute("title") || "").toMatch(/in-session host body/i);
+    // Residual (aeo): library Open Write seamless-port when host body present.
+    expect(libWrite.getAttribute("data-library-landed")).toBe("true");
+    expect(libWrite.getAttribute("data-seamless-port")).toBe("true");
+    expect(libWrite.getAttribute("data-seamless-host-write")).toBe("true");
     // Residual (iw): library row deep research float|full.
     fireEvent.click(screen.getByTestId("library-deep-research-hdoc_abc"));
     await waitFor(() => {
