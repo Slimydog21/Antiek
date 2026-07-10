@@ -1925,6 +1925,16 @@ export default function Settings() {
                     {usage.write_seed_source_count ?? 0} · known_catalog=
                     {usage.write_seed_known_count ?? writeSeedKnownCount}{" "}
                     (recursive note-taker → Write · not auto-promoted)
+                    {" · "}
+                    {/* Residual (sr): jump to suite proposal (propose≠promote). */}
+                    <a
+                      href="#antiek-bench-suite-proposal"
+                      className="underline opacity-80 hover:opacity-100"
+                      data-testid="antiek-bench-write-seed-suite-link"
+                      title="Open suite rewrite proposal (not auto-promoted)"
+                    >
+                      View suite proposal
+                    </a>
                   </p>
                 )}
                 {Object.keys(usage.by_task_class || {}).length === 0 ? (
@@ -2091,6 +2101,7 @@ export default function Settings() {
 
         <LemonCard title="Antiek-bench suite proposal" elevation="z1" colour="glacial">
           <div
+            id="antiek-bench-suite-proposal"
             className="p-4 space-y-3"
             data-testid="antiek-bench-suite-proposal-panel"
             data-view-format="html"

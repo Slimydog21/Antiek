@@ -913,3 +913,8 @@ Decision-tree budget panel deep-links to #antiek-bench-leaderboard so operators
 can compare weekly Antiek-bench rankings when choosing a model driver.
 Competitive delta: model choice sits next to recursive bench evidence without
 granting auto-route authority (propose≠promote · ND advisory only).
+
+## Residual sr · 2026-07-10 — Write-seed metrics → suite proposal
+Weekly Write-seed metrics deep-link to the suite rewrite proposal panel
+(propose≠promote). Competitive delta: recursive note-taker → Write volume
+and suite rewrite review sit one click apart without auto-promoting.

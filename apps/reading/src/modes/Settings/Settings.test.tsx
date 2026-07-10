@@ -688,6 +688,12 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(metrics.getAttribute("data-write-seed-known-count")).toBe("14");
     expect(metrics.textContent).toMatch(/Write seed this week/i);
     expect(metrics.textContent).toMatch(/not auto-promoted/i);
+    // Residual (sr): write-seed metrics deep-link suite proposal.
+    const suiteLink = screen.getByTestId("antiek-bench-write-seed-suite-link");
+    expect(suiteLink.getAttribute("href")).toBe("#antiek-bench-suite-proposal");
+    expect(screen.getByTestId("antiek-bench-suite-proposal-panel").id).toBe(
+      "antiek-bench-suite-proposal",
+    );
   });
 
   it("loads NotDiamond advisory posture — authority rejected", async () => {
