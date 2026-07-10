@@ -3623,3 +3623,8 @@ P0 operator merge PR #465. Pivot aoe+ outside thrash.
 parseResearchDomainsFromGoal + TwinNotes/ResearchContext domainSubjects on
 DeepResearchSessionHost so domain-aware chase/search survives into the session.
 vitest domainSearchDefaults 4 · DR host 33 green. P0 operator merge PR #465. Pivot aof+.
+
+## Residual aof · 2026-07-10 — Midnight Oil multi-goal swarm plan chrome
+parseMoilGoalLines + professional research templates + live goal_count plan list
+(one line = one autonomous swarm goal · never invent). vitest moilGoals 3 · MO 28 green.
+P0 operator merge PR #465. Pivot aog+ outside thrash.

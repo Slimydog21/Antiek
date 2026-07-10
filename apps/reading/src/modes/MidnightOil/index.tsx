@@ -68,6 +68,8 @@
  * (prep only; never enables live arxiv/substack injectors).
  * Residual (pc): job receipt lists grounded publication goals count + chrome
  * so operator audits knowledge-dense swarm grounding after create.
+ * Residual (aof): multi-goal swarm plan chrome — live goal_count + numbered
+ * preview + professional research templates (one line = one swarm goal).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -85,6 +87,11 @@ import {
 } from "../../api/midnightOil";
 import { fetchDecisionTreeSelection, fetchDepthTiers } from "../../api/settings";
 import type { ResearchTier } from "../../lib/api";
+import {
+  appendMoilGoalTemplate,
+  MOIL_GOAL_TEMPLATES,
+  parseMoilGoalLines,
+} from "../../lib/moilGoals";
 import {
   estimateMoilRecommendedCeilingUsd,
   formatResearchTierCeilingFactor,
@@ -446,10 +453,8 @@ export default function MidnightOil() {
     setError(null);
     setPubRefStatus(null);
     try {
-      const goals = goalsText
-        .split("\n")
-        .map((g) => g.trim())
-        .filter(Boolean);
+      // Residual (aof): shared one-goal-per-line parser (swarm plan honesty).
+      const goals = parseMoilGoalLines(goalsText);
       // Residual (oy): hydrate pub refs then append as grounded goals (HTML-first).
       const refs = parsePublicationRefs(pubRefs);
       if (refs.length > 0) {
@@ -755,16 +760,86 @@ export default function MidnightOil() {
       </p>
 
       <form onSubmit={(e) => void onCreate(e)} className="space-y-4 max-w-xl">
-        <label className="block space-y-1">
-          <span className="text-sm font-medium">Goals (one per line)</span>
-          <textarea
-            className="w-full min-h-[120px] border rounded p-2"
-            value={goalsText}
-            onChange={(e) => setGoalsText(e.target.value)}
-            required
-            disabled={busy}
-          />
-        </label>
+        <div className="block space-y-1">
+          <label className="block space-y-1">
+            <span className="text-sm font-medium">Goals (one per line)</span>
+            <p className="text-[11px] font-mono opacity-70">
+              Each non-empty line is one autonomous swarm goal. Templates append
+              without inventing content — edit freely before create.
+            </p>
+            <textarea
+              className="w-full min-h-[120px] border rounded p-2"
+              value={goalsText}
+              onChange={(e) => setGoalsText(e.target.value)}
+              required
+              disabled={busy}
+              data-testid="moil-goals-input"
+              aria-label="Goals (one per line)"
+            />
+          </label>
+          {/* Residual (aof): multi-goal swarm plan chrome + research templates
+              (outside label so getByLabelText stays unique for goals field). */}
+          {(() => {
+            const goalLines = parseMoilGoalLines(goalsText);
+            return (
+              <div
+                className="space-y-1 font-mono text-[11px]"
+                data-testid="moil-goals-plan"
+                data-goal-count={String(goalLines.length)}
+                data-template-count={String(MOIL_GOAL_TEMPLATES.length)}
+                data-view-format="html"
+                role="status"
+              >
+                <p className="opacity-80">
+                  Swarm plan · {goalLines.length} goal
+                  {goalLines.length === 1 ? "" : "s"}
+                  {goalLines.length === 0
+                    ? " · add at least one line before create"
+                    : ""}
+                </p>
+                {goalLines.length > 0 ? (
+                  <ol
+                    className="list-decimal pl-5 space-y-0.5 opacity-90"
+                    data-testid="moil-goals-plan-list"
+                  >
+                    {goalLines.map((g, i) => (
+                      <li
+                        key={`${i}-${g.slice(0, 24)}`}
+                        data-testid={`moil-goals-plan-item-${i}`}
+                        data-goal-index={String(i)}
+                      >
+                        {g.length > 160 ? `${g.slice(0, 157)}…` : g}
+                      </li>
+                    ))}
+                  </ol>
+                ) : null}
+                <div
+                  className="flex flex-wrap gap-1 items-center pt-1"
+                  data-testid="moil-goal-templates"
+                >
+                  <span className="opacity-70">Templates:</span>
+                  {MOIL_GOAL_TEMPLATES.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      data-testid={`moil-goal-template-${t.id}`}
+                      disabled={busy}
+                      className="px-2 py-0.5 rounded border text-[11px]"
+                      title={t.text}
+                      onClick={() =>
+                        setGoalsText((prev) =>
+                          appendMoilGoalTemplate(prev, t.text),
+                        )
+                      }
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
         {/* Residual (oy/anu): knowledge-dense arxiv/substack/URL grounding. */}
         <div
           className="block space-y-1"

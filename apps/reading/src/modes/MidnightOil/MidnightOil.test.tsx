@@ -437,6 +437,35 @@ describe("MidnightOil mode", () => {
     expect(l4.textContent).toMatch(/L4 MO live-step/i);
   });
 
+  it("shows multi-goal swarm plan chrome and appends templates (aof)", () => {
+    render(<MidnightOil />);
+    const plan = screen.getByTestId("moil-goals-plan");
+    expect(plan.getAttribute("data-goal-count")).toBe("0");
+    expect(Number(plan.getAttribute("data-template-count"))).toBeGreaterThanOrEqual(
+      3,
+    );
+    expect(screen.getByTestId("moil-goal-templates")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("moil-goal-template-map_landscape"));
+    expect(screen.getByTestId("moil-goals-plan").getAttribute("data-goal-count")).toBe(
+      "1",
+    );
+    expect(screen.getByTestId("moil-goals-plan-list")).toBeTruthy();
+    expect(screen.getByTestId("moil-goals-plan-item-0").textContent).toMatch(
+      /competitive landscape/i,
+    );
+    // Second click does not invent a duplicate.
+    fireEvent.click(screen.getByTestId("moil-goal-template-map_landscape"));
+    expect(screen.getByTestId("moil-goals-plan").getAttribute("data-goal-count")).toBe(
+      "1",
+    );
+    fireEvent.click(screen.getByTestId("moil-goal-template-evidence_chain"));
+    expect(screen.getByTestId("moil-goals-plan").getAttribute("data-goal-count")).toBe(
+      "2",
+    );
+    const input = screen.getByTestId("moil-goals-input") as HTMLTextAreaElement;
+    expect(input.value.split("\n").filter(Boolean)).toHaveLength(2);
+  });
+
   it("previews recommended ceiling before create (adx)", () => {
     render(<MidnightOil />);
     const preview = screen.getByTestId("moil-ceiling-preview");
