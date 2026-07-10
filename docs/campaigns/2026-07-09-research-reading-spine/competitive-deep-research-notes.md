@@ -2209,3 +2209,8 @@ TwinNotes draft storeTwinWriteSeed passes explicit has_body; MO deposit seed sta
 has_body=true when HTML body present. Competitive delta: recursive note-taker Open
 Write → Write create usage feed is honest for twin draft and MO deposit paths (closes
 adq gap on engagement store call sites). vitest TwinNotesPanel 30 green.
+
+## Residual adw · 2026-07-10 — dogfood has-body → suite rewrite + usage deep-links
+Dogfood has-body posture chrome deep-links to suite proposal and usage body matrix
+(hash targets). Competitive delta: operator path fixture → recursive rewrite learning
+is one-click navigable (parity decision-tree dogfood/leaderboard links). vitest Settings 35 green.

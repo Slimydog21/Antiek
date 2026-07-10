@@ -2534,6 +2534,39 @@ export default function Settings() {
                     has-body (listing only · not auto-promoted)
                   </p>
                 ) : null}
+                {/* Residual (adw): has-body posture → rewrite + usage deep-links. */}
+                {(dogfood.items || []).some(
+                  (it) => it.item_id === "dogfood-wrestle-write-seed-has-body",
+                ) ? (
+                  <div
+                    className="flex flex-wrap items-center gap-2 text-[11px]"
+                    data-testid="antiek-bench-dogfood-has-body-links"
+                    data-has-write-seed-has-body-posture="true"
+                    data-propose-not-promote="true"
+                    role="navigation"
+                    aria-label="Write-seed has-body dogfood → recursive rewrite"
+                  >
+                    <a
+                      href="#antiek-bench-suite-proposal"
+                      className="underline opacity-80 hover:opacity-100"
+                      data-testid="dogfood-has-body-suite-proposal-link"
+                      title="Recursive suite rewrite proposal (body honesty matrix · never auto-promote)"
+                    >
+                      Body honesty → suite rewrite
+                    </a>
+                    <span className="opacity-40" aria-hidden>
+                      ·
+                    </span>
+                    <a
+                      href="#antiek-bench-usage"
+                      className="underline opacity-80 hover:opacity-100"
+                      data-testid="dogfood-has-body-usage-link"
+                      title="Usage summary with with_body / title_only / unknown counts"
+                    >
+                      Usage body matrix
+                    </a>
+                  </div>
+                ) : null}
                 <ul data-testid="antiek-bench-dogfood-classes" className="space-y-1">
                   {Object.entries(dogfood.by_task_class || {}).map(
                     ([tc, n]) => (
@@ -2589,6 +2622,7 @@ export default function Settings() {
         <LemonCard title="Antiek-bench usage" elevation="z1" colour="glacial">
           <div
             className="p-4 space-y-3"
+            id="antiek-bench-usage"
             data-testid="antiek-bench-usage-panel"
             data-view-format="html"
           >

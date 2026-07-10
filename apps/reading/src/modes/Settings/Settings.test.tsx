@@ -1634,6 +1634,22 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
       /write-seed/i,
     );
+    // Residual (adw): has-body posture deep-links to suite rewrite + usage.
+    const hasBodyLinks = screen.getByTestId(
+      "antiek-bench-dogfood-has-body-links",
+    );
+    expect(hasBodyLinks.getAttribute("data-has-write-seed-has-body-posture")).toBe(
+      "true",
+    );
+    expect(hasBodyLinks.getAttribute("data-propose-not-promote")).toBe("true");
+    expect(
+      screen
+        .getByTestId("dogfood-has-body-suite-proposal-link")
+        .getAttribute("href"),
+    ).toBe("#antiek-bench-suite-proposal");
+    expect(
+      screen.getByTestId("dogfood-has-body-usage-link").getAttribute("href"),
+    ).toBe("#antiek-bench-usage");
     expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
       /Faraday book_qa/i,
     );
