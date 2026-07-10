@@ -1,0 +1,19 @@
+# inventory-yh · dogfood summary distill + synthesize count honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: yh
+date: 2026-07-10
+tip_before: dec433c7 (yg)
+
+## Problem
+Dogfood summary stamped book_qa + wrestle counts (yg) but not distill/synthesize
+— incomplete by_task_class machine honesty.
+
+## Fix
+- data-distill-count · data-synthesize-count
+- Test locks distill=2 · synthesize=2 (v12)
+
+## Verified
+npm test Settings.test.tsx → 34 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

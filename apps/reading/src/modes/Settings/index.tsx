@@ -2086,6 +2086,12 @@ export default function Settings() {
                 data-wrestle-count={String(
                   (dogfood.by_task_class || {}).wrestle ?? 0,
                 )}
+                data-distill-count={String(
+                  (dogfood.by_task_class || {}).distill ?? 0,
+                )}
+                data-synthesize-count={String(
+                  (dogfood.by_task_class || {}).synthesize ?? 0,
+                )}
                 data-has-write-seed-posture={String(
                   (dogfood.items || []).some(
                     (it) => it.item_id === "dogfood-wrestle-write-seed",

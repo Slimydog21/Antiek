@@ -1636,3 +1636,8 @@ swarm handoff tip-true; operator merge PR #465 highest leverage.
 antiek-bench-dogfood-summary stamps data-book-qa-count and data-wrestle-count
 (v12: 7/7). Competitive delta: STEM book_qa expansion is machine-auditable on
 Settings dogfood chokepoint.
+
+## Residual yh · 2026-07-10 — dogfood summary full task-class counts
+antiek-bench-dogfood-summary stamps distill/synthesize/wrestle/book_qa counts
+(v12: 2/2/7/7). Competitive delta: full Antiek-bench dogfood task-class matrix
+is machine-auditable on Settings.
