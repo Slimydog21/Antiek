@@ -1,0 +1,22 @@
+# inventory-afb · launch budget best-by-task model quality advisory
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: afb
+date: 2026-07-10
+parent_tip: b135fb18 (afa)
+
+## Closed
+- ResearchLaunchBudgetPanel: weekly leaderboard fetch
+- researchTierToBenchTaskClass: fast→distill · deep→synthesize · wrestle→wrestle
+- research-launch-bench-best-by-task: best model · score · matches-installed
+- advisory only · Settings leaderboard deep-link
+- vitest ResearchLaunchBudgetPanel · 12 passed
+
+## Why this residual
+User vision: know which models are best at which tasks; optimize model quality
+per task. Settings had best-by-task install (ads); launch surfaces only showed
+installed driver. Launch now surfaces Antiek-bench best for the depth tier
+(never auto-routes).
+
+## Not in scope
+- Auto-switch driver to best-by-task
+- NotDiamond routing

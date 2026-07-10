@@ -2378,3 +2378,9 @@ forever REJECT; install-as-driver stays explicit. vitest Settings 36 green.
 Collective unit Open Write stamps data-seamless-unit-write · parent_asset_id ·
 research_tier so multi-select cohesive unit → Write note-taker is machine-readable
 (parity aeq doc merge). L6 live multi-agent remains deferred. vitest Collective 25 green.
+
+## Residual afb · 2026-07-10 — launch budget Antiek-bench best-by-task advisory
+ResearchLaunchBudgetPanel surfaces weekly best model for depth→task_class
+(fast→distill · deep→synthesize · wrestle→wrestle) vs installed driver.
+Advisory only · never auto-routes. Competitive model-quality-per-task at fire.
+vitest ResearchLaunchBudgetPanel 12 green.

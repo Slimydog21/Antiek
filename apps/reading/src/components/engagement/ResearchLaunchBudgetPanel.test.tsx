@@ -8,6 +8,7 @@ const {
   fetchSettingsBudget,
   estimatePromptCost,
   fetchDecisionTreeSelection,
+  fetchAntiekBenchLeaderboard,
 } = vi.hoisted(() => ({
   fetchSettingsBudget: vi.fn(async () => ({
     daily_cap_usd: 5,
@@ -36,12 +37,37 @@ const {
     notes: [],
     source: "test",
   })),
+  fetchAntiekBenchLeaderboard: vi.fn(async () => ({
+    week_id: "2026-W28",
+    models: [
+      {
+        model_id: "glm-5.2",
+        mean_score: 0.9,
+        by_task_class: { synthesize: 0.95, distill: 0.8, wrestle: 0.7 },
+      },
+      {
+        model_id: "strong-model",
+        mean_score: 0.92,
+        by_task_class: { synthesize: 0.88, distill: 0.99, wrestle: 0.96 },
+      },
+    ],
+    task_classes: ["distill", "synthesize", "wrestle"],
+    run_count: 2,
+    suite_versions: ["suite-competitive-dogfood-v14"],
+    recommended_model_id: "strong-model",
+    recommended_mean_score: 0.92,
+    view_format: "html",
+    settings_panel: "antiek_bench_weekly",
+    source: "test",
+    notes: [],
+  })),
 }));
 
 vi.mock("../../api/settings", () => ({
   fetchSettingsBudget,
   estimatePromptCost,
   fetchDecisionTreeSelection,
+  fetchAntiekBenchLeaderboard,
 }));
 
 describe("ResearchLaunchBudgetPanel", () => {
@@ -49,6 +75,7 @@ describe("ResearchLaunchBudgetPanel", () => {
     fetchSettingsBudget.mockClear();
     estimatePromptCost.mockClear();
     fetchDecisionTreeSelection.mockClear();
+    fetchAntiekBenchLeaderboard.mockClear();
     vi.useFakeTimers({ shouldAdvanceTime: true });
   });
 
@@ -93,6 +120,49 @@ describe("ResearchLaunchBudgetPanel", () => {
     // Residual (sc): deep-link to decision-tree panel (driver + budget foresight).
     expect(settings.getAttribute("href")).toBe("/settings#decision-tree-panel");
     expect(settings.textContent).toMatch(/driver/i);
+    // Residual (afb): deep→synthesize best-by-task advisory (never auto-route).
+    await waitFor(() => {
+      expect(fetchAntiekBenchLeaderboard).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("research-launch-bench-best-by-task")).toBeTruthy();
+    });
+    const bench = screen.getByTestId("research-launch-bench-best-by-task");
+    expect(bench.getAttribute("data-task-class")).toBe("synthesize");
+    expect(bench.getAttribute("data-best-model")).toBe("glm-5.2");
+    expect(bench.getAttribute("data-advisory-only")).toBe("true");
+    expect(bench.getAttribute("data-matches-installed")).toBe("true");
+    expect(screen.getByTestId("research-launch-bench-task-class").textContent).toBe(
+      "synthesize",
+    );
+    expect(screen.getByTestId("research-launch-bench-best-model").textContent).toBe(
+      "glm-5.2",
+    );
+    expect(
+      screen.getByTestId("research-launch-bench-leaderboard-link").getAttribute("href"),
+    ).toBe("/settings#antiek-bench-leaderboard");
+    expect(
+      screen.getByTestId("research-launch-budget-panel").getAttribute("data-bench-task-class"),
+    ).toBe("synthesize");
+  });
+
+  it("maps wrestle tier to bench best-by-task wrestle model (afb)", async () => {
+    render(
+      <ResearchLaunchBudgetPanel
+        promptText="Wrestle with citations"
+        researchTier="wrestle"
+        debounceMs={0}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("research-launch-bench-best-by-task")).toBeTruthy();
+    });
+    const bench = screen.getByTestId("research-launch-bench-best-by-task");
+    expect(bench.getAttribute("data-task-class")).toBe("wrestle");
+    // strong-model has higher wrestle score (0.96 > 0.7).
+    expect(bench.getAttribute("data-best-model")).toBe("strong-model");
+    expect(bench.getAttribute("data-matches-installed")).toBe("false");
+    expect(bench.textContent).toMatch(/differs from installed/i);
   });
 
   it("projects prompt cost for deep→pro tier", async () => {

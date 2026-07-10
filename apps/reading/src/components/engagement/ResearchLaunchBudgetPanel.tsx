@@ -19,14 +19,18 @@
  * Residual (wa): remaining-after-prompt projection (remaining − high band)
  * parity DecisionTree badge (pg) + Midnight Oil ceiling (um) — operator sees
  * how fire would affect daily cap before Ask.
+ * Residual (afb): Antiek-bench weekly best-by-task advisory for mapped task
+ * class (fast→distill · deep→synthesize · wrestle→wrestle) — never auto-routes.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   estimatePromptCost,
+  fetchAntiekBenchLeaderboard,
   fetchDecisionTreeSelection,
   fetchSettingsBudget,
+  type AntiekBenchLeaderboardResponse,
   type BudgetResponse,
   type DecisionTreeSelectionResponse,
   type PromptCostEstimateResponse,
@@ -68,6 +72,40 @@ export type ResearchLaunchBudgetPanelProps = {
   onResearchTierChange?: (tier: ResearchLaunchTier) => void;
 };
 
+/** Map curated research depth to Antiek-bench task_class for model quality. */
+export function researchTierToBenchTaskClass(
+  tier: ResearchLaunchTier,
+): "distill" | "synthesize" | "wrestle" {
+  if (tier === "fast") return "distill";
+  if (tier === "wrestle") return "wrestle";
+  return "synthesize";
+}
+
+function isoWeekId(d = new Date()): string {
+  const onejan = new Date(d.getFullYear(), 0, 1);
+  const week = Math.ceil(
+    ((d.getTime() - onejan.getTime()) / 86400000 + onejan.getDay() + 1) / 7,
+  );
+  return `${d.getFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+/** Best model_id for task_class from weekly leaderboard rows (advisory). */
+export function bestModelForTaskClass(
+  board: AntiekBenchLeaderboardResponse | null | undefined,
+  taskClass: string,
+): { model_id: string; score: number } | null {
+  if (!board?.models?.length) return null;
+  let best: { model_id: string; score: number } | null = null;
+  for (const row of board.models) {
+    const score = row.by_task_class?.[taskClass];
+    if (typeof score !== "number" || Number.isNaN(score)) continue;
+    if (!best || score > best.score) {
+      best = { model_id: row.model_id, score };
+    }
+  }
+  return best;
+}
+
 function dispatchTierFor(researchTier: ResearchLaunchTier): {
   tier: string;
   expected_output_tokens: number;
@@ -103,6 +141,9 @@ export function ResearchLaunchBudgetPanel({
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Residual (afb): weekly leaderboard for best-by-task advisory (never auto-route).
+  const [leaderboard, setLeaderboard] =
+    useState<AntiekBenchLeaderboardResponse | null>(null);
   // Residual (gm): local tier override when picker is enabled.
   // Residual (gr): when parent drives researchTier (e.g. StartResearch radios
   // or onResearchTierChange), clear override so prop and projection stay aligned.
@@ -113,6 +154,11 @@ export function ResearchLaunchBudgetPanel({
     setPickedTier(null);
   }, [researchTier]);
   const activeTier: ResearchLaunchTier = pickedTier ?? researchTier;
+  const benchTaskClass = researchTierToBenchTaskClass(activeTier);
+  const bestByTask = useMemo(
+    () => bestModelForTaskClass(leaderboard, benchTaskClass),
+    [leaderboard, benchTaskClass],
+  );
 
   // Residual (de): surface projection to parent for launch gating honesty.
   useEffect(() => {
@@ -160,12 +206,15 @@ export function ResearchLaunchBudgetPanel({
 
   const loadStatic = useCallback(async () => {
     try {
-      const [b, t] = await Promise.all([
+      const weekId = isoWeekId();
+      const [b, t, lb] = await Promise.all([
         fetchSettingsBudget(),
         fetchDecisionTreeSelection(),
+        fetchAntiekBenchLeaderboard({ weekId }).catch(() => null),
       ]);
       setBudget(b);
       setTree(t);
+      setLeaderboard(lb);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -225,6 +274,8 @@ export function ResearchLaunchBudgetPanel({
       data-research-tier={activeTier}
       data-dispatch-tier={mapping.tier}
       data-allow-tier-pick={allowTierPick ? "true" : "false"}
+      data-bench-task-class={benchTaskClass}
+      data-bench-best-model={bestByTask?.model_id ?? ""}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
@@ -396,6 +447,56 @@ export function ResearchLaunchBudgetPanel({
         {tree?.installed && tree.model_id
           ? `${tree.provider_id ?? "?"} / ${tree.model_id}`
           : "(none installed — Settings → decision tree)"}
+      </p>
+      {/* Residual (afb): weekly best-by-task for this depth (never auto-routes). */}
+      <p
+        className="text-[10px] font-mono opacity-80"
+        data-testid="research-launch-bench-best-by-task"
+        data-task-class={benchTaskClass}
+        data-best-model={bestByTask?.model_id ?? ""}
+        data-best-score={
+          bestByTask != null ? String(bestByTask.score) : ""
+        }
+        data-week-id={leaderboard?.week_id ?? ""}
+        data-advisory-only="true"
+        data-matches-installed={String(
+          Boolean(
+            bestByTask?.model_id &&
+              tree?.model_id &&
+              bestByTask.model_id === tree.model_id,
+          ),
+        )}
+        role="status"
+      >
+        Antiek-bench best for{" "}
+        <strong data-testid="research-launch-bench-task-class">
+          {benchTaskClass}
+        </strong>
+        {bestByTask ? (
+          <>
+            :{" "}
+            <code data-testid="research-launch-bench-best-model">
+              {bestByTask.model_id}
+            </code>{" "}
+            ({bestByTask.score.toFixed(2)})
+            {tree?.model_id && bestByTask.model_id === tree.model_id
+              ? " · matches installed"
+              : tree?.model_id
+                ? " · differs from installed (advisory)"
+                : " · advisory only"}
+          </>
+        ) : (
+          <>: (no weekly scores for task · run offline dogfood)</>
+        )}{" "}
+        ·{" "}
+        <a
+          href="/settings#antiek-bench-leaderboard"
+          className="underline opacity-80 hover:opacity-100"
+          data-testid="research-launch-bench-leaderboard-link"
+          title="Open Settings weekly leaderboard (install best-by-task explicitly)"
+        >
+          Settings · leaderboard
+        </a>
       </p>
 
       {/* Prompt cost projection — residual (hp): machine-readable metrics. */}
