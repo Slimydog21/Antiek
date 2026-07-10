@@ -664,13 +664,14 @@ export default function MidnightOil() {
         >
           Settings · L4 MO live-step
         </a>
+        {/* Residual (wx): L4 MO live-step checklist section deep-link. */}
         <a
-          href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+          href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l4-moil"
           data-testid="moil-dual-gate-checklist-link"
           className="underline opacity-80 hover:opacity-100"
-          title="Dual-gate L1–L4 operator checklist (live MO step prep; offline default)"
+          title="Dual-gate L4 Midnight Oil live-step checklist (prep only · offline default)"
         >
-          Dual-gate L1–L4 checklist
+          Dual-gate L4 MO checklist
         </a>
       </p>
 

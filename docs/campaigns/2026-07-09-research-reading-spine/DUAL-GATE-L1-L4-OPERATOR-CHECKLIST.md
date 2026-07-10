@@ -64,7 +64,7 @@ without silent network, ToS violations, or inventing LLM note-taker content.
 
 ---
 
-## L4 — Live Midnight Oil worker step
+## L4 — Live Midnight Oil worker step {#l4-moil}
 
 | Item | Value |
 |---|---|

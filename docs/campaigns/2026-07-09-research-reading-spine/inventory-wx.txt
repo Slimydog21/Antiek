@@ -1,0 +1,21 @@
+# inventory-wx · Midnight Oil dual-gate L4 checklist deep-link
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: wx
+date: 2026-07-10
+tip_before: e1494825 (ww)
+
+## Problem
+MO dual-gate checklist linked to checklist root without #l4-moil section
+(parity Settings L5/L6/L7 deep-links).
+
+## Fix
+- Checklist L4 heading {#l4-moil}
+- moil-dual-gate-checklist-link → …#l4-moil · label Dual-gate L4 MO checklist
+- Test locks href + label
+
+## Verified
+npm test MidnightOil.test.tsx → 20 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live L4 MO step injector

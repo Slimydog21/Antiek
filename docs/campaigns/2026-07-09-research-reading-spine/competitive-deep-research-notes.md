@@ -1471,3 +1471,8 @@ entitlement into domain chips.
 Catalog free-PD-only composed with information_theory chip isolates Shannon
 (parity Turing computability compose). Competitive delta: free STEM domain
 filters never mix paid entitlement.
+
+## Residual wx · 2026-07-10 — Midnight Oil L4 checklist deep-link
+MO dual-gate checklist jumps to #l4-moil section. Competitive delta: midnight
+oil surface navigates deferred live-step policy without inventing injectors
+(parity Settings L5–L7 deep-links).

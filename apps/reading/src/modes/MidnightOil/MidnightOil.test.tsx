@@ -393,11 +393,12 @@ describe("MidnightOil mode", () => {
     expect(link.textContent).toMatch(/model driver & budget/i);
   });
 
-  it("links dual-gate L1–L4 checklist for live-step prep (ml)", () => {
+  it("links dual-gate L4 MO checklist section for live-step prep (ml/wx)", () => {
     render(<MidnightOil />);
     const dual = screen.getByTestId("moil-dual-gate-checklist-link");
-    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4/);
-    expect(dual.textContent).toMatch(/dual-gate/i);
+    // Residual (wx): deep-link L4 MO section (not checklist root only).
+    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l4-moil/);
+    expect(dual.textContent).toMatch(/L4 MO checklist/i);
   });
 
   it("links Settings L4 MO live-step readiness (uh)", async () => {
