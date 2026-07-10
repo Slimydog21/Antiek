@@ -3392,3 +3392,8 @@ P0 operator merge PR #465. Pivot amm+ outside thrash.
 ## Residual amm · 2026-07-10 — SESSION-ARC amj–aml context host tier complete
 Wave handoff: ResearchContext host depth prefill on Marketplace · HostedHtml ·
 DR session. P0 operator merge PR #465. Pivot amn+ outside thrash.
+
+## Residual amn · 2026-07-10 — ResearchWorkstation Settings depth prefill for context+twins
+Investigation center loads Settings depth-tier into ResearchContext and TwinNotes
+so /inv/:id inherits operator depth posture. vitest ResearchWorkstation 7 green.
+P0 operator merge PR #465. Pivot amo+ outside thrash.

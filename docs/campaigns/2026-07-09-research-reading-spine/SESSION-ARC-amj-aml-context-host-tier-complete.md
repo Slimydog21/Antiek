@@ -16,3 +16,4 @@ sessions. Pack research_tier still wins when present.
 
 ## P0
 Operator merge PR **#465**. Infinite continues.
+| **amn** | ResearchWorkstation /inv | Settings depth → context + twins researchTier |

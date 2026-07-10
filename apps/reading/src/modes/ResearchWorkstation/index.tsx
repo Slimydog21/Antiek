@@ -1,11 +1,14 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { CollectiveResearchPanel } from "../../components/engagement/CollectiveResearchPanel";
 import { ResearchContextPanel } from "../../components/engagement/ResearchContextPanel";
 import { TwinNotesPanel } from "../../components/engagement/TwinNotesPanel";
+import type { ResearchLaunchTier } from "../../components/engagement/ResearchLaunchBudgetPanel";
+import { fetchDepthTiers } from "../../api/settings";
 import { useInvestigation } from "../../hooks/useInvestigation";
 import type { InvestigationState } from "../../hooks/useInvestigation";
+import { mapDepthTierToResearchTier } from "../../lib/researchTier";
 import { parseSynthesis } from "../../lib/synthesisParser";
 import GlassSurface from "../../shell/GlassSurface";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
@@ -126,6 +129,23 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
   const [contextRefreshKey, setContextRefreshKey] = useState(0);
   const onContextNeedsRefresh = useCallback(() => {
     setContextRefreshKey((k) => k + 1);
+  }, []);
+  // Residual (amn): Settings depth-tier prefill for investigation context/twins.
+  const [researchTier, setResearchTier] = useState<ResearchLaunchTier>("deep");
+  useEffect(() => {
+    let cancelled = false;
+    void fetchDepthTiers()
+      .then((resp) => {
+        if (cancelled) return;
+        const mapped = mapDepthTierToResearchTier(resp.active_depth_tier);
+        if (mapped) setResearchTier(mapped);
+      })
+      .catch(() => {
+        /* offline-honest: keep default deep */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
   const recentSpawnIds = useMemo(
     () => listRecentDeepResearchSpawnIds(),
@@ -273,6 +293,7 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
             assetId={investigationId}
             spawnId={null}
             autoLoad
+            researchTier={researchTier}
           />
         </div>
       </section>
@@ -283,6 +304,7 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
         data-view-format="html"
         data-investigation-id={investigationId}
         data-seamless-workstation-twins="true"
+        data-research-tier={researchTier}
       >
         <div
           data-testid="research-workstation-twins-refresh"
@@ -299,6 +321,7 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
               (investigation.question || "").trim() || investigationId
             }
             seedBodyText={(investigation.question || "").trim() || ""}
+            researchTier={researchTier}
           />
         </div>
       </section>

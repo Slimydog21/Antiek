@@ -2,8 +2,8 @@
  * Residual (afr): ResearchWorkstation /inv/:id mounts CollectiveResearchPanel
  * when open or recent deep_research_session spawns exist (parity ResearchThis).
  */
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 const useInvestigationMock = vi.fn();
@@ -85,6 +85,7 @@ vi.mock("../../components/engagement/TwinNotesPanel", () => ({
     autoSeedIfEmpty?: boolean;
     autoPromoteAfterLoad?: boolean;
     seedTitle?: string;
+    researchTier?: string | null;
   }) => (
     <div
       data-testid="twin-notes-panel-stub"
@@ -93,6 +94,7 @@ vi.mock("../../components/engagement/TwinNotesPanel", () => ({
       data-auto-seed={String(Boolean(props.autoSeedIfEmpty))}
       data-auto-promote={String(Boolean(props.autoPromoteAfterLoad))}
       data-seed-title={props.seedTitle ?? ""}
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
     >
       twins={props.assetId}
     </div>
@@ -103,15 +105,30 @@ vi.mock("../../components/engagement/ResearchContextPanel", () => ({
   ResearchContextPanel: (props: {
     assetId: string;
     autoLoad?: boolean;
+    researchTier?: string | null;
   }) => (
     <div
       data-testid="research-context-panel-stub"
       data-asset-id={props.assetId}
       data-auto-load={String(Boolean(props.autoLoad))}
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
     >
       context={props.assetId}
     </div>
   ),
+}));
+
+const fetchDepthTiers = vi.hoisted(() =>
+  vi.fn(async () => ({
+    active_depth_tier: "wrestle" as string | null,
+    active_preset: null,
+    presets: [],
+    view_format: "html" as const,
+  })),
+);
+
+vi.mock("../../api/settings", () => ({
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...args),
 }));
 
 vi.mock("./HighlightToolbar", () => ({
@@ -140,6 +157,12 @@ afterEach(() => {
   listRecentDeepResearchSpawnIdsMock.mockReset();
   listRecentDeepResearchSpawnIdsMock.mockReturnValue([]);
   windowsState.windows = {};
+  fetchDepthTiers.mockReset().mockResolvedValue({
+    active_depth_tier: "wrestle",
+    active_preset: null,
+    presets: [],
+    view_format: "html",
+  });
 });
 
 function mountInv(id: string) {
@@ -211,6 +234,45 @@ describe("ResearchWorkstation collective multi-select (afr)", () => {
     expect(twins.getAttribute("data-seed-title")).toBe("What is attention?");
     // Residual (aft): auto-promote into research context after load.
     expect(twins.getAttribute("data-auto-promote")).toBe("true");
+  });
+
+  it("prefills investigation twins and context researchTier from Settings (amn)", async () => {
+    fetchDepthTiers.mockResolvedValue({
+      active_depth_tier: "wrestle",
+      active_preset: null,
+      presets: [],
+      view_format: "html",
+    });
+    useInvestigationMock.mockReturnValue({
+      id: "inv_amn",
+      status: "in_progress",
+      question: "Depth prefill?",
+      events: [],
+      terminalPayload: null,
+      costTotal: 0,
+      completedAt: null,
+      streamStatus: "open",
+      reconnects: 0,
+    });
+    collectDeepResearchSpawnIdsMock.mockReturnValue([]);
+
+    mountInv("inv_amn");
+
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId("research-workstation-twins-mount")
+          .getAttribute("data-research-tier"),
+      ).toBe("wrestle");
+    });
+    expect(
+      screen.getByTestId("twin-notes-panel-stub").getAttribute("data-research-tier"),
+    ).toBe("wrestle");
+    expect(
+      screen
+        .getByTestId("research-context-panel-stub")
+        .getAttribute("data-research-tier"),
+    ).toBe("wrestle");
   });
 
   it("mounts ResearchContextPanel with remount key (aft)", () => {
