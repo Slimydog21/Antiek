@@ -3397,3 +3397,7 @@ DR session. P0 operator merge PR #465. Pivot amn+ outside thrash.
 Investigation center loads Settings depth-tier into ResearchContext and TwinNotes
 so /inv/:id inherits operator depth posture. vitest ResearchWorkstation 7 green.
 P0 operator merge PR #465. Pivot amo+ outside thrash.
+
+## Residual amo · 2026-07-10 — SESSION-ARC amj–amn host tier full path
+Wave handoff: host research depth prefill on Marketplace · HostedHtml · DR session ·
+ResearchWorkstation. P0 operator merge PR #465. Pivot amp+ outside thrash.
