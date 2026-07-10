@@ -780,6 +780,17 @@ describe("Settings SPR-01 + decision-tree install", () => {
     // Residual (rs): twin promote Write seed in known legend.
     expect(legend.getAttribute("data-has-twin-promote-context")).toBe("true");
     expect(legend.textContent).toMatch(/twin_promote_context/);
+    // Residual (ru): aggregate Write seed known-count honesty.
+    const writeSeedKnown = Number(
+      legend.getAttribute("data-write-seed-known-count") || "0",
+    );
+    expect(writeSeedKnown).toBeGreaterThan(0);
+    expect(screen.getByTestId("antiek-bench-write-seed-known-count").textContent).toMatch(
+      /Write seed feeds/i,
+    );
+    expect(screen.getByTestId("antiek-bench-write-seed-known-count").textContent).toMatch(
+      String(writeSeedKnown),
+    );
     // Residual (nx): by_source list includes chase open sources when present.
     const sources = screen.getByTestId("antiek-bench-usage-sources");
     expect(sources.textContent).toMatch(/twin_chase/);

@@ -8,7 +8,10 @@ import {
   primaryFeedSourceFromBySource,
   rankedFeedSourcesFromBySource,
 } from "../../lib/suiteProposalTasks";
-import { isWriteSeedFeedSource } from "../../lib/writeSeedFeedSources";
+import {
+  countWriteSeedKnownSources,
+  isWriteSeedFeedSource,
+} from "../../lib/writeSeedFeedSources";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import {
@@ -162,6 +165,11 @@ export default function Settings() {
   const rankedRewriteFeeds = useMemo(
     () => rankedFeedSourcesFromBySource(usage?.by_source),
     [usage?.by_source],
+  );
+  /** Residual (ru): known feed sources that are Write twin_seed paths. */
+  const writeSeedKnownCount = useMemo(
+    () => countWriteSeedKnownSources(usage?.known_sources),
+    [usage?.known_sources],
   );
 
   /** Residual (rl): advisory suggestion vs installed driver (never auto-route). */
@@ -1824,9 +1832,20 @@ export default function Settings() {
                         "twin_promote_context",
                       ),
                     )}
+                    data-write-seed-known-count={String(writeSeedKnownCount)}
                     role="status"
                   >
                     Known feed sources: {(usage.known_sources || []).join(", ")}
+                    {writeSeedKnownCount > 0 ? (
+                      <>
+                        {" "}
+                        ·{" "}
+                        <span data-testid="antiek-bench-write-seed-known-count">
+                          Write seed feeds: {writeSeedKnownCount}{" "}
+                          (recursive note-taker → Write)
+                        </span>
+                      </>
+                    ) : null}
                   </p>
                 ) : null}
                 {usage.notes?.map((n) => (

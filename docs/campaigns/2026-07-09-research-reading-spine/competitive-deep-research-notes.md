@@ -775,3 +775,10 @@ Settings suite primary rewrite feed stamps data-write-seed-feed and labels
 is a twin_seed path (WRITE_SEED_FEED_SOURCES). Competitive delta: operators
 see whether weekly Antiek-bench rewrite was driven by research→Write substrate
 vs chase/investigation paths — without inventing promote authority.
+
+## Residual ru · 2026-07-10 — Known-sources Write-seed count
+Settings known-sources legend stamps data-write-seed-known-count and labels
+how many weekly feed sources are recursive note-taker → Write twin_seed paths.
+Competitive delta: Antiek-bench weekly rewrite UI shows substrate composition
+(not only raw by_source names) so operators know write-path coverage without
+auto-promoting suite changes.

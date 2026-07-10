@@ -26,3 +26,18 @@ export function isWriteSeedFeedSource(source: string | null | undefined): boolea
   if (!s) return false;
   return (WRITE_SEED_FEED_SOURCES as readonly string[]).includes(s);
 }
+
+/**
+ * Residual (ru): how many known weekly feed sources are Write twin_seed paths.
+ * Used by Settings known-sources legend honesty chrome.
+ */
+export function countWriteSeedKnownSources(
+  knownSources: readonly string[] | null | undefined,
+): number {
+  if (!knownSources || knownSources.length === 0) return 0;
+  let n = 0;
+  for (const s of knownSources) {
+    if (isWriteSeedFeedSource(s)) n += 1;
+  }
+  return n;
+}
