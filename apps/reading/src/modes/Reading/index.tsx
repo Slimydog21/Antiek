@@ -21,6 +21,7 @@ import ResearchThis from "./ResearchThis";
 import TalkToBook from "./TalkToBook";
 import TocPanel from "./TocPanel";
 import VoiceNote from "./VoiceNote";
+import { launchFloatingDeepResearch } from "./launchFloatingDeepResearch";
 import { paginate, windowForTocPage } from "./paginate";
 import { usePosition } from "./usePosition";
 import { useReaderImpressions } from "./useReaderImpressions";
@@ -171,6 +172,7 @@ export default function BookReader() {
   // beside the reading column, text + voice). The way home is free: closing the
   // chase restores reading, and usePosition has held the page the whole time.
   const [chasing, setChasing] = useState<string | null>(null);
+  const [researchError, setResearchError] = useState<string | null>(null);
 
   // §9.0 servability of the open book — the in-book selection's servability.
   // The reader renders only gate-served body (verified: getBookFullText returns
@@ -194,18 +196,27 @@ export default function BookReader() {
     minLength: 8,
   });
 
-  // Deep-research → the EXISTING in-book chase (ChaseThread mounts inline
-  // beside the reading column, the same path the old "Go deeper" affordance
-  // used). §9.0: `safeSpawnText` is null when the selection crosses a withheld
-  // region — refuse rather than spawn on a withheld body (the chokepoint already
-  // refuses, so this is null only for a non-servable book; we never chase it).
+  // The null guard must stay before the async boundary so withheld text cannot
+  // be serialized into an engagement request.
   const onDeepResearch = useCallback(
-    (safeSpawnText: string | null, _sel: FloatMenuSelection) => {
+    (safeSpawnText: string | null, sel: FloatMenuSelection) => {
       if (safeSpawnText === null) return;
-      window.getSelection()?.removeAllRanges(); // collapse so the menu closes
-      setChasing(safeSpawnText);
+      setResearchError(null);
+      window.getSelection()?.removeAllRanges();
+      void launchFloatingDeepResearch({
+        asset_id: documentId,
+        selection_text: safeSpawnText,
+        page: pageIndex,
+        region_id: sel.provenance.chunkId ?? undefined,
+        goal_hint: "Deep-research the highlighted passage from reading",
+        view_mode: "floating",
+      }).catch(() => {
+        // The inline chase preserves the prior workflow when session startup fails.
+        setResearchError(null);
+        setChasing(safeSpawnText);
+      });
     },
-    [],
+    [documentId, pageIndex],
   );
 
   // Turning the page (or jumping via TOC) collapses a stale selection — the
@@ -345,6 +356,14 @@ export default function BookReader() {
           onDeepResearch={onDeepResearch}
         />
       )}
+      {researchError ? (
+        <p
+          role="alert"
+          className="fixed right-6 top-20 z-50 max-w-sm rounded border border-emperor bg-ice-0 p-3 text-xs text-emperor shadow-lg dark:bg-charcoal-2"
+        >
+          {researchError}
+        </p>
+      ) : null}
 
       {/* Reading column */}
       <main className="flex-1 overflow-y-auto">
