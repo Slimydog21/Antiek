@@ -9,6 +9,7 @@ const {
   estimatePromptCost,
   fetchDecisionTreeSelection,
   fetchAntiekBenchLeaderboard,
+  installDecisionTreeSelection,
 } = vi.hoisted(() => ({
   fetchSettingsBudget: vi.fn(async () => ({
     daily_cap_usd: 5,
@@ -61,6 +62,13 @@ const {
     source: "test",
     notes: [],
   })),
+  installDecisionTreeSelection: vi.fn(async () => ({
+    model_id: "strong-model",
+    provider_id: "zai",
+    installed: true,
+    notes: [],
+    source: "test",
+  })),
 }));
 
 vi.mock("../../api/settings", () => ({
@@ -68,6 +76,7 @@ vi.mock("../../api/settings", () => ({
   estimatePromptCost,
   fetchDecisionTreeSelection,
   fetchAntiekBenchLeaderboard,
+  installDecisionTreeSelection,
 }));
 
 describe("ResearchLaunchBudgetPanel", () => {
@@ -76,6 +85,7 @@ describe("ResearchLaunchBudgetPanel", () => {
     estimatePromptCost.mockClear();
     fetchDecisionTreeSelection.mockClear();
     fetchAntiekBenchLeaderboard.mockClear();
+    installDecisionTreeSelection.mockClear();
     vi.useFakeTimers({ shouldAdvanceTime: true });
   });
 
@@ -162,7 +172,24 @@ describe("ResearchLaunchBudgetPanel", () => {
     // strong-model has higher wrestle score (0.96 > 0.7).
     expect(bench.getAttribute("data-best-model")).toBe("strong-model");
     expect(bench.getAttribute("data-matches-installed")).toBe("false");
+    expect(bench.getAttribute("data-install-available")).toBe("true");
     expect(bench.textContent).toMatch(/differs from installed/i);
+    // Residual (aff): explicit install on launch budget (parity badge afe).
+    const installBtn = screen.getByTestId("research-launch-install-best-for-task");
+    expect(installBtn.getAttribute("data-install-model-id")).toBe("strong-model");
+    expect(installBtn.getAttribute("data-install-task-class")).toBe("wrestle");
+    await userEvent.setup().click(installBtn);
+    await waitFor(() => {
+      expect(installDecisionTreeSelection).toHaveBeenCalledWith({
+        model_id: "strong-model",
+        provider_id: "zai",
+      });
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("research-launch-install-best-status").textContent,
+      ).toMatch(/Installed strong-model for wrestle/i);
+    });
   });
 
   it("projects prompt cost for deep→pro tier", async () => {

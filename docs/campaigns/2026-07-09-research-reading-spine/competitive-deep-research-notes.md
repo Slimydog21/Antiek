@@ -2398,3 +2398,8 @@ Handoff: Antiek-bench best-by-task advisory at launch (afb) and driver badge
 When Antiek-bench best-for-task differs from installed driver, badge offers
 explicit Install best for {task} (operator click · never auto-route). Completes
 model-quality-at-fire loop (ads→afb→afc→afe). vitest DecisionTreeDriverBadge 12 green.
+
+## Residual aff · 2026-07-10 — launch budget install best-for-task
+ResearchLaunchBudgetPanel Install best for {task} when bench best differs from
+installed driver (parity badge afe). Explicit operator action · never auto-route.
+Model-quality-at-fire loop complete at launch + badge. vitest launch budget 12 green.

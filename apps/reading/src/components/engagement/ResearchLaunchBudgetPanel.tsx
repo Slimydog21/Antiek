@@ -21,6 +21,8 @@
  * how fire would affect daily cap before Ask.
  * Residual (afb): Antiek-bench weekly best-by-task advisory for mapped task
  * class (fast→distill · deep→synthesize · wrestle→wrestle) — never auto-routes.
+ * Residual (aff): explicit Install best for {task} when best differs (parity
+ * driver badge afe · never auto-route).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -30,6 +32,7 @@ import {
   fetchAntiekBenchLeaderboard,
   fetchDecisionTreeSelection,
   fetchSettingsBudget,
+  installDecisionTreeSelection,
   type AntiekBenchLeaderboardResponse,
   type BudgetResponse,
   type DecisionTreeSelectionResponse,
@@ -144,6 +147,8 @@ export function ResearchLaunchBudgetPanel({
   // Residual (afb): weekly leaderboard for best-by-task advisory (never auto-route).
   const [leaderboard, setLeaderboard] =
     useState<AntiekBenchLeaderboardResponse | null>(null);
+  const [installBusy, setInstallBusy] = useState(false);
+  const [installStatus, setInstallStatus] = useState<string | null>(null);
   // Residual (gm): local tier override when picker is enabled.
   // Residual (gr): when parent drives researchTier (e.g. StartResearch radios
   // or onResearchTierChange), clear override so prop and projection stay aligned.
@@ -159,6 +164,31 @@ export function ResearchLaunchBudgetPanel({
     () => bestModelForTaskClass(leaderboard, benchTaskClass),
     [leaderboard, benchTaskClass],
   );
+  const bestDiffers = Boolean(
+    bestByTask?.model_id &&
+      (!tree?.model_id || bestByTask.model_id !== tree.model_id),
+  );
+
+  const onInstallBestForTask = useCallback(async () => {
+    if (!bestByTask?.model_id) return;
+    setInstallBusy(true);
+    setInstallStatus(null);
+    setError(null);
+    try {
+      const result = await installDecisionTreeSelection({
+        model_id: bestByTask.model_id,
+        provider_id: tree?.provider_id ?? null,
+      });
+      setTree(result);
+      setInstallStatus(
+        `Installed ${bestByTask.model_id} for ${benchTaskClass} (advisory · explicit)`,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setInstallBusy(false);
+    }
+  }, [bestByTask?.model_id, benchTaskClass, tree?.provider_id]);
 
   // Residual (de): surface projection to parent for launch gating honesty.
   useEffect(() => {
@@ -466,6 +496,7 @@ export function ResearchLaunchBudgetPanel({
               bestByTask.model_id === tree.model_id,
           ),
         )}
+        data-install-available={String(bestDiffers)}
         role="status"
       >
         Antiek-bench best for{" "}
@@ -497,6 +528,36 @@ export function ResearchLaunchBudgetPanel({
         >
           Settings · leaderboard
         </a>
+        {bestDiffers ? (
+          <>
+            {" "}
+            ·{" "}
+            <button
+              type="button"
+              data-testid="research-launch-install-best-for-task"
+              data-install-model-id={bestByTask?.model_id ?? ""}
+              data-install-task-class={benchTaskClass}
+              data-advisory-only="true"
+              disabled={installBusy}
+              onClick={() => void onInstallBestForTask()}
+              className="underline opacity-80 hover:opacity-100 disabled:opacity-50 bg-transparent border-0 p-0 cursor-pointer font-mono text-[10px]"
+              title={`Install ${bestByTask?.model_id} (best ${benchTaskClass}) as decision-tree driver — explicit · never auto-route`}
+            >
+              {installBusy
+                ? "Installing…"
+                : `Install best for ${benchTaskClass}`}
+            </button>
+          </>
+        ) : null}
+        {installStatus ? (
+          <span
+            className="block mt-0.5"
+            data-testid="research-launch-install-best-status"
+            role="status"
+          >
+            {installStatus}
+          </span>
+        ) : null}
       </p>
 
       {/* Prompt cost projection — residual (hp): machine-readable metrics. */}

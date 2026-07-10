@@ -1,0 +1,17 @@
+# inventory-aff · launch budget install best-for-task (explicit)
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aff
+date: 2026-07-10
+parent_tip: 9fe33474 (afe)
+
+## Closed
+- research-launch-install-best-for-task on ResearchLaunchBudgetPanel
+- parity driver badge afe · advisory only
+- vitest ResearchLaunchBudgetPanel · 12 passed
+
+## Why this residual
+Launch fire surface is where operators choose depth; install best-for-task
+must be available without leaving the flywheel (parity badge afe).
+
+## Not in scope
+- Auto-install
