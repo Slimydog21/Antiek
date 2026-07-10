@@ -60,11 +60,18 @@ def test_builds_fallback_free_candidate_config_and_conservative_reservation() ->
     assert tier.provider == "provider-a"
     assert tier.model == "a"
     assert tier.fallback is None
-    assert cfg.maximum_cost(cfg.candidates[0], "x" * 400) == Decimal("0.0031")
+    assert cfg.maximum_cost(cfg.candidates[0], "x" * 400) == Decimal("0.0034")
 
 
 def test_live_suite_requires_all_four_classes_and_scoring_expectations() -> None:
-    validate_live_suite(competitive_dogfood_suite())
+    source = competitive_dogfood_suite().items
+    live_items = tuple(
+        item
+        for task_class in ("distill", "synthesize", "wrestle", "book_qa")
+        for item in [row for row in source if row.task_class == task_class][:2]
+    )
+    valid = SuiteDefinition("live-valid", live_items)
+    validate_live_suite(valid)
     incomplete = SuiteDefinition(
         suite_version="bad",
         label="bad",
@@ -75,16 +82,14 @@ def test_live_suite_requires_all_four_classes_and_scoring_expectations() -> None
     empty_expectation = SuiteDefinition(
         suite_version="bad-2",
         label="bad",
-        items=competitive_dogfood_suite().items
-        + (SuiteItem("empty", "distill", "prompt", ()),),
+        items=valid.items[:-1] + (SuiteItem("empty", "book_qa", "prompt", ()),),
     )
     with pytest.raises(ValueError, match="no scoring expectations"):
         validate_live_suite(empty_expectation)
     duplicate = SuiteDefinition(
         suite_version="duplicate",
         label="bad",
-        items=competitive_dogfood_suite().items
-        + (competitive_dogfood_suite().items[0],),
+        items=(valid.items[0], valid.items[0], *valid.items[2:]),
     )
     with pytest.raises(ValueError, match="unique"):
         validate_live_suite(duplicate)

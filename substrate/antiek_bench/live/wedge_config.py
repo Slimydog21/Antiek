@@ -22,7 +22,6 @@ class LiveWedgeConfig:
     cap_usd: Decimal
     timeout_s: float
     max_output_tokens: int
-    chars_per_input_token: int = 4
 
     def __post_init__(self) -> None:
         if not re.fullmatch(r"\d{4}-W(?:0[1-9]|[1-4]\d|5[0-3])", self.week_id):
@@ -46,16 +45,12 @@ class LiveWedgeConfig:
             raise ValueError("timeout_s must be positive")
         if self.max_output_tokens <= 0:
             raise ValueError("max_output_tokens must be positive")
-        if self.chars_per_input_token <= 0:
-            raise ValueError("chars_per_input_token must be positive")
 
     def maximum_cost(self, candidate: ModelEntry, prompt: str) -> Decimal:
         """Conservative call reservation from verified prices and token bounds."""
-        input_tokens = max(
-            1,
-            (len(prompt) + self.chars_per_input_token - 1)
-            // self.chars_per_input_token,
-        )
+        # One token cannot encode less than one byte, so UTF-8 bytes are a
+        # conservative tokenizer-independent upper bound for reservation.
+        input_tokens = max(1, len(prompt.encode("utf-8")))
         input_cost = Decimal(input_tokens) * Decimal(
             str(candidate.input_usd_per_1m)
         ) / Decimal(1_000_000)
@@ -90,6 +85,12 @@ def validate_live_suite(suite: SuiteDefinition) -> None:
     missing = REQUIRED_TASK_CLASSES - present
     if missing:
         raise ValueError(f"live suite missing task classes: {sorted(missing)}")
+    counts = {
+        task_class: sum(item.task_class == task_class for item in suite.items)
+        for task_class in REQUIRED_TASK_CLASSES
+    }
+    if len(suite.items) != 8 or any(count != 2 for count in counts.values()):
+        raise ValueError("live suite requires exactly two items per task class (eight total)")
     item_ids: set[str] = set()
     for item in suite.items:
         if not item.item_id.strip() or item.item_id in item_ids:

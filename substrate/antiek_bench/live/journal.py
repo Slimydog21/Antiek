@@ -68,6 +68,8 @@ class LiveCallRecord:
     prompt_hash: str = ""
     response_hash: str = ""
     route_receipt_id: str = ""
+    keyword_score: Decimal | None = None
+    hit_keywords: tuple[str, ...] = ()
     failure_text: str = ""
     schema_version: int = 2
 
@@ -92,6 +94,9 @@ class LiveCallRecord:
         data = asdict(self)
         data["reserved_usd"] = str(self.reserved_usd)
         data["cost_usd"] = str(self.cost_usd)
+        data["keyword_score"] = (
+            str(self.keyword_score) if self.keyword_score is not None else None
+        )
         data["call_id"] = self.call_id
         return data
 
@@ -101,6 +106,11 @@ class LiveCallRecord:
         stored_id = str(values.pop("call_id"))
         values["reserved_usd"] = Decimal(str(values["reserved_usd"]))
         values["cost_usd"] = Decimal(str(values.get("cost_usd", "0")))
+        raw_score = values.get("keyword_score")
+        values["keyword_score"] = (
+            Decimal(str(raw_score)) if raw_score is not None else None
+        )
+        values["hit_keywords"] = tuple(values.get("hit_keywords") or ())
         record = cls(**values)
         if stored_id != record.call_id:
             raise ValueError("stored call_id does not match deterministic identity")
@@ -128,6 +138,8 @@ def _validate_record(record: LiveCallRecord) -> None:
         raise ValueError("costs must be non-negative")
     if min(record.prompt_tokens, record.completion_tokens, record.latency_ms) < 0:
         raise ValueError("usage and latency must be non-negative")
+    if record.keyword_score is not None and not 0 <= record.keyword_score <= 1:
+        raise ValueError("keyword_score must be between zero and one")
     if record.status == "reserved" and record.cost_usd:
         raise ValueError("a reservation cannot have realized cost")
 

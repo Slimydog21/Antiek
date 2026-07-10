@@ -146,7 +146,9 @@ def test_success_is_reserved_before_dispatch_and_replayed(tmp_path: Path) -> Non
 
     def provider() -> ProviderResult:
         assert budget.total_charged == Decimal("0.25")
-        return ProviderResult("model-a", 10, 4, Decimal("0.20"), 120, "answer", "openai")
+        return ProviderResult(
+            "model-a", 10, 4, Decimal("0.20"), 120, "answer", "openai", "evt-1"
+        )
 
     runner = LiveCallRunner(journal, budget, DirectTimeout())
     kwargs = dict(

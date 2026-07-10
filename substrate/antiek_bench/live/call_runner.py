@@ -28,6 +28,8 @@ class ProviderResult:
     response_text: str = ""
     provider_id: str = ""
     route_receipt_id: str = ""
+    keyword_score: Decimal | None = None
+    hit_keywords: tuple[str, ...] = ()
 
     @property
     def total_tokens(self) -> int:
@@ -97,11 +99,13 @@ class LiveCallRunner:
             )
         try:
             result = self._timeout.run(provider_fn, timeout_s)
-            actual_provider = result.provider_id or requested_provider
+            actual_provider = result.provider_id
             contract_breached = (
                 result.cost_usd > maximum
+                or not actual_provider
                 or actual_provider != requested_provider
                 or result.model_id != requested_model
+                or not result.route_receipt_id
             )
             settlement = replace(
                 reservation,
@@ -114,6 +118,8 @@ class LiveCallRunner:
                 latency_ms=result.latency_ms,
                 response_hash=hashlib.sha256(result.response_text.encode()).hexdigest(),
                 route_receipt_id=result.route_receipt_id,
+                keyword_score=result.keyword_score,
+                hit_keywords=result.hit_keywords,
                 failure_text=(
                     "provider measurement contract breached"
                     if contract_breached
