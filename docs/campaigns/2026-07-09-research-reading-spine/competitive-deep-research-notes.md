@@ -3388,3 +3388,7 @@ P0 operator merge PR #465. Pivot aml+ outside thrash.
 Floating/full DR session ResearchContext inherits session researchTier depth
 prefill (parity marketplace amj · HostedHtml amk). vitest DeepResearch 31 green.
 P0 operator merge PR #465. Pivot amm+ outside thrash.
+
+## Residual amm · 2026-07-10 — SESSION-ARC amj–aml context host tier complete
+Wave handoff: ResearchContext host depth prefill on Marketplace · HostedHtml ·
+DR session. P0 operator merge PR #465. Pivot amn+ outside thrash.

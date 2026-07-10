@@ -1,0 +1,12 @@
+# inventory-amm · SESSION-ARC amj–aml context host tier complete
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: amm
+date: 2026-07-10
+parent_tip: 28572a2c (aml)
+
+## Closed
+- SESSION-ARC-amj-aml-context-host-tier-complete.md
+
+## Next
+amn+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)
