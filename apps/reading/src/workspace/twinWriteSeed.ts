@@ -26,7 +26,9 @@ export type TwinWriteSeedSource =
   | "research_context_pack"
   | "twin_promote_context"
   // Residual (tu): multi-spawn cohesive unit prompt float → Write seed (tt catalog).
-  | "collective_unit_prompt";
+  | "collective_unit_prompt"
+  // Residual (vd): recursive note-taker cross-asset merge → Write seed.
+  | "twin_cross_asset_merge";
 
 export type TwinWriteSeedPayload = {
   plain_text: string;
@@ -77,6 +79,8 @@ export function storeTwinWriteSeed(input: {
     "twin_promote_context",
     // Residual (tu): cohesive unit prompt must not collapse to twin_draft_selected.
     "collective_unit_prompt",
+    // Residual (vd): cross-asset twin merge provenance.
+    "twin_cross_asset_merge",
   ];
   const source: TwinWriteSeedSource = allowed.includes(
     input.source as TwinWriteSeedSource,
@@ -129,6 +133,8 @@ export function loadTwinWriteSeed(key: string): TwinWriteSeedPayload | null {
       "twin_promote_context",
       // Residual (tu): load parity with store allowlist.
       "collective_unit_prompt",
+      // Residual (vd): cross-asset twin merge provenance.
+      "twin_cross_asset_merge",
     ];
     const source: TwinWriteSeedSource = allowedLoad.includes(
       srcRaw as TwinWriteSeedSource,

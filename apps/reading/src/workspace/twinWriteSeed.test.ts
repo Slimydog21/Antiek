@@ -45,6 +45,21 @@ describe("twinWriteSeed (pp)", () => {
     expect(loaded?.note_ids).toEqual(["q1", "i1"]);
   });
 
+  it("preserves twin_cross_asset_merge source (vd)", () => {
+    const key = storeTwinWriteSeed({
+      plain_text: "[insight] Cross asset claim.",
+      html: '<article data-source="twin_cross_asset_merge"><p>Cross</p></article>',
+      title: "Twin draft · a+b · 1 note(s)",
+      asset_id: "a+b",
+      note_ids: ["n1"],
+      source: "twin_cross_asset_merge",
+    });
+    expect(key).toBeTruthy();
+    const loaded = loadTwinWriteSeed(key!);
+    expect(loaded?.source).toBe("twin_cross_asset_merge");
+    expect(loaded?.asset_id).toBe("a+b");
+  });
+
   it("rejects empty plain_text and foreign keys", () => {
     expect(
       storeTwinWriteSeed({

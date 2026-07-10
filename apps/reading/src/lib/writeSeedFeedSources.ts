@@ -21,6 +21,8 @@ export const WRITE_SEED_FEED_SOURCES: readonly string[] = [
   "twin_promote_context",
   // Residual (tt): multi-spawn cohesive unit prompt float → Write seed feed.
   "collective_unit_prompt",
+  // Residual (vd): recursive note-taker cross-asset merge → Write seed feed.
+  "twin_cross_asset_merge",
 ] as const;
 
 export function isWriteSeedFeedSource(source: string | null | undefined): boolean {

@@ -259,6 +259,8 @@ KNOWN_USAGE_FEED_SOURCES: tuple[str, ...] = (
     "twin_promote_context",
     # Residual (tt): multi-spawn cohesive unit prompt float → Write seed feed.
     "collective_unit_prompt",
+    # Residual (vd): recursive note-taker cross-asset merge → Write seed feed.
+    "twin_cross_asset_merge",
     "antiek_bench.offline_dogfood",
     "engagement",
 )
@@ -283,6 +285,8 @@ TWIN_WRITE_SEED_USAGE_SOURCES: frozenset[str] = frozenset(
         "research_context_pack",
         "twin_promote_context",
         "collective_unit_prompt",
+        # Residual (vd): cross-asset twin merge Write seed.
+        "twin_cross_asset_merge",
     }
 )
 

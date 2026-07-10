@@ -80,6 +80,7 @@ const {
       "research_context_pack",
       "twin_promote_context",
       "collective_unit_prompt",
+      "twin_cross_asset_merge",
       "antiek_bench.offline_dogfood",
       "engagement",
     ],
@@ -87,8 +88,8 @@ const {
     write_seed_by_source: {} as Record<string, number>,
     write_seed_source_count: 0,
     write_seed_event_count: 0,
-    // Residual (tt): includes collective_unit_prompt (15 write-seed sources).
-    write_seed_known_count: 15,
+    // Residual (vd): includes twin_cross_asset_merge (16 write-seed sources).
+    write_seed_known_count: 16,
     view_format: "html" as const,
     settings_panel: "antiek_bench_usage_weekly",
     source: "antiek_bench.usage_events",
@@ -803,7 +804,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
     const metrics = screen.getByTestId("antiek-bench-usage-write-seed-metrics");
     expect(metrics.getAttribute("data-write-seed-event-count")).toBe("0");
     expect(metrics.getAttribute("data-write-seed-source-count")).toBe("0");
-    expect(metrics.getAttribute("data-write-seed-known-count")).toBe("15");
+    expect(metrics.getAttribute("data-write-seed-known-count")).toBe("16");
     expect(metrics.textContent).toMatch(/Write seed this week/i);
     expect(metrics.textContent).toMatch(/not auto-promoted/i);
     // Residual (sr): write-seed metrics deep-link suite proposal.
@@ -993,12 +994,12 @@ describe("Settings SPR-01 + decision-tree install", () => {
     const writeSeedKnown = Number(
       legend.getAttribute("data-write-seed-known-count") || "0",
     );
-    expect(writeSeedKnown).toBe(15);
+    expect(writeSeedKnown).toBe(16);
     expect(screen.getByTestId("antiek-bench-write-seed-known-count").textContent).toMatch(
       /Write seed feeds/i,
     );
     expect(screen.getByTestId("antiek-bench-write-seed-known-count").textContent).toMatch(
-      "15",
+      "16",
     );
     // Residual (nx): by_source list includes chase open sources when present.
     const sources = screen.getByTestId("antiek-bench-usage-sources");

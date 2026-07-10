@@ -1238,3 +1238,9 @@ prep-visible — full citation-trust matrix with evidence pack va.
 FUTURE-AGENT-SPEC tip → 1a34c354 with closed arcs tt–vb (35 residual ships).
 Competitive delta: swarm handoff tip-true; operator merge PR #465 remains
 highest leverage.
+
+## Residual vd · 2026-07-10 — twin_cross_asset_merge Write seed provenance
+storeTwinWriteSeed accepts twin_cross_asset_merge; TwinNotesPanel cross-asset
+merge draft passes source (no collapse to twin_draft_selected). Write-seed
+known_count 16. Competitive delta: recursive note-taker cross-asset merge is
+bench-auditable Write provenance — same honesty bar as collective_unit_prompt.

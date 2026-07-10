@@ -841,12 +841,16 @@ export function TwinNotesPanel({
           mode,
         },
       );
+      // Residual (vd): pass source so cross-asset merge does not collapse to twin_draft_selected.
       const seedKey = storeTwinWriteSeed({
         plain_text: chase.selection_text,
         html,
         title: draft.title,
         asset_id: draftAssetLabel,
         note_ids: draft.note_ids,
+        source: source as
+          | "twin_draft_selected"
+          | "twin_cross_asset_merge",
       });
       const writeHref = seedKey ? buildTwinWriteHref(seedKey) : null;
       setDraftMetrics({

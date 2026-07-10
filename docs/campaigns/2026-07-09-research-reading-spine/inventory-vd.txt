@@ -1,0 +1,19 @@
+# inventory-vd · twin_cross_asset_merge Write seed provenance
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: vd
+date: 2026-07-10
+
+## Closed
+- TwinWriteSeedSource += twin_cross_asset_merge (store/load allowlists)
+- TwinNotesPanel openTwinDraft passes source into storeTwinWriteSeed
+- WRITE_SEED_FEED_SOURCES + substrate TWIN_WRITE_SEED + KNOWN feed (known_count 16)
+- vitest 61 · pytest write-seed parity 2 green
+
+## Product why
+Bug: cross-asset twin merge set source=twin_cross_asset_merge for host HTML but
+never passed it to storeTwinWriteSeed — collapsed to twin_draft_selected and
+dropped from Antiek-bench write-seed feed. Load-bearing recursive note-taker
+cross-asset path now honest.
+
+## Not in scope
+- Operator merge PR #465 (gated)

@@ -12,6 +12,8 @@ describe("writeSeedFeedSources (rt/ru)", () => {
     expect(WRITE_SEED_FEED_SOURCES).toContain("twin_promote_context");
     // Residual (tt): multi-spawn cohesive unit prompt float.
     expect(WRITE_SEED_FEED_SOURCES).toContain("collective_unit_prompt");
+    // Residual (vd): cross-asset twin merge Write seed.
+    expect(WRITE_SEED_FEED_SOURCES).toContain("twin_cross_asset_merge");
     expect(WRITE_SEED_FEED_SOURCES).not.toContain("twin_draft_selected");
   });
 
