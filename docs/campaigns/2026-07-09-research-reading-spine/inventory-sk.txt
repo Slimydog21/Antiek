@@ -1,0 +1,14 @@
+# inventory-sk · Hydrate-ref float|full HTML reading windows
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: sk
+date: 2026-07-10
+
+## Closed
+- hydrate-ref-open-float / open-full → source=publication_hydrate
+- HostedHtmlDocumentHost twin seed title for publication_hydrate
+- buildHostedHtmlWriteHref preserves publication_hydrate source
+- vitest 36 · SCRATCH residual-tests-sk.log
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live L1–L4 dual-gate (operator-only)

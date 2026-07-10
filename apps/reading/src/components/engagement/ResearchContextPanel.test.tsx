@@ -279,6 +279,26 @@ describe("ResearchContextPanel", () => {
     expect(href).not.toMatch(/html_draft=/);
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
     expect(write.getAttribute("data-asset-id")).toBe("pub_arxiv_abc");
+    // Residual (sk): float|full hydrated publication HTML.
+    fireEvent.click(screen.getByTestId("hydrate-ref-open-float"));
+    const floatCall = openWindow.mock.calls.at(-1) as [
+      string,
+      { source?: string; document_id?: string; view_format?: string },
+      { mode?: string },
+    ];
+    expect(floatCall[0]).toBe("hosted_html_document");
+    expect(floatCall[1].source).toBe("publication_hydrate");
+    expect(floatCall[1].document_id).toBe("pub_arxiv_abc");
+    expect(floatCall[1].view_format).toBe("html");
+    expect(floatCall[2].mode).toBe("floating");
+    fireEvent.click(screen.getByTestId("hydrate-ref-open-full"));
+    const fullCall = openWindow.mock.calls.at(-1) as [
+      string,
+      { source?: string },
+      { mode?: string },
+    ];
+    expect(fullCall[1].source).toBe("publication_hydrate");
+    expect(fullCall[2].mode).toBe("full");
   });
 
   it("runs promote twins → load context flywheel", async () => {

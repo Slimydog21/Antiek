@@ -871,3 +871,9 @@ Intelligent context search hits open as float|full hosted HTML windows
 (source=context_search) with twin-seed Open Write provenance. Competitive
 delta: search over the recursive note-taker substrate becomes reading fuel
 in the window flywheel — not only a Write seed or dead-end hit list.
+
+## Residual sk · 2026-07-10 — Hydrate-ref float|full HTML
+Hydrated arxiv/substack identity HTML opens as float|full hosted documents
+(source=publication_hydrate) with note-taker Write provenance. Competitive
+delta: knowledge-dense pubs never dead-end as attach rows — they join the
+HTML reading flywheel offline-honest (body when injector live).

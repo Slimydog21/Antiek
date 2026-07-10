@@ -19,6 +19,7 @@
  * Residual (sf): float evidence pack as hosted HTML reading window (citation trust).
  * Residual (sg): open evidence pack as full working-region window (float|full parity).
  * Residual (sj): float|full intelligent context search hits as HTML reading windows.
+ * Residual (sk): float|full hydrated publication HTML (arxiv/substack identity).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -701,6 +702,76 @@ export function ResearchContextPanel({
               ? "Hydrate mode: offline-honest identity — no live body; not invented abstract"
               : "Hydrate mode: injector body landed"}
           </p>
+          {/* Residual (sk): hydrate → float|full HTML reading windows. */}
+          {hydrated.html?.trim() ? (
+            <p className="meta font-mono text-[11px] space-x-3">
+              <button
+                type="button"
+                data-testid="hydrate-ref-open-float"
+                data-view-format="html"
+                data-window-mode="floating"
+                data-asset-id={hydrated.asset_id}
+                data-fetched={String(Boolean(hydrated.fetched))}
+                className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
+                title="Open hydrated publication as floating HTML window (never PDF)"
+                onClick={() => {
+                  const id =
+                    String(hydrated.asset_id || "").trim() ||
+                    `hydrate:${Date.now().toString(36)}`;
+                  openWindow(
+                    "hosted_html_document",
+                    {
+                      document_id: id,
+                      title:
+                        String(hydrated.title || "").trim() ||
+                        "Hydrated publication",
+                      html: hydrated.html,
+                      view_format: "html",
+                      source: "publication_hydrate",
+                    },
+                    {
+                      id: `win:hydrate:${id}`,
+                      title: "Hydrated pub",
+                      mode: "floating",
+                    },
+                  );
+                }}
+              >
+                Open float (hydrated HTML)
+              </button>
+              <button
+                type="button"
+                data-testid="hydrate-ref-open-full"
+                data-view-format="html"
+                data-window-mode="full"
+                data-asset-id={hydrated.asset_id}
+                className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
+                title="Open hydrated publication as full working-region HTML window (never PDF)"
+                onClick={() => {
+                  const id =
+                    String(hydrated.asset_id || "").trim() ||
+                    `hydrate:full:${Date.now().toString(36)}`;
+                  openWindow(
+                    "hosted_html_document",
+                    {
+                      document_id: `${id}:full`,
+                      title: `${String(hydrated.title || "").trim() || "Hydrated publication"} (full)`,
+                      html: hydrated.html,
+                      view_format: "html",
+                      source: "publication_hydrate",
+                    },
+                    {
+                      id: `win:hydrate:${id}:full`,
+                      title: "Hydrated pub (full)",
+                      mode: "full",
+                    },
+                  );
+                }}
+              >
+                Open full (hydrated HTML)
+              </button>
+            </p>
+          ) : null}
           {/* Residual (rh): single hydrate → Write twin_seed. */}
           {(() => {
             const href = buildPublicationHydrateWriteHref({
