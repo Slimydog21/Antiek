@@ -5,15 +5,20 @@ import {
   type TwinNotesResponse,
 } from "../../api/engagement";
 import { SandboxedHtmlFrame } from "../windows/HostedHtmlDocumentHost";
+import { SendTwinsToWrite } from "./SendTwinsToWrite";
 
 export type TwinNotesPanelProps = {
   assetId: string;
   spawnId?: string | null;
+  sessionId?: string | null;
+  investigationId?: string | null;
 };
 
 export function TwinNotesPanel({
   assetId,
   spawnId = null,
+  sessionId = null,
+  investigationId = null,
 }: TwinNotesPanelProps) {
   const [twins, setTwins] = useState<TwinNotesResponse | null>(null);
   const [text, setText] = useState("");
@@ -128,6 +133,9 @@ export function TwinNotesPanel({
               </li>
             ))}
           </ul>
+          {spawnId && sessionId && investigationId ? <SendTwinsToWrite
+            assetId={assetId} sessionId={sessionId} spawnId={spawnId}
+            investigationId={investigationId} notes={twins.notes} /> : null}
           {twins.html ? (
             <div className="flex h-40" data-testid="twin-notes-html">
               <SandboxedHtmlFrame html={twins.html} title="Twin notes preview" />

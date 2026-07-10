@@ -222,6 +222,7 @@ def promote_insight(
     con: LockedConnection | None = None,
     dedup: bool = False,
     dedup_rate: Any = None,
+    emit_event: bool = True,
 ) -> str:
     """Promote an insight to a first-class ``insight`` node. Returns the
     node id (stable, content-addressed — idempotent on re-promotion).
@@ -324,6 +325,7 @@ def promote_insight(
             metadata=node_meta,
             node_id=nid,
             on_conflict="ignore",
+            emit_event=emit_event,
         )
         _written, dangling = _add_provenance_edges(
             c,
@@ -359,6 +361,7 @@ def promote_question(
     con: LockedConnection | None = None,
     dedup: bool = False,
     dedup_rate: Any = None,
+    emit_event: bool = True,
 ) -> str:
     """Promote a question to a first-class ``question`` node. Returns the
     node id (stable, content-addressed — idempotent on re-promotion).
@@ -429,6 +432,7 @@ def promote_question(
             metadata=node_meta,
             node_id=nid,
             on_conflict="ignore",
+            emit_event=emit_event,
         )
         _w1, d1 = _add_provenance_edges(
             c, source_node_id=nid, relation="asks_about", targets=asks_about,

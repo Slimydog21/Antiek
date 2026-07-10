@@ -14,6 +14,7 @@ from substrate.engagement_spine import (
     InMemoryEngagementStore,
     merge_product_payload,
     record_twin_product,
+    send_selected_twins_to_write,
     twins_product_payload,
 )
 from substrate.engagement_spine.store import EngagementStore, FileEngagementStore
@@ -87,6 +88,15 @@ class MergeBody(BaseModel):
     parent_title: str | None = None
     parent_body: str | None = None
     include_html: bool = True
+
+
+class SendTwinsToWriteBody(BaseModel):
+    asset_id: str = Field(min_length=1)
+    session_id: str = Field(min_length=1)
+    spawn_id: str = Field(min_length=1)
+    investigation_id: str = Field(min_length=1)
+    title: str = Field(min_length=1, max_length=300)
+    note_ids: list[str] = Field(min_length=1)
 
 
 @engagement_router.post("/sessions/open")
@@ -163,6 +173,26 @@ def post_merge(body: MergeBody) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@engagement_router.post("/twins/send-to-write")
+def post_send_twins_to_write(body: SendTwinsToWriteBody) -> dict[str, Any]:
+    try:
+        result = send_selected_twins_to_write(
+            engagement_store=_eng(), session_store=_sess(),
+            asset_id=body.asset_id, session_id=body.session_id,
+            spawn_id=body.spawn_id, investigation_id=body.investigation_id,
+            title=body.title, note_ids=body.note_ids,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "deliverable_id": result.deliverable_id,
+        "promoted_note_ids": list(result.promoted_note_ids),
+        "skipped_note_ids": list(result.skipped_note_ids),
+        "provenance_precision": result.provenance_precision,
+        "replayed": result.replayed,
+    }
 
 
 def register_engagement_routes(app: FastAPI) -> None:

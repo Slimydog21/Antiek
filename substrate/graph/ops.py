@@ -378,9 +378,12 @@ def insert_node(
     node_id: str | None = None,
     parent_event_id: str | None = None,
     on_conflict: OnConflict = "error",
+    emit_event: bool = True,
 ) -> str:
-    """Insert one node row AND emit GRAPH_NODE_INSERTED. Returns the
-    node_id.
+    """Insert one node row and normally emit GRAPH_NODE_INSERTED.
+
+    Callers coordinating several writes may defer emission until their outer
+    transaction commits by passing ``emit_event=False``.
 
     Id allocation: if ``node_id`` is not provided, a content-addressed
     id is derived from ``canonical_label|node_type|graph_scope``. Same
@@ -400,21 +403,19 @@ def insert_node(
             graph_scope, _maybe_json(metadata),
         ],
     )
-    # Typed event AFTER the row commits — the Pydantic Literal validators
-    # on node_type and graph_scope raise here if the caller passed
-    # something the DB CHECK would also reject. We get both layers.
-    emit_typed(
-        investigation_id,
-        GraphNodeInsertedPayload(
-            node_id=nid,
-            canonical_label=canonical_label,
-            node_type=node_type,  # type: ignore[arg-type]
-            graph_scope=graph_scope,  # type: ignore[arg-type]
-            has_embedding=embedding is not None,
-        ),
-        parent_event_id=parent_event_id,
-        role="connector",
-    )
+    if emit_event:
+        emit_typed(
+            investigation_id,
+            GraphNodeInsertedPayload(
+                node_id=nid,
+                canonical_label=canonical_label,
+                node_type=node_type,  # type: ignore[arg-type]
+                graph_scope=graph_scope,  # type: ignore[arg-type]
+                has_embedding=embedding is not None,
+            ),
+            parent_event_id=parent_event_id,
+            role="connector",
+        )
     return nid
 
 

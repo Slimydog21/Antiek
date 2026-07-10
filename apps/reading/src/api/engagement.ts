@@ -44,6 +44,14 @@ export type TwinNotesResponse = {
   html?: string | null;
 };
 
+export type SendTwinsToWriteResponse = {
+  deliverable_id: string;
+  promoted_note_ids: string[];
+  skipped_note_ids: string[];
+  provenance_precision: "chunk" | "document";
+  replayed: boolean;
+};
+
 export type MergeMode = "into_parent" | "draft_combined";
 
 export type MergeProductResponse = {
@@ -111,6 +119,22 @@ export async function recordTwinNote(body: {
     body: JSON.stringify(body),
   });
   return readJson<TwinNotesResponse>(response);
+}
+
+export async function sendTwinsToWrite(body: {
+  asset_id: string;
+  session_id: string;
+  spawn_id: string;
+  investigation_id: string;
+  title: string;
+  note_ids: string[];
+}): Promise<SendTwinsToWriteResponse> {
+  const response = await apiFetch(`${API_BASE}/engagement/twins/send-to-write`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return readJson<SendTwinsToWriteResponse>(response);
 }
 
 export async function mergeSpawnOutputs(body: {

@@ -44,7 +44,9 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
           {props.selection_text?.trim() || "(no selection)"}
         </p>
       </section>
-      {parent ? <TwinNotesPanel assetId={parent} spawnId={spawn || null} /> : null}
+      {parent ? <TwinNotesPanel assetId={parent} spawnId={spawn || null}
+        sessionId={props.session_id || null}
+        investigationId={props.investigation_id || null} /> : null}
       {parent && spawn ? <SpawnMergePanel parentAssetId={parent} spawnId={spawn} /> : null}
     </div>
   );

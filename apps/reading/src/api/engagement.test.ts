@@ -11,7 +11,7 @@ vi.mock("../lib/api", () => ({
   },
 }));
 
-import { fetchTwinNotes, mergeSpawnOutputs, openEngagementSession, recordTwinNote } from "./engagement";
+import { fetchTwinNotes, mergeSpawnOutputs, openEngagementSession, recordTwinNote, sendTwinsToWrite } from "./engagement";
 
 describe("trimmed engagement client", () => {
   beforeEach(() => apiFetch.mockReset());
@@ -21,6 +21,7 @@ describe("trimmed engagement client", () => {
     ["twins", () => fetchTwinNotes("book"), "/engagement/twins/book", undefined],
     ["note", () => recordTwinNote({ asset_id: "book", kind: "insight", text: "note" }), "/engagement/twins", "POST"],
     ["merge", () => mergeSpawnOutputs({ parent_asset_id: "book", spawn_ids: ["spn"] }), "/engagement/merge", "POST"],
+    ["write handoff", () => sendTwinsToWrite({ asset_id: "book", session_id: "s", spawn_id: "spn", investigation_id: "inv", title: "Brief", note_ids: ["note"] }), "/engagement/twins/send-to-write", "POST"],
   ])("calls only the allowed %s endpoint", async (_name, call, path, method) => {
     apiFetch.mockResolvedValue(new Response("{}", { status: 200 }));
     await call();

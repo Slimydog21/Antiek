@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.engagement_routes import (
+    engagement_router,
     register_engagement_routes,
     reset_engagement_stores,
 )
@@ -35,12 +36,13 @@ def test_trimmed_surface_and_linked_session() -> None:
     assert body["investigation_id"].startswith("inv_")
     assert body["view_format"] == "html"
 
-    paths = {route.path for route in api.app.routes if route.path.startswith("/engagement")}
+    paths = {route.path for route in engagement_router.routes}
     assert paths == {
         "/engagement/sessions/open",
         "/engagement/twins/{asset_id}",
         "/engagement/twins",
         "/engagement/merge",
+        "/engagement/twins/send-to-write",
     }
 
 

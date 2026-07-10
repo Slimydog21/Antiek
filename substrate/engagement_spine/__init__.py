@@ -28,6 +28,7 @@ from .twin import (
     record_twin_question,
     twins_product_payload,
 )
+from .write_handoff import WriteHandoffResult, send_selected_twins_to_write
 
 __all__ = [
     "EngagementStore", "FileEngagementStore", "HighlightSelection",
@@ -37,4 +38,5 @@ __all__ = [
     "merge_spawn_outputs", "project_merge_html", "project_to_html",
     "project_twins_html", "record_twin_insight", "record_twin_product",
     "record_twin_question", "spawn_from_highlight", "twins_product_payload",
+    "WriteHandoffResult", "send_selected_twins_to_write",
 ]
