@@ -1244,3 +1244,8 @@ storeTwinWriteSeed accepts twin_cross_asset_merge; TwinNotesPanel cross-asset
 merge draft passes source (no collapse to twin_draft_selected). Write-seed
 known_count 16. Competitive delta: recursive note-taker cross-asset merge is
 bench-auditable Write provenance — same honesty bar as collective_unit_prompt.
+
+## Residual ve · 2026-07-10 — dogfood v8 twin_cross_asset_merge write-seed
+suite-competitive-dogfood-v8 adds dogfood-wrestle-twin-cross-asset-merge-write-seed.
+Settings posture honesty. Competitive delta: Antiek-bench recursive rewrite
+learns multi-asset twin merge Write seed as first-class wrestle task.

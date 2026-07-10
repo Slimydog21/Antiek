@@ -19,7 +19,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (tz): v5 adds book_qa computing/logic (Boole free PD).
 # Residual (ud): v6 adds book_qa electricity engineering (Heaviside free PD).
 # Residual (us): v7 adds wrestle citation-trust ungrounded hydrate prep.
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v7"
+# Residual (ve): v8 adds wrestle twin_cross_asset_merge Write seed posture.
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v8"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -207,6 +208,25 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "citation",
                 "offline",
                 "dual",
+            ),
+        ),
+        # Residual (ve): recursive note-taker cross-asset merge → Write twin_seed.
+        SuiteItem(
+            item_id="dogfood-wrestle-twin-cross-asset-merge-write-seed",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with the recursive note-taker cross-asset merge path: after "
+                "loading twins from multiple asset_ids and opening a combined HTML draft, "
+                "why must Open Write preserve source=twin_cross_asset_merge for Antiek-bench "
+                "weekly rewrite instead of collapsing to twin_draft_selected, and how does "
+                "that feed honest multi-asset note provenance?"
+            ),
+            expected_keywords=(
+                "twin",
+                "cross",
+                "merge",
+                "twin_seed",
+                "write",
             ),
         ),
     )

@@ -1,0 +1,16 @@
+# inventory-ve · dogfood v8 twin_cross_asset_merge write-seed posture
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ve
+date: 2026-07-10
+
+## Closed
+- COMPETITIVE_DOGFOOD_VERSION → suite-competitive-dogfood-v8
+- dogfood-wrestle-twin-cross-asset-merge-write-seed
+- Settings data-has-twin-cross-asset-merge-write-seed-posture
+- pytest 4 · vitest Settings 32 green
+
+## Product why
+Closes vd product path into Antiek-bench recursive rewrite (propose≠promote).
+
+## Not in scope
+- Operator merge PR #465 (gated)

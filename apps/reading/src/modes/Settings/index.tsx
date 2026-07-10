@@ -2048,6 +2048,13 @@ export default function Settings() {
                       "dogfood-wrestle-citation-trust-ungrounded",
                   ),
                 )}
+                data-has-twin-cross-asset-merge-write-seed-posture={String(
+                  (dogfood.items || []).some(
+                    (it) =>
+                      it.item_id ===
+                      "dogfood-wrestle-twin-cross-asset-merge-write-seed",
+                  ),
+                )}
                 data-propose-not-promote="true"
               >
                 <Row label="Suite" value={dogfood.suite_version} />
@@ -2058,7 +2065,7 @@ export default function Settings() {
                   value={String(dogfood.auto_promoted)}
                 />
                 <Row label="View" value={dogfood.view_format} />
-                {/* Residual (su/tv/tz/ud/us): posture honesty for recursive rewrite. */}
+                {/* Residual (su/tv/tz/ud/us/ve): posture honesty for recursive rewrite. */}
                 {(dogfood.items || []).some((it) =>
                   [
                     "dogfood-wrestle-write-seed",
@@ -2069,6 +2076,7 @@ export default function Settings() {
                     "dogfood-book-boole-laws-of-thought",
                     "dogfood-book-heaviside-em",
                     "dogfood-wrestle-citation-trust-ungrounded",
+                    "dogfood-wrestle-twin-cross-asset-merge-write-seed",
                   ].includes(it.item_id),
                 ) ? (
                   <p
@@ -2076,10 +2084,11 @@ export default function Settings() {
                     data-testid="antiek-bench-dogfood-v2-postures"
                     role="status"
                   >
-                    Spine postures (v7): write-seed · float evidence · budget
+                    Spine postures (v8): write-seed · float evidence · budget
                     foresight · Faraday book_qa · collective unit write-seed ·
                     Boole book_qa · Heaviside book_qa · citation-trust
-                    ungrounded (listing only · not auto-promoted)
+                    ungrounded · twin cross-asset merge write-seed (listing
+                    only · not auto-promoted)
                   </p>
                 ) : null}
                 <ul data-testid="antiek-bench-dogfood-classes" className="space-y-1">
