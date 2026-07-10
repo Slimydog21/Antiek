@@ -17,6 +17,9 @@ const storeTwinWriteSeed = vi.fn(() => "antiek.twin_write_seed.testkey");
 const buildTwinWriteHref = vi.fn(
   (key: string) => `/write?twin_seed=${encodeURIComponent(key)}`,
 );
+const buildTwinPromoteWriteHref = vi.fn(
+  () => "/write?twin_seed=antiek.twin_write_seed.promote",
+);
 
 vi.mock("../../api/engagement", () => ({
   fetchTwinNotes: (...args: unknown[]) => fetchTwinNotes(...args),
@@ -38,6 +41,8 @@ vi.mock("../../workspace/twinWriteSeed", () => ({
   storeTwinWriteSeed: (...args: unknown[]) => storeTwinWriteSeed(...args),
   buildTwinWriteHref: (...args: unknown[]) =>
     buildTwinWriteHref(...(args as [string])),
+  buildTwinPromoteWriteHref: (...args: unknown[]) =>
+    buildTwinPromoteWriteHref(...args),
 }));
 
 vi.mock("./DecisionTreeDriverBadge", () => ({
@@ -190,6 +195,10 @@ describe("TwinNotesPanel", () => {
     buildTwinWriteHref.mockClear();
     buildTwinWriteHref.mockImplementation(
       (key: string) => `/write?twin_seed=${encodeURIComponent(key)}`,
+    );
+    buildTwinPromoteWriteHref.mockClear();
+    buildTwinPromoteWriteHref.mockImplementation(
+      () => "/write?twin_seed=antiek.twin_write_seed.promote",
     );
     seedTwinNotes.mockReset();
     launchFloatingDeepResearch.mockReset();
@@ -643,6 +652,13 @@ describe("TwinNotesPanel", () => {
       "engagement_spine.twin_promote",
     );
     expect(metrics.textContent).toMatch(/Twin promote → context/);
+    // Residual (rr): Open Write twin_seed from promoted context units.
+    expect(buildTwinPromoteWriteHref).toHaveBeenCalled();
+    const write = screen.getByTestId("twin-promote-open-write");
+    expect(write.getAttribute("href")).toMatch(/twin_seed=/);
+    expect(write.getAttribute("data-has-twin-seed")).toBe("1");
+    expect(write.getAttribute("data-promoted-count")).toBe("1");
+    expect(write.textContent).toMatch(/Open Write \(promoted twins\)/i);
   });
 
   it("promotes visible list filter in one click (ms)", async () => {

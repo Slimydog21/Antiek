@@ -763,3 +763,8 @@ router authority. Competitive delta: model choice stays operator-owned.
 Non-terminal multi-minute plan→cite progress offers Open Write (progress draft)
 with source=research_progress_draft. Competitive delta: operators capture
 synthesis substrate during long-horizon jobs without waiting for terminal.
+
+## Residual rr · 2026-07-10 — Twin promote → Write
+After promote→context, TwinNotesPanel offers Open Write with promoted units
+as twin_seed (source=twin_promote_context). Competitive delta: recursive
+note-taker promote path feeds writing without re-export or PDF.

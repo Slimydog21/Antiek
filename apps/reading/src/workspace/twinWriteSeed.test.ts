@@ -8,6 +8,7 @@ import {
   buildPublicationHydrateWriteHref,
   buildResearchProgressWriteHref,
   buildSessionFlywheelWriteHref,
+  buildTwinPromoteWriteHref,
   buildTwinWriteHref,
   buildHostedHtmlWriteHref,
   buildMarketplaceWriteHref,
@@ -171,6 +172,29 @@ describe("twinWriteSeed (pp)", () => {
       (href!.match(/twin_seed=([^&]+)/) || [])[1] || "",
     );
     expect(loadTwinWriteSeed(key)?.asset_id).toBe("deep_research:spn_orphan");
+  });
+
+  it("builds twin promote Write twin_seed (rr)", () => {
+    const href = buildTwinPromoteWriteHref({
+      assetId: "paper-1",
+      query: "attention",
+      contextUnits: [
+        { kind: "insight", text: "Attention is routing.", unit_id: "u1" },
+        { kind: "question", text: "Why multi-head?", unit_id: "u2" },
+      ],
+      noteIds: ["n1", "n2"],
+      promotedCount: 2,
+    });
+    expect(href).toBeTruthy();
+    expect(href!).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
+    const key = decodeURIComponent(
+      (href!.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    const seed = loadTwinWriteSeed(key);
+    expect(seed?.source).toBe("twin_promote_context");
+    expect(seed?.note_ids).toEqual(["n1", "n2"]);
+    expect(seed?.plain_text).toMatch(/\[insight\] Attention is routing/);
+    expect(seed?.html).toMatch(/data-source="twin_promote_context"/);
   });
 
   it("builds research context pack Write twin_seed (ri)", () => {

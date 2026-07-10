@@ -54,6 +54,7 @@
  * mergeTwinChaseNotes → openTwinDraft float|full + Write seed (full V1 UI).
  * Residual (qb): accumulate N>2 merge assets (add another asset_id without
  * replacing prior) → mergeTwinChaseNotes over primary + all buckets.
+ * Residual (rr): Open Write twin_seed after promote → context (promoted units).
  * HTML-first; never PDF.
  */
 
@@ -68,6 +69,7 @@ import {
 } from "../../api/engagement";
 import { launchFloatingDeepResearch } from "../../modes/Reading/launchFloatingDeepResearch";
 import {
+  buildTwinPromoteWriteHref,
   buildTwinWriteHref,
   storeTwinWriteSeed,
 } from "../../workspace/twinWriteSeed";
@@ -1663,6 +1665,32 @@ export function TwinNotesPanel({
               </li>
             ))}
           </ul>
+          {/* Residual (rr): promote → Write twin_seed. */}
+          {(() => {
+            const href = buildTwinPromoteWriteHref({
+              assetId: promoted.asset_id || assetId,
+              query: promoted.query,
+              contextUnits: promoted.context_units,
+              noteIds: promoted.note_ids,
+              html: promoted.html,
+              promotedCount: promoted.promoted_count,
+            });
+            return href ? (
+              <p className="meta font-mono text-[11px]">
+                <a
+                  href={href}
+                  data-testid="twin-promote-open-write"
+                  data-view-format="html"
+                  data-has-twin-seed="1"
+                  data-promoted-count={String(promoted.promoted_count ?? 0)}
+                  className="underline opacity-90 hover:opacity-100"
+                  title="Open Write with promoted twin context units as twin_seed (sessionStorage; no invented document_id)"
+                >
+                  Open Write (promoted twins)
+                </a>
+              </p>
+            ) : null;
+          })()}
           {promoted.notes?.map((n) => (
             <p key={n} className="meta">
               {n}

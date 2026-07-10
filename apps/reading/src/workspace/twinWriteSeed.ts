@@ -23,7 +23,8 @@ export type TwinWriteSeedSource =
   | "publication_hydrate"
   | "session_flywheel_complete"
   | "context_search"
-  | "research_context_pack";
+  | "research_context_pack"
+  | "twin_promote_context";
 
 export type TwinWriteSeedPayload = {
   plain_text: string;
@@ -71,6 +72,7 @@ export function storeTwinWriteSeed(input: {
     "session_flywheel_complete",
     "context_search",
     "research_context_pack",
+    "twin_promote_context",
   ];
   const source: TwinWriteSeedSource = allowed.includes(
     input.source as TwinWriteSeedSource,
@@ -120,6 +122,7 @@ export function loadTwinWriteSeed(key: string): TwinWriteSeedPayload | null {
       "session_flywheel_complete",
       "context_search",
       "research_context_pack",
+      "twin_promote_context",
     ];
     const source: TwinWriteSeedSource = allowedLoad.includes(
       srcRaw as TwinWriteSeedSource,
@@ -765,6 +768,77 @@ export function buildResearchContextWriteHref(opts: {
     asset_id: asset,
     note_ids: [],
     source: "research_context_pack",
+  });
+  if (!seedKey) return null;
+  return buildTwinWriteHref(seedKey);
+}
+
+/**
+ * Residual (rr): Write handoff after twin promote → context.
+ * twin_seed only — promoted recursive note-taker units seed writing.
+ */
+export function buildTwinPromoteWriteHref(opts: {
+  assetId: string;
+  query?: string | null;
+  contextUnits?: ReadonlyArray<{
+    kind?: string | null;
+    text?: string | null;
+    unit_id?: string | null;
+    twin_note_id?: string | null;
+  } | null | undefined>;
+  noteIds?: ReadonlyArray<string | null | undefined> | null;
+  html?: string | null;
+  promotedCount?: number | null;
+}): string | null {
+  const asset = String(opts.assetId || "").trim();
+  if (!asset) return null;
+  const units = (opts.contextUnits || [])
+    .map((u) => {
+      if (!u) return "";
+      const kind = String(u.kind || "").trim();
+      const text = String(u.text || "").trim();
+      if (!text) return "";
+      return kind ? `[${kind}] ${text}` : text;
+    })
+    .filter(Boolean);
+  const plainFromHtml = plainTextFromHtml(opts.html || "");
+  const query = String(opts.query || "").trim();
+  const n = typeof opts.promotedCount === "number" ? opts.promotedCount : units.length;
+  const noteIds = (opts.noteIds || [])
+    .map((x) => String(x || "").trim())
+    .filter(Boolean);
+  const plain = [
+    query ? `Query: ${query}` : "",
+    n > 0 ? `Promoted units: ${n}` : "",
+    noteIds.length ? `note_ids: ${noteIds.join(",")}` : "",
+    ...units,
+    plainFromHtml,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  if (!plain.trim()) return null;
+  const escape = (s: string) =>
+    String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  const bodyHtml =
+    String(opts.html || "").trim() ||
+    `<ul class="context-units">${units.map((u) => `<li>${escape(u)}</li>`).join("")}</ul>`;
+  const html =
+    `<article data-view-format="html" data-source="twin_promote_context" data-asset-id="${escape(asset)}"` +
+    ` data-promoted-count="${n}">` +
+    `<h1>Twin promote · ${escape(asset)}</h1>` +
+    (query ? `<p class="query"><strong>Query:</strong> ${escape(query)}</p>` : "") +
+    bodyHtml +
+    `</article>`;
+  const seedKey = storeTwinWriteSeed({
+    plain_text: plain,
+    html,
+    title: `Twin promote · ${asset}`,
+    asset_id: asset,
+    note_ids: noteIds,
+    source: "twin_promote_context",
   });
   if (!seedKey) return null;
   return buildTwinWriteHref(seedKey);

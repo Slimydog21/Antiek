@@ -1,0 +1,12 @@
+# inventory-rr · Twin promote → Open Write twin_seed
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: rr
+date: 2026-07-10
+
+## Closed
+- TwinWriteSeedSource twin_promote_context
+- buildTwinPromoteWriteHref (context units + note_ids + html)
+- TwinNotesPanel Open Write (promoted twins) after promote→context
+- Antiek-bench known/usage sources += twin_promote_context
+- vitest twinWriteSeed 22 + TwinNotesPanel 30 = 52 passed
+  (SCRATCH residual-tests-rr.log)
