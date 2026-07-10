@@ -23,6 +23,7 @@
  * Residual (il): catalog HTML-first honesty metrics (no payment rails claim).
  * Residual (im): account library HTML-first metrics strip.
  * Residual (in): host-result metrics after host/purchase land.
+ * Residual (adh): host metrics L5 payment deferred + html-first stamps (parity catalog uy).
  * Residual (io): knowledge-dense PD catalog expansion + source surface in UI
  * (project_gutenberg / standard_ebooks / marketplace_stub); filter includes source.
  * Residual (ip): host-land metrics include catalog knowledge source + recursive
@@ -1332,6 +1333,9 @@ export default function MarketplaceHost({
                 : "pending"
             }
             data-payment-rails="manual_receipt_only"
+            // Residual (adh): L5 payment deferred honesty + HTML-first host land.
+            data-l5-payment-rails="deferred"
+            data-html-first="true"
             role="status"
             className="font-mono text-[11px] opacity-80 space-y-0.5"
           >
@@ -1358,6 +1362,8 @@ export default function MarketplaceHost({
                   entries.find((e) => e.book_id === hosted.book_id)?.is_free,
                 ),
               )}
+              data-l5-payment-rails="deferred"
+              data-html-first="true"
               role="status"
             >
               Free/PD host honesty: license=
@@ -1367,7 +1373,8 @@ export default function MarketplaceHost({
               )
                 ? "true"
                 : "false"}{" "}
-              · HTML host only · payment=manual_receipt_only (no live rails)
+              · HTML host only · payment=manual_receipt_only · L5 rails deferred
+              (no live rails)
             </p>
           </div>
           {/* Residual (ip): recursive note-taker substrate after host. */}

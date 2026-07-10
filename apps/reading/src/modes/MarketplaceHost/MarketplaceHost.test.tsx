@@ -318,11 +318,17 @@ describe("MarketplaceHost mode", () => {
     expect(hostMetrics.getAttribute("data-payment-rails")).toBe(
       "manual_receipt_only",
     );
+    // Residual (adh): L5 deferred + HTML-first host land honesty.
+    expect(hostMetrics.getAttribute("data-l5-payment-rails")).toBe("deferred");
+    expect(hostMetrics.getAttribute("data-html-first")).toBe("true");
     const freeHonesty = screen.getByTestId("marketplace-host-free-pd-honesty");
     expect(freeHonesty.getAttribute("data-is-public-domain")).toBe("true");
     expect(freeHonesty.getAttribute("data-is-free-host")).toBe("true");
+    expect(freeHonesty.getAttribute("data-l5-payment-rails")).toBe("deferred");
+    expect(freeHonesty.getAttribute("data-html-first")).toBe("true");
     expect(freeHonesty.textContent).toMatch(/free_host=true/);
     expect(freeHonesty.textContent).toMatch(/manual_receipt_only/);
+    expect(freeHonesty.textContent).toMatch(/L5 rails deferred/i);
     expect(
       screen.getByTestId("marketplace-host-research-substrate").textContent,
     ).toMatch(/recursive note-taker/i);
