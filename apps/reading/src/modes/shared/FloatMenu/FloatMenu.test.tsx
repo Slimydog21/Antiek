@@ -460,6 +460,24 @@ describe("DEEP-RESEARCH spawns a child linked to the highlight (M2)", () => {
     expect(panel.getAttribute("data-view-format")).toBe("html");
   });
 
+  it("stamps highlight → Note and Dialogue path honesty (agb)", () => {
+    render(
+      <Host
+        onDeepResearch={vi.fn()}
+        provenance={{ servable: true, documentId: "d", chunkId: null }}
+      />,
+    );
+    selectTextIn(screen.getByTestId("scope"), "note dialogue path");
+    const noteBtn = screen.getByTestId("floatmenu-note");
+    expect(noteBtn.getAttribute("data-seamless-highlight-note")).toBe("true");
+    expect(noteBtn.getAttribute("data-view-format")).toBe("html");
+    const dialogueBtn = screen.getByTestId("floatmenu-dialogue");
+    expect(dialogueBtn.getAttribute("data-seamless-highlight-dialogue")).toBe(
+      "true",
+    );
+    expect(dialogueBtn.getAttribute("data-view-format")).toBe("html");
+  });
+
   it("Deep-research full hands host viewMode full (fe)", () => {
     const onDeepResearch = vi.fn();
     render(

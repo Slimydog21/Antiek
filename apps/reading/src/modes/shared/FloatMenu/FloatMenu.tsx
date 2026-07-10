@@ -196,8 +196,26 @@ export default function FloatMenu({
       {view.kind === "menu" && (
         <div className="flex flex-col">
           <div className="flex items-stretch divide-x divide-charcoal-2">
-            <MenuButton label="Note" onClick={() => setView({ kind: "note" })} />
-            <MenuButton label="Dialogue" onClick={() => setView({ kind: "dialogue" })} />
+            <MenuButton
+              label="Note"
+              // Residual (agb): highlight → note path honesty.
+              testId="floatmenu-note"
+              dataAttrs={{
+                "data-seamless-highlight-note": "true",
+                "data-view-format": "html",
+              }}
+              onClick={() => setView({ kind: "note" })}
+            />
+            <MenuButton
+              label="Dialogue"
+              // Residual (agb): highlight → dialogue path honesty.
+              testId="floatmenu-dialogue"
+              dataAttrs={{
+                "data-seamless-highlight-dialogue": "true",
+                "data-view-format": "html",
+              }}
+              onClick={() => setView({ kind: "dialogue" })}
+            />
             <MenuButton
               label="Search"
               // Residual (aga): highlight → corpus search path honesty.

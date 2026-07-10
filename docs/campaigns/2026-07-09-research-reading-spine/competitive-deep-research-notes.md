@@ -2514,3 +2514,8 @@ dogfood 5 · Settings 36 green. propose≠promote.
 FloatMenu Search control stamps data-seamless-highlight-search · view_format=html;
 SearchPanel surfaces same + hit-count/pending/withheld audit. Highlight→corpus
 search path machine-readable (parity highlight→DR afw). vitest FloatMenu 26 green.
+
+## Residual agb · 2026-07-10 — highlight Note+Dialogue path honesty
+FloatMenu Note and Dialogue stamp data-seamless-highlight-note|dialogue ·
+view_format=html. Completes highlight float-menu action path matrix
+(Note · Dialogue · Search · Deep-research float|full). vitest FloatMenu 27 green.
