@@ -1909,3 +1909,8 @@ Attach form + post-attach hydrate prep deep-link #l2-substack (parity aal–aao)
 Competitive delta: knowledge-dense arxiv/substack attach path surfaces Substack
 ToS/factory prep beside arxiv on both pre- and post-attach surfaces.
 
+## Residual aaq · 2026-07-10 — ResearchContext L2 Substack dual-gate deep-links
+Research context header + evidence citation-trust (grounded/ungrounded) deep-link
+#l2-substack (parity aal–aap). Competitive delta: intelligent search / evidence
+pack path surfaces Substack hydrate prep beside arxiv on the workstation chokepoint.
+

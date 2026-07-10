@@ -60,7 +60,11 @@ describe("ResearchContextPanel", () => {
     const dual = screen.getByTestId("research-context-dual-gate-checklist-link");
     // Residual (xe): L1 arxiv checklist section deep-link.
     expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
-    expect(dual.textContent).toMatch(/L1–L2 hydrate checklist/i);
+    expect(dual.textContent).toMatch(/L1 arxiv checklist/i);
+    // Residual (aaq): L2 Substack checklist (parity aal–aap).
+    const dualL2 = screen.getByTestId("research-context-dual-gate-l2-link");
+    expect(dualL2.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
+    expect(dualL2.textContent).toMatch(/L2 Substack checklist/i);
   });
 
   it("links to Settings hydrate readiness (ie)", () => {
@@ -534,7 +538,12 @@ describe("ResearchContextPanel", () => {
       screen
         .getByTestId("evidence-citation-trust-dual-gate-link")
         .getAttribute("href") || "",
-    ).toMatch(/DUAL-GATE-L1-L4/);
+    ).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    expect(
+      screen
+        .getByTestId("evidence-citation-trust-dual-gate-l2-link")
+        .getAttribute("href") || "",
+    ).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
     // Residual (hu): machine-readable evidence pack metrics.
     const metrics = screen.getByTestId("evidence-pack-metrics");
     expect(metrics.getAttribute("data-insight-count")).toBe("1");
@@ -632,7 +641,12 @@ describe("ResearchContextPanel", () => {
       screen
         .getByTestId("evidence-citation-trust-dual-gate-link")
         .getAttribute("href") || "",
-    ).toMatch(/DUAL-GATE-L1-L4/);
+    ).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    expect(
+      screen
+        .getByTestId("evidence-citation-trust-dual-gate-l2-link")
+        .getAttribute("href") || "",
+    ).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
   });
 
   it("mounts DecisionTreeDriverBadge with prompt_block foresight (qq)", async () => {

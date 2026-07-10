@@ -1,0 +1,21 @@
+# inventory-aaq · ResearchContext L2 Substack dual-gate deep-links
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aaq
+date: 2026-07-10
+tip_before: 5a1e2261 (aap)
+
+## Problem
+Research context header + evidence citation-trust (grounded/ungrounded) labeled
+L1–L2 hydrate checklist but only linked #l1-arxiv (parity aal–aap).
+
+## Fix
+- research-context-dual-gate-l2-link → #l2-substack
+- evidence-citation-trust-dual-gate-l2-link on both trust states
+- L1 copy honesty
+- ResearchContextPanel.test locks anchors
+
+## Verified
+npm test ResearchContextPanel.test.tsx → 12 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

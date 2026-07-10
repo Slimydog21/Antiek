@@ -276,7 +276,15 @@ export function ResearchContextPanel({
             data-testid="research-context-dual-gate-checklist-link"
             title="Dual-gate L1 arxiv hydrate checklist (prep only · offline default)"
           >
-            Dual-gate L1–L2 hydrate checklist
+            Dual-gate L1 arxiv checklist
+          </a>
+          {/* Residual (aaq): L2 Substack section (parity aal–aap · research context). */}
+          <a
+            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l2-substack"
+            data-testid="research-context-dual-gate-l2-link"
+            title="Dual-gate L2 Substack hydrate checklist (prep only · factory + ToS)"
+          >
+            Dual-gate L2 Substack checklist
           </a>
         </p>
         <p className="meta">
@@ -689,7 +697,15 @@ export function ResearchContextPanel({
                   className="underline hover:opacity-100"
                   title="Dual-gate L1 arxiv hydrate checklist (prep only · offline default)"
                 >
-                  Dual-gate L1–L2 hydrate checklist
+                  Dual-gate L1 arxiv checklist
+                </a>
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l2-substack"
+                  data-testid="evidence-citation-trust-dual-gate-l2-link"
+                  className="underline hover:opacity-100"
+                  title="Dual-gate L2 Substack hydrate checklist (prep only · factory + ToS)"
+                >
+                  Dual-gate L2 Substack checklist
                 </a>
               </p>
             </div>
@@ -721,7 +737,15 @@ export function ResearchContextPanel({
                   className="underline hover:opacity-100"
                   title="Dual-gate L1 arxiv hydrate checklist (maintain prep · offline default)"
                 >
-                  Dual-gate L1–L2 hydrate checklist
+                  Dual-gate L1 arxiv checklist
+                </a>
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l2-substack"
+                  data-testid="evidence-citation-trust-dual-gate-l2-link"
+                  className="underline hover:opacity-100"
+                  title="Dual-gate L2 Substack hydrate checklist (maintain prep · factory + ToS)"
+                >
+                  Dual-gate L2 Substack checklist
                 </a>
               </p>
             </div>
