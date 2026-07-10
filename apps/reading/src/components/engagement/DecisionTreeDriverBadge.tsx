@@ -19,17 +19,26 @@
  * daily budget (operator foresight before send; not a hard gate).
  * Residual (rm): Settings deep-link anchors to #notdiamond-advisory so operators
  * can compare weekly ND suggestion vs installed driver (advisory only).
+ * Residual (afc): when researchTier is set, surface Antiek-bench weekly
+ * best-by-task for mapped task_class (parity launch budget afb · never auto-route).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   estimatePromptCost,
+  fetchAntiekBenchLeaderboard,
   fetchDecisionTreeSelection,
   fetchSettingsBudget,
+  type AntiekBenchLeaderboardResponse,
   type BudgetResponse,
   type DecisionTreeSelectionResponse,
   type PromptCostEstimateResponse,
 } from "../../api/settings";
+import {
+  bestModelForTaskClass,
+  researchTierToBenchTaskClass,
+  type ResearchLaunchTier,
+} from "./ResearchLaunchBudgetPanel";
 
 function formatUsd(n: number | null | undefined): string {
   if (n == null || Number.isNaN(n)) return "—";
@@ -75,19 +84,42 @@ export function DecisionTreeDriverBadge({
   const [refreshing, setRefreshing] = useState(false);
   const [projection, setProjection] =
     useState<PromptCostEstimateResponse | null>(null);
+  const [leaderboard, setLeaderboard] =
+    useState<AntiekBenchLeaderboardResponse | null>(null);
   const normalizedTier = (researchTier || "").trim().toLowerCase() || "";
   const promptChars = (promptText || "").length;
+  const benchTaskClass =
+    normalizedTier === "fast" ||
+    normalizedTier === "deep" ||
+    normalizedTier === "wrestle"
+      ? researchTierToBenchTaskClass(normalizedTier as ResearchLaunchTier)
+      : null;
+  const bestByTask = useMemo(
+    () =>
+      benchTaskClass
+        ? bestModelForTaskClass(leaderboard, benchTaskClass)
+        : null,
+    [leaderboard, benchTaskClass],
+  );
 
   const load = useCallback(async () => {
     setRefreshing(true);
     setError(null);
     try {
-      const [t, b] = await Promise.all([
+      const d = new Date();
+      const onejan = new Date(d.getFullYear(), 0, 1);
+      const week = Math.ceil(
+        ((d.getTime() - onejan.getTime()) / 86400000 + onejan.getDay() + 1) / 7,
+      );
+      const weekId = `${d.getFullYear()}-W${String(week).padStart(2, "0")}`;
+      const [t, b, lb] = await Promise.all([
         fetchDecisionTreeSelection(),
         fetchSettingsBudget().catch(() => null),
+        fetchAntiekBenchLeaderboard({ weekId }).catch(() => null),
       ]);
       setTree(t);
       setBudget(b);
+      setLeaderboard(lb);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -219,6 +251,53 @@ export function DecisionTreeDriverBadge({
         </p>
       ) : null}
 
+      {/* Residual (afc): best-by-task for this depth (parity launch afb). */}
+      {benchTaskClass ? (
+        <p
+          className="opacity-90"
+          data-testid="decision-tree-bench-best-by-task"
+          data-task-class={benchTaskClass}
+          data-best-model={bestByTask?.model_id ?? ""}
+          data-best-score={
+            bestByTask != null ? String(bestByTask.score) : ""
+          }
+          data-week-id={leaderboard?.week_id ?? ""}
+          data-advisory-only="true"
+          data-matches-installed={String(
+            Boolean(
+              bestByTask?.model_id &&
+                tree?.model_id &&
+                bestByTask.model_id === tree.model_id,
+            ),
+          )}
+          role="status"
+        >
+          Bench best for {benchTaskClass}
+          {bestByTask ? (
+            <>
+              : <code data-testid="decision-tree-bench-best-model">
+                {bestByTask.model_id}
+              </code>{" "}
+              ({bestByTask.score.toFixed(2)})
+              {tree?.model_id && bestByTask.model_id === tree.model_id
+                ? " · matches installed"
+                : " · advisory only"}
+            </>
+          ) : (
+            <>: (no weekly scores)</>
+          )}{" "}
+          ·{" "}
+          <a
+            href="/settings#antiek-bench-leaderboard"
+            className="underline opacity-80 hover:opacity-100"
+            data-testid="decision-tree-bench-leaderboard-link"
+            title="Open Settings weekly leaderboard (install best-by-task explicitly)"
+          >
+            leaderboard
+          </a>
+        </p>
+      ) : null}
+
       {/* Residual (hv/ku): machine-readable driver + budget + depth metrics. */}
       <div
         data-testid="decision-tree-driver-metrics"
@@ -226,6 +305,8 @@ export function DecisionTreeDriverBadge({
         data-model-id={tree?.model_id ?? ""}
         data-provider-id={tree?.provider_id ?? ""}
         data-research-tier={normalizedTier}
+        data-bench-task-class={benchTaskClass ?? ""}
+        data-bench-best-model={bestByTask?.model_id ?? ""}
         data-spent-status={budget?.spent_status ?? "unknown"}
         data-spent-usd={
           budget?.spent_usd != null ? String(budget.spent_usd) : ""

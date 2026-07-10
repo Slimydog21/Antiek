@@ -1,0 +1,18 @@
+# inventory-afc · DecisionTreeDriverBadge best-by-task advisory
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: afc
+date: 2026-07-10
+parent_tip: 35291970 (afb)
+
+## Closed
+- DecisionTreeDriverBadge fetches weekly leaderboard when researchTier set
+- decision-tree-bench-best-by-task + metrics data-bench-task-class/best-model
+- parity ResearchLaunchBudgetPanel afb helpers
+- vitest DecisionTreeDriverBadge · 12 passed
+
+## Why this residual
+Driver badge mounts on every reading/research host; operators should see
+bench best-for-task next to installed driver without opening Settings.
+
+## Not in scope
+- Auto-install best-by-task

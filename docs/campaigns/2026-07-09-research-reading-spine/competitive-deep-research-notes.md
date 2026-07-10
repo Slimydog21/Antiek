@@ -2384,3 +2384,8 @@ ResearchLaunchBudgetPanel surfaces weekly best model for depth→task_class
 (fast→distill · deep→synthesize · wrestle→wrestle) vs installed driver.
 Advisory only · never auto-routes. Competitive model-quality-per-task at fire.
 vitest ResearchLaunchBudgetPanel 12 green.
+
+## Residual afc · 2026-07-10 — DecisionTreeDriverBadge best-by-task advisory
+Driver badge on reading/research hosts surfaces Antiek-bench weekly best model
+for depth→task_class (parity launch afb). Advisory only · never auto-routes.
+vitest DecisionTreeDriverBadge 12 green.

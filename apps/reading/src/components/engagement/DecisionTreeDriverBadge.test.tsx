@@ -9,12 +9,15 @@ import {
 const fetchDecisionTreeSelection = vi.fn();
 const fetchSettingsBudget = vi.fn();
 const estimatePromptCost = vi.fn();
+const fetchAntiekBenchLeaderboard = vi.fn();
 
 vi.mock("../../api/settings", () => ({
   fetchDecisionTreeSelection: (...args: unknown[]) =>
     fetchDecisionTreeSelection(...args),
   fetchSettingsBudget: (...args: unknown[]) => fetchSettingsBudget(...args),
   estimatePromptCost: (...args: unknown[]) => estimatePromptCost(...args),
+  fetchAntiekBenchLeaderboard: (...args: unknown[]) =>
+    fetchAntiekBenchLeaderboard(...args),
 }));
 
 describe("DecisionTreeDriverBadge residual cw/eq", () => {
@@ -23,6 +26,7 @@ describe("DecisionTreeDriverBadge residual cw/eq", () => {
     fetchDecisionTreeSelection.mockReset();
     fetchSettingsBudget.mockReset();
     estimatePromptCost.mockReset();
+    fetchAntiekBenchLeaderboard.mockReset();
     fetchSettingsBudget.mockResolvedValue({
       daily_cap_usd: 10,
       spent_usd: 2.5,
@@ -42,6 +46,30 @@ describe("DecisionTreeDriverBadge residual cw/eq", () => {
       tier: "deep",
       provider: "zai",
       model: "glm-5.2",
+    });
+    fetchAntiekBenchLeaderboard.mockResolvedValue({
+      week_id: "2026-W28",
+      models: [
+        {
+          model_id: "glm-5.2",
+          mean_score: 0.9,
+          by_task_class: { synthesize: 0.95, distill: 0.8, wrestle: 0.7 },
+        },
+        {
+          model_id: "strong-model",
+          mean_score: 0.92,
+          by_task_class: { synthesize: 0.88, distill: 0.99, wrestle: 0.96 },
+        },
+      ],
+      task_classes: ["distill", "synthesize", "wrestle"],
+      run_count: 2,
+      suite_versions: [],
+      recommended_model_id: "strong-model",
+      recommended_mean_score: 0.92,
+      view_format: "html",
+      settings_panel: "antiek_bench_weekly",
+      source: "test",
+      notes: [],
     });
   });
 
@@ -89,6 +117,26 @@ describe("DecisionTreeDriverBadge residual cw/eq", () => {
     expect(screen.getByTestId("decision-tree-research-tier").textContent).toMatch(
       /long-horizon/i,
     );
+    // Residual (afc): wrestle → best-by-task advisory (strong-model).
+    await waitFor(() => {
+      expect(screen.getByTestId("decision-tree-bench-best-by-task")).toBeTruthy();
+    });
+    const bench = screen.getByTestId("decision-tree-bench-best-by-task");
+    expect(bench.getAttribute("data-task-class")).toBe("wrestle");
+    expect(bench.getAttribute("data-best-model")).toBe("strong-model");
+    expect(bench.getAttribute("data-advisory-only")).toBe("true");
+    expect(bench.getAttribute("data-matches-installed")).toBe("false");
+    expect(screen.getByTestId("decision-tree-bench-best-model").textContent).toBe(
+      "strong-model",
+    );
+    expect(
+      screen
+        .getByTestId("decision-tree-driver-metrics")
+        .getAttribute("data-bench-task-class"),
+    ).toBe("wrestle");
+    expect(
+      screen.getByTestId("decision-tree-bench-leaderboard-link").getAttribute("href"),
+    ).toBe("/settings#antiek-bench-leaderboard");
   });
 
   it("shows none when not installed", async () => {
