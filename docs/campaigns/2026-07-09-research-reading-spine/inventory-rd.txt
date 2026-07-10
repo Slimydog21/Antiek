@@ -1,0 +1,7 @@
+# inventory-rd · SESSION-ARC qv–rc Write seed matrix
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: rd
+date: 2026-07-10
+
+## Closed
+- SESSION-ARC-qv-rc-write-seed-matrix.md
