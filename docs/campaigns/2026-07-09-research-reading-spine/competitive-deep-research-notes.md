@@ -2533,3 +2533,8 @@ highlight path · dogfood v16–v18. P0 operator merge PR #465. Pivot age+ outsi
 /inv/:id mounts dual-gate prep nav with L3 twin seed + L6 collective checklist
 deep-links (deferred injectors · offline-honest). Parity MO/marketplace
 checklist surfaces. vitest RW 12 green.
+
+## Residual agf · 2026-07-10 — StartResearch L1/L2 dual-gate pub-refs prep
+StartResearch publication refs panel mounts dual-gate L1 arxiv + L2 Substack
+checklist deep-links (deferred injectors · offline identity default). Parity
+MO/HostedHtml pub prep. vitest StartResearch 21 green.

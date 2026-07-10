@@ -245,6 +245,20 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
     );
   });
 
+  it("mounts dual-gate L1/L2 checklist prep on pub refs (agf)", () => {
+    renderStart();
+    const prep = screen.getByTestId("start-research-pub-refs-dual-gate");
+    expect(prep.getAttribute("data-view-format")).toBe("html");
+    expect(prep.getAttribute("data-l1-arxiv")).toBe("deferred");
+    expect(prep.getAttribute("data-l2-substack")).toBe("deferred");
+    const l1 = screen.getByTestId("start-research-l1-checklist-link");
+    expect(l1.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    expect(l1.getAttribute("data-l1-arxiv")).toBe("deferred");
+    const l2 = screen.getByTestId("start-research-l2-checklist-link");
+    expect(l2.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
+    expect(l2.getAttribute("data-l2-substack")).toBe("deferred");
+  });
+
   it("renders a real composer: input + Ask button + example pills", () => {
     renderStart();
     expect(screen.getByLabelText("Research question")).toBeTruthy();
