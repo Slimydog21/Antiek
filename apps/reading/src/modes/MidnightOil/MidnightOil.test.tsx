@@ -14,6 +14,7 @@ import {
   dryRunMidnightOil,
   finalArtifactAdapterPlanMidnightOil,
   finalArtifactMidnightOil,
+  finalSynthesisDraftPlanMidnightOil,
   graphAdapterPlanMidnightOil,
   graphMutationMidnightOil,
   liveDispatchFinalEnablementApplyPlanMidnightOil,
@@ -2619,6 +2620,106 @@ vi.mock("../../api/midnightOil", () => ({
       "synthesis bundle assembly plan only: no synthesis bundle, source packet, evidence map, composition plan, quality gate, ledger write, or runner dispatch is created",
     ],
   })),
+  finalSynthesisDraftPlanMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-final-synthesis-draft-plan",
+    synthesis_bundle_assembly_plan_receipt_id:
+      "midnight-oil-test-synthesis-bundle-assembly-plan",
+    worker_synthesis_handoff_plan_receipt_id:
+      "midnight-oil-test-worker-synthesis-handoff-plan",
+    worker_output_aggregation_plan_receipt_id:
+      "midnight-oil-test-worker-output-aggregation-plan",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    run_id: "midnight-oil-test",
+    status: "blocked_final_synthesis_draft_unimplemented",
+    adapter_key: "final_synthesis_draft",
+    planned_final_synthesis_draft_receipt_id:
+      "midnight-oil-test-final-synthesis-draft-receipt",
+    planned_final_synthesis_draft_id: "midnight-oil-test-final-synthesis-draft",
+    planned_final_synthesis_outline_id: "midnight-oil-test-final-synthesis-outline",
+    planned_final_synthesis_claim_map_id: "midnight-oil-test-final-synthesis-claim-map",
+    planned_final_synthesis_citation_map_id:
+      "midnight-oil-test-final-synthesis-citation-map",
+    planned_final_synthesis_gap_list_id: "midnight-oil-test-final-synthesis-gap-list",
+    planned_final_synthesis_quality_report_id:
+      "midnight-oil-test-final-synthesis-quality-report",
+    planned_synthesis_bundle_assembly_receipt_id:
+      "midnight-oil-test-synthesis-bundle-assembly-receipt",
+    planned_synthesis_bundle_id: "midnight-oil-test-synthesis-bundle",
+    planned_synthesis_source_packet_id: "midnight-oil-test-synthesis-source-packet",
+    planned_synthesis_evidence_map_id: "midnight-oil-test-synthesis-evidence-map",
+    planned_synthesis_composition_plan_id: "midnight-oil-test-synthesis-composition-plan",
+    planned_synthesis_quality_gate_id: "midnight-oil-test-synthesis-quality-gate",
+    planned_synthesis_input_bundle_id: "midnight-oil-test-worker-synthesis-input-bundle",
+    planned_synthesis_context_manifest_id:
+      "midnight-oil-test-worker-synthesis-context-manifest",
+    planned_synthesis_outline_id: "midnight-oil-test-worker-synthesis-outline",
+    planned_worker_output_index_id: "midnight-oil-test-worker-output-index",
+    planned_worker_output_manifest_id: "midnight-oil-test-worker-output-manifest",
+    planned_worker_output_summary_id: "midnight-oil-test-worker-output-summary",
+    planned_worker_result_manifest_id: "midnight-oil-test-worker-result-manifest",
+    planned_worker_output_bundle_id: "midnight-oil-test-worker-output-bundle",
+    planned_worker_id: "midnight-oil-test-runner-dispatch-worker",
+    planned_worker_lease_id: "midnight-oil-test-runner-dispatch-worker-lease",
+    planned_runner_dispatch_id: "midnight-oil-test-midnight-oil-runner-dispatch",
+    planned_idempotency_key: "midnight-oil-test-live-dispatch-final-enable-idempotency-key",
+    final_synthesis_draft_blockers: [
+      "final synthesis draft receipt writer",
+      "final synthesis outline builder",
+      "final synthesis claim map builder",
+      "final synthesis citation map builder",
+      "final synthesis gap list builder",
+      "final synthesis quality report policy",
+      "idempotent final synthesis draft replay protection",
+    ],
+    required_final_synthesis_draft_invariants: [
+      "final synthesis draft planner must require synthesis bundle assembly planning before any final draft can be created",
+      "final synthesis draft planner must preserve source/evidence/citation lineage through final draft planning",
+    ],
+    required_final_synthesis_draft_receipt_fields: [
+      "final_synthesis_draft_plan_receipt_id",
+      "synthesis_bundle_assembly_plan_receipt_id",
+      "final_synthesis_draft_id",
+      "final_synthesis_claim_map_id",
+      "final_synthesis_citation_map_id",
+      "final_synthesis_quality_report_id",
+      "final_synthesis_draft_created",
+      "idempotency_key",
+    ],
+    blocker_reason: "final_synthesis_draft_unimplemented",
+    final_synthesis_draft_allowed: false,
+    final_synthesis_draft_created: false,
+    final_synthesis_outline_created: false,
+    final_synthesis_claim_map_created: false,
+    final_synthesis_citation_map_created: false,
+    final_synthesis_gap_list_created: false,
+    final_synthesis_quality_report_created: false,
+    synthesis_bundle_assembly_allowed: false,
+    synthesis_bundle_assembled: false,
+    synthesis_source_packet_created: false,
+    synthesis_evidence_map_created: false,
+    synthesis_composition_plan_created: false,
+    synthesis_quality_gate_created: false,
+    worker_synthesis_handoff_created: false,
+    synthesis_input_bundle_created: false,
+    synthesis_context_manifest_created: false,
+    synthesis_outline_created: false,
+    worker_output_aggregated: false,
+    worker_started: false,
+    scheduler_job_created: false,
+    runner_dispatch_enqueued: false,
+    dispatch_performed: false,
+    budget_reserved: false,
+    provider_calls_made: false,
+    retrieval_performed: false,
+    source_receipts_created: false,
+    graph_mutated: false,
+    final_artifact_created: false,
+    adapter_plan_notes: [
+      "final synthesis draft plan only: no final draft, outline, claim map, citation map, gap list, quality report, ledger write, or runner dispatch is created",
+    ],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -4742,5 +4843,117 @@ describe("MidnightOil", () => {
     expect(screen.getByText(/synthesis_bundle_id/)).toBeTruthy();
     expect(screen.getByText(/synthesis_evidence_map_id/)).toBeTruthy();
     expect(screen.getByText(/synthesis_quality_gate_id/)).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Final synthesis draft plan" }));
+
+    await waitFor(() => expect(finalSynthesisDraftPlanMidnightOil).toHaveBeenCalled());
+    expect(finalSynthesisDraftPlanMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      runner_control_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-control-plan",
+      }),
+      budget_provider_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-budget-provider-adapter-plan",
+      }),
+      provider_executor_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-provider-executor-adapter-plan",
+      }),
+      retrieval_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-retrieval-adapter-plan",
+      }),
+      graph_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-graph-adapter-plan",
+      }),
+      final_artifact_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-final-artifact-adapter-plan",
+      }),
+      operator_dispatch_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-operator-dispatch-adapter-plan",
+      }),
+      control_ledger_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-adapter-plan",
+      }),
+      control_ledger_persistence_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-persistence-plan",
+      }),
+      control_ledger_persistence_apply_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-persistence-apply-plan",
+      }),
+      operator_dispatch_activation_readiness_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-operator-dispatch-activation-readiness-plan",
+      }),
+      live_dispatch_final_enablement_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-live-dispatch-final-enablement-plan",
+      }),
+      live_dispatch_final_enablement_apply_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-live-dispatch-final-enablement-apply-plan",
+      }),
+      runner_dispatch_scheduler_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-dispatch-scheduler-plan",
+      }),
+      runner_dispatch_worker_bootstrap_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-dispatch-worker-bootstrap-plan",
+      }),
+      scheduler_lease_retry_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-scheduler-lease-retry-plan",
+      }),
+      worker_queue_claim_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-worker-queue-claim-plan",
+      }),
+      repository_transaction_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-repository-transaction-plan",
+      }),
+      repository_commit_rollback_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-repository-commit-rollback-plan",
+      }),
+      worker_dispatch_lease_heartbeat_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-worker-dispatch-lease-heartbeat-plan",
+      }),
+      worker_cancellation_abandon_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-worker-cancellation-abandon-plan",
+      }),
+      worker_completion_finalization_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-worker-completion-finalization-plan",
+      }),
+      worker_output_aggregation_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-worker-output-aggregation-plan",
+      }),
+      worker_synthesis_handoff_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-worker-synthesis-handoff-plan",
+      }),
+      synthesis_bundle_assembly_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-synthesis-bundle-assembly-plan",
+      }),
+    });
+    expect(screen.getByText("Final synthesis draft receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-synthesis-draft-plan")).toBeTruthy();
+    expect(screen.getByText("blocked final synthesis draft unimplemented")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-synthesis-draft-receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-synthesis-draft")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-synthesis-outline")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-synthesis-claim-map")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-synthesis-citation-map")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-synthesis-gap-list")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-synthesis-quality-report")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "final synthesis draft planner must require synthesis bundle assembly planning before any final draft can be created",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Final synthesis draft blockers:/)).toBeTruthy();
+    expect(screen.getByText(/final synthesis draft receipt writer/)).toBeTruthy();
+    expect(screen.getByText(/final synthesis citation map builder/)).toBeTruthy();
+    expect(screen.getByText(/final synthesis quality report policy/)).toBeTruthy();
+    expect(screen.getByText(/Final synthesis draft receipt fields:/)).toBeTruthy();
+    expect(screen.getByText(/final_synthesis_citation_map_id/)).toBeTruthy();
+    expect(screen.getByText(/final_synthesis_quality_report_id/)).toBeTruthy();
   });
 });
