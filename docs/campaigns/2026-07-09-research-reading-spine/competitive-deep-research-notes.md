@@ -1618,3 +1618,7 @@ Competitive delta: data-item-count-matches-listed=true for substrate-true path.
 ## Residual yc · 2026-07-10 — SessionFlywheel dual-gate #l1-arxiv
 SessionFlywheel dual-gate checklist jumps to #l1-arxiv. Competitive delta:
 land→bench feed prep navigates hydrate deferred policy.
+
+## Residual yd · 2026-07-10 — FUTURE-AGENT tip re-anchor through yc
+FUTURE-AGENT-SPEC tip re-anchored after 57 residual ships this continuation.
+Competitive delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
