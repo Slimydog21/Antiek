@@ -2970,3 +2970,8 @@ FUTURE brief. vitest SessionFlywheel 6 green. P0 operator merge PR #465. Pivot a
 Shared model driver + budget chokepoint navigates competitive DR scorecard
 (ND never router honesty at model choice). vitest DecisionTreeDriverBadge 13 green.
 P0 operator merge PR #465. Pivot ajf+ outside scorecard thrash.
+
+## Residual ajf · 2026-07-10 — HostedHtml free STEM subjects → domainSubjects honesty
+HostedHtml context mount stamps catalog subjects so ResearchContext domain-aware
+twin search defaults fire for free STEM hosted books (reading ≡ research).
+vitest HostedHtml 25 green. P0 operator merge PR #465. Pivot ajg+ outside thrash.

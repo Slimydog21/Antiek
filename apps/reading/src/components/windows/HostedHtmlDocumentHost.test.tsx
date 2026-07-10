@@ -98,8 +98,16 @@ vi.mock("../engagement/TwinNotesPanel", () => ({
 }));
 
 vi.mock("../engagement/ResearchContextPanel", () => ({
-  ResearchContextPanel: (props: { assetId: string; autoLoad?: boolean }) => (
-    <div data-testid="research-context-panel-stub">
+  ResearchContextPanel: (props: {
+    assetId: string;
+    autoLoad?: boolean;
+    domainSubjects?: readonly string[] | null;
+  }) => (
+    <div
+      data-testid="research-context-panel-stub"
+      data-domain-subjects={(props.domainSubjects || []).join(",") || ""}
+      data-auto-load={String(Boolean(props.autoLoad))}
+    >
       {props.assetId}:auto={String(Boolean(props.autoLoad))}
     </div>
   ),
@@ -588,6 +596,30 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(write.getAttribute("data-write-seed-source")).toBe("evidence_pack");
     const href = write.getAttribute("href") || "";
     expect(href).toMatch(/twin_seed=antiek\.twin_write_seed\./);
+  });
+
+  it("passes free STEM catalog subjects into ResearchContext domainSubjects (ajf)", () => {
+    render(
+      <HostedHtmlDocumentHost
+        document_id="marketplace:pd-fourier-heat"
+        title="Fourier Heat"
+        view_format="html"
+        source="marketplace_host"
+        subjects={["heat", "signal_processing", "engineering"]}
+        html="<p>Analytical Theory of Heat</p>"
+      />,
+    );
+    const mount = screen.getByTestId("hosted-html-context-mount");
+    expect(mount.getAttribute("data-has-domain-subjects")).toBe("true");
+    expect(mount.getAttribute("data-domain-subjects")).toMatch(/heat/);
+    expect(mount.getAttribute("data-domain-subjects")).toMatch(
+      /signal_processing/,
+    );
+    const ctx = screen.getByTestId("research-context-panel-stub");
+    expect(ctx.getAttribute("data-domain-subjects")).toBe(
+      "heat,signal_processing,engineering",
+    );
+    expect(ctx.getAttribute("data-auto-load")).toBe("true");
   });
 
   it("surfaces multi-hop hop honesty and scorecard links for evidence_pack (aiw)", () => {

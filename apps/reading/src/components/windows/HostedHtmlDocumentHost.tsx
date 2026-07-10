@@ -984,10 +984,16 @@ export default function HostedHtmlDocumentHost(
           className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
           data-testid="hosted-html-context-mount"
           data-view-format="html"
+          // Residual (ajf): free STEM catalog subjects → twin intelligent search default.
+          data-domain-subjects={(props.subjects || []).join(",") || ""}
+          data-has-domain-subjects={String(
+            Boolean((props.subjects || []).filter(Boolean).length),
+          )}
         >
           <div
             data-testid="hosted-html-context-refresh"
             data-refresh-key={String(contextRefreshKey)}
+            data-domain-subjects={(props.subjects || []).join(",") || ""}
           >
             <ResearchContextPanel
               key={`ctx-${assetId}-${contextRefreshKey}`}
