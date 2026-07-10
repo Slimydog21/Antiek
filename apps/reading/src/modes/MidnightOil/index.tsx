@@ -30,6 +30,7 @@ import {
   runnerDispatchWorkerBootstrapPlanMidnightOil,
   runnerReadinessMidnightOil,
   schedulerLeaseRetryPlanMidnightOil,
+  workerDispatchLeaseHeartbeatPlanMidnightOil,
   workerQueueClaimPlanMidnightOil,
   type MidnightOilActivationChecklistReceipt,
   type MidnightOilAppliedRunReceipt,
@@ -62,6 +63,7 @@ import {
   type MidnightOilRouteMode,
   type MidnightOilSchedulerLeaseRetryPlanReceipt,
   type MidnightOilSourcePolicy,
+  type MidnightOilWorkerDispatchLeaseHeartbeatPlanReceipt,
   type MidnightOilWorkerQueueClaimPlanReceipt,
 } from "../../api/midnightOil";
 import LemonCard from "../../components/lemon/LemonCard";
@@ -153,6 +155,8 @@ export default function MidnightOil() {
     useState<MidnightOilRepositoryTransactionPlanReceipt | null>(null);
   const [repositoryCommitRollbackPlanReceipt, setRepositoryCommitRollbackPlanReceipt] =
     useState<MidnightOilRepositoryCommitRollbackPlanReceipt | null>(null);
+  const [workerDispatchLeaseHeartbeatPlanReceipt, setWorkerDispatchLeaseHeartbeatPlanReceipt] =
+    useState<MidnightOilWorkerDispatchLeaseHeartbeatPlanReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -192,6 +196,8 @@ export default function MidnightOil() {
   const [workerQueueClaimPlanBusy, setWorkerQueueClaimPlanBusy] = useState(false);
   const [repositoryTransactionPlanBusy, setRepositoryTransactionPlanBusy] = useState(false);
   const [repositoryCommitRollbackPlanBusy, setRepositoryCommitRollbackPlanBusy] = useState(false);
+  const [workerDispatchLeaseHeartbeatPlanBusy, setWorkerDispatchLeaseHeartbeatPlanBusy] =
+    useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
   const [liveSettingsError, setLiveSettingsError] = useState<string | null>(null);
@@ -243,10 +249,18 @@ export default function MidnightOil() {
     useState<string | null>(null);
   const [repositoryCommitRollbackPlanError, setRepositoryCommitRollbackPlanError] =
     useState<string | null>(null);
+  const [workerDispatchLeaseHeartbeatPlanError, setWorkerDispatchLeaseHeartbeatPlanError] =
+    useState<string | null>(null);
+
+  function clearWorkerDispatchLeaseHeartbeatPlan() {
+    setWorkerDispatchLeaseHeartbeatPlanError(null);
+    setWorkerDispatchLeaseHeartbeatPlanReceipt(null);
+  }
 
   function clearRepositoryCommitRollbackPlan() {
     setRepositoryCommitRollbackPlanError(null);
     setRepositoryCommitRollbackPlanReceipt(null);
+    clearWorkerDispatchLeaseHeartbeatPlan();
   }
 
   function clearRepositoryTransactionPlan() {
@@ -387,6 +401,7 @@ export default function MidnightOil() {
     setRunnerDispatchWorkerBootstrapPlanError(null);
     setSchedulerLeaseRetryPlanError(null);
     setWorkerQueueClaimPlanError(null);
+    setWorkerDispatchLeaseHeartbeatPlanError(null);
     setPreflight(null);
     setDryRunReceipt(null);
     setLiveSettingsReceipt(null);
@@ -416,6 +431,9 @@ export default function MidnightOil() {
     setRunnerDispatchWorkerBootstrapPlanReceipt(null);
     setSchedulerLeaseRetryPlanReceipt(null);
     setWorkerQueueClaimPlanReceipt(null);
+    setRepositoryTransactionPlanReceipt(null);
+    setRepositoryCommitRollbackPlanReceipt(null);
+    setWorkerDispatchLeaseHeartbeatPlanReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -1776,6 +1794,7 @@ export default function MidnightOil() {
     setRepositoryCommitRollbackPlanBusy(true);
     setRepositoryCommitRollbackPlanError(null);
     setRepositoryCommitRollbackPlanReceipt(null);
+    clearWorkerDispatchLeaseHeartbeatPlan();
     try {
       const result = await repositoryCommitRollbackPlanMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -1807,6 +1826,75 @@ export default function MidnightOil() {
       setRepositoryCommitRollbackPlanError(e instanceof Error ? e.message : String(e));
     } finally {
       setRepositoryCommitRollbackPlanBusy(false);
+    }
+  }
+
+  async function onWorkerDispatchLeaseHeartbeatPlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerControlPlanReceipt ||
+      !budgetProviderAdapterPlanReceipt ||
+      !providerExecutorAdapterPlanReceipt ||
+      !retrievalAdapterPlanReceipt ||
+      !graphAdapterPlanReceipt ||
+      !finalArtifactAdapterPlanReceipt ||
+      !operatorDispatchAdapterPlanReceipt ||
+      !controlLedgerAdapterPlanReceipt ||
+      !controlLedgerPersistencePlanReceipt ||
+      !controlLedgerPersistenceApplyPlanReceipt ||
+      !operatorDispatchActivationReadinessPlanReceipt ||
+      !liveDispatchFinalEnablementPlanReceipt ||
+      !liveDispatchFinalEnablementApplyPlanReceipt ||
+      !runnerDispatchSchedulerPlanReceipt ||
+      !runnerDispatchWorkerBootstrapPlanReceipt ||
+      !schedulerLeaseRetryPlanReceipt ||
+      !workerQueueClaimPlanReceipt ||
+      !repositoryTransactionPlanReceipt ||
+      !repositoryCommitRollbackPlanReceipt
+    ) {
+      setWorkerDispatchLeaseHeartbeatPlanError(
+        "Worker lease heartbeat plan requires launch packet, approval receipt, runner handoff, runner control plan receipt, budget provider adapter plan receipt, provider executor adapter plan receipt, retrieval adapter plan receipt, graph adapter plan receipt, final artifact adapter plan receipt, operator dispatch adapter plan receipt, control ledger adapter plan receipt, control ledger persistence plan receipt, control ledger persistence apply plan receipt, operator dispatch activation readiness plan receipt, live dispatch final enablement plan receipt, live dispatch final enablement apply plan receipt, runner dispatch scheduler plan receipt, runner dispatch worker bootstrap plan receipt, scheduler lease retry plan receipt, worker queue claim plan receipt, repository transaction plan receipt, and repository commit rollback plan receipt.",
+      );
+      return;
+    }
+
+    setWorkerDispatchLeaseHeartbeatPlanBusy(true);
+    setWorkerDispatchLeaseHeartbeatPlanError(null);
+    setWorkerDispatchLeaseHeartbeatPlanReceipt(null);
+    try {
+      const result = await workerDispatchLeaseHeartbeatPlanMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        runner_control_plan_receipt: runnerControlPlanReceipt,
+        budget_provider_adapter_plan_receipt: budgetProviderAdapterPlanReceipt,
+        provider_executor_adapter_plan_receipt: providerExecutorAdapterPlanReceipt,
+        retrieval_adapter_plan_receipt: retrievalAdapterPlanReceipt,
+        graph_adapter_plan_receipt: graphAdapterPlanReceipt,
+        final_artifact_adapter_plan_receipt: finalArtifactAdapterPlanReceipt,
+        operator_dispatch_adapter_plan_receipt: operatorDispatchAdapterPlanReceipt,
+        control_ledger_adapter_plan_receipt: controlLedgerAdapterPlanReceipt,
+        control_ledger_persistence_plan_receipt: controlLedgerPersistencePlanReceipt,
+        control_ledger_persistence_apply_plan_receipt: controlLedgerPersistenceApplyPlanReceipt,
+        operator_dispatch_activation_readiness_plan_receipt:
+          operatorDispatchActivationReadinessPlanReceipt,
+        live_dispatch_final_enablement_plan_receipt: liveDispatchFinalEnablementPlanReceipt,
+        live_dispatch_final_enablement_apply_plan_receipt:
+          liveDispatchFinalEnablementApplyPlanReceipt,
+        runner_dispatch_scheduler_plan_receipt: runnerDispatchSchedulerPlanReceipt,
+        runner_dispatch_worker_bootstrap_plan_receipt: runnerDispatchWorkerBootstrapPlanReceipt,
+        scheduler_lease_retry_plan_receipt: schedulerLeaseRetryPlanReceipt,
+        worker_queue_claim_plan_receipt: workerQueueClaimPlanReceipt,
+        repository_transaction_plan_receipt: repositoryTransactionPlanReceipt,
+        repository_commit_rollback_plan_receipt: repositoryCommitRollbackPlanReceipt,
+      });
+      setWorkerDispatchLeaseHeartbeatPlanReceipt(result);
+    } catch (e) {
+      setWorkerDispatchLeaseHeartbeatPlanError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setWorkerDispatchLeaseHeartbeatPlanBusy(false);
     }
   }
 
@@ -5187,6 +5275,218 @@ export default function MidnightOil() {
                   <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
                     Commit rollback receipt fields:{" "}
                     {repositoryCommitRollbackPlanReceipt.required_repository_commit_rollback_receipt_fields.join(
+                      ", ",
+                    )}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Worker lease heartbeat plan
+                </p>
+                <button
+                  type="button"
+                  onClick={onWorkerDispatchLeaseHeartbeatPlanGate}
+                  disabled={
+                    workerDispatchLeaseHeartbeatPlanBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !runnerControlPlanReceipt ||
+                    !budgetProviderAdapterPlanReceipt ||
+                    !providerExecutorAdapterPlanReceipt ||
+                    !retrievalAdapterPlanReceipt ||
+                    !graphAdapterPlanReceipt ||
+                    !finalArtifactAdapterPlanReceipt ||
+                    !operatorDispatchAdapterPlanReceipt ||
+                    !controlLedgerAdapterPlanReceipt ||
+                    !controlLedgerPersistencePlanReceipt ||
+                    !controlLedgerPersistenceApplyPlanReceipt ||
+                    !operatorDispatchActivationReadinessPlanReceipt ||
+                    !liveDispatchFinalEnablementPlanReceipt ||
+                    !liveDispatchFinalEnablementApplyPlanReceipt ||
+                    !runnerDispatchSchedulerPlanReceipt ||
+                    !runnerDispatchWorkerBootstrapPlanReceipt ||
+                    !schedulerLeaseRetryPlanReceipt ||
+                    !workerQueueClaimPlanReceipt ||
+                    !repositoryTransactionPlanReceipt ||
+                    !repositoryCommitRollbackPlanReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {workerDispatchLeaseHeartbeatPlanBusy
+                    ? "Planning heartbeat..."
+                    : "Worker lease heartbeat plan"}
+                </button>
+              </div>
+
+              {workerDispatchLeaseHeartbeatPlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {workerDispatchLeaseHeartbeatPlanError}
+                </p>
+              )}
+
+              {workerDispatchLeaseHeartbeatPlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Worker lease heartbeat receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {workerDispatchLeaseHeartbeatPlanReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={workerDispatchLeaseHeartbeatPlanReceipt.status.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Heartbeat"
+                      value={
+                        workerDispatchLeaseHeartbeatPlanReceipt.worker_lease_heartbeat_allowed
+                          ? "allowed"
+                          : "blocked"
+                      }
+                    />
+                    <Metric
+                      label="Renewal"
+                      value={
+                        workerDispatchLeaseHeartbeatPlanReceipt.worker_lease_renewal_allowed
+                          ? "allowed"
+                          : "blocked"
+                      }
+                    />
+                    <Metric
+                      label="Expiry"
+                      value={
+                        workerDispatchLeaseHeartbeatPlanReceipt.worker_lease_expiry_allowed
+                          ? "allowed"
+                          : "blocked"
+                      }
+                    />
+                    <Metric
+                      label="Receipt write"
+                      value={
+                        workerDispatchLeaseHeartbeatPlanReceipt.worker_lease_heartbeat_recorded ||
+                        workerDispatchLeaseHeartbeatPlanReceipt.worker_lease_renewed ||
+                        workerDispatchLeaseHeartbeatPlanReceipt.worker_lease_expired
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Commit rollback plan"
+                      value={
+                        workerDispatchLeaseHeartbeatPlanReceipt.repository_commit_rollback_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Transaction plan"
+                      value={
+                        workerDispatchLeaseHeartbeatPlanReceipt.repository_transaction_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Queue claim plan"
+                      value={workerDispatchLeaseHeartbeatPlanReceipt.worker_queue_claim_plan_receipt_id}
+                    />
+                    <Metric
+                      label="Heartbeat receipt"
+                      value={workerDispatchLeaseHeartbeatPlanReceipt.planned_heartbeat_receipt_id}
+                    />
+                    <Metric
+                      label="Renewal receipt"
+                      value={workerDispatchLeaseHeartbeatPlanReceipt.planned_lease_renewal_receipt_id}
+                    />
+                    <Metric
+                      label="Expiry receipt"
+                      value={workerDispatchLeaseHeartbeatPlanReceipt.planned_lease_expiry_receipt_id}
+                    />
+                    <Metric
+                      label="Heartbeat ledger"
+                      value={workerDispatchLeaseHeartbeatPlanReceipt.planned_heartbeat_ledger_entry_id}
+                    />
+                    <Metric
+                      label="Queue claim"
+                      value={workerDispatchLeaseHeartbeatPlanReceipt.planned_queue_claim_id}
+                    />
+                    <Metric
+                      label="Claim lease token"
+                      value={workerDispatchLeaseHeartbeatPlanReceipt.planned_claim_lease_token_id}
+                    />
+                    <Metric
+                      label="Queue"
+                      value={workerDispatchLeaseHeartbeatPlanReceipt.planned_queue_id}
+                    />
+                    <Metric
+                      label="Worker"
+                      value={workerDispatchLeaseHeartbeatPlanReceipt.planned_worker_id}
+                    />
+                    <Metric
+                      label="Worker lease"
+                      value={workerDispatchLeaseHeartbeatPlanReceipt.planned_worker_lease_id}
+                    />
+                    <Metric
+                      label="Runner dispatch"
+                      value={workerDispatchLeaseHeartbeatPlanReceipt.planned_runner_dispatch_id}
+                    />
+                    <Metric
+                      label="Visibility timeout"
+                      value={`${workerDispatchLeaseHeartbeatPlanReceipt.planned_visibility_timeout_seconds}s`}
+                    />
+                    <Metric
+                      label="Lease ttl"
+                      value={`${workerDispatchLeaseHeartbeatPlanReceipt.planned_lease_ttl_seconds}s`}
+                    />
+                    <Metric
+                      label="Heartbeat interval"
+                      value={`${workerDispatchLeaseHeartbeatPlanReceipt.planned_heartbeat_interval_seconds}s`}
+                    />
+                    <Metric
+                      label="Max missed"
+                      value={String(
+                        workerDispatchLeaseHeartbeatPlanReceipt.planned_max_missed_heartbeats,
+                      )}
+                    />
+                    <Metric
+                      label="Idempotency key"
+                      value={workerDispatchLeaseHeartbeatPlanReceipt.planned_idempotency_key}
+                    />
+                    <Metric
+                      label="Adapter"
+                      value={workerDispatchLeaseHeartbeatPlanReceipt.adapter_key.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                    <Metric
+                      label="Blocker"
+                      value={workerDispatchLeaseHeartbeatPlanReceipt.blocker_reason.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                  </div>
+                  <ul className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {workerDispatchLeaseHeartbeatPlanReceipt.required_worker_dispatch_lease_heartbeat_invariants
+                      .slice(0, 5)
+                      .map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                  </ul>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Worker lease heartbeat blockers:{" "}
+                    {workerDispatchLeaseHeartbeatPlanReceipt.worker_dispatch_lease_heartbeat_blockers.join(
+                      ", ",
+                    )}
+                  </p>
+                  <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Worker lease heartbeat receipt fields:{" "}
+                    {workerDispatchLeaseHeartbeatPlanReceipt.required_worker_dispatch_lease_heartbeat_receipt_fields.join(
                       ", ",
                     )}
                   </p>
