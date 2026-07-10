@@ -129,6 +129,7 @@ import {
   parsePublicationRefs,
 } from "../ResearchWorkstation/publicationRefs";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
+import { competitiveDrOfflineSurfaceCatalog } from "../../workspace/competitiveDrQuality";
 import {
   listRecentDeepResearchSpawnIds,
   pushRecentDeepResearchSpawnId,
@@ -784,8 +785,20 @@ export default function MidnightOil() {
       ) : null}
 
 
-      {/* Residual (ic/ml/uh/aiu): Settings + L4 + dual-gate + competitive DR scorecard. */}
-      <p className="mb-4 max-w-xl text-[11px] font-mono space-x-3">
+      {/* Residual (ic/ml/uh/aiu/arp): Settings + L4 + dual-gate + competitive DR scorecard. */}
+      <p
+        className="mb-4 max-w-xl text-[11px] font-mono space-x-3"
+        data-testid="moil-competitive-links"
+        data-view-format="html"
+        data-html-first="true"
+        data-offline-surface-count={String(
+          competitiveDrOfflineSurfaceCatalog().count,
+        )}
+        data-live-injectors-deferred="true"
+        data-notdiamond-is-router="false"
+        role="navigation"
+        aria-label="Midnight Oil competitive deep-research navigation"
+      >
         <a
           href="/settings#decision-tree-panel"
           data-testid="moil-settings-link"
@@ -811,12 +824,16 @@ export default function MidnightOil() {
         >
           Dual-gate L4 MO checklist
         </a>
-        {/* Residual (aiu): autonomous swarm → competitive DR honesty map (parity aim/ait). */}
+        {/* Residual (aiu/arp): autonomous swarm → competitive DR honesty map (parity arm/arn/aro). */}
         <a
           href="/settings#settings-competitive-dr-scorecard"
           data-testid="moil-competitive-scorecard-link"
+          data-offline-surface-count={String(
+            competitiveDrOfflineSurfaceCatalog().count,
+          )}
+          data-notdiamond-is-router="false"
           className="underline opacity-80 hover:opacity-100"
-          title="Settings competitive deep-research scorecard (shipped offline MO vs deferred L4 live · never invent live swarm)"
+          title={competitiveDrOfflineSurfaceCatalog().summary}
         >
           Settings · competitive DR scorecard
         </a>

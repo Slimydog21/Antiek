@@ -397,10 +397,19 @@ describe("MidnightOil mode", () => {
 
   it("links competitive DR scorecard and FUTURE brief (aiu)", () => {
     render(<MidnightOil />);
+    // Residual (arp): offline product surface catalog honesty (parity arm/arn/aro).
+    const links = screen.getByTestId("moil-competitive-links");
+    expect(links.getAttribute("data-html-first")).toBe("true");
+    expect(links.getAttribute("data-live-injectors-deferred")).toBe("true");
+    expect(links.getAttribute("data-notdiamond-is-router")).toBe("false");
+    expect(
+      Number(links.getAttribute("data-offline-surface-count") || 0),
+    ).toBeGreaterThanOrEqual(10);
     const scorecard = screen.getByTestId("moil-competitive-scorecard-link");
     expect(scorecard.getAttribute("href")).toBe(
       "/settings#settings-competitive-dr-scorecard",
     );
+    expect(scorecard.getAttribute("data-notdiamond-is-router")).toBe("false");
     expect(scorecard.textContent).toMatch(/competitive DR scorecard/i);
     const future = screen.getByTestId("moil-competitive-dr-future-agent-link");
     expect(future.getAttribute("href") || "").toMatch(
