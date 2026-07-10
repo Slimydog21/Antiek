@@ -4348,3 +4348,8 @@ P0 PR #465. Pivot atq+.
 library-open-* CTAs stamp html-first · never-pdf · library-open · free path.
 Rehydrate path honesty for seamless Antiek HTML account reading.
 vitest MarketplaceHost 43 green. P0 PR #465. Pivot atr+.
+
+## Residual atr · 2026-07-10 — collective continue-as-unit HTML-first readiness
+Continue-as-unit float|full stamp data-html-first · data-unit-continue-ready.
+Title honesty never PDF · L6 live multi-agent deferred. vitest Collective 31 green.
+P0 PR #465. Pivot ats+.

@@ -451,6 +451,10 @@ describe("CollectiveResearchPanel", () => {
     expect(contFloat.getAttribute("data-l6-live-multiagent")).toBe("deferred");
     expect(contFloat.getAttribute("data-window-mode")).toBe("floating");
     expect(contFloat.getAttribute("data-view-format")).toBe("html");
+    // Residual (atr): HTML-first · unit-continue-ready honesty.
+    expect(contFloat.getAttribute("data-html-first")).toBe("true");
+    expect(contFloat.getAttribute("data-unit-continue-ready")).toBe("true");
+    expect(contFloat.getAttribute("title") || "").toMatch(/never PDF/i);
     // Residual (afh): unit re-entry → DR path honesty stamps.
     expect(contFloat.getAttribute("data-collective-id")).toBe("col_dc");
     expect(contFloat.getAttribute("data-parent-asset-id")).toBe("book-1");
@@ -461,6 +465,8 @@ describe("CollectiveResearchPanel", () => {
     const contFull = screen.getByTestId("collective-continue-as-unit-full");
     expect(contFull.getAttribute("data-l6-live-multiagent")).toBe("deferred");
     expect(contFull.getAttribute("data-window-mode")).toBe("full");
+    expect(contFull.getAttribute("data-html-first")).toBe("true");
+    expect(contFull.getAttribute("data-unit-continue-ready")).toBe("true");
     expect(contFull.getAttribute("data-collective-id")).toBe("col_dc");
     expect(contFull.getAttribute("data-parent-asset-id")).toBe("book-1");
     expect(contFull.getAttribute("data-seamless-unit-continue")).toBe("true");

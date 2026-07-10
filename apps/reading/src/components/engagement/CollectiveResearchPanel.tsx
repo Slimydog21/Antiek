@@ -1608,7 +1608,12 @@ export function CollectiveResearchPanel({
                 // Residual (adk): offline cohesive unit re-entry — not live L6 council.
                 data-l6-live-multiagent="deferred"
                 data-view-format="html"
+                data-html-first="true"
                 data-window-mode="floating"
+                // Residual (atr): unit continue readiness honesty (prompt_block present).
+                data-unit-continue-ready={String(
+                  Boolean(unit.prompt_block?.trim()),
+                )}
                 data-research-tier={
                   unit.recommended_research_tier || researchTier || ""
                 }
@@ -1631,7 +1636,11 @@ export function CollectiveResearchPanel({
                       ).trim(),
                   ),
                 )}
-                title="Open a new floating deep research session seeded with this collective prompt (offline unit · L6 live multi-agent deferred)"
+                title={
+                  unit.prompt_block?.trim()
+                    ? "Open a new floating deep research session seeded with this collective prompt (offline unit · HTML-first · L6 live multi-agent deferred · never PDF)"
+                    : "Cohesive unit prompt empty — continue not ready"
+                }
               >
                 {busy ? "Opening…" : "Continue as cohesive unit (window)"}
               </button>
@@ -1647,7 +1656,12 @@ export function CollectiveResearchPanel({
                 // Residual (adk): offline cohesive unit re-entry — not live L6 council.
                 data-l6-live-multiagent="deferred"
                 data-view-format="html"
+                data-html-first="true"
                 data-window-mode="full"
+                // Residual (atr): unit continue readiness honesty (prompt_block present).
+                data-unit-continue-ready={String(
+                  Boolean(unit.prompt_block?.trim()),
+                )}
                 data-research-tier={
                   unit.recommended_research_tier || researchTier || ""
                 }
@@ -1670,7 +1684,11 @@ export function CollectiveResearchPanel({
                       ).trim(),
                   ),
                 )}
-                title="Open collective unit deep research expanded to full working region (offline unit · L6 live multi-agent deferred)"
+                title={
+                  unit.prompt_block?.trim()
+                    ? "Open collective unit deep research expanded to full working region (offline unit · HTML-first · L6 live multi-agent deferred · never PDF)"
+                    : "Cohesive unit prompt empty — continue not ready"
+                }
               >
                 {busy ? "Opening…" : "Continue as unit (full)"}
               </button>
