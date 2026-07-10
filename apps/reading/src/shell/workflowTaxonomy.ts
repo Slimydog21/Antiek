@@ -229,7 +229,7 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     workflow: "research",
     label: "Midnight Oil",
     blurb:
-      "Autonomous deep-research swarm: goals + duration → recommended price ceiling → explicit approve (HTML deliverable).",
+      "Autonomous multi-goal deep-research swarm: goals (one per line · templates) + duration + fan-out → recommended price ceiling → explicit approve (HTML deliverable).",
     built: true,
     route: "/midnight-oil",
   },

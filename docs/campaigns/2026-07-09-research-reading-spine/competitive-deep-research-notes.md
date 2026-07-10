@@ -3640,3 +3640,7 @@ vision tip aog · aoc–aog closed. vitest MidnightOil 30 green. P0 PR #465. Piv
 ## Residual aoi · 2026-07-10 — multi-agent written analysis ≥2 spawns
 Create written analysis requires ≥2 selected spawns (single-spawn → Merge draft).
 vitest CollectiveResearchPanel 31 green. P0 PR #465. Pivot aoj+ outside thrash.
+
+## Residual aoj · 2026-07-10 — product surface MO multi-goal blurb honesty
+productModeRoutes + workflowTaxonomy Midnight Oil blurb stamps multi-goal ·
+templates · fan-out · HTML. vitest productModeRoutes 8 green. P0 PR #465. Pivot aok+.

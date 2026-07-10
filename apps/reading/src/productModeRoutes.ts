@@ -36,7 +36,7 @@ export const PRODUCT_MODE_ROUTES: readonly ProductModeRoute[] = [
     Component: MidnightOil,
     viewFormat: "html",
     blurb:
-      "Autonomous deep research: goals + duration → recommended price ceiling → explicit approve.",
+      "Autonomous multi-goal deep research: goals (one per line · templates) + duration + fan-out → recommended price ceiling → explicit approve (HTML deliverable).",
   },
   {
     path: "/marketplace/host",

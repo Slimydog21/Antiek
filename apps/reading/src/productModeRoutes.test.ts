@@ -63,6 +63,16 @@ describe("productModeRoutes shell registration", () => {
     expect(mkt?.route).toBe("/marketplace/host");
   });
 
+  it("Midnight Oil blurb stamps multi-goal swarm honesty (aoj)", () => {
+    const moil = productModeByPath("/midnight-oil");
+    expect(moil?.blurb || "").toMatch(/multi-goal/i);
+    expect(moil?.blurb || "").toMatch(/templates|one per line/i);
+    expect(moil?.blurb || "").toMatch(/price ceiling/i);
+    expect(moil?.viewFormat).toBe("html");
+    const tax = modeById("MidnightOil");
+    expect(tax?.description || tax?.blurb || "").toMatch(/multi-goal/i);
+  });
+
   it("App.tsx consumes PRODUCT_MODE_ROUTES for shell wiring", () => {
     const appSrc = readFileSync(join(__dirname, "App.tsx"), "utf-8");
     expect(appSrc).toContain("PRODUCT_MODE_ROUTES");
