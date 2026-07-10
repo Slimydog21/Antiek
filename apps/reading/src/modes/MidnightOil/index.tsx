@@ -14,6 +14,7 @@ import {
   graphAdapterPlanMidnightOil,
   graphMutationMidnightOil,
   liveRunActivationSettingsMidnightOil,
+  operatorDispatchActivationReadinessPlanMidnightOil,
   operatorDispatchAdapterPlanMidnightOil,
   preflightMidnightOil,
   providerExecutorAdapterPlanMidnightOil,
@@ -35,6 +36,7 @@ import {
   type MidnightOilGraphAdapterPlanReceipt,
   type MidnightOilGraphMutationReceipt,
   type MidnightOilLiveRunActivationSettingsReceipt,
+  type MidnightOilOperatorDispatchActivationReadinessPlanReceipt,
   type MidnightOilOperatorDispatchAdapterPlanReceipt,
   type MidnightOilPreflight,
   type MidnightOilProviderExecutorAdapterPlanReceipt,
@@ -111,6 +113,10 @@ export default function MidnightOil() {
     useState<MidnightOilControlLedgerPersistencePlanReceipt | null>(null);
   const [controlLedgerPersistenceApplyPlanReceipt, setControlLedgerPersistenceApplyPlanReceipt] =
     useState<MidnightOilControlLedgerPersistenceApplyPlanReceipt | null>(null);
+  const [
+    operatorDispatchActivationReadinessPlanReceipt,
+    setOperatorDispatchActivationReadinessPlanReceipt,
+  ] = useState<MidnightOilOperatorDispatchActivationReadinessPlanReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -133,6 +139,10 @@ export default function MidnightOil() {
   const [controlLedgerPersistencePlanBusy, setControlLedgerPersistencePlanBusy] = useState(false);
   const [controlLedgerPersistenceApplyPlanBusy, setControlLedgerPersistenceApplyPlanBusy] =
     useState(false);
+  const [
+    operatorDispatchActivationReadinessPlanBusy,
+    setOperatorDispatchActivationReadinessPlanBusy,
+  ] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
   const [liveSettingsError, setLiveSettingsError] = useState<string | null>(null);
@@ -161,10 +171,20 @@ export default function MidnightOil() {
     useState<string | null>(null);
   const [controlLedgerPersistenceApplyPlanError, setControlLedgerPersistenceApplyPlanError] =
     useState<string | null>(null);
+  const [
+    operatorDispatchActivationReadinessPlanError,
+    setOperatorDispatchActivationReadinessPlanError,
+  ] = useState<string | null>(null);
+
+  function clearOperatorDispatchActivationReadinessPlan() {
+    setOperatorDispatchActivationReadinessPlanError(null);
+    setOperatorDispatchActivationReadinessPlanReceipt(null);
+  }
 
   function clearControlLedgerPersistenceApplyPlan() {
     setControlLedgerPersistenceApplyPlanError(null);
     setControlLedgerPersistenceApplyPlanReceipt(null);
+    clearOperatorDispatchActivationReadinessPlan();
   }
 
   function clearControlLedgerPersistencePlan() {
@@ -244,6 +264,7 @@ export default function MidnightOil() {
     setControlLedgerAdapterPlanError(null);
     setControlLedgerPersistencePlanError(null);
     setControlLedgerPersistenceApplyPlanError(null);
+    setOperatorDispatchActivationReadinessPlanError(null);
     setPreflight(null);
     setDryRunReceipt(null);
     setLiveSettingsReceipt(null);
@@ -266,6 +287,7 @@ export default function MidnightOil() {
     setControlLedgerAdapterPlanReceipt(null);
     setControlLedgerPersistencePlanReceipt(null);
     setControlLedgerPersistenceApplyPlanReceipt(null);
+    setOperatorDispatchActivationReadinessPlanReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -1099,6 +1121,7 @@ export default function MidnightOil() {
     setControlLedgerPersistenceApplyPlanBusy(true);
     setControlLedgerPersistenceApplyPlanError(null);
     setControlLedgerPersistenceApplyPlanReceipt(null);
+    clearOperatorDispatchActivationReadinessPlan();
     try {
       const result = await controlLedgerPersistenceApplyPlanMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -1119,6 +1142,57 @@ export default function MidnightOil() {
       setControlLedgerPersistenceApplyPlanError(e instanceof Error ? e.message : String(e));
     } finally {
       setControlLedgerPersistenceApplyPlanBusy(false);
+    }
+  }
+
+  async function onOperatorDispatchActivationReadinessPlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerControlPlanReceipt ||
+      !budgetProviderAdapterPlanReceipt ||
+      !providerExecutorAdapterPlanReceipt ||
+      !retrievalAdapterPlanReceipt ||
+      !graphAdapterPlanReceipt ||
+      !finalArtifactAdapterPlanReceipt ||
+      !operatorDispatchAdapterPlanReceipt ||
+      !controlLedgerAdapterPlanReceipt ||
+      !controlLedgerPersistencePlanReceipt ||
+      !controlLedgerPersistenceApplyPlanReceipt
+    ) {
+      setOperatorDispatchActivationReadinessPlanError(
+        "Operator dispatch activation readiness requires launch packet, approval receipt, runner handoff, runner control plan receipt, budget provider adapter plan receipt, provider executor adapter plan receipt, retrieval adapter plan receipt, graph adapter plan receipt, final artifact adapter plan receipt, operator dispatch adapter plan receipt, control ledger adapter plan receipt, control ledger persistence plan receipt, and control ledger persistence apply plan receipt.",
+      );
+      return;
+    }
+
+    setOperatorDispatchActivationReadinessPlanBusy(true);
+    setOperatorDispatchActivationReadinessPlanError(null);
+    setOperatorDispatchActivationReadinessPlanReceipt(null);
+    try {
+      const result = await operatorDispatchActivationReadinessPlanMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        runner_control_plan_receipt: runnerControlPlanReceipt,
+        budget_provider_adapter_plan_receipt: budgetProviderAdapterPlanReceipt,
+        provider_executor_adapter_plan_receipt: providerExecutorAdapterPlanReceipt,
+        retrieval_adapter_plan_receipt: retrievalAdapterPlanReceipt,
+        graph_adapter_plan_receipt: graphAdapterPlanReceipt,
+        final_artifact_adapter_plan_receipt: finalArtifactAdapterPlanReceipt,
+        operator_dispatch_adapter_plan_receipt: operatorDispatchAdapterPlanReceipt,
+        control_ledger_adapter_plan_receipt: controlLedgerAdapterPlanReceipt,
+        control_ledger_persistence_plan_receipt: controlLedgerPersistencePlanReceipt,
+        control_ledger_persistence_apply_plan_receipt: controlLedgerPersistenceApplyPlanReceipt,
+      });
+      setOperatorDispatchActivationReadinessPlanReceipt(result);
+    } catch (e) {
+      setOperatorDispatchActivationReadinessPlanError(
+        e instanceof Error ? e.message : String(e),
+      );
+    } finally {
+      setOperatorDispatchActivationReadinessPlanBusy(false);
     }
   }
 
@@ -3038,6 +3112,152 @@ export default function MidnightOil() {
                   <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
                     Commit receipt fields:{" "}
                     {controlLedgerPersistenceApplyPlanReceipt.required_commit_receipt_fields.join(
+                      ", ",
+                    )}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Operator dispatch activation readiness
+                </p>
+                <button
+                  type="button"
+                  onClick={onOperatorDispatchActivationReadinessPlanGate}
+                  disabled={
+                    operatorDispatchActivationReadinessPlanBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !runnerControlPlanReceipt ||
+                    !budgetProviderAdapterPlanReceipt ||
+                    !providerExecutorAdapterPlanReceipt ||
+                    !retrievalAdapterPlanReceipt ||
+                    !graphAdapterPlanReceipt ||
+                    !finalArtifactAdapterPlanReceipt ||
+                    !operatorDispatchAdapterPlanReceipt ||
+                    !controlLedgerAdapterPlanReceipt ||
+                    !controlLedgerPersistencePlanReceipt ||
+                    !controlLedgerPersistenceApplyPlanReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {operatorDispatchActivationReadinessPlanBusy
+                    ? "Planning readiness..."
+                    : "Operator dispatch activation readiness"}
+                </button>
+              </div>
+
+              {operatorDispatchActivationReadinessPlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {operatorDispatchActivationReadinessPlanError}
+                </p>
+              )}
+
+              {operatorDispatchActivationReadinessPlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Operator dispatch activation readiness receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {operatorDispatchActivationReadinessPlanReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={operatorDispatchActivationReadinessPlanReceipt.status.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                    <Metric
+                      label="Allowed"
+                      value={
+                        operatorDispatchActivationReadinessPlanReceipt
+                          .activation_readiness_allowed
+                          ? "allowed"
+                          : "blocked"
+                      }
+                    />
+                    <Metric
+                      label="Ready"
+                      value={
+                        operatorDispatchActivationReadinessPlanReceipt.activation_ready
+                          ? "ready"
+                          : "not ready"
+                      }
+                    />
+                    <Metric
+                      label="Live dispatch"
+                      value={
+                        operatorDispatchActivationReadinessPlanReceipt
+                          .operator_live_dispatch_enabled
+                          ? "enabled"
+                          : "disabled"
+                      }
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Commit receipt"
+                      value={
+                        operatorDispatchActivationReadinessPlanReceipt.planned_commit_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Readiness receipt"
+                      value={
+                        operatorDispatchActivationReadinessPlanReceipt
+                          .planned_activation_readiness_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Dispatch enablement"
+                      value={
+                        operatorDispatchActivationReadinessPlanReceipt
+                          .planned_dispatch_enablement_id
+                      }
+                    />
+                    <Metric
+                      label="Repository"
+                      value={operatorDispatchActivationReadinessPlanReceipt.planned_repository_id}
+                    />
+                    <Metric
+                      label="Transaction"
+                      value={operatorDispatchActivationReadinessPlanReceipt.planned_transaction_id}
+                    />
+                    <Metric
+                      label="Adapter"
+                      value={operatorDispatchActivationReadinessPlanReceipt.adapter_key.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                    <Metric
+                      label="Blocker"
+                      value={operatorDispatchActivationReadinessPlanReceipt.blocker_reason.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                  </div>
+                  <ul className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {operatorDispatchActivationReadinessPlanReceipt.required_activation_invariants
+                      .slice(0, 5)
+                      .map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                  </ul>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Readiness blockers:{" "}
+                    {operatorDispatchActivationReadinessPlanReceipt.readiness_blockers.join(", ")}
+                  </p>
+                  <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Activation receipt fields:{" "}
+                    {operatorDispatchActivationReadinessPlanReceipt.required_activation_receipt_fields.join(
                       ", ",
                     )}
                   </p>

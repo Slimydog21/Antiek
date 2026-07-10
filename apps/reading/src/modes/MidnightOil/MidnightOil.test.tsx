@@ -17,6 +17,7 @@ import {
   graphAdapterPlanMidnightOil,
   graphMutationMidnightOil,
   liveRunActivationSettingsMidnightOil,
+  operatorDispatchActivationReadinessPlanMidnightOil,
   operatorDispatchAdapterPlanMidnightOil,
   preflightMidnightOil,
   providerExecutorAdapterPlanMidnightOil,
@@ -1065,6 +1066,84 @@ vi.mock("../../api/midnightOil", () => ({
       "control ledger persistence apply plan only: no repository transaction is opened or committed",
     ],
   })),
+  operatorDispatchActivationReadinessPlanMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-operator-dispatch-activation-readiness-plan",
+    control_ledger_persistence_apply_plan_receipt_id:
+      "midnight-oil-test-control-ledger-persistence-apply-plan",
+    control_ledger_persistence_plan_receipt_id:
+      "midnight-oil-test-control-ledger-persistence-plan",
+    control_ledger_adapter_plan_receipt_id: "midnight-oil-test-control-ledger-adapter-plan",
+    operator_dispatch_adapter_plan_receipt_id:
+      "midnight-oil-test-operator-dispatch-adapter-plan",
+    runner_control_plan_receipt_id: "midnight-oil-test-runner-control-plan",
+    runner_readiness_receipt_id: "midnight-oil-test-runner-readiness",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    run_id: "midnight-oil-test",
+    status: "blocked_operator_dispatch_activation_readiness_unimplemented",
+    adapter_key: "operator_dispatch_activation_readiness",
+    planned_commit_receipt_id: "midnight-oil-test-operator-dispatch-control-commit-receipt",
+    planned_activation_readiness_receipt_id:
+      "midnight-oil-test-operator-dispatch-activation-readiness-receipt",
+    planned_dispatch_enablement_id:
+      "midnight-oil-test-operator-dispatch-live-enable-activation",
+    planned_repository_id: "midnight-oil-test-operator-dispatch-control-repository",
+    planned_transaction_id: "midnight-oil-test-operator-dispatch-control-transaction",
+    required_activation_invariants: [
+      "activation readiness must require a committed control ledger persistence receipt before live dispatch can be enabled",
+      "activation readiness must verify operator approval scope, price ceiling, work minutes, and expiry before enablement",
+      "activation readiness must keep live dispatch disabled until budget, provider, retrieval, graph, and artifact adapters are implemented",
+    ],
+    required_activation_receipt_fields: [
+      "activation_readiness_receipt_id",
+      "run_id",
+      "launch_packet_id",
+      "approval_receipt_id",
+      "commit_receipt_id",
+      "operator_dispatch_setting_id",
+      "readiness_blockers",
+      "activation_ready",
+      "operator_live_dispatch_enabled",
+    ],
+    readiness_blockers: [
+      "committed control ledger persistence receipt",
+      "operator activation receipt writer",
+      "budget reservation provider",
+      "model/provider route executor",
+      "retrieval executor with source receipts",
+      "graph mutation writer",
+      "final HTML artifact writer",
+    ],
+    blocker_reason: "operator_dispatch_activation_readiness_unimplemented",
+    activation_readiness_allowed: false,
+    activation_ready: false,
+    transaction_opened: false,
+    transaction_committed: false,
+    setting_persisted: false,
+    control_ledger_written: false,
+    audit_log_written: false,
+    rollback_receipt_created: false,
+    operator_dispatch_allowed: false,
+    operator_live_dispatch_enabled: false,
+    live_run_allowed: false,
+    dispatch_allowed: false,
+    dispatch_performed: false,
+    budget_reservation_allowed: false,
+    budget_reserved: false,
+    provider_execution_allowed: false,
+    provider_calls_made: false,
+    retrieval_allowed: false,
+    retrieval_performed: false,
+    source_receipts_created: false,
+    graph_mutation_allowed: false,
+    graph_mutated: false,
+    final_artifact_allowed: false,
+    final_artifact_created: false,
+    adapter_plan_notes: [
+      "operator dispatch activation readiness plan only: no live dispatch readiness is granted",
+    ],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -1847,5 +1926,75 @@ describe("MidnightOil", () => {
       ),
     ).toBeTruthy();
     expect(screen.getByText(/Commit receipt fields:/)).toBeTruthy();
+
+    await user.click(
+      screen.getByRole("button", { name: "Operator dispatch activation readiness" }),
+    );
+
+    await waitFor(() =>
+      expect(operatorDispatchActivationReadinessPlanMidnightOil).toHaveBeenCalled(),
+    );
+    expect(operatorDispatchActivationReadinessPlanMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      runner_control_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-control-plan",
+      }),
+      budget_provider_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-budget-provider-adapter-plan",
+      }),
+      provider_executor_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-provider-executor-adapter-plan",
+      }),
+      retrieval_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-retrieval-adapter-plan",
+      }),
+      graph_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-graph-adapter-plan",
+      }),
+      final_artifact_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-final-artifact-adapter-plan",
+      }),
+      operator_dispatch_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-operator-dispatch-adapter-plan",
+      }),
+      control_ledger_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-adapter-plan",
+      }),
+      control_ledger_persistence_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-persistence-plan",
+      }),
+      control_ledger_persistence_apply_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-persistence-apply-plan",
+      }),
+    });
+    expect(screen.getByText("Operator dispatch activation readiness receipt")).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-operator-dispatch-activation-readiness-plan"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("blocked operator dispatch activation readiness unimplemented"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-operator-dispatch-activation-readiness-receipt"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-operator-dispatch-live-enable-activation"),
+    ).toBeTruthy();
+    expect(screen.getByText("operator dispatch activation readiness")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "activation readiness must require a committed control ledger persistence receipt before live dispatch can be enabled",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Readiness blockers:/)).toBeTruthy();
+    expect(screen.getByText(/Activation receipt fields:/)).toBeTruthy();
   });
 });
