@@ -1,0 +1,12 @@
+# inventory-vf · FUTURE-AGENT tip re-anchor through ve
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: vf
+date: 2026-07-10
+tip_sha: 783ce272
+
+## Closed
+- FUTURE-AGENT tip → 783ce272 · arcs tt–ve (38 residual ships)
+- Highest leverage: operator merge PR #465 OPEN
+
+## Not in scope
+- Operator merge PR #465 (gated)

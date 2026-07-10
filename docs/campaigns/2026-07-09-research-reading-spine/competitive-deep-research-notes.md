@@ -1249,3 +1249,8 @@ bench-auditable Write provenance — same honesty bar as collective_unit_prompt.
 suite-competitive-dogfood-v8 adds dogfood-wrestle-twin-cross-asset-merge-write-seed.
 Settings posture honesty. Competitive delta: Antiek-bench recursive rewrite
 learns multi-asset twin merge Write seed as first-class wrestle task.
+
+## Residual vf · 2026-07-10 — FUTURE-AGENT tip re-anchor through ve
+FUTURE-AGENT-SPEC tip → 783ce272 with closed arcs tt–ve (38 residual ships).
+Competitive delta: swarm handoff tip-true; operator merge PR #465 remains
+highest leverage.
