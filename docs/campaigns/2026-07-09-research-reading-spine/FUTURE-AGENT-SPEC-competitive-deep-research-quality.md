@@ -1,6 +1,6 @@
 # Future-agent executable brief — competitive deep-research quality
 
-**Campaign tip at write:** residual **aih** · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465**  
+**Campaign tip at write:** residual **akd** · tip `c2b2f414` (akc parent) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465**  
 **Bar:** Hawkins craft · five values · HTML-first · offline-honest · budget-before-fire  
 **Operator mandate:** highest quality deep research product in the world — study competition, write specs, execute meaningful code.
 
@@ -9,36 +9,42 @@
 | Competitor pattern | Technical decision | Antiek map (shipped / deferred) |
 |---|---|---|
 | Multi-agent fan-out + shared memory | Parallel sub-Qs + merge | CollectiveResearchPanel · continue-as-unit · L6 FUTURE offline/live |
-| Citation-required synthesis | Claims ↔ source chunks | Evidence pack · citation-trust · hydrate refs |
-| Budget-capped autonomous runs | Hard/soft USD halt | Soft budget projection · Midnight Oil ceiling · dual-gate L4 live |
+| Citation-required synthesis | Claims ↔ source chunks | Evidence pack · multi-hop hops (air) · citation-trust · hydrate refs |
+| Budget-capped autonomous runs | Hard/soft USD halt | Soft budget projection · launch budget scorecard (ajm) · MO ceiling · L4 dual-gate live |
 | HTML/notebook deliverable | Agent-editable portable view | HTML-first host · Write land · never PDF view |
 | Source connectors (arxiv, web, newsletters) | First-class acquisition | Quick-call presets · hydrate adapters · L1/L2 dual-gate live |
-| Model routing | Auto or manual | Decision-tree manual · Antiek-bench weekly · ND **advisory only** |
+| Model routing | Auto or manual | Decision-tree manual · Antiek-bench weekly · ND **advisory only** · install never-dispatch (ajy–aka) |
 
 ## Antiek differentiators (preserve · never dilute)
 
-1. **Recursive twin note-taker** on every asset (insights + questions substrate).
+1. **Recursive twin note-taker** on every asset (insights + questions substrate) · promote depth-graph unit≡node (ajn–ajw).
 2. **Reading ≡ research** — same engagement spine for books and investigations.
 3. **Script-free HTML** as canonical human view.
 4. **Honest failure classification** — no fake green on dispatch/hydrate/seed.
-5. **Budget projection before send** — operator sees over-budget risk (foresight chrome aic–aif).
+5. **Budget projection before send** — operator sees over-budget risk (foresight chrome aic–aif · launch panel ajm).
 
 ## Offline spine already product-complete (do not rebuild)
 
 - Spawn / twin / merge / collective / written analysis  
 - Floating + full DR · highlight paths · FloatMenu  
-- Marketplace free STEM HTML + purchase manual receipt  
+- Marketplace free STEM HTML + purchase manual receipt · host L5 FUTURE deep-links (akb)  
 - Knowledge-dense quick-call · pub-ref foresight chrome matrix  
-- Antiek-bench dogfood v21–v27 recursive rewrite (propose≠promote)  
+- Multi-hop citation chain · evidence Write hop honesty · dogfood v29–v33  
+- Twin promote depth-graph path (UI · substrate · Write · dogfood v32–v33)  
+- Competitive DR scorecard navigation matrix (progress · MO · collective · attach · marketplace · badge · budget · ND)  
+- NotDiamond advisory-only install path (ajy–aka) · never router  
+- Antiek-bench dogfood recursive rewrite through **v33** (propose≠promote)  
 - FUTURE-AGENT L5/L6/twin/ND briefs  
 
 ## Highest-value offline product residuals (next)
 
-1. **Citation chain UI** — multi-hop claim→source navigation in evidence pack HTML (competitive grounding UX). **Shipped offline (aij count chrome · air hop stages · ais dogfood v29).**  
-2. **Long-horizon wrestle progress** — multi-minute progress honesty when live step dual-gate green; offline progress HTML already ships.  
-3. **Twin intelligent search defaults** — domainAwareSearchDefault (ahr) · expand domains as free STEM grows.  
-4. **Competitive DR quality scorecard** — Settings panel listing shipped vs deferred competitive deltas (honest map · not vanity).  
-5. **Write-land from DR analysis** — keep has-body matrix; never invent outline when HTML is title-only.
+1. **Citation chain UI** — **Shipped offline** (aij · air · ais · aji · ajk).  
+2. **Long-horizon wrestle progress** — offline progress HTML ships · live step dual-gate L4.  
+3. **Twin intelligent search defaults** — **Shipped expanded** (ahr · aiy · ajb) · grow domains with free STEM.  
+4. **Competitive DR quality scorecard** — **Shipped** (aii · navigation matrix aim–ajz). Prefer non-scorecard residuals next.  
+5. **Write-land from DR analysis** — keep has-body matrix; never invent outline when HTML is title-only.  
+6. **Marketplace L5** — offline manual receipt + FUTURE L5 host deep-links (akb) · live rails dual-gate only.  
+7. **Twin promote depth-graph** — **Shipped end-to-end** (ajn–ajw).  
 
 ## Live injectors (operator dual-gate only)
 
@@ -48,14 +54,14 @@
 | L2 | Live Substack body (ToS factory) |
 | L3 | Live twin seed |
 | L4 | Live Midnight Oil worker step |
-| L5 | Payment rails (FUTURE-AGENT L5 brief) |
+| L5 | Payment rails (FUTURE-AGENT L5 brief · host deep-links akb) |
 | L6 | Live multi-agent council (FUTURE-AGENT L6 brief) |
-| L7 | NotDiamond router — **never** (advisory only) |
+| L7 | NotDiamond router — **never** (advisory only · install never-dispatch ajy–aka) |
 
 ## Execution order for future agents
 
-1. Inventory-first: read SESSION-ARC-ags-ahw + inventories aif–aig.  
-2. Prefer offline product residual over dual-gate invention.  
+1. Inventory-first: read SESSION-ARC-ajn-ajw · SESSION-ARC-ajy-akb · inventories aka–akc · tip SHA.  
+2. Prefer offline product residual over dual-gate invention · **avoid scorecard/dogfood thrash**.  
 3. One residual letter/cycle · green tests · campaign push only.  
 4. Operator merges PR #465 · main/prod never by agents.  
 

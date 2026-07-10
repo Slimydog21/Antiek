@@ -1,0 +1,16 @@
+# inventory-akd · FUTURE competitive DR quality brief tip re-anchor
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: akd
+date: 2026-07-10
+parent_tip: c2b2f414 (akc)
+
+## Closed
+- FUTURE-AGENT-SPEC-competitive-deep-research-quality.md:
+  - tip re-anchor · competitive map · offline complete list through akb
+  - highest-value next residuals · avoid scorecard/dogfood thrash
+  - L5/L7 honesty notes (akb · ajy–aka)
+- vitest Settings deferred/scorecard link still green
+
+## Next
+ake+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

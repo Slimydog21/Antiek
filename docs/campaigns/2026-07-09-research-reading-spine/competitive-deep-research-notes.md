@@ -3087,3 +3087,8 @@ P0 operator merge PR #465. Pivot akc+ outside thrash.
 ## Residual akc · 2026-07-10 — SESSION-ARC ajy–akb ND never-dispatch + L5 honesty
 Wave handoff: ND install→decision-tree never-dispatch path · marketplace host
 FUTURE L5 seamless port. P0 operator merge PR #465. Pivot akd+ outside thrash.
+
+## Residual akd · 2026-07-10 — FUTURE competitive DR quality brief tip re-anchor
+Executable competitive DR brief refreshed with tip SHA and shipped map through
+akb (multi-hop · depth-graph · ND never-dispatch · L5 host deep-links · dogfood v33).
+P0 operator merge PR #465. Pivot ake+ outside thrash.
