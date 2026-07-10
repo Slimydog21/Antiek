@@ -261,6 +261,8 @@ KNOWN_USAGE_FEED_SOURCES: tuple[str, ...] = (
     "collective_unit_prompt",
     # Residual (vd): recursive note-taker cross-asset merge → Write seed feed.
     "twin_cross_asset_merge",
+    # Residual (vk): collective written analysis float → Write seed feed.
+    "collective_written_analysis",
     "antiek_bench.offline_dogfood",
     "engagement",
 )
@@ -287,6 +289,8 @@ TWIN_WRITE_SEED_USAGE_SOURCES: frozenset[str] = frozenset(
         "collective_unit_prompt",
         # Residual (vd): cross-asset twin merge Write seed.
         "twin_cross_asset_merge",
+        # Residual (vk): collective written analysis Write seed.
+        "collective_written_analysis",
     }
 )
 

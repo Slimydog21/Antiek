@@ -1274,3 +1274,8 @@ floats self-seed honestly when re-opened as reading windows.
 SESSION-ARC-tt-vi + FUTURE-AGENT tip 22495c4b (42 residual ships). Competitive
 delta: compaction-safe handoff for multi-agent swarm; operator merge PR #465
 is highest leverage remaining.
+
+## Residual vk · 2026-07-10 — collective_written_analysis Write seed provenance
+store/load + hosted Open Write preserve collective_written_analysis (known 17).
+Competitive delta: multi-spawn written analysis → Write is bench-auditable —
+parity twin_cross_asset_merge and collective_unit_prompt.

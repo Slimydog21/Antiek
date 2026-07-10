@@ -14,6 +14,8 @@ describe("writeSeedFeedSources (rt/ru)", () => {
     expect(WRITE_SEED_FEED_SOURCES).toContain("collective_unit_prompt");
     // Residual (vd): cross-asset twin merge Write seed.
     expect(WRITE_SEED_FEED_SOURCES).toContain("twin_cross_asset_merge");
+    // Residual (vk): collective written analysis Write seed.
+    expect(WRITE_SEED_FEED_SOURCES).toContain("collective_written_analysis");
     expect(WRITE_SEED_FEED_SOURCES).not.toContain("twin_draft_selected");
   });
 

@@ -76,6 +76,21 @@ describe("twinWriteSeed (pp)", () => {
     expect(seed?.title).toMatch(/Twin draft|Cross-asset|a\+b/i);
   });
 
+  it("builds hosted collective_written_analysis Write seed source (vk)", () => {
+    const href = buildHostedHtmlWriteHref({
+      documentId: "analysis:col_1",
+      title: "Written analysis · 3 spawns",
+      html: '<article data-source="collective_written_analysis"><p>Analysis.</p></article>',
+      source: "collective_written_analysis",
+    });
+    const key = decodeURIComponent(
+      (href.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    const seed = loadTwinWriteSeed(key);
+    expect(seed?.source).toBe("collective_written_analysis");
+    expect(seed?.title).toMatch(/Written analysis|Collective written analysis/i);
+  });
+
   it("rejects empty plain_text and foreign keys", () => {
     expect(
       storeTwinWriteSeed({

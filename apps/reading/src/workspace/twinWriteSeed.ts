@@ -28,7 +28,9 @@ export type TwinWriteSeedSource =
   // Residual (tu): multi-spawn cohesive unit prompt float → Write seed (tt catalog).
   | "collective_unit_prompt"
   // Residual (vd): recursive note-taker cross-asset merge → Write seed.
-  | "twin_cross_asset_merge";
+  | "twin_cross_asset_merge"
+  // Residual (vk): collective written analysis float → Write seed.
+  | "collective_written_analysis";
 
 export type TwinWriteSeedPayload = {
   plain_text: string;
@@ -82,6 +84,8 @@ export function storeTwinWriteSeed(input: {
     "collective_unit_prompt",
     // Residual (vd): cross-asset twin merge provenance.
     "twin_cross_asset_merge",
+    // Residual (vk): collective written analysis float.
+    "collective_written_analysis",
   ];
   const source: TwinWriteSeedSource = allowed.includes(
     input.source as TwinWriteSeedSource,
@@ -137,6 +141,8 @@ export function loadTwinWriteSeed(key: string): TwinWriteSeedPayload | null {
       "collective_unit_prompt",
       // Residual (vd): cross-asset twin merge provenance.
       "twin_cross_asset_merge",
+      // Residual (vk): collective written analysis float.
+      "collective_written_analysis",
     ];
     const source: TwinWriteSeedSource = allowedLoad.includes(
       srcRaw as TwinWriteSeedSource,
@@ -306,6 +312,8 @@ export function buildHostedHtmlWriteHref(opts: {
     // Residual (vg): recursive note-taker twin draft floats → Write seed.
     "twin_draft_selected",
     "twin_cross_asset_merge",
+    // Residual (vk): collective written analysis float → Write seed.
+    "collective_written_analysis",
   ]);
   const source = KNOWN_HOST_WRITE_SOURCES.has(srcRaw)
     ? srcRaw
@@ -330,7 +338,9 @@ export function buildHostedHtmlWriteHref(opts: {
                     ? `Twin cross-asset merge · ${doc}`
                     : source === "twin_draft_selected"
                       ? `Twin draft · ${doc}`
-                      : `Hosted HTML · ${doc}`;
+                      : source === "collective_written_analysis"
+                        ? `Collective written analysis · ${doc}`
+                        : `Hosted HTML · ${doc}`;
   const seedKey = storeTwinWriteSeed({
     plain_text: plain,
     html: String(opts.html || ""),
