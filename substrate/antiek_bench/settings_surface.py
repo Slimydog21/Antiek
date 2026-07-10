@@ -54,6 +54,8 @@ def settings_usage_summary_payload(
     summary = weekly_usage_summary(store=store)
     payload: dict[str, Any] = {
         "event_count": int(summary.get("event_count") or 0),
+        "retention_limit": int(summary.get("retention_limit") or 0),
+        "evicted_event_count": int(summary.get("evicted_event_count") or 0),
         "by_task_class": dict(summary.get("by_task_class") or {}),
         # Residual (ha): source breakdown (investigation_start vs session_flywheel).
         "by_source": dict(summary.get("by_source") or {}),
@@ -92,6 +94,8 @@ def project_usage_summary_html(summary: dict[str, Any]) -> str:
     from substrate.engagement_spine.project import project_to_html
 
     count = int(summary.get("event_count") or 0)
+    retention_limit = int(summary.get("retention_limit") or 0)
+    evicted = int(summary.get("evicted_event_count") or 0)
     by_class = summary.get("by_task_class") or {}
     by_source = summary.get("by_source") or {}
     blocks: list[dict[str, Any]] = [
@@ -105,7 +109,10 @@ def project_usage_summary_html(summary: dict[str, Any]) -> str:
             "content": [
                 {
                     "type": "text",
-                    "text": f"Events recorded: {count} · view: HTML",
+                    "text": (
+                        f"Events retained: {count}/{retention_limit} · "
+                        f"evicted over time: {evicted} · view: HTML"
+                    ),
                 }
             ],
         },

@@ -473,7 +473,8 @@ async def test_post_wrestle_records_start_event_and_bench_usage(async_client):
     ev = events[-1]
     assert ev.get("source") == "investigation_start"
     assert ev.get("task_class") == "wrestle"
-    assert "Wrestle multi-hop" in (ev.get("prompt_hint") or "")
+    assert ev.get("prompt_hint_present") is True
+    assert "prompt_hint" not in ev
 
 
 def test_record_investigation_start_usage_helper_gx():

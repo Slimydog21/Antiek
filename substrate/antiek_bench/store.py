@@ -69,7 +69,7 @@ class FileBenchStore:
 
     def put_run(self, run_id: str, run: dict[str, Any]) -> None:
         path = self.root / "runs" / f"{run_id.replace('/', '_')}.json"
-        path.write_text(json.dumps(run, sort_keys=True, indent=2), encoding="utf-8")
+        self._atomic_write(path, run)
 
     def get_run(self, run_id: str) -> dict[str, Any] | None:
         path = self.root / "runs" / f"{run_id.replace('/', '_')}.json"
@@ -86,7 +86,11 @@ class FileBenchStore:
 
     def put_proposal(self, proposal_id: str, proposal: dict[str, Any]) -> None:
         path = self.root / "proposals" / f"{proposal_id.replace('/', '_')}.json"
-        payload = json.dumps(proposal, sort_keys=True, indent=2).encode()
+        self._atomic_write(path, proposal)
+
+    @staticmethod
+    def _atomic_write(path: Path, value: dict[str, Any]) -> None:
+        payload = json.dumps(value, sort_keys=True, indent=2).encode()
         with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as handle:
             temporary = Path(handle.name)
             handle.write(payload)

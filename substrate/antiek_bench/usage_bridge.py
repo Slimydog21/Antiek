@@ -7,13 +7,23 @@ and propose recursive suite rewrites (operator still approves/promotes).
 
 from __future__ import annotations
 
+import re
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal
 
 from .store import BenchStore
 
 TaskClass = Literal["distill", "synthesize", "wrestle", "book_qa"]
 Outcome = Literal["worked", "failed"]
+USAGE_EVENT_SCHEMA_VERSION = 1
+USAGE_EVENT_RETENTION_LIMIT = 5_000
+_SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}\Z")
+_SAFE_OPAQUE_REF = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,159}\Z")
+_USAGE_APPEND_LOCK = threading.RLock()
 
 
 @dataclass(frozen=True)
@@ -24,6 +34,9 @@ class UsageEvent:
     source: str = "engagement"
     model_id: str | None = None
     week_id: str | None = None
+    source_ref: str | None = None
+    benchmark_seed: str = ""
+    benchmark_seed_reviewed: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -33,6 +46,9 @@ class UsageEvent:
             "source": self.source,
             "model_id": self.model_id,
             "week_id": self.week_id,
+            "source_ref": self.source_ref,
+            "benchmark_seed": self.benchmark_seed,
+            "benchmark_seed_reviewed": self.benchmark_seed_reviewed,
         }
 
 
@@ -80,22 +96,126 @@ def record_usage_event(
     store: BenchStore,
 ) -> dict[str, Any]:
     """Append one usage event to the bench store (durable list under usage_events)."""
-    row = event.to_dict() if isinstance(event, UsageEvent) else dict(event)
-    if "task_class" not in row or "outcome" not in row:
-        raise ValueError("usage event requires task_class and outcome")
-    existing = store.get_run("_usage_events") or {"events": []}
-    events = list(existing.get("events") or [])
-    events.append(row)
-    payload = {"run_id": "_usage_events", "events": events}
-    store.put_run("_usage_events", payload)
+    raw = event.to_dict() if isinstance(event, UsageEvent) else dict(event)
+    row = _minimize_usage_event(raw)
+    with _usage_store_lock(store):
+        existing = store.get_run("_usage_events") or {"events": []}
+        events = _minimize_stored_events(existing.get("events"))
+        events.append(row)
+        overflow = max(0, len(events) - USAGE_EVENT_RETENTION_LIMIT)
+        evicted = int(existing.get("evicted_event_count") or 0) + overflow
+        if overflow:
+            events = events[overflow:]
+        payload = {
+            "run_id": "_usage_events",
+            "schema_version": USAGE_EVENT_SCHEMA_VERSION,
+            "retention_limit": USAGE_EVENT_RETENTION_LIMIT,
+            "evicted_event_count": evicted,
+            "events": events,
+        }
+        store.put_run("_usage_events", payload)
+    return row
+
+
+def _minimize_usage_event(raw: dict[str, Any]) -> dict[str, Any]:
+    from .rewrite import reviewed_benchmark_seed
+
+    task = str(raw.get("task_class") or "")
+    outcome = str(raw.get("outcome") or "")
+    if task not in ("distill", "synthesize", "wrestle", "book_qa"):
+        raise ValueError("usage event has invalid task_class")
+    if outcome not in ("worked", "failed"):
+        raise ValueError("usage event has invalid outcome")
+    source = str(raw.get("source") or "engagement").strip()
+    model = str(raw.get("model_id") or "").strip() or None
+    week = str(raw.get("week_id") or "").strip() or None
+    source_ref = str(raw.get("source_ref") or "").strip() or None
+    for name, value in (
+        ("source", source),
+        ("model_id", model),
+        ("week_id", week),
+    ):
+        if value is not None and _SAFE_ID.fullmatch(value) is None:
+            raise ValueError(f"usage event has invalid {name}")
+    if source_ref is not None and _SAFE_OPAQUE_REF.fullmatch(source_ref) is None:
+        raise ValueError("usage event has invalid source_ref")
+    reviewed_seed = reviewed_benchmark_seed(raw)
+    reviewed_requested = raw.get("benchmark_seed_reviewed") is True
+    prompt_present = raw.get("prompt_hint_present")
+    if prompt_present is not None and not isinstance(prompt_present, bool):
+        raise ValueError("usage event has invalid prompt_hint_present")
+    row: dict[str, Any] = {
+        "schema_version": USAGE_EVENT_SCHEMA_VERSION,
+        "task_class": task,
+        "outcome": outcome,
+        "source": source,
+        "model_id": model,
+        "week_id": week,
+        "source_ref": source_ref,
+        "prompt_hint_present": bool(str(raw.get("prompt_hint") or "").strip())
+        or prompt_present is True,
+        "benchmark_seed": reviewed_seed or "",
+        "benchmark_seed_reviewed": reviewed_seed is not None,
+        "benchmark_seed_rejected": (
+            reviewed_requested and reviewed_seed is None
+        ) or raw.get("benchmark_seed_rejected") is True,
+    }
+    if raw.get("has_body") is not None:
+        if not isinstance(raw.get("has_body"), bool):
+            raise ValueError("usage event has invalid has_body")
+        row["has_body"] = raw["has_body"]
     return row
 
 
 def list_usage_events(*, store: BenchStore) -> list[dict[str, Any]]:
-    row = store.get_run("_usage_events")
-    if not row:
+    with _usage_store_lock(store):
+        stored = store.get_run("_usage_events")
+        if not stored:
+            return []
+        events = _minimize_stored_events(stored.get("events"))
+        if events != stored.get("events"):
+            payload = {
+                "run_id": "_usage_events",
+                "schema_version": USAGE_EVENT_SCHEMA_VERSION,
+                "retention_limit": USAGE_EVENT_RETENTION_LIMIT,
+                "evicted_event_count": int(stored.get("evicted_event_count") or 0),
+                "events": events[-USAGE_EVENT_RETENTION_LIMIT:],
+            }
+            store.put_run("_usage_events", payload)
+        return events[-USAGE_EVENT_RETENTION_LIMIT:]
+
+
+@contextmanager
+def _usage_store_lock(store: BenchStore) -> Iterator[None]:
+    """Serialize process-local stores and file stores shared by worker processes."""
+    with _USAGE_APPEND_LOCK:
+        root = getattr(store, "root", None)
+        if not isinstance(root, Path):
+            yield
+            return
+        import fcntl
+
+        lock_path = root / ".usage-events.lock"
+        with lock_path.open("a+b") as handle:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _minimize_stored_events(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
         return []
-    return list(row.get("events") or [])
+    minimized: list[dict[str, Any]] = []
+    for candidate in value:
+        if not isinstance(candidate, dict):
+            continue
+        try:
+            minimized.append(_minimize_usage_event(candidate))
+        except (TypeError, ValueError):
+            continue
+    return minimized
 
 
 def record_session_flywheel_usage(
@@ -332,6 +452,7 @@ def weekly_usage_summary(*, store: BenchStore) -> dict[str, Any]:
     (has_body true/false/unknown from engagement Open Write matrix).
     """
     events = list_usage_events(store=store)
+    stored = store.get_run("_usage_events") or {}
     by_class: dict[str, dict[str, int]] = {}
     by_source: dict[str, int] = {}
     write_seed_with_body_count = 0
@@ -369,6 +490,10 @@ def weekly_usage_summary(*, store: BenchStore) -> dict[str, Any]:
     )
     return {
         "event_count": len(events),
+        "retention_limit": int(
+            stored.get("retention_limit") or USAGE_EVENT_RETENTION_LIMIT
+        ),
+        "evicted_event_count": int(stored.get("evicted_event_count") or 0),
         "by_task_class": by_class,
         "by_source": by_source,
         # Residual (nx): closed catalog of feed sources (not counts).

@@ -22,7 +22,8 @@ def test_record_collective_merge_usage_prefers_research_tier() -> None:
     assert row["source"] == "collective_merge"
     assert row["task_class"] == "wrestle"
     assert row["outcome"] == "worked"
-    assert "draft_combined" in (row.get("prompt_hint") or "")
+    assert row["prompt_hint_present"] is True
+    assert "prompt_hint" not in row
     assert "collective_merge" in KNOWN_USAGE_FEED_SOURCES
     summary = weekly_usage_summary(store=store)
     assert summary["by_source"]["collective_merge"] == 1

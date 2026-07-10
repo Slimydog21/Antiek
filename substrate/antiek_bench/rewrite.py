@@ -173,11 +173,11 @@ def _fingerprint_proposal(events: list[dict[str, Any]], suite_fingerprint: str) 
     audit = {
         "suite_fingerprint": suite_fingerprint,
         "failed_event_count": len(failed),
-        "reviewed_seed_count": sum(_reviewed_seed(event) is not None for event in failed),
-        "generic_seed_count": sum(_reviewed_seed(event) is None for event in failed),
+        "reviewed_seed_count": sum(reviewed_benchmark_seed(event) is not None for event in failed),
+        "generic_seed_count": sum(reviewed_benchmark_seed(event) is None for event in failed),
         "redacted_event_count": sum(
-            _reviewed_seed(event) is None
-            and bool(event.get("prompt_hint") or event.get("benchmark_seed"))
+            reviewed_benchmark_seed(event) is None
+            and _has_redacted_seed_material(event)
             for event in failed
         ),
         "policy": USAGE_SEED_POLICY_VERSION,
@@ -186,7 +186,16 @@ def _fingerprint_proposal(events: list[dict[str, Any]], suite_fingerprint: str) 
     return hashlib.sha256(material.encode()).hexdigest()[:16]
 
 
-def _reviewed_seed(event: dict[str, Any]) -> str | None:
+def _has_redacted_seed_material(event: dict[str, Any]) -> bool:
+    return bool(
+        event.get("prompt_hint")
+        or event.get("prompt_hint_present") is True
+        or event.get("benchmark_seed")
+        or event.get("benchmark_seed_rejected") is True
+    )
+
+
+def reviewed_benchmark_seed(event: dict[str, Any]) -> str | None:
     if event.get("benchmark_seed_reviewed") is not True:
         return None
     seed = str(event.get("benchmark_seed") or "").strip()
@@ -216,7 +225,7 @@ def _safe_event_projection(event: dict[str, Any]) -> dict[str, str]:
     task = str(event.get("task_class") or "distill")
     if task not in ("distill", "synthesize", "wrestle", "book_qa"):
         task = "distill"
-    reviewed = _reviewed_seed(event)
+    reviewed = reviewed_benchmark_seed(event)
     return {
         "task_class": task,
         "outcome": str(event.get("outcome") or "").lower(),
@@ -238,7 +247,7 @@ def _usage_case(event: dict[str, Any]) -> tuple[TaskClass, str] | None:
         return None
     projection = _safe_event_projection(event)
     task: TaskClass = projection["task_class"]  # type: ignore[assignment]
-    return task, _reviewed_seed(event) or _generic_seed(task, event)
+    return task, reviewed_benchmark_seed(event) or _generic_seed(task, event)
 
 
 def _selected_usage_cases(
@@ -293,12 +302,12 @@ def propose_suite_delta(
         if str(event.get("outcome") or "").lower() == "failed"
     ]
     for ev in failed_events:
-        reviewed = _reviewed_seed(ev)
+        reviewed = reviewed_benchmark_seed(ev)
         if reviewed is not None:
             reviewed_seed_count += 1
         else:
             generic_seed_count += 1
-            if ev.get("prompt_hint") or ev.get("benchmark_seed"):
+            if _has_redacted_seed_material(ev):
                 redacted_event_count += 1
     selected_cases = _selected_usage_cases(events)
     dropped_event_count = len(failed_events) - len(selected_cases)

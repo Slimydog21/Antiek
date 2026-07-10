@@ -39,6 +39,7 @@ from .rewrite import (
     approve_and_promote,
     migrate_legacy_proposal,
     propose_suite_delta,
+    reviewed_benchmark_seed,
 )
 from .run import BenchRunResult, TaskScore, run_suite
 from .settings_surface import (
@@ -71,6 +72,8 @@ from .summary import project_run_html
 from .usage_bridge import (
     KNOWN_USAGE_FEED_SOURCES,
     TWIN_WRITE_SEED_USAGE_SOURCES,
+    USAGE_EVENT_RETENTION_LIMIT,
+    USAGE_EVENT_SCHEMA_VERSION,
     UsageEvent,
     classify_engagement_task,
     list_usage_events,
@@ -107,6 +110,8 @@ __all__ = [
     "TaskScore",
     "KNOWN_USAGE_FEED_SOURCES",
     "TWIN_WRITE_SEED_USAGE_SOURCES",
+    "USAGE_EVENT_RETENTION_LIMIT",
+    "USAGE_EVENT_SCHEMA_VERSION",
     "UsageEvent",
     "active_suite",
     "approve_and_promote",
@@ -122,6 +127,7 @@ __all__ = [
     "project_run_html",
     "propose_from_recorded_usage",
     "propose_suite_delta",
+    "reviewed_benchmark_seed",
     "record_collective_merge_usage",
     "record_session_flywheel_usage",
     "record_twin_write_seed_usage",

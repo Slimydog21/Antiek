@@ -174,7 +174,8 @@ def test_session_open_twin_chase_usage_source(client):
     assert body["usage_event"]["source"] == "twin_chase"
     assert body["usage_event"]["task_class"] == "synthesize"
     assert body["usage_event"]["outcome"] == "worked"
-    assert "Twin chase" in (body["usage_event"].get("prompt_hint") or "")
+    assert body["usage_event"]["prompt_hint_present"] is True
+    assert "prompt_hint" not in body["usage_event"]
 
 
 def test_session_open_highlight_dr_launch_usage_source(client):
@@ -194,7 +195,8 @@ def test_session_open_highlight_dr_launch_usage_source(client):
     assert body["usage_event"]["source"] == "highlight_dr_launch"
     assert body["usage_event"]["task_class"] == "synthesize"
     assert body["usage_event"]["outcome"] == "worked"
-    assert "highlighted passage" in (body["usage_event"].get("prompt_hint") or "").lower()
+    assert body["usage_event"]["prompt_hint_present"] is True
+    assert "prompt_hint" not in body["usage_event"]
 
     # Residual (asv): ResearchWorkstation HighlightToolbar synthesis path.
     r2 = client.post(

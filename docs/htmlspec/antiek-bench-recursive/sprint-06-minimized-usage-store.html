@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><title>Antiek-bench SPR-06</title>
+<style>body{font-family:system-ui;max-width:52rem;margin:2rem auto;line-height:1.5;padding:0 1rem}code{background:#f5f5f4;padding:0 .3em}</style>
+</head><body>
+<h1>SPR-06 — Minimized usage telemetry store</h1><p><a href="index.html">← master</a></p>
+<p>Antiek-bench owns evaluation telemetry, not a second copy of the user’s research corpus.</p>
+<h2>Contract</h2><ol>
+<li>Never persist <code>prompt_hint</code>, goals, selections, passages, URLs, rationale, or unknown caller fields.</li>
+<li>Persist a closed versioned schema: task, outcome, source, model, week, body-state, prompt-present flag, opaque source reference, and accepted reviewed seed only.</li>
+<li>Rejected reviewed seeds persist only a rejection flag, never rejected text.</li>
+<li>Return the same minimized row to API callers so write responses cannot echo private text.</li>
+<li>Retain at most the versioned event limit; persist cumulative eviction count and expose it in Settings.</li>
+<li>Knowledge-graph/source systems retain the actual asset and may provide an opaque reference; benchmark code never dereferences it.</li>
+<li>File-backed appends serialize across worker processes and replace the store atomically.</li>
+<li>Reading a legacy row eagerly rewrites it through the closed schema so private text does not remain at rest.</li>
+</ol>
+<h2>Acceptance</h2><ul>
+<li>Raw Midnight Oil goals, highlights, marketplace titles, secrets, and arbitrary extra fields are absent from memory/file stores and API JSON.</li>
+<li>Safe reviewed benchmark seeds remain available to Sprint 5 proposal generation.</li>
+<li>Limit+1 writes evict exactly the oldest event; restart preserves eviction count.</li>
+<li>Malformed task/outcome/model/week/source references fail before write.</li>
+<li>Concurrent process writes retain every admitted event, and legacy read migration removes raw prompt text from disk.</li>
+</ul>
+<h2>Non-goals</h2><p>No deletion of knowledge assets, no benchmark dereference into the graph, and no retention policy for other Antiek stores.</p>
+</body></html>

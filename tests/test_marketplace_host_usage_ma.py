@@ -47,8 +47,8 @@ def test_host_records_book_qa_usage_event(client) -> None:
     assert ev["task_class"] == "book_qa"
     assert ev["outcome"] == "worked"
     assert ev["source"] == "marketplace_host"
-    assert "pd-elements" in ev["prompt_hint"]
-    assert "mathematics" in ev["prompt_hint"] or "Euclid" in ev["prompt_hint"]
+    assert ev["prompt_hint_present"] is True
+    assert "prompt_hint" not in ev
 
     store = get_bench_usage_store(create_if_missing=False)
     assert store is not None
@@ -75,4 +75,5 @@ def test_purchase_host_records_book_qa_usage(client) -> None:
     body = r.json()
     assert body.get("usage_event", {}).get("task_class") == "book_qa"
     assert body["usage_event"]["source"] == "marketplace_host"
-    assert "buy-modern" in body["usage_event"]["prompt_hint"]
+    assert body["usage_event"]["prompt_hint_present"] is True
+    assert "prompt_hint" not in body["usage_event"]
