@@ -1,0 +1,24 @@
+# inventory-aue · MO duration recommend competitiveDurationBand pure stamps
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aue
+date: 2026-07-10
+parent_tip: c71c6100e (aud)
+
+## Closed
+- Midnight Oil moil-duration-recommend stamps competitiveDurationBand (atj):
+  data-band-label · data-band-minutes · data-poll-ms · data-competitive-duration-band
+- Label chrome: tier · band label (fast distill / deep synthesize / wrestle long-horizon)
+- Parity DecisionTree (atf) · LaunchBudget (atg) foresight on MO time-of-work
+- Offline-honest multi-minute posture · never invents live ETA
+- vitest MidnightOil 30 green · aue-vitest.log in SCRATCH
+
+## Doctrine
+Midnight Oil time-of-work co-locates competitive duration band pure helper ·
+goals+duration → ceiling · soft budget · autonomous swarm honesty
+
+## Next
+auf+ offline product residual outside thrash
+Avoid: MO duration-band thrash after aue · pure-open · open-stamp · catalog ·
+scorecard · add-model budget · vision · dogfood
+Prefer: competitive non-MO residual · model depth · knowledge connector residual
+Operator merge PR #465 remains P0 (gated)

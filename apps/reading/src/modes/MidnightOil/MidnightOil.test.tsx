@@ -1710,6 +1710,11 @@ describe("MidnightOil mode", () => {
         .getByTestId("moil-duration-recommend")
         .getAttribute("data-band-minutes"),
     ).toBe("3–10");
+    // Residual (aue): competitiveDurationBand pure helper stamps on MO duration.
+    const rec = screen.getByTestId("moil-duration-recommend");
+    expect(rec.getAttribute("data-competitive-duration-band")).toBe("true");
+    expect(rec.getAttribute("data-band-label")).toMatch(/deep synthesize/i);
+    expect(Number(rec.getAttribute("data-poll-ms") || 0)).toBeGreaterThan(0);
     // Default duration is 60; apply recommended.
     expect(
       (screen.getByTestId("moil-duration-minutes") as HTMLInputElement).value,

@@ -130,7 +130,10 @@ import {
   parsePublicationRefs,
 } from "../ResearchWorkstation/publicationRefs";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
-import { competitiveDrOfflineSurfaceCatalog } from "../../workspace/competitiveDrQuality";
+import {
+  competitiveDrOfflineSurfaceCatalog,
+  competitiveDurationBand,
+} from "../../workspace/competitiveDrQuality";
 import {
   listRecentDeepResearchSpawnIds,
   pushRecentDeepResearchSpawnId,
@@ -388,6 +391,18 @@ export default function MidnightOil() {
   const [forceCeilingOverBudget, setForceCeilingOverBudget] = useState(false);
   // Residual (gs): depth tier for autonomous job create.
   const [researchTier, setResearchTier] = useState<ResearchTier>("deep");
+  /**
+   * Residual (aue): competitiveDurationBand pure helper (atj) on MO duration
+   * chrome — parity DecisionTree/LaunchBudget foresight · offline-honest.
+   */
+  const durationBand = useMemo(() => {
+    const t = String(researchTier || "")
+      .trim()
+      .toLowerCase();
+    if (t === "fast" || t === "flash") return competitiveDurationBand("fast");
+    if (t === "wrestle") return competitiveDurationBand("wrestle");
+    return competitiveDurationBand("deep");
+  }, [researchTier]);
   const onProjectionChange = useCallback(
     (p: ResearchLaunchBudgetProjection) => {
       setBudgetWarn(p.wouldExceedBudget === true);
@@ -1152,7 +1167,8 @@ export default function MidnightOil() {
             disabled={busy}
             data-testid="moil-duration-minutes"
           />
-          {/* Residual (ng): competitive duration recommendation by depth tier. */}
+          {/* Residual (ng/aue): competitive duration recommendation by depth tier
+              + competitiveDurationBand pure helper stamps (atj). */}
           <div
             className="flex flex-wrap items-center gap-2 text-[11px] font-mono"
             data-testid="moil-duration-recommend"
@@ -1160,7 +1176,10 @@ export default function MidnightOil() {
             data-recommended-minutes={String(
               mapResearchTierToRecommendedDurationMinutes(researchTier),
             )}
-            data-band-minutes={formatResearchTierDurationBand(researchTier)}
+            data-band-minutes={durationBand.bandMinutes}
+            data-band-label={durationBand.label}
+            data-poll-ms={String(durationBand.pollMs)}
+            data-competitive-duration-band="true"
             data-current-minutes={String(durationMinutes)}
             data-matches-recommended={String(
               durationMinutes ===
@@ -1169,8 +1188,8 @@ export default function MidnightOil() {
             role="status"
           >
             <span className="opacity-80">
-              Competitive band ({researchTier}):{" "}
-              {formatResearchTierDurationBand(researchTier)} min · recommend{" "}
+              Competitive band ({researchTier} · {durationBand.label}):{" "}
+              {durationBand.bandMinutes} min · recommend{" "}
               {mapResearchTierToRecommendedDurationMinutes(researchTier)}m
             </span>
             <button
