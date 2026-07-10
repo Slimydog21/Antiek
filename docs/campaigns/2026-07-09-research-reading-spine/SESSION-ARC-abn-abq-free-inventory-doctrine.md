@@ -1,6 +1,6 @@
 # SESSION-ARC · abn–abq · Free inventory is_free-only doctrine
 
-**Tip:** `ec8c5e6b` · **PR #465** OPEN · https://github.com/Slimydog21/Antiek/pull/465  
+**Tip:** `08ef962c` · **PR #465** OPEN · https://github.com/Slimydog21/Antiek/pull/465  
 **Branch:** `campaign/research-reading-spine-2026-07-09-main`  
 **NO_STOP** · agents never merge main/prod
 

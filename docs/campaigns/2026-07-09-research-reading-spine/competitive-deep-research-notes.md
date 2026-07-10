@@ -2072,3 +2072,8 @@ list_account_library_html stamps free_count + [license/free|paid] (parity free
 inventory doctrine). Competitive delta: library HTML projection is free-inventory
 honest for account-hosted books (HTML-first, never PDF).
 
+## Residual aby · 2026-07-10 — FUTURE tip free inventory through abx
+Free inventory is_free-only doctrine closed API·HTML·UI·host·library JSON·library HTML
+(abn–abx). Tip 08ef962c · 158 ships. Competitive delta: swarm handoff tip-true;
+operator merge PR #465 highest leverage.
+
