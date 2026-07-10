@@ -10,6 +10,7 @@
  * float launch from the hosted book (reading ≡ research).
  * Residual (pj): DecisionTreeDriverBadge promptText = selection + pub refs
  * Residual (qs): budget panel shares composeDriverPromptText (badge ≡ budget).
+ * Residual (ahl): budget foresight pub-ref count on hosted book DR (parity ahi).
  * Residual (qu): Open Write dual handoff html_draft + twin_seed (parity marketplace/MO).
  * (parity ResearchThis pi / Write ph / MO pg).
  * Residual (dg): soft-gate deep research when budget would exceed.
@@ -68,7 +69,10 @@ import {
 } from "../engagement/ResearchLaunchBudgetPanel";
 import { TwinNotesPanel } from "../engagement/TwinNotesPanel";
 import { useInWindow } from "./windowHostContext";
-import { composeDriverPromptText } from "../../lib/driverPromptText";
+import {
+  composeDriverPromptText,
+  countPublicationRefs,
+} from "../../lib/driverPromptText";
 import {
   buildHostedHtmlWriteHref,
   plainTextFromHtml,
@@ -734,12 +738,17 @@ export default function HostedHtmlDocumentHost(
               </p>
             ) : null}
           </div>
-          {/* Residual (jd): Settings depth prefill + tier pick for hosted book DR. */}
+          {/* Residual (jd/ahl): Settings depth prefill + tier pick · pub-ref foresight. */}
           <div
             data-testid="hosted-html-dr-depth-mount"
             data-research-tier={researchTier}
             data-depth-prefill={depthPrefill}
             data-view-format="html"
+            data-pub-ref-count={String(countPublicationRefs(pubRefs))}
+            data-has-pub-refs={String(countPublicationRefs(pubRefs) > 0)}
+            data-prompt-chars={String(
+              composeDriverPromptText(researchSelection, pubRefs).length,
+            )}
           >
             <p
               className="text-[10px] font-mono text-ink-mute dark:text-moonlight mb-1"
