@@ -3911,3 +3911,8 @@ model-quality matrix aqj–aqm. vitest Settings leaderboard green. P0 PR #465. P
 MO mode stamps soft-budget · budget-before-fire · L4 deferred · never-auto-route
 + honesty nav to prompt-cost · decision-tree · ND. Connects swarm surface to Settings
 model/budget matrix. vitest MidnightOil green. P0 PR #465. Pivot aqo+ outside thrash.
+
+## Residual aqo · 2026-07-10 — NotDiamond advisory honesty + model-choice deep-links
+ND panel stamps HTML-first · never-auto-route · advisory_only + honesty nav to
+decision-tree · add-model · Antiek-bench · prompt-cost. Closes Settings model-quality
+matrix aqj–aqo (+ MO aqn). vitest Settings ND green. P0 PR #465. Pivot aqp+ outside thrash.

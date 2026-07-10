@@ -2187,7 +2187,10 @@ export default function Settings() {
             className="p-4 space-y-3"
             data-testid="notdiamond-advisory-panel"
             data-view-format="html"
+            data-html-first="true"
+            data-never-auto-route="true"
             data-advisory-only="true"
+            data-notdiamond-authority="advisory_only"
             data-authority-rejected={
               nd?.authority_rejected === true ? "true" : "false"
             }
@@ -2209,6 +2212,56 @@ export default function Settings() {
             }
             data-l7-advisory-only="true"
           >
+            {/* Residual (aqo): ND path honesty + model-choice deep-links (parity aqj–aqm). */}
+            <p
+              className="text-[11px] font-mono flex flex-wrap gap-x-3 gap-y-1 opacity-90"
+              data-testid="notdiamond-honesty-nav"
+              data-view-format="html"
+              data-never-auto-route="true"
+              data-advisory-only="true"
+              data-notdiamond-authority="advisory_only"
+              role="navigation"
+              aria-label="NotDiamond advisory honesty navigation"
+            >
+              <a
+                href="#decision-tree-panel"
+                data-testid="notdiamond-decision-tree-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Manual decision-tree driver install (never ND auto-route)"
+              >
+                Decision-tree driver
+              </a>
+              <a
+                href="#add-model-panel"
+                data-testid="notdiamond-add-model-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Register a model into the process-local registry"
+              >
+                Add model
+              </a>
+              <a
+                href="#antiek-bench-leaderboard-panel"
+                data-testid="notdiamond-antiek-bench-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Antiek-bench weekly ranking (propose≠promote · compare to ND)"
+              >
+                Antiek-bench
+              </a>
+              <a
+                href="#prompt-cost-projection"
+                data-testid="notdiamond-prompt-cost-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Prompt-cost projection before adopting any advisory model"
+              >
+                Prompt-cost projection
+              </a>
+              <span
+                className="opacity-70"
+                data-testid="notdiamond-never-router-hint"
+              >
+                L7 never router · advisory only · never auto-route
+              </span>
+            </p>
             <p className="text-sm text-ink dark:text-bright">
               Campaign verdict: advisory GO (measured wedge only); authoritative
               dispatch REJECT under §16. NotDiamond is never the dispatch owner

@@ -1296,9 +1296,31 @@ describe("Settings SPR-01 + decision-tree install", () => {
         screen.getByTestId("notdiamond-advisory-summary").textContent,
       ).toMatch(/REJECT/i);
     });
+    const ndPanel = screen.getByTestId("notdiamond-advisory-panel");
+    expect(ndPanel.getAttribute("data-view-format")).toBe("html");
+    // Residual (aqo): HTML-first · never-auto-route · ND advisory_only stamps.
+    expect(ndPanel.getAttribute("data-html-first")).toBe("true");
+    expect(ndPanel.getAttribute("data-never-auto-route")).toBe("true");
+    expect(ndPanel.getAttribute("data-notdiamond-authority")).toBe(
+      "advisory_only",
+    );
+    const honesty = screen.getByTestId("notdiamond-honesty-nav");
+    expect(honesty.getAttribute("data-never-auto-route")).toBe("true");
     expect(
-      screen.getByTestId("notdiamond-advisory-panel").getAttribute("data-view-format"),
-    ).toBe("html");
+      screen.getByTestId("notdiamond-decision-tree-link").getAttribute("href"),
+    ).toBe("#decision-tree-panel");
+    expect(
+      screen.getByTestId("notdiamond-add-model-link").getAttribute("href"),
+    ).toBe("#add-model-panel");
+    expect(
+      screen.getByTestId("notdiamond-antiek-bench-link").getAttribute("href"),
+    ).toBe("#antiek-bench-leaderboard-panel");
+    expect(
+      screen.getByTestId("notdiamond-prompt-cost-link").getAttribute("href"),
+    ).toBe("#prompt-cost-projection");
+    expect(
+      screen.getByTestId("notdiamond-never-router-hint").textContent,
+    ).toMatch(/never router|never auto-route/i);
     // Residual (he): authority / kill-switch attributes for honest posture.
     expect(
       screen
