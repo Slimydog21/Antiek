@@ -16,19 +16,20 @@ interface-proven.
 from __future__ import annotations
 
 import datetime
-from collections.abc import Sequence
-from typing import Any, Protocol, runtime_checkable
+from collections.abc import Callable, Sequence
+from typing import Any, Protocol
 
-from ..protocol import CorpusAdapter, CorpusDocument, CorpusHit, CorpusMiss, FetchResult, Provenance
+from ..protocol import CorpusDocument, CorpusHit, CorpusMiss, FetchResult, Provenance
 
 
-@runtime_checkable
 class HostedDocReader(Protocol):
     """Read-only view of the hosted-document store.
 
     Mirrors the read surface of ``HostStore`` + ``AccountLibrary`` but
     exposes NO write surface.  The adapter accepts this, not ``HostStore``,
-    so zero writes are structural — not conventional.
+    so zero writes are structural — not conventional.  Only ``get_document``
+    and ``list_membership`` are exposed; no write methods are part of this
+    protocol.
     """
 
     def get_document(self, document_id: str) -> dict[str, Any] | None:
@@ -70,11 +71,18 @@ class HostedDocsCorpusAdapter:
     ``owner_id`` scopes the corpus to one account's library.
     """
 
-    def __init__(self, reader: HostedDocReader, owner_id: str) -> None:
-        self._reader = reader
+    def __init__(
+        self,
+        reader: HostedDocReader,
+        owner_id: str,
+        *,
+        now_fn: Callable[[], datetime.datetime] | None = None,
+    ) -> None:
+        self.__reader = reader
         self._owner_id = owner_id.strip()
         if not self._owner_id:
             raise ValueError("owner_id is required")
+        self._now_fn = now_fn or (lambda: datetime.datetime.now(datetime.UTC))
 
     def search(self, query: str) -> Sequence[CorpusHit]:
         """Lexical substring search over hosted-document body text.
@@ -85,10 +93,10 @@ class HostedDocsCorpusAdapter:
         q = (query or "").strip()
         if not q:
             return ()
-        doc_ids = self._reader.list_membership(self._owner_id)
+        doc_ids = self.__reader.list_membership(self._owner_id)
         hits: list[CorpusHit] = []
         for doc_id in doc_ids:
-            doc = self._reader.get_document(doc_id)
+            doc = self.__reader.get_document(doc_id)
             if doc is None:
                 continue
             body = str(doc.get("body_text") or "")
@@ -108,8 +116,16 @@ class HostedDocsCorpusAdapter:
         return tuple(hits)
 
     def fetch(self, id: str) -> FetchResult:
-        """Fetch a hosted document by id, or return a typed miss."""
-        doc = self._reader.get_document(id)
+        """Fetch a hosted document by id, or return a typed miss.
+
+        Enforces owner scope: if *id* is not in the adapter's declared
+        owner's membership list, returns ``CorpusMiss`` even if the store
+        has the document under a different owner.
+        """
+        membership = self.__reader.list_membership(self._owner_id)
+        if id not in membership:
+            return CorpusMiss(id=id)
+        doc = self.__reader.get_document(id)
         if doc is None:
             return CorpusMiss(id=id)
         body = str(doc.get("body_text") or "")
@@ -119,6 +135,6 @@ class HostedDocsCorpusAdapter:
             provenance=Provenance(
                 source_kind="hosted_document",
                 origin_ref=f"{id} (title={title})",
-                retrieved_at=datetime.datetime.now(datetime.timezone.utc),
+                retrieved_at=self._now_fn(),
             ),
         )

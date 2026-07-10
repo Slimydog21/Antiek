@@ -47,7 +47,9 @@ class Provenance:
     ``source_kind`` identifies the corpus type (e.g. ``"twin_note"``,
     ``"hosted_document"``).  ``origin_ref`` is a corpus-specific locator
     (e.g. the asset_id for twin notes, the document_id for hosted docs).
-    ``retrieved_at`` is UTC, injected at fetch — never stored.
+    ``retrieved_at`` is UTC, injected at fetch via the adapter's
+    ``now_fn`` clock — never stored, never read from the wall clock
+    directly.
     """
 
     source_kind: str

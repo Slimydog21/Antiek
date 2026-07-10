@@ -14,19 +14,20 @@ exposes none.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import Any, Protocol, runtime_checkable
+import datetime
+from collections.abc import Callable, Sequence
+from typing import Any, Protocol
 
-from ..protocol import CorpusAdapter, CorpusDocument, CorpusHit, CorpusMiss, FetchResult, Provenance
+from ..protocol import CorpusDocument, CorpusHit, CorpusMiss, FetchResult, Provenance
 
 
-@runtime_checkable
 class TwinNoteReader(Protocol):
     """Read-only view of the twin-note store.
 
     Mirrors ``EngagementStore.list_twins`` but exposes NO write surface.
     The adapter accepts this, not ``EngagementStore``, so zero writes are
-    structural — not conventional.
+    structural — not conventional.  Only ``list_twins`` is exposed; write
+    methods like ``purge_all`` or ``commit`` are not part of this protocol.
     """
 
     def list_twins(self, asset_id: str) -> list[dict[str, Any]]:
@@ -46,7 +47,6 @@ def _snippet(text: str, query: str, *, radius: int = 80) -> str:
     """
     idx = text.lower().find(query.lower())
     if idx < 0:
-        # Fallback: head of text
         trimmed = text[: radius * 2]
         return trimmed + ("…" if len(text) > radius * 2 else "")
     start = max(0, idx - radius)
@@ -79,11 +79,18 @@ class TwinNotesCorpusAdapter:
     ``asset_id`` scopes the corpus to one asset's twin substrate.
     """
 
-    def __init__(self, reader: TwinNoteReader, asset_id: str) -> None:
-        self._reader = reader
+    def __init__(
+        self,
+        reader: TwinNoteReader,
+        asset_id: str,
+        *,
+        now_fn: Callable[[], datetime.datetime] | None = None,
+    ) -> None:
+        self.__reader = reader
         self._asset_id = asset_id.strip()
         if not self._asset_id:
             raise ValueError("asset_id is required")
+        self._now_fn = now_fn or (lambda: datetime.datetime.now(datetime.UTC))
 
     def search(self, query: str) -> Sequence[CorpusHit]:
         """Lexical substring search over twin-note text.
@@ -93,7 +100,7 @@ class TwinNotesCorpusAdapter:
         q = (query or "").strip()
         if not q:
             return ()
-        notes = self._reader.list_twins(self._asset_id)
+        notes = self.__reader.list_twins(self._asset_id)
         hits: list[CorpusHit] = []
         for note in notes:
             text = str(note.get("text") or "")
@@ -114,7 +121,7 @@ class TwinNotesCorpusAdapter:
 
         Scans the asset's notes (the store has no global index by note_id).
         """
-        notes = self._reader.list_twins(self._asset_id)
+        notes = self.__reader.list_twins(self._asset_id)
         for note in notes:
             if note.get("note_id") == id:
                 text = str(note.get("text") or "")
@@ -124,14 +131,7 @@ class TwinNotesCorpusAdapter:
                     provenance=Provenance(
                         source_kind=f"twin_note:{kind}",
                         origin_ref=str(note.get("asset_id") or self._asset_id),
-                        retrieved_at=_dt_now(),
+                        retrieved_at=self._now_fn(),
                     ),
                 )
         return CorpusMiss(id=id)
-
-
-def _dt_now() -> "datetime.datetime":
-    """UTC now — isolated for testability."""
-    import datetime
-
-    return datetime.datetime.now(datetime.timezone.utc)
