@@ -1,0 +1,15 @@
+# inventory-ahc · ResearchThis knowledge-dense pub quick-call (highlight path)
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ahc
+date: 2026-07-10
+parent_tip: c61e6e1d (ahb)
+
+## Closed
+- ResearchThis ground-with-pubs mounts shared quick-call presets
+- Highlight → Research this passage → one-click arxiv grounding
+- Completes reading highlight DR path in the matrix
+- vitest ResearchThis 13 green
+
+## Next
+ahd+ LEAVE pub quick-call thrash · new product residual
+Operator merge PR #465 remains highest leverage (gated)

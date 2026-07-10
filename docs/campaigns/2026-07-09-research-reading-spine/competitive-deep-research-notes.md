@@ -2671,3 +2671,9 @@ MarketplaceHost host-land DR ground-with-pubs mounts shared quick-call presets
 launch · chase · mid-session · hosted book · marketplace free STEM.
 vitest MarketplaceHost 41 green. See SESSION-ARC-agx-ahb-pub-quickcall-matrix.md.
 P0 operator merge PR #465. Pivot ahc+ outside thrash.
+
+## Residual ahc · 2026-07-10 — ResearchThis knowledge-dense pub quick-call
+Highlight → Research this passage ground-with-pubs mounts shared quick-call
+presets (parity hosted aha · marketplace ahb). Completes reading highlight DR
+path in knowledge-dense pub matrix. vitest ResearchThis 13 green.
+P0 operator merge PR #465. Pivot ahd+ outside pub-matrix thrash.

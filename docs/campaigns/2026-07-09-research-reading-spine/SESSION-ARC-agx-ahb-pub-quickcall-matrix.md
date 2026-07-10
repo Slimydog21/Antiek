@@ -25,3 +25,5 @@ One-click call knowledge-dense publications into deep research without inventing
 ## Next
 
 Leave matrix thrash. Pivot competitive depth / paid L5 / twin flywheel / budget product residuals. Operator merge PR #465.
+
+| **ahc** | ResearchThis | Highlight passage DR |

@@ -11,6 +11,7 @@ import {
   type ResearchLaunchTier,
 } from "../../components/engagement/ResearchLaunchBudgetPanel";
 import { TwinNotesPanel } from "../../components/engagement/TwinNotesPanel";
+import { KNOWLEDGE_DENSE_PUBLICATION_PRESETS } from "../../components/engagement/PublicationAttachPanel";
 import { fetchDepthTiers } from "../../api/settings";
 import { mapDepthTierToResearchTier } from "../../lib/researchTier";
 import { track } from "../../lib/analytics";
@@ -32,6 +33,8 @@ import { composeDriverPromptText } from "../../lib/driverPromptText";
  * Residual (cc): primary path opens a **floating** deep_research_session
  * window via engagement sessions/open + openDeepResearchFromHighlight.
  * Residual (cu): optional arxiv/substack/URL refs hydrate + attach on open.
+ * Residual (ahc): knowledge-dense pub quick-call presets on highlight DR path
+ * (parity launch/chase/attach/hosted/marketplace matrix).
  * Residual (uk): pub-refs dual-gate L1/L2 hydrate readiness deep-links (parity uj).
  * Residual (cx): budget projection before fire (parity with StartResearch).
  * Residual (cy): decision-tree model_id resolved inside launchFloatingDeepResearch
@@ -218,6 +221,10 @@ export default function ResearchThis({
         data-view-format="html"
         data-offline-default="true"
         data-l1-l2-hydrate-prep="true"
+        data-seamless-pub-quick-call="true"
+        data-knowledge-dense-presets={String(
+          KNOWLEDGE_DENSE_PUBLICATION_PRESETS.length,
+        )}
       >
         <label
           className="text-[10px] font-mono uppercase tracking-wider text-ink-mute dark:text-moonlight"
@@ -225,6 +232,49 @@ export default function ResearchThis({
         >
           Ground with pubs (optional · arxiv / substack / URL)
         </label>
+        {/* Residual (ahc): highlight DR quick-call (parity hosted aha · marketplace ahb). */}
+        <div
+          className="flex flex-wrap gap-1 items-center"
+          data-testid="research-this-publication-quick-call"
+          data-preset-count={String(KNOWLEDGE_DENSE_PUBLICATION_PRESETS.length)}
+          data-seamless-pub-quick-call="true"
+          data-auto-hydrate="false"
+          role="group"
+          aria-label="Knowledge-dense publication quick-call presets"
+        >
+          <span className="text-[10px] font-mono opacity-70 mr-1">Quick-call:</span>
+          {KNOWLEDGE_DENSE_PUBLICATION_PRESETS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              data-testid={`research-this-preset-${p.id}`}
+              data-preset-id={p.id}
+              data-kind={p.kind}
+              data-reference={p.reference}
+              data-auto-hydrate="false"
+              disabled={busy}
+              onClick={() => {
+                const ref = p.reference.trim();
+                if (!ref) return;
+                setPubRefs((prev) => {
+                  const existing = new Set(
+                    prev
+                      .split(/\r?\n/)
+                      .map((l) => l.trim())
+                      .filter(Boolean),
+                  );
+                  if (existing.has(ref)) return prev;
+                  const base = prev.trim();
+                  return base ? `${base}\n${ref}` : ref;
+                });
+              }}
+              className="text-[10px] font-mono border rounded px-1.5 py-0.5 opacity-80 hover:opacity-100 disabled:opacity-50 border-ink/20 dark:border-bright/20"
+              title={`Insert ${p.reference} (hydrates offline-honest on DR launch · never auto-live)`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
         <textarea
           id="research-this-refs-input"
           data-testid="research-this-refs-input"

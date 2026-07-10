@@ -375,6 +375,16 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
     // Residual (uk): L1/L2 hydrate prep honesty + deep-links (parity uj).
     expect(pubRefs.getAttribute("data-offline-default")).toBe("true");
     expect(pubRefs.getAttribute("data-l1-l2-hydrate-prep")).toBe("true");
+    // Residual (ahc): highlight DR knowledge-dense quick-call.
+    expect(pubRefs.getAttribute("data-seamless-pub-quick-call")).toBe("true");
+    expect(
+      Number(pubRefs.getAttribute("data-knowledge-dense-presets") || 0),
+    ).toBeGreaterThanOrEqual(4);
+    expect(
+      screen
+        .getByTestId("research-this-publication-quick-call")
+        .getAttribute("data-auto-hydrate"),
+    ).toBe("false");
     expect(
       screen
         .getByTestId("research-this-hydrate-settings-link")
@@ -392,9 +402,13 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
         .getByTestId("research-this-hydrate-dual-gate-l2-link")
         .getAttribute("href") || "",
     ).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
-    fireEvent.change(screen.getByTestId("research-this-refs-input"), {
-      target: { value: "arxiv:1706.03762" },
-    });
+    fireEvent.click(
+      screen.getByTestId("research-this-preset-attention-is-all-you-need"),
+    );
+    expect(
+      (screen.getByTestId("research-this-refs-input") as HTMLTextAreaElement)
+        .value,
+    ).toMatch(/arxiv:1706\.03762/);
     fireEvent.click(screen.getByTestId("research-this-floating"));
     await waitFor(() => {
       expect(hydratePublicationRefs).toHaveBeenCalledWith(["arxiv:1706.03762"]);
