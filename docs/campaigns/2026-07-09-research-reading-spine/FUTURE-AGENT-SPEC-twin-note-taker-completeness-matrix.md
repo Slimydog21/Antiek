@@ -34,6 +34,7 @@
 3. **Intelligent search over twins across free STEM catalog** — domain-aware default queries for heat/signal_processing when asset subjects match (Fourier ags). **Expanded (aiy):** biology · method · physics · mathematics (Origin/Hooke/Novum/Principia/Euclid).
 4. **Twin cross-asset merge write-seed body honesty** — keep has-body matrix (adn) when merging multi-asset twins.
 5. **Dogfood recursive rewrite** — weekly usage events → suite proposal already ships; keep fixtures honest when twin surfaces expand (propose≠promote).
+6. **Promote→context depth-graph node honesty** — **Shipped offline (ajn):** twin-promote-metrics stamps graph_node_ids · unique counts · content-addressed unit≡node alignment · FUTURE matrix deep-link.
 
 ## Invariants
 

@@ -3010,3 +3010,8 @@ Budget-before-fire launch panel navigates Settings competitive DR scorecard + FU
 brief (soft foresight · ND never router). Scorecard budget row names launch panel.
 vitest ResearchLaunchBudget 12 · Settings 36 green. P0 operator merge PR #465.
 Pivot ajn+ outside thrash.
+
+## Residual ajn · 2026-07-10 — twin promote depth-graph node honesty
+Twin promote→context metrics stamp content-addressed graph_node_ids, unique counts,
+and unit≡node alignment for recursive note-taker depth-graph honesty. FUTURE twin
+matrix deep-link. vitest TwinNotes 30 green. P0 operator merge PR #465. Pivot ajo+.

@@ -673,6 +673,26 @@ describe("TwinNotesPanel", () => {
     // Residual (adl): research_tier on promote metrics (depth audit parity adi).
     expect(metrics.getAttribute("data-research-tier")).toBe("deep");
     expect(metrics.textContent).toMatch(/tier=deep/);
+    // Residual (ajn): content-addressed depth-graph node honesty on promote metrics.
+    expect(metrics.getAttribute("data-graph-node-id-count")).toBe("1");
+    expect(metrics.getAttribute("data-unique-graph-node-count")).toBe("1");
+    expect(metrics.getAttribute("data-graph-node-ids")).toBe("insight_abc");
+    expect(metrics.getAttribute("data-unique-unit-id-count")).toBe("1");
+    expect(metrics.getAttribute("data-content-addressed-alignment")).toBe(
+      "true",
+    );
+    expect(metrics.textContent).toMatch(/graph_nodes=1/);
+    expect(metrics.textContent).toMatch(/content-addressed unit≡node/);
+    expect(
+      screen
+        .getByTestId("twin-promote-twin-matrix-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix/);
+    expect(
+      screen
+        .getByTestId("twin-promote-competitive-scorecard-link")
+        .getAttribute("href"),
+    ).toBe("/settings#settings-competitive-dr-scorecard");
     // Residual (rr/aew): Open Write twin_seed from promoted context units + path.
     expect(buildTwinPromoteWriteHref).toHaveBeenCalled();
     const write = screen.getByTestId("twin-promote-open-write");

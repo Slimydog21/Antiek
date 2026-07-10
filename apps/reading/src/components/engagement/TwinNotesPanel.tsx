@@ -1686,7 +1686,22 @@ export function TwinNotesPanel({
           data-view-format="html"
           className="font-mono text-sm"
         >
-          {/* Residual (hi/my/adl): machine-readable promote→context metrics + depth. */}
+          {/* Residual (hi/my/adl/ajn): promote→context metrics + depth-graph node honesty. */}
+          {(() => {
+            const graphNodeIds = (promoted.promoted || [])
+              .map((p) => String(p.graph_node_id || "").trim())
+              .filter(Boolean);
+            const uniqueGraphNodeIds = Array.from(new Set(graphNodeIds));
+            const unitIds = (promoted.context_units || [])
+              .map((u) => String(u.unit_id || u.graph_node_id || "").trim())
+              .filter(Boolean);
+            const uniqueUnitIds = Array.from(new Set(unitIds));
+            // Content-addressed: unit_id aligns with graph_node_id for recursive depth.
+            const idAlignment =
+              uniqueGraphNodeIds.length > 0 &&
+              uniqueUnitIds.length > 0 &&
+              uniqueGraphNodeIds.every((id) => uniqueUnitIds.includes(id));
+            return (
           <div
             data-testid="twin-promote-metrics"
             data-promoted-count={String(promoted.promoted_count ?? 0)}
@@ -1701,6 +1716,12 @@ export function TwinNotesPanel({
             data-promoted-note-id-count={String(
               Array.isArray(promoted.note_ids) ? promoted.note_ids.length : 0,
             )}
+            data-graph-node-id-count={String(graphNodeIds.length)}
+            data-unique-graph-node-count={String(uniqueGraphNodeIds.length)}
+            data-graph-node-ids={uniqueGraphNodeIds.join(",")}
+            data-unit-id-count={String(unitIds.length)}
+            data-unique-unit-id-count={String(uniqueUnitIds.length)}
+            data-content-addressed-alignment={String(idAlignment)}
             data-view-format="html"
             // Residual (adl): depth posture on promote→context path (parity adi draft).
             data-research-tier={normalizedResearchTier || ""}
@@ -1716,10 +1737,41 @@ export function TwinNotesPanel({
             {Array.isArray(promoted.note_ids) && promoted.note_ids.length > 0
               ? ` · note_ids=${promoted.note_ids.length}`
               : ""}
+            {uniqueGraphNodeIds.length > 0
+              ? ` · graph_nodes=${uniqueGraphNodeIds.length}`
+              : ""}
+            {idAlignment ? " · content-addressed unit≡node" : ""}
             {normalizedResearchTier
               ? ` · tier=${normalizedResearchTier}`
               : ""}
           </div>
+            );
+          })()}
+          {/* Residual (ajn): depth-graph promote honesty → twin completeness matrix. */}
+          <p
+            className="meta font-mono text-[11px] space-x-3 opacity-90"
+            data-testid="twin-promote-depth-graph-nav"
+            data-view-format="html"
+            role="navigation"
+            aria-label="Twin promote depth-graph navigation"
+          >
+            <a
+              href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md"
+              data-testid="twin-promote-twin-matrix-link"
+              className="underline opacity-90 hover:opacity-100"
+              title="FUTURE-AGENT twin note-taker completeness matrix (promote→context · recursive substrate)"
+            >
+              FUTURE · twin completeness matrix
+            </a>
+            <a
+              href="/settings#settings-competitive-dr-scorecard"
+              data-testid="twin-promote-competitive-scorecard-link"
+              className="underline opacity-90 hover:opacity-100"
+              title="Settings competitive DR scorecard (recursive twin note-taker shipped offline)"
+            >
+              Settings · competitive DR scorecard
+            </a>
+          </p>
           <p>
             promoted={promoted.promoted_count} · context_units=
             {promoted.context_unit_count}
