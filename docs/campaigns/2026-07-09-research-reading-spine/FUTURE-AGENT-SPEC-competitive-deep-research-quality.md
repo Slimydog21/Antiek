@@ -43,7 +43,7 @@
 
 1. **Citation chain UI** — **Shipped offline** (aij · air · ais · aji · ajk).  
 2. **Long-horizon wrestle progress** — offline progress HTML ships · live step dual-gate L4.  
-3. **Twin intelligent search defaults** — **Shipped full free PD spine** (ahr · aiy · akq · akw · alf). Prefer new catalog subjects only.  
+3. **Twin intelligent search defaults** — **Shipped full free PD spine + coverage path** (ahr · aiy · akq · akw · alf · alj–alt · TwinNotes). Prefer new catalog subjects only.  
 4. **Competitive DR quality scorecard** — **Shipped** (aii · navigation matrix aim–ajz). Prefer non-scorecard residuals next.  
 5. **Write-land from DR analysis** — keep has-body matrix; never invent outline when HTML is title-only.  
 6. **Marketplace L5** — **Offline Sprint 1–3 complete** (akr–ala) · live rails dual-gate only.  
