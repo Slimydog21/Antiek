@@ -81,12 +81,14 @@ vi.mock("../engagement/TwinNotesPanel", () => ({
     assetId: string;
     researchTier?: string | null;
     seedTitle?: string | null;
+    seedBodyText?: string | null;
     autoSeedIfEmpty?: boolean;
   }) => (
     <div
       data-testid="twin-notes-panel-stub"
       data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
       data-seed-title={props.seedTitle || ""}
+      data-seed-body={props.seedBodyText || ""}
       data-auto-seed={String(Boolean(props.autoSeedIfEmpty))}
     >
       {props.assetId}
@@ -495,6 +497,33 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(
       screen.getByTestId("hosted-html-open-write").getAttribute("title") || "",
     ).toMatch(/collective cohesive unit/i);
+    // Residual (aiz): twin seed path honesty + completeness matrix deep-links.
+    expect(honesty.getAttribute("data-twin-seed-path")).toBe(
+      "collective_unit_prompt",
+    );
+    expect(honesty.getAttribute("data-auto-seed-if-empty")).toBe("true");
+    expect(honesty.textContent).toMatch(/twin auto-seed if empty/i);
+    expect(
+      screen
+        .getByTestId("hosted-html-collective-unit-scorecard-link")
+        .getAttribute("href"),
+    ).toBe("/settings#settings-competitive-dr-scorecard");
+    expect(
+      screen
+        .getByTestId("hosted-html-collective-unit-twin-matrix-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix/);
+    const twinsMount = screen.getByTestId("hosted-html-twins-mount");
+    expect(twinsMount.getAttribute("data-collective-unit-prompt")).toBe("true");
+    expect(twinsMount.getAttribute("data-auto-seed-if-empty")).toBe("true");
+    const twins = screen.getByTestId("twin-notes-panel-stub");
+    expect(twins.getAttribute("data-auto-seed")).toBe("true");
+    expect(twins.getAttribute("data-seed-body") || "").toMatch(
+      /Port path: Collective cohesive unit/i,
+    );
+    expect(twins.getAttribute("data-seed-body") || "").toMatch(
+      /collective_id=col_abc/,
+    );
   });
 
   it("stamps context_search query + hit count honesty (tq)", () => {

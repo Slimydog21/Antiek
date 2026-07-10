@@ -380,9 +380,23 @@ export default function HostedHtmlDocumentHost(
                               : isMidnightOilDeposit
                                 ? `Midnight Oil deposit · ${title}`
                                 : title;
-  const twinSeedBody = html
+  // Residual (aiz): collective unit float twin seed body path honesty (FUTURE twin gap #2).
+  const twinSeedBodyBase = html
     ? html.replace(/<[^>]+>/g, " ").slice(0, 500)
     : twinSeedTitle;
+  const twinSeedBody = isCollectiveUnitPrompt
+    ? [
+        twinSeedBodyBase,
+        "",
+        "Port path: Collective cohesive unit float (multi-spawn merge · offline merge unit · L6 live multi-agent deferred · never invent server document_id).",
+        collectiveId ? `collective_id=${collectiveId}` : "",
+        spawnCount != null ? `spawn_count=${spawnCount}` : "",
+        "source=collective_unit_prompt · HTML-first · twin auto-seed if empty.",
+      ]
+        .filter(Boolean)
+        .join("\n")
+        .slice(0, 900)
+    : twinSeedBodyBase;
 
   return (
     <div
@@ -493,26 +507,50 @@ export default function HostedHtmlDocumentHost(
             ) : null}
             {/* Residual (ts): multi-spawn cohesive unit honesty. */}
             {isCollectiveUnitPrompt ? (
-              <p
-                className="text-[11px] font-mono opacity-80 mt-1"
+              <div
+                className="text-[11px] font-mono opacity-80 mt-1 space-y-1"
                 data-testid="hosted-html-collective-unit-honesty"
                 data-collective-id={collectiveId}
                 data-spawn-count={
                   spawnCount != null ? String(spawnCount) : ""
                 }
+                data-twin-seed-path="collective_unit_prompt"
+                data-auto-seed-if-empty="true"
                 data-view-format="html"
                 role="status"
               >
-                Collective cohesive unit
-                {collectiveId ? (
-                  <>
-                    {" "}
-                    · id={collectiveId}
-                  </>
-                ) : null}
-                {spawnCount != null ? <> · spawns={spawnCount}</> : null} ·
-                multi-select merge · HTML · not PDF · no invented server doc
-              </p>
+                <p>
+                  Collective cohesive unit
+                  {collectiveId ? (
+                    <>
+                      {" "}
+                      · id={collectiveId}
+                    </>
+                  ) : null}
+                  {spawnCount != null ? <> · spawns={spawnCount}</> : null} ·
+                  multi-select merge · HTML · not PDF · no invented server doc ·
+                  twin auto-seed if empty (recursive note-taker)
+                </p>
+                {/* Residual (aiz): twin seed + competitive honesty map from unit float. */}
+                <p className="space-x-3">
+                  <a
+                    href="/settings#settings-competitive-dr-scorecard"
+                    data-testid="hosted-html-collective-unit-scorecard-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="Settings competitive DR scorecard (offline multi-agent merge shipped · L6 live deferred)"
+                  >
+                    Settings · competitive DR scorecard
+                  </a>
+                  <a
+                    href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md"
+                    data-testid="hosted-html-collective-unit-twin-matrix-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="FUTURE-AGENT twin note-taker completeness matrix"
+                  >
+                    FUTURE · twin completeness matrix
+                  </a>
+                </p>
+              </div>
             ) : null}
           </div>
           {/* Residual (da): driver readout on reading host (parity with DR). */}
@@ -914,13 +952,16 @@ export default function HostedHtmlDocumentHost(
           data-source={payloadSource}
           data-evidence-pack={String(isEvidencePack)}
           data-context-search={String(isContextSearch)}
+          data-collective-unit-prompt={String(isCollectiveUnitPrompt)}
           data-auto-seed-if-empty="true"
         >
           {/* Residual (ez): remount twins with context refresh key. */}
           {/* Residual (sh): evidence_pack seed title for recursive note-taker. */}
+          {/* Residual (aiz): collective_unit_prompt twin seed path honesty. */}
           <div
             data-testid="hosted-html-twins-refresh"
             data-refresh-key={String(contextRefreshKey)}
+            data-collective-unit-prompt={String(isCollectiveUnitPrompt)}
           >
             <TwinNotesPanel
               key={`twins-${assetId}-${contextRefreshKey}`}

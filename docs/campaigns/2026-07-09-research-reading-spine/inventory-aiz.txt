@@ -1,0 +1,18 @@
+# inventory-aiz · collective unit float twin seed path honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aiz
+date: 2026-07-10
+parent_tip: 7f2eb671 (aiy)
+
+## Closed
+- HostedHtml collective_unit_prompt:
+  - twin seed body Port path honesty (multi-spawn · L6 deferred · no invented doc id)
+  - data-twin-seed-path · auto-seed chrome
+  - twins-mount data-collective-unit-prompt
+  - scorecard + FUTURE twin matrix deep-links
+- FUTURE twin matrix gap #2 marked shipped offline
+- vitest HostedHtml 24 green
+
+## Next
+aja+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

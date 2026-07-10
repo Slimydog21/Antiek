@@ -2940,3 +2940,9 @@ Pivot aiy+ outside thrash.
 domainAwareSearchDefault expands free STEM subject defaults beyond Fourier/Gödel
 electricity spine for Origin/Hooke/Novum/Principia/Euclid twin intelligent search.
 vitest ResearchContext 14 green. P0 operator merge PR #465. Pivot aiz+ outside thrash.
+
+## Residual aiz · 2026-07-10 — collective unit float twin seed path honesty
+HostedHtml collective_unit_prompt stamps twin seed Port path honesty (multi-spawn ·
+L6 deferred · no invented doc id) + scorecard/twin matrix deep-links. FUTURE twin
+matrix gap #2 shipped offline. vitest HostedHtml 24 green. P0 operator merge PR #465.
+Pivot aja+ outside thrash.
