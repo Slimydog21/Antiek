@@ -1,0 +1,13 @@
+# inventory-aef · SESSION-ARC aec–aee dual-gate readiness handoff
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aef
+date: 2026-07-10
+parent_tip: af73dccc (aee)
+
+## Closed
+- SESSION-ARC-aec-aee-dual-gate-readiness.md
+- FUTURE tip re-anchor
+- NEXT-WAVE-after-aef.md
+
+## Not in scope
+- Code product residual (next: aeg+ leave dual-gate thrash)

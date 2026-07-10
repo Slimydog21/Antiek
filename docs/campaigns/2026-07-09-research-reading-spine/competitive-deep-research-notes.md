@@ -2261,3 +2261,8 @@ Publication hydrate readiness panel stamps L1 arxiv + L2 Substack live_ready
 composites and Dual-gate L1/L2 checklist deep-links. Competitive delta: knowledge-dense
 pub dual-gate prep is complete on Settings (parity L3/L4 aec–aed · never enables live).
 vitest Settings 35 green.
+
+## Residual aef · 2026-07-10 — SESSION-ARC aec–aee dual-gate readiness
+SESSION-ARC documents L1/L2 hydrate + L3 twin + L4 MO gate matrices on Settings.
+Tip af73dccc · swarm handoff tip-true. Competitive delta: multi-agent infinite continues
+outside dual-gate readiness thrash; operator merge PR #465 highest leverage.
