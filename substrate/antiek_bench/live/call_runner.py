@@ -27,6 +27,7 @@ class ProviderResult:
     latency_ms: int
     response_text: str = ""
     provider_id: str = ""
+    route_receipt_id: str = ""
 
     @property
     def total_tokens(self) -> int:
@@ -96,18 +97,28 @@ class LiveCallRunner:
             )
         try:
             result = self._timeout.run(provider_fn, timeout_s)
-            if result.cost_usd > maximum:
-                raise ValueError("provider exceeded its enforced maximum cost")
+            actual_provider = result.provider_id or requested_provider
+            contract_breached = (
+                result.cost_usd > maximum
+                or actual_provider != requested_provider
+                or result.model_id != requested_model
+            )
             settlement = replace(
                 reservation,
-                status="ok",
-                actual_provider=result.provider_id or requested_provider,
+                status="failed" if contract_breached else "ok",
+                actual_provider=actual_provider,
                 actual_model=result.model_id,
                 prompt_tokens=result.prompt_tokens,
                 completion_tokens=result.completion_tokens,
                 cost_usd=result.cost_usd,
                 latency_ms=result.latency_ms,
                 response_hash=hashlib.sha256(result.response_text.encode()).hexdigest(),
+                route_receipt_id=result.route_receipt_id,
+                failure_text=(
+                    "provider measurement contract breached"
+                    if contract_breached
+                    else ""
+                ),
             )
         except TimeoutError:
             settlement = replace(

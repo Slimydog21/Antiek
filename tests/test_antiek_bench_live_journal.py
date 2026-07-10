@@ -274,5 +274,58 @@ def test_provider_cost_above_enforced_maximum_fails_closed(tmp_path: Path) -> No
         maximum_cost="0.1",
     )
     assert result.status == "failed"
-    assert result.failure_text == "provider call failed"
-    assert HardBudget("1", journal).total_charged == Decimal("0.1")
+    assert result.failure_text == "provider measurement contract breached"
+    # Never hide the actual bill merely to make the cap appear intact.
+    assert result.cost_usd == Decimal("0.2")
+    assert HardBudget("1", journal).total_charged == Decimal("0.2")
+
+
+def test_attribution_and_route_receipt_are_persisted(tmp_path: Path) -> None:
+    journal = Journal(tmp_path / "calls.jsonl")
+    result = LiveCallRunner(journal, HardBudget("1", journal), DirectTimeout()).execute(
+        wedge_id="w",
+        week_id="week",
+        suite_version="suite",
+        requested_provider="openai",
+        requested_model="model-a",
+        task_class="wrestle",
+        item_id="i",
+        prompt_hash="sha256:prompt",
+        provider_fn=lambda: ProviderResult(
+            "model-a",
+            10,
+            5,
+            Decimal("0.05"),
+            12,
+            "answer",
+            "openai",
+            "evt_dispatch_123",
+        ),
+        maximum_cost="0.1",
+    )
+    assert result.status == "ok"
+    assert result.route_receipt_id == "evt_dispatch_123"
+    assert journal.lookup(result.call_id) == result
+
+
+def test_cross_model_fallback_contamination_fails_with_actual_bill(tmp_path: Path) -> None:
+    journal = Journal(tmp_path / "calls.jsonl")
+    result = LiveCallRunner(journal, HardBudget("1", journal), DirectTimeout()).execute(
+        wedge_id="w",
+        week_id="week",
+        suite_version="suite",
+        requested_provider="provider-a",
+        requested_model="model-a",
+        task_class="distill",
+        item_id="i",
+        prompt_hash="h",
+        provider_fn=lambda: ProviderResult(
+            "model-b", 1, 1, Decimal("0.04"), 3, provider_id="provider-b"
+        ),
+        maximum_cost="0.1",
+    )
+    assert result.status == "failed"
+    assert result.actual_provider == "provider-b"
+    assert result.actual_model == "model-b"
+    assert result.cost_usd == Decimal("0.04")
+    assert result.failure_text == "provider measurement contract breached"

@@ -55,6 +55,7 @@ class LiveCallRecord:
     latency_ms: int = 0
     prompt_hash: str = ""
     response_hash: str = ""
+    route_receipt_id: str = ""
     failure_text: str = ""
     schema_version: int = 2
 
