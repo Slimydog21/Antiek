@@ -16,6 +16,7 @@ from substrate.midnight_oil import (
     MidnightOilDispatchRequest,
     MidnightOilDryRunRequest,
     MidnightOilFinalArtifactAdapterPlanRequest,
+    MidnightOilFinalArtifactPersistencePlanRequest,
     MidnightOilFinalArtifactRequest,
     MidnightOilFinalHtmlArtifactAssemblyPlanRequest,
     MidnightOilFinalSynthesisDraftPlanRequest,
@@ -55,6 +56,7 @@ from substrate.midnight_oil import (
     dry_run_midnight_oil,
     final_artifact_adapter_plan_midnight_oil,
     final_artifact_midnight_oil,
+    final_artifact_persistence_plan_midnight_oil,
     final_html_artifact_assembly_plan_midnight_oil,
     final_synthesis_draft_plan_midnight_oil,
     graph_adapter_plan_midnight_oil,
@@ -8335,6 +8337,257 @@ def test_midnight_oil_final_html_artifact_assembly_plan_api_contract() -> None:
     assert body["final_html_document_created"] is False
     assert body["final_html_twin_notes_document_created"] is False
     assert body["final_synthesis_draft_created"] is False
+    assert body["provider_calls_made"] is False
+    assert body["retrieval_performed"] is False
+    assert body["source_receipts_created"] is False
+    assert body["graph_mutated"] is False
+    assert body["final_artifact_created"] is False
+
+
+def _final_artifact_persistence_request_kwargs(
+    chain: dict[str, object],
+    output_aggregation_plan: object,
+    synthesis_handoff_plan: object,
+    synthesis_bundle_assembly_plan: object,
+    final_synthesis_draft_plan: object,
+    final_html_artifact_assembly_plan: object,
+) -> dict[str, object]:
+    return {
+        **_final_html_artifact_assembly_request_kwargs(
+            chain,
+            output_aggregation_plan,
+            synthesis_handoff_plan,
+            synthesis_bundle_assembly_plan,
+            final_synthesis_draft_plan,
+        ),
+        "final_html_artifact_assembly_plan_receipt": (
+            final_html_artifact_assembly_plan
+        ),
+    }
+
+
+def _accepted_midnight_oil_final_html_artifact_assembly_plan_chain(
+    *,
+    goal: str,
+    source_policy: list[str],
+    requested_control_scope: list[str],
+) -> dict[str, object]:
+    chain = _accepted_midnight_oil_final_synthesis_draft_plan_chain(
+        goal=goal,
+        source_policy=source_policy,
+        requested_control_scope=requested_control_scope,
+    )
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+    draft_plan = chain["final_synthesis_draft_plan"]
+    html_plan = final_html_artifact_assembly_plan_midnight_oil(
+        MidnightOilFinalHtmlArtifactAssemblyPlanRequest(
+            **_final_html_artifact_assembly_request_kwargs(
+                chain, output_plan, handoff_plan, assembly_plan, draft_plan
+            )
+        )
+    )
+    return {
+        **chain,
+        "final_html_artifact_assembly_plan": html_plan,
+    }
+
+
+def test_final_artifact_persistence_plan_records_disabled_requirements() -> None:
+    chain = _accepted_midnight_oil_final_html_artifact_assembly_plan_chain(
+        goal="Plan final artifact persistence after final HTML artifact assembly planning.",
+        source_policy=["arxiv", "web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+    draft_plan = chain["final_synthesis_draft_plan"]
+    html_plan = chain["final_html_artifact_assembly_plan"]
+
+    persistence_plan = final_artifact_persistence_plan_midnight_oil(
+        MidnightOilFinalArtifactPersistencePlanRequest(
+            **_final_artifact_persistence_request_kwargs(
+                chain, output_plan, handoff_plan, assembly_plan, draft_plan, html_plan
+            )
+        )
+    )
+
+    assert persistence_plan.receipt_id == (
+        f"{preflight.run_id}-final-artifact-persistence-plan"
+    )
+    assert persistence_plan.final_html_artifact_assembly_plan_receipt_id == (
+        html_plan.receipt_id
+    )
+    assert persistence_plan.final_synthesis_draft_plan_receipt_id == (
+        draft_plan.receipt_id
+    )
+    assert (
+        persistence_plan.status == "blocked_final_artifact_persistence_unimplemented"
+    )
+    assert persistence_plan.adapter_key == "final_artifact_persistence"
+    assert persistence_plan.planned_final_artifact_persistence_receipt_id == (
+        f"{preflight.run_id}-final-artifact-persistence-receipt"
+    )
+    assert persistence_plan.planned_persisted_final_artifact_id == (
+        f"{preflight.run_id}-persisted-final-artifact"
+    )
+    assert persistence_plan.planned_information_asset_id == (
+        f"{preflight.run_id}-information-asset"
+    )
+    assert persistence_plan.planned_hosted_html_asset_id == (
+        f"{preflight.run_id}-hosted-html-asset"
+    )
+    assert persistence_plan.planned_graph_node_id == (
+        f"{preflight.run_id}-final-artifact-graph-node"
+    )
+    assert persistence_plan.planned_final_html_document_id == (
+        html_plan.planned_final_html_document_id
+    )
+    assert "information asset durable writer" in (
+        persistence_plan.final_artifact_persistence_blockers
+    )
+    assert "hosted_html_asset_id" in (
+        persistence_plan.required_final_artifact_persistence_receipt_fields
+    )
+    assert "final artifact persistence planner must require final HTML" in (
+        persistence_plan.required_final_artifact_persistence_invariants[0]
+    )
+    assert (
+        persistence_plan.blocker_reason == "final_artifact_persistence_unimplemented"
+    )
+    assert persistence_plan.final_artifact_persistence_allowed is False
+    assert persistence_plan.final_artifact_persisted is False
+    assert persistence_plan.information_asset_created is False
+    assert persistence_plan.hosted_html_asset_created is False
+    assert persistence_plan.account_asset_binding_created is False
+    assert persistence_plan.twin_notes_binding_created is False
+    assert persistence_plan.citation_index_binding_created is False
+    assert persistence_plan.artifact_ledger_entry_created is False
+    assert persistence_plan.graph_node_created is False
+    assert persistence_plan.graph_edge_set_created is False
+    assert persistence_plan.provider_calls_made is False
+    assert persistence_plan.retrieval_performed is False
+    assert persistence_plan.source_receipts_created is False
+    assert persistence_plan.graph_mutated is False
+    assert persistence_plan.final_artifact_created is False
+    assert "no hosted HTML asset" in persistence_plan.adapter_plan_notes[0]
+
+
+def test_final_artifact_persistence_plan_rejects_created_html_asset() -> None:
+    chain = _accepted_midnight_oil_final_html_artifact_assembly_plan_chain(
+        goal="Reject created HTML asset before final artifact persistence planning.",
+        source_policy=["web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+    draft_plan = chain["final_synthesis_draft_plan"]
+    bad_html_plan = chain["final_html_artifact_assembly_plan"].model_copy(
+        update={"final_html_asset_created": True}
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match="final_html_artifact_assembly_plan_receipt must not create final HTML artifact state",
+    ):
+        MidnightOilFinalArtifactPersistencePlanRequest(
+            **_final_artifact_persistence_request_kwargs(
+                chain,
+                output_plan,
+                handoff_plan,
+                assembly_plan,
+                draft_plan,
+                bad_html_plan,
+            )
+        )
+
+
+def test_midnight_oil_final_artifact_persistence_plan_api_contract() -> None:
+    from interfaces.research.api.app import create_app
+
+    chain = _accepted_midnight_oil_final_html_artifact_assembly_plan_chain(
+        goal="Expose final artifact persistence planning over the API.",
+        source_policy=["arxiv", "substack"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+    draft_plan = chain["final_synthesis_draft_plan"]
+    html_plan = chain["final_html_artifact_assembly_plan"]
+    request_json = {
+        key: value.model_dump(mode="json")
+        for key, value in _final_artifact_persistence_request_kwargs(
+            chain, output_plan, handoff_plan, assembly_plan, draft_plan, html_plan
+        ).items()
+    }
+
+    with TestClient(create_app()) as client:
+        r = client.post(
+            "/research/midnight-oil/final-artifact-persistence-plan",
+            json=request_json,
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["receipt_id"] == f"{preflight.run_id}-final-artifact-persistence-plan"
+    assert body["final_html_artifact_assembly_plan_receipt_id"] == (
+        html_plan.receipt_id
+    )
+    assert body["status"] == "blocked_final_artifact_persistence_unimplemented"
+    assert body["adapter_key"] == "final_artifact_persistence"
+    assert body["planned_final_artifact_persistence_receipt_id"] == (
+        f"{preflight.run_id}-final-artifact-persistence-receipt"
+    )
+    assert body["planned_information_asset_id"] == (
+        f"{preflight.run_id}-information-asset"
+    )
+    assert body["planned_hosted_html_asset_id"] == (
+        f"{preflight.run_id}-hosted-html-asset"
+    )
+    assert body["planned_final_html_document_id"] == (
+        html_plan.planned_final_html_document_id
+    )
+    assert "artifact graph node writer" in body[
+        "final_artifact_persistence_blockers"
+    ]
+    assert "graph_node_id" in (
+        body["required_final_artifact_persistence_receipt_fields"]
+    )
+    assert body["blocker_reason"] == "final_artifact_persistence_unimplemented"
+    assert body["final_artifact_persistence_allowed"] is False
+    assert body["final_artifact_persisted"] is False
+    assert body["information_asset_created"] is False
+    assert body["hosted_html_asset_created"] is False
+    assert body["account_asset_binding_created"] is False
+    assert body["graph_node_created"] is False
+    assert body["graph_edge_set_created"] is False
     assert body["provider_calls_made"] is False
     assert body["retrieval_performed"] is False
     assert body["source_receipts_created"] is False

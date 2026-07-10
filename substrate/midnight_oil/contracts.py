@@ -6991,6 +6991,200 @@ class MidnightOilFinalHtmlArtifactAssemblyPlanReceipt(BaseModel):
     adapter_plan_notes: list[str] = Field(default_factory=list)
 
 
+class MidnightOilFinalArtifactPersistencePlanRequest(
+    MidnightOilFinalHtmlArtifactAssemblyPlanRequest
+):
+    final_html_artifact_assembly_plan_receipt: (
+        MidnightOilFinalHtmlArtifactAssemblyPlanReceipt
+    )
+
+    @model_validator(mode="after")
+    def _final_html_artifact_assembly_plan_matches(
+        self,
+    ) -> MidnightOilFinalArtifactPersistencePlanRequest:
+        html_plan = self.final_html_artifact_assembly_plan_receipt
+        draft_plan = self.final_synthesis_draft_plan_receipt
+        if html_plan.final_synthesis_draft_plan_receipt_id != draft_plan.receipt_id:
+            raise ValueError(
+                "final_html_artifact_assembly_plan_receipt must reference final_synthesis_draft_plan_receipt"
+            )
+        if (
+            html_plan.synthesis_bundle_assembly_plan_receipt_id
+            != self.synthesis_bundle_assembly_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "final_html_artifact_assembly_plan_receipt must reference synthesis_bundle_assembly_plan_receipt"
+            )
+        if (
+            html_plan.worker_synthesis_handoff_plan_receipt_id
+            != self.worker_synthesis_handoff_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "final_html_artifact_assembly_plan_receipt must reference worker_synthesis_handoff_plan_receipt"
+            )
+        if (
+            html_plan.worker_output_aggregation_plan_receipt_id
+            != self.worker_output_aggregation_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "final_html_artifact_assembly_plan_receipt must reference worker_output_aggregation_plan_receipt"
+            )
+        if html_plan.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError(
+                "final_html_artifact_assembly_plan_receipt must reference runner_handoff"
+            )
+        if html_plan.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError(
+                "final_html_artifact_assembly_plan_receipt must reference approval_receipt"
+            )
+        if html_plan.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError(
+                "final_html_artifact_assembly_plan_receipt must reference launch_packet"
+            )
+        if html_plan.run_id != self.launch_packet.run_id:
+            raise ValueError(
+                "final_html_artifact_assembly_plan_receipt must reference launch run"
+            )
+        if html_plan.status != "blocked_final_html_artifact_assembly_unimplemented":
+            raise ValueError(
+                "final_html_artifact_assembly_plan_receipt must be blocked_final_html_artifact_assembly_unimplemented"
+            )
+        if (
+            html_plan.final_html_artifact_assembly_allowed
+            or html_plan.final_html_artifact_assembled
+            or html_plan.final_html_asset_created
+            or html_plan.final_html_document_created
+            or html_plan.final_html_twin_notes_document_created
+            or html_plan.final_html_citation_index_created
+            or html_plan.final_html_export_manifest_created
+        ):
+            raise ValueError(
+                "final_html_artifact_assembly_plan_receipt must not create final HTML artifact state"
+            )
+        if (
+            html_plan.final_synthesis_draft_created
+            or html_plan.final_synthesis_outline_created
+            or html_plan.final_synthesis_claim_map_created
+            or html_plan.final_synthesis_citation_map_created
+            or html_plan.final_synthesis_gap_list_created
+            or html_plan.final_synthesis_quality_report_created
+        ):
+            raise ValueError(
+                "final_html_artifact_assembly_plan_receipt must not create final synthesis state"
+            )
+        if html_plan.worker_started:
+            raise ValueError(
+                "final_html_artifact_assembly_plan_receipt must not start worker"
+            )
+        if html_plan.runner_dispatch_enqueued:
+            raise ValueError(
+                "final_html_artifact_assembly_plan_receipt must not enqueue runner dispatch"
+            )
+        if html_plan.dispatch_performed:
+            raise ValueError(
+                "final_html_artifact_assembly_plan_receipt must not dispatch"
+            )
+        if html_plan.budget_reserved:
+            raise ValueError(
+                "final_html_artifact_assembly_plan_receipt must not reserve budget"
+            )
+        if html_plan.provider_calls_made:
+            raise ValueError(
+                "final_html_artifact_assembly_plan_receipt must not include provider calls"
+            )
+        if html_plan.retrieval_performed:
+            raise ValueError(
+                "final_html_artifact_assembly_plan_receipt must not perform retrieval"
+            )
+        if html_plan.source_receipts_created:
+            raise ValueError(
+                "final_html_artifact_assembly_plan_receipt must not create source receipts"
+            )
+        if html_plan.graph_mutated:
+            raise ValueError(
+                "final_html_artifact_assembly_plan_receipt must not mutate graph"
+            )
+        if html_plan.final_artifact_created:
+            raise ValueError(
+                "final_html_artifact_assembly_plan_receipt must not create final artifact"
+            )
+        return self
+
+
+class MidnightOilFinalArtifactPersistencePlanReceipt(BaseModel):
+    receipt_id: str
+    final_html_artifact_assembly_plan_receipt_id: str
+    final_synthesis_draft_plan_receipt_id: str
+    synthesis_bundle_assembly_plan_receipt_id: str
+    worker_synthesis_handoff_plan_receipt_id: str
+    worker_output_aggregation_plan_receipt_id: str
+    launch_packet_id: str
+    approval_receipt_id: str
+    runner_handoff_id: str
+    run_id: str
+    status: Literal["blocked_final_artifact_persistence_unimplemented"] = (
+        "blocked_final_artifact_persistence_unimplemented"
+    )
+    adapter_key: Literal["final_artifact_persistence"] = "final_artifact_persistence"
+    planned_final_artifact_persistence_receipt_id: str
+    planned_persisted_final_artifact_id: str
+    planned_information_asset_id: str
+    planned_hosted_html_asset_id: str
+    planned_account_asset_binding_id: str
+    planned_twin_notes_binding_id: str
+    planned_citation_index_binding_id: str
+    planned_graph_node_id: str
+    planned_graph_edge_set_id: str
+    planned_artifact_ledger_entry_id: str
+    planned_final_html_artifact_id: str
+    planned_final_html_asset_id: str
+    planned_final_html_document_id: str
+    planned_final_html_twin_notes_document_id: str
+    planned_final_html_citation_index_id: str
+    planned_final_html_export_manifest_id: str
+    planned_final_synthesis_draft_id: str
+    planned_synthesis_bundle_id: str
+    planned_synthesis_source_packet_id: str
+    planned_synthesis_evidence_map_id: str
+    planned_worker_id: str
+    planned_runner_dispatch_id: str
+    planned_idempotency_key: str
+    final_artifact_persistence_blockers: list[str]
+    required_final_artifact_persistence_invariants: list[str]
+    required_final_artifact_persistence_receipt_fields: list[str]
+    blocker_reason: Literal["final_artifact_persistence_unimplemented"] = (
+        "final_artifact_persistence_unimplemented"
+    )
+    final_artifact_persistence_allowed: bool = False
+    final_artifact_persisted: bool = False
+    information_asset_created: bool = False
+    hosted_html_asset_created: bool = False
+    account_asset_binding_created: bool = False
+    twin_notes_binding_created: bool = False
+    citation_index_binding_created: bool = False
+    artifact_ledger_entry_created: bool = False
+    graph_node_created: bool = False
+    graph_edge_set_created: bool = False
+    final_html_artifact_assembled: bool = False
+    final_html_document_created: bool = False
+    final_html_twin_notes_document_created: bool = False
+    final_html_citation_index_created: bool = False
+    final_synthesis_draft_created: bool = False
+    synthesis_bundle_assembled: bool = False
+    worker_output_aggregated: bool = False
+    worker_started: bool = False
+    scheduler_job_created: bool = False
+    runner_dispatch_enqueued: bool = False
+    dispatch_performed: bool = False
+    budget_reserved: bool = False
+    provider_calls_made: bool = False
+    retrieval_performed: bool = False
+    source_receipts_created: bool = False
+    graph_mutated: bool = False
+    final_artifact_created: bool = False
+    adapter_plan_notes: list[str] = Field(default_factory=list)
+
+
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
     price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
@@ -10397,6 +10591,145 @@ def final_html_artifact_assembly_plan_midnight_oil(
         adapter_plan_notes=[
             "final HTML artifact assembly plan only: no HTML asset, document, twin notes document, citation index, export manifest, graph mutation, or final artifact is created",
             "this receipt documents final HTML artifact assembly requirements after final synthesis draft planning",
+            "no activation readiness, live dispatch, scheduler job, worker runtime, budget reservation, provider call, retrieval, source receipt, graph mutation, or artifact write is performed",
+        ],
+    )
+
+
+def final_artifact_persistence_plan_midnight_oil(
+    req: MidnightOilFinalArtifactPersistencePlanRequest,
+) -> MidnightOilFinalArtifactPersistencePlanReceipt:
+    run_id = req.launch_packet.run_id
+    html_plan = req.final_html_artifact_assembly_plan_receipt
+    return MidnightOilFinalArtifactPersistencePlanReceipt(
+        receipt_id=f"{run_id}-final-artifact-persistence-plan",
+        final_html_artifact_assembly_plan_receipt_id=html_plan.receipt_id,
+        final_synthesis_draft_plan_receipt_id=(
+            html_plan.final_synthesis_draft_plan_receipt_id
+        ),
+        synthesis_bundle_assembly_plan_receipt_id=(
+            html_plan.synthesis_bundle_assembly_plan_receipt_id
+        ),
+        worker_synthesis_handoff_plan_receipt_id=(
+            html_plan.worker_synthesis_handoff_plan_receipt_id
+        ),
+        worker_output_aggregation_plan_receipt_id=(
+            html_plan.worker_output_aggregation_plan_receipt_id
+        ),
+        launch_packet_id=req.launch_packet.packet_id,
+        approval_receipt_id=req.approval_receipt.receipt_id,
+        runner_handoff_id=req.runner_handoff.handoff_id,
+        run_id=run_id,
+        planned_final_artifact_persistence_receipt_id=(
+            f"{run_id}-final-artifact-persistence-receipt"
+        ),
+        planned_persisted_final_artifact_id=f"{run_id}-persisted-final-artifact",
+        planned_information_asset_id=f"{run_id}-information-asset",
+        planned_hosted_html_asset_id=f"{run_id}-hosted-html-asset",
+        planned_account_asset_binding_id=f"{run_id}-account-asset-binding",
+        planned_twin_notes_binding_id=f"{run_id}-twin-notes-binding",
+        planned_citation_index_binding_id=f"{run_id}-citation-index-binding",
+        planned_graph_node_id=f"{run_id}-final-artifact-graph-node",
+        planned_graph_edge_set_id=f"{run_id}-final-artifact-graph-edge-set",
+        planned_artifact_ledger_entry_id=f"{run_id}-final-artifact-ledger-entry",
+        planned_final_html_artifact_id=html_plan.planned_final_html_artifact_id,
+        planned_final_html_asset_id=html_plan.planned_final_html_asset_id,
+        planned_final_html_document_id=html_plan.planned_final_html_document_id,
+        planned_final_html_twin_notes_document_id=(
+            html_plan.planned_final_html_twin_notes_document_id
+        ),
+        planned_final_html_citation_index_id=(
+            html_plan.planned_final_html_citation_index_id
+        ),
+        planned_final_html_export_manifest_id=(
+            html_plan.planned_final_html_export_manifest_id
+        ),
+        planned_final_synthesis_draft_id=html_plan.planned_final_synthesis_draft_id,
+        planned_synthesis_bundle_id=html_plan.planned_synthesis_bundle_id,
+        planned_synthesis_source_packet_id=(
+            html_plan.planned_synthesis_source_packet_id
+        ),
+        planned_synthesis_evidence_map_id=(
+            html_plan.planned_synthesis_evidence_map_id
+        ),
+        planned_worker_id=html_plan.planned_worker_id,
+        planned_runner_dispatch_id=html_plan.planned_runner_dispatch_id,
+        planned_idempotency_key=html_plan.planned_idempotency_key,
+        final_artifact_persistence_blockers=[
+            *html_plan.final_html_artifact_assembly_blockers,
+            "final artifact persistence receipt writer",
+            "information asset durable writer",
+            "hosted HTML asset storage adapter",
+            "account asset binding writer",
+            "twin notes binding writer",
+            "citation index binding writer",
+            "artifact graph node writer",
+            "artifact graph edge set writer",
+            "artifact ledger entry writer",
+            "idempotent final artifact persistence replay protection",
+        ],
+        required_final_artifact_persistence_invariants=[
+            "final artifact persistence planner must require final HTML artifact assembly planning before any hosted information asset can be persisted",
+            "final artifact persistence planner must bind the information asset, hosted HTML asset, twin notes binding, citation index binding, graph node, graph edge set, ledger entry, runner dispatch id, and idempotency key to the same planned HTML artifact",
+            "final artifact persistence planner must keep account-visible assets uncreated until durable final HTML artifact assembly receipts exist",
+            "final artifact persistence planner must preserve source/evidence/citation lineage through hosted HTML asset, graph node, and twin notes bindings",
+            "final artifact persistence planner must not dispatch providers, perform retrieval, mutate graph, or write final artifacts while planning persistence controls",
+        ],
+        required_final_artifact_persistence_receipt_fields=[
+            "final_artifact_persistence_plan_receipt_id",
+            "final_html_artifact_assembly_plan_receipt_id",
+            "final_artifact_persistence_receipt_id",
+            "persisted_final_artifact_id",
+            "information_asset_id",
+            "hosted_html_asset_id",
+            "account_asset_binding_id",
+            "twin_notes_binding_id",
+            "citation_index_binding_id",
+            "graph_node_id",
+            "graph_edge_set_id",
+            "artifact_ledger_entry_id",
+            "final_html_artifact_id",
+            "final_html_document_id",
+            "final_html_citation_index_id",
+            "synthesis_bundle_id",
+            "synthesis_source_packet_id",
+            "synthesis_evidence_map_id",
+            "runner_dispatch_id",
+            "idempotency_key",
+            "final_artifact_persisted",
+            "created_at",
+        ],
+        blocker_reason="final_artifact_persistence_unimplemented",
+        final_artifact_persistence_allowed=False,
+        final_artifact_persisted=False,
+        information_asset_created=False,
+        hosted_html_asset_created=False,
+        account_asset_binding_created=False,
+        twin_notes_binding_created=False,
+        citation_index_binding_created=False,
+        artifact_ledger_entry_created=False,
+        graph_node_created=False,
+        graph_edge_set_created=False,
+        final_html_artifact_assembled=False,
+        final_html_document_created=False,
+        final_html_twin_notes_document_created=False,
+        final_html_citation_index_created=False,
+        final_synthesis_draft_created=False,
+        synthesis_bundle_assembled=False,
+        worker_output_aggregated=False,
+        worker_started=False,
+        scheduler_job_created=False,
+        runner_dispatch_enqueued=False,
+        dispatch_performed=False,
+        budget_reserved=False,
+        provider_calls_made=False,
+        retrieval_performed=False,
+        source_receipts_created=False,
+        graph_mutated=False,
+        final_artifact_created=False,
+        adapter_plan_notes=[
+            "final artifact persistence plan only: no hosted HTML asset, information asset, account binding, graph node, ledger entry, or final artifact is created",
+            "this receipt documents persistence requirements after final HTML artifact assembly planning",
             "no activation readiness, live dispatch, scheduler job, worker runtime, budget reservation, provider call, retrieval, source receipt, graph mutation, or artifact write is performed",
         ],
     )

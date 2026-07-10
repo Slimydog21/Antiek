@@ -28,6 +28,8 @@ from substrate.midnight_oil import (
     MidnightOilDryRunRequest,
     MidnightOilFinalArtifactAdapterPlanReceipt,
     MidnightOilFinalArtifactAdapterPlanRequest,
+    MidnightOilFinalArtifactPersistencePlanReceipt,
+    MidnightOilFinalArtifactPersistencePlanRequest,
     MidnightOilFinalArtifactReceipt,
     MidnightOilFinalArtifactRequest,
     MidnightOilFinalHtmlArtifactAssemblyPlanReceipt,
@@ -96,6 +98,7 @@ from substrate.midnight_oil import (
     dry_run_midnight_oil,
     final_artifact_adapter_plan_midnight_oil,
     final_artifact_midnight_oil,
+    final_artifact_persistence_plan_midnight_oil,
     final_html_artifact_assembly_plan_midnight_oil,
     final_synthesis_draft_plan_midnight_oil,
     graph_adapter_plan_midnight_oil,
@@ -470,6 +473,16 @@ def post_midnight_oil_final_html_artifact_assembly_plan(
     return final_html_artifact_assembly_plan_midnight_oil(req)
 
 
+@midnight_oil_router.post(
+    "/final-artifact-persistence-plan",
+    response_model=MidnightOilFinalArtifactPersistencePlanReceipt,
+)
+def post_midnight_oil_final_artifact_persistence_plan(
+    req: MidnightOilFinalArtifactPersistencePlanRequest,
+) -> MidnightOilFinalArtifactPersistencePlanReceipt:
+    return final_artifact_persistence_plan_midnight_oil(req)
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
@@ -486,6 +499,7 @@ __all__ = [
     "post_midnight_oil_dry_run",
     "post_midnight_oil_final_artifact",
     "post_midnight_oil_final_artifact_adapter_plan",
+    "post_midnight_oil_final_artifact_persistence_plan",
     "post_midnight_oil_final_html_artifact_assembly_plan",
     "post_midnight_oil_final_synthesis_draft_plan",
     "post_midnight_oil_graph_adapter_plan",
