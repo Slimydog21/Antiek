@@ -206,6 +206,9 @@ def test_free_electricity_stem_trio() -> None:
         "pd-heaviside-em",
     }
     assert all(e.source_format == "html" for e in free_elec if e.book_id in ids)
+    # Residual (aaa): free electricity set size honesty (parity computing/technology).
+    assert len(free_elec) >= 3
+    assert all(e.is_free for e in free_elec)
 
 
 def test_turing_computability_subjects_and_free_pd() -> None:
