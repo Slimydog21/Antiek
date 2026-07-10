@@ -1040,3 +1040,10 @@ Context search float|full windows carry search_query and search_hit_count into
 HostedHtmlDocumentHost honesty chrome. Competitive delta: recursive note-taker
 intelligent search results stay query-auditable in the reading flywheel — not
 a dead-end hit list (HTML · not PDF).
+
+## Residual tr · 2026-07-10 — Collective unit prompt float|full HTML
+Multi-select deep-research spawns merged into a cohesive unit can open the
+prompt_block as float|full HTML (source=collective_unit_prompt) without
+inventing a server document_id. Competitive delta: collective research is
+readable HTML workstation material before continue-as-unit or parent merge —
+not only a chat prompt block.

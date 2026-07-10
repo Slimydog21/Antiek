@@ -287,6 +287,8 @@ export function buildHostedHtmlWriteHref(opts: {
     "research_progress_complete",
     "research_progress_draft",
     "session_flywheel_complete",
+    // Residual (tr): multi-spawn cohesive unit prompt float (not doc merge).
+    "collective_unit_prompt",
   ]);
   const source = KNOWN_HOST_WRITE_SOURCES.has(srcRaw)
     ? srcRaw
@@ -303,7 +305,11 @@ export function buildHostedHtmlWriteHref(opts: {
             : source === "research_progress_complete" ||
                 source === "research_progress_draft"
               ? `Research progress · ${doc}`
-              : `Hosted HTML · ${doc}`;
+              : source === "collective_unit_prompt"
+                ? `Collective cohesive unit · ${doc}`
+                : source === "session_flywheel_complete"
+                  ? `Session flywheel · ${doc}`
+                  : `Hosted HTML · ${doc}`;
   const seedKey = storeTwinWriteSeed({
     plain_text: plain,
     html: String(opts.html || ""),

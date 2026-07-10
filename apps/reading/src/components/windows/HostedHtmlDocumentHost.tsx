@@ -272,6 +272,8 @@ export default function HostedHtmlDocumentHost(
     payloadSource === "research_progress_complete" ||
     payloadSource === "research_progress_draft";
   const isSessionFlywheel = payloadSource === "session_flywheel_complete";
+  // Residual (tr): cohesive multi-spawn unit prompt HTML window.
+  const isCollectiveUnitPrompt = payloadSource === "collective_unit_prompt";
   // Residual (tq): intelligent search query + hit count honesty.
   const searchQuery = String(props.search_query || "").trim();
   const searchHitCount =
@@ -293,7 +295,9 @@ export default function HostedHtmlDocumentHost(
             ? `Research progress · ${title}`
             : isSessionFlywheel
               ? `Session flywheel · ${title}`
-              : title;
+              : isCollectiveUnitPrompt
+                ? `Collective cohesive unit · ${title}`
+                : title;
   const twinSeedBody = html
     ? html.replace(/<[^>]+>/g, " ").slice(0, 500)
     : twinSeedTitle;
@@ -387,7 +391,9 @@ export default function HostedHtmlDocumentHost(
                             ? payloadSource
                             : isSessionFlywheel
                               ? "session_flywheel_complete"
-                              : "hosted_html_document"
+                              : isCollectiveUnitPrompt
+                                ? "collective_unit_prompt"
+                                : "hosted_html_document"
                 }
                 className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
                 title={

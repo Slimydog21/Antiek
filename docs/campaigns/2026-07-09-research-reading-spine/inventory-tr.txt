@@ -1,0 +1,19 @@
+# inventory-tr · Collective cohesive unit prompt float|full HTML
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: tr
+date: 2026-07-10
+
+## Closed
+- buildCollectiveUnitPromptHtml pure helper
+- collective-unit-open-float / open-full after multi-spawn merge
+- source=collective_unit_prompt · no invented server document_id
+- Host twin seed title for collective_unit_prompt
+- vitest Collective 22 + Host 15 + twinWriteSeed 24 = 61 · SCRATCH residual-tests-tr.log
+
+## Product why
+North star: multi-select subagent deep researches → cohesive unit → read the
+prompt as HTML in float|full before continue-as-unit or document merge.
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live multi-agent collective council (L6)

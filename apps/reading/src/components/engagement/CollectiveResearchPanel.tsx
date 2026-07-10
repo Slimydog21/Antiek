@@ -48,6 +48,8 @@
  *     (preferredSpawnId wins; ≥2 restored ids for multi-select honesty).
  *     (spawn_ids by collective_id) in sessionStorage; restore last multi-select
  *     after continue-as-unit re-entry (intersection with available).
+ * 28. Residual (tr): float|full cohesive unit prompt_block as HTML reading window
+ *     without inventing a server document_id (parity research context pack sl).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -73,6 +75,7 @@ import {
   listRecentDeepResearchSpawnIds,
 } from "../../workspace/recentDeepResearchSpawns";
 import type { WindowMode } from "../../workspace/windowsStore";
+import { openWindow } from "../windows/openWindow";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 import {
   ResearchLaunchBudgetPanel,
@@ -81,6 +84,41 @@ import {
 } from "./ResearchLaunchBudgetPanel";
 import { openMergedResearchWindow } from "./SpawnMergePanel";
 import { buildMergedDocWriteHref } from "../../workspace/twinWriteSeed";
+
+/** Residual (tr): pure HTML body for cohesive unit prompt (no invented doc id). */
+export function buildCollectiveUnitPromptHtml(opts: {
+  collectiveId: string;
+  promptBlock: string;
+  spawnCount?: number | null;
+  twinCount?: number | null;
+  refCount?: number | null;
+  researchTier?: string | null;
+  spawnIds?: readonly string[] | null;
+}): string {
+  const escape = (s: string) =>
+    String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  const cid = String(opts.collectiveId || "").trim() || "collective";
+  const pb = String(opts.promptBlock || "").trim();
+  const spawnIds = (opts.spawnIds || []).map((s) => String(s || "").trim()).filter(Boolean);
+  return [
+    `<article data-source="collective_unit_prompt" data-view-format="html" data-collective-id="${escape(cid)}">`,
+    `<h1>Collective cohesive unit</h1>`,
+    `<p class="meta">collective=${escape(cid)}`,
+    opts.spawnCount != null ? ` · spawns=${opts.spawnCount}` : "",
+    opts.twinCount != null ? ` · twins=${opts.twinCount}` : "",
+    opts.refCount != null ? ` · refs=${opts.refCount}` : "",
+    opts.researchTier ? ` · tier=${escape(String(opts.researchTier))}` : "",
+    `</p>`,
+    spawnIds.length
+      ? `<p class="meta">spawn_ids=${escape(spawnIds.join(", "))}</p>`
+      : "",
+    pb ? `<section><h2>Cohesive prompt_block</h2><pre>${escape(pb)}</pre></section>` : "",
+    `</article>`,
+  ].join("");
+}
 
 export type CollectiveResearchPanelProps = {
   /** Pre-listed spawn ids available for multi-select */
@@ -917,6 +955,101 @@ export function CollectiveResearchPanel({
           <pre className="prompt-block" data-testid="collective-prompt-block">
             {unit.prompt_block}
           </pre>
+          {/* Residual (tr): cohesive unit prompt → float|full HTML reading windows. */}
+          {(unit.prompt_block || "").trim() ? (
+            <p className="meta font-mono text-[11px] space-x-3">
+              <button
+                type="button"
+                data-testid="collective-unit-open-float"
+                data-view-format="html"
+                data-window-mode="floating"
+                data-collective-id={unit.collective_id ?? ""}
+                data-spawn-count={String(unit.spawn_count ?? 0)}
+                className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
+                title="Open cohesive unit prompt as floating HTML window (no invented document_id · never PDF)"
+                onClick={() => {
+                  const cid =
+                    String(unit.collective_id || "").trim() || "collective";
+                  const id = `collective_unit:${cid}:${Date.now().toString(36)}`;
+                  const html = buildCollectiveUnitPromptHtml({
+                    collectiveId: cid,
+                    promptBlock: unit.prompt_block || "",
+                    spawnCount: unit.spawn_count,
+                    twinCount: unit.twin_count,
+                    refCount: unit.ref_count,
+                    researchTier: unit.recommended_research_tier || researchTier,
+                    spawnIds: selected,
+                  });
+                  openWindow(
+                    "hosted_html_document",
+                    {
+                      document_id: id,
+                      title: `Collective unit · ${cid}`,
+                      html,
+                      view_format: "html",
+                      source: "collective_unit_prompt",
+                      research_tier:
+                        unit.recommended_research_tier || researchTier || null,
+                      collective_id: cid,
+                      spawn_count: unit.spawn_count ?? selected.length,
+                    },
+                    {
+                      id: `win:collective_unit:${id}`,
+                      title: "Collective unit",
+                      mode: "floating",
+                    },
+                  );
+                }}
+              >
+                Open float (unit HTML)
+              </button>
+              <button
+                type="button"
+                data-testid="collective-unit-open-full"
+                data-view-format="html"
+                data-window-mode="full"
+                data-collective-id={unit.collective_id ?? ""}
+                data-spawn-count={String(unit.spawn_count ?? 0)}
+                className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
+                title="Open cohesive unit prompt as full working-region HTML window (never PDF)"
+                onClick={() => {
+                  const cid =
+                    String(unit.collective_id || "").trim() || "collective";
+                  const id = `collective_unit:${cid}:full:${Date.now().toString(36)}`;
+                  const html = buildCollectiveUnitPromptHtml({
+                    collectiveId: cid,
+                    promptBlock: unit.prompt_block || "",
+                    spawnCount: unit.spawn_count,
+                    twinCount: unit.twin_count,
+                    refCount: unit.ref_count,
+                    researchTier: unit.recommended_research_tier || researchTier,
+                    spawnIds: selected,
+                  });
+                  openWindow(
+                    "hosted_html_document",
+                    {
+                      document_id: id,
+                      title: `Collective unit · ${cid} (full)`,
+                      html,
+                      view_format: "html",
+                      source: "collective_unit_prompt",
+                      research_tier:
+                        unit.recommended_research_tier || researchTier || null,
+                      collective_id: cid,
+                      spawn_count: unit.spawn_count ?? selected.length,
+                    },
+                    {
+                      id: `win:collective_unit:${id}:full`,
+                      title: "Collective unit (full)",
+                      mode: "full",
+                    },
+                  );
+                }}
+              >
+                Open full (unit HTML)
+              </button>
+            </p>
+          ) : null}
           {/* Residual (dc/di/jf): continue unit + budget soft-gate + depth prefill. */}
           <div
             className="space-y-2"

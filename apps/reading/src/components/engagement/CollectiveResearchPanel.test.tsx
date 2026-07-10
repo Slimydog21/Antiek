@@ -4,7 +4,10 @@ import {
   clearCollectiveUnitMembership,
   storeCollectiveUnitMembership,
 } from "../../workspace/collectiveUnitMembership";
-import { CollectiveResearchPanel } from "./CollectiveResearchPanel";
+import {
+  buildCollectiveUnitPromptHtml,
+  CollectiveResearchPanel,
+} from "./CollectiveResearchPanel";
 
 const fetchCollectiveResearch = vi.fn();
 const mergeSpawnOutputs = vi.fn();
@@ -208,6 +211,37 @@ describe("CollectiveResearchPanel", () => {
     expect(metrics.getAttribute("data-usage-source")).toBe("collective_merge");
     expect(metrics.getAttribute("data-usage-task-class")).toBe("synthesize");
     expect(metrics.textContent).toMatch(/bench=collective_merge\/synthesize/);
+    // Residual (tr): float|full cohesive unit prompt HTML (no invented server doc).
+    fireEvent.click(screen.getByTestId("collective-unit-open-float"));
+    expect(openWindow).toHaveBeenCalled();
+    const floatCall = openWindow.mock.calls.at(-1) as [
+      string,
+      {
+        source?: string;
+        html?: string;
+        view_format?: string;
+        collective_id?: string;
+        spawn_count?: number;
+      },
+      { mode?: string },
+    ];
+    expect(floatCall[0]).toBe("hosted_html_document");
+    expect(floatCall[1].source).toBe("collective_unit_prompt");
+    expect(floatCall[1].view_format).toBe("html");
+    expect(floatCall[1].collective_id).toBe("col_abc");
+    expect(floatCall[1].spawn_count).toBe(2);
+    expect(floatCall[1].html).toMatch(/data-source="collective_unit_prompt"/);
+    expect(floatCall[1].html).toMatch(/Cohesive prompt_block/);
+    expect(floatCall[1].html).toMatch(/col_abc/);
+    expect(floatCall[2].mode).toBe("floating");
+    fireEvent.click(screen.getByTestId("collective-unit-open-full"));
+    const fullCall = openWindow.mock.calls.at(-1) as [
+      string,
+      { source?: string },
+      { mode?: string },
+    ];
+    expect(fullCall[1].source).toBe("collective_unit_prompt");
+    expect(fullCall[2].mode).toBe("full");
     // Residual (jf): depth prefill none when Settings unset.
     await waitFor(() => {
       expect(
@@ -216,6 +250,25 @@ describe("CollectiveResearchPanel", () => {
           .getAttribute("data-depth-prefill"),
       ).toBe("none");
     });
+  });
+
+  it("builds collective unit prompt HTML pure helper (tr)", () => {
+    const html = buildCollectiveUnitPromptHtml({
+      collectiveId: "col_x",
+      promptBlock: "Synthesize A + B",
+      spawnCount: 2,
+      twinCount: 4,
+      refCount: 1,
+      researchTier: "wrestle",
+      spawnIds: ["spn_a", "spn_b"],
+    });
+    expect(html).toMatch(/data-source="collective_unit_prompt"/);
+    expect(html).toMatch(/data-view-format="html"/);
+    expect(html).toMatch(/collective=col_x/);
+    expect(html).toMatch(/spawns=2/);
+    expect(html).toMatch(/Synthesize A \+ B/);
+    expect(html).toMatch(/spawn_ids=spn_a, spn_b/);
+    expect(html).not.toMatch(/%pdf/i);
   });
 
   it("prefills collective continue depth from Settings wrestle (jf)", async () => {
