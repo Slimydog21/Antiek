@@ -1,0 +1,23 @@
+# inventory-ary · SpawnMerge draft/parent CTAs gated by pathChoices readiness
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ary
+date: 2026-07-10
+parent_tip: 94e03f17b (arx)
+
+## Closed
+- spawn-merge-draft: disabled when !pathChoices.draft_merge_ready (or budget soft-gate)
+- spawn-merge-parent: disabled when !pathChoices.into_parent_ready (or budget soft-gate)
+- CTA stamps: data-draft-merge-ready · data-into-parent-ready · data-view-format=html
+- Title honesty uses pathChoices.summary when not ready
+- Props spawnId/parentAssetId optional-null-safe (unbound → gated, never crash)
+- SpawnMergePanel.test: gates draft/parent CTAs on pathChoices (ary)
+- vitest SpawnMergePanel: 10 green
+
+## Doctrine
+highlight→DR→merge path pure contract (aqy) now drives CTAs · parity Collective
+Never invent parent/spawn binding · HTML-first draft_combined / into_parent
+
+## Next
+arz+ offline product residual outside thrash
+Avoid: path-choices thrash after aqw–aqz/ary · free-host · twin promote gate · receipt
+Operator merge PR #465 remains P0 (gated)

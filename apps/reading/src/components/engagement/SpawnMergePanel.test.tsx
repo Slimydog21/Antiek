@@ -540,4 +540,46 @@ describe("SpawnMergePanel residual ci", () => {
     });
   });
 
+  it("gates draft/parent CTAs on pathChoices readiness (ary)", () => {
+    // Missing parent → draft_merge_ready false
+    const { unmount } = render(<SpawnMergePanel spawnId="spn_only" />);
+    const draftNoParent = screen.getByTestId(
+      "spawn-merge-draft",
+    ) as HTMLButtonElement;
+    const parentNoParent = screen.getByTestId(
+      "spawn-merge-parent",
+    ) as HTMLButtonElement;
+    expect(draftNoParent.getAttribute("data-draft-merge-ready")).toBe("false");
+    expect(parentNoParent.getAttribute("data-into-parent-ready")).toBe("false");
+    expect(draftNoParent.disabled).toBe(true);
+    expect(parentNoParent.disabled).toBe(true);
+    expect(draftNoParent.getAttribute("title") || "").toMatch(/parent/i);
+    expect(
+      screen.getByTestId("spawn-merge-actions").getAttribute("data-draft-merge-ready"),
+    ).toBe("false");
+    unmount();
+
+    // Missing spawn → not ready
+    render(<SpawnMergePanel parentAssetId="book-orphan" />);
+    const draftNoSpawn = screen.getByTestId(
+      "spawn-merge-draft",
+    ) as HTMLButtonElement;
+    expect(draftNoSpawn.getAttribute("data-draft-merge-ready")).toBe("false");
+    expect(draftNoSpawn.disabled).toBe(true);
+    expect(draftNoSpawn.getAttribute("title") || "").toMatch(/spawn|select/i);
+
+    // Both bound → ready (no budget warn)
+    cleanup();
+    render(<SpawnMergePanel spawnId="spn_ok" parentAssetId="book_ok" />);
+    const draftOk = screen.getByTestId("spawn-merge-draft") as HTMLButtonElement;
+    const parentOk = screen.getByTestId(
+      "spawn-merge-parent",
+    ) as HTMLButtonElement;
+    expect(draftOk.getAttribute("data-draft-merge-ready")).toBe("true");
+    expect(parentOk.getAttribute("data-into-parent-ready")).toBe("true");
+    expect(draftOk.disabled).toBe(false);
+    expect(parentOk.disabled).toBe(false);
+    expect(draftOk.getAttribute("data-view-format")).toBe("html");
+  });
+
 });

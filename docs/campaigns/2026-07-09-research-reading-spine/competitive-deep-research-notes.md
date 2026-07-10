@@ -4102,3 +4102,10 @@ hydrate: empty → disabled · kind leg missing → disabled · not-yet-hydrated
 allow (server may hold notes). Competitive delta: recursive note-taker promote
 path is hard-to-vary pure contract (readiness → CTA), never invent notes.
 vitest TwinNotes 35 green. P0 PR #465. Pivot ary+ outside thrash.
+
+## Residual ary · 2026-07-10 — SpawnMerge CTAs gated by pathChoices
+spawn-merge-draft / spawn-merge-parent honor researchPathChoicesReadiness
+(draft_merge_ready · into_parent_ready) + budget soft-gate. Unbound
+spawn/parent props null-safe. Competitive delta: highlight→DR→merge path is
+hard-to-vary pure contract end-to-end (chrome → CTA · parity collective).
+vitest SpawnMerge 10 green. P0 PR #465. Pivot arz+ outside thrash.

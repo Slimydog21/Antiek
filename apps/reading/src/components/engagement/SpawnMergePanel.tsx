@@ -96,8 +96,9 @@ export function openMergedResearchWindow(
 }
 
 export type SpawnMergePanelProps = {
-  spawnId: string;
-  parentAssetId: string;
+  /** Residual (ary): optional until bound — CTA gates on researchPathChoices. */
+  spawnId?: string | null;
+  parentAssetId?: string | null;
   /** Residual (eh): after successful HTML merge (+ twin seed attempt). */
   onMerged?: (result: MergeProductResponse) => void;
   /**
@@ -113,8 +114,8 @@ export type SpawnMergePanelProps = {
 };
 
 export function SpawnMergePanel({
-  spawnId,
-  parentAssetId,
+  spawnId = "",
+  parentAssetId = "",
   onMerged,
   autoOpenDraft = true,
   researchTier = null,
@@ -151,13 +152,15 @@ export function SpawnMergePanel({
       const plain = plainTextFromHtml(result.html).trim();
       if (plain) return plain.slice(0, 4000);
     }
-    return `spawn merge · ${spawnId.trim()} → ${parentAssetId.trim()}`;
+    const sid = String(spawnId || "").trim() || "(unbound spawn)";
+    const parent = String(parentAssetId || "").trim() || "(unbound parent)";
+    return `spawn merge · ${sid} → ${parent}`;
   }, [result?.html, spawnId, parentAssetId]);
 
   const merge = useCallback(
     async (mode: MergeMode) => {
-      const sid = spawnId.trim();
-      const parent = parentAssetId.trim();
+      const sid = String(spawnId || "").trim();
+      const parent = String(parentAssetId || "").trim();
       if (!sid || !parent) {
         setError("spawnId and parentAssetId are required");
         return;
@@ -399,23 +402,33 @@ export function SpawnMergePanel({
         className="flex flex-wrap gap-2"
         data-testid="spawn-merge-actions"
         data-seamless-spawn-merge={String(seamlessSpawnMerge)}
+        data-draft-merge-ready={String(pathChoices.draft_merge_ready)}
+        data-into-parent-ready={String(pathChoices.into_parent_ready)}
         data-budget-soft-gate={String(budgetWarn && !forceOverBudget)}
       >
         <button
           type="button"
           data-testid="spawn-merge-draft"
           data-seamless-merge-draft={String(seamlessSpawnMerge)}
+          data-draft-merge-ready={String(pathChoices.draft_merge_ready)}
           data-mode="draft_combined"
+          data-view-format="html"
           data-budget-soft-gate={String(budgetWarn && !forceOverBudget)}
-          disabled={busy || (budgetWarn && !forceOverBudget)}
+          disabled={
+            busy ||
+            !pathChoices.draft_merge_ready ||
+            (budgetWarn && !forceOverBudget)
+          }
           onClick={() => void merge("draft_combined")}
           className="rounded border border-ink/30 px-2 py-1 text-[12px] font-mono hover:bg-ink/5 disabled:opacity-50 dark:border-bright/30"
           title={
-            budgetWarn && !forceOverBudget
-              ? "Over budget — enable force override before draft merge"
-              : seamlessSpawnMerge
-                ? "Create draft-combined HTML (leaves parent reading asset · seamless path)"
-                : "Create draft-combined HTML"
+            !pathChoices.draft_merge_ready
+              ? pathChoices.summary
+              : budgetWarn && !forceOverBudget
+                ? "Over budget — enable force override before draft merge"
+                : seamlessSpawnMerge
+                  ? "Create draft-combined HTML (leaves parent reading asset · seamless path)"
+                  : "Create draft-combined HTML"
           }
         >
           {busy ? "Merging…" : "Create draft combined"}
@@ -424,17 +437,25 @@ export function SpawnMergePanel({
           type="button"
           data-testid="spawn-merge-parent"
           data-seamless-merge-parent={String(seamlessSpawnMerge)}
+          data-into-parent-ready={String(pathChoices.into_parent_ready)}
           data-mode="into_parent"
+          data-view-format="html"
           data-budget-soft-gate={String(budgetWarn && !forceOverBudget)}
-          disabled={busy || (budgetWarn && !forceOverBudget)}
+          disabled={
+            busy ||
+            !pathChoices.into_parent_ready ||
+            (budgetWarn && !forceOverBudget)
+          }
           onClick={() => void merge("into_parent")}
           className="rounded border border-ink/30 px-2 py-1 text-[12px] font-mono hover:bg-ink/5 disabled:opacity-50 dark:border-bright/30"
           title={
-            budgetWarn && !forceOverBudget
-              ? "Over budget — enable force override before parent merge"
-              : seamlessSpawnMerge
-                ? "Merge into parent reading asset (HTML · seamless highlight→DR→merge)"
-                : "Merge into parent reading asset"
+            !pathChoices.into_parent_ready
+              ? pathChoices.summary
+              : budgetWarn && !forceOverBudget
+                ? "Over budget — enable force override before parent merge"
+                : seamlessSpawnMerge
+                  ? "Merge into parent reading asset (HTML · seamless highlight→DR→merge)"
+                  : "Merge into parent reading asset"
           }
         >
           {busy ? "Merging…" : "Merge into parent"}
