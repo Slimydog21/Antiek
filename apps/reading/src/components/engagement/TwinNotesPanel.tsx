@@ -48,6 +48,8 @@
  * (brainstorm seed + HTML preview; no invented server document_id).
  * Residual (acq): data-write-seed-has-body on twin draft + promote Open Write
  * (true when note/unit body text non-empty; parity ResearchProgress acp).
+ * Residual (adi): twin-draft-metrics data-research-tier for depth audit on
+ * recursive note-taker HTML draft path (prop/API tier; parity chase metrics).
  * Residual (ps): twin HTML draft full working-region window (parity chase full).
  * Residual (pt): twin-draft-metrics echo note_ids provenance (parity ni chase).
  * Residual (pw): mergeTwinChaseNotes pure helper — dedupe by note_id, questions
@@ -255,7 +257,7 @@ export function TwinNotesPanel({
   const [promoteStatus, setPromoteStatus] = useState<string | null>(null);
   /** Residual (mz): chase-selected deep research status chrome. */
   const [chaseStatus, setChaseStatus] = useState<string | null>(null);
-  /** Residual (po/pp/px/acq): last twin HTML draft open + Write handoff metrics. */
+  /** Residual (po/pp/px/acq/adi): last twin HTML draft open + Write handoff metrics. */
   const [draftMetrics, setDraftMetrics] = useState<{
     note_count: number;
     note_ids: string[];
@@ -265,6 +267,8 @@ export function TwinNotesPanel({
     write_seed_key: string | null;
     /** Residual (acq): twin_seed body honesty (note text / HTML body non-empty). */
     write_seed_has_body?: boolean;
+    /** Residual (adi): depth posture on draft metrics (prop/API research_tier). */
+    research_tier?: string | null;
     /** Residual (px): cross-asset merge provenance when draft used second asset. */
     merge_asset_ids?: string[] | null;
     merge_source?: string | null;
@@ -871,6 +875,8 @@ export function TwinNotesPanel({
         write_href: writeHref,
         write_seed_key: seedKey,
         write_seed_has_body: hasBody,
+        // Residual (adi): stamp host/API research_tier for draft depth audit.
+        research_tier: normalizedResearchTier || null,
         merge_asset_ids: mergeIds,
         merge_source: crossAsset ? source : null,
       });
@@ -1398,6 +1404,8 @@ export function TwinNotesPanel({
             data-source={
               draftMetrics.merge_source || "twin_draft_selected"
             }
+            // Residual (adi): depth posture on recursive note-taker draft audit.
+            data-research-tier={draftMetrics.research_tier || ""}
             data-merge-assets={
               draftMetrics.merge_asset_ids?.join("|") ?? ""
             }
@@ -1410,6 +1418,9 @@ export function TwinNotesPanel({
                 : `${draftMetrics.note_ids.slice(0, 6).join(",")},+${draftMetrics.note_ids.length - 6}`}{" "}
               · window=
               {draftMetrics.window_id ?? "(none)"} · {draftMetrics.title}
+              {draftMetrics.research_tier ? (
+                <> · tier={draftMetrics.research_tier}</>
+              ) : null}
               {draftMetrics.merge_asset_ids?.length ? (
                 <> · merge={draftMetrics.merge_asset_ids.join("+")}</>
               ) : null}

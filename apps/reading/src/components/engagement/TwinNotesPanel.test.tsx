@@ -1251,7 +1251,9 @@ describe("TwinNotesPanel", () => {
       messages: [],
       html: "<p>twins</p>",
     });
-    render(<TwinNotesPanel assetId="paper" autoLoad />);
+    render(
+      <TwinNotesPanel assetId="paper" autoLoad researchTier="wrestle" />,
+    );
     await waitFor(() => {
       expect(screen.getByTestId("twin-select-twin_q")).toBeTruthy();
     });
@@ -1286,6 +1288,10 @@ describe("TwinNotesPanel", () => {
     expect(metrics.getAttribute("data-write-seed-key")).toBe(
       "antiek.twin_write_seed.testkey",
     );
+    // Residual (adi): research_tier on twin draft metrics (depth audit).
+    expect(metrics.getAttribute("data-research-tier")).toBe("wrestle");
+    expect(metrics.getAttribute("data-view-format")).toBe("html");
+    expect(metrics.textContent).toMatch(/tier=wrestle/);
     const write = screen.getByTestId("twin-draft-open-write");
     expect(write.getAttribute("href")).toBe(
       "/write?twin_seed=antiek.twin_write_seed.testkey",
