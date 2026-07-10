@@ -3524,3 +3524,8 @@ Marketplace free PD catalog adds Aristotle Nicomachean Ethics (HTML · philosoph
 ethics/politics) for tech-researcher critical-reasoning substrate. free_count 20 ·
 philosophy domain search defaults already cover ethics. Offline catalog verify green.
 P0 operator merge PR #465. Pivot ann+ outside thrash (prefer non-catalog).
+
+## Residual ann · 2026-07-10 — free PD count honesty floor ≥20
+Catalog honesty tests raise free_count / free_pd / public_domain floors to ≥20
+after Nicomachean Ethics (anm). Prevents silent free inventory drift. P0 operator
+merge PR #465. Pivot ano+ outside thrash (prefer non-catalog count floors).
