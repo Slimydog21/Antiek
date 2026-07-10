@@ -28,6 +28,7 @@ import GlassSurface from "../../shell/GlassSurface";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
 import { listRecentDeepResearchSpawnIds } from "../../workspace/recentDeepResearchSpawns";
 import {
+  formatTwinWriteSeedFreeform,
   loadTwinWriteSeed,
   type TwinWriteSeedPayload,
 } from "../../workspace/twinWriteSeed";
@@ -102,6 +103,8 @@ import { composeDriverPromptText } from "../../lib/driverPromptText";
  * Residual (pq): on create with twin_seed, offline-seed twin notes onto the new
  * writing asset so recursive note-taker substrate continues into Write.
  * Residual (pu): twin seed handoff banner echoes note_ids provenance (parity pt).
+ * Residual (qx): freeform + banner include twin seed source
+ * (deep_research_session / research_progress_complete / …) for audit.
 
  * Residual (gg): remount TwinNotesPanel on same refresh key as research
  * context (DR launch / collective merge / promote / re-import) — hosted ez parity.
@@ -284,7 +287,8 @@ export default function WriteHome() {
         ? prev
         : {
             ...prev,
-            freeform: `twin_seed:${loaded.asset_id || "asset"}:${loaded.note_ids.length}`,
+            // Residual (qx): include source for DR/progress audit trail.
+            freeform: formatTwinWriteSeedFreeform(loaded),
           },
     );
   }, [deliverableId, twinSeedKey]);
@@ -742,6 +746,7 @@ export default function WriteHome() {
               : ""
           }
           data-asset-id={twinSeed?.asset_id ?? ""}
+          data-source={twinSeed?.source ?? ""}
           role="status"
         >
           {twinSeed ? (
@@ -757,6 +762,10 @@ export default function WriteHome() {
                         : `${twinSeed.note_ids.slice(0, 6).join(",")},+${twinSeed.note_ids.length - 6}`
                     }`
                   : ""}{" "}
+                · source=
+                <code data-testid="write-twin-seed-source">
+                  {twinSeed.source}
+                </code>{" "}
                 · asset=
                 <code>{twinSeed.asset_id || "(none)"}</code>
               </p>
@@ -776,11 +785,12 @@ export default function WriteHome() {
               <p
                 className="text-[10px] font-mono"
                 data-testid="write-twin-seed-provenance"
+                data-source={twinSeed.source}
               >
                 Provenance freeform:{" "}
                 <code>
                   {projectType.freeform.trim() ||
-                    `twin_seed:${twinSeed.asset_id || "asset"}:${twinSeed.note_ids.length}`}
+                    formatTwinWriteSeedFreeform(twinSeed)}
                 </code>
               </p>
             </>

@@ -132,6 +132,21 @@ export function buildTwinWriteHref(seedKey: string): string {
 }
 
 /**
+ * Residual (qx): freeform provenance stamp for Write project type.
+ * Includes source so deep_research_session / research_progress_complete /
+ * marketplace dual handoffs are auditable on the writing asset.
+ */
+export function formatTwinWriteSeedFreeform(
+  seed: Pick<TwinWriteSeedPayload, "source" | "asset_id" | "note_ids">,
+): string {
+  const src = String(seed.source || "twin_draft_selected").trim() || "twin_draft_selected";
+  const asset = String(seed.asset_id || "asset").trim() || "asset";
+  const n = Array.isArray(seed.note_ids) ? seed.note_ids.length : 0;
+  // source + note count before asset so asset may contain colons (deep_research:spawn).
+  return `twin_seed:${src}:${n}:${asset}`;
+}
+
+/**
  * Residual (pz / FUTURE-AGENT V6): Write URL combining hosted html_draft
  * document_id with optional twin_seed session key so create seeds twins when
  * empty (html import + brainstorm seed dual handoff).

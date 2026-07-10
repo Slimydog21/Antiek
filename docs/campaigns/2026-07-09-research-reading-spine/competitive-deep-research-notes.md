@@ -700,3 +700,9 @@ Open Write with twin_seed of stages/HTML (source=research_progress_complete).
 Competitive delta: ChatGPT Deep Research / Perplexity dump chat export; Antiek
 closes float-session → terminal → writing substrate without inventing doc ids
 and without PDF as the intermediate format.
+
+## Residual qx · 2026-07-10 — Write freeform source provenance
+Twin seed freeform is twin_seed:{source}:{n}:{asset} so deep_research_session
+and research_progress_complete are visible on writing assets. Competitive
+delta: most tools lose origin of "export to doc"; Antiek keeps HTML-first
+source tags on the recursive note-taker → Write path for later bench rewrite.

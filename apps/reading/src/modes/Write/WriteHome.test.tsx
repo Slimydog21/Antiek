@@ -389,8 +389,14 @@ describe("WriteHome — the re-homed door", () => {
     expect(screen.getByTestId("write-twin-seed-html-preview").innerHTML).toMatch(
       /twin-draft/,
     );
+    expect(screen.getByTestId("write-twin-seed-handoff").getAttribute("data-source")).toBe(
+      "twin_draft_selected",
+    );
+    expect(screen.getByTestId("write-twin-seed-source").textContent).toMatch(
+      /twin_draft_selected/,
+    );
     expect(screen.getByTestId("write-twin-seed-provenance").textContent).toMatch(
-      /twin_seed:paper-pp:2/,
+      /twin_seed:twin_draft_selected:2:paper-pp/,
     );
     const titleInput = screen.getByPlaceholderText(
       /what are you writing/i,
@@ -398,6 +404,58 @@ describe("WriteHome — the re-homed door", () => {
     expect(titleInput.value).toMatch(/Twin draft/);
     // Brainstorm on-ramp opened with seed.
     expect(screen.getByText(/brainstorm from an idea/i)).toBeTruthy();
+    window.sessionStorage.removeItem(key);
+  });
+
+  it("stamps freeform provenance for deep_research_session source (qx)", async () => {
+    const key = "antiek.twin_write_seed.dr_session_qx";
+    window.sessionStorage.setItem(
+      key,
+      JSON.stringify({
+        plain_text: "Selection passage.\n\nGoal: deep research",
+        html: '<article data-source="deep_research_session"><p>seed</p></article>',
+        title: "Deep research · spn_qx",
+        asset_id: "book-qx",
+        note_ids: [],
+        view_format: "html",
+        source: "deep_research_session",
+      }),
+    );
+    mountAt(`/write?twin_seed=${encodeURIComponent(key)}`);
+    await waitFor(() => {
+      expect(screen.getByTestId("write-twin-seed-handoff").getAttribute("data-source")).toBe(
+        "deep_research_session",
+      );
+    });
+    expect(screen.getByTestId("write-twin-seed-provenance").textContent).toMatch(
+      /twin_seed:deep_research_session:0:book-qx/,
+    );
+    window.sessionStorage.removeItem(key);
+  });
+
+  it("stamps freeform provenance for research_progress_complete source (qx)", async () => {
+    const key = "antiek.twin_write_seed.progress_qx";
+    window.sessionStorage.setItem(
+      key,
+      JSON.stringify({
+        plain_text: "Spawn: spn_done\nTerminal stage: cite",
+        html: '<article data-source="research_progress_complete" data-is-terminal="true"><p>done</p></article>',
+        title: "Research complete · spn_done",
+        asset_id: "deep_research:spn_done",
+        note_ids: [],
+        view_format: "html",
+        source: "research_progress_complete",
+      }),
+    );
+    mountAt(`/write?twin_seed=${encodeURIComponent(key)}`);
+    await waitFor(() => {
+      expect(screen.getByTestId("write-twin-seed-handoff").getAttribute("data-source")).toBe(
+        "research_progress_complete",
+      );
+    });
+    expect(screen.getByTestId("write-twin-seed-provenance").textContent).toMatch(
+      /twin_seed:research_progress_complete:0:deep_research:spn_done/,
+    );
     window.sessionStorage.removeItem(key);
   });
 

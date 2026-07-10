@@ -8,6 +8,7 @@ import {
   buildMarketplaceWriteHref,
   buildMergedDocWriteHref,
   buildWriteHtmlDraftHref,
+  formatTwinWriteSeedFreeform,
   loadTwinWriteSeed,
   plainTextFromHtml,
   storeTwinWriteSeed,
@@ -165,6 +166,30 @@ describe("twinWriteSeed (pp)", () => {
       (href!.match(/twin_seed=([^&]+)/) || [])[1] || "",
     );
     expect(loadTwinWriteSeed(key)?.asset_id).toBe("deep_research:spn_orphan");
+  });
+
+  it("formats freeform provenance with source (qx)", () => {
+    expect(
+      formatTwinWriteSeedFreeform({
+        source: "deep_research_session",
+        asset_id: "book-1",
+        note_ids: [],
+      }),
+    ).toBe("twin_seed:deep_research_session:0:book-1");
+    expect(
+      formatTwinWriteSeedFreeform({
+        source: "research_progress_complete",
+        asset_id: "deep_research:spn_1",
+        note_ids: ["n1"],
+      }),
+    ).toBe("twin_seed:research_progress_complete:1:deep_research:spn_1");
+    expect(
+      formatTwinWriteSeedFreeform({
+        source: "twin_draft_selected",
+        asset_id: "paper-pp",
+        note_ids: ["q1", "i1"],
+      }),
+    ).toBe("twin_seed:twin_draft_selected:2:paper-pp");
   });
 
   it("builds terminal progress Write twin_seed only when isTerminal (qw)", () => {

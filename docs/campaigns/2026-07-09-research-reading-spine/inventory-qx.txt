@@ -1,0 +1,13 @@
+# inventory-qx · Write freeform provenance includes twin seed source
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: qx
+date: 2026-07-10
+
+## Closed
+- formatTwinWriteSeedFreeform → twin_seed:{source}:{note_count}:{asset_id}
+  (asset may contain colons e.g. deep_research:spawn)
+- WriteHome freeform stamp uses formatTwinWriteSeedFreeform
+- write-twin-seed-handoff data-source + write-twin-seed-source chrome
+- provenance freeform shows deep_research_session / research_progress_complete
+- vitest twinWriteSeed 14 + WriteHome 25 = 39 passed
+  (SCRATCH residual-tests-qx.log)
