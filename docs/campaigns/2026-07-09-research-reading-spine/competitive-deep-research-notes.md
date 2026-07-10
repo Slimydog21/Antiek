@@ -2697,3 +2697,9 @@ Pivot ahf+ outside thrash.
 Executable brief for paid digital book → HTML account port when L5 unlocks.
 Builds on ahe offline purchase path honesty. Does not invent live checkout.
 P0 operator merge PR #465. Pivot ahg+ offline product residual.
+
+## Residual ahg · 2026-07-10 — StartResearch budget foresight pub-ref count
+countPublicationRefs + start-research-budget-foresight stamps data-pub-ref-count
+after knowledge-dense quick-call. Competitive budget-before-fire honesty when
+grounding research with arxiv/URL refs. vitest StartResearch 23 green.
+P0 operator merge PR #465. Pivot ahh+.

@@ -295,6 +295,28 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
     ).toBe(1);
   });
 
+  it("stamps budget foresight pub-ref count after quick-call (ahg)", () => {
+    renderStart();
+    const foresight = screen.getByTestId("start-research-budget-foresight");
+    expect(foresight.getAttribute("data-pub-ref-count")).toBe("0");
+    expect(foresight.getAttribute("data-has-pub-refs")).toBe("false");
+    fireEvent.click(
+      screen.getByTestId("start-research-preset-attention-is-all-you-need"),
+    );
+    fireEvent.click(screen.getByTestId("start-research-preset-bert"));
+    const after = screen.getByTestId("start-research-budget-foresight");
+    expect(after.getAttribute("data-pub-ref-count")).toBe("2");
+    expect(after.getAttribute("data-has-pub-refs")).toBe("true");
+    expect(Number(after.getAttribute("data-prompt-chars") || 0)).toBeGreaterThan(
+      20,
+    );
+    expect(
+      screen
+        .getByTestId("start-research-driver-badge-mount")
+        .getAttribute("data-pub-ref-count"),
+    ).toBe("2");
+  });
+
   it("renders a real composer: input + Ask button + example pills", () => {
     renderStart();
     expect(screen.getByLabelText("Research question")).toBeTruthy();

@@ -1,0 +1,16 @@
+# inventory-ahg · StartResearch budget foresight pub-ref count
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ahg
+date: 2026-07-10
+parent_tip: b76e0ab0 (ahf)
+
+## Closed
+- countPublicationRefs helper in driverPromptText
+- StartResearch budget foresight wrapper stamps data-pub-ref-count · data-has-pub-refs · data-prompt-chars
+- Driver badge mount stamps pub-ref-count after knowledge-dense quick-call
+- Operator vision: know how proposed prompt (with pubs) affects budget limit
+- vitest StartResearch 23 green
+
+## Next
+ahh+ product residual · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

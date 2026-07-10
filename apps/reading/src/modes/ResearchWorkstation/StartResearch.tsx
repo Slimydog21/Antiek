@@ -21,7 +21,10 @@ import {
 import CascadeProposal from "./CascadeProposal";
 import MyResearch from "./MyResearch";
 import VoiceChaseButton from "./VoiceChaseButton";
-import { composeDriverPromptText } from "../../lib/driverPromptText";
+import {
+  composeDriverPromptText,
+  countPublicationRefs,
+} from "../../lib/driverPromptText";
 import {
   hydratePublicationRefs,
   parsePublicationRefs,
@@ -710,11 +713,13 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             </span>
           </div>
 
-          {/* Residual (bp/df/ll/qp/qr): budget ≡ badge via composeDriverPromptText. */}
+          {/* Residual (bp/df/ll/qp/qr/ahg): budget ≡ badge · pub-ref foresight. */}
           <div
             data-testid="start-research-driver-badge-mount"
             data-view-format="html"
             data-research-tier={tier}
+            data-pub-ref-count={String(countPublicationRefs(pubRefs))}
+            data-has-pub-refs={String(countPublicationRefs(pubRefs) > 0)}
           >
             <DecisionTreeDriverBadge
               researchTier={tier}
@@ -722,13 +727,24 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
               promptText={composeDriverPromptText(question, pubRefs)}
             />
           </div>
-          <ResearchLaunchBudgetPanel
-            promptText={composeDriverPromptText(question, pubRefs)}
-            researchTier={tier}
-            allowTierPick
-            onResearchTierChange={setTier}
-            onProjectionChange={onProjectionChange}
-          />
+          <div
+            data-testid="start-research-budget-foresight"
+            data-pub-ref-count={String(countPublicationRefs(pubRefs))}
+            data-has-pub-refs={String(countPublicationRefs(pubRefs) > 0)}
+            data-prompt-chars={String(
+              composeDriverPromptText(question, pubRefs).length,
+            )}
+            data-view-format="html"
+            data-research-tier={tier}
+          >
+            <ResearchLaunchBudgetPanel
+              promptText={composeDriverPromptText(question, pubRefs)}
+              researchTier={tier}
+              allowTierPick
+              onResearchTierChange={setTier}
+              onProjectionChange={onProjectionChange}
+            />
+          </div>
           {budgetWarn ? (
             <label
               className="flex items-center gap-2 text-[11px] font-mono text-emperor"

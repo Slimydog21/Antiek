@@ -21,3 +21,14 @@ export function composeDriverPromptText(
   if (refs) return `Publication refs:\n${refs}`;
   return "";
 }
+
+/**
+ * Residual (ahg): count non-empty publication ref lines for budget foresight
+ * honesty when knowledge-dense quick-call inserts arxiv/URL handles.
+ */
+export function countPublicationRefs(pubRefs?: string | null): number {
+  return String(pubRefs || "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean).length;
+}
