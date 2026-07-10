@@ -32,29 +32,16 @@ jobs:
   pytest:
     name: pytest
     runs-on: ubuntu-latest
-    # 40 min (was 25, was 15) — SECOND bump. SPR-07 + parallel-session merges
-    # tipped the suite past even 25 min (cancelled-not-failed at the wall again).
-    # xdist/sharding (the reconsider-if below) is now the REQUIRED real fix; 40 is
-    # the stopgap so the flywheel run can finish. Original 25-min rationale (still
-    # valid): the 15-min ceiling was already under-provisioned: the
-    # base `main` suite runs ~14.4 min on this shared ubuntu-latest runner
-    # (~1.66x slower than dev hardware per the locked rubric-latency benchmark)
-    # and a recent `main` run was itself cancelled at 15.2 min. The corpus-ingest
-    # work adds ~40 test files, reliably tipping the full suite past 15 min ->
-    # the job was being cancelled (not failed) at the timeout. This raises ONLY
-    # the wall-clock ceiling; the gate still runs the FULL suite and still fails
-    # on any real test failure (nothing about what is checked changes, and the
-    # informational latency craft-signature baseline is untouched).
-    #
-    # Convergent data point (Personal-Reading Lane, 2026-06-01): the lane added
-    # ~225 tests (5180 -> 5405) and independently hit this same wall — the
-    # `pytest` step ran ~22.5 min and the JOB was CANCELLED (not failed) at the
-    # post-pytest "Substrate/dispatch boundary check" step across 3 CI attempts,
-    # each AFTER `5405 passed, 0 failed`. Both SPR-07 and this lane confirm the
-    # 25-min ceiling is exhausted; 40 (main's second bump) absorbs both.
-    # Reconsider-if: the suite is sharded / xdist-parallelized, after which this
-    # can drop back toward 15-20. See docs/decisions/ci-pytest-timeout.md.
-    timeout-minutes: 40
+    # The suite runs through two xdist workers below, matching the two vCPUs on
+    # GitHub's standard ubuntu runner. ``loadscope`` keeps every module on one
+    # worker while still balancing the 600+ test modules; that preserves module-
+    # local ordering and avoids oversubscribing DuckDB. The prior serial suite
+    # passed all 6424 tests but consumed 36:59, leaving too little room for the
+    # projection and boundary gates inside the old 40-minute wall. Keep a
+    # measured 30-minute job ceiling while parallel runtime settles; coverage
+    # and blocking semantics are unchanged. See
+    # docs/decisions/ci-pytest-timeout.md.
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -127,12 +114,16 @@ jobs:
           HERMES_API_KEY: ""
           XAI_API_KEY: ""
           OPENAI_API_KEY: ""
+          XIAOMI_API_KEY: ""
+          Z_AI_API_KEY: ""
+          TURBOPUFFER_API_KEY: ""
+          LLM_API_KEY: ""
           # H4: operator-bearer middleware is opt-in. Leave the env
           # unset so the existing endpoint tests work without an
           # extra Authorization header.
           ANTIEK_OPERATOR_TOKEN: ""
         run: |
-          python -m pytest tests/ -q -m "not integration"
+          python -m pytest tests/ -q -m "not integration" -n 2 --dist loadscope
 
       - name: HTML-projection layer gates (HPRJ SPR-07 M4)
         # The projection / .antiek-format / ingestion layer's gates live under
