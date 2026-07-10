@@ -1804,3 +1804,8 @@ without opening summary only.
 ## Residual zt · 2026-07-10 — FUTURE-AGENT tip re-anchor through zs
 FUTURE-AGENT-SPEC tip re-anchored after 99 residual ships this continuation.
 Competitive delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
+
+## Residual zu · 2026-07-10 — dogfood panel full task-class counts
+antiek-bench-dogfood-panel stamps distill/synthesize/wrestle/book_qa after load
+(v12: 2/2/7/7). Competitive delta: panel shell full Antiek-bench task-class
+matrix honesty (parity summary yh).

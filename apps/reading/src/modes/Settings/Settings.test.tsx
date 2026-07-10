@@ -1480,9 +1480,11 @@ describe("Settings SPR-01 + decision-tree install", () => {
       "antiek_bench_dogfood_fixtures",
     );
     expect(panel.getAttribute("data-item-count")).toBe("18");
-    // Residual (zs): panel task-class counts after load (parity summary yg/yh).
+    // Residual (zs/zu): panel full task-class counts after load (parity summary).
     expect(panel.getAttribute("data-book-qa-count")).toBe("7");
     expect(panel.getAttribute("data-wrestle-count")).toBe("7");
+    expect(panel.getAttribute("data-distill-count")).toBe("2");
+    expect(panel.getAttribute("data-synthesize-count")).toBe("2");
     const summary = screen.getByTestId("antiek-bench-dogfood-summary");
     // Residual (su/ti/tv/tz/ud/us/ve/vl/wd/wl/xi): v12 spine posture machine attrs.
     expect(summary.getAttribute("data-suite-version")).toBe(
