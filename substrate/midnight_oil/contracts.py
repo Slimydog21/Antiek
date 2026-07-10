@@ -5273,6 +5273,278 @@ class MidnightOilWorkerDispatchLeaseHeartbeatPlanReceipt(BaseModel):
     adapter_plan_notes: list[str] = Field(default_factory=list)
 
 
+class MidnightOilWorkerCancellationAbandonPlanRequest(BaseModel):
+    launch_packet: MidnightOilLaunchPacket
+    approval_receipt: MidnightOilApprovalReceipt
+    runner_handoff: MidnightOilRunnerHandoff
+    runner_control_plan_receipt: MidnightOilRunnerControlPlanReceipt
+    budget_provider_adapter_plan_receipt: MidnightOilBudgetProviderAdapterPlanReceipt
+    provider_executor_adapter_plan_receipt: MidnightOilProviderExecutorAdapterPlanReceipt
+    retrieval_adapter_plan_receipt: MidnightOilRetrievalAdapterPlanReceipt
+    graph_adapter_plan_receipt: MidnightOilGraphAdapterPlanReceipt
+    final_artifact_adapter_plan_receipt: MidnightOilFinalArtifactAdapterPlanReceipt
+    operator_dispatch_adapter_plan_receipt: MidnightOilOperatorDispatchAdapterPlanReceipt
+    control_ledger_adapter_plan_receipt: MidnightOilControlLedgerAdapterPlanReceipt
+    control_ledger_persistence_plan_receipt: MidnightOilControlLedgerPersistencePlanReceipt
+    control_ledger_persistence_apply_plan_receipt: (
+        MidnightOilControlLedgerPersistenceApplyPlanReceipt
+    )
+    operator_dispatch_activation_readiness_plan_receipt: (
+        MidnightOilOperatorDispatchActivationReadinessPlanReceipt
+    )
+    live_dispatch_final_enablement_plan_receipt: (
+        MidnightOilLiveDispatchFinalEnablementPlanReceipt
+    )
+    live_dispatch_final_enablement_apply_plan_receipt: (
+        MidnightOilLiveDispatchFinalEnablementApplyPlanReceipt
+    )
+    runner_dispatch_scheduler_plan_receipt: MidnightOilRunnerDispatchSchedulerPlanReceipt
+    runner_dispatch_worker_bootstrap_plan_receipt: (
+        MidnightOilRunnerDispatchWorkerBootstrapPlanReceipt
+    )
+    scheduler_lease_retry_plan_receipt: MidnightOilSchedulerLeaseRetryPlanReceipt
+    worker_queue_claim_plan_receipt: MidnightOilWorkerQueueClaimPlanReceipt
+    repository_transaction_plan_receipt: MidnightOilRepositoryTransactionPlanReceipt
+    repository_commit_rollback_plan_receipt: MidnightOilRepositoryCommitRollbackPlanReceipt
+    worker_dispatch_lease_heartbeat_plan_receipt: (
+        MidnightOilWorkerDispatchLeaseHeartbeatPlanReceipt
+    )
+
+    @model_validator(mode="after")
+    def _receipt_chain_matches(self) -> MidnightOilWorkerCancellationAbandonPlanRequest:
+        MidnightOilWorkerDispatchLeaseHeartbeatPlanRequest(
+            launch_packet=self.launch_packet,
+            approval_receipt=self.approval_receipt,
+            runner_handoff=self.runner_handoff,
+            runner_control_plan_receipt=self.runner_control_plan_receipt,
+            budget_provider_adapter_plan_receipt=self.budget_provider_adapter_plan_receipt,
+            provider_executor_adapter_plan_receipt=self.provider_executor_adapter_plan_receipt,
+            retrieval_adapter_plan_receipt=self.retrieval_adapter_plan_receipt,
+            graph_adapter_plan_receipt=self.graph_adapter_plan_receipt,
+            final_artifact_adapter_plan_receipt=self.final_artifact_adapter_plan_receipt,
+            operator_dispatch_adapter_plan_receipt=self.operator_dispatch_adapter_plan_receipt,
+            control_ledger_adapter_plan_receipt=self.control_ledger_adapter_plan_receipt,
+            control_ledger_persistence_plan_receipt=(
+                self.control_ledger_persistence_plan_receipt
+            ),
+            control_ledger_persistence_apply_plan_receipt=(
+                self.control_ledger_persistence_apply_plan_receipt
+            ),
+            operator_dispatch_activation_readiness_plan_receipt=(
+                self.operator_dispatch_activation_readiness_plan_receipt
+            ),
+            live_dispatch_final_enablement_plan_receipt=(
+                self.live_dispatch_final_enablement_plan_receipt
+            ),
+            live_dispatch_final_enablement_apply_plan_receipt=(
+                self.live_dispatch_final_enablement_apply_plan_receipt
+            ),
+            runner_dispatch_scheduler_plan_receipt=self.runner_dispatch_scheduler_plan_receipt,
+            runner_dispatch_worker_bootstrap_plan_receipt=(
+                self.runner_dispatch_worker_bootstrap_plan_receipt
+            ),
+            scheduler_lease_retry_plan_receipt=self.scheduler_lease_retry_plan_receipt,
+            worker_queue_claim_plan_receipt=self.worker_queue_claim_plan_receipt,
+            repository_transaction_plan_receipt=self.repository_transaction_plan_receipt,
+            repository_commit_rollback_plan_receipt=self.repository_commit_rollback_plan_receipt,
+        )
+        heartbeat_plan = self.worker_dispatch_lease_heartbeat_plan_receipt
+        if (
+            heartbeat_plan.repository_commit_rollback_plan_receipt_id
+            != self.repository_commit_rollback_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "worker_dispatch_lease_heartbeat_plan_receipt must reference repository_commit_rollback_plan_receipt"
+            )
+        if (
+            heartbeat_plan.repository_transaction_plan_receipt_id
+            != self.repository_transaction_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "worker_dispatch_lease_heartbeat_plan_receipt must reference repository_transaction_plan_receipt"
+            )
+        if (
+            heartbeat_plan.worker_queue_claim_plan_receipt_id
+            != self.worker_queue_claim_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "worker_dispatch_lease_heartbeat_plan_receipt must reference worker_queue_claim_plan_receipt"
+            )
+        if heartbeat_plan.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError(
+                "worker_dispatch_lease_heartbeat_plan_receipt must reference runner_handoff"
+            )
+        if heartbeat_plan.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError(
+                "worker_dispatch_lease_heartbeat_plan_receipt must reference approval_receipt"
+            )
+        if heartbeat_plan.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError(
+                "worker_dispatch_lease_heartbeat_plan_receipt must reference launch_packet"
+            )
+        if heartbeat_plan.run_id != self.launch_packet.run_id:
+            raise ValueError(
+                "worker_dispatch_lease_heartbeat_plan_receipt must reference launch run"
+            )
+        if heartbeat_plan.status != "blocked_worker_dispatch_lease_heartbeat_unimplemented":
+            raise ValueError(
+                "worker_dispatch_lease_heartbeat_plan_receipt must be blocked_worker_dispatch_lease_heartbeat_unimplemented"
+            )
+        if (
+            heartbeat_plan.worker_lease_heartbeat_allowed
+            or heartbeat_plan.worker_lease_heartbeat_recorded
+            or heartbeat_plan.worker_lease_renewal_allowed
+            or heartbeat_plan.worker_lease_renewed
+            or heartbeat_plan.worker_lease_expiry_allowed
+            or heartbeat_plan.worker_lease_expired
+        ):
+            raise ValueError(
+                "worker_dispatch_lease_heartbeat_plan_receipt must not record heartbeat, renewal, or expiry state"
+            )
+        if heartbeat_plan.worker_started:
+            raise ValueError("worker_dispatch_lease_heartbeat_plan_receipt must not start worker")
+        if (
+            heartbeat_plan.repository_commit_allowed
+            or heartbeat_plan.repository_rollback_allowed
+            or heartbeat_plan.commit_receipt_created
+            or heartbeat_plan.rollback_receipt_created
+        ):
+            raise ValueError(
+                "worker_dispatch_lease_heartbeat_plan_receipt must not create commit or rollback receipts"
+            )
+        if (
+            heartbeat_plan.repository_transaction_allowed
+            or heartbeat_plan.repository_transaction_opened
+            or heartbeat_plan.repository_transaction_committed
+        ):
+            raise ValueError(
+                "worker_dispatch_lease_heartbeat_plan_receipt must not open or commit transaction"
+            )
+        if (
+            heartbeat_plan.queue_claim_allowed
+            or heartbeat_plan.queue_claim_created
+            or heartbeat_plan.claim_transaction_opened
+            or heartbeat_plan.claim_transaction_committed
+        ):
+            raise ValueError(
+                "worker_dispatch_lease_heartbeat_plan_receipt must not create queue claim or claim transaction"
+            )
+        if heartbeat_plan.scheduler_allowed or heartbeat_plan.scheduler_job_created:
+            raise ValueError(
+                "worker_dispatch_lease_heartbeat_plan_receipt must not create scheduler job"
+            )
+        if heartbeat_plan.runner_dispatch_enqueued:
+            raise ValueError(
+                "worker_dispatch_lease_heartbeat_plan_receipt must not enqueue runner dispatch"
+            )
+        if heartbeat_plan.dispatch_allowed or heartbeat_plan.dispatch_performed:
+            raise ValueError("worker_dispatch_lease_heartbeat_plan_receipt must not dispatch")
+        if heartbeat_plan.budget_reservation_allowed or heartbeat_plan.budget_reserved:
+            raise ValueError(
+                "worker_dispatch_lease_heartbeat_plan_receipt must not reserve budget"
+            )
+        if heartbeat_plan.provider_execution_allowed or heartbeat_plan.provider_calls_made:
+            raise ValueError(
+                "worker_dispatch_lease_heartbeat_plan_receipt must not include provider calls"
+            )
+        if heartbeat_plan.retrieval_allowed or heartbeat_plan.retrieval_performed:
+            raise ValueError(
+                "worker_dispatch_lease_heartbeat_plan_receipt must not perform retrieval"
+            )
+        if heartbeat_plan.source_receipts_created:
+            raise ValueError(
+                "worker_dispatch_lease_heartbeat_plan_receipt must not create source receipts"
+            )
+        if heartbeat_plan.graph_mutation_allowed or heartbeat_plan.graph_mutated:
+            raise ValueError("worker_dispatch_lease_heartbeat_plan_receipt must not mutate graph")
+        if heartbeat_plan.final_artifact_allowed or heartbeat_plan.final_artifact_created:
+            raise ValueError(
+                "worker_dispatch_lease_heartbeat_plan_receipt must not create final artifact"
+            )
+        return self
+
+
+class MidnightOilWorkerCancellationAbandonPlanReceipt(BaseModel):
+    receipt_id: str
+    worker_dispatch_lease_heartbeat_plan_receipt_id: str
+    repository_commit_rollback_plan_receipt_id: str
+    repository_transaction_plan_receipt_id: str
+    worker_queue_claim_plan_receipt_id: str
+    scheduler_lease_retry_plan_receipt_id: str
+    runner_dispatch_worker_bootstrap_plan_receipt_id: str
+    runner_dispatch_scheduler_plan_receipt_id: str
+    runner_control_plan_receipt_id: str
+    runner_readiness_receipt_id: str
+    runner_handoff_id: str
+    approval_receipt_id: str
+    launch_packet_id: str
+    run_id: str
+    status: Literal["blocked_worker_cancellation_abandon_unimplemented"] = (
+        "blocked_worker_cancellation_abandon_unimplemented"
+    )
+    adapter_key: Literal["worker_cancellation_abandon"] = "worker_cancellation_abandon"
+    planned_cancellation_receipt_id: str
+    planned_abandon_receipt_id: str
+    planned_cancellation_ledger_entry_id: str
+    planned_abandon_ledger_entry_id: str
+    planned_queue_claim_id: str
+    planned_claim_lease_token_id: str
+    planned_queue_id: str
+    planned_worker_id: str
+    planned_worker_lease_id: str
+    planned_runner_dispatch_id: str
+    planned_visibility_timeout_seconds: int = Field(ge=0)
+    planned_lease_ttl_seconds: int = Field(ge=0)
+    planned_abandon_after_missed_heartbeats: int = Field(ge=0)
+    planned_idempotency_key: str
+    worker_cancellation_abandon_blockers: list[str]
+    required_worker_cancellation_abandon_invariants: list[str]
+    required_worker_cancellation_abandon_receipt_fields: list[str]
+    blocker_reason: Literal["worker_cancellation_abandon_unimplemented"] = (
+        "worker_cancellation_abandon_unimplemented"
+    )
+    worker_cancellation_allowed: bool = False
+    worker_cancelled: bool = False
+    worker_abandon_allowed: bool = False
+    worker_abandoned: bool = False
+    worker_lease_heartbeat_allowed: bool = False
+    worker_lease_heartbeat_recorded: bool = False
+    worker_lease_renewal_allowed: bool = False
+    worker_lease_renewed: bool = False
+    worker_lease_expiry_allowed: bool = False
+    worker_lease_expired: bool = False
+    worker_started: bool = False
+    repository_commit_allowed: bool = False
+    repository_rollback_allowed: bool = False
+    commit_receipt_created: bool = False
+    rollback_receipt_created: bool = False
+    repository_transaction_allowed: bool = False
+    repository_transaction_opened: bool = False
+    repository_transaction_committed: bool = False
+    queue_claim_allowed: bool = False
+    queue_claim_created: bool = False
+    claim_transaction_opened: bool = False
+    claim_transaction_committed: bool = False
+    scheduler_allowed: bool = False
+    scheduler_job_created: bool = False
+    runner_dispatch_enqueued: bool = False
+    live_run_allowed: bool = False
+    dispatch_allowed: bool = False
+    dispatch_performed: bool = False
+    budget_reservation_allowed: bool = False
+    budget_reserved: bool = False
+    provider_execution_allowed: bool = False
+    provider_calls_made: bool = False
+    retrieval_allowed: bool = False
+    retrieval_performed: bool = False
+    source_receipts_created: bool = False
+    graph_mutation_allowed: bool = False
+    graph_mutated: bool = False
+    final_artifact_allowed: bool = False
+    final_artifact_created: bool = False
+    adapter_plan_notes: list[str] = Field(default_factory=list)
+
+
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
     price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
@@ -7610,6 +7882,139 @@ def worker_dispatch_lease_heartbeat_plan_midnight_oil(
         adapter_plan_notes=[
             "worker dispatch lease heartbeat plan only: no worker heartbeat, lease renewal, lease expiry, worker runtime, scheduler job, or runner dispatch is created",
             "this receipt documents heartbeat, renewal, expiry, stale lease recovery, and heartbeat ledger requirements after repository commit rollback planning",
+            "no activation readiness, live dispatch, scheduler job, worker runtime, transaction execution, budget reservation, provider call, retrieval, source receipt, graph mutation, or artifact write is performed",
+        ],
+    )
+
+
+def worker_cancellation_abandon_plan_midnight_oil(
+    req: MidnightOilWorkerCancellationAbandonPlanRequest,
+) -> MidnightOilWorkerCancellationAbandonPlanReceipt:
+    run_id = req.launch_packet.run_id
+    heartbeat_plan = req.worker_dispatch_lease_heartbeat_plan_receipt
+    return MidnightOilWorkerCancellationAbandonPlanReceipt(
+        receipt_id=f"{run_id}-worker-cancellation-abandon-plan",
+        worker_dispatch_lease_heartbeat_plan_receipt_id=heartbeat_plan.receipt_id,
+        repository_commit_rollback_plan_receipt_id=(
+            heartbeat_plan.repository_commit_rollback_plan_receipt_id
+        ),
+        repository_transaction_plan_receipt_id=(
+            heartbeat_plan.repository_transaction_plan_receipt_id
+        ),
+        worker_queue_claim_plan_receipt_id=heartbeat_plan.worker_queue_claim_plan_receipt_id,
+        scheduler_lease_retry_plan_receipt_id=(
+            heartbeat_plan.scheduler_lease_retry_plan_receipt_id
+        ),
+        runner_dispatch_worker_bootstrap_plan_receipt_id=(
+            heartbeat_plan.runner_dispatch_worker_bootstrap_plan_receipt_id
+        ),
+        runner_dispatch_scheduler_plan_receipt_id=(
+            heartbeat_plan.runner_dispatch_scheduler_plan_receipt_id
+        ),
+        runner_control_plan_receipt_id=heartbeat_plan.runner_control_plan_receipt_id,
+        runner_readiness_receipt_id=heartbeat_plan.runner_readiness_receipt_id,
+        runner_handoff_id=req.runner_handoff.handoff_id,
+        approval_receipt_id=req.approval_receipt.receipt_id,
+        launch_packet_id=req.launch_packet.packet_id,
+        run_id=run_id,
+        planned_cancellation_receipt_id=f"{run_id}-worker-cancellation-receipt",
+        planned_abandon_receipt_id=f"{run_id}-worker-abandon-receipt",
+        planned_cancellation_ledger_entry_id=(
+            f"{run_id}-worker-cancellation-ledger-entry"
+        ),
+        planned_abandon_ledger_entry_id=f"{run_id}-worker-abandon-ledger-entry",
+        planned_queue_claim_id=heartbeat_plan.planned_queue_claim_id,
+        planned_claim_lease_token_id=heartbeat_plan.planned_claim_lease_token_id,
+        planned_queue_id=heartbeat_plan.planned_queue_id,
+        planned_worker_id=heartbeat_plan.planned_worker_id,
+        planned_worker_lease_id=heartbeat_plan.planned_worker_lease_id,
+        planned_runner_dispatch_id=heartbeat_plan.planned_runner_dispatch_id,
+        planned_visibility_timeout_seconds=(
+            heartbeat_plan.planned_visibility_timeout_seconds
+        ),
+        planned_lease_ttl_seconds=heartbeat_plan.planned_lease_ttl_seconds,
+        planned_abandon_after_missed_heartbeats=(
+            heartbeat_plan.planned_max_missed_heartbeats
+        ),
+        planned_idempotency_key=heartbeat_plan.planned_idempotency_key,
+        worker_cancellation_abandon_blockers=[
+            *heartbeat_plan.worker_dispatch_lease_heartbeat_blockers,
+            "worker cancellation signal writer",
+            "worker abandon compare-and-swap",
+            "worker lease release transaction",
+            "cancellation ledger append transaction",
+            "abandoned claim recovery policy",
+        ],
+        required_worker_cancellation_abandon_invariants=[
+            "worker cancellation abandon planner must require worker dispatch lease heartbeat planning before any worker can be cancelled or abandoned",
+            "worker cancellation abandon planner must bind cancellation and abandon receipts to one worker id, worker lease id, queue claim id, claim lease token id, runner dispatch id, and idempotency key",
+            "worker cancellation abandon planner must keep cancellation and abandon receipts uncreated until durable cancellation signals, lease release, and abandoned claim recovery exist",
+            "worker cancellation abandon planner must preserve visibility timeout, lease ttl, and missed heartbeat abandonment policy across worker shutdown paths",
+            "worker cancellation abandon planner must not start workers, dispatch providers, perform retrieval, mutate graph, or write final HTML artifacts while planning shutdown controls",
+        ],
+        required_worker_cancellation_abandon_receipt_fields=[
+            "worker_cancellation_abandon_plan_receipt_id",
+            "worker_dispatch_lease_heartbeat_plan_receipt_id",
+            "cancellation_receipt_id",
+            "abandon_receipt_id",
+            "cancellation_ledger_entry_id",
+            "abandon_ledger_entry_id",
+            "queue_claim_id",
+            "claim_lease_token_id",
+            "worker_id",
+            "worker_lease_id",
+            "runner_dispatch_id",
+            "visibility_timeout_seconds",
+            "lease_ttl_seconds",
+            "abandon_after_missed_heartbeats",
+            "idempotency_key",
+            "worker_cancelled",
+            "worker_abandoned",
+            "created_at",
+        ],
+        blocker_reason="worker_cancellation_abandon_unimplemented",
+        worker_cancellation_allowed=False,
+        worker_cancelled=False,
+        worker_abandon_allowed=False,
+        worker_abandoned=False,
+        worker_lease_heartbeat_allowed=False,
+        worker_lease_heartbeat_recorded=False,
+        worker_lease_renewal_allowed=False,
+        worker_lease_renewed=False,
+        worker_lease_expiry_allowed=False,
+        worker_lease_expired=False,
+        worker_started=False,
+        repository_commit_allowed=False,
+        repository_rollback_allowed=False,
+        commit_receipt_created=False,
+        rollback_receipt_created=False,
+        repository_transaction_allowed=False,
+        repository_transaction_opened=False,
+        repository_transaction_committed=False,
+        queue_claim_allowed=False,
+        queue_claim_created=False,
+        claim_transaction_opened=False,
+        claim_transaction_committed=False,
+        scheduler_allowed=False,
+        scheduler_job_created=False,
+        runner_dispatch_enqueued=False,
+        live_run_allowed=False,
+        dispatch_allowed=False,
+        dispatch_performed=False,
+        budget_reservation_allowed=False,
+        budget_reserved=False,
+        provider_execution_allowed=False,
+        provider_calls_made=False,
+        retrieval_allowed=False,
+        retrieval_performed=False,
+        source_receipts_created=False,
+        graph_mutation_allowed=False,
+        graph_mutated=False,
+        final_artifact_allowed=False,
+        final_artifact_created=False,
+        adapter_plan_notes=[
+            "worker cancellation abandon plan only: no worker cancellation, worker abandon, lease release, worker runtime, scheduler job, or runner dispatch is created",
+            "this receipt documents cancellation, abandonment, lease release, and abandoned claim recovery requirements after worker heartbeat planning",
             "no activation readiness, live dispatch, scheduler job, worker runtime, transaction execution, budget reservation, provider call, retrieval, source receipt, graph mutation, or artifact write is performed",
         ],
     )

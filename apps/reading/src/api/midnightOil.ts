@@ -1887,6 +1887,109 @@ export interface MidnightOilWorkerDispatchLeaseHeartbeatPlanReceipt {
   adapter_plan_notes: string[];
 }
 
+export interface MidnightOilWorkerCancellationAbandonPlanRequest {
+  launch_packet: MidnightOilLaunchPacket;
+  approval_receipt: MidnightOilApprovalReceipt;
+  runner_handoff: MidnightOilRunnerHandoff;
+  runner_control_plan_receipt: MidnightOilRunnerControlPlanReceipt;
+  budget_provider_adapter_plan_receipt: MidnightOilBudgetProviderAdapterPlanReceipt;
+  provider_executor_adapter_plan_receipt: MidnightOilProviderExecutorAdapterPlanReceipt;
+  retrieval_adapter_plan_receipt: MidnightOilRetrievalAdapterPlanReceipt;
+  graph_adapter_plan_receipt: MidnightOilGraphAdapterPlanReceipt;
+  final_artifact_adapter_plan_receipt: MidnightOilFinalArtifactAdapterPlanReceipt;
+  operator_dispatch_adapter_plan_receipt: MidnightOilOperatorDispatchAdapterPlanReceipt;
+  control_ledger_adapter_plan_receipt: MidnightOilControlLedgerAdapterPlanReceipt;
+  control_ledger_persistence_plan_receipt: MidnightOilControlLedgerPersistencePlanReceipt;
+  control_ledger_persistence_apply_plan_receipt: MidnightOilControlLedgerPersistenceApplyPlanReceipt;
+  operator_dispatch_activation_readiness_plan_receipt: MidnightOilOperatorDispatchActivationReadinessPlanReceipt;
+  live_dispatch_final_enablement_plan_receipt: MidnightOilLiveDispatchFinalEnablementPlanReceipt;
+  live_dispatch_final_enablement_apply_plan_receipt: MidnightOilLiveDispatchFinalEnablementApplyPlanReceipt;
+  runner_dispatch_scheduler_plan_receipt: MidnightOilRunnerDispatchSchedulerPlanReceipt;
+  runner_dispatch_worker_bootstrap_plan_receipt: MidnightOilRunnerDispatchWorkerBootstrapPlanReceipt;
+  scheduler_lease_retry_plan_receipt: MidnightOilSchedulerLeaseRetryPlanReceipt;
+  worker_queue_claim_plan_receipt: MidnightOilWorkerQueueClaimPlanReceipt;
+  repository_transaction_plan_receipt: MidnightOilRepositoryTransactionPlanReceipt;
+  repository_commit_rollback_plan_receipt: MidnightOilRepositoryCommitRollbackPlanReceipt;
+  worker_dispatch_lease_heartbeat_plan_receipt: MidnightOilWorkerDispatchLeaseHeartbeatPlanReceipt;
+}
+
+export interface MidnightOilWorkerCancellationAbandonPlanReceipt {
+  receipt_id: string;
+  worker_dispatch_lease_heartbeat_plan_receipt_id: string;
+  repository_commit_rollback_plan_receipt_id: string;
+  repository_transaction_plan_receipt_id: string;
+  worker_queue_claim_plan_receipt_id: string;
+  scheduler_lease_retry_plan_receipt_id: string;
+  runner_dispatch_worker_bootstrap_plan_receipt_id: string;
+  runner_dispatch_scheduler_plan_receipt_id: string;
+  runner_control_plan_receipt_id: string;
+  runner_readiness_receipt_id: string;
+  runner_handoff_id: string;
+  approval_receipt_id: string;
+  launch_packet_id: string;
+  run_id: string;
+  status: "blocked_worker_cancellation_abandon_unimplemented";
+  adapter_key: "worker_cancellation_abandon";
+  planned_cancellation_receipt_id: string;
+  planned_abandon_receipt_id: string;
+  planned_cancellation_ledger_entry_id: string;
+  planned_abandon_ledger_entry_id: string;
+  planned_queue_claim_id: string;
+  planned_claim_lease_token_id: string;
+  planned_queue_id: string;
+  planned_worker_id: string;
+  planned_worker_lease_id: string;
+  planned_runner_dispatch_id: string;
+  planned_visibility_timeout_seconds: number;
+  planned_lease_ttl_seconds: number;
+  planned_abandon_after_missed_heartbeats: number;
+  planned_idempotency_key: string;
+  worker_cancellation_abandon_blockers: string[];
+  required_worker_cancellation_abandon_invariants: string[];
+  required_worker_cancellation_abandon_receipt_fields: string[];
+  blocker_reason: "worker_cancellation_abandon_unimplemented";
+  worker_cancellation_allowed: boolean;
+  worker_cancelled: boolean;
+  worker_abandon_allowed: boolean;
+  worker_abandoned: boolean;
+  worker_lease_heartbeat_allowed: boolean;
+  worker_lease_heartbeat_recorded: boolean;
+  worker_lease_renewal_allowed: boolean;
+  worker_lease_renewed: boolean;
+  worker_lease_expiry_allowed: boolean;
+  worker_lease_expired: boolean;
+  worker_started: boolean;
+  repository_commit_allowed: boolean;
+  repository_rollback_allowed: boolean;
+  commit_receipt_created: boolean;
+  rollback_receipt_created: boolean;
+  repository_transaction_allowed: boolean;
+  repository_transaction_opened: boolean;
+  repository_transaction_committed: boolean;
+  queue_claim_allowed: boolean;
+  queue_claim_created: boolean;
+  claim_transaction_opened: boolean;
+  claim_transaction_committed: boolean;
+  scheduler_allowed: boolean;
+  scheduler_job_created: boolean;
+  runner_dispatch_enqueued: boolean;
+  live_run_allowed: boolean;
+  dispatch_allowed: boolean;
+  dispatch_performed: boolean;
+  budget_reservation_allowed: boolean;
+  budget_reserved: boolean;
+  provider_execution_allowed: boolean;
+  provider_calls_made: boolean;
+  retrieval_allowed: boolean;
+  retrieval_performed: boolean;
+  source_receipts_created: boolean;
+  graph_mutation_allowed: boolean;
+  graph_mutated: boolean;
+  final_artifact_allowed: boolean;
+  final_artifact_created: boolean;
+  adapter_plan_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -2411,4 +2514,24 @@ export async function workerDispatchLeaseHeartbeatPlanMidnightOil(
     );
   }
   return (await resp.json()) as MidnightOilWorkerDispatchLeaseHeartbeatPlanReceipt;
+}
+
+export async function workerCancellationAbandonPlanMidnightOil(
+  request: MidnightOilWorkerCancellationAbandonPlanRequest,
+): Promise<MidnightOilWorkerCancellationAbandonPlanReceipt> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/midnight-oil/worker-cancellation-abandon-plan`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+  );
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(
+      `POST /research/midnight-oil/worker-cancellation-abandon-plan: HTTP ${resp.status}: ${body}`,
+    );
+  }
+  return (await resp.json()) as MidnightOilWorkerCancellationAbandonPlanReceipt;
 }

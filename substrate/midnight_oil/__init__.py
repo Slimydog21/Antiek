@@ -65,6 +65,8 @@ from .contracts import (
     MidnightOilRunnerReadinessRequest,
     MidnightOilSchedulerLeaseRetryPlanReceipt,
     MidnightOilSchedulerLeaseRetryPlanRequest,
+    MidnightOilWorkerCancellationAbandonPlanReceipt,
+    MidnightOilWorkerCancellationAbandonPlanRequest,
     MidnightOilWorkerDispatchLeaseHeartbeatPlanReceipt,
     MidnightOilWorkerDispatchLeaseHeartbeatPlanRequest,
     MidnightOilWorkerQueueClaimPlanReceipt,
@@ -98,6 +100,7 @@ from .contracts import (
     runner_dispatch_worker_bootstrap_plan_midnight_oil,
     runner_readiness_midnight_oil,
     scheduler_lease_retry_plan_midnight_oil,
+    worker_cancellation_abandon_plan_midnight_oil,
     worker_dispatch_lease_heartbeat_plan_midnight_oil,
     worker_queue_claim_plan_midnight_oil,
 )
@@ -167,6 +170,8 @@ __all__ = [
     "MidnightOilRunnerReadinessRequest",
     "MidnightOilSchedulerLeaseRetryPlanReceipt",
     "MidnightOilSchedulerLeaseRetryPlanRequest",
+    "MidnightOilWorkerCancellationAbandonPlanReceipt",
+    "MidnightOilWorkerCancellationAbandonPlanRequest",
     "MidnightOilWorkerDispatchLeaseHeartbeatPlanReceipt",
     "MidnightOilWorkerDispatchLeaseHeartbeatPlanRequest",
     "MidnightOilWorkerQueueClaimPlanReceipt",
@@ -200,6 +205,7 @@ __all__ = [
     "runner_dispatch_worker_bootstrap_plan_midnight_oil",
     "runner_readiness_midnight_oil",
     "scheduler_lease_retry_plan_midnight_oil",
+    "worker_cancellation_abandon_plan_midnight_oil",
     "worker_dispatch_lease_heartbeat_plan_midnight_oil",
     "worker_queue_claim_plan_midnight_oil",
 ]
