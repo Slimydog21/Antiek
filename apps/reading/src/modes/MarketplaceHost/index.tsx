@@ -100,6 +100,7 @@ import {
   domainSearchCoverage,
 } from "../../workspace/domainSearchDefaults";
 import { marketplaceFreeHostReadiness } from "../../workspace/marketplaceFreeHostReadiness";
+import { marketplaceHostedOpenReadiness } from "../../workspace/marketplaceHostedOpenReadiness";
 import {
   MARKETPLACE_DEMO_RECEIPT_DEFAULT,
   marketplaceReceiptReadiness,
@@ -355,6 +356,17 @@ export default function MarketplaceHost({
         freePdOnlyFilter: freePdOnly,
       }),
     [filteredFreeCount, freePdOnly],
+  );
+
+  // Residual (atm): hosted land → open reading window pure readiness (parity MO ate).
+  const hostedOpenReadiness = useMemo(
+    () =>
+      marketplaceHostedOpenReadiness({
+        view_format: hosted?.view_format,
+        html: hosted?.html,
+        document_id: hosted?.document_id,
+      }),
+    [hosted?.view_format, hosted?.html, hosted?.document_id],
   );
 
   const catalogFiltersActive = useMemo(() => {
@@ -2260,15 +2272,30 @@ export default function MarketplaceHost({
               ) : null}
             </div>
           </div>
-          {/* Residual (bt/dk): open hosted HTML book in a floating window. */}
-          <div className="flex flex-wrap items-center gap-2">
+          {/* Residual (bt/dk/atm): open hosted HTML book in a floating window
+              via pure marketplaceHostedOpenReadiness (never invent PDF/empty open). */}
+          <div
+            className="flex flex-wrap items-center gap-2"
+            data-testid="marketplace-hosted-open-actions"
+            data-open-ready={String(hostedOpenReadiness.open_ready)}
+            data-html-first="true"
+            data-view-format={hosted.view_format || ""}
+            data-open-summary={hostedOpenReadiness.summary}
+          >
             <button
               type="button"
               data-testid="open-hosted-in-window"
-              disabled={hosted.view_format !== "html" || !hosted.html}
+              data-view-format="html"
+              data-html-first="true"
+              data-window-mode="floating"
+              data-open-ready={String(hostedOpenReadiness.open_ready)}
+              data-document-id={hosted.document_id ?? ""}
+              data-never-pdf-view="true"
+              disabled={busy || !hostedOpenReadiness.open_ready}
+              title={hostedOpenReadiness.open_title}
               onClick={() => {
-                if (hosted.view_format !== "html") {
-                  setError("view_format must be html — PDF is not a reading surface");
+                if (!hostedOpenReadiness.open_ready) {
+                  setError(hostedOpenReadiness.summary);
                   return;
                 }
                 openHostedWindow({
@@ -2300,6 +2327,8 @@ export default function MarketplaceHost({
                 })}
                 data-testid="marketplace-open-write"
                 data-view-format="html"
+                data-html-first="true"
+                data-open-ready={String(hostedOpenReadiness.open_ready)}
                 data-document-id={hosted.document_id}
                 data-has-twin-seed="1"
                 // Residual (aeo): body + seamless port honesty on host Open Write.

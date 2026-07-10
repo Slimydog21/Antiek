@@ -4321,3 +4321,9 @@ Pivot atl+.
 Merge draft HTML float|full CTAs stamp html-first · cross-asset-merge ·
 draft-ready · L3 deferred · source=twin_cross_asset_merge. Parity atk ·
 HostedHtml atc. vitest TwinNotesPanel 35 green. P0 PR #465. Pivot atm+.
+
+## Residual atm · 2026-07-10 — marketplace hosted open pure readiness
+marketplaceHostedOpenReadiness: view_format=html ∧ body ∧ document_id → open_ready.
+Open hosted book window CTAs stamp html-first · never-pdf · title honesty.
+Parity MO deposit ate for seamless HTML account port. vitest 48 green.
+P0 PR #465. Pivot atn+.

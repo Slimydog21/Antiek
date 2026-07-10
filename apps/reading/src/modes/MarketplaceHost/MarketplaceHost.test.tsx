@@ -1040,7 +1040,18 @@ describe("MarketplaceHost mode", () => {
     await waitFor(() => {
       expect(screen.getByTestId("open-hosted-in-window")).toBeTruthy();
     });
-    fireEvent.click(screen.getByTestId("open-hosted-in-window"));
+    // Residual (atm): hosted open pure readiness stamps HTML-first path.
+    const openActions = screen.getByTestId("marketplace-hosted-open-actions");
+    expect(openActions.getAttribute("data-open-ready")).toBe("true");
+    expect(openActions.getAttribute("data-html-first")).toBe("true");
+    const openBtn = screen.getByTestId("open-hosted-in-window");
+    expect(openBtn.getAttribute("data-open-ready")).toBe("true");
+    expect(openBtn.getAttribute("data-html-first")).toBe("true");
+    expect(openBtn.getAttribute("data-never-pdf-view")).toBe("true");
+    expect(openBtn.getAttribute("data-document-id")).toBe("hdoc_abc");
+    expect(openBtn.getAttribute("title") || "").toMatch(/never PDF/i);
+    expect((openBtn as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(openBtn);
     expect(openWindow).toHaveBeenCalled();
     const call = openWindow.mock.calls.at(-1) as unknown as [
       string,
