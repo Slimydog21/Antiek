@@ -1596,7 +1596,17 @@ describe("Settings SPR-01 + decision-tree install", () => {
         "data-has-collective-written-analysis-write-seed-posture",
       ),
     ).toBe("true");
+    // Residual (ado): v13 write-seed has-body posture machine attr + spine label.
+    expect(
+      summary.getAttribute("data-has-write-seed-has-body-posture"),
+    ).toBe("true");
     expect(summary.getAttribute("data-propose-not-promote")).toBe("true");
+    expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
+      /Spine postures \(v13\)/i,
+    );
+    expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
+      /write-seed has-body/i,
+    );
     expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
       /write-seed/i,
     );

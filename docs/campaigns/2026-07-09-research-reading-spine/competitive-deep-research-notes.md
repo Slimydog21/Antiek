@@ -2157,3 +2157,9 @@ SESSION-ARC-acf-acn documents write-seed has-body honesty matrix across marketpl
 MO, spawn merge, collective, HostedHtml. Tip 2bc6bf23 · 174 ships. Competitive delta:
 swarm handoff tip-true; operator merge PR #465 highest leverage.
 
+
+## Residual ado · 2026-07-10 — Settings dogfood v13 has-body posture
+Settings data-has-write-seed-has-body-posture + Spine postures (v13) · write-seed
+has-body (substrate fixture adn now operator-visible). Competitive delta:
+recursive rewrite dogfood honesty is machine-readable on Settings summary, not
+only in item list. Vitest Settings 34 green.

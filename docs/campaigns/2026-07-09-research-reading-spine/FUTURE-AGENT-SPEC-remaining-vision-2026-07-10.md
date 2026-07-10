@@ -1,14 +1,14 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** residual **adn** (dogfood v13 has-body fixture) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
+**Campaign tip at write:** residual **ado** (Settings dogfood v13 has-body posture) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **URL:** https://github.com/Slimydog21/Antiek/pull/465  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
 
 ## Do not rebuild
 
-Prefer **inventory-adn** + **SESSION-ARC-adi-adl-twin-collective-depth.md** + **SESSION-ARC-acp-acy-write-seed-body-loop.md**.  
-This continuation: **199 residual ships** from vy tip `8e280766`.
+Prefer **inventory-ado** + **inventory-adn** + **SESSION-ARC-adi-adl-twin-collective-depth.md** + **SESSION-ARC-acp-acy-write-seed-body-loop.md**.  
+This continuation: **200 residual ships** from vy tip `8e280766`.
 
 ### Closed product (high signal)
 
@@ -17,8 +17,8 @@ This continuation: **199 residual ships** from vy tip `8e280766`.
 | Budget foresight | Launch + Settings remaining-after-prompt |
 | Dual-gate L1–L7 | Section anchors · deep-links · L2–L7 · host L5 · membership/continue L6 |
 | Free STEM domains | Hooke free STEM + free inventory is_free-only doctrine (API·HTML·UI abn–abz) |
-| Dogfood **v13** | + write-seed has-body honesty fixture (**adn**) · 19 items · wrestle=8 |
-| Write-seed provenance | Full loop closed (**acf–acy**) · dogfood feeds rewrite (**adn**) |
+| Dogfood **v13** | Fixture **adn** + Settings posture **ado** (data-has-write-seed-has-body-posture · spine v13) |
+| Write-seed provenance | Full loop closed (**acf–acy**) · dogfood feeds rewrite (**adn–ado**) |
 | Twin recursive note-taker | Draft **adi** + promote **adl** research_tier (arc **adm**) |
 | Collective cohesive unit | Membership L6 · continue L6 (**adj–adk**; arc **adm**) |
 | Midnight Oil ceiling | Formula chain **ada–add** closed (arc **adg**) |
@@ -32,8 +32,8 @@ This continuation: **199 residual ships** from vy tip `8e280766`.
 ### P2 — Dual-gate live injectors (operator-only)
 L1–L4 offline default · L5 payment deferred · L6 live multi-agent · L7 ND **never** router
 
-### P1 next offline (residual **ado+**)
-Prefer real product residual outside stamp thrash; dogfood v13 closed **adn**.
+### P1 next offline (residual **adp+**)
+Prefer real product residual outside stamp thrash; Settings dogfood has-body posture closed **ado**.
 
 ## Doctrine
 One residual letter/cycle · inventory-first · green tests · campaign push only · complete work never complete goal · Infinite until STOP.
