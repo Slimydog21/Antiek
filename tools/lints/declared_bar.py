@@ -186,14 +186,21 @@ def ruff_violation_to_key(v: object) -> ViolationKey:
 
 
 def run_ruff(
-    ruff_bin: str = "ruff",
+    ruff_bin: str | None = None,
     cwd: Path | None = None,
 ) -> list[RuffViolation]:
     """Run ``ruff check`` over the pyproject-declared scope (no path /
     no ``--exclude`` argument: ruff discovers files via its own
     pyproject config) and return parsed findings. Raises RuntimeError
-    only if ruff can't be invoked (binary missing)."""
-    argv = [ruff_bin, "check", "--output-format=json", "--no-fix"]
+    only if ruff can't be invoked (binary missing).
+
+    ``ruff_bin=None`` (the default) runs ruff via the INVOKING
+    interpreter (``sys.executable -m ruff``), never a bare PATH lookup —
+    a shell whose PATH shadows a different ruff (conda, uv tool, …)
+    would otherwise silently judge with an unpinned version."""
+    argv = (
+        [ruff_bin] if ruff_bin else [sys.executable, "-m", "ruff"]
+    ) + ["check", "--output-format=json", "--no-fix"]
     try:
         proc = subprocess.run(
             argv, cwd=cwd, capture_output=True, text=True, check=False
@@ -208,15 +215,25 @@ def run_ruff(
 
 def run_mypy(
     targets: Iterable[str] = DECLARED_MYPY_TARGETS,
-    mypy_bin: str = "mypy",
+    mypy_bin: str | None = None,
     cwd: Path | None = None,
 ) -> list[MypyError]:
     """Run ``mypy`` (strict comes from pyproject ``[tool.mypy]``) over
     the declared package targets and return parsed errors. We pass the
     package targets, not ``--strict`` re-declared on the CLI, so the
     pyproject contract is the single source of truth. Raises
-    RuntimeError only if mypy can't be invoked."""
-    argv = [mypy_bin, *targets]
+    RuntimeError only if mypy can't be invoked.
+
+    ``mypy_bin=None`` (the default) runs mypy via the INVOKING
+    interpreter (``sys.executable -m mypy``), never a bare PATH lookup.
+    mypy resolves the REAL import graph, so which environment it runs in
+    IS the verdict: a PATH-shadowing mypy (observed: conda 1.19.1 vs the
+    pinned 2.1.0) both under- and over-reports NEW findings locally
+    while CI stays green — a gate that lies locally trains people to
+    ignore it."""
+    argv = ([mypy_bin] if mypy_bin else [sys.executable, "-m", "mypy"]) + list(
+        targets
+    )
     try:
         proc = subprocess.run(
             argv, cwd=cwd, capture_output=True, text=True, check=False
