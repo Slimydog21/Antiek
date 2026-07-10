@@ -3072,3 +3072,8 @@ vitest Settings 36 green. P0 operator merge PR #465. Pivot ajz+ outside thrash.
 Competitive DR scorecard model-choice and ND-never-router rows name
 decision-tree-only install + never-dispatch-authority stamps (ajy).
 vitest Settings 36 green. P0 operator merge PR #465. Pivot aka+ outside thrash.
+
+## Residual aka · 2026-07-10 — decision-tree ND install provenance never-dispatch
+After NotDiamond advisory install, decision-tree provenance stamps
+never-dispatch-authority · decision-tree-only · advisory_only (parity ajy install).
+vitest Settings 36 green. P0 operator merge PR #465. Pivot akb+ outside thrash.

@@ -1,0 +1,18 @@
+# inventory-aka · decision-tree ND install provenance never-dispatch honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aka
+date: 2026-07-10
+parent_tip: d6f0cdd0 (ajz)
+
+## Closed
+- decision-tree-status + decision-tree-install-provenance after ND install:
+  - data-never-dispatch-authority · data-install-is-decision-tree-only
+  - data-notdiamond-authority=advisory_only when source=notdiamond
+- Copy: NotDiamond advisory → decision-tree only · never dispatch authority
+- Closes loop with install button stamps (ajy)
+- vitest Settings 36 green
+- proof: SCRATCH residual-aka-vitest.log
+
+## Next
+akb+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

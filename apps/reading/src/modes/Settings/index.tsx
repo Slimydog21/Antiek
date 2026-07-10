@@ -1386,6 +1386,26 @@ export default function Settings() {
               data-model-id={tree?.model_id || ""}
               data-provider-id={tree?.provider_id || ""}
               data-advisory-only="true"
+              // Residual (aka): ND install provenance never becomes dispatch authority.
+              data-install-is-decision-tree-only={
+                driverInstallProvenance.source === "notdiamond"
+                  ? "true"
+                  : driverInstallProvenance.source
+                    ? "true"
+                    : ""
+              }
+              data-never-dispatch-authority={
+                driverInstallProvenance.source === "notdiamond"
+                  ? "true"
+                  : driverInstallProvenance.source
+                    ? "true"
+                    : ""
+              }
+              data-notdiamond-authority={
+                driverInstallProvenance.source === "notdiamond"
+                  ? "advisory_only"
+                  : ""
+              }
             >
               <Row
                 label="Installed"
@@ -1403,13 +1423,23 @@ export default function Settings() {
                   data-install-task-class={
                     driverInstallProvenance.task_class || ""
                   }
+                  // Residual (aka/ajy): machine-readable never-dispatch after ND install.
+                  data-install-is-decision-tree-only="true"
+                  data-never-dispatch-authority="true"
+                  data-notdiamond-authority={
+                    driverInstallProvenance.source === "notdiamond"
+                      ? "advisory_only"
+                      : "n/a"
+                  }
                   role="status"
                 >
                   Install source: {driverInstallProvenance.source}
                   {driverInstallProvenance.task_class
                     ? ` · best ${driverInstallProvenance.task_class}`
                     : ""}{" "}
-                  (advisory only · never auto-routes)
+                  {driverInstallProvenance.source === "notdiamond"
+                    ? "(NotDiamond advisory → decision-tree only · never dispatch authority)"
+                    : "(advisory only · never auto-routes)"}
                 </p>
               ) : null}
               {tree?.notes?.map((n) => (

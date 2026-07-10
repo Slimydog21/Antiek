@@ -1329,6 +1329,29 @@ describe("Settings SPR-01 + decision-tree install", () => {
     };
     expect(call.model_id).toBe("stub-strong");
     expect(call.provider_id).toBeTruthy();
+    // Residual (aka): after ND install, decision-tree provenance stamps never-dispatch.
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("decision-tree-install-provenance"),
+      ).toBeTruthy();
+    });
+    const prov = screen.getByTestId("decision-tree-install-provenance");
+    expect(prov.getAttribute("data-install-source")).toBe("notdiamond");
+    expect(prov.getAttribute("data-never-dispatch-authority")).toBe("true");
+    expect(prov.getAttribute("data-install-is-decision-tree-only")).toBe(
+      "true",
+    );
+    expect(prov.getAttribute("data-notdiamond-authority")).toBe(
+      "advisory_only",
+    );
+    expect(prov.textContent).toMatch(/decision-tree only/i);
+    expect(prov.textContent).toMatch(/never dispatch/i);
+    const status = screen.getByTestId("decision-tree-status");
+    expect(status.getAttribute("data-install-source")).toBe("notdiamond");
+    expect(status.getAttribute("data-never-dispatch-authority")).toBe("true");
+    expect(status.getAttribute("data-notdiamond-authority")).toBe(
+      "advisory_only",
+    );
   });
 
   it("shows known feed sources including twin_chase and floating DR (nx)", async () => {
