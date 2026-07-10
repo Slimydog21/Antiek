@@ -52,6 +52,16 @@ vi.mock("../../api/settings", () => ({
     notes: [],
     source: "test",
   })),
+  fetchDepthTiers: vi.fn(async () => ({
+    active_depth_tier: null,
+    active_preset: null,
+    presets: [],
+    projection_hints: null,
+    view_format: "html",
+    settings_panel: "depth_tier_presets",
+    source: "test",
+    notes: [],
+  })),
 }));
 
 vi.mock("../../lib/analytics", () => ({
@@ -86,6 +96,22 @@ describe("ChatInputArea publication refs (ct)", () => {
         .getAttribute("data-view-format"),
     ).toBe("html");
     expect(screen.getByTestId("chat-publication-refs-input")).toBeTruthy();
+  });
+
+  it("mounts dual-gate L1/L2 checklist prep on chat pub refs (agg)", () => {
+    render(
+      <MemoryRouter>
+        <ChatInputArea />
+      </MemoryRouter>,
+    );
+    const prep = screen.getByTestId("chat-input-pub-refs-dual-gate");
+    expect(prep.getAttribute("data-view-format")).toBe("html");
+    expect(prep.getAttribute("data-l1-arxiv")).toBe("deferred");
+    expect(prep.getAttribute("data-l2-substack")).toBe("deferred");
+    const l1 = screen.getByTestId("chat-input-l1-checklist-link");
+    expect(l1.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    const l2 = screen.getByTestId("chat-input-l2-checklist-link");
+    expect(l2.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
   });
 
   it("hydrates refs and grounds question on Ask", async () => {

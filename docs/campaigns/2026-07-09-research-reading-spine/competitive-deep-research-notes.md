@@ -2538,3 +2538,8 @@ checklist surfaces. vitest RW 12 green.
 StartResearch publication refs panel mounts dual-gate L1 arxiv + L2 Substack
 checklist deep-links (deferred injectors · offline identity default). Parity
 MO/HostedHtml pub prep. vitest StartResearch 21 green.
+
+## Residual agg · 2026-07-10 — ChatInputArea L1/L2 dual-gate pub-refs prep
+Docked chat publication refs mount dual-gate L1 arxiv + L2 Substack checklist
+deep-links (parity StartResearch agf · chase follow-ups). Fixed fetchDepthTiers
+mock in refs tests. vitest ChatInputArea.refs 3 green.
