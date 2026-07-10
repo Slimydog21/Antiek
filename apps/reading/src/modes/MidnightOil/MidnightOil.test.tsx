@@ -886,12 +886,13 @@ describe("MidnightOil mode", () => {
         /twins=2/,
       );
     });
-    // Residual (gk): client offline twin reseed after deposit.
+    // Residual (gk/ahu): client offline twin reseed after deposit + MO port honesty.
     await waitFor(() => {
       expect(seedTwinNotes).toHaveBeenCalledWith(
         expect.objectContaining({
           asset_id: "draft_moil_asset_dep_abc",
           force_offline: true,
+          body_text: expect.stringMatching(/Midnight Oil deposit HTML/i),
         }),
       );
     });

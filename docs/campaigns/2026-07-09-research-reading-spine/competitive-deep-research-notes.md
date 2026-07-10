@@ -2773,3 +2773,9 @@ pytest dogfood 5 · Settings 36 green. P0 operator merge PR #465. Pivot aht+.
 Opening multi-spawn cohesive unit as float|full HTML seeds recursive note-taker
 twins offline (force_offline · L6 never invented). Closes twin completeness gap
 #2 (ahq). vitest Collective 27 green. P0 operator merge PR #465. Pivot ahu+.
+
+## Residual ahu · 2026-07-10 — Midnight Oil deposit twin seed port honesty
+MO deposit twin reseed body prefixes offline deposit HTML port honesty (L4 live
+worker dual-gate deferred). Closes twin completeness gap #1 without inventing
+live multi-provider step. vitest MidnightOil 24 green. P0 operator merge PR #465.
+Pivot ahv+.

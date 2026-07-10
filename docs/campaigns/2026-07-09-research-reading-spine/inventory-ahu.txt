@@ -1,0 +1,15 @@
+# inventory-ahu · Midnight Oil deposit twin seed port honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ahu
+date: 2026-07-10
+parent_tip: cc250552 (aht)
+
+## Closed
+- reseedDepositTwins body prefixes MO deposit HTML port honesty
+- Offline-honest · L4 live worker dual-gate deferred · never invent live step
+- Closes twin completeness gap #1 (ahq) without colliding with MO live stack
+- vitest MidnightOil 24 green
+
+## Next
+ahv+ product residual · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

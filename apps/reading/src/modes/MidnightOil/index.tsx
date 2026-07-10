@@ -311,10 +311,13 @@ export default function MidnightOil() {
           .replace(/\s+/g, " ")
           .trim()
           .slice(0, 2000);
+        // Residual (ahu): MO deposit twin port honesty (offline · never invent live step).
+        const portHonesty =
+          "Port path: Midnight Oil deposit HTML (offline-honest · live multi-provider step dual-gate deferred · never invent L4 live worker).\n\n";
         const seeded = await seedTwinNotes({
           asset_id: assetId,
           title: `Midnight Oil · ${dep.job_id}`,
-          body_text: plain || dep.job_id,
+          body_text: (portHonesty + (plain || dep.job_id)).slice(0, 2200),
           include_html: false,
           force_offline: true,
         });
