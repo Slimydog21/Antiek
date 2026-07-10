@@ -72,6 +72,8 @@ from substrate.midnight_oil import (
     MidnightOilOperatorArchivePackageDeliveryReportDeliveryConfirmationPlanRequest,
     MidnightOilOperatorArchivePackageDeliveryReportDeliveryConfirmationResultReconciliationPlanReceipt,
     MidnightOilOperatorArchivePackageDeliveryReportDeliveryConfirmationResultReconciliationPlanRequest,
+    MidnightOilOperatorArchivePackageDeliveryReportFinalCloseoutAcknowledgementPlanReceipt,
+    MidnightOilOperatorArchivePackageDeliveryReportFinalCloseoutAcknowledgementPlanRequest,
     MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorAcknowledgementPlanReceipt,
     MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorAcknowledgementPlanRequest,
     MidnightOilOperatorArchivePackageDeliveryReportNotificationReadinessPlanReceipt,
@@ -167,6 +169,7 @@ from substrate.midnight_oil import (
     operator_archive_package_delivery_report_acknowledgement_result_reconciliation_plan_midnight_oil,
     operator_archive_package_delivery_report_delivery_confirmation_plan_midnight_oil,
     operator_archive_package_delivery_report_delivery_confirmation_result_reconciliation_plan_midnight_oil,
+    operator_archive_package_delivery_report_final_closeout_acknowledgement_plan_midnight_oil,
     operator_archive_package_delivery_report_final_operator_acknowledgement_plan_midnight_oil,
     operator_archive_package_delivery_report_notification_readiness_plan_midnight_oil,
     operator_archive_package_delivery_report_notification_result_reconciliation_plan_midnight_oil,
@@ -811,6 +814,18 @@ def post_midnight_oil_operator_archive_package_delivery_report_acknowledgement_r
     )
 
 
+@midnight_oil_router.post(
+    "/operator-archive-package-delivery-report-final-closeout-acknowledgement-plan",
+    response_model=MidnightOilOperatorArchivePackageDeliveryReportFinalCloseoutAcknowledgementPlanReceipt,
+)
+def post_midnight_oil_operator_archive_package_delivery_report_final_closeout_acknowledgement_plan(
+    req: MidnightOilOperatorArchivePackageDeliveryReportFinalCloseoutAcknowledgementPlanRequest,
+) -> MidnightOilOperatorArchivePackageDeliveryReportFinalCloseoutAcknowledgementPlanReceipt:
+    return operator_archive_package_delivery_report_final_closeout_acknowledgement_plan_midnight_oil(
+        req
+    )
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
@@ -848,6 +863,7 @@ __all__ = [
     "post_midnight_oil_operator_archive_package_delivery_report_acknowledgement_result_reconciliation_plan",
     "post_midnight_oil_operator_archive_package_delivery_report_delivery_confirmation_plan",
     "post_midnight_oil_operator_archive_package_delivery_report_delivery_confirmation_result_reconciliation_plan",
+    "post_midnight_oil_operator_archive_package_delivery_report_final_closeout_acknowledgement_plan",
     "post_midnight_oil_operator_archive_package_delivery_report_final_operator_acknowledgement_plan",
     "post_midnight_oil_operator_archive_package_delivery_report_notification_readiness_plan",
     "post_midnight_oil_operator_archive_package_delivery_report_notification_result_reconciliation_plan",
