@@ -2626,3 +2626,10 @@ merge-ready when parent reading asset bound (+ ≥1 selected for ready). Draft /
 into_parent / written-analysis action stamps. Parity single-spawn agu for
 multi-select subagent merge flywheel (vision: merge various deep researches).
 vitest Collective 27 green. P0 operator merge PR #465. Pivot agw+ outside thrash.
+
+## Residual agw · 2026-07-10 — dogfood v22 seamless merge path fixtures
+Suite suite-competitive-dogfood-v22 adds wrestle fixtures for single-spawn
+highlight→DR→merge (agu) and multi-spawn collective merge (agv). Settings spine
+postures v22. item_count 35 · wrestle=22 · book_qa=9. Recursive Antiek-bench
+rewrite feed (propose≠promote). pytest dogfood 5 · Settings 36 green.
+P0 operator merge PR #465. Pivot agx+ outside thrash.

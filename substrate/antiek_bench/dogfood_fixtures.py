@@ -33,7 +33,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (agh): v19 learns Gödel foundations free PD book_qa.
 # Residual (agp): v20 learns TalkToBook + MetaReading twin note-taker paths.
 # Residual (ags): v21 learns Fourier heat free PD book_qa + ResearchThis twins.
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v21"
+# Residual (agw): v22 learns seamless spawn merge + multi-spawn collective merge paths.
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v22"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -390,6 +391,46 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "seamless",
                 "selection",
                 "book",
+            ),
+        ),
+        # Residual (agw/agu): highlight → float DR → single-spawn merge path honesty.
+        SuiteItem(
+            item_id="dogfood-wrestle-spawn-merge-path",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with seamless highlight→DR→merge path: when SpawnMergePanel stamps "
+                "data-seamless-spawn-merge · data-seamless-highlight-dr-merge with spawn_id "
+                "and parent_asset_id bound, and draft_combined vs into_parent actions stamp "
+                "data-seamless-merge-draft / data-seamless-merge-parent, how should "
+                "Antiek-bench learn models that preserve draft-leaves-parent honesty and "
+                "recursive note-taker twin seed after merge without inventing live council?"
+            ),
+            expected_keywords=(
+                "seamless",
+                "merge",
+                "draft_combined",
+                "into_parent",
+                "spawn",
+            ),
+        ),
+        # Residual (agw/agv): multi-select subagent collective merge path honesty.
+        SuiteItem(
+            item_id="dogfood-wrestle-collective-multi-spawn-merge",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with seamless multi-spawn collective merge: when CollectiveResearchPanel "
+                "stamps data-seamless-collective-merge · data-seamless-multi-spawn-merge and "
+                "data-seamless-collective-merge-ready when parent is bound and ≥1 spawn selected, "
+                "and draft / into_parent / written analysis actions stamp seamless merge attrs, "
+                "how should Antiek-bench learn models that keep multi-select subagent merge into "
+                "reading assets and written analysis offline-honest without claiming L6 live council?"
+            ),
+            expected_keywords=(
+                "collective",
+                "multi",
+                "spawn",
+                "merge",
+                "seamless",
             ),
         ),
         # Residual (aeu): seamless Write path honesty across reading/research surfaces.
