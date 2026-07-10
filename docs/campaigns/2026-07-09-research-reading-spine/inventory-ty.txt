@@ -1,0 +1,19 @@
+# inventory-ty · Boole computing chip + host + DR goal_hint domains
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ty
+date: 2026-07-10
+
+## Closed
+- MarketplaceHost filter chip computing for pd-boole-laws-of-thought
+- Host land free-PD honesty + data-subjects computing/logic
+- Float DR goal_hint carries domains=computing + domains=logic
+- vitest MarketplaceHost 21 green · /tmp/residual-tests-ty.log
+
+## Product why
+Reading ≡ research: free computing/logic PD must feed domain-aware deep
+research the same way Faraday electricity does (to/tp). Catalog entry alone
+(tx) is incomplete without workstation chip + DR domain inheritance.
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Payment rails L5

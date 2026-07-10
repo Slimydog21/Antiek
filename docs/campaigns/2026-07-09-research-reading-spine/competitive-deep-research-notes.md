@@ -1082,3 +1082,9 @@ pd-boole-laws-of-thought joins the marketplace free PD spine (HTML · Gutenberg 
 subjects computing+logic+mathematics). Competitive delta: technology researchers
 host foundational logic/calculus texts without payment rails — marketplace is
 not only literature/electricity PD.
+
+## Residual ty · 2026-07-10 — Boole computing chip + DR domain goal_hint
+MarketplaceHost filters by computing subject, hosts free-PD honesty, and
+launches deep research with domains=computing,logic in goal_hint. Competitive
+delta: free computing PD feeds domain-aware research (parity Faraday electricity
+to/tp) — reading ≡ research for logic/AI researchers.

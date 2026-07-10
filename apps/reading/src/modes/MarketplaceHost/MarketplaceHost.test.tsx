@@ -1599,4 +1599,209 @@ describe("MarketplaceHost mode", () => {
     expect(call.goal_hint).toMatch(/domains=.*mathematics/);
     expect(call.goal_hint).toMatch(/Treatise on Electricity/);
   });
+
+  it("filters catalog by computing subject chip for Boole (ty)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-boole-laws-of-thought",
+          title: "An Investigation of the Laws of Thought",
+          author: "George Boole",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: [
+            "mathematics",
+            "logic",
+            "philosophy",
+            "science",
+            "technology",
+            "computing",
+          ],
+        },
+        {
+          book_id: "pd-pride",
+          title: "Pride and Prejudice",
+          author: "Jane Austen",
+          license_class: "public_domain",
+          is_free: true,
+          source: "standard_ebooks",
+          subjects: ["literature"],
+        },
+      ],
+      count: 2,
+      view_format: "html",
+      free_count: 2,
+      public_domain_count: 2,
+      by_subject: {
+        computing: 1,
+        logic: 1,
+        mathematics: 1,
+        literature: 1,
+      },
+      payment_rails: "manual_receipt_only",
+    });
+    render(<MarketplaceHost ownerId="tech-researcher" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("catalog-subject-computing")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("catalog-subject-computing"));
+    expect(
+      screen.getByTestId("catalog-entry-pd-boole-laws-of-thought"),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("catalog-entry-pd-pride")).toBeNull();
+    const metrics = screen.getByTestId("marketplace-catalog-metrics");
+    expect(metrics.getAttribute("data-subject-filter")).toBe("computing");
+  });
+
+  it("hosts Boole free PD with computing subjects on host land (ty)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-boole-laws-of-thought",
+          title: "An Investigation of the Laws of Thought",
+          author: "George Boole",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: [
+            "mathematics",
+            "logic",
+            "philosophy",
+            "science",
+            "technology",
+            "computing",
+          ],
+        },
+      ],
+      count: 1,
+      view_format: "html",
+      free_count: 1,
+      public_domain_count: 1,
+      by_subject: {
+        computing: 1,
+        logic: 1,
+        mathematics: 1,
+        technology: 1,
+      },
+      payment_rails: "manual_receipt_only",
+    });
+    hostBookIntoAccount.mockResolvedValue({
+      document_id: "hdoc_boole",
+      owner_id: "tech-researcher",
+      book_id: "pd-boole-laws-of-thought",
+      content_hash: "b1",
+      title: "An Investigation of the Laws of Thought",
+      license_class: "public_domain",
+      already_hosted: false,
+      source_format: "html",
+      library_document_ids: ["hdoc_boole"],
+      view_format: "html",
+      html: "<p>symbolical language of a Calculus of Logic</p>",
+    });
+    fetchAccountLibrary.mockResolvedValue({
+      owner_id: "tech-researcher",
+      documents: [],
+      count: 0,
+      view_format: "html",
+      html: "<p>Library Boole</p>",
+    });
+    render(<MarketplaceHost ownerId="tech-researcher" />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("catalog-entry-pd-boole-laws-of-thought"),
+      ).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /host into account/i }));
+    await waitFor(() => {
+      expect(hostBookIntoAccount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          owner_id: "tech-researcher",
+          book_id: "pd-boole-laws-of-thought",
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("marketplace-host-metrics")).toBeTruthy();
+    });
+    const hostMetrics = screen.getByTestId("marketplace-host-metrics");
+    expect(hostMetrics.getAttribute("data-subjects")).toMatch(/computing/);
+    expect(hostMetrics.getAttribute("data-subjects")).toMatch(/logic/);
+    expect(
+      screen.getByTestId("marketplace-host-free-pd-honesty").textContent,
+    ).toMatch(/free_host=true/);
+  });
+
+  it("launches Boole DR with computing+logic domains in goal_hint (ty)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-boole-laws-of-thought",
+          title: "An Investigation of the Laws of Thought",
+          author: "George Boole",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: [
+            "mathematics",
+            "logic",
+            "philosophy",
+            "science",
+            "technology",
+            "computing",
+          ],
+        },
+      ],
+      count: 1,
+      view_format: "html",
+      free_count: 1,
+      public_domain_count: 1,
+      payment_rails: "manual_receipt_only",
+    });
+    hostBookIntoAccount.mockResolvedValue({
+      document_id: "hdoc_boole_dr",
+      owner_id: "tech-researcher",
+      book_id: "pd-boole-laws-of-thought",
+      content_hash: "b2",
+      title: "An Investigation of the Laws of Thought",
+      license_class: "public_domain",
+      already_hosted: false,
+      source_format: "html",
+      library_document_ids: ["hdoc_boole_dr"],
+      view_format: "html",
+      html: "<p>Laws of Thought and the Calculus of Logic</p>",
+    });
+    fetchAccountLibrary.mockResolvedValue({
+      owner_id: "tech-researcher",
+      documents: [],
+      count: 0,
+      view_format: "html",
+      html: "",
+    });
+    render(<MarketplaceHost ownerId="tech-researcher" />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("catalog-entry-pd-boole-laws-of-thought"),
+      ).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /host into account/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId("marketplace-host-deep-research")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("marketplace-host-deep-research"));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalled();
+    });
+    const call = launchFloatingDeepResearch.mock.calls.at(-1)?.[0] as {
+      asset_id: string;
+      goal_hint: string;
+      view_mode: string;
+    };
+    expect(call.asset_id).toBe("hdoc_boole_dr");
+    expect(call.view_mode).toBe("floating");
+    expect(call.goal_hint).toMatch(/domains=.*computing/);
+    expect(call.goal_hint).toMatch(/domains=.*logic/);
+    expect(call.goal_hint).toMatch(/marketplace HTML host/);
+    expect(call.goal_hint).toMatch(/Laws of Thought/);
+  });
 });
