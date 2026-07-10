@@ -1,0 +1,12 @@
+# inventory-ri · Research context prompt_block → Open Write twin_seed
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ri
+date: 2026-07-10
+
+## Closed
+- TwinWriteSeedSource research_context_pack
+- buildResearchContextWriteHref (prompt_block + twin/ref counts)
+- ResearchContextPanel Open Write (context pack)
+- KNOWN_USAGE_FEED_SOURCES + TWIN_WRITE_SEED_USAGE_SOURCES += research_context_pack
+- vitest twinWriteSeed 20 + ResearchContextPanel 12 = 32 passed
+  (SCRATCH residual-tests-ri.log)

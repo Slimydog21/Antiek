@@ -742,3 +742,8 @@ becomes writing fuel, not a dead-end results list.
 ResearchContextPanel single hydrate result opens Write twin_seed (reuses
 publication_hydrate source). Competitive delta: every arxiv/substack attach
 path — multi-pub panel or one-off hydrate — seeds writing.
+
+## Residual ri · 2026-07-10 — Context pack prompt_block → Write
+The research context pack that drives prompts opens Write as twin_seed
+source=research_context_pack. Competitive delta: the same substrate that
+grounds deep-research turns seeds long-form writing without re-export.

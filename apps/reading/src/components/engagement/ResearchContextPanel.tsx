@@ -15,6 +15,7 @@
  * Residual (rb): Open Write twin_seed from evidence pack (insights/questions/refs).
  * Residual (rf): Open Write twin_seed from intelligent context search hits.
  * Residual (rh): Open Write twin_seed from single hydrate-ref result.
+ * Residual (ri): Open Write twin_seed from research context prompt_block.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -36,6 +37,7 @@ import {
   buildContextSearchWriteHref,
   buildEvidencePackWriteHref,
   buildPublicationHydrateWriteHref,
+  buildResearchContextWriteHref,
 } from "../../workspace/twinWriteSeed";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 
@@ -458,6 +460,32 @@ export function ResearchContextPanel({
           <pre className="prompt-block" data-testid="prompt-block">
             {pack.prompt_block}
           </pre>
+          {/* Residual (ri): context pack prompt_block → Write twin_seed. */}
+          {(() => {
+            const href = buildResearchContextWriteHref({
+              assetId: pack.asset_id || assetId,
+              spawnId: pack.spawn_id || spawnId,
+              promptBlock: pack.prompt_block,
+              query: pack.query || query,
+              researchTier: pack.research_tier,
+              twinCount: pack.twin_count,
+              refCount: pack.ref_count,
+            });
+            return href ? (
+              <p className="meta font-mono text-[11px]">
+                <a
+                  href={href}
+                  data-testid="research-context-open-write"
+                  data-view-format="html"
+                  data-has-twin-seed="1"
+                  className="underline opacity-90 hover:opacity-100"
+                  title="Open Write with research context prompt_block as twin_seed (no invented document_id)"
+                >
+                  Open Write (context pack)
+                </a>
+              </p>
+            ) : null;
+          })()}
         </div>
       ) : null}
 

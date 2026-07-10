@@ -21,7 +21,8 @@ export type TwinWriteSeedSource =
   | "evidence_pack"
   | "publication_hydrate"
   | "session_flywheel_complete"
-  | "context_search";
+  | "context_search"
+  | "research_context_pack";
 
 export type TwinWriteSeedPayload = {
   plain_text: string;
@@ -67,6 +68,7 @@ export function storeTwinWriteSeed(input: {
     "publication_hydrate",
     "session_flywheel_complete",
     "context_search",
+    "research_context_pack",
   ];
   const source: TwinWriteSeedSource = allowed.includes(
     input.source as TwinWriteSeedSource,
@@ -114,6 +116,7 @@ export function loadTwinWriteSeed(key: string): TwinWriteSeedPayload | null {
       "publication_hydrate",
       "session_flywheel_complete",
       "context_search",
+      "research_context_pack",
     ];
     const source: TwinWriteSeedSource = allowedLoad.includes(
       srcRaw as TwinWriteSeedSource,
@@ -686,6 +689,64 @@ export function buildContextSearchWriteHref(opts: {
     asset_id: asset,
     note_ids: [],
     source: "context_search",
+  });
+  if (!seedKey) return null;
+  return buildTwinWriteHref(seedKey);
+}
+
+/**
+ * Residual (ri): Write handoff from research context prompt_block.
+ * twin_seed only — the recursive context pack that drives prompts becomes writing seed.
+ */
+export function buildResearchContextWriteHref(opts: {
+  assetId: string;
+  spawnId?: string | null;
+  promptBlock?: string | null;
+  query?: string | null;
+  researchTier?: string | null;
+  twinCount?: number | null;
+  refCount?: number | null;
+}): string | null {
+  const asset = String(opts.assetId || "").trim();
+  const block = String(opts.promptBlock || "").trim();
+  if (!asset || !block) return null;
+  const spawn = String(opts.spawnId || "").trim();
+  const query = String(opts.query || "").trim();
+  const tier = String(opts.researchTier || "").trim();
+  const twins = typeof opts.twinCount === "number" ? opts.twinCount : null;
+  const refs = typeof opts.refCount === "number" ? opts.refCount : null;
+  const plain = [
+    `Asset: ${asset}`,
+    spawn ? `Spawn: ${spawn}` : "",
+    query ? `Query: ${query}` : "",
+    tier ? `Tier: ${tier}` : "",
+    twins != null ? `Twins: ${twins}` : "",
+    refs != null ? `Refs: ${refs}` : "",
+    `Prompt block:\n${block}`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  const escape = (s: string) =>
+    String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  const html =
+    `<article data-view-format="html" data-source="research_context_pack" data-asset-id="${escape(asset)}"` +
+    (spawn ? ` data-spawn-id="${escape(spawn)}"` : "") +
+    `>` +
+    `<h1>Research context · ${escape(asset)}</h1>` +
+    (query ? `<p class="query"><strong>Query:</strong> ${escape(query)}</p>` : "") +
+    (tier ? `<p class="tier"><strong>Tier:</strong> ${escape(tier)}</p>` : "") +
+    `<section class="prompt-block"><h2>Prompt block</h2><pre>${escape(block)}</pre></section>` +
+    `</article>`;
+  const seedKey = storeTwinWriteSeed({
+    plain_text: plain,
+    html,
+    title: `Research context · ${asset}`,
+    asset_id: asset,
+    note_ids: [],
+    source: "research_context_pack",
   });
   if (!seedKey) return null;
   return buildTwinWriteHref(seedKey);

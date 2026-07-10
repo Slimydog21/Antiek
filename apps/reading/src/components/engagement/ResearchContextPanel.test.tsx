@@ -138,6 +138,12 @@ describe("ResearchContextPanel", () => {
     expect(fetchResearchContext).toHaveBeenCalledWith(
       expect.objectContaining({ asset_id: "paper", spawn_id: "spn_1" }),
     );
+    // Residual (ri): Open Write twin_seed from context pack prompt_block.
+    const write = screen.getByTestId("research-context-open-write");
+    const href = write.getAttribute("href") || "";
+    expect(href).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
+    expect(href).not.toMatch(/html_draft=/);
+    expect(write.getAttribute("data-has-twin-seed")).toBe("1");
     // Residual (ff): recursive note-taker metrics strip.
     const metrics = screen.getByTestId("research-context-twin-metrics");
     expect(metrics.getAttribute("data-twin-insights")).toBe("1");

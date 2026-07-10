@@ -3,6 +3,7 @@ import {
   TWIN_WRITE_SEED_KEY_PREFIX,
   buildContextSearchWriteHref,
   buildDeepResearchWriteHref,
+  buildResearchContextWriteHref,
   buildEvidencePackWriteHref,
   buildPublicationHydrateWriteHref,
   buildResearchProgressWriteHref,
@@ -170,6 +171,27 @@ describe("twinWriteSeed (pp)", () => {
       (href!.match(/twin_seed=([^&]+)/) || [])[1] || "",
     );
     expect(loadTwinWriteSeed(key)?.asset_id).toBe("deep_research:spn_orphan");
+  });
+
+  it("builds research context pack Write twin_seed (ri)", () => {
+    const href = buildResearchContextWriteHref({
+      assetId: "paper-1",
+      spawnId: "spn_1",
+      promptBlock: "# Research context pack\n\nInsight: attention.",
+      query: "attention",
+      researchTier: "wrestle",
+      twinCount: 2,
+      refCount: 1,
+    });
+    expect(href).toBeTruthy();
+    expect(href!).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
+    const key = decodeURIComponent(
+      (href!.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    const seed = loadTwinWriteSeed(key);
+    expect(seed?.source).toBe("research_context_pack");
+    expect(seed?.plain_text).toMatch(/Research context pack/);
+    expect(seed?.html).toMatch(/data-source="research_context_pack"/);
   });
 
   it("builds context search Write twin_seed (rf)", () => {
