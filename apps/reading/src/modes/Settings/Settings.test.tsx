@@ -819,6 +819,22 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("settings-deferred-l7").textContent).toMatch(
       /advisory only/i,
     );
+    // Residual (wk): deferred map deep-links into dual-gate L5–L7 sections.
+    expect(
+      screen
+        .getByTestId("settings-deferred-l5-checklist-link")
+        .getAttribute("href"),
+    ).toMatch(/#l5-payment/);
+    expect(
+      screen
+        .getByTestId("settings-deferred-l6-checklist-link")
+        .getAttribute("href"),
+    ).toMatch(/#l6-collective/);
+    expect(
+      screen
+        .getByTestId("settings-deferred-l7-checklist-link")
+        .getAttribute("href"),
+    ).toMatch(/#l7-notdiamond/);
   });
 
   it("surfaces dual-gate L1–L4 prep strip on decision-tree (sw)", async () => {

@@ -1406,3 +1406,8 @@ navigates deferred live-council policy without inventing injectors.
 Marketplace L5 payment honesty links dual-gate #l5-payment (parity Settings
 wh · Collective wi). Competitive delta: free PD host never implies live
 checkout; deferred rails are one click from catalog honesty.
+
+## Residual wk · 2026-07-10 — Settings Deferred map checklist deep-links
+Deferred (honest) L5/L6/L7 rows link dual-gate checklist sections. Competitive
+delta: Settings bottom deferred map is navigable end-to-end with dual-gate prep
+strip (wh) — never silent deferred policy.

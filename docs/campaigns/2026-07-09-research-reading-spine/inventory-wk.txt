@@ -1,0 +1,20 @@
+# inventory-wk · Settings Deferred map L5–L7 checklist deep-links
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: wk
+date: 2026-07-10
+tip_before: 2a696663 (wj)
+
+## Problem
+Settings Deferred (honest) listed L5/L6/L7 text without navigable checklist
+links (wc/wg/wh) — operator map incomplete at bottom of Settings.
+
+## Fix
+- settings-deferred-l5/l6/l7-checklist-link → #l5-payment / #l6-collective / #l7-notdiamond
+- L1–L4 checklist root link
+- Tests lock hrefs
+
+## Verified
+npm test Settings.test.tsx → 34 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

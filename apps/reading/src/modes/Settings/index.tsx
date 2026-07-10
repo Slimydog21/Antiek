@@ -3036,16 +3036,44 @@ export default function Settings() {
             <ul className="space-y-2 list-disc list-inside">
               <li data-deferred="l1-l4-live" data-testid="settings-deferred-l1-l4">
                 Live L1–L4 injectors (arxiv/substack hydrate · twin seed · MO
-                step) — dual-gate only · offline default
+                step) — dual-gate only · offline default ·{" "}
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+                  data-testid="settings-deferred-l1-l4-checklist-link"
+                  className="underline opacity-90 hover:opacity-100"
+                >
+                  checklist
+                </a>
               </li>
               <li data-deferred="l5-payment" data-testid="settings-deferred-l5">
-                L5 marketplace payment rails — manual receipt only today
+                L5 marketplace payment rails — manual receipt only today ·{" "}
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l5-payment"
+                  data-testid="settings-deferred-l5-checklist-link"
+                  className="underline opacity-90 hover:opacity-100"
+                >
+                  L5 checklist
+                </a>
               </li>
               <li data-deferred="l6-collective" data-testid="settings-deferred-l6">
-                L6 live multi-agent council — offline merge unit only today
+                L6 live multi-agent council — offline merge unit only today ·{" "}
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l6-collective"
+                  data-testid="settings-deferred-l6-checklist-link"
+                  className="underline opacity-90 hover:opacity-100"
+                >
+                  L6 checklist
+                </a>
               </li>
               <li data-deferred="l7-nd" data-testid="settings-deferred-l7">
-                L7 NotDiamond as router — never · advisory only (correct)
+                L7 NotDiamond as router — never · advisory only (correct) ·{" "}
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l7-notdiamond"
+                  data-testid="settings-deferred-l7-checklist-link"
+                  className="underline opacity-90 hover:opacity-100"
+                >
+                  L7 checklist
+                </a>
               </li>
               <li data-deferred="secret-vault" data-testid="settings-deferred-vault">
                 Multi-provider secret vault polish (SPR-02) beyond register model
