@@ -2420,3 +2420,7 @@ vitest CollectiveResearchPanel 25 green.
 Suite bumps to suite-competitive-dogfood-v15 with wrestle fixtures for written
 analysis Open Write source honesty (afg) and continue-as-unit path (afh).
 Settings spine postures v15. pytest dogfood 5 · Settings 36 green.
+
+## Residual afj · 2026-07-10 — SESSION-ARC afg–afi collective multi-spawn path
+Handoff: written analysis Open Write source fix + continue-as-unit path stamps +
+dogfood v15. P0 operator merge PR #465. Pivot afk+ outside thrash.

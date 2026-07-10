@@ -1,0 +1,12 @@
+# inventory-afj · SESSION-ARC afg–afi collective multi-spawn path
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: afj
+date: 2026-07-10
+parent_tip: d16bb0ca (afi)
+
+## Closed
+- SESSION-ARC-afg-afi-collective-multi-spawn-path.md
+- FUTURE + NEXT-WAVE re-anchor afk+
+
+## Next
+Outside dogfood/collective path thrash · inventory-first
