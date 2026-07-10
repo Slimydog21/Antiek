@@ -650,9 +650,13 @@ describe("StartResearch — a failed run is surfaced honestly, never a dead rout
     await waitFor(() =>
       expect(screen.getByText(/research didn’t complete/i)).toBeTruthy(),
     );
-    // The composer is back and the question survived the failed run.
+    // The composer is back and the question survived the failed run. The
+    // contract is EVENTUAL recoverability — the surface keeps the prompt
+    // through a successful POST and a failure-restore effect backs it — so
+    // assert via waitFor rather than a synchronous read, which couples the
+    // test to update timing (observed flaky on CI, run 29103449840).
     const input = screen.getByLabelText("Research question") as HTMLTextAreaElement;
-    expect(input.value).toBe(question);
+    await waitFor(() => expect(input.value).toBe(question));
     expect(navigateMock).not.toHaveBeenCalled();
   });
 });
