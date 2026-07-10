@@ -3959,3 +3959,9 @@ choices chrome (float|full · draft merge · into parent readiness when
 spawn+parent bound). Competitive delta: highlight→DR operator can open full or
 float then draft or merge into reading asset — product path, not silent. vitest
 34 green. SESSION-ARC aqs–aqw. P0 PR #465. Pivot aqx+.
+
+## Residual aqx · 2026-07-10 — Collective path-choices multi-select · draft · into-parent · analysis
+CollectiveResearchPanel path-choices chrome (parity aqw): multi-select · draft
+merge · into parent · written analysis (≥2) readiness. Offline merge unit · L6
+deferred honesty. Competitive delta: multi-float cohesive unit path is operator-
+visible. vitest 31 green. P0 PR #465. Pivot aqy+ outside path thrash.

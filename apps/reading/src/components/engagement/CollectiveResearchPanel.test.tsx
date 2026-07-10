@@ -561,12 +561,39 @@ describe("CollectiveResearchPanel", () => {
       "false",
     );
     expect(panel.textContent).toMatch(/seamless multi-spawn merge path/i);
+    // Residual (aqx): path choices chrome (parity aqw DR host).
+    const path = screen.getByTestId("collective-path-choices");
+    expect(path.getAttribute("data-html-first")).toBe("true");
+    expect(path.getAttribute("data-parent-bound")).toBe("true");
+    expect(path.getAttribute("data-draft-merge-ready")).toBe("false");
+    expect(path.getAttribute("data-into-parent-ready")).toBe("false");
+    expect(path.getAttribute("data-written-analysis-ready")).toBe("false");
+    expect(path.getAttribute("data-offline-merge-unit")).toBe("true");
+    expect(path.textContent).toMatch(/multi-select/i);
+    expect(path.textContent).toMatch(/written analysis/i);
+    expect(path.textContent).toMatch(/select spawns/i);
     fireEvent.click(screen.getAllByRole("checkbox")[0]);
     expect(
       screen
         .getByTestId("collective-research-panel")
         .getAttribute("data-seamless-collective-merge-ready"),
     ).toBe("true");
+    const pathReady = screen.getByTestId("collective-path-choices");
+    expect(pathReady.getAttribute("data-draft-merge-ready")).toBe("true");
+    expect(pathReady.getAttribute("data-into-parent-ready")).toBe("true");
+    expect(pathReady.getAttribute("data-multi-select-ready")).toBe("true");
+    expect(pathReady.getAttribute("data-written-analysis-ready")).toBe(
+      "false",
+    );
+    expect(pathReady.textContent).toMatch(/1 selected/i);
+    fireEvent.click(screen.getAllByRole("checkbox")[1]);
+    expect(
+      screen
+        .getByTestId("collective-path-choices")
+        .getAttribute("data-written-analysis-ready"),
+    ).toBe("true");
+    // re-select only first for draft merge path below
+    fireEvent.click(screen.getAllByRole("checkbox")[1]);
     expect(
       screen.getByTestId("collective-merge-draft").getAttribute("data-seamless-merge-draft"),
     ).toBe("true");

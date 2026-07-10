@@ -14,6 +14,7 @@
 | **aqu** | moil-live-step L4 dual-gate honesty — **matrix L1–L4 closed** | Settings vitest MO path |
 | **aqv** | Antiek-bench VISION_USAGE_FEED_SOURCES + task→feed maps expand | suiteProposalTasks + Settings 46 green |
 | **aqw** | DeepResearchSessionHost float\|full · draft · into-parent path chrome | DeepResearchSessionHost 34 green |
+| **aqx** | CollectiveResearchPanel multi-select · draft · into-parent · analysis path chrome | CollectiveResearchPanel 31 green |
 
 ## Product meaning
 

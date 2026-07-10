@@ -1,0 +1,18 @@
+# inventory-aqx · Collective path-choices multi-select · draft · into-parent · analysis
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aqx
+date: 2026-07-10
+parent_tip: a3dba4904 (aqw)
+
+## Closed
+- collective-path-choices chrome parity aqw DR host
+- multi-select · draft merge · into parent · written analysis (≥2) readiness stamps
+- parent-bound honesty · offline merge unit · L6 deferred
+- vitest CollectiveResearchPanel 31 green
+- evidence: {SCRATCH}/aqx-collective-path-vitest.txt
+
+## Next
+aqy+ product residual outside thrash
+Prefer: SpawnMergePanel path-choices thin parity · MO ceiling · free catalog · non-path thrash
+Avoid: dual-gate honesty · soft-budget · vision-feed · path-choices thrash after aqw–aqx
+Operator merge PR #465 remains highest leverage (gated)

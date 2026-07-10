@@ -811,6 +811,32 @@ export function CollectiveResearchPanel({
             ? " · seamless multi-spawn merge path (parent bound)"
             : " · bind parent asset for draft/parent/analysis merge"}
         </p>
+        {/* Residual (aqx): path choices parity aqw — multi-select · draft · into parent · analysis. */}
+        <p
+          className="meta font-mono text-[10px] opacity-80"
+          data-testid="collective-path-choices"
+          data-view-format="html"
+          data-html-first="true"
+          data-multi-select-ready={String(selected.length >= 1)}
+          data-draft-merge-ready={String(seamlessCollectiveMergeReady)}
+          data-into-parent-ready={String(seamlessCollectiveMergeReady)}
+          data-written-analysis-ready={String(
+            parentBound && selected.length >= 2,
+          )}
+          data-selected-count={String(selected.length)}
+          data-parent-bound={String(parentBound)}
+          data-offline-merge-unit="true"
+          data-l6-live-multiagent="deferred"
+          role="status"
+          title="Collective product path: multi-select spawns · draft-combined · merge into parent · written analysis (≥2)"
+        >
+          Path: multi-select · draft merge · into parent · written analysis
+          {parentBound
+            ? seamlessCollectiveMergeReady
+              ? ` · ${selected.length} selected`
+              : " · parent bound · select spawns"
+            : " · bind parent for merge"}
+        </p>
         {parentAssetId ? (
           <p
             className="meta"
