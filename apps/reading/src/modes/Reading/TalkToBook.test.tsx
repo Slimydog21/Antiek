@@ -357,6 +357,27 @@ describe("TalkToBook (M2)", () => {
     // Bookmark closed: twins not mounted until open.
     expect(screen.queryByTestId("talk-to-book-twins-mount")).toBeNull();
     fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
+    // Residual (aoa): HTML-first talk surface + competitive/twin FUTURE links.
+    const root = screen.getByTestId("talk-to-book");
+    expect(root.getAttribute("data-view-format")).toBe("html");
+    expect(root.getAttribute("data-html-first")).toBe("true");
+    expect(root.getAttribute("data-document-id")).toBe("doc-twin");
+    expect(root.getAttribute("data-seamless-talk-bookmark")).toBe("true");
+    expect(
+      screen
+        .getByTestId("talk-to-book-competitive-scorecard-link")
+        .getAttribute("href"),
+    ).toBe("/settings#settings-competitive-dr-scorecard");
+    expect(
+      screen
+        .getByTestId("talk-to-book-competitive-dr-future-agent-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    expect(
+      screen
+        .getByTestId("talk-to-book-twin-completeness-future-agent-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix/);
     const mount = screen.getByTestId("talk-to-book-twins-mount");
     expect(mount.getAttribute("data-view-format")).toBe("html");
     expect(mount.getAttribute("data-document-id")).toBe("doc-twin");

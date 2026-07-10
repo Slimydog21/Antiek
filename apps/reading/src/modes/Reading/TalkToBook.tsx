@@ -41,6 +41,8 @@ import type { TalkMessage } from "./useTalkThread";
  * Residual (ang): CollectiveResearchPanel when open/recent DR spawns exist so
  *   multi-select merge/analysis runs against this book from the talk bookmark
  *   (reading ≡ research · parity ResearchThis fc/ou · non-remount product).
+ * Residual (aoa): HTML-first talk surface stamps + competitive/twin FUTURE
+ *   deep-links (parity MetaReading anz · reading ≡ research · HTML engagement).
  *
  * §9.0: a withheld region can never be cited — the backend search gate keeps a
  * withheld body out of the model context and the citation set, so this surface
@@ -155,6 +157,10 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
       aria-label="Talk to this book"
       data-research-tier={researchTier}
       data-depth-prefill={depthPrefill}
+      data-view-format="html"
+      data-html-first="true"
+      data-document-id={documentId}
+      data-seamless-talk-bookmark="true"
     >
       <header className="flex flex-col gap-1 border-b border-rule dark:border-charcoal-1 px-3 py-2">
         <div className="flex items-center justify-between gap-2">
@@ -193,6 +199,38 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
             promptText={draft.trim() || undefined}
           />
         </div>
+        {/* Residual (aoa): competitive DR + twin FUTURE on talk bookmark. */}
+        <p
+          className="text-[10px] font-mono space-x-2"
+          data-testid="talk-to-book-competitive-links"
+          data-view-format="html"
+          data-html-first="true"
+        >
+          <a
+            href="/settings#settings-competitive-dr-scorecard"
+            data-testid="talk-to-book-competitive-scorecard-link"
+            className="underline opacity-80 hover:opacity-100"
+            title="Settings competitive deep-research scorecard (talk bookmark · reading ≡ research)"
+          >
+            Settings · competitive DR
+          </a>
+          <a
+            href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+            data-testid="talk-to-book-competitive-dr-future-agent-link"
+            className="underline opacity-80 hover:opacity-100"
+            title="FUTURE-AGENT competitive deep-research quality brief"
+          >
+            FUTURE · competitive DR
+          </a>
+          <a
+            href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md"
+            data-testid="talk-to-book-twin-completeness-future-agent-link"
+            className="underline opacity-80 hover:opacity-100"
+            title="FUTURE-AGENT twin note-taker completeness matrix (talk twins)"
+          >
+            FUTURE · twin matrix
+          </a>
+        </p>
       </header>
 
       {/* Branch picker — the multi-turn thread can fork a tangent; the bookmark

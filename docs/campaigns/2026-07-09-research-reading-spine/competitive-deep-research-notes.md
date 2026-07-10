@@ -3597,3 +3597,9 @@ Meta-reading deliverable/report stamp HTML-first · seamless deliverable · rese
 competitive scorecard + FUTURE DR quality + twin completeness matrix deep-links on
 owned-corpus synthesis. vitest MetaReading 16 green.
 P0 operator merge PR #465. Pivot aoa+ outside thrash.
+
+## Residual aoa · 2026-07-10 — TalkToBook HTML-first + competitive/twin FUTURE links
+Talk bookmark stamps HTML-first · seamless-talk-bookmark · document identity and
+mounts competitive scorecard + FUTURE DR quality + twin completeness deep-links
+(parity MetaReading anz). vitest TalkToBook 13 green.
+P0 operator merge PR #465. Pivot aob+ outside thrash.

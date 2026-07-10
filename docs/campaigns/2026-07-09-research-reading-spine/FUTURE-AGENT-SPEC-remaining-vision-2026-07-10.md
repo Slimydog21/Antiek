@@ -1,6 +1,6 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** residual **anr** (SESSION-ARC ang–ano · tip anr `56b2eb5b`) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
+**Campaign tip at write:** residual **aoa** (SESSION-ARC anu–anz · tip aoa) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **URL:** https://github.com/Slimydog21/Antiek/pull/465  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
@@ -8,7 +8,7 @@
 ## Do not rebuild
 
 Prefer **inventory-anr** + **inventory-anq** + **SESSION-ARC-ang-ano-reading-marketplace-budget-bench.md** + **SESSION-ARC-ank-anl-merge-budget-soft-gate.md**.  
-This continuation: **300+ residual ships** · wave **ang–anr** closed on tip.
+This continuation: **300+ residual ships** · wave **ang–aoa** closed on tip.
 
 ### Closed product (high signal · ang–anr wave)
 
@@ -43,7 +43,7 @@ See **FUTURE-AGENT-SPEC-notdiamond-advisory-only.md** — advisor yes · router 
 ### Competitive DR quality
 See **FUTURE-AGENT-SPEC-competitive-deep-research-quality.md** — world-class DR map · budget-before-fire merge soft-gates closed **ank–anl**.
 
-### P1 next offline (residual **ans+**)
+### P1 next offline (residual **aob+**)
 Outside thrash: twin flywheel · MO polish · competitive DR depth · HTML engagement.  
 **Avoid thrash:** remount · host-tier · collective-mount · budget-soft-gate · dogfood · free-PD catalog · open-spawn honesty stamps.
 
