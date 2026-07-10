@@ -2191,3 +2191,9 @@ pick book_qa/wrestle specialists from weekly Antiek-bench into decision-tree.
 Competitive delta: model quality for a given task is not only visible (adr) but
 actionable without auto-routing (parity NotDiamond install-advisory doctrine).
 vitest Settings 35 green.
+
+## Residual adt · 2026-07-10 — SESSION-ARC adn–ads write-seed + model quality
+SESSION-ARC-adn-ads documents write-seed body honesty (adn–adq) + weekly model
+quality per task (adr–ads). Tip 6d5a12b0 · swarm handoff tip-true. Competitive
+delta: multi-agent infinite continues outside closed arcs; operator merge PR #465
+highest leverage.
