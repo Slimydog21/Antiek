@@ -1,0 +1,4 @@
+# inventory-qn · SessionFlywheel driver badge promptText
+residual: qn · 2026-07-10
+- DecisionTreeDriverBadge promptText from session output / defaultOutputText
+- vitest SessionFlywheelPanel 5 passed

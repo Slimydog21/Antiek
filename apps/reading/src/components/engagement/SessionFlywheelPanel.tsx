@@ -13,6 +13,7 @@
  * Residual (kq): fall back to context.research_tier (pack identity from kk)
  * when session research_tier is absent; expose data-context-research-tier.
  * Residual (lt): DecisionTreeDriverBadge with pre/post complete tier.
+ * Residual (qn): DecisionTreeDriverBadge promptText from session output.
  * Residual (np): dual-gate L1–L4 checklist deep-link (prep only).
  * Composes shipped completeSessionFlywheel. HTML-first context pack.
  */
@@ -156,7 +157,13 @@ export function SessionFlywheelPanel({
           data-view-format="html"
           data-research-tier={badgeResearchTier}
         >
-          <DecisionTreeDriverBadge researchTier={badgeResearchTier} />
+          <DecisionTreeDriverBadge
+            researchTier={badgeResearchTier}
+            promptText={
+              (output || defaultOutputText || "").trim() ||
+              `session flywheel · ${sessionId.trim()}`
+            }
+          />
         </div>
       </header>
       <textarea

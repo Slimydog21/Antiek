@@ -667,3 +667,5 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (ql, 2026-07-10) **auto-restore last cohesive unit multi-select on mount** (V2 complete)
 
 - Closed (qm, 2026-07-10) **ResearchProgress DecisionTreeDriverBadge promptText** (spawn/tier/stage)
+
+- Closed (qn, 2026-07-10) **SessionFlywheel DecisionTreeDriverBadge promptText**
