@@ -54,6 +54,8 @@ from .contracts import (
     MidnightOilRunnerControlRequirement,
     MidnightOilRunnerDispatchSchedulerPlanReceipt,
     MidnightOilRunnerDispatchSchedulerPlanRequest,
+    MidnightOilRunnerDispatchWorkerBootstrapPlanReceipt,
+    MidnightOilRunnerDispatchWorkerBootstrapPlanRequest,
     MidnightOilRunnerHandoff,
     MidnightOilRunnerReadinessReceipt,
     MidnightOilRunnerReadinessRequest,
@@ -81,6 +83,7 @@ from .contracts import (
     retrieval_midnight_oil,
     runner_control_plan_midnight_oil,
     runner_dispatch_scheduler_plan_midnight_oil,
+    runner_dispatch_worker_bootstrap_plan_midnight_oil,
     runner_readiness_midnight_oil,
 )
 
@@ -138,6 +141,8 @@ __all__ = [
     "MidnightOilRunnerControlRequirement",
     "MidnightOilRunnerDispatchSchedulerPlanReceipt",
     "MidnightOilRunnerDispatchSchedulerPlanRequest",
+    "MidnightOilRunnerDispatchWorkerBootstrapPlanReceipt",
+    "MidnightOilRunnerDispatchWorkerBootstrapPlanRequest",
     "MidnightOilRunnerHandoff",
     "MidnightOilRunnerReadinessReceipt",
     "MidnightOilRunnerReadinessRequest",
@@ -165,5 +170,6 @@ __all__ = [
     "retrieval_midnight_oil",
     "runner_control_plan_midnight_oil",
     "runner_dispatch_scheduler_plan_midnight_oil",
+    "runner_dispatch_worker_bootstrap_plan_midnight_oil",
     "runner_readiness_midnight_oil",
 ]

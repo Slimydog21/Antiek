@@ -58,6 +58,8 @@ from substrate.midnight_oil import (
     MidnightOilRunnerControlPlanRequest,
     MidnightOilRunnerDispatchSchedulerPlanReceipt,
     MidnightOilRunnerDispatchSchedulerPlanRequest,
+    MidnightOilRunnerDispatchWorkerBootstrapPlanReceipt,
+    MidnightOilRunnerDispatchWorkerBootstrapPlanRequest,
     MidnightOilRunnerReadinessReceipt,
     MidnightOilRunnerReadinessRequest,
     activation_checklist_midnight_oil,
@@ -84,6 +86,7 @@ from substrate.midnight_oil import (
     retrieval_midnight_oil,
     runner_control_plan_midnight_oil,
     runner_dispatch_scheduler_plan_midnight_oil,
+    runner_dispatch_worker_bootstrap_plan_midnight_oil,
     runner_readiness_midnight_oil,
 )
 
@@ -301,6 +304,16 @@ def post_midnight_oil_runner_dispatch_scheduler_plan(
     return runner_dispatch_scheduler_plan_midnight_oil(req)
 
 
+@midnight_oil_router.post(
+    "/runner-dispatch-worker-bootstrap-plan",
+    response_model=MidnightOilRunnerDispatchWorkerBootstrapPlanReceipt,
+)
+def post_midnight_oil_runner_dispatch_worker_bootstrap_plan(
+    req: MidnightOilRunnerDispatchWorkerBootstrapPlanRequest,
+) -> MidnightOilRunnerDispatchWorkerBootstrapPlanReceipt:
+    return runner_dispatch_worker_bootstrap_plan_midnight_oil(req)
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
@@ -331,6 +344,7 @@ __all__ = [
     "post_midnight_oil_retrieval_adapter_plan",
     "post_midnight_oil_runner_control_plan",
     "post_midnight_oil_runner_dispatch_scheduler_plan",
+    "post_midnight_oil_runner_dispatch_worker_bootstrap_plan",
     "post_midnight_oil_runner_readiness",
     "register_midnight_oil_routes",
 ]
