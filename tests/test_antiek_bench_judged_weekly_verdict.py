@@ -14,6 +14,8 @@ import pytest
 from test_antiek_bench_weekly_verdict import journals, suite
 
 from substrate.antiek_bench.judged import (
+    AnchorItem,
+    AnchorSet,
     EvidenceRecord,
     PrivateJoinEnvelope,
     PrivateResponseBinding,
@@ -71,57 +73,69 @@ def _sealed_envelope(item: JudgedItemJoin, row: EvidenceRecord) -> PrivateJoinEn
 
 def _manifest() -> JudgedJoinManifest:
     base_items = tuple(
-            JudgedItemJoin(
-                task_class=item.task_class,
-                live_item_id=item.item_id,
-                live_prompt_hash=_hash(item.prompt),
-                item_id_hash=_hash("salt:item:" + item.item_id),
-                candidates=(
-                    JudgedCandidateJoin(
-                        "model-a",
+        JudgedItemJoin(
+            task_class=item.task_class,
+            live_item_id=item.item_id,
+            live_prompt_hash=_hash(item.prompt),
+            item_id_hash=_hash("salt:item:" + item.item_id),
+            candidates=(
+                JudgedCandidateJoin(
+                    "model-a",
+                    "provider-a",
+                    deterministic_call_id(
+                        "wedge",
+                        "2026-W28",
+                        "live-suite-v1",
                         "provider-a",
-                        deterministic_call_id(
-                            "wedge", "2026-W28", "live-suite-v1", "provider-a",
-                            "model-a", item.task_class, item.item_id, _hash(item.prompt),
-                        ),
-                        hashlib.sha256(f"response:model-a:{item.item_id}".encode()).hexdigest(),
-                        "A",
-                        _hash("salt:a:" + item.item_id),
+                        "model-a",
+                        item.task_class,
+                        item.item_id,
+                        _hash(item.prompt),
                     ),
-                    JudgedCandidateJoin(
-                        "model-b",
-                        "provider-b",
-                        deterministic_call_id(
-                            "wedge", "2026-W28", "live-suite-v1", "provider-b",
-                            "model-b", item.task_class, item.item_id, _hash(item.prompt),
-                        ),
-                        hashlib.sha256(f"response:model-b:{item.item_id}".encode()).hexdigest(),
-                        "B",
-                        _hash("salt:b:" + item.item_id),
-                    ),
+                    hashlib.sha256(f"response:model-a:{item.item_id}".encode()).hexdigest(),
+                    "A",
+                    _hash("salt:a:" + item.item_id),
                 ),
-                rubric_version=rubric_for(item.task_class).version,
-                rubric_fingerprint=rubric_for(item.task_class).fingerprint,
-                task_context_hash=_hash("task-context:" + item.item_id),
-                allowed_judges=("judge-1",),
-                evidence_ids=(),
-                position_swaps=(),
-                private_envelopes=(),
-            )
-            for item in suite().items
+                JudgedCandidateJoin(
+                    "model-b",
+                    "provider-b",
+                    deterministic_call_id(
+                        "wedge",
+                        "2026-W28",
+                        "live-suite-v1",
+                        "provider-b",
+                        "model-b",
+                        item.task_class,
+                        item.item_id,
+                        _hash(item.prompt),
+                    ),
+                    hashlib.sha256(f"response:model-b:{item.item_id}".encode()).hexdigest(),
+                    "B",
+                    _hash("salt:b:" + item.item_id),
+                ),
+            ),
+            rubric_version=rubric_for(item.task_class).version,
+            rubric_fingerprint=rubric_for(item.task_class).fingerprint,
+            task_context_hash=_hash("task-context:" + item.item_id),
+            allowed_judges=("judge-1",),
+            evidence_ids=(),
+            position_swaps=(),
+            private_envelopes=(),
         )
+        for item in suite().items
+    )
     rows = _evidence_for_items(base_items)
     items = tuple(
         replace(
             item,
-            evidence_ids=tuple(row.evidence_id for row in rows if row.item_id_hash == item.item_id_hash),
+            evidence_ids=tuple(
+                row.evidence_id for row in rows if row.item_id_hash == item.item_id_hash
+            ),
             position_swaps=(
                 tuple(row.evidence_id for row in rows if row.item_id_hash == item.item_id_hash),
             ),
             private_envelopes=tuple(
-                _sealed_envelope(item, row)
-                for row in rows
-                if row.item_id_hash == item.item_id_hash
+                _sealed_envelope(item, row) for row in rows if row.item_id_hash == item.item_id_hash
             ),
         )
         for item in base_items
@@ -132,9 +146,7 @@ def _manifest() -> JudgedJoinManifest:
         suite_version="live-suite-v1",
         blinding_policy_version=policy,
         items=items,
-        mapping_digest=judged_join_mapping_digest(
-            "2026-W28", "live-suite-v1", policy, items
-        ),
+        mapping_digest=judged_join_mapping_digest("2026-W28", "live-suite-v1", policy, items),
     )
 
 
@@ -169,6 +181,23 @@ def _evidence(manifest: JudgedJoinManifest) -> tuple[EvidenceRecord, ...]:
     return _evidence_for_items(manifest.items)
 
 
+def _anchors(manifest: JudgedJoinManifest) -> AnchorSet:
+    items = []
+    for item in manifest.items:
+        pair = tuple(candidate.candidate_hash for candidate in item.candidates)
+        canonical = tuple(sorted(pair))
+        score = 5 if pair == canonical else 1
+        items.append(
+            AnchorItem(
+                item_id_hash=item.item_id_hash,
+                rubric_version=item.rubric_version,
+                candidate_hashes=canonical,  # type: ignore[arg-type]
+                scores=tuple((axis, score) for axis in rubric_for(item.task_class).axes),
+            )
+        )
+    return AnchorSet("anchors-v1", "operator-reviewed", "independent-reviewer", tuple(items))
+
+
 def _with_items(
     manifest: JudgedJoinManifest, items: tuple[JudgedItemJoin, ...]
 ) -> JudgedJoinManifest:
@@ -184,10 +213,20 @@ def _with_items(
     )
 
 
+_AUTO_ANCHORS = object()
+
+
 def _build(
-    tmp_path: Path, *, manifest=None, evidence=(), cap="1", signing_key=SIGNING_KEY
+    tmp_path: Path,
+    *,
+    manifest=None,
+    evidence=(),
+    cap="1",
+    signing_key=SIGNING_KEY,
+    anchors=_AUTO_ANCHORS,
 ):  # type: ignore[no-untyped-def]
     calls, shadows = journals(tmp_path)
+    judged_anchors = _anchors(manifest) if anchors is _AUTO_ANCHORS and manifest else anchors
     return build_weekly_verdict(
         week_id="2026-W28",
         wedge_id="wedge",
@@ -198,6 +237,7 @@ def _build(
         budget_cap_usd=Decimal(cap),
         judged_manifest=manifest,
         judged_records=evidence,
+        judged_anchors=judged_anchors,
         judged_policy=VerdictPolicy("policy-v1", 1, 1, "human", "human"),
         judged_join_signing_key=signing_key,
     )
@@ -238,15 +278,58 @@ def test_manifest_rejects_duplicate_judged_item_hashes() -> None:
         )
 
 
-def test_foreign_same_id_record_is_not_published(tmp_path: Path) -> None:
+def test_foreign_same_id_record_makes_panel_not_measured(tmp_path: Path) -> None:
     manifest = _manifest()
     rows = list(_evidence(manifest))
     foreign = replace(rows[0], task_class="synthesize")
     assert foreign.evidence_id == rows[0].evidence_id
     verdict = _build(tmp_path, manifest=manifest, evidence=(*rows, foreign))
     layer = next(task.judged for task in verdict.task_verdicts if task.task_class == "distill")
-    assert layer is not None and layer.status == "MEASURED"
-    assert layer.sample_size == layer.expected_sample_size == 4
+    assert layer is not None and layer.status == "NOT MEASURED"
+    assert "incomplete_judge_panel" in layer.suppression_reasons
+
+
+def test_failed_judge_evidence_is_not_measured(tmp_path: Path) -> None:
+    manifest = _manifest()
+    rows = list(_evidence(manifest))
+    rows[0] = replace(
+        rows[0],
+        status="failed",
+        scores=(),
+        evidence_refs=(),
+        failure_code="invalid_or_failed_response",
+    )
+    verdict = _build(tmp_path, manifest=manifest, evidence=rows)
+    layer = next(task.judged for task in verdict.task_verdicts if task.task_class == "distill")
+    assert layer is not None and layer.status == "NOT MEASURED"
+    assert "failed_judge_evidence" in layer.suppression_reasons
+
+
+def test_missing_anchor_calibration_is_not_measured(tmp_path: Path) -> None:
+    manifest = _manifest()
+    verdict = _build(tmp_path, manifest=manifest, evidence=_evidence(manifest), anchors=None)
+    assert all(
+        task.judged
+        and task.judged.status == "NOT MEASURED"
+        and "missing_anchor_calibration" in task.judged.suppression_reasons
+        for task in verdict.task_verdicts
+    )
+
+
+def test_partial_or_foreign_anchor_coverage_is_not_measured(tmp_path: Path) -> None:
+    manifest = _manifest()
+    anchors = _anchors(manifest)
+    partial = replace(anchors, items=anchors.items[:-1])
+    verdict = _build(
+        tmp_path,
+        manifest=manifest,
+        evidence=_evidence(manifest),
+        anchors=partial,
+    )
+    affected_task = manifest.items[-1].task_class
+    layer = next(task.judged for task in verdict.task_verdicts if task.task_class == affected_task)
+    assert layer is not None and layer.status == "NOT MEASURED"
+    assert "incomplete_anchor_coverage" in layer.suppression_reasons
 
 
 @pytest.mark.parametrize("forgery", ["task", "item", "order", "rubric", "judge"])
@@ -288,9 +371,7 @@ def test_forged_live_response_binding_is_not_joined(tmp_path: Path) -> None:
     "forgery",
     ["prompt", "provider", "call", "context", "fingerprint", "panel"],
 )
-def test_forged_private_join_envelope_is_not_measured(
-    tmp_path: Path, forgery: str
-) -> None:
+def test_forged_private_join_envelope_is_not_measured(tmp_path: Path, forgery: str) -> None:
     manifest = _manifest()
     first = manifest.items[0]
     if forgery == "prompt":
@@ -298,7 +379,11 @@ def test_forged_private_join_envelope_is_not_measured(
     elif forgery in {"provider", "call"}:
         candidate = replace(
             first.candidates[0],
-            **({"provider_id": "forged-provider"} if forgery == "provider" else {"live_call_id": "lc_forged"}),
+            **(
+                {"provider_id": "forged-provider"}
+                if forgery == "provider"
+                else {"live_call_id": "lc_forged"}
+            ),
         )
         changed = replace(first, candidates=(candidate, first.candidates[1]))
     elif forgery == "context":
@@ -317,6 +402,28 @@ def test_manifest_rejects_forged_mapping_digest() -> None:
     manifest = _manifest()
     with pytest.raises(ValueError, match="mapping digest"):
         replace(manifest, mapping_digest=_hash("forged-mapping"))
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["live_prompt_hash", "item_id_hash", "task_context_hash", "rubric_fingerprint"],
+)
+def test_manifest_rejects_prefix_only_identity_hashes(field: str) -> None:
+    manifest = _manifest()
+    first = replace(manifest.items[0], **{field: "sha256:not-an-exact-digest"})
+    with pytest.raises(ValueError, match="invalid judged manifest item"):
+        _with_items(manifest, (first, *manifest.items[1:]))
+
+
+def test_manifest_rejects_prefix_only_candidate_hash() -> None:
+    manifest = _manifest()
+    first = manifest.items[0]
+    candidate = replace(first.candidates[0], candidate_hash="sha256:short")
+    with pytest.raises(ValueError, match="invalid judged manifest item"):
+        _with_items(
+            manifest,
+            (replace(first, candidates=(candidate, first.candidates[1])), *manifest.items[1:]),
+        )
 
 
 def test_noncanonical_blinding_policy_is_not_measured(tmp_path: Path) -> None:
@@ -357,9 +464,7 @@ def test_forged_private_envelope_signature_is_not_measured(tmp_path: Path) -> No
 
 def test_missing_private_join_key_is_not_measured(tmp_path: Path) -> None:
     manifest = _manifest()
-    verdict = _build(
-        tmp_path, manifest=manifest, evidence=_evidence(manifest), signing_key=None
-    )
+    verdict = _build(tmp_path, manifest=manifest, evidence=_evidence(manifest), signing_key=None)
     assert all(
         task.judged
         and task.judged.status == "NOT MEASURED"
@@ -384,7 +489,11 @@ def test_cross_item_winner_disagreement_is_explicitly_suppressed(tmp_path: Path)
     second_item_hash = manifest.items[1].item_id_hash
     for index, row in enumerate(rows):
         if row.item_id_hash == second_item_hash:
-            flipped = 1 if row.candidate_hashes[0] == manifest.items[1].candidates[0].candidate_hash else 5
+            flipped = (
+                1
+                if row.candidate_hashes[0] == manifest.items[1].candidates[0].candidate_hash
+                else 5
+            )
             rows[index] = replace(row, scores=tuple((axis, flipped) for axis, _ in row.scores))
     verdict = _build(tmp_path, manifest=manifest, evidence=rows)
     layer = next(task.judged for task in verdict.task_verdicts if task.task_class == "distill")
@@ -392,7 +501,9 @@ def test_cross_item_winner_disagreement_is_explicitly_suppressed(tmp_path: Path)
     assert "cross_item_winner_disagreement" in layer.suppression_reasons
 
 
-def test_forged_model_mixed_version_incomplete_panel_and_over_budget_suppress(tmp_path: Path) -> None:
+def test_forged_model_mixed_version_incomplete_panel_and_over_budget_suppress(
+    tmp_path: Path,
+) -> None:
     manifest = _manifest()
     first = manifest.items[0]
     forged = _with_items(
@@ -446,7 +557,11 @@ def test_json_and_html_are_redacted_and_no_evidence_is_not_measured(tmp_path: Pa
     payload = json.loads(parser.payload)
     serialized = json.dumps(payload).lower()
     assert "private distill" not in rendered
-    assert "rationale" not in serialized and "response" not in serialized and "secret" not in serialized
+    assert (
+        "rationale" not in serialized
+        and "response" not in serialized
+        and "secret" not in serialized
+    )
     assert "judge-1" not in serialized
     assert "candidate_hashes" not in serialized
     assert "evidence_id" not in serialized

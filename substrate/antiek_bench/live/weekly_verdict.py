@@ -6,6 +6,7 @@ import hashlib
 import html
 import json
 import math
+import re
 from collections import Counter
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, replace
@@ -28,6 +29,7 @@ from .wedge_config import REQUIRED_TASK_CLASSES, validate_live_suite
 JUDGED_JOIN_MANIFEST_SCHEMA_VERSION = 1
 JUDGED_WEEKLY_SCHEMA_VERSION = 2
 NOT_MEASURED = "NOT MEASURED"
+_SHA256_REFERENCE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
 
 @dataclass(frozen=True)
@@ -100,8 +102,8 @@ class JudgedJoinManifest:
                 raise ValueError("judged manifest item hashes must be unique")
             item_hashes.add(item.item_id_hash)
             if (
-                not item.live_prompt_hash.startswith("sha256:")
-                or not item.item_id_hash.startswith("sha256:")
+                _SHA256_REFERENCE.fullmatch(item.live_prompt_hash) is None
+                or _SHA256_REFERENCE.fullmatch(item.item_id_hash) is None
                 or len(item.candidates) != 2
                 or len({candidate.model_id for candidate in item.candidates}) != 2
                 or len({candidate.candidate_hash for candidate in item.candidates}) != 2
@@ -110,12 +112,12 @@ class JudgedJoinManifest:
                     or not candidate.live_call_id.startswith("lc_")
                     or not candidate.live_response_hash
                     or candidate.blinded_label not in {"A", "B"}
-                    or not candidate.candidate_hash.startswith("sha256:")
+                    or _SHA256_REFERENCE.fullmatch(candidate.candidate_hash) is None
                     for candidate in item.candidates
                 )
                 or tuple(candidate.blinded_label for candidate in item.candidates) != ("A", "B")
-                or not item.task_context_hash.startswith("sha256:")
-                or not item.rubric_fingerprint.startswith("sha256:")
+                or _SHA256_REFERENCE.fullmatch(item.task_context_hash) is None
+                or _SHA256_REFERENCE.fullmatch(item.rubric_fingerprint) is None
                 or not item.allowed_judges
                 or len({judge.strip().casefold() for judge in item.allowed_judges})
                 != len(item.allowed_judges)
@@ -235,9 +237,7 @@ def _metrics(
     expected_items: dict[str, str],
 ) -> ModelTaskMetrics:
     rows = [
-        row
-        for row in records
-        if row.requested_model == model_id and row.task_class == task_class
+        row for row in records if row.requested_model == model_id and row.task_class == task_class
     ]
     successes = [row for row in rows if row.status == "ok"]
     failures = [row for row in rows if row.status == "failed"]
@@ -320,9 +320,7 @@ def build_weekly_verdict(
     ]
     charged = sum(
         (
-            row.cost_usd
-            if row.status == "ok"
-            else max(row.reserved_usd, row.cost_usd)
+            row.cost_usd if row.status == "ok" else max(row.reserved_usd, row.cost_usd)
             for row in records
         ),
         Decimal("0"),
@@ -341,8 +339,7 @@ def build_weekly_verdict(
             for item in suite.items_for(task_class)
         }
         model_metrics = tuple(
-            _metrics(model_id, task_class, records, expected_items)
-            for model_id in model_ids
+            _metrics(model_id, task_class, records, expected_items) for model_id in model_ids
         )
         winner: str | None = None
         suppressed: str | None = None
@@ -361,9 +358,7 @@ def build_weekly_verdict(
             else:
                 winner = ranked[0].model_id
         task_shadows = [
-            row
-            for row in shadows
-            if row.task_class == task_class and row.status == "ok"
+            row for row in shadows if row.task_class == task_class and row.status == "ok"
         ]
         counts = Counter(row.recommendation for row in task_shadows)
         modal: str | None = None
@@ -405,14 +400,8 @@ def build_weekly_verdict(
         )
     canonical_inputs = json.dumps(
         {
-            "calls": [
-                row.to_dict()
-                for row in sorted(records, key=lambda item: item.call_id)
-            ],
-            "shadows": [
-                row.to_dict()
-                for row in sorted(shadows, key=lambda item: item.shadow_id)
-            ],
+            "calls": [row.to_dict() for row in sorted(records, key=lambda item: item.call_id)],
+            "shadows": [row.to_dict() for row in sorted(shadows, key=lambda item: item.shadow_id)],
             "suite": suite.suite_version,
             "wedge_id": wedge_id,
         },
@@ -491,6 +480,8 @@ def _build_judged_task_layer(
         reasons.append("budget_cap_exceeded")
     if policy is None:
         reasons.append("missing_policy")
+    if anchors is None or not anchors.items:
+        reasons.append("missing_anchor_calibration")
     if signing_key is None:
         reasons.append("missing_private_join_key")
     joins = tuple(item for item in manifest.items if item.task_class == task_class)
@@ -499,6 +490,26 @@ def _build_judged_task_layer(
         reasons.append("no_live_judged_evidence")
     if {item.live_item_id for item in joins} != set(suite_items):
         reasons.append("incomplete_manifest_coverage")
+    expected_anchor_keys = {
+        (
+            item.item_id_hash,
+            item.rubric_version,
+            tuple(sorted(candidate.candidate_hash for candidate in item.candidates)),
+        )
+        for item in joins
+    }
+    joined_item_hashes = {item.item_id_hash for item in joins}
+    observed_anchor_keys = (
+        {
+            (item.item_id_hash, item.rubric_version, item.candidate_hashes)
+            for item in anchors.items
+            if item.item_id_hash in joined_item_hashes
+        }
+        if anchors is not None
+        else set()
+    )
+    if observed_anchor_keys != expected_anchor_keys:
+        reasons.append("incomplete_anchor_coverage")
     sources: list[EvidenceRecord] = []
     swaps: list[tuple[EvidenceRecord, EvidenceRecord]] = []
     expected_total = 0
@@ -506,7 +517,9 @@ def _build_judged_task_layer(
     accepted_rows: list[EvidenceRecord] = []
     for join in joins:
         suite_item = suite_items.get(join.live_item_id)
-        prompt_hash = "sha256:" + hashlib.sha256(suite_item.prompt.encode()).hexdigest() if suite_item else ""
+        prompt_hash = (
+            "sha256:" + hashlib.sha256(suite_item.prompt.encode()).hexdigest() if suite_item else ""
+        )
         matching_live_rows = [
             row
             for row in live_records
@@ -540,12 +553,8 @@ def _build_judged_task_layer(
             or prompt_hash != join.live_prompt_hash
             or candidate_models != model_ids
             or len(matching_live_rows) != len(model_ids)
-            or any(
-                not binding[3] or not binding[4] for binding in live_bindings.values()
-            )
-            or {
-                model: binding[:4] for model, binding in live_bindings.items()
-            }
+            or any(not binding[3] or not binding[4] for binding in live_bindings.values())
+            or {model: binding[:4] for model, binding in live_bindings.items()}
             != candidate_bindings
             or join.rubric_version != rubric_for(suite_item.task_class).version
             or join.rubric_fingerprint != rubric_for(suite_item.task_class).fingerprint
@@ -556,11 +565,11 @@ def _build_judged_task_layer(
         expected_total += len(join.allowed_judges) * 2
         pair = tuple(candidate.candidate_hash for candidate in join.candidates)
         expected_ids = set(join.evidence_ids)
+        declared_rows = [row for row in evidence_rows if row.evidence_id in expected_ids]
         matches = [
             row
-            for row in evidence_rows
-            if row.evidence_id in expected_ids
-            and (
+            for row in declared_rows
+            if (
                 row.week_id,
                 row.suite_version,
                 row.item_id_hash,
@@ -585,17 +594,19 @@ def _build_judged_task_layer(
         observed_judges = {row.judge_model.strip().casefold() for row in matches}
         expected_judges = {judge.strip().casefold() for judge in join.allowed_judges}
         if (
-            len(matches) != len(expected_ids)
+            len(declared_rows) != len(expected_ids)
+            or len(matches) != len(expected_ids)
             or set(by_id) != expected_ids
             or observed_judges != expected_judges
         ):
             reasons.append("incomplete_judge_panel")
             continue
+        if any(row.status != "ok" for row in matches):
+            reasons.append("failed_judge_evidence")
+            continue
         if signing_key is None:
             continue
-        envelopes_by_id = {
-            envelope.evidence_id: envelope for envelope in join.private_envelopes
-        }
+        envelopes_by_id = {envelope.evidence_id: envelope for envelope in join.private_envelopes}
         expected_private_bindings = {
             (
                 candidate.provider_id,
@@ -684,9 +695,7 @@ def _build_judged_task_layer(
         candidate_to_model = {
             candidate.candidate_hash: candidate.model_id for candidate in join.candidates
         }
-        item_winners = {
-            winner for _, winner in disagreement.judge_winners if winner is not None
-        }
+        item_winners = {winner for _, winner in disagreement.judge_winners if winner is not None}
         if len(item_winners) == 1:
             directional_model_winners.add(candidate_to_model[next(iter(item_winners))])
         item_anchors = (
@@ -844,6 +853,6 @@ def project_weekly_verdict_html(verdict: WeeklyVerdict) -> str:
 <style>body{{font:14px/1.45 system-ui;margin:0;color:#202124;background:#fafafa}}main{{max-width:1180px;margin:auto;padding:24px}}h1{{font-size:24px}}table{{width:100%;border-collapse:collapse;background:#fff}}th,td{{border:1px solid #c9c9c9;padding:7px;text-align:left;vertical-align:top}}th{{background:#f1f1ed}}footer{{margin-top:20px;border-top:2px solid #222;padding-top:12px}}</style></head>
 <body><main><h1>Antiek-bench weekly verdict</h1>
 <p>Week {html.escape(verdict.week_id)} · suite {html.escape(verdict.suite_version)} · budget actual/reserved/cap {html.escape(verdict.budget_spent_usd)} / {html.escape(verdict.budget_reserved_usd)} / {html.escape(verdict.budget_cap_usd)} USD</p>
-<table><thead><tr><th>Task</th><th>Model</th><th>Deterministic: keyword proxy quality</th><th>Cost USD</th><th>p50 / p95 ms</th><th>Availability</th><th>OK / fail / timeout</th><th>Samples</th><th>Operator driver</th><th>Bench winner</th><th>ND shadow modal</th><th>ND disagreements</th><th>Qualitative status</th><th>Qualitative axes (no composite)</th><th>Disagreement / calibration suppressions</th></tr></thead><tbody>{''.join(rows)}</tbody></table>
+<table><thead><tr><th>Task</th><th>Model</th><th>Deterministic: keyword proxy quality</th><th>Cost USD</th><th>p50 / p95 ms</th><th>Availability</th><th>OK / fail / timeout</th><th>Samples</th><th>Operator driver</th><th>Bench winner</th><th>ND shadow modal</th><th>ND disagreements</th><th>Qualitative status</th><th>Qualitative axes (no composite)</th><th>Disagreement / calibration suppressions</th></tr></thead><tbody>{"".join(rows)}</tbody></table>
 <footer>Advisory evidence only. auto_promotion=false. operator_acknowledgment_required=true before any future recommendation export. No export authority is provided. The operator controls model and suite changes. Keyword overlap is a proxy, not judged answer quality.</footer>
 <script type="application/json" id="antiek-bench-verdict">{safe_json}</script></main></body></html>"""
