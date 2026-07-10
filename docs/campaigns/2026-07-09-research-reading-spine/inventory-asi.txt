@@ -1,0 +1,14 @@
+# inventory-asi · SESSION-ARC arw–ash readiness→CTA complete wave
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: asi
+date: 2026-07-10
+parent_tip: 2eca8bb2c (ash)
+
+## Closed
+- SESSION-ARC-arw-ash-readiness-cta-complete.md full wave map + CTA matrix
+- Thrash list consolidated · hard pivot off readiness→CTA for asj+
+- P0 PR #465 re-asserted
+
+## Next
+asj+ offline product residual **outside readiness→CTA thrash**
+Prefer Antiek-bench · HTML reading engagement · competitive DR non-catalog product

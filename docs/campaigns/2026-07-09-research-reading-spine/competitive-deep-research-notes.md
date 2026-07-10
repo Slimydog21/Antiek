@@ -4159,3 +4159,7 @@ COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES += publication_attach_readiness ·
 decision_tree_install_model_gate · readiness_cta_free_host_twin_path_moil ·
 written_analysis_multi_agent_path · highlight_float_full_path_choices.
 Scorecard inherits. vitest 5 green. P0 PR #465. Pivot asi+ outside thrash.
+
+## Residual asi · 2026-07-10 — SESSION-ARC arw–ash readiness→CTA complete
+Full wave map + CTA matrix handoff · hard pivot asj+ off readiness→CTA thrash.
+P0 PR #465.
