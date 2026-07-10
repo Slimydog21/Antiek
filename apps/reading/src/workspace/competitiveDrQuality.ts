@@ -391,6 +391,8 @@ export const COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES = [
   "spawn_merge_html_open_readiness",
   // Residual (aur): twin multi-select chase pure readiness (auq).
   "twin_chase_selection_readiness",
+  // Residual (aus): knowledge-dense arxiv/substack/url pure catalog (auj extract).
+  "knowledge_dense_presets_catalog",
 ] as const;
 
 export type CompetitiveDrOfflineProductSurface =
