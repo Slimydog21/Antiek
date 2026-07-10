@@ -1,0 +1,13 @@
+# inventory-aek · SESSION-ARC aeh–aej handoff
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aek
+date: 2026-07-10
+parent_tip: b1c42e2b (aej)
+
+## Closed
+- SESSION-ARC-aeh-aej-collective-write-budget.md
+- FUTURE tip re-anchor
+- NEXT-WAVE-after-aek.md
+
+## Not in scope
+- Code product residual (next: ael+)

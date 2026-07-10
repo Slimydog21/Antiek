@@ -2290,3 +2290,8 @@ Mini estimate + full prompt-cost-remaining-after stamp data-goes-negative when
 high band burns past remaining (soft foresight · parity aeb launch/badge).
 Competitive delta: model-picker budget surface is machine-readable for over-cap
 foresight end-to-end. vitest Settings 36 green.
+
+## Residual aek · 2026-07-10 — SESSION-ARC aeh–aej collective Write + budget foresight
+SESSION-ARC documents unit prompt Write twin_seed, engagement has_body builders,
+and Settings decision-tree goes-negative foresight. Tip b1c42e2b · swarm handoff tip-true.
+Competitive delta: multi-agent infinite continues outside thrash; operator merge PR #465 highest leverage.
