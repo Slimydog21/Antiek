@@ -1601,3 +1601,8 @@ tip-true; operator merge PR #465 highest leverage.
 Midnight Oil pub-refs hydrate dual-gate jumps to #l1-arxiv (parity reading
 hosts xd). Competitive delta: MO knowledge-dense pub-refs prep navigates
 hydrate deferred policy without inventing live body.
+
+## Residual xz · 2026-07-10 — FUTURE-AGENT tip re-anchor through xy
+FUTURE-AGENT-SPEC tip re-anchored after 53 residual ships (budget foresight ·
+dual-gate L1–L7 · free STEM electricity+computing · dogfood v12). Competitive
+delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
