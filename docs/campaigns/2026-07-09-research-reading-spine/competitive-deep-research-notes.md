@@ -823,3 +823,8 @@ At model driver install, operators project a sample prompt cost against
 remaining budget (pricing known / would_exceed / high≈) without leaving the
 decision-tree panel. Soft gate never invents $0. Competitive delta: budget
 foresight sits with model choice — research drivers are not selected blind.
+
+## Residual sc · 2026-07-10 — Launch budget → decision-tree deep-link
+ResearchLaunchBudgetPanel Settings link targets /settings#decision-tree-panel
+so research hosts jump to model driver + budget bar + sample projection.
+Competitive delta: budget foresight at launch and driver install form one loop.

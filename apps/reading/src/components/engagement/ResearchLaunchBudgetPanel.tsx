@@ -219,13 +219,14 @@ export function ResearchLaunchBudgetPanel({
         </span>
         <div className="flex items-center gap-2">
           {/* Residual (fr): jump to Settings for daily cap + decision-tree. */}
+          {/* Residual (sc): deep-link to decision-tree + budget foresight (sa/sb). */}
           <a
-            href="/settings"
+            href="/settings#decision-tree-panel"
             data-testid="research-launch-budget-settings-link"
             className="text-[10px] font-mono underline opacity-80 hover:opacity-100"
-            title="Open Settings to set daily budget and decision-tree driver"
+            title="Open Settings decision-tree: model driver, budget bar, sample cost projection"
           >
-            Settings
+            Settings · driver
           </a>
           {/* Residual (nu): dual-gate prep on shared launch budget chokepoint. */}
           <a

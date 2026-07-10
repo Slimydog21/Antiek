@@ -85,7 +85,9 @@ describe("ResearchLaunchBudgetPanel", () => {
       "research-launch-budget-dual-gate-checklist-link",
     );
     expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4/);
-    expect(settings.getAttribute("href")).toBe("/settings");
+    // Residual (sc): deep-link to decision-tree panel (driver + budget foresight).
+    expect(settings.getAttribute("href")).toBe("/settings#decision-tree-panel");
+    expect(settings.textContent).toMatch(/driver/i);
   });
 
   it("projects prompt cost for deep→pro tier", async () => {

@@ -1045,7 +1045,11 @@ export default function Settings() {
         </LemonCard>
 
         <LemonCard title="Decision tree driver" elevation="z1" colour="glacial">
-          <div className="p-4 space-y-3" data-testid="decision-tree-panel">
+          <div
+            id="decision-tree-panel"
+            className="p-4 space-y-3"
+            data-testid="decision-tree-panel"
+          >
             <p className="text-sm text-ink dark:text-bright">
               Select the model driver for this process. Install writes the
               choice into the decision-tree registry so research dispatch can
