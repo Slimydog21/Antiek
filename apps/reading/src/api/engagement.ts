@@ -473,6 +473,12 @@ export async function seedTwinNotes(body: {
   /** Residual (qy): twin write seed source → Antiek-bench by_source. */
   usage_source?: string | null;
   research_tier?: string | null;
+  /**
+   * Residual (adq): body honesty for recursive suite rewrite feed.
+   * When set with usage_source, prevents title-only seeds from being
+   * mis-inferred as has_body=true solely because title fills body_text.
+   */
+  has_body?: boolean | null;
 }): Promise<
   TwinNotesResponse & {
     seeded?: boolean;
@@ -483,6 +489,7 @@ export async function seedTwinNotes(body: {
     force_offline?: boolean;
     usage_event?: Record<string, unknown> | null;
     usage_event_error?: string | null;
+    usage_has_body?: boolean | null;
   }
 > {
   const res = await apiFetch(`${API_BASE}/engagement/twins/seed`, {
@@ -497,6 +504,8 @@ export async function seedTwinNotes(body: {
       force_offline: Boolean(body.force_offline),
       usage_source: body.usage_source ?? null,
       research_tier: body.research_tier ?? null,
+      // Residual (adq): pass explicit body honesty when known.
+      has_body: body.has_body === undefined ? null : body.has_body,
     }),
   });
   return readJson(res);

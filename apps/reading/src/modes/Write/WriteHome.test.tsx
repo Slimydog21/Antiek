@@ -1190,6 +1190,7 @@ describe("WriteHome — the re-homed door", () => {
           body_text: expect.stringMatching(/\[question\] Why\?/),
           title: "Twin-seeded essay",
           usage_source: "twin_draft_selected",
+          has_body: true,
         }),
       );
     });
@@ -1224,6 +1225,44 @@ describe("WriteHome — the re-homed door", () => {
         expect.objectContaining({
           asset_id: "dlv-new",
           usage_source: "deep_research_session",
+          // Residual (adq): HTML body present → has_body true on create seed.
+          has_body: true,
+        }),
+      );
+    });
+    window.sessionStorage.removeItem(key);
+  });
+
+  it("passes has_body false for title-only twin_seed on create (adq)", async () => {
+    const key = "antiek.twin_write_seed.adq_title_only";
+    window.sessionStorage.setItem(
+      key,
+      JSON.stringify({
+        plain_text: "Title Only Book",
+        html: "",
+        title: "Title Only Book",
+        asset_id: "hdoc_title_only",
+        note_ids: [],
+        view_format: "html",
+        source: "marketplace_host",
+        has_body: false,
+      }),
+    );
+    seedTwinNotesMock.mockClear();
+    mountAt(`/write?twin_seed=${encodeURIComponent(key)}`);
+    await waitFor(() => {
+      expect(screen.getByTestId("write-twin-seed-ready")).toBeTruthy();
+    });
+    const title = await screen.findByPlaceholderText(/what are you writing/i);
+    await userEvent.clear(title);
+    await userEvent.type(title, "Title-only essay");
+    await userEvent.click(await screen.findByText(/start without a project/i));
+    await waitFor(() => {
+      expect(seedTwinNotesMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "dlv-new",
+          usage_source: "marketplace_host",
+          has_body: false,
         }),
       );
     });

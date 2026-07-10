@@ -43,6 +43,37 @@ describe("twinWriteSeed (pp)", () => {
     expect(loaded?.view_format).toBe("html");
     expect(loaded?.source).toBe("twin_draft_selected");
     expect(loaded?.note_ids).toEqual(["q1", "i1"]);
+    // Residual (adq): HTML body → has_body true.
+    expect(loaded?.has_body).toBe(true);
+  });
+
+  it("stamps has_body false for title-only marketplace Open Write (adq)", () => {
+    const href = buildMarketplaceWriteHref({
+      documentId: "hdoc_title_only",
+      title: "Title Only Book",
+      html: null,
+    });
+    const key = decodeURIComponent(
+      (href.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    const seed = loadTwinWriteSeed(key);
+    expect(seed?.plain_text).toMatch(/Title Only Book/);
+    expect(seed?.has_body).toBe(false);
+    expect(seed?.source).toBe("marketplace_host");
+  });
+
+  it("stamps has_body true when marketplace host HTML has body (adq)", () => {
+    const href = buildMarketplaceWriteHref({
+      documentId: "hdoc_body",
+      title: "Body Book",
+      html: "<p>Full chapter substrate for note-taker.</p>",
+    });
+    const key = decodeURIComponent(
+      (href.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    const seed = loadTwinWriteSeed(key);
+    expect(seed?.has_body).toBe(true);
+    expect(seed?.plain_text).toMatch(/Full chapter/);
   });
 
   it("preserves twin_cross_asset_merge source (vd)", () => {

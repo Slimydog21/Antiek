@@ -1,0 +1,23 @@
+# inventory-adq · twin Write seed has_body honesty → suite rewrite feed
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: adq
+date: 2026-07-10
+parent_tip: 446e40d2 (adp)
+
+## Closed
+- TwinWriteSeedPayload.has_body persisted in sessionStorage
+- storeTwinWriteSeed default: HTML body text or non-title plain → true; title-only → false
+- buildMarketplaceWriteHref / buildMergedDocWriteHref / buildHostedHtmlWriteHref stamp has_body
+- loadTwinWriteSeed restores has_body (legacy default rule)
+- seedTwinNotes client passes has_body to /engagement/twins/seed
+- WriteHome create seed preserves twinSeed.has_body for Antiek-bench usage_source
+- vitest twinWriteSeed 34 + WriteHome 27 = 61 passed
+
+## Why this residual
+Title-only Open Write used title as plain_text; Write create then seedTwinNotes
+inferred has_body=true from non-empty body_text — corrupting recursive rewrite
+learning (title_only failed events never arrived).
+
+## Not in scope
+- Live L3 note_taker dual-gate
+- Auto-promote suite proposals

@@ -42,6 +42,12 @@ export type TwinWriteSeedPayload = {
   note_ids: string[];
   view_format: "html";
   source: TwinWriteSeedSource;
+  /**
+   * Residual (adq): body honesty for Antiek-bench rewrite feed when Write
+   * lands and seedTwinNotes records usage_source. Title-only Open Write paths
+   * must stamp false so plain_text fallback titles are not mis-inferred true.
+   */
+  has_body: boolean;
 };
 
 /** Build a unique sessionStorage key (never invent twin content). */
@@ -61,6 +67,11 @@ export function storeTwinWriteSeed(input: {
   note_ids: readonly string[];
   /** Residual (pz): provenance for MO deposit / merge dual handoff. */
   source?: TwinWriteSeedSource;
+  /**
+   * Residual (adq): optional body honesty. When omitted, true only when HTML
+   * body text is non-empty OR plain_text is not a pure title/asset fallback.
+   */
+  has_body?: boolean;
 }): string | null {
   const plain = String(input.plain_text || "").trim();
   if (!plain) return null;
@@ -95,14 +106,29 @@ export function storeTwinWriteSeed(input: {
   )
     ? (input.source as TwinWriteSeedSource)
     : "twin_draft_selected";
+  const title = String(input.title || "").trim() || "Twin draft";
+  const assetId = String(input.asset_id || "").trim();
+  const htmlPlain = plainTextFromHtml(String(input.html || ""));
+  // Residual (adq): default body honesty — HTML body wins; else plain that is
+  // not merely the title/asset_id fallback (title-only Open Write → false).
+  const hasBody =
+    input.has_body !== undefined
+      ? Boolean(input.has_body)
+      : Boolean(
+          htmlPlain.trim() ||
+            (plain !== title &&
+              plain !== assetId &&
+              plain.length > Math.max(title.length, assetId.length)),
+        );
   const payload: TwinWriteSeedPayload = {
     plain_text: plain.slice(0, 16000),
     html: String(input.html || "").slice(0, 100000),
-    title: String(input.title || "").trim() || "Twin draft",
-    asset_id: String(input.asset_id || "").trim(),
+    title,
+    asset_id: assetId,
     note_ids: [...input.note_ids].map((x) => String(x || "").trim()).filter(Boolean),
     view_format: "html",
     source,
+    has_body: hasBody,
   };
   try {
     window.sessionStorage.setItem(key, JSON.stringify(payload));
@@ -153,16 +179,33 @@ export function loadTwinWriteSeed(key: string): TwinWriteSeedPayload | null {
     )
       ? (srcRaw as TwinWriteSeedSource)
       : "twin_draft_selected";
+    const title = String(parsed.title || "Twin draft").trim() || "Twin draft";
+    const assetId = String(parsed.asset_id || "").trim();
+    const html = String(parsed.html || "");
+    const htmlPlain = plainTextFromHtml(html);
+    // Residual (adq): legacy seeds without has_body use same default rule as store.
+    let hasBody: boolean;
+    if (typeof parsed.has_body === "boolean") {
+      hasBody = parsed.has_body;
+    } else {
+      hasBody = Boolean(
+        htmlPlain.trim() ||
+          (plain !== title &&
+            plain !== assetId &&
+            plain.length > Math.max(title.length, assetId.length)),
+      );
+    }
     return {
       plain_text: plain,
-      html: String(parsed.html || ""),
-      title: String(parsed.title || "Twin draft").trim() || "Twin draft",
-      asset_id: String(parsed.asset_id || "").trim(),
+      html,
+      title,
+      asset_id: assetId,
       note_ids: Array.isArray(parsed.note_ids)
         ? parsed.note_ids.map((x) => String(x || "").trim()).filter(Boolean)
         : [],
       view_format: "html",
       source,
+      has_body: hasBody,
     };
   } catch {
     return null;
@@ -232,8 +275,9 @@ export function buildMarketplaceWriteHref(opts: {
 }): string {
   const doc = String(opts.documentId || "").trim();
   if (!doc) return "/write";
+  const fromHtml = plainTextFromHtml(opts.html || "");
   const plain =
-    plainTextFromHtml(opts.html || "") ||
+    fromHtml ||
     String(opts.title || "").trim() ||
     doc;
   const seedKey = storeTwinWriteSeed({
@@ -243,6 +287,8 @@ export function buildMarketplaceWriteHref(opts: {
     asset_id: doc,
     note_ids: [],
     source: "marketplace_host",
+    // Residual (adq): title-only host (no HTML body) → has_body false.
+    has_body: Boolean(fromHtml),
   });
   return buildWriteHtmlDraftHref({
     documentId: doc,
@@ -261,8 +307,9 @@ export function buildMergedDocWriteHref(opts: {
 }): string {
   const doc = String(opts.documentId || "").trim();
   if (!doc) return "/write";
+  const fromHtml = plainTextFromHtml(opts.html || "");
   const plain =
-    plainTextFromHtml(opts.html || "") ||
+    fromHtml ||
     String(opts.title || "").trim() ||
     doc;
   const src = opts.source === "collective_doc_merge" ? opts.source : "spawn_merge";
@@ -273,6 +320,8 @@ export function buildMergedDocWriteHref(opts: {
     asset_id: doc,
     note_ids: [],
     source: src,
+    // Residual (adq): title-only merge (no HTML body) → has_body false.
+    has_body: Boolean(fromHtml),
   });
   return buildWriteHtmlDraftHref({
     documentId: doc,
@@ -297,8 +346,9 @@ export function buildHostedHtmlWriteHref(opts: {
 }): string {
   const doc = String(opts.documentId || "").trim();
   if (!doc) return "/write";
+  const fromHtml = plainTextFromHtml(opts.html || "");
   const plain =
-    plainTextFromHtml(opts.html || "") ||
+    fromHtml ||
     String(opts.title || "").trim() ||
     doc;
   const srcRaw = String(opts.source || "").trim();
@@ -382,6 +432,8 @@ export function buildHostedHtmlWriteHref(opts: {
     asset_id: doc,
     note_ids: [],
     source: source as TwinWriteSeedSource,
+    // Residual (adq): title-only hosted Open Write → has_body false.
+    has_body: Boolean(fromHtml),
   });
   return buildWriteHtmlDraftHref({
     documentId: doc,

@@ -497,6 +497,8 @@ export default function WriteHome() {
             force_offline: true,
             // Residual (qy): feed Antiek-bench by_source for DR write seeds.
             usage_source: twinSeed.source,
+            // Residual (adq): preserve Open Write body honesty (title-only → false).
+            has_body: twinSeed.has_body,
           });
         } catch {
           // Non-fatal: piece still opens; operator has brainstorm seed.

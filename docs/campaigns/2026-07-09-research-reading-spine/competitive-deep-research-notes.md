@@ -2170,3 +2170,10 @@ unknown); AntiekBenchSuiteProposalResponse now carries title_only (was Pydantic-
 plus with_body/unknown. Competitive delta: recursive rewrite audit is machine-readable
 end-to-end from usage events → propose → Settings metrics (parity usage summary acu).
 pytest 2 · vitest Settings 34 green.
+
+## Residual adq · 2026-07-10 — twin Write seed has_body → suite rewrite feed
+TwinWriteSeedPayload.has_body persisted; marketplace/hosted/merge title-only Open Write
+stamps false; Write create seedTwinNotes passes has_body so title-only body_text is not
+mis-inferred true for Antiek-bench usage. Competitive delta: recursive rewrite learning
+from Open Write is honest end-to-end (Open Write stamp → session seed → create seed →
+suite proposal matrix adp). vitest twinWriteSeed+WriteHome 61 green.
