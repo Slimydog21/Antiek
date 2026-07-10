@@ -716,6 +716,19 @@ describe("MarketplaceHost mode", () => {
     expect(
       screen.getByTestId("marketplace-host-mode").getAttribute("data-view-format"),
     ).toBe("html");
+    // Residual (tg): purchase-host is NOT free_host (negative honesty).
+    const hostMetrics = screen.getByTestId("marketplace-host-metrics");
+    expect(hostMetrics.getAttribute("data-license-class")).toBe("purchased");
+    expect(hostMetrics.getAttribute("data-is-public-domain")).toBe("false");
+    expect(hostMetrics.getAttribute("data-is-free-host")).toBe("false");
+    expect(hostMetrics.getAttribute("data-payment-rails")).toBe(
+      "manual_receipt_only",
+    );
+    const freeHonesty = screen.getByTestId("marketplace-host-free-pd-honesty");
+    expect(freeHonesty.getAttribute("data-is-free-host")).toBe("false");
+    expect(freeHonesty.getAttribute("data-is-public-domain")).toBe("false");
+    expect(freeHonesty.textContent).toMatch(/free_host=false/);
+    expect(freeHonesty.textContent).toMatch(/manual_receipt_only/);
   });
 
   it("prefills host DR depth tier from Settings wrestle (jc)", async () => {

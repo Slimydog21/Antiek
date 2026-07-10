@@ -993,3 +993,8 @@ into the Antiek account library as HTML reading assets for tech researchers.
 Competitive dogfood gains book_qa Faraday induction + free PD HTML hosting
 posture (v3). Competitive delta: weekly Antiek-bench rewrite can learn from
 marketplace free STEM electricity spine alongside write-seed/float/budget.
+
+## Residual tg · 2026-07-10 — Purchase-host free_host=false honesty
+Purchase + host of paid catalog titles stamps free_host=false / not
+public_domain with manual_receipt_only rails. Competitive delta: free research
+spine honesty has a hard negative case — paid hosts never look free.
