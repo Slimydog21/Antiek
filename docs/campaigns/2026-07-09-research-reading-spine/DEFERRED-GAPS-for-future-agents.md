@@ -32,6 +32,10 @@ hydrate/twin/MO live-status readiness surfaces, offline-honest identity paths.
    **partially closed (io–is, lw)**: knowledge-dense PD + STEM spine + by_source/
    by_subject honesty + free-PD filter + domain chips; live external catalog
    connectors still deferred.
+5. Domain-aware twin intelligent search free PD spine — **closed offline (akq–alq)**
+   including coverage honesty path ResearchContext · MarketplaceHost · HostedHtml.
+6. L5 digital book payment offline Sprint 1–3 — **closed offline (akr–ala)**;
+   live rails still dual-gate only.
 
 ## Invariants (hard to vary)
 
