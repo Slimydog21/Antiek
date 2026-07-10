@@ -66,7 +66,10 @@ import {
 import { TwinNotesPanel } from "../engagement/TwinNotesPanel";
 import { useInWindow } from "./windowHostContext";
 import { composeDriverPromptText } from "../../lib/driverPromptText";
-import { buildHostedHtmlWriteHref } from "../../workspace/twinWriteSeed";
+import {
+  buildHostedHtmlWriteHref,
+  plainTextFromHtml,
+} from "../../workspace/twinWriteSeed";
 
 export type HostedHtmlDocumentHostProps = {
   document_id?: string;
@@ -466,6 +469,10 @@ export default function HostedHtmlDocumentHost(
                 data-testid="hosted-html-open-write"
                 data-view-format="html"
                 data-has-twin-seed="1"
+                // Residual (acn): body honesty on twin_seed (parity acf/ack/acl/acm).
+                data-write-seed-has-body={String(
+                  Boolean(isHtml && plainTextFromHtml(html || "").trim()),
+                )}
                 data-write-seed-source={
                   isEvidencePack
                     ? "evidence_pack"

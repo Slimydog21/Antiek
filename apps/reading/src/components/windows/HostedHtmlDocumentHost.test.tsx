@@ -223,12 +223,13 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(screen.getByTestId("hosted-html-document-host").textContent).toMatch(
       /not PDF/,
     );
-    // Residual (fl/qu): Write dual handoff html_draft + twin_seed.
+    // Residual (fl/qu/acn): Write dual handoff html_draft + twin_seed body honesty.
     const write = screen.getByTestId("hosted-html-open-write");
     const href = write.getAttribute("href") || "";
     expect(href).toMatch(/html_draft=doc_abc/);
     expect(href).toMatch(/twin_seed=antiek\.twin_write_seed\./);
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
+    expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
   });
 
   it("stamps research_progress_complete host honesty (so)", () => {

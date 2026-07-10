@@ -1,0 +1,20 @@
+# inventory-acn · HostedHtml Open Write twin_seed has-body honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: acn
+date: 2026-07-10
+tip_before: 08706dc5 (acm)
+
+## Problem
+HostedHtml Open Write dual handoff lacked data-write-seed-has-body (parity acf–acm
+write-seed body honesty matrix).
+
+## Fix
+- hosted-html-open-write data-write-seed-has-body from HTML plain text
+- HostedHtml renders HTML body test locks has-body true
+
+## Verified
+vitest HostedHtml renders HTML body → passed
+scratch: residual-acn-tests.log
+
+## Not in scope
+- Operator merge PR #465 (gated)

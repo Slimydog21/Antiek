@@ -2147,3 +2147,8 @@ Collective Open Write stamps data-write-seed-has-body (parity spawn merge acl /
 MO ack / marketplace acf). Competitive delta: multi-spawn collective → Write
 body honesty is machine-readable end-to-end.
 
+## Residual acn · 2026-07-10 — HostedHtml Open Write twin_seed has-body honesty
+HostedHtml Open Write stamps data-write-seed-has-body (parity acf–acm matrix).
+Competitive delta: float/full hosted HTML → Write body honesty is machine-readable
+for every float host path (marketplace, MO, merge, evidence, …).
+
