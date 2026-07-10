@@ -3648,3 +3648,7 @@ templates · fan-out · HTML. vitest productModeRoutes 8 green. P0 PR #465. Pivo
 ## Residual aok · 2026-07-10 — competitive scorecard multi-goal MO + domain chase + ≥2 analysis
 Scorecard rows for Midnight Oil multi-goal swarm · domain-aware chase · written
 analysis ≥2 spawns honesty. vitest Settings deferred map green. P0 PR #465. Pivot aol+.
+
+## Residual aol · 2026-07-10 — DR session Research domains chrome + SESSION-ARC aoc–aok
+Operator-visible research_domains strip on DeepResearchSessionHost when goal
+rehydrates domains (aoe). SESSION-ARC wave map for handoff. P0 PR #465. Pivot aom+.

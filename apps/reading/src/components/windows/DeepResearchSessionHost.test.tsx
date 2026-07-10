@@ -535,6 +535,13 @@ describe("DeepResearchSessionHost", () => {
     expect(
       screen.getByTestId("research-context-domain-search-coverage"),
     ).toBeTruthy();
+    // Residual (aol): operator-visible Research domains chrome.
+    const domainChrome = screen.getByTestId("deep-research-session-domains");
+    expect(domainChrome.getAttribute("data-research-domains")).toBe(
+      "heat,signal_processing",
+    );
+    expect(domainChrome.getAttribute("data-domain-count")).toBe("2");
+    expect(domainChrome.textContent).toMatch(/heat/i);
   });
 
   it("remounts research context after twin promote notify (ec)", () => {

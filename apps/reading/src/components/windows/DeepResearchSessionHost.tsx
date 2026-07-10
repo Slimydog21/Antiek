@@ -343,6 +343,22 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
         {props.model_id ? <Row label="Model" value={props.model_id} /> : null}
         {props.region_id ? <Row label="Region" value={props.region_id} /> : null}
         {props.goal ? <Row label="Goal" value={props.goal} /> : null}
+        {/* Residual (aol): operator-visible research_domains chrome when goal
+            rehydrated domain subjects (aoe path honesty). */}
+        {domainSubjects.length > 0 ? (
+          <div
+            data-testid="deep-research-session-domains"
+            data-research-domains={domainSubjects.join(",")}
+            data-domain-count={String(domainSubjects.length)}
+            className="font-mono text-[11px] opacity-90"
+            role="status"
+          >
+            <Row
+              label="Research domains"
+              value={domainSubjects.join(", ")}
+            />
+          </div>
+        ) : null}
         {/* Residual (jk): always show research tier chrome (default deep). */}
         <div
           data-testid="deep-research-session-tier"
