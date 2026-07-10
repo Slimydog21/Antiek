@@ -1386,3 +1386,8 @@ operator-visible as the suite grows — no silent caps.
 SESSION-ARC-vz-we + FUTURE-AGENT tip → 84bbfed2 (64 residual ships). Competitive
 delta: compaction-safe multi-agent handoff after budget foresight + Shannon STEM
 wave; operator merge PR #465 remains highest leverage.
+
+## Residual wg · 2026-07-10 — dual-gate checklist L5/L6/L7 honesty
+Operator checklist documents L5 payment deferred, L6 offline merge unit, L7
+ND never-router (parity Settings dual-gate stamps). Competitive delta: deep-links
+from engagement surfaces reach a complete deferred map — not L1–L4-only silence.

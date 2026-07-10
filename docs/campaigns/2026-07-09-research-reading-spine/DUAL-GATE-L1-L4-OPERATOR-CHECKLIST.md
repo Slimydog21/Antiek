@@ -120,4 +120,53 @@ Checklist is linked from engagement surfaces for operator prep only.
 | ResearchLaunchBudget | `research-launch-budget-dual-gate-checklist-link` | shared launch budget |
 | DecisionTreeDriverBadge | `decision-tree-dual-gate-checklist-link` | shared driver+budget |
 
-L5 payment rails and L6 live multi-agent remain **deferred** (specs only until injectors exist).
+---
+
+## L5 — Marketplace payment rails (deferred · residual vt/uy)
+
+| Item | Value |
+|---|---|
+| Status | **Deferred** · `manual_receipt_only` · `live_payment=false` |
+| Product truth | Free PD + host HTML path ships offline; paid checkout does not |
+| Honesty surfaces | MarketplaceHost L5 stamp · Settings dual-gate L5 payment deferred |
+| Unlock when | Product/legal payment design + operator OK |
+| Never | Silent live payment or invent free when rails paid |
+
+**Operator OK required:** payment design + receipt policy. Not dual-gate env.
+
+---
+
+## L6 — Live multi-agent collective council (deferred · residual vx/vz)
+
+| Item | Value |
+|---|---|
+| Status | **Deferred** · offline merge unit only |
+| Product truth | Multi-select merge → unit prompt / draft / written analysis ships offline |
+| Honesty surfaces | CollectiveResearchPanel `data-l6-live-multiagent=deferred` · Settings dual-gate L6 |
+| Spec | `spec-dn-collective-live-multiagent.md` |
+| Unlock when | Spec + injectors + budget halt verified |
+| Never | Silent live multi-agent council from multi-select alone |
+
+**Operator OK required:** council injectors + soft budget · offline default remains correct.
+
+---
+
+## L7 — NotDiamond as router (**never** · residual rl / §16)
+
+| Item | Value |
+|---|---|
+| Status | **Rejected forever as dispatch authority** |
+| Product truth | NotDiamond advisory-only · weekly refresh · never auto-installs driver |
+| Honesty surfaces | Settings `#notdiamond-advisory` · dual-gate L7 ND advisory link |
+| Unlock when | **Never** as router |
+| Correct use | Advisory delta vs installed decision-tree driver only |
+
+**Never:** NotDiamond select model for research dispatch. Advisory ≠ authority.
+
+---
+
+## Residual (wg) honesty note · 2026-07-10
+
+L5–L7 documented here so Settings dual-gate prep and engagement deep-links
+point at a complete operator map — not L1–L4-only silence after L5/L6 stamps
+landed in product UI.

@@ -1,0 +1,23 @@
+# inventory-wg · DUAL-GATE checklist L5/L6/L7 honesty sections
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: wg
+date: 2026-07-10
+tip_before: 41a3e1b8 (wf)
+
+## Problem
+Operator dual-gate checklist was titled/framed L1–L4 while product UI stamps
+L5 payment deferred, L6 offline merge unit, and L7 ND never-router. Checklist
+ended with a one-line deferral — incomplete operator map for Settings deep-links.
+
+## Fix
+- Full L5 marketplace payment deferred section (manual_receipt_only)
+- Full L6 live multi-agent deferred section (offline merge unit only)
+- Full L7 NotDiamond never-router section (advisory only forever)
+- Residual (wg) honesty note tying Settings dual-gate stamps to checklist
+
+## Verified
+Doc-only residual · checklist linked from Settings + engagement dual-gate links
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Enabling any live injector
