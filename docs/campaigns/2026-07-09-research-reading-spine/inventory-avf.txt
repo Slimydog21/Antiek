@@ -1,0 +1,23 @@
+# inventory-avf · pure twinSeedLiveGateReadiness
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: avf
+date: 2026-07-10
+parent_tip: 177c246c6 (ave)
+
+## Closed
+- pure `twinSeedLiveGateReadiness` (workspace)
+  - live_ready: live_env ∧ use_dispatch ∧ injector ∧ offline_honest=false
+  - offline_honest when any gate fails · never_enables_live · dual_gate L3
+- Settings twin-seed-live-status panel stamps driven by pure readiness
+- 3 pure unit tests + Settings suite green
+
+## Doctrine
+L3 twin seed dual-gate · Settings never enables live · force_offline UI default
+
+## Next
+avg+ offline product residual outside thrash
+Avoid: L1–L3 dual-gate pure thrash after ave–avf · Settings pure CTA cascade ·
+catalog · twin/merge · presets · MO · scorecard · vision · dogfood · readiness→CTA ·
+pure-open · HostedHtml honesty
+Prefer: L4 MO live pure parity · competitive non-catalog · MO non-thrash · knowledge
+Operator merge PR #465 remains P0 (gated)

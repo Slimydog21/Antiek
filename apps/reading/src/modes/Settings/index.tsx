@@ -31,6 +31,7 @@ import { suiteProposalApproveReadiness } from "../../workspace/suiteProposalAppr
 import { offlineBenchRunReadiness } from "../../workspace/offlineBenchRunReadiness";
 import { depthTierApplyReadiness } from "../../workspace/depthTierApplyReadiness";
 import { hydrateLiveGateReadiness } from "../../workspace/hydrateLiveGateReadiness";
+import { twinSeedLiveGateReadiness } from "../../workspace/twinSeedLiveGateReadiness";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import {
@@ -114,6 +115,8 @@ import {
  * (tier required · optional driver install · never auto-route).
  * Residual (ave): pure hydrateLiveGateReadiness drives L1/L2 dual-gate stamps
  * (env + injector · offline-honest · never enables live).
+ * Residual (avf): pure twinSeedLiveGateReadiness drives L3 dual-gate stamps
+ * (env · dispatch · injector · offline_honest=false).
  */
 export default function Settings() {
   const tier = useViewportTier();
@@ -1045,6 +1048,30 @@ export default function Settings() {
       hydrateLive?.substack?.env_flag,
       hydrateLive?.substack?.env_enabled,
       hydrateLive?.substack?.injector_installed,
+    ],
+  );
+
+  /**
+   * Residual (avf): pure L3 twin-seed dual-gate readiness from live status.
+   * live_ready only when env · dispatch · injector · offline_honest=false.
+   */
+  const twinSeedGateReady = useMemo(
+    () =>
+      twinSeedLiveGateReadiness({
+        live_env: twinSeedLive?.live_env,
+        use_dispatch: twinSeedLive?.use_dispatch,
+        injector_installed: twinSeedLive?.injector_installed,
+        offline_honest: twinSeedLive?.offline_honest,
+        live_env_flag: twinSeedLive?.live_env_flag,
+        use_dispatch_env_flag: twinSeedLive?.use_dispatch_env_flag,
+      }),
+    [
+      twinSeedLive?.live_env,
+      twinSeedLive?.use_dispatch,
+      twinSeedLive?.injector_installed,
+      twinSeedLive?.offline_honest,
+      twinSeedLive?.live_env_flag,
+      twinSeedLive?.use_dispatch_env_flag,
     ],
   );
 
@@ -2090,27 +2117,20 @@ export default function Settings() {
             id="twin-seed-live-status"
             data-testid="twin-seed-live-status-panel"
             data-view-format="html"
-            data-html-first="true"
-            data-never-enables-live="true"
-            data-offline-honest={
-              twinSeedLive ? String(twinSeedLive.offline_honest) : undefined
-            }
-            data-injector-installed={
-              twinSeedLive
-                ? String(twinSeedLive.injector_installed)
-                : undefined
-            }
-            // Residual (aec): L3 live ready only when all three gates true.
-            data-l3-live-ready={
-              twinSeedLive
-                ? String(
-                    twinSeedLive.live_env === true &&
-                      twinSeedLive.use_dispatch === true &&
-                      twinSeedLive.injector_installed === true &&
-                      twinSeedLive.offline_honest === false,
-                  )
-                : undefined
-            }
+            data-html-first={String(twinSeedGateReady.html_first)}
+            data-never-enables-live={String(
+              twinSeedGateReady.never_enables_live,
+            )}
+            // Residual (aec/avf): pure L3 dual-gate readiness stamps.
+            data-offline-honest={String(twinSeedGateReady.offline_honest)}
+            data-injector-installed={String(
+              twinSeedGateReady.injector_installed,
+            )}
+            data-live-env={String(twinSeedGateReady.live_env)}
+            data-use-dispatch={String(twinSeedGateReady.use_dispatch)}
+            data-l3-live-ready={String(twinSeedGateReady.live_ready)}
+            data-dual-gate={twinSeedGateReady.dual_gate}
+            data-gate-summary={twinSeedGateReady.summary}
           >
             <p className="text-sm text-ink dark:text-bright">
               Recursive note-taker UI always force_offline seeds (identity
