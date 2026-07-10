@@ -24,7 +24,9 @@ export type TwinWriteSeedSource =
   | "session_flywheel_complete"
   | "context_search"
   | "research_context_pack"
-  | "twin_promote_context";
+  | "twin_promote_context"
+  // Residual (tu): multi-spawn cohesive unit prompt float → Write seed (tt catalog).
+  | "collective_unit_prompt";
 
 export type TwinWriteSeedPayload = {
   plain_text: string;
@@ -73,6 +75,8 @@ export function storeTwinWriteSeed(input: {
     "context_search",
     "research_context_pack",
     "twin_promote_context",
+    // Residual (tu): cohesive unit prompt must not collapse to twin_draft_selected.
+    "collective_unit_prompt",
   ];
   const source: TwinWriteSeedSource = allowed.includes(
     input.source as TwinWriteSeedSource,
@@ -123,6 +127,8 @@ export function loadTwinWriteSeed(key: string): TwinWriteSeedPayload | null {
       "context_search",
       "research_context_pack",
       "twin_promote_context",
+      // Residual (tu): load parity with store allowlist.
+      "collective_unit_prompt",
     ];
     const source: TwinWriteSeedSource = allowedLoad.includes(
       srcRaw as TwinWriteSeedSource,

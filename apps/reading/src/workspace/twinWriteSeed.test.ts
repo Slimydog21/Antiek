@@ -164,6 +164,37 @@ describe("twinWriteSeed (pp)", () => {
     expect(loadTwinWriteSeed(key)?.source).toBe("context_search");
   });
 
+  it("builds collective_unit_prompt hosted Write seed source (tu)", () => {
+    const href = buildHostedHtmlWriteHref({
+      documentId: "collective_unit:col_abc:xyz",
+      title: "Collective unit · col_abc",
+      html: '<article data-source="collective_unit_prompt"><p>Unit prompt.</p></article>',
+      source: "collective_unit_prompt",
+    });
+    expect(href).toMatch(/html_draft=/);
+    expect(href).toMatch(/twin_seed=antiek\.twin_write_seed\./);
+    const key = decodeURIComponent(
+      (href.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    const seed = loadTwinWriteSeed(key);
+    // Residual (tu): must not collapse to twin_draft_selected (allowlist gap).
+    expect(seed?.source).toBe("collective_unit_prompt");
+    expect(seed?.title).toBe("Collective unit · col_abc");
+    expect(seed?.asset_id).toBe("collective_unit:col_abc:xyz");
+    expect(seed?.plain_text).toMatch(/Unit prompt/);
+
+    // Default title when host title empty.
+    const href2 = buildHostedHtmlWriteHref({
+      documentId: "collective_unit:col_def:1",
+      html: "<p>Unit B</p>",
+      source: "collective_unit_prompt",
+    });
+    const key2 = decodeURIComponent(
+      (href2.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    expect(loadTwinWriteSeed(key2)?.title).toMatch(/Collective cohesive unit/);
+  });
+
   it("builds deep research twin_seed Write href without inventing document_id (qv)", () => {
     const href = buildDeepResearchWriteHref({
       selectionText: "Attention is routing.",

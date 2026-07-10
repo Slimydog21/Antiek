@@ -1059,3 +1059,9 @@ include collective_unit_prompt (known_catalog 15). Competitive delta: cohesive
 unit prompt → Write twin_seed events rank in Antiek-bench weekly rewrite
 alongside evidence/search/hydrate — recursive note-taker flywheel does not
 drop multi-spawn unit prompts from usage honesty.
+
+## Residual tu · 2026-07-10 — twin_seed allowlist for collective_unit_prompt
+store/load TwinWriteSeedSource allowlists accept collective_unit_prompt so Open
+Write from cohesive unit HTML does not collapse provenance to twin_draft_selected.
+Host Open Write title names multi-spawn unit. Competitive delta: catalog (tt)
+matches runtime seed path — usage honesty is load-bearing, not decorative.

@@ -1,0 +1,22 @@
+# inventory-tu · collective_unit_prompt twin_seed allowlist + Open Write honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: tu
+date: 2026-07-10
+
+## Closed
+- TwinWriteSeedSource += collective_unit_prompt
+- storeTwinWriteSeed + loadTwinWriteSeed allowlists (no collapse → twin_draft_selected)
+- HostedHtml Open Write title honesty for multi-spawn cohesive unit
+- twinWriteSeed.test: source + title default when empty
+- HostedHtmlDocumentHost.test: Open Write title match
+- vitest twinWriteSeed 25 + HostedHtml 16 = 41 green · /tmp/residual-tests-tu.log
+
+## Product why
+tt catalogued collective_unit_prompt for Antiek-bench, but twin_seed store/load
+silently rewrote the source to twin_draft_selected — weekly rewrite feed would
+lie about multi-spawn unit Write provenance. Allowlist + UI title close the
+honest Open Write path from collective unit float → Write → bench.
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live multi-agent L6

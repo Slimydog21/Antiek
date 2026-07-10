@@ -284,6 +284,10 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
         "data-write-seed-source",
       ),
     ).toBe("collective_unit_prompt");
+    // Residual (tu): Open Write title honesty for multi-spawn cohesive unit.
+    expect(
+      screen.getByTestId("hosted-html-open-write").getAttribute("title") || "",
+    ).toMatch(/collective cohesive unit/i);
   });
 
   it("stamps context_search query + hit count honesty (tq)", () => {

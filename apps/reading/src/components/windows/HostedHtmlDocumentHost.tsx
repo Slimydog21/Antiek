@@ -34,6 +34,8 @@
  * honesty chrome (intelligent search over recursive note-taker substrate).
  * Residual (ts): source=collective_unit_prompt honesty strip (collective_id ·
  * spawn_count) for multi-select cohesive unit HTML windows.
+ * Residual (tu): Open Write title + twin_seed source preserve collective_unit_prompt
+ * (store/load allowlist; no collapse to twin_draft_selected).
  *
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
  */
@@ -444,9 +446,11 @@ export default function HostedHtmlDocumentHost(
                         ? "Open Write with hydrated publication HTML + twin_seed (seeds note-taker)"
                         : isResearchContextPack
                           ? "Open Write with research context pack HTML + twin_seed (seeds note-taker)"
-                          : isResearchProgress || isSessionFlywheel
-                            ? "Open Write with research HTML + twin_seed (seeds note-taker)"
-                            : "Open Write with hosted HTML + twin_seed (seeds note-taker when empty)"
+                          : isCollectiveUnitPrompt
+                            ? "Open Write with collective cohesive unit prompt HTML + twin_seed (multi-spawn unit · seeds note-taker)"
+                            : isResearchProgress || isSessionFlywheel
+                              ? "Open Write with research HTML + twin_seed (seeds note-taker)"
+                              : "Open Write with hosted HTML + twin_seed (seeds note-taker when empty)"
                 }
               >
                 Open Write (HTML draft handoff)
