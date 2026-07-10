@@ -1417,3 +1417,8 @@ Catalog hosts On Computable Numbers (HTML free PD) with computing +
 computability subjects; dogfood v11 book_qa Turing; Settings posture honesty.
 Competitive delta: tech-researcher STEM spine covers electricity + logic +
 information theory + computability on HTML-first free path.
+
+## Residual wm · 2026-07-10 — Turing DR goal_hint domain parity
+Hosted Turing free PD launches float DR with computing+computability domains
+in goal_hint (parity Shannon). Competitive delta: reading≡research on
+computability STEM is mechanically proven.

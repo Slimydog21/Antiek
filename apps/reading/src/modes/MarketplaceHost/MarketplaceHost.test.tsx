@@ -2208,6 +2208,79 @@ describe("MarketplaceHost mode", () => {
     ).toMatch(/free_host=true/);
   });
 
+  it("launches Turing DR with computing+computability domains in goal_hint (wm)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-turing-computable-numbers",
+          title: "On Computable Numbers, with an Application to the Entscheidungsproblem",
+          author: "Alan M. Turing",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: [
+            "mathematics",
+            "science",
+            "technology",
+            "computing",
+            "logic",
+            "computability",
+          ],
+        },
+      ],
+      count: 1,
+      view_format: "html",
+      free_count: 1,
+      public_domain_count: 1,
+      payment_rails: "manual_receipt_only",
+    });
+    hostBookIntoAccount.mockResolvedValue({
+      document_id: "hdoc_turing_dr",
+      owner_id: "tech-researcher",
+      book_id: "pd-turing-computable-numbers",
+      content_hash: "t2",
+      title: "On Computable Numbers",
+      license_class: "public_domain",
+      already_hosted: false,
+      source_format: "html",
+      library_document_ids: ["hdoc_turing_dr"],
+      view_format: "html",
+      html: "<p>Machine calculation and undecidability</p>",
+    });
+    fetchAccountLibrary.mockResolvedValue({
+      owner_id: "tech-researcher",
+      documents: [],
+      count: 0,
+      view_format: "html",
+      html: "",
+    });
+    render(<MarketplaceHost ownerId="tech-researcher" />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("catalog-entry-pd-turing-computable-numbers"),
+      ).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /host into account/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId("marketplace-host-deep-research")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("marketplace-host-deep-research"));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalled();
+    });
+    const call = launchFloatingDeepResearch.mock.calls.at(-1)?.[0] as {
+      asset_id: string;
+      goal_hint: string;
+      view_mode: string;
+    };
+    expect(call.asset_id).toBe("hdoc_turing_dr");
+    expect(call.view_mode).toBe("floating");
+    expect(call.goal_hint).toMatch(/domains=.*computing/);
+    expect(call.goal_hint).toMatch(/domains=.*computability/);
+    expect(call.goal_hint).toMatch(/marketplace HTML host/);
+    expect(call.goal_hint).toMatch(/Computable Numbers|Entscheidungsproblem/);
+  });
+
   it("grounds marketplace DR with optional arxiv pub refs (uu)", async () => {
     fetchMarketplaceCatalog.mockResolvedValue({
       entries: [

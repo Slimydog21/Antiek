@@ -1,0 +1,19 @@
+# inventory-wm · Turing DR goal_hint domain parity
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: wm
+date: 2026-07-10
+tip_before: 1660b210 (wl)
+
+## Problem
+Turing free PD host land (wl) lacked DR launch goal_hint domain proof
+(parity Shannon wd / Heaviside uc) — reading≡research for computability texts.
+
+## Fix
+- MarketplaceHost test: Turing float DR goal_hint carries computing + computability
+- marketplace HTML host + title continuity
+
+## Verified
+npm test MarketplaceHost.test.tsx → 28 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)
