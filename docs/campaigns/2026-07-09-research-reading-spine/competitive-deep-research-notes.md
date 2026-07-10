@@ -2152,3 +2152,8 @@ HostedHtml Open Write stamps data-write-seed-has-body (parity acf–acm matrix).
 Competitive delta: float/full hosted HTML → Write body honesty is machine-readable
 for every float host path (marketplace, MO, merge, evidence, …).
 
+## Residual aco · 2026-07-10 — SESSION-ARC + FUTURE tip through acn
+SESSION-ARC-acf-acn documents write-seed has-body honesty matrix across marketplace,
+MO, spawn merge, collective, HostedHtml. Tip 2bc6bf23 · 174 ships. Competitive delta:
+swarm handoff tip-true; operator merge PR #465 highest leverage.
+
