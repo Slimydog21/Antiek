@@ -64,6 +64,8 @@
  * Residual (rr): Open Write twin_seed after promote → context (promoted units).
  * Residual (aum): pure twinPromoteContextReadiness drives promote CTA gate
  * (parity twinSubstrateReadiness · arx kind filter · never invents notes).
+ * Residual (auq): pure twinChaseSelectionReadiness drives chase float|full
+ * (multi-select · soft budget · never invents selection).
  * HTML-first; never PDF.
  */
 
@@ -97,6 +99,7 @@ import {
 } from "../../workspace/domainSearchDefaults";
 import { twinSubstrateReadiness } from "../../workspace/twinSubstrateReadiness";
 import { twinPromoteContextReadiness } from "../../workspace/twinPromoteContextReadiness";
+import { twinChaseSelectionReadiness } from "../../workspace/twinChaseSelectionReadiness";
 
 /** Minimal twin note shape for residual (mz) chase payload. */
 export type TwinChaseNote = {
@@ -412,6 +415,19 @@ export function TwinNotesPanel({
     [twins, promoteKinds, substrate],
   );
   const promoteContextReady = promoteReadiness.promote_ready;
+  /**
+   * Residual (auq): chase selected float|full readiness via pure helper
+   * (selection + soft budget-before-fire · force unlock).
+   */
+  const chaseReadiness = useMemo(
+    () =>
+      twinChaseSelectionReadiness({
+        selected_count: selectedNoteIds.size,
+        budget_would_exceed: chaseBudgetWarn,
+        force_over_budget: chaseForceBudget,
+      }),
+    [selectedNoteIds.size, chaseBudgetWarn, chaseForceBudget],
+  );
   // Residual (aot): single normalize for chase titles/stamps (aoc/aoo).
   const chaseDomains = useMemo(
     () => normalizeDomainSubjects(domainSubjects),
@@ -1333,42 +1349,43 @@ export function TwinNotesPanel({
         >
           Promote selected ({selectedNoteIds.size})
         </button>
-        {/* Residual (mz/aoo): chase multi-selected twins as floating deep research.
-            Residual (aoo): titles/stamps surface domain-aware goal_hint when subjects set. */}
+        {/* Residual (mz/aoo/auq): chase multi-selected twins as floating deep research.
+            Residual (aoo): titles/stamps surface domain-aware goal_hint when subjects set.
+            Residual (auq): pure twinChaseSelectionReadiness gates float|full. */}
         <button
           type="button"
           data-testid="twin-chase-selected"
           data-research-domains={chaseDomainsCsv || ""}
           data-domain-aware-chase={String(chaseDomainAware)}
+          data-chase-ready={String(chaseReadiness.chase_ready)}
+          data-selected-count={String(chaseReadiness.selected_count)}
+          data-budget-blocks={String(chaseReadiness.budget_blocks)}
+          data-html-first={String(chaseReadiness.html_first)}
           onClick={() => void chaseSelected("floating")}
-          disabled={
-            busy ||
-            selectedNoteIds.size === 0 ||
-            (chaseBudgetWarn && !chaseForceBudget)
-          }
+          disabled={busy || !chaseReadiness.chase_ready}
           title={
             chaseDomainAware
               ? `Spin floating deep research from multi-selected twin notes (questions preferred · research_domains=${chaseDomainsCsv})`
-              : "Spin floating deep research from multi-selected twin notes (questions preferred)"
+              : chaseReadiness.chase_title
           }
         >
-          Chase selected ({selectedNoteIds.size})
+          Chase selected ({chaseReadiness.selected_count})
         </button>
         <button
           type="button"
           data-testid="twin-chase-selected-full"
           data-research-domains={chaseDomainsCsv || ""}
           data-domain-aware-chase={String(chaseDomainAware)}
+          data-chase-ready={String(chaseReadiness.chase_ready)}
+          data-selected-count={String(chaseReadiness.selected_count)}
+          data-budget-blocks={String(chaseReadiness.budget_blocks)}
+          data-html-first={String(chaseReadiness.html_first)}
           onClick={() => void chaseSelected("full")}
-          disabled={
-            busy ||
-            selectedNoteIds.size === 0 ||
-            (chaseBudgetWarn && !chaseForceBudget)
-          }
+          disabled={busy || !chaseReadiness.chase_ready}
           title={
             chaseDomainAware
               ? `Spin full working-region deep research from multi-selected twin notes · research_domains=${chaseDomainsCsv}`
-              : "Spin full working-region deep research from multi-selected twin notes"
+              : chaseReadiness.chase_title
           }
         >
           Chase full

@@ -1,0 +1,23 @@
+# inventory-auq · pure twinChaseSelectionReadiness (multi-select chase gate)
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: auq
+date: 2026-07-10
+parent_tip: 1d23dd6f4 (aup)
+
+## Closed
+- workspace/twinChaseSelectionReadiness.ts pure helper
+  chase_ready · selected_count · budget_blocks · soft force unlock
+- TwinNotesPanel chase float|full gated by pure helper
+- Stamps data-chase-ready · data-budget-blocks · data-html-first
+- Soft budget-before-fire on recursive note-taker chase path
+- vitest 38 green (3 pure + 35 panel) · auq-vitest.log in SCRATCH
+
+## Doctrine
+Multi-select twin chase → floating|full DR · never invent selection · soft budget
+
+## Next
+aur+ offline product residual outside thrash
+Avoid: twin chase thrash after auq · twin promote aum · spawn-merge aup ·
+pure-gate catalog · presets · MO · scorecard · vision · dogfood
+Prefer: competitive non-twin residual · knowledge · model non-install
+Operator merge PR #465 remains P0 (gated)
