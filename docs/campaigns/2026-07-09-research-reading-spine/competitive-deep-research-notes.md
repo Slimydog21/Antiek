@@ -4293,3 +4293,8 @@ P0 PR #465. Pivot atg+.
 ResearchLaunchBudgetPanel projection-metrics stamps competitiveDurationBand
 (parity DecisionTree atf). Launch Ask budget-before-fire includes multi-minute
 horizon honesty. vitest ResearchLaunchBudgetPanel 12 green. P0 PR #465. Pivot ath+.
+
+## Residual ath · 2026-07-10 — HostedHtml twin_draft_selected honesty
+Twin multi-select draft float stamps honesty chrome + Port path (selected
+insights/questions · L3 deferred · promote≠invent). Scorecard · twin matrix ·
+dual-gate L3. vitest HostedHtml 40 green. P0 PR #465. Pivot ati+.

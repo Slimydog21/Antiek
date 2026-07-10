@@ -388,6 +388,8 @@ export default function HostedHtmlDocumentHost(
   // Residual (atc): twin cross-asset merge float honesty + Port path (recursive
   // note-taker multi-asset merge · never invent live L3 seed).
   const isTwinCrossAssetMerge = payloadSource === "twin_cross_asset_merge";
+  // Residual (ath): twin multi-select draft float honesty + Port path (recursive
+  // note-taker selected notes · never invent live L3 seed).
   const isTwinDraftSelected = payloadSource === "twin_draft_selected";
   // Residual (vk): multi-select written analysis float (not doc merge).
   const isCollectiveWrittenAnalysis =
@@ -620,7 +622,18 @@ export default function HostedHtmlDocumentHost(
                           .filter(Boolean)
                           .join("\n")
                           .slice(0, 900)
-                      : twinSeedBodyBase;
+                      : isTwinDraftSelected
+                        ? [
+                            twinSeedBodyBase,
+                            "",
+                            "Port path: Twin multi-select draft float (selected insights/questions · recursive note-taker · HTML-first · never invent live L3 twin seed · promote≠invent body).",
+                            assetId ? `document_id=${assetId}` : "",
+                            "source=twin_draft_selected · twin auto-seed if empty · multi-select draft before promote/chase/write.",
+                          ]
+                            .filter(Boolean)
+                            .join("\n")
+                            .slice(0, 900)
+                        : twinSeedBodyBase;
 
   return (
     <div
@@ -1132,6 +1145,53 @@ export default function HostedHtmlDocumentHost(
                   <a
                     href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l3-twin"
                     data-testid="hosted-html-twin-cross-asset-dual-gate-l3-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="Dual-gate L3 live twin seed checklist (never enables injectors)"
+                  >
+                    Dual-gate · L3 twin seed
+                  </a>
+                </p>
+              </div>
+            ) : null}
+            {/* Residual (ath): twin multi-select draft float honesty. */}
+            {isTwinDraftSelected ? (
+              <div
+                className="text-[11px] font-mono opacity-80 mt-1 space-y-1"
+                data-testid="hosted-html-twin-draft-selected-honesty"
+                data-twin-seed-path="twin_draft_selected"
+                data-auto-seed-if-empty="true"
+                data-html-first="true"
+                data-view-format="html"
+                data-l3-live-seed="deferred"
+                data-multi-select-draft="true"
+                role="status"
+              >
+                <p>
+                  Twin multi-select draft · selected insights/questions · twin
+                  auto-seed if empty (recursive note-taker) · draft before
+                  promote/chase/write · never invent live L3 seed ·
+                  promote≠invent body · HTML · not PDF
+                </p>
+                <p className="space-x-3">
+                  <a
+                    href="/settings#settings-competitive-dr-scorecard"
+                    data-testid="hosted-html-twin-draft-scorecard-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="Settings competitive DR scorecard (twin multi-select draft)"
+                  >
+                    Settings · competitive DR scorecard
+                  </a>
+                  <a
+                    href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md"
+                    data-testid="hosted-html-twin-draft-twin-matrix-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="FUTURE-AGENT twin note-taker completeness matrix"
+                  >
+                    FUTURE · twin completeness matrix
+                  </a>
+                  <a
+                    href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l3-twin"
+                    data-testid="hosted-html-twin-draft-dual-gate-l3-link"
                     className="underline opacity-90 hover:opacity-100"
                     title="Dual-gate L3 live twin seed checklist (never enables injectors)"
                   >

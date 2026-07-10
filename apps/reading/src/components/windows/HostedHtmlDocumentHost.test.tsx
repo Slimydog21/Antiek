@@ -850,6 +850,48 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(seedBody).toMatch(/Port path: Twin cross-asset merge/i);
   });
 
+  it("stamps twin_draft_selected host honesty (ath)", () => {
+    render(
+      <HostedHtmlDocumentHost
+        document_id="twin_draft_sel_1"
+        title="Twin multi-select draft"
+        view_format="html"
+        source="twin_draft_selected"
+        html="<p>Selected insights and questions</p>"
+      />,
+    );
+    const honesty = screen.getByTestId(
+      "hosted-html-twin-draft-selected-honesty",
+    );
+    expect(honesty.getAttribute("data-twin-seed-path")).toBe(
+      "twin_draft_selected",
+    );
+    expect(honesty.getAttribute("data-html-first")).toBe("true");
+    expect(honesty.getAttribute("data-multi-select-draft")).toBe("true");
+    expect(honesty.getAttribute("data-l3-live-seed")).toBe("deferred");
+    expect(honesty.textContent).toMatch(/Twin multi-select draft/i);
+    expect(honesty.textContent).toMatch(/recursive note-taker/i);
+    expect(
+      screen
+        .getByTestId("hosted-html-twin-draft-twin-matrix-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix/);
+    expect(
+      screen
+        .getByTestId("hosted-html-twin-draft-dual-gate-l3-link")
+        .getAttribute("href") || "",
+    ).toMatch(/#l3-twin/);
+    const seedBody =
+      screen.getByTestId("twin-notes-panel-stub").getAttribute("data-seed-body") ||
+      "";
+    expect(seedBody).toMatch(/Port path: Twin multi-select draft/i);
+    expect(
+      screen.getByTestId("hosted-html-open-write").getAttribute(
+        "data-write-seed-source",
+      ),
+    ).toBe("twin_draft_selected");
+  });
+
   it("stamps collective_unit_prompt honesty (ts)", () => {
     render(
       <HostedHtmlDocumentHost
