@@ -181,9 +181,18 @@ export function SessionFlywheelPanel({
             href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
             data-testid="session-flywheel-dual-gate-checklist-link"
             className="underline opacity-80 hover:opacity-100"
-            title="Dual-gate L1–L4 checklist (prep only; offline default)"
+            title="Dual-gate L1 arxiv hydrate checklist (prep only · offline default)"
           >
-            Dual-gate L1–L4 checklist
+            Dual-gate L1 arxiv checklist
+          </a>
+          {/* Residual (aas): L2 Substack section (parity aal–aaq · session land). */}
+          <a
+            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l2-substack"
+            data-testid="session-flywheel-dual-gate-l2-link"
+            className="underline opacity-80 hover:opacity-100"
+            title="Dual-gate L2 Substack hydrate checklist (prep only · factory + ToS)"
+          >
+            Dual-gate L2 Substack checklist
           </a>
         </p>
         {/* Residual (lt): model+budget+depth before/after flywheel complete. */}

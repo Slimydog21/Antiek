@@ -1919,3 +1919,7 @@ SESSION-ARC-aah-aaq documents write-seed provenance (aah–aaj) + L2 Substack
 dual-gate deep-link wave (aal–aaq). FUTURE tip re-anchored. Competitive delta:
 compaction-safe multi-agent handoff; operator merge PR #465 highest leverage.
 
+## Residual aas · 2026-07-10 — SessionFlywheel L2 Substack dual-gate deep-link
+Session land dual-gate prep deep-links #l2-substack (parity aal–aaq). Competitive
+delta: session flywheel complete path surfaces Substack hydrate prep beside arxiv.
+
