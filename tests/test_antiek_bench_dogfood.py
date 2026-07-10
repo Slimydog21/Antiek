@@ -61,6 +61,24 @@ def test_dogfood_suite_covers_task_classes():
     assert "dogfood-book-turing-computable-numbers" in ids
 
 
+def test_dogfood_fixture_payload_includes_shannon_turing_v11() -> None:
+    """Residual (wt): Settings payload lists Shannon+Turing book_qa (v11)."""
+    from substrate.antiek_bench.dogfood_fixtures import dogfood_fixture_payload
+
+    payload = dogfood_fixture_payload(include_html=True)
+    assert payload["suite_version"] == COMPETITIVE_DOGFOOD_VERSION
+    assert payload["suite_version"] == "suite-competitive-dogfood-v11"
+    assert payload["item_count"] >= 17
+    assert payload["auto_promoted"] is False
+    assert payload["by_task_class"].get("book_qa", 0) >= 6
+    ids = {i["item_id"] for i in payload["items"]}
+    assert "dogfood-book-shannon-communication" in ids
+    assert "dogfood-book-turing-computable-numbers" in ids
+    assert "v11" in (payload.get("html") or "") or "turing" in (
+        payload.get("html") or ""
+    ).lower() or "shannon" in (payload.get("html") or "").lower()
+
+
 def test_register_does_not_auto_activate():
     reg = SuiteRegistry()
     register_suite(default_core_suite(), registry=reg, make_active=True)

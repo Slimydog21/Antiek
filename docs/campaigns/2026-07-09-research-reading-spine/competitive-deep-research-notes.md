@@ -1451,3 +1451,8 @@ after Shannon/Turing STEM domain chips + dual-gate honesty wave.
 Marketplace catalog API by_subject stamps information_theory + computability
 with Shannon/Turing entries. Competitive delta: domain chips are server-honest
 not client-invented.
+
+## Residual wt · 2026-07-10 — dogfood payload Shannon+Turing v11
+dogfood_fixture_payload lists suite-competitive-dogfood-v11 with Shannon and
+Turing book_qa items. Competitive delta: Settings dogfood postures are
+substrate-true (propose≠promote).

@@ -1,0 +1,19 @@
+# inventory-wt · dogfood fixture payload Shannon+Turing v11 honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: wt
+date: 2026-07-10
+tip_before: 683fe368 (ws)
+
+## Problem
+Settings dogfood postures for Shannon/Turing (wd/wl) needed substrate payload
+proof that dogfood_fixture_payload lists v11 items (not UI mock-only).
+
+## Fix
+- test_dogfood_fixture_payload_includes_shannon_turing_v11
+- suite_version v11 · item_count ≥17 · book_qa ≥6 · Shannon+Turing ids
+
+## Verified
+pytest tests/test_antiek_bench_dogfood.py → 5 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)
