@@ -4071,8 +4071,8 @@ export default function Settings() {
                 <strong>shipped</strong> · ND never router (L7)
               </li>
               <li data-status="shipped" data-testid="competitive-dr-twin-notes">
-                Recursive twin note-taker — <strong>shipped offline</strong> ·
-                L3 live seed dual-gate
+                Recursive twin note-taker · promote depth-graph unit≡node (ajn/ajo)
+                — <strong>shipped offline</strong> · L3 live seed dual-gate
               </li>
               <li data-status="deferred" data-testid="competitive-dr-live-hydrate">
                 Live arxiv/Substack body hydrate —{" "}

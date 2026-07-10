@@ -561,6 +561,13 @@ export type TwinPromoteContextResponse = {
   kinds?: Array<"insight" | "question"> | string[] | null;
   /** Residual (mx/my): multi-select note_ids echoed for audit honesty. */
   note_ids?: string[] | null;
+  /**
+   * Residual (ajo/ajn): content-addressed depth-graph honesty on promote payload.
+   */
+  graph_node_ids?: string[];
+  unique_graph_node_count?: number;
+  unique_unit_id_count?: number;
+  content_addressed_alignment?: boolean;
   view_format: "html" | string;
   product_panel: string;
   source: string;

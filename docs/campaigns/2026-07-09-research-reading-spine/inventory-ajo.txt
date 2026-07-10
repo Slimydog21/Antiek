@@ -1,0 +1,20 @@
+# inventory-ajo · twin promote payload depth-graph honesty (substrate)
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ajo
+date: 2026-07-10
+parent_tip: 53bdf6d2 (ajn)
+
+## Closed
+- twin_promote_context_payload fields:
+  - graph_node_ids · unique_graph_node_count · unique_unit_id_count
+  - content_addressed_alignment
+  - notes strip unique_nodes · unit≡node
+- twin_context_html Depth-graph honesty strip + [unit_id] labels
+- TwinPromoteContextResponse TS types
+- Settings competitive-dr-twin-notes row names depth-graph (ajn/ajo)
+- pytest twin promote 15 green
+- proof: SCRATCH residual-ajo-pytest.log
+
+## Next
+ajp+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

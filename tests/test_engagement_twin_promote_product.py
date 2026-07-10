@@ -71,6 +71,16 @@ def test_promote_context_idempotent_double_run():
     assert p1["promoted"][0]["graph_node_id"] == p2["promoted"][0]["graph_node_id"]
     assert p1["context_units"][0]["unit_id"] == p2["context_units"][0]["unit_id"]
     assert "content-addressable" in p1["html"] or "Attention" in p1["html"]
+    # Residual (ajo): depth-graph honesty fields on promote payload + HTML.
+    assert p1["unique_graph_node_count"] == 1
+    assert p1["unique_unit_id_count"] == 1
+    assert p1["content_addressed_alignment"] is True
+    assert p1["graph_node_ids"] == [p1["promoted"][0]["graph_node_id"]]
+    assert p1["graph_node_ids"] == p2["graph_node_ids"]  # idempotent
+    assert "Depth-graph" in (p1.get("html") or "")
+    assert "content_addressed_alignment=true" in (p1.get("html") or "")
+    assert p1["promoted"][0]["graph_node_id"] in (p1.get("html") or "")
+    assert any("unique_nodes=1" in n for n in (p1.get("notes") or []))
 
 
 def test_api_promote_context_double_run():

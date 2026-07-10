@@ -3015,3 +3015,8 @@ Pivot ajn+ outside thrash.
 Twin promote→context metrics stamp content-addressed graph_node_ids, unique counts,
 and unit≡node alignment for recursive note-taker depth-graph honesty. FUTURE twin
 matrix deep-link. vitest TwinNotes 30 green. P0 operator merge PR #465. Pivot ajo+.
+
+## Residual ajo · 2026-07-10 — twin promote payload depth-graph honesty
+twin_promote_context_payload emits graph_node_ids · unique counts ·
+content_addressed_alignment; HTML depth-graph strip. Substrate parity with UI
+ajn. pytest twin promote 15 green. P0 operator merge PR #465. Pivot ajp+.

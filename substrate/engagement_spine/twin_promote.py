@@ -391,6 +391,7 @@ def twin_promote_context_payload(
     Residual (mq): optional ``kinds`` filter (insight | question) for selective
     promote — recursive note-taker merge of one twin class into context.
     Residual (mx): optional ``note_ids`` multi-select for per-note promote.
+    Residual (ajo/ajn): depth-graph honesty fields (graph_node_ids · unit≡node).
     """
     if not asset_id or not str(asset_id).strip():
         raise ValueError("asset_id is required")
@@ -427,6 +428,22 @@ def twin_promote_context_payload(
         note_ids=note_ids_norm,
     )
     raw = result.to_dict()
+    # Residual (ajo): content-addressed depth-graph honesty for agent-readable audit.
+    graph_node_ids = [
+        str(p.get("graph_node_id") or "").strip()
+        for p in raw["promoted"]
+        if isinstance(p, dict) and str(p.get("graph_node_id") or "").strip()
+    ]
+    unique_graph = list(dict.fromkeys(graph_node_ids))
+    unit_ids = [
+        str(u.get("unit_id") or "").strip()
+        for u in raw["context_units"]
+        if isinstance(u, dict) and str(u.get("unit_id") or "").strip()
+    ]
+    unique_units = list(dict.fromkeys(unit_ids))
+    content_addressed_alignment = bool(unique_graph) and set(unique_graph) == set(
+        unique_units
+    )
     payload: dict[str, Any] = {
         "asset_id": asset_id.strip(),
         "promoted_count": len(result.promoted),
@@ -436,6 +453,10 @@ def twin_promote_context_payload(
         "query": query,
         "kinds": list(kinds_norm) if kinds_norm is not None else ["insight", "question"],
         "note_ids": list(note_ids_norm) if note_ids_norm is not None else [],
+        "graph_node_ids": unique_graph,
+        "unique_graph_node_count": len(unique_graph),
+        "unique_unit_id_count": len(unique_units),
+        "content_addressed_alignment": content_addressed_alignment,
         "view_format": "html",
         "product_panel": "twin_promote_context",
         "source": "engagement_spine.twin_promote",
@@ -456,12 +477,18 @@ def twin_promote_context_payload(
         payload["notes"] = [
             "Twins promoted into content-addressed context units for research prompts.",
             "Re-promote is idempotent (same graph_node_id / unit_id for same text).",
+            (
+                f"Depth-graph honesty: unique_nodes={len(unique_graph)} · "
+                f"unit≡node={str(content_addressed_alignment).lower()}"
+            ),
         ]
     if include_html:
         payload["html"] = twin_context_html(
             result.context_units,
             document_id=f"twin-promote-{asset_id.strip()}",
             title=f"Twin promote context · {asset_id.strip()}",
+            unique_graph_node_count=len(unique_graph),
+            content_addressed_alignment=content_addressed_alignment,
         )
     return payload
 
@@ -471,8 +498,14 @@ def twin_context_html(
     *,
     document_id: str = "twin-context",
     title: str = "Twin-derived research context",
+    unique_graph_node_count: int | None = None,
+    content_addressed_alignment: bool | None = None,
 ) -> str:
-    """HTML-first human view of twin-derived context units (never PDF)."""
+    """HTML-first human view of twin-derived context units (never PDF).
+
+    Residual (ajo): optional depth-graph honesty strip when promote payload
+    provides unique node counts and unit≡node alignment.
+    """
     from .project import project_to_html
 
     blocks: list[dict[str, Any]] = [
@@ -482,6 +515,29 @@ def twin_context_html(
             "content": [{"type": "text", "text": title}],
         }
     ]
+    # Residual (ajo): agent-readable depth-graph honesty on promote HTML.
+    if unique_graph_node_count is not None or content_addressed_alignment is not None:
+        align = (
+            str(bool(content_addressed_alignment)).lower()
+            if content_addressed_alignment is not None
+            else "unknown"
+        )
+        blocks.append(
+            {
+                "type": "paragraph",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            f"Depth-graph · unique_nodes="
+                            f"{unique_graph_node_count if unique_graph_node_count is not None else 'n/a'}"
+                            f" · content_addressed_alignment={align}"
+                            " · view: HTML · never invent graph edges"
+                        ),
+                    }
+                ],
+            }
+        )
     if not units:
         blocks.append(
             {
@@ -490,13 +546,15 @@ def twin_context_html(
             }
         )
     for u in units:
-        label = f"[{u.kind}] {u.text}"
+        # Residual (ajo): stamp unit_id (content-addressed graph node) in label.
+        label = f"[{u.kind}] [{u.unit_id}] {u.text}"
         blocks.append(
             {
                 "type": "paragraph",
                 "attrs": {
                     "data-unit-id": u.unit_id,
                     "data-twin-note-id": u.twin_note_id,
+                    "data-graph-node-id": u.unit_id,
                 },
                 "content": [{"type": "text", "text": label}],
             }
