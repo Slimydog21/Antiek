@@ -1528,4 +1528,75 @@ describe("MarketplaceHost mode", () => {
     expect(call.goal_hint).toMatch(/marketplace HTML host/);
     expect(call.goal_hint).toMatch(/Experimental Researches/);
   });
+
+  it("launches Maxwell DR with electricity domains in goal_hint (tp)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-maxwell-em",
+          title: "A Treatise on Electricity and Magnetism",
+          author: "James Clerk Maxwell",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: [
+            "physics",
+            "mathematics",
+            "science",
+            "technology",
+            "electricity",
+          ],
+        },
+      ],
+      count: 1,
+      view_format: "html",
+      free_count: 1,
+      public_domain_count: 1,
+      payment_rails: "manual_receipt_only",
+    });
+    hostBookIntoAccount.mockResolvedValue({
+      document_id: "hdoc_maxwell_dr",
+      owner_id: "tech-researcher",
+      book_id: "pd-maxwell-em",
+      content_hash: "m2",
+      title: "A Treatise on Electricity and Magnetism",
+      license_class: "public_domain",
+      already_hosted: false,
+      source_format: "html",
+      library_document_ids: ["hdoc_maxwell_dr"],
+      view_format: "html",
+      html: "<p>electromagnetic field waves</p>",
+    });
+    fetchAccountLibrary.mockResolvedValue({
+      owner_id: "tech-researcher",
+      documents: [],
+      count: 0,
+      view_format: "html",
+      html: "",
+    });
+    render(<MarketplaceHost ownerId="tech-researcher" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("catalog-entry-pd-maxwell-em")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /host into account/i }));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("marketplace-host-deep-research-full"),
+      ).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("marketplace-host-deep-research-full"));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalled();
+    });
+    const call = launchFloatingDeepResearch.mock.calls.at(-1)?.[0] as {
+      asset_id: string;
+      goal_hint: string;
+      view_mode: string;
+    };
+    expect(call.asset_id).toBe("hdoc_maxwell_dr");
+    expect(call.view_mode).toBe("full");
+    expect(call.goal_hint).toMatch(/domains=.*electricity/);
+    expect(call.goal_hint).toMatch(/domains=.*mathematics/);
+    expect(call.goal_hint).toMatch(/Treatise on Electricity/);
+  });
 });

@@ -1029,3 +1029,8 @@ Hosting Faraday free PD then launching floating deep research puts
 domains=electricity (and related STEM tags) into goal_hint. Competitive
 delta: free marketplace STEM hosts feed domain-aware deep research without
 re-entering domain context by hand (reading ≡ research).
+
+## Residual tp · 2026-07-10 — Maxwell DR full goal_hint electricity domains
+Hosting Maxwell free PD then launching full deep research puts electricity
+and mathematics domains into goal_hint (parity Faraday float to). Competitive
+delta: full working-region research inherits free STEM catalog domain tags.
