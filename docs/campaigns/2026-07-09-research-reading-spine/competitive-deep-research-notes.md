@@ -4327,3 +4327,8 @@ marketplaceHostedOpenReadiness: view_format=html ∧ body ∧ document_id → op
 Open hosted book window CTAs stamp html-first · never-pdf · title honesty.
 Parity MO deposit ate for seamless HTML account port. vitest 48 green.
 P0 PR #465. Pivot atn+.
+
+## Residual atn · 2026-07-10 — offline catalog ate/atj/atm pure surfaces
+COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES += marketplace_hosted_open_readiness ·
+competitive_duration_band_foresight · moil_deposit_html_readiness.
+Scorecard honesty tracks pure contracts. vitest 6 green. P0 PR #465. Pivot ato+.

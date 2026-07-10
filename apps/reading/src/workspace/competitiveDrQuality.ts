@@ -361,6 +361,12 @@ export const COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES = [
   "highlight_float_full_path_choices",
   // Residual (asr): highlight→DR launch readiness pure helper (asq) on reading hosts.
   "highlight_dr_launch_readiness",
+  // Residual (atn): marketplace hosted open pure readiness (atm) seamless HTML port.
+  "marketplace_hosted_open_readiness",
+  // Residual (atn): multi-minute duration band pure helper (atj) for budget foresight.
+  "competitive_duration_band_foresight",
+  // Residual (atn): MO deposit HTML open pure readiness (ate).
+  "moil_deposit_html_readiness",
 ] as const;
 
 export type CompetitiveDrOfflineProductSurface =

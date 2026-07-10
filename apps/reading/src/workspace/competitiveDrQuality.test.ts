@@ -115,6 +115,16 @@ describe("competitiveDrQuality workspace pure helpers (apw)", () => {
     expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
       "marketplace_free_host_readiness",
     );
+    // Residual (atn): ate/atj/atm pure-helper product surfaces for scorecard honesty.
+    expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
+      "marketplace_hosted_open_readiness",
+    );
+    expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
+      "competitive_duration_band_foresight",
+    );
+    expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
+      "moil_deposit_html_readiness",
+    );
     const cat = competitiveDrOfflineSurfaceCatalog();
     expect(cat.live_injectors_deferred).toBe(true);
     expect(cat.notdiamond_is_router).toBe(false);
