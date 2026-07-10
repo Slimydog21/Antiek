@@ -30,6 +30,9 @@ This continuation: **270+ residual ships** from vy tip `8e280766` · wave **afn�
 ### P0 — Operator merge PR #465
 **Highest leverage remaining.** Agents never merge main/prod.
 
+### L5 digital book port (when unlocked)
+See **FUTURE-AGENT-SPEC-l5-digital-book-seamless-port.md** · offline purchase honesty **ahe**.
+
 ### P1 next offline (residual **ahc+**)
 Outside thrash: competitive depth · paid L5 design · MO multi-provider (other agents own live MO stack — avoid collision). Leave free-STEM · merge-path · dogfood · pub quick-call thrash.
 

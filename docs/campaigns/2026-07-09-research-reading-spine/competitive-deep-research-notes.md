@@ -2692,3 +2692,8 @@ Host land metrics stamp purchased-path for non-PD books. Competitive delta:
 digital book buy → seamless Antiek HTML account port without inventing live
 checkout rails. vitest MarketplaceHost 41 green. P0 operator merge PR #465.
 Pivot ahf+ outside thrash.
+
+## Residual ahf · 2026-07-10 — FUTURE-AGENT L5 digital book seamless port spec
+Executable brief for paid digital book → HTML account port when L5 unlocks.
+Builds on ahe offline purchase path honesty. Does not invent live checkout.
+P0 operator merge PR #465. Pivot ahg+ offline product residual.
