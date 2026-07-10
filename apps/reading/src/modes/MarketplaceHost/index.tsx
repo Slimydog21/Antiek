@@ -67,6 +67,8 @@
  * Residual (ahe): paid purchase+host seamless port honesty (manual receipt ·
  * L5 deferred · HTML host into account · never invent live checkout).
  * Residual (ahm): host-land DR budget foresight includes pub-ref count (parity ahl).
+ * Residual (aho): twin seed body includes free/purchased path honesty for
+ * recursive note-taker substrate after host/purchase.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -770,7 +772,7 @@ export default function MarketplaceHost({
     }
   }
 
-  /** Residual (gj)/(hl)/(mo): offline twin seed for hosted book (non-fatal; honest). */
+  /** Residual (gj)/(hl)/(mo)/(aho): offline twin seed for hosted book (non-fatal; honest). */
   async function seedHostedTwins(result: HostResultResponse) {
     setTwinSeedStatus(null);
     setTwinSeedHonesty(null);
@@ -787,11 +789,18 @@ export default function MarketplaceHost({
         subjects.length > 0
           ? `Research domains: ${subjects.join(", ")}.\n\n`
           : "";
-      const bodyText =
-        (subjectPrefix + (plain || result.title || result.document_id)).slice(
-          0,
-          2200,
-        );
+      // Residual (aho): free vs purchased path honesty in twin substrate.
+      const isFreeHost =
+        Boolean(entry?.is_free) ||
+        result.license_class === "public_domain";
+      const portHonesty = isFreeHost
+        ? "Port path: free public-domain HTML host into account (no payment rails).\n\n"
+        : "Port path: purchased HTML host via manual receipt (L5 live payment deferred · never invent entitlement).\n\n";
+      const bodyText = (
+        subjectPrefix +
+        portHonesty +
+        (plain || result.title || result.document_id)
+      ).slice(0, 2200);
       const seeded = await seedTwinNotes({
         asset_id: result.document_id,
         title: result.title || result.document_id,

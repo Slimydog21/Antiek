@@ -427,7 +427,7 @@ describe("MarketplaceHost mode", () => {
     expect(writeLink.getAttribute("data-seamless-host-write")).toBe("true");
     expect(writeLink.getAttribute("data-seamless-port")).toBe("true");
     expect(writeLink.getAttribute("data-library-landed")).toBe("true");
-    // Residual (gj/mo): offline twin seed after host with domain subjects.
+    // Residual (gj/mo/aho): offline twin seed after host with domain subjects + free port honesty.
     await waitFor(() => {
       expect(seedTwinNotes).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -436,6 +436,11 @@ describe("MarketplaceHost mode", () => {
           body_text: expect.stringMatching(/Research domains: literature/i),
         }),
       );
+      const body = String(
+        (seedTwinNotes.mock.calls.at(-1)?.[0] as { body_text?: string })
+          ?.body_text || "",
+      );
+      expect(body).toMatch(/free public-domain HTML host/i);
     });
     await waitFor(() => {
       const status = screen.getByTestId("marketplace-twin-seed-status");
@@ -814,6 +819,16 @@ describe("MarketplaceHost mode", () => {
     expect(call.content_b64).toBeTruthy();
     await waitFor(() => {
       expect(screen.getByTestId("host-result").textContent).toContain("hdoc_buy");
+    });
+    // Residual (aho): twin seed after purchase includes purchased port honesty.
+    await waitFor(() => {
+      expect(seedTwinNotes).toHaveBeenCalled();
+      const body = String(
+        (seedTwinNotes.mock.calls.at(-1)?.[0] as { body_text?: string })
+          ?.body_text || "",
+      );
+      expect(body).toMatch(/purchased HTML host via manual receipt/i);
+      expect(body).toMatch(/L5 live payment deferred/i);
     });
     expect(screen.getByTestId("hosted-html").innerHTML).toMatch(/purchase|Hosted/i);
     expect(

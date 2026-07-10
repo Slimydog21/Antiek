@@ -2741,3 +2741,8 @@ Suite suite-competitive-dogfood-v24 adds wrestle fixtures for budget foresight
 with multi-source pubs (ahg–ahm) and paid purchase seamless port honesty (ahe).
 item_count 38 · wrestle=25. Settings spine v24. pytest dogfood 5 · Settings 36 green.
 P0 operator merge PR #465. Pivot aho+ outside thrash.
+
+## Residual aho · 2026-07-10 — twin seed free/purchased port honesty
+Marketplace seedHostedTwins body prefixes free PD vs purchased manual-receipt
+port honesty so recursive note-taker substrate records path without inventing
+L5 rails. vitest MarketplaceHost 41 green. P0 operator merge PR #465. Pivot ahp+.
