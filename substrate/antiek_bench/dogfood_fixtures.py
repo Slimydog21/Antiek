@@ -31,7 +31,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (afv): v17 learns Select recent path + ResearchWorkstation spine.
 # Residual (afz): v18 learns highlight → floating DR path honesty (afw–afx).
 # Residual (agh): v19 learns Gödel foundations free PD book_qa.
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v19"
+# Residual (agp): v20 learns TalkToBook + MetaReading twin note-taker paths.
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v20"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -524,6 +525,44 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "floating",
                 "deep",
                 "research",
+            ),
+        ),
+        # Residual (agp/agm): TalkToBook twin note-taker on book asset.
+        SuiteItem(
+            item_id="dogfood-wrestle-talk-to-book-twins",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with TalkToBook recursive note-taker path: when open Talk to this "
+                "book mounts TwinNotesPanel with data-seamless-talk-twins · autoLoad · "
+                "autoSeedIfEmpty for documentId, how should Antiek-bench learn models that "
+                "keep book conversation twin insights/questions substrate honest without "
+                "claiming live L3 note_taker seed is online?"
+            ),
+            expected_keywords=(
+                "talk",
+                "twin",
+                "book",
+                "seamless",
+                "note",
+            ),
+        ),
+        # Residual (agp/agn): MetaReading twin note-taker on synthesis asset.
+        SuiteItem(
+            item_id="dogfood-wrestle-meta-reading-twins",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with MetaReading recursive note-taker path: when a corpus "
+                "meta-reading deliverable mounts TwinNotesPanel with "
+                "data-seamless-meta-twins · autoLoad · autoSeedIfEmpty for asset_id, "
+                "how should Antiek-bench weekly rewrite learn models that keep synthesis "
+                "asset twin substrate continuous with reading ≡ research?"
+            ),
+            expected_keywords=(
+                "meta",
+                "twin",
+                "reading",
+                "seamless",
+                "asset",
             ),
         ),
     )

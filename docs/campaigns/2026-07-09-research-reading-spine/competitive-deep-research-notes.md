@@ -2583,3 +2583,8 @@ insights/questions substrate (parity TalkToBook agm). vitest MetaReading 13 gree
 ## Residual ago · 2026-07-10 — SESSION-ARC agm–agn reading twins
 Handoff: TalkToBook + MetaReading TwinNotes recursive note-taker. Reading
 surface twins complete offline. P0 operator merge PR #465. Pivot agp+ outside thrash.
+
+## Residual agp · 2026-07-10 — dogfood v20 reading twins fixtures
+Suite suite-competitive-dogfood-v20 adds wrestle fixtures for TalkToBook twins
+(agm) and MetaReading twins (agn). Settings spine postures v20. pytest dogfood 5 ·
+Settings 36 green. propose≠promote.
