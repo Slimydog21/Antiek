@@ -106,6 +106,8 @@ import {
  * (propose≠promote · never auto-promote).
  * Residual (ava): pure offlineBenchRunReadiness drives Run offline dogfood CTA
  * (week required · offline only · never auto-promote).
+ * Residual (avb): same pure week gate drives Refresh leaderboard CTA
+ * (hard-to-vary reuse · no second pure for identical week contract).
  */
 export default function Settings() {
   const tier = useViewportTier();
@@ -496,11 +498,22 @@ export default function Settings() {
   }
 
   async function onRefreshLeaderboard() {
+    // Residual (avb): pure week gate (reuse offlineBenchRunReadiness).
+    const gate = offlineBenchRunReadiness({ week_id: leaderboardWeek });
+    if (!gate.run_ready) {
+      setLeaderboardError(
+        gate.run_title.replace(
+          /running offline dogfood suite/i,
+          "refreshing leaderboard",
+        ),
+      );
+      return;
+    }
     setLeaderboardBusy(true);
     setLeaderboardError(null);
     try {
       const lb = await fetchAntiekBenchLeaderboard({
-        weekId: leaderboardWeek,
+        weekId: gate.week_id,
         includeHtml: true,
       });
       if (lb.view_format !== "html") {
@@ -3041,8 +3054,31 @@ export default function Settings() {
               <button
                 type="button"
                 data-testid="antiek-bench-leaderboard-refresh"
+                // Residual (avb): reuse offlineBenchRunReadiness week gate
+                // (identical contract · hard to vary · no parallel pure).
+                data-run-ready={String(offlineBenchRunReady.run_ready)}
+                data-block-reason={offlineBenchRunReady.block_reason}
+                data-week-id={offlineBenchRunReady.week_id}
+                data-offline-only={String(offlineBenchRunReady.offline_only)}
+                data-never-auto-promote={String(
+                  offlineBenchRunReady.never_auto_promote,
+                )}
+                data-propose-neq-promote={String(
+                  offlineBenchRunReady.propose_neq_promote,
+                )}
+                data-html-first={String(offlineBenchRunReady.html_first)}
                 onClick={() => void onRefreshLeaderboard()}
-                disabled={leaderboardBusy || !leaderboardWeek.trim()}
+                disabled={
+                  leaderboardBusy || !offlineBenchRunReady.run_ready
+                }
+                title={
+                  offlineBenchRunReady.run_ready
+                    ? `Refresh weekly leaderboard for ${offlineBenchRunReady.week_id} (offline ranking · advisory only · never auto-route)`
+                    : offlineBenchRunReady.run_title.replace(
+                        /running offline dogfood suite/i,
+                        "refreshing leaderboard",
+                      )
+                }
                 className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
               >
                 {leaderboardBusy ? "Loading…" : "Refresh leaderboard"}
