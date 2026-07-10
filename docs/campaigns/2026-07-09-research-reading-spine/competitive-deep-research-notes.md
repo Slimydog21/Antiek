@@ -1480,3 +1480,7 @@ oil surface navigates deferred live-step policy without inventing injectors
 ## Residual wy · 2026-07-10 — Settings dual-gate L4 checklist #l4-moil
 Settings L4 checklist deep-links #l4-moil (parity MO wx). Competitive delta:
 decision-tree dual-gate prep navigates MO live-step policy section directly.
+
+## Residual wz · 2026-07-10 — FUTURE-AGENT tip re-anchor through wy
+FUTURE-AGENT-SPEC tip → f12d6fc4. Competitive delta: swarm handoff tip-true
+after MO L4 deep-links + free STEM compose; operator merge PR #465 highest leverage.

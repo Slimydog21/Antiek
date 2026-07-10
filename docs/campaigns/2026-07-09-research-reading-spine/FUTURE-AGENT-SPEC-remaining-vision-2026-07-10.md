@@ -1,13 +1,13 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** `741abb13` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
+**Campaign tip at write:** `f12d6fc4` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **URL:** https://github.com/Slimydog21/Antiek/pull/465  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
 
 ## Do not rebuild
 
-Prefer **SESSION-ARC-vz-wt-budget-stem-dualgate.md** + inventories **vz–wt** + competitive notes.
+Prefer **SESSION-ARC-vz-wt-budget-stem-dualgate.md** + inventories **vz–wy** + competitive notes.
 
 ### Closed product (high signal · vz–wt)
 
@@ -15,6 +15,7 @@ Prefer **SESSION-ARC-vz-wt-budget-stem-dualgate.md** + inventories **vz–wt** +
 |---|---|
 | Budget foresight | Launch + Settings remaining-after-prompt (wa · wb) |
 | Dual-gate L5–L7 | Checklist + Settings/Collective/Marketplace deep-links complete |
+| Dual-gate L4 MO | Settings + Midnight Oil #l4-moil deep-links (wx · wy) |
 | Deferred map | Deferred (honest) + ND panel (wc · wo) |
 | Free STEM | Boole · Heaviside · Shannon · Turing · domain chips · server by_subject |
 | Dogfood | **v11** · full list · substrate payload honesty |
@@ -25,7 +26,7 @@ Prefer **SESSION-ARC-vz-wt-budget-stem-dualgate.md** + inventories **vz–wt** +
 ### P2 — Dual-gate live injectors (operator-only)
 L1–L4 offline default · L5 payment deferred · L6 live multi-agent · L7 ND **never** router
 
-### P1 next offline (residual **wu+**)
+### P1 next offline (residual **xa+**)
 Outside dual-gate deep-link thrash and STEM chip thrash unless regression. Prefer:
 - real product bugs found by inventory
 - operator-facing polish with load-bearing reason

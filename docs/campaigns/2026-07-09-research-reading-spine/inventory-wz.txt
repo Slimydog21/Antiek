@@ -1,0 +1,12 @@
+# inventory-wz · FUTURE tip re-anchor through wy
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: wz
+date: 2026-07-10
+tip_sha: f12d6fc4
+
+## Closed
+- FUTURE-AGENT tip → f12d6fc4 · arcs vz–wy this continuation
+- Highest leverage: operator merge PR #465 OPEN
+
+## Not in scope
+- Operator merge PR #465 (gated)
