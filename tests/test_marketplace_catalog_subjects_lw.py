@@ -402,6 +402,8 @@ def test_catalog_route_subjects_and_by_subject(client) -> None:
         1 for e in body["entries"] if e.get("license_class") == "public_domain"
     )
     assert body["public_domain_count"] == pd_from_entries
+    # Residual (aaf): count matches entries length (no silent truncation).
+    assert body["count"] == len(body["entries"])
 
 
 def test_electricity_chip_filter_includes_faraday_maxwell() -> None:
