@@ -3636,3 +3636,7 @@ moil-job-goals-plan stamps research vs grounded_pub counts + numbered list
 ## Residual aoh · 2026-07-10 — MO goals vs fan-out soft-hint + FUTURE re-anchor
 Soft-hint when goal_count > fanout_depth (never auto-change). FUTURE remaining
 vision tip aog · aoc–aog closed. vitest MidnightOil 30 green. P0 PR #465. Pivot aoi+.
+
+## Residual aoi · 2026-07-10 — multi-agent written analysis ≥2 spawns
+Create written analysis requires ≥2 selected spawns (single-spawn → Merge draft).
+vitest CollectiveResearchPanel 31 green. P0 PR #465. Pivot aoj+ outside thrash.

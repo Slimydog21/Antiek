@@ -716,6 +716,31 @@ describe("CollectiveResearchPanel", () => {
     ).toBe(true);
   });
 
+  it("requires ≥2 spawns for multi-agent written analysis (aoi)", () => {
+    render(
+      <CollectiveResearchPanel
+        availableSpawnIds={["spn_only"]}
+        parentAssetId="book-1"
+        preferredSpawnId="spn_only"
+        autoSelectNewestRecent={false}
+      />,
+    );
+    // preferred may auto-select one — analysis still needs multi-agent ≥2.
+    const analysis = screen.getByTestId(
+      "collective-written-analysis",
+    ) as HTMLButtonElement;
+    expect(analysis.getAttribute("data-min-spawns")).toBe("2");
+    expect(Number(analysis.getAttribute("data-selected-count"))).toBeLessThan(2);
+    expect(analysis.getAttribute("data-multi-agent-analysis")).toBe("false");
+    expect(analysis.disabled).toBe(true);
+    expect(analysis.getAttribute("title") || "").toMatch(/≥2 spawns/i);
+    // Draft merge remains available for single-spawn path.
+    expect(
+      (screen.getByTestId("collective-merge-draft") as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
+
   it("creates written analysis draft from collective + draft merge (cf)", async () => {
     fetchCollectiveResearch.mockResolvedValue({
       collective_id: "col_analysis",

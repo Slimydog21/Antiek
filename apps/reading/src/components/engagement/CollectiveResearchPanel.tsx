@@ -605,7 +605,13 @@ export function CollectiveResearchPanel({
 
   /** Residual (cf): cohesive unit prompt + draft HTML analysis document. */
   const createWrittenAnalysis = useCallback(async () => {
-    if (selected.length < 1) return;
+    // Residual (aoi): multi-agent written analysis needs ≥2 spawns.
+    if (selected.length < 2) {
+      setError(
+        "Select at least 2 spawns for multi-agent written analysis (use Merge draft for a single spawn)",
+      );
+      return;
+    }
     if (!parentAssetId?.trim()) {
       setError("parentAssetId is required for written analysis draft");
       return;
@@ -1228,10 +1234,13 @@ export function CollectiveResearchPanel({
           data-testid="collective-written-analysis"
           data-seamless-written-analysis={String(seamlessCollectiveMergeReady)}
           data-budget-soft-gate={String(budgetWarn && !forceOverBudget)}
+          data-selected-count={String(selected.length)}
+          data-min-spawns="2"
+          data-multi-agent-analysis={String(selected.length >= 2)}
           onClick={() => void createWrittenAnalysis()}
           disabled={
             busy ||
-            selected.length < 1 ||
+            selected.length < 2 ||
             !parentAssetId ||
             (budgetWarn && !forceOverBudget)
           }
@@ -1239,7 +1248,9 @@ export function CollectiveResearchPanel({
             parentAssetId
               ? budgetWarn && !forceOverBudget
                 ? "Over budget — enable force override before written analysis"
-                : "Collective prompt unit + draft-combined HTML analysis · seamless multi-spawn path"
+                : selected.length < 2
+                  ? "Select ≥2 spawns for multi-agent written analysis (use Merge draft for one)"
+                  : "Collective prompt unit + draft-combined HTML analysis · seamless multi-spawn path"
               : "Requires parentAssetId"
           }
         >
