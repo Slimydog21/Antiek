@@ -61,4 +61,16 @@ describe("ResearchWorkstation — dense IDE exempt from floating stack chrome", 
     expect(src).toMatch(/onContextNeedsRefresh/);
     expect(src).toMatch(/data-seamless-workstation-context/);
   });
+
+  // Residual (age): dual-gate L3/L6 checklist deep-links (never enable injectors).
+  it("InvestigationCenter dual-gate L3/L6 checklist prep (age)", () => {
+    const src = readFileSync(
+      resolve(import.meta.dirname, "index.tsx"),
+      "utf8",
+    );
+    expect(src).toMatch(/research-workstation-dual-gate-prep/);
+    expect(src).toMatch(/#l3-twin/);
+    expect(src).toMatch(/#l6-collective/);
+    expect(src).toMatch(/data-l3-twin-seed/);
+  });
 });

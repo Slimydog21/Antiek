@@ -75,6 +75,8 @@ import ThinkingStream from "./ThinkingStream";
  * (parity DR/hosted hosts · every investigation asset has twin substrate).
  * Residual (aft): ResearchContextPanel + twins autoPromoteAfterLoad with
  * remount-on-promote (parity DR host ea/ec · intelligent search over twins).
+ * Residual (age): dual-gate L3 twin + L6 collective checklist deep-links on
+ * /inv (never enable injectors · offline prep honesty).
  */
 export default function ResearchWorkstation() {
   const params = useParams<{ investigationId?: string }>();
@@ -223,6 +225,37 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
       className="h-full overflow-y-auto relative"
     >
       <CenterContent investigation={investigation} onChaseQuestion={onChaseQuestion} />
+      {/* Residual (age): dual-gate prep deep-links (never enable injectors). */}
+      <nav
+        className="border-t border-rule px-4 py-2 flex flex-wrap gap-3 text-[11px] font-mono dark:border-charcoal-1"
+        data-testid="research-workstation-dual-gate-prep"
+        data-view-format="html"
+        data-l3-twin-seed="deferred"
+        data-l6-live-multiagent="deferred"
+        aria-label="Dual-gate checklist prep for twin seed and collective"
+      >
+        <a
+          href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l3-twin"
+          data-testid="research-workstation-l3-checklist-link"
+          data-l3-twin-seed="deferred"
+          className="underline opacity-80 hover:opacity-100"
+          title="L3 live twin note_taker seed dual-gate checklist (offline seed default)"
+        >
+          L3 twin seed checklist
+        </a>
+        <a
+          href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l6-collective"
+          data-testid="research-workstation-l6-checklist-link"
+          data-l6-live-multiagent="deferred"
+          className="underline opacity-80 hover:opacity-100"
+          title="L6 live multi-agent collective dual-gate checklist (offline merge unit default)"
+        >
+          L6 collective checklist
+        </a>
+        <span className="opacity-60" role="status">
+          Dual-gate · injectors off by default · offline-honest
+        </span>
+      </nav>
       {/* Residual (aft): research context pack over investigation twin substrate. */}
       <section
         className="border-t border-rule px-4 py-4 dark:border-charcoal-1"

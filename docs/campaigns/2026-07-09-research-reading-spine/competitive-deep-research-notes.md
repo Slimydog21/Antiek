@@ -2528,3 +2528,8 @@ Pivot agd+ outside thrash.
 ## Residual agd · 2026-07-10 — SESSION-ARC afn–agc infinite continuation
 Full wave handoff: multi-select assembly · ResearchWorkstation spine · FloatMenu
 highlight path · dogfood v16–v18. P0 operator merge PR #465. Pivot age+ outside thrash.
+
+## Residual age · 2026-07-10 — RW dual-gate L3/L6 checklist prep
+/inv/:id mounts dual-gate prep nav with L3 twin seed + L6 collective checklist
+deep-links (deferred injectors · offline-honest). Parity MO/marketplace
+checklist surfaces. vitest RW 12 green.

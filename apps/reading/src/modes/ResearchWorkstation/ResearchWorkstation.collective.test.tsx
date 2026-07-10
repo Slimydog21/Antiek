@@ -246,6 +246,34 @@ describe("ResearchWorkstation collective multi-select (afr)", () => {
     expect(twinsRefresh.getAttribute("data-refresh-key")).toBe("0");
   });
 
+  it("mounts dual-gate L3/L6 checklist prep deep-links (age)", () => {
+    useInvestigationMock.mockReturnValue({
+      id: "inv_age",
+      status: "in_progress",
+      question: "Dual-gate?",
+      events: [],
+      terminalPayload: null,
+      costTotal: 0,
+      completedAt: null,
+      streamStatus: "open",
+      reconnects: 0,
+    });
+    collectDeepResearchSpawnIdsMock.mockReturnValue([]);
+
+    mountInv("inv_age");
+
+    const prep = screen.getByTestId("research-workstation-dual-gate-prep");
+    expect(prep.getAttribute("data-view-format")).toBe("html");
+    expect(prep.getAttribute("data-l3-twin-seed")).toBe("deferred");
+    expect(prep.getAttribute("data-l6-live-multiagent")).toBe("deferred");
+    const l3 = screen.getByTestId("research-workstation-l3-checklist-link");
+    expect(l3.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l3-twin/);
+    expect(l3.getAttribute("data-l3-twin-seed")).toBe("deferred");
+    const l6 = screen.getByTestId("research-workstation-l6-checklist-link");
+    expect(l6.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l6-collective/);
+    expect(l6.getAttribute("data-l6-live-multiagent")).toBe("deferred");
+  });
+
   it("omits collective mount when no spawn ids available", () => {
     useInvestigationMock.mockReturnValue({
       id: "inv_empty",
