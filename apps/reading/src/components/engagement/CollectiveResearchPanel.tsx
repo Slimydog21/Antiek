@@ -93,7 +93,9 @@ import {
 import { openMergedResearchWindow } from "./SpawnMergePanel";
 import {
   buildMergedDocWriteHref,
+  buildTwinWriteHref,
   plainTextFromHtml,
+  storeTwinWriteSeed,
 } from "../../workspace/twinWriteSeed";
 
 /** Residual (tr): pure HTML body for cohesive unit prompt (no invented doc id). */
@@ -1036,7 +1038,7 @@ export function CollectiveResearchPanel({
           <pre className="prompt-block" data-testid="collective-prompt-block">
             {unit.prompt_block}
           </pre>
-          {/* Residual (tr): cohesive unit prompt → float|full HTML reading windows. */}
+          {/* Residual (tr/aeh): cohesive unit prompt → float|full HTML + Open Write twin seed. */}
           {(unit.prompt_block || "").trim() ? (
             <p className="meta font-mono text-[11px] space-x-3">
               <button
@@ -1129,6 +1131,49 @@ export function CollectiveResearchPanel({
               >
                 Open full (unit HTML)
               </button>
+              {/* Residual (aeh): unit prompt → Write twin_seed (recursive note-taker). */}
+              {(() => {
+                const cid =
+                  String(unit.collective_id || "").trim() || "collective";
+                const plain = String(unit.prompt_block || "").trim();
+                const html = buildCollectiveUnitPromptHtml({
+                  collectiveId: cid,
+                  promptBlock: plain,
+                  spawnCount: unit.spawn_count,
+                  twinCount: unit.twin_count,
+                  refCount: unit.ref_count,
+                  researchTier:
+                    unit.recommended_research_tier || researchTier,
+                  spawnIds: selected,
+                });
+                const hasBody = Boolean(plain);
+                const seedKey = storeTwinWriteSeed({
+                  plain_text: plain,
+                  html,
+                  title: `Collective unit · ${cid}`,
+                  asset_id: `collective_unit:${cid}`,
+                  note_ids: selected.map(String),
+                  source: "collective_unit_prompt",
+                  has_body: hasBody,
+                });
+                const href = seedKey ? buildTwinWriteHref(seedKey) : "/write";
+                return (
+                  <a
+                    href={href}
+                    data-testid="collective-unit-open-write"
+                    data-view-format="html"
+                    data-has-twin-seed={seedKey ? "1" : "0"}
+                    data-write-seed-has-body={String(hasBody)}
+                    data-collective-id={cid}
+                    data-spawn-count={String(unit.spawn_count ?? selected.length)}
+                    data-l6-live-multiagent="deferred"
+                    className="underline opacity-90 hover:opacity-100 font-mono text-[11px]"
+                    title="Open Write with cohesive unit prompt as twin_seed (recursive note-taker · offline unit · L6 live multi-agent deferred)"
+                  >
+                    Open Write (unit prompt)
+                  </a>
+                );
+              })()}
             </p>
           ) : null}
           {/* Residual (dc/di/jf): continue unit + budget soft-gate + depth prefill. */}

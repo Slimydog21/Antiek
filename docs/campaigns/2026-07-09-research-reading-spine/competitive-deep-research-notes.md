@@ -2272,3 +2272,9 @@ Create captures form preview USD; job ceiling metrics stamp data-preview-usd +
 data-preview-matches-server (create remains authoritative). Competitive delta:
 operator sees when form preview drifts from server ceiling (fanout/model/tier).
 vitest MidnightOil 24 green.
+
+## Residual aeh · 2026-07-10 — collective unit prompt Open Write twin_seed
+Cohesive unit prompt offers Open Write (unit prompt) with twin_seed source=
+collective_unit_prompt · has_body when prompt_block non-empty · L6 deferred stamp.
+Competitive delta: multi-spawn collective unit → recursive note-taker Write path
+is complete (float|full + Write). vitest CollectiveResearchPanel 25 green.

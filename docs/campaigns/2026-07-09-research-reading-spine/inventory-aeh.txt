@@ -1,0 +1,19 @@
+# inventory-aeh · collective unit prompt → Open Write twin_seed handoff
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aeh
+date: 2026-07-10
+parent_tip: 9041396b (aeg)
+
+## Closed
+- collective-unit-open-write: twin_seed from unit prompt_block
+- data-write-seed-has-body · data-has-twin-seed · data-l6-live-multiagent=deferred
+- source=collective_unit_prompt · has_body true when prompt non-empty
+- vitest CollectiveResearchPanel · 25 passed
+
+## Why this residual
+Cohesive unit had float|full HTML but no recursive note-taker Write handoff
+from the unit prompt itself (merge Open Write only). User vision: merge spawns
+as unit → Write analysis/note-taker substrate.
+
+## Not in scope
+- L6 live multi-agent council (deferred)

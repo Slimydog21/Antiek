@@ -260,6 +260,16 @@ describe("CollectiveResearchPanel", () => {
     ];
     expect(fullCall[1].source).toBe("collective_unit_prompt");
     expect(fullCall[2].mode).toBe("full");
+    // Residual (aeh): unit prompt → Open Write twin_seed (has_body when prompt non-empty).
+    const unitWrite = screen.getByTestId("collective-unit-open-write");
+    expect(unitWrite.getAttribute("data-view-format")).toBe("html");
+    expect(unitWrite.getAttribute("data-write-seed-has-body")).toBe("true");
+    expect(unitWrite.getAttribute("data-has-twin-seed")).toBe("1");
+    expect(unitWrite.getAttribute("data-collective-id")).toBe("col_abc");
+    expect(unitWrite.getAttribute("data-l6-live-multiagent")).toBe("deferred");
+    expect(unitWrite.getAttribute("href")).toMatch(
+      /^\/write\?twin_seed=antiek\.twin_write_seed\./,
+    );
     // Residual (jf): depth prefill none when Settings unset.
     await waitFor(() => {
       expect(
