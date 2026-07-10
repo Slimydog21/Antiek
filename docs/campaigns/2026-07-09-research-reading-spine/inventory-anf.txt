@@ -1,0 +1,12 @@
+# inventory-anf · SESSION-ARC amy–ane remount matrix complete
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: anf
+date: 2026-07-10
+parent_tip: 2237ea71 (ane)
+
+## Closed
+- SESSION-ARC-amy-ane-remount-matrix-complete.md
+
+## Next
+ang+ product residual outside thrash · prefer non-remount · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

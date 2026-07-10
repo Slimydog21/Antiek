@@ -3479,3 +3479,7 @@ P0 operator merge PR #465. Pivot ane+ outside thrash.
 Investigation /inv collective multi-select merge remounts TwinNotes + ResearchContext
 (parity ResearchThis and). vitest ResearchWorkstation 7 green.
 P0 operator merge PR #465. Pivot anf+ outside thrash.
+
+## Residual anf · 2026-07-10 — SESSION-ARC amy–ane remount matrix complete
+Wave handoff: promote remount (amy/ana/anb) + collective merge remount (and/ane)
+complete remount matrix. P0 operator merge PR #465. Pivot ang+ outside thrash.
