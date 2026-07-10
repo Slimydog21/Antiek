@@ -1,0 +1,14 @@
+# inventory-acy · suite proposal title_only_write_seed_count structured + Settings
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: acy
+date: 2026-07-10
+parent_tip: 3d19acc6 (acx)
+
+## Closed
+- SuiteProposal.title_only_write_seed_count field + to_dict
+- settings_suite_proposal_payload + HTML projection
+- Settings React metrics data-title-only-write-seed-count + chrome
+- pytest + Settings vitest green
+
+## Not in scope
+- Operator merge PR #465

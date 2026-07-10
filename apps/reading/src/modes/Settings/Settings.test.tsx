@@ -157,14 +157,17 @@ const {
       active_suite_version: "core-v1",
       active_suite_unchanged: true,
       auto_promoted: false,
-      rationale: "Ingested 2 usage events; added 1 items from failed outcomes",
+      rationale:
+        "Ingested 2 usage events; added 1 items from failed outcomes · title-only Write seeds (has_body=false): 1 (body honesty → suite rewrite)",
       added_item_ids: ["usage-distill-abcd12-0"],
+      // Residual (acy): structured title-only Write seed count.
+      title_only_write_seed_count: 1,
       event_count: 2,
       view_format: "html",
       settings_panel: "antiek_bench_suite_proposal",
       source: "antiek_bench.propose_from_recorded_usage",
       notes: ["Proposal status is proposed only"],
-      html: "<p>Status: proposal only · proposed</p>",
+      html: "<p>Status: proposal only · proposed · Title-only Write seeds (has_body=false): 1</p>",
     })),
     approveAntiekBenchSuiteProposal: vi.fn(async (opts: {
       proposal_id: string;
@@ -1377,7 +1380,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("antiek-bench-propose-not-promote").textContent).toMatch(
       /propose ≠ auto-promote/i,
     );
-    // Residual (ht): recursive rewrite metrics machine attrs.
+    // Residual (ht/acy): recursive rewrite metrics + title-only Write seed count.
     const metrics = screen.getByTestId("antiek-bench-suite-proposal-metrics");
     expect(metrics.getAttribute("data-has-proposal")).toBe("true");
     expect(metrics.getAttribute("data-status")).toBe("proposed");
@@ -1386,7 +1389,9 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(metrics.getAttribute("data-proposed-task-count")).toBe("1");
     expect(metrics.getAttribute("data-auto-promoted")).toBe("false");
     expect(metrics.getAttribute("data-propose-not-promote")).toBe("true");
+    expect(metrics.getAttribute("data-title-only-write-seed-count")).toBe("1");
     expect(metrics.textContent).toMatch(/Recursive rewrite/);
+    expect(metrics.textContent).toMatch(/title_only_write_seeds=1/);
     const tasks = screen.getByTestId("antiek-bench-proposed-tasks");
     expect(tasks.getAttribute("data-task-count")).toBe("1");
     expect(screen.getByTestId("antiek-bench-proposed-task-id").textContent).toMatch(

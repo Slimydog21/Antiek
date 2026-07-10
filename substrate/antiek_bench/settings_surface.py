@@ -267,6 +267,8 @@ def settings_suite_proposal_payload(
         "auto_promoted": False,
         "rationale": None,
         "added_item_ids": [],
+        # Residual (acy): structured title-only Write seed count (0 when empty).
+        "title_only_write_seed_count": 0,
         "event_count": len(events),
         "view_format": "html",
         "settings_panel": "antiek_bench_suite_proposal",
@@ -310,6 +312,12 @@ def settings_suite_proposal_payload(
             prop_dict.get("added_item_ids")
             or getattr(proposal, "added_item_ids", ())
             or []
+        ),
+        # Residual (acy): body honesty for recursive rewrite Settings chrome.
+        "title_only_write_seed_count": int(
+            prop_dict.get("title_only_write_seed_count")
+            or getattr(proposal, "title_only_write_seed_count", 0)
+            or 0
         ),
         "event_count": len(events),
         "view_format": "html",
@@ -482,6 +490,23 @@ def project_suite_proposal_html(payload: dict[str, Any]) -> str:
                     "type": "paragraph",
                     "content": [
                         {"type": "text", "text": f"{label}: {val}"},
+                    ],
+                }
+            )
+        # Residual (acy): structured title-only Write seed count in HTML view.
+        title_only_n = int(payload.get("title_only_write_seed_count") or 0)
+        if title_only_n:
+            blocks.append(
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                f"Title-only Write seeds (has_body=false): "
+                                f"{title_only_n} · body honesty → suite rewrite"
+                            ),
+                        }
                     ],
                 }
             )

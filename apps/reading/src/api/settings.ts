@@ -381,6 +381,11 @@ export type AntiekBenchSuiteProposalResponse = {
   auto_promoted: boolean;
   rationale: string | null;
   added_item_ids: string[];
+  /**
+   * Residual (acy): title-only Write seed failures feeding recursive rewrite
+   * (has_body=false → failed usage). Structured count for Settings chrome.
+   */
+  title_only_write_seed_count?: number;
   event_count: number;
   view_format: "html" | string;
   settings_panel: string;

@@ -21,6 +21,9 @@ class SuiteProposal:
     added_item_ids: tuple[str, ...]
     status: ProposalStatus
     suite: SuiteDefinition
+    # Residual (acy): structured count of title-only Write seed failures
+    # (has_body=false → failed) for Settings / recursive rewrite audit.
+    title_only_write_seed_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -30,6 +33,8 @@ class SuiteProposal:
             "rationale": self.rationale,
             "added_item_ids": list(self.added_item_ids),
             "status": self.status,
+            # Residual (acy): body honesty aggregate (parity rationale acx).
+            "title_only_write_seed_count": int(self.title_only_write_seed_count),
             "suite": {
                 "suite_version": self.suite.suite_version,
                 "label": self.suite.label,
@@ -151,6 +156,7 @@ def propose_suite_delta(
         added_item_ids=tuple(added),
         status="proposed",
         suite=suite,
+        title_only_write_seed_count=int(title_only_failed),
     )
     store.put_proposal(pid, proposal.to_dict())
     return proposal

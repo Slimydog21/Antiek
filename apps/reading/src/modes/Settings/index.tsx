@@ -2607,6 +2607,10 @@ export default function Settings() {
                 data-has-rationale={String(
                   Boolean((suiteProposal.rationale || "").trim()),
                 )}
+                // Residual (acy): title-only Write seed body honesty for rewrite.
+                data-title-only-write-seed-count={String(
+                  suiteProposal.title_only_write_seed_count ?? 0,
+                )}
                 data-propose-not-promote="true"
                 data-view-format="html"
                 role="status"
@@ -2616,6 +2620,13 @@ export default function Settings() {
                 {(suiteProposal.added_item_ids || []).length} · status=
                 {suiteProposal.status ?? "—"} · feed_sources=
                 {Object.keys(usage?.by_source || {}).length}
+                {(suiteProposal.title_only_write_seed_count ?? 0) > 0 ? (
+                  <>
+                    {" "}
+                    · title_only_write_seeds=
+                    {suiteProposal.title_only_write_seed_count}
+                  </>
+                ) : null}
                 {primaryRewriteFeed ? (
                   <>
                     {" "}

@@ -36,6 +36,9 @@ def test_propose_suite_delta_rationale_title_only_write_seeds() -> None:
     assert len(prop.added_item_ids) >= 1
     assert "title-only Write seeds (has_body=false): 1" in prop.rationale
     assert "body honesty → suite rewrite" in prop.rationale
+    # Residual (acy): structured count on SuiteProposal + to_dict.
+    assert prop.title_only_write_seed_count == 1
+    assert prop.to_dict()["title_only_write_seed_count"] == 1
 
 
 def test_propose_suite_delta_noop_still_mentions_title_only_if_failed_without_hint() -> None:
@@ -66,3 +69,4 @@ def test_propose_suite_delta_noop_still_mentions_title_only_if_failed_without_hi
     ]
     prop = propose_suite_delta(events, store=store, registry=reg)
     assert "title-only Write seeds (has_body=false): 2" in prop.rationale
+    assert prop.title_only_write_seed_count == 2
