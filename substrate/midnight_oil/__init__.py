@@ -32,12 +32,19 @@ from .product_path import (
     live_step_enabled,
     live_step_fn_installed,
     live_step_status_payload,
+    offline_goal_project_fn,
     offline_goal_step_fn,
     product_result_html,
     resolve_worker_step_fn,
     run_job_offline,
 )
-from .worker import WorkerStepResult, run_worker_iteration, run_worker_loop
+from .worker import (
+    ProjectFn,
+    StepFn,
+    WorkerStepResult,
+    run_worker_iteration,
+    run_worker_loop,
+)
 
 __all__ = [
     "ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV",
@@ -45,6 +52,8 @@ __all__ = [
     "JobStatus",
     "MidnightOilJob",
     "MidnightOilProductResult",
+    "ProjectFn",
+    "StepFn",
     "WorkerStepResult",
     "approve_job",
     "approve_price_ceiling",
@@ -60,6 +69,7 @@ __all__ = [
     "live_step_fn_installed",
     "live_step_status_payload",
     "product_result_html",
+    "offline_goal_project_fn",
     "offline_goal_step_fn",
     "recommend_price_ceiling",
     "resolve_worker_step_fn",
