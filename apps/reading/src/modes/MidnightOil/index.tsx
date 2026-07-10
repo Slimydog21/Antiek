@@ -11,6 +11,7 @@ import {
   dryRunMidnightOil,
   finalArtifactAdapterPlanMidnightOil,
   finalArtifactMidnightOil,
+  finalHtmlArtifactAssemblyPlanMidnightOil,
   finalSynthesisDraftPlanMidnightOil,
   graphAdapterPlanMidnightOil,
   graphMutationMidnightOil,
@@ -48,6 +49,7 @@ import {
   type MidnightOilDispatchReceipt,
   type MidnightOilFinalArtifactAdapterPlanReceipt,
   type MidnightOilFinalArtifactReceipt,
+  type MidnightOilFinalHtmlArtifactAssemblyPlanReceipt,
   type MidnightOilFinalSynthesisDraftPlanReceipt,
   type MidnightOilGraphAdapterPlanReceipt,
   type MidnightOilGraphMutationReceipt,
@@ -181,6 +183,8 @@ export default function MidnightOil() {
     useState<MidnightOilSynthesisBundleAssemblyPlanReceipt | null>(null);
   const [finalSynthesisDraftPlanReceipt, setFinalSynthesisDraftPlanReceipt] =
     useState<MidnightOilFinalSynthesisDraftPlanReceipt | null>(null);
+  const [finalHtmlArtifactAssemblyPlanReceipt, setFinalHtmlArtifactAssemblyPlanReceipt] =
+    useState<MidnightOilFinalHtmlArtifactAssemblyPlanReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -230,6 +234,8 @@ export default function MidnightOil() {
   const [workerSynthesisHandoffPlanBusy, setWorkerSynthesisHandoffPlanBusy] = useState(false);
   const [synthesisBundleAssemblyPlanBusy, setSynthesisBundleAssemblyPlanBusy] = useState(false);
   const [finalSynthesisDraftPlanBusy, setFinalSynthesisDraftPlanBusy] = useState(false);
+  const [finalHtmlArtifactAssemblyPlanBusy, setFinalHtmlArtifactAssemblyPlanBusy] =
+    useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
   const [liveSettingsError, setLiveSettingsError] = useState<string | null>(null);
@@ -295,10 +301,18 @@ export default function MidnightOil() {
     useState<string | null>(null);
   const [finalSynthesisDraftPlanError, setFinalSynthesisDraftPlanError] =
     useState<string | null>(null);
+  const [finalHtmlArtifactAssemblyPlanError, setFinalHtmlArtifactAssemblyPlanError] =
+    useState<string | null>(null);
+
+  function clearFinalHtmlArtifactAssemblyPlan() {
+    setFinalHtmlArtifactAssemblyPlanError(null);
+    setFinalHtmlArtifactAssemblyPlanReceipt(null);
+  }
 
   function clearFinalSynthesisDraftPlan() {
     setFinalSynthesisDraftPlanError(null);
     setFinalSynthesisDraftPlanReceipt(null);
+    clearFinalHtmlArtifactAssemblyPlan();
   }
 
   function clearSynthesisBundleAssemblyPlan() {
@@ -484,6 +498,7 @@ export default function MidnightOil() {
     setWorkerSynthesisHandoffPlanError(null);
     setSynthesisBundleAssemblyPlanError(null);
     setFinalSynthesisDraftPlanError(null);
+    setFinalHtmlArtifactAssemblyPlanError(null);
     setPreflight(null);
     setDryRunReceipt(null);
     setLiveSettingsReceipt(null);
@@ -522,6 +537,7 @@ export default function MidnightOil() {
     setWorkerSynthesisHandoffPlanReceipt(null);
     setSynthesisBundleAssemblyPlanReceipt(null);
     setFinalSynthesisDraftPlanReceipt(null);
+    setFinalHtmlArtifactAssemblyPlanReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -2405,6 +2421,7 @@ export default function MidnightOil() {
     setFinalSynthesisDraftPlanBusy(true);
     setFinalSynthesisDraftPlanError(null);
     setFinalSynthesisDraftPlanReceipt(null);
+    clearFinalHtmlArtifactAssemblyPlan();
     try {
       const result = await finalSynthesisDraftPlanMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -2443,6 +2460,89 @@ export default function MidnightOil() {
       setFinalSynthesisDraftPlanError(e instanceof Error ? e.message : String(e));
     } finally {
       setFinalSynthesisDraftPlanBusy(false);
+    }
+  }
+
+  async function onFinalHtmlArtifactAssemblyPlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerControlPlanReceipt ||
+      !budgetProviderAdapterPlanReceipt ||
+      !providerExecutorAdapterPlanReceipt ||
+      !retrievalAdapterPlanReceipt ||
+      !graphAdapterPlanReceipt ||
+      !finalArtifactAdapterPlanReceipt ||
+      !operatorDispatchAdapterPlanReceipt ||
+      !controlLedgerAdapterPlanReceipt ||
+      !controlLedgerPersistencePlanReceipt ||
+      !controlLedgerPersistenceApplyPlanReceipt ||
+      !operatorDispatchActivationReadinessPlanReceipt ||
+      !liveDispatchFinalEnablementPlanReceipt ||
+      !liveDispatchFinalEnablementApplyPlanReceipt ||
+      !runnerDispatchSchedulerPlanReceipt ||
+      !runnerDispatchWorkerBootstrapPlanReceipt ||
+      !schedulerLeaseRetryPlanReceipt ||
+      !workerQueueClaimPlanReceipt ||
+      !repositoryTransactionPlanReceipt ||
+      !repositoryCommitRollbackPlanReceipt ||
+      !workerDispatchLeaseHeartbeatPlanReceipt ||
+      !workerCancellationAbandonPlanReceipt ||
+      !workerCompletionFinalizationPlanReceipt ||
+      !workerOutputAggregationPlanReceipt ||
+      !workerSynthesisHandoffPlanReceipt ||
+      !synthesisBundleAssemblyPlanReceipt ||
+      !finalSynthesisDraftPlanReceipt
+    ) {
+      setFinalHtmlArtifactAssemblyPlanError(
+        "Final HTML artifact assembly plan requires launch packet, approval receipt, runner handoff, runner control plan receipt, budget provider adapter plan receipt, provider executor adapter plan receipt, retrieval adapter plan receipt, graph adapter plan receipt, final artifact adapter plan receipt, operator dispatch adapter plan receipt, control ledger adapter plan receipt, control ledger persistence plan receipt, control ledger persistence apply plan receipt, operator dispatch activation readiness plan receipt, live dispatch final enablement plan receipt, live dispatch final enablement apply plan receipt, runner dispatch scheduler plan receipt, runner dispatch worker bootstrap plan receipt, scheduler lease retry plan receipt, worker queue claim plan receipt, repository transaction plan receipt, repository commit rollback plan receipt, worker lease heartbeat plan receipt, worker cancellation abandon plan receipt, worker completion finalization plan receipt, worker output aggregation plan receipt, worker synthesis handoff plan receipt, synthesis bundle assembly plan receipt, and final synthesis draft plan receipt.",
+      );
+      return;
+    }
+
+    setFinalHtmlArtifactAssemblyPlanBusy(true);
+    setFinalHtmlArtifactAssemblyPlanError(null);
+    setFinalHtmlArtifactAssemblyPlanReceipt(null);
+    try {
+      const result = await finalHtmlArtifactAssemblyPlanMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        runner_control_plan_receipt: runnerControlPlanReceipt,
+        budget_provider_adapter_plan_receipt: budgetProviderAdapterPlanReceipt,
+        provider_executor_adapter_plan_receipt: providerExecutorAdapterPlanReceipt,
+        retrieval_adapter_plan_receipt: retrievalAdapterPlanReceipt,
+        graph_adapter_plan_receipt: graphAdapterPlanReceipt,
+        final_artifact_adapter_plan_receipt: finalArtifactAdapterPlanReceipt,
+        operator_dispatch_adapter_plan_receipt: operatorDispatchAdapterPlanReceipt,
+        control_ledger_adapter_plan_receipt: controlLedgerAdapterPlanReceipt,
+        control_ledger_persistence_plan_receipt: controlLedgerPersistencePlanReceipt,
+        control_ledger_persistence_apply_plan_receipt: controlLedgerPersistenceApplyPlanReceipt,
+        operator_dispatch_activation_readiness_plan_receipt:
+          operatorDispatchActivationReadinessPlanReceipt,
+        live_dispatch_final_enablement_plan_receipt: liveDispatchFinalEnablementPlanReceipt,
+        live_dispatch_final_enablement_apply_plan_receipt:
+          liveDispatchFinalEnablementApplyPlanReceipt,
+        runner_dispatch_scheduler_plan_receipt: runnerDispatchSchedulerPlanReceipt,
+        runner_dispatch_worker_bootstrap_plan_receipt: runnerDispatchWorkerBootstrapPlanReceipt,
+        scheduler_lease_retry_plan_receipt: schedulerLeaseRetryPlanReceipt,
+        worker_queue_claim_plan_receipt: workerQueueClaimPlanReceipt,
+        repository_transaction_plan_receipt: repositoryTransactionPlanReceipt,
+        repository_commit_rollback_plan_receipt: repositoryCommitRollbackPlanReceipt,
+        worker_dispatch_lease_heartbeat_plan_receipt: workerDispatchLeaseHeartbeatPlanReceipt,
+        worker_cancellation_abandon_plan_receipt: workerCancellationAbandonPlanReceipt,
+        worker_completion_finalization_plan_receipt: workerCompletionFinalizationPlanReceipt,
+        worker_output_aggregation_plan_receipt: workerOutputAggregationPlanReceipt,
+        worker_synthesis_handoff_plan_receipt: workerSynthesisHandoffPlanReceipt,
+        synthesis_bundle_assembly_plan_receipt: synthesisBundleAssemblyPlanReceipt,
+        final_synthesis_draft_plan_receipt: finalSynthesisDraftPlanReceipt,
+      });
+      setFinalHtmlArtifactAssemblyPlanReceipt(result);
+    } catch (e) {
+      setFinalHtmlArtifactAssemblyPlanError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFinalHtmlArtifactAssemblyPlanBusy(false);
     }
   }
 
@@ -7493,6 +7593,300 @@ export default function MidnightOil() {
                   <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
                     Final synthesis draft receipt fields:{" "}
                     {finalSynthesisDraftPlanReceipt.required_final_synthesis_draft_receipt_fields.join(
+                      ", ",
+                    )}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Final HTML artifact assembly plan
+                </p>
+                <button
+                  type="button"
+                  onClick={onFinalHtmlArtifactAssemblyPlanGate}
+                  disabled={
+                    finalHtmlArtifactAssemblyPlanBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !runnerControlPlanReceipt ||
+                    !budgetProviderAdapterPlanReceipt ||
+                    !providerExecutorAdapterPlanReceipt ||
+                    !retrievalAdapterPlanReceipt ||
+                    !graphAdapterPlanReceipt ||
+                    !finalArtifactAdapterPlanReceipt ||
+                    !operatorDispatchAdapterPlanReceipt ||
+                    !controlLedgerAdapterPlanReceipt ||
+                    !controlLedgerPersistencePlanReceipt ||
+                    !controlLedgerPersistenceApplyPlanReceipt ||
+                    !operatorDispatchActivationReadinessPlanReceipt ||
+                    !liveDispatchFinalEnablementPlanReceipt ||
+                    !liveDispatchFinalEnablementApplyPlanReceipt ||
+                    !runnerDispatchSchedulerPlanReceipt ||
+                    !runnerDispatchWorkerBootstrapPlanReceipt ||
+                    !schedulerLeaseRetryPlanReceipt ||
+                    !workerQueueClaimPlanReceipt ||
+                    !repositoryTransactionPlanReceipt ||
+                    !repositoryCommitRollbackPlanReceipt ||
+                    !workerDispatchLeaseHeartbeatPlanReceipt ||
+                    !workerCancellationAbandonPlanReceipt ||
+                    !workerCompletionFinalizationPlanReceipt ||
+                    !workerOutputAggregationPlanReceipt ||
+                    !workerSynthesisHandoffPlanReceipt ||
+                    !synthesisBundleAssemblyPlanReceipt ||
+                    !finalSynthesisDraftPlanReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {finalHtmlArtifactAssemblyPlanBusy
+                    ? "Planning HTML..."
+                    : "Final HTML artifact assembly plan"}
+                </button>
+              </div>
+
+              {finalHtmlArtifactAssemblyPlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {finalHtmlArtifactAssemblyPlanError}
+                </p>
+              )}
+
+              {finalHtmlArtifactAssemblyPlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Final HTML artifact assembly receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {finalHtmlArtifactAssemblyPlanReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={finalHtmlArtifactAssemblyPlanReceipt.status.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Assembly"
+                      value={
+                        finalHtmlArtifactAssemblyPlanReceipt.final_html_artifact_assembly_allowed
+                          ? "allowed"
+                          : "blocked"
+                      }
+                    />
+                    <Metric
+                      label="HTML artifact"
+                      value={
+                        finalHtmlArtifactAssemblyPlanReceipt.final_html_artifact_assembled
+                          ? "assembled"
+                          : "not assembled"
+                      }
+                    />
+                    <Metric
+                      label="HTML asset"
+                      value={
+                        finalHtmlArtifactAssemblyPlanReceipt.final_html_asset_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="HTML document"
+                      value={
+                        finalHtmlArtifactAssemblyPlanReceipt.final_html_document_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Twin notes"
+                      value={
+                        finalHtmlArtifactAssemblyPlanReceipt.final_html_twin_notes_document_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Citation index"
+                      value={
+                        finalHtmlArtifactAssemblyPlanReceipt.final_html_citation_index_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Export manifest"
+                      value={
+                        finalHtmlArtifactAssemblyPlanReceipt.final_html_export_manifest_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Final synthesis draft plan"
+                      value={
+                        finalHtmlArtifactAssemblyPlanReceipt.final_synthesis_draft_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Synthesis bundle assembly plan"
+                      value={
+                        finalHtmlArtifactAssemblyPlanReceipt.synthesis_bundle_assembly_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Worker synthesis handoff plan"
+                      value={
+                        finalHtmlArtifactAssemblyPlanReceipt.worker_synthesis_handoff_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Output aggregation plan"
+                      value={
+                        finalHtmlArtifactAssemblyPlanReceipt.worker_output_aggregation_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="HTML assembly receipt"
+                      value={
+                        finalHtmlArtifactAssemblyPlanReceipt.planned_final_html_artifact_assembly_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="HTML artifact"
+                      value={finalHtmlArtifactAssemblyPlanReceipt.planned_final_html_artifact_id}
+                    />
+                    <Metric
+                      label="HTML asset"
+                      value={finalHtmlArtifactAssemblyPlanReceipt.planned_final_html_asset_id}
+                    />
+                    <Metric
+                      label="HTML document"
+                      value={finalHtmlArtifactAssemblyPlanReceipt.planned_final_html_document_id}
+                    />
+                    <Metric
+                      label="Twin notes document"
+                      value={
+                        finalHtmlArtifactAssemblyPlanReceipt.planned_final_html_twin_notes_document_id
+                      }
+                    />
+                    <Metric
+                      label="Citation index"
+                      value={
+                        finalHtmlArtifactAssemblyPlanReceipt.planned_final_html_citation_index_id
+                      }
+                    />
+                    <Metric
+                      label="Export manifest"
+                      value={
+                        finalHtmlArtifactAssemblyPlanReceipt.planned_final_html_export_manifest_id
+                      }
+                    />
+                    <Metric
+                      label="Final draft receipt"
+                      value={
+                        finalHtmlArtifactAssemblyPlanReceipt.planned_final_synthesis_draft_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Final draft"
+                      value={
+                        finalHtmlArtifactAssemblyPlanReceipt.planned_final_synthesis_draft_id
+                      }
+                    />
+                    <Metric
+                      label="Claim map"
+                      value={
+                        finalHtmlArtifactAssemblyPlanReceipt.planned_final_synthesis_claim_map_id
+                      }
+                    />
+                    <Metric
+                      label="Citation map"
+                      value={
+                        finalHtmlArtifactAssemblyPlanReceipt.planned_final_synthesis_citation_map_id
+                      }
+                    />
+                    <Metric
+                      label="Quality report"
+                      value={
+                        finalHtmlArtifactAssemblyPlanReceipt.planned_final_synthesis_quality_report_id
+                      }
+                    />
+                    <Metric
+                      label="Synthesis bundle"
+                      value={finalHtmlArtifactAssemblyPlanReceipt.planned_synthesis_bundle_id}
+                    />
+                    <Metric
+                      label="Source packet"
+                      value={
+                        finalHtmlArtifactAssemblyPlanReceipt.planned_synthesis_source_packet_id
+                      }
+                    />
+                    <Metric
+                      label="Evidence map"
+                      value={
+                        finalHtmlArtifactAssemblyPlanReceipt.planned_synthesis_evidence_map_id
+                      }
+                    />
+                    <Metric
+                      label="Composition plan"
+                      value={
+                        finalHtmlArtifactAssemblyPlanReceipt.planned_synthesis_composition_plan_id
+                      }
+                    />
+                    <Metric
+                      label="Quality gate"
+                      value={
+                        finalHtmlArtifactAssemblyPlanReceipt.planned_synthesis_quality_gate_id
+                      }
+                    />
+                    <Metric
+                      label="Worker"
+                      value={finalHtmlArtifactAssemblyPlanReceipt.planned_worker_id}
+                    />
+                    <Metric
+                      label="Worker lease"
+                      value={finalHtmlArtifactAssemblyPlanReceipt.planned_worker_lease_id}
+                    />
+                    <Metric
+                      label="Runner dispatch"
+                      value={finalHtmlArtifactAssemblyPlanReceipt.planned_runner_dispatch_id}
+                    />
+                    <Metric
+                      label="Idempotency key"
+                      value={finalHtmlArtifactAssemblyPlanReceipt.planned_idempotency_key}
+                    />
+                    <Metric
+                      label="Adapter"
+                      value={finalHtmlArtifactAssemblyPlanReceipt.adapter_key.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Blocker"
+                      value={finalHtmlArtifactAssemblyPlanReceipt.blocker_reason.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                  </div>
+                  <ul className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {finalHtmlArtifactAssemblyPlanReceipt.required_final_html_artifact_assembly_invariants
+                      .slice(0, 5)
+                      .map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                  </ul>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Final HTML artifact assembly blockers:{" "}
+                    {finalHtmlArtifactAssemblyPlanReceipt.final_html_artifact_assembly_blockers.join(
+                      ", ",
+                    )}
+                  </p>
+                  <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Final HTML artifact assembly receipt fields:{" "}
+                    {finalHtmlArtifactAssemblyPlanReceipt.required_final_html_artifact_assembly_receipt_fields.join(
                       ", ",
                     )}
                   </p>

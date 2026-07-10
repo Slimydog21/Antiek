@@ -14,6 +14,7 @@ import {
   dryRunMidnightOil,
   finalArtifactAdapterPlanMidnightOil,
   finalArtifactMidnightOil,
+  finalHtmlArtifactAssemblyPlanMidnightOil,
   finalSynthesisDraftPlanMidnightOil,
   graphAdapterPlanMidnightOil,
   graphMutationMidnightOil,
@@ -2720,6 +2721,106 @@ vi.mock("../../api/midnightOil", () => ({
       "final synthesis draft plan only: no final draft, outline, claim map, citation map, gap list, quality report, ledger write, or runner dispatch is created",
     ],
   })),
+  finalHtmlArtifactAssemblyPlanMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-final-html-artifact-assembly-plan",
+    final_synthesis_draft_plan_receipt_id:
+      "midnight-oil-test-final-synthesis-draft-plan",
+    synthesis_bundle_assembly_plan_receipt_id:
+      "midnight-oil-test-synthesis-bundle-assembly-plan",
+    worker_synthesis_handoff_plan_receipt_id:
+      "midnight-oil-test-worker-synthesis-handoff-plan",
+    worker_output_aggregation_plan_receipt_id:
+      "midnight-oil-test-worker-output-aggregation-plan",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    run_id: "midnight-oil-test",
+    status: "blocked_final_html_artifact_assembly_unimplemented",
+    adapter_key: "final_html_artifact_assembly",
+    planned_final_html_artifact_assembly_receipt_id:
+      "midnight-oil-test-final-html-artifact-assembly-receipt",
+    planned_final_html_artifact_id: "midnight-oil-test-final-html-artifact",
+    planned_final_html_asset_id: "midnight-oil-test-final-html-asset",
+    planned_final_html_document_id: "midnight-oil-test-final-html-document",
+    planned_final_html_twin_notes_document_id:
+      "midnight-oil-test-final-html-twin-notes-document",
+    planned_final_html_citation_index_id:
+      "midnight-oil-test-final-html-citation-index",
+    planned_final_html_export_manifest_id:
+      "midnight-oil-test-final-html-export-manifest",
+    planned_final_synthesis_draft_receipt_id:
+      "midnight-oil-test-final-synthesis-draft-receipt",
+    planned_final_synthesis_draft_id: "midnight-oil-test-final-synthesis-draft",
+    planned_final_synthesis_outline_id: "midnight-oil-test-final-synthesis-outline",
+    planned_final_synthesis_claim_map_id: "midnight-oil-test-final-synthesis-claim-map",
+    planned_final_synthesis_citation_map_id:
+      "midnight-oil-test-final-synthesis-citation-map",
+    planned_final_synthesis_gap_list_id: "midnight-oil-test-final-synthesis-gap-list",
+    planned_final_synthesis_quality_report_id:
+      "midnight-oil-test-final-synthesis-quality-report",
+    planned_synthesis_bundle_id: "midnight-oil-test-synthesis-bundle",
+    planned_synthesis_source_packet_id: "midnight-oil-test-synthesis-source-packet",
+    planned_synthesis_evidence_map_id: "midnight-oil-test-synthesis-evidence-map",
+    planned_synthesis_composition_plan_id: "midnight-oil-test-synthesis-composition-plan",
+    planned_synthesis_quality_gate_id: "midnight-oil-test-synthesis-quality-gate",
+    planned_worker_id: "midnight-oil-test-runner-dispatch-worker",
+    planned_worker_lease_id: "midnight-oil-test-runner-dispatch-worker-lease",
+    planned_runner_dispatch_id: "midnight-oil-test-midnight-oil-runner-dispatch",
+    planned_idempotency_key: "midnight-oil-test-live-dispatch-final-enable-idempotency-key",
+    final_html_artifact_assembly_blockers: [
+      "final HTML artifact assembly receipt writer",
+      "final HTML information asset writer",
+      "final HTML document renderer",
+      "twin note document linker",
+      "citation index renderer",
+      "HTML export manifest writer",
+      "idempotent final HTML artifact assembly replay protection",
+    ],
+    required_final_html_artifact_assembly_invariants: [
+      "final HTML artifact assembly planner must require final synthesis draft planning before any human-viewable HTML asset can be created",
+      "final HTML artifact assembly planner must preserve source/evidence/citation lineage into every human-viewable HTML artifact",
+    ],
+    required_final_html_artifact_assembly_receipt_fields: [
+      "final_html_artifact_assembly_plan_receipt_id",
+      "final_synthesis_draft_plan_receipt_id",
+      "final_html_artifact_id",
+      "final_html_document_id",
+      "final_html_twin_notes_document_id",
+      "final_html_citation_index_id",
+      "final_html_export_manifest_id",
+      "final_html_artifact_assembled",
+      "idempotency_key",
+    ],
+    blocker_reason: "final_html_artifact_assembly_unimplemented",
+    final_html_artifact_assembly_allowed: false,
+    final_html_artifact_assembled: false,
+    final_html_asset_created: false,
+    final_html_document_created: false,
+    final_html_twin_notes_document_created: false,
+    final_html_citation_index_created: false,
+    final_html_export_manifest_created: false,
+    final_synthesis_draft_created: false,
+    final_synthesis_outline_created: false,
+    final_synthesis_claim_map_created: false,
+    final_synthesis_citation_map_created: false,
+    final_synthesis_gap_list_created: false,
+    final_synthesis_quality_report_created: false,
+    synthesis_bundle_assembled: false,
+    worker_output_aggregated: false,
+    worker_started: false,
+    scheduler_job_created: false,
+    runner_dispatch_enqueued: false,
+    dispatch_performed: false,
+    budget_reserved: false,
+    provider_calls_made: false,
+    retrieval_performed: false,
+    source_receipts_created: false,
+    graph_mutated: false,
+    final_artifact_created: false,
+    adapter_plan_notes: [
+      "final HTML artifact assembly plan only: no HTML asset, document, twin notes document, citation index, export manifest, graph mutation, or final artifact is created",
+    ],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -4955,5 +5056,125 @@ describe("MidnightOil", () => {
     expect(screen.getByText(/Final synthesis draft receipt fields:/)).toBeTruthy();
     expect(screen.getByText(/final_synthesis_citation_map_id/)).toBeTruthy();
     expect(screen.getByText(/final_synthesis_quality_report_id/)).toBeTruthy();
+
+    await user.click(
+      screen.getByRole("button", { name: "Final HTML artifact assembly plan" }),
+    );
+
+    await waitFor(() => expect(finalHtmlArtifactAssemblyPlanMidnightOil).toHaveBeenCalled());
+    expect(finalHtmlArtifactAssemblyPlanMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      runner_control_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-control-plan",
+      }),
+      budget_provider_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-budget-provider-adapter-plan",
+      }),
+      provider_executor_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-provider-executor-adapter-plan",
+      }),
+      retrieval_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-retrieval-adapter-plan",
+      }),
+      graph_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-graph-adapter-plan",
+      }),
+      final_artifact_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-final-artifact-adapter-plan",
+      }),
+      operator_dispatch_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-operator-dispatch-adapter-plan",
+      }),
+      control_ledger_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-adapter-plan",
+      }),
+      control_ledger_persistence_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-persistence-plan",
+      }),
+      control_ledger_persistence_apply_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-persistence-apply-plan",
+      }),
+      operator_dispatch_activation_readiness_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-operator-dispatch-activation-readiness-plan",
+      }),
+      live_dispatch_final_enablement_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-live-dispatch-final-enablement-plan",
+      }),
+      live_dispatch_final_enablement_apply_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-live-dispatch-final-enablement-apply-plan",
+      }),
+      runner_dispatch_scheduler_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-dispatch-scheduler-plan",
+      }),
+      runner_dispatch_worker_bootstrap_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-dispatch-worker-bootstrap-plan",
+      }),
+      scheduler_lease_retry_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-scheduler-lease-retry-plan",
+      }),
+      worker_queue_claim_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-worker-queue-claim-plan",
+      }),
+      repository_transaction_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-repository-transaction-plan",
+      }),
+      repository_commit_rollback_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-repository-commit-rollback-plan",
+      }),
+      worker_dispatch_lease_heartbeat_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-worker-dispatch-lease-heartbeat-plan",
+      }),
+      worker_cancellation_abandon_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-worker-cancellation-abandon-plan",
+      }),
+      worker_completion_finalization_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-worker-completion-finalization-plan",
+      }),
+      worker_output_aggregation_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-worker-output-aggregation-plan",
+      }),
+      worker_synthesis_handoff_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-worker-synthesis-handoff-plan",
+      }),
+      synthesis_bundle_assembly_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-synthesis-bundle-assembly-plan",
+      }),
+      final_synthesis_draft_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-final-synthesis-draft-plan",
+      }),
+    });
+    expect(screen.getByText("Final HTML artifact assembly receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-html-artifact-assembly-plan")).toBeTruthy();
+    expect(screen.getByText("blocked final html artifact assembly unimplemented")).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-final-html-artifact-assembly-receipt"),
+    ).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-html-artifact")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-html-asset")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-html-document")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-html-twin-notes-document")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-html-citation-index")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-html-export-manifest")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "final HTML artifact assembly planner must require final synthesis draft planning before any human-viewable HTML asset can be created",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Final HTML artifact assembly blockers:/)).toBeTruthy();
+    expect(screen.getByText(/final HTML artifact assembly receipt writer/)).toBeTruthy();
+    expect(screen.getByText(/final HTML document renderer/)).toBeTruthy();
+    expect(screen.getByText(/twin note document linker/)).toBeTruthy();
+    expect(screen.getByText(/Final HTML artifact assembly receipt fields:/)).toBeTruthy();
+    expect(screen.getByText(/final_html_document_id/)).toBeTruthy();
+    expect(screen.getByText(/final_html_citation_index_id/)).toBeTruthy();
+    expect(screen.getByText(/final_html_export_manifest_id/)).toBeTruthy();
   });
 });
