@@ -3262,3 +3262,7 @@ non-deep-link product. P0 operator merge PR #465. Pivot alj+ outside thrash.
 domainSearchCoverage reports covered vs uncovered free PD subjects; ResearchContext
 controls stamp data-domain-search-* and status strip (never invent empty query).
 vitest ResearchContext 17 green. P0 operator merge PR #465. Pivot alk+ outside thrash.
+
+## Residual alk · 2026-07-10 — SESSION-ARC akq–alj domain search complete
+Wave handoff: free PD domain-aware twin search product-complete offline (akq–alj)
+with coverage honesty. P0 operator merge PR #465. Pivot alm+ outside thrash.
