@@ -80,6 +80,8 @@ import {
  * ledger or rate table is unset. Cost projection stays on #440 API.
  * Residual (wb): remaining-after-prompt on decision-tree mini estimate + full
  * prompt-cost-projection panel (parity launch wa / badge pg / MO um).
+ * Residual (auc): budget usage bar on Add model panel (install-path foresight ·
+ * soft gate · never invents $0 · parity decision-tree sa).
  */
 export default function Settings() {
   const tier = useViewportTier();
@@ -1073,6 +1075,85 @@ export default function Settings() {
                 never auto-route · ND advisory only · L7
               </span>
             </p>
+            {/* Residual (auc): budget usage bar at add-model (install-path foresight).
+                Parity decision-tree budget bar (sa) · soft gate · never invents $0. */}
+            <div
+              className="space-y-1.5 border border-ink/10 rounded p-2 dark:border-bright/10"
+              data-testid="add-model-budget-bar"
+              data-spent-status={budget?.spent_status ?? "unknown"}
+              data-has-cap={String(
+                budget?.daily_cap_usd != null && budget.daily_cap_usd > 0,
+              )}
+              data-spend-pct={
+                spendPct != null ? String(Math.round(spendPct)) : ""
+              }
+              data-soft-budget="true"
+              data-never-auto-route="true"
+              role="status"
+            >
+              <p className="text-[11px] font-mono text-ink-soft dark:text-starlight">
+                Budget before register (soft gate · never invents $0)
+              </p>
+              <div className="font-mono text-[12px] space-y-0.5">
+                <Row
+                  label="Daily cap"
+                  value={
+                    budget?.daily_cap_usd == null
+                      ? "unset"
+                      : `$${budget.daily_cap_usd.toFixed(2)}`
+                  }
+                />
+                <Row
+                  label="Spent"
+                  value={
+                    budget?.spent_status === "known" && budget.spent_usd != null
+                      ? `$${budget.spent_usd.toFixed(4)}`
+                      : budget?.spent_status === "unknown"
+                        ? "unknown"
+                        : "—"
+                  }
+                />
+                <Row
+                  label="Remaining"
+                  value={
+                    budget?.remaining_usd == null
+                      ? "unknown"
+                      : `$${budget.remaining_usd.toFixed(4)}`
+                  }
+                />
+              </div>
+              <div
+                className="h-2 w-full rounded-full bg-ink/10 dark:bg-bright/10 overflow-hidden"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={spendPct ?? 0}
+                aria-label="Add-model budget usage"
+                data-testid="add-model-budget-progress"
+              >
+                {spendPct != null ? (
+                  <div
+                    className="h-full bg-ink dark:bg-bright transition-all"
+                    style={{ width: `${spendPct}%` }}
+                  />
+                ) : (
+                  <div className="h-full w-full opacity-30" />
+                )}
+              </div>
+              <p className="text-[11px] text-ink-soft dark:text-starlight">
+                {spendPct == null
+                  ? "Usage bar empty when spend is unknown or cap is unset. Project prompts before install-as-driver burns remaining."
+                  : `${Math.round(spendPct)}% of daily cap used · project prompt cost before install-as-driver.`}
+              </p>
+              <a
+                href="#prompt-cost-projection"
+                className="text-[11px] underline opacity-80 hover:opacity-100 font-mono"
+                data-testid="add-model-budget-project-link"
+                title="Full prompt-cost projection vs remaining daily budget"
+              >
+                Full projection
+              </a>
+            </div>
             {registeredError && (
               <p className="text-sm text-red-700 dark:text-red-300 font-mono">
                 {registeredError}

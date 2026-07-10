@@ -1,0 +1,24 @@
+# inventory-auc · Add model panel budget usage bar (install-path foresight)
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: auc
+date: 2026-07-10
+parent_tip: ecb54c9cf (aub)
+
+## Closed
+- add-model-budget-bar on Settings Add model panel
+  data-soft-budget · data-never-auto-route · spent/cap/remaining · progress bar
+- add-model-budget-progress · add-model-budget-project-link → #prompt-cost-projection
+- Co-locates usage vs daily cap before Register model / install-as-driver
+- Parity decision-tree budget bar (sa) · never invents $0 · soft foresight only
+- vitest Settings 37 green · auc-vitest.log in SCRATCH
+
+## Doctrine
+Model install path sees budget bar · operator knows remaining before driver install ·
+never auto-route · ND advisory only · L7
+
+## Next
+aud+ offline product residual outside thrash
+Avoid: add-model budget thrash after auc · pure-open matrix · open-stamp · catalog ·
+scorecard · vision · dogfood · readiness→CTA
+Prefer: Midnight Oil product · competitive non-budget residual · model depth non-bar
+Operator merge PR #465 remains P0 (gated)

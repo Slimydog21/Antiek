@@ -2766,6 +2766,16 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(
       screen.getByTestId("add-model-never-router-hint").textContent,
     ).toMatch(/never auto-route/i);
+    // Residual (auc): budget usage bar co-located on add-model install path.
+    const budgetBar = screen.getByTestId("add-model-budget-bar");
+    expect(budgetBar.getAttribute("data-soft-budget")).toBe("true");
+    expect(budgetBar.getAttribute("data-never-auto-route")).toBe("true");
+    expect(budgetBar.getAttribute("data-has-cap")).toBeTruthy();
+    expect(screen.getByTestId("add-model-budget-progress")).toBeTruthy();
+    expect(
+      screen.getByTestId("add-model-budget-project-link").getAttribute("href"),
+    ).toBe("#prompt-cost-projection");
+    expect(budgetBar.textContent).toMatch(/Budget before register/i);
     await user.type(screen.getByTestId("add-model-provider"), "zai");
     await user.type(screen.getByTestId("add-model-id"), "glm-5.2");
     await user.click(screen.getByTestId("add-model-submit"));
