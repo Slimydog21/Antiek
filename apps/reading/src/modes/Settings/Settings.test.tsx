@@ -274,17 +274,17 @@ const {
       html: `<p>Active: ${opts.depth_tier}</p>`,
     })),
     fetchAntiekBenchDogfoodFixtures: vi.fn(async () => ({
-      // Residual (st/su/…/adn/aeu/afo): competitive dogfood v16 postures.
-      suite_version: "suite-competitive-dogfood-v20",
+      // Residual (st/su/…/adn/aeu/afo/ags): competitive dogfood v21 postures.
+      suite_version: "suite-competitive-dogfood-v21",
       label: "antiek-bench-competitive-dogfood",
-      item_count: 31,
+      item_count: 33,
       by_task_class: {
         distill: 2,
         synthesize: 2,
-        wrestle: 19,
-        book_qa: 8,
+        wrestle: 20,
+        book_qa: 9,
       },
-      // Residual (yb/adn/aeu/afo): full v16 item list (matches substrate; item_count-matches-listed).
+      // Residual (yb/adn/aeu/afo/ags): full v21 item list (matches substrate; item_count-matches-listed).
       items: [
         { item_id: "dogfood-distill-attention", task_class: "distill", prompt: "Distill attention claim" },
         { item_id: "dogfood-synth-perplexity-vs-openai", task_class: "synthesize", prompt: "Perplexity vs OpenAI" },
@@ -306,6 +306,7 @@ const {
         { item_id: "dogfood-book-turing-computable-numbers", task_class: "book_qa", prompt: "Turing on computable numbers free PD HTML" },
         { item_id: "dogfood-book-lovelace-analytical-engine", task_class: "book_qa", prompt: "Lovelace Analytical Engine free PD HTML" },
         { item_id: "dogfood-book-godel-incompleteness", task_class: "book_qa", prompt: "Gödel incompleteness free PD HTML foundations" },
+        { item_id: "dogfood-book-fourier-heat", task_class: "book_qa", prompt: "Fourier Analytical Theory of Heat free PD HTML" },
         { item_id: "dogfood-wrestle-seamless-write-path", task_class: "wrestle", prompt: "seamless Open Write path honesty merge host MO" },
         { item_id: "dogfood-wrestle-intelligent-search-context-write", task_class: "wrestle", prompt: "intelligent search evidence citation-trust Write" },
         { item_id: "dogfood-wrestle-written-analysis-open-write-source", task_class: "wrestle", prompt: "written analysis Open Write source not doc merge" },
@@ -317,13 +318,14 @@ const {
         { item_id: "dogfood-wrestle-highlight-deep-research-path", task_class: "wrestle", prompt: "highlight seamless deep research path honesty" },
         { item_id: "dogfood-wrestle-talk-to-book-twins", task_class: "wrestle", prompt: "TalkToBook twin note-taker path" },
         { item_id: "dogfood-wrestle-meta-reading-twins", task_class: "wrestle", prompt: "MetaReading twin note-taker path" },
+        { item_id: "dogfood-wrestle-research-this-twins", task_class: "wrestle", prompt: "ResearchThis twin note-taker path" },
       ],
       auto_promoted: false,
       view_format: "html",
       settings_panel: "antiek_bench_dogfood_fixtures",
       source: "antiek_bench.dogfood_fixtures",
       notes: ["Competitive dogfood fixtures are offline prompts only."],
-      html: "<p>Suite suite-competitive-dogfood-v20 · items=31 · dogfood-wrestle-research-workstation-spine</p>",
+      html: "<p>Suite suite-competitive-dogfood-v21 · items=33 · dogfood-book-fourier-heat · dogfood-wrestle-research-this-twins</p>",
     })),
     fetchAntiekBenchLeaderboard: vi.fn(async () => ({
       week_id: "2026-W28",
@@ -1657,11 +1659,11 @@ describe("Settings SPR-01 + decision-tree install", () => {
     await waitFor(() => {
       expect(
         screen.getByTestId("antiek-bench-dogfood-summary").textContent,
-      ).toMatch(/suite-competitive-dogfood-v20/);
+      ).toMatch(/suite-competitive-dogfood-v21/);
     });
     // Residual (zh/zm): panel suite version + label + item count after load.
     expect(panel.getAttribute("data-suite-version")).toBe(
-      "suite-competitive-dogfood-v20",
+      "suite-competitive-dogfood-v21",
     );
     expect(panel.getAttribute("data-label")).toBe(
       "antiek-bench-competitive-dogfood",
@@ -1673,22 +1675,22 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(panel.getAttribute("data-settings-panel")).toBe(
       "antiek_bench_dogfood_fixtures",
     );
-    expect(panel.getAttribute("data-item-count")).toBe("31");
+    expect(panel.getAttribute("data-item-count")).toBe("33");
     // Residual (zs/zu): panel full task-class counts after load (parity summary).
-    expect(panel.getAttribute("data-book-qa-count")).toBe("8");
-    expect(panel.getAttribute("data-wrestle-count")).toBe("19");
+    expect(panel.getAttribute("data-book-qa-count")).toBe("9");
+    expect(panel.getAttribute("data-wrestle-count")).toBe("20");
     expect(panel.getAttribute("data-distill-count")).toBe("2");
     expect(panel.getAttribute("data-synthesize-count")).toBe("2");
     const summary = screen.getByTestId("antiek-bench-dogfood-summary");
-    // Residual (su/…/adn/aeu/afo): v20 spine posture machine attrs.
+    // Residual (su/…/adn/aeu/afo/ags): v21 spine posture machine attrs.
     expect(summary.getAttribute("data-suite-version")).toBe(
-      "suite-competitive-dogfood-v20",
+      "suite-competitive-dogfood-v21",
     );
     // Residual (yx): dogfood label honesty.
     expect(summary.getAttribute("data-label")).toBe(
       "antiek-bench-competitive-dogfood",
     );
-    expect(summary.getAttribute("data-item-count")).toBe("31");
+    expect(summary.getAttribute("data-item-count")).toBe("33");
     expect(summary.getAttribute("data-auto-promoted")).toBe("false");
     // Residual (yt): HTML-first dogfood view_format honesty.
     expect(summary.getAttribute("data-view-format")).toBe("html");
@@ -1701,8 +1703,8 @@ describe("Settings SPR-01 + decision-tree install", () => {
       "antiek_bench_dogfood_fixtures",
     );
     // Residual (yg/yh): full task-class counts on dogfood summary.
-    expect(summary.getAttribute("data-book-qa-count")).toBe("8");
-    expect(summary.getAttribute("data-wrestle-count")).toBe("19");
+    expect(summary.getAttribute("data-book-qa-count")).toBe("9");
+    expect(summary.getAttribute("data-wrestle-count")).toBe("20");
     expect(summary.getAttribute("data-distill-count")).toBe("2");
     expect(summary.getAttribute("data-synthesize-count")).toBe("2");
     expect(summary.getAttribute("data-has-write-seed-posture")).toBe("true");
@@ -1734,6 +1736,9 @@ describe("Settings SPR-01 + decision-tree install", () => {
       "true",
     );
     expect(summary.getAttribute("data-has-godel-book-qa-posture")).toBe(
+      "true",
+    );
+    expect(summary.getAttribute("data-has-fourier-book-qa-posture")).toBe(
       "true",
     );
     expect(
@@ -1786,9 +1791,12 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(
       summary.getAttribute("data-has-meta-reading-twins-posture"),
     ).toBe("true");
+    expect(
+      summary.getAttribute("data-has-research-this-twins-posture"),
+    ).toBe("true");
     expect(summary.getAttribute("data-propose-not-promote")).toBe("true");
     expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
-      /Spine postures \(v20\)/i,
+      /Spine postures \(v21\)/i,
     );
     expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
       /write-seed has-body/i,
@@ -1845,15 +1853,15 @@ describe("Settings SPR-01 + decision-tree install", () => {
     // Residual (we): full dogfood item list — no silent top-12 truncate.
     const itemsList = screen.getByTestId("antiek-bench-dogfood-items");
     expect(itemsList.getAttribute("data-truncated")).toBe("false");
-    // Residual (yb/adn/aeu/afo): full v20 mock lists all 25 items — matches item_count.
-    expect(itemsList.getAttribute("data-listed-count")).toBe("31");
-    expect(itemsList.getAttribute("data-item-count")).toBe("31");
+    // Residual (yb/adn/aeu/afo/ags): full v21 mock lists all 33 items — matches item_count.
+    expect(itemsList.getAttribute("data-listed-count")).toBe("33");
+    expect(itemsList.getAttribute("data-item-count")).toBe("33");
     expect(itemsList.getAttribute("data-item-count-matches-listed")).toBe(
       "true",
     );
     // Residual (zd): HTML-first list view_format honesty.
     expect(itemsList.getAttribute("data-view-format")).toBe("html");
-    // Mock lists posture items including reading twins (v20).
+    // Mock lists posture items including reading twins + Fourier (v21).
     expect(
       itemsList.querySelector('[data-item-id="dogfood-book-shannon-communication"]'),
     ).toBeTruthy();
@@ -1914,6 +1922,11 @@ describe("Settings SPR-01 + decision-tree install", () => {
     ).toBeTruthy();
     expect(
       itemsList.querySelector(
+        '[data-item-id="dogfood-wrestle-research-this-twins"]',
+      ),
+    ).toBeTruthy();
+    expect(
+      itemsList.querySelector(
         '[data-item-id="dogfood-wrestle-intelligent-search-context-write"]',
       ),
     ).toBeTruthy();
@@ -1932,8 +1945,19 @@ describe("Settings SPR-01 + decision-tree install", () => {
         '[data-item-id="dogfood-book-godel-incompleteness"]',
       ),
     ).toBeTruthy();
+    expect(
+      itemsList.querySelector(
+        '[data-item-id="dogfood-book-fourier-heat"]',
+      ),
+    ).toBeTruthy();
     expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
       /Heaviside book_qa/i,
+    );
+    expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
+      /Fourier book_qa/i,
+    );
+    expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
+      /ResearchThis twins/i,
     );
     expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
       /citation-trust ungrounded/i,

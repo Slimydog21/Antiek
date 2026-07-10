@@ -2780,6 +2780,11 @@ export default function Settings() {
                       it.item_id === "dogfood-book-godel-incompleteness",
                   ),
                 )}
+                data-has-fourier-book-qa-posture={String(
+                  (dogfood.items || []).some(
+                    (it) => it.item_id === "dogfood-book-fourier-heat",
+                  ),
+                )}
                 data-has-citation-trust-ungrounded-posture={String(
                   (dogfood.items || []).some(
                     (it) =>
@@ -2861,8 +2866,6 @@ export default function Settings() {
                     (it) =>
                       it.item_id ===
                       "dogfood-wrestle-highlight-deep-research-path",
-                    "dogfood-wrestle-talk-to-book-twins",
-                    "dogfood-wrestle-meta-reading-twins",
                   ),
                 )}
                 data-has-talk-to-book-twins-posture={String(
@@ -2875,6 +2878,12 @@ export default function Settings() {
                   (dogfood.items || []).some(
                     (it) =>
                       it.item_id === "dogfood-wrestle-meta-reading-twins",
+                  ),
+                )}
+                data-has-research-this-twins-posture={String(
+                  (dogfood.items || []).some(
+                    (it) =>
+                      it.item_id === "dogfood-wrestle-research-this-twins",
                   ),
                 )}
                 data-propose-not-promote="true"
@@ -2901,6 +2910,7 @@ export default function Settings() {
                     "dogfood-book-turing-computable-numbers",
                     "dogfood-book-lovelace-analytical-engine",
                     "dogfood-book-godel-incompleteness",
+                    "dogfood-book-fourier-heat",
                     "dogfood-wrestle-citation-trust-ungrounded",
                     "dogfood-wrestle-twin-cross-asset-merge-write-seed",
                     "dogfood-wrestle-collective-written-analysis-write-seed",
@@ -2916,6 +2926,7 @@ export default function Settings() {
                     "dogfood-wrestle-highlight-deep-research-path",
                     "dogfood-wrestle-talk-to-book-twins",
                     "dogfood-wrestle-meta-reading-twins",
+                    "dogfood-wrestle-research-this-twins",
                   ].includes(it.item_id),
                 ) ? (
                   <p
@@ -2923,7 +2934,7 @@ export default function Settings() {
                     data-testid="antiek-bench-dogfood-v2-postures"
                     role="status"
                   >
-                    Spine postures (v20): write-seed · float evidence · budget
+                    Spine postures (v21): write-seed · float evidence · budget
                     foresight · Faraday book_qa · collective unit write-seed ·
                     Boole book_qa · Heaviside book_qa · Shannon book_qa ·
                     Turing book_qa · Lovelace book_qa · citation-trust
@@ -2933,7 +2944,9 @@ export default function Settings() {
                     context Write · written analysis Open Write source ·
                     continue-as-unit path · Select open path · unit restore
                     path · Select recent path · ResearchWorkstation spine ·
-                    highlight → DR path · Gödel book_qa · TalkToBook twins · MetaReading twins (listing only · not auto-promoted)
+                    highlight → DR path · Gödel book_qa · Fourier book_qa ·
+                    TalkToBook twins · MetaReading twins · ResearchThis twins
+                    (listing only · not auto-promoted)
                   </p>
                 ) : null}
                 {/* Residual (adw): has-body posture → rewrite + usage deep-links. */}

@@ -46,7 +46,7 @@ def test_project_catalog_html_never_pdf() -> None:
 
     m = re.search(r"free_count=(\d+)", free_only)
     assert m is not None
-    assert int(m.group(1)) >= 18
+    assert int(m.group(1)) >= 19
     # Residual (abj): under free_only, free_count == Entries=N of total (identity).
     entries_m = re.search(r"Entries=(\d+) of (\d+)", free_only)
     assert entries_m is not None

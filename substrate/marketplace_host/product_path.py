@@ -708,6 +708,33 @@ def default_demo_catalog() -> Catalog:
                     "computability",
                 ),
             ),
+            # Residual (ags): heat / signal processing STEM PD for tech researchers.
+            CatalogEntry(
+                book_id="pd-fourier-heat",
+                title="The Analytical Theory of Heat",
+                author="Joseph Fourier",
+                source="project_gutenberg",
+                license_class="public_domain",
+                is_free=True,
+                body_text=(
+                    "Primary causes are unknown to us; but are subject to simple and "
+                    "constant laws, which may be discovered by observation, the study "
+                    "of them being the object of natural philosophy.\n\n"
+                    "Heat, like gravity, penetrates every substance of the universe, "
+                    "its rays occupy all parts of space. The object of our work is to "
+                    "set forth the mathematical laws which this element obeys."
+                ),
+                source_format="html",
+                subjects=(
+                    "mathematics",
+                    "physics",
+                    "science",
+                    "technology",
+                    "engineering",
+                    "signal_processing",
+                    "heat",
+                ),
+            ),
             CatalogEntry(
                 book_id="buy-modern",
                 title="Modern Systems Research",

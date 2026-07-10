@@ -2598,3 +2598,11 @@ twin substrate (parity TalkToBook/MetaReading). vitest ResearchThis 13 green.
 Handoff: TalkToBook · MetaReading · ResearchThis TwinNotes + dogfood v20.
 Reading twins matrix complete offline. P0 operator merge PR #465.
 Pivot ags+ outside thrash.
+
+## Residual ags · 2026-07-10 — free STEM Fourier heat PD + dogfood v21
+Marketplace free HTML PD catalog adds `pd-fourier-heat` (Analytical Theory of Heat ·
+heat · signal_processing · engineering). Antiek-bench dogfood v21 adds
+`dogfood-book-fourier-heat` + `dogfood-wrestle-research-this-twins`. free_pd floor
+≥19 · item_count 33 · book_qa=9 · wrestle=20. Settings spine postures v21.
+Fixed highlight-path posture `.some()` corruption. pytest 41 · Settings 36 green.
+P0 operator merge PR #465. Pivot agt+ outside thrash.

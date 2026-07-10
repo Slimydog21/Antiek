@@ -32,7 +32,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (afz): v18 learns highlight → floating DR path honesty (afw–afx).
 # Residual (agh): v19 learns Gödel foundations free PD book_qa.
 # Residual (agp): v20 learns TalkToBook + MetaReading twin note-taker paths.
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v20"
+# Residual (ags): v21 learns Fourier heat free PD book_qa + ResearchThis twins.
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v21"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -351,6 +352,44 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "formal",
                 "axioms",
                 "html",
+            ),
+        ),
+        # Residual (ags): free heat/signal processing PD → book_qa (Fourier).
+        SuiteItem(
+            item_id="dogfood-book-fourier-heat",
+            task_class="book_qa",
+            prompt=(
+                "From Fourier The Analytical Theory of Heat (free PD HTML): how does he "
+                "frame heat as penetrating every substance, what is the object of the "
+                "work regarding mathematical laws, and why does free public-domain "
+                "hosting of foundational heat and signal-processing texts matter for "
+                "technology research workstations?"
+            ),
+            expected_keywords=(
+                "fourier",
+                "heat",
+                "mathematical",
+                "laws",
+                "html",
+            ),
+        ),
+        # Residual (ags/agq): ResearchThis twin note-taker on book DR launch.
+        SuiteItem(
+            item_id="dogfood-wrestle-research-this-twins",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with ResearchThis recursive note-taker path: when Research this "
+                "passage mounts TwinNotesPanel with data-seamless-research-this-twins · "
+                "autoLoad · autoSeedIfEmpty for documentId and selection body, how should "
+                "Antiek-bench learn models that keep book DR launch twin substrate honest "
+                "alongside collective multi-select without claiming live L3 seed is online?"
+            ),
+            expected_keywords=(
+                "research",
+                "twin",
+                "seamless",
+                "selection",
+                "book",
             ),
         ),
         # Residual (aeu): seamless Write path honesty across reading/research surfaces.
