@@ -313,6 +313,25 @@ export async function hydratePublicationRef(body: {
   return readJson<HydrateRefResponse>(res);
 }
 
+/** Residual (air): multi-hop citation chain stage item with stable anchor. */
+export type CitationChainHopItem = {
+  hop: "insight" | "question" | "source" | string;
+  index: number;
+  text: string;
+  anchor: string;
+  kind?: string;
+  raw?: string;
+  canonical_url?: string;
+};
+
+/** Residual (air): ordered hop stage (insights | questions | sources). */
+export type CitationChainHop = {
+  hop: "insights" | "questions" | "sources" | string;
+  label: string;
+  count: number;
+  items: CitationChainHopItem[];
+};
+
 /** Evidence pack: twin insights/questions + spawn source refs (HTML-first). */
 export type EvidencePackResponse = {
   asset_id: string;
@@ -323,6 +342,13 @@ export type EvidencePackResponse = {
   insights: string[];
   questions: string[];
   source_references: SourceReference[];
+  /**
+   * Residual (air): ordered multi-hop stages for claim→source navigation.
+   * Never invents supported_by edges — sequential stages with anchors only.
+   */
+  citation_chain?: CitationChainHop[];
+  /** Residual (air): true when insights and source refs both non-empty. */
+  chain_complete?: boolean;
   /**
    * Residual (kc/kd): reserved spawn research_tier when spawn_id set
    * (null when pack has no spawn identity).

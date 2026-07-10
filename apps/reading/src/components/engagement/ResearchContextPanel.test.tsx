@@ -547,6 +547,39 @@ describe("ResearchContextPanel", () => {
           canonical_url: "https://arxiv.org/abs/1706.03762",
         },
       ],
+      // Residual (air): multi-hop citation chain hops from substrate.
+      chain_complete: true,
+      citation_chain: [
+        {
+          hop: "insights",
+          label: "Insights (claims)",
+          count: 1,
+          items: [
+            {
+              hop: "insight",
+              index: 0,
+              text: "Attention is routing.",
+              anchor: "evidence-insight-0",
+            },
+          ],
+        },
+        {
+          hop: "sources",
+          label: "Source references",
+          count: 1,
+          items: [
+            {
+              hop: "source",
+              index: 0,
+              text: "[arxiv] https://arxiv.org/abs/1706.03762",
+              kind: "arxiv",
+              raw: "1706.03762",
+              canonical_url: "https://arxiv.org/abs/1706.03762",
+              anchor: "evidence-source-0",
+            },
+          ],
+        },
+      ],
       research_tier: "wrestle",
       view_format: "html",
       product_panel: "evidence_pack",
@@ -611,8 +644,36 @@ describe("ResearchContextPanel", () => {
     expect(chain.getAttribute("data-ref-count")).toBe("1");
     expect(chain.getAttribute("data-citation-trust")).toBe("grounded");
     expect(chain.getAttribute("data-chain-complete")).toBe("true");
+    expect(chain.getAttribute("data-hop-stage-count")).toBe("2");
     expect(chain.textContent).toMatch(/Citation chain/i);
     expect(chain.textContent).toMatch(/multi-hop grounding/i);
+    // Residual (air): multi-hop hop list with stable anchors (claim→source nav).
+    const hops = screen.getByTestId("evidence-citation-chain-hops");
+    expect(hops.getAttribute("data-chain-complete")).toBe("true");
+    expect(hops.getAttribute("data-hop-stage-count")).toBe("2");
+    expect(
+      screen.getByTestId("evidence-citation-chain-hop-strip").textContent,
+    ).toMatch(/Insights.*→.*Source/i);
+    expect(
+      screen.getByTestId("evidence-citation-hop-stage-insights"),
+    ).toBeTruthy();
+    expect(
+      screen.getByTestId("evidence-citation-hop-stage-sources"),
+    ).toBeTruthy();
+    const insightItem = screen.getByTestId(
+      "evidence-citation-hop-item-evidence-insight-0",
+    );
+    expect(insightItem.getAttribute("data-anchor")).toBe("evidence-insight-0");
+    expect(insightItem.getAttribute("id")).toBe("evidence-insight-0");
+    expect(insightItem.textContent).toMatch(/Attention is routing/);
+    const sourceLink = screen.getByTestId(
+      "evidence-citation-hop-link-evidence-source-0",
+    );
+    expect(sourceLink.getAttribute("href")).toBe("#evidence-source-0");
+    expect(
+      screen.getByTestId("evidence-citation-hop-item-evidence-source-0")
+        .textContent,
+    ).toMatch(/arxiv|1706\.03762/i);
     // Residual (kd): spawn research_tier chrome on evidence pack.
     expect(metrics.getAttribute("data-research-tier")).toBe("wrestle");
     expect(

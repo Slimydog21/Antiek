@@ -712,7 +712,7 @@ export function ResearchContextPanel({
               ? ` · tier=${evidence.research_tier}`
               : ""}
           </div>
-          {/* Residual (aij): competitive citation chain honesty (insight→question→ref). */}
+          {/* Residual (aij/air): competitive citation chain honesty + multi-hop hops. */}
           <div
             className="meta font-mono text-[11px] opacity-90"
             data-testid="evidence-citation-chain"
@@ -724,8 +724,12 @@ export function ResearchContextPanel({
               (evidence.ref_count ?? 0) > 0 ? "grounded" : "ungrounded"
             }
             data-chain-complete={String(
-              (evidence.insight_count ?? 0) > 0 &&
-                (evidence.ref_count ?? 0) > 0,
+              evidence.chain_complete ??
+                ((evidence.insight_count ?? 0) > 0 &&
+                  (evidence.ref_count ?? 0) > 0),
+            )}
+            data-hop-stage-count={String(
+              (evidence.citation_chain || []).length,
             )}
             role="status"
           >
@@ -741,6 +745,78 @@ export function ResearchContextPanel({
                 ? " · refs present · seed insights for full chain"
                 : " · incomplete chain · attach pubs / seed twins (never invent sources)"}
           </div>
+          {/* Residual (air): multi-hop claim→source navigation (anchors · no invented edges). */}
+          {(evidence.citation_chain || []).length > 0 ? (
+            <nav
+              className="evidence-citation-chain-hops space-y-2 my-2 font-mono text-[11px]"
+              data-testid="evidence-citation-chain-hops"
+              data-view-format="html"
+              data-chain-complete={String(
+                evidence.chain_complete ??
+                  ((evidence.insight_count ?? 0) > 0 &&
+                    (evidence.ref_count ?? 0) > 0),
+              )}
+              data-hop-stage-count={String(evidence.citation_chain!.length)}
+              aria-label="Citation chain multi-hop navigation"
+            >
+              <p className="opacity-80" data-testid="evidence-citation-chain-hop-strip">
+                Hops:{" "}
+                {(evidence.citation_chain || [])
+                  .map(
+                    (h) =>
+                      `${h.label || h.hop}(${h.count ?? (h.items || []).length})`,
+                  )
+                  .join(" → ")}
+              </p>
+              {(evidence.citation_chain || []).map((stage, si) => (
+                <section
+                  key={`hop-stage-${stage.hop || si}`}
+                  data-testid={`evidence-citation-hop-stage-${stage.hop || si}`}
+                  data-hop={String(stage.hop || "")}
+                  data-hop-count={String(
+                    stage.count ?? (stage.items || []).length,
+                  )}
+                  className="border border-emperor/20 rounded px-2 py-1 space-y-1"
+                >
+                  <h4 className="font-semibold opacity-90">
+                    {stage.label || stage.hop}
+                    <span className="opacity-70">
+                      {" "}
+                      · {stage.count ?? (stage.items || []).length}
+                    </span>
+                  </h4>
+                  <ul className="list-none space-y-0.5 pl-0">
+                    {(stage.items || []).map((item, ii) => {
+                      const anchor =
+                        String(item.anchor || "").trim() ||
+                        `evidence-${item.hop || "item"}-${item.index ?? ii}`;
+                      return (
+                        <li
+                          key={anchor}
+                          id={anchor}
+                          data-testid={`evidence-citation-hop-item-${anchor}`}
+                          data-hop={String(item.hop || "")}
+                          data-anchor={anchor}
+                          className="opacity-90 scroll-mt-4"
+                        >
+                          <a
+                            href={`#${anchor}`}
+                            className="underline-offset-2 hover:underline"
+                            data-testid={`evidence-citation-hop-link-${anchor}`}
+                          >
+                            [{anchor}]
+                          </a>{" "}
+                          <span>
+                            {String(item.hop || "item")}: {item.text}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              ))}
+            </nav>
+          ) : null}
           <p className="counts">
             evidence · insights={evidence.insight_count} · questions=
             {evidence.question_count} · refs={evidence.ref_count}

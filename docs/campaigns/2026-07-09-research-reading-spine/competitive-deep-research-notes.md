@@ -2894,3 +2894,10 @@ P0 operator merge PR #465. Pivot aiq+.
 ## Residual aiq · 2026-07-10 — SESSION-ARC aim–aip navigation deep-links
 Handoff for competitive DR scorecard navigation from progress, TwinNotes, and
 decision-tree dual-gate prep. P0 operator merge PR #465. Pivot air+ outside thrash.
+
+## Residual air · 2026-07-10 — multi-hop claim→source evidence pack navigation
+Evidence pack substrate emits ordered citation_chain hops (insights → questions →
+sources) with stable anchors and chain_complete. ResearchContextPanel renders
+navigable hop stages (#anchor links). Never invents supported_by edges.
+pytest evidence 4 · vitest ResearchContext 14 green. P0 operator merge PR #465.
+Pivot ais+ outside thrash.

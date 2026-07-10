@@ -3,6 +3,10 @@
 Competitors win on citation trust. Antiek composes shipped source_refs + twin
 notes into a single HTML-first evidence pack for the research workstation.
 Does not re-fetch publications (see hydrate) or invent sources.
+
+Residual (air): multi-hop citation chain hops (insights → questions → sources)
+for competitive claim→source navigation. Does **not** invent supported_by edges
+when none exist — hops are sequential stages with stable anchors only.
 """
 
 from __future__ import annotations
@@ -13,6 +17,104 @@ from .project import project_to_html
 from .source_refs import list_source_references, source_references_html
 from .store import EngagementStore
 from .twin import list_twin_notes
+
+
+def build_citation_chain_hops(
+    insights: list[str] | tuple[str, ...],
+    questions: list[str] | tuple[str, ...],
+    source_references: list[dict[str, Any]] | tuple[Any, ...],
+) -> list[dict[str, Any]]:
+    """Build ordered multi-hop citation chain stages for navigation.
+
+    Residual (air): competitive multi-hop UX without inventing per-claim edges.
+    Each hop is a stage (insights | questions | sources) with items that have
+    stable ``anchor`` ids. ``chain_complete`` is true only when both insights and
+    sources are non-empty (questions optional).
+    """
+    insight_items: list[dict[str, Any]] = []
+    for i, text in enumerate(insights or ()):
+        t = str(text or "").strip()
+        if not t:
+            continue
+        insight_items.append(
+            {
+                "hop": "insight",
+                "index": i,
+                "text": t,
+                "anchor": f"evidence-insight-{i}",
+            }
+        )
+    question_items: list[dict[str, Any]] = []
+    for i, text in enumerate(questions or ()):
+        t = str(text or "").strip()
+        if not t:
+            continue
+        question_items.append(
+            {
+                "hop": "question",
+                "index": i,
+                "text": t,
+                "anchor": f"evidence-question-{i}",
+            }
+        )
+    source_items: list[dict[str, Any]] = []
+    for i, ref in enumerate(source_references or ()):
+        if not isinstance(ref, dict):
+            continue
+        kind = str(ref.get("kind") or "source").strip() or "source"
+        raw = str(ref.get("raw") or "").strip()
+        url = str(ref.get("canonical_url") or "").strip()
+        label = f"[{kind}] {url or raw}".strip()
+        if not label or label == f"[{kind}]":
+            continue
+        source_items.append(
+            {
+                "hop": "source",
+                "index": i,
+                "text": label,
+                "kind": kind,
+                "raw": raw,
+                "canonical_url": url,
+                "anchor": f"evidence-source-{i}",
+            }
+        )
+    hops: list[dict[str, Any]] = []
+    if insight_items:
+        hops.append(
+            {
+                "hop": "insights",
+                "label": "Insights (claims)",
+                "count": len(insight_items),
+                "items": insight_items,
+            }
+        )
+    if question_items:
+        hops.append(
+            {
+                "hop": "questions",
+                "label": "Open questions",
+                "count": len(question_items),
+                "items": question_items,
+            }
+        )
+    if source_items:
+        hops.append(
+            {
+                "hop": "sources",
+                "label": "Source references",
+                "count": len(source_items),
+                "items": source_items,
+            }
+        )
+    return hops
+
+
+def citation_chain_complete(
+    insight_count: int,
+    ref_count: int,
+) -> bool:
+    """True when multi-hop path has both claims and sources (questions optional)."""
+    return int(insight_count or 0) > 0 and int(ref_count or 0) > 0
 
 
 def evidence_pack_payload(
@@ -26,6 +128,7 @@ def evidence_pack_payload(
 
     Residual (kc): when ``spawn_id`` is set, include reserved ``research_tier``
     so citation-trust surfaces can show depth posture (default deep).
+    Residual (air): includes ``citation_chain`` hops for multi-hop navigation.
     """
     from substrate.dispatch.research_tier import normalize_research_tier
 
@@ -36,19 +139,25 @@ def evidence_pack_payload(
     # Also collect refs from any spawns if spawn_id omitted? keep explicit.
     insights = [t for t in twins if t.kind == "insight"]
     questions = [t for t in twins if t.kind == "question"]
+    insight_texts = [t.text for t in insights]
+    question_texts = [t.text for t in questions]
+    ref_dicts = [r.to_dict() for r in refs]
     research_tier = None
     if spawn_id:
         row = store.get_spawn(spawn_id) or {}
         research_tier = normalize_research_tier(row.get("research_tier"))
+    chain = build_citation_chain_hops(insight_texts, question_texts, ref_dicts)
     payload: dict[str, Any] = {
         "asset_id": asset_id,
         "spawn_id": spawn_id,
         "insight_count": len(insights),
         "question_count": len(questions),
         "ref_count": len(refs),
-        "insights": [t.text for t in insights],
-        "questions": [t.text for t in questions],
-        "source_references": [r.to_dict() for r in refs],
+        "insights": insight_texts,
+        "questions": question_texts,
+        "source_references": ref_dicts,
+        "citation_chain": chain,
+        "chain_complete": citation_chain_complete(len(insights), len(refs)),
         "research_tier": research_tier,
         "view_format": "html",
         "product_panel": "evidence_pack",
@@ -72,6 +181,17 @@ def project_evidence_html(
     refs_html_fn: Any = None,
 ) -> str:
     asset_id = str(payload.get("asset_id") or "")
+    chain = payload.get("citation_chain")
+    if not isinstance(chain, list):
+        chain = build_citation_chain_hops(
+            payload.get("insights") or [],
+            payload.get("questions") or [],
+            payload.get("source_references") or [],
+        )
+    chain_complete = bool(payload.get("chain_complete")) or citation_chain_complete(
+        int(payload.get("insight_count") or 0),
+        int(payload.get("ref_count") or 0),
+    )
     blocks: list[dict[str, Any]] = [
         {
             "type": "heading",
@@ -92,36 +212,63 @@ def project_evidence_html(
                             if payload.get("research_tier")
                             else ""
                         )
+                        + f" · chain_complete={str(chain_complete).lower()}"
                         + " · view: HTML"
                     ),
                 }
             ],
         },
     ]
-    for text in payload.get("insights") or []:
+    # Residual (air): multi-hop nav strip (stage labels only — no invented edges).
+    if chain:
+        hop_labels = " → ".join(
+            f"{h.get('label')}({h.get('count')})"
+            for h in chain
+            if isinstance(h, dict)
+        )
         blocks.append(
             {
                 "type": "paragraph",
-                "content": [{"type": "text", "text": f"Insight: {text}"}],
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"Citation chain hops: {hop_labels}",
+                    }
+                ],
             }
         )
-    for text in payload.get("questions") or []:
-        blocks.append(
-            {
-                "type": "paragraph",
-                "content": [{"type": "text", "text": f"Question: {text}"}],
-            }
-        )
-    for ref in payload.get("source_references") or []:
-        if not isinstance(ref, dict):
+    for hop in chain:
+        if not isinstance(hop, dict):
             continue
-        label = f"[{ref.get('kind')}] {ref.get('canonical_url') or ref.get('raw')}"
+        hop_label = str(hop.get("label") or hop.get("hop") or "hop")
         blocks.append(
             {
-                "type": "paragraph",
-                "content": [{"type": "text", "text": f"Source: {label}"}],
+                "type": "heading",
+                "attrs": {"level": 2},
+                "content": [{"type": "text", "text": hop_label}],
             }
         )
+        for item in hop.get("items") or []:
+            if not isinstance(item, dict):
+                continue
+            anchor = str(item.get("anchor") or "").strip()
+            text = str(item.get("text") or "").strip()
+            if not text:
+                continue
+            prefix = {
+                "insight": "Insight",
+                "question": "Question",
+                "source": "Source",
+            }.get(str(item.get("hop") or ""), "Item")
+            line = f"{prefix}: {text}"
+            if anchor:
+                line = f"[{anchor}] {line}"
+            blocks.append(
+                {
+                    "type": "paragraph",
+                    "content": [{"type": "text", "text": line}],
+                }
+            )
     if len(blocks) == 2:
         blocks.append(
             {

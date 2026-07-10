@@ -26,6 +26,10 @@ from substrate.engagement_spine import (  # noqa: E402
     record_twin_question,
     spawn_from_highlight,
 )
+from substrate.engagement_spine.evidence import (  # noqa: E402
+    build_citation_chain_hops,
+    citation_chain_complete,
+)
 
 
 @pytest.fixture
@@ -34,6 +38,36 @@ def client():
     app = FastAPI()
     register_engagement_routes(app)
     return TestClient(app)
+
+
+def test_build_citation_chain_hops_ordered_stages():
+    """Residual (air): multi-hop stages with stable anchors · no invented edges."""
+    hops = build_citation_chain_hops(
+        ["Claim A", "  ", "Claim B"],
+        ["Q1?"],
+        [
+            {
+                "kind": "arxiv",
+                "raw": "1706.03762",
+                "canonical_url": "https://arxiv.org/abs/1706.03762",
+            }
+        ],
+    )
+    assert [h["hop"] for h in hops] == ["insights", "questions", "sources"]
+    assert hops[0]["count"] == 2  # blank insight skipped
+    assert hops[0]["items"][0]["anchor"] == "evidence-insight-0"
+    assert hops[0]["items"][1]["text"] == "Claim B"
+    assert hops[0]["items"][1]["anchor"] == "evidence-insight-2"
+    assert hops[1]["items"][0]["anchor"] == "evidence-question-0"
+    assert hops[2]["items"][0]["anchor"] == "evidence-source-0"
+    assert "arxiv" in hops[2]["items"][0]["text"].lower()
+    assert citation_chain_complete(2, 1) is True
+    assert citation_chain_complete(0, 1) is False
+    assert citation_chain_complete(1, 0) is False
+    # Empty stages omitted — never invent hop edges.
+    assert build_citation_chain_hops([], [], []) == []
+    only_q = build_citation_chain_hops([], ["open?"], [])
+    assert [h["hop"] for h in only_q] == ["questions"]
 
 
 def test_evidence_pack_with_twins_and_refs():
@@ -62,6 +96,18 @@ def test_evidence_pack_with_twins_and_refs():
     assert "1706.03762" in pack["html"] or "arxiv" in pack["html"].lower()
     # Residual (kc): default research_tier deep when spawn reserved without tier.
     assert pack["research_tier"] == "deep"
+    # Residual (air): multi-hop citation chain payload + HTML hop projection.
+    assert pack["chain_complete"] is True
+    chain = pack["citation_chain"]
+    assert isinstance(chain, list) and len(chain) == 3
+    assert [h["hop"] for h in chain] == ["insights", "questions", "sources"]
+    assert chain[0]["items"][0]["anchor"] == "evidence-insight-0"
+    assert chain[2]["items"][0]["anchor"] == "evidence-source-0"
+    html = pack["html"] or ""
+    assert "Citation chain hops:" in html
+    assert "chain_complete=true" in html
+    assert "evidence-insight-0" in html
+    assert "evidence-source-0" in html
 
 
 def test_evidence_pack_surfaces_spawn_research_tier_wrestle():
@@ -114,3 +160,7 @@ def test_api_evidence_pack_double_run(client):
     assert r1.json()["insight_count"] == r2.json()["insight_count"] == 1
     assert r1.json()["view_format"] == "html"
     assert r1.json()["html"]
+    # Residual (air): API surfaces citation_chain + chain_complete (incomplete without refs).
+    assert r1.json().get("chain_complete") is False
+    assert isinstance(r1.json().get("citation_chain"), list)
+    assert r1.json()["citation_chain"][0]["hop"] == "insights"
