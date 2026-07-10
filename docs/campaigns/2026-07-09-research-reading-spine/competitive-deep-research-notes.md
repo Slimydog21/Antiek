@@ -3808,3 +3808,8 @@ vitest Settings scorecard path green. P0 PR #465. Pivot aps+ outside thrash.
 Highlight DR path gets competitive scorecard + FUTURE + pipeline hint
 (insights→questions→sources · plan→terminal). Parity TalkToBook aoa · reading ≡ research.
 vitest ResearchThis 13 green. P0 PR #465. Pivot apt+ outside thrash.
+
+## Residual apt · 2026-07-10 — TalkToBook + MetaReading hop/stage pipeline hints
+Conversation reading surfaces stamp data-hop-pipeline=api · data-stage-pipeline=ape
++ pipeline hint text (parity ResearchThis aps). Completes reading ≡ research
+world-class DR map chrome. vitest Talk 13 · Meta 16 green. P0 PR #465. Pivot apu+.

@@ -373,6 +373,13 @@ describe("TalkToBook (M2)", () => {
         .getByTestId("talk-to-book-competitive-dr-future-agent-link")
         .getAttribute("href") || "",
     ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    // Residual (apt): hop/stage pipeline honesty on talk competitive links.
+    const talkComp = screen.getByTestId("talk-to-book-competitive-links");
+    expect(talkComp.getAttribute("data-hop-pipeline")).toBe("api");
+    expect(talkComp.getAttribute("data-stage-pipeline")).toBe("ape");
+    expect(
+      screen.getByTestId("talk-to-book-competitive-pipeline-hint").textContent,
+    ).toMatch(/insights.*questions.*sources/i);
     expect(
       screen
         .getByTestId("talk-to-book-twin-completeness-future-agent-link")

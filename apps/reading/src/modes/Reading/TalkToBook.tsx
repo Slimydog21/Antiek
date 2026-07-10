@@ -205,12 +205,14 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
           data-testid="talk-to-book-competitive-links"
           data-view-format="html"
           data-html-first="true"
+          data-hop-pipeline="api"
+          data-stage-pipeline="ape"
         >
           <a
             href="/settings#settings-competitive-dr-scorecard"
             data-testid="talk-to-book-competitive-scorecard-link"
             className="underline opacity-80 hover:opacity-100"
-            title="Settings competitive deep-research scorecard (talk bookmark · reading ≡ research)"
+            title="Settings competitive deep-research scorecard (talk bookmark · hop/stage pipelines · reading ≡ research)"
           >
             Settings · competitive DR
           </a>
@@ -230,6 +232,13 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
           >
             FUTURE · twin matrix
           </a>
+          {/* Residual (apt): hop/stage pipeline honesty (parity ResearchThis aps). */}
+          <span
+            className="opacity-70"
+            data-testid="talk-to-book-competitive-pipeline-hint"
+          >
+            hops insights→questions→sources · stages plan→terminal
+          </span>
         </p>
       </header>
 

@@ -1,0 +1,15 @@
+# inventory-apt · TalkToBook + MetaReading hop/stage pipeline hints
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: apt
+date: 2026-07-10
+parent_tip: bcc0fef9 (aps)
+
+## Closed
+- TalkToBook competitive-links data-hop/stage + pipeline hint (parity aps)
+- MetaReading competitive-links same matrix
+- Completes reading conversation surfaces for world-class DR pipeline honesty
+- vitest TalkToBook 13 · MetaReading 16 green
+
+## Next
+apu+ product residual outside thrash
+Operator merge PR #465 remains highest leverage (gated)

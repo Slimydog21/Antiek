@@ -341,17 +341,20 @@ export default function MetaReading() {
               )}
 
               {/* Residual (anz): deliverable-local competitive DR honesty. */}
+              {/* Residual (apt): hop/stage pipeline honesty (parity ResearchThis aps). */}
               <p
                 className="text-[11px] font-mono space-x-2"
                 data-testid="meta-reading-competitive-links"
                 data-view-format="html"
                 data-html-first="true"
+                data-hop-pipeline="api"
+                data-stage-pipeline="ape"
               >
                 <a
                   href="/settings#settings-competitive-dr-scorecard"
                   data-testid="meta-reading-competitive-scorecard-link"
                   className="underline opacity-80 hover:opacity-100"
-                  title="Settings competitive deep-research scorecard (owned-corpus meta-reading · HTML-first)"
+                  title="Settings competitive deep-research scorecard (owned-corpus meta-reading · hop/stage pipelines · HTML-first)"
                 >
                   Settings · competitive DR scorecard
                 </a>
@@ -371,6 +374,12 @@ export default function MetaReading() {
                 >
                   FUTURE · twin completeness matrix
                 </a>
+                <span
+                  className="opacity-70"
+                  data-testid="meta-reading-competitive-pipeline-hint"
+                >
+                  hops insights→questions→sources · stages plan→terminal
+                </span>
               </p>
 
               {/* READ-ONLY report (not an editable document — operator decision). */}

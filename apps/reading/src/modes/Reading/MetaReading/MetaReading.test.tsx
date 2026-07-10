@@ -319,6 +319,13 @@ describe("MetaReading (M4)", () => {
         .getByTestId("meta-reading-competitive-dr-future-agent-link")
         .getAttribute("href") || "",
     ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    // Residual (apt): hop/stage pipeline honesty on meta competitive links.
+    const metaComp = screen.getByTestId("meta-reading-competitive-links");
+    expect(metaComp.getAttribute("data-hop-pipeline")).toBe("api");
+    expect(metaComp.getAttribute("data-stage-pipeline")).toBe("ape");
+    expect(
+      screen.getByTestId("meta-reading-competitive-pipeline-hint").textContent,
+    ).toMatch(/plan.*terminal/i);
     expect(
       screen
         .getByTestId("meta-reading-twin-completeness-future-agent-link")

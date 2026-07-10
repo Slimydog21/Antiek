@@ -21,3 +21,4 @@ one residual/cycle · campaign push only · operator merges PR #465.
 | **apq** | research_context_pack twin seed path honesty | prompt substrate float |
 | **apr** | Settings scorecard hop pipeline + stage pipeline honesty | operator-visible ape/api map |
 | **aps** | ResearchThis competitive DR + hop/stage deep-links | highlight path · reading ≡ research |
+| **apt** | TalkToBook + MetaReading hop/stage pipeline hints | reading conversation matrix |
