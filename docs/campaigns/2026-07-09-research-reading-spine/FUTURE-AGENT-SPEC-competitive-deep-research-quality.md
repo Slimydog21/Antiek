@@ -64,8 +64,8 @@
 
 ## Execution order for future agents
 
-1. Inventory-first: read SESSION-ARC-ajn-ajw · SESSION-ARC-ajy-akb · inventories aka–akc · tip SHA.  
-2. Prefer offline product residual over dual-gate invention · **avoid scorecard/dogfood thrash**.  
+1. Inventory-first: read SESSION-ARC-akq-aky · SESSION-ARC-akr-ala · SESSION-ARC-akx-ald · tip SHA.  
+2. Prefer offline product residual over dual-gate invention · **avoid scorecard/dogfood/deep-link thrash**.  
 3. One residual letter/cycle · green tests · campaign push only.  
 4. Operator merges PR #465 · main/prod never by agents.  
 
