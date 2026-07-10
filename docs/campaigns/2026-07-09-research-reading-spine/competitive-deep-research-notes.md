@@ -1184,3 +1184,9 @@ failure surfaces L1/L2 prep without inventing live bodies.
 FUTURE-AGENT-SPEC tip → 5ec87cc5 with closed arcs tt–uq (24 residual ships).
 Competitive delta: multi-agent swarm handoff stays tip-true after citation-trust
 hydrate prep wave.
+
+## Residual us · 2026-07-10 — dogfood v7 citation-trust ungrounded
+suite-competitive-dogfood-v7 adds dogfood-wrestle-citation-trust-ungrounded.
+Settings posture honesty. Competitive delta: Antiek-bench recursive rewrite
+learns ungrounded → dual-gate hydrate prep as a first-class wrestle task
+(propose≠promote · never invent live bodies).

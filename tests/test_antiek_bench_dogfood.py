@@ -35,7 +35,7 @@ def test_dogfood_suite_covers_task_classes():
     assert suite.suite_version == COMPETITIVE_DOGFOOD_VERSION
     classes = set(suite.task_classes())
     assert {"distill", "synthesize", "wrestle", "book_qa"} <= classes
-    assert len(suite.items) >= 12
+    assert len(suite.items) >= 13
     # Residual (st): write-seed / float HTML / budget foresight postures.
     ids = {i.item_id for i in suite.items}
     assert "dogfood-wrestle-write-seed" in ids
@@ -49,6 +49,8 @@ def test_dogfood_suite_covers_task_classes():
     assert "dogfood-book-boole-laws-of-thought" in ids
     # Residual (ud): Heaviside electricity engineering book_qa.
     assert "dogfood-book-heaviside-em" in ids
+    # Residual (us): citation-trust ungrounded hydrate prep.
+    assert "dogfood-wrestle-citation-trust-ungrounded" in ids
 
 
 def test_register_does_not_auto_activate():
@@ -81,10 +83,10 @@ def test_payload_and_api_html():
     payload = dogfood_fixture_payload(include_html=True)
     assert payload["auto_promoted"] is False
     assert payload["view_format"] == "html"
-    assert payload["item_count"] >= 12
+    assert payload["item_count"] >= 13
     assert payload["html"]
     assert "application/pdf" not in payload["html"].lower()
-    # Residual (st/tf/tv/tz/ud): v6 fixtures visible in HTML listing.
+    # Residual (st/tf/tv/tz/ud/us): v7 fixtures visible in HTML listing.
     assert "dogfood-wrestle-write-seed" in payload["html"]
     assert "twin_seed" in payload["html"]
     assert "dogfood-book-faraday-induction" in payload["html"]
@@ -95,6 +97,8 @@ def test_payload_and_api_html():
     assert "boole" in payload["html"].lower()
     assert "dogfood-book-heaviside-em" in payload["html"]
     assert "heaviside" in payload["html"].lower()
+    assert "dogfood-wrestle-citation-trust-ungrounded" in payload["html"]
+    assert "ungrounded" in payload["html"].lower()
 
     app = FastAPI()
     register_settings_budget_routes(app)

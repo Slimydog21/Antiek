@@ -18,7 +18,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (tv): v4 adds multi-spawn collective unit → Write twin_seed posture.
 # Residual (tz): v5 adds book_qa computing/logic (Boole free PD).
 # Residual (ud): v6 adds book_qa electricity engineering (Heaviside free PD).
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v6"
+# Residual (us): v7 adds wrestle citation-trust ungrounded hydrate prep.
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v7"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -187,6 +188,25 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "electromagnetic",
                 "engineering",
                 "html",
+            ),
+        ),
+        # Residual (us): citation-trust ungrounded → dual-gate hydrate prep.
+        SuiteItem(
+            item_id="dogfood-wrestle-citation-trust-ungrounded",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with competitive deep research honesty: when an evidence pack "
+                "or publication attach is ungrounded (ref_count=0 or hydrate failed), "
+                "why must the workstation surface Settings hydrate readiness and dual-gate "
+                "L1–L2 checklist instead of inventing arxiv/substack bodies or silent-live "
+                "hydrate — and how does offline-default identity preserve citation trust?"
+            ),
+            expected_keywords=(
+                "ungrounded",
+                "hydrate",
+                "citation",
+                "offline",
+                "dual",
             ),
         ),
     )
