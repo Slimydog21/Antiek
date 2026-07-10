@@ -457,6 +457,17 @@ describe("TwinNotesPanel", () => {
     expect(metrics.getAttribute("data-question-count")).toBe("1");
     expect(metrics.getAttribute("data-note-count")).toBe("2");
     expect(metrics.getAttribute("data-view-format")).toBe("html");
+    // Residual (arq): substrate ready when both insight + question legs present.
+    expect(metrics.getAttribute("data-substrate-ready")).toBe("true");
+    expect(metrics.getAttribute("data-has-insights")).toBe("true");
+    expect(metrics.getAttribute("data-has-questions")).toBe("true");
+    const substrate = screen.getByTestId("twin-substrate-readiness");
+    expect(substrate.getAttribute("data-substrate-ready")).toBe("true");
+    expect(substrate.getAttribute("data-html-first")).toBe("true");
+    expect(substrate.textContent).toMatch(/substrate ready/i);
+    expect(
+      screen.getByTestId("twin-notes-panel").getAttribute("data-substrate-ready"),
+    ).toBe("true");
     expect(seedTwinNotes).not.toHaveBeenCalled();
   });
 

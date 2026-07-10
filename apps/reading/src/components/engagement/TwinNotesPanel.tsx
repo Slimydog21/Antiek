@@ -93,6 +93,7 @@ import {
   formatResearchDomainsClause,
   normalizeDomainSubjects,
 } from "../../workspace/domainSearchDefaults";
+import { twinSubstrateReadiness } from "../../workspace/twinSubstrateReadiness";
 
 /** Minimal twin note shape for residual (mz) chase payload. */
 export type TwinChaseNote = {
@@ -381,6 +382,17 @@ export function TwinNotesPanel({
   const domainCoverage = useMemo(
     () => domainSearchCoverage(domainSubjects),
     [domainSubjects],
+  );
+  // Residual (arq): recursive note-taker substrate readiness (insights + questions).
+  const substrate = useMemo(
+    () =>
+      twinSubstrateReadiness({
+        insight_count: twins?.insight_count,
+        question_count: twins?.question_count,
+        note_count: twins?.note_count,
+        notes: twins?.notes,
+      }),
+    [twins],
   );
   // Residual (aot): single normalize for chase titles/stamps (aoc/aoo).
   const chaseDomains = useMemo(
@@ -1036,6 +1048,10 @@ export function TwinNotesPanel({
       data-domain-search-uncovered-count={String(
         domainCoverage.uncovered.length,
       )}
+      data-substrate-ready={String(substrate.substrate_ready)}
+      data-substrate-empty={String(substrate.empty)}
+      data-has-insights={String(substrate.has_insights)}
+      data-has-questions={String(substrate.has_questions)}
       aria-label="Twin notes"
     >
       <header>
@@ -1696,6 +1712,10 @@ export function TwinNotesPanel({
             data-visible-count={String(visibleNotes.length)}
             data-research-tier={normalizedResearchTier}
             data-view-format="html"
+            data-substrate-ready={String(substrate.substrate_ready)}
+            data-substrate-empty={String(substrate.empty)}
+            data-has-insights={String(substrate.has_insights)}
+            data-has-questions={String(substrate.has_questions)}
             role="status"
           >
             Recursive note-taker · notes={twins.note_count ?? 0} · insights=
@@ -1705,6 +1725,22 @@ export function TwinNotesPanel({
               ? ` · showing ${listFilter}=${visibleNotes.length}`
               : ""}
           </div>
+          {/* Residual (arq): substrate readiness chrome (insights + questions legs). */}
+          <p
+            className="meta font-mono text-[11px] opacity-90"
+            data-testid="twin-substrate-readiness"
+            data-substrate-ready={String(substrate.substrate_ready)}
+            data-substrate-empty={String(substrate.empty)}
+            data-has-insights={String(substrate.has_insights)}
+            data-has-questions={String(substrate.has_questions)}
+            data-insight-count={String(substrate.insight_count)}
+            data-question-count={String(substrate.question_count)}
+            data-html-first="true"
+            role="status"
+            title="Recursive note-taker substrate ready when both insights and questions exist"
+          >
+            Substrate · {substrate.summary}
+          </p>
           {/* Residual (mr): browse filter before selective promote. */}
           <label className="flex items-center gap-1 text-[11px] font-mono">
             <span className="opacity-70">Show</span>

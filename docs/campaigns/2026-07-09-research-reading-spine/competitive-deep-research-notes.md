@@ -4058,3 +4058,9 @@ Write). vitest 31 green. P0 PR #465. Pivot arp+ outside thrash.
 MO competitive nav stamps offline product surface catalog. Completes Settings ·
 ResearchThis · Write · MO honesty matrix. vitest 30 green. P0 PR #465. Pivot arq+
 outside thrash.
+
+## Residual arq · 2026-07-10 — twin substrate readiness (recursive note-taker)
+twinSubstrateReadiness pure helper: substrate_ready when both insights and
+questions exist. TwinNotesPanel chrome. Competitive delta: recursive note-taker
+legs are operator-visible without inventing notes. vitest 39 green. P0 PR #465.
+Pivot arr+ outside thrash.
