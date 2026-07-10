@@ -3401,3 +3401,8 @@ P0 operator merge PR #465. Pivot amo+ outside thrash.
 ## Residual amo · 2026-07-10 — SESSION-ARC amj–amn host tier full path
 Wave handoff: host research depth prefill on Marketplace · HostedHtml · DR session ·
 ResearchWorkstation. P0 operator merge PR #465. Pivot amp+ outside thrash.
+
+## Residual amp · 2026-07-10 — Midnight Oil deposit ResearchContext researchTier prefill
+Autonomous MO deposit ResearchContext inherits job research_tier depth posture
+(parity marketplace/HostedHtml/DR/workstation host-tier path). vitest MidnightOil 26 green.
+P0 operator merge PR #465. Pivot amq+ outside thrash.

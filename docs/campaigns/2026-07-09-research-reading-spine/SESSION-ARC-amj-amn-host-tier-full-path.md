@@ -16,3 +16,4 @@ note-taker on every major reading≡research surface offline.
 
 ## P0
 Operator merge PR **#465**. Infinite continues.
+| **amp** | Midnight Oil deposit | job research_tier → ResearchContext prefill |

@@ -47,6 +47,8 @@
  * recursive note-taker) — parity hosted/Write; remount after promote/merge.
  * Residual (op): ResearchContextPanel on deposit (search/metrics over twin
  * substrate that feeds the next prompt) — remount on same refresh key as twins.
+ * Residual (amp): deposit ResearchContext inherits job research_tier prefill
+ * (parity marketplace amj · HostedHtml amk · DR aml · workstation amn).
  * Residual (oq): offline run spawn_ids push recent_ring even when auto_deposit
  * is off so swarm goals remain multi-selectable elsewhere (Write/hosted).
  * Residual (ot): run-result metrics surface recent_ring honesty (spawn count
@@ -1669,6 +1671,23 @@ export default function MidnightOil() {
                   data-testid="moil-deposit-context-mount"
                   data-view-format="html"
                   data-asset-id={depositParentAssetId}
+                  data-research-tier={
+                    (() => {
+                      const tier = (
+                        job.research_tier ||
+                        researchTier ||
+                        "deep"
+                      )
+                        .toString()
+                        .toLowerCase();
+                      return tier === "fast" ||
+                        tier === "deep" ||
+                        tier === "wrestle"
+                        ? tier
+                        : "deep";
+                    })()
+                  }
+                  data-seamless-moil-context="true"
                 >
                   <p className="text-[10px] font-mono uppercase tracking-wider opacity-70">
                     Research context (deposit asset)
@@ -1677,11 +1696,28 @@ export default function MidnightOil() {
                     data-testid="moil-deposit-context-refresh"
                     data-refresh-key={String(contextRefreshKey)}
                   >
+                    {/* Residual (amp): job depth posture into intelligent context. */}
                     <ResearchContextPanel
                       key={`ctx-${depositParentAssetId}-${contextRefreshKey}`}
                       assetId={depositParentAssetId}
                       spawnId={depositSpawnIds[0] ?? null}
                       autoLoad
+                      researchTier={
+                        (() => {
+                          const tier = (
+                            job.research_tier ||
+                            researchTier ||
+                            "deep"
+                          )
+                            .toString()
+                            .toLowerCase();
+                          return tier === "fast" ||
+                            tier === "deep" ||
+                            tier === "wrestle"
+                            ? tier
+                            : "deep";
+                        })()
+                      }
                     />
                   </div>
                 </section>

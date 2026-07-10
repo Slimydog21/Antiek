@@ -266,10 +266,12 @@ vi.mock("../../components/engagement/ResearchContextPanel", () => ({
     assetId: string;
     spawnId?: string | null;
     autoLoad?: boolean;
+    researchTier?: string | null;
   }) => (
     <div
       data-testid="research-context-panel-stub"
       data-asset-id={props.assetId}
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
       data-spawn-id={props.spawnId ?? ""}
       data-auto-load={props.autoLoad ? "1" : "0"}
     >
@@ -962,6 +964,18 @@ describe("MidnightOil mode", () => {
     );
     expect(ctxStub.getAttribute("data-spawn-id")).toBe("spn_1");
     expect(ctxStub.getAttribute("data-auto-load")).toBe("1");
+    // Residual (amp): deposit ResearchContext inherits job research_tier.
+    expect(
+      screen
+        .getByTestId("moil-deposit-context-mount")
+        .getAttribute("data-research-tier"),
+    ).toBe("deep");
+    expect(
+      screen
+        .getByTestId("moil-deposit-context-mount")
+        .getAttribute("data-seamless-moil-context"),
+    ).toBe("true");
+    expect(ctxStub.getAttribute("data-research-tier")).toBe("deep");
     // Residual (gl/js): progress panel for deposit spawn_ids + tier poll.
     expect(screen.getByTestId("moil-deposit-progress-mount")).toBeTruthy();
     expect(
