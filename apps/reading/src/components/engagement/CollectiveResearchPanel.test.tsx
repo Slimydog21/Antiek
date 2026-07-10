@@ -386,6 +386,21 @@ describe("CollectiveResearchPanel", () => {
     await waitFor(() => {
       expect(screen.getByTestId("collective-continue-as-unit")).toBeTruthy();
     });
+    // Residual (adk): continue-as-unit is offline unit re-entry — L6 deferred.
+    const contFloat = screen.getByTestId("collective-continue-as-unit");
+    expect(contFloat.getAttribute("data-l6-live-multiagent")).toBe("deferred");
+    expect(contFloat.getAttribute("data-window-mode")).toBe("floating");
+    expect(contFloat.getAttribute("data-view-format")).toBe("html");
+    expect(
+      screen
+        .getByTestId("collective-continue-as-unit-full")
+        .getAttribute("data-l6-live-multiagent"),
+    ).toBe("deferred");
+    expect(
+      screen
+        .getByTestId("collective-continue-as-unit-full")
+        .getAttribute("data-window-mode"),
+    ).toBe("full");
     expect(screen.getByTestId("collective-continue-budget-mount")).toBeTruthy();
     expect(screen.getByTestId("research-launch-budget-panel-stub")).toBeTruthy();
     fireEvent.click(screen.getByTestId("collective-continue-as-unit"));

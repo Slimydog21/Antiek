@@ -53,6 +53,8 @@
  *     (spawn_ids by collective_id) in sessionStorage; restore last multi-select
  * Residual (adj): membership status stamps L6 live multi-agent deferred +
  * research_tier for offline cohesive unit honesty (parity panel L6 chrome).
+ * Residual (adk): continue-as-unit buttons stamp L6 deferred (offline unit
+ * re-entry only — not live multi-agent council).
  *     after continue-as-unit re-entry (intersection with available).
  * 28. Residual (tr): float|full cohesive unit prompt_block as HTML reading window
  *     without inventing a server document_id (parity research context pack sl).
@@ -1182,7 +1184,14 @@ export function CollectiveResearchPanel({
                   !unit.prompt_block?.trim() ||
                   (budgetWarn && !forceOverBudget)
                 }
-                title="Open a new floating deep research session seeded with this collective prompt"
+                // Residual (adk): offline cohesive unit re-entry — not live L6 council.
+                data-l6-live-multiagent="deferred"
+                data-view-format="html"
+                data-window-mode="floating"
+                data-research-tier={
+                  unit.recommended_research_tier || researchTier || ""
+                }
+                title="Open a new floating deep research session seeded with this collective prompt (offline unit · L6 live multi-agent deferred)"
               >
                 {busy ? "Opening…" : "Continue as cohesive unit (window)"}
               </button>
@@ -1195,7 +1204,14 @@ export function CollectiveResearchPanel({
                   !unit.prompt_block?.trim() ||
                   (budgetWarn && !forceOverBudget)
                 }
-                title="Open collective unit deep research expanded to full working region"
+                // Residual (adk): offline cohesive unit re-entry — not live L6 council.
+                data-l6-live-multiagent="deferred"
+                data-view-format="html"
+                data-window-mode="full"
+                data-research-tier={
+                  unit.recommended_research_tier || researchTier || ""
+                }
+                title="Open collective unit deep research expanded to full working region (offline unit · L6 live multi-agent deferred)"
               >
                 {busy ? "Opening…" : "Continue as unit (full)"}
               </button>
