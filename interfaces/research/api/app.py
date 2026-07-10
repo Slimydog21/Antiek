@@ -1450,6 +1450,9 @@ def create_app(
         "/health",
         "/auth/request",
         "/auth/callback",
+        "/auth/passkey/status",
+        "/auth/passkey/login/options",
+        "/auth/passkey/login/verify",
         # Temporary agent / computer-use access (Codex + Hermes
         # computer-use): a logged-out browser must reach the dev-login
         # bootstrap to acquire its session, same as /auth/callback. The

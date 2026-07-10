@@ -497,6 +497,34 @@
       changed_when: false
       tags: [verify]
 
+    # Passkey login cannot start if auth middleware intercepts this public
+    # discovery route. Probe it without a cookie and assert that logged-out
+    # callers get only the branch bit, never the operator's credential count.
+    - name: GET public passkey readiness without a session
+      ansible.builtin.uri:
+        url: "https://{{ api_domain }}/auth/passkey/status"
+        return_content: true
+        status_code: 200
+      register: passkey_status
+      delegate_to: localhost
+      become: false
+      tags: [verify, auth]
+
+    - name: assert public passkey discovery is ready and private
+      ansible.builtin.assert:
+        that:
+          - passkey_status.json.available is boolean
+          - passkey_status.json.count is none
+        fail_msg: |
+          Passkey discovery is not production-ready. Expected an unauthenticated
+          200 response with boolean `available` and private `count: null`; got
+          {{ passkey_status.status | default('no status') }}
+          {{ passkey_status.json | default(passkey_status.content | default('no body')) }}.
+        success_msg: |
+          Passkey discovery verified: public route is reachable and credential
+          counts remain private before login.
+      tags: [verify, auth]
+
     # ── Frontend smoke check ────────────────────────────────────────────
     # GET the root URL through Caddy. Asserts the SPA is served + the
     # response is text/html (i.e. NOT the JSON 404 a reverse-proxy

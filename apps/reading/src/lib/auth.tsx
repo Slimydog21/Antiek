@@ -12,6 +12,12 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import type {
+  AuthenticationResponseJSON,
+  PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+  RegistrationResponseJSON,
+} from "@simplewebauthn/browser";
 
 import { API_BASE, apiFetch } from "./api";
 import {
@@ -178,6 +184,97 @@ export async function requestMagicLink(email: string, nextPath: string = "/"): P
   } catch {
     return authRequestError("transport_fetch_failed", AUTH_TRANSPORT_FETCH_MESSAGE, "A-TRANSPORT-FETCH");
   }
+}
+
+export interface PasskeyStatus {
+  available: boolean;
+  count: number | null;
+}
+
+export interface PasskeyOptions extends PublicKeyCredentialRequestOptionsJSON {
+  ceremony_id: string;
+}
+
+export interface PasskeyRegistrationOptions extends PublicKeyCredentialCreationOptionsJSON {
+  ceremony_id: string;
+}
+
+async function authJSON<T>(path: string, init?: RequestInit): Promise<T> {
+  const r = await apiFetch(authUrl(path), init);
+  if (!r.ok) {
+    let message = "Antiek couldn't complete that request.";
+    try {
+      const body = (await r.json()) as { detail?: { message?: string } };
+      message = body.detail?.message ?? message;
+    } catch {
+      // Keep the closed user-safe fallback.
+    }
+    throw new Error(message);
+  }
+  return (await r.json()) as T;
+}
+
+export async function getPasskeyStatus(): Promise<PasskeyStatus> {
+  return authJSON<PasskeyStatus>("/auth/passkey/status");
+}
+
+export async function beginPasskeyLogin(): Promise<PasskeyOptions> {
+  return authJSON<PasskeyOptions>("/auth/passkey/login/options", { method: "POST" });
+}
+
+export async function finishPasskeyLogin(
+  ceremonyId: string,
+  credential: AuthenticationResponseJSON,
+): Promise<void> {
+  const r = await apiFetch(authUrl("/auth/passkey/login/verify"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ceremony_id: ceremonyId, credential }),
+  });
+  if (!r.ok) {
+    let message = "That passkey didn't unlock Antiek.";
+    try {
+      const body = (await r.json()) as { detail?: { message?: string } };
+      message = body.detail?.message ?? message;
+    } catch {
+      // Keep the closed user-safe fallback.
+    }
+    throw new Error(message);
+  }
+}
+
+export async function beginPasskeyRegistration(): Promise<PasskeyRegistrationOptions> {
+  return authJSON<PasskeyRegistrationOptions>("/auth/passkey/register/options", { method: "POST" });
+}
+
+export async function finishPasskeyRegistration(
+  ceremonyId: string,
+  credential: RegistrationResponseJSON,
+  label: string,
+): Promise<void> {
+  await authJSON<{ registered: true }>("/auth/passkey/register/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ceremony_id: ceremonyId, credential, label }),
+  });
+}
+
+export interface SavedPasskey {
+  id: string;
+  label: string;
+  backed_up: boolean;
+  created_at: number;
+  last_used_at: number | null;
+}
+
+export async function listPasskeys(): Promise<SavedPasskey[]> {
+  const response = await authJSON<{ passkeys: SavedPasskey[] }>("/auth/passkeys");
+  return response.passkeys;
+}
+
+export async function removePasskey(id: string): Promise<void> {
+  const r = await apiFetch(authUrl(`/auth/passkeys/${encodeURIComponent(id)}`), { method: "DELETE" });
+  if (!r.ok) throw new Error("Antiek couldn't remove that passkey.");
 }
 
 /** Login surface copy keyed by matrix failure_id (SPR-02). */

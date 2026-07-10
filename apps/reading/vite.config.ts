@@ -1,6 +1,11 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+// Use the literal loopback address for the proxy target. Newer Node releases
+// may resolve `localhost` to IPv6 first while uvicorn listens on IPv4, leaving
+// browser fetches hanging even though direct navigation succeeds.
+const API_TARGET = "http://127.0.0.1:8000";
+
 // In dev, the Python substrate runs at http://localhost:8000. We could
 // either proxy here or rely on CORS on the backend. We do BOTH — proxy
 // is the primary path so no cross-origin happens in the browser, CORS
@@ -16,23 +21,23 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/health": "http://localhost:8000",
-      "/events": "http://localhost:8000",
-      "/trajectory": "http://localhost:8000",
+      "/health": API_TARGET,
+      "/events": API_TARGET,
+      "/trajectory": API_TARGET,
       // The cascade plan/launch/session surface (cascade_routes.py, prefix
       // /research). The Research-entry cascade mode + the DRW monitor both
       // call it; without this proxy a dev drive can't reach the backend.
-      "/research": "http://localhost:8000",
+      "/research": API_TARGET,
       // Magic-link auth (H6): both /auth/request/me and the
       // /auth/callback redirect need to be same-origin with the
       // page or the browser drops Set-Cookie.
-      "/auth": "http://localhost:8000",
+      "/auth": API_TARGET,
       // Mountain Shell SPR-02 — the Krea scene-art proxy
       // (krea_routes.py). Same-origin in dev so the browser never sees
       // the server-held KREA_API_TOKEN and no CORS is involved.
-      "/krea": "http://localhost:8000",
+      "/krea": API_TARGET,
       "/ws": {
-        target: "ws://localhost:8000",
+        target: "ws://127.0.0.1:8000",
         ws: true,
       },
     },
