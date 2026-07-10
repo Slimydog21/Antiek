@@ -1314,3 +1314,8 @@ highest leverage.
 buildHostedHtmlWriteHref + HostedHtml preserve marketplace_host and
 midnight_oil_deposit. Competitive delta: book host and MO deposit floats keep
 Write provenance when Open Write is used from the host.
+
+## Residual vs · 2026-07-10 — FUTURE-AGENT tip re-anchor through vr
+FUTURE-AGENT-SPEC tip → 5986da30 with closed arcs tt–vr (51 residual ships).
+Competitive delta: swarm handoff tip-true; operator merge PR #465 remains
+highest leverage.
