@@ -28,6 +28,7 @@ from pathlib import Path
 
 import pytest
 
+import substrate.book_import.publish as publish_module
 from processing.chunking.chunker import chunk_markdown
 from runtime.db_lock import connect_read, connect_write
 from substrate.book_import import (
@@ -44,6 +45,7 @@ from substrate.book_import import (
     StoredBodyMismatchError,
     UnsafeArchivePathError,
     ZipBombSuspectedError,
+    book_publication_transaction,
     convert_epub_to_antiek_html,
     publish_converted_book,
 )
@@ -417,7 +419,6 @@ def _publish(
     finally:
         con.close()
 
-
 def test_publish_stores_sanitized_body_with_trusted_provenance(db: str) -> None:
     converted = convert_epub_to_antiek_html(_build_epub())
     result = _publish(db, converted)
@@ -601,6 +602,251 @@ def test_publish_retrieval_gate_parity(db: str) -> None:
         con.close()
     assert hit["results"], "servable imported book must ground retrieval"
     assert miss["results"] == [], "gated imported book must NOT leak into retrieval"
+
+
+def test_personal_reading_publish_avoids_parent_update_after_chunks(db: str) -> None:
+    converted = convert_epub_to_antiek_html(_build_epub())
+    published = _publish(db, converted, content_class="personal_reading")
+    con = connect_read(db)
+    try:
+        row = con.execute(
+            "SELECT content_class FROM documents WHERE document_id = ?",
+            [published.document_id],
+        ).fetchone()
+        chunks = con.execute(
+            "SELECT COUNT(*) FROM chunks WHERE document_id = ?",
+            [published.document_id],
+        ).fetchone()
+    finally:
+        con.close()
+    assert row == ("personal_reading",)
+    assert chunks is not None and chunks[0] > 0
+
+
+def test_fresh_publish_rolls_back_all_rows_and_can_retry(
+    db: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    converted = convert_epub_to_antiek_html(_build_epub())
+    events_dir = Path(os.environ["ANTIEK_RESEARCH_EVENTS_DIR"])
+    events_before = tuple(events_dir.iterdir())
+    real_insert_chunk = publish_module.insert_chunk
+    calls = 0
+
+    def fail_second_chunk(*args: object, **kwargs: object) -> str:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("injected chunk failure")
+        return real_insert_chunk(*args, **kwargs)
+
+    monkeypatch.setattr(publish_module, "insert_chunk", fail_second_chunk)
+    with pytest.raises(RuntimeError, match="injected chunk failure"):
+        _publish(db, converted, content_class="personal_reading")
+
+    con = connect_read(db)
+    try:
+        assert con.execute("SELECT COUNT(*) FROM documents").fetchone() == (0,)
+        assert con.execute("SELECT COUNT(*) FROM book_assets").fetchone() == (0,)
+        assert con.execute("SELECT COUNT(*) FROM chunks").fetchone() == (0,)
+    finally:
+        con.close()
+    assert tuple(events_dir.iterdir()) == events_before
+
+    monkeypatch.setattr(publish_module, "insert_chunk", real_insert_chunk)
+    retried = _publish(db, converted, content_class="personal_reading")
+    assert retried.was_new is True
+    assert retried.content_class == "personal_reading"
+    assert retried.chunk_count > 0
+
+
+def test_rights_registration_failure_rolls_back_fresh_document(db: str) -> None:
+    converted = convert_epub_to_antiek_html(_build_epub())
+    with pytest.raises(ValueError, match="unrecognised content_class"):
+        _publish(db, converted, content_class="not-a-rights-class")
+
+    con = connect_read(db)
+    try:
+        assert con.execute("SELECT COUNT(*) FROM documents").fetchone() == (0,)
+        assert con.execute("SELECT COUNT(*) FROM book_assets").fetchone() == (0,)
+        assert con.execute("SELECT COUNT(*) FROM chunks").fetchone() == (0,)
+    finally:
+        con.close()
+
+
+def test_composed_transaction_can_atomically_rollback_publish(db: str) -> None:
+    converted = convert_epub_to_antiek_html(_build_epub())
+    con = connect_write(db, purpose="book-import-caller-transaction-test")
+    try:
+        with (
+            pytest.raises(RuntimeError, match="abort composed transaction"),
+            book_publication_transaction(con) as transaction,
+        ):
+            published = publish_converted_book(
+                con,
+                converted,
+                content_class="personal_reading",
+                transaction=transaction,
+            )
+            assert con.execute(
+                "SELECT COUNT(*) FROM chunks WHERE document_id = ?",
+                [published.document_id],
+            ).fetchone()[0] > 0
+            raise RuntimeError("abort composed transaction")
+    finally:
+        con.close()
+
+    reader = connect_read(db)
+    try:
+        assert reader.execute(
+            "SELECT COUNT(*) FROM documents WHERE document_id = ?",
+            [published.document_id],
+        ).fetchone() == (0,)
+        assert reader.execute(
+            "SELECT COUNT(*) FROM book_assets WHERE document_id = ?",
+            [published.document_id],
+        ).fetchone() == (0,)
+        assert reader.execute(
+            "SELECT COUNT(*) FROM chunks WHERE document_id = ?",
+            [published.document_id],
+        ).fetchone() == (0,)
+    finally:
+        reader.close()
+
+
+def test_committed_publish_emits_servability_audit_exactly_once(db: str) -> None:
+    converted = convert_epub_to_antiek_html(_build_epub())
+    first = _publish(db, converted, content_class="personal_reading")
+    event_path = Path(os.environ["ANTIEK_RESEARCH_EVENTS_DIR"]) / "system.jsonl"
+    events = event_path.read_text().splitlines()
+    assert len(events) == 1
+    assert '"book.servability_changed"' in events[0]
+
+    second = _publish(db, converted, content_class="personal_reading")
+    assert second.document_id == first.document_id
+    assert second.was_new is False
+    assert event_path.read_text().splitlines() == events
+
+
+def test_audit_sink_failure_is_repaired_by_idempotent_retry(
+    db: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    converted = convert_epub_to_antiek_html(_build_epub())
+    real_emit = publish_module.emit_typed
+
+    def fail_emit(*args: object, **kwargs: object) -> None:
+        raise OSError("injected audit sink failure")
+
+    monkeypatch.setattr(publish_module, "emit_typed", fail_emit)
+    first = _publish(db, converted, content_class="personal_reading")
+    assert first.was_new is True
+
+    con = connect_read(db)
+    try:
+        assert con.execute(
+            "SELECT COUNT(*) FROM book_publication_audit_outbox "
+            "WHERE emitted_at IS NULL"
+        ).fetchone() == (1,)
+    finally:
+        con.close()
+
+    monkeypatch.setattr(publish_module, "emit_typed", real_emit)
+    second = _publish(db, converted, content_class="personal_reading")
+    assert second.was_new is False
+    event_path = Path(os.environ["ANTIEK_RESEARCH_EVENTS_DIR"]) / "system.jsonl"
+    assert len(event_path.read_text().splitlines()) == 1
+
+    con = connect_read(db)
+    try:
+        assert con.execute(
+            "SELECT COUNT(*) FROM book_publication_audit_outbox "
+            "WHERE emitted_at IS NULL"
+        ).fetchone() == (0,)
+    finally:
+        con.close()
+
+
+def test_real_audit_write_failure_stays_pending_for_retry(
+    db: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    converted = convert_epub_to_antiek_html(_build_epub())
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", "/dev/null")
+    first = _publish(db, converted, content_class="personal_reading")
+    assert first.was_new is True
+
+    con = connect_read(db)
+    try:
+        assert con.execute(
+            "SELECT COUNT(*) FROM book_publication_audit_outbox "
+            "WHERE emitted_at IS NULL"
+        ).fetchone() == (1,)
+    finally:
+        con.close()
+
+    recovered_events = tempfile.mkdtemp(prefix="antiek-book-audit-recovery-")
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", recovered_events)
+    second = _publish(db, converted, content_class="personal_reading")
+    assert second.was_new is False
+    assert len((Path(recovered_events) / "system.jsonl").read_text().splitlines()) == 1
+
+
+def test_expired_transaction_capability_cannot_publish(db: str) -> None:
+    converted = convert_epub_to_antiek_html(_build_epub())
+    con = connect_write(db, purpose="book-import-expired-transaction-test")
+    try:
+        with book_publication_transaction(con) as transaction:
+            pass
+        with pytest.raises(ValueError, match="inactive"):
+            publish_converted_book(con, converted, transaction=transaction)
+    finally:
+        con.close()
+
+    reader = connect_read(db)
+    try:
+        assert reader.execute("SELECT COUNT(*) FROM documents").fetchone() == (0,)
+        assert reader.execute("SELECT COUNT(*) FROM book_assets").fetchone() == (0,)
+        assert reader.execute("SELECT COUNT(*) FROM chunks").fetchone() == (0,)
+    finally:
+        reader.close()
+
+
+def test_partial_asset_recovery_preserves_exact_chunk_rows(db: str) -> None:
+    converted = convert_epub_to_antiek_html(_build_epub())
+    published = _publish(
+        db,
+        converted,
+        content_class="personal_reading",
+        embedder=StubEmbedding(),
+    )
+    con = connect_write(db, purpose="book-import-partial-recovery-test")
+    try:
+        before = con.execute(
+            "SELECT chunk_id, document_id, chunk_index, section_path, text, "
+            "embedding, token_count FROM chunks WHERE document_id = ? "
+            "ORDER BY chunk_index",
+            [published.document_id],
+        ).fetchall()
+        con.execute(
+            "DELETE FROM book_assets WHERE document_id = ?",
+            [published.document_id],
+        )
+    finally:
+        con.close()
+
+    recovered = _publish(db, converted, content_class="personal_reading")
+    reader = connect_read(db)
+    try:
+        after = reader.execute(
+            "SELECT chunk_id, document_id, chunk_index, section_path, text, "
+            "embedding, token_count FROM chunks WHERE document_id = ? "
+            "ORDER BY chunk_index",
+            [published.document_id],
+        ).fetchall()
+        asset = get_book_asset(reader, published.document_id)
+    finally:
+        reader.close()
+    assert recovered.was_new is False
+    assert asset is not None
+    assert after == before
 
 
 def test_hostile_container_publishes_nothing(db: str) -> None:

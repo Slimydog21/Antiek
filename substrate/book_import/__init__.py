@@ -45,7 +45,9 @@ from .errors import (
 from .publish import (
     BOOK_IMPORT_SOURCE_TIER,
     CHAPTER_PAGINATION_SCHEME,
+    BookPublicationTransaction,
     PublishedBookImport,
+    book_publication_transaction,
     publish_converted_book,
 )
 
@@ -55,6 +57,7 @@ __all__ = [
     "CONVERTER_VERSION",
     "DEFAULT_LIMITS",
     "BookImportError",
+    "BookPublicationTransaction",
     "ConvertedBook",
     "DrmLockedError",
     "EpubBook",
@@ -71,6 +74,7 @@ __all__ = [
     "TocHeading",
     "UnsafeArchivePathError",
     "ZipBombSuspectedError",
+    "book_publication_transaction",
     "convert_epub_to_antiek_html",
     "publish_converted_book",
     "read_epub",
