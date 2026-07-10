@@ -53,6 +53,8 @@
  * is off so swarm goals remain multi-selectable elsewhere (Write/hosted).
  * Residual (ot): run-result metrics surface recent_ring honesty (spawn count
  * remembered for collective multi-select without leaving MO or after navigate).
+ * Residual (anu): knowledge-dense pub quick-call presets on create (parity
+ * ResearchThis ahc · marketplace ahb · HostedHtml aha · offline-honest insert).
  * Residual (oy): optional arxiv/substack/URL pub refs on create — hydrate then
  * append as grounded goals so offline swarm inherits knowledge-dense sources
  * (parity Write/ResearchThis; offline-honest hydrate default).
@@ -95,6 +97,7 @@ import {
 } from "../../lib/researchTier";
 import { CollectiveResearchPanel } from "../../components/engagement/CollectiveResearchPanel";
 import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
+import { KNOWLEDGE_DENSE_PUBLICATION_PRESETS } from "../../components/engagement/PublicationAttachPanel";
 import {
   ResearchLaunchBudgetPanel,
   type ResearchLaunchBudgetProjection,
@@ -759,8 +762,18 @@ export default function MidnightOil() {
             disabled={busy}
           />
         </label>
-        {/* Residual (oy): knowledge-dense arxiv/substack/URL grounding. */}
-        <label className="block space-y-1">
+        {/* Residual (oy/anu): knowledge-dense arxiv/substack/URL grounding. */}
+        <div
+          className="block space-y-1"
+          data-testid="moil-pub-refs-block"
+          data-view-format="html"
+          data-offline-default="true"
+          data-l1-l2-hydrate-prep="true"
+          data-seamless-pub-quick-call="true"
+          data-knowledge-dense-presets={String(
+            KNOWLEDGE_DENSE_PUBLICATION_PRESETS.length,
+          )}
+        >
           <span className="text-sm font-medium">
             Publication refs (optional · one per line)
           </span>
@@ -768,6 +781,51 @@ export default function MidnightOil() {
             arxiv / substack / URL — hydrated then appended as grounded goals
             for the offline swarm (HTML-first; live body hydrate is dual-gate).
           </p>
+          {/* Residual (anu): MO create quick-call (parity ResearchThis ahc). */}
+          <div
+            className="flex flex-wrap gap-1 items-center"
+            data-testid="moil-publication-quick-call"
+            data-preset-count={String(KNOWLEDGE_DENSE_PUBLICATION_PRESETS.length)}
+            data-seamless-pub-quick-call="true"
+            data-auto-hydrate="false"
+            role="group"
+            aria-label="Knowledge-dense publication quick-call presets"
+          >
+            <span className="text-[10px] font-mono opacity-70 mr-1">
+              Quick-call:
+            </span>
+            {KNOWLEDGE_DENSE_PUBLICATION_PRESETS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                data-testid={`moil-preset-${p.id}`}
+                data-preset-id={p.id}
+                data-kind={p.kind}
+                data-reference={p.reference}
+                data-auto-hydrate="false"
+                disabled={busy}
+                onClick={() => {
+                  const ref = p.reference.trim();
+                  if (!ref) return;
+                  setPubRefs((prev) => {
+                    const existing = new Set(
+                      prev
+                        .split(/\r?\n/)
+                        .map((l) => l.trim())
+                        .filter(Boolean),
+                    );
+                    if (existing.has(ref)) return prev;
+                    const base = prev.trim();
+                    return base ? `${base}\n${ref}` : ref;
+                  });
+                }}
+                className="text-[10px] font-mono border rounded px-1.5 py-0.5 opacity-80 hover:opacity-100 disabled:opacity-50 border-ink/20 dark:border-bright/20"
+                title={`Insert ${p.reference} (hydrates offline-honest on create · never auto-live)`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
           <textarea
             className="w-full min-h-[72px] border rounded p-2 font-mono text-sm"
             value={pubRefs}
@@ -824,7 +882,7 @@ export default function MidnightOil() {
               {pubRefStatus}
             </p>
           ) : null}
-        </label>
+        </div>
         <label className="block space-y-1">
           <span className="text-sm font-medium">Duration (minutes)</span>
           <input

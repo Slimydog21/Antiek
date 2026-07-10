@@ -1,0 +1,16 @@
+# inventory-anu · Midnight Oil knowledge-dense pub quick-call
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: anu
+date: 2026-07-10
+parent_tip: 7095ce02 (ant)
+
+## Closed
+- Midnight Oil create form mounts KNOWLEDGE_DENSE_PUBLICATION_PRESETS quick-call
+- Offline-honest insert (data-auto-hydrate=false · never auto-live)
+- Idempotent + multi-preset append · budget foresight sees pub-ref impact
+- parity ResearchThis ahc · marketplace ahb · HostedHtml aha
+- vitest MidnightOil 27 green (proof: residual-anu-vitest-full.log)
+
+## Next
+anv+ product residual outside thrash · prefer non-pub-quick-call thrash
+Operator merge PR #465 remains highest leverage (gated)

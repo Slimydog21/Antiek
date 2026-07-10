@@ -1258,6 +1258,45 @@ describe("MidnightOil mode", () => {
     expect(offline.textContent).toMatch(/offline identity default/i);
   });
 
+  it("inserts knowledge-dense pub quick-call presets into refs (anu)", () => {
+    render(<MidnightOil />);
+    const block = screen.getByTestId("moil-pub-refs-block");
+    expect(block.getAttribute("data-seamless-pub-quick-call")).toBe("true");
+    expect(block.getAttribute("data-offline-default")).toBe("true");
+    expect(
+      Number(block.getAttribute("data-knowledge-dense-presets") || 0),
+    ).toBeGreaterThanOrEqual(4);
+    const quick = screen.getByTestId("moil-publication-quick-call");
+    expect(quick.getAttribute("data-seamless-pub-quick-call")).toBe("true");
+    expect(quick.getAttribute("data-auto-hydrate")).toBe("false");
+    expect(
+      Number(quick.getAttribute("data-preset-count") || 0),
+    ).toBeGreaterThanOrEqual(4);
+    const attention = screen.getByTestId("moil-preset-attention-is-all-you-need");
+    expect(attention.getAttribute("data-kind")).toBe("arxiv");
+    expect(attention.getAttribute("data-reference")).toBe("arxiv:1706.03762");
+    fireEvent.click(attention);
+    expect(
+      (screen.getByTestId("moil-pub-refs") as HTMLTextAreaElement).value,
+    ).toBe("arxiv:1706.03762");
+    // Idempotent: second click does not duplicate.
+    fireEvent.click(attention);
+    expect(
+      (screen.getByTestId("moil-pub-refs") as HTMLTextAreaElement).value,
+    ).toBe("arxiv:1706.03762");
+    // Second preset appends on new line.
+    fireEvent.click(screen.getByTestId("moil-preset-bert"));
+    expect(
+      (screen.getByTestId("moil-pub-refs") as HTMLTextAreaElement).value,
+    ).toBe("arxiv:1706.03762\narxiv:1810.04805");
+    // Budget foresight sees pub-ref impact after quick-call insert.
+    expect(
+      screen
+        .getByTestId("moil-budget-mount")
+        .getAttribute("data-prompt-includes-pub-refs"),
+    ).toBe("true");
+  });
+
   it("links Settings hydrate readiness beside pub refs (uw)", () => {
     render(<MidnightOil />);
     const settings = screen.getByTestId("moil-pub-refs-hydrate-settings-link");

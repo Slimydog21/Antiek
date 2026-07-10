@@ -3562,3 +3562,9 @@ P0 operator merge PR #465. Pivot ant+ outside thrash.
 Session land Complete flywheel soft-gates on budget projection before fire
 (parity merge ank/anl · continue-as-unit). vitest SessionFlywheelPanel 8 green.
 P0 operator merge PR #465. Pivot anu+ outside thrash (prefer non-budget-gate).
+
+## Residual anu · 2026-07-10 — Midnight Oil knowledge-dense pub quick-call
+MO create form mounts KNOWLEDGE_DENSE_PUBLICATION_PRESETS (Attention/BERT/GPT-3/…)
+with offline-honest insert (no auto-live hydrate). Completes pub quick-call matrix
+with ResearchThis · marketplace · HostedHtml for autonomous swarm grounding.
+vitest MidnightOil 27 green. P0 operator merge PR #465. Pivot anv+ outside thrash.
