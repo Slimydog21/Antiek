@@ -1135,3 +1135,7 @@ swarm handoff stays tip-true after Select open + free STEM + dogfood v6.
 Midnight Oil mode links Settings #moil-live-step-status with data-l4-prep and
 data-never-enables-live. Competitive delta: autonomous swarm prep is one click
 from MO without silent live enable — offline-honest dual-gate craftsmanship.
+
+## Residual ui · 2026-07-10 — SESSION-ARC tt–uh wave handoff
+SESSION-ARC-tt-uh documents write-seed · free STEM · Select open · MO L4 for
+swarm/compaction handoff. Competitive delta: long infinite waves stay auditable.

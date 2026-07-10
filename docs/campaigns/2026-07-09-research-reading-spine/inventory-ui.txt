@@ -1,0 +1,16 @@
+# inventory-ui · SESSION-ARC tt–uh wave handoff
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ui
+date: 2026-07-10
+tip_sha: b5032298
+
+## Closed
+- SESSION-ARC-tt-uh-write-seed-stem-select-open.md
+- Wave map for zero-memory swarm (write-seed · free STEM · Select open · MO L4)
+
+## Product why
+Compaction-safe handoff of a long infinite wave so parallel agents and future
+sessions do not re-derive closed product.
+
+## Not in scope
+- Operator merge PR #465 (gated)
