@@ -866,6 +866,9 @@ export function ResearchContextPanel({
                     stage.count ?? (stage.items || []).length,
                   )}
                   className="border border-emperor/20 rounded px-2 py-1 space-y-1 scroll-mt-4"
+                  // Residual (amh): stage landmark for strip deep-links (amc/ame).
+                  aria-label={`Citation hop stage: ${stage.label || stage.hop || si}`}
+                  data-hop-stage-nav="true"
                 >
                   <h4 className="font-semibold opacity-90">
                     {stage.label || stage.hop}

@@ -3363,3 +3363,8 @@ host substrate. P0 operator merge PR #465. Pivot amg+ outside thrash.
 ## Residual amg · 2026-07-10 — FUTURE competitive offline spine hop+marketplace host
 Offline spine lists hop strip stage nav + marketplace host-land substrate.
 P0 operator merge PR #465. Pivot amh+ outside thrash (prefer code product).
+
+## Residual amh · 2026-07-10 — citation hop stage landmarks for strip deep-links
+Hop stage sections get aria-label + data-hop-stage-nav so strip deep-links land
+on accessible landmarks. vitest ResearchContext 17 green.
+P0 operator merge PR #465. Pivot ami+ outside thrash.

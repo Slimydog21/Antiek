@@ -814,12 +814,28 @@ describe("ResearchContextPanel", () => {
     expect(
       screen.getByTestId("evidence-citation-hop-stage-insights").getAttribute("id"),
     ).toBe("citation-hop-stage-insights");
+    // Residual (amh): stage landmarks for strip deep-links.
+    expect(
+      screen
+        .getByTestId("evidence-citation-hop-stage-insights")
+        .getAttribute("aria-label"),
+    ).toMatch(/Citation hop stage/i);
+    expect(
+      screen
+        .getByTestId("evidence-citation-hop-stage-insights")
+        .getAttribute("data-hop-stage-nav"),
+    ).toBe("true");
     expect(
       screen.getByTestId("evidence-citation-hop-stage-sources"),
     ).toBeTruthy();
     expect(
       screen.getByTestId("evidence-citation-hop-stage-sources").getAttribute("id"),
     ).toBe("citation-hop-stage-sources");
+    expect(
+      screen
+        .getByTestId("evidence-citation-hop-stage-sources")
+        .getAttribute("data-hop-stage-nav"),
+    ).toBe("true");
     const insightItem = screen.getByTestId(
       "evidence-citation-hop-item-evidence-insight-0",
     );

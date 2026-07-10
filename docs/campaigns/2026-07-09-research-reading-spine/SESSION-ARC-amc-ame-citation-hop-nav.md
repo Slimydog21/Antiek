@@ -15,3 +15,4 @@ jump links and a navigation landmark.
 
 ## P0
 Operator merge PR **#465**. Infinite continues.
+| **amh** | stage landmarks | aria-label · data-hop-stage-nav on hop stages |
