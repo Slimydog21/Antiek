@@ -1150,3 +1150,7 @@ silent live hydrate.
 ResearchThis pub-refs panel parity with hosted books (uj). Competitive delta:
 main reading surface arxiv/substack grounding is dual-gate honest — reading ≡
 hosted research workstation.
+
+## Residual ul · 2026-07-10 — FUTURE-AGENT tip re-anchor through uk
+FUTURE-AGENT-SPEC tip → 0242e858 with closed arcs tt–uk. Competitive delta:
+swarm handoff stays tip-true after hydrate prep honesty + Select open + free STEM.
