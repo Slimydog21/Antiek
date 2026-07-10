@@ -407,6 +407,13 @@ describe("MidnightOil mode", () => {
     expect(future.textContent).toMatch(/competitive DR brief/i);
   });
 
+  it("links Settings prompt-cost projection for budget-before-fire (akk)", () => {
+    render(<MidnightOil />);
+    const link = screen.getByTestId("moil-prompt-cost-projection-link");
+    expect(link.getAttribute("href")).toBe("/settings#prompt-cost-projection");
+    expect(link.textContent).toMatch(/prompt-cost projection/i);
+  });
+
   it("links dual-gate L4 MO checklist section for live-step prep (ml/wx)", () => {
     render(<MidnightOil />);
     const dual = screen.getByTestId("moil-dual-gate-checklist-link");

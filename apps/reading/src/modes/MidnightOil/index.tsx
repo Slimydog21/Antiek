@@ -735,6 +735,15 @@ export default function MidnightOil() {
         >
           FUTURE · competitive DR brief
         </a>
+        {/* Residual (akk): autonomous budget-before-fire → Settings prompt-cost projection (ake). */}
+        <a
+          href="/settings#prompt-cost-projection"
+          data-testid="moil-prompt-cost-projection-link"
+          className="underline opacity-80 hover:opacity-100"
+          title="Settings prompt-cost projection: estimate how a proposed prompt hits remaining daily budget"
+        >
+          Settings · prompt-cost projection
+        </a>
       </p>
 
       <form onSubmit={(e) => void onCreate(e)} className="space-y-4 max-w-xl">

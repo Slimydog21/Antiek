@@ -3122,3 +3122,8 @@ P0 operator merge PR #465. Pivot akj+ outside thrash.
 Wave handoff: scorecard deferred live dual-gate deep-links + twin FUTURE matrix.
 Scorecard map dense — prefer non-scorecard product next. P0 operator merge PR #465.
 Pivot akk+ outside thrash.
+
+## Residual akk · 2026-07-10 — Midnight Oil Settings prompt-cost projection deep-link
+Autonomous Midnight Oil navigates Settings prompt-cost projection for
+budget-before-fire foresight (parity ake Settings surface). vitest MidnightOil 26 green.
+P0 operator merge PR #465. Pivot akl+ outside thrash.
