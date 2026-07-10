@@ -4018,3 +4018,8 @@ P0 PR #465. Pivot arh+.
 Hosted context mount stamps domainDefaultSubjectCatalog. Completes free-PD
 twin-search defaults surface matrix (are pure · arf marketplace · arg context ·
 arh hosted). vitest 37 green. P0 PR #465. Pivot ari+ outside domain thrash.
+
+## Residual ari · 2026-07-10 — publication_hydrate vision feed for recursive rewrite
+Antiek-bench weekly rewrite learns from knowledge-dense arxiv/substack hydrate
+usage (publication_hydrate). Wrestle + distill training feeds expanded. propose≠promote.
+vitest 46 green. P0 PR #465. Pivot arj+.

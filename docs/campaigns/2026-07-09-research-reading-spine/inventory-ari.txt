@@ -1,0 +1,15 @@
+# inventory-ari · publication_hydrate vision feed for recursive rewrite
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ari
+date: 2026-07-10
+parent_tip: 29a2df45b (arh)
+
+## Closed
+- VISION_USAGE_FEED_SOURCES += publication_hydrate (knowledge-dense arxiv/substack)
+- wrestle + distill task → feed maps include publication_hydrate
+- Outside domain-catalog thrash (are–arh closed)
+- vitest 46 green
+- evidence: {SCRATCH}/ari-vision-hydrate-vitest.txt
+
+## Next
+arj+ outside thrash · Operator merge PR #465

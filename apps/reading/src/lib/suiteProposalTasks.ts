@@ -105,6 +105,8 @@ export const VISION_USAGE_FEED_SOURCES = [
   "research_context_pack",
   // Residual (aqv): recursive twin promote → context depth-graph.
   "twin_promote_context",
+  // Residual (ari): knowledge-dense arxiv/substack hydrate path (offline-honest).
+  "publication_hydrate",
 ] as const;
 
 export type VisionUsageFeedSource = (typeof VISION_USAGE_FEED_SOURCES)[number];
@@ -135,13 +137,14 @@ export function benchTaskClassToVisionFeeds(
     .trim()
     .toLowerCase();
   if (t === "wrestle") {
-    // Residual (aqv): research_context_pack + twin_promote train wrestle.
+    // Residual (aqv/ari): research_context_pack + twin_promote + hydrate train wrestle.
     return [
       "twin_chase",
       "midnight_oil",
       "collective_merge",
       "research_context_pack",
       "twin_promote_context",
+      "publication_hydrate",
     ];
   }
   if (t === "synthesize") {
@@ -155,7 +158,8 @@ export function benchTaskClassToVisionFeeds(
     ];
   }
   if (t === "distill") {
-    return ["floating_deep_research", "book_qa", "spawn_merge"];
+    // Residual (ari): knowledge-dense hydrate also trains distill.
+    return ["floating_deep_research", "book_qa", "spawn_merge", "publication_hydrate"];
   }
   if (t === "book_qa") {
     // Residual (aqv): marketplace HTML host trains book_qa.

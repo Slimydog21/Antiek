@@ -85,7 +85,9 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
     expect(VISION_USAGE_FEED_SOURCES).toContain("marketplace_host");
     expect(VISION_USAGE_FEED_SOURCES).toContain("research_context_pack");
     expect(VISION_USAGE_FEED_SOURCES).toContain("twin_promote_context");
-    expect(VISION_USAGE_FEED_SOURCES.length).toBeGreaterThanOrEqual(11);
+    // Residual (ari): knowledge-dense publication hydrate feed.
+    expect(VISION_USAGE_FEED_SOURCES).toContain("publication_hydrate");
+    expect(VISION_USAGE_FEED_SOURCES.length).toBeGreaterThanOrEqual(12);
   });
 
   it("reports covered vs uncovered vision surfaces without inventing events", () => {
@@ -121,6 +123,7 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
       "collective_merge",
       "research_context_pack",
       "twin_promote_context",
+      "publication_hydrate",
     ]);
     expect(benchTaskClassToVisionFeeds("synthesize")).toContain(
       "floating_deep_research",
@@ -131,6 +134,9 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
     expect(benchTaskClassToVisionFeeds("synthesize")).toContain("spawn_merge");
     expect(benchTaskClassToVisionFeeds("distill")).toContain("book_qa");
     expect(benchTaskClassToVisionFeeds("distill")).toContain("spawn_merge");
+    expect(benchTaskClassToVisionFeeds("distill")).toContain(
+      "publication_hydrate",
+    );
     expect(benchTaskClassToVisionFeeds("book_qa")).toContain("book_qa");
     expect(benchTaskClassToVisionFeeds("book_qa")).toContain("marketplace_host");
     expect(benchTaskClassToVisionFeeds(null)).toEqual([]);
@@ -148,10 +154,11 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
       "collective_merge",
       "research_context_pack",
       "twin_promote_context",
+      "publication_hydrate",
     ]);
     expect(cov.covered_count).toBe(2);
-    expect(cov.total).toBe(5);
-    expect(cov.coverage_ratio).toBeCloseTo(2 / 5);
+    expect(cov.total).toBe(6);
+    expect(cov.coverage_ratio).toBeCloseTo(2 / 6);
     expect(taskTrainingFeedCoverage("", null).total).toBe(0);
   });
 });
