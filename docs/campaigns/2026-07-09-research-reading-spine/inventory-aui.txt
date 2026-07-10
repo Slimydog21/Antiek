@@ -1,0 +1,21 @@
+# inventory-aui · moilCeilingBudgetFit wire-through (job rec + custom)
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aui
+date: 2026-07-10
+parent_tip: 74422f13b (auh)
+
+## Closed
+- Job recommended ceiling budget-fit chrome uses moilCeilingBudgetFit (auf)
+- Custom ceiling remaining-after uses moilCeilingBudgetFit
+- Completes pure-helper wire matrix: preview · approve gate · job fit · custom
+- data-soft-budget stamps on job fit + custom remaining-after
+- Soft foresight · never invent $0 · vitest MidnightOil 30 green
+
+## Doctrine
+One pure budget-fit contract for all MO ceiling surfaces · hard to vary
+
+## Next
+auj+ offline product residual outside thrash
+HARD AVOID: MO ceiling-fit thrash after aui/auf · presets auh · pure-open · catalog
+Prefer: model non-budget · competitive non-MO residual · twin/collective residual
+Operator merge PR #465 remains P0 (gated)

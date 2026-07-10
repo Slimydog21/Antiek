@@ -1598,23 +1598,23 @@ export default function MidnightOil() {
             Recommended ceiling:{" "}
             <strong>${job.recommended_price_ceiling_usd.toFixed(2)}</strong>
           </p>
-          {/* Residual (md/um): ceiling vs remaining daily budget fit + after-approve projection. */}
+          {/* Residual (md/um/aui): ceiling fit + after-approve via moilCeilingBudgetFit (auf). */}
           {(() => {
             const rec = job.recommended_price_ceiling_usd;
-            let fit: "fits" | "may_exceed" | "unknown" = "unknown";
-            let remainingAfter: number | null = null;
-            if (budgetRemainingUsd != null && Number.isFinite(budgetRemainingUsd)) {
-              fit = rec <= budgetRemainingUsd + 1e-9 ? "fits" : "may_exceed";
-              // Residual (um): projected remaining if operator approves this ceiling
-              // (soft foresight only — does not spend or invent $0 when unknown).
-              remainingAfter = budgetRemainingUsd - rec;
-            }
+            // Residual (aui): pure helper — soft foresight only · never invent $0.
+            const budgetFit = moilCeilingBudgetFit({
+              ceiling_usd: rec,
+              remaining_usd: budgetRemainingUsd,
+            });
+            const fit = budgetFit.fit;
+            const remainingAfter = budgetFit.remaining_after_usd;
             return (
               <>
                 <p
                   className="text-[11px] font-mono opacity-80"
                   data-testid="moil-ceiling-budget-fit"
                   data-fit={fit}
+                  data-soft-budget={String(budgetFit.soft_budget)}
                   data-recommended-usd={String(rec)}
                   data-remaining-usd={
                     budgetRemainingUsd != null
@@ -1827,25 +1827,18 @@ export default function MidnightOil() {
                   </>
                 );
               })()}
-              {/* Residual (un): custom ceiling remaining-after projection (parity um). */}
+              {/* Residual (un/aui): custom ceiling remaining-after via moilCeilingBudgetFit. */}
               {(() => {
                 const amount = Number(ceilingInput);
                 const valid = Number.isFinite(amount) && amount > 0;
-                let remainingAfter: number | null = null;
-                let fit: "fits" | "may_exceed" | "unknown" = "unknown";
-                if (
-                  valid &&
-                  budgetRemainingUsd != null &&
-                  Number.isFinite(budgetRemainingUsd)
-                ) {
-                  remainingAfter = budgetRemainingUsd - amount;
-                  fit =
-                    amount <= budgetRemainingUsd + 1e-9
-                      ? "fits"
-                      : "may_exceed";
-                } else if (!valid) {
-                  fit = "unknown";
-                }
+                const budgetFit = moilCeilingBudgetFit({
+                  ceiling_usd: valid ? amount : null,
+                  remaining_usd: budgetRemainingUsd,
+                });
+                const remainingAfter = valid
+                  ? budgetFit.remaining_after_usd
+                  : null;
+                const fit = valid ? budgetFit.fit : "unknown";
                 return (
                   <p
                     className="text-[11px] font-mono opacity-80 w-full"
@@ -1855,6 +1848,8 @@ export default function MidnightOil() {
                         ? String(remainingAfter)
                         : "unknown"
                     }
+                    data-soft-budget={String(budgetFit.soft_budget)}
+                    data-budget-fit={fit}
                     data-custom-usd={valid ? String(amount) : "invalid"}
                     data-remaining-usd={
                       budgetRemainingUsd != null
