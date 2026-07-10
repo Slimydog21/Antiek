@@ -16,7 +16,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (st): v2 adds write-seed / float HTML / budget foresight postures.
 # Residual (tf): v3 adds book_qa electricity STEM (Faraday/Maxwell free PD).
 # Residual (tv): v4 adds multi-spawn collective unit → Write twin_seed posture.
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v4"
+# Residual (tz): v5 adds book_qa computing/logic (Boole free PD).
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v5"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -148,6 +149,24 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "twin_seed",
                 "write",
                 "unit",
+                "html",
+            ),
+        ),
+        # Residual (tz): free computing/logic PD → book_qa for tech researchers.
+        SuiteItem(
+            item_id="dogfood-book-boole-laws-of-thought",
+            task_class="book_qa",
+            prompt=(
+                "From Boole An Investigation of the Laws of Thought (free PD HTML): "
+                "what is the relationship between logic and the symbolical calculus, "
+                "and why does free public-domain hosting of foundational computing texts "
+                "matter for technology research workstations?"
+            ),
+            expected_keywords=(
+                "boole",
+                "logic",
+                "calculus",
+                "computing",
                 "html",
             ),
         ),

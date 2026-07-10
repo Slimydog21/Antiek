@@ -262,15 +262,15 @@ const {
       html: `<p>Active: ${opts.depth_tier}</p>`,
     })),
     fetchAntiekBenchDogfoodFixtures: vi.fn(async () => ({
-      // Residual (st/su/tf/ti/tv): competitive dogfood v4 postures.
-      suite_version: "suite-competitive-dogfood-v4",
+      // Residual (st/su/tf/ti/tv/tz): competitive dogfood v5 postures.
+      suite_version: "suite-competitive-dogfood-v5",
       label: "antiek-bench-competitive-dogfood",
-      item_count: 10,
+      item_count: 11,
       by_task_class: {
         distill: 2,
         synthesize: 2,
         wrestle: 4,
-        book_qa: 2,
+        book_qa: 3,
       },
       items: [
         {
@@ -303,13 +303,18 @@ const {
           task_class: "wrestle",
           prompt: "collective_unit_prompt twin_seed Write path",
         },
+        {
+          item_id: "dogfood-book-boole-laws-of-thought",
+          task_class: "book_qa",
+          prompt: "Boole laws of thought free PD HTML",
+        },
       ],
       auto_promoted: false,
       view_format: "html",
       settings_panel: "antiek_bench_dogfood_fixtures",
       source: "antiek_bench.dogfood_fixtures",
       notes: ["Competitive dogfood fixtures are offline prompts only."],
-      html: "<p>Suite suite-competitive-dogfood-v4 · items=10 · dogfood-wrestle-collective-unit-write-seed</p>",
+      html: "<p>Suite suite-competitive-dogfood-v5 · items=11 · dogfood-book-boole-laws-of-thought</p>",
     })),
     fetchAntiekBenchLeaderboard: vi.fn(async () => ({
       week_id: "2026-W28",
@@ -1307,14 +1312,14 @@ describe("Settings SPR-01 + decision-tree install", () => {
     await waitFor(() => {
       expect(
         screen.getByTestId("antiek-bench-dogfood-summary").textContent,
-      ).toMatch(/suite-competitive-dogfood-v4/);
+      ).toMatch(/suite-competitive-dogfood-v5/);
     });
     const summary = screen.getByTestId("antiek-bench-dogfood-summary");
-    // Residual (su/ti/tv): v4 spine posture machine attrs.
+    // Residual (su/ti/tv/tz): v5 spine posture machine attrs.
     expect(summary.getAttribute("data-suite-version")).toBe(
-      "suite-competitive-dogfood-v4",
+      "suite-competitive-dogfood-v5",
     );
-    expect(summary.getAttribute("data-item-count")).toBe("10");
+    expect(summary.getAttribute("data-item-count")).toBe("11");
     expect(summary.getAttribute("data-auto-promoted")).toBe("false");
     expect(summary.getAttribute("data-has-write-seed-posture")).toBe("true");
     expect(summary.getAttribute("data-has-float-evidence-posture")).toBe(
@@ -1329,6 +1334,9 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(
       summary.getAttribute("data-has-collective-unit-write-seed-posture"),
     ).toBe("true");
+    expect(summary.getAttribute("data-has-boole-book-qa-posture")).toBe(
+      "true",
+    );
     expect(summary.getAttribute("data-propose-not-promote")).toBe("true");
     expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
       /write-seed/i,
@@ -1338,6 +1346,9 @@ describe("Settings SPR-01 + decision-tree install", () => {
     );
     expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
       /collective unit write-seed/i,
+    );
+    expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
+      /Boole book_qa/i,
     );
     expect(
       screen

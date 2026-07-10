@@ -1088,3 +1088,9 @@ MarketplaceHost filters by computing subject, hosts free-PD honesty, and
 launches deep research with domains=computing,logic in goal_hint. Competitive
 delta: free computing PD feeds domain-aware research (parity Faraday electricity
 to/tp) — reading ≡ research for logic/AI researchers.
+
+## Residual tz · 2026-07-10 — dogfood v5 Boole book_qa
+suite-competitive-dogfood-v5 adds dogfood-book-boole-laws-of-thought.
+Settings data-has-boole-book-qa-posture. Competitive delta: Antiek-bench
+recursive rewrite covers free computing PD reading (parity Faraday electricity
+book_qa) without auto-promote.
