@@ -28,6 +28,7 @@ import {
   liveRunActivationSettingsMidnightOil,
   operatorDispatchActivationReadinessPlanMidnightOil,
   operatorDispatchAdapterPlanMidnightOil,
+  operatorNotificationDeliveryReadinessPlanMidnightOil,
   preflightMidnightOil,
   providerExecutorAdapterPlanMidnightOil,
   providerRouteMidnightOil,
@@ -3377,6 +3378,113 @@ vi.mock("../../api/midnightOil", () => ({
       "final run closure plan only: no closeout record, operator delivery ledger entry, delivery notification, workspace card, retention manifest, billing reconciliation, model usage rollup, source lineage archive, or final artifact is created",
     ],
   })),
+  operatorNotificationDeliveryReadinessPlanMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-operator-notification-delivery-readiness-plan",
+    final_run_closure_plan_receipt_id: "midnight-oil-test-final-run-closure-plan",
+    final_artifact_completion_finalization_plan_receipt_id:
+      "midnight-oil-test-final-artifact-completion-finalization-plan",
+    final_artifact_publish_plan_receipt_id:
+      "midnight-oil-test-final-artifact-publish-plan",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    run_id: "midnight-oil-test",
+    status: "blocked_operator_notification_delivery_readiness_unimplemented",
+    adapter_key: "operator_notification_delivery_readiness",
+    planned_operator_notification_delivery_readiness_receipt_id:
+      "midnight-oil-test-operator-notification-delivery-readiness-receipt",
+    planned_operator_notification_dispatch_id:
+      "midnight-oil-test-operator-notification-dispatch",
+    planned_operator_notification_payload_id:
+      "midnight-oil-test-operator-notification-payload",
+    planned_operator_delivery_channel_policy_id:
+      "midnight-oil-test-operator-delivery-channel-policy",
+    planned_operator_notification_template_id:
+      "midnight-oil-test-operator-notification-template",
+    planned_operator_notification_audit_entry_id:
+      "midnight-oil-test-operator-notification-audit-entry",
+    planned_workspace_delivery_card_id: "midnight-oil-test-workspace-delivery-card",
+    planned_operator_delivery_ledger_entry_id:
+      "midnight-oil-test-operator-delivery-ledger-entry",
+    planned_delivery_notification_id: "midnight-oil-test-delivery-notification",
+    planned_run_closeout_record_id: "midnight-oil-test-run-closeout-record",
+    planned_final_run_closure_receipt_id: "midnight-oil-test-final-run-closure-receipt",
+    planned_account_visible_asset_id: "midnight-oil-test-account-visible-asset",
+    planned_private_read_url_id: "midnight-oil-test-private-read-url",
+    planned_reading_workspace_entry_id: "midnight-oil-test-reading-workspace-entry",
+    planned_hosted_html_asset_id: "midnight-oil-test-hosted-html-asset",
+    planned_quality_attestation_id:
+      "midnight-oil-test-final-artifact-quality-attestation",
+    planned_completion_audit_entry_id:
+      "midnight-oil-test-final-artifact-completion-audit-entry",
+    planned_model_usage_rollup_id: "midnight-oil-test-model-usage-rollup",
+    planned_source_lineage_archive_id: "midnight-oil-test-source-lineage-archive",
+    planned_runner_dispatch_id: "midnight-oil-test-midnight-oil-runner-dispatch",
+    planned_idempotency_key: "midnight-oil-test-live-dispatch-final-enable-idempotency-key",
+    operator_notification_delivery_readiness_blockers: [
+      "operator notification readiness receipt writer",
+      "operator notification dispatch writer",
+      "operator notification payload writer",
+      "operator delivery channel policy writer",
+      "operator notification template writer",
+      "operator notification audit entry writer",
+      "workspace delivery card notification binding writer",
+      "operator delivery ledger notification binding writer",
+    ],
+    required_operator_notification_delivery_readiness_invariants: [
+      "operator notification delivery readiness planner must require final run closure planning before any notification dispatch can be written",
+      "operator notification delivery readiness planner must preserve private URL and account-visible delivery lineage without activating URLs or notifying operators during planning",
+    ],
+    required_operator_notification_delivery_readiness_receipt_fields: [
+      "operator_notification_delivery_readiness_plan_receipt_id",
+      "final_run_closure_plan_receipt_id",
+      "operator_notification_dispatch_id",
+      "operator_notification_payload_id",
+      "operator_delivery_channel_policy_id",
+      "operator_notification_audit_entry_id",
+      "workspace_delivery_card_id",
+      "operator_delivery_ledger_entry_id",
+    ],
+    blocker_reason: "operator_notification_delivery_readiness_unimplemented",
+    operator_notification_delivery_readiness_allowed: false,
+    operator_notification_dispatch_created: false,
+    operator_notification_payload_created: false,
+    operator_delivery_channel_policy_created: false,
+    operator_notification_template_created: false,
+    operator_notification_audit_entry_created: false,
+    delivery_notification_created: false,
+    workspace_delivery_card_created: false,
+    operator_delivery_ledger_entry_created: false,
+    run_closeout_record_created: false,
+    final_run_closure_allowed: false,
+    final_artifact_completion_finalization_allowed: false,
+    completion_record_created: false,
+    finalization_transaction_created: false,
+    artifact_archive_manifest_created: false,
+    operator_handoff_summary_created: false,
+    delivery_status_marked_complete: false,
+    quality_attestation_created: false,
+    completion_audit_entry_created: false,
+    final_artifact_publish_allowed: false,
+    publish_transaction_created: false,
+    information_asset_published: false,
+    account_visible_asset_created: false,
+    reading_workspace_entry_created: false,
+    search_index_entry_created: false,
+    private_read_url_created: false,
+    operator_notification_created: false,
+    graph_commit_created: false,
+    graph_mutated: false,
+    final_artifact_created: false,
+    dispatch_performed: false,
+    budget_reserved: false,
+    provider_calls_made: false,
+    retrieval_performed: false,
+    source_receipts_created: false,
+    adapter_plan_notes: [
+      "operator notification delivery readiness plan only: no notification dispatch, payload, channel policy, template, audit entry, workspace card binding, delivery ledger binding, URL activation, operator notification, or final artifact is created",
+    ],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -6129,5 +6237,61 @@ describe("MidnightOil", () => {
     expect(screen.getByText(/run_closeout_record_id/)).toBeTruthy();
     expect(screen.getByText(/operator_delivery_ledger_entry_id/)).toBeTruthy();
     expect(screen.getByText(/source_lineage_archive_id/)).toBeTruthy();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Operator notification delivery readiness plan",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(operatorNotificationDeliveryReadinessPlanMidnightOil).toHaveBeenCalled(),
+    );
+    expect(operatorNotificationDeliveryReadinessPlanMidnightOil).toHaveBeenCalledWith(
+      expect.objectContaining({
+        launch_packet: expect.objectContaining({
+          packet_id: "midnight-oil-test-launch-packet",
+        }),
+        final_artifact_completion_finalization_plan_receipt: expect.objectContaining({
+          receipt_id: "midnight-oil-test-final-artifact-completion-finalization-plan",
+        }),
+        final_run_closure_plan_receipt: expect.objectContaining({
+          receipt_id: "midnight-oil-test-final-run-closure-plan",
+        }),
+      }),
+    );
+    expect(
+      screen.getByText("Operator notification delivery readiness receipt"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-operator-notification-delivery-readiness-plan"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("blocked operator notification delivery readiness unimplemented"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-operator-notification-delivery-readiness-receipt"),
+    ).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-operator-notification-dispatch")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-operator-notification-payload")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-operator-delivery-channel-policy")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-operator-notification-template")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-operator-notification-audit-entry")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "operator notification delivery readiness planner must require final run closure planning before any notification dispatch can be written",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/Operator notification delivery readiness blockers:/),
+    ).toBeTruthy();
+    expect(screen.getByText(/operator notification payload writer/)).toBeTruthy();
+    expect(screen.getByText(/operator notification template writer/)).toBeTruthy();
+    expect(
+      screen.getByText(/Operator notification delivery readiness receipt fields:/),
+    ).toBeTruthy();
+    expect(screen.getByText(/operator_notification_dispatch_id/)).toBeTruthy();
+    expect(screen.getByText(/operator_notification_payload_id/)).toBeTruthy();
+    expect(screen.getByText(/operator_delivery_channel_policy_id/)).toBeTruthy();
   });
 });
