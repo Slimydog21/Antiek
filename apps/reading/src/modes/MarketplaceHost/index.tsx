@@ -721,12 +721,30 @@ export default function MarketplaceHost({
       if (!body.html?.trim()) {
         throw new Error("hosted document HTML body empty");
       }
+      const documentId = body.document_id || doc.document_id;
+      const title = body.title || doc.title || doc.document_id;
+      const licenseClass = body.license_class || doc.license_class || "unknown";
+      // Residual (acg): retain rehydrated body in hosted state so library Open Write
+      // twin_seed can use full HTML (parity acf in-session host body path).
+      setHosted({
+        document_id: documentId,
+        owner_id: ownerId,
+        book_id: documentId,
+        content_hash: "",
+        title,
+        license_class: licenseClass,
+        already_hosted: true,
+        source_format: "html",
+        library_document_ids: [documentId],
+        view_format: "html",
+        html: body.html,
+      });
       openHostedWindow({
-        document_id: body.document_id || doc.document_id,
-        title: body.title || doc.title || doc.document_id,
+        document_id: documentId,
+        title,
         html: body.html,
         view_format: "html",
-        license_class: body.license_class || doc.license_class,
+        license_class: licenseClass,
         owner_id: ownerId,
         source: "marketplace_library_rehydrate",
       });

@@ -2112,3 +2112,8 @@ Library Open Write dual handoff seeds twin with in-session host HTML body when
 document matches (not title-only). Competitive delta: marketplace host → library
 → Write recursive note-taker path keeps body substrate for Antiek-bench write-seed.
 
+## Residual acg · 2026-07-10 — library rehydrate retains body for Open Write
+Library rehydrate sets hosted state with HTML body so Open Write twin_seed has
+body after rehydrate open (parity acf host path). Competitive delta: seamless
+port library → rehydrate → Write recursive note-taker keeps full HTML substrate.
+

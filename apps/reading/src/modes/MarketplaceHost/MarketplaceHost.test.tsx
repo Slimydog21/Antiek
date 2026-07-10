@@ -593,6 +593,14 @@ describe("MarketplaceHost mode", () => {
     });
     const payload = openWindow.mock.calls.at(-1)?.[1] as { html?: string };
     expect(payload.html).toMatch(/Rehydrated body/);
+    // Residual (acg): after rehydrate, library Open Write twin_seed has body.
+    await waitFor(() => {
+      const libWrite = screen.getByTestId("library-open-write-hdoc_old");
+      expect(libWrite.getAttribute("data-write-seed-has-body")).toBe("true");
+      expect(libWrite.getAttribute("title") || "").toMatch(
+        /in-session host body/i,
+      );
+    });
   });
 
   it("filters catalog by title/author substring (dj)", async () => {
