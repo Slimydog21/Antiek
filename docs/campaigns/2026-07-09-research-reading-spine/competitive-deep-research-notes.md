@@ -3355,3 +3355,7 @@ merge PR #465. Pivot ame+ outside thrash.
 Hop strip is role=navigation with aria-label for AT/keyboard multi-hop stage
 jumps. vitest ResearchContext 17 green. P0 operator merge PR #465.
 Pivot amf+ outside thrash.
+
+## Residual amf · 2026-07-10 — FUTURE competitive tip re-anchor through ame
+Competitive DR brief tip 947c0de0; offline spine names hop strip nav + marketplace
+host substrate. P0 operator merge PR #465. Pivot amg+ outside thrash.
