@@ -1,0 +1,16 @@
+# inventory-anm · free PD Nicomachean Ethics philosophy catalog
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: anm
+date: 2026-07-10
+parent_tip: 1da118e0 (anl)
+
+## Closed
+- CatalogEntry pd-nicomachean-ethics (Aristotle · free PD HTML · philosophy/ethics/politics)
+- Free philosophy set expands (critical-reasoning substrate for tech researchers)
+- free_count honesty path → 20 free PD (prior floor ≥19)
+- domainSearchDefaults already maps ethics → philosophy twin-search defaults
+- offline verify: free philosophy 7 · free_count 20 · entry HTML
+
+## Next
+ann+ product residual outside thrash · prefer non-catalog thrash
+Operator merge PR #465 remains highest leverage (gated)

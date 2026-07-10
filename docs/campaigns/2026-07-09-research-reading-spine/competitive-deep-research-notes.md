@@ -3518,3 +3518,9 @@ Single-spawn draft/parent merge soft-gates on budget projection before fire
 (parity collective ank). Completes budget-before-fire on spawn merge + collective
 merge/analysis paths. vitest SpawnMergePanel 9 green.
 P0 operator merge PR #465. Pivot anm+ outside thrash (prefer non-budget-gate).
+
+## Residual anm · 2026-07-10 — free PD Nicomachean Ethics philosophy catalog
+Marketplace free PD catalog adds Aristotle Nicomachean Ethics (HTML · philosophy/
+ethics/politics) for tech-researcher critical-reasoning substrate. free_count 20 ·
+philosophy domain search defaults already cover ethics. Offline catalog verify green.
+P0 operator merge PR #465. Pivot ann+ outside thrash (prefer non-catalog).

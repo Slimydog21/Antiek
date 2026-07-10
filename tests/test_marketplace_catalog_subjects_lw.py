@@ -345,9 +345,9 @@ def test_free_science_stem_set_size() -> None:
 
 
 def test_free_philosophy_set_size() -> None:
-    """Residual (aba): free philosophy subject is non-trivial for researchers.
+    """Residual (aba/anm): free philosophy subject is non-trivial for researchers.
 
-    Method + liberty + discourse + political economy free PD HTML.
+    Method + liberty + discourse + political economy + Nicomachean Ethics free PD HTML.
     Supports tech-researcher critical-reasoning substrate (parity science aay).
     """
     cat = default_demo_catalog()
@@ -362,10 +362,16 @@ def test_free_philosophy_set_size() -> None:
         "pd-liberty",
         "pd-discourse",
         "pd-wealth",
+        "pd-nicomachean-ethics",
     }
     assert all(e.source_format == "html" for e in free_phil if e.book_id in ids)
-    assert len(free_phil) >= 4
+    assert len(free_phil) >= 5
     assert all(e.is_free for e in free_phil)
+    ethics = cat.get("pd-nicomachean-ethics")
+    assert ethics is not None
+    assert ethics.is_free is True
+    assert ethics.source_format == "html"
+    assert "philosophy" in (ethics.subjects or ())
 
 
 def test_free_biology_includes_origin_and_hooke() -> None:

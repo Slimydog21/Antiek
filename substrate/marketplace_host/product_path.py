@@ -787,6 +787,29 @@ def default_demo_catalog() -> Catalog:
                     "heat",
                 ),
             ),
+            # Residual (anm): classical philosophy free PD for tech researchers
+            # (critical-reasoning substrate · philosophy domain search spine).
+            CatalogEntry(
+                book_id="pd-nicomachean-ethics",
+                title="Nicomachean Ethics",
+                author="Aristotle",
+                source="project_gutenberg",
+                license_class="public_domain",
+                is_free=True,
+                body_text=(
+                    "Every art and every inquiry, and similarly every action and pursuit, "
+                    "is thought to aim at some good; and for this reason the good has "
+                    "rightly been declared to be that at which all things aim.\n\n"
+                    "If, then, there is some end of the things we do, which we desire for "
+                    "its own sake (everything else being desired for the sake of this), "
+                    "and if we do not choose everything for the sake of something else "
+                    "(for at that rate the process would go on to infinity, so that our "
+                    "desire would be empty and vain), clearly this must be the good and "
+                    "the chief good."
+                ),
+                source_format="html",
+                subjects=("philosophy", "ethics", "politics"),
+            ),
             CatalogEntry(
                 book_id="buy-modern",
                 title="Modern Systems Research",
