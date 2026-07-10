@@ -3823,3 +3823,8 @@ world-class bar. vitest ResearchProgress 13 green. P0 PR #465. Pivot apv+.
 Evidence pack hop pipeline wires competitiveDrWorldClassReadiness (apu) with known
 hop coverage · stages unknown on evidence (parity progress stages known · hops unknown).
 vitest ResearchContextPanel 21 green. P0 PR #465. Pivot apw+ outside thrash.
+
+## Residual apw · 2026-07-10 — competitive DR quality pure helpers → workspace
+workspace/competitiveDrQuality.ts hosts multi-stage (ape) · hop pipeline (api) ·
+world-class readiness (apu). Panels re-export for stable imports · no Context→Progress
+coupling. vitest 38 green (workspace 4 + Progress 13 + Context 21). P0 PR #465. Pivot apx+.

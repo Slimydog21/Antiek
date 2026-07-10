@@ -55,7 +55,6 @@ import {
 } from "../../workspace/twinWriteSeed";
 import { openWindow } from "../windows/openWindow";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
-import { competitiveDrWorldClassReadiness } from "./ResearchProgressPanel";
 
 /** Pure twin-kind metrics for recursive note-taker substrate (residual ff). */
 export function twinNoteMetrics(
@@ -84,113 +83,19 @@ export function twinNoteMetrics(
   return { total, insights, questions, other };
 }
 
-/**
- * Residual (api): competitive citation multi-hop pipeline
- * insights → questions → sources (world-class citation-required synthesis bar).
- * Never invents hops — present only when count/items non-empty.
- */
-export const CITATION_HOP_PIPELINE_STAGES = [
-  "insights",
-  "questions",
-  "sources",
-] as const;
-
-export type CitationHopPipelineStage =
-  (typeof CITATION_HOP_PIPELINE_STAGES)[number];
-
-export type CitationHopStageProgress = {
-  stages: readonly CitationHopPipelineStage[];
-  present: CitationHopPipelineStage[];
-  missing: CitationHopPipelineStage[];
-  present_count: number;
-  total: number;
-  coverage_ratio: number;
-  chain_complete: boolean;
-  insight_count: number;
-  question_count: number;
-  ref_count: number;
-};
-
-function hopStagePresent(
-  stage: CitationHopPipelineStage,
-  opts: {
-    citation_chain?: readonly { hop?: string; count?: number; items?: unknown[] }[] | null;
-    insight_count?: number;
-    question_count?: number;
-    ref_count?: number;
-  },
-): boolean {
-  const chain = opts.citation_chain || [];
-  const hopRow = chain.find(
-    (h) => String(h.hop || "").toLowerCase() === stage,
-  );
-  if (hopRow) {
-    const n =
-      typeof hopRow.count === "number" && Number.isFinite(hopRow.count)
-        ? hopRow.count
-        : (hopRow.items || []).length;
-    if (n > 0) return true;
-  }
-  // Fall back to pack-level counts when chain stages omit empty hops.
-  if (stage === "insights") return (opts.insight_count ?? 0) > 0;
-  if (stage === "questions") return (opts.question_count ?? 0) > 0;
-  if (stage === "sources") return (opts.ref_count ?? 0) > 0;
-  return false;
-}
-
-/**
- * Residual (api): derive citation hop pipeline completeness from evidence pack.
- * Does not invent sources or twin content — empty counts stay missing.
- */
-export function citationHopStageProgress(opts: {
-  citation_chain?: readonly { hop?: string; count?: number; items?: unknown[] }[] | null;
-  insight_count?: number;
-  question_count?: number;
-  ref_count?: number;
-  chain_complete?: boolean | null;
-}): CitationHopStageProgress {
-  const insight_count =
-    typeof opts.insight_count === "number" && Number.isFinite(opts.insight_count)
-      ? opts.insight_count
-      : 0;
-  const question_count =
-    typeof opts.question_count === "number" &&
-    Number.isFinite(opts.question_count)
-      ? opts.question_count
-      : 0;
-  const ref_count =
-    typeof opts.ref_count === "number" && Number.isFinite(opts.ref_count)
-      ? opts.ref_count
-      : 0;
-  const present = CITATION_HOP_PIPELINE_STAGES.filter((s) =>
-    hopStagePresent(s, {
-      citation_chain: opts.citation_chain,
-      insight_count,
-      question_count,
-      ref_count,
-    }),
-  );
-  const missing = CITATION_HOP_PIPELINE_STAGES.filter(
-    (s) => !present.includes(s),
-  );
-  const total = CITATION_HOP_PIPELINE_STAGES.length;
-  const present_count = present.length;
-  const chain_complete =
-    opts.chain_complete === true ||
-    (insight_count > 0 && ref_count > 0);
-  return {
-    stages: CITATION_HOP_PIPELINE_STAGES,
-    present,
-    missing,
-    present_count,
-    total,
-    coverage_ratio: total > 0 ? present_count / total : 0,
-    chain_complete,
-    insight_count,
-    question_count,
-    ref_count,
-  };
-}
+// Residual (apw): pure helpers live in workspace/competitiveDrQuality — re-export
+// for existing test/import paths (ResearchContextPanel tests · api/apv).
+export {
+  CITATION_HOP_PIPELINE_STAGES,
+  citationHopStageProgress,
+  type CitationHopPipelineStage,
+  type CitationHopStageProgress,
+} from "../../workspace/competitiveDrQuality";
+import {
+  CITATION_HOP_PIPELINE_STAGES,
+  citationHopStageProgress,
+  competitiveDrWorldClassReadiness,
+} from "../../workspace/competitiveDrQuality";
 
 // Residual (alo): pure helpers live in workspace/domainSearchDefaults — re-export
 // for existing test/import paths (ResearchContextPanel tests · alj/akq/akw).

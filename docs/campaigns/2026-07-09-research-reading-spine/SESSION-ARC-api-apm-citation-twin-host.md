@@ -24,3 +24,4 @@ one residual/cycle · campaign push only · operator merges PR #465.
 | **apt** | TalkToBook + MetaReading hop/stage pipeline hints | reading conversation matrix |
 | **apu** | competitiveDrWorldClassReadiness pure helper + progress chrome | multi-stage × hops bar |
 | **apv** | evidence hop pipeline world-class readiness stamps | hops known on evidence · stages unknown |
+| **apw** | competitiveDrQuality workspace extract | hard-to-vary pure helpers · re-exports |
