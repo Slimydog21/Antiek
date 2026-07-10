@@ -32,7 +32,9 @@ def deep_research_bench_record(run: EvalRun) -> dict[str, Any]:
         "by_task": BENCH_TASK,
         "run_id": run.run_id,
         "week_id": run.week_id,
-        "suite_version": f"{run.dataset_id}@{run.dataset_version}",
+        # Digest-qualified dataset identity — identical to comparability_key[0]
+        # so a same-version content variant can never impersonate the frozen set.
+        "suite_version": run.comparability_key[0],
         "mean_score": run.mean_judge_score,
         "by_task_class": {BENCH_TASK: run.mean_judge_score},
         "by_axis": dict(run.mean_axis_scores),

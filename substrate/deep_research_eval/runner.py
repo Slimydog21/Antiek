@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -30,6 +31,8 @@ STATUS_MEASURED: QueryStatus = "MEASURED"
 STATUS_NOT_MEASURED: QueryStatus = "NOT_MEASURED"
 
 RUN_SCHEMA_VERSION = 1
+
+_SHA256_HEX_RE = re.compile(r"[0-9a-f]{64}\Z")
 
 
 def _unit_interval(value: object, field: str) -> float:
@@ -106,6 +109,8 @@ class EvalRun:
     run_id_seed: str
     dataset_id: str
     dataset_version: str
+    # sha256 hex of the dataset file bytes the run was scored against.
+    dataset_content_digest: str
     rubric_version: str
     judge_model_id: str
     scores: tuple[QueryScore, ...]
@@ -119,10 +124,12 @@ class EvalRun:
 
     @property
     def comparability_key(self) -> tuple[str, str, str]:
-        """(dataset id@version, rubric version, judge model). Runs with
-        different keys must never be compared (I-9)."""
+        """(dataset id@version+digest12, rubric version, judge model). Runs
+        with different keys must never be compared (I-9). The content digest
+        makes same-version datasets with different bytes non-comparable even
+        when loaded through an unpinned path."""
         return (
-            f"{self.dataset_id}@{self.dataset_version}",
+            f"{self.dataset_id}@{self.dataset_version}+{self.dataset_content_digest[:12]}",
             self.rubric_version,
             self.judge_model_id,
         )
@@ -135,6 +142,7 @@ class EvalRun:
             "run_id_seed": self.run_id_seed,
             "dataset_id": self.dataset_id,
             "dataset_version": self.dataset_version,
+            "dataset_content_digest": self.dataset_content_digest,
             "rubric_version": self.rubric_version,
             "judge_model_id": self.judge_model_id,
             "comparability_key": list(self.comparability_key),
@@ -190,12 +198,16 @@ class EvalRun:
                 "stored aggregates do not match recomputation from scores (tampered or corrupt)"
             )
 
+        dataset_content_digest = str(data["dataset_content_digest"])
+        if _SHA256_HEX_RE.fullmatch(dataset_content_digest) is None:
+            raise ValueError("dataset_content_digest must be a sha256 hex digest")
         run = cls(
             run_id=str(data["run_id"]),
             week_id=str(data["week_id"]),
             run_id_seed=str(data["run_id_seed"]),
             dataset_id=str(data["dataset_id"]),
             dataset_version=str(data["dataset_version"]),
+            dataset_content_digest=dataset_content_digest,
             rubric_version=str(data["rubric_version"]),
             judge_model_id=str(data["judge_model_id"]),
             scores=scores,
@@ -272,7 +284,12 @@ def _run_id(
     comparability_key: tuple[str, str, str],
     scores: tuple[QueryScore, ...],
 ) -> str:
-    """Deterministic run identity: hash of inputs + outcomes, no wall clock."""
+    """Deterministic run identity: hash of inputs + outcomes, no wall clock.
+
+    Identity scheme v2: per-score material gained ``hit_anchors`` so a
+    tampered anchor list can never survive under the original run_id.
+    (v1 omitted it; bumped explicitly before any production journal existed.)
+    """
     material = json.dumps(
         [
             week_id,
@@ -284,6 +301,7 @@ def _run_id(
                     score.status,
                     None if score.judge_scores is None else score.judge_scores.as_dict(),
                     score.coverage_hit_rate,
+                    list(score.hit_anchors),
                 ]
                 for score in scores
             ],
@@ -291,7 +309,7 @@ def _run_id(
         sort_keys=True,
         separators=(",", ":"),
     )
-    digest = hashlib.sha256(f"deep-research-eval:v1:{material}".encode()).hexdigest()[:16]
+    digest = hashlib.sha256(f"deep-research-eval:v2:{material}".encode()).hexdigest()[:16]
     return f"dre_{digest}"
 
 
@@ -348,6 +366,7 @@ def run_eval(
         run_id_seed=seed,
         dataset_id=dataset.dataset_id,
         dataset_version=dataset.version,
+        dataset_content_digest=dataset.content_digest,
         rubric_version=RUBRIC_VERSION,
         judge_model_id=JUDGE_MODEL_ID,
         scores=frozen_scores,

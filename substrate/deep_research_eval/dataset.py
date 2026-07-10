@@ -18,9 +18,12 @@ EXPECTED_QUERY_COUNT = 20
 QUERIES_V1_SHA256 = "c329d9152ea84875befa7dc33ecc89b60c6f6b987fcefba7a555b1eca0cd832e"
 
 # TEST-ONLY escape hatch: pass as ``expected_sha256`` to load a synthetic
-# dataset variant (structural validation still applies in full). Production
-# callers must never pass this sentinel.
-UNPINNED_DIGEST_TEST_ONLY = "unpinned-digest-test-only"
+# dataset variant (structural validation still applies in full). Module-private
+# and NOT exported from the package: tests import it from this module directly.
+# Bypassing the pin is NOT an identity bypass — the loaded file's real content
+# digest still lands in ``QueryDataset.content_digest`` and therefore in the
+# comparability key, so altered content can never impersonate the frozen set.
+_TEST_ONLY_UNPINNED_DIGEST = "unpinned-digest-test-only"
 
 
 class DatasetValidationError(ValueError):
@@ -44,12 +47,19 @@ class QueryDataset:
     dataset_id: str
     version: str
     frozen: bool
+    # sha256 hex of the exact file bytes this dataset was loaded from —
+    # computed at load time for EVERY load path, pinned or not.
+    content_digest: str
     queries: tuple[Query, ...]
 
     @property
     def dataset_key(self) -> str:
-        """Identity component of the comparability key: id@version."""
-        return f"{self.dataset_id}@{self.version}"
+        """Identity component of the comparability key: id@version+digest12.
+
+        Carrying the content digest means two same-version files with
+        different bytes can never share a comparability key, regardless of
+        which load path produced them (fail closed by construction)."""
+        return f"{self.dataset_id}@{self.version}+{self.content_digest[:12]}"
 
 
 def default_dataset_path() -> Path:
@@ -75,21 +85,21 @@ def load_dataset(
     non-empty ``expected_coverage`` anchor list. The file bytes must match
     ``expected_sha256`` (default: the pinned ``QUERIES_V1_SHA256``) — a
     same-version content edit fails closed. Tests loading synthetic variants
-    may pass ``UNPINNED_DIGEST_TEST_ONLY`` (or a recomputed digest); nothing
-    else may.
+    may import the module-private ``_TEST_ONLY_UNPINNED_DIGEST`` sentinel (or
+    pass a recomputed digest); nothing else may. Either way the ACTUAL content
+    digest is recorded on the returned dataset and enters the comparability key.
     """
     dataset_path = path if path is not None else default_dataset_path()
     try:
         raw_bytes = dataset_path.read_bytes()
     except OSError as exc:
         raise DatasetValidationError(f"cannot read dataset at {dataset_path}") from exc
-    if expected_sha256 != UNPINNED_DIGEST_TEST_ONLY:
-        digest = hashlib.sha256(raw_bytes).hexdigest()
-        if digest != expected_sha256:
-            raise DatasetValidationError(
-                f"dataset digest mismatch at {dataset_path}: sha256={digest} "
-                f"expected={expected_sha256} (frozen content changed without a pin bump)"
-            )
+    content_digest = hashlib.sha256(raw_bytes).hexdigest()
+    if expected_sha256 != _TEST_ONLY_UNPINNED_DIGEST and content_digest != expected_sha256:
+        raise DatasetValidationError(
+            f"dataset digest mismatch at {dataset_path}: sha256={content_digest} "
+            f"expected={expected_sha256} (frozen content changed without a pin bump)"
+        )
     try:
         data = json.loads(raw_bytes.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -145,5 +155,6 @@ def load_dataset(
         dataset_id=dataset_id,
         version=version,
         frozen=True,
+        content_digest=content_digest,
         queries=tuple(queries),
     )

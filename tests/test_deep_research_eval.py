@@ -10,12 +10,13 @@ from pathlib import Path
 
 import pytest
 
+import substrate.deep_research_eval as dre
 from substrate.deep_research_eval import (
     AXES,
     EXPECTED_QUERY_COUNT,
     JUDGE_MODEL_ID,
+    QUERIES_V1_SHA256,
     RUBRIC_VERSION,
-    UNPINNED_DIGEST_TEST_ONLY,
     DatasetValidationError,
     EvalJournalCorruptionError,
     EvalRun,
@@ -33,6 +34,10 @@ from substrate.deep_research_eval import (
     load_dataset,
     run_eval,
 )
+
+# Private-import in tests is deliberate: the unpinned-digest sentinel is
+# test-only and intentionally NOT part of the package's public surface.
+from substrate.deep_research_eval.dataset import _TEST_ONLY_UNPINNED_DIGEST
 
 WEEK_BASELINE = "2026-W27"
 WEEK_CANDIDATE = "2026-W28"
@@ -92,7 +97,8 @@ def test_dataset_loads_20_frozen_unique(dataset: QueryDataset, tmp_path: Path) -
     assert dataset.version == "1.0.0"
     assert dataset.dataset_id == "deep_research_eval_v1"
     assert all(q.expected_coverage for q in dataset.queries)
-    assert dataset.dataset_key == "deep_research_eval_v1@1.0.0"
+    assert dataset.content_digest == QUERIES_V1_SHA256
+    assert dataset.dataset_key == f"deep_research_eval_v1@1.0.0+{QUERIES_V1_SHA256[:12]}"
 
     # Structural validation fails closed on a mutated copy (frozen file itself
     # untouched; digest pin bypassed with the test-only sentinel so the
@@ -102,7 +108,7 @@ def test_dataset_loads_20_frozen_unique(dataset: QueryDataset, tmp_path: Path) -
     truncated = tmp_path / "queries_truncated.json"
     truncated.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(DatasetValidationError, match="exactly 20"):
-        load_dataset(truncated, expected_sha256=UNPINNED_DIGEST_TEST_ONLY)
+        load_dataset(truncated, expected_sha256=_TEST_ONLY_UNPINNED_DIGEST)
 
 
 # 2. Deterministic run: same stubs → identical run_id + scores.
@@ -117,7 +123,7 @@ def test_deterministic_run(dataset: QueryDataset, healthy_run: EvalRun) -> None:
     assert healthy_run.complete is True
     assert healthy_run.mean_coverage_hit_rate == 1.0
     assert healthy_run.comparability_key == (
-        "deep_research_eval_v1@1.0.0",
+        f"deep_research_eval_v1@1.0.0+{QUERIES_V1_SHA256[:12]}",
         RUBRIC_VERSION,
         JUDGE_MODEL_ID,
     )
@@ -147,6 +153,7 @@ def test_comparability_key_mismatch_refuses(healthy_run: EvalRun) -> None:
         ("rubric_version", "9.9.9"),
         ("judge_model_id", "other/judge-model"),
         ("dataset_version", "2.0.0"),
+        ("dataset_content_digest", "0" * 64),
     ):
         candidate = dataclasses.replace(healthy_run, **{field: value})
         with pytest.raises(NotComparableError) as excinfo:
@@ -191,7 +198,8 @@ def test_bench_bridge_record_shape(dataset: QueryDataset, healthy_run: EvalRun) 
     assert record["by_task_class"] == {"deep_research": healthy_run.mean_judge_score}
     assert record["run_id"] == healthy_run.run_id
     assert record["week_id"] == WEEK_BASELINE
-    assert record["suite_version"] == "deep_research_eval_v1@1.0.0"
+    assert record["suite_version"] == healthy_run.comparability_key[0]
+    assert record["suite_version"].endswith(f"+{QUERIES_V1_SHA256[:12]}")
     assert record["mean_score"] == healthy_run.mean_judge_score
     assert record["comparability_key"] == list(healthy_run.comparability_key)
     assert set(record["by_axis"]) == set(AXES)
@@ -324,5 +332,50 @@ def test_dataset_digest_pin(tmp_path: Path) -> None:
     with pytest.raises(DatasetValidationError, match="digest mismatch"):
         load_dataset(tampered)
     # Test-only escape hatch still applies full structural validation.
-    variant = load_dataset(tampered, expected_sha256=UNPINNED_DIGEST_TEST_ONLY)
+    variant = load_dataset(tampered, expected_sha256=_TEST_ONLY_UNPINNED_DIGEST)
     assert len(variant.queries) == EXPECTED_QUERY_COUNT
+
+
+# 14. Tamper-evidence: forged hit_anchors break the deterministic run_id.
+def test_tampered_hit_anchors_break_run_id(healthy_run: EvalRun) -> None:
+    data = healthy_run.to_dict()
+    # coverage_hit_rate untouched, so aggregates still agree — identity must not.
+    data["scores"][0]["hit_anchors"] = ["forged anchor"]
+    with pytest.raises(ValueError, match="run_id"):
+        EvalRun.from_dict(data)
+
+
+# 15. Content digest is in the comparability key: an altered same-version
+# dataset loaded via the unpinned path can never be compared against the
+# genuine frozen set — the identity difference is structural, not documented.
+def test_unpinned_variant_gets_different_comparability_key(
+    dataset: QueryDataset, healthy_run: EvalRun, tmp_path: Path
+) -> None:
+    data = json.loads(default_dataset_path().read_text(encoding="utf-8"))
+    data["queries"][0]["expected_coverage"] = ["weakened anchor set"]
+    variant_path = tmp_path / "queries_variant.json"
+    variant_path.write_text(json.dumps(data), encoding="utf-8")
+    variant = load_dataset(variant_path, expected_sha256=_TEST_ONLY_UNPINNED_DIGEST)
+
+    assert variant.dataset_id == dataset.dataset_id
+    assert variant.version == dataset.version  # same id@version...
+    assert variant.content_digest != dataset.content_digest
+    assert variant.dataset_key != dataset.dataset_key  # ...different identity
+
+    variant_run = run_eval(
+        variant, healthy_provider, fixed_judge, run_id_seed=SEED, week_id=WEEK_CANDIDATE
+    )
+    assert variant_run.comparability_key != healthy_run.comparability_key
+    with pytest.raises(NotComparableError) as excinfo:
+        compare_runs(healthy_run, variant_run)
+    assert excinfo.value.verdict.verdict == "NOT_COMPARABLE"
+    # And the variant run still round-trips through tamper-evident deserialization.
+    assert EvalRun.from_dict(variant_run.to_dict()) == variant_run
+
+
+# 16. The unpinned-digest sentinel is not part of the public package surface.
+def test_unpinned_sentinel_not_exported() -> None:
+    assert "UNPINNED_DIGEST_TEST_ONLY" not in dre.__all__
+    assert not hasattr(dre, "UNPINNED_DIGEST_TEST_ONLY")
+    assert "_TEST_ONLY_UNPINNED_DIGEST" not in dre.__all__
+    assert not hasattr(dre, "_TEST_ONLY_UNPINNED_DIGEST")
