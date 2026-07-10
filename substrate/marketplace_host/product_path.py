@@ -678,6 +678,36 @@ def default_demo_catalog() -> Catalog:
                     "engineering",
                 ),
             ),
+            # Residual (agh): foundations of math / incompleteness STEM PD for tech researchers.
+            CatalogEntry(
+                book_id="pd-godel-incompleteness",
+                title="On Formally Undecidable Propositions of Principia Mathematica and Related Systems",
+                author="Kurt Gödel",
+                source="project_gutenberg",
+                license_class="public_domain",
+                is_free=True,
+                body_text=(
+                    "The development of mathematics toward greater precision has led to "
+                    "the formalization of large tracts of it, so that one can prove any "
+                    "theorem using nothing but a few mechanical rules.\n\n"
+                    "One might therefore conjecture that these axioms and rules of "
+                    "inference are sufficient to decide any mathematical question that "
+                    "can at all be formally expressed in these systems. It will be shown "
+                    "that this is not the case: there exist relatively simple problems "
+                    "in the theory of ordinary whole numbers which cannot be decided "
+                    "from the axioms."
+                ),
+                source_format="html",
+                subjects=(
+                    "mathematics",
+                    "logic",
+                    "science",
+                    "technology",
+                    "computing",
+                    "foundations",
+                    "computability",
+                ),
+            ),
             CatalogEntry(
                 book_id="buy-modern",
                 title="Modern Systems Research",

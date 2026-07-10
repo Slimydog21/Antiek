@@ -1,13 +1,13 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** residual **agg** (ChatInputArea L1/L2 dual-gate pub-refs prep) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
+**Campaign tip at write:** residual **agh** (free STEM Gödel PD + dogfood v19) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **URL:** https://github.com/Slimydog21/Antiek/pull/465  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
 
 ## Do not rebuild
 
-Prefer **inventory-agg** + **inventory-agf** + **SESSION-ARC-afn-agc-infinite-continuation.md**.  
+Prefer **inventory-agh** + **SESSION-ARC-afn-agc-infinite-continuation.md**.  
 This continuation: **266+ residual ships** from vy tip `8e280766` · wave **afn–agd** closed.
 
 ### Closed product (high signal)
@@ -17,7 +17,7 @@ This continuation: **266+ residual ships** from vy tip `8e280766` · wave **afn�
 | Write-seed body honesty | **adn–aei** |
 | Collective multi-spawn path | **afg–afl** · assembly open/recent/restore **afn–afp** (SESSION-ARC **afq**) · dogfood v16 **afo** |
 | Model quality per task | Settings **ads** · launch **afb/aff** · badge **afc/afe** |
-| Dogfood v18 | **afi**–**afv** · **afz** highlight→DR path |
+| Dogfood v19 | **afi**–**afz** · **agh** Gödel foundations book_qa |
 | Dual-gate L1–L4 + L7 ND | **aec–aee** · **aez** |
 | NotDiamond | Advisory only · never router |
 | ResearchWorkstation collective | **afr** /inv/:id multi-select |
@@ -26,7 +26,7 @@ This continuation: **266+ residual ships** from vy tip `8e280766` · wave **afn�
 ### P0 — Operator merge PR #465
 **Highest leverage remaining.** Agents never merge main/prod.
 
-### P1 next offline (residual **agh+**)
+### P1 next offline (residual **agi+**)
 Outside thrash: MO live multi-provider · paid L5 · competitive depth. Leave thrash.
 
 ## Doctrine

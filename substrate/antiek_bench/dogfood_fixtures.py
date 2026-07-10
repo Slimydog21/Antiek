@@ -30,7 +30,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (afo): v16 learns Select open multi-select assembly + unit restore path.
 # Residual (afv): v17 learns Select recent path + ResearchWorkstation spine.
 # Residual (afz): v18 learns highlight → floating DR path honesty (afw–afx).
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v18"
+# Residual (agh): v19 learns Gödel foundations free PD book_qa.
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v19"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -329,6 +330,25 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "analytical",
                 "engine",
                 "babbage",
+                "html",
+            ),
+        ),
+        # Residual (agh): free foundations PD → book_qa (Gödel incompleteness).
+        SuiteItem(
+            item_id="dogfood-book-godel-incompleteness",
+            task_class="book_qa",
+            prompt=(
+                "From Gödel On Formally Undecidable Propositions (free PD HTML): what "
+                "conjecture about formal systems does he refute, how do undecidable "
+                "propositions in arithmetic limit machine reasoning, and why does free "
+                "public-domain hosting of foundations texts matter for technology "
+                "research workstations and knowledge graphs?"
+            ),
+            expected_keywords=(
+                "godel",
+                "undecidable",
+                "formal",
+                "axioms",
                 "html",
             ),
         ),

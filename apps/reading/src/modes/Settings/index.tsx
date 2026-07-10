@@ -2774,6 +2774,12 @@ export default function Settings() {
                       it.item_id === "dogfood-book-lovelace-analytical-engine",
                   ),
                 )}
+                data-has-godel-book-qa-posture={String(
+                  (dogfood.items || []).some(
+                    (it) =>
+                      it.item_id === "dogfood-book-godel-incompleteness",
+                  ),
+                )}
                 data-has-citation-trust-ungrounded-posture={String(
                   (dogfood.items || []).some(
                     (it) =>
@@ -2880,6 +2886,7 @@ export default function Settings() {
                     "dogfood-book-shannon-communication",
                     "dogfood-book-turing-computable-numbers",
                     "dogfood-book-lovelace-analytical-engine",
+                    "dogfood-book-godel-incompleteness",
                     "dogfood-wrestle-citation-trust-ungrounded",
                     "dogfood-wrestle-twin-cross-asset-merge-write-seed",
                     "dogfood-wrestle-collective-written-analysis-write-seed",
@@ -2900,7 +2907,7 @@ export default function Settings() {
                     data-testid="antiek-bench-dogfood-v2-postures"
                     role="status"
                   >
-                    Spine postures (v18): write-seed · float evidence · budget
+                    Spine postures (v19): write-seed · float evidence · budget
                     foresight · Faraday book_qa · collective unit write-seed ·
                     Boole book_qa · Heaviside book_qa · Shannon book_qa ·
                     Turing book_qa · Lovelace book_qa · citation-trust
@@ -2910,7 +2917,7 @@ export default function Settings() {
                     context Write · written analysis Open Write source ·
                     continue-as-unit path · Select open path · unit restore
                     path · Select recent path · ResearchWorkstation spine ·
-                    highlight → DR path (listing only · not auto-promoted)
+                    highlight → DR path · Gödel book_qa (listing only · not auto-promoted)
                   </p>
                 ) : null}
                 {/* Residual (adw): has-body posture → rewrite + usage deep-links. */}

@@ -2543,3 +2543,8 @@ MO/HostedHtml pub prep. vitest StartResearch 21 green.
 Docked chat publication refs mount dual-gate L1 arxiv + L2 Substack checklist
 deep-links (parity StartResearch agf · chase follow-ups). Fixed fetchDepthTiers
 mock in refs tests. vitest ChatInputArea.refs 3 green.
+
+## Residual agh · 2026-07-10 — free STEM Gödel incompleteness PD + dogfood v19
+Marketplace free HTML PD catalog adds pd-godel-incompleteness (foundations ·
+logic · computability). Antiek-bench dogfood v19 book_qa for Gödel. free_pd
+floor ≥18 · free computing ≥5. pytest marketplace+dogfood · Settings 36 green.

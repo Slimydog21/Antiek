@@ -86,7 +86,9 @@ def test_stem_pd_spine_in_demo_catalog() -> None:
     assert "pd-turing-computable-numbers" in ids
     # Residual (xi): Lovelace Analytical Engine computing history.
     assert "pd-lovelace-analytical-engine" in ids
-    assert len(ids) >= 17
+    # Residual (agh): Gödel incompleteness foundations STEM PD.
+    assert "pd-godel-incompleteness" in ids
+    assert len(ids) >= 18
     elements = cat.get("pd-elements")
     assert elements is not None
     assert elements.license_class == "public_domain"
@@ -117,8 +119,8 @@ def test_stem_electricity_subjects_and_free_pd() -> None:
         for e in cat.search("")
         if e.license_class == "public_domain" and e.is_free
     ]
-    # Residual (abh): free PD HTML spine floor after Hooke (abc) ≥17.
-    assert len(free_pd) >= 17
+    # Residual (abh/agh): free PD HTML spine floor after Gödel ≥18.
+    assert len(free_pd) >= 18
     physics = cat.filter_by_subject("physics")
     assert any(e.book_id == "pd-faraday-electricity" for e in physics)
     assert any(e.book_id == "pd-maxwell-em" for e in physics)
@@ -149,7 +151,7 @@ def test_shannon_information_theory_subjects_and_free_pd() -> None:
 
 
 def test_free_computing_stem_quartet() -> None:
-    """Residual (xt): free computing subject includes Boole/Shannon/Turing/Lovelace."""
+    """Residual (xt/agh): free computing includes Boole/Shannon/Turing/Lovelace/Gödel."""
     cat = default_demo_catalog()
     free_comp = [
         e
@@ -162,11 +164,36 @@ def test_free_computing_stem_quartet() -> None:
         "pd-shannon-communication",
         "pd-turing-computable-numbers",
         "pd-lovelace-analytical-engine",
+        "pd-godel-incompleteness",
     }
     assert all(e.source_format == "html" for e in free_comp if e.book_id in ids)
-    # Residual (zy): free computing set size honesty (parity technology zw).
-    assert len(free_comp) >= 4
+    # Residual (zy/agh): free computing set size honesty after Gödel.
+    assert len(free_comp) >= 5
     assert all(e.is_free for e in free_comp)
+
+
+def test_godel_foundations_subjects_and_free_pd() -> None:
+    """Residual (agh): Gödel incompleteness tagged foundations+logic, free PD HTML."""
+    cat = default_demo_catalog()
+    godel = cat.get("pd-godel-incompleteness")
+    assert godel is not None
+    assert godel.license_class == "public_domain"
+    assert godel.is_free is True
+    assert godel.source == "project_gutenberg"
+    assert godel.source_format == "html"
+    assert "foundations" in godel.subjects
+    assert "logic" in godel.subjects
+    assert "computability" in godel.subjects
+    assert "computing" in godel.subjects
+    foundations = cat.filter_by_subject("foundations")
+    assert {e.book_id for e in foundations} >= {"pd-godel-incompleteness"}
+    free_pd = [
+        e
+        for e in cat.search("")
+        if e.license_class == "public_domain" and e.is_free
+    ]
+    assert len(free_pd) >= 18
+    assert any(e.book_id == "pd-godel-incompleteness" for e in free_pd)
 
 
 def test_free_technology_includes_electricity_and_computing() -> None:
@@ -562,8 +589,8 @@ def test_catalog_route_subjects_and_by_subject(client) -> None:
     assert body["by_subject"].get("technology", 0) >= 5
     # Residual (zb): free_count honesty includes full free PD catalog (STEM expanded).
     # Residual (abg): free_count floor after Hooke Micrographia (abc) ≥17 free PD.
-    assert body.get("free_count", 0) >= 17
-    assert body.get("public_domain_count", 0) >= 17
+    assert body.get("free_count", 0) >= 18
+    assert body.get("public_domain_count", 0) >= 18
     # Residual (aab): free_count matches entry-level free flags (no silent drift).
     free_from_entries = sum(1 for e in body["entries"] if e.get("is_free"))
     assert body["free_count"] == free_from_entries
