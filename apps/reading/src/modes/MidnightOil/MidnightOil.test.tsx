@@ -24,6 +24,7 @@ import {
   preflightMidnightOil,
   providerExecutorAdapterPlanMidnightOil,
   providerRouteMidnightOil,
+  repositoryCommitRollbackPlanMidnightOil,
   repositoryTransactionPlanMidnightOil,
   retrievalAdapterPlanMidnightOil,
   retrievalMidnightOil,
@@ -1798,6 +1799,122 @@ vi.mock("../../api/midnightOil", () => ({
       "repository transaction plan only: no transaction, queue claim, claim transaction, worker runtime, scheduler job, or runner dispatch is created",
     ],
   })),
+  repositoryCommitRollbackPlanMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-repository-commit-rollback-plan",
+    repository_transaction_plan_receipt_id: "midnight-oil-test-repository-transaction-plan",
+    worker_queue_claim_plan_receipt_id: "midnight-oil-test-worker-queue-claim-plan",
+    scheduler_lease_retry_plan_receipt_id: "midnight-oil-test-scheduler-lease-retry-plan",
+    runner_dispatch_worker_bootstrap_plan_receipt_id:
+      "midnight-oil-test-runner-dispatch-worker-bootstrap-plan",
+    runner_dispatch_scheduler_plan_receipt_id:
+      "midnight-oil-test-runner-dispatch-scheduler-plan",
+    live_dispatch_final_enablement_apply_plan_receipt_id:
+      "midnight-oil-test-live-dispatch-final-enablement-apply-plan",
+    runner_control_plan_receipt_id: "midnight-oil-test-runner-control-plan",
+    runner_readiness_receipt_id: "midnight-oil-test-runner-readiness",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    run_id: "midnight-oil-test",
+    status: "blocked_repository_commit_rollback_unimplemented",
+    adapter_key: "repository_commit_rollback",
+    planned_repository_transaction_id: "midnight-oil-test-repository-transaction",
+    planned_transaction_scope: "worker_queue_claim_commit",
+    planned_write_set_id: "midnight-oil-test-repository-transaction-write-set",
+    planned_lock_id: "midnight-oil-test-repository-transaction-lock",
+    planned_commit_receipt_id: "midnight-oil-test-repository-transaction-commit-receipt",
+    planned_rollback_receipt_id: "midnight-oil-test-repository-transaction-rollback-receipt",
+    planned_commit_ledger_entry_id: "midnight-oil-test-repository-commit-ledger-entry",
+    planned_rollback_ledger_entry_id: "midnight-oil-test-repository-rollback-ledger-entry",
+    planned_queue_claim_id: "midnight-oil-test-worker-queue-claim",
+    planned_claim_transaction_id: "midnight-oil-test-worker-queue-claim-transaction",
+    planned_claim_lease_token_id: "midnight-oil-test-worker-queue-claim-lease-token",
+    planned_claim_cursor_id: "midnight-oil-test-worker-queue-claim-cursor",
+    planned_queue_id: "midnight-oil-test-runner-dispatch-queue",
+    planned_worker_id: "midnight-oil-test-runner-dispatch-worker",
+    planned_worker_lease_id: "midnight-oil-test-runner-dispatch-worker-lease",
+    planned_runner_dispatch_id: "midnight-oil-test-midnight-oil-runner-dispatch",
+    planned_live_dispatch_receipt_id: "midnight-oil-test-live-dispatch-final-enable-receipt",
+    planned_idempotency_key: "midnight-oil-test-live-dispatch-final-enable-idempotency-key",
+    repository_commit_rollback_blockers: [
+      "commit receipt durable writer",
+      "rollback receipt durable writer",
+      "commit ledger append transaction",
+      "rollback ledger append transaction",
+      "idempotent commit/rollback replay protection",
+    ],
+    required_repository_commit_rollback_invariants: [
+      "repository commit rollback planner must require repository transaction planning before any commit or rollback receipt can be created",
+      "repository commit rollback planner must keep commit and rollback receipts paired to the same transaction id, write set id, lock id, and idempotency key",
+    ],
+    required_repository_commit_rollback_receipt_fields: [
+      "repository_commit_rollback_plan_receipt_id",
+      "repository_transaction_plan_receipt_id",
+      "repository_transaction_id",
+      "write_set_id",
+      "lock_id",
+      "commit_receipt_id",
+      "rollback_receipt_id",
+      "commit_ledger_entry_id",
+      "rollback_ledger_entry_id",
+      "queue_claim_id",
+      "claim_transaction_id",
+      "idempotency_key",
+      "repository_transaction_committed",
+    ],
+    blocker_reason: "repository_commit_rollback_unimplemented",
+    repository_commit_allowed: false,
+    repository_rollback_allowed: false,
+    commit_receipt_created: false,
+    rollback_receipt_created: false,
+    repository_transaction_allowed: false,
+    repository_transaction_opened: false,
+    repository_transaction_committed: false,
+    queue_claim_allowed: false,
+    queue_claim_created: false,
+    claim_transaction_opened: false,
+    claim_transaction_committed: false,
+    lease_retry_allowed: false,
+    lease_policy_created: false,
+    retry_policy_created: false,
+    dead_letter_queue_created: false,
+    worker_bootstrap_allowed: false,
+    worker_bootstrap_created: false,
+    worker_started: false,
+    scheduler_allowed: false,
+    scheduler_job_created: false,
+    runner_dispatch_enqueued: false,
+    final_enablement_apply_allowed: false,
+    final_enablement_allowed: false,
+    live_dispatch_enabled: false,
+    live_dispatch_ready: false,
+    activation_readiness_allowed: false,
+    activation_ready: false,
+    transaction_opened: false,
+    transaction_committed: false,
+    setting_persisted: false,
+    control_ledger_written: false,
+    audit_log_written: false,
+    operator_dispatch_allowed: false,
+    operator_live_dispatch_enabled: false,
+    live_run_allowed: false,
+    dispatch_allowed: false,
+    dispatch_performed: false,
+    budget_reservation_allowed: false,
+    budget_reserved: false,
+    provider_execution_allowed: false,
+    provider_calls_made: false,
+    retrieval_allowed: false,
+    retrieval_performed: false,
+    source_receipts_created: false,
+    graph_mutation_allowed: false,
+    graph_mutated: false,
+    final_artifact_allowed: false,
+    final_artifact_created: false,
+    adapter_plan_notes: [
+      "repository commit rollback plan only: no transaction, queue claim, claim transaction, worker runtime, scheduler job, or runner dispatch is created",
+    ],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -3198,5 +3315,98 @@ describe("MidnightOil", () => {
     ).toBeTruthy();
     expect(screen.getByText(/Repository transaction blockers:/)).toBeTruthy();
     expect(screen.getByText(/Repository transaction receipt fields:/)).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Repository commit rollback plan" }));
+
+    await waitFor(() => expect(repositoryCommitRollbackPlanMidnightOil).toHaveBeenCalled());
+    expect(repositoryCommitRollbackPlanMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      runner_control_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-control-plan",
+      }),
+      budget_provider_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-budget-provider-adapter-plan",
+      }),
+      provider_executor_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-provider-executor-adapter-plan",
+      }),
+      retrieval_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-retrieval-adapter-plan",
+      }),
+      graph_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-graph-adapter-plan",
+      }),
+      final_artifact_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-final-artifact-adapter-plan",
+      }),
+      operator_dispatch_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-operator-dispatch-adapter-plan",
+      }),
+      control_ledger_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-adapter-plan",
+      }),
+      control_ledger_persistence_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-persistence-plan",
+      }),
+      control_ledger_persistence_apply_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-persistence-apply-plan",
+      }),
+      operator_dispatch_activation_readiness_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-operator-dispatch-activation-readiness-plan",
+      }),
+      live_dispatch_final_enablement_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-live-dispatch-final-enablement-plan",
+      }),
+      live_dispatch_final_enablement_apply_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-live-dispatch-final-enablement-apply-plan",
+      }),
+      runner_dispatch_scheduler_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-dispatch-scheduler-plan",
+      }),
+      runner_dispatch_worker_bootstrap_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-dispatch-worker-bootstrap-plan",
+      }),
+      scheduler_lease_retry_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-scheduler-lease-retry-plan",
+      }),
+      worker_queue_claim_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-worker-queue-claim-plan",
+      }),
+      repository_transaction_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-repository-transaction-plan",
+      }),
+    });
+    expect(screen.getByText("Repository commit rollback receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-repository-commit-rollback-plan")).toBeTruthy();
+    expect(screen.getByText("blocked repository commit rollback unimplemented")).toBeTruthy();
+    expect(screen.getAllByText("midnight-oil-test-repository-transaction").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("worker queue claim commit").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("midnight-oil-test-repository-transaction-write-set").length,
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByText("midnight-oil-test-repository-transaction-lock").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("midnight-oil-test-repository-transaction-commit-receipt").length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("midnight-oil-test-repository-transaction-rollback-receipt").length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByText("midnight-oil-test-repository-commit-ledger-entry")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-repository-rollback-ledger-entry")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "repository commit rollback planner must require repository transaction planning before any commit or rollback receipt can be created",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Commit rollback blockers:/)).toBeTruthy();
+    expect(screen.getByText(/Commit rollback receipt fields:/)).toBeTruthy();
   });
 });

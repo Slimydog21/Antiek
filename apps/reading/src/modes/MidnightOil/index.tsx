@@ -21,6 +21,7 @@ import {
   preflightMidnightOil,
   providerExecutorAdapterPlanMidnightOil,
   providerRouteMidnightOil,
+  repositoryCommitRollbackPlanMidnightOil,
   repositoryTransactionPlanMidnightOil,
   retrievalAdapterPlanMidnightOil,
   retrievalMidnightOil,
@@ -50,6 +51,7 @@ import {
   type MidnightOilPreflight,
   type MidnightOilProviderExecutorAdapterPlanReceipt,
   type MidnightOilProviderRouteReceipt,
+  type MidnightOilRepositoryCommitRollbackPlanReceipt,
   type MidnightOilRepositoryTransactionPlanReceipt,
   type MidnightOilRetrievalAdapterPlanReceipt,
   type MidnightOilRetrievalReceipt,
@@ -149,6 +151,8 @@ export default function MidnightOil() {
     useState<MidnightOilWorkerQueueClaimPlanReceipt | null>(null);
   const [repositoryTransactionPlanReceipt, setRepositoryTransactionPlanReceipt] =
     useState<MidnightOilRepositoryTransactionPlanReceipt | null>(null);
+  const [repositoryCommitRollbackPlanReceipt, setRepositoryCommitRollbackPlanReceipt] =
+    useState<MidnightOilRepositoryCommitRollbackPlanReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -187,6 +191,7 @@ export default function MidnightOil() {
   const [schedulerLeaseRetryPlanBusy, setSchedulerLeaseRetryPlanBusy] = useState(false);
   const [workerQueueClaimPlanBusy, setWorkerQueueClaimPlanBusy] = useState(false);
   const [repositoryTransactionPlanBusy, setRepositoryTransactionPlanBusy] = useState(false);
+  const [repositoryCommitRollbackPlanBusy, setRepositoryCommitRollbackPlanBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
   const [liveSettingsError, setLiveSettingsError] = useState<string | null>(null);
@@ -236,10 +241,18 @@ export default function MidnightOil() {
   const [workerQueueClaimPlanError, setWorkerQueueClaimPlanError] = useState<string | null>(null);
   const [repositoryTransactionPlanError, setRepositoryTransactionPlanError] =
     useState<string | null>(null);
+  const [repositoryCommitRollbackPlanError, setRepositoryCommitRollbackPlanError] =
+    useState<string | null>(null);
+
+  function clearRepositoryCommitRollbackPlan() {
+    setRepositoryCommitRollbackPlanError(null);
+    setRepositoryCommitRollbackPlanReceipt(null);
+  }
 
   function clearRepositoryTransactionPlan() {
     setRepositoryTransactionPlanError(null);
     setRepositoryTransactionPlanReceipt(null);
+    clearRepositoryCommitRollbackPlan();
   }
 
   function clearWorkerQueueClaimPlan() {
@@ -1696,6 +1709,7 @@ export default function MidnightOil() {
     setRepositoryTransactionPlanBusy(true);
     setRepositoryTransactionPlanError(null);
     setRepositoryTransactionPlanReceipt(null);
+    clearRepositoryCommitRollbackPlan();
     try {
       const result = await repositoryTransactionPlanMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -1726,6 +1740,73 @@ export default function MidnightOil() {
       setRepositoryTransactionPlanError(e instanceof Error ? e.message : String(e));
     } finally {
       setRepositoryTransactionPlanBusy(false);
+    }
+  }
+
+  async function onRepositoryCommitRollbackPlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerControlPlanReceipt ||
+      !budgetProviderAdapterPlanReceipt ||
+      !providerExecutorAdapterPlanReceipt ||
+      !retrievalAdapterPlanReceipt ||
+      !graphAdapterPlanReceipt ||
+      !finalArtifactAdapterPlanReceipt ||
+      !operatorDispatchAdapterPlanReceipt ||
+      !controlLedgerAdapterPlanReceipt ||
+      !controlLedgerPersistencePlanReceipt ||
+      !controlLedgerPersistenceApplyPlanReceipt ||
+      !operatorDispatchActivationReadinessPlanReceipt ||
+      !liveDispatchFinalEnablementPlanReceipt ||
+      !liveDispatchFinalEnablementApplyPlanReceipt ||
+      !runnerDispatchSchedulerPlanReceipt ||
+      !runnerDispatchWorkerBootstrapPlanReceipt ||
+      !schedulerLeaseRetryPlanReceipt ||
+      !workerQueueClaimPlanReceipt ||
+      !repositoryTransactionPlanReceipt
+    ) {
+      setRepositoryCommitRollbackPlanError(
+        "Repository commit rollback plan requires launch packet, approval receipt, runner handoff, runner control plan receipt, budget provider adapter plan receipt, provider executor adapter plan receipt, retrieval adapter plan receipt, graph adapter plan receipt, final artifact adapter plan receipt, operator dispatch adapter plan receipt, control ledger adapter plan receipt, control ledger persistence plan receipt, control ledger persistence apply plan receipt, operator dispatch activation readiness plan receipt, live dispatch final enablement plan receipt, live dispatch final enablement apply plan receipt, runner dispatch scheduler plan receipt, runner dispatch worker bootstrap plan receipt, scheduler lease retry plan receipt, worker queue claim plan receipt, and repository transaction plan receipt.",
+      );
+      return;
+    }
+
+    setRepositoryCommitRollbackPlanBusy(true);
+    setRepositoryCommitRollbackPlanError(null);
+    setRepositoryCommitRollbackPlanReceipt(null);
+    try {
+      const result = await repositoryCommitRollbackPlanMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        runner_control_plan_receipt: runnerControlPlanReceipt,
+        budget_provider_adapter_plan_receipt: budgetProviderAdapterPlanReceipt,
+        provider_executor_adapter_plan_receipt: providerExecutorAdapterPlanReceipt,
+        retrieval_adapter_plan_receipt: retrievalAdapterPlanReceipt,
+        graph_adapter_plan_receipt: graphAdapterPlanReceipt,
+        final_artifact_adapter_plan_receipt: finalArtifactAdapterPlanReceipt,
+        operator_dispatch_adapter_plan_receipt: operatorDispatchAdapterPlanReceipt,
+        control_ledger_adapter_plan_receipt: controlLedgerAdapterPlanReceipt,
+        control_ledger_persistence_plan_receipt: controlLedgerPersistencePlanReceipt,
+        control_ledger_persistence_apply_plan_receipt: controlLedgerPersistenceApplyPlanReceipt,
+        operator_dispatch_activation_readiness_plan_receipt:
+          operatorDispatchActivationReadinessPlanReceipt,
+        live_dispatch_final_enablement_plan_receipt: liveDispatchFinalEnablementPlanReceipt,
+        live_dispatch_final_enablement_apply_plan_receipt:
+          liveDispatchFinalEnablementApplyPlanReceipt,
+        runner_dispatch_scheduler_plan_receipt: runnerDispatchSchedulerPlanReceipt,
+        runner_dispatch_worker_bootstrap_plan_receipt: runnerDispatchWorkerBootstrapPlanReceipt,
+        scheduler_lease_retry_plan_receipt: schedulerLeaseRetryPlanReceipt,
+        worker_queue_claim_plan_receipt: workerQueueClaimPlanReceipt,
+        repository_transaction_plan_receipt: repositoryTransactionPlanReceipt,
+      });
+      setRepositoryCommitRollbackPlanReceipt(result);
+    } catch (e) {
+      setRepositoryCommitRollbackPlanError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRepositoryCommitRollbackPlanBusy(false);
     }
   }
 
@@ -4924,6 +5005,188 @@ export default function MidnightOil() {
                   <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
                     Repository transaction receipt fields:{" "}
                     {repositoryTransactionPlanReceipt.required_repository_transaction_receipt_fields.join(
+                      ", ",
+                    )}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Repository commit rollback plan
+                </p>
+                <button
+                  type="button"
+                  onClick={onRepositoryCommitRollbackPlanGate}
+                  disabled={
+                    repositoryCommitRollbackPlanBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !runnerControlPlanReceipt ||
+                    !budgetProviderAdapterPlanReceipt ||
+                    !providerExecutorAdapterPlanReceipt ||
+                    !retrievalAdapterPlanReceipt ||
+                    !graphAdapterPlanReceipt ||
+                    !finalArtifactAdapterPlanReceipt ||
+                    !operatorDispatchAdapterPlanReceipt ||
+                    !controlLedgerAdapterPlanReceipt ||
+                    !controlLedgerPersistencePlanReceipt ||
+                    !controlLedgerPersistenceApplyPlanReceipt ||
+                    !operatorDispatchActivationReadinessPlanReceipt ||
+                    !liveDispatchFinalEnablementPlanReceipt ||
+                    !liveDispatchFinalEnablementApplyPlanReceipt ||
+                    !runnerDispatchSchedulerPlanReceipt ||
+                    !runnerDispatchWorkerBootstrapPlanReceipt ||
+                    !schedulerLeaseRetryPlanReceipt ||
+                    !workerQueueClaimPlanReceipt ||
+                    !repositoryTransactionPlanReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {repositoryCommitRollbackPlanBusy
+                    ? "Planning commit rollback..."
+                    : "Repository commit rollback plan"}
+                </button>
+              </div>
+
+              {repositoryCommitRollbackPlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {repositoryCommitRollbackPlanError}
+                </p>
+              )}
+
+              {repositoryCommitRollbackPlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Repository commit rollback receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {repositoryCommitRollbackPlanReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={repositoryCommitRollbackPlanReceipt.status.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Commit"
+                      value={
+                        repositoryCommitRollbackPlanReceipt.repository_commit_allowed
+                          ? "allowed"
+                          : "blocked"
+                      }
+                    />
+                    <Metric
+                      label="Rollback"
+                      value={
+                        repositoryCommitRollbackPlanReceipt.repository_rollback_allowed
+                          ? "allowed"
+                          : "blocked"
+                      }
+                    />
+                    <Metric
+                      label="Receipt write"
+                      value={
+                        repositoryCommitRollbackPlanReceipt.commit_receipt_created ||
+                        repositoryCommitRollbackPlanReceipt.rollback_receipt_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Transaction plan"
+                      value={
+                        repositoryCommitRollbackPlanReceipt.repository_transaction_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Queue claim plan"
+                      value={repositoryCommitRollbackPlanReceipt.worker_queue_claim_plan_receipt_id}
+                    />
+                    <Metric
+                      label="Repository tx"
+                      value={repositoryCommitRollbackPlanReceipt.planned_repository_transaction_id}
+                    />
+                    <Metric
+                      label="Scope"
+                      value={repositoryCommitRollbackPlanReceipt.planned_transaction_scope.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                    <Metric
+                      label="Write set"
+                      value={repositoryCommitRollbackPlanReceipt.planned_write_set_id}
+                    />
+                    <Metric
+                      label="Lock"
+                      value={repositoryCommitRollbackPlanReceipt.planned_lock_id}
+                    />
+                    <Metric
+                      label="Commit receipt"
+                      value={repositoryCommitRollbackPlanReceipt.planned_commit_receipt_id}
+                    />
+                    <Metric
+                      label="Rollback receipt"
+                      value={repositoryCommitRollbackPlanReceipt.planned_rollback_receipt_id}
+                    />
+                    <Metric
+                      label="Commit ledger"
+                      value={repositoryCommitRollbackPlanReceipt.planned_commit_ledger_entry_id}
+                    />
+                    <Metric
+                      label="Rollback ledger"
+                      value={repositoryCommitRollbackPlanReceipt.planned_rollback_ledger_entry_id}
+                    />
+                    <Metric
+                      label="Queue claim"
+                      value={repositoryCommitRollbackPlanReceipt.planned_queue_claim_id}
+                    />
+                    <Metric
+                      label="Claim transaction"
+                      value={repositoryCommitRollbackPlanReceipt.planned_claim_transaction_id}
+                    />
+                    <Metric
+                      label="Runner dispatch"
+                      value={repositoryCommitRollbackPlanReceipt.planned_runner_dispatch_id}
+                    />
+                    <Metric
+                      label="Idempotency key"
+                      value={repositoryCommitRollbackPlanReceipt.planned_idempotency_key}
+                    />
+                    <Metric
+                      label="Adapter"
+                      value={repositoryCommitRollbackPlanReceipt.adapter_key.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Blocker"
+                      value={repositoryCommitRollbackPlanReceipt.blocker_reason.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                  </div>
+                  <ul className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {repositoryCommitRollbackPlanReceipt.required_repository_commit_rollback_invariants
+                      .slice(0, 5)
+                      .map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                  </ul>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Commit rollback blockers:{" "}
+                    {repositoryCommitRollbackPlanReceipt.repository_commit_rollback_blockers.join(
+                      ", ",
+                    )}
+                  </p>
+                  <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Commit rollback receipt fields:{" "}
+                    {repositoryCommitRollbackPlanReceipt.required_repository_commit_rollback_receipt_fields.join(
                       ", ",
                     )}
                   </p>
