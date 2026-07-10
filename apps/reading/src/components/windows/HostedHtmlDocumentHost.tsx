@@ -385,6 +385,8 @@ export default function HostedHtmlDocumentHost(
   // Residual (tr): cohesive multi-spawn unit prompt HTML window.
   const isCollectiveUnitPrompt = payloadSource === "collective_unit_prompt";
   // Residual (vg): twin draft floats from TwinNotesPanel multi-select / cross-asset.
+  // Residual (atc): twin cross-asset merge float honesty + Port path (recursive
+  // note-taker multi-asset merge · never invent live L3 seed).
   const isTwinCrossAssetMerge = payloadSource === "twin_cross_asset_merge";
   const isTwinDraftSelected = payloadSource === "twin_draft_selected";
   // Residual (vk): multi-select written analysis float (not doc merge).
@@ -607,7 +609,18 @@ export default function HostedHtmlDocumentHost(
                         .filter(Boolean)
                         .join("\n")
                         .slice(0, 900)
-                    : twinSeedBodyBase;
+                    : isTwinCrossAssetMerge
+                      ? [
+                          twinSeedBodyBase,
+                          "",
+                          "Port path: Twin cross-asset merge float (recursive note-taker multi-asset insights/questions merge · HTML-first · never invent live L3 twin seed · promote≠invent body).",
+                          assetId ? `document_id=${assetId}` : "",
+                          "source=twin_cross_asset_merge · twin auto-seed if empty · intelligent search substrate over merged twins.",
+                        ]
+                          .filter(Boolean)
+                          .join("\n")
+                          .slice(0, 900)
+                      : twinSeedBodyBase;
 
   return (
     <div
@@ -1077,6 +1090,52 @@ export default function HostedHtmlDocumentHost(
                     title="FUTURE-AGENT twin note-taker completeness matrix"
                   >
                     FUTURE · twin completeness matrix
+                  </a>
+                </p>
+              </div>
+            ) : null}
+            {/* Residual (atc): twin cross-asset merge float honesty. */}
+            {isTwinCrossAssetMerge ? (
+              <div
+                className="text-[11px] font-mono opacity-80 mt-1 space-y-1"
+                data-testid="hosted-html-twin-cross-asset-honesty"
+                data-twin-seed-path="twin_cross_asset_merge"
+                data-auto-seed-if-empty="true"
+                data-html-first="true"
+                data-view-format="html"
+                data-l3-live-seed="deferred"
+                role="status"
+              >
+                <p>
+                  Twin cross-asset merge · multi-asset insights/questions
+                  substrate · twin auto-seed if empty (recursive note-taker) ·
+                  intelligent search over merged twins · never invent live L3
+                  seed · promote≠invent body · HTML · not PDF
+                </p>
+                <p className="space-x-3">
+                  <a
+                    href="/settings#settings-competitive-dr-scorecard"
+                    data-testid="hosted-html-twin-cross-asset-scorecard-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="Settings competitive DR scorecard (twin cross-asset merge)"
+                  >
+                    Settings · competitive DR scorecard
+                  </a>
+                  <a
+                    href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md"
+                    data-testid="hosted-html-twin-cross-asset-twin-matrix-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="FUTURE-AGENT twin note-taker completeness matrix"
+                  >
+                    FUTURE · twin completeness matrix
+                  </a>
+                  <a
+                    href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l3-twin"
+                    data-testid="hosted-html-twin-cross-asset-dual-gate-l3-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="Dual-gate L3 live twin seed checklist (never enables injectors)"
+                  >
+                    Dual-gate · L3 twin seed
                   </a>
                 </p>
               </div>

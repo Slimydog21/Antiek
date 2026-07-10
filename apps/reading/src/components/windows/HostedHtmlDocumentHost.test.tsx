@@ -802,7 +802,7 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     ).toMatch(/Collective written analysis/i);
   });
 
-  it("stamps twin_cross_asset_merge Open Write source (vg)", () => {
+  it("stamps twin_cross_asset_merge Open Write source (vg/atc)", () => {
     render(
       <HostedHtmlDocumentHost
         document_id="twin_draft_a_b"
@@ -825,6 +825,29 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
       screen.getByTestId("twin-notes-panel-stub").getAttribute("data-seed-title") ||
         "",
     ).toMatch(/Twin cross-asset merge/i);
+    // Residual (atc): cross-asset merge honesty chrome + Port path.
+    const honesty = screen.getByTestId("hosted-html-twin-cross-asset-honesty");
+    expect(honesty.getAttribute("data-twin-seed-path")).toBe(
+      "twin_cross_asset_merge",
+    );
+    expect(honesty.getAttribute("data-html-first")).toBe("true");
+    expect(honesty.getAttribute("data-l3-live-seed")).toBe("deferred");
+    expect(honesty.textContent).toMatch(/Twin cross-asset merge/i);
+    expect(honesty.textContent).toMatch(/recursive note-taker/i);
+    expect(
+      screen
+        .getByTestId("hosted-html-twin-cross-asset-twin-matrix-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix/);
+    expect(
+      screen
+        .getByTestId("hosted-html-twin-cross-asset-dual-gate-l3-link")
+        .getAttribute("href") || "",
+    ).toMatch(/#l3-twin/);
+    const seedBody =
+      screen.getByTestId("twin-notes-panel-stub").getAttribute("data-seed-body") ||
+      "";
+    expect(seedBody).toMatch(/Port path: Twin cross-asset merge/i);
   });
 
   it("stamps collective_unit_prompt honesty (ts)", () => {

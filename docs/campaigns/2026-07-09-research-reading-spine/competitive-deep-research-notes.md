@@ -4265,3 +4265,8 @@ Session flywheel complete float stamps honesty chrome + twin seed Port path
 (session synthesis → next prompt flywheel · never invent L3). Scorecard +
 twin matrix deep-links. vitest HostedHtml 39 green. See SESSION-ARC asx–atb.
 P0 PR #465. Pivot atc+.
+
+## Residual atc · 2026-07-10 — HostedHtml twin_cross_asset_merge honesty
+Cross-asset twin merge float stamps honesty chrome + Port path (multi-asset
+insights/questions · L3 deferred · promote≠invent). Scorecard · twin matrix ·
+dual-gate L3 links. vitest HostedHtml 39 green. P0 PR #465. Pivot atd+.
