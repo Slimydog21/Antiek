@@ -48,6 +48,7 @@ import {
   workerOutputAggregationPlanMidnightOil,
   workerQueueClaimPlanMidnightOil,
   workerSynthesisHandoffPlanMidnightOil,
+  workspaceDeliveryCardReconciliationPlanMidnightOil,
   type MidnightOilActivationChecklistReceipt,
   type MidnightOilAppliedRunReceipt,
   type MidnightOilBudgetProviderAdapterPlanReceipt,
@@ -97,6 +98,7 @@ import {
   type MidnightOilWorkerOutputAggregationPlanReceipt,
   type MidnightOilWorkerQueueClaimPlanReceipt,
   type MidnightOilWorkerSynthesisHandoffPlanReceipt,
+  type MidnightOilWorkspaceDeliveryCardReconciliationPlanReceipt,
 } from "../../api/midnightOil";
 import LemonCard from "../../components/lemon/LemonCard";
 
@@ -233,6 +235,10 @@ export default function MidnightOil() {
     operatorDeliveryLedgerReconciliationPlanReceipt,
     setOperatorDeliveryLedgerReconciliationPlanReceipt,
   ] = useState<MidnightOilOperatorDeliveryLedgerReconciliationPlanReceipt | null>(null);
+  const [
+    workspaceDeliveryCardReconciliationPlanReceipt,
+    setWorkspaceDeliveryCardReconciliationPlanReceipt,
+  ] = useState<MidnightOilWorkspaceDeliveryCardReconciliationPlanReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -309,6 +315,10 @@ export default function MidnightOil() {
   const [
     operatorDeliveryLedgerReconciliationPlanBusy,
     setOperatorDeliveryLedgerReconciliationPlanBusy,
+  ] = useState(false);
+  const [
+    workspaceDeliveryCardReconciliationPlanBusy,
+    setWorkspaceDeliveryCardReconciliationPlanBusy,
   ] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
@@ -404,10 +414,20 @@ export default function MidnightOil() {
     operatorDeliveryLedgerReconciliationPlanError,
     setOperatorDeliveryLedgerReconciliationPlanError,
   ] = useState<string | null>(null);
+  const [
+    workspaceDeliveryCardReconciliationPlanError,
+    setWorkspaceDeliveryCardReconciliationPlanError,
+  ] = useState<string | null>(null);
+
+  function clearWorkspaceDeliveryCardReconciliationPlan() {
+    setWorkspaceDeliveryCardReconciliationPlanError(null);
+    setWorkspaceDeliveryCardReconciliationPlanReceipt(null);
+  }
 
   function clearOperatorDeliveryLedgerReconciliationPlan() {
     setOperatorDeliveryLedgerReconciliationPlanError(null);
     setOperatorDeliveryLedgerReconciliationPlanReceipt(null);
+    clearWorkspaceDeliveryCardReconciliationPlan();
   }
 
   function clearOperatorNotificationDeliveryResultReconciliationPlan() {
@@ -663,6 +683,7 @@ export default function MidnightOil() {
     setOperatorNotificationDeliveryApplyPlanError(null);
     setOperatorNotificationDeliveryResultReconciliationPlanError(null);
     setOperatorDeliveryLedgerReconciliationPlanError(null);
+    setWorkspaceDeliveryCardReconciliationPlanError(null);
     setPreflight(null);
     setDryRunReceipt(null);
     setLiveSettingsReceipt(null);
@@ -711,6 +732,7 @@ export default function MidnightOil() {
     setOperatorNotificationDeliveryApplyPlanReceipt(null);
     setOperatorNotificationDeliveryResultReconciliationPlanReceipt(null);
     setOperatorDeliveryLedgerReconciliationPlanReceipt(null);
+    setWorkspaceDeliveryCardReconciliationPlanReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -3523,6 +3545,7 @@ export default function MidnightOil() {
     setOperatorDeliveryLedgerReconciliationPlanBusy(true);
     setOperatorDeliveryLedgerReconciliationPlanError(null);
     setOperatorDeliveryLedgerReconciliationPlanReceipt(null);
+    clearWorkspaceDeliveryCardReconciliationPlan();
     try {
       const result = await operatorDeliveryLedgerReconciliationPlanMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -3577,6 +3600,116 @@ export default function MidnightOil() {
       );
     } finally {
       setOperatorDeliveryLedgerReconciliationPlanBusy(false);
+    }
+  }
+
+  async function onWorkspaceDeliveryCardReconciliationPlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerControlPlanReceipt ||
+      !budgetProviderAdapterPlanReceipt ||
+      !providerExecutorAdapterPlanReceipt ||
+      !retrievalAdapterPlanReceipt ||
+      !graphAdapterPlanReceipt ||
+      !finalArtifactAdapterPlanReceipt ||
+      !operatorDispatchAdapterPlanReceipt ||
+      !controlLedgerAdapterPlanReceipt ||
+      !controlLedgerPersistencePlanReceipt ||
+      !controlLedgerPersistenceApplyPlanReceipt ||
+      !operatorDispatchActivationReadinessPlanReceipt ||
+      !liveDispatchFinalEnablementPlanReceipt ||
+      !liveDispatchFinalEnablementApplyPlanReceipt ||
+      !runnerDispatchSchedulerPlanReceipt ||
+      !runnerDispatchWorkerBootstrapPlanReceipt ||
+      !schedulerLeaseRetryPlanReceipt ||
+      !workerQueueClaimPlanReceipt ||
+      !repositoryTransactionPlanReceipt ||
+      !repositoryCommitRollbackPlanReceipt ||
+      !workerDispatchLeaseHeartbeatPlanReceipt ||
+      !workerCancellationAbandonPlanReceipt ||
+      !workerCompletionFinalizationPlanReceipt ||
+      !workerOutputAggregationPlanReceipt ||
+      !workerSynthesisHandoffPlanReceipt ||
+      !synthesisBundleAssemblyPlanReceipt ||
+      !finalSynthesisDraftPlanReceipt ||
+      !finalHtmlArtifactAssemblyPlanReceipt ||
+      !finalArtifactPersistencePlanReceipt ||
+      !finalArtifactGraphCommitPlanReceipt ||
+      !finalArtifactPublishPlanReceipt ||
+      !finalArtifactCompletionFinalizationPlanReceipt ||
+      !finalRunClosurePlanReceipt ||
+      !operatorNotificationDeliveryReadinessPlanReceipt ||
+      !operatorNotificationDeliveryApplyPlanReceipt ||
+      !operatorNotificationDeliveryResultReconciliationPlanReceipt ||
+      !operatorDeliveryLedgerReconciliationPlanReceipt
+    ) {
+      setWorkspaceDeliveryCardReconciliationPlanError(
+        "Workspace delivery card reconciliation plan requires launch packet, approval receipt, runner handoff, runner control plan receipt, budget provider adapter plan receipt, provider executor adapter plan receipt, retrieval adapter plan receipt, graph adapter plan receipt, final artifact adapter plan receipt, operator dispatch adapter plan receipt, control ledger adapter plan receipt, control ledger persistence plan receipt, control ledger persistence apply plan receipt, operator dispatch activation readiness plan receipt, live dispatch final enablement plan receipt, live dispatch final enablement apply plan receipt, runner dispatch scheduler plan receipt, runner dispatch worker bootstrap plan receipt, scheduler lease retry plan receipt, worker queue claim plan receipt, repository transaction plan receipt, repository commit rollback plan receipt, worker lease heartbeat plan receipt, worker cancellation abandon plan receipt, worker completion finalization plan receipt, worker output aggregation plan receipt, worker synthesis handoff plan receipt, synthesis bundle assembly plan receipt, final synthesis draft plan receipt, final HTML artifact assembly plan receipt, final artifact persistence plan receipt, final artifact graph commit plan receipt, final artifact publish plan receipt, final artifact completion finalization plan receipt, final run closure plan receipt, operator notification delivery readiness plan receipt, operator notification delivery apply plan receipt, operator notification delivery result reconciliation plan receipt, and operator delivery ledger reconciliation plan receipt.",
+      );
+      return;
+    }
+
+    setWorkspaceDeliveryCardReconciliationPlanBusy(true);
+    setWorkspaceDeliveryCardReconciliationPlanError(null);
+    setWorkspaceDeliveryCardReconciliationPlanReceipt(null);
+    try {
+      const result = await workspaceDeliveryCardReconciliationPlanMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        runner_control_plan_receipt: runnerControlPlanReceipt,
+        budget_provider_adapter_plan_receipt: budgetProviderAdapterPlanReceipt,
+        provider_executor_adapter_plan_receipt: providerExecutorAdapterPlanReceipt,
+        retrieval_adapter_plan_receipt: retrievalAdapterPlanReceipt,
+        graph_adapter_plan_receipt: graphAdapterPlanReceipt,
+        final_artifact_adapter_plan_receipt: finalArtifactAdapterPlanReceipt,
+        operator_dispatch_adapter_plan_receipt: operatorDispatchAdapterPlanReceipt,
+        control_ledger_adapter_plan_receipt: controlLedgerAdapterPlanReceipt,
+        control_ledger_persistence_plan_receipt: controlLedgerPersistencePlanReceipt,
+        control_ledger_persistence_apply_plan_receipt: controlLedgerPersistenceApplyPlanReceipt,
+        operator_dispatch_activation_readiness_plan_receipt:
+          operatorDispatchActivationReadinessPlanReceipt,
+        live_dispatch_final_enablement_plan_receipt: liveDispatchFinalEnablementPlanReceipt,
+        live_dispatch_final_enablement_apply_plan_receipt:
+          liveDispatchFinalEnablementApplyPlanReceipt,
+        runner_dispatch_scheduler_plan_receipt: runnerDispatchSchedulerPlanReceipt,
+        runner_dispatch_worker_bootstrap_plan_receipt: runnerDispatchWorkerBootstrapPlanReceipt,
+        scheduler_lease_retry_plan_receipt: schedulerLeaseRetryPlanReceipt,
+        worker_queue_claim_plan_receipt: workerQueueClaimPlanReceipt,
+        repository_transaction_plan_receipt: repositoryTransactionPlanReceipt,
+        repository_commit_rollback_plan_receipt: repositoryCommitRollbackPlanReceipt,
+        worker_dispatch_lease_heartbeat_plan_receipt: workerDispatchLeaseHeartbeatPlanReceipt,
+        worker_cancellation_abandon_plan_receipt: workerCancellationAbandonPlanReceipt,
+        worker_completion_finalization_plan_receipt: workerCompletionFinalizationPlanReceipt,
+        worker_output_aggregation_plan_receipt: workerOutputAggregationPlanReceipt,
+        worker_synthesis_handoff_plan_receipt: workerSynthesisHandoffPlanReceipt,
+        synthesis_bundle_assembly_plan_receipt: synthesisBundleAssemblyPlanReceipt,
+        final_synthesis_draft_plan_receipt: finalSynthesisDraftPlanReceipt,
+        final_html_artifact_assembly_plan_receipt: finalHtmlArtifactAssemblyPlanReceipt,
+        final_artifact_persistence_plan_receipt: finalArtifactPersistencePlanReceipt,
+        final_artifact_graph_commit_plan_receipt: finalArtifactGraphCommitPlanReceipt,
+        final_artifact_publish_plan_receipt: finalArtifactPublishPlanReceipt,
+        final_artifact_completion_finalization_plan_receipt:
+          finalArtifactCompletionFinalizationPlanReceipt,
+        final_run_closure_plan_receipt: finalRunClosurePlanReceipt,
+        operator_notification_delivery_readiness_plan_receipt:
+          operatorNotificationDeliveryReadinessPlanReceipt,
+        operator_notification_delivery_apply_plan_receipt:
+          operatorNotificationDeliveryApplyPlanReceipt,
+        operator_notification_delivery_result_reconciliation_plan_receipt:
+          operatorNotificationDeliveryResultReconciliationPlanReceipt,
+        operator_delivery_ledger_reconciliation_plan_receipt:
+          operatorDeliveryLedgerReconciliationPlanReceipt,
+      });
+      setWorkspaceDeliveryCardReconciliationPlanReceipt(result);
+    } catch (e) {
+      setWorkspaceDeliveryCardReconciliationPlanError(
+        e instanceof Error ? e.message : String(e),
+      );
+    } finally {
+      setWorkspaceDeliveryCardReconciliationPlanBusy(false);
     }
   }
 
@@ -11428,6 +11561,298 @@ export default function MidnightOil() {
                   <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
                     Operator delivery ledger reconciliation receipt fields:{" "}
                     {operatorDeliveryLedgerReconciliationPlanReceipt.required_operator_delivery_ledger_reconciliation_receipt_fields.join(
+                      ", ",
+                    )}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Workspace delivery card reconciliation plan
+                </p>
+                <button
+                  type="button"
+                  onClick={onWorkspaceDeliveryCardReconciliationPlanGate}
+                  disabled={
+                    workspaceDeliveryCardReconciliationPlanBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !runnerControlPlanReceipt ||
+                    !budgetProviderAdapterPlanReceipt ||
+                    !providerExecutorAdapterPlanReceipt ||
+                    !retrievalAdapterPlanReceipt ||
+                    !graphAdapterPlanReceipt ||
+                    !finalArtifactAdapterPlanReceipt ||
+                    !operatorDispatchAdapterPlanReceipt ||
+                    !controlLedgerAdapterPlanReceipt ||
+                    !controlLedgerPersistencePlanReceipt ||
+                    !controlLedgerPersistenceApplyPlanReceipt ||
+                    !operatorDispatchActivationReadinessPlanReceipt ||
+                    !liveDispatchFinalEnablementPlanReceipt ||
+                    !liveDispatchFinalEnablementApplyPlanReceipt ||
+                    !runnerDispatchSchedulerPlanReceipt ||
+                    !runnerDispatchWorkerBootstrapPlanReceipt ||
+                    !schedulerLeaseRetryPlanReceipt ||
+                    !workerQueueClaimPlanReceipt ||
+                    !repositoryTransactionPlanReceipt ||
+                    !repositoryCommitRollbackPlanReceipt ||
+                    !workerDispatchLeaseHeartbeatPlanReceipt ||
+                    !workerCancellationAbandonPlanReceipt ||
+                    !workerCompletionFinalizationPlanReceipt ||
+                    !workerOutputAggregationPlanReceipt ||
+                    !workerSynthesisHandoffPlanReceipt ||
+                    !synthesisBundleAssemblyPlanReceipt ||
+                    !finalSynthesisDraftPlanReceipt ||
+                    !finalHtmlArtifactAssemblyPlanReceipt ||
+                    !finalArtifactPersistencePlanReceipt ||
+                    !finalArtifactGraphCommitPlanReceipt ||
+                    !finalArtifactPublishPlanReceipt ||
+                    !finalArtifactCompletionFinalizationPlanReceipt ||
+                    !finalRunClosurePlanReceipt ||
+                    !operatorNotificationDeliveryReadinessPlanReceipt ||
+                    !operatorNotificationDeliveryApplyPlanReceipt ||
+                    !operatorNotificationDeliveryResultReconciliationPlanReceipt ||
+                    !operatorDeliveryLedgerReconciliationPlanReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {workspaceDeliveryCardReconciliationPlanBusy
+                    ? "Planning workspace card..."
+                    : "Workspace delivery card reconciliation plan"}
+                </button>
+              </div>
+
+              {workspaceDeliveryCardReconciliationPlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {workspaceDeliveryCardReconciliationPlanError}
+                </p>
+              )}
+
+              {workspaceDeliveryCardReconciliationPlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Workspace delivery card reconciliation receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {workspaceDeliveryCardReconciliationPlanReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={workspaceDeliveryCardReconciliationPlanReceipt.status.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                    <Metric
+                      label="Card reconciliation"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.workspace_delivery_card_reconciliation_allowed
+                          ? "allowed"
+                          : "blocked"
+                      }
+                    />
+                    <Metric
+                      label="Card result"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.workspace_delivery_card_result_entry_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Card status"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.workspace_delivery_card_status_entry_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Card notification"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.workspace_delivery_card_notification_entry_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Workspace card"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.workspace_delivery_card_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Ledger result"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.operator_delivery_ledger_result_entry_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Outcome record"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.operator_notification_delivery_outcome_record_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Operator notification"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.operator_notification_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Ledger reconciliation plan"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.operator_delivery_ledger_reconciliation_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Result reconciliation plan"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.operator_notification_delivery_result_reconciliation_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Card reconciliation receipt"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.planned_workspace_delivery_card_reconciliation_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Workspace card"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.planned_workspace_delivery_card_id
+                      }
+                    />
+                    <Metric
+                      label="Card result entry"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.planned_workspace_delivery_card_result_entry_id
+                      }
+                    />
+                    <Metric
+                      label="Card status entry"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.planned_workspace_delivery_card_status_entry_id
+                      }
+                    />
+                    <Metric
+                      label="Card notification entry"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.planned_workspace_delivery_card_notification_entry_id
+                      }
+                    />
+                    <Metric
+                      label="Card replay guard"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.planned_workspace_delivery_card_replay_guard_id
+                      }
+                    />
+                    <Metric
+                      label="Ledger result entry"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.planned_operator_delivery_ledger_result_entry_id
+                      }
+                    />
+                    <Metric
+                      label="Ledger status entry"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.planned_operator_delivery_ledger_status_entry_id
+                      }
+                    />
+                    <Metric
+                      label="Outcome record"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.planned_operator_notification_delivery_outcome_record_id
+                      }
+                    />
+                    <Metric
+                      label="Delivery reconciliation"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.planned_operator_notification_delivery_reconciliation_entry_id
+                      }
+                    />
+                    <Metric
+                      label="Delivery result"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.planned_operator_notification_delivery_result_id
+                      }
+                    />
+                    <Metric
+                      label="Delivery status"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.planned_operator_notification_delivery_status_id
+                      }
+                    />
+                    <Metric
+                      label="Private URL"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.planned_private_read_url_id
+                      }
+                    />
+                    <Metric
+                      label="Reading workspace"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.planned_reading_workspace_entry_id
+                      }
+                    />
+                    <Metric
+                      label="Source lineage archive"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.planned_source_lineage_archive_id
+                      }
+                    />
+                    <Metric
+                      label="Idempotency key"
+                      value={
+                        workspaceDeliveryCardReconciliationPlanReceipt.planned_idempotency_key
+                      }
+                    />
+                    <Metric
+                      label="Adapter"
+                      value={workspaceDeliveryCardReconciliationPlanReceipt.adapter_key.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                    <Metric
+                      label="Blocker"
+                      value={workspaceDeliveryCardReconciliationPlanReceipt.blocker_reason.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                  </div>
+                  <ul className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {workspaceDeliveryCardReconciliationPlanReceipt.required_workspace_delivery_card_reconciliation_invariants
+                      .slice(0, 5)
+                      .map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                  </ul>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Workspace delivery card reconciliation blockers:{" "}
+                    {workspaceDeliveryCardReconciliationPlanReceipt.workspace_delivery_card_reconciliation_blockers.join(
+                      ", ",
+                    )}
+                  </p>
+                  <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Workspace delivery card reconciliation receipt fields:{" "}
+                    {workspaceDeliveryCardReconciliationPlanReceipt.required_workspace_delivery_card_reconciliation_receipt_fields.join(
                       ", ",
                     )}
                   </p>

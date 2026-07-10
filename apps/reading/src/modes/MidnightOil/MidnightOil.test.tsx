@@ -51,6 +51,7 @@ import {
   workerOutputAggregationPlanMidnightOil,
   workerQueueClaimPlanMidnightOil,
   workerSynthesisHandoffPlanMidnightOil,
+  workspaceDeliveryCardReconciliationPlanMidnightOil,
 } from "../../api/midnightOil";
 
 vi.mock("../../api/midnightOil", () => ({
@@ -3903,6 +3904,149 @@ vi.mock("../../api/midnightOil", () => ({
       "operator delivery ledger reconciliation plan only: no ledger entry, ledger result entry, ledger status entry, ledger retry entry, ledger dead-letter entry, outcome record, delivery transaction, dispatch, URL activation, operator notification, or final artifact is created",
     ],
   })),
+  workspaceDeliveryCardReconciliationPlanMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-workspace-delivery-card-reconciliation-plan",
+    operator_delivery_ledger_reconciliation_plan_receipt_id:
+      "midnight-oil-test-operator-delivery-ledger-reconciliation-plan",
+    operator_notification_delivery_result_reconciliation_plan_receipt_id:
+      "midnight-oil-test-operator-notification-delivery-result-reconciliation-plan",
+    operator_notification_delivery_apply_plan_receipt_id:
+      "midnight-oil-test-operator-notification-delivery-apply-plan",
+    operator_notification_delivery_readiness_plan_receipt_id:
+      "midnight-oil-test-operator-notification-delivery-readiness-plan",
+    final_run_closure_plan_receipt_id: "midnight-oil-test-final-run-closure-plan",
+    final_artifact_completion_finalization_plan_receipt_id:
+      "midnight-oil-test-final-artifact-completion-finalization-plan",
+    final_artifact_publish_plan_receipt_id:
+      "midnight-oil-test-final-artifact-publish-plan",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    run_id: "midnight-oil-test",
+    status: "blocked_workspace_delivery_card_reconciliation_unimplemented",
+    adapter_key: "workspace_delivery_card_reconciliation",
+    planned_workspace_delivery_card_reconciliation_receipt_id:
+      "midnight-oil-test-workspace-delivery-card-reconciliation-receipt",
+    planned_workspace_delivery_card_id: "midnight-oil-test-workspace-delivery-card",
+    planned_workspace_delivery_card_result_entry_id:
+      "midnight-oil-test-workspace-delivery-card-result-entry",
+    planned_workspace_delivery_card_status_entry_id:
+      "midnight-oil-test-workspace-delivery-card-status-entry",
+    planned_workspace_delivery_card_notification_entry_id:
+      "midnight-oil-test-workspace-delivery-card-notification-entry",
+    planned_workspace_delivery_card_replay_guard_id:
+      "midnight-oil-test-workspace-delivery-card-replay-guard",
+    planned_operator_delivery_ledger_reconciliation_receipt_id:
+      "midnight-oil-test-operator-delivery-ledger-reconciliation-receipt",
+    planned_operator_delivery_ledger_entry_id:
+      "midnight-oil-test-operator-delivery-ledger-entry",
+    planned_operator_delivery_ledger_result_entry_id:
+      "midnight-oil-test-operator-delivery-ledger-result-entry",
+    planned_operator_delivery_ledger_status_entry_id:
+      "midnight-oil-test-operator-delivery-ledger-status-entry",
+    planned_operator_delivery_ledger_retry_entry_id:
+      "midnight-oil-test-operator-delivery-ledger-retry-entry",
+    planned_operator_delivery_ledger_dead_letter_entry_id:
+      "midnight-oil-test-operator-delivery-ledger-dead-letter-entry",
+    planned_operator_notification_delivery_outcome_record_id:
+      "midnight-oil-test-operator-notification-delivery-outcome-record",
+    planned_operator_notification_delivery_reconciliation_entry_id:
+      "midnight-oil-test-operator-notification-delivery-reconciliation-entry",
+    planned_operator_notification_delivery_retry_decision_id:
+      "midnight-oil-test-operator-notification-delivery-retry-decision",
+    planned_operator_notification_dead_letter_entry_id:
+      "midnight-oil-test-operator-notification-dead-letter-entry",
+    planned_operator_notification_delivery_result_id:
+      "midnight-oil-test-operator-notification-delivery-result",
+    planned_operator_notification_delivery_status_id:
+      "midnight-oil-test-operator-notification-delivery-status",
+    planned_delivery_notification_id: "midnight-oil-test-delivery-notification",
+    planned_private_read_url_id: "midnight-oil-test-private-read-url",
+    planned_reading_workspace_entry_id: "midnight-oil-test-reading-workspace-entry",
+    planned_hosted_html_asset_id: "midnight-oil-test-hosted-html-asset",
+    planned_model_usage_rollup_id: "midnight-oil-test-model-usage-rollup",
+    planned_source_lineage_archive_id: "midnight-oil-test-source-lineage-archive",
+    planned_idempotency_key: "midnight-oil-test-live-dispatch-final-enable-idempotency-key",
+    workspace_delivery_card_reconciliation_blockers: [
+      "workspace delivery card reconciliation receipt writer",
+      "workspace delivery card result entry writer",
+      "workspace delivery card status entry writer",
+      "workspace delivery card notification entry writer",
+      "workspace delivery card replay guard",
+    ],
+    required_workspace_delivery_card_reconciliation_invariants: [
+      "workspace delivery card reconciliation planner must require operator delivery ledger reconciliation planning before workspace delivery cards can be reconciled",
+      "workspace delivery card reconciliation planner must keep workspace delivery card rows uncreated until real delivery ledger reconciliation rows exist",
+    ],
+    required_workspace_delivery_card_reconciliation_receipt_fields: [
+      "workspace_delivery_card_reconciliation_plan_receipt_id",
+      "operator_delivery_ledger_reconciliation_plan_receipt_id",
+      "workspace_delivery_card_result_entry_id",
+      "workspace_delivery_card_status_entry_id",
+      "workspace_delivery_card_notification_entry_id",
+      "workspace_delivery_card_replay_guard_id",
+    ],
+    blocker_reason: "workspace_delivery_card_reconciliation_unimplemented",
+    workspace_delivery_card_reconciliation_allowed: false,
+    workspace_delivery_card_result_entry_created: false,
+    workspace_delivery_card_status_entry_created: false,
+    workspace_delivery_card_notification_entry_created: false,
+    workspace_delivery_card_created: false,
+    operator_delivery_ledger_reconciliation_allowed: false,
+    operator_delivery_ledger_result_entry_created: false,
+    operator_delivery_ledger_status_entry_created: false,
+    operator_delivery_ledger_retry_entry_created: false,
+    operator_delivery_ledger_dead_letter_entry_created: false,
+    operator_delivery_ledger_entry_created: false,
+    operator_notification_delivery_result_reconciliation_allowed: false,
+    operator_notification_delivery_outcome_record_created: false,
+    operator_notification_delivery_reconciliation_entry_created: false,
+    operator_notification_delivery_retry_decision_created: false,
+    operator_notification_dead_letter_entry_created: false,
+    operator_notification_delivery_apply_allowed: false,
+    operator_notification_delivery_transaction_created: false,
+    operator_notification_dispatch_created: false,
+    operator_notification_payload_created: false,
+    operator_delivery_channel_policy_created: false,
+    operator_notification_template_created: false,
+    operator_notification_audit_entry_created: false,
+    operator_notification_delivery_attempt_created: false,
+    operator_notification_delivery_result_created: false,
+    operator_notification_delivery_status_created: false,
+    operator_notification_retry_policy_created: false,
+    operator_notification_dead_letter_created: false,
+    operator_notification_delivery_readiness_allowed: false,
+    delivery_notification_created: false,
+    run_closeout_record_created: false,
+    final_run_closure_allowed: false,
+    final_artifact_completion_finalization_allowed: false,
+    completion_record_created: false,
+    finalization_transaction_created: false,
+    artifact_archive_manifest_created: false,
+    operator_handoff_summary_created: false,
+    delivery_status_marked_complete: false,
+    quality_attestation_created: false,
+    completion_audit_entry_created: false,
+    final_artifact_publish_allowed: false,
+    publish_transaction_created: false,
+    information_asset_published: false,
+    account_visible_asset_created: false,
+    reading_workspace_entry_created: false,
+    search_index_entry_created: false,
+    private_read_url_created: false,
+    operator_notification_created: false,
+    graph_commit_created: false,
+    graph_mutated: false,
+    final_artifact_created: false,
+    dispatch_performed: false,
+    budget_reserved: false,
+    provider_calls_made: false,
+    retrieval_performed: false,
+    source_receipts_created: false,
+    adapter_plan_notes: [
+      "workspace delivery card reconciliation plan only: no workspace card, card result entry, card status entry, card notification entry, ledger entry, delivery transaction, URL activation, operator notification, or final artifact is created",
+    ],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -6638,7 +6782,9 @@ describe("MidnightOil", () => {
     expect(screen.getByText("midnight-oil-test-final-run-closure-receipt")).toBeTruthy();
     expect(screen.getByText("midnight-oil-test-run-closeout-record")).toBeTruthy();
     expect(screen.getByText("midnight-oil-test-operator-delivery-ledger-entry")).toBeTruthy();
-    expect(screen.getByText("midnight-oil-test-workspace-delivery-card")).toBeTruthy();
+    expect(screen.getAllByText("midnight-oil-test-workspace-delivery-card").length).toBeGreaterThan(
+      0,
+    );
     expect(screen.getByText("midnight-oil-test-run-retention-manifest")).toBeTruthy();
     expect(screen.getByText("midnight-oil-test-model-usage-rollup")).toBeTruthy();
     expect(screen.getByText("midnight-oil-test-source-lineage-archive")).toBeTruthy();
@@ -6906,5 +7052,69 @@ describe("MidnightOil", () => {
     expect(screen.getByText(/operator_delivery_ledger_result_entry_id/)).toBeTruthy();
     expect(screen.getByText(/operator_delivery_ledger_status_entry_id/)).toBeTruthy();
     expect(screen.getByText(/operator_delivery_ledger_dead_letter_entry_id/)).toBeTruthy();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Workspace delivery card reconciliation plan",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(workspaceDeliveryCardReconciliationPlanMidnightOil).toHaveBeenCalled(),
+    );
+    expect(workspaceDeliveryCardReconciliationPlanMidnightOil).toHaveBeenCalledWith(
+      expect.objectContaining({
+        launch_packet: expect.objectContaining({
+          packet_id: "midnight-oil-test-launch-packet",
+        }),
+        operator_notification_delivery_result_reconciliation_plan_receipt:
+          expect.objectContaining({
+            receipt_id:
+              "midnight-oil-test-operator-notification-delivery-result-reconciliation-plan",
+          }),
+        operator_delivery_ledger_reconciliation_plan_receipt: expect.objectContaining({
+          receipt_id: "midnight-oil-test-operator-delivery-ledger-reconciliation-plan",
+        }),
+      }),
+    );
+    expect(screen.getByText("Workspace delivery card reconciliation receipt")).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-workspace-delivery-card-reconciliation-plan"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("blocked workspace delivery card reconciliation unimplemented"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-workspace-delivery-card-reconciliation-receipt"),
+    ).toBeTruthy();
+    expect(
+      screen.getAllByText("midnight-oil-test-workspace-delivery-card").length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getByText("midnight-oil-test-workspace-delivery-card-result-entry"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-workspace-delivery-card-status-entry"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-workspace-delivery-card-notification-entry"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-workspace-delivery-card-replay-guard"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "workspace delivery card reconciliation planner must require operator delivery ledger reconciliation planning before workspace delivery cards can be reconciled",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Workspace delivery card reconciliation blockers:/)).toBeTruthy();
+    expect(screen.getByText(/workspace delivery card result entry writer/)).toBeTruthy();
+    expect(screen.getByText(/workspace delivery card notification entry writer/)).toBeTruthy();
+    expect(
+      screen.getByText(/Workspace delivery card reconciliation receipt fields:/),
+    ).toBeTruthy();
+    expect(screen.getByText(/workspace_delivery_card_result_entry_id/)).toBeTruthy();
+    expect(screen.getByText(/workspace_delivery_card_status_entry_id/)).toBeTruthy();
+    expect(screen.getByText(/workspace_delivery_card_notification_entry_id/)).toBeTruthy();
   }, 15000);
 });
