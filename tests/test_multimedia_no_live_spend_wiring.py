@@ -43,7 +43,8 @@ AUTHORIZED_TRANSPORT_CALLSITES: frozenset[str] = frozenset()
 def _shipped_multimedia_files() -> list[Path]:
     """Shipped multimedia production surface: substrate/multimedia/** plus any
     interfaces/**/multimedia*.py (routes land in a later PR — guard them forward).
-    Excludes test files and the adapter's own definition module.
+    Excludes test files. The adapter definition itself is safe to scan because
+    this guard matches constructor calls, not function definitions.
     """
     files: list[Path] = []
     mm_root = REPO_ROOT / "substrate" / "multimedia"
@@ -54,14 +55,7 @@ def _shipped_multimedia_files() -> list[Path]:
         files.extend(api_dir.glob("multimedia*.py"))
 
     def _keep(p: Path) -> bool:
-        if "test" in p.name:
-            return False
-        # provider_router.py DEFINES the adapter (and its __init__ names `transport`);
-        # the definition is not a construction call, but exclude it to keep the guard
-        # focused on *consumers* wiring a transport.
-        if p.name == "provider_router.py":
-            return False
-        return True
+        return "test" not in p.name
 
     return sorted({p for p in files if _keep(p)})
 
@@ -90,7 +84,9 @@ def _transport_wired_callsites(source: str, rel_name: str) -> list[str]:
 
 def test_no_shipped_multimedia_module_wires_a_live_transport() -> None:
     offenders: list[str] = []
-    for path in _shipped_multimedia_files():
+    shipped_files = _shipped_multimedia_files()
+    assert REPO_ROOT / "substrate" / "multimedia" / "provider_router.py" in shipped_files
+    for path in shipped_files:
         rel = str(path.relative_to(REPO_ROOT))
         for hit in _transport_wired_callsites(path.read_text(encoding="utf-8"), rel):
             if hit not in AUTHORIZED_TRANSPORT_CALLSITES:
