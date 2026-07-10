@@ -62,6 +62,8 @@
  * Residual (qb): accumulate N>2 merge assets (add another asset_id without
  * replacing prior) → mergeTwinChaseNotes over primary + all buckets.
  * Residual (rr): Open Write twin_seed after promote → context (promoted units).
+ * Residual (aum): pure twinPromoteContextReadiness drives promote CTA gate
+ * (parity twinSubstrateReadiness · arx kind filter · never invents notes).
  * HTML-first; never PDF.
  */
 
@@ -94,6 +96,7 @@ import {
   normalizeDomainSubjects,
 } from "../../workspace/domainSearchDefaults";
 import { twinSubstrateReadiness } from "../../workspace/twinSubstrateReadiness";
+import { twinPromoteContextReadiness } from "../../workspace/twinPromoteContextReadiness";
 
 /** Minimal twin note shape for residual (mz) chase payload. */
 export type TwinChaseNote = {
@@ -395,16 +398,20 @@ export function TwinNotesPanel({
     [twins],
   );
   /**
-   * Residual (arx): promote CTA readiness from hydrated substrate + selected kind.
+   * Residual (arx/aum): promote CTA readiness via pure twinPromoteContextReadiness.
    * twins === null → not yet hydrated (unknown; server may hold notes) → allow CTA.
    * After hydrate: gate by kind so empty / wrong-leg promote is disabled honestly.
    */
-  const promoteContextReady = useMemo(() => {
-    if (twins == null) return true;
-    if (promoteKinds === "all") return !substrate.empty;
-    if (promoteKinds === "insight") return substrate.has_insights;
-    return substrate.has_questions;
-  }, [twins, promoteKinds, substrate.empty, substrate.has_insights, substrate.has_questions]);
+  const promoteReadiness = useMemo(
+    () =>
+      twinPromoteContextReadiness({
+        twins_hydrated: twins != null,
+        promote_kinds: promoteKinds,
+        substrate,
+      }),
+    [twins, promoteKinds, substrate],
+  );
+  const promoteContextReady = promoteReadiness.promote_ready;
   // Residual (aot): single normalize for chase titles/stamps (aoc/aoo).
   const chaseDomains = useMemo(
     () => normalizeDomainSubjects(domainSubjects),
@@ -1234,19 +1241,15 @@ export function TwinNotesPanel({
           data-promote-ready={String(promoteContextReady)}
           data-substrate-ready={String(substrate.substrate_ready)}
           data-substrate-empty={String(twins == null ? false : substrate.empty)}
-          data-has-insights={String(substrate.has_insights)}
-          data-has-questions={String(substrate.has_questions)}
-          data-promote-kinds={promoteKinds}
-          data-twins-hydrated={String(twins != null)}
+          data-has-insights={String(promoteReadiness.has_insights)}
+          data-has-questions={String(promoteReadiness.has_questions)}
+          data-promote-kinds={promoteReadiness.promote_kinds}
+          data-twins-hydrated={String(promoteReadiness.twins_hydrated)}
           disabled={busy || !promoteContextReady}
           title={
             promoteContextReady
               ? "Promote twins into research context units (selective kinds)"
-              : promoteKinds === "all"
-                ? "Empty twin substrate · seed or record notes before promote"
-                : promoteKinds === "insight"
-                  ? "No insight twins to promote · record insights or switch kind"
-                  : "No question twins to promote · record questions or switch kind"
+              : promoteReadiness.disabled_title
           }
         >
           Promote to context
