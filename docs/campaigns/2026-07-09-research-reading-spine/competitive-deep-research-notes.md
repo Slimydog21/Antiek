@@ -3160,3 +3160,10 @@ subjects: economics (Wealth of Nations), politics (Federalist), bare philosophy
 (Discourse/Liberty after method precedence), engineering (after heat|electricity).
 FUTURE twin matrix gap #3 updated. vitest ResearchContext 15 green.
 P0 operator merge PR #465. Pivot akr+ outside thrash.
+
+## Residual akr · 2026-07-10 — L5 payment adapter boundary offline-honest dual-gate
+FUTURE L5 Sprint 1: payment_adapter.py with DeferredPaymentAdapter default
+(zero upstream · typed LivePaymentDeferredError · manual opaque receipt) and
+LivePaymentAdapter only when ANTIEK_MARKETPLACE_LIVE_PAYMENT + injected
+upstream; never invents $0 entitlement. pytest 10 green.
+P0 operator merge PR #465. Pivot aks+ outside thrash.

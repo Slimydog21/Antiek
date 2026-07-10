@@ -1,0 +1,20 @@
+# inventory-akr · L5 payment adapter boundary offline-honest dual-gate
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: akr
+date: 2026-07-10
+parent_tip: 93be8120 (akq)
+
+## Closed
+- substrate/marketplace_host/payment_adapter.py (FUTURE L5 Sprint 1):
+  - CheckoutSession · Entitlement · LivePaymentDeferredError
+  - DeferredPaymentAdapter (default · zero upstream · manual opaque receipt)
+  - LivePaymentAdapter only when ANTIEK_MARKETPLACE_LIVE_PAYMENT + upstream
+  - Never invents $0 entitlement (l5_charge_unconfirmed)
+- Public package exports · FUTURE L5 brief Sprint 1 marked shipped offline
+- pytest test_marketplace_payment_adapter_akr 10 green
+- proof: SCRATCH residual-akr-pytest.log
+
+## Next
+aks+ wire purchase path or offline product residual · infinite continues
+Operator merge PR #465 remains highest leverage (gated)
+Sprint 2 (purchase_and_host checkout_session_id) still deferred until dual-gate design ready

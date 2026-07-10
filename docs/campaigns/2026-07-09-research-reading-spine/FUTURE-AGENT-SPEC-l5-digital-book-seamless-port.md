@@ -32,10 +32,13 @@
 
 ### Sprint 1 — Payment adapter boundary
 
-- New module: `substrate/marketplace_host/payment_adapter.py` (interface only if still deferred).
-- Methods: `create_checkout(book_id, owner_id) -> CheckoutSession` · `confirm_receipt(opaque_ref) -> Entitlement`.
-- **Never** call live processor until dual-gate env true.
-- Tests: disabled posture returns typed deferred error; zero upstream call.
+- **Shipped offline (akr):** `substrate/marketplace_host/payment_adapter.py`
+  - `create_checkout` · `confirm_receipt` · `confirm_checkout_session`
+  - Default `DeferredPaymentAdapter` — zero upstream · typed `LivePaymentDeferredError`
+  - Live only when `ANTIEK_MARKETPLACE_LIVE_PAYMENT=1` **and** injected `PaymentUpstream`
+  - Never invents $0 entitlement (`l5_charge_unconfirmed` if upstream uncharged)
+  - Public exports via `substrate.marketplace_host` · pytest `test_marketplace_payment_adapter_akr.py`
+- **Still deferred:** wire into `purchase_and_host` product path (Sprint 2) · UI checkout CTA (Sprint 3).
 
 ### Sprint 2 — Purchase product path
 
