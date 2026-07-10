@@ -3227,3 +3227,8 @@ Evidence/search/hydrate substrate navigates Settings prompt-cost projection for
 budget-before-fire (parity progress/driver/twin). Evidence nav: scorecard ·
 FUTURE · prompt-cost. vitest ResearchContext 16 green.
 P0 operator merge PR #465. Pivot ald+ outside thrash.
+
+## Residual ald · 2026-07-10 — PublicationAttach Settings prompt-cost projection deep-link
+Knowledge-dense arxiv/substack attach navigates Settings prompt-cost projection
+for budget-before-fire (parity evidence alc · twin aky · driver akx).
+vitest PublicationAttach 6 green. P0 operator merge PR #465. Pivot ale+ outside thrash.

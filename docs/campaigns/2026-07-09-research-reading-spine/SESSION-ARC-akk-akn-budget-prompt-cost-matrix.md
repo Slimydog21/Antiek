@@ -27,3 +27,4 @@ Operator merge PR **#465**. Infinite continues · prefer non-budget thrash next.
 | **akx** | DecisionTreeDriverBadge | → `#prompt-cost-projection` (+ FUTURE) |
 | **aky** | TwinNotesPanel | → `#prompt-cost-projection` (+ FUTURE) |
 | **alc** | ResearchContext evidence pack | → `#prompt-cost-projection` |
+| **ald** | PublicationAttach | → `#prompt-cost-projection` |

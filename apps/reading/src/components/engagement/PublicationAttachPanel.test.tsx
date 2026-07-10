@@ -133,6 +133,16 @@ describe("PublicationAttachPanel residual ck/ed", () => {
         .getByTestId("publication-attach-competitive-dr-future-agent-link")
         .getAttribute("href") || "",
     ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    // Residual (ald): knowledge-dense attach budget-before-fire → prompt-cost.
+    expect(
+      screen
+        .getByTestId("publication-attach-prompt-cost-projection-link")
+        .getAttribute("href"),
+    ).toBe("/settings#prompt-cost-projection");
+    expect(
+      screen.getByTestId("publication-attach-prompt-cost-projection-link")
+        .textContent,
+    ).toMatch(/prompt-cost projection/i);
     // Residual (ed): parent notified so research context can remount.
     await waitFor(() => {
       expect(onAttached).toHaveBeenCalled();

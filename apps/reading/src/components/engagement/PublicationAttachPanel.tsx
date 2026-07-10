@@ -319,6 +319,15 @@ export function PublicationAttachPanel({
         >
           FUTURE · competitive DR brief
         </a>
+        {/* Residual (ald): knowledge-dense attach budget-before-fire → prompt-cost. */}
+        <a
+          href="/settings#prompt-cost-projection"
+          data-testid="publication-attach-prompt-cost-projection-link"
+          className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
+          title="Settings prompt-cost projection: estimate how arxiv/substack attach+hydrate spend hits remaining daily budget"
+        >
+          Settings · prompt-cost projection
+        </a>
       </div>
       {error ? (
         <p className="text-[11px] font-mono text-emperor" role="alert">
