@@ -16,3 +16,4 @@ substrate sits next to ask / launch / synthesis (reading ≡ research).
 
 ## P0
 Operator merge PR **#465**. Infinite continues.
+| **amy** | ResearchThis promote remount | twins + context remount after promote |

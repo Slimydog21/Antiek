@@ -78,18 +78,30 @@ vi.mock("../../components/engagement/TwinNotesPanel", () => ({
     assetId: string;
     autoLoad?: boolean;
     autoSeedIfEmpty?: boolean;
+    autoPromoteAfterLoad?: boolean;
     seedBodyText?: string;
     researchTier?: string | null;
+    onPromoted?: () => void;
   }) => (
     <div
       data-testid="twin-notes-panel-stub"
       data-asset-id={props.assetId}
       data-auto-load={String(Boolean(props.autoLoad))}
       data-auto-seed={String(Boolean(props.autoSeedIfEmpty))}
+      data-auto-promote={String(Boolean(props.autoPromoteAfterLoad))}
       data-body-len={String((props.seedBodyText || "").length)}
       data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
     >
       twins={props.assetId}
+      {props.onPromoted ? (
+        <button
+          type="button"
+          data-testid="research-this-twin-promote-notify"
+          onClick={() => props.onPromoted?.()}
+        >
+          notify promote
+        </button>
+      ) : null}
     </div>
   ),
 }));
@@ -650,6 +662,31 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
     expect(ctx.getAttribute("data-asset-id")).toBe("doc-twins");
     expect(ctx.getAttribute("data-auto-load")).toBe("true");
     expect(ctx.getAttribute("data-research-tier")).toMatch(/deep|fast|wrestle/);
+    // Residual (amy): promote remounts twins + context.
+    expect(twins.getAttribute("data-auto-promote")).toBe("true");
+    expect(
+      screen
+        .getByTestId("research-this-twins-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("0");
+    expect(
+      screen
+        .getByTestId("research-this-context-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("0");
+    fireEvent.click(screen.getByTestId("research-this-twin-promote-notify"));
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId("research-this-twins-refresh")
+          .getAttribute("data-refresh-key"),
+      ).toBe("1");
+    });
+    expect(
+      screen
+        .getByTestId("research-this-context-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("1");
     expect(Number(twins.getAttribute("data-body-len") || 0)).toBeGreaterThan(0);
   });
 });

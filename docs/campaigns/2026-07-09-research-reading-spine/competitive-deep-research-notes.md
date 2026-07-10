@@ -3445,3 +3445,8 @@ substrate. P0 operator merge PR #465. Pivot amx+ outside thrash.
 Investigation context mount stamps data-research-tier + data-seamless-workstation-depth
 for Settings depth honesty next to twins. vitest ResearchWorkstation 7 green.
 P0 operator merge PR #465. Pivot amy+ outside thrash.
+
+## Residual amy · 2026-07-10 — ResearchThis remount twins+context after promote
+Highlight DR path remounts TwinNotes + ResearchContext after twin promote
+(parity marketplace alz · HostedHtml ez). vitest ResearchThis 13 green.
+P0 operator merge PR #465. Pivot amz+ outside thrash.

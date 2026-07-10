@@ -58,6 +58,7 @@ import {
  * spinning DR (parity TalkToBook agm · MetaReading agn · reading ≡ research).
  * Residual (amr): ResearchContextPanel with researchTier prefill on highlight
  * DR path so intelligent search over twins sits next to launch (parity host-tier).
+ * Residual (amy): remount twins + context after twin promote (parity marketplace alz).
  * Full-page workstation handoff remains an explicit tertiary action.
  *
  * Gate-safe: passageText for gated books is still constrained server-side;
@@ -115,6 +116,11 @@ export default function ResearchThis({
   const [depthPrefill, setDepthPrefill] = useState<
     "pending" | "installed" | "none" | "error"
   >("pending");
+  /** Residual (amy): remount twins + context after promote. */
+  const [contextRefreshKey, setContextRefreshKey] = useState(0);
+  const onContextNeedsRefresh = useCallback(() => {
+    setContextRefreshKey((k) => k + 1);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -470,17 +476,26 @@ export default function ResearchThis({
           data-seamless-research-this-twins="true"
           data-research-tier={researchTier}
         >
-          <TwinNotesPanel
-            assetId={documentId.trim()}
-            autoLoad
-            autoSeedIfEmpty
-            seedTitle={documentId.trim()}
-            seedBodyText={selection.trim() || documentId.trim()}
-            researchTier={researchTier}
-          />
+          <div
+            data-testid="research-this-twins-refresh"
+            data-refresh-key={String(contextRefreshKey)}
+          >
+            <TwinNotesPanel
+              key={`twins-${documentId.trim()}-${contextRefreshKey}`}
+              assetId={documentId.trim()}
+              autoLoad
+              autoSeedIfEmpty
+              autoPromoteAfterLoad
+              onPromoted={onContextNeedsRefresh}
+              seedTitle={documentId.trim()}
+              seedBodyText={selection.trim() || documentId.trim()}
+              researchTier={researchTier}
+            />
+          </div>
         </section>
       ) : null}
       {/* Residual (amr): intelligent context over twins on highlight DR path. */}
+      {/* Residual (amy): remount context after twin promote. */}
       {documentId.trim() ? (
         <section
           className="mt-2 max-w-md space-y-1 border-t border-ink/10 pt-2 dark:border-bright/10"
@@ -489,12 +504,19 @@ export default function ResearchThis({
           data-document-id={documentId.trim()}
           data-seamless-research-this-context="true"
           data-research-tier={researchTier}
+          data-refresh-key={String(contextRefreshKey)}
         >
-          <ResearchContextPanel
-            assetId={documentId.trim()}
-            autoLoad
-            researchTier={researchTier}
-          />
+          <div
+            data-testid="research-this-context-refresh"
+            data-refresh-key={String(contextRefreshKey)}
+          >
+            <ResearchContextPanel
+              key={`ctx-${documentId.trim()}-${contextRefreshKey}`}
+              assetId={documentId.trim()}
+              autoLoad
+              researchTier={researchTier}
+            />
+          </div>
         </section>
       ) : null}
       {/* Residual (fc/ou): multi-select open + recent DR spawns → this book. */}
