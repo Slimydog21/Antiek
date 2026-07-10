@@ -3632,3 +3632,7 @@ P0 operator merge PR #465. Pivot aog+ outside thrash.
 ## Residual aog · 2026-07-10 — MO job receipt full swarm goals plan
 moil-job-goals-plan stamps research vs grounded_pub counts + numbered list
 (create→job audit · completes aof). vitest MidnightOil 29 green. P0 PR #465. Pivot aoh+.
+
+## Residual aoh · 2026-07-10 — MO goals vs fan-out soft-hint + FUTURE re-anchor
+Soft-hint when goal_count > fanout_depth (never auto-change). FUTURE remaining
+vision tip aog · aoc–aog closed. vitest MidnightOil 30 green. P0 PR #465. Pivot aoi+.

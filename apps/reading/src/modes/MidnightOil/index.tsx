@@ -72,6 +72,8 @@
  * preview + professional research templates (one line = one swarm goal).
  * Residual (aog): job receipt lists full swarm goals (research + grounded pubs)
  * so create→job plan is auditable after recommend-ceiling (parity aof plan).
+ * Residual (aoh): when goal_count > fanout_depth, soft-hint raise fan-out so
+ * multi-goal swarm coverage is honest (never auto-change fanout).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -838,6 +840,30 @@ export default function MidnightOil() {
                     </button>
                   ))}
                 </div>
+                {/* Residual (aoh): soft-hint when goals exceed fan-out depth. */}
+                {(() => {
+                  const effectiveFanout =
+                    Number.isFinite(fanoutDepth) && fanoutDepth > 0
+                      ? Math.floor(fanoutDepth)
+                      : MOIL_CEILING_DEFAULT_FANOUT_DEPTH;
+                  const exceeds = goalLines.length > effectiveFanout;
+                  return (
+                    <p
+                      className="opacity-80"
+                      data-testid="moil-goals-fanout-hint"
+                      data-goal-count={String(goalLines.length)}
+                      data-fanout-depth={String(effectiveFanout)}
+                      data-exceeds-fanout={String(exceeds)}
+                      role="status"
+                    >
+                      {exceeds
+                        ? `Soft hint: ${goalLines.length} goals > fan-out depth ${effectiveFanout} — raise fan-out so multi-goal swarm can branch (never auto-changed)`
+                        : goalLines.length > 0
+                          ? `Fan-out depth ${effectiveFanout} covers ${goalLines.length} goal${goalLines.length === 1 ? "" : "s"} (coverage ok)`
+                          : `Fan-out depth ${effectiveFanout} · add goals for swarm coverage audit`}
+                    </p>
+                  );
+                })()}
               </div>
             );
           })()}
