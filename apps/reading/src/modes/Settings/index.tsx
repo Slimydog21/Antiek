@@ -10,6 +10,7 @@ import {
   groupProposedTasksByClass,
   primaryFeedSourceFromBySource,
   rankedFeedSourcesFromBySource,
+  taskTrainingFeedCoverage,
   visionFeedCoverageFromBySource,
 } from "../../lib/suiteProposalTasks";
 import {
@@ -3758,6 +3759,52 @@ export default function Settings() {
                   ) : null}{" "}
                   · listing only · never invents events · propose≠promote
                 </p>
+                {/* Residual (apc): per-task training feed coverage for recursive rewrite. */}
+                <div
+                  className="text-[11px] font-mono text-ink-soft dark:text-starlight border border-ink/10 rounded p-2 space-y-0.5 dark:border-bright/10"
+                  data-testid="antiek-bench-task-training-coverage"
+                  data-propose-not-promote="true"
+                  data-view-format="html"
+                  role="status"
+                >
+                  <p className="opacity-90">
+                    Task training feed coverage (which north-star surfaces
+                    trained each bench task this week · listing only):
+                  </p>
+                  <ul data-testid="antiek-bench-task-training-coverage-list">
+                    {(
+                      ["wrestle", "synthesize", "distill", "book_qa"] as const
+                    ).map((tc) => {
+                      const row = taskTrainingFeedCoverage(
+                        tc,
+                        usage?.by_source,
+                      );
+                      return (
+                        <li
+                          key={tc}
+                          data-testid={`antiek-bench-task-training-${tc}`}
+                          data-task-class={tc}
+                          data-covered-count={String(row.covered_count)}
+                          data-total={String(row.total)}
+                          data-coverage-ratio={String(
+                            Math.round(row.coverage_ratio * 1000) / 1000,
+                          )}
+                          data-covered={row.covered.join(",") || ""}
+                          data-uncovered={row.uncovered.join(",") || ""}
+                        >
+                          <strong>{tc}</strong>: {row.covered_count}/
+                          {row.total}
+                          {row.covered_count > 0
+                            ? ` · covered=${row.covered.join(", ")}`
+                            : ""}
+                          {row.uncovered.length > 0
+                            ? ` · missing=${row.uncovered.join(", ")}`
+                            : " · full"}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
               </>
             ) : (
               <p

@@ -1716,6 +1716,17 @@ describe("Settings SPR-01 + decision-tree install", () => {
     );
     expect(vision.textContent).toMatch(/Vision feed coverage/i);
     expect(vision.textContent).toMatch(/propose≠promote|propose=not promote|never invents/i);
+    // Residual (apc): per-task training feed coverage under suite proposal.
+    const train = screen.getByTestId("antiek-bench-task-training-coverage");
+    expect(train.getAttribute("data-propose-not-promote")).toBe("true");
+    const wrestleTrain = screen.getByTestId("antiek-bench-task-training-wrestle");
+    expect(wrestleTrain.getAttribute("data-task-class")).toBe("wrestle");
+    expect(Number(wrestleTrain.getAttribute("data-total") || 0)).toBe(3);
+    expect(wrestleTrain.getAttribute("data-covered") || "").toMatch(/twin_chase/);
+    expect(wrestleTrain.getAttribute("data-covered") || "").toMatch(
+      /midnight_oil/,
+    );
+    expect(wrestleTrain.textContent).toMatch(/wrestle/i);
   });
 
   it("groups proposed suite tasks by task class (hg)", async () => {

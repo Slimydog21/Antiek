@@ -136,6 +136,50 @@ export function benchTaskClassToVisionFeeds(
   return [];
 }
 
+export type TaskTrainingFeedCoverage = {
+  task_class: string;
+  feeds: VisionUsageFeedSource[];
+  covered: VisionUsageFeedSource[];
+  uncovered: VisionUsageFeedSource[];
+  covered_count: number;
+  total: number;
+  coverage_ratio: number;
+};
+
+/**
+ * Residual (apc): for a bench task_class, which of its training vision feeds
+ * have positive usage events this week (recursive rewrite honesty).
+ * Never invents events · empty task → empty feeds.
+ */
+export function taskTrainingFeedCoverage(
+  taskClass: string | null | undefined,
+  bySource: Record<string, number> | null | undefined,
+): TaskTrainingFeedCoverage {
+  const task_class = String(taskClass || "")
+    .trim()
+    .toLowerCase();
+  const feeds = benchTaskClassToVisionFeeds(task_class);
+  const covered: VisionUsageFeedSource[] = [];
+  const uncovered: VisionUsageFeedSource[] = [];
+  for (const src of feeds) {
+    const n = bySource?.[src];
+    const count = typeof n === "number" && Number.isFinite(n) ? n : 0;
+    if (count > 0) covered.push(src);
+    else uncovered.push(src);
+  }
+  const total = feeds.length;
+  const covered_count = covered.length;
+  return {
+    task_class,
+    feeds,
+    covered,
+    uncovered,
+    covered_count,
+    total,
+    coverage_ratio: total > 0 ? covered_count / total : 0,
+  };
+}
+
 export function visionFeedCoverageFromBySource(
   bySource: Record<string, number> | null | undefined,
 ): VisionFeedCoverage {

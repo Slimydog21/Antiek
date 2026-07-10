@@ -7,6 +7,7 @@ import {
   taskClassFromProposedItemId,
   VISION_USAGE_FEED_SOURCES,
   benchTaskClassToVisionFeeds,
+  taskTrainingFeedCoverage,
   visionFeedCoverageFromBySource,
 } from "./suiteProposalTasks";
 
@@ -118,5 +119,19 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
     expect(benchTaskClassToVisionFeeds("book_qa")).toContain("book_qa");
     expect(benchTaskClassToVisionFeeds(null)).toEqual([]);
     expect(benchTaskClassToVisionFeeds("unknown")).toEqual([]);
+  });
+
+  it("computes task training feed coverage from by_source (apc)", () => {
+    const cov = taskTrainingFeedCoverage("wrestle", {
+      twin_chase: 3,
+      midnight_oil: 1,
+    });
+    expect(cov.task_class).toBe("wrestle");
+    expect(cov.covered).toEqual(["twin_chase", "midnight_oil"]);
+    expect(cov.uncovered).toEqual(["collective_merge"]);
+    expect(cov.covered_count).toBe(2);
+    expect(cov.total).toBe(3);
+    expect(cov.coverage_ratio).toBeCloseTo(2 / 3);
+    expect(taskTrainingFeedCoverage("", null).total).toBe(0);
   });
 });

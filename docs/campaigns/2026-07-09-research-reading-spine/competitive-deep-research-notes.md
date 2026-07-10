@@ -3720,3 +3720,8 @@ P0 PR #465. Pivot apb+ outside thrash.
 Best-by-task rows stamp trains-from vision feeds + never-auto-route install.
 Closes aoy/apa flywheel on Settings leaderboard. vitest leaderboard path green.
 P0 PR #465. Pivot apc+ outside thrash.
+
+## Residual apc · 2026-07-10 — task training feed coverage on suite proposal
+taskTrainingFeedCoverage pure helper; Settings lists wrestle/synthesize/distill/book_qa
+training feed coverage this week. vitest suiteProposalTasks 9 · Settings qa path green.
+P0 PR #465. Pivot apd+ outside thrash.
