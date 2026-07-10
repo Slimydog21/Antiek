@@ -32,6 +32,7 @@ import { offlineBenchRunReadiness } from "../../workspace/offlineBenchRunReadine
 import { depthTierApplyReadiness } from "../../workspace/depthTierApplyReadiness";
 import { hydrateLiveGateReadiness } from "../../workspace/hydrateLiveGateReadiness";
 import { twinSeedLiveGateReadiness } from "../../workspace/twinSeedLiveGateReadiness";
+import { moilLiveStepGateReadiness } from "../../workspace/moilLiveStepGateReadiness";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import {
@@ -117,6 +118,8 @@ import {
  * (env + injector · offline-honest · never enables live).
  * Residual (avf): pure twinSeedLiveGateReadiness drives L3 dual-gate stamps
  * (env · dispatch · injector · offline_honest=false).
+ * Residual (avg): pure moilLiveStepGateReadiness drives L4 dual-gate stamps
+ * (env · injector · offline_honest=false · Midnight Oil live step).
  */
 export default function Settings() {
   const tier = useViewportTier();
@@ -1072,6 +1075,26 @@ export default function Settings() {
       twinSeedLive?.offline_honest,
       twinSeedLive?.live_env_flag,
       twinSeedLive?.use_dispatch_env_flag,
+    ],
+  );
+
+  /**
+   * Residual (avg): pure L4 Midnight Oil live-step dual-gate readiness.
+   * live_ready only when env · injector · offline_honest=false.
+   */
+  const moilGateReady = useMemo(
+    () =>
+      moilLiveStepGateReadiness({
+        live_env: moilLive?.live_env,
+        injector_installed: moilLive?.injector_installed,
+        offline_honest: moilLive?.offline_honest,
+        live_env_flag: moilLive?.live_env_flag,
+      }),
+    [
+      moilLive?.live_env,
+      moilLive?.injector_installed,
+      moilLive?.offline_honest,
+      moilLive?.live_env_flag,
     ],
   );
 
@@ -2293,24 +2316,15 @@ export default function Settings() {
             className="p-4 space-y-3"
             data-testid="moil-live-step-status-panel"
             data-view-format="html"
-            data-html-first="true"
-            data-never-enables-live="true"
-            data-offline-honest={
-              moilLive ? String(moilLive.offline_honest) : undefined
-            }
-            data-injector-installed={
-              moilLive ? String(moilLive.injector_installed) : undefined
-            }
-            // Residual (aed): L4 live ready only when env + injector true and not offline-only.
-            data-l4-live-ready={
-              moilLive
-                ? String(
-                    moilLive.live_env === true &&
-                      moilLive.injector_installed === true &&
-                      moilLive.offline_honest === false,
-                  )
-                : undefined
-            }
+            data-html-first={String(moilGateReady.html_first)}
+            data-never-enables-live={String(moilGateReady.never_enables_live)}
+            // Residual (aed/avg): pure L4 dual-gate readiness stamps.
+            data-offline-honest={String(moilGateReady.offline_honest)}
+            data-injector-installed={String(moilGateReady.injector_installed)}
+            data-live-env={String(moilGateReady.live_env)}
+            data-l4-live-ready={String(moilGateReady.live_ready)}
+            data-dual-gate={moilGateReady.dual_gate}
+            data-gate-summary={moilGateReady.summary}
           >
             <p className="text-sm text-ink dark:text-bright">
               Autonomous Midnight Oil worker steps default offline (stub only).
