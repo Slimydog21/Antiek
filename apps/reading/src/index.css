@@ -2,31 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
-/* The pdf.js text layer needs to overlay the canvas with transparent
-   text so selection works against the rendered glyphs. We position it
-   absolutely on top of the canvas; pdf.js itself sets per-span
-   positioning via the renderTextLayer helper. */
-.pdf-text-layer {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  opacity: 0.18;             /* visible enough to debug; lower = invisible-but-selectable */
-  line-height: 1;
-  user-select: text;
-}
 /* Brand spec § 8 — the operator's highlighter uses `--sun` at the
  * day/night opacity rather than the pre-redesign blue. Day uses
  * 0.45 alpha; the night-mode token automatically swaps via the
  * media query in design/tokens.css. */
-.pdf-text-layer ::selection {
-  background: var(--sun-hl-day);
-}
-@media (prefers-color-scheme: dark) {
-  .pdf-text-layer ::selection {
-    background: var(--sun-hl-night);
-  }
-}
-/* Also apply to prose surfaces: MasterMdViewer, notebook editor. */
+/* Apply to prose surfaces: MasterMdViewer and the notebook editor. */
 .tiptap ::selection,
 article ::selection {
   background: var(--sun-hl-day);
@@ -37,14 +17,6 @@ article ::selection {
     background: var(--sun-hl-night);
   }
 }
-.pdf-text-layer span {
-  position: absolute;
-  white-space: pre;
-  cursor: text;
-  transform-origin: 0% 0%;
-  color: transparent;        /* glyphs come from canvas; text layer is the click target */
-}
-
 html, body, #root {
   height: 100%;
 }

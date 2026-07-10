@@ -21,7 +21,7 @@ import type { PanelMode } from "./panel.types";
 /** Open the notebook at `notebookId` (or create a new untitled
  *  notebook if absent). Default mode is "floating" so the operator can
  *  drag it aside while continuing to read. S5+ consumers wire this
- *  from MasterMdViewer claim chips, PdfViewer regions, and ClaimCard.
+ *  from MasterMdViewer claim chips, HTML reader regions, and ClaimCard.
  *
  *  Two notebook surfaces exist (see PanelRegistry):
  *    - "Notebook"        substrate-backed block model (legacy on main)
@@ -64,20 +64,6 @@ export function openReader(opts: {
     "HtmlReader",
     { documentId: opts.documentId, anchorId: opts.anchorId, investigationId: opts.investigationId },
     { mode: "floating", title: opts.title ?? `Reader · ${opts.documentId.slice(-6)}`, id },
-  );
-}
-
-/** @deprecated Compatibility for unmigrated notebook/PDF producers only. */
-export function openPdfPanel(opts: {
-  documentId: string;
-  page?: number;
-  title?: string;
-}): string {
-  const id = `pdf:${opts.documentId}${opts.page ? `:p${opts.page}` : ""}`;
-  return useWorkspace.getState().open(
-    "PdfViewer",
-    { documentId: opts.documentId, initialPage: opts.page },
-    { mode: "floating", title: opts.title ?? `PDF · ${opts.documentId.slice(-6)}`, id },
   );
 }
 

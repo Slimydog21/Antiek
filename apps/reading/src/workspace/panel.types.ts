@@ -22,7 +22,7 @@ export type PanelMode =
  * PanelRegistry maps each entry to a React component (or React.lazy).
  *
  * S3 only "Fake*" entries (the demo scene). S5+ adds real surfaces
- * (InvestigationSidebar, Trajectory, Chat, Chase, PdfViewer, Notes,
+ * (InvestigationSidebar, Trajectory, Chat, Chase, HtmlReader, Notes,
  * CrossDocs, ClaimInspector, Notebook, AISidecar, CommandPalette, …).
  *
  * Stored on disk eventually (S9 persistence), so renames are
@@ -39,8 +39,6 @@ export type PanelKind =
   | "Chase"
   | "ChaseThread"
   | "HtmlReader"
-  /** @deprecated Compatibility only for the unmigrated notebook region embed. */
-  | "PdfViewer"
   | "Notes"
   | "CrossDocs"
   | "ClaimInspector"

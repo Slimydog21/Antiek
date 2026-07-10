@@ -41,8 +41,6 @@ const BUDGETS: BudgetEntry[] = [
   // that the primitive sources themselves are tiny). The spec
   // page's 12 KB number is updated in RETRO.md alongside this delta.
   { chunk: "lemon", maxBytes: 60_000 },
-  // pdf.worker is intentionally NOT in this budget (it's a separately
-  // loaded worker bundle); we keep it tracked but at a generous ceiling.
 ];
 
 const ASSETS_DIR = join(process.cwd(), "dist", "assets");

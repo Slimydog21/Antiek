@@ -18,8 +18,7 @@ function ImageNodeView({ node, deleteNode }: NodeViewProps) {
       <figure className="border-edge border-sun bg-ice-0 dark:bg-charcoal-2 rounded-hog shadow-z1 dark:shadow-z1-night overflow-hidden relative">
         {/* S7 WP-7.3 acceptance: "open as panel" affordance.
             For an image, open the src in a lightbox floating panel
-            sized to its natural dimensions (capped by the viewport
-            via PdfViewer's clampRectToViewport in PanelHandle). */}
+            sized to its natural dimensions and capped by the panel viewport. */}
         {src && (
           <button
             type="button"

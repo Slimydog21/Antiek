@@ -13,7 +13,7 @@ import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
  * Hook: subscribe to a panel's actual rendered size, debounced so it
  * only emits after the operator stops resizing for `debounceMs`.
  *
- * Used by heavy-embed children (pdf.js, canvas-renderers) that thrash
+ * Used by heavy-embed children (canvas renderers and rich visualizations) that thrash
  * if they re-rasterise on every animation frame of a resize gesture.
  * During the gesture they keep their previous render; a single
  * re-render fires once size settles.
@@ -131,7 +131,16 @@ export function PanelLayoutPanel({ id }: Props) {
   }, [panel]);
 
   if (!panel) return null;
-  const Renderer = PanelRegistry[panel.kind];
+  // Persisted layouts can outlive a removed panel kind. Treat their value as
+  // untrusted runtime data even though current producers are typed, so a stale
+  // removed pre-HTML reader descriptor degrades to an honest, closable panel
+  // instead of crashing the entire workspace.
+  const Renderer = (PanelRegistry as Record<string, (typeof PanelRegistry)[keyof typeof PanelRegistry] | undefined>)[panel.kind];
+  const content = Renderer
+    ? <Renderer {...panel.props} />
+    : <section role="alert" className="flex h-full items-center justify-center p-6 text-center text-sm">
+        This saved panel type is no longer available. Close it and reopen the document in the HTML reader.
+      </section>;
 
   // popout — rendering is owned by the popout window (S9).
   if (panel.mode === "popout") return null;
@@ -177,7 +186,7 @@ export function PanelLayoutPanel({ id }: Props) {
         <PanelHandle id={id} draggable resizable />
         <div className="flex-1 min-h-0 overflow-auto">
           <Suspense fallback={<PanelLoading />}>
-            <Renderer {...panel.props} />
+            {content}
           </Suspense>
         </div>
       </motion.div>
@@ -205,7 +214,7 @@ export function PanelLayoutPanel({ id }: Props) {
       <PanelHandle id={id} draggable={false} resizable={false} />
       <div className="flex-1 min-h-0 overflow-auto">
         <Suspense fallback={<PanelLoading />}>
-          <Renderer {...panel.props} />
+          {content}
         </Suspense>
       </div>
     </div>

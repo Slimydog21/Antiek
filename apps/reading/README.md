@@ -25,8 +25,7 @@ Per-sprint specs: `docs/ui_redesign_posthog/sprint_{00..12}_*.html`.
 - **Framer Motion 11** for floating-panel transitions only.
 - **TipTap 3** (`@tiptap/react` + `starter-kit` + custom Antiek blocks)
   for the notebook editor — code-split, only loaded when the editor opens.
-- **pdf.js** (`pdfjs-dist` 4.x) for PDF rendering + text-layer
-  selection — separate worker chunk, not counted against the main bundle.
+- **HTML reader** for canonical document rendering and region selection.
 - **Storybook 8** + **Lost-Pixel 3** for the design-system source of
   truth and visual regression (124 baselines under `.lostpixel/baseline/`).
 - **Vitest 4** + **@testing-library/react** + **jsdom** for unit tests
@@ -65,7 +64,7 @@ src/
     CommandPalette.tsx        ⌘K palette (routes + 5 search sources +
                               workspace actions)
     AISidecar.tsx             slide-over thought-partner panel
-    PdfViewer.tsx             pdf.js renderer + region selection
+    HtmlReaderPanel.tsx       canonical HTML reader + region selection
     ClaimCard.tsx             claim chip with challenge + add-to-notebook
     …
 
@@ -80,14 +79,14 @@ src/
     persistence.ts            localStorage scopes + URL ?ws= encoder
     useWorkspaceHydration.ts  apply global→route→investigation→URL on nav
     shortcuts.ts              ⌘K, ⌘B, ⌘/, ⌘[, ⌘], ⌘W, G+I/W/N/R
-    actions.ts                openNotebook, openPdfPanel, openClaimInspector
+    actions.ts                openNotebook, openReader, openClaimInspector
     popout.ts                 window.open + BroadcastChannel sync
     usePrefersReducedMotion.ts
     useViewportTier.ts        xl/lg/md/sm breakpoint tier
 
   modes/                      ROUTE-LEVEL SURFACES
     ResearchWorkstation/      Mode A — InvestigationSidebar + Chat + Chase
-    WrestleApp/               Mode B — PDF + Notes + CrossDocs
+    WrestleApp/               Mode B — HTML reader + Notes + CrossDocs
     Notebook/                 Mode F — substrate-backed notebook (legacy)
       Editor.tsx              TipTap editor (S7-full)
       blocks/                 5 custom NodeView blocks (claim-card,
@@ -107,8 +106,6 @@ scripts/
 
 .storybook/                   Storybook config + addon-a11y + tokens
 .lostpixel/                   124 visual-regression baselines + config
-
-docs/perf/                    perf bench scaffolds (pdf-panel)
 ```
 
 ## Run
@@ -179,10 +176,9 @@ npm run visualtest:update # rebaseline (commit the .png changes)
 ## Bundle budget
 
 ```
-main `index.js`              ≤ 700 KB gz (current ~260 KB; ~440 KB headroom)
+main `index.js`              ≤ 700 KB gz (current ~437 KB; ~246 KB headroom)
 panel lazy chunks            <  20 KB gz each
 TipTap notebook editor       ~ 130 KB gz (lazy; only when editor opens)
-pdf.worker                   not in budget (separate worker chunk)
 ```
 
 `npm run build:check` enforces.

@@ -40,8 +40,7 @@ interface ClaimCardProps {
    *  the claim text when set. */
   grounding?: GroundingStatus;
   /** Called when the operator clicks the "↪ region" affordance on a
-   *  passed status. Future hookup: scroll the PdfViewer to the
-   *  located region. */
+   *  passed status. The reader can scroll to the located HTML region. */
   onLocateRegion?: (regionId: string) => void;
 }
 
@@ -172,7 +171,7 @@ export default function ClaimCard({
  * Renders the grounder's verdict inline on the claim card.
  *
  * - Passed → green ✓ with the located region as a clickable chip
- *   that calls ``onLocateRegion`` (future: PdfViewer scroll-to).
+ *   that calls ``onLocateRegion`` to locate it in the HTML reader.
  * - Failed → amber/red ⚠ with the failure reason + searched-region
  *   count for transparency.
  * - Pending → neutral spinner until the verdict event arrives.

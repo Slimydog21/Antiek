@@ -5,10 +5,9 @@
  * `--akb-border-inset-*` edge-reservation seam") had ZERO automated coverage:
  * no test referenced AppShell, the shell frame, or the inset vars.
  *
- * AppShell statically pulls the whole panel registry (PanelLayout → a PDF
- * reader panel → pdfjs-dist's web worker), which the vitest/vite env refuses
- * to load — so a *full* render isn't unit-testable. M3 is about AppShell's own
- * LAYOUT COMPOSITION, not its children's internals, so we mock the
+ * AppShell statically pulls the whole panel registry and its route-level
+ * surfaces. M3 is about AppShell's own LAYOUT COMPOSITION, not its children's
+ * internals, so we mock the
  * separately-tested heavy children (each has its own suite) and keep the REAL
  * NavRail. That isolates exactly what M3 asserts: the seam frame contract and
  * the nav-is-the-bottom-rail ordering. A regression — nav drifting back to a
@@ -41,8 +40,7 @@ beforeAll(() => {
   }
 });
 
-// Heavy / separately-tested children → lightweight honest stand-ins. The PDF
-// worker import lives behind PanelLayout; mocking it keeps the env happy while
+// Heavy / separately-tested children → lightweight honest stand-ins while
 // preserving the prop contract (PanelLayout renders its mainSlot).
 vi.mock("./shell/PenguinMascot", () => ({ PenguinMascot: () => null }));
 // SPR-07 — the always-on ad border mounts here too; it has its own suite
