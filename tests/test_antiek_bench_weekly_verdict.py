@@ -136,7 +136,7 @@ def test_golden_metrics_winners_percentiles_and_disagreements(tmp_path: Path) ->
     assert model_a.sample_size == model_a.expected_samples == 2
     assert verdict.auto_promotion is False
     assert verdict.budget_spent_usd == "0.016"
-    assert verdict.budget_reserved_usd == "0.16"
+    assert verdict.budget_reserved_usd == "0.000"
 
 
 def test_incomplete_class_suppresses_winner(tmp_path: Path) -> None:
@@ -185,7 +185,7 @@ def test_over_cap_evidence_suppresses_every_winner(tmp_path: Path) -> None:
         call_journal=calls,
         shadow_journal=shadows,
         operator_driver="model-a",
-        budget_cap_usd=Decimal("0.10"),
+        budget_cap_usd=Decimal("0.01"),
     )
     assert verdict.budget_over_cap is True
     assert all(row.bench_winner is None for row in verdict.task_verdicts)

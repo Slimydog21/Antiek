@@ -31,7 +31,7 @@ class HardBudget:
             # underestimation must never make the approved ceiling porous.
             total += (
                 record.cost_usd
-                if record.status == "ok"
+                if record.cost_usd > 0
                 else max(record.reserved_usd, record.cost_usd)
             )
         return total

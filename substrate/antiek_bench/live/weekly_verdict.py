@@ -158,14 +158,21 @@ def build_weekly_verdict(
         and (row.item_id_hash, row.task_class, row.prompt_hash) in expected_shadows
     ]
     charged = sum(
-        (max(row.reserved_usd, row.cost_usd) for row in records), Decimal("0")
+        (
+            row.cost_usd
+            if row.status == "ok"
+            else max(row.reserved_usd, row.cost_usd)
+            for row in records
+        ),
+        Decimal("0"),
     )
+    spent = sum((row.cost_usd for row in records), Decimal("0"))
     budget_over_cap = charged > budget_cap_usd
     task_verdicts: list[TaskVerdict] = []
     for task_class in sorted(REQUIRED_TASK_CLASSES):
         expected_items = {
             item.item_id: "sha256:" + hashlib.sha256(item.prompt.encode()).hexdigest()
-            for item in suite.items_for(task_class)  # type: ignore[arg-type]
+            for item in suite.items_for(task_class)
         }
         model_metrics = tuple(
             _metrics(model_id, task_class, records, expected_items)
@@ -235,10 +242,8 @@ def build_weekly_verdict(
         week_id=week_id,
         suite_version=suite.suite_version,
         task_verdicts=tuple(task_verdicts),
-        budget_spent_usd=str(sum((row.cost_usd for row in records), Decimal("0"))),
-        budget_reserved_usd=str(
-            sum((row.reserved_usd for row in records), Decimal("0"))
-        ),
+        budget_spent_usd=str(spent),
+        budget_reserved_usd=str(charged - spent),
         budget_cap_usd=str(budget_cap_usd),
         budget_over_cap=budget_over_cap,
         input_digest="sha256:" + hashlib.sha256(canonical_inputs.encode()).hexdigest(),
