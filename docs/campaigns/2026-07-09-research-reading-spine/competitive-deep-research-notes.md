@@ -3474,3 +3474,8 @@ P0 operator merge PR #465. Pivot and+ outside thrash.
 Collective multi-select merge on highlight DR path remounts TwinNotes + ResearchContext
 (parity promote amy). vitest ResearchThis 13 green.
 P0 operator merge PR #465. Pivot ane+ outside thrash.
+
+## Residual ane · 2026-07-10 — ResearchWorkstation collective merge remount twins+context
+Investigation /inv collective multi-select merge remounts TwinNotes + ResearchContext
+(parity ResearchThis and). vitest ResearchWorkstation 7 green.
+P0 operator merge PR #465. Pivot anf+ outside thrash.

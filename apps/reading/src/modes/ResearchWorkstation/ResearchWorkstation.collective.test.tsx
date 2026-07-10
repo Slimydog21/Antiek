@@ -2,7 +2,13 @@
  * Residual (afr): ResearchWorkstation /inv/:id mounts CollectiveResearchPanel
  * when open or recent deep_research_session spawns exist (parity ResearchThis).
  */
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
@@ -60,12 +66,14 @@ vi.mock("../../components/engagement/CollectiveResearchPanel", () => ({
     parentAssetId?: string | null;
     openSpawnIds?: readonly string[] | null;
     recentSpawnIds?: readonly string[] | null;
+    onDocMerged?: () => void;
   }) => (
     <div
       data-testid="collective-research-panel-stub"
       data-parent={props.parentAssetId ?? ""}
       data-spawns={props.availableSpawnIds.join(",")}
       data-has-open-spawn-ids={props.openSpawnIds != null ? "1" : "0"}
+      data-has-merged={props.onDocMerged ? "1" : "0"}
       data-open-spawns={
         props.openSpawnIds != null ? props.openSpawnIds.join(",") : ""
       }
@@ -74,6 +82,15 @@ vi.mock("../../components/engagement/CollectiveResearchPanel", () => ({
       }
     >
       parent={props.parentAssetId}:spawns={props.availableSpawnIds.join(",")}
+      {props.onDocMerged ? (
+        <button
+          type="button"
+          data-testid="workstation-collective-merge-notify"
+          onClick={() => props.onDocMerged?.()}
+        >
+          notify merge
+        </button>
+      ) : null}
     </div>
   ),
 }));
@@ -176,7 +193,7 @@ function mountInv(id: string) {
 }
 
 describe("ResearchWorkstation collective multi-select (afr)", () => {
-  it("mounts CollectiveResearchPanel when DR spawns exist", () => {
+  it("mounts CollectiveResearchPanel when DR spawns exist", async () => {
     useInvestigationMock.mockReturnValue({
       id: "inv_afr",
       status: "in_progress",
@@ -205,6 +222,26 @@ describe("ResearchWorkstation collective multi-select (afr)", () => {
     expect(panel.getAttribute("data-spawns")).toBe("spn_a,spn_b");
     expect(panel.getAttribute("data-has-open-spawn-ids")).toBe("1");
     expect(panel.textContent).toMatch(/parent=inv_afr:spawns=spn_a,spn_b/);
+    // Residual (ane): collective merge remounts twins+context.
+    expect(panel.getAttribute("data-has-merged")).toBe("1");
+    expect(
+      screen
+        .getByTestId("research-workstation-context-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("0");
+    fireEvent.click(screen.getByTestId("workstation-collective-merge-notify"));
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId("research-workstation-context-refresh")
+          .getAttribute("data-refresh-key"),
+      ).toBe("1");
+    });
+    expect(
+      screen
+        .getByTestId("research-workstation-twins-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("1");
   });
 
   it("always mounts TwinNotesPanel recursive note-taker (afs)", () => {

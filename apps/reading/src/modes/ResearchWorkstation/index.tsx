@@ -338,12 +338,14 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
           data-investigation-id={investigationId}
           data-seamless-workstation-collective="true"
         >
+          {/* Residual (ane): remount twins+context after collective merge (parity and). */}
           <CollectiveResearchPanel
             availableSpawnIds={availableSpawnIds}
             parentAssetId={investigationId}
             recentSpawnIds={recentSpawnIds}
             openSpawnIds={openSpawnIds}
             onRecentSpawnsCleared={() => setRecentTick((n) => n + 1)}
+            onDocMerged={onContextNeedsRefresh}
           />
         </section>
       ) : null}
