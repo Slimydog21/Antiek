@@ -28,6 +28,7 @@ import {
   retrievalMidnightOil,
   runnerControlPlanMidnightOil,
   runnerDispatchSchedulerPlanMidnightOil,
+  runnerDispatchWorkerBootstrapPlanMidnightOil,
   runnerReadinessMidnightOil,
 } from "../../api/midnightOil";
 
@@ -1384,6 +1385,104 @@ vi.mock("../../api/midnightOil", () => ({
       "runner dispatch scheduler plan only: no scheduler job is created and no runner dispatch is enqueued",
     ],
   })),
+  runnerDispatchWorkerBootstrapPlanMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-runner-dispatch-worker-bootstrap-plan",
+    runner_dispatch_scheduler_plan_receipt_id:
+      "midnight-oil-test-runner-dispatch-scheduler-plan",
+    live_dispatch_final_enablement_apply_plan_receipt_id:
+      "midnight-oil-test-live-dispatch-final-enablement-apply-plan",
+    live_dispatch_final_enablement_plan_receipt_id:
+      "midnight-oil-test-live-dispatch-final-enablement-plan",
+    operator_dispatch_activation_readiness_plan_receipt_id:
+      "midnight-oil-test-operator-dispatch-activation-readiness-plan",
+    runner_control_plan_receipt_id: "midnight-oil-test-runner-control-plan",
+    runner_readiness_receipt_id: "midnight-oil-test-runner-readiness",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    run_id: "midnight-oil-test",
+    status: "blocked_runner_dispatch_worker_bootstrap_unimplemented",
+    adapter_key: "runner_dispatch_worker_bootstrap",
+    planned_worker_bootstrap_id: "midnight-oil-test-runner-dispatch-worker-bootstrap",
+    planned_worker_id: "midnight-oil-test-runner-dispatch-worker",
+    planned_worker_lease_id: "midnight-oil-test-runner-dispatch-worker-lease",
+    planned_retry_policy_id: "midnight-oil-test-runner-dispatch-retry-policy",
+    planned_dead_letter_queue_id:
+      "midnight-oil-test-runner-dispatch-dead-letter-queue",
+    planned_scheduler_job_id: "midnight-oil-test-runner-dispatch-scheduler-job",
+    planned_queue_id: "midnight-oil-test-runner-dispatch-queue",
+    planned_runner_dispatch_id: "midnight-oil-test-midnight-oil-runner-dispatch",
+    planned_live_dispatch_receipt_id: "midnight-oil-test-live-dispatch-final-enable-receipt",
+    planned_idempotency_key: "midnight-oil-test-live-dispatch-final-enable-idempotency-key",
+    worker_bootstrap_blockers: [
+      "runner dispatch worker runtime",
+      "worker lease heartbeat store",
+      "retry and dead-letter queue implementation",
+      "live dispatch receipt writer",
+    ],
+    required_worker_invariants: [
+      "worker bootstrap planner must require a runner dispatch scheduler plan before any worker is created",
+      "worker bootstrap planner must define retry, dead-letter, and idempotency behavior before any runner dispatch is enqueued",
+    ],
+    required_worker_receipt_fields: [
+      "worker_bootstrap_receipt_id",
+      "worker_bootstrap_id",
+      "worker_id",
+      "worker_lease_id",
+      "retry_policy_id",
+      "dead_letter_queue_id",
+      "scheduler_plan_receipt_id",
+      "scheduler_job_id",
+      "queue_id",
+      "runner_dispatch_id",
+      "live_dispatch_receipt_id",
+      "idempotency_key",
+      "worker_started",
+      "runner_dispatch_enqueued",
+      "dispatch_performed",
+    ],
+    blocker_reason: "runner_dispatch_worker_bootstrap_unimplemented",
+    worker_bootstrap_allowed: false,
+    worker_bootstrap_created: false,
+    worker_started: false,
+    lease_policy_created: false,
+    retry_policy_created: false,
+    dead_letter_queue_created: false,
+    scheduler_allowed: false,
+    scheduler_job_created: false,
+    runner_dispatch_enqueued: false,
+    final_enablement_apply_allowed: false,
+    final_enablement_allowed: false,
+    live_dispatch_enabled: false,
+    live_dispatch_ready: false,
+    activation_readiness_allowed: false,
+    activation_ready: false,
+    transaction_opened: false,
+    transaction_committed: false,
+    setting_persisted: false,
+    control_ledger_written: false,
+    audit_log_written: false,
+    rollback_receipt_created: false,
+    operator_dispatch_allowed: false,
+    operator_live_dispatch_enabled: false,
+    live_run_allowed: false,
+    dispatch_allowed: false,
+    dispatch_performed: false,
+    budget_reservation_allowed: false,
+    budget_reserved: false,
+    provider_execution_allowed: false,
+    provider_calls_made: false,
+    retrieval_allowed: false,
+    retrieval_performed: false,
+    source_receipts_created: false,
+    graph_mutation_allowed: false,
+    graph_mutated: false,
+    final_artifact_allowed: false,
+    final_artifact_created: false,
+    adapter_plan_notes: [
+      "runner dispatch worker bootstrap plan only: no worker is created, no scheduler job is created, and no runner dispatch is enqueued",
+    ],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -2450,5 +2549,96 @@ describe("MidnightOil", () => {
     ).toBeTruthy();
     expect(screen.getByText(/Scheduler blockers:/)).toBeTruthy();
     expect(screen.getByText(/Scheduler receipt fields:/)).toBeTruthy();
+
+    await user.click(
+      screen.getByRole("button", { name: "Runner dispatch worker bootstrap" }),
+    );
+
+    await waitFor(() =>
+      expect(runnerDispatchWorkerBootstrapPlanMidnightOil).toHaveBeenCalled(),
+    );
+    expect(runnerDispatchWorkerBootstrapPlanMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      runner_control_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-control-plan",
+      }),
+      budget_provider_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-budget-provider-adapter-plan",
+      }),
+      provider_executor_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-provider-executor-adapter-plan",
+      }),
+      retrieval_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-retrieval-adapter-plan",
+      }),
+      graph_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-graph-adapter-plan",
+      }),
+      final_artifact_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-final-artifact-adapter-plan",
+      }),
+      operator_dispatch_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-operator-dispatch-adapter-plan",
+      }),
+      control_ledger_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-adapter-plan",
+      }),
+      control_ledger_persistence_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-persistence-plan",
+      }),
+      control_ledger_persistence_apply_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-persistence-apply-plan",
+      }),
+      operator_dispatch_activation_readiness_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-operator-dispatch-activation-readiness-plan",
+      }),
+      live_dispatch_final_enablement_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-live-dispatch-final-enablement-plan",
+      }),
+      live_dispatch_final_enablement_apply_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-live-dispatch-final-enablement-apply-plan",
+      }),
+      runner_dispatch_scheduler_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-dispatch-scheduler-plan",
+      }),
+    });
+    expect(screen.getByText("Runner dispatch worker bootstrap receipt")).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-runner-dispatch-worker-bootstrap-plan"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("blocked runner dispatch worker bootstrap unimplemented"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-runner-dispatch-worker-bootstrap"),
+    ).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-runner-dispatch-worker")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-runner-dispatch-worker-lease")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-runner-dispatch-retry-policy")).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-runner-dispatch-dead-letter-queue"),
+    ).toBeTruthy();
+    expect(
+      screen.getAllByText("midnight-oil-test-runner-dispatch-scheduler-job").length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("midnight-oil-test-runner-dispatch-queue").length,
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByText("runner dispatch worker bootstrap").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(
+        "worker bootstrap planner must require a runner dispatch scheduler plan before any worker is created",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Worker blockers:/)).toBeTruthy();
+    expect(screen.getByText(/Worker receipt fields:/)).toBeTruthy();
   });
 });

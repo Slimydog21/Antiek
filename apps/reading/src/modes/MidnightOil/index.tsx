@@ -25,6 +25,7 @@ import {
   retrievalMidnightOil,
   runnerControlPlanMidnightOil,
   runnerDispatchSchedulerPlanMidnightOil,
+  runnerDispatchWorkerBootstrapPlanMidnightOil,
   runnerReadinessMidnightOil,
   type MidnightOilActivationChecklistReceipt,
   type MidnightOilAppliedRunReceipt,
@@ -50,6 +51,7 @@ import {
   type MidnightOilRetrievalReceipt,
   type MidnightOilRunnerControlPlanReceipt,
   type MidnightOilRunnerDispatchSchedulerPlanReceipt,
+  type MidnightOilRunnerDispatchWorkerBootstrapPlanReceipt,
   type MidnightOilRunnerReadinessReceipt,
   type MidnightOilRouteMode,
   type MidnightOilSourcePolicy,
@@ -131,6 +133,10 @@ export default function MidnightOil() {
   ] = useState<MidnightOilLiveDispatchFinalEnablementApplyPlanReceipt | null>(null);
   const [runnerDispatchSchedulerPlanReceipt, setRunnerDispatchSchedulerPlanReceipt] =
     useState<MidnightOilRunnerDispatchSchedulerPlanReceipt | null>(null);
+  const [
+    runnerDispatchWorkerBootstrapPlanReceipt,
+    setRunnerDispatchWorkerBootstrapPlanReceipt,
+  ] = useState<MidnightOilRunnerDispatchWorkerBootstrapPlanReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -164,6 +170,8 @@ export default function MidnightOil() {
     setLiveDispatchFinalEnablementApplyPlanBusy,
   ] = useState(false);
   const [runnerDispatchSchedulerPlanBusy, setRunnerDispatchSchedulerPlanBusy] = useState(false);
+  const [runnerDispatchWorkerBootstrapPlanBusy, setRunnerDispatchWorkerBootstrapPlanBusy] =
+    useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
   const [liveSettingsError, setLiveSettingsError] = useState<string | null>(null);
@@ -204,10 +212,20 @@ export default function MidnightOil() {
   ] = useState<string | null>(null);
   const [runnerDispatchSchedulerPlanError, setRunnerDispatchSchedulerPlanError] =
     useState<string | null>(null);
+  const [
+    runnerDispatchWorkerBootstrapPlanError,
+    setRunnerDispatchWorkerBootstrapPlanError,
+  ] = useState<string | null>(null);
+
+  function clearRunnerDispatchWorkerBootstrapPlan() {
+    setRunnerDispatchWorkerBootstrapPlanError(null);
+    setRunnerDispatchWorkerBootstrapPlanReceipt(null);
+  }
 
   function clearRunnerDispatchSchedulerPlan() {
     setRunnerDispatchSchedulerPlanError(null);
     setRunnerDispatchSchedulerPlanReceipt(null);
+    clearRunnerDispatchWorkerBootstrapPlan();
   }
 
   function clearLiveDispatchFinalEnablementApplyPlan() {
@@ -315,6 +333,7 @@ export default function MidnightOil() {
     setLiveDispatchFinalEnablementPlanError(null);
     setLiveDispatchFinalEnablementApplyPlanError(null);
     setRunnerDispatchSchedulerPlanError(null);
+    setRunnerDispatchWorkerBootstrapPlanError(null);
     setPreflight(null);
     setDryRunReceipt(null);
     setLiveSettingsReceipt(null);
@@ -341,6 +360,7 @@ export default function MidnightOil() {
     setLiveDispatchFinalEnablementPlanReceipt(null);
     setLiveDispatchFinalEnablementApplyPlanReceipt(null);
     setRunnerDispatchSchedulerPlanReceipt(null);
+    setRunnerDispatchWorkerBootstrapPlanReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -1386,6 +1406,7 @@ export default function MidnightOil() {
     setRunnerDispatchSchedulerPlanBusy(true);
     setRunnerDispatchSchedulerPlanError(null);
     setRunnerDispatchSchedulerPlanReceipt(null);
+    clearRunnerDispatchWorkerBootstrapPlan();
     try {
       const result = await runnerDispatchSchedulerPlanMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -1412,6 +1433,65 @@ export default function MidnightOil() {
       setRunnerDispatchSchedulerPlanError(e instanceof Error ? e.message : String(e));
     } finally {
       setRunnerDispatchSchedulerPlanBusy(false);
+    }
+  }
+
+  async function onRunnerDispatchWorkerBootstrapPlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerControlPlanReceipt ||
+      !budgetProviderAdapterPlanReceipt ||
+      !providerExecutorAdapterPlanReceipt ||
+      !retrievalAdapterPlanReceipt ||
+      !graphAdapterPlanReceipt ||
+      !finalArtifactAdapterPlanReceipt ||
+      !operatorDispatchAdapterPlanReceipt ||
+      !controlLedgerAdapterPlanReceipt ||
+      !controlLedgerPersistencePlanReceipt ||
+      !controlLedgerPersistenceApplyPlanReceipt ||
+      !operatorDispatchActivationReadinessPlanReceipt ||
+      !liveDispatchFinalEnablementPlanReceipt ||
+      !liveDispatchFinalEnablementApplyPlanReceipt ||
+      !runnerDispatchSchedulerPlanReceipt
+    ) {
+      setRunnerDispatchWorkerBootstrapPlanError(
+        "Runner dispatch worker bootstrap requires launch packet, approval receipt, runner handoff, runner control plan receipt, budget provider adapter plan receipt, provider executor adapter plan receipt, retrieval adapter plan receipt, graph adapter plan receipt, final artifact adapter plan receipt, operator dispatch adapter plan receipt, control ledger adapter plan receipt, control ledger persistence plan receipt, control ledger persistence apply plan receipt, operator dispatch activation readiness plan receipt, live dispatch final enablement plan receipt, live dispatch final enablement apply plan receipt, and runner dispatch scheduler plan receipt.",
+      );
+      return;
+    }
+
+    setRunnerDispatchWorkerBootstrapPlanBusy(true);
+    setRunnerDispatchWorkerBootstrapPlanError(null);
+    setRunnerDispatchWorkerBootstrapPlanReceipt(null);
+    try {
+      const result = await runnerDispatchWorkerBootstrapPlanMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        runner_control_plan_receipt: runnerControlPlanReceipt,
+        budget_provider_adapter_plan_receipt: budgetProviderAdapterPlanReceipt,
+        provider_executor_adapter_plan_receipt: providerExecutorAdapterPlanReceipt,
+        retrieval_adapter_plan_receipt: retrievalAdapterPlanReceipt,
+        graph_adapter_plan_receipt: graphAdapterPlanReceipt,
+        final_artifact_adapter_plan_receipt: finalArtifactAdapterPlanReceipt,
+        operator_dispatch_adapter_plan_receipt: operatorDispatchAdapterPlanReceipt,
+        control_ledger_adapter_plan_receipt: controlLedgerAdapterPlanReceipt,
+        control_ledger_persistence_plan_receipt: controlLedgerPersistencePlanReceipt,
+        control_ledger_persistence_apply_plan_receipt: controlLedgerPersistenceApplyPlanReceipt,
+        operator_dispatch_activation_readiness_plan_receipt:
+          operatorDispatchActivationReadinessPlanReceipt,
+        live_dispatch_final_enablement_plan_receipt: liveDispatchFinalEnablementPlanReceipt,
+        live_dispatch_final_enablement_apply_plan_receipt:
+          liveDispatchFinalEnablementApplyPlanReceipt,
+        runner_dispatch_scheduler_plan_receipt: runnerDispatchSchedulerPlanReceipt,
+      });
+      setRunnerDispatchWorkerBootstrapPlanReceipt(result);
+    } catch (e) {
+      setRunnerDispatchWorkerBootstrapPlanError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRunnerDispatchWorkerBootstrapPlanBusy(false);
     }
   }
 
@@ -3912,6 +3992,182 @@ export default function MidnightOil() {
                   <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
                     Scheduler receipt fields:{" "}
                     {runnerDispatchSchedulerPlanReceipt.required_scheduler_receipt_fields.join(
+                      ", ",
+                    )}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Runner dispatch worker bootstrap
+                </p>
+                <button
+                  type="button"
+                  onClick={onRunnerDispatchWorkerBootstrapPlanGate}
+                  disabled={
+                    runnerDispatchWorkerBootstrapPlanBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !runnerControlPlanReceipt ||
+                    !budgetProviderAdapterPlanReceipt ||
+                    !providerExecutorAdapterPlanReceipt ||
+                    !retrievalAdapterPlanReceipt ||
+                    !graphAdapterPlanReceipt ||
+                    !finalArtifactAdapterPlanReceipt ||
+                    !operatorDispatchAdapterPlanReceipt ||
+                    !controlLedgerAdapterPlanReceipt ||
+                    !controlLedgerPersistencePlanReceipt ||
+                    !controlLedgerPersistenceApplyPlanReceipt ||
+                    !operatorDispatchActivationReadinessPlanReceipt ||
+                    !liveDispatchFinalEnablementPlanReceipt ||
+                    !liveDispatchFinalEnablementApplyPlanReceipt ||
+                    !runnerDispatchSchedulerPlanReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {runnerDispatchWorkerBootstrapPlanBusy
+                    ? "Planning worker..."
+                    : "Runner dispatch worker bootstrap"}
+                </button>
+              </div>
+
+              {runnerDispatchWorkerBootstrapPlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {runnerDispatchWorkerBootstrapPlanError}
+                </p>
+              )}
+
+              {runnerDispatchWorkerBootstrapPlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Runner dispatch worker bootstrap receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {runnerDispatchWorkerBootstrapPlanReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={runnerDispatchWorkerBootstrapPlanReceipt.status.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                    <Metric
+                      label="Bootstrap"
+                      value={
+                        runnerDispatchWorkerBootstrapPlanReceipt.worker_bootstrap_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Worker"
+                      value={
+                        runnerDispatchWorkerBootstrapPlanReceipt.worker_started
+                          ? "started"
+                          : "not started"
+                      }
+                    />
+                    <Metric
+                      label="Enqueued"
+                      value={
+                        runnerDispatchWorkerBootstrapPlanReceipt.runner_dispatch_enqueued
+                          ? "enqueued"
+                          : "not enqueued"
+                      }
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Scheduler plan"
+                      value={
+                        runnerDispatchWorkerBootstrapPlanReceipt
+                          .runner_dispatch_scheduler_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Worker bootstrap"
+                      value={
+                        runnerDispatchWorkerBootstrapPlanReceipt.planned_worker_bootstrap_id
+                      }
+                    />
+                    <Metric
+                      label="Worker"
+                      value={runnerDispatchWorkerBootstrapPlanReceipt.planned_worker_id}
+                    />
+                    <Metric
+                      label="Worker lease"
+                      value={runnerDispatchWorkerBootstrapPlanReceipt.planned_worker_lease_id}
+                    />
+                    <Metric
+                      label="Retry policy"
+                      value={runnerDispatchWorkerBootstrapPlanReceipt.planned_retry_policy_id}
+                    />
+                    <Metric
+                      label="Dead letter queue"
+                      value={
+                        runnerDispatchWorkerBootstrapPlanReceipt.planned_dead_letter_queue_id
+                      }
+                    />
+                    <Metric
+                      label="Scheduler job"
+                      value={runnerDispatchWorkerBootstrapPlanReceipt.planned_scheduler_job_id}
+                    />
+                    <Metric
+                      label="Queue"
+                      value={runnerDispatchWorkerBootstrapPlanReceipt.planned_queue_id}
+                    />
+                    <Metric
+                      label="Runner dispatch"
+                      value={runnerDispatchWorkerBootstrapPlanReceipt.planned_runner_dispatch_id}
+                    />
+                    <Metric
+                      label="Live dispatch receipt"
+                      value={
+                        runnerDispatchWorkerBootstrapPlanReceipt
+                          .planned_live_dispatch_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Idempotency key"
+                      value={runnerDispatchWorkerBootstrapPlanReceipt.planned_idempotency_key}
+                    />
+                    <Metric
+                      label="Adapter"
+                      value={runnerDispatchWorkerBootstrapPlanReceipt.adapter_key.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                    <Metric
+                      label="Blocker"
+                      value={runnerDispatchWorkerBootstrapPlanReceipt.blocker_reason.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                  </div>
+                  <ul className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {runnerDispatchWorkerBootstrapPlanReceipt.required_worker_invariants
+                      .slice(0, 5)
+                      .map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                  </ul>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Worker blockers:{" "}
+                    {runnerDispatchWorkerBootstrapPlanReceipt.worker_bootstrap_blockers.join(
+                      ", ",
+                    )}
+                  </p>
+                  <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Worker receipt fields:{" "}
+                    {runnerDispatchWorkerBootstrapPlanReceipt.required_worker_receipt_fields.join(
                       ", ",
                     )}
                   </p>
