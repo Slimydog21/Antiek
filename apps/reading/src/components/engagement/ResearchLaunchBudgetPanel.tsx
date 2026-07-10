@@ -16,6 +16,9 @@
  * would_exceed, chars, tier) for competitive budget-before-fire audit.
  * Residual (jw): intensity factor chrome (MO ceiling multipliers shared map)
  * so launch surfaces show wrestle/fast cost posture next to projection.
+ * Residual (wa): remaining-after-prompt projection (remaining − high band)
+ * parity DecisionTree badge (pg) + Midnight Oil ceiling (um) — operator sees
+ * how fire would affect daily cap before Ask.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -144,6 +147,16 @@ export function ResearchLaunchBudgetPanel({
     }
     return Math.min(100, (budget.spent_usd / budget.daily_cap_usd) * 100);
   }, [budget]);
+
+  // Residual (wa): remaining after high-band fire (soft foresight, never invent $0).
+  const remainingAfterUsd = useMemo(() => {
+    const remaining = budget?.remaining_usd;
+    const high = estimate?.estimated_usd_high;
+    if (remaining == null || high == null || Number.isNaN(remaining) || Number.isNaN(high)) {
+      return null;
+    }
+    return remaining - high;
+  }, [budget?.remaining_usd, estimate?.estimated_usd_high]);
 
   const loadStatic = useCallback(async () => {
     try {
@@ -413,6 +426,9 @@ export function ResearchLaunchBudgetPanel({
                     ? "true"
                     : "false"
               }
+              data-remaining-after-usd={
+                remainingAfterUsd != null ? String(remainingAfterUsd) : ""
+              }
               data-view-format="html"
               role="status"
             >
@@ -452,6 +468,20 @@ export function ResearchLaunchBudgetPanel({
                   ? "Within remaining budget (high band)"
                   : "Cannot assert budget impact (remaining unknown or rates unset)"}
             </p>
+            {/* Residual (wa): remaining after high-band prompt (parity badge pg / MO um). */}
+            {remainingAfterUsd != null ? (
+              <p
+                className="text-[11px] font-mono text-ink-mute dark:text-moonlight"
+                data-testid="research-launch-remaining-after"
+                data-remaining-after-usd={String(remainingAfterUsd)}
+                role="status"
+              >
+                Remaining after prompt ≈ {formatUsd(remainingAfterUsd)}
+                {remainingAfterUsd < 0
+                  ? " · over remaining high-band"
+                  : ""}
+              </p>
+            ) : null}
           </>
         ) : (
           <p className="text-[11px] font-mono text-ink-mute">…</p>

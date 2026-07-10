@@ -1353,3 +1353,9 @@ highest leverage.
 Settings dual-gate prep stamps L6 live multi-agent deferred · offline merge unit
 (parity Collective vx + L5 payment vt). Competitive delta: decision-tree Settings
 chokepoint never implies live multi-agent council is available.
+
+## Residual wa · 2026-07-10 — launch remaining-after-prompt projection
+ResearchLaunchBudgetPanel stamps remaining − high band after fire (parity
+DecisionTree badge pg + MO ceiling um). Competitive delta: every research
+Ask surface shows how the proposed prompt would affect the daily cap before
+dispatch — budget-before-fire foresight complete on shared launch chokepoint.

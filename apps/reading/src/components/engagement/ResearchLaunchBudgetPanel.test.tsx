@@ -263,6 +263,58 @@ describe("ResearchLaunchBudgetPanel", () => {
     );
   });
 
+  it("surfaces remaining-after-prompt projection (wa)", async () => {
+    // remaining_usd=4, high=0.12 → remaining after ≈ 3.88
+    render(
+      <ResearchLaunchBudgetPanel
+        promptText="Project remaining daily budget after this research launch prompt"
+        researchTier="deep"
+        debounceMs={0}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("research-launch-remaining-after")).toBeTruthy();
+    });
+    const after = screen.getByTestId("research-launch-remaining-after");
+    expect(after.getAttribute("data-remaining-after-usd")).toBe("3.88");
+    expect(after.textContent).toMatch(/Remaining after prompt/i);
+    expect(after.textContent).toMatch(/\$3\.88/);
+    expect(
+      screen
+        .getByTestId("research-launch-projection-metrics")
+        .getAttribute("data-remaining-after-usd"),
+    ).toBe("3.88");
+  });
+
+  it("flags over remaining when high band exceeds remaining (wa)", async () => {
+    estimatePromptCost.mockResolvedValueOnce({
+      estimated_usd_low: 3,
+      estimated_usd_high: 5,
+      would_exceed_budget: true,
+      pricing_known: true,
+      notes: [],
+      assumed_input_tokens: 100,
+      assumed_output_tokens: 2500,
+      tier: "pro",
+      provider: null,
+      model: null,
+    });
+    render(
+      <ResearchLaunchBudgetPanel
+        promptText="Over-budget high band research prompt that burns past remaining"
+        researchTier="deep"
+        debounceMs={0}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("research-launch-remaining-after")).toBeTruthy();
+    });
+    const after = screen.getByTestId("research-launch-remaining-after");
+    // remaining 4 − high 5 = −1
+    expect(after.getAttribute("data-remaining-after-usd")).toBe("-1");
+    expect(after.textContent).toMatch(/over remaining high-band/i);
+  });
+
   it("notifies parent via onProjectionChange (de)", async () => {
     const onProjectionChange = vi.fn();
     estimatePromptCost.mockResolvedValueOnce({

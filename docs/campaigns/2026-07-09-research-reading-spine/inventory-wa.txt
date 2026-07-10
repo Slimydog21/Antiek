@@ -1,0 +1,26 @@
+# inventory-wa · ResearchLaunchBudgetPanel remaining-after projection
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: wa
+date: 2026-07-10
+tip_before: 2f780198 (vz)
+
+## Problem
+Shared launch budget panel showed would_exceed + high band but not
+remaining-after-prompt (remaining − high). DecisionTree badge (pg) and
+Midnight Oil ceiling (um) already projected after-fire remaining; launch
+Ask path lacked that foresight — operator vision: know if a prompt will
+go over budget before fire.
+
+## Fix
+- remainingAfterUsd = remaining_usd − estimated_usd_high (null-safe)
+- research-launch-projection-metrics data-remaining-after-usd
+- research-launch-remaining-after status line (+ over remaining high-band)
+- Tests: happy path 4−0.12=3.88; over path 4−5=−1
+
+## Verified
+npm test -- --run src/components/engagement/ResearchLaunchBudgetPanel.test.tsx
+→ 11 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live L1–L4 injectors
