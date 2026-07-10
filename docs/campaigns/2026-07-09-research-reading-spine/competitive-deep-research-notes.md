@@ -2092,3 +2092,8 @@ GET /marketplace/library returns free_count aggregate (parity catalog free_count
 Competitive delta: account library free inventory honesty is machine-readable
 for Settings/metrics without re-summing documents.
 
+## Residual acc · 2026-07-10 — MarketplaceHost prefers library API free_count
+Client library free honesty prefers server free_count aggregate (acb) after load
+and host/purchase refresh. Competitive delta: library free inventory identity is
+server-authoritative when present (parity catalog free_count).
+

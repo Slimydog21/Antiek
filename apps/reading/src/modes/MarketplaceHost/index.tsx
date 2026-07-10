@@ -161,6 +161,10 @@ export default function MarketplaceHost({
   /** Residual (ly): last catalog HTML projection (full catalog on load). */
   const [catalogHtml, setCatalogHtml] = useState<string | null>(null);
   const [libraryDocs, setLibraryDocs] = useState<LibraryDoc[]>([]);
+  /** Residual (acc): server library free_count when present (parity acb API). */
+  const [libraryApiFreeCount, setLibraryApiFreeCount] = useState<number | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [receiptRef, setReceiptRef] = useState("manual-order-token-demo");
@@ -297,8 +301,12 @@ export default function MarketplaceHost({
         (d.license_class || "").toLowerCase() === "free"));
 
   const libraryFreeCount = useMemo(() => {
+    // Residual (acc): prefer server free_count aggregate when loaded.
+    if (libraryApiFreeCount != null && Number.isFinite(libraryApiFreeCount)) {
+      return libraryApiFreeCount;
+    }
     return libraryDocs.filter(libraryDocIsFree).length;
-  }, [libraryDocs]);
+  }, [libraryDocs, libraryApiFreeCount]);
 
   const libraryFilteredFreeCount = useMemo(() => {
     return filteredLibraryDocs.filter(libraryDocIsFree).length;
@@ -375,6 +383,11 @@ export default function MarketplaceHost({
       }
       setLibraryHtml(lib.html);
       setLibraryDocs(lib.documents || []);
+      setLibraryApiFreeCount(
+        typeof lib.free_count === "number" && Number.isFinite(lib.free_count)
+          ? lib.free_count
+          : null,
+      );
       setLibraryLoadNote(null);
     } catch (e) {
       // Residual (dw): non-fatal — catalog remains usable; quiet note not hard error.
@@ -804,6 +817,11 @@ export default function MarketplaceHost({
       const lib = await fetchAccountLibrary(ownerId);
       setLibraryHtml(lib.html);
       setLibraryDocs(lib.documents || []);
+      setLibraryApiFreeCount(
+        typeof lib.free_count === "number" && Number.isFinite(lib.free_count)
+          ? lib.free_count
+          : null,
+      );
       // Residual (gj): recursive note-taker substrate for the book asset.
       await seedHostedTwins(result);
       // Residual (dk): seamless port into reading surface.
@@ -845,6 +863,11 @@ export default function MarketplaceHost({
       const lib = await fetchAccountLibrary(ownerId);
       setLibraryHtml(lib.html);
       setLibraryDocs(lib.documents || []);
+      setLibraryApiFreeCount(
+        typeof lib.free_count === "number" && Number.isFinite(lib.free_count)
+          ? lib.free_count
+          : null,
+      );
       await seedHostedTwins(result);
       if (autoOpenWindow) {
         openHostedWindow({
