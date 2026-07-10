@@ -1,0 +1,19 @@
+# inventory-wq · information_theory subject chip filter for Shannon
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: wq
+date: 2026-07-10
+tip_before: 008f8041 (wp)
+
+## Problem
+Shannon free PD (wd) needed subject-chip filter proof for information_theory
+(parity computability chip Turing wp).
+
+## Fix
+- MarketplaceHost test: catalog-subject-information_theory filters to Shannon
+- data-subject-filter=information_theory honesty
+
+## Verified
+npm test MarketplaceHost.test.tsx → 30 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

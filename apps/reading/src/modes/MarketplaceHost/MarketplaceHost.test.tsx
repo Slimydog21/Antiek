@@ -1981,6 +1981,63 @@ describe("MarketplaceHost mode", () => {
     expect(call.goal_hint).toMatch(/Electromagnetic Theory/);
   });
 
+  it("filters catalog by information_theory subject chip for Shannon (wq)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-shannon-communication",
+          title: "A Mathematical Theory of Communication",
+          author: "Claude E. Shannon",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: [
+            "mathematics",
+            "science",
+            "technology",
+            "computing",
+            "information_theory",
+            "engineering",
+          ],
+        },
+        {
+          book_id: "pd-pride",
+          title: "Pride and Prejudice",
+          author: "Jane Austen",
+          license_class: "public_domain",
+          is_free: true,
+          source: "standard_ebooks",
+          subjects: ["literature"],
+        },
+      ],
+      count: 2,
+      view_format: "html",
+      free_count: 2,
+      public_domain_count: 2,
+      by_subject: {
+        information_theory: 1,
+        computing: 1,
+        literature: 1,
+      },
+      payment_rails: "manual_receipt_only",
+    });
+    render(<MarketplaceHost ownerId="tech-researcher" />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("catalog-subject-information_theory"),
+      ).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("catalog-subject-information_theory"));
+    expect(
+      screen.getByTestId("catalog-entry-pd-shannon-communication"),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("catalog-entry-pd-pride")).toBeNull();
+    const metrics = screen.getByTestId("marketplace-catalog-metrics");
+    expect(metrics.getAttribute("data-subject-filter")).toBe(
+      "information_theory",
+    );
+  });
+
   it("hosts Shannon free PD with information_theory subjects on host land (wd)", async () => {
     fetchMarketplaceCatalog.mockResolvedValue({
       entries: [

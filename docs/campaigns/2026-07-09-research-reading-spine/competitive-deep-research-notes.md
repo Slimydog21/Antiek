@@ -1437,3 +1437,8 @@ deferred map without leaving Settings.
 Catalog subject chip computability isolates Turing free PD (parity Boole
 computing chip). Competitive delta: tech researchers domain-filter the free
 STEM spine without text search.
+
+## Residual wq · 2026-07-10 — information_theory subject chip for Shannon
+Catalog subject chip information_theory isolates Shannon free PD (parity
+Turing computability chip). Competitive delta: free STEM domain chips cover
+electricity · computing · information theory · computability.
