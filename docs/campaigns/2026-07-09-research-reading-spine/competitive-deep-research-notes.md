@@ -3232,3 +3232,8 @@ P0 operator merge PR #465. Pivot ald+ outside thrash.
 Knowledge-dense arxiv/substack attach navigates Settings prompt-cost projection
 for budget-before-fire (parity evidence alc · twin aky · driver akx).
 vitest PublicationAttach 6 green. P0 operator merge PR #465. Pivot ale+ outside thrash.
+
+## Residual ale · 2026-07-10 — SESSION-ARC akx–ald budget matrix extension
+Wave handoff: driver · twin · evidence · attach prompt-cost matrix extension
+beyond akk–akp multi-minute spend surfaces. P0 operator merge PR #465.
+Pivot alf+ outside thrash (prefer non-deep-link).
