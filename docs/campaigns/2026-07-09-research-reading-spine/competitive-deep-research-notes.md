@@ -1309,3 +1309,8 @@ Write provenance when operator Open Writes from the host.
 FUTURE-AGENT-SPEC tip → 7ee710a7 with closed arcs tt–vp (49 residual ships).
 Competitive delta: swarm handoff tip-true; operator merge PR #465 remains
 highest leverage.
+
+## Residual vr · 2026-07-10 — marketplace/MO deposit hosted Open Write sources
+buildHostedHtmlWriteHref + HostedHtml preserve marketplace_host and
+midnight_oil_deposit. Competitive delta: book host and MO deposit floats keep
+Write provenance when Open Write is used from the host.

@@ -302,6 +302,9 @@ export default function HostedHtmlDocumentHost(
   // Residual (vp): spawn/collective document merge floats.
   const isSpawnMerge = payloadSource === "spawn_merge";
   const isCollectiveDocMerge = payloadSource === "collective_doc_merge";
+  // Residual (vr): marketplace host + Midnight Oil deposit floats.
+  const isMarketplaceHost = payloadSource === "marketplace_host";
+  const isMidnightOilDeposit = payloadSource === "midnight_oil_deposit";
   // Residual (tq): intelligent search query + hit count honesty.
   const searchQuery = String(props.search_query || "").trim();
   const searchHitCount =
@@ -340,7 +343,11 @@ export default function HostedHtmlDocumentHost(
                         ? `Spawn merge · ${title}`
                         : isCollectiveDocMerge
                           ? `Collective document merge · ${title}`
-                          : title;
+                          : isMarketplaceHost
+                            ? `Marketplace host · ${title}`
+                            : isMidnightOilDeposit
+                              ? `Midnight Oil deposit · ${title}`
+                              : title;
   const twinSeedBody = html
     ? html.replace(/<[^>]+>/g, " ").slice(0, 500)
     : twinSeedTitle;
@@ -474,7 +481,11 @@ export default function HostedHtmlDocumentHost(
                                         ? "spawn_merge"
                                         : isCollectiveDocMerge
                                           ? "collective_doc_merge"
-                                          : "hosted_html_document"
+                                          : isMarketplaceHost
+                                            ? "marketplace_host"
+                                            : isMidnightOilDeposit
+                                              ? "midnight_oil_deposit"
+                                              : "hosted_html_document"
                 }
                 className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
                 title={
@@ -498,9 +509,13 @@ export default function HostedHtmlDocumentHost(
                                     ? "Open Write with spawn merge HTML + twin_seed (seeds note-taker)"
                                     : isCollectiveDocMerge
                                       ? "Open Write with collective document merge HTML + twin_seed (seeds note-taker)"
-                                      : isResearchProgress || isSessionFlywheel
-                                        ? "Open Write with research HTML + twin_seed (seeds note-taker)"
-                                        : "Open Write with hosted HTML + twin_seed (seeds note-taker when empty)"
+                                      : isMarketplaceHost
+                                        ? "Open Write with marketplace hosted book HTML + twin_seed (seeds note-taker)"
+                                        : isMidnightOilDeposit
+                                          ? "Open Write with Midnight Oil deposit HTML + twin_seed (seeds note-taker)"
+                                          : isResearchProgress || isSessionFlywheel
+                                            ? "Open Write with research HTML + twin_seed (seeds note-taker)"
+                                            : "Open Write with hosted HTML + twin_seed (seeds note-taker when empty)"
                 }
               >
                 Open Write (HTML draft handoff)

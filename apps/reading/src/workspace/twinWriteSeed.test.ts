@@ -115,6 +115,30 @@ describe("twinWriteSeed (pp)", () => {
     expect(loadTwinWriteSeed(keyCol)?.source).toBe("collective_doc_merge");
   });
 
+  it("builds hosted marketplace_host and midnight_oil_deposit Write seed sources (vr)", () => {
+    const hrefMkt = buildHostedHtmlWriteHref({
+      documentId: "hdoc_mkt",
+      title: "Hosted book",
+      html: "<p>Marketplace book body.</p>",
+      source: "marketplace_host",
+    });
+    const keyMkt = decodeURIComponent(
+      (hrefMkt.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    expect(loadTwinWriteSeed(keyMkt)?.source).toBe("marketplace_host");
+
+    const hrefMo = buildHostedHtmlWriteHref({
+      documentId: "draft_moil_1",
+      title: "MO deposit",
+      html: "<p>Deposit body.</p>",
+      source: "midnight_oil_deposit",
+    });
+    const keyMo = decodeURIComponent(
+      (hrefMo.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    expect(loadTwinWriteSeed(keyMo)?.source).toBe("midnight_oil_deposit");
+  });
+
   it("rejects empty plain_text and foreign keys", () => {
     expect(
       storeTwinWriteSeed({

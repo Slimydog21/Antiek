@@ -317,6 +317,9 @@ export function buildHostedHtmlWriteHref(opts: {
     // Residual (vp): spawn/collective document merge floats → Write seed.
     "spawn_merge",
     "collective_doc_merge",
+    // Residual (vr): marketplace host + MO deposit floats → Write seed.
+    "marketplace_host",
+    "midnight_oil_deposit",
   ]);
   const source = KNOWN_HOST_WRITE_SOURCES.has(srcRaw)
     ? srcRaw
@@ -347,7 +350,11 @@ export function buildHostedHtmlWriteHref(opts: {
                           ? `Spawn merge · ${doc}`
                           : source === "collective_doc_merge"
                             ? `Collective document merge · ${doc}`
-                            : `Hosted HTML · ${doc}`;
+                            : source === "marketplace_host"
+                              ? `Marketplace host · ${doc}`
+                              : source === "midnight_oil_deposit"
+                                ? `Midnight Oil deposit · ${doc}`
+                                : `Hosted HTML · ${doc}`;
   const seedKey = storeTwinWriteSeed({
     plain_text: plain,
     html: String(opts.html || ""),
