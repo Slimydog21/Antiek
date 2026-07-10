@@ -33,6 +33,8 @@
  * drive open stamps (parity ate/atm pure helpers · never invent HTML open).
  * Residual (aua): pure evidencePackOpenReadiness drives evidence open stamps
  * (citation-trust · never invent HTML open · parity aty).
+ * Residual (aub): pure researchContextPackOpenReadiness drives pack open stamps
+ * (prompt_block body · never invent HTML open · completes open-path pure matrix).
  * Residual (tq): context_search float/full carries search_query + search_hit_count
  * into HostedHtmlDocumentHost honesty chrome.
  * Residual (api): competitive citation hop pipeline completeness
@@ -125,6 +127,7 @@ import { twinSubstrateReadiness } from "../../workspace/twinSubstrateReadiness";
 import { contextSearchOpenReadiness } from "../../workspace/contextSearchOpenReadiness";
 import { publicationHydrateOpenReadiness } from "../../workspace/publicationHydrateOpenReadiness";
 import { evidencePackOpenReadiness } from "../../workspace/evidencePackOpenReadiness";
+import { researchContextPackOpenReadiness } from "../../workspace/researchContextPackOpenReadiness";
 
 export type ResearchContextPanelProps = {
   assetId: string;
@@ -659,22 +662,28 @@ export function ResearchContextPanel({
           <pre className="prompt-block" data-testid="prompt-block">
             {pack.prompt_block}
           </pre>
-          {/* Residual (sl/att): context pack → float|full HTML reading windows
-              with html-first · open-ready · source honesty stamps. */}
-          {(pack.prompt_block || "").trim() ? (
+          {/* Residual (sl/att/aub): context pack → float|full HTML reading windows
+              driven by researchContextPackOpenReadiness pure helper. */}
+          {(() => {
+            const packOpen = researchContextPackOpenReadiness({
+              prompt_block: pack.prompt_block,
+              twin_count: pack.twin_count,
+              ref_count: pack.ref_count,
+            });
+            return packOpen.open_ready ? (
             <p className="meta font-mono text-[11px] space-x-3">
               <button
                 type="button"
                 data-testid="research-context-open-float"
                 data-view-format="html"
-                data-html-first="true"
+                data-html-first={String(packOpen.html_first)}
                 data-window-mode="floating"
-                data-twin-count={String(pack.twin_count ?? 0)}
-                data-ref-count={String(pack.ref_count ?? 0)}
-                data-context-pack-open-ready="true"
-                data-source="research_context_pack"
+                data-twin-count={String(packOpen.twin_count)}
+                data-ref-count={String(packOpen.ref_count)}
+                data-context-pack-open-ready={String(packOpen.open_ready)}
+                data-source={packOpen.source}
                 className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
-                title="Open research context pack as floating HTML window (recursive note-taker substrate · never PDF)"
+                title={packOpen.open_title}
                 onClick={() => {
                   const stem =
                     String(pack.asset_id || assetId).trim() || "asset";
@@ -719,14 +728,14 @@ export function ResearchContextPanel({
                 type="button"
                 data-testid="research-context-open-full"
                 data-view-format="html"
-                data-html-first="true"
+                data-html-first={String(packOpen.html_first)}
                 data-window-mode="full"
-                data-twin-count={String(pack.twin_count ?? 0)}
-                data-ref-count={String(pack.ref_count ?? 0)}
-                data-context-pack-open-ready="true"
-                data-source="research_context_pack"
+                data-twin-count={String(packOpen.twin_count)}
+                data-ref-count={String(packOpen.ref_count)}
+                data-context-pack-open-ready={String(packOpen.open_ready)}
+                data-source={packOpen.source}
                 className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
-                title="Open research context pack as full working-region HTML window (recursive note-taker substrate · never PDF)"
+                title={packOpen.open_title}
                 onClick={() => {
                   const stem =
                     String(pack.asset_id || assetId).trim() || "asset";
@@ -768,9 +777,15 @@ export function ResearchContextPanel({
                 Open full (context pack)
               </button>
             </p>
-          ) : null}
-          {/* Residual (ri/acr/aes): context pack → Write twin_seed + path honesty. */}
+            ) : null;
+          })()}
+          {/* Residual (ri/acr/aes/aub): context pack → Write via pure readiness. */}
           {(() => {
+            const packOpen = researchContextPackOpenReadiness({
+              prompt_block: pack.prompt_block,
+              twin_count: pack.twin_count,
+              ref_count: pack.ref_count,
+            });
             const href = buildResearchContextWriteHref({
               assetId: pack.asset_id || assetId,
               spawnId: pack.spawn_id || spawnId,
@@ -780,7 +795,7 @@ export function ResearchContextPanel({
               twinCount: pack.twin_count,
               refCount: pack.ref_count,
             });
-            const hasBody = Boolean(String(pack.prompt_block || "").trim());
+            const hasBody = packOpen.write_ready;
             const packAsset = String(pack.asset_id || assetId || "").trim();
             const packSpawn = String(pack.spawn_id || spawnId || "").trim();
             return href ? (
@@ -789,11 +804,11 @@ export function ResearchContextPanel({
                   href={href}
                   data-testid="research-context-open-write"
                   data-view-format="html"
-                  data-html-first="true"
+                  data-html-first={String(packOpen.html_first)}
                   data-has-twin-seed="1"
                   data-write-seed-has-body={String(hasBody)}
-                  data-context-pack-open-ready={String(hasBody)}
-                  data-source="research_context_pack"
+                  data-context-pack-open-ready={String(packOpen.write_ready)}
+                  data-source={packOpen.source}
                   // Residual (aes): research context pack → Write path honesty.
                   data-asset-id={packAsset}
                   data-spawn-id={packSpawn}

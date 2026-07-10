@@ -1,0 +1,24 @@
+# inventory-aub · pure researchContextPackOpenReadiness
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aub
+date: 2026-07-10
+parent_tip: 4dcc8077c (aua)
+
+## Closed
+- workspace/researchContextPackOpenReadiness.ts pure helper
+  open_ready · write_ready · twin/ref counts · html_first · never_pdf ·
+  source=research_context_pack
+- ResearchContextPanel pack open float|full|Write driven by pure helper
+- Completes ResearchContext open-path pure matrix:
+  pack (aub) · evidence (aua) · search (aty) · hydrate (aty)
+- Never invent HTML open when prompt_block empty
+- vitest 24 green (3 pure + 21 panel) · aub-vitest.log in SCRATCH
+
+## Doctrine
+Recursive note-taker substrate pack → HTML open only with body · pure hard to vary
+
+## Next
+auc+ offline product residual outside thrash
+HARD AVOID pure-open-readiness thrash after aub/aua/aty · open-stamp · catalog · scorecard
+Prefer: model install depth · Midnight Oil product · competitive non-open residual
+Operator merge PR #465 remains P0 (gated)
