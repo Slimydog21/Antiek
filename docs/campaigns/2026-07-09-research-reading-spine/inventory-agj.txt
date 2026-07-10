@@ -1,0 +1,18 @@
+# inventory-agj · highlight Dialogue panel path honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: agj
+date: 2026-07-10
+parent_tip: 97330331 (agi)
+
+## Closed
+- floatmenu-dialogue-panel: seamless-highlight-dialogue · dialogue-status · has-model-reply
+- floatmenu-dialogue-failure: status=failure
+- floatmenu-dialogue-reply: source-kind=model
+- vitest FloatMenu · 28 passed
+
+## Why this residual
+Parity agi Note save path: dialogue wrestle path needs machine-readable
+panel/reply/failure honesty (user prompt vs model reply distinct).
+
+## Not in scope
+- Full multi-turn chat (one-shot remains honest)

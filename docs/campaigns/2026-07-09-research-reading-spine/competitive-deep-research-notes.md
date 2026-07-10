@@ -2553,3 +2553,9 @@ floor ≥18 · free computing ≥5. pytest marketplace+dogfood · Settings 36 gr
 FloatMenu Note panel stamps data-seamless-highlight-note · data-note-saved before
 and after save; saved chrome stamps data-source-kind=user. Completes highlight
 → recursive note-taker path for human marginalia. vitest FloatMenu 27 green.
+
+## Residual agj · 2026-07-10 — highlight Dialogue panel path honesty
+FloatMenu Dialogue panel stamps data-seamless-highlight-dialogue · dialogue-status
+idle|pending|replied|failure; model reply stamps data-source-kind=model. Failure
+path chrome separate. Completes highlight dialogue path with Note save (agi).
+vitest FloatMenu 28 green.

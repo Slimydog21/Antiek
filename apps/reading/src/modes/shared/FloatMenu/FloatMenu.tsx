@@ -548,18 +548,36 @@ function DialoguePanel({
 
   if (failure) {
     return (
-      <Panel title="Dialogue" onClose={onClose}>
-        <AIActionFailure
-          title="Couldn’t get a reply"
-          reason={failure.reason}
-          onRetry={() => setFailure(null)}
-          retryLabel="Try again"
-        />
-      </Panel>
+      <div
+        data-testid="floatmenu-dialogue-failure"
+        // Residual (agj): highlight → dialogue failure path honesty.
+        data-seamless-highlight-dialogue="true"
+        data-dialogue-status="failure"
+        data-view-format="html"
+      >
+        <Panel title="Dialogue" onClose={onClose}>
+          <AIActionFailure
+            title="Couldn’t get a reply"
+            reason={failure.reason}
+            onRetry={() => setFailure(null)}
+            retryLabel="Try again"
+          />
+        </Panel>
+      </div>
     );
   }
 
   return (
+    <div
+      data-testid="floatmenu-dialogue-panel"
+      // Residual (agj): highlight → dialogue path honesty.
+      data-seamless-highlight-dialogue="true"
+      data-view-format="html"
+      data-dialogue-status={
+        reply ? "replied" : pending ? "pending" : "idle"
+      }
+      data-has-model-reply={String(Boolean(reply))}
+    >
     <Panel title="Dialogue" onClose={onClose}>
       {/* The user's quoted selection — visibly USER-sourced. */}
       <blockquote className="text-moonlight italic border-l-edge border-sun pl-2 mb-1.5 line-clamp-3">
@@ -567,7 +585,11 @@ function DialoguePanel({
       </blockquote>
       {reply && (
         // The MODEL reply — labelled, never conflated with the user's words.
-        <div className="bg-shadow-2 rounded p-1.5 mb-1.5">
+        <div
+          className="bg-shadow-2 rounded p-1.5 mb-1.5"
+          data-testid="floatmenu-dialogue-reply"
+          data-source-kind="model"
+        >
           <span className="text-[10px] uppercase tracking-wider text-moonlight block mb-0.5">
             AI reply
           </span>
@@ -607,6 +629,7 @@ function DialoguePanel({
       </div>
       <p className="text-[10px] text-moonlight mt-1.5">One-shot reply (not a full chat) this sprint.</p>
     </Panel>
+    </div>
   );
 }
 

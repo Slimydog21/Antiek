@@ -585,12 +585,31 @@ describe("DIALOGUE keeps the user prompt distinct from the model reply (§9)", (
     render(<Host />);
     selectTextIn(screen.getByTestId("scope"), "discuss this");
     fireEvent.click(screen.getByRole("menuitem", { name: "Dialogue" }));
+    expect(screen.getByTestId("floatmenu-dialogue-panel").getAttribute("data-dialogue-status")).toBe(
+      "idle",
+    );
     const ask = screen.getByText("Ask");
     await act(async () => {
       fireEvent.click(ask);
     });
     // AIActionFailure renders role="alert" with the no-provider sentence.
     expect(screen.getByRole("alert").textContent).toMatch(/provider isn|no result/i);
+    // Residual (agj): failure path honesty.
+    const fail = screen.getByTestId("floatmenu-dialogue-failure");
+    expect(fail.getAttribute("data-seamless-highlight-dialogue")).toBe("true");
+    expect(fail.getAttribute("data-dialogue-status")).toBe("failure");
+    expect(fail.getAttribute("data-view-format")).toBe("html");
+  });
+
+  it("stamps Dialogue panel path honesty on open (agj)", () => {
+    render(<Host />);
+    selectTextIn(screen.getByTestId("scope"), "dialogue path");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Dialogue" }));
+    const panel = screen.getByTestId("floatmenu-dialogue-panel");
+    expect(panel.getAttribute("data-seamless-highlight-dialogue")).toBe("true");
+    expect(panel.getAttribute("data-view-format")).toBe("html");
+    expect(panel.getAttribute("data-dialogue-status")).toBe("idle");
+    expect(panel.getAttribute("data-has-model-reply")).toBe("false");
   });
 });
 
