@@ -46,6 +46,8 @@
  * research_domains= (parity twin chase aoc · marketplace domains= · never invent).
  * Residual (apj): midnight_oil_deposit twin seed path honesty on float host
  * (parity aiz collective unit · FUTURE twin matrix gap #1 · offline · L4 deferred).
+ * Residual (apk): marketplace_host twin seed free/purchased path honesty on float
+ * (parity aho mode seed · apj MO float · L5 live payment deferred).
  *
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
  */
@@ -96,6 +98,11 @@ export type HostedHtmlDocumentHostProps = {
   license_class?: string;
   owner_id?: string;
   source?: string;
+  /**
+   * Residual (apk): free vs purchased honesty when source=marketplace_host
+   * (or library/rehydrate). Null/undefined → path-unknown (never invent free).
+   */
+  is_free?: boolean | null;
   /** Residual (ahr): research-domain subjects for intelligent search default. */
   subjects?: string[] | null;
   /** Residual (tq): intelligent search query when source=context_search. */
@@ -371,6 +378,21 @@ export default function HostedHtmlDocumentHost(
   // Residual (aaj): filter-aware catalog HTML projection (not a hosted book).
   const isMarketplaceCatalog = payloadSource === "marketplace_catalog";
   const isMidnightOilDeposit = payloadSource === "midnight_oil_deposit";
+  // Residual (apk): free/purchased path class for marketplace float twin seed.
+  const marketplaceIsFree =
+    props.is_free === true
+      ? true
+      : props.is_free === false
+        ? false
+        : (props.license_class || "").toLowerCase() === "public_domain"
+          ? true
+          : null;
+  const marketplacePathKind =
+    marketplaceIsFree === true
+      ? "free"
+      : marketplaceIsFree === false
+        ? "purchased"
+        : "unknown";
   // Residual (tq): intelligent search query + hit count honesty.
   const searchQuery = String(props.search_query || "").trim();
   const searchHitCount =
@@ -453,7 +475,26 @@ export default function HostedHtmlDocumentHost(
           .filter(Boolean)
           .join("\n")
           .slice(0, 900)
-      : twinSeedBodyBase;
+      : isMarketplaceHost
+        ? [
+            twinSeedBodyBase,
+            "",
+            marketplaceIsFree === true
+              ? "Port path: free/public-domain HTML host into account (seamless port · never invent entitlement · free_count honesty)."
+              : marketplaceIsFree === false
+                ? "Port path: purchased HTML host via manual receipt (L5 live payment deferred · never invent entitlement · is_free=false)."
+                : "Port path: marketplace hosted HTML (free/purchased class unknown · never invent free entitlement · L5 live payment deferred).",
+            assetId ? `document_id=${assetId}` : "",
+            props.license_class
+              ? `license_class=${props.license_class}`
+              : "",
+            `path_kind=${marketplacePathKind}`,
+            `source=${payloadSource || "marketplace_host"} · HTML-first · twin auto-seed if empty · recursive note-taker.`,
+          ]
+            .filter(Boolean)
+            .join("\n")
+            .slice(0, 900)
+        : twinSeedBodyBase;
 
   return (
     <div
@@ -482,6 +523,13 @@ export default function HostedHtmlDocumentHost(
         isCollectiveUnitPrompt && spawnCount != null ? String(spawnCount) : ""
       }
       data-midnight-oil-deposit={String(isMidnightOilDeposit)}
+      data-marketplace-host={String(isMarketplaceHost)}
+      data-marketplace-path-kind={isMarketplaceHost ? marketplacePathKind : ""}
+      data-is-free={
+        isMarketplaceHost && marketplaceIsFree != null
+          ? String(marketplaceIsFree)
+          : ""
+      }
       data-research-progress={String(isResearchProgress)}
       data-session-flywheel={String(isSessionFlywheel)}
     >
@@ -652,6 +700,61 @@ export default function HostedHtmlDocumentHost(
                     title="Dual-gate L4 Midnight Oil live worker step (operator only)"
                   >
                     Dual-gate · L4 MO live
+                  </a>
+                </p>
+              </div>
+            ) : null}
+            {/* Residual (apk): marketplace host float free/purchased twin seed honesty. */}
+            {isMarketplaceHost ? (
+              <div
+                className="text-[11px] font-mono opacity-80 mt-1 space-y-1"
+                data-testid="hosted-html-marketplace-host-honesty"
+                data-twin-seed-path={payloadSource || "marketplace_host"}
+                data-path-kind={marketplacePathKind}
+                data-is-free={
+                  marketplaceIsFree != null ? String(marketplaceIsFree) : ""
+                }
+                data-auto-seed-if-empty="true"
+                data-l5-live-payment="deferred"
+                data-html-first="true"
+                data-view-format="html"
+                role="status"
+              >
+                <p>
+                  Marketplace host
+                  {marketplacePathKind === "free"
+                    ? " · free/public-domain path"
+                    : marketplacePathKind === "purchased"
+                      ? " · purchased path (manual receipt)"
+                      : " · free/purchased class unknown"}{" "}
+                  · seamless port into account · twin auto-seed if empty
+                  (recursive note-taker) · L5 live payment deferred · never
+                  invent entitlement · HTML · not PDF
+                </p>
+                <p className="space-x-3">
+                  <a
+                    href="/settings#settings-competitive-dr-scorecard"
+                    data-testid="hosted-html-marketplace-host-scorecard-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="Settings competitive DR scorecard (HTML-first books · marketplace host)"
+                  >
+                    Settings · competitive DR scorecard
+                  </a>
+                  <a
+                    href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-l5-digital-book-seamless-port.md"
+                    data-testid="hosted-html-marketplace-host-l5-future-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="FUTURE-AGENT L5 digital book seamless port brief"
+                  >
+                    FUTURE · L5 seamless port
+                  </a>
+                  <a
+                    href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l5-payment"
+                    data-testid="hosted-html-marketplace-host-dual-gate-l5-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="Dual-gate L5 payment rails (operator only)"
+                  >
+                    Dual-gate · L5 payment
                   </a>
                 </p>
               </div>
@@ -1072,17 +1175,24 @@ export default function HostedHtmlDocumentHost(
           data-context-search={String(isContextSearch)}
           data-collective-unit-prompt={String(isCollectiveUnitPrompt)}
           data-midnight-oil-deposit={String(isMidnightOilDeposit)}
+          data-marketplace-host={String(isMarketplaceHost)}
+          data-marketplace-path-kind={isMarketplaceHost ? marketplacePathKind : ""}
           data-auto-seed-if-empty="true"
         >
           {/* Residual (ez): remount twins with context refresh key. */}
           {/* Residual (sh): evidence_pack seed title for recursive note-taker. */}
           {/* Residual (aiz): collective_unit_prompt twin seed path honesty. */}
           {/* Residual (apj): midnight_oil_deposit twin seed path honesty. */}
+          {/* Residual (apk): marketplace_host free/purchased twin seed path honesty. */}
           <div
             data-testid="hosted-html-twins-refresh"
             data-refresh-key={String(contextRefreshKey)}
             data-collective-unit-prompt={String(isCollectiveUnitPrompt)}
             data-midnight-oil-deposit={String(isMidnightOilDeposit)}
+            data-marketplace-host={String(isMarketplaceHost)}
+            data-marketplace-path-kind={
+              isMarketplaceHost ? marketplacePathKind : ""
+            }
           >
             <TwinNotesPanel
               key={`twins-${assetId}-${contextRefreshKey}`}

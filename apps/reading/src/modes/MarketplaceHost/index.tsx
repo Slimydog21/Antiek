@@ -523,15 +523,23 @@ export default function MarketplaceHost({
     /** Residual (ahr): research-domain subjects for twin intelligent search default. */
     subjects?: string[] | null;
     book_id?: string | null;
+    /** Residual (apk): free vs purchased honesty for HostedHtml float twin seed. */
+    is_free?: boolean | null;
   }) {
     if ((opts.view_format || "html") !== "html" || !opts.html) return;
     // Residual (ahr): resolve subjects from catalog entry when book_id known.
+    const catalogEntry = opts.book_id
+      ? entries.find((e) => e.book_id === opts.book_id)
+      : undefined;
     const fromCatalog =
-      opts.subjects ||
-      (opts.book_id
-        ? entries.find((e) => e.book_id === opts.book_id)?.subjects
-        : null) ||
-      null;
+      opts.subjects || catalogEntry?.subjects || null;
+    // Residual (apk): resolve is_free from opts or catalog (never invent free).
+    const resolvedIsFree =
+      opts.is_free === true || opts.is_free === false
+        ? opts.is_free
+        : catalogEntry?.is_free === true || catalogEntry?.is_free === false
+          ? catalogEntry.is_free
+          : null;
     openWindow(
       "hosted_html_document",
       {
@@ -543,6 +551,7 @@ export default function MarketplaceHost({
         owner_id: opts.owner_id,
         source: opts.source || "marketplace_host",
         subjects: fromCatalog || undefined,
+        is_free: resolvedIsFree,
       },
       {
         id: `win:hosted:${opts.document_id}`,
@@ -965,6 +974,9 @@ export default function MarketplaceHost({
           owner_id: result.owner_id,
           source: "marketplace_host",
           book_id: result.book_id,
+          // Residual (apk): free host path honesty into float twin seed.
+          is_free:
+            entries.find((e) => e.book_id === bookId)?.is_free ?? true,
         });
       }
     } catch (e) {
@@ -1011,6 +1023,8 @@ export default function MarketplaceHost({
           source: "marketplace_host",
           book_id: result.book_id || entry.book_id,
           subjects: entry.subjects || null,
+          // Residual (apk): purchased path never claims free.
+          is_free: false,
         });
       }
     } catch (e) {
@@ -2130,6 +2144,11 @@ export default function MarketplaceHost({
                   license_class: hosted.license_class,
                   owner_id: hosted.owner_id,
                   source: "marketplace_host",
+                  book_id: hosted.book_id,
+                  // Residual (apk): resolve free/purchased for float twin seed.
+                  is_free:
+                    entries.find((e) => e.book_id === hosted.book_id)
+                      ?.is_free ?? null,
                 });
               }}
               className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"

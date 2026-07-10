@@ -352,6 +352,86 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     ).toMatch(/Midnight Oil deposit/i);
   });
 
+  it("stamps marketplace_host free twin seed path honesty (apk)", () => {
+    render(
+      <HostedHtmlDocumentHost
+        document_id="hdoc_free_apk"
+        title="Fourier free PD"
+        view_format="html"
+        source="marketplace_host"
+        license_class="public_domain"
+        is_free={true}
+        html='<article><h1>Fourier</h1><p>Free PD body.</p></article>'
+      />,
+    );
+    const host = screen.getByTestId("hosted-html-document-host");
+    expect(host.getAttribute("data-marketplace-host")).toBe("true");
+    expect(host.getAttribute("data-marketplace-path-kind")).toBe("free");
+    expect(host.getAttribute("data-is-free")).toBe("true");
+    const honesty = screen.getByTestId("hosted-html-marketplace-host-honesty");
+    expect(honesty.getAttribute("data-path-kind")).toBe("free");
+    expect(honesty.getAttribute("data-is-free")).toBe("true");
+    expect(honesty.getAttribute("data-l5-live-payment")).toBe("deferred");
+    expect(honesty.textContent).toMatch(/free\/public-domain path/i);
+    expect(honesty.textContent).toMatch(/twin auto-seed if empty/i);
+    expect(honesty.textContent).toMatch(/never invent entitlement/i);
+    expect(
+      screen
+        .getByTestId("hosted-html-marketplace-host-l5-future-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-l5-digital-book-seamless-port/);
+    expect(
+      screen
+        .getByTestId("hosted-html-marketplace-host-dual-gate-l5-link")
+        .getAttribute("href") || "",
+    ).toMatch(/#l5-payment/);
+    const twins = screen.getByTestId("twin-notes-panel-stub");
+    expect(twins.getAttribute("data-seed-title") || "").toMatch(
+      /Marketplace host/,
+    );
+    expect(twins.getAttribute("data-seed-body") || "").toMatch(
+      /free\/public-domain HTML host/i,
+    );
+    expect(twins.getAttribute("data-seed-body") || "").toMatch(
+      /path_kind=free/,
+    );
+    expect(
+      screen.getByTestId("hosted-html-twins-mount").getAttribute(
+        "data-marketplace-path-kind",
+      ),
+    ).toBe("free");
+  });
+
+  it("stamps marketplace_host purchased twin seed path honesty (apk)", () => {
+    render(
+      <HostedHtmlDocumentHost
+        document_id="hdoc_paid_apk"
+        title="Purchased title"
+        view_format="html"
+        source="marketplace_host"
+        is_free={false}
+        html="<p>Purchased body after manual receipt.</p>"
+      />,
+    );
+    const host = screen.getByTestId("hosted-html-document-host");
+    expect(host.getAttribute("data-marketplace-path-kind")).toBe("purchased");
+    expect(host.getAttribute("data-is-free")).toBe("false");
+    const honesty = screen.getByTestId("hosted-html-marketplace-host-honesty");
+    expect(honesty.getAttribute("data-path-kind")).toBe("purchased");
+    expect(honesty.textContent).toMatch(/purchased path/i);
+    expect(honesty.textContent).toMatch(/manual receipt/i);
+    const twins = screen.getByTestId("twin-notes-panel-stub");
+    expect(twins.getAttribute("data-seed-body") || "").toMatch(
+      /purchased HTML host via manual receipt/i,
+    );
+    expect(twins.getAttribute("data-seed-body") || "").toMatch(
+      /L5 live payment deferred/i,
+    );
+    expect(twins.getAttribute("data-seed-body") || "").toMatch(
+      /path_kind=purchased/,
+    );
+  });
+
   it("stamps midnight_oil_deposit twin seed path honesty (apj)", () => {
     render(
       <HostedHtmlDocumentHost

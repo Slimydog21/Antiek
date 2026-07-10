@@ -3761,3 +3761,8 @@ midnight_oil_deposit float: twin seed Port path + honesty chrome (L4 deferred ·
 auto-seed · free/purchased/MO · HTML-first) · twin matrix + scorecard + dual-gate L4
 deep-links. Closes FUTURE twin completeness gap #1 float path (parity aiz).
 vitest HostedHtmlDocumentHost 28 green. P0 PR #465. Pivot apk+ outside thrash.
+
+## Residual apk · 2026-07-10 — HostedHtml marketplace free/purchased twin seed honesty
+marketplace_host float: free vs purchased Port path + honesty chrome (L5 deferred ·
+never invent entitlement) · openHostedWindow passes is_free. Parity aho mode seed · apj MO float.
+vitest HostedHtmlDocumentHost 30 green. P0 PR #465. Pivot apl+ outside thrash.
