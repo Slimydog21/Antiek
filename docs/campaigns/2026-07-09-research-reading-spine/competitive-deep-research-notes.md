@@ -947,3 +947,9 @@ Decision-tree panel mounts offline-honest L1–L4 dual-gate prep links
 (hydrate / twin seed / MO checklist / ND advisory). Competitive delta:
 operators see live-injector readiness without silent enable — dual-gate
 remains operator-owned.
+
+## Residual sy · 2026-07-10 — Write-seed source list parity gate
+Pytest asserts apps/reading WRITE_SEED_FEED_SOURCES equals substrate
+TWIN_WRITE_SEED_USAGE_SOURCES. Competitive delta: recursive note-taker →
+Write feed honesty cannot silently diverge between Settings UI and weekly
+rewrite aggregation.

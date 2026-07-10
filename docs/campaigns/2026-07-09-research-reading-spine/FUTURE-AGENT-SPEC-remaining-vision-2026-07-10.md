@@ -17,13 +17,15 @@ Engagement spine on this branch includes everything below. Prefer **inventory-ss
 - MO knowledge-dense pub refs · dual-gate L1–L4 checklists (prep only)  
 - NotDiamond **advisory only** (L7 forever)
 
-### Closed this infinite wave (rt–sr · 2026-07-10)
+### Closed this infinite wave (rt–sw · 2026-07-10)
 
 | Arc | Residuals | What |
 |---|---|---|
 | Write-seed honesty SSOT | **rt–rz** | `WRITE_SEED_FEED_SOURCES` · Settings primary/known/ranked/usage · substrate `write_seed_*` aggregates · HTML projection |
-| Driver budget foresight | **sa–se, sp–sr** | Decision-tree budget bar + mini projection · deep-links · hash scroll · leaderboard + suite proposal links |
+| Driver budget foresight | **sa–se, sp–sw** | Decision-tree budget bar + mini projection · deep-links · hash scroll · leaderboard + suite + dogfood + dual-gate prep |
 | HTML reading flywheel | **sf–so** | Evidence / context search / hydrate / context pack / progress / flywheel → float\|full HTML + host twin-seed honesty |
+| Competitive dogfood v2 | **st–su** | write-seed / float-evidence / budget-foresight postures + Settings honesty |
+| Dual-gate prep strip | **sw** | L1–L4 offline-honest links · L7 ND advisory only |
 
 Key modules:
 - `apps/reading/src/lib/writeSeedFeedSources.ts`

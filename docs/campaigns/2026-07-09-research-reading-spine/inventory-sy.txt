@@ -1,0 +1,16 @@
+# inventory-sy · Write-seed frontend/backend parity test
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: sy
+date: 2026-07-10
+
+## Closed
+- tests/test_write_seed_sources_parity_sy.py
+- WRITE_SEED_FEED_SOURCES (TS) ≡ TWIN_WRITE_SEED_USAGE_SOURCES (Python)
+- pytest 1 passed · SCRATCH residual-tests-sy.log
+
+## Why
+Settings honesty chrome must not drift from substrate SSOT after rt–rz.
+Hard-to-vary craftsmanship: one residual letter prevents silent dual lists.
+
+## Not in scope
+- Operator merge PR #465 (gated)
