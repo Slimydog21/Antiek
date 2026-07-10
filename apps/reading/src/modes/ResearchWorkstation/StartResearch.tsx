@@ -232,6 +232,12 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
     reset,
   } = start;
 
+  // Snapshot the exact operator text before the async POST. A successful POST
+  // clears the composer immediately, while a terminal failure can arrive on
+  // the event stream in the same React batch; relying on the question-state
+  // effect alone makes recovery scheduler-order dependent.
+  const lastQuestionRef = useRef("");
+
   const onSubmit = useCallback(async () => {
     if (budgetWarn && !forceOverBudget) {
       // Soft gate — do not start investigation without explicit force.
@@ -251,6 +257,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
       );
       launchQuestion = questionWithPublicationRefs(question, refs);
     }
+    lastQuestionRef.current = question;
     const id = await submit({
       question: launchQuestion,
       researchTier: tier,
@@ -377,7 +384,6 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   // On failure, restore the question the operator typed so the run is
   // recoverable. (onSubmit clears it only on a successful POST; but the run
   // can fail *after* the POST returned an id, so we re-seed it here.)
-  const lastQuestionRef = useRef("");
   useEffect(() => {
     if (question) lastQuestionRef.current = question;
   }, [question]);
