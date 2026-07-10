@@ -1977,6 +1977,156 @@ describe("MarketplaceHost mode", () => {
     expect(call.goal_hint).toMatch(/Electromagnetic Theory/);
   });
 
+  it("hosts Shannon free PD with information_theory subjects on host land (wd)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-shannon-communication",
+          title: "A Mathematical Theory of Communication",
+          author: "Claude E. Shannon",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: [
+            "mathematics",
+            "science",
+            "technology",
+            "computing",
+            "information_theory",
+            "engineering",
+          ],
+        },
+      ],
+      count: 1,
+      view_format: "html",
+      free_count: 1,
+      public_domain_count: 1,
+      by_subject: {
+        computing: 1,
+        information_theory: 1,
+        mathematics: 1,
+      },
+      payment_rails: "manual_receipt_only",
+    });
+    hostBookIntoAccount.mockResolvedValue({
+      document_id: "hdoc_shannon",
+      owner_id: "tech-researcher",
+      book_id: "pd-shannon-communication",
+      content_hash: "s1",
+      title: "A Mathematical Theory of Communication",
+      license_class: "public_domain",
+      already_hosted: false,
+      source_format: "html",
+      library_document_ids: ["hdoc_shannon"],
+      view_format: "html",
+      html: "<p>Shannon entropy and the fundamental problem of communication</p>",
+    });
+    fetchAccountLibrary.mockResolvedValue({
+      owner_id: "tech-researcher",
+      documents: [],
+      count: 0,
+      view_format: "html",
+      html: "<p>Library Shannon</p>",
+    });
+    render(<MarketplaceHost ownerId="tech-researcher" />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("catalog-entry-pd-shannon-communication"),
+      ).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /host into account/i }));
+    await waitFor(() => {
+      expect(hostBookIntoAccount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          owner_id: "tech-researcher",
+          book_id: "pd-shannon-communication",
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("marketplace-host-metrics")).toBeTruthy();
+    });
+    const hostMetrics = screen.getByTestId("marketplace-host-metrics");
+    expect(hostMetrics.getAttribute("data-subjects")).toMatch(/information_theory/);
+    expect(hostMetrics.getAttribute("data-subjects")).toMatch(/computing/);
+    expect(
+      screen.getByTestId("marketplace-host-free-pd-honesty").textContent,
+    ).toMatch(/free_host=true/);
+  });
+
+  it("launches Shannon DR with computing+information_theory domains in goal_hint (wd)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-shannon-communication",
+          title: "A Mathematical Theory of Communication",
+          author: "Claude E. Shannon",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: [
+            "mathematics",
+            "science",
+            "technology",
+            "computing",
+            "information_theory",
+            "engineering",
+          ],
+        },
+      ],
+      count: 1,
+      view_format: "html",
+      free_count: 1,
+      public_domain_count: 1,
+      payment_rails: "manual_receipt_only",
+    });
+    hostBookIntoAccount.mockResolvedValue({
+      document_id: "hdoc_shannon_dr",
+      owner_id: "tech-researcher",
+      book_id: "pd-shannon-communication",
+      content_hash: "s2",
+      title: "A Mathematical Theory of Communication",
+      license_class: "public_domain",
+      already_hosted: false,
+      source_format: "html",
+      library_document_ids: ["hdoc_shannon_dr"],
+      view_format: "html",
+      html: "<p>Logarithmic information measure and communication channels</p>",
+    });
+    fetchAccountLibrary.mockResolvedValue({
+      owner_id: "tech-researcher",
+      documents: [],
+      count: 0,
+      view_format: "html",
+      html: "",
+    });
+    render(<MarketplaceHost ownerId="tech-researcher" />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("catalog-entry-pd-shannon-communication"),
+      ).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /host into account/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId("marketplace-host-deep-research")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("marketplace-host-deep-research"));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalled();
+    });
+    const call = launchFloatingDeepResearch.mock.calls.at(-1)?.[0] as {
+      asset_id: string;
+      goal_hint: string;
+      view_mode: string;
+    };
+    expect(call.asset_id).toBe("hdoc_shannon_dr");
+    expect(call.view_mode).toBe("floating");
+    expect(call.goal_hint).toMatch(/domains=.*computing/);
+    expect(call.goal_hint).toMatch(/domains=.*information_theory/);
+    expect(call.goal_hint).toMatch(/marketplace HTML host/);
+    expect(call.goal_hint).toMatch(/Mathematical Theory of Communication/);
+  });
+
   it("grounds marketplace DR with optional arxiv pub refs (uu)", async () => {
     fetchMarketplaceCatalog.mockResolvedValue({
       entries: [

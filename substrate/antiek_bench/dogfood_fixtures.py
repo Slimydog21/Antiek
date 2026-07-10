@@ -21,7 +21,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (us): v7 adds wrestle citation-trust ungrounded hydrate prep.
 # Residual (ve): v8 adds wrestle twin_cross_asset_merge Write seed posture.
 # Residual (vl): v9 adds wrestle collective_written_analysis Write seed posture.
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v9"
+# Residual (wd): v10 adds book_qa information theory (Shannon free PD).
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v10"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -246,6 +247,25 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "analysis",
                 "twin_seed",
                 "write",
+                "html",
+            ),
+        ),
+        # Residual (wd): free information-theory PD → book_qa (Shannon).
+        SuiteItem(
+            item_id="dogfood-book-shannon-communication",
+            task_class="book_qa",
+            prompt=(
+                "From Shannon A Mathematical Theory of Communication (free PD HTML): "
+                "what is the fundamental problem of communication, how does logarithmic "
+                "information measure relate to entropy, and why does free public-domain "
+                "hosting of foundational information-theory texts matter for technology "
+                "research workstations?"
+            ),
+            expected_keywords=(
+                "shannon",
+                "information",
+                "entropy",
+                "communication",
                 "html",
             ),
         ),

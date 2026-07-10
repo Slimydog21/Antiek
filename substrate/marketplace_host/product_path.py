@@ -545,6 +545,33 @@ def default_demo_catalog() -> Catalog:
                     "engineering",
                 ),
             ),
+            # Residual (wd): information theory / computing PD for tech researchers.
+            CatalogEntry(
+                book_id="pd-shannon-communication",
+                title="A Mathematical Theory of Communication",
+                author="Claude E. Shannon",
+                source="project_gutenberg",
+                license_class="public_domain",
+                is_free=True,
+                body_text=(
+                    "The fundamental problem of communication is that of reproducing "
+                    "at one point either exactly or approximately a message selected "
+                    "at another point.\n\n"
+                    "Information is a measure of one's freedom of choice when one "
+                    "selects a message; the logarithmic measure is chosen for its "
+                    "practical convenience and for its relation to the entropy of "
+                    "thermodynamics."
+                ),
+                source_format="html",
+                subjects=(
+                    "mathematics",
+                    "science",
+                    "technology",
+                    "computing",
+                    "information_theory",
+                    "engineering",
+                ),
+            ),
             CatalogEntry(
                 book_id="buy-modern",
                 title="Modern Systems Research",

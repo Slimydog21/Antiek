@@ -1370,3 +1370,9 @@ Replaced stale "Coming later" with Deferred (honest): L1–L4 dual-gate, L5/L6
 deferred, L7 never-router, vault polish, keyboard map — plus shipped offline
 spine note. Competitive delta: Settings never mislabels complete MO/bench as
 backlog (propose≠rebuild thrash).
+
+## Residual wd · 2026-07-10 — Shannon free PD + dogfood v10
+Catalog hosts A Mathematical Theory of Communication (HTML free PD) with
+computing + information_theory subjects; dogfood v10 book_qa Shannon;
+Settings posture honesty. Competitive delta: tech-researcher STEM spine now
+covers electricity + logic + information theory on HTML-first free path.

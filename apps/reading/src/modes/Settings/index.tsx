@@ -2078,6 +2078,11 @@ export default function Settings() {
                     (it) => it.item_id === "dogfood-book-heaviside-em",
                   ),
                 )}
+                data-has-shannon-book-qa-posture={String(
+                  (dogfood.items || []).some(
+                    (it) => it.item_id === "dogfood-book-shannon-communication",
+                  ),
+                )}
                 data-has-citation-trust-ungrounded-posture={String(
                   (dogfood.items || []).some(
                     (it) =>
@@ -2109,7 +2114,7 @@ export default function Settings() {
                   value={String(dogfood.auto_promoted)}
                 />
                 <Row label="View" value={dogfood.view_format} />
-                {/* Residual (su/tv/tz/ud/us/ve/vl): posture honesty for recursive rewrite. */}
+                {/* Residual (su/tv/tz/ud/us/ve/vl/wd): posture honesty for recursive rewrite. */}
                 {(dogfood.items || []).some((it) =>
                   [
                     "dogfood-wrestle-write-seed",
@@ -2119,6 +2124,7 @@ export default function Settings() {
                     "dogfood-wrestle-collective-unit-write-seed",
                     "dogfood-book-boole-laws-of-thought",
                     "dogfood-book-heaviside-em",
+                    "dogfood-book-shannon-communication",
                     "dogfood-wrestle-citation-trust-ungrounded",
                     "dogfood-wrestle-twin-cross-asset-merge-write-seed",
                     "dogfood-wrestle-collective-written-analysis-write-seed",
@@ -2129,12 +2135,12 @@ export default function Settings() {
                     data-testid="antiek-bench-dogfood-v2-postures"
                     role="status"
                   >
-                    Spine postures (v9): write-seed · float evidence · budget
+                    Spine postures (v10): write-seed · float evidence · budget
                     foresight · Faraday book_qa · collective unit write-seed ·
-                    Boole book_qa · Heaviside book_qa · citation-trust
-                    ungrounded · twin cross-asset merge write-seed · collective
-                    written analysis write-seed (listing only · not
-                    auto-promoted)
+                    Boole book_qa · Heaviside book_qa · Shannon book_qa ·
+                    citation-trust ungrounded · twin cross-asset merge
+                    write-seed · collective written analysis write-seed
+                    (listing only · not auto-promoted)
                   </p>
                 ) : null}
                 <ul data-testid="antiek-bench-dogfood-classes" className="space-y-1">

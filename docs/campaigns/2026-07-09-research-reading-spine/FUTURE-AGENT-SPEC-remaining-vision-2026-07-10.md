@@ -1,20 +1,20 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** `f22c2b75` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
+**Campaign tip at write:** `9afdcba4` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **URL:** https://github.com/Slimydog21/Antiek/pull/465  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
 
 ## Do not rebuild
 
-Prefer **SESSION-ARC-tt-vt-infinite-wave.md** + inventories **tt–wc** + competitive notes. Tip letters **tt–wc** (62 residual ships including tip re-anchors).
+Prefer **SESSION-ARC-tt-vt-infinite-wave.md** + inventories **tt–wd** + competitive notes. Tip letters **tt–wd** (63 residual ships including tip re-anchors).
 
 ### Closed product (high signal)
 
 | Theme | Status |
 |---|---|
 | Write-seed SSOT | known_count **17** · full hosted Open Write provenance matrix + tests |
-| Free STEM marketplace | Boole · Heaviside · host+DR+dogfood |
+| Free STEM marketplace | Boole · Heaviside · **Shannon** · host+DR+dogfood v10 |
 | Multi-float Select open | all surfaces |
 | Midnight Oil foresight | L4 · remaining-after · hydrate Settings |
 | Launch budget foresight | remaining-after-prompt on ResearchLaunchBudgetPanel (wa) |
@@ -22,7 +22,7 @@ Prefer **SESSION-ARC-tt-vt-infinite-wave.md** + inventories **tt–wc** + compet
 | arxiv/substack honesty | full matrix |
 | Marketplace L5 | manual_receipt_only + Settings L5 deferred |
 | Collective L6 | deferred · offline merge unit only (vx panel + vz Settings dual-gate) |
-| Dogfood recursive | **v4–v9** propose≠promote |
+| Dogfood recursive | **v4–v10** propose≠promote |
 
 ### P0 — Operator merge PR #465
 **Highest leverage remaining.** Agents never merge main/prod.

@@ -80,7 +80,9 @@ def test_stem_pd_spine_in_demo_catalog() -> None:
     assert "pd-boole-laws-of-thought" in ids
     # Residual (ub): Heaviside electromagnetic theory electricity STEM.
     assert "pd-heaviside-em" in ids
-    assert len(ids) >= 14
+    # Residual (wd): Shannon mathematical theory of communication.
+    assert "pd-shannon-communication" in ids
+    assert len(ids) >= 15
     elements = cat.get("pd-elements")
     assert elements is not None
     assert elements.license_class == "public_domain"
@@ -117,6 +119,27 @@ def test_stem_electricity_subjects_and_free_pd() -> None:
     assert any(e.book_id == "pd-maxwell-em" for e in physics)
     assert faraday.source_format == "html"
     assert maxwell.source_format == "html"
+
+
+def test_shannon_information_theory_subjects_and_free_pd() -> None:
+    """Residual (wd): Shannon tagged computing+information_theory, free PD."""
+    cat = default_demo_catalog()
+    shannon = cat.get("pd-shannon-communication")
+    assert shannon is not None
+    assert shannon.license_class == "public_domain"
+    assert shannon.is_free is True
+    assert shannon.source == "project_gutenberg"
+    assert shannon.source_format == "html"
+    assert "computing" in shannon.subjects
+    assert "information_theory" in shannon.subjects
+    assert "technology" in shannon.subjects
+    info = cat.filter_by_subject("information_theory")
+    assert {e.book_id for e in info} >= {"pd-shannon-communication"}
+    computing = cat.filter_by_subject("computing")
+    assert {e.book_id for e in computing} >= {
+        "pd-boole-laws-of-thought",
+        "pd-shannon-communication",
+    }
 
 
 def test_boole_computing_logic_pd_html_first() -> None:
