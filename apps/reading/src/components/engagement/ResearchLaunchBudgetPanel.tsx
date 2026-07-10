@@ -242,15 +242,16 @@ export function ResearchLaunchBudgetPanel({
             Settings · driver
           </a>
           {/* Residual (nu/ym): dual-gate prep on shared launch budget chokepoint. */}
+          {/* Residual (aaz): deep-link #l7-notdiamond (parity DecisionTreeDriverBadge). */}
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l7-notdiamond"
             data-testid="research-launch-budget-dual-gate-checklist-link"
             data-offline-default="true"
             data-l7-notdiamond="advisory_only"
             className="text-[10px] font-mono underline opacity-80 hover:opacity-100"
-            title="Dual-gate L1–L7 checklist entry (offline default · ND advisory only · never silent live)"
+            title="Dual-gate L7 NotDiamond advisory-only checklist (offline default · never dispatch authority)"
           >
-            Dual-gate
+            Dual-gate L7 ND advisory
           </a>
           {busy ? (
             <span className="text-[10px] font-mono text-ink-mute">projecting…</span>

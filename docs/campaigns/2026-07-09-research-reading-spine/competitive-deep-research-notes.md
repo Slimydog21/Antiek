@@ -1952,3 +1952,8 @@ Free science subject set len ≥6 all free PD HTML (Origin · Principia · Eleme
 Novum · Faraday · Shannon). Competitive delta: cross-domain science filter is a
 non-trivial free STEM corpus for tech researchers (parity physics/math).
 
+## Residual aaz · 2026-07-10 — L7 ND advisory dual-gate deep-link on chokepoints
+DecisionTreeDriverBadge + ResearchLaunchBudgetPanel dual-gate links deep-link
+#l7-notdiamond (advisory only · never dispatch authority). Competitive delta:
+shared driver+budget chokepoints land operators on ND-never-router doctrine.
+

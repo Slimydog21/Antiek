@@ -188,15 +188,17 @@ export function DecisionTreeDriverBadge({
           ND advisory
         </a>
         {/* Residual (oa/yl): dual-gate prep on shared driver+budget chokepoint. */}
+        {/* Residual (aaz): deep-link #l7-notdiamond — badge stamps advisory_only L7;
+            root checklist alone did not land operators on ND-never-router doctrine. */}
         <a
-          href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+          href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l7-notdiamond"
           data-testid="decision-tree-dual-gate-checklist-link"
           data-offline-default="true"
           data-l7-notdiamond="advisory_only"
           className="underline opacity-80 hover:opacity-100"
-          title="Dual-gate L1–L7 checklist entry (offline default · ND advisory only · never silent live)"
+          title="Dual-gate L7 NotDiamond advisory-only checklist (offline default · never dispatch authority)"
         >
-          Dual-gate
+          Dual-gate L7 ND advisory
         </a>
       </div>
 
