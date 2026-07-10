@@ -1665,3 +1665,7 @@ implies silent live injectors or ND dispatch authority.
 ResearchLaunchBudget dual-gate entry stamps offline-default and L7 ND
 advisory-only (parity DecisionTree yl). Competitive delta: shared launch
 budget chokepoint never implies silent live injectors or ND dispatch authority.
+
+## Residual yn · 2026-07-10 — FUTURE-AGENT tip re-anchor through ym
+FUTURE-AGENT-SPEC tip re-anchored after 67 residual ships this continuation.
+Competitive delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
