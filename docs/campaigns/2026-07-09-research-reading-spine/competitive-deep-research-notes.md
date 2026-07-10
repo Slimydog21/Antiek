@@ -4153,3 +4153,9 @@ install · MO offline run CTAs. P0 PR #465. Pivot asg+ outside thrash.
 expand-full / restore-floating stamp + gate pathChoices.float_full_ready ·
 HTML-first. Competitive delta: highlight→float→full path hard-to-vary pure
 contract. vitest DeepResearchSessionHost 34 green. P0 PR #465. Pivot ash+.
+
+## Residual ash · 2026-07-10 — offline catalog += readiness→CTA wave
+COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES += publication_attach_readiness ·
+decision_tree_install_model_gate · readiness_cta_free_host_twin_path_moil ·
+written_analysis_multi_agent_path · highlight_float_full_path_choices.
+Scorecard inherits. vitest 5 green. P0 PR #465. Pivot asi+ outside thrash.

@@ -77,6 +77,19 @@ describe("competitiveDrQuality workspace pure helpers (apw)", () => {
     expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
       "twin_substrate_insights_questions",
     );
+    // Residual (ash): asb–asg readiness→CTA competitive surfaces.
+    expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
+      "publication_attach_readiness",
+    );
+    expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
+      "decision_tree_install_model_gate",
+    );
+    expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
+      "written_analysis_multi_agent_path",
+    );
+    expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
+      "readiness_cta_free_host_twin_path_moil",
+    );
     expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
       "marketplace_l5_receipt_readiness",
     );

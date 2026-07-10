@@ -1,0 +1,25 @@
+# inventory-ash · competitive offline surface catalog += readiness→CTA wave
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ash
+date: 2026-07-10
+parent_tip: 4cb8ea4e2 (asg)
+
+## Closed
+- COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES +=
+  - publication_attach_readiness (asb)
+  - decision_tree_install_model_gate (asd)
+  - readiness_cta_free_host_twin_path_moil (arw–arz/ase)
+  - written_analysis_multi_agent_path (asc)
+  - highlight_float_full_path_choices (asg)
+- competitiveDrQuality.test asserts new surfaces
+- Scorecard / product surfaces inherit via catalog helper
+- vitest competitiveDrQuality: 5 green
+
+## Doctrine
+Competitive DR scorecard tracks shipped offline product · never invents live L1–L7
+Catalog is honesty for FUTURE agents · not a rebuild of product CTAs
+
+## Next
+asi+ offline product residual outside thrash
+Avoid: offline-surface stamp thrash after arm–art/ash · readiness→CTA thrash lists
+Operator merge PR #465 remains P0 (gated)

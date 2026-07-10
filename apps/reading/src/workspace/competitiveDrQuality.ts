@@ -309,9 +309,17 @@ export const COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES = [
   // Residual (art): L5 offline receipt readiness (ars).
   "marketplace_l5_receipt_readiness",
   "publication_hydrate_offline_identity",
+  // Residual (ash): knowledge-dense attach readiness pure + CTA (asb).
+  "publication_attach_readiness",
   "decision_tree_budget_foresight",
+  // Residual (ash): manual install model-id gate (asd) · never auto-route.
+  "decision_tree_install_model_gate",
   "antiek_bench_recursive_rewrite",
   "notdiamond_advisory_never_router",
+  // Residual (ash): readiness→CTA wave (arw–asg) product contracts.
+  "readiness_cta_free_host_twin_path_moil",
+  "written_analysis_multi_agent_path",
+  "highlight_float_full_path_choices",
 ] as const;
 
 export type CompetitiveDrOfflineProductSurface =
