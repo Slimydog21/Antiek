@@ -409,6 +409,13 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
       (screen.getByTestId("research-this-refs-input") as HTMLTextAreaElement)
         .value,
     ).toMatch(/arxiv:1706\.03762/);
+    // Residual (ahi): budget foresight pub-ref count after quick-call.
+    const budgetMount = screen.getByTestId("research-this-budget-mount");
+    expect(budgetMount.getAttribute("data-pub-ref-count")).toBe("1");
+    expect(budgetMount.getAttribute("data-has-pub-refs")).toBe("true");
+    expect(
+      Number(budgetMount.getAttribute("data-prompt-chars") || 0),
+    ).toBeGreaterThan(10);
     fireEvent.click(screen.getByTestId("research-this-floating"));
     await waitFor(() => {
       expect(hydratePublicationRefs).toHaveBeenCalledWith(["arxiv:1706.03762"]);

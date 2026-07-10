@@ -1,0 +1,14 @@
+# inventory-ahi · ResearchThis budget foresight pub-ref count
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ahi
+date: 2026-07-10
+parent_tip: a590d149 (ahh)
+
+## Closed
+- ResearchThis budget mount stamps data-pub-ref-count · data-has-pub-refs · data-prompt-chars
+- Completes foresight matrix: launch ahg · chase ahh · highlight ResearchThis ahi
+- vitest ResearchThis green
+
+## Next
+ahj+ product residual · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

@@ -2708,3 +2708,9 @@ P0 operator merge PR #465. Pivot ahh+.
 Chase follow-up budget mount stamps data-pub-ref-count after knowledge-dense
 quick-call (parity StartResearch ahg). vitest ChatInputArea.refs green.
 P0 operator merge PR #465. Pivot ahi+.
+
+## Residual ahi · 2026-07-10 — ResearchThis budget foresight pub-ref count
+Highlight Research-this budget mount stamps data-pub-ref-count after knowledge-dense
+quick-call (parity launch ahg · chase ahh). Completes foresight matrix for
+budget-before-fire with multi-source grounding. vitest ResearchThis green.
+P0 operator merge PR #465. Pivot ahj+ outside thrash.

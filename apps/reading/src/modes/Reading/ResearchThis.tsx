@@ -24,7 +24,10 @@ import { listRecentDeepResearchSpawnIds } from "../../workspace/recentDeepResear
 import type { WindowMode } from "../../workspace/windowsStore";
 import { useWindows } from "../../workspace/windowsStore";
 import { launchFloatingDeepResearch } from "./launchFloatingDeepResearch";
-import { composeDriverPromptText } from "../../lib/driverPromptText";
+import {
+  composeDriverPromptText,
+  countPublicationRefs,
+} from "../../lib/driverPromptText";
 
 /**
  * ResearchThis (Read SPR-08 + residual cc/cu/cx/cy/de) — spin deep research from
@@ -47,6 +50,7 @@ import { composeDriverPromptText } from "../../lib/driverPromptText";
  * Residual (ll): DecisionTreeDriverBadge researchTier before launch.
  * Residual (pi): DecisionTreeDriverBadge promptText = selection + pub refs
  * Residual (qr): budget panel uses same composeDriverPromptText (badge ≡ budget).
+ * Residual (ahi): budget foresight pub-ref count (parity StartResearch ahg · chat ahh).
  * for cost-vs-remaining projection (parity MO pg / Write ph).
  * Residual (agq): TwinNotes recursive note-taker for this book asset while
  * spinning DR (parity TalkToBook agm · MetaReading agn · reading ≡ research).
@@ -324,13 +328,18 @@ export default function ResearchThis({
           </p>
         ) : null}
       </div>
-      {/* Residual (cx/jg): daily budget + prompt projection + depth prefill. */}
+      {/* Residual (cx/jg/ahi): daily budget + prompt projection · pub-ref foresight. */}
       <div
         className="max-w-md"
         data-testid="research-this-budget-mount"
         data-view-format="html"
         data-research-tier={researchTier}
         data-depth-prefill={depthPrefill}
+        data-pub-ref-count={String(countPublicationRefs(pubRefs))}
+        data-has-pub-refs={String(countPublicationRefs(pubRefs) > 0)}
+        data-prompt-chars={String(
+          composeDriverPromptText(selection, pubRefs).length,
+        )}
       >
         <p
           className="text-[11px] font-mono opacity-80"
