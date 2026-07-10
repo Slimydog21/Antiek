@@ -585,6 +585,21 @@ describe("Settings SPR-01 + decision-tree install", () => {
     });
   });
 
+  it("scrolls to Settings hash anchors on mount (sp)", async () => {
+    const scrollIntoView = vi.fn();
+    const el = document.createElement("div");
+    el.id = "decision-tree-panel";
+    el.scrollIntoView = scrollIntoView;
+    document.body.appendChild(el);
+    window.location.hash = "#decision-tree-panel";
+    render(<Settings />);
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenCalled();
+    });
+    window.location.hash = "";
+    el.remove();
+  });
+
   it("embeds budget usage bar on decision-tree panel (sa)", async () => {
     render(<Settings />);
     await waitFor(() => {

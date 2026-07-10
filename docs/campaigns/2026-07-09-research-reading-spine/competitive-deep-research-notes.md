@@ -901,3 +901,9 @@ HostedHtmlDocumentHost stamps research_progress_* and session_flywheel_complete
 sources with note-taker seed titles + Write seed provenance. Competitive
 delta: every reading-flywheel HTML window from research surfaces joins the
 recursive note-taker path with honest source labels.
+
+## Residual sp · 2026-07-10 — Settings hash deep-link scroll
+Settings honors SPA hash anchors (decision-tree, twin-seed, hydrate,
+NotDiamond, prompt projection) on mount and hashchange. Competitive delta:
+driver/budget/readiness deep-links from research hosts actually land on the
+panel — not just change the URL bar.

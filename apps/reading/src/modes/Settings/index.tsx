@@ -191,6 +191,35 @@ export default function Settings() {
     [nd?.suggested_model_id, tree?.model_id],
   );
 
+  /**
+   * Residual (sp): honor Settings deep-links (#decision-tree-panel,
+   * #twin-seed-live-status, #hydrate-live-status, #notdiamond-advisory,
+   * #prompt-cost-projection) after SPA navigation.
+   */
+  useEffect(() => {
+    const scrollToHash = () => {
+      if (typeof window === "undefined") return;
+      const raw = (window.location.hash || "").replace(/^#/, "").trim();
+      if (!raw) return;
+      const el = document.getElementById(raw);
+      if (!el) return;
+      try {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      } catch {
+        el.scrollIntoView();
+      }
+    };
+    // Defer until panels paint (async loads may remount layout).
+    const t0 = window.setTimeout(scrollToHash, 0);
+    const t1 = window.setTimeout(scrollToHash, 250);
+    window.addEventListener("hashchange", scrollToHash);
+    return () => {
+      window.clearTimeout(t0);
+      window.clearTimeout(t1);
+      window.removeEventListener("hashchange", scrollToHash);
+    };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
