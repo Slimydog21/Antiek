@@ -3692,3 +3692,6 @@ vitest HostedHtml 27 green. P0 PR #465. Pivot aov+.
 ## Residual aov · 2026-07-10 — SESSION-ARC aoc–aou wave map refresh
 Handoff map for multi-agent team: aoc–aou closed table · thrash list · P0 PR #465.
 P0 PR #465. Pivot aow+ product residual outside thrash.
+
+## Residual aow · 2026-07-10 — recommendedFanoutForGoals pure helper
+Extract Match fan-out target into moilGoals (cap 12 · never invent). P0 PR #465. Pivot aox+.

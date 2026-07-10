@@ -1,0 +1,14 @@
+# inventory-aow · recommendedFanoutForGoals pure helper
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aow
+date: 2026-07-10
+parent_tip: 245cad6f (aov)
+
+## Closed
+- recommendedFanoutForGoals in moilGoals (cap 12 · min 1)
+- MO Match fan-out uses pure helper
+- vitest moilGoals + MO soft-hint path green
+
+## Next
+aox+ product residual outside thrash
+Operator merge PR #465 remains highest leverage (gated)

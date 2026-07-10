@@ -3,6 +3,7 @@ import {
   appendMoilGoalTemplate,
   MOIL_GOAL_TEMPLATES,
   parseMoilGoalLines,
+  recommendedFanoutForGoals,
 } from "./moilGoals";
 
 describe("moilGoals (aof)", () => {
@@ -27,5 +28,13 @@ describe("moilGoals (aof)", () => {
       expect(row.label).toBeTruthy();
       expect(row.text.length).toBeGreaterThan(10);
     }
+  });
+
+  it("recommends fan-out to cover goal count (aow)", () => {
+    expect(recommendedFanoutForGoals(0)).toBe(1);
+    expect(recommendedFanoutForGoals(4)).toBe(4);
+    expect(recommendedFanoutForGoals(20)).toBe(12);
+    expect(recommendedFanoutForGoals(20, 8)).toBe(8);
+    expect(recommendedFanoutForGoals(-1)).toBe(1);
   });
 });

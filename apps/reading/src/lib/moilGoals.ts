@@ -53,3 +53,18 @@ export function appendMoilGoalTemplate(
   const base = String(current || "").replace(/\s+$/u, "");
   return base ? `${base}\n${t}` : t;
 }
+
+/**
+ * Residual (aow): recommended fan-out depth to cover N goals (operator Match
+ * action). Clamped to [1, maxFanout]; never invents goals.
+ */
+export function recommendedFanoutForGoals(
+  goalCount: number,
+  maxFanout = 12,
+  minFanout = 1,
+): number {
+  const n = Math.floor(Number(goalCount));
+  if (!Number.isFinite(n) || n <= 0) return minFanout;
+  const max = Math.max(minFanout, Math.floor(Number(maxFanout)) || 12);
+  return Math.min(max, Math.max(minFanout, n));
+}

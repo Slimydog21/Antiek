@@ -95,6 +95,7 @@ import {
   appendMoilGoalTemplate,
   MOIL_GOAL_TEMPLATES,
   parseMoilGoalLines,
+  recommendedFanoutForGoals,
 } from "../../lib/moilGoals";
 import {
   estimateMoilRecommendedCeilingUsd,
@@ -858,9 +859,10 @@ export default function MidnightOil() {
                       ? Math.floor(fanoutDepth)
                       : MOIL_CEILING_DEFAULT_FANOUT_DEPTH;
                   const exceeds = goalLines.length > effectiveFanout;
-                  const matchTarget = Math.min(
+                  // Residual (aow): pure helper for Match fan-out target (cap 12).
+                  const matchTarget = recommendedFanoutForGoals(
+                    goalLines.length,
                     12,
-                    Math.max(goalLines.length, MOIL_CEILING_DEFAULT_FANOUT_DEPTH),
                   );
                   return (
                     <div
