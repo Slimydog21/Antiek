@@ -260,6 +260,11 @@ export default function HostedHtmlDocumentHost(
   // Residual (sk): hydrated arxiv/substack HTML windows join note-taker path.
   const isPublicationHydrate = payloadSource === "publication_hydrate";
   const isResearchContextPack = payloadSource === "research_context_pack";
+  // Residual (so): progress + flywheel float hosts join note-taker seed titles.
+  const isResearchProgress =
+    payloadSource === "research_progress_complete" ||
+    payloadSource === "research_progress_draft";
+  const isSessionFlywheel = payloadSource === "session_flywheel_complete";
   const twinSeedTitle = isEvidencePack
     ? `Evidence pack (citation trust) · ${title}`
     : isContextSearch
@@ -268,7 +273,11 @@ export default function HostedHtmlDocumentHost(
         ? `Hydrated publication · ${title}`
         : isResearchContextPack
           ? `Research context pack · ${title}`
-          : title;
+          : isResearchProgress
+            ? `Research progress · ${title}`
+            : isSessionFlywheel
+              ? `Session flywheel · ${title}`
+              : title;
   const twinSeedBody = html
     ? html.replace(/<[^>]+>/g, " ").slice(0, 500)
     : twinSeedTitle;
@@ -282,6 +291,8 @@ export default function HostedHtmlDocumentHost(
       data-source={payloadSource}
       data-evidence-pack={String(isEvidencePack)}
       data-context-search={String(isContextSearch)}
+      data-research-progress={String(isResearchProgress)}
+      data-session-flywheel={String(isSessionFlywheel)}
     >
       <header className="space-y-1 border-b border-black/10 pb-3 dark:border-white/10">
         <div className="flex flex-wrap items-start justify-between gap-2">
@@ -325,7 +336,11 @@ export default function HostedHtmlDocumentHost(
                         ? "publication_hydrate"
                         : isResearchContextPack
                           ? "research_context_pack"
-                          : "hosted_html_document"
+                          : isResearchProgress
+                            ? payloadSource
+                            : isSessionFlywheel
+                              ? "session_flywheel_complete"
+                              : "hosted_html_document"
                 }
                 className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
                 title={
@@ -337,7 +352,9 @@ export default function HostedHtmlDocumentHost(
                         ? "Open Write with hydrated publication HTML + twin_seed (seeds note-taker)"
                         : isResearchContextPack
                           ? "Open Write with research context pack HTML + twin_seed (seeds note-taker)"
-                          : "Open Write with hosted HTML + twin_seed (seeds note-taker when empty)"
+                          : isResearchProgress || isSessionFlywheel
+                            ? "Open Write with research HTML + twin_seed (seeds note-taker)"
+                            : "Open Write with hosted HTML + twin_seed (seeds note-taker when empty)"
                 }
               >
                 Open Write (HTML draft handoff)

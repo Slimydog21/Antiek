@@ -231,6 +231,27 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
   });
 
+  it("stamps research_progress_complete host honesty (so)", () => {
+    render(
+      <HostedHtmlDocumentHost
+        document_id="research_progress:spn_1:abc"
+        title="Research progress · complete"
+        view_format="html"
+        source="research_progress_complete"
+        html="<p>Final synthesis</p>"
+      />,
+    );
+    const host = screen.getByTestId("hosted-html-document-host");
+    expect(host.getAttribute("data-source")).toBe("research_progress_complete");
+    expect(host.getAttribute("data-research-progress")).toBe("true");
+    expect(screen.getByTestId("twin-notes-panel-stub").getAttribute("data-seed-title") || "").toMatch(
+      /Research progress/,
+    );
+    expect(
+      screen.getByTestId("hosted-html-open-write").getAttribute("data-write-seed-source"),
+    ).toBe("research_progress_complete");
+  });
+
   it("stamps evidence_pack source and twin seed title (sh/si)", () => {
     render(
       <HostedHtmlDocumentHost

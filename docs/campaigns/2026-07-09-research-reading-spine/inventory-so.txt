@@ -1,0 +1,14 @@
+# inventory-so · Host progress/flywheel twin-seed honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: so
+date: 2026-07-10
+
+## Closed
+- HostedHtmlDocumentHost data-research-progress / data-session-flywheel
+- Twin seed titles for progress + flywheel sources
+- Open Write data-write-seed-source preserves progress/flywheel sources
+- vitest HostedHtmlDocumentHost 14 · SCRATCH residual-tests-so.log
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live L1–L4 dual-gate (operator-only)

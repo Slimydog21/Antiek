@@ -895,3 +895,9 @@ Completed floating deep-research sessions open as float|full HTML
 (source=session_flywheel_complete) with output + context prompt_block.
 Competitive delta: autonomous/interactive session close lands a readable
 HTML artifact in the window flywheel — not only usage events + Write seed.
+
+## Residual so · 2026-07-10 — Host progress/flywheel twin-seed honesty
+HostedHtmlDocumentHost stamps research_progress_* and session_flywheel_complete
+sources with note-taker seed titles + Write seed provenance. Competitive
+delta: every reading-flywheel HTML window from research surfaces joins the
+recursive note-taker path with honest source labels.
