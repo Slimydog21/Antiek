@@ -1,0 +1,16 @@
+# inventory-ajr · TwinNotes prefer API depth-graph honesty fields
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ajr
+date: 2026-07-10
+parent_tip: 89ea54c0 (ajq)
+
+## Closed
+- TwinNotes twin-promote-metrics:
+  - prefers graph_node_ids / unique_*_count / content_addressed_alignment from API
+  - data-depth-graph-source=api|derived
+- UI/substrate parity for promote depth-graph (ajn/ajo)
+- vitest TwinNotes 30 green
+
+## Next
+ajs+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

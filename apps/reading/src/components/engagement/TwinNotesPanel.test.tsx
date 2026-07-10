@@ -634,6 +634,11 @@ describe("TwinNotesPanel", () => {
           text: "Attention is routing.",
         },
       ],
+      // Residual (ajr/ajo): substrate depth-graph honesty fields.
+      graph_node_ids: ["insight_abc"],
+      unique_graph_node_count: 1,
+      unique_unit_id_count: 1,
+      content_addressed_alignment: true,
       view_format: "html",
       product_panel: "twin_promote_context",
       source: "engagement_spine.twin_promote",
@@ -681,6 +686,8 @@ describe("TwinNotesPanel", () => {
     expect(metrics.getAttribute("data-content-addressed-alignment")).toBe(
       "true",
     );
+    // Residual (ajr): prefer API depth-graph fields when substrate emits them.
+    expect(metrics.getAttribute("data-depth-graph-source")).toBe("api");
     expect(metrics.textContent).toMatch(/graph_nodes=1/);
     expect(metrics.textContent).toMatch(/content-addressed unit≡node/);
     expect(

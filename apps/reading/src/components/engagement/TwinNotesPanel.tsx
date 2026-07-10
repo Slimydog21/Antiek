@@ -1686,21 +1686,39 @@ export function TwinNotesPanel({
           data-view-format="html"
           className="font-mono text-sm"
         >
-          {/* Residual (hi/my/adl/ajn): promote→context metrics + depth-graph node honesty. */}
+          {/* Residual (hi/my/adl/ajn/ajr): promote metrics + API depth-graph honesty (ajo). */}
           {(() => {
             const graphNodeIds = (promoted.promoted || [])
               .map((p) => String(p.graph_node_id || "").trim())
               .filter(Boolean);
-            const uniqueGraphNodeIds = Array.from(new Set(graphNodeIds));
+            const derivedUniqueGraph = Array.from(new Set(graphNodeIds));
+            // Residual (ajr): prefer substrate payload fields when present (ajo).
+            const uniqueGraphNodeIds =
+              Array.isArray(promoted.graph_node_ids) &&
+              promoted.graph_node_ids.length > 0
+                ? promoted.graph_node_ids
+                    .map((id) => String(id || "").trim())
+                    .filter(Boolean)
+                : derivedUniqueGraph;
+            const uniqueGraphCount =
+              typeof promoted.unique_graph_node_count === "number"
+                ? promoted.unique_graph_node_count
+                : uniqueGraphNodeIds.length;
             const unitIds = (promoted.context_units || [])
               .map((u) => String(u.unit_id || u.graph_node_id || "").trim())
               .filter(Boolean);
             const uniqueUnitIds = Array.from(new Set(unitIds));
-            // Content-addressed: unit_id aligns with graph_node_id for recursive depth.
+            const uniqueUnitCount =
+              typeof promoted.unique_unit_id_count === "number"
+                ? promoted.unique_unit_id_count
+                : uniqueUnitIds.length;
+            // Content-addressed: prefer API flag, else derive unit≡node alignment.
             const idAlignment =
-              uniqueGraphNodeIds.length > 0 &&
-              uniqueUnitIds.length > 0 &&
-              uniqueGraphNodeIds.every((id) => uniqueUnitIds.includes(id));
+              typeof promoted.content_addressed_alignment === "boolean"
+                ? promoted.content_addressed_alignment
+                : uniqueGraphNodeIds.length > 0 &&
+                  uniqueUnitIds.length > 0 &&
+                  uniqueGraphNodeIds.every((id) => uniqueUnitIds.includes(id));
             return (
           <div
             data-testid="twin-promote-metrics"
@@ -1717,11 +1735,16 @@ export function TwinNotesPanel({
               Array.isArray(promoted.note_ids) ? promoted.note_ids.length : 0,
             )}
             data-graph-node-id-count={String(graphNodeIds.length)}
-            data-unique-graph-node-count={String(uniqueGraphNodeIds.length)}
+            data-unique-graph-node-count={String(uniqueGraphCount)}
             data-graph-node-ids={uniqueGraphNodeIds.join(",")}
             data-unit-id-count={String(unitIds.length)}
-            data-unique-unit-id-count={String(uniqueUnitIds.length)}
+            data-unique-unit-id-count={String(uniqueUnitCount)}
             data-content-addressed-alignment={String(idAlignment)}
+            data-depth-graph-source={
+              typeof promoted.content_addressed_alignment === "boolean"
+                ? "api"
+                : "derived"
+            }
             data-view-format="html"
             // Residual (adl): depth posture on promote→context path (parity adi draft).
             data-research-tier={normalizedResearchTier || ""}
@@ -1737,8 +1760,8 @@ export function TwinNotesPanel({
             {Array.isArray(promoted.note_ids) && promoted.note_ids.length > 0
               ? ` · note_ids=${promoted.note_ids.length}`
               : ""}
-            {uniqueGraphNodeIds.length > 0
-              ? ` · graph_nodes=${uniqueGraphNodeIds.length}`
+            {uniqueGraphCount > 0
+              ? ` · graph_nodes=${uniqueGraphCount}`
               : ""}
             {idAlignment ? " · content-addressed unit≡node" : ""}
             {normalizedResearchTier

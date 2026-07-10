@@ -3029,3 +3029,8 @@ payload depth-graph honesty. P0 operator merge PR #465. Pivot ajq+ outside thras
 Suite suite-competitive-dogfood-v32 learns twin promote depth-graph unit≡node
 (ajn/ajo). item_count 48 · wrestle=35. pytest dogfood 5 · Settings 36 green.
 P0 operator merge PR #465. Pivot ajr+ outside thrash.
+
+## Residual ajr · 2026-07-10 — TwinNotes prefer API depth-graph honesty fields
+twin-promote-metrics prefers substrate graph_node_ids / content_addressed_alignment
+when present (ajo) with data-depth-graph-source=api. vitest TwinNotes 30 green.
+P0 operator merge PR #465. Pivot ajs+ outside thrash.
