@@ -105,6 +105,7 @@ import {
   type ResearchLaunchBudgetProjection,
   type ResearchLaunchTier,
 } from "./ResearchLaunchBudgetPanel";
+import { researchPathChoicesReadiness } from "../../workspace/researchPathChoices";
 import { openMergedResearchWindow } from "./SpawnMergePanel";
 import {
   buildMergedDocWriteHref,
@@ -762,8 +763,12 @@ export function CollectiveResearchPanel({
   const parentBound = Boolean(String(parentAssetId || "").trim());
   // Residual (agv): multi-spawn doc merge / written analysis path when parent bound.
   const seamlessCollectiveMerge = parentBound;
-  const seamlessCollectiveMergeReady =
-    parentBound && selected.length >= 1;
+  // Residual (aqz): pure path-choices readiness (shared aqy contract).
+  const pathChoices = researchPathChoicesReadiness({
+    parentAssetId,
+    selectedCount: selected.length,
+  });
+  const seamlessCollectiveMergeReady = pathChoices.draft_merge_ready;
 
   return (
     <section
@@ -811,31 +816,28 @@ export function CollectiveResearchPanel({
             ? " · seamless multi-spawn merge path (parent bound)"
             : " · bind parent asset for draft/parent/analysis merge"}
         </p>
-        {/* Residual (aqx): path choices parity aqw — multi-select · draft · into parent · analysis. */}
+        {/* Residual (aqx/aqz): path choices via researchPathChoicesReadiness pure helper. */}
         <p
           className="meta font-mono text-[10px] opacity-80"
           data-testid="collective-path-choices"
           data-view-format="html"
           data-html-first="true"
-          data-multi-select-ready={String(selected.length >= 1)}
-          data-draft-merge-ready={String(seamlessCollectiveMergeReady)}
-          data-into-parent-ready={String(seamlessCollectiveMergeReady)}
+          data-multi-select-ready={String(pathChoices.spawn_or_selection_ready)}
+          data-draft-merge-ready={String(pathChoices.draft_merge_ready)}
+          data-into-parent-ready={String(pathChoices.into_parent_ready)}
           data-written-analysis-ready={String(
-            parentBound && selected.length >= 2,
+            pathChoices.written_analysis_ready,
           )}
-          data-selected-count={String(selected.length)}
-          data-parent-bound={String(parentBound)}
+          data-selected-count={String(pathChoices.selected_count)}
+          data-parent-bound={String(pathChoices.parent_bound)}
           data-offline-merge-unit="true"
           data-l6-live-multiagent="deferred"
+          data-path-choices-source="researchPathChoicesReadiness"
           role="status"
           title="Collective product path: multi-select spawns · draft-combined · merge into parent · written analysis (≥2)"
         >
-          Path: multi-select · draft merge · into parent · written analysis
-          {parentBound
-            ? seamlessCollectiveMergeReady
-              ? ` · ${selected.length} selected`
-              : " · parent bound · select spawns"
-            : " · bind parent for merge"}
+          Path: multi-select · draft merge · into parent · written analysis ·{" "}
+          {pathChoices.summary}
         </p>
         {parentAssetId ? (
           <p

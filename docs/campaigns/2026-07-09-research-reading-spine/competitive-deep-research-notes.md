@@ -3971,3 +3971,8 @@ Pure `researchPathChoicesReadiness` contract (draft · into-parent · written
 analysis · float_full). SpawnMergePanel chrome wired. Completes path matrix
 DR host · collective · spawn merge. Craftsmanship: one readiness helper, hard
 to vary. vitest 14 green. P0 PR #465. Pivot aqz+ outside path thrash.
+
+## Residual aqz · 2026-07-10 — wire researchPathChoices into DR host + collective
+DeepResearchSessionHost + CollectiveResearchPanel consume pure helper
+(data-path-choices-source). Single readiness contract across three surfaces.
+vitest 79 green. P0 PR #465. HARD PIVOT ara+ outside path thrash.

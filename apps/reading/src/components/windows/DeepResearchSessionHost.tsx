@@ -74,6 +74,7 @@ import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearch
 import { syncDeepResearchWindowMode } from "../../workspace/deepResearchWindow";
 import { parseResearchDomainsFromGoal } from "../../workspace/domainSearchDefaults";
 import { listRecentDeepResearchSpawnIds } from "../../workspace/recentDeepResearchSpawns";
+import { researchPathChoicesReadiness } from "../../workspace/researchPathChoices";
 import { buildDeepResearchWriteHref } from "../../workspace/twinWriteSeed";
 import { useWindows } from "../../workspace/windowsStore";
 import { useInWindow } from "./windowHostContext";
@@ -241,6 +242,17 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
     [props.goal],
   );
 
+  // Residual (aqz): pure path-choices readiness (shared aqy contract).
+  const pathChoices = useMemo(
+    () =>
+      researchPathChoicesReadiness({
+        parentAssetId: props.parent_asset_id,
+        selectedCount: String(props.spawn_id || "").trim() ? 1 : 0,
+        sessionBound: Boolean(rawSessionId),
+      }),
+    [props.parent_asset_id, props.spawn_id, rawSessionId],
+  );
+
   return (
     <div
       className="flex h-full flex-col gap-4 bg-transparent p-6"
@@ -314,34 +326,26 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
                 </button>
               </div>
             ) : null}
-            {/* Residual (aqw): operator path choices — float|full · draft merge · into parent. */}
+            {/* Residual (aqw/aqz): path choices via researchPathChoicesReadiness pure helper. */}
             <p
               className="max-w-xs text-right text-[10px] font-mono opacity-80"
               data-testid="deep-research-path-choices"
               data-view-format="html"
               data-html-first="true"
               data-seamless-highlight-dr={String(seamlessHighlightDr)}
-              data-float-full-ready={String(Boolean(rawSessionId))}
-              data-draft-merge-ready={String(
-                Boolean(
-                  String(props.spawn_id || "").trim() &&
-                    String(props.parent_asset_id || "").trim(),
-                ),
+              data-float-full-ready={String(pathChoices.float_full_ready)}
+              data-draft-merge-ready={String(pathChoices.draft_merge_ready)}
+              data-into-parent-ready={String(pathChoices.into_parent_ready)}
+              data-written-analysis-ready={String(
+                pathChoices.written_analysis_ready,
               )}
-              data-into-parent-ready={String(
-                Boolean(
-                  String(props.spawn_id || "").trim() &&
-                    String(props.parent_asset_id || "").trim(),
-                ),
-              )}
+              data-parent-bound={String(pathChoices.parent_bound)}
               data-window-mode={hostWindow?.mode ?? "unknown"}
+              data-path-choices-source="researchPathChoicesReadiness"
               role="status"
               title="Highlight→DR product path: float or full, then draft-combined or merge into the reading asset"
             >
-              Path: float|full · draft merge · into parent
-              {String(props.parent_asset_id || "").trim()
-                ? " · parent bound"
-                : " · bind parent for merge"}
+              Path: float|full · draft merge · into parent · {pathChoices.summary}
             </p>
             {/* Residual (qv/acv/ael): Open Write twin seed + reading→research→Write path honesty. */}
             {writeHref ? (

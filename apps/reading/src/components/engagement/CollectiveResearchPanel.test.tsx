@@ -569,6 +569,9 @@ describe("CollectiveResearchPanel", () => {
     expect(path.getAttribute("data-into-parent-ready")).toBe("false");
     expect(path.getAttribute("data-written-analysis-ready")).toBe("false");
     expect(path.getAttribute("data-offline-merge-unit")).toBe("true");
+    expect(path.getAttribute("data-path-choices-source")).toBe(
+      "researchPathChoicesReadiness",
+    );
     expect(path.textContent).toMatch(/multi-select/i);
     expect(path.textContent).toMatch(/written analysis/i);
     expect(path.textContent).toMatch(/select spawns/i);
