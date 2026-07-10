@@ -184,7 +184,16 @@ export function PublicationAttachPanel({
           className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
           title="Dual-gate L1 arxiv hydrate checklist (prep only · offline default)"
         >
-          Dual-gate L1–L2 hydrate checklist
+          Dual-gate L1 arxiv checklist
+        </a>
+        {/* Residual (aap): L2 Substack section (parity aal–aao · attach path). */}
+        <a
+          href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l2-substack"
+          data-testid="publication-attach-dual-gate-l2-link"
+          className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
+          title="Dual-gate L2 Substack hydrate checklist (prep only · factory + ToS)"
+        >
+          Dual-gate L2 Substack checklist
         </a>
       </div>
       {error ? (
@@ -281,7 +290,16 @@ export function PublicationAttachPanel({
                 className="underline hover:opacity-100"
                 title="Dual-gate L1 arxiv hydrate checklist (prep only · offline default)"
               >
-                Dual-gate L1–L2 hydrate checklist
+                Dual-gate L1 arxiv checklist
+              </a>
+              {/* Residual (aap): L2 Substack section (maintain-prep after attach). */}
+              <a
+                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l2-substack"
+                data-testid="publication-attach-hydrate-dual-gate-l2-link"
+                className="underline hover:opacity-100"
+                title="Dual-gate L2 Substack hydrate checklist (prep only · factory + ToS)"
+              >
+                Dual-gate L2 Substack checklist
               </a>
             </p>
           </div>

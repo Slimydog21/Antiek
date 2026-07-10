@@ -96,7 +96,11 @@ describe("PublicationAttachPanel residual ck/ed", () => {
     const dual = screen.getByTestId("publication-attach-dual-gate-checklist-link");
     // Residual (xc): L1 arxiv checklist section deep-link.
     expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
-    expect(dual.textContent).toMatch(/L1–L2 hydrate checklist/i);
+    expect(dual.textContent).toMatch(/L1 arxiv checklist/i);
+    // Residual (aap): L2 Substack checklist (parity aal–aao).
+    const dualL2 = screen.getByTestId("publication-attach-dual-gate-l2-link");
+    expect(dualL2.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
+    expect(dualL2.textContent).toMatch(/L2 Substack checklist/i);
     // Residual (ed): parent notified so research context can remount.
     await waitFor(() => {
       expect(onAttached).toHaveBeenCalled();
@@ -131,7 +135,12 @@ describe("PublicationAttachPanel residual ck/ed", () => {
       screen
         .getByTestId("publication-attach-hydrate-dual-gate-link")
         .getAttribute("href") || "",
-    ).toMatch(/DUAL-GATE-L1-L4/);
+    ).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    expect(
+      screen
+        .getByTestId("publication-attach-hydrate-dual-gate-l2-link")
+        .getAttribute("href") || "",
+    ).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
     // Residual (hz): machine-readable attach+hydrate metrics.
     const metrics = screen.getByTestId("publication-attach-metrics");
     expect(metrics.getAttribute("data-attached-count")).toBe("1");

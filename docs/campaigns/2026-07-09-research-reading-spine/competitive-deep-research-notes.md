@@ -1904,3 +1904,8 @@ Reading-mode Research This pub-refs prep deep-links #l2-substack (parity aal–a
 Competitive delta: highlight → deep research on reading surface surfaces Substack
 hydrate prep beside arxiv (offline-default dual-gate).
 
+## Residual aap · 2026-07-10 — PublicationAttach L2 Substack dual-gate deep-links
+Attach form + post-attach hydrate prep deep-link #l2-substack (parity aal–aao).
+Competitive delta: knowledge-dense arxiv/substack attach path surfaces Substack
+ToS/factory prep beside arxiv on both pre- and post-attach surfaces.
+
