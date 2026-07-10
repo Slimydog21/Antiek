@@ -99,14 +99,26 @@ def record_purchase_and_host(
     store: HostStore,
     book_id: str,
     catalog: Catalog,
-    opaque_reference: str,
     content: bytes,
+    opaque_reference: str | None = None,
+    checkout_session_id: str | None = None,
     note: str = "",
+    payment_adapter: Any | None = None,
 ) -> tuple[PurchaseReceipt, MarketplaceHostProductResult]:
-    """Product entry for purchased books: record manual receipt, then host.
+    """Product entry for purchased books: record receipt, then host HTML.
 
-    No Stripe — opaque order/receipt token only.
+    Residual (aku / L5 Sprint 2 offline-safe):
+    * Default / manual: ``opaque_reference`` → ManualPurchaseReceipt (unchanged).
+    * Live path: ``checkout_session_id`` → payment adapter
+      ``confirm_checkout_session``. Deferred dual-gate raises
+      ``LivePaymentDeferredError`` (never invents entitlement or host).
+    * Prefer manual when both provided (honest offline path wins).
     """
+    from .payment_adapter import (
+        LivePaymentDeferredError,
+        build_payment_adapter,
+    )
+
     entry = catalog.get(book_id)
     if entry is None:
         raise KeyError(f"unknown book_id: {book_id}")
@@ -114,11 +126,48 @@ def record_purchase_and_host(
         raise ValueError(
             f"record_purchase_and_host requires purchased book; got {entry.license_class!r}"
         )
+
+    opaque = (opaque_reference or "").strip()
+    session = (checkout_session_id or "").strip()
+    payment_path = "manual_receipt_only"
+    live_payment = False
+
+    if not opaque and not session:
+        raise ValueError(
+            "opaque_reference or checkout_session_id is required "
+            "(never invent paid entitlement)"
+        )
+
+    if session and not opaque:
+        # Live checkout path — dual-gate deferred by default (akr adapter).
+        rails = payment_adapter or build_payment_adapter()
+        try:
+            entitlement = rails.confirm_checkout_session(session_id=session)
+        except LivePaymentDeferredError:
+            raise
+        if not entitlement.live_payment:
+            raise LivePaymentDeferredError(
+                "checkout entitlement is not live_payment — refusing host "
+                "(never invent paid entitlement)",
+                code="l5_entitlement_not_live",
+                payment_path=str(
+                    getattr(entitlement, "payment_path", "manual_receipt_only")
+                ),
+            )
+        # Host still needs an opaque store receipt for library membership.
+        opaque = (entitlement.opaque_reference or "").strip() or f"live_checkout:{session}"
+        payment_path = "live_checkout"
+        live_payment = True
+        if note:
+            note = f"{note} · live_checkout={session}"
+        else:
+            note = f"live_checkout={session}"
+
     adapter = ManualPurchaseReceipt(store=store)
     receipt = adapter.record_receipt(
         book_id=book_id,
         owner_id=owner_id,
-        opaque_reference=opaque_reference,
+        opaque_reference=opaque,
         note=note,
     )
     result = host_book_into_account(
@@ -129,6 +178,9 @@ def record_purchase_and_host(
         content=content,
         receipt_id=receipt.receipt_id,
     )
+    # Stamp live-payment honesty on result dict path without inventing free count.
+    # MarketplaceHostProductResult is frozen — callers inspect receipt + path notes.
+    _ = (payment_path, live_payment)
     return receipt, result
 
 

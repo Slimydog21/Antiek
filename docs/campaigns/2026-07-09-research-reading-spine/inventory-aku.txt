@@ -1,0 +1,20 @@
+# inventory-aku · L5 Sprint 2 purchase path payment adapter offline-safe
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aku
+date: 2026-07-10
+parent_tip: 420c5d30 (akt)
+
+## Closed
+- record_purchase_and_host accepts checkout_session_id (optional):
+  - deferred dual-gate → LivePaymentDeferredError · zero host
+  - manual opaque_reference path unchanged
+  - prefer manual when both provided
+  - live host only when payment adapter live_payment + charged
+- FUTURE L5 Sprint 2 marked offline-safe shipped
+- pytest test_marketplace_purchase_payment_path_aku + product_path 9 green
+- proof: SCRATCH residual-aku-pytest.log
+
+## Next
+akv+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)
+Sprint 3 UI checkout CTA still deferred

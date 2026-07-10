@@ -3179,3 +3179,9 @@ Multi-minute wrestle progress navigates FUTURE-AGENT competitive DR quality brie
 (parity launch/collective/spawn/flywheel/MO). Progress nav: scorecard · FUTURE ·
 prompt-cost · dual-gate L4. vitest ResearchProgress 10 green.
 P0 operator merge PR #465. Pivot aku+ outside thrash.
+
+## Residual aku · 2026-07-10 — L5 Sprint 2 purchase path payment adapter offline-safe
+record_purchase_and_host accepts checkout_session_id: deferred dual-gate raises
+LivePaymentDeferredError with zero host; manual opaque path unchanged; live host
+only when adapter confirms charged live_payment. FUTURE L5 Sprint 2 offline-safe.
+pytest 9 green. P0 operator merge PR #465. Pivot akv+ outside thrash.

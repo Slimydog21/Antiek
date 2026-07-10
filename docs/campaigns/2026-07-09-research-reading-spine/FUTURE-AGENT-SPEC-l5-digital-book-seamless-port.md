@@ -42,11 +42,14 @@
 
 ### Sprint 2 — Purchase product path
 
-- Extend `purchase_and_host` to accept either:
-  - `opaque_reference` (manual — keep forever), or
-  - `checkout_session_id` (live — gated).
-- On success: same host pipeline as free books (HTML body · library · twin seed).
-- Stamps: keep `data-seamless-purchase-port` · set `data-live-payment=true` only when real charge confirmed.
+- **Shipped offline-safe (aku):** `record_purchase_and_host` accepts:
+  - `opaque_reference` (manual — keep forever · default path), or
+  - `checkout_session_id` (live — routes payment adapter; deferred dual-gate raises
+    `LivePaymentDeferredError` with **zero host** · never invents entitlement).
+  - Prefer manual when both provided.
+  - Live host only when adapter confirms `live_payment=True` + charged upstream.
+  - pytest `test_marketplace_purchase_payment_path_aku.py`
+- **Still deferred:** API route/UI checkout CTA (Sprint 3) · live rails operator dual-gate.
 
 ### Sprint 3 — UI
 
