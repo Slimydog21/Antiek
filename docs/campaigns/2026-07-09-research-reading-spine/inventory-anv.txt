@@ -1,0 +1,15 @@
+# inventory-anv · Write piece knowledge-dense pub quick-call
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: anv
+date: 2026-07-10
+parent_tip: bc7daf61 (anu)
+
+## Closed
+- WriteHome open-piece DR mounts KNOWLEDGE_DENSE_PUBLICATION_PRESETS quick-call
+- Offline-honest insert (data-auto-hydrate=false · never auto-live)
+- Completes reading ≡ research ≡ writing pub quick-call matrix (ResearchThis · MO · Write)
+- vitest WriteHome anv + ge green (proof residual-anv-vitest.log)
+
+## Next
+anw+ product residual outside thrash · prefer non-pub-quick-call
+Operator merge PR #465 remains highest leverage (gated)

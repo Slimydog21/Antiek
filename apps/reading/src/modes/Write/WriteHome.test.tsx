@@ -1008,6 +1008,54 @@ describe("WriteHome — the re-homed door", () => {
     });
   });
 
+  it("inserts knowledge-dense pub quick-call presets on write piece (anv)", async () => {
+    getDeliverableMock.mockResolvedValue({
+      deliverable_id: "dlv-qc",
+      title: "Quick-call write piece",
+      deliverable_kind: "general_essay",
+      investigation_root_id: null,
+      status: "draft",
+      sections: [],
+      created_at: null,
+      updated_at: null,
+      section_count: 0,
+    });
+    mountAt("/write/dlv-qc");
+    await waitFor(() => {
+      expect(screen.getByTestId("write-piece-research-launch")).toBeTruthy();
+    });
+    const pubMount = screen.getByTestId("write-piece-pub-refs");
+    expect(pubMount.getAttribute("data-seamless-pub-quick-call")).toBe("true");
+    expect(pubMount.getAttribute("data-offline-default")).toBe("true");
+    expect(
+      Number(pubMount.getAttribute("data-knowledge-dense-presets") || 0),
+    ).toBeGreaterThanOrEqual(4);
+    const quick = screen.getByTestId("write-piece-publication-quick-call");
+    expect(quick.getAttribute("data-seamless-pub-quick-call")).toBe("true");
+    expect(quick.getAttribute("data-auto-hydrate")).toBe("false");
+    const attention = screen.getByTestId(
+      "write-piece-preset-attention-is-all-you-need",
+    );
+    expect(attention.getAttribute("data-kind")).toBe("arxiv");
+    expect(attention.getAttribute("data-reference")).toBe("arxiv:1706.03762");
+    await userEvent.click(attention);
+    expect(
+      (screen.getByTestId("write-piece-refs-input") as HTMLTextAreaElement)
+        .value,
+    ).toBe("arxiv:1706.03762");
+    // Idempotent second click.
+    await userEvent.click(attention);
+    expect(
+      (screen.getByTestId("write-piece-refs-input") as HTMLTextAreaElement)
+        .value,
+    ).toBe("arxiv:1706.03762");
+    await userEvent.click(screen.getByTestId("write-piece-preset-bert"));
+    expect(
+      (screen.getByTestId("write-piece-refs-input") as HTMLTextAreaElement)
+        .value,
+    ).toBe("arxiv:1706.03762\narxiv:1810.04805");
+  });
+
   it("prefills Write piece DR research tier from Settings wrestle depth (jh)", async () => {
     fetchDepthTiersMock.mockResolvedValue({
       active_depth_tier: "wrestle",
