@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import {
   activationChecklistMidnightOil,
@@ -10,6 +10,7 @@ import {
   deliveryNotificationReconciliationPlanMidnightOil,
   dispatchMidnightOil,
   dryRunMidnightOil,
+  executeMockMidnightOil,
   finalArtifactAdapterPlanMidnightOil,
   finalArtifactCompletionFinalizationPlanMidnightOil,
   finalArtifactGraphCommitPlanMidnightOil,
@@ -110,6 +111,7 @@ import {
   type MidnightOilLiveDispatchFinalEnablementApplyPlanReceipt,
   type MidnightOilLiveDispatchFinalEnablementPlanReceipt,
   type MidnightOilLiveRunActivationSettingsReceipt,
+  type MidnightOilMockExecutionReceipt,
   type MidnightOilOperatorArchiveHandoffPackageDeliveryAuditPlanReceipt,
   type MidnightOilOperatorArchiveHandoffPackageDeliveryAuditResultReconciliationPlanReceipt,
   type MidnightOilOperatorArchiveHandoffPackagePlanReceipt,
@@ -190,7 +192,14 @@ const SOURCES: Array<{ value: MidnightOilSourcePolicy; label: string }> = [
   { value: "operator_corpus", label: "My corpus" },
 ];
 
+const PREVIEW_CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; form-action 'none'; base-uri 'none'">`;
+
+function sandboxedPreviewDocument(html: string): string {
+  return `<!doctype html><html><head>${PREVIEW_CSP}</head><body>${html}</body></html>`;
+}
+
 export default function MidnightOil() {
+  const mockExecutionGeneration = useRef(0);
   const [goal, setGoal] = useState("");
   const [workMinutes, setWorkMinutes] = useState(120);
   const [priceCeiling, setPriceCeiling] = useState(25);
@@ -203,6 +212,8 @@ export default function MidnightOil() {
   const [ack, setAck] = useState(false);
   const [preflight, setPreflight] = useState<MidnightOilPreflight | null>(null);
   const [dryRunReceipt, setDryRunReceipt] = useState<MidnightOilAppliedRunReceipt | null>(null);
+  const [mockExecutionReceipt, setMockExecutionReceipt] =
+    useState<MidnightOilMockExecutionReceipt | null>(null);
   const [liveSettingsReceipt, setLiveSettingsReceipt] =
     useState<MidnightOilLiveRunActivationSettingsReceipt | null>(null);
   const [dispatchReceipt, setDispatchReceipt] = useState<MidnightOilDispatchReceipt | null>(null);
@@ -558,6 +569,7 @@ export default function MidnightOil() {
     );
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
+  const [mockExecutionBusy, setMockExecutionBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
   const [dispatchBusy, setDispatchBusy] = useState(false);
   const [activationBusy, setActivationBusy] = useState(false);
@@ -787,6 +799,7 @@ export default function MidnightOil() {
   ] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
+  const [mockExecutionError, setMockExecutionError] = useState<string | null>(null);
   const [liveSettingsError, setLiveSettingsError] = useState<string | null>(null);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
   const [activationError, setActivationError] = useState<string | null>(null);
@@ -1621,8 +1634,11 @@ export default function MidnightOil() {
     setOperatorArchiveHandoffPackageResultReconciliationPlanError(null);
     setOperatorArchiveHandoffPackageDeliveryAuditPlanError(null);
     setOperatorArchiveHandoffPackageDeliveryAuditResultReconciliationPlanError(null);
+    mockExecutionGeneration.current += 1;
     setPreflight(null);
     setDryRunReceipt(null);
+    setMockExecutionReceipt(null);
+    setMockExecutionError(null);
     setLiveSettingsReceipt(null);
     setDispatchReceipt(null);
     setActivationReceipt(null);
@@ -1715,6 +1731,46 @@ export default function MidnightOil() {
       setDryRunError(e instanceof Error ? e.message : String(e));
     } finally {
       setDryRunBusy(false);
+    }
+  }
+
+  async function onMockExecution() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !preflight.applied_run_receipt
+    ) {
+      setMockExecutionError(
+        "Synthetic swarm requires launch packet, approval receipt, runner handoff, and applied run receipt.",
+      );
+      return;
+    }
+
+    const requestGeneration = mockExecutionGeneration.current + 1;
+    mockExecutionGeneration.current = requestGeneration;
+    setMockExecutionBusy(true);
+    setMockExecutionError(null);
+    setMockExecutionReceipt(null);
+    try {
+      const result = await executeMockMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        applied_run_receipt: preflight.applied_run_receipt,
+        role_plans: preflight.role_plans,
+      });
+      if (mockExecutionGeneration.current === requestGeneration) {
+        setMockExecutionReceipt(result);
+      }
+    } catch (e) {
+      if (mockExecutionGeneration.current === requestGeneration) {
+        setMockExecutionError(e instanceof Error ? e.message : String(e));
+      }
+    } finally {
+      if (mockExecutionGeneration.current === requestGeneration) {
+        setMockExecutionBusy(false);
+      }
     }
   }
 
@@ -11744,6 +11800,121 @@ export default function MidnightOil() {
                     />
                   </div>
                 </div>
+              )}
+
+              <div className="border-t border-rule pt-3 dark:border-charcoal-1">
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Synthetic swarm preview
+                    </p>
+                    <p className="mt-1 text-xs text-ink-soft dark:text-starlight">
+                      No providers, retrieval, persistence, graph writes, or spend.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onMockExecution}
+                    disabled={
+                      mockExecutionBusy ||
+                      !preflight.launch_packet ||
+                      !preflight.approval_receipt ||
+                      !preflight.runner_handoff ||
+                      !preflight.applied_run_receipt ||
+                      preflight.role_plans.length !== 4
+                    }
+                    className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                  >
+                    {mockExecutionBusy ? "Running synthetic swarm..." : "Run synthetic swarm"}
+                  </button>
+                </div>
+              </div>
+
+              {mockExecutionError && (
+                <p
+                  role="alert"
+                  className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor"
+                >
+                  {mockExecutionError}
+                </p>
+              )}
+
+              {mockExecutionReceipt && (
+                <section aria-labelledby="mock-execution-heading" className="border-t border-rule pt-3 dark:border-charcoal-1">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p
+                        id="mock-execution-heading"
+                        className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight"
+                      >
+                        Synthetic swarm receipt
+                      </p>
+                      <p className="mt-1 font-mono text-[12px] text-ink dark:text-bright">
+                        {mockExecutionReceipt.receipt_id}
+                      </p>
+                    </div>
+                    <span className="w-fit rounded border border-rule px-2 py-1 text-[11px] font-mono uppercase text-ink-soft dark:border-charcoal-1 dark:text-starlight">
+                      Synthetic, no provider
+                    </span>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2 font-mono text-[12px] md:grid-cols-4">
+                    <Metric label="Status" value={mockExecutionReceipt.status.replaceAll("_", " ")} />
+                    <Metric label="Roles" value={`${mockExecutionReceipt.role_outputs.length}`} />
+                    <Metric label="Actual cost" value={`$${mockExecutionReceipt.actual_cost_usd.toFixed(2)}`} />
+                    <Metric label="Persisted" value={mockExecutionReceipt.persisted ? "yes" : "no"} />
+                  </div>
+
+                  <div className="mt-3 divide-y divide-rule border-y border-rule dark:divide-charcoal-1 dark:border-charcoal-1">
+                    {mockExecutionReceipt.role_outputs.map((output) => (
+                      <div
+                        key={output.role}
+                        className="grid grid-cols-1 gap-1 py-2 text-xs md:grid-cols-[120px_minmax(0,1fr)_110px] md:items-center"
+                      >
+                        <span className="font-mono font-semibold capitalize text-ink dark:text-bright">
+                          {output.role}
+                        </span>
+                        <span className="truncate font-mono text-ink-soft dark:text-starlight" title={output.route_receipt.route_receipt_id}>
+                          {output.route_receipt.route_receipt_id}
+                        </span>
+                        <span className="font-mono text-ink-soft dark:text-starlight">
+                          {output.route_receipt.selected.reason_code.replaceAll("_", " ")}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="mt-3 text-[11px] font-mono text-ink-soft dark:text-starlight">
+                    Goal fingerprint: {mockExecutionReceipt.goal_fingerprint}
+                  </p>
+
+                  <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-2">
+                    <div>
+                      <p className="mb-1 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                        Information asset preview
+                      </p>
+                      <iframe
+                        title="Synthetic information asset preview"
+                        sandbox=""
+                        referrerPolicy="no-referrer"
+                        srcDoc={sandboxedPreviewDocument(mockExecutionReceipt.html_information_asset)}
+                        className="h-72 w-full border border-rule bg-white dark:border-charcoal-1"
+                      />
+                    </div>
+                    <div>
+                      <p className="mb-1 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                        Twin note preview
+                      </p>
+                      <iframe
+                        title="Synthetic twin note preview"
+                        sandbox=""
+                        referrerPolicy="no-referrer"
+                        srcDoc={sandboxedPreviewDocument(mockExecutionReceipt.twin_note_html)}
+                        className="h-72 w-full border border-rule bg-white dark:border-charcoal-1"
+                      />
+                    </div>
+                  </div>
+                </section>
               )}
 
               <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -13,6 +13,7 @@ import {
   deliveryNotificationReconciliationPlanMidnightOil,
   dispatchMidnightOil,
   dryRunMidnightOil,
+  executeMockMidnightOil,
   finalArtifactAdapterPlanMidnightOil,
   finalArtifactCompletionFinalizationPlanMidnightOil,
   finalArtifactGraphCommitPlanMidnightOil,
@@ -107,8 +108,8 @@ vi.mock("../../api/midnightOil", () => ({
     role_plans: [
       {
         role: "planner",
-        budget_usd: 1.8,
-        max_minutes: 13,
+        budget_usd: 1.08,
+        max_minutes: 14,
         route_mode: "auto_cost",
         route_receipt_required: true,
         source_receipts_required: true,
@@ -116,12 +117,30 @@ vi.mock("../../api/midnightOil", () => ({
       },
       {
         role: "gatherer",
-        budget_usd: 5.4,
+        budget_usd: 3.24,
         max_minutes: 45,
         route_mode: "auto_cost",
         route_receipt_required: true,
         source_receipts_required: true,
         planned_route_receipt_id: "midnight-oil-test-gatherer-route-receipt",
+      },
+      {
+        role: "verifier",
+        budget_usd: 1.44,
+        max_minutes: 13,
+        route_mode: "auto_cost",
+        route_receipt_required: true,
+        source_receipts_required: true,
+        planned_route_receipt_id: "midnight-oil-test-verifier-route-receipt",
+      },
+      {
+        role: "synthesizer",
+        budget_usd: 1.44,
+        max_minutes: 18,
+        route_mode: "auto_cost",
+        route_receipt_required: true,
+        source_receipts_required: true,
+        planned_route_receipt_id: "midnight-oil-test-synthesizer-route-receipt",
       },
     ],
     artifact_contract: {
@@ -151,10 +170,12 @@ vi.mock("../../api/midnightOil", () => ({
         route_receipt_links_required: true,
         source_receipt_links_required: true,
       },
-      role_count: 2,
+      role_count: 4,
       role_route_receipt_ids: [
         "midnight-oil-test-planner-route-receipt",
         "midnight-oil-test-gatherer-route-receipt",
+        "midnight-oil-test-verifier-route-receipt",
+        "midnight-oil-test-synthesizer-route-receipt",
       ],
       source_receipts_required: true,
       route_receipts_required: true,
@@ -194,6 +215,8 @@ vi.mock("../../api/midnightOil", () => ({
       role_route_receipt_ids: [
         "midnight-oil-test-planner-route-receipt",
         "midnight-oil-test-gatherer-route-receipt",
+        "midnight-oil-test-verifier-route-receipt",
+        "midnight-oil-test-synthesizer-route-receipt",
       ],
       prerequisite_receipt_ids: [
         "midnight-oil-test-launch-packet",
@@ -213,12 +236,14 @@ vi.mock("../../api/midnightOil", () => ({
       launch_packet_id: "midnight-oil-test-launch-packet",
       run_id: "midnight-oil-test",
       status: "planned_not_dispatched",
-      planned_role_count: 2,
+      planned_role_count: 4,
       planned_budget_usd: 7.2,
       unallocated_budget_usd: 4.8,
       planned_role_route_receipt_ids: [
         "midnight-oil-test-planner-route-receipt",
         "midnight-oil-test-gatherer-route-receipt",
+        "midnight-oil-test-verifier-route-receipt",
+        "midnight-oil-test-synthesizer-route-receipt",
       ],
       dispatch_performed: false,
       budget_reserved: false,
@@ -237,12 +262,14 @@ vi.mock("../../api/midnightOil", () => ({
     launch_packet_id: "midnight-oil-test-launch-packet",
     run_id: "midnight-oil-test",
     status: "planned_not_dispatched",
-    planned_role_count: 2,
+    planned_role_count: 4,
     planned_budget_usd: 7.2,
     unallocated_budget_usd: 4.8,
     planned_role_route_receipt_ids: [
       "midnight-oil-test-planner-route-receipt",
       "midnight-oil-test-gatherer-route-receipt",
+      "midnight-oil-test-verifier-route-receipt",
+      "midnight-oil-test-synthesizer-route-receipt",
     ],
     dispatch_performed: false,
     budget_reserved: false,
@@ -251,6 +278,60 @@ vi.mock("../../api/midnightOil", () => ({
     graph_mutated: false,
     final_artifact_created: false,
     applied_notes: ["endpoint dry run only: no autonomous agents dispatched"],
+  })),
+  executeMockMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-mock-execution",
+    run_id: "midnight-oil-test",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    applied_run_receipt_id: "midnight-oil-test-applied-run-receipt",
+    status: "mock_completed",
+    synthetic: true,
+    goal_fingerprint: "goal-fingerprint-123",
+    role_outputs: ["planner", "gatherer", "verifier", "synthesizer"].map((role) => ({
+      role,
+      status: "synthetic_complete",
+      execution_mode: "synthetic_no_provider",
+      route_receipt: {
+        route_receipt_id: `midnight-oil-test-${role}-route-receipt`,
+        task_kind: `midnight_oil_${role}`,
+        objective: "balanced",
+        override: "none",
+        candidate_models: [],
+        selected: {
+          provider: "none",
+          model: "no-provider",
+          tier: "synthetic",
+          fallback_chain_index: 0,
+          reason_code: "synthetic_no_provider",
+          pricing_known: true,
+        },
+        budget: {
+          cap_usd: 0,
+          remaining_before_usd: 0,
+          projected_cost_usd_low: 0,
+          projected_cost_usd_high: 0,
+          actual_cost_usd: 0,
+          would_exceed_budget: false,
+        },
+        cache_state: null,
+      },
+      source_receipt_ids: [],
+      output_summary: `Synthetic ${role} stage completed without external execution.`,
+    })),
+    html_information_asset:
+      '<article data-execution="synthetic"><h1>Midnight Oil execution preview</h1></article>',
+    twin_note_html:
+      '<aside data-execution="synthetic"><h1>Midnight Oil twin note preview</h1></aside>',
+    actual_cost_usd: 0,
+    dispatch_performed: false,
+    budget_reserved: false,
+    provider_calls_made: false,
+    retrieval_performed: false,
+    graph_mutated: false,
+    persisted: false,
+    notes: ["deterministic mock execution only"],
   })),
   liveRunActivationSettingsMidnightOil: vi.fn(async () => ({
     receipt_id: "midnight-oil-test-live-run-activation-settings",
@@ -13923,5 +14004,77 @@ describe("MidnightOil", () => {
         /operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_result_finalization_audit_result_entry_id/,
       ).length,
     ).toBeGreaterThan(0);
-  }, 25000);
+
+    fireEvent.click(screen.getByRole("button", { name: "Run synthetic swarm" }));
+
+    await waitFor(() => expect(executeMockMidnightOil).toHaveBeenCalled());
+    expect(executeMockMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+        role_count: 4,
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      applied_run_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-applied-run-receipt",
+        planned_role_count: 4,
+      }),
+      role_plans: expect.arrayContaining([
+        expect.objectContaining({ role: "planner" }),
+        expect.objectContaining({ role: "gatherer" }),
+        expect.objectContaining({ role: "verifier" }),
+        expect.objectContaining({ role: "synthesizer" }),
+      ]),
+    });
+    expect(screen.getByText("Synthetic swarm receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-mock-execution")).toBeTruthy();
+    expect(screen.getByText("Synthetic, no provider")).toBeTruthy();
+    expect(screen.getAllByText("synthetic no provider")).toHaveLength(4);
+    expect(screen.getByText("Goal fingerprint: goal-fingerprint-123")).toBeTruthy();
+    const informationPreview = screen.getByTitle("Synthetic information asset preview");
+    const twinNotePreview = screen.getByTitle("Synthetic twin note preview");
+    expect(informationPreview.getAttribute("sandbox")).toBe("");
+    expect(twinNotePreview.getAttribute("sandbox")).toBe("");
+    expect(informationPreview.getAttribute("referrerpolicy")).toBe("no-referrer");
+    expect(twinNotePreview.getAttribute("referrerpolicy")).toBe("no-referrer");
+    expect(informationPreview.getAttribute("srcdoc")).toContain("default-src 'none'");
+    expect(twinNotePreview.getAttribute("srcdoc")).toContain("default-src 'none'");
+    expect(informationPreview.getAttribute("srcdoc")).toContain("Midnight Oil execution preview");
+    expect(twinNotePreview.getAttribute("srcdoc")).toContain("Midnight Oil twin note preview");
+  }, 35000);
+
+  it("does not restore a stale synthetic result after a new preflight", async () => {
+    const defaultMockExecution = vi.mocked(executeMockMidnightOil).getMockImplementation();
+    expect(defaultMockExecution).toBeTruthy();
+    const mockReceipt = await defaultMockExecution!({} as never);
+    let resolveExecution!: (value: typeof mockReceipt) => void;
+    const pendingExecution = new Promise<typeof mockReceipt>((resolve) => {
+      resolveExecution = resolve;
+    });
+    vi.mocked(executeMockMidnightOil).mockImplementationOnce(() => pendingExecution);
+    render(<MidnightOil />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: /goal/i }), {
+      target: { value: "Inspect widebody engine evidence." },
+    });
+    fireEvent.click(screen.getByLabelText(/I approve this ceiling/i));
+    fireEvent.click(screen.getByRole("button", { name: "Preflight" }));
+    await waitFor(() => expect(preflightMidnightOil).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Run synthetic swarm" }));
+    await waitFor(() => expect(executeMockMidnightOil).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Preflight" }));
+    await waitFor(() => expect(preflightMidnightOil).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      resolveExecution(mockReceipt);
+      await pendingExecution;
+    });
+
+    expect(screen.queryByText("midnight-oil-test-mock-execution")).toBeNull();
+  });
 });
