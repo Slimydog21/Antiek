@@ -1,0 +1,13 @@
+# inventory-ass · SESSION-ARC asq–asr highlight DR launch handoff
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ass
+date: 2026-07-10
+parent_tip: 2893162c5 (asr)
+
+## Closed
+- SESSION-ARC-asq-asr-highlight-dr-launch.md multi-agent collab handoff
+- Documents pure helper + ResearchThis/HostedHtml + catalog surface
+- Thrash list + P0 PR #465
+
+## Next
+ast+ offline product residual outside thrash
