@@ -3495,3 +3495,9 @@ Meta-reading deliverable mounts CollectiveResearchPanel when open/recent DR spaw
 exist (reading ≡ research · parity TalkToBook ang). Completes reading conversation
 collective matrix with ResearchThis. vitest MetaReading 16 green.
 P0 operator merge PR #465. Pivot ani+ outside thrash (prefer non-collective-mount).
+
+## Residual ani · 2026-07-10 — MarketplaceHost collective multi-select mount
+Marketplace host land mounts CollectiveResearchPanel when open/recent DR spawns
+exist so multi-select merge/analysis targets the hosted HTML book (reading ≡ research ·
+parity HostedHtml eu · TalkToBook ang · MetaReading anh). vitest MarketplaceHost ani green.
+P0 operator merge PR #465. Pivot anj+ outside thrash (prefer non-collective-mount).

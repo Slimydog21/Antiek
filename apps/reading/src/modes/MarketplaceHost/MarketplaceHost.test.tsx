@@ -16,6 +16,8 @@ const {
   launchFloatingDeepResearch,
   fetchDepthTiers,
   hydratePublicationRefs,
+  collectDeepResearchSpawnIds,
+  listRecentDeepResearchSpawnIds,
 } = vi.hoisted(() => ({
   fetchMarketplaceCatalog: vi.fn(),
   hostBookIntoAccount: vi.fn(),
@@ -36,6 +38,8 @@ const {
     source: "test",
     notes: [] as string[],
   })),
+  collectDeepResearchSpawnIds: vi.fn(() => [] as string[]),
+  listRecentDeepResearchSpawnIds: vi.fn(() => [] as string[]),
 }));
 
 vi.mock("../../api/marketplaceHost", () => ({
@@ -166,6 +170,53 @@ vi.mock("../../components/engagement/ResearchContextPanel", () => ({
   domainAwareSearchDefault: () => "",
 }));
 
+// Residual (ani): collective multi-select on marketplace host land.
+vi.mock("../../workspace/collectDeepResearchSpawnIds", () => ({
+  collectDeepResearchSpawnIds: (...args: unknown[]) =>
+    collectDeepResearchSpawnIds(...args),
+}));
+
+vi.mock("../../workspace/recentDeepResearchSpawns", () => ({
+  listRecentDeepResearchSpawnIds: (...args: unknown[]) =>
+    listRecentDeepResearchSpawnIds(...args),
+}));
+
+vi.mock("../../workspace/windowsStore", () => ({
+  useWindows: (sel: (s: { windows: Record<string, unknown> }) => unknown) =>
+    sel({ windows: {} }),
+}));
+
+vi.mock("../../components/engagement/CollectiveResearchPanel", () => ({
+  CollectiveResearchPanel: (props: {
+    availableSpawnIds: string[];
+    parentAssetId?: string | null;
+    recentSpawnIds?: readonly string[] | null;
+    openSpawnIds?: readonly string[] | null;
+    onRecentSpawnsCleared?: () => void;
+    onDocMerged?: () => void;
+  }) => (
+    <div
+      data-testid="collective-research-panel-stub"
+      data-recent={
+        props.recentSpawnIds != null ? props.recentSpawnIds.join(",") : ""
+      }
+      data-has-clear={props.onRecentSpawnsCleared ? "1" : "0"}
+      data-has-merged={props.onDocMerged ? "1" : "0"}
+    >
+      {props.parentAssetId}:{props.availableSpawnIds.join(",")}
+      {props.onDocMerged ? (
+        <button
+          type="button"
+          data-testid="marketplace-host-collective-merge-notify"
+          onClick={() => props.onDocMerged?.()}
+        >
+          notify merge
+        </button>
+      ) : null}
+    </div>
+  ),
+}));
+
 vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", async () => {
   const React = await import("react");
   return {
@@ -211,6 +262,8 @@ describe("MarketplaceHost mode", () => {
     purchaseAndHost.mockReset();
     fetchHostedDocumentHtml.mockReset();
     openWindow.mockClear();
+    collectDeepResearchSpawnIds.mockReset().mockReturnValue([]);
+    listRecentDeepResearchSpawnIds.mockReset().mockReturnValue([]);
     fetchDepthTiers.mockReset().mockResolvedValue({
       active_depth_tier: null,
       active_preset: null,
@@ -3583,5 +3636,167 @@ describe("MarketplaceHost mode", () => {
         screen.getByTestId("marketplace-host-refs-status").textContent,
       ).toMatch(/Hydrated 1|HTML-first|offline-default/i);
     });
+  });
+
+  it("mounts collective panel on host land when open DR spawns exist (ani)", async () => {
+    collectDeepResearchSpawnIds.mockReturnValue(["spn_mkt_1", "spn_mkt_2"]);
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-pride",
+          title: "Pride and Prejudice",
+          author: "Jane Austen",
+          license_class: "public_domain",
+          is_free: true,
+          source: "standard_ebooks",
+          subjects: ["literature"],
+        },
+      ],
+      count: 1,
+      view_format: "html",
+      by_source: { standard_ebooks: 1 },
+      public_domain_count: 1,
+      purchased_count: 0,
+      free_count: 1,
+      payment_rails: "manual_receipt_only",
+    });
+    hostBookIntoAccount.mockResolvedValue({
+      document_id: "hdoc_abc",
+      owner_id: "operator",
+      book_id: "pd-pride",
+      content_hash: "x",
+      title: "Pride and Prejudice",
+      license_class: "public_domain",
+      already_hosted: false,
+      source_format: "html",
+      library_document_ids: ["hdoc_abc"],
+      view_format: "html",
+      html: "<p>It is a truth universally acknowledged</p>",
+      usage_event: {
+        task_class: "book_qa",
+        outcome: "worked",
+        source: "marketplace_host",
+        prompt_hint: "host pd-pride · Pride and Prejudice",
+      },
+    });
+    fetchAccountLibrary.mockResolvedValue({
+      owner_id: "operator",
+      documents: [
+        {
+          document_id: "hdoc_abc",
+          title: "Pride",
+          license_class: "public_domain",
+          view_format: "html",
+          is_free: true,
+        },
+      ],
+      count: 1,
+      free_count: 1,
+      view_format: "html",
+      html: "<p>Library</p>",
+    });
+    render(<MarketplaceHost ownerId="operator" />);
+    await waitFor(() => {
+      expect(screen.getByText("Pride and Prejudice")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /host into account/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId("host-result")).toBeTruthy();
+    });
+    const mount = screen.getByTestId("marketplace-host-collective-mount");
+    expect(mount.getAttribute("data-view-format")).toBe("html");
+    expect(mount.getAttribute("data-document-id")).toBe("hdoc_abc");
+    expect(mount.getAttribute("data-seamless-marketplace-collective")).toBe(
+      "true",
+    );
+    expect(mount.getAttribute("data-available-spawn-count")).toBe("2");
+    expect(screen.getByTestId("collective-research-panel-stub").textContent).toMatch(
+      /hdoc_abc:spn_mkt_1,spn_mkt_2/,
+    );
+    expect(
+      screen
+        .getByTestId("collective-research-panel-stub")
+        .getAttribute("data-has-merged"),
+    ).toBe("1");
+    // Collective merge remounts twins + context (parity alz promote path).
+    await waitFor(() => {
+      expect(seedTwinNotes).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      const key = Number(
+        screen
+          .getByTestId("marketplace-host-twins-refresh")
+          .getAttribute("data-refresh-key") || "0",
+      );
+      expect(key).toBeGreaterThanOrEqual(1);
+    });
+    const keyBeforeMerge = Number(
+      screen
+        .getByTestId("marketplace-host-twins-refresh")
+        .getAttribute("data-refresh-key") || "0",
+    );
+    fireEvent.click(screen.getByTestId("marketplace-host-collective-merge-notify"));
+    await waitFor(() => {
+      expect(
+        Number(
+          screen
+            .getByTestId("marketplace-host-twins-refresh")
+            .getAttribute("data-refresh-key") || "0",
+        ),
+      ).toBe(keyBeforeMerge + 1);
+    });
+    expect(
+      Number(
+        screen
+          .getByTestId("marketplace-host-context-mount")
+          .getAttribute("data-refresh-key") || "0",
+      ),
+    ).toBe(keyBeforeMerge + 1);
+  });
+
+  it("omits collective panel on host land when no open spawns (ani)", async () => {
+    collectDeepResearchSpawnIds.mockReturnValue([]);
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-pride",
+          title: "Pride and Prejudice",
+          author: "Jane Austen",
+          license_class: "public_domain",
+          is_free: true,
+          source: "standard_ebooks",
+          subjects: ["literature"],
+        },
+      ],
+      count: 1,
+      view_format: "html",
+      by_source: { standard_ebooks: 1 },
+      public_domain_count: 1,
+      purchased_count: 0,
+      free_count: 1,
+      payment_rails: "manual_receipt_only",
+    });
+    hostBookIntoAccount.mockResolvedValue({
+      document_id: "hdoc_abc",
+      owner_id: "operator",
+      book_id: "pd-pride",
+      content_hash: "x",
+      title: "Pride and Prejudice",
+      license_class: "public_domain",
+      already_hosted: false,
+      source_format: "html",
+      library_document_ids: ["hdoc_abc"],
+      view_format: "html",
+      html: "<p>body</p>",
+    });
+    render(<MarketplaceHost ownerId="operator" />);
+    await waitFor(() => {
+      expect(screen.getByText("Pride and Prejudice")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /host into account/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId("host-result")).toBeTruthy();
+    });
+    expect(screen.queryByTestId("marketplace-host-collective-mount")).toBeNull();
   });
 });

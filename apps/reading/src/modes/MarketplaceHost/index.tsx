@@ -79,13 +79,20 @@
  * Residual (alz): remount twins + context after promote (parity HostedHtml ez/ec).
  * Residual (ama): remount twins + context after offline twin seed completes.
  * Residual (amj): host-land ResearchContext inherits hostDrTier depth posture.
+ * Residual (ani): CollectiveResearchPanel on host land when open/recent DR spawns
+ * exist so multi-select merge/analysis targets the hosted book (reading ≡ research ·
+ * parity HostedHtml eu · TalkToBook ang · MetaReading anh).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { seedTwinNotes } from "../../api/engagement";
+import { CollectiveResearchPanel } from "../../components/engagement/CollectiveResearchPanel";
 import { ResearchContextPanel } from "../../components/engagement/ResearchContextPanel";
 import { TwinNotesPanel } from "../../components/engagement/TwinNotesPanel";
 import { domainSearchCoverage } from "../../workspace/domainSearchDefaults";
+import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
+import { listRecentDeepResearchSpawnIds } from "../../workspace/recentDeepResearchSpawns";
+import { useWindows } from "../../workspace/windowsStore";
 import {
   fetchAccountLibrary,
   fetchHostedDocumentHtml,
@@ -392,6 +399,30 @@ export default function MarketplaceHost({
   } | null>(null);
   /** Residual (alz): remount twins + research context after promote/seed. */
   const [hostTwinsRefreshKey, setHostTwinsRefreshKey] = useState(0);
+  // Residual (ani): open + recent DR spawns for collective multi-select on host land.
+  const windows = useWindows((s) => s.windows);
+  const [hostCollectiveRecentTick, setHostCollectiveRecentTick] = useState(0);
+  const hostRecentSpawnIds = useMemo(
+    () => listRecentDeepResearchSpawnIds(),
+    [windows, hostCollectiveRecentTick],
+  );
+  const hostOpenSpawnIds = useMemo(
+    () =>
+      collectDeepResearchSpawnIds({
+        currentSpawnId: null,
+        windows,
+      }),
+    [windows],
+  );
+  const hostAvailableSpawnIds = useMemo(
+    () =>
+      collectDeepResearchSpawnIds({
+        currentSpawnId: null,
+        windows,
+        recentSpawnIds: hostRecentSpawnIds,
+      }),
+    [windows, hostRecentSpawnIds],
+  );
   /** Residual (iu): floating DR launch status after host. */
   const [hostDrStatus, setHostDrStatus] = useState<string | null>(null);
   const [hostDrBusy, setHostDrBusy] = useState(false);
@@ -1765,6 +1796,31 @@ export default function MarketplaceHost({
                   researchTier={hostDrTier}
                 />
               </div>
+              {/* Residual (ani): multi-select open + recent DR spawns → hosted book. */}
+              {hostAvailableSpawnIds.length > 0 ? (
+                <div
+                  className="mt-2"
+                  data-testid="marketplace-host-collective-mount"
+                  data-view-format="html"
+                  data-document-id={hosted.document_id.trim()}
+                  data-book-id={hosted.book_id || ""}
+                  data-seamless-marketplace-collective="true"
+                  data-available-spawn-count={String(hostAvailableSpawnIds.length)}
+                  data-recent-count={String(hostRecentSpawnIds.length)}
+                  data-research-tier={hostDrTier}
+                >
+                  <CollectiveResearchPanel
+                    availableSpawnIds={hostAvailableSpawnIds}
+                    parentAssetId={hosted.document_id.trim()}
+                    recentSpawnIds={hostRecentSpawnIds}
+                    openSpawnIds={hostOpenSpawnIds}
+                    onRecentSpawnsCleared={() =>
+                      setHostCollectiveRecentTick((n) => n + 1)
+                    }
+                    onDocMerged={() => setHostTwinsRefreshKey((k) => k + 1)}
+                  />
+                </div>
+              ) : null}
             </section>
           ) : null}
           {/* Residual (mb): Antiek-bench usage feed honesty after host. */}
