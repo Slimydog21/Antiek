@@ -384,7 +384,7 @@ describe("MidnightOil mode", () => {
   it("links to Settings for driver & budget (ic)", () => {
     render(<MidnightOil />);
     const link = screen.getByTestId("moil-settings-link");
-    expect(link.getAttribute("href")).toBe("/settings");
+    expect(link.getAttribute("href")).toBe("/settings#decision-tree-panel");
     expect(link.textContent).toMatch(/model driver & budget/i);
   });
 

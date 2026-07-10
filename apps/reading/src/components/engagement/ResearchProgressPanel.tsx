@@ -262,9 +262,9 @@ export function ResearchProgressPanel({
         {/* Residual (ij): Settings deep-link for model driver + budget. */}
         <p className="meta font-mono text-[11px] space-x-3">
           <a
-            href="/settings"
+            href="/settings#decision-tree-panel"
             data-testid="research-progress-settings-link"
-            title="Open Settings for decision-tree driver and daily budget"
+            title="Open Settings decision-tree: driver, budget bar, sample cost projection"
           >
             Settings · driver & budget
           </a>

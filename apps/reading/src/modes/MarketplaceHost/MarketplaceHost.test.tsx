@@ -226,7 +226,7 @@ describe("MarketplaceHost mode", () => {
     ).toBe("deep");
     // Residual (id): Settings deep-link for driver + twin seed readiness.
     const settings = screen.getByTestId("marketplace-settings-link");
-    expect(settings.getAttribute("href")).toBe("/settings");
+    expect(settings.getAttribute("href")).toBe("/settings#decision-tree-panel");
     expect(settings.textContent).toMatch(/driver & twin seed/i);
     // Residual (mm): dual-gate checklist (prep only).
     const dual = screen.getByTestId("marketplace-dual-gate-checklist-link");

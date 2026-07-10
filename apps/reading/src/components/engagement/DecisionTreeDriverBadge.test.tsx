@@ -131,7 +131,7 @@ describe("DecisionTreeDriverBadge residual cw/eq", () => {
       expect(screen.getByTestId("decision-tree-settings-link")).toBeTruthy();
     });
     const link = screen.getByTestId("decision-tree-settings-link");
-    expect(link.getAttribute("href")).toBe("/settings");
+    expect(link.getAttribute("href")).toBe("/settings#decision-tree-panel");
     expect(link.textContent).toMatch(/Settings/);
   });
 

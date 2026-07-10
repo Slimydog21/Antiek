@@ -194,7 +194,7 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
   it("links to Settings for driver & budget (ii)", () => {
     render(<SessionFlywheelPanel sessionId="fsess_1" />);
     const link = screen.getByTestId("session-flywheel-settings-link");
-    expect(link.getAttribute("href")).toBe("/settings");
+    expect(link.getAttribute("href")).toBe("/settings#decision-tree-panel");
     expect(link.textContent).toMatch(/driver & budget/i);
   });
 

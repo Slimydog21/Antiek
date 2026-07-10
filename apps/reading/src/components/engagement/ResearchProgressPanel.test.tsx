@@ -33,7 +33,7 @@ describe("ResearchProgressPanel", () => {
   it("links to Settings for driver & budget (ij)", () => {
     render(<ResearchProgressPanel spawnId="spn_1" />);
     const link = screen.getByTestId("research-progress-settings-link");
-    expect(link.getAttribute("href")).toBe("/settings");
+    expect(link.getAttribute("href")).toBe("/settings#decision-tree-panel");
     expect(link.textContent).toMatch(/driver & budget/i);
   });
 

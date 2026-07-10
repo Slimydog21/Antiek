@@ -634,10 +634,10 @@ export default function MidnightOil() {
       {/* Residual (ic/ml): Settings + dual-gate checklist (prep only). */}
       <p className="mb-4 max-w-xl text-[11px] font-mono space-x-3">
         <a
-          href="/settings"
+          href="/settings#decision-tree-panel"
           data-testid="moil-settings-link"
           className="underline opacity-80 hover:opacity-100"
-          title="Open Settings for decision-tree driver and daily budget cap"
+          title="Open Settings decision-tree: driver, budget bar, sample cost projection"
         >
           Settings · model driver & budget
         </a>

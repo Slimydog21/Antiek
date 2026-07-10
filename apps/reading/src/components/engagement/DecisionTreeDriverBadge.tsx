@@ -170,10 +170,10 @@ export function DecisionTreeDriverBadge({
         </button>
         {/* Residual (fj): open Settings for model install + daily budget. */}
         <a
-          href="/settings"
+          href="/settings#decision-tree-panel"
           data-testid="decision-tree-settings-link"
           className="underline opacity-80 hover:opacity-100"
-          title="Open Settings to install decision-tree driver and set daily budget"
+          title="Open Settings decision-tree: install driver, budget bar, sample cost projection"
         >
           Settings
         </a>

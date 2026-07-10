@@ -790,7 +790,7 @@ describe("WriteHome — the re-homed door", () => {
     ).toBeGreaterThan(0);
     // Residual (if): Settings deep-link for driver + budget.
     const settings = screen.getByTestId("write-piece-settings-link");
-    expect(settings.getAttribute("href")).toBe("/settings");
+    expect(settings.getAttribute("href")).toBe("/settings#decision-tree-panel");
     expect(settings.textContent).toMatch(/driver & budget/i);
   });
 

@@ -142,7 +142,7 @@ describe("CollectiveResearchPanel", () => {
       <CollectiveResearchPanel availableSpawnIds={["spn_1", "spn_2"]} />,
     );
     const link = screen.getByTestId("collective-settings-link");
-    expect(link.getAttribute("href")).toBe("/settings");
+    expect(link.getAttribute("href")).toBe("/settings#decision-tree-panel");
     expect(link.textContent).toMatch(/driver & budget/i);
     // Residual (lg): DecisionTreeDriverBadge mount with researchTier default deep.
     expect(screen.getByTestId("collective-driver-badge-mount")).toBeTruthy();

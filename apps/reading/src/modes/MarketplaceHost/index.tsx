@@ -810,10 +810,10 @@ export default function MarketplaceHost({
             {/* Residual (id): Settings deep-link (driver + twin seed readiness). */}
             <p className="mt-1 text-[11px] font-mono space-x-3">
               <a
-                href="/settings"
+                href="/settings#decision-tree-panel"
                 data-testid="marketplace-settings-link"
                 className="underline opacity-80 hover:opacity-100"
-                title="Open Settings for decision-tree driver and twin seed readiness"
+                title="Open Settings decision-tree: driver, budget bar; twin seed readiness is on same page"
               >
                 Settings · driver & twin seed
               </a>

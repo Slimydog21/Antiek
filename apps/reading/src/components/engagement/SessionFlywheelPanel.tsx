@@ -137,10 +137,10 @@ export function SessionFlywheelPanel({
         {/* Residual (ii/np): Settings + dual-gate checklist (flywheel prep). */}
         <p className="text-[11px] font-mono space-x-3">
           <a
-            href="/settings"
+            href="/settings#decision-tree-panel"
             data-testid="session-flywheel-settings-link"
             className="underline opacity-80 hover:opacity-100"
-            title="Open Settings for decision-tree driver and daily budget"
+            title="Open Settings decision-tree: driver, budget bar, sample cost projection"
           >
             Settings · driver & budget
           </a>

@@ -956,10 +956,10 @@ export default function WriteHome() {
               {/* Residual (if): Settings deep-link for driver + budget. */}
               <p className="mt-1 text-[11px] font-mono">
                 <a
-                  href="/settings"
+                  href="/settings#decision-tree-panel"
                   data-testid="write-piece-settings-link"
                   className="underline opacity-80 hover:opacity-100"
-                  title="Open Settings for decision-tree driver and daily budget"
+                  title="Open Settings decision-tree: driver, budget bar, sample cost projection"
                 >
                   Settings · driver & budget
                 </a>

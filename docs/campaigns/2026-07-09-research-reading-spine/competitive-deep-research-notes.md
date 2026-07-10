@@ -828,3 +828,9 @@ foresight sits with model choice — research drivers are not selected blind.
 ResearchLaunchBudgetPanel Settings link targets /settings#decision-tree-panel
 so research hosts jump to model driver + budget bar + sample projection.
 Competitive delta: budget foresight at launch and driver install form one loop.
+
+## Residual sd · 2026-07-10 — Driver/budget deep-links to decision-tree
+Engagement surfaces labeled driver & budget (badge, collective, progress,
+spawn merge, flywheel, Write, MO, marketplace) deep-link
+/settings#decision-tree-panel. Competitive delta: model choice + budget
+foresight is one click from any research host.
