@@ -1343,3 +1343,8 @@ highest leverage.
 CollectiveResearchPanel stamps L6 deferred · offline merge unit only. Competitive
 delta: multi-select collective is not a silent live multi-agent council —
 parity L5 payment deferred honesty.
+
+## Residual vy · 2026-07-10 — FUTURE-AGENT tip re-anchor through vx
+FUTURE-AGENT-SPEC tip → 528f5f82 with closed arcs tt–vx (57 residual ships).
+Competitive delta: swarm handoff tip-true; operator merge PR #465 remains
+highest leverage.

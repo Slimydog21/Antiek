@@ -1,13 +1,13 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** `4bce4ada` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
+**Campaign tip at write:** `528f5f82` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **URL:** https://github.com/Slimydog21/Antiek/pull/465  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
 
 ## Do not rebuild
 
-Prefer **SESSION-ARC-tt-vt-infinite-wave.md** + inventories **tt–vv** + competitive notes. Tip letters **tt–vv** (55 residual ships).
+Prefer **SESSION-ARC-tt-vt-infinite-wave.md** + inventories **tt–vx** + competitive notes. Tip letters **tt–vx** (57 residual ships).
 
 ### Closed product (high signal)
 
@@ -19,6 +19,7 @@ Prefer **SESSION-ARC-tt-vt-infinite-wave.md** + inventories **tt–vv** + compet
 | Midnight Oil foresight | L4 · remaining-after · hydrate Settings |
 | arxiv/substack honesty | full matrix |
 | Marketplace L5 | manual_receipt_only + Settings L5 deferred |
+| Collective L6 | deferred · offline merge unit only (vx) |
 | Dogfood recursive | **v4–v9** propose≠promote |
 
 ### P0 — Operator merge PR #465
