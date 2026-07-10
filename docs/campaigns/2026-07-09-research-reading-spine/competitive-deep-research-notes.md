@@ -1967,3 +1967,8 @@ SESSION-ARC-aat-aba documents dual-gate label honesty + STEM domain size wave.
 FUTURE tip re-anchored after 135+ ships. Competitive delta: compaction-safe
 multi-agent handoff; operator merge PR #465 highest leverage.
 
+## Residual abc · 2026-07-10 — free biology STEM pair (Origin + Hooke)
+Catalog adds Hooke Micrographia free PD HTML (biology · technology · physics ·
+method) beside Origin of Species. Competitive delta: free biology filter is a
+non-trivial tech-researcher STEM pair (instruments + natural history).
+

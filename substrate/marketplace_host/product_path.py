@@ -344,6 +344,31 @@ def default_demo_catalog() -> Catalog:
                 source_format="html",
                 subjects=("science", "biology"),
             ),
+            # Residual (abc): free biology + technology PD — Hooke Micrographia
+            # (instrumented observation · tech-researcher STEM spine with Origin).
+            CatalogEntry(
+                book_id="pd-hooke-micrographia",
+                title="Micrographia",
+                author="Robert Hooke",
+                source="project_gutenberg",
+                license_class="public_domain",
+                is_free=True,
+                body_text=(
+                    "By the means of telescopes, there is nothing so far distant but "
+                    "may be represented to our view; and by the help of microscopes, "
+                    "there is nothing so small, as to escape our inquiry.\n\n"
+                    "Hence we may set down a true History of Nature, as it is in "
+                    "itself, and not as it is interpreted by Men."
+                ),
+                source_format="html",
+                subjects=(
+                    "science",
+                    "biology",
+                    "technology",
+                    "physics",
+                    "method",
+                ),
+            ),
             CatalogEntry(
                 book_id="pd-wealth",
                 title="An Inquiry into the Nature and Causes of the Wealth of Nations",

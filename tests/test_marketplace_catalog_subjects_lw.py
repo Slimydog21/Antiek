@@ -309,6 +309,30 @@ def test_free_philosophy_set_size() -> None:
     assert all(e.is_free for e in free_phil)
 
 
+def test_free_biology_includes_origin_and_hooke() -> None:
+    """Residual (abc): free biology STEM pair for tech researchers.
+
+    Origin of Species + Hooke Micrographia — free PD HTML (biology + instruments).
+    """
+    cat = default_demo_catalog()
+    free_bio = [
+        e
+        for e in cat.filter_by_subject("biology")
+        if e.is_free and e.license_class == "public_domain"
+    ]
+    ids = {e.book_id for e in free_bio}
+    assert ids >= {"pd-origin", "pd-hooke-micrographia"}
+    hooke = cat.get("pd-hooke-micrographia")
+    assert hooke is not None
+    assert hooke.is_free is True
+    assert hooke.source_format == "html"
+    assert "technology" in hooke.subjects
+    assert "biology" in hooke.subjects
+    assert all(e.source_format == "html" for e in free_bio)
+    assert len(free_bio) >= 2
+    assert all(e.is_free for e in free_bio)
+
+
 def test_turing_computability_subjects_and_free_pd() -> None:
     """Residual (wl): Turing tagged computing+computability, free PD."""
     cat = default_demo_catalog()
