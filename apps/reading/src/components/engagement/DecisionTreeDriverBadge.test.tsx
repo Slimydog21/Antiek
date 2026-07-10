@@ -116,6 +116,9 @@ describe("DecisionTreeDriverBadge residual cw/eq", () => {
     });
     const dual = screen.getByTestId("decision-tree-dual-gate-checklist-link");
     expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4/);
+    // Residual (yl): shared chokepoint dual-gate honesty stamps.
+    expect(dual.getAttribute("data-offline-default")).toBe("true");
+    expect(dual.getAttribute("data-l7-notdiamond")).toBe("advisory_only");
   });
 
   it("links to Settings for driver install and budget (fj)", async () => {

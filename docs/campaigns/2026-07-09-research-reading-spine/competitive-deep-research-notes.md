@@ -1655,3 +1655,8 @@ advisory-only link).
 ## Residual yk · 2026-07-10 — FUTURE-AGENT tip re-anchor through yj
 FUTURE-AGENT-SPEC tip re-anchored after 64 residual ships. Competitive delta:
 swarm handoff tip-true; operator merge PR #465 highest leverage.
+
+## Residual yl · 2026-07-10 — DecisionTree dual-gate offline + L7 ND stamps
+DecisionTreeDriverBadge dual-gate entry stamps offline-default and L7 ND
+advisory-only. Competitive delta: shared driver+budget chokepoint never
+implies silent live injectors or ND dispatch authority.

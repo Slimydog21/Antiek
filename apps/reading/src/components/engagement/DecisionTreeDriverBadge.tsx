@@ -187,12 +187,14 @@ export function DecisionTreeDriverBadge({
         >
           ND advisory
         </a>
-        {/* Residual (oa): dual-gate prep on shared driver+budget chokepoint. */}
+        {/* Residual (oa/yl): dual-gate prep on shared driver+budget chokepoint. */}
         <a
           href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
           data-testid="decision-tree-dual-gate-checklist-link"
+          data-offline-default="true"
+          data-l7-notdiamond="advisory_only"
           className="underline opacity-80 hover:opacity-100"
-          title="Dual-gate L1–L4 checklist (prep only; offline default)"
+          title="Dual-gate L1–L7 checklist entry (offline default · ND advisory only · never silent live)"
         >
           Dual-gate
         </a>
