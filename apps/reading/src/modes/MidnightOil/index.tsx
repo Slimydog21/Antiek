@@ -13,6 +13,7 @@ import {
   finalArtifactMidnightOil,
   graphAdapterPlanMidnightOil,
   graphMutationMidnightOil,
+  liveDispatchFinalEnablementApplyPlanMidnightOil,
   liveDispatchFinalEnablementPlanMidnightOil,
   liveRunActivationSettingsMidnightOil,
   operatorDispatchActivationReadinessPlanMidnightOil,
@@ -36,6 +37,7 @@ import {
   type MidnightOilFinalArtifactReceipt,
   type MidnightOilGraphAdapterPlanReceipt,
   type MidnightOilGraphMutationReceipt,
+  type MidnightOilLiveDispatchFinalEnablementApplyPlanReceipt,
   type MidnightOilLiveDispatchFinalEnablementPlanReceipt,
   type MidnightOilLiveRunActivationSettingsReceipt,
   type MidnightOilOperatorDispatchActivationReadinessPlanReceipt,
@@ -121,6 +123,10 @@ export default function MidnightOil() {
   ] = useState<MidnightOilOperatorDispatchActivationReadinessPlanReceipt | null>(null);
   const [liveDispatchFinalEnablementPlanReceipt, setLiveDispatchFinalEnablementPlanReceipt] =
     useState<MidnightOilLiveDispatchFinalEnablementPlanReceipt | null>(null);
+  const [
+    liveDispatchFinalEnablementApplyPlanReceipt,
+    setLiveDispatchFinalEnablementApplyPlanReceipt,
+  ] = useState<MidnightOilLiveDispatchFinalEnablementApplyPlanReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -149,6 +155,10 @@ export default function MidnightOil() {
   ] = useState(false);
   const [liveDispatchFinalEnablementPlanBusy, setLiveDispatchFinalEnablementPlanBusy] =
     useState(false);
+  const [
+    liveDispatchFinalEnablementApplyPlanBusy,
+    setLiveDispatchFinalEnablementApplyPlanBusy,
+  ] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
   const [liveSettingsError, setLiveSettingsError] = useState<string | null>(null);
@@ -183,10 +193,20 @@ export default function MidnightOil() {
   ] = useState<string | null>(null);
   const [liveDispatchFinalEnablementPlanError, setLiveDispatchFinalEnablementPlanError] =
     useState<string | null>(null);
+  const [
+    liveDispatchFinalEnablementApplyPlanError,
+    setLiveDispatchFinalEnablementApplyPlanError,
+  ] = useState<string | null>(null);
+
+  function clearLiveDispatchFinalEnablementApplyPlan() {
+    setLiveDispatchFinalEnablementApplyPlanError(null);
+    setLiveDispatchFinalEnablementApplyPlanReceipt(null);
+  }
 
   function clearLiveDispatchFinalEnablementPlan() {
     setLiveDispatchFinalEnablementPlanError(null);
     setLiveDispatchFinalEnablementPlanReceipt(null);
+    clearLiveDispatchFinalEnablementApplyPlan();
   }
 
   function clearOperatorDispatchActivationReadinessPlan() {
@@ -280,6 +300,7 @@ export default function MidnightOil() {
     setControlLedgerPersistenceApplyPlanError(null);
     setOperatorDispatchActivationReadinessPlanError(null);
     setLiveDispatchFinalEnablementPlanError(null);
+    setLiveDispatchFinalEnablementApplyPlanError(null);
     setPreflight(null);
     setDryRunReceipt(null);
     setLiveSettingsReceipt(null);
@@ -304,6 +325,7 @@ export default function MidnightOil() {
     setControlLedgerPersistenceApplyPlanReceipt(null);
     setOperatorDispatchActivationReadinessPlanReceipt(null);
     setLiveDispatchFinalEnablementPlanReceipt(null);
+    setLiveDispatchFinalEnablementApplyPlanReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -1239,6 +1261,7 @@ export default function MidnightOil() {
     setLiveDispatchFinalEnablementPlanBusy(true);
     setLiveDispatchFinalEnablementPlanError(null);
     setLiveDispatchFinalEnablementPlanReceipt(null);
+    clearLiveDispatchFinalEnablementApplyPlan();
     try {
       const result = await liveDispatchFinalEnablementPlanMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -1262,6 +1285,60 @@ export default function MidnightOil() {
       setLiveDispatchFinalEnablementPlanError(e instanceof Error ? e.message : String(e));
     } finally {
       setLiveDispatchFinalEnablementPlanBusy(false);
+    }
+  }
+
+  async function onLiveDispatchFinalEnablementApplyPlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerControlPlanReceipt ||
+      !budgetProviderAdapterPlanReceipt ||
+      !providerExecutorAdapterPlanReceipt ||
+      !retrievalAdapterPlanReceipt ||
+      !graphAdapterPlanReceipt ||
+      !finalArtifactAdapterPlanReceipt ||
+      !operatorDispatchAdapterPlanReceipt ||
+      !controlLedgerAdapterPlanReceipt ||
+      !controlLedgerPersistencePlanReceipt ||
+      !controlLedgerPersistenceApplyPlanReceipt ||
+      !operatorDispatchActivationReadinessPlanReceipt ||
+      !liveDispatchFinalEnablementPlanReceipt
+    ) {
+      setLiveDispatchFinalEnablementApplyPlanError(
+        "Live dispatch final enablement apply requires launch packet, approval receipt, runner handoff, runner control plan receipt, budget provider adapter plan receipt, provider executor adapter plan receipt, retrieval adapter plan receipt, graph adapter plan receipt, final artifact adapter plan receipt, operator dispatch adapter plan receipt, control ledger adapter plan receipt, control ledger persistence plan receipt, control ledger persistence apply plan receipt, operator dispatch activation readiness plan receipt, and live dispatch final enablement plan receipt.",
+      );
+      return;
+    }
+
+    setLiveDispatchFinalEnablementApplyPlanBusy(true);
+    setLiveDispatchFinalEnablementApplyPlanError(null);
+    setLiveDispatchFinalEnablementApplyPlanReceipt(null);
+    try {
+      const result = await liveDispatchFinalEnablementApplyPlanMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        runner_control_plan_receipt: runnerControlPlanReceipt,
+        budget_provider_adapter_plan_receipt: budgetProviderAdapterPlanReceipt,
+        provider_executor_adapter_plan_receipt: providerExecutorAdapterPlanReceipt,
+        retrieval_adapter_plan_receipt: retrievalAdapterPlanReceipt,
+        graph_adapter_plan_receipt: graphAdapterPlanReceipt,
+        final_artifact_adapter_plan_receipt: finalArtifactAdapterPlanReceipt,
+        operator_dispatch_adapter_plan_receipt: operatorDispatchAdapterPlanReceipt,
+        control_ledger_adapter_plan_receipt: controlLedgerAdapterPlanReceipt,
+        control_ledger_persistence_plan_receipt: controlLedgerPersistencePlanReceipt,
+        control_ledger_persistence_apply_plan_receipt: controlLedgerPersistenceApplyPlanReceipt,
+        operator_dispatch_activation_readiness_plan_receipt:
+          operatorDispatchActivationReadinessPlanReceipt,
+        live_dispatch_final_enablement_plan_receipt: liveDispatchFinalEnablementPlanReceipt,
+      });
+      setLiveDispatchFinalEnablementApplyPlanReceipt(result);
+    } catch (e) {
+      setLiveDispatchFinalEnablementApplyPlanError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLiveDispatchFinalEnablementApplyPlanBusy(false);
     }
   }
 
@@ -3469,6 +3546,159 @@ export default function MidnightOil() {
                   <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
                     Enablement receipt fields:{" "}
                     {liveDispatchFinalEnablementPlanReceipt.required_enablement_receipt_fields.join(
+                      ", ",
+                    )}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Live dispatch final enablement apply
+                </p>
+                <button
+                  type="button"
+                  onClick={onLiveDispatchFinalEnablementApplyPlanGate}
+                  disabled={
+                    liveDispatchFinalEnablementApplyPlanBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !runnerControlPlanReceipt ||
+                    !budgetProviderAdapterPlanReceipt ||
+                    !providerExecutorAdapterPlanReceipt ||
+                    !retrievalAdapterPlanReceipt ||
+                    !graphAdapterPlanReceipt ||
+                    !finalArtifactAdapterPlanReceipt ||
+                    !operatorDispatchAdapterPlanReceipt ||
+                    !controlLedgerAdapterPlanReceipt ||
+                    !controlLedgerPersistencePlanReceipt ||
+                    !controlLedgerPersistenceApplyPlanReceipt ||
+                    !operatorDispatchActivationReadinessPlanReceipt ||
+                    !liveDispatchFinalEnablementPlanReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {liveDispatchFinalEnablementApplyPlanBusy
+                    ? "Planning final apply..."
+                    : "Live dispatch final enablement apply"}
+                </button>
+              </div>
+
+              {liveDispatchFinalEnablementApplyPlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {liveDispatchFinalEnablementApplyPlanError}
+                </p>
+              )}
+
+              {liveDispatchFinalEnablementApplyPlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Live dispatch final enablement apply receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {liveDispatchFinalEnablementApplyPlanReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={liveDispatchFinalEnablementApplyPlanReceipt.status.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                    <Metric
+                      label="Allowed"
+                      value={
+                        liveDispatchFinalEnablementApplyPlanReceipt
+                          .final_enablement_apply_allowed
+                          ? "allowed"
+                          : "blocked"
+                      }
+                    />
+                    <Metric
+                      label="Transaction"
+                      value={
+                        liveDispatchFinalEnablementApplyPlanReceipt.transaction_opened
+                          ? "opened"
+                          : "closed"
+                      }
+                    />
+                    <Metric
+                      label="Dispatch"
+                      value={
+                        liveDispatchFinalEnablementApplyPlanReceipt.dispatch_performed
+                          ? "performed"
+                          : "not performed"
+                      }
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Final plan"
+                      value={
+                        liveDispatchFinalEnablementApplyPlanReceipt
+                          .live_dispatch_final_enablement_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Apply receipt"
+                      value={liveDispatchFinalEnablementApplyPlanReceipt.planned_apply_receipt_id}
+                    />
+                    <Metric
+                      label="Idempotency key"
+                      value={liveDispatchFinalEnablementApplyPlanReceipt.planned_idempotency_key}
+                    />
+                    <Metric
+                      label="Repository"
+                      value={liveDispatchFinalEnablementApplyPlanReceipt.planned_repository_id}
+                    />
+                    <Metric
+                      label="Transaction"
+                      value={liveDispatchFinalEnablementApplyPlanReceipt.planned_transaction_id}
+                    />
+                    <Metric
+                      label="Live dispatch receipt"
+                      value={
+                        liveDispatchFinalEnablementApplyPlanReceipt
+                          .planned_live_dispatch_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Runner dispatch"
+                      value={liveDispatchFinalEnablementApplyPlanReceipt.planned_runner_dispatch_id}
+                    />
+                    <Metric
+                      label="Adapter"
+                      value={liveDispatchFinalEnablementApplyPlanReceipt.adapter_key.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                    <Metric
+                      label="Blocker"
+                      value={liveDispatchFinalEnablementApplyPlanReceipt.blocker_reason.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                  </div>
+                  <ul className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {liveDispatchFinalEnablementApplyPlanReceipt.required_apply_invariants
+                      .slice(0, 5)
+                      .map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                  </ul>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Apply blockers:{" "}
+                    {liveDispatchFinalEnablementApplyPlanReceipt.apply_blockers.join(", ")}
+                  </p>
+                  <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Apply receipt fields:{" "}
+                    {liveDispatchFinalEnablementApplyPlanReceipt.required_apply_receipt_fields.join(
                       ", ",
                     )}
                   </p>
