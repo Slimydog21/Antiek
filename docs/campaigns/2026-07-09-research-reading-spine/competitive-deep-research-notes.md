@@ -3652,3 +3652,7 @@ analysis ≥2 spawns honesty. vitest Settings deferred map green. P0 PR #465. Pi
 ## Residual aol · 2026-07-10 — DR session Research domains chrome + SESSION-ARC aoc–aok
 Operator-visible research_domains strip on DeepResearchSessionHost when goal
 rehydrates domains (aoe). SESSION-ARC wave map for handoff. P0 PR #465. Pivot aom+.
+
+## Residual aom · 2026-07-10 — collective written analysis readiness chrome
+Operator-visible multi-agent readiness under Create written analysis (≥2 / Merge
+draft guidance). vitest CollectiveResearchPanel 31 green. P0 PR #465. Pivot aon+.

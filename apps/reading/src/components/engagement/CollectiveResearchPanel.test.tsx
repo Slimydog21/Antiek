@@ -734,6 +734,10 @@ describe("CollectiveResearchPanel", () => {
     expect(analysis.getAttribute("data-multi-agent-analysis")).toBe("false");
     expect(analysis.disabled).toBe(true);
     expect(analysis.getAttribute("title") || "").toMatch(/≥2 spawns/i);
+    // Residual (aom): readiness chrome guides single-spawn operators.
+    const ready = screen.getByTestId("collective-written-analysis-readiness");
+    expect(ready.getAttribute("data-ready")).toBe("false");
+    expect(ready.textContent).toMatch(/Merge draft|≥2 spawns/i);
     // Draft merge remains available for single-spawn path.
     expect(
       (screen.getByTestId("collective-merge-draft") as HTMLButtonElement)

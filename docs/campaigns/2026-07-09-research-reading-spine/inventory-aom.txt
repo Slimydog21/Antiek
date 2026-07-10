@@ -1,0 +1,14 @@
+# inventory-aom · collective written analysis readiness chrome
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aom
+date: 2026-07-10
+parent_tip: e3c8f2fa (aol)
+
+## Closed
+- collective-written-analysis-readiness status strip (selected · min=2 · ready)
+- Completes aoi multi-agent honesty with operator-visible guidance
+- vitest CollectiveResearchPanel 31 green
+
+## Next
+aon+ product residual outside thrash
+Operator merge PR #465 remains highest leverage (gated)

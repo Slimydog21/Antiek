@@ -1257,6 +1257,24 @@ export function CollectiveResearchPanel({
           Create written analysis
         </button>
       </div>
+      {/* Residual (aom): multi-agent written analysis readiness chrome. */}
+      <p
+        className="font-mono text-[11px] opacity-80"
+        data-testid="collective-written-analysis-readiness"
+        data-selected-count={String(selected.length)}
+        data-min-spawns="2"
+        data-ready={String(selected.length >= 2 && Boolean(parentAssetId))}
+        data-multi-agent-analysis={String(selected.length >= 2)}
+        role="status"
+      >
+        {selected.length >= 2 && parentAssetId
+          ? `Written analysis ready · multi-agent unit of ${selected.length} spawns`
+          : selected.length >= 2 && !parentAssetId
+            ? "Written analysis needs parentAssetId (multi-agent selection ok)"
+            : selected.length === 1
+              ? "Written analysis needs ≥2 spawns · use Merge draft for this single spawn"
+              : "Select ≥2 spawns for multi-agent written analysis"}
+      </p>
 
       {error ? (
         <p className="error" role="alert">
