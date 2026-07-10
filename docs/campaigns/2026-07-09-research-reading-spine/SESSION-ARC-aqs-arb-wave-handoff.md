@@ -45,3 +45,5 @@ Inventory-first outside thrash. Prefer marketplace free catalog body · competit
 - Cite residual id + tip SHA for shipped.
 - Green vitest path named in inventory-*.txt.
 - Offline-honest: never claim live L1–L7 injectors.
+
+| **ara–arh** | MO plan readiness · free-PD domain catalog matrix (marketplace·context·hosted) | tip after arh |

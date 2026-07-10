@@ -1,0 +1,14 @@
+# inventory-arh · HostedHtml twin-search default catalog honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: arh
+date: 2026-07-10
+parent_tip: d4b7e6180 (arg)
+
+## Closed
+- hosted-html-context-mount stamps domain-default-count · all-ready · twin-search-defaults
+- Completes domain catalog surface matrix: pure (are) · marketplace (arf) · context (arg) · hosted (arh)
+- vitest HostedHtmlDocumentHost 37 green
+- evidence: {SCRATCH}/arh-hosted-domain-vitest.txt
+
+## Next
+ari+ OUTSIDE domain-catalog thrash · Operator merge PR #465

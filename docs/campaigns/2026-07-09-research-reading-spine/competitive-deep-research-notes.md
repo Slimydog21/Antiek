@@ -4013,3 +4013,8 @@ P0 PR #465. Pivot arg+.
 Query controls stamp domainDefaultSubjectCatalog (parity Marketplace arf).
 Reading ≡ research twin-search spine operator-visible. vitest 21 green.
 P0 PR #465. Pivot arh+.
+
+## Residual arh · 2026-07-10 — HostedHtml twin-search default catalog honesty
+Hosted context mount stamps domainDefaultSubjectCatalog. Completes free-PD
+twin-search defaults surface matrix (are pure · arf marketplace · arg context ·
+arh hosted). vitest 37 green. P0 PR #465. Pivot ari+ outside domain thrash.

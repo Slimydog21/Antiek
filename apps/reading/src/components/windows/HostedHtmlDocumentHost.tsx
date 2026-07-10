@@ -78,6 +78,7 @@ import { DecisionTreeDriverBadge } from "../engagement/DecisionTreeDriverBadge";
 import { KNOWLEDGE_DENSE_PUBLICATION_PRESETS } from "../engagement/PublicationAttachPanel";
 import { ResearchContextPanel } from "../engagement/ResearchContextPanel";
 import {
+  domainDefaultSubjectCatalog,
   domainSearchCoverage,
   formatResearchDomainsClause,
   normalizeDomainSubjects,
@@ -159,6 +160,8 @@ export default function HostedHtmlDocumentHost(
     () => domainSearchCoverage(props.subjects || null),
     [props.subjects],
   );
+  // Residual (arh): free-PD twin-search default catalog (parity are/arf/arg).
+  const domainDefaultCatalog = useMemo(() => domainDefaultSubjectCatalog(), []);
   // Residual (aou): single normalize for DR button stamps + goal_hint (aod/aoq).
   const hostedDomains = useMemo(
     () => normalizeDomainSubjects(props.subjects),
@@ -1475,6 +1478,13 @@ export default function HostedHtmlDocumentHost(
           data-domain-search-uncovered-count={String(
             hostedDomainCoverage.uncovered.length,
           )}
+          // Residual (arh): twin-search default catalog honesty (parity arf/arg).
+          data-domain-default-count={String(domainDefaultCatalog.count)}
+          data-domain-defaults-all-ready={String(
+            domainDefaultCatalog.all_have_default,
+          )}
+          data-twin-search-defaults="true"
+          data-html-first="true"
         >
           <div
             data-testid="hosted-html-context-refresh"

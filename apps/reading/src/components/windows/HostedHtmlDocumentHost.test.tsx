@@ -888,6 +888,13 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(
       Number(mount.getAttribute("data-domain-search-covered-count")),
     ).toBeGreaterThanOrEqual(1);
+    // Residual (arh): free-PD twin-search default catalog honesty (parity arf/arg).
+    expect(mount.getAttribute("data-html-first")).toBe("true");
+    expect(mount.getAttribute("data-twin-search-defaults")).toBe("true");
+    expect(mount.getAttribute("data-domain-defaults-all-ready")).toBe("true");
+    expect(
+      Number(mount.getAttribute("data-domain-default-count") || 0),
+    ).toBeGreaterThanOrEqual(40);
     // Residual (alt): twin note-taker receives domainSubjects for coverage.
     expect(
       screen
