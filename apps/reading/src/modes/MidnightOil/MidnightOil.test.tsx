@@ -28,6 +28,7 @@ import {
   liveRunActivationSettingsMidnightOil,
   operatorDispatchActivationReadinessPlanMidnightOil,
   operatorDispatchAdapterPlanMidnightOil,
+  operatorNotificationDeliveryApplyPlanMidnightOil,
   operatorNotificationDeliveryReadinessPlanMidnightOil,
   preflightMidnightOil,
   providerExecutorAdapterPlanMidnightOil,
@@ -3485,6 +3486,131 @@ vi.mock("../../api/midnightOil", () => ({
       "operator notification delivery readiness plan only: no notification dispatch, payload, channel policy, template, audit entry, workspace card binding, delivery ledger binding, URL activation, operator notification, or final artifact is created",
     ],
   })),
+  operatorNotificationDeliveryApplyPlanMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-operator-notification-delivery-apply-plan",
+    operator_notification_delivery_readiness_plan_receipt_id:
+      "midnight-oil-test-operator-notification-delivery-readiness-plan",
+    final_run_closure_plan_receipt_id: "midnight-oil-test-final-run-closure-plan",
+    final_artifact_completion_finalization_plan_receipt_id:
+      "midnight-oil-test-final-artifact-completion-finalization-plan",
+    final_artifact_publish_plan_receipt_id:
+      "midnight-oil-test-final-artifact-publish-plan",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    run_id: "midnight-oil-test",
+    status: "blocked_operator_notification_delivery_apply_unimplemented",
+    adapter_key: "operator_notification_delivery_apply",
+    planned_operator_notification_delivery_apply_receipt_id:
+      "midnight-oil-test-operator-notification-delivery-apply-receipt",
+    planned_operator_notification_delivery_transaction_id:
+      "midnight-oil-test-operator-notification-delivery-transaction",
+    planned_operator_notification_dispatch_id:
+      "midnight-oil-test-operator-notification-dispatch",
+    planned_operator_notification_payload_id:
+      "midnight-oil-test-operator-notification-payload",
+    planned_operator_delivery_channel_policy_id:
+      "midnight-oil-test-operator-delivery-channel-policy",
+    planned_operator_notification_template_id:
+      "midnight-oil-test-operator-notification-template",
+    planned_operator_notification_audit_entry_id:
+      "midnight-oil-test-operator-notification-audit-entry",
+    planned_operator_notification_delivery_attempt_id:
+      "midnight-oil-test-operator-notification-delivery-attempt",
+    planned_operator_notification_delivery_result_id:
+      "midnight-oil-test-operator-notification-delivery-result",
+    planned_operator_notification_delivery_status_id:
+      "midnight-oil-test-operator-notification-delivery-status",
+    planned_operator_notification_retry_policy_id:
+      "midnight-oil-test-operator-notification-retry-policy",
+    planned_operator_notification_dead_letter_id:
+      "midnight-oil-test-operator-notification-dead-letter",
+    planned_workspace_delivery_card_id: "midnight-oil-test-workspace-delivery-card",
+    planned_operator_delivery_ledger_entry_id:
+      "midnight-oil-test-operator-delivery-ledger-entry",
+    planned_delivery_notification_id: "midnight-oil-test-delivery-notification",
+    planned_run_closeout_record_id: "midnight-oil-test-run-closeout-record",
+    planned_final_run_closure_receipt_id: "midnight-oil-test-final-run-closure-receipt",
+    planned_account_visible_asset_id: "midnight-oil-test-account-visible-asset",
+    planned_private_read_url_id: "midnight-oil-test-private-read-url",
+    planned_reading_workspace_entry_id: "midnight-oil-test-reading-workspace-entry",
+    planned_hosted_html_asset_id: "midnight-oil-test-hosted-html-asset",
+    planned_quality_attestation_id:
+      "midnight-oil-test-final-artifact-quality-attestation",
+    planned_completion_audit_entry_id:
+      "midnight-oil-test-final-artifact-completion-audit-entry",
+    planned_model_usage_rollup_id: "midnight-oil-test-model-usage-rollup",
+    planned_source_lineage_archive_id: "midnight-oil-test-source-lineage-archive",
+    planned_runner_dispatch_id: "midnight-oil-test-midnight-oil-runner-dispatch",
+    planned_idempotency_key: "midnight-oil-test-live-dispatch-final-enable-idempotency-key",
+    operator_notification_delivery_apply_blockers: [
+      "operator notification delivery transaction writer",
+      "operator notification delivery attempt writer",
+      "operator notification delivery result writer",
+      "operator notification retry policy writer",
+      "operator notification dead-letter writer",
+      "operator notification delivery channel adapter",
+    ],
+    required_operator_notification_delivery_apply_invariants: [
+      "operator notification delivery apply planner must require notification readiness planning before any delivery transaction can be written",
+      "operator notification delivery apply planner must preserve retry/dead-letter lineage without sending notifications, activating URLs, mutating delivery state, or marking delivery complete during planning",
+    ],
+    required_operator_notification_delivery_apply_receipt_fields: [
+      "operator_notification_delivery_apply_plan_receipt_id",
+      "operator_notification_delivery_readiness_plan_receipt_id",
+      "operator_notification_delivery_transaction_id",
+      "operator_notification_delivery_attempt_id",
+      "operator_notification_delivery_result_id",
+      "operator_notification_retry_policy_id",
+      "operator_notification_dead_letter_id",
+    ],
+    blocker_reason: "operator_notification_delivery_apply_unimplemented",
+    operator_notification_delivery_apply_allowed: false,
+    operator_notification_delivery_transaction_created: false,
+    operator_notification_dispatch_created: false,
+    operator_notification_payload_created: false,
+    operator_delivery_channel_policy_created: false,
+    operator_notification_template_created: false,
+    operator_notification_audit_entry_created: false,
+    operator_notification_delivery_attempt_created: false,
+    operator_notification_delivery_result_created: false,
+    operator_notification_delivery_status_created: false,
+    operator_notification_retry_policy_created: false,
+    operator_notification_dead_letter_created: false,
+    operator_notification_delivery_readiness_allowed: false,
+    delivery_notification_created: false,
+    workspace_delivery_card_created: false,
+    operator_delivery_ledger_entry_created: false,
+    run_closeout_record_created: false,
+    final_run_closure_allowed: false,
+    final_artifact_completion_finalization_allowed: false,
+    completion_record_created: false,
+    finalization_transaction_created: false,
+    artifact_archive_manifest_created: false,
+    operator_handoff_summary_created: false,
+    delivery_status_marked_complete: false,
+    quality_attestation_created: false,
+    completion_audit_entry_created: false,
+    final_artifact_publish_allowed: false,
+    publish_transaction_created: false,
+    information_asset_published: false,
+    account_visible_asset_created: false,
+    reading_workspace_entry_created: false,
+    search_index_entry_created: false,
+    private_read_url_created: false,
+    operator_notification_created: false,
+    graph_commit_created: false,
+    graph_mutated: false,
+    final_artifact_created: false,
+    dispatch_performed: false,
+    budget_reserved: false,
+    provider_calls_made: false,
+    retrieval_performed: false,
+    source_receipts_created: false,
+    adapter_plan_notes: [
+      "operator notification delivery apply plan only: no delivery transaction, notification dispatch, payload, attempt, result, status, retry, dead-letter, workspace card update, delivery ledger update, URL activation, operator notification, or final artifact is created",
+    ],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -6293,5 +6419,66 @@ describe("MidnightOil", () => {
     expect(screen.getByText(/operator_notification_dispatch_id/)).toBeTruthy();
     expect(screen.getByText(/operator_notification_payload_id/)).toBeTruthy();
     expect(screen.getByText(/operator_delivery_channel_policy_id/)).toBeTruthy();
-  });
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Operator notification delivery apply plan",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(operatorNotificationDeliveryApplyPlanMidnightOil).toHaveBeenCalled(),
+    );
+    expect(operatorNotificationDeliveryApplyPlanMidnightOil).toHaveBeenCalledWith(
+      expect.objectContaining({
+        launch_packet: expect.objectContaining({
+          packet_id: "midnight-oil-test-launch-packet",
+        }),
+        final_run_closure_plan_receipt: expect.objectContaining({
+          receipt_id: "midnight-oil-test-final-run-closure-plan",
+        }),
+        operator_notification_delivery_readiness_plan_receipt: expect.objectContaining({
+          receipt_id: "midnight-oil-test-operator-notification-delivery-readiness-plan",
+        }),
+      }),
+    );
+    expect(screen.getByText("Operator notification delivery apply receipt")).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-operator-notification-delivery-apply-plan"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("blocked operator notification delivery apply unimplemented"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-operator-notification-delivery-apply-receipt"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-operator-notification-delivery-transaction"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-operator-notification-delivery-attempt"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-operator-notification-delivery-result"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-operator-notification-delivery-status"),
+    ).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-operator-notification-retry-policy")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-operator-notification-dead-letter")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "operator notification delivery apply planner must require notification readiness planning before any delivery transaction can be written",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Operator notification delivery apply blockers:/)).toBeTruthy();
+    expect(screen.getByText(/operator notification delivery result writer/)).toBeTruthy();
+    expect(screen.getByText(/operator notification delivery channel adapter/)).toBeTruthy();
+    expect(
+      screen.getByText(/Operator notification delivery apply receipt fields:/),
+    ).toBeTruthy();
+    expect(screen.getByText(/operator_notification_delivery_transaction_id/)).toBeTruthy();
+    expect(screen.getByText(/operator_notification_delivery_attempt_id/)).toBeTruthy();
+    expect(screen.getByText(/operator_notification_dead_letter_id/)).toBeTruthy();
+  }, 15000);
 });
