@@ -1529,3 +1529,7 @@ Catalog hosts Sketch of the Analytical Engine (HTML free PD) with computing +
 history subjects; dogfood v12 book_qa Lovelace; Settings posture honesty.
 Competitive delta: tech-researcher free STEM spine covers electricity + logic +
 information theory + computability + computing history on HTML-first free path.
+
+## Residual xj · 2026-07-10 — history subject chip for Lovelace
+Catalog subject chip history isolates Lovelace free PD. Competitive delta:
+tech researchers domain-filter computing history on free STEM path.
