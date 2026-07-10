@@ -1,0 +1,18 @@
+# inventory-zy · free computing set size honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: zy
+date: 2026-07-10
+tip_before: 357ab305 (zx)
+
+## Problem
+Free computing STEM quartet needed size honesty (≥4 free PD HTML) parity
+technology zw.
+
+## Fix
+- test_free_computing_stem_quartet asserts len ≥4 · all free
+
+## Verified
+pytest test_free_computing_stem_quartet → passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

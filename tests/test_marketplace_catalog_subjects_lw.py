@@ -163,6 +163,9 @@ def test_free_computing_stem_quartet() -> None:
         "pd-lovelace-analytical-engine",
     }
     assert all(e.source_format == "html" for e in free_comp if e.book_id in ids)
+    # Residual (zy): free computing set size honesty (parity technology zw).
+    assert len(free_comp) >= 4
+    assert all(e.is_free for e in free_comp)
 
 
 def test_free_technology_includes_electricity_and_computing() -> None:
