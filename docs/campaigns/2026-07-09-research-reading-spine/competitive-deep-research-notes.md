@@ -1165,3 +1165,7 @@ daily cap before fire (never invent $0 when remaining unknown).
 Custom ceiling input projects remaining-after as the operator types (parity
 recommended um). Competitive delta: custom approve path has the same budget
 foresight as recommended — no silent over-budget custom approve without chrome.
+
+## Residual uo · 2026-07-10 — SESSION-ARC + FUTURE-AGENT tip through un
+SESSION-ARC-tt-un + FUTURE-AGENT tip 313070dc. Competitive delta: 21-commit
+infinite wave handoff is compaction-safe for multi-agent swarm.
