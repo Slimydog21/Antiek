@@ -1981,6 +1981,71 @@ describe("MarketplaceHost mode", () => {
     expect(call.goal_hint).toMatch(/Electromagnetic Theory/);
   });
 
+  it("composes free-PD-only + information_theory chip for Shannon (ww)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-shannon-communication",
+          title: "A Mathematical Theory of Communication",
+          author: "Claude E. Shannon",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: ["computing", "information_theory", "mathematics"],
+        },
+        {
+          book_id: "buy-modern",
+          title: "Modern Systems Research",
+          author: "Example Press",
+          license_class: "purchased",
+          is_free: false,
+          source: "marketplace_stub",
+          subjects: ["technology", "systems", "information_theory"],
+        },
+        {
+          book_id: "pd-pride",
+          title: "Pride and Prejudice",
+          author: "Jane Austen",
+          license_class: "public_domain",
+          is_free: true,
+          source: "standard_ebooks",
+          subjects: ["literature"],
+        },
+      ],
+      count: 3,
+      view_format: "html",
+      free_count: 2,
+      public_domain_count: 2,
+      by_subject: {
+        information_theory: 2,
+        computing: 1,
+        literature: 1,
+      },
+      payment_rails: "manual_receipt_only",
+    });
+    render(<MarketplaceHost ownerId="tech-researcher" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("catalog-free-pd-only")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("catalog-free-pd-only"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("catalog-subject-information_theory"),
+      ).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("catalog-subject-information_theory"));
+    expect(
+      screen.getByTestId("catalog-entry-pd-shannon-communication"),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("catalog-entry-buy-modern")).toBeNull();
+    expect(screen.queryByTestId("catalog-entry-pd-pride")).toBeNull();
+    const metrics = screen.getByTestId("marketplace-catalog-metrics");
+    expect(metrics.getAttribute("data-free-pd-only")).toBe("true");
+    expect(metrics.getAttribute("data-subject-filter")).toBe(
+      "information_theory",
+    );
+  });
+
   it("filters catalog by information_theory subject chip for Shannon (wq)", async () => {
     fetchMarketplaceCatalog.mockResolvedValue({
       entries: [

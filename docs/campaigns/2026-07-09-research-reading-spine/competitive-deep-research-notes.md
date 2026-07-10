@@ -1466,3 +1466,8 @@ remains highest leverage.
 Catalog free-PD-only composed with computability chip isolates Turing free PD
 and excludes paid stubs. Competitive delta: free STEM path never mixes paid
 entitlement into domain chips.
+
+## Residual ww · 2026-07-10 — free-PD + information_theory compose for Shannon
+Catalog free-PD-only composed with information_theory chip isolates Shannon
+(parity Turing computability compose). Competitive delta: free STEM domain
+filters never mix paid entitlement.

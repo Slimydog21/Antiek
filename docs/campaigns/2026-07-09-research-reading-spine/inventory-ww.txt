@@ -1,0 +1,18 @@
+# inventory-ww · free-PD-only + information_theory chip compose for Shannon
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ww
+date: 2026-07-10
+tip_before: 3a45adb7 (wv)
+
+## Problem
+Parity wv: free-PD-only + information_theory must isolate Shannon free PD and
+exclude paid stubs tagged information_theory.
+
+## Fix
+- MarketplaceHost test compose free-PD + information_theory → Shannon only
+
+## Verified
+npm test MarketplaceHost.test.tsx → 32 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)
