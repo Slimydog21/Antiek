@@ -24,6 +24,14 @@ from .journal import (
     deterministic_call_id,
 )
 from .live_run import DispatchFn, run_live_wedge
+from .nd_shadow import (
+    NDShadowClient,
+    NDShadowConfig,
+    NDShadowJournal,
+    NDShadowRecord,
+    NDShadowResponse,
+    collect_nd_shadow,
+)
 from .wedge_config import BENCH_ROLE, LiveWedgeConfig, validate_live_suite
 
 __all__ = [
@@ -41,4 +49,10 @@ __all__ = [
     "deterministic_call_id",
     "validate_live_suite",
     "run_live_wedge",
+    "NDShadowClient",
+    "NDShadowConfig",
+    "NDShadowJournal",
+    "NDShadowRecord",
+    "NDShadowResponse",
+    "collect_nd_shadow",
 ]

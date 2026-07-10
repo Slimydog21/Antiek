@@ -36,3 +36,14 @@ Reuse `~/Antiek/specs/antiek-notdiamond/` sprints 01–03 (adapter, event log, a
 - No silent ND-owned dispatch.
 - No training CSV promotion without G8.
 - No dual runtime.
+
+## Measured shadow implementation (2026-07-10)
+
+ABLW Sprint 3 implements the measured wedge at
+`substrate/antiek_bench/live/nd_shadow.py`. It is double-gated by explicit
+configuration and `ANTIEK_NOTDIAMOND`, always requests `hash_content=true`,
+accepts exactly the two benchmark candidates, and records recommendations in a
+separate privacy-bounded journal. The module has no dispatch or model-selection
+imports and exposes no dispatch-shaped output. Recommendations are evidence for
+the weekly verdict only; they cannot alter calls, scores, budgets, or the
+operator's selected driver. Custom-router training remains blocked on G8.
