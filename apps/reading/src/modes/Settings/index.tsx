@@ -2232,6 +2232,7 @@ export default function Settings() {
                     (dogfood.items || []).length ===
                       Number(dogfood.item_count ?? 0),
                   )}
+                  data-view-format={dogfood.view_format || "html"}
                   data-truncated="false"
                 >
                   {(dogfood.items || []).map((it) => (

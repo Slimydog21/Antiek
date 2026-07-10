@@ -1558,6 +1558,8 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(itemsList.getAttribute("data-item-count-matches-listed")).toBe(
       "true",
     );
+    // Residual (zd): HTML-first list view_format honesty.
+    expect(itemsList.getAttribute("data-view-format")).toBe("html");
     // Mock lists posture items including Shannon + Turing + Lovelace (v12).
     expect(
       itemsList.querySelector('[data-item-id="dogfood-book-shannon-communication"]'),
