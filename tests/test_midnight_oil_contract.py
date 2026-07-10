@@ -31,6 +31,7 @@ from substrate.midnight_oil import (
     MidnightOilLiveDispatchFinalEnablementApplyPlanRequest,
     MidnightOilLiveDispatchFinalEnablementPlanRequest,
     MidnightOilLiveRunActivationSettingsRequest,
+    MidnightOilOperatorArchiveHandoffPackageDeliveryAuditPlanRequest,
     MidnightOilOperatorArchiveHandoffPackagePlanRequest,
     MidnightOilOperatorArchiveHandoffPackageResultReconciliationPlanRequest,
     MidnightOilOperatorDeliveryLedgerReconciliationPlanRequest,
@@ -84,6 +85,7 @@ from substrate.midnight_oil import (
     live_dispatch_final_enablement_apply_plan_midnight_oil,
     live_dispatch_final_enablement_plan_midnight_oil,
     live_run_activation_settings_midnight_oil,
+    operator_archive_handoff_package_delivery_audit_plan_midnight_oil,
     operator_archive_handoff_package_plan_midnight_oil,
     operator_archive_handoff_package_result_reconciliation_plan_midnight_oil,
     operator_delivery_ledger_reconciliation_plan_midnight_oil,
@@ -13555,6 +13557,454 @@ def test_midnight_oil_operator_archive_handoff_package_result_reconciliation_pla
     assert body["delivery_notification_created"] is False
     assert body["workspace_delivery_card_created"] is False
     assert body["operator_delivery_ledger_entry_created"] is False
+    assert body["operator_notification_created"] is False
+    assert body["private_read_url_created"] is False
+    assert body["graph_mutated"] is False
+    assert body["provider_calls_made"] is False
+    assert body["retrieval_performed"] is False
+    assert body["final_artifact_created"] is False
+
+
+def _operator_archive_handoff_package_delivery_audit_request_kwargs(
+    chain: dict[str, object],
+    output_aggregation_plan: object,
+    synthesis_handoff_plan: object,
+    synthesis_bundle_assembly_plan: object,
+    final_synthesis_draft_plan: object,
+    final_html_artifact_assembly_plan: object,
+    final_artifact_persistence_plan: object,
+    final_artifact_graph_commit_plan: object,
+    final_artifact_publish_plan: object,
+    final_artifact_completion_finalization_plan: object,
+    final_run_closure_plan: object,
+    operator_notification_delivery_readiness_plan: object,
+    operator_notification_delivery_apply_plan: object,
+    operator_notification_delivery_result_reconciliation_plan: object,
+    operator_delivery_ledger_reconciliation_plan: object,
+    workspace_delivery_card_reconciliation_plan: object,
+    delivery_notification_reconciliation_plan: object,
+    retention_billing_reconciliation_plan: object,
+    final_closeout_archive_reconciliation_plan: object,
+    operator_archive_handoff_package_plan: object,
+    operator_archive_handoff_package_result_reconciliation_plan: object,
+) -> dict[str, object]:
+    return {
+        **_operator_archive_handoff_package_result_reconciliation_request_kwargs(
+            chain,
+            output_aggregation_plan,
+            synthesis_handoff_plan,
+            synthesis_bundle_assembly_plan,
+            final_synthesis_draft_plan,
+            final_html_artifact_assembly_plan,
+            final_artifact_persistence_plan,
+            final_artifact_graph_commit_plan,
+            final_artifact_publish_plan,
+            final_artifact_completion_finalization_plan,
+            final_run_closure_plan,
+            operator_notification_delivery_readiness_plan,
+            operator_notification_delivery_apply_plan,
+            operator_notification_delivery_result_reconciliation_plan,
+            operator_delivery_ledger_reconciliation_plan,
+            workspace_delivery_card_reconciliation_plan,
+            delivery_notification_reconciliation_plan,
+            retention_billing_reconciliation_plan,
+            final_closeout_archive_reconciliation_plan,
+            operator_archive_handoff_package_plan,
+        ),
+        "operator_archive_handoff_package_result_reconciliation_plan_receipt": (
+            operator_archive_handoff_package_result_reconciliation_plan
+        ),
+    }
+
+
+def _accepted_midnight_oil_operator_archive_handoff_package_result_reconciliation_plan_chain(
+    *,
+    goal: str,
+    source_policy: list[str],
+    requested_control_scope: list[str],
+) -> dict[str, object]:
+    chain = _accepted_midnight_oil_operator_archive_handoff_package_plan_chain(
+        goal=goal,
+        source_policy=source_policy,
+        requested_control_scope=requested_control_scope,
+    )
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+    draft_plan = chain["final_synthesis_draft_plan"]
+    html_plan = chain["final_html_artifact_assembly_plan"]
+    persistence_plan = chain["final_artifact_persistence_plan"]
+    graph_commit_plan = chain["final_artifact_graph_commit_plan"]
+    publish_plan = chain["final_artifact_publish_plan"]
+    completion_plan = chain["final_artifact_completion_finalization_plan"]
+    closure_plan = chain["final_run_closure_plan"]
+    readiness_plan = chain["operator_notification_delivery_readiness_plan"]
+    apply_plan = chain["operator_notification_delivery_apply_plan"]
+    result_plan = chain["operator_notification_delivery_result_reconciliation_plan"]
+    ledger_plan = chain["operator_delivery_ledger_reconciliation_plan"]
+    card_plan = chain["workspace_delivery_card_reconciliation_plan"]
+    notification_plan = chain["delivery_notification_reconciliation_plan"]
+    retention_plan = chain["retention_billing_reconciliation_plan"]
+    archive_plan = chain["final_closeout_archive_reconciliation_plan"]
+    package_plan = chain["operator_archive_handoff_package_plan"]
+    reconciliation_plan = (
+        operator_archive_handoff_package_result_reconciliation_plan_midnight_oil(
+            MidnightOilOperatorArchiveHandoffPackageResultReconciliationPlanRequest(
+                **_operator_archive_handoff_package_result_reconciliation_request_kwargs(
+                    chain,
+                    output_plan,
+                    handoff_plan,
+                    assembly_plan,
+                    draft_plan,
+                    html_plan,
+                    persistence_plan,
+                    graph_commit_plan,
+                    publish_plan,
+                    completion_plan,
+                    closure_plan,
+                    readiness_plan,
+                    apply_plan,
+                    result_plan,
+                    ledger_plan,
+                    card_plan,
+                    notification_plan,
+                    retention_plan,
+                    archive_plan,
+                    package_plan,
+                )
+            )
+        )
+    )
+    return {
+        **chain,
+        "operator_archive_handoff_package_result_reconciliation_plan": (
+            reconciliation_plan
+        ),
+    }
+
+
+def test_operator_archive_handoff_package_delivery_audit_plan_records_disabled_requirements() -> None:
+    chain = _accepted_midnight_oil_operator_archive_handoff_package_result_reconciliation_plan_chain(
+        goal="Plan operator archive handoff package delivery audit after result reconciliation planning.",
+        source_policy=["arxiv", "web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+    draft_plan = chain["final_synthesis_draft_plan"]
+    html_plan = chain["final_html_artifact_assembly_plan"]
+    persistence_plan = chain["final_artifact_persistence_plan"]
+    graph_commit_plan = chain["final_artifact_graph_commit_plan"]
+    publish_plan = chain["final_artifact_publish_plan"]
+    completion_plan = chain["final_artifact_completion_finalization_plan"]
+    closure_plan = chain["final_run_closure_plan"]
+    readiness_plan = chain["operator_notification_delivery_readiness_plan"]
+    apply_plan = chain["operator_notification_delivery_apply_plan"]
+    result_plan = chain["operator_notification_delivery_result_reconciliation_plan"]
+    ledger_plan = chain["operator_delivery_ledger_reconciliation_plan"]
+    card_plan = chain["workspace_delivery_card_reconciliation_plan"]
+    notification_plan = chain["delivery_notification_reconciliation_plan"]
+    retention_plan = chain["retention_billing_reconciliation_plan"]
+    archive_plan = chain["final_closeout_archive_reconciliation_plan"]
+    package_plan = chain["operator_archive_handoff_package_plan"]
+    reconciliation_plan = chain[
+        "operator_archive_handoff_package_result_reconciliation_plan"
+    ]
+
+    audit_plan = operator_archive_handoff_package_delivery_audit_plan_midnight_oil(
+        MidnightOilOperatorArchiveHandoffPackageDeliveryAuditPlanRequest(
+            **_operator_archive_handoff_package_delivery_audit_request_kwargs(
+                chain,
+                output_plan,
+                handoff_plan,
+                assembly_plan,
+                draft_plan,
+                html_plan,
+                persistence_plan,
+                graph_commit_plan,
+                publish_plan,
+                completion_plan,
+                closure_plan,
+                readiness_plan,
+                apply_plan,
+                result_plan,
+                ledger_plan,
+                card_plan,
+                notification_plan,
+                retention_plan,
+                archive_plan,
+                package_plan,
+                reconciliation_plan,
+            )
+        )
+    )
+
+    assert audit_plan.receipt_id == (
+        f"{preflight.run_id}-operator-archive-handoff-package-delivery-audit-plan"
+    )
+    assert (
+        audit_plan.operator_archive_handoff_package_result_reconciliation_plan_receipt_id
+        == reconciliation_plan.receipt_id
+    )
+    assert audit_plan.status == (
+        "blocked_operator_archive_handoff_package_delivery_audit_unimplemented"
+    )
+    assert audit_plan.adapter_key == "operator_archive_handoff_package_delivery_audit"
+    assert audit_plan.planned_operator_archive_handoff_package_delivery_audit_receipt_id == (
+        f"{preflight.run_id}-operator-archive-handoff-package-delivery-audit-receipt"
+    )
+    assert audit_plan.planned_operator_archive_package_delivery_audit_entry_id == (
+        f"{preflight.run_id}-operator-archive-package-delivery-audit-entry"
+    )
+    assert audit_plan.planned_operator_archive_manifest_delivery_audit_entry_id == (
+        f"{preflight.run_id}-operator-archive-manifest-delivery-audit-entry"
+    )
+    assert audit_plan.planned_operator_handoff_bundle_delivery_audit_entry_id == (
+        f"{preflight.run_id}-operator-handoff-bundle-delivery-audit-entry"
+    )
+    assert audit_plan.planned_operator_archive_delivery_audit_evidence_bundle_id == (
+        f"{preflight.run_id}-operator-archive-delivery-audit-evidence-bundle"
+    )
+    assert "operator archive delivery audit evidence bundle writer" in (
+        audit_plan.operator_archive_handoff_package_delivery_audit_blockers
+    )
+    assert "operator_archive_delivery_audit_evidence_bundle_id" in (
+        audit_plan.required_operator_archive_handoff_package_delivery_audit_receipt_fields
+    )
+    assert (
+        audit_plan.required_operator_archive_handoff_package_delivery_audit_invariants[
+            0
+        ].startswith(
+            "operator archive handoff package delivery audit planner must require package result reconciliation planning"
+        )
+    )
+    assert audit_plan.blocker_reason == (
+        "operator_archive_handoff_package_delivery_audit_unimplemented"
+    )
+    assert audit_plan.operator_archive_handoff_package_delivery_audit_allowed is False
+    assert audit_plan.operator_archive_package_delivery_audit_entry_created is False
+    assert audit_plan.operator_archive_manifest_delivery_audit_entry_created is False
+    assert audit_plan.operator_handoff_bundle_delivery_audit_entry_created is False
+    assert audit_plan.operator_archive_delivery_audit_evidence_bundle_created is False
+    assert audit_plan.operator_archive_handoff_package_result_reconciliation_allowed is False
+    assert audit_plan.operator_archive_package_result_entry_created is False
+    assert audit_plan.operator_archive_manifest_status_entry_created is False
+    assert audit_plan.operator_handoff_bundle_status_entry_created is False
+    assert audit_plan.operator_archive_handoff_package_allowed is False
+    assert audit_plan.operator_archive_package_created is False
+    assert audit_plan.operator_archive_manifest_created is False
+    assert audit_plan.operator_handoff_bundle_created is False
+    assert audit_plan.final_closeout_archive_reconciliation_allowed is False
+    assert audit_plan.retention_billing_reconciliation_allowed is False
+    assert audit_plan.delivery_notification_created is False
+    assert audit_plan.workspace_delivery_card_created is False
+    assert audit_plan.operator_delivery_ledger_entry_created is False
+    assert audit_plan.operator_notification_created is False
+    assert audit_plan.private_read_url_created is False
+    assert audit_plan.graph_mutated is False
+    assert audit_plan.provider_calls_made is False
+    assert audit_plan.retrieval_performed is False
+    assert audit_plan.final_artifact_created is False
+
+
+def test_operator_archive_handoff_package_delivery_audit_plan_rejects_result_state() -> None:
+    chain = _accepted_midnight_oil_operator_archive_handoff_package_result_reconciliation_plan_chain(
+        goal="Reject result state before operator archive handoff package delivery audit planning.",
+        source_policy=["web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+    draft_plan = chain["final_synthesis_draft_plan"]
+    html_plan = chain["final_html_artifact_assembly_plan"]
+    persistence_plan = chain["final_artifact_persistence_plan"]
+    graph_commit_plan = chain["final_artifact_graph_commit_plan"]
+    publish_plan = chain["final_artifact_publish_plan"]
+    completion_plan = chain["final_artifact_completion_finalization_plan"]
+    closure_plan = chain["final_run_closure_plan"]
+    readiness_plan = chain["operator_notification_delivery_readiness_plan"]
+    apply_plan = chain["operator_notification_delivery_apply_plan"]
+    result_plan = chain["operator_notification_delivery_result_reconciliation_plan"]
+    ledger_plan = chain["operator_delivery_ledger_reconciliation_plan"]
+    card_plan = chain["workspace_delivery_card_reconciliation_plan"]
+    notification_plan = chain["delivery_notification_reconciliation_plan"]
+    retention_plan = chain["retention_billing_reconciliation_plan"]
+    archive_plan = chain["final_closeout_archive_reconciliation_plan"]
+    package_plan = chain["operator_archive_handoff_package_plan"]
+    bad_reconciliation_plan = chain[
+        "operator_archive_handoff_package_result_reconciliation_plan"
+    ].model_copy(update={"operator_archive_package_result_entry_created": True})
+
+    with pytest.raises(
+        ValidationError,
+        match=(
+            "operator_archive_handoff_package_result_reconciliation_plan_receipt "
+            "must not create operator archive package result state"
+        ),
+    ):
+        MidnightOilOperatorArchiveHandoffPackageDeliveryAuditPlanRequest(
+            **_operator_archive_handoff_package_delivery_audit_request_kwargs(
+                chain,
+                output_plan,
+                handoff_plan,
+                assembly_plan,
+                draft_plan,
+                html_plan,
+                persistence_plan,
+                graph_commit_plan,
+                publish_plan,
+                completion_plan,
+                closure_plan,
+                readiness_plan,
+                apply_plan,
+                result_plan,
+                ledger_plan,
+                card_plan,
+                notification_plan,
+                retention_plan,
+                archive_plan,
+                package_plan,
+                bad_reconciliation_plan,
+            )
+        )
+
+
+def test_midnight_oil_operator_archive_handoff_package_delivery_audit_plan_api_contract() -> None:
+    from interfaces.research.api.app import create_app
+
+    chain = _accepted_midnight_oil_operator_archive_handoff_package_result_reconciliation_plan_chain(
+        goal="Expose operator archive handoff package delivery audit planning over the API.",
+        source_policy=["arxiv", "substack"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+    draft_plan = chain["final_synthesis_draft_plan"]
+    html_plan = chain["final_html_artifact_assembly_plan"]
+    persistence_plan = chain["final_artifact_persistence_plan"]
+    graph_commit_plan = chain["final_artifact_graph_commit_plan"]
+    publish_plan = chain["final_artifact_publish_plan"]
+    completion_plan = chain["final_artifact_completion_finalization_plan"]
+    closure_plan = chain["final_run_closure_plan"]
+    readiness_plan = chain["operator_notification_delivery_readiness_plan"]
+    apply_plan = chain["operator_notification_delivery_apply_plan"]
+    result_plan = chain["operator_notification_delivery_result_reconciliation_plan"]
+    ledger_plan = chain["operator_delivery_ledger_reconciliation_plan"]
+    card_plan = chain["workspace_delivery_card_reconciliation_plan"]
+    notification_plan = chain["delivery_notification_reconciliation_plan"]
+    retention_plan = chain["retention_billing_reconciliation_plan"]
+    archive_plan = chain["final_closeout_archive_reconciliation_plan"]
+    package_plan = chain["operator_archive_handoff_package_plan"]
+    reconciliation_plan = chain[
+        "operator_archive_handoff_package_result_reconciliation_plan"
+    ]
+    request_json = {
+        key: value.model_dump(mode="json")
+        for key, value in _operator_archive_handoff_package_delivery_audit_request_kwargs(
+            chain,
+            output_plan,
+            handoff_plan,
+            assembly_plan,
+            draft_plan,
+            html_plan,
+            persistence_plan,
+            graph_commit_plan,
+            publish_plan,
+            completion_plan,
+            closure_plan,
+            readiness_plan,
+            apply_plan,
+            result_plan,
+            ledger_plan,
+            card_plan,
+            notification_plan,
+            retention_plan,
+            archive_plan,
+            package_plan,
+            reconciliation_plan,
+        ).items()
+    }
+
+    with TestClient(create_app()) as client:
+        r = client.post(
+            "/research/midnight-oil/operator-archive-handoff-package-delivery-audit-plan",
+            json=request_json,
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["receipt_id"] == (
+        f"{preflight.run_id}-operator-archive-handoff-package-delivery-audit-plan"
+    )
+    assert (
+        body[
+            "operator_archive_handoff_package_result_reconciliation_plan_receipt_id"
+        ]
+        == reconciliation_plan.receipt_id
+    )
+    assert body["status"] == (
+        "blocked_operator_archive_handoff_package_delivery_audit_unimplemented"
+    )
+    assert body["adapter_key"] == "operator_archive_handoff_package_delivery_audit"
+    assert body["planned_operator_archive_package_delivery_audit_entry_id"] == (
+        f"{preflight.run_id}-operator-archive-package-delivery-audit-entry"
+    )
+    assert body["planned_operator_archive_delivery_audit_evidence_bundle_id"] == (
+        f"{preflight.run_id}-operator-archive-delivery-audit-evidence-bundle"
+    )
+    assert "operator archive package delivery audit entry writer" in body[
+        "operator_archive_handoff_package_delivery_audit_blockers"
+    ]
+    assert "operator_archive_manifest_delivery_audit_entry_id" in (
+        body[
+            "required_operator_archive_handoff_package_delivery_audit_receipt_fields"
+        ]
+    )
+    assert body["blocker_reason"] == (
+        "operator_archive_handoff_package_delivery_audit_unimplemented"
+    )
+    assert body["operator_archive_handoff_package_delivery_audit_allowed"] is False
+    assert body["operator_archive_package_delivery_audit_entry_created"] is False
+    assert body["operator_archive_manifest_delivery_audit_entry_created"] is False
+    assert body["operator_handoff_bundle_delivery_audit_entry_created"] is False
+    assert body["operator_archive_delivery_audit_evidence_bundle_created"] is False
+    assert (
+        body["operator_archive_handoff_package_result_reconciliation_allowed"]
+        is False
+    )
+    assert body["operator_archive_package_result_entry_created"] is False
+    assert body["operator_archive_manifest_status_entry_created"] is False
+    assert body["operator_handoff_bundle_status_entry_created"] is False
+    assert body["operator_archive_handoff_package_allowed"] is False
+    assert body["operator_archive_package_created"] is False
+    assert body["operator_archive_manifest_created"] is False
+    assert body["operator_handoff_bundle_created"] is False
     assert body["operator_notification_created"] is False
     assert body["private_read_url_created"] is False
     assert body["graph_mutated"] is False

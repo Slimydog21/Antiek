@@ -3853,6 +3853,37 @@ export interface MidnightOilOperatorArchiveHandoffPackageResultReconciliationPla
   adapter_plan_notes: string[];
 }
 
+export interface MidnightOilOperatorArchiveHandoffPackageDeliveryAuditPlanRequest
+  extends MidnightOilOperatorArchiveHandoffPackageResultReconciliationPlanRequest {
+  operator_archive_handoff_package_result_reconciliation_plan_receipt: MidnightOilOperatorArchiveHandoffPackageResultReconciliationPlanReceipt;
+}
+
+export interface MidnightOilOperatorArchiveHandoffPackageDeliveryAuditPlanReceipt
+  extends Omit<
+    MidnightOilOperatorArchiveHandoffPackageResultReconciliationPlanReceipt,
+    "receipt_id" | "status" | "adapter_key" | "blocker_reason" | "adapter_plan_notes"
+  > {
+  receipt_id: string;
+  operator_archive_handoff_package_result_reconciliation_plan_receipt_id: string;
+  status: "blocked_operator_archive_handoff_package_delivery_audit_unimplemented";
+  adapter_key: "operator_archive_handoff_package_delivery_audit";
+  planned_operator_archive_handoff_package_delivery_audit_receipt_id: string;
+  planned_operator_archive_package_delivery_audit_entry_id: string;
+  planned_operator_archive_manifest_delivery_audit_entry_id: string;
+  planned_operator_handoff_bundle_delivery_audit_entry_id: string;
+  planned_operator_archive_delivery_audit_evidence_bundle_id: string;
+  operator_archive_handoff_package_delivery_audit_blockers: string[];
+  required_operator_archive_handoff_package_delivery_audit_invariants: string[];
+  required_operator_archive_handoff_package_delivery_audit_receipt_fields: string[];
+  blocker_reason: "operator_archive_handoff_package_delivery_audit_unimplemented";
+  operator_archive_handoff_package_delivery_audit_allowed: boolean;
+  operator_archive_package_delivery_audit_entry_created: boolean;
+  operator_archive_manifest_delivery_audit_entry_created: boolean;
+  operator_handoff_bundle_delivery_audit_entry_created: boolean;
+  operator_archive_delivery_audit_evidence_bundle_created: boolean;
+  adapter_plan_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -4817,4 +4848,24 @@ export async function operatorArchiveHandoffPackageResultReconciliationPlanMidni
     );
   }
   return (await resp.json()) as MidnightOilOperatorArchiveHandoffPackageResultReconciliationPlanReceipt;
+}
+
+export async function operatorArchiveHandoffPackageDeliveryAuditPlanMidnightOil(
+  request: MidnightOilOperatorArchiveHandoffPackageDeliveryAuditPlanRequest,
+): Promise<MidnightOilOperatorArchiveHandoffPackageDeliveryAuditPlanReceipt> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/midnight-oil/operator-archive-handoff-package-delivery-audit-plan`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+  );
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(
+      `POST /research/midnight-oil/operator-archive-handoff-package-delivery-audit-plan: HTTP ${resp.status}: ${body}`,
+    );
+  }
+  return (await resp.json()) as MidnightOilOperatorArchiveHandoffPackageDeliveryAuditPlanReceipt;
 }
