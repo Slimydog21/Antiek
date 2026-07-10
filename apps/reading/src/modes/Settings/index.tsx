@@ -4049,6 +4049,21 @@ export default function Settings() {
                   ND advisory panel
                 </a>
               </li>
+              {/* Residual (aia): twin note-taker completeness FUTURE brief (ahq). */}
+              <li
+                data-deferred="twin-completeness"
+                data-testid="settings-deferred-twin-completeness"
+              >
+                L3 twin live seed deferred · offline twin mounts shipped ·{" "}
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md"
+                  data-testid="settings-deferred-twin-future-agent-link"
+                  className="underline opacity-90 hover:opacity-100"
+                  title="Future-agent twin note-taker completeness matrix"
+                >
+                  FUTURE-AGENT twin matrix
+                </a>
+              </li>
               <li data-deferred="secret-vault" data-testid="settings-deferred-vault">
                 Multi-provider secret vault polish (SPR-02) beyond register model
               </li>

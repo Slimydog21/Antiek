@@ -940,6 +940,12 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(
       screen.getByTestId("settings-deferred-l7-panel-link").textContent,
     ).toMatch(/ND advisory panel/i);
+    // Residual (aia): twin completeness FUTURE-AGENT brief.
+    expect(
+      screen
+        .getByTestId("settings-deferred-twin-future-agent-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix/);
   });
 
   it("surfaces dual-gate L1–L4 prep strip on decision-tree (sw)", async () => {
