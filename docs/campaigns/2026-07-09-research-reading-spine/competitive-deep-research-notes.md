@@ -1767,3 +1767,7 @@ API and substrate dogfood are identity-honest end-to-end.
 ## Residual zk · 2026-07-10 — FUTURE-AGENT tip re-anchor through zj
 FUTURE-AGENT-SPEC tip re-anchored after 90 residual ships this continuation.
 Competitive delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
+
+## Residual zl · 2026-07-10 — SESSION-ARC handoff through zk
+SESSION-ARC-vz-zk documents 91 residual ships this continuation. Competitive
+delta: compaction-safe multi-agent handoff; operator merge PR #465 highest leverage.
