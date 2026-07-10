@@ -123,6 +123,16 @@ describe("SpawnMergePanel residual ci", () => {
     expect(panel.getAttribute("data-spawn-id")).toBe("spn_1");
     expect(panel.getAttribute("data-parent-asset-id")).toBe("book-1");
     expect(panel.textContent).toMatch(/seamless highlight→DR→merge path/i);
+    // Residual (aqy): path-choices pure helper chrome on single-spawn merge.
+    const path = screen.getByTestId("spawn-merge-path-choices");
+    expect(path.getAttribute("data-html-first")).toBe("true");
+    expect(path.getAttribute("data-parent-bound")).toBe("true");
+    expect(path.getAttribute("data-draft-merge-ready")).toBe("true");
+    expect(path.getAttribute("data-into-parent-ready")).toBe("true");
+    expect(path.getAttribute("data-written-analysis-ready")).toBe("false");
+    expect(path.getAttribute("data-selected-count")).toBe("1");
+    expect(path.textContent).toMatch(/draft merge/i);
+    expect(path.textContent).toMatch(/ready/i);
     expect(
       screen.getByTestId("spawn-merge-draft").getAttribute("data-seamless-merge-draft"),
     ).toBe("true");

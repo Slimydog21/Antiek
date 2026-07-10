@@ -1,0 +1,19 @@
+# inventory-aqy · researchPathChoices pure helper + SpawnMerge path chrome
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aqy
+date: 2026-07-10
+parent_tip: d79f18874 (aqx)
+
+## Closed
+- workspace/researchPathChoices.ts pure readiness contract (draft · into-parent ·
+  written analysis · float_full)
+- SpawnMergePanel path-choices chrome wired to pure helper (parity aqw/aqx)
+- Completes path-choices matrix: DR host · collective · spawn merge
+- vitest researchPathChoices 5 + SpawnMergePanel 9 = 14 green
+- evidence: {SCRATCH}/aqy-path-choices-vitest.txt
+
+## Next
+aqz+ product residual **OUTSIDE path thrash** (aqw–aqy closed)
+Prefer: MO product depth · free catalog · marketplace · competitive · twin product
+Avoid: path-choices · dual-gate honesty · soft-budget · vision-feed thrash
+Operator merge PR #465 remains highest leverage (gated)

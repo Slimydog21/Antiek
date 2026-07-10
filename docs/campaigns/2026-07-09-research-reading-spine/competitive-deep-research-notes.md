@@ -3965,3 +3965,9 @@ CollectiveResearchPanel path-choices chrome (parity aqw): multi-select · draft
 merge · into parent · written analysis (≥2) readiness. Offline merge unit · L6
 deferred honesty. Competitive delta: multi-float cohesive unit path is operator-
 visible. vitest 31 green. P0 PR #465. Pivot aqy+ outside path thrash.
+
+## Residual aqy · 2026-07-10 — researchPathChoices pure helper + SpawnMerge path chrome
+Pure `researchPathChoicesReadiness` contract (draft · into-parent · written
+analysis · float_full). SpawnMergePanel chrome wired. Completes path matrix
+DR host · collective · spawn merge. Craftsmanship: one readiness helper, hard
+to vary. vitest 14 green. P0 PR #465. Pivot aqz+ outside path thrash.

@@ -39,6 +39,7 @@ import {
   buildMergedDocWriteHref,
   plainTextFromHtml,
 } from "../../workspace/twinWriteSeed";
+import { researchPathChoicesReadiness } from "../../workspace/researchPathChoices";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 import {
   ResearchLaunchBudgetPanel,
@@ -242,6 +243,11 @@ export function SpawnMergePanel({
   const spawnBound = Boolean(String(spawnId || "").trim());
   // Residual (agu): reading-asset merge path is seamless when both ends bound.
   const seamlessSpawnMerge = parentBound && spawnBound;
+  // Residual (aqy): pure path-choices readiness (shared with aqw/aqx).
+  const pathChoices = researchPathChoicesReadiness({
+    parentAssetId,
+    selectedCount: spawnBound ? 1 : 0,
+  });
 
   return (
     <section
@@ -267,6 +273,28 @@ export function SpawnMergePanel({
           {seamlessSpawnMerge
             ? " · seamless highlight→DR→merge path"
             : " · bind spawn + parent for seamless merge"}
+        </p>
+        {/* Residual (aqy): path choices chrome (parity aqw DR · aqx collective). */}
+        <p
+          className="text-[10px] font-mono opacity-80"
+          data-testid="spawn-merge-path-choices"
+          data-view-format="html"
+          data-html-first="true"
+          data-parent-bound={String(pathChoices.parent_bound)}
+          data-draft-merge-ready={String(pathChoices.draft_merge_ready)}
+          data-into-parent-ready={String(pathChoices.into_parent_ready)}
+          data-written-analysis-ready={String(
+            pathChoices.written_analysis_ready,
+          )}
+          data-selected-count={String(pathChoices.selected_count)}
+          data-seamless-highlight-dr-merge={String(seamlessSpawnMerge)}
+          role="status"
+          title="Single-spawn path: draft-combined or merge into parent reading asset (written analysis needs multi-select collective)"
+        >
+          Path: draft merge · into parent
+          {pathChoices.draft_merge_ready
+            ? " · ready"
+            : ` · ${pathChoices.summary}`}
         </p>
         {/* Residual (ih/nn/aix): Settings + dual-gate + competitive DR scorecard. */}
         <p className="text-[11px] font-mono space-x-3">

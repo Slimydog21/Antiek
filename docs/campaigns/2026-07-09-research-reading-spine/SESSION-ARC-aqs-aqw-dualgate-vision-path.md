@@ -15,6 +15,7 @@
 | **aqv** | Antiek-bench VISION_USAGE_FEED_SOURCES + task→feed maps expand | suiteProposalTasks + Settings 46 green |
 | **aqw** | DeepResearchSessionHost float\|full · draft · into-parent path chrome | DeepResearchSessionHost 34 green |
 | **aqx** | CollectiveResearchPanel multi-select · draft · into-parent · analysis path chrome | CollectiveResearchPanel 31 green |
+| **aqy** | researchPathChoices pure helper + SpawnMergePanel path chrome (matrix closed) | researchPathChoices 5 + SpawnMerge 9 |
 
 ## Product meaning
 
