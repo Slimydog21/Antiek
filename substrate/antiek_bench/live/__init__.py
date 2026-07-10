@@ -33,6 +33,11 @@ from .nd_shadow import (
     collect_nd_shadow,
 )
 from .wedge_config import BENCH_ROLE, LiveWedgeConfig, validate_live_suite
+from .weekly_verdict import (
+    WeeklyVerdict,
+    build_weekly_verdict,
+    project_weekly_verdict_html,
+)
 
 __all__ = [
     "HardBudget",
@@ -55,4 +60,7 @@ __all__ = [
     "NDShadowRecord",
     "NDShadowResponse",
     "collect_nd_shadow",
+    "WeeklyVerdict",
+    "build_weekly_verdict",
+    "project_weekly_verdict_html",
 ]

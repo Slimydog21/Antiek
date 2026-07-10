@@ -57,7 +57,7 @@ def test_double_gate_makes_zero_calls_and_writes(tmp_path: Path) -> None:
         journal = NDShadowJournal(tmp_path / f"{enabled}.jsonl")
         assert collect_nd_shadow(
             config=config(enabled),
-            items=(("item", "private prompt"),),
+            items=(("item", "distill", "private prompt"),),
             client=client,
             journal=journal,
             environ=environ,
@@ -71,7 +71,7 @@ def test_shadow_uses_hash_content_and_persists_no_prompt(tmp_path: Path) -> None
     journal = NDShadowJournal(tmp_path / "shadow.jsonl")
     records = collect_nd_shadow(
         config=config(),
-        items=(("private-item sk-ITEM123", "private-sentinel sk-ABC123"),),
+        items=(("private-item sk-ITEM123", "distill", "private-sentinel sk-ABC123"),),
         client=client,
         journal=journal,
         environ={"ANTIEK_NOTDIAMOND": "true"},
@@ -88,7 +88,7 @@ def test_shadow_uses_hash_content_and_persists_no_prompt(tmp_path: Path) -> None
     replay_client = FakeClient("model-b")
     replay = collect_nd_shadow(
         config=config(),
-        items=(("private-item sk-ITEM123", "private-sentinel sk-ABC123"),),
+        items=(("private-item sk-ITEM123", "distill", "private-sentinel sk-ABC123"),),
         client=replay_client,
         journal=journal,
         environ={"ANTIEK_NOTDIAMOND": "true"},
@@ -111,7 +111,7 @@ def test_failure_timeout_and_invalid_choice_are_nonfatal_and_bounded(tmp_path: P
         journal = NDShadowJournal(tmp_path / f"failure-{index}.jsonl")
         row = collect_nd_shadow(
             config=config(),
-            items=(("item", "prompt"),),
+            items=(("item", "distill", "prompt"),),
             client=FailureClient(error),
             journal=journal,
             environ={"ANTIEK_NOTDIAMOND": "1"},
@@ -121,7 +121,7 @@ def test_failure_timeout_and_invalid_choice_are_nonfatal_and_bounded(tmp_path: P
 
     invalid = collect_nd_shadow(
         config=config(),
-        items=(("item", "prompt"),),
+        items=(("item", "distill", "prompt"),),
         client=FakeClient("model-c"),
         journal=NDShadowJournal(tmp_path / "invalid.jsonl"),
         environ={"ANTIEK_NOTDIAMOND": "1"},
@@ -138,7 +138,7 @@ def test_untrusted_session_identifier_is_hashed(tmp_path: Path) -> None:
     journal = NDShadowJournal(tmp_path / "session.jsonl")
     row = collect_nd_shadow(
         config=config(),
-        items=(("item", "prompt"),),
+        items=(("item", "distill", "prompt"),),
         client=SessionClient(),
         journal=journal,
         environ={"ANTIEK_NOTDIAMOND": "1"},
@@ -160,7 +160,7 @@ def test_claim_is_concurrency_safe_and_tradeoff_is_identity_bound(tmp_path: Path
     def collect():  # type: ignore[no-untyped-def]
         return collect_nd_shadow(
             config=config(),
-            items=(("item", "prompt"),),
+            items=(("item", "distill", "prompt"),),
             client=client,
             journal=journal,
             environ={"ANTIEK_NOTDIAMOND": "1"},
@@ -181,7 +181,7 @@ def test_claim_is_concurrency_safe_and_tradeoff_is_identity_bound(tmp_path: Path
     )
     collect_nd_shadow(
         config=balanced,
-        items=(("item", "prompt"),),
+        items=(("item", "distill", "prompt"),),
         client=client,
         journal=journal,
         environ={"ANTIEK_NOTDIAMOND": "1"},
@@ -199,7 +199,7 @@ def test_crashed_pending_claim_becomes_honest_terminal_without_retry(tmp_path: P
     with pytest.raises(KeyboardInterrupt):
         collect_nd_shadow(
             config=config(),
-            items=(("item", "prompt"),),
+            items=(("item", "distill", "prompt"),),
             client=CrashClient(),
             journal=journal,
             environ={"ANTIEK_NOTDIAMOND": "1"},
@@ -210,7 +210,7 @@ def test_crashed_pending_claim_becomes_honest_terminal_without_retry(tmp_path: P
     client = FakeClient()
     recovered = collect_nd_shadow(
         config=config(),
-        items=(("item", "prompt"),),
+        items=(("item", "distill", "prompt"),),
         client=client,
         journal=journal,
         environ={"ANTIEK_NOTDIAMOND": "1"},
@@ -237,7 +237,7 @@ def test_shadow_cannot_mutate_driver_scores_or_budget(tmp_path: Path) -> None:
     )
     collect_nd_shadow(
         config=config(),
-        items=(("item", "prompt"),),
+        items=(("item", "distill", "prompt"),),
         client=FakeClient("model-b"),
         journal=NDShadowJournal(tmp_path / "shadow.jsonl"),
         environ={"ANTIEK_NOTDIAMOND": "1"},

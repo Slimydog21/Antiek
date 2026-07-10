@@ -62,6 +62,7 @@ class NDShadowRecord:
     week_id: str
     suite_version: str
     item_id_hash: str
+    task_class: str
     prompt_hash: str
     candidates: tuple[str, str]
     tradeoff: str
@@ -152,7 +153,9 @@ def _truthy(environ: Mapping[str, str]) -> bool:
     return raw not in {"", "0", "false", "off", "no", "disabled"}
 
 
-def _shadow_id(config: NDShadowConfig, item_id: str, prompt_hash: str) -> str:
+def _shadow_id(
+    config: NDShadowConfig, item_id: str, task_class: str, prompt_hash: str
+) -> str:
     material = json.dumps(
         [
             config.week_id,
@@ -160,6 +163,7 @@ def _shadow_id(config: NDShadowConfig, item_id: str, prompt_hash: str) -> str:
             config.candidates,
             config.tradeoff,
             item_id,
+            task_class,
             prompt_hash,
         ],
         separators=(",", ":"),
@@ -174,7 +178,7 @@ def _safe_session_id(value: str) -> str:
 def collect_nd_shadow(
     *,
     config: NDShadowConfig,
-    items: Sequence[tuple[str, str]],
+    items: Sequence[tuple[str, str, str]],
     client: NDShadowClient,
     journal: NDShadowJournal,
     environ: Mapping[str, str] | None = None,
@@ -186,14 +190,15 @@ def collect_nd_shadow(
         return ()
     records: list[NDShadowRecord] = []
     current_ms = int(time.time() * 1000) if now_ms is None else now_ms
-    for item_id, prompt in items:
+    for item_id, task_class, prompt in items:
         prompt_hash = "sha256:" + hashlib.sha256(prompt.encode()).hexdigest()
         item_id_hash = "sha256:" + hashlib.sha256(item_id.encode()).hexdigest()
         base: dict[str, Any] = {
-            "shadow_id": _shadow_id(config, item_id, prompt_hash),
+            "shadow_id": _shadow_id(config, item_id, task_class, prompt_hash),
             "week_id": config.week_id,
             "suite_version": config.suite_version,
             "item_id_hash": item_id_hash,
+            "task_class": task_class,
             "prompt_hash": prompt_hash,
             "candidates": config.candidates,
             "tradeoff": config.tradeoff,
