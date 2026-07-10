@@ -1914,3 +1914,8 @@ Research context header + evidence citation-trust (grounded/ungrounded) deep-lin
 #l2-substack (parity aal–aap). Competitive delta: intelligent search / evidence
 pack path surfaces Substack hydrate prep beside arxiv on the workstation chokepoint.
 
+## Residual aar · 2026-07-10 — SESSION-ARC + FUTURE tip through aaq
+SESSION-ARC-aah-aaq documents write-seed provenance (aah–aaj) + L2 Substack
+dual-gate deep-link wave (aal–aaq). FUTURE tip re-anchored. Competitive delta:
+compaction-safe multi-agent handoff; operator merge PR #465 highest leverage.
+

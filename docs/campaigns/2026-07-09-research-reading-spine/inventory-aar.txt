@@ -1,0 +1,13 @@
+# inventory-aar · SESSION-ARC + FUTURE tip through aaq
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aar
+date: 2026-07-10
+tip_sha: a7f44ea9
+
+## Closed
+- SESSION-ARC-aah-aaq-write-seed-l2.md (write-seed + L2 wave)
+- FUTURE-AGENT tip re-anchor through aaq
+- Highest leverage: operator merge PR #465 OPEN
+
+## Not in scope
+- Operator merge PR #465 (gated)
