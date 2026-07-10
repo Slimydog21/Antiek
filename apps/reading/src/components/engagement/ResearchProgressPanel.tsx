@@ -273,9 +273,10 @@ export function ResearchProgressPanel({
           <a
             href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l4-moil"
             data-testid="research-progress-dual-gate-checklist-link"
-            title="Dual-gate L1–L4 checklist (prep only)"
+            title="Dual-gate L4 Midnight Oil live-step checklist (prep only · offline default)"
           >
-            Dual-gate L1–L4 checklist
+            {/* Residual (aau): label matches #l4-moil href (was L1–L4). */}
+            Dual-gate L4 Midnight Oil checklist
           </a>
         </p>
         {/* Residual (lr): model+budget+depth during multi-minute plan→cite. */}

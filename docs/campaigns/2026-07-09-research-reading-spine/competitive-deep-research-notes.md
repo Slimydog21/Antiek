@@ -1928,3 +1928,8 @@ Spawn merge + collective multi-spawn panels label Dual-gate L6 collective
 checklist (href #l6-collective) — no more L1–L4 label/href mismatch. Competitive
 delta: multi-spawn merge path honesty matches offline merge unit doctrine.
 
+## Residual aau · 2026-07-10 — L4 Midnight Oil dual-gate label honesty
+Research progress panel labels Dual-gate L4 Midnight Oil checklist (href
+#l4-moil). Competitive delta: multi-minute plan→cite progress path honesty
+matches MO live-step dual-gate doctrine (parity aat L6 label fix).
+

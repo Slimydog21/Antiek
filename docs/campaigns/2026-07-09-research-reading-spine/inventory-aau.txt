@@ -1,0 +1,20 @@
+# inventory-aau · L4 Midnight Oil dual-gate label honesty on progress
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aau
+date: 2026-07-10
+tip_before: cad5da93 (aat)
+
+## Problem
+ResearchProgress linked #l4-moil but labeled Dual-gate L1–L4 checklist.
+
+## Fix
+- Copy → Dual-gate L4 Midnight Oil checklist
+- title honesty for live-step prep
+- ResearchProgressPanel.test locks L4 copy
+
+## Verified
+npm test ResearchProgressPanel.test.tsx → 9 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live L4 MO step injector
