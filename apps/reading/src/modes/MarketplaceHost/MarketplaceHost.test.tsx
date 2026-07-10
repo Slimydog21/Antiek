@@ -340,6 +340,22 @@ describe("MarketplaceHost mode", () => {
     expect(hostMetrics.getAttribute("data-subjects")).toBe("literature");
     expect(hostMetrics.textContent).toMatch(/subjects=literature/);
     expect(hostMetrics.textContent).toMatch(/Host land/);
+    // Residual (alm): domain-search coverage honesty after host (alj).
+    expect(hostMetrics.getAttribute("data-domain-search-has-default")).toBe(
+      "true",
+    );
+    expect(hostMetrics.getAttribute("data-domain-search-covered")).toMatch(
+      /literature/,
+    );
+    expect(
+      Number(hostMetrics.getAttribute("data-domain-search-covered-count")),
+    ).toBeGreaterThanOrEqual(1);
+    const domainCov = screen.getByTestId(
+      "marketplace-host-domain-search-coverage",
+    );
+    expect(domainCov.getAttribute("data-has-default")).toBe("true");
+    expect(domainCov.textContent).toMatch(/default active/i);
+    expect(domainCov.textContent).toMatch(/literature/i);
     // Residual (tc): free/PD host path honesty.
     expect(hostMetrics.getAttribute("data-license-class")).toBe("public_domain");
     expect(hostMetrics.getAttribute("data-is-public-domain")).toBe("true");

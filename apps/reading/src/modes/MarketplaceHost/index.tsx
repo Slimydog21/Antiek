@@ -70,10 +70,13 @@
  * Residual (aif): operator-visible pub-ref foresight chrome (parity aic–aie).
  * Residual (aho): twin seed body includes free/purchased path honesty for
  * recursive note-taker substrate after host/purchase.
+ * Residual (alm): host-land domain-search coverage honesty (alj) so free PD
+ * catalog subjects map to intelligent twin-search defaults after host.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { seedTwinNotes } from "../../api/engagement";
+import { domainSearchCoverage } from "../../components/engagement/ResearchContextPanel";
 import {
   fetchAccountLibrary,
   fetchHostedDocumentHtml,
@@ -330,6 +333,14 @@ export default function MarketplaceHost({
     () => Boolean(libraryFilter.trim()),
     [libraryFilter],
   );
+
+  // Residual (alm): domain-search coverage for hosted catalog book subjects.
+  const hostedDomainCoverage = useMemo(() => {
+    if (!hosted) return null;
+    const subjects =
+      entries.find((e) => e.book_id === hosted.book_id)?.subjects || [];
+    return domainSearchCoverage(subjects);
+  }, [hosted, entries]);
 
   const loadCatalog = useCallback(async () => {
     setBusy(true);
@@ -1452,6 +1463,22 @@ export default function MarketplaceHost({
                 []
               ).join(",") || "none"
             }
+            // Residual (alm): intelligent twin-search domain coverage after host.
+            data-domain-search-has-default={String(
+              Boolean(hostedDomainCoverage?.has_default),
+            )}
+            data-domain-search-covered={
+              hostedDomainCoverage?.covered.join(",") || ""
+            }
+            data-domain-search-uncovered={
+              hostedDomainCoverage?.uncovered.join(",") || ""
+            }
+            data-domain-search-covered-count={String(
+              hostedDomainCoverage?.covered.length ?? 0,
+            )}
+            data-domain-search-uncovered-count={String(
+              hostedDomainCoverage?.uncovered.length ?? 0,
+            )}
             data-twin-seeded={
               twinSeedStatus
                 ? twinSeedHonesty?.seeded === false
@@ -1508,6 +1535,32 @@ export default function MarketplaceHost({
                 entries.find((e) => e.book_id === hosted.book_id)?.subjects || []
               ).join(",") || "none"}
             </p>
+            {/* Residual (alm): domain-search coverage honesty after host land. */}
+            {hostedDomainCoverage ? (
+              <p
+                data-testid="marketplace-host-domain-search-coverage"
+                data-has-default={String(hostedDomainCoverage.has_default)}
+                data-covered-count={String(
+                  hostedDomainCoverage.covered.length,
+                )}
+                data-uncovered-count={String(
+                  hostedDomainCoverage.uncovered.length,
+                )}
+                data-covered={hostedDomainCoverage.covered.join(",") || ""}
+                data-uncovered={
+                  hostedDomainCoverage.uncovered.join(",") || ""
+                }
+                role="status"
+              >
+                Domain-search coverage:{" "}
+                {hostedDomainCoverage.has_default
+                  ? `default active · covered=${hostedDomainCoverage.covered.join(",") || "none"}`
+                  : "no domain default (honest empty · never invent query)"}
+                {hostedDomainCoverage.uncovered.length > 0
+                  ? ` · co-tags=${hostedDomainCoverage.uncovered.join(",")}`
+                  : ""}
+              </p>
+            ) : null}
             {/* Residual (aea): seamless port honesty for account host path. */}
             <p
               data-testid="marketplace-seamless-port"
