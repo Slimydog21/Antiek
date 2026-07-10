@@ -1,0 +1,18 @@
+# inventory-uj · hosted book pub-refs L1/L2 hydrate prep honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: uj
+date: 2026-07-10
+
+## Closed
+- HostedHtmlDocumentHost pub-refs data-offline-default + data-l1-l2-hydrate-prep
+- Settings hydrate readiness + dual-gate L1–L4 deep-links on hosted book DR
+- vitest HostedHtml 16 green · /tmp/residual-tests-uj.log
+
+## Product why
+North star: arxiv/substack knowledge-dense refs on deep research from books.
+Pub-refs UI must surface offline-honest L1/L2 hydrate prep (never silent live)
+parity ResearchContext dual-gate links.
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Enabling live hydrate injectors

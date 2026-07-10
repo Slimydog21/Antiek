@@ -1139,3 +1139,9 @@ from MO without silent live enable — offline-honest dual-gate craftsmanship.
 ## Residual ui · 2026-07-10 — SESSION-ARC tt–uh wave handoff
 SESSION-ARC-tt-uh documents write-seed · free STEM · Select open · MO L4 for
 swarm/compaction handoff. Competitive delta: long infinite waves stay auditable.
+
+## Residual uj · 2026-07-10 — hosted book pub-refs L1/L2 hydrate prep honesty
+HostedHtmlDocumentHost pub-refs panel stamps offline-default hydrate prep and
+deep-links Settings hydrate readiness + dual-gate L1–L4 checklist. Competitive
+delta: arxiv/substack grounding on free STEM books is dual-gate honest — never
+silent live hydrate.

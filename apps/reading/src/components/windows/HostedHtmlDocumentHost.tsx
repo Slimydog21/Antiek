@@ -19,6 +19,8 @@
  * Residual (er): optional arxiv/substack/URL pub refs hydrate + attach on
  * float open (parity with ResearchThis cu) — knowledge-dense grounding from
  * marketplace/hosted books.
+ * Residual (uj): pub-refs panel dual-gate L1/L2 hydrate readiness deep-links
+ * (offline default · never silent live hydrate).
  * Residual (es): launch deep research as full window (view_mode full) as well
  * as floating — north-star “open in full screen” without leaving the hosted book.
  * Residual (eu): mount CollectiveResearchPanel when open deep_research_session
@@ -535,17 +537,19 @@ export default function HostedHtmlDocumentHost(
               </p>
             )}
           </div>
-          {/* Residual (er): ground float DR with arxiv/substack/URL refs. */}
+          {/* Residual (er/uj): ground float DR with arxiv/substack/URL refs. */}
           <div
             className="space-y-1"
             data-testid="hosted-html-pub-refs"
             data-view-format="html"
+            data-offline-default="true"
+            data-l1-l2-hydrate-prep="true"
           >
             <label
               className="text-[10px] font-mono uppercase tracking-wider text-ink-mute dark:text-moonlight"
               htmlFor="hosted-html-refs-input"
             >
-              Ground with pubs (optional)
+              Ground with pubs (optional · arxiv / substack / URL)
             </label>
             <textarea
               id="hosted-html-refs-input"
@@ -557,6 +561,25 @@ export default function HostedHtmlDocumentHost(
               placeholder={"arxiv:1706.03762\nhttps://…"}
               className="w-full rounded border border-ink/20 bg-transparent px-2 py-1 text-[11px] font-mono dark:border-bright/20"
             />
+            {/* Residual (uj): L1/L2 hydrate prep deep-links (never enable live). */}
+            <p className="text-[10px] font-mono space-x-2 opacity-80">
+              <a
+                href="/settings#hydrate-live-status"
+                data-testid="hosted-html-hydrate-settings-link"
+                className="underline hover:opacity-100"
+                title="Settings publication hydrate readiness (arxiv/substack injectors · offline default)"
+              >
+                Settings · hydrate readiness
+              </a>
+              <a
+                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+                data-testid="hosted-html-hydrate-dual-gate-link"
+                className="underline hover:opacity-100"
+                title="Dual-gate L1–L4 checklist (arxiv/substack hydrate prep; offline default)"
+              >
+                Dual-gate L1–L2 hydrate checklist
+              </a>
+            </p>
             {pubRefStatus ? (
               <p
                 className="text-[10px] font-mono text-aurora"
