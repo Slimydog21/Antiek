@@ -1809,3 +1809,7 @@ Competitive delta: swarm handoff tip-true; operator merge PR #465 highest levera
 antiek-bench-dogfood-panel stamps distill/synthesize/wrestle/book_qa after load
 (v12: 2/2/7/7). Competitive delta: panel shell full Antiek-bench task-class
 matrix honesty (parity summary yh).
+
+## Residual zv · 2026-07-10 — FUTURE-AGENT tip re-anchor through zu
+FUTURE-AGENT-SPEC tip re-anchored after 101 residual ships this continuation.
+Competitive delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
