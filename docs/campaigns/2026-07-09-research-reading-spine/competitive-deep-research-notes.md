@@ -1943,3 +1943,7 @@ Free mathematics subject set len ≥4 all free PD HTML (Elements · Principia ·
 Boole · Lovelace). Competitive delta: tech-researcher mathematics domain is
 non-trivial free STEM corpus (parity physics aav).
 
+## Residual aax · 2026-07-10 — FUTURE-AGENT tip re-anchor through aaw
+FUTURE-AGENT-SPEC tip re-anchored after 131 residual ships this continuation.
+Competitive delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
+
