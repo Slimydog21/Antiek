@@ -1552,7 +1552,22 @@ describe("TwinNotesPanel", () => {
     });
     fireEvent.click(screen.getByTestId("twin-select-twin_q"));
     fireEvent.click(screen.getByTestId("twin-select-twin_i"));
-    fireEvent.click(screen.getByTestId("twin-draft-selected-html"));
+    // Residual (atk): multi-select draft HTML CTAs stamp html-first · L3 deferred.
+    const draftFloat = screen.getByTestId("twin-draft-selected-html");
+    expect(draftFloat.getAttribute("data-html-first")).toBe("true");
+    expect(draftFloat.getAttribute("data-view-format")).toBe("html");
+    expect(draftFloat.getAttribute("data-multi-select-draft")).toBe("true");
+    expect(draftFloat.getAttribute("data-draft-ready")).toBe("true");
+    expect(draftFloat.getAttribute("data-selected-count")).toBe("2");
+    expect(draftFloat.getAttribute("data-l3-live-seed")).toBe("deferred");
+    expect(draftFloat.getAttribute("data-source")).toBe("twin_draft_selected");
+    expect(draftFloat.getAttribute("title") || "").toMatch(/never PDF/i);
+    expect(
+      screen.getByTestId("twin-draft-selected-html-full").getAttribute(
+        "data-window-mode",
+      ),
+    ).toBe("full");
+    fireEvent.click(draftFloat);
     await waitFor(() => {
       expect(openWindow).toHaveBeenCalledWith(
         "hosted_html_document",

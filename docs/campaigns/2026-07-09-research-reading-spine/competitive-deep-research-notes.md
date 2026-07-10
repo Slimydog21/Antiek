@@ -4310,3 +4310,9 @@ competitiveDurationBand lives in competitiveDrQuality (single source). Progress
 re-exports; DecisionTree + LaunchBudget import pure module. Hard-to-vary
 multi-minute foresight for atf/atg. vitest 47 green across quality/progress/DT/launch.
 P0 PR #465. Pivot atk+.
+
+## Residual atk · 2026-07-10 — TwinNotes multi-select draft CTA honesty stamps
+Draft HTML float|full CTAs stamp html-first · multi-select-draft · draft-ready ·
+L3 deferred · source=twin_draft_selected. Title honesty never PDF.
+Complements ath HostedHtml land. vitest TwinNotesPanel 35 green. P0 PR #465.
+Pivot atl+.

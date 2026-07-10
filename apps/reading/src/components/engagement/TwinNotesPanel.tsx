@@ -1370,22 +1370,47 @@ export function TwinNotesPanel({
         >
           Chase full
         </button>
-        {/* Residual (pn/ps): open multi-selected twins as HTML draft window. */}
+        {/* Residual (pn/ps/atk): open multi-selected twins as HTML draft window
+            with HTML-first · multi-select · L3 deferred honesty stamps. */}
         <button
           type="button"
           data-testid="twin-draft-selected-html"
+          data-view-format="html"
+          data-html-first="true"
+          data-window-mode="floating"
+          data-multi-select-draft="true"
+          data-draft-ready={String(selectedNoteIds.size > 0)}
+          data-selected-count={String(selectedNoteIds.size)}
+          data-l3-live-seed="deferred"
+          data-source="twin_draft_selected"
           onClick={() => openTwinDraft("floating")}
           disabled={busy || selectedNoteIds.size === 0}
-          title="Open multi-selected twin notes as HTML draft window (combine before promote)"
+          title={
+            selectedNoteIds.size > 0
+              ? `Open ${selectedNoteIds.size} multi-selected twin notes as floating HTML draft (combine before promote · L3 live seed deferred · never PDF)`
+              : "Select twin notes to open multi-select HTML draft"
+          }
         >
           Draft HTML ({selectedNoteIds.size})
         </button>
         <button
           type="button"
           data-testid="twin-draft-selected-html-full"
+          data-view-format="html"
+          data-html-first="true"
+          data-window-mode="full"
+          data-multi-select-draft="true"
+          data-draft-ready={String(selectedNoteIds.size > 0)}
+          data-selected-count={String(selectedNoteIds.size)}
+          data-l3-live-seed="deferred"
+          data-source="twin_draft_selected"
           onClick={() => openTwinDraft("full")}
           disabled={busy || selectedNoteIds.size === 0}
-          title="Open multi-selected twin draft as full working-region HTML window"
+          title={
+            selectedNoteIds.size > 0
+              ? `Open ${selectedNoteIds.size} multi-selected twin notes as full HTML draft (combine before promote · L3 live seed deferred · never PDF)`
+              : "Select twin notes to open multi-select HTML draft full"
+          }
         >
           Draft full
         </button>
