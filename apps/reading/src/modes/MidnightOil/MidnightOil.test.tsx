@@ -34,6 +34,7 @@ import {
   runnerReadinessMidnightOil,
   schedulerLeaseRetryPlanMidnightOil,
   workerCancellationAbandonPlanMidnightOil,
+  workerCompletionFinalizationPlanMidnightOil,
   workerDispatchLeaseHeartbeatPlanMidnightOil,
   workerQueueClaimPlanMidnightOil,
 } from "../../api/midnightOil";
@@ -2115,6 +2116,114 @@ vi.mock("../../api/midnightOil", () => ({
       "worker cancellation abandon plan only: no worker cancellation, worker abandon, lease release, worker runtime, scheduler job, or runner dispatch is created",
     ],
   })),
+  workerCompletionFinalizationPlanMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-worker-completion-finalization-plan",
+    worker_cancellation_abandon_plan_receipt_id:
+      "midnight-oil-test-worker-cancellation-abandon-plan",
+    worker_dispatch_lease_heartbeat_plan_receipt_id:
+      "midnight-oil-test-worker-dispatch-lease-heartbeat-plan",
+    repository_commit_rollback_plan_receipt_id:
+      "midnight-oil-test-repository-commit-rollback-plan",
+    repository_transaction_plan_receipt_id: "midnight-oil-test-repository-transaction-plan",
+    worker_queue_claim_plan_receipt_id: "midnight-oil-test-worker-queue-claim-plan",
+    scheduler_lease_retry_plan_receipt_id: "midnight-oil-test-scheduler-lease-retry-plan",
+    runner_dispatch_worker_bootstrap_plan_receipt_id:
+      "midnight-oil-test-runner-dispatch-worker-bootstrap-plan",
+    runner_dispatch_scheduler_plan_receipt_id:
+      "midnight-oil-test-runner-dispatch-scheduler-plan",
+    runner_control_plan_receipt_id: "midnight-oil-test-runner-control-plan",
+    runner_readiness_receipt_id: "midnight-oil-test-runner-readiness",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    run_id: "midnight-oil-test",
+    status: "blocked_worker_completion_finalization_unimplemented",
+    adapter_key: "worker_completion_finalization",
+    planned_completion_receipt_id: "midnight-oil-test-worker-completion-receipt",
+    planned_finalization_receipt_id: "midnight-oil-test-worker-finalization-receipt",
+    planned_worker_result_manifest_id: "midnight-oil-test-worker-result-manifest",
+    planned_worker_output_bundle_id: "midnight-oil-test-worker-output-bundle",
+    planned_completion_ledger_entry_id:
+      "midnight-oil-test-worker-completion-ledger-entry",
+    planned_finalization_ledger_entry_id:
+      "midnight-oil-test-worker-finalization-ledger-entry",
+    planned_queue_claim_id: "midnight-oil-test-worker-queue-claim",
+    planned_claim_lease_token_id: "midnight-oil-test-worker-queue-claim-lease-token",
+    planned_queue_id: "midnight-oil-test-runner-dispatch-queue",
+    planned_worker_id: "midnight-oil-test-runner-dispatch-worker",
+    planned_worker_lease_id: "midnight-oil-test-runner-dispatch-worker-lease",
+    planned_runner_dispatch_id: "midnight-oil-test-midnight-oil-runner-dispatch",
+    planned_idempotency_key: "midnight-oil-test-live-dispatch-final-enable-idempotency-key",
+    worker_completion_finalization_blockers: [
+      "worker completion receipt writer",
+      "worker result manifest durable writer",
+      "worker output bundle durable writer",
+      "worker finalization ledger append transaction",
+      "idempotent worker completion replay protection",
+    ],
+    required_worker_completion_finalization_invariants: [
+      "worker completion finalization planner must require worker cancellation abandon planning before any worker completion can be finalized",
+      "worker completion finalization planner must preserve queue claim lease token lineage through completion and finalization",
+    ],
+    required_worker_completion_finalization_receipt_fields: [
+      "worker_completion_finalization_plan_receipt_id",
+      "worker_cancellation_abandon_plan_receipt_id",
+      "worker_result_manifest_id",
+      "worker_output_bundle_id",
+      "worker_completed",
+      "worker_finalized",
+      "idempotency_key",
+    ],
+    blocker_reason: "worker_completion_finalization_unimplemented",
+    worker_completion_allowed: false,
+    worker_completed: false,
+    worker_finalization_allowed: false,
+    worker_finalized: false,
+    worker_result_manifest_created: false,
+    worker_output_bundle_created: false,
+    worker_cancellation_allowed: false,
+    worker_cancelled: false,
+    worker_abandon_allowed: false,
+    worker_abandoned: false,
+    worker_lease_heartbeat_allowed: false,
+    worker_lease_heartbeat_recorded: false,
+    worker_lease_renewal_allowed: false,
+    worker_lease_renewed: false,
+    worker_lease_expiry_allowed: false,
+    worker_lease_expired: false,
+    worker_started: false,
+    repository_commit_allowed: false,
+    repository_rollback_allowed: false,
+    commit_receipt_created: false,
+    rollback_receipt_created: false,
+    repository_transaction_allowed: false,
+    repository_transaction_opened: false,
+    repository_transaction_committed: false,
+    queue_claim_allowed: false,
+    queue_claim_created: false,
+    claim_transaction_opened: false,
+    claim_transaction_committed: false,
+    scheduler_allowed: false,
+    scheduler_job_created: false,
+    runner_dispatch_enqueued: false,
+    live_run_allowed: false,
+    dispatch_allowed: false,
+    dispatch_performed: false,
+    budget_reservation_allowed: false,
+    budget_reserved: false,
+    provider_execution_allowed: false,
+    provider_calls_made: false,
+    retrieval_allowed: false,
+    retrieval_performed: false,
+    source_receipts_created: false,
+    graph_mutation_allowed: false,
+    graph_mutated: false,
+    final_artifact_allowed: false,
+    final_artifact_created: false,
+    adapter_plan_notes: [
+      "worker completion finalization plan only: no completion, finalization, result manifest, output bundle, ledger write, or runner dispatch is created",
+    ],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -3818,5 +3927,105 @@ describe("MidnightOil", () => {
     expect(screen.getByText(/Worker cancellation abandon receipt fields:/)).toBeTruthy();
     expect(screen.getByText(/cancellation_ledger_entry_id/)).toBeTruthy();
     expect(screen.getByText(/worker_abandoned/)).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Worker completion finalization plan" }));
+
+    await waitFor(() => expect(workerCompletionFinalizationPlanMidnightOil).toHaveBeenCalled());
+    expect(workerCompletionFinalizationPlanMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      runner_control_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-control-plan",
+      }),
+      budget_provider_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-budget-provider-adapter-plan",
+      }),
+      provider_executor_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-provider-executor-adapter-plan",
+      }),
+      retrieval_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-retrieval-adapter-plan",
+      }),
+      graph_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-graph-adapter-plan",
+      }),
+      final_artifact_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-final-artifact-adapter-plan",
+      }),
+      operator_dispatch_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-operator-dispatch-adapter-plan",
+      }),
+      control_ledger_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-adapter-plan",
+      }),
+      control_ledger_persistence_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-persistence-plan",
+      }),
+      control_ledger_persistence_apply_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-persistence-apply-plan",
+      }),
+      operator_dispatch_activation_readiness_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-operator-dispatch-activation-readiness-plan",
+      }),
+      live_dispatch_final_enablement_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-live-dispatch-final-enablement-plan",
+      }),
+      live_dispatch_final_enablement_apply_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-live-dispatch-final-enablement-apply-plan",
+      }),
+      runner_dispatch_scheduler_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-dispatch-scheduler-plan",
+      }),
+      runner_dispatch_worker_bootstrap_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-dispatch-worker-bootstrap-plan",
+      }),
+      scheduler_lease_retry_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-scheduler-lease-retry-plan",
+      }),
+      worker_queue_claim_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-worker-queue-claim-plan",
+      }),
+      repository_transaction_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-repository-transaction-plan",
+      }),
+      repository_commit_rollback_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-repository-commit-rollback-plan",
+      }),
+      worker_dispatch_lease_heartbeat_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-worker-dispatch-lease-heartbeat-plan",
+      }),
+      worker_cancellation_abandon_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-worker-cancellation-abandon-plan",
+      }),
+    });
+    expect(screen.getByText("Worker completion finalization receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-worker-completion-finalization-plan")).toBeTruthy();
+    expect(screen.getByText("blocked worker completion finalization unimplemented")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-worker-completion-receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-worker-finalization-receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-worker-result-manifest")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-worker-output-bundle")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-worker-completion-ledger-entry")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-worker-finalization-ledger-entry")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "worker completion finalization planner must require worker cancellation abandon planning before any worker completion can be finalized",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Worker completion finalization blockers:/)).toBeTruthy();
+    expect(screen.getByText(/worker completion receipt writer/)).toBeTruthy();
+    expect(screen.getByText(/worker result manifest durable writer/)).toBeTruthy();
+    expect(screen.getByText(/worker finalization ledger append transaction/)).toBeTruthy();
+    expect(screen.getByText(/Worker completion finalization receipt fields:/)).toBeTruthy();
+    expect(screen.getByText(/worker_result_manifest_id/)).toBeTruthy();
+    expect(screen.getByText(/worker_output_bundle_id/)).toBeTruthy();
+    expect(screen.getByText(/worker_finalized/)).toBeTruthy();
   });
 });
