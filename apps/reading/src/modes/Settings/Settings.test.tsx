@@ -274,17 +274,17 @@ const {
       html: `<p>Active: ${opts.depth_tier}</p>`,
     })),
     fetchAntiekBenchDogfoodFixtures: vi.fn(async () => ({
-      // Residual (st/su/…/adn/aeu): competitive dogfood v14 postures.
-      suite_version: "suite-competitive-dogfood-v14",
+      // Residual (st/su/…/adn/aeu): competitive dogfood v15 postures.
+      suite_version: "suite-competitive-dogfood-v15",
       label: "antiek-bench-competitive-dogfood",
-      item_count: 21,
+      item_count: 23,
       by_task_class: {
         distill: 2,
         synthesize: 2,
-        wrestle: 10,
+        wrestle: 12,
         book_qa: 7,
       },
-      // Residual (yb/adn/aeu): full v14 item list (matches substrate; item_count-matches-listed).
+      // Residual (yb/adn/aeu): full v15 item list (matches substrate; item_count-matches-listed).
       items: [
         { item_id: "dogfood-distill-attention", task_class: "distill", prompt: "Distill attention claim" },
         { item_id: "dogfood-synth-perplexity-vs-openai", task_class: "synthesize", prompt: "Perplexity vs OpenAI" },
@@ -307,13 +307,15 @@ const {
         { item_id: "dogfood-book-lovelace-analytical-engine", task_class: "book_qa", prompt: "Lovelace Analytical Engine free PD HTML" },
         { item_id: "dogfood-wrestle-seamless-write-path", task_class: "wrestle", prompt: "seamless Open Write path honesty merge host MO" },
         { item_id: "dogfood-wrestle-intelligent-search-context-write", task_class: "wrestle", prompt: "intelligent search evidence citation-trust Write" },
+        { item_id: "dogfood-wrestle-written-analysis-open-write-source", task_class: "wrestle", prompt: "written analysis Open Write source not doc merge" },
+        { item_id: "dogfood-wrestle-continue-as-unit-path", task_class: "wrestle", prompt: "continue-as-unit seamless unit path honesty" },
       ],
       auto_promoted: false,
       view_format: "html",
       settings_panel: "antiek_bench_dogfood_fixtures",
       source: "antiek_bench.dogfood_fixtures",
       notes: ["Competitive dogfood fixtures are offline prompts only."],
-      html: "<p>Suite suite-competitive-dogfood-v14 · items=21 · dogfood-wrestle-seamless-write-path</p>",
+      html: "<p>Suite suite-competitive-dogfood-v15 · items=23 · dogfood-wrestle-seamless-write-path</p>",
     })),
     fetchAntiekBenchLeaderboard: vi.fn(async () => ({
       week_id: "2026-W28",
@@ -1647,11 +1649,11 @@ describe("Settings SPR-01 + decision-tree install", () => {
     await waitFor(() => {
       expect(
         screen.getByTestId("antiek-bench-dogfood-summary").textContent,
-      ).toMatch(/suite-competitive-dogfood-v14/);
+      ).toMatch(/suite-competitive-dogfood-v15/);
     });
     // Residual (zh/zm): panel suite version + label + item count after load.
     expect(panel.getAttribute("data-suite-version")).toBe(
-      "suite-competitive-dogfood-v14",
+      "suite-competitive-dogfood-v15",
     );
     expect(panel.getAttribute("data-label")).toBe(
       "antiek-bench-competitive-dogfood",
@@ -1663,22 +1665,22 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(panel.getAttribute("data-settings-panel")).toBe(
       "antiek_bench_dogfood_fixtures",
     );
-    expect(panel.getAttribute("data-item-count")).toBe("21");
+    expect(panel.getAttribute("data-item-count")).toBe("23");
     // Residual (zs/zu): panel full task-class counts after load (parity summary).
     expect(panel.getAttribute("data-book-qa-count")).toBe("7");
-    expect(panel.getAttribute("data-wrestle-count")).toBe("10");
+    expect(panel.getAttribute("data-wrestle-count")).toBe("12");
     expect(panel.getAttribute("data-distill-count")).toBe("2");
     expect(panel.getAttribute("data-synthesize-count")).toBe("2");
     const summary = screen.getByTestId("antiek-bench-dogfood-summary");
-    // Residual (su/…/adn/aeu): v14 spine posture machine attrs.
+    // Residual (su/…/adn/aeu): v15 spine posture machine attrs.
     expect(summary.getAttribute("data-suite-version")).toBe(
-      "suite-competitive-dogfood-v14",
+      "suite-competitive-dogfood-v15",
     );
     // Residual (yx): dogfood label honesty.
     expect(summary.getAttribute("data-label")).toBe(
       "antiek-bench-competitive-dogfood",
     );
-    expect(summary.getAttribute("data-item-count")).toBe("21");
+    expect(summary.getAttribute("data-item-count")).toBe("23");
     expect(summary.getAttribute("data-auto-promoted")).toBe("false");
     // Residual (yt): HTML-first dogfood view_format honesty.
     expect(summary.getAttribute("data-view-format")).toBe("html");
@@ -1692,7 +1694,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
     );
     // Residual (yg/yh): full task-class counts on dogfood summary.
     expect(summary.getAttribute("data-book-qa-count")).toBe("7");
-    expect(summary.getAttribute("data-wrestle-count")).toBe("10");
+    expect(summary.getAttribute("data-wrestle-count")).toBe("12");
     expect(summary.getAttribute("data-distill-count")).toBe("2");
     expect(summary.getAttribute("data-synthesize-count")).toBe("2");
     expect(summary.getAttribute("data-has-write-seed-posture")).toBe("true");
@@ -1736,7 +1738,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
         "data-has-collective-written-analysis-write-seed-posture",
       ),
     ).toBe("true");
-    // Residual (ado/aeu): v14 write-seed has-body + seamless Write path postures.
+    // Residual (ado/aeu): v15 write-seed has-body + seamless Write path postures.
     expect(
       summary.getAttribute("data-has-write-seed-has-body-posture"),
     ).toBe("true");
@@ -1746,9 +1748,15 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(
       summary.getAttribute("data-has-intelligent-search-context-write-posture"),
     ).toBe("true");
+    expect(
+      summary.getAttribute("data-has-written-analysis-open-write-source-posture"),
+    ).toBe("true");
+    expect(
+      summary.getAttribute("data-has-continue-as-unit-path-posture"),
+    ).toBe("true");
     expect(summary.getAttribute("data-propose-not-promote")).toBe("true");
     expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
-      /Spine postures \(v14\)/i,
+      /Spine postures \(v15\)/i,
     );
     expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
       /write-seed has-body/i,
@@ -1799,15 +1807,15 @@ describe("Settings SPR-01 + decision-tree install", () => {
     // Residual (we): full dogfood item list — no silent top-12 truncate.
     const itemsList = screen.getByTestId("antiek-bench-dogfood-items");
     expect(itemsList.getAttribute("data-truncated")).toBe("false");
-    // Residual (yb/adn/aeu): full v14 mock lists all 21 items — matches item_count.
-    expect(itemsList.getAttribute("data-listed-count")).toBe("21");
-    expect(itemsList.getAttribute("data-item-count")).toBe("21");
+    // Residual (yb/adn/aeu): full v15 mock lists all 23 items — matches item_count.
+    expect(itemsList.getAttribute("data-listed-count")).toBe("23");
+    expect(itemsList.getAttribute("data-item-count")).toBe("23");
     expect(itemsList.getAttribute("data-item-count-matches-listed")).toBe(
       "true",
     );
     // Residual (zd): HTML-first list view_format honesty.
     expect(itemsList.getAttribute("data-view-format")).toBe("html");
-    // Mock lists posture items including seamless Write path (v14).
+    // Mock lists posture items including analysis+continue path (v15).
     expect(
       itemsList.querySelector('[data-item-id="dogfood-book-shannon-communication"]'),
     ).toBeTruthy();
@@ -1819,6 +1827,16 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(
       itemsList.querySelector(
         '[data-item-id="dogfood-wrestle-seamless-write-path"]',
+      ),
+    ).toBeTruthy();
+    expect(
+      itemsList.querySelector(
+        '[data-item-id="dogfood-wrestle-written-analysis-open-write-source"]',
+      ),
+    ).toBeTruthy();
+    expect(
+      itemsList.querySelector(
+        '[data-item-id="dogfood-wrestle-continue-as-unit-path"]',
       ),
     ).toBeTruthy();
     expect(

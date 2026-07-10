@@ -2415,3 +2415,8 @@ Continue cohesive unit (float|full) stamps data-collective-id · parent_asset_id
 spawn-count · seamless-unit-continue so multi-select unit re-entry → DR is
 machine-readable (parity ael DR parent path). L6 live multi-agent still deferred.
 vitest CollectiveResearchPanel 25 green.
+
+## Residual afi · 2026-07-10 — Antiek-bench dogfood v15 collective path fixtures
+Suite bumps to suite-competitive-dogfood-v15 with wrestle fixtures for written
+analysis Open Write source honesty (afg) and continue-as-unit path (afh).
+Settings spine postures v15. pytest dogfood 5 · Settings 36 green.

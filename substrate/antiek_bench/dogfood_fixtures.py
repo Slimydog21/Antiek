@@ -26,7 +26,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (xi): v12 adds book_qa computing history (Lovelace free PD).
 # Residual (adn): v13 adds wrestle write-seed has-body honesty (title-only → rewrite).
 # Residual (aeu): v14 learns seamless Write path + intelligent search/evidence.
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v14"
+# Residual (afi): v15 learns written analysis Open Write source + unit continue path.
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v15"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -366,6 +367,44 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "context",
                 "twin_seed",
                 "honesty",
+            ),
+        ),
+        # Residual (afi/afg): written analysis Open Write must not collapse to doc merge.
+        SuiteItem(
+            item_id="dogfood-wrestle-written-analysis-open-write-source",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with multi-spawn written analysis Open Write provenance: after "
+                "Create written analysis (collective + draft_combined), why must "
+                "data-write-seed-source stay collective_written_analysis instead of "
+                "collapsing to collective_doc_merge, and how does that protect Antiek-bench "
+                "weekly rewrite feeds for analysis vs document merge tasks?"
+            ),
+            expected_keywords=(
+                "collective_written_analysis",
+                "collective_doc_merge",
+                "twin_seed",
+                "write",
+                "honesty",
+            ),
+        ),
+        # Residual (afi/afh): continue-as-unit path honesty for unit re-entry → DR.
+        SuiteItem(
+            item_id="dogfood-wrestle-continue-as-unit-path",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with continue-as-unit path honesty: when Continue as cohesive unit "
+                "stamps data-seamless-unit-continue · data-collective-id · "
+                "data-parent-asset-id, how should the workstation keep multi-select unit "
+                "re-entry into deep research machine-readable without claiming L6 live "
+                "multi-agent council is online?"
+            ),
+            expected_keywords=(
+                "continue",
+                "collective",
+                "seamless",
+                "parent",
+                "deferred",
             ),
         ),
     )
