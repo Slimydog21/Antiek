@@ -122,7 +122,7 @@ Checklist is linked from engagement surfaces for operator prep only.
 
 ---
 
-## L5 — Marketplace payment rails (deferred · residual vt/uy)
+## L5 — Marketplace payment rails (deferred · residual vt/uy) {#l5-payment}
 
 | Item | Value |
 |---|---|
@@ -136,7 +136,7 @@ Checklist is linked from engagement surfaces for operator prep only.
 
 ---
 
-## L6 — Live multi-agent collective council (deferred · residual vx/vz)
+## L6 — Live multi-agent collective council (deferred · residual vx/vz) {#l6-collective}
 
 | Item | Value |
 |---|---|
@@ -151,7 +151,7 @@ Checklist is linked from engagement surfaces for operator prep only.
 
 ---
 
-## L7 — NotDiamond as router (**never** · residual rl / §16)
+## L7 — NotDiamond as router (**never** · residual rl / §16) {#l7-notdiamond}
 
 | Item | Value |
 |---|---|

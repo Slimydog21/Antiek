@@ -1391,3 +1391,8 @@ wave; operator merge PR #465 remains highest leverage.
 Operator checklist documents L5 payment deferred, L6 offline merge unit, L7
 ND never-router (parity Settings dual-gate stamps). Competitive delta: deep-links
 from engagement surfaces reach a complete deferred map — not L1–L4-only silence.
+
+## Residual wh · 2026-07-10 — Settings dual-gate L5/L6/L7 checklist deep-links
+Settings L5/L6 stamps link into dual-gate checklist sections; L7 checklist
+link joins ND advisory panel link. Competitive delta: operator dual-gate
+chokepoint is navigable end-to-end for deferred + never-router honesty.

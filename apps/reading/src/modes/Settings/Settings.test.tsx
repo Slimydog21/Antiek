@@ -867,9 +867,19 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(
       screen.getByTestId("settings-dual-gate-l4-checklist-link").getAttribute("href"),
     ).toMatch(/DUAL-GATE-L1-L4/);
+    // Residual (wh): L5/L6/L7 checklist deep-links (complete operator map).
+    expect(
+      screen.getByTestId("settings-dual-gate-l5-payment").getAttribute("href"),
+    ).toMatch(/DUAL-GATE-L1-L4.*#l5-payment/);
+    expect(
+      screen.getByTestId("settings-dual-gate-l6-collective").getAttribute("href"),
+    ).toMatch(/DUAL-GATE-L1-L4.*#l6-collective/);
     expect(screen.getByTestId("settings-dual-gate-l7-link").getAttribute("href")).toBe(
       "#notdiamond-advisory",
     );
+    expect(
+      screen.getByTestId("settings-dual-gate-l7-checklist-link").getAttribute("href"),
+    ).toMatch(/DUAL-GATE-L1-L4.*#l7-notdiamond/);
   });
 
   it("surfaces offline-honest Midnight Oil live-step status (sz)", async () => {

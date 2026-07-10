@@ -1174,26 +1174,28 @@ export default function Settings() {
                 >
                   L4 checklist
                 </a>
-                {/* Residual (vt): L5 payment rails honesty (marketplace manual receipt). */}
-                <span
-                  className="opacity-80"
+                {/* Residual (vt/wh): L5 payment rails honesty + checklist deep-link. */}
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l5-payment"
+                  className="underline opacity-80 hover:opacity-100"
                   data-testid="settings-dual-gate-l5-payment"
                   data-l5-payment-rails="deferred"
                   data-live-payment="false"
-                  title="L5 marketplace payment rails deferred — manual receipt only"
+                  title="L5 marketplace payment rails deferred — manual receipt only (checklist)"
                 >
                   L5 payment deferred
-                </span>
-                {/* Residual (vz): L6 live multi-agent council deferred (parity Collective vx). */}
-                <span
-                  className="opacity-80"
+                </a>
+                {/* Residual (vz/wh): L6 deferred + checklist deep-link (parity Collective vx). */}
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l6-collective"
+                  className="underline opacity-80 hover:opacity-100"
                   data-testid="settings-dual-gate-l6-collective"
                   data-l6-live-multiagent="deferred"
                   data-offline-merge-unit="true"
-                  title="L6 live multi-agent council deferred — offline merge unit only; never silent live council"
+                  title="L6 live multi-agent council deferred — offline merge unit only (checklist)"
                 >
                   L6 offline merge unit
-                </span>
+                </a>
                 <a
                   href="#notdiamond-advisory"
                   className="underline opacity-80 hover:opacity-100"
@@ -1201,6 +1203,15 @@ export default function Settings() {
                   title="L7 NotDiamond advisory only — never dispatch authority"
                 >
                   L7 ND advisory
+                </a>
+                {/* Residual (wh): L7 checklist section (never-router) alongside Settings ND panel. */}
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l7-notdiamond"
+                  className="underline opacity-80 hover:opacity-100"
+                  data-testid="settings-dual-gate-l7-checklist-link"
+                  title="L7 NotDiamond never-router checklist section"
+                >
+                  L7 checklist
                 </a>
               </p>
             </div>
