@@ -3271,3 +3271,7 @@ with coverage honesty. P0 operator merge PR #465. Pivot alm+ outside thrash.
 After free PD host land, metrics stamp domain-search coverage (alj) so catalog
 subjects continue into intelligent twin search. vitest MarketplaceHost 41 green.
 P0 operator merge PR #465. Pivot aln+ outside thrash.
+
+## Residual aln · 2026-07-10 — SESSION-ARC alj–alm domain coverage path
+Wave handoff: domainSearchCoverage ResearchContext → MarketplaceHost host land.
+P0 operator merge PR #465. Pivot alo+ outside thrash.
