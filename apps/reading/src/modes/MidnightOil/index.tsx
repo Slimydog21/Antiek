@@ -10,6 +10,7 @@ import {
   dispatchMidnightOil,
   dryRunMidnightOil,
   finalArtifactAdapterPlanMidnightOil,
+  finalArtifactGraphCommitPlanMidnightOil,
   finalArtifactMidnightOil,
   finalArtifactPersistencePlanMidnightOil,
   finalHtmlArtifactAssemblyPlanMidnightOil,
@@ -49,6 +50,7 @@ import {
   type MidnightOilControlLedgerPersistencePlanReceipt,
   type MidnightOilDispatchReceipt,
   type MidnightOilFinalArtifactAdapterPlanReceipt,
+  type MidnightOilFinalArtifactGraphCommitPlanReceipt,
   type MidnightOilFinalArtifactReceipt,
   type MidnightOilFinalArtifactPersistencePlanReceipt,
   type MidnightOilFinalHtmlArtifactAssemblyPlanReceipt,
@@ -189,6 +191,8 @@ export default function MidnightOil() {
     useState<MidnightOilFinalHtmlArtifactAssemblyPlanReceipt | null>(null);
   const [finalArtifactPersistencePlanReceipt, setFinalArtifactPersistencePlanReceipt] =
     useState<MidnightOilFinalArtifactPersistencePlanReceipt | null>(null);
+  const [finalArtifactGraphCommitPlanReceipt, setFinalArtifactGraphCommitPlanReceipt] =
+    useState<MidnightOilFinalArtifactGraphCommitPlanReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -241,6 +245,8 @@ export default function MidnightOil() {
   const [finalHtmlArtifactAssemblyPlanBusy, setFinalHtmlArtifactAssemblyPlanBusy] =
     useState(false);
   const [finalArtifactPersistencePlanBusy, setFinalArtifactPersistencePlanBusy] =
+    useState(false);
+  const [finalArtifactGraphCommitPlanBusy, setFinalArtifactGraphCommitPlanBusy] =
     useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
@@ -311,10 +317,18 @@ export default function MidnightOil() {
     useState<string | null>(null);
   const [finalArtifactPersistencePlanError, setFinalArtifactPersistencePlanError] =
     useState<string | null>(null);
+  const [finalArtifactGraphCommitPlanError, setFinalArtifactGraphCommitPlanError] =
+    useState<string | null>(null);
+
+  function clearFinalArtifactGraphCommitPlan() {
+    setFinalArtifactGraphCommitPlanError(null);
+    setFinalArtifactGraphCommitPlanReceipt(null);
+  }
 
   function clearFinalArtifactPersistencePlan() {
     setFinalArtifactPersistencePlanError(null);
     setFinalArtifactPersistencePlanReceipt(null);
+    clearFinalArtifactGraphCommitPlan();
   }
 
   function clearFinalHtmlArtifactAssemblyPlan() {
@@ -514,6 +528,7 @@ export default function MidnightOil() {
     setFinalSynthesisDraftPlanError(null);
     setFinalHtmlArtifactAssemblyPlanError(null);
     setFinalArtifactPersistencePlanError(null);
+    setFinalArtifactGraphCommitPlanError(null);
     setPreflight(null);
     setDryRunReceipt(null);
     setLiveSettingsReceipt(null);
@@ -554,6 +569,7 @@ export default function MidnightOil() {
     setFinalSynthesisDraftPlanReceipt(null);
     setFinalHtmlArtifactAssemblyPlanReceipt(null);
     setFinalArtifactPersistencePlanReceipt(null);
+    setFinalArtifactGraphCommitPlanReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -2605,6 +2621,7 @@ export default function MidnightOil() {
     setFinalArtifactPersistencePlanBusy(true);
     setFinalArtifactPersistencePlanError(null);
     setFinalArtifactPersistencePlanReceipt(null);
+    clearFinalArtifactGraphCommitPlan();
     try {
       const result = await finalArtifactPersistencePlanMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -2645,6 +2662,93 @@ export default function MidnightOil() {
       setFinalArtifactPersistencePlanError(e instanceof Error ? e.message : String(e));
     } finally {
       setFinalArtifactPersistencePlanBusy(false);
+    }
+  }
+
+  async function onFinalArtifactGraphCommitPlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerControlPlanReceipt ||
+      !budgetProviderAdapterPlanReceipt ||
+      !providerExecutorAdapterPlanReceipt ||
+      !retrievalAdapterPlanReceipt ||
+      !graphAdapterPlanReceipt ||
+      !finalArtifactAdapterPlanReceipt ||
+      !operatorDispatchAdapterPlanReceipt ||
+      !controlLedgerAdapterPlanReceipt ||
+      !controlLedgerPersistencePlanReceipt ||
+      !controlLedgerPersistenceApplyPlanReceipt ||
+      !operatorDispatchActivationReadinessPlanReceipt ||
+      !liveDispatchFinalEnablementPlanReceipt ||
+      !liveDispatchFinalEnablementApplyPlanReceipt ||
+      !runnerDispatchSchedulerPlanReceipt ||
+      !runnerDispatchWorkerBootstrapPlanReceipt ||
+      !schedulerLeaseRetryPlanReceipt ||
+      !workerQueueClaimPlanReceipt ||
+      !repositoryTransactionPlanReceipt ||
+      !repositoryCommitRollbackPlanReceipt ||
+      !workerDispatchLeaseHeartbeatPlanReceipt ||
+      !workerCancellationAbandonPlanReceipt ||
+      !workerCompletionFinalizationPlanReceipt ||
+      !workerOutputAggregationPlanReceipt ||
+      !workerSynthesisHandoffPlanReceipt ||
+      !synthesisBundleAssemblyPlanReceipt ||
+      !finalSynthesisDraftPlanReceipt ||
+      !finalHtmlArtifactAssemblyPlanReceipt ||
+      !finalArtifactPersistencePlanReceipt
+    ) {
+      setFinalArtifactGraphCommitPlanError(
+        "Final artifact graph commit plan requires launch packet, approval receipt, runner handoff, runner control plan receipt, budget provider adapter plan receipt, provider executor adapter plan receipt, retrieval adapter plan receipt, graph adapter plan receipt, final artifact adapter plan receipt, operator dispatch adapter plan receipt, control ledger adapter plan receipt, control ledger persistence plan receipt, control ledger persistence apply plan receipt, operator dispatch activation readiness plan receipt, live dispatch final enablement plan receipt, live dispatch final enablement apply plan receipt, runner dispatch scheduler plan receipt, runner dispatch worker bootstrap plan receipt, scheduler lease retry plan receipt, worker queue claim plan receipt, repository transaction plan receipt, repository commit rollback plan receipt, worker lease heartbeat plan receipt, worker cancellation abandon plan receipt, worker completion finalization plan receipt, worker output aggregation plan receipt, worker synthesis handoff plan receipt, synthesis bundle assembly plan receipt, final synthesis draft plan receipt, final HTML artifact assembly plan receipt, and final artifact persistence plan receipt.",
+      );
+      return;
+    }
+
+    setFinalArtifactGraphCommitPlanBusy(true);
+    setFinalArtifactGraphCommitPlanError(null);
+    setFinalArtifactGraphCommitPlanReceipt(null);
+    try {
+      const result = await finalArtifactGraphCommitPlanMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        runner_control_plan_receipt: runnerControlPlanReceipt,
+        budget_provider_adapter_plan_receipt: budgetProviderAdapterPlanReceipt,
+        provider_executor_adapter_plan_receipt: providerExecutorAdapterPlanReceipt,
+        retrieval_adapter_plan_receipt: retrievalAdapterPlanReceipt,
+        graph_adapter_plan_receipt: graphAdapterPlanReceipt,
+        final_artifact_adapter_plan_receipt: finalArtifactAdapterPlanReceipt,
+        operator_dispatch_adapter_plan_receipt: operatorDispatchAdapterPlanReceipt,
+        control_ledger_adapter_plan_receipt: controlLedgerAdapterPlanReceipt,
+        control_ledger_persistence_plan_receipt: controlLedgerPersistencePlanReceipt,
+        control_ledger_persistence_apply_plan_receipt: controlLedgerPersistenceApplyPlanReceipt,
+        operator_dispatch_activation_readiness_plan_receipt:
+          operatorDispatchActivationReadinessPlanReceipt,
+        live_dispatch_final_enablement_plan_receipt: liveDispatchFinalEnablementPlanReceipt,
+        live_dispatch_final_enablement_apply_plan_receipt:
+          liveDispatchFinalEnablementApplyPlanReceipt,
+        runner_dispatch_scheduler_plan_receipt: runnerDispatchSchedulerPlanReceipt,
+        runner_dispatch_worker_bootstrap_plan_receipt: runnerDispatchWorkerBootstrapPlanReceipt,
+        scheduler_lease_retry_plan_receipt: schedulerLeaseRetryPlanReceipt,
+        worker_queue_claim_plan_receipt: workerQueueClaimPlanReceipt,
+        repository_transaction_plan_receipt: repositoryTransactionPlanReceipt,
+        repository_commit_rollback_plan_receipt: repositoryCommitRollbackPlanReceipt,
+        worker_dispatch_lease_heartbeat_plan_receipt: workerDispatchLeaseHeartbeatPlanReceipt,
+        worker_cancellation_abandon_plan_receipt: workerCancellationAbandonPlanReceipt,
+        worker_completion_finalization_plan_receipt: workerCompletionFinalizationPlanReceipt,
+        worker_output_aggregation_plan_receipt: workerOutputAggregationPlanReceipt,
+        worker_synthesis_handoff_plan_receipt: workerSynthesisHandoffPlanReceipt,
+        synthesis_bundle_assembly_plan_receipt: synthesisBundleAssemblyPlanReceipt,
+        final_synthesis_draft_plan_receipt: finalSynthesisDraftPlanReceipt,
+        final_html_artifact_assembly_plan_receipt: finalHtmlArtifactAssemblyPlanReceipt,
+        final_artifact_persistence_plan_receipt: finalArtifactPersistencePlanReceipt,
+      });
+      setFinalArtifactGraphCommitPlanReceipt(result);
+    } catch (e) {
+      setFinalArtifactGraphCommitPlanError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFinalArtifactGraphCommitPlanBusy(false);
     }
   }
 
@@ -8264,6 +8368,260 @@ export default function MidnightOil() {
                   <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
                     Final artifact persistence receipt fields:{" "}
                     {finalArtifactPersistencePlanReceipt.required_final_artifact_persistence_receipt_fields.join(
+                      ", ",
+                    )}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Final artifact graph commit plan
+                </p>
+                <button
+                  type="button"
+                  onClick={onFinalArtifactGraphCommitPlanGate}
+                  disabled={
+                    finalArtifactGraphCommitPlanBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !runnerControlPlanReceipt ||
+                    !budgetProviderAdapterPlanReceipt ||
+                    !providerExecutorAdapterPlanReceipt ||
+                    !retrievalAdapterPlanReceipt ||
+                    !graphAdapterPlanReceipt ||
+                    !finalArtifactAdapterPlanReceipt ||
+                    !operatorDispatchAdapterPlanReceipt ||
+                    !controlLedgerAdapterPlanReceipt ||
+                    !controlLedgerPersistencePlanReceipt ||
+                    !controlLedgerPersistenceApplyPlanReceipt ||
+                    !operatorDispatchActivationReadinessPlanReceipt ||
+                    !liveDispatchFinalEnablementPlanReceipt ||
+                    !liveDispatchFinalEnablementApplyPlanReceipt ||
+                    !runnerDispatchSchedulerPlanReceipt ||
+                    !runnerDispatchWorkerBootstrapPlanReceipt ||
+                    !schedulerLeaseRetryPlanReceipt ||
+                    !workerQueueClaimPlanReceipt ||
+                    !repositoryTransactionPlanReceipt ||
+                    !repositoryCommitRollbackPlanReceipt ||
+                    !workerDispatchLeaseHeartbeatPlanReceipt ||
+                    !workerCancellationAbandonPlanReceipt ||
+                    !workerCompletionFinalizationPlanReceipt ||
+                    !workerOutputAggregationPlanReceipt ||
+                    !workerSynthesisHandoffPlanReceipt ||
+                    !synthesisBundleAssemblyPlanReceipt ||
+                    !finalSynthesisDraftPlanReceipt ||
+                    !finalHtmlArtifactAssemblyPlanReceipt ||
+                    !finalArtifactPersistencePlanReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {finalArtifactGraphCommitPlanBusy
+                    ? "Planning graph commit..."
+                    : "Final artifact graph commit plan"}
+                </button>
+              </div>
+
+              {finalArtifactGraphCommitPlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {finalArtifactGraphCommitPlanError}
+                </p>
+              )}
+
+              {finalArtifactGraphCommitPlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Final artifact graph commit receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {finalArtifactGraphCommitPlanReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={finalArtifactGraphCommitPlanReceipt.status.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Graph commit"
+                      value={
+                        finalArtifactGraphCommitPlanReceipt.final_artifact_graph_commit_allowed
+                          ? "allowed"
+                          : "blocked"
+                      }
+                    />
+                    <Metric
+                      label="Commit"
+                      value={
+                        finalArtifactGraphCommitPlanReceipt.graph_commit_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Transaction"
+                      value={
+                        finalArtifactGraphCommitPlanReceipt.graph_transaction_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Node commit"
+                      value={
+                        finalArtifactGraphCommitPlanReceipt.graph_node_committed
+                          ? "committed"
+                          : "not committed"
+                      }
+                    />
+                    <Metric
+                      label="Edge commit"
+                      value={
+                        finalArtifactGraphCommitPlanReceipt.graph_edge_set_committed
+                          ? "committed"
+                          : "not committed"
+                      }
+                    />
+                    <Metric
+                      label="Snapshot"
+                      value={
+                        finalArtifactGraphCommitPlanReceipt.graph_snapshot_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Lineage index"
+                      value={
+                        finalArtifactGraphCommitPlanReceipt.graph_lineage_index_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Persistence plan"
+                      value={
+                        finalArtifactGraphCommitPlanReceipt.final_artifact_persistence_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="HTML assembly plan"
+                      value={
+                        finalArtifactGraphCommitPlanReceipt.final_html_artifact_assembly_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Graph commit receipt"
+                      value={
+                        finalArtifactGraphCommitPlanReceipt.planned_final_artifact_graph_commit_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Graph commit"
+                      value={finalArtifactGraphCommitPlanReceipt.planned_graph_commit_id}
+                    />
+                    <Metric
+                      label="Graph transaction"
+                      value={finalArtifactGraphCommitPlanReceipt.planned_graph_transaction_id}
+                    />
+                    <Metric
+                      label="Graph node"
+                      value={finalArtifactGraphCommitPlanReceipt.planned_graph_node_id}
+                    />
+                    <Metric
+                      label="Graph edge set"
+                      value={finalArtifactGraphCommitPlanReceipt.planned_graph_edge_set_id}
+                    />
+                    <Metric
+                      label="Graph snapshot"
+                      value={finalArtifactGraphCommitPlanReceipt.planned_graph_snapshot_id}
+                    />
+                    <Metric
+                      label="Graph lineage index"
+                      value={finalArtifactGraphCommitPlanReceipt.planned_graph_lineage_index_id}
+                    />
+                    <Metric
+                      label="Information asset"
+                      value={finalArtifactGraphCommitPlanReceipt.planned_information_asset_id}
+                    />
+                    <Metric
+                      label="Hosted HTML asset"
+                      value={finalArtifactGraphCommitPlanReceipt.planned_hosted_html_asset_id}
+                    />
+                    <Metric
+                      label="Artifact ledger entry"
+                      value={finalArtifactGraphCommitPlanReceipt.planned_artifact_ledger_entry_id}
+                    />
+                    <Metric
+                      label="HTML artifact"
+                      value={finalArtifactGraphCommitPlanReceipt.planned_final_html_artifact_id}
+                    />
+                    <Metric
+                      label="HTML document"
+                      value={finalArtifactGraphCommitPlanReceipt.planned_final_html_document_id}
+                    />
+                    <Metric
+                      label="Final draft"
+                      value={finalArtifactGraphCommitPlanReceipt.planned_final_synthesis_draft_id}
+                    />
+                    <Metric
+                      label="Synthesis bundle"
+                      value={finalArtifactGraphCommitPlanReceipt.planned_synthesis_bundle_id}
+                    />
+                    <Metric
+                      label="Source packet"
+                      value={
+                        finalArtifactGraphCommitPlanReceipt.planned_synthesis_source_packet_id
+                      }
+                    />
+                    <Metric
+                      label="Evidence map"
+                      value={finalArtifactGraphCommitPlanReceipt.planned_synthesis_evidence_map_id}
+                    />
+                    <Metric
+                      label="Worker"
+                      value={finalArtifactGraphCommitPlanReceipt.planned_worker_id}
+                    />
+                    <Metric
+                      label="Runner dispatch"
+                      value={finalArtifactGraphCommitPlanReceipt.planned_runner_dispatch_id}
+                    />
+                    <Metric
+                      label="Idempotency key"
+                      value={finalArtifactGraphCommitPlanReceipt.planned_idempotency_key}
+                    />
+                    <Metric
+                      label="Adapter"
+                      value={finalArtifactGraphCommitPlanReceipt.adapter_key.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Blocker"
+                      value={finalArtifactGraphCommitPlanReceipt.blocker_reason.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                  </div>
+                  <ul className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {finalArtifactGraphCommitPlanReceipt.required_final_artifact_graph_commit_invariants
+                      .slice(0, 5)
+                      .map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                  </ul>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Final artifact graph commit blockers:{" "}
+                    {finalArtifactGraphCommitPlanReceipt.final_artifact_graph_commit_blockers.join(
+                      ", ",
+                    )}
+                  </p>
+                  <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Final artifact graph commit receipt fields:{" "}
+                    {finalArtifactGraphCommitPlanReceipt.required_final_artifact_graph_commit_receipt_fields.join(
                       ", ",
                     )}
                   </p>
