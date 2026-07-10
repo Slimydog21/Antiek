@@ -2901,3 +2901,9 @@ sources) with stable anchors and chain_complete. ResearchContextPanel renders
 navigable hop stages (#anchor links). Never invents supported_by edges.
 pytest evidence 4 · vitest ResearchContext 14 green. P0 operator merge PR #465.
 Pivot ais+ outside thrash.
+
+## Residual ais · 2026-07-10 — dogfood v29 multi-hop citation chain hops
+Suite suite-competitive-dogfood-v29 adds wrestle fixture for multi-hop hop
+navigation (air). Settings v29 postures + scorecard names multi-hop hops.
+item_count 45 · wrestle=32. pytest dogfood 5 · Settings 36 green.
+P0 operator merge PR #465. Pivot ait+ outside thrash.

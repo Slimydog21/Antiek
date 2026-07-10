@@ -34,7 +34,7 @@
 
 ## Highest-value offline product residuals (next)
 
-1. **Citation chain UI** — multi-hop claim→source navigation in evidence pack HTML (competitive grounding UX).  
+1. **Citation chain UI** — multi-hop claim→source navigation in evidence pack HTML (competitive grounding UX). **Shipped offline (aij count chrome · air hop stages · ais dogfood v29).**  
 2. **Long-horizon wrestle progress** — multi-minute progress honesty when live step dual-gate green; offline progress HTML already ships.  
 3. **Twin intelligent search defaults** — domainAwareSearchDefault (ahr) · expand domains as free STEM grows.  
 4. **Competitive DR quality scorecard** — Settings panel listing shipped vs deferred competitive deltas (honest map · not vanity).  

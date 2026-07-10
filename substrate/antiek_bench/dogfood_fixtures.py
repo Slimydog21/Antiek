@@ -40,7 +40,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (aib): v26 learns collective unit twin seed + MO deposit twin honesty.
 # Residual (aig): v27 learns pub-ref foresight chrome matrix (aic–aif).
 # Residual (ail): v28 learns citation chain + competitive DR scorecard honesty.
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v28"
+# Residual (ais): v29 learns multi-hop citation chain hop navigation (air).
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v29"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -594,6 +595,27 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "insights",
                 "refs",
                 "grounded",
+            ),
+        ),
+        # Residual (ais/air): multi-hop claim→source hop navigation (anchors · no invented edges).
+        SuiteItem(
+            item_id="dogfood-wrestle-citation-chain-hops",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with multi-hop citation chain navigation: when evidence_pack emits "
+                "citation_chain stages (insights → questions → sources) with stable anchors "
+                "(evidence-insight-N / evidence-question-N / evidence-source-N), chain_complete "
+                "only when claims and sources both present, and ResearchContextPanel renders "
+                "data-testid=evidence-citation-chain-hops with #anchor hop links without inventing "
+                "supported_by edges, how should Antiek-bench learn models that preserve competitive "
+                "claim→source grounding UX honesty?"
+            ),
+            expected_keywords=(
+                "multi-hop",
+                "anchor",
+                "citation_chain",
+                "hops",
+                "sources",
             ),
         ),
         # Residual (ail/aii): Settings competitive DR quality scorecard honesty.
