@@ -1556,3 +1556,8 @@ Competitive delta: history domain chip is server-honest (parity Shannon/Turing).
 free-PD-only composed with computing chip surfaces Boole · Shannon · Turing ·
 Lovelace and excludes paid stubs. Competitive delta: tech-researcher free
 computing STEM path is compose-complete on HTML-first marketplace.
+
+## Residual xq · 2026-07-10 — FUTURE-AGENT tip re-anchor through xp
+FUTURE-AGENT-SPEC tip re-anchored after free STEM quartet compose + dual-gate
+L1–L7 matrix. Competitive delta: swarm handoff tip-true; operator merge PR #465
+highest leverage.
