@@ -3688,3 +3688,7 @@ vitest TwinNotes 34 green. P0 PR #465. Pivot aou+.
 ## Residual aou · 2026-07-10 — HostedHtml memoize domain stamps
 useMemo normalizeDomainSubjects for DR buttons + goal_hint (aod/aoq craftsmanship).
 vitest HostedHtml 27 green. P0 PR #465. Pivot aov+.
+
+## Residual aov · 2026-07-10 — SESSION-ARC aoc–aou wave map refresh
+Handoff map for multi-agent team: aoc–aou closed table · thrash list · P0 PR #465.
+P0 PR #465. Pivot aow+ product residual outside thrash.
