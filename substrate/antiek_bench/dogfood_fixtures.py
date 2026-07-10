@@ -24,7 +24,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (wd): v10 adds book_qa information theory (Shannon free PD).
 # Residual (wl): v11 adds book_qa computability (Turing free PD).
 # Residual (xi): v12 adds book_qa computing history (Lovelace free PD).
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v12"
+# Residual (adn): v13 adds wrestle write-seed has-body honesty (title-only → rewrite).
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v13"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -250,6 +251,24 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "twin_seed",
                 "write",
                 "html",
+            ),
+        ),
+        # Residual (adn): write-seed body honesty → recursive suite rewrite learning.
+        SuiteItem(
+            item_id="dogfood-wrestle-write-seed-has-body",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with twin_seed body honesty: when should data-write-seed-has-body "
+                "be true vs title-only false across Open Write handoffs, and how should "
+                "title-only (has_body=false) failed usage events feed Antiek-bench "
+                "recursive suite rewrite without inventing document bodies?"
+            ),
+            expected_keywords=(
+                "has-body",
+                "title-only",
+                "twin_seed",
+                "rewrite",
+                "honesty",
             ),
         ),
         # Residual (wd): free information-theory PD → book_qa (Shannon).
