@@ -274,15 +274,15 @@ const {
       html: `<p>Active: ${opts.depth_tier}</p>`,
     })),
     fetchAntiekBenchDogfoodFixtures: vi.fn(async () => ({
-      // Residual (st/su/…/adn/aeu/afo/ags/agw/ahd): competitive dogfood v23 postures.
-      suite_version: "suite-competitive-dogfood-v35",
+      // Residual (st/…/asm/asp): competitive dogfood v36 postures.
+      suite_version: "suite-competitive-dogfood-v36",
       label: "antiek-bench-competitive-dogfood",
-      item_count: 53,
+      item_count: 56,
       by_task_class: {
         distill: 2,
         synthesize: 2,
-        wrestle: 39,
-        book_qa: 10,
+        wrestle: 41,
+        book_qa: 11,
       },
       // Residual (yb/adn/aeu/afo/ags/agw/ahd): full v23 item list (matches substrate; item_count-matches-listed).
       items: [
@@ -339,13 +339,17 @@ const {
         { item_id: "dogfood-wrestle-marketplace-host-collective", task_class: "wrestle", prompt: "marketplace host collective" },
         { item_id: "dogfood-book-nicomachean-ethics", task_class: "book_qa", prompt: "Nicomachean Ethics free PD HTML" },
         { item_id: "dogfood-wrestle-competitive-dr-scorecard", task_class: "wrestle", prompt: "competitive DR scorecard" },
+        // Residual (asm/asp): dogfood v36.
+        { item_id: "dogfood-wrestle-readiness-cta-matrix", task_class: "wrestle", prompt: "readiness CTA matrix" },
+        { item_id: "dogfood-wrestle-pub-rag-constitutional-presets", task_class: "wrestle", prompt: "RAG Constitutional AI presets" },
+        { item_id: "dogfood-book-free-host-html-port", task_class: "book_qa", prompt: "free host HTML port" },
       ],
       auto_promoted: false,
       view_format: "html",
       settings_panel: "antiek_bench_dogfood_fixtures",
       source: "antiek_bench.dogfood_fixtures",
       notes: ["Competitive dogfood fixtures are offline prompts only."],
-      html: "<p>Suite suite-competitive-dogfood-v35 · items=53 · dogfood-wrestle-twin-promote-write-depth-graph · dogfood-wrestle-competitive-dr-scorecard</p>",
+      html: "<p>Suite suite-competitive-dogfood-v36 · items=56 · dogfood-wrestle-readiness-cta-matrix · dogfood-book-free-host-html-port</p>",
     })),
     fetchAntiekBenchLeaderboard: vi.fn(async () => ({
       week_id: "2026-W28",
@@ -1881,8 +1885,8 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(train.getAttribute("data-propose-not-promote")).toBe("true");
     const wrestleTrain = screen.getByTestId("antiek-bench-task-training-wrestle");
     expect(wrestleTrain.getAttribute("data-task-class")).toBe("wrestle");
-    // Residual (aqv/ari): wrestle trains on 6 vision feeds (+ publication_hydrate).
-    expect(Number(wrestleTrain.getAttribute("data-total") || 0)).toBe(6);
+    // Residual (aqv/ari/asj): wrestle trains on 8 vision feeds (+ attach · DT install).
+    expect(Number(wrestleTrain.getAttribute("data-total") || 0)).toBe(8);
     expect(wrestleTrain.getAttribute("data-covered") || "").toMatch(/twin_chase/);
     expect(wrestleTrain.getAttribute("data-covered") || "").toMatch(
       /midnight_oil/,
@@ -2039,11 +2043,11 @@ describe("Settings SPR-01 + decision-tree install", () => {
     await waitFor(() => {
       expect(
         screen.getByTestId("antiek-bench-dogfood-summary").textContent,
-      ).toMatch(/suite-competitive-dogfood-v35/);
+      ).toMatch(/suite-competitive-dogfood-v36/);
     });
     // Residual (zh/zm): panel suite version + label + item count after load.
     expect(panel.getAttribute("data-suite-version")).toBe(
-      "suite-competitive-dogfood-v35",
+      "suite-competitive-dogfood-v36",
     );
     expect(panel.getAttribute("data-label")).toBe(
       "antiek-bench-competitive-dogfood",
@@ -2055,22 +2059,22 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(panel.getAttribute("data-settings-panel")).toBe(
       "antiek_bench_dogfood_fixtures",
     );
-    expect(panel.getAttribute("data-item-count")).toBe("53");
+    expect(panel.getAttribute("data-item-count")).toBe("56");
     // Residual (zs/zu): panel full task-class counts after load (parity summary).
-    expect(panel.getAttribute("data-book-qa-count")).toBe("10");
-    expect(panel.getAttribute("data-wrestle-count")).toBe("39");
+    expect(panel.getAttribute("data-book-qa-count")).toBe("11");
+    expect(panel.getAttribute("data-wrestle-count")).toBe("41");
     expect(panel.getAttribute("data-distill-count")).toBe("2");
     expect(panel.getAttribute("data-synthesize-count")).toBe("2");
     const summary = screen.getByTestId("antiek-bench-dogfood-summary");
-    // Residual (su/…/adn/aeu/afo/ags/agw/ahd/anj): v34 spine posture machine attrs.
+    // Residual (su/…/asm/asp): v36 spine posture machine attrs.
     expect(summary.getAttribute("data-suite-version")).toBe(
-      "suite-competitive-dogfood-v35",
+      "suite-competitive-dogfood-v36",
     );
     // Residual (yx): dogfood label honesty.
     expect(summary.getAttribute("data-label")).toBe(
       "antiek-bench-competitive-dogfood",
     );
-    expect(summary.getAttribute("data-item-count")).toBe("53");
+    expect(summary.getAttribute("data-item-count")).toBe("56");
     expect(summary.getAttribute("data-auto-promoted")).toBe("false");
     // Residual (yt): HTML-first dogfood view_format honesty.
     expect(summary.getAttribute("data-view-format")).toBe("html");
@@ -2082,9 +2086,9 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(summary.getAttribute("data-settings-panel")).toBe(
       "antiek_bench_dogfood_fixtures",
     );
-    // Residual (yg/yh): full task-class counts on dogfood summary.
-    expect(summary.getAttribute("data-book-qa-count")).toBe("10");
-    expect(summary.getAttribute("data-wrestle-count")).toBe("39");
+    // Residual (yg/yh/asp): full task-class counts on dogfood summary (v36).
+    expect(summary.getAttribute("data-book-qa-count")).toBe("11");
+    expect(summary.getAttribute("data-wrestle-count")).toBe("41");
     expect(summary.getAttribute("data-distill-count")).toBe("2");
     expect(summary.getAttribute("data-synthesize-count")).toBe("2");
     expect(summary.getAttribute("data-has-write-seed-posture")).toBe("true");
@@ -2236,7 +2240,13 @@ describe("Settings SPR-01 + decision-tree install", () => {
     ).toBe("true");
     expect(summary.getAttribute("data-propose-not-promote")).toBe("true");
     expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
-      /Spine postures \(v35\)/i,
+      /Spine postures \(v36\)/i,
+    );
+    expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
+      /readiness→CTA matrix|readiness.CTA matrix/i,
+    );
+    expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
+      /RAG\/Constitutional AI presets|free-host HTML port/i,
     );
     expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
       /multi-hop citation chain hops/i,
@@ -2318,9 +2328,9 @@ describe("Settings SPR-01 + decision-tree install", () => {
     // Residual (we): full dogfood item list — no silent top-12 truncate.
     const itemsList = screen.getByTestId("antiek-bench-dogfood-items");
     expect(itemsList.getAttribute("data-truncated")).toBe("false");
-    // Residual (yb/…/ais/anj): full v35 mock lists all 53 items — matches item_count.
-    expect(itemsList.getAttribute("data-listed-count")).toBe("53");
-    expect(itemsList.getAttribute("data-item-count")).toBe("53");
+    // Residual (yb/…/asm/asp): full v36 mock lists all 56 items — matches item_count.
+    expect(itemsList.getAttribute("data-listed-count")).toBe("56");
+    expect(itemsList.getAttribute("data-item-count")).toBe("56");
     expect(itemsList.getAttribute("data-item-count-matches-listed")).toBe(
       "true",
     );

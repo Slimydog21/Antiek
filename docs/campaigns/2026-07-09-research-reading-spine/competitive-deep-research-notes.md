@@ -4194,3 +4194,8 @@ onHost opens hosted window with source=marketplace_free_host · twin seed
 store/load allowlist · HostedHtml Open Write maps free-host. Competitive
 delta: free vs paid host usage paths distinct for recursive bench rewrite.
 vitest twinWriteSeed 37 green. P0 PR #465. Pivot asp+.
+
+## Residual asp · 2026-07-10 — Settings dogfood spine postures v36
+Spine postures (v36) chrome + mock suite 56 items · readiness CTA · RAG/CAI ·
+free-host HTML port listed. Settings honesty tracks substrate v36.
+vitest Settings 37 green. P0 PR #465. Pivot asq+.

@@ -3529,6 +3529,10 @@ export default function Settings() {
                     "dogfood-wrestle-meta-reading-collective",
                     "dogfood-wrestle-marketplace-host-collective",
                     "dogfood-book-nicomachean-ethics",
+                    // Residual (asp/asm): dogfood v36 readiness→CTA · RAG/CAI · free-host.
+                    "dogfood-wrestle-readiness-cta-matrix",
+                    "dogfood-wrestle-pub-rag-constitutional-presets",
+                    "dogfood-book-free-host-html-port",
                   ].includes(it.item_id),
                 ) ? (
                   <p
@@ -3536,7 +3540,7 @@ export default function Settings() {
                     data-testid="antiek-bench-dogfood-v2-postures"
                     role="status"
                   >
-                    Spine postures (v35): write-seed · float evidence · budget
+                    Spine postures (v36): write-seed · float evidence · budget
                     foresight · Faraday book_qa · collective unit write-seed ·
                     Boole book_qa · Heaviside book_qa · Shannon book_qa ·
                     Turing book_qa · Lovelace book_qa · citation-trust
@@ -3550,7 +3554,7 @@ export default function Settings() {
                     TalkToBook twins · MetaReading twins · ResearchThis twins ·
                     spawn merge path · multi-spawn collective merge ·
                     knowledge-dense pub quick-call matrix · budget foresight with pubs ·
-                    purchase seamless port · domain-aware twin search · collective unit twin seed · MO deposit twin honesty · pub-ref foresight chrome · citation chain · multi-hop citation chain hops · domain-aware STEM expanded · evidence Write multi-hop · twin promote depth-graph · twin promote Write depth-graph · TalkToBook collective · MetaReading collective · MarketplaceHost collective · Nicomachean Ethics book_qa · competitive DR scorecard · domain-aware twin chase · HostedHtml domain DR · DR session domain rehydrate · MO multi-goal templates · MO fan-out match · multi-agent written analysis ≥2 · MO multi-goal mode intro
+                    purchase seamless port · domain-aware twin search · collective unit twin seed · MO deposit twin honesty · pub-ref foresight chrome · citation chain · multi-hop citation chain hops · domain-aware STEM expanded · evidence Write multi-hop · twin promote depth-graph · twin promote Write depth-graph · TalkToBook collective · MetaReading collective · MarketplaceHost collective · Nicomachean Ethics book_qa · competitive DR scorecard · domain-aware twin chase · HostedHtml domain DR · DR session domain rehydrate · MO multi-goal templates · MO fan-out match · multi-agent written analysis ≥2 · MO multi-goal mode intro · readiness→CTA matrix · RAG/Constitutional AI presets · free-host HTML port
                     (listing only · not auto-promoted)
                   </p>
                 ) : null}
