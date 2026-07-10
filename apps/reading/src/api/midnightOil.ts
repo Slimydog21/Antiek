@@ -4093,6 +4093,35 @@ export interface MidnightOilOperatorArchivePackageDeliveryReportDeliveryConfirma
   adapter_plan_notes: string[];
 }
 
+export interface MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorAcknowledgementPlanRequest
+  extends MidnightOilOperatorArchivePackageDeliveryReportDeliveryConfirmationResultReconciliationPlanRequest {
+  operator_archive_package_delivery_report_delivery_confirmation_result_reconciliation_plan_receipt: MidnightOilOperatorArchivePackageDeliveryReportDeliveryConfirmationResultReconciliationPlanReceipt;
+}
+
+export interface MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorAcknowledgementPlanReceipt
+  extends Omit<
+    MidnightOilOperatorArchivePackageDeliveryReportDeliveryConfirmationResultReconciliationPlanReceipt,
+    "receipt_id" | "status" | "adapter_key" | "blocker_reason" | "adapter_plan_notes"
+  > {
+  receipt_id: string;
+  operator_archive_package_delivery_report_delivery_confirmation_result_reconciliation_plan_receipt_id: string;
+  status: "blocked_operator_archive_package_delivery_report_final_operator_acknowledgement_unimplemented";
+  adapter_key: "operator_archive_package_delivery_report_final_operator_acknowledgement";
+  planned_operator_archive_package_delivery_report_final_operator_acknowledgement_receipt_id: string;
+  planned_operator_archive_package_delivery_report_final_operator_acknowledgement_entry_id: string;
+  planned_operator_archive_package_delivery_report_final_operator_acknowledgement_status_entry_id: string;
+  planned_operator_archive_package_delivery_report_final_operator_acknowledgement_audit_entry_id: string;
+  operator_archive_package_delivery_report_final_operator_acknowledgement_blockers: string[];
+  required_operator_archive_package_delivery_report_final_operator_acknowledgement_invariants: string[];
+  required_operator_archive_package_delivery_report_final_operator_acknowledgement_receipt_fields: string[];
+  blocker_reason: "operator_archive_package_delivery_report_final_operator_acknowledgement_unimplemented";
+  operator_archive_package_delivery_report_final_operator_acknowledgement_allowed: boolean;
+  operator_archive_package_delivery_report_final_operator_acknowledgement_entry_created: boolean;
+  operator_archive_package_delivery_report_final_operator_acknowledgement_status_entry_created: boolean;
+  operator_archive_package_delivery_report_final_operator_acknowledgement_audit_entry_created: boolean;
+  adapter_plan_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -5217,4 +5246,24 @@ export async function operatorArchivePackageDeliveryReportDeliveryConfirmationRe
     );
   }
   return (await resp.json()) as MidnightOilOperatorArchivePackageDeliveryReportDeliveryConfirmationResultReconciliationPlanReceipt;
+}
+
+export async function operatorArchivePackageDeliveryReportFinalOperatorAcknowledgementPlanMidnightOil(
+  request: MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorAcknowledgementPlanRequest,
+): Promise<MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorAcknowledgementPlanReceipt> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/midnight-oil/operator-archive-package-delivery-report-final-operator-acknowledgement-plan`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+  );
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(
+      `POST /research/midnight-oil/operator-archive-package-delivery-report-final-operator-acknowledgement-plan: HTTP ${resp.status}: ${body}`,
+    );
+  }
+  return (await resp.json()) as MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorAcknowledgementPlanReceipt;
 }
