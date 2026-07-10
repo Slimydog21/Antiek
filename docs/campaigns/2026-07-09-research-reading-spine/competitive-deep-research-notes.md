@@ -1947,3 +1947,8 @@ non-trivial free STEM corpus (parity physics aav).
 FUTURE-AGENT-SPEC tip re-anchored after 131 residual ships this continuation.
 Competitive delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
 
+## Residual aay · 2026-07-10 — free science STEM set size honesty
+Free science subject set len ≥6 all free PD HTML (Origin · Principia · Elements ·
+Novum · Faraday · Shannon). Competitive delta: cross-domain science filter is a
+non-trivial free STEM corpus for tech researchers (parity physics/math).
+

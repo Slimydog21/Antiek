@@ -1,0 +1,19 @@
+# inventory-aay · free science STEM set size honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aay
+date: 2026-07-10
+tip_before: 87890e26 (aax competitive)
+
+## Problem
+Free physics/math/computing had set-size honesty; free science (cross-domain
+tech-researcher spine) lacked an explicit ≥6 free PD HTML guarantee.
+
+## Fix
+- test_free_science_stem_set_size: Origin · Principia · Elements · Novum ·
+  Faraday · Shannon · len ≥6 · free PD HTML
+
+## Verified
+pytest test_free_science_stem_set_size → passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

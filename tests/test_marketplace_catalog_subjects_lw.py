@@ -259,6 +259,32 @@ def test_free_mathematics_stem_set_size() -> None:
     assert all(e.is_free for e in free_math)
 
 
+def test_free_science_stem_set_size() -> None:
+    """Residual (aay): free science subject is non-trivial for tech researchers.
+
+    Cross-domain free PD HTML spine (biology + physics + method + STEM).
+    Parity physics/mathematics domain size honesty.
+    """
+    cat = default_demo_catalog()
+    free_sci = [
+        e
+        for e in cat.filter_by_subject("science")
+        if e.is_free and e.license_class == "public_domain"
+    ]
+    ids = {e.book_id for e in free_sci}
+    assert ids >= {
+        "pd-origin",
+        "pd-principia",
+        "pd-elements",
+        "pd-novum",
+        "pd-faraday-electricity",
+        "pd-shannon-communication",
+    }
+    assert all(e.source_format == "html" for e in free_sci if e.book_id in ids)
+    assert len(free_sci) >= 6
+    assert all(e.is_free for e in free_sci)
+
+
 def test_turing_computability_subjects_and_free_pd() -> None:
     """Residual (wl): Turing tagged computing+computability, free PD."""
     cat = default_demo_catalog()
