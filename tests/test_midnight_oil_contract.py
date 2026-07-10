@@ -33,6 +33,7 @@ from substrate.midnight_oil import (
     MidnightOilRunnerDispatchSchedulerPlanRequest,
     MidnightOilRunnerDispatchWorkerBootstrapPlanRequest,
     MidnightOilRunnerReadinessRequest,
+    MidnightOilSchedulerLeaseRetryPlanRequest,
     activation_checklist_midnight_oil,
     budget_provider_adapter_plan_midnight_oil,
     budget_reservation_midnight_oil,
@@ -59,6 +60,7 @@ from substrate.midnight_oil import (
     runner_dispatch_scheduler_plan_midnight_oil,
     runner_dispatch_worker_bootstrap_plan_midnight_oil,
     runner_readiness_midnight_oil,
+    scheduler_lease_retry_plan_midnight_oil,
 )
 
 
@@ -603,6 +605,57 @@ def _accepted_midnight_oil_runner_dispatch_scheduler_plan_chain(
     return {
         **chain,
         "runner_dispatch_scheduler_plan": scheduler_plan,
+    }
+
+
+def _accepted_midnight_oil_runner_dispatch_worker_bootstrap_plan_chain(
+    *,
+    goal: str,
+    source_policy: list[str],
+    requested_control_scope: list[str],
+) -> dict[str, object]:
+    chain = _accepted_midnight_oil_runner_dispatch_scheduler_plan_chain(
+        goal=goal,
+        source_policy=source_policy,
+        requested_control_scope=requested_control_scope,
+    )
+    preflight = chain["preflight"]
+    worker_bootstrap_plan = runner_dispatch_worker_bootstrap_plan_midnight_oil(
+        MidnightOilRunnerDispatchWorkerBootstrapPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=chain["control_plan"],
+            budget_provider_adapter_plan_receipt=chain["budget_adapter_plan"],
+            provider_executor_adapter_plan_receipt=chain["provider_adapter_plan"],
+            retrieval_adapter_plan_receipt=chain["retrieval_adapter_plan"],
+            graph_adapter_plan_receipt=chain["graph_adapter_plan"],
+            final_artifact_adapter_plan_receipt=chain["final_artifact_adapter_plan"],
+            operator_dispatch_adapter_plan_receipt=chain["operator_adapter_plan"],
+            control_ledger_adapter_plan_receipt=chain["control_ledger_plan"],
+            control_ledger_persistence_plan_receipt=chain[
+                "control_ledger_persistence_plan"
+            ],
+            control_ledger_persistence_apply_plan_receipt=chain[
+                "control_ledger_persistence_apply_plan"
+            ],
+            operator_dispatch_activation_readiness_plan_receipt=chain[
+                "operator_dispatch_activation_readiness_plan"
+            ],
+            live_dispatch_final_enablement_plan_receipt=chain[
+                "live_dispatch_final_enablement_plan"
+            ],
+            live_dispatch_final_enablement_apply_plan_receipt=chain[
+                "live_dispatch_final_enablement_apply_plan"
+            ],
+            runner_dispatch_scheduler_plan_receipt=chain[
+                "runner_dispatch_scheduler_plan"
+            ],
+        )
+    )
+    return {
+        **chain,
+        "runner_dispatch_worker_bootstrap_plan": worker_bootstrap_plan,
     }
 
 
@@ -4793,6 +4846,264 @@ def test_midnight_oil_runner_dispatch_worker_bootstrap_plan_api_contract() -> No
     assert body["runner_dispatch_enqueued"] is False
     assert body["live_dispatch_enabled"] is False
     assert body["dispatch_allowed"] is False
+    assert body["dispatch_performed"] is False
+    assert body["budget_reserved"] is False
+    assert body["provider_calls_made"] is False
+    assert body["retrieval_performed"] is False
+    assert body["source_receipts_created"] is False
+    assert body["graph_mutated"] is False
+    assert body["final_artifact_created"] is False
+
+
+def test_scheduler_lease_retry_plan_records_disabled_requirements() -> None:
+    chain = _accepted_midnight_oil_runner_dispatch_worker_bootstrap_plan_chain(
+        goal="Plan scheduler lease and retry requirements after worker bootstrap planning.",
+        source_policy=["arxiv", "web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    worker_plan = chain["runner_dispatch_worker_bootstrap_plan"]
+
+    lease_retry_plan = scheduler_lease_retry_plan_midnight_oil(
+        MidnightOilSchedulerLeaseRetryPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=chain["control_plan"],
+            budget_provider_adapter_plan_receipt=chain["budget_adapter_plan"],
+            provider_executor_adapter_plan_receipt=chain["provider_adapter_plan"],
+            retrieval_adapter_plan_receipt=chain["retrieval_adapter_plan"],
+            graph_adapter_plan_receipt=chain["graph_adapter_plan"],
+            final_artifact_adapter_plan_receipt=chain["final_artifact_adapter_plan"],
+            operator_dispatch_adapter_plan_receipt=chain["operator_adapter_plan"],
+            control_ledger_adapter_plan_receipt=chain["control_ledger_plan"],
+            control_ledger_persistence_plan_receipt=chain["control_ledger_persistence_plan"],
+            control_ledger_persistence_apply_plan_receipt=chain[
+                "control_ledger_persistence_apply_plan"
+            ],
+            operator_dispatch_activation_readiness_plan_receipt=chain[
+                "operator_dispatch_activation_readiness_plan"
+            ],
+            live_dispatch_final_enablement_plan_receipt=chain[
+                "live_dispatch_final_enablement_plan"
+            ],
+            live_dispatch_final_enablement_apply_plan_receipt=chain[
+                "live_dispatch_final_enablement_apply_plan"
+            ],
+            runner_dispatch_scheduler_plan_receipt=chain[
+                "runner_dispatch_scheduler_plan"
+            ],
+            runner_dispatch_worker_bootstrap_plan_receipt=worker_plan,
+        )
+    )
+
+    assert lease_retry_plan.receipt_id == f"{preflight.run_id}-scheduler-lease-retry-plan"
+    assert lease_retry_plan.runner_dispatch_worker_bootstrap_plan_receipt_id == (
+        worker_plan.receipt_id
+    )
+    assert lease_retry_plan.status == "blocked_scheduler_lease_retry_unimplemented"
+    assert lease_retry_plan.adapter_key == "scheduler_lease_retry"
+    assert lease_retry_plan.planned_lease_policy_id == (
+        f"{preflight.run_id}-scheduler-lease-policy"
+    )
+    assert lease_retry_plan.planned_retry_policy_id == worker_plan.planned_retry_policy_id
+    assert lease_retry_plan.planned_dead_letter_queue_id == (
+        worker_plan.planned_dead_letter_queue_id
+    )
+    assert lease_retry_plan.planned_visibility_timeout_seconds == 900
+    assert lease_retry_plan.planned_lease_ttl_seconds == 300
+    assert lease_retry_plan.planned_heartbeat_interval_seconds == 60
+    assert lease_retry_plan.planned_max_attempts == 3
+    assert lease_retry_plan.planned_backoff_policy == "exponential_jitter"
+    assert lease_retry_plan.planned_scheduler_job_id == worker_plan.planned_scheduler_job_id
+    assert lease_retry_plan.planned_worker_id == worker_plan.planned_worker_id
+    assert lease_retry_plan.planned_worker_lease_id == worker_plan.planned_worker_lease_id
+    assert lease_retry_plan.planned_runner_dispatch_id == worker_plan.planned_runner_dispatch_id
+    assert "retry attempt ledger" in lease_retry_plan.lease_retry_blockers
+    assert "lease_ttl_seconds" in lease_retry_plan.required_lease_retry_receipt_fields
+    assert "lease retry planner must require a worker bootstrap plan" in (
+        lease_retry_plan.required_lease_retry_invariants[0]
+    )
+    assert lease_retry_plan.blocker_reason == "scheduler_lease_retry_unimplemented"
+    assert lease_retry_plan.lease_retry_allowed is False
+    assert lease_retry_plan.lease_policy_created is False
+    assert lease_retry_plan.retry_policy_created is False
+    assert lease_retry_plan.dead_letter_queue_created is False
+    assert lease_retry_plan.worker_bootstrap_created is False
+    assert lease_retry_plan.worker_started is False
+    assert lease_retry_plan.scheduler_job_created is False
+    assert lease_retry_plan.runner_dispatch_enqueued is False
+    assert lease_retry_plan.dispatch_allowed is False
+    assert lease_retry_plan.dispatch_performed is False
+    assert lease_retry_plan.budget_reserved is False
+    assert lease_retry_plan.provider_calls_made is False
+    assert lease_retry_plan.retrieval_performed is False
+    assert lease_retry_plan.source_receipts_created is False
+    assert lease_retry_plan.graph_mutated is False
+    assert lease_retry_plan.final_artifact_created is False
+    assert "no lease policy" in lease_retry_plan.adapter_plan_notes[0]
+
+
+def test_scheduler_lease_retry_plan_rejects_started_worker() -> None:
+    chain = _accepted_midnight_oil_runner_dispatch_worker_bootstrap_plan_chain(
+        goal="Reject started workers before scheduler lease retry planning.",
+        source_policy=["web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    bad_worker_plan = chain["runner_dispatch_worker_bootstrap_plan"].model_copy(
+        update={"worker_started": True}
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match="runner_dispatch_worker_bootstrap_plan_receipt must not start worker",
+    ):
+        MidnightOilSchedulerLeaseRetryPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=chain["control_plan"],
+            budget_provider_adapter_plan_receipt=chain["budget_adapter_plan"],
+            provider_executor_adapter_plan_receipt=chain["provider_adapter_plan"],
+            retrieval_adapter_plan_receipt=chain["retrieval_adapter_plan"],
+            graph_adapter_plan_receipt=chain["graph_adapter_plan"],
+            final_artifact_adapter_plan_receipt=chain["final_artifact_adapter_plan"],
+            operator_dispatch_adapter_plan_receipt=chain["operator_adapter_plan"],
+            control_ledger_adapter_plan_receipt=chain["control_ledger_plan"],
+            control_ledger_persistence_plan_receipt=chain["control_ledger_persistence_plan"],
+            control_ledger_persistence_apply_plan_receipt=chain[
+                "control_ledger_persistence_apply_plan"
+            ],
+            operator_dispatch_activation_readiness_plan_receipt=chain[
+                "operator_dispatch_activation_readiness_plan"
+            ],
+            live_dispatch_final_enablement_plan_receipt=chain[
+                "live_dispatch_final_enablement_plan"
+            ],
+            live_dispatch_final_enablement_apply_plan_receipt=chain[
+                "live_dispatch_final_enablement_apply_plan"
+            ],
+            runner_dispatch_scheduler_plan_receipt=chain[
+                "runner_dispatch_scheduler_plan"
+            ],
+            runner_dispatch_worker_bootstrap_plan_receipt=bad_worker_plan,
+        )
+
+
+def test_midnight_oil_scheduler_lease_retry_plan_api_contract() -> None:
+    from interfaces.research.api.app import create_app
+
+    chain = _accepted_midnight_oil_runner_dispatch_worker_bootstrap_plan_chain(
+        goal="Expose scheduler lease retry planning over the API.",
+        source_policy=["arxiv", "substack"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    worker_plan = chain["runner_dispatch_worker_bootstrap_plan"]
+
+    with TestClient(create_app()) as client:
+        r = client.post(
+            "/research/midnight-oil/scheduler-lease-retry-plan",
+            json={
+                "launch_packet": preflight.launch_packet.model_dump(mode="json"),
+                "approval_receipt": preflight.approval_receipt.model_dump(mode="json"),
+                "runner_handoff": preflight.runner_handoff.model_dump(mode="json"),
+                "runner_control_plan_receipt": chain["control_plan"].model_dump(mode="json"),
+                "budget_provider_adapter_plan_receipt": chain[
+                    "budget_adapter_plan"
+                ].model_dump(mode="json"),
+                "provider_executor_adapter_plan_receipt": chain[
+                    "provider_adapter_plan"
+                ].model_dump(mode="json"),
+                "retrieval_adapter_plan_receipt": chain[
+                    "retrieval_adapter_plan"
+                ].model_dump(mode="json"),
+                "graph_adapter_plan_receipt": chain["graph_adapter_plan"].model_dump(
+                    mode="json"
+                ),
+                "final_artifact_adapter_plan_receipt": chain[
+                    "final_artifact_adapter_plan"
+                ].model_dump(mode="json"),
+                "operator_dispatch_adapter_plan_receipt": chain[
+                    "operator_adapter_plan"
+                ].model_dump(mode="json"),
+                "control_ledger_adapter_plan_receipt": chain[
+                    "control_ledger_plan"
+                ].model_dump(mode="json"),
+                "control_ledger_persistence_plan_receipt": chain[
+                    "control_ledger_persistence_plan"
+                ].model_dump(mode="json"),
+                "control_ledger_persistence_apply_plan_receipt": chain[
+                    "control_ledger_persistence_apply_plan"
+                ].model_dump(mode="json"),
+                "operator_dispatch_activation_readiness_plan_receipt": chain[
+                    "operator_dispatch_activation_readiness_plan"
+                ].model_dump(mode="json"),
+                "live_dispatch_final_enablement_plan_receipt": chain[
+                    "live_dispatch_final_enablement_plan"
+                ].model_dump(mode="json"),
+                "live_dispatch_final_enablement_apply_plan_receipt": chain[
+                    "live_dispatch_final_enablement_apply_plan"
+                ].model_dump(mode="json"),
+                "runner_dispatch_scheduler_plan_receipt": chain[
+                    "runner_dispatch_scheduler_plan"
+                ].model_dump(mode="json"),
+                "runner_dispatch_worker_bootstrap_plan_receipt": worker_plan.model_dump(
+                    mode="json"
+                ),
+            },
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["receipt_id"] == f"{preflight.run_id}-scheduler-lease-retry-plan"
+    assert body["runner_dispatch_worker_bootstrap_plan_receipt_id"] == (
+        worker_plan.receipt_id
+    )
+    assert body["status"] == "blocked_scheduler_lease_retry_unimplemented"
+    assert body["adapter_key"] == "scheduler_lease_retry"
+    assert body["planned_lease_policy_id"] == (
+        f"{preflight.run_id}-scheduler-lease-policy"
+    )
+    assert body["planned_retry_policy_id"] == worker_plan.planned_retry_policy_id
+    assert body["planned_dead_letter_queue_id"] == worker_plan.planned_dead_letter_queue_id
+    assert body["planned_visibility_timeout_seconds"] == 900
+    assert body["planned_lease_ttl_seconds"] == 300
+    assert body["planned_heartbeat_interval_seconds"] == 60
+    assert body["planned_max_attempts"] == 3
+    assert body["planned_backoff_policy"] == "exponential_jitter"
+    assert "retry attempt ledger" in body["lease_retry_blockers"]
+    assert "lease_ttl_seconds" in body["required_lease_retry_receipt_fields"]
+    assert body["blocker_reason"] == "scheduler_lease_retry_unimplemented"
+    assert body["lease_retry_allowed"] is False
+    assert body["lease_policy_created"] is False
+    assert body["retry_policy_created"] is False
+    assert body["dead_letter_queue_created"] is False
+    assert body["worker_started"] is False
+    assert body["scheduler_job_created"] is False
+    assert body["runner_dispatch_enqueued"] is False
     assert body["dispatch_performed"] is False
     assert body["budget_reserved"] is False
     assert body["provider_calls_made"] is False

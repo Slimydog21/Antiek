@@ -62,6 +62,8 @@ from substrate.midnight_oil import (
     MidnightOilRunnerDispatchWorkerBootstrapPlanRequest,
     MidnightOilRunnerReadinessReceipt,
     MidnightOilRunnerReadinessRequest,
+    MidnightOilSchedulerLeaseRetryPlanReceipt,
+    MidnightOilSchedulerLeaseRetryPlanRequest,
     activation_checklist_midnight_oil,
     budget_provider_adapter_plan_midnight_oil,
     budget_reservation_midnight_oil,
@@ -88,6 +90,7 @@ from substrate.midnight_oil import (
     runner_dispatch_scheduler_plan_midnight_oil,
     runner_dispatch_worker_bootstrap_plan_midnight_oil,
     runner_readiness_midnight_oil,
+    scheduler_lease_retry_plan_midnight_oil,
 )
 
 midnight_oil_router = APIRouter(prefix="/research/midnight-oil", tags=["deep-research"])
@@ -314,6 +317,16 @@ def post_midnight_oil_runner_dispatch_worker_bootstrap_plan(
     return runner_dispatch_worker_bootstrap_plan_midnight_oil(req)
 
 
+@midnight_oil_router.post(
+    "/scheduler-lease-retry-plan",
+    response_model=MidnightOilSchedulerLeaseRetryPlanReceipt,
+)
+def post_midnight_oil_scheduler_lease_retry_plan(
+    req: MidnightOilSchedulerLeaseRetryPlanRequest,
+) -> MidnightOilSchedulerLeaseRetryPlanReceipt:
+    return scheduler_lease_retry_plan_midnight_oil(req)
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
@@ -346,5 +359,6 @@ __all__ = [
     "post_midnight_oil_runner_dispatch_scheduler_plan",
     "post_midnight_oil_runner_dispatch_worker_bootstrap_plan",
     "post_midnight_oil_runner_readiness",
+    "post_midnight_oil_scheduler_lease_retry_plan",
     "register_midnight_oil_routes",
 ]
