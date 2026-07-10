@@ -1381,3 +1381,8 @@ covers electricity + logic + information theory on HTML-first free path.
 Settings dogfood fixtures list no longer silently truncates to top-12.
 Competitive delta: recursive rewrite feed postures (incl. Shannon v10) remain
 operator-visible as the suite grows — no silent caps.
+
+## Residual wf · 2026-07-10 — SESSION-ARC + FUTURE tip through we
+SESSION-ARC-vz-we + FUTURE-AGENT tip → 84bbfed2 (64 residual ships). Competitive
+delta: compaction-safe multi-agent handoff after budget foresight + Shannon STEM
+wave; operator merge PR #465 remains highest leverage.

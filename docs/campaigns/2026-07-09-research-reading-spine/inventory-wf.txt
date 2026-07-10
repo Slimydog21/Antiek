@@ -1,0 +1,13 @@
+# inventory-wf · SESSION-ARC + FUTURE tip re-anchor through we
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: wf
+date: 2026-07-10
+tip_sha: 84bbfed2
+
+## Closed
+- SESSION-ARC-vz-we-budget-stem-honesty.md
+- FUTURE-AGENT tip → 84bbfed2 · arcs tt–we (64 residual ships)
+- Highest leverage: operator merge PR #465 OPEN
+
+## Not in scope
+- Operator merge PR #465 (gated)
