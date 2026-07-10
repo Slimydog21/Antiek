@@ -76,7 +76,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { seedTwinNotes } from "../../api/engagement";
-import { domainSearchCoverage } from "../../components/engagement/ResearchContextPanel";
+import { domainSearchCoverage } from "../../workspace/domainSearchDefaults";
 import {
   fetchAccountLibrary,
   fetchHostedDocumentHtml,

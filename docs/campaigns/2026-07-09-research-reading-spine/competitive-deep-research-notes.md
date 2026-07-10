@@ -3275,3 +3275,8 @@ P0 operator merge PR #465. Pivot aln+ outside thrash.
 ## Residual aln · 2026-07-10 — SESSION-ARC alj–alm domain coverage path
 Wave handoff: domainSearchCoverage ResearchContext → MarketplaceHost host land.
 P0 operator merge PR #465. Pivot alo+ outside thrash.
+
+## Residual alo · 2026-07-10 — HostedHtml domain-search coverage + domainSearchDefaults extract
+Pure domainSearchDefaults util; HostedHtml reading host stamps coverage; marketplace
+imports pure path. Domain coverage path: ResearchContext · MarketplaceHost · HostedHtml.
+vitest 83 green. P0 operator merge PR #465. Pivot alp+ outside thrash.

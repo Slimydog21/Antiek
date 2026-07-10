@@ -63,6 +63,7 @@ import { CollectiveResearchPanel } from "../engagement/CollectiveResearchPanel";
 import { DecisionTreeDriverBadge } from "../engagement/DecisionTreeDriverBadge";
 import { KNOWLEDGE_DENSE_PUBLICATION_PRESETS } from "../engagement/PublicationAttachPanel";
 import { ResearchContextPanel } from "../engagement/ResearchContextPanel";
+import { domainSearchCoverage } from "../../workspace/domainSearchDefaults";
 import {
   ResearchLaunchBudgetPanel,
   type ResearchLaunchBudgetProjection,
@@ -130,6 +131,11 @@ export default function HostedHtmlDocumentHost(
   const isHtml = viewFormat === "html";
   const html = props.html?.trim() || "";
   const assetId = props.document_id?.trim() || "";
+  // Residual (alo): domain-search coverage for free PD subjects on reading host.
+  const hostedDomainCoverage = useMemo(
+    () => domainSearchCoverage(props.subjects || null),
+    [props.subjects],
+  );
 
   // Residual (eu/ob/oc): open + recent DR session spawns for collective multi-select.
   const windows = useWindows((s) => s.windows);
@@ -988,6 +994,22 @@ export default function HostedHtmlDocumentHost(
           data-domain-subjects={(props.subjects || []).join(",") || ""}
           data-has-domain-subjects={String(
             Boolean((props.subjects || []).filter(Boolean).length),
+          )}
+          // Residual (alo): domain-search coverage honesty (alj/alm path).
+          data-domain-search-has-default={String(
+            hostedDomainCoverage.has_default,
+          )}
+          data-domain-search-covered={
+            hostedDomainCoverage.covered.join(",") || ""
+          }
+          data-domain-search-uncovered={
+            hostedDomainCoverage.uncovered.join(",") || ""
+          }
+          data-domain-search-covered-count={String(
+            hostedDomainCoverage.covered.length,
+          )}
+          data-domain-search-uncovered-count={String(
+            hostedDomainCoverage.uncovered.length,
           )}
         >
           <div

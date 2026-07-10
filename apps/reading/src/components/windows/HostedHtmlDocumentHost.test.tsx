@@ -612,6 +612,12 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     const mount = screen.getByTestId("hosted-html-context-mount");
     expect(mount.getAttribute("data-has-domain-subjects")).toBe("true");
     expect(mount.getAttribute("data-domain-subjects")).toMatch(/heat/);
+    // Residual (alo): domain-search coverage honesty on reading host mount.
+    expect(mount.getAttribute("data-domain-search-has-default")).toBe("true");
+    expect(mount.getAttribute("data-domain-search-covered")).toMatch(/heat/);
+    expect(
+      Number(mount.getAttribute("data-domain-search-covered-count")),
+    ).toBeGreaterThanOrEqual(1);
     expect(mount.getAttribute("data-domain-subjects")).toMatch(
       /signal_processing/,
     );
