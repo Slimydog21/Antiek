@@ -2338,3 +2338,8 @@ Next: aes+ outside this thrash. PR #465 operator merge remains P0.
 ResearchContext Open Write (pack + context-search) stamps asset/spawn/query/tier
 · data-seamless-context-write so intelligent search → Write note-taker is
 machine-readable. vitest ResearchContextPanel 12 green.
+
+## Residual aet · 2026-07-10 — evidence pack + hydrate Open Write path
+Evidence pack Open Write stamps citation-trust · research_tier · seamless-context-write.
+Hydrate Open Write stamps offline-honest · fetched · spawn_id. Competitive
+citation bar on Write handoff (grounded vs ungrounded). vitest ResearchContext 12 green.

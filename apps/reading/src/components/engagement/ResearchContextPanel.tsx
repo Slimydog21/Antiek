@@ -832,7 +832,7 @@ export function ResearchContextPanel({
               </button>
             </p>
           ) : null}
-          {/* Residual (rb/acr): evidence pack → Write twin_seed + body honesty. */}
+          {/* Residual (rb/acr/aet): evidence pack → Write + citation-trust path. */}
           {(() => {
             const href = buildEvidencePackWriteHref({
               assetId: evidence.asset_id || assetId,
@@ -854,6 +854,10 @@ export function ResearchContextPanel({
                 questionBody ||
                 plainTextFromHtml(evidence.html || "").trim(),
             );
+            const evAsset = String(evidence.asset_id || assetId || "").trim();
+            const evSpawn = String(evidence.spawn_id || spawnId || "").trim();
+            const citationTrust =
+              (evidence.ref_count ?? 0) > 0 ? "grounded" : "ungrounded";
             return href ? (
               <p className="meta font-mono text-[11px]">
                 <a
@@ -863,8 +867,20 @@ export function ResearchContextPanel({
                   data-has-twin-seed="1"
                   data-ref-count={String(evidence.ref_count ?? 0)}
                   data-write-seed-has-body={String(hasBody)}
+                  // Residual (aet): citation-trust evidence → Write path honesty.
+                  data-asset-id={evAsset}
+                  data-spawn-id={evSpawn}
+                  data-research-tier={
+                    (evidence.research_tier || "").trim().toLowerCase() || ""
+                  }
+                  data-citation-trust={citationTrust}
+                  data-seamless-context-write={String(Boolean(evAsset))}
                   className="underline opacity-90 hover:opacity-100"
-                  title="Open Write with evidence pack as twin_seed (insights/questions/refs; no invented document_id)"
+                  title={
+                    citationTrust === "grounded"
+                      ? "Open Write with grounded evidence pack as twin_seed (citation trust · no invented document_id)"
+                      : "Open Write with ungrounded evidence pack as twin_seed (citation trust honest · no invented document_id)"
+                  }
                 >
                   Open Write (evidence pack)
                 </a>
@@ -977,7 +993,7 @@ export function ResearchContextPanel({
               </button>
             </p>
           ) : null}
-          {/* Residual (rh/acr): single hydrate → Write twin_seed + body honesty. */}
+          {/* Residual (rh/acr/aet): hydrate → Write + offline-honest path. */}
           {(() => {
             const href = buildPublicationHydrateWriteHref({
               spawnId,
@@ -987,6 +1003,8 @@ export function ResearchContextPanel({
               String(hydrated.body_text || "").trim() ||
                 plainTextFromHtml(hydrated.html || "").trim(),
             );
+            const offlineHonest =
+              hydrated.offline_honest !== false && !hydrated.fetched;
             return href ? (
               <p className="meta font-mono text-[11px]">
                 <a
@@ -996,8 +1014,19 @@ export function ResearchContextPanel({
                   data-has-twin-seed="1"
                   data-asset-id={hydrated.asset_id}
                   data-write-seed-has-body={String(hasBody)}
+                  // Residual (aet): arxiv/substack hydrate → Write path honesty.
+                  data-spawn-id={String(spawnId || "").trim()}
+                  data-fetched={String(Boolean(hydrated.fetched))}
+                  data-offline-honest={String(offlineHonest)}
+                  data-seamless-context-write={String(
+                    Boolean(String(hydrated.asset_id || "").trim()),
+                  )}
                   className="underline opacity-90 hover:opacity-100"
-                  title="Open Write with hydrated publication as twin_seed (no invented document_id)"
+                  title={
+                    offlineHonest
+                      ? "Open Write with offline-honest hydrate identity as twin_seed (no invented live body)"
+                      : "Open Write with hydrated publication body as twin_seed (injector landed · no invented document_id)"
+                  }
                 >
                   Open Write (hydrated pub)
                 </a>

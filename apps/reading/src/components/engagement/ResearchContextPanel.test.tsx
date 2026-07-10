@@ -304,7 +304,7 @@ describe("ResearchContextPanel", () => {
     expect(
       screen.getByTestId("hydrate-ref-offline-honest").textContent,
     ).toMatch(/offline-honest identity/i);
-    // Residual (rh): Open Write twin_seed from hydrate-ref result.
+    // Residual (rh/aet): Open Write twin_seed from hydrate-ref + path honesty.
     const write = screen.getByTestId("hydrate-ref-open-write");
     const href = write.getAttribute("href") || "";
     expect(href).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
@@ -313,6 +313,12 @@ describe("ResearchContextPanel", () => {
     expect(write.getAttribute("data-asset-id")).toBe("pub_arxiv_abc");
     // Residual (acr): body_text/html body → has-body true.
     expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
+    // Residual (aet): offline-honest hydrate → Write path honesty.
+    expect(write.getAttribute("data-spawn-id")).toBe("spn_1");
+    expect(write.getAttribute("data-offline-honest")).toBe("true");
+    expect(write.getAttribute("data-fetched")).toBe("false");
+    expect(write.getAttribute("data-seamless-context-write")).toBe("true");
+    expect(write.getAttribute("title") || "").toMatch(/offline-honest/i);
     // Residual (sk): float|full hydrated publication HTML.
     fireEvent.click(screen.getByTestId("hydrate-ref-open-float"));
     const floatCall = openWindow.mock.calls.at(-1) as [
@@ -579,7 +585,7 @@ describe("ResearchContextPanel", () => {
     expect(screen.getByTestId("evidence-research-tier").textContent).toMatch(
       /long-horizon/i,
     );
-    // Residual (rb): Open Write twin_seed from evidence pack.
+    // Residual (rb/aet): Open Write twin_seed from evidence pack + path honesty.
     const write = screen.getByTestId("evidence-pack-open-write");
     const href = write.getAttribute("href") || "";
     expect(href).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
@@ -588,6 +594,11 @@ describe("ResearchContextPanel", () => {
     expect(write.getAttribute("data-ref-count")).toBe("1");
     // Residual (acr): insights/questions/html body → has-body true.
     expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
+    // Residual (aet): citation-trust evidence → Write path honesty.
+    expect(write.getAttribute("data-citation-trust")).toBe("grounded");
+    expect(write.getAttribute("data-research-tier")).toBe("wrestle");
+    expect(write.getAttribute("data-seamless-context-write")).toBe("true");
+    expect(write.getAttribute("title") || "").toMatch(/grounded/i);
     // Residual (sf): float evidence pack as HTML reading window.
     const floatBtn = screen.getByTestId("evidence-pack-open-float");
     expect(floatBtn.getAttribute("data-view-format")).toBe("html");
