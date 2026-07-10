@@ -2997,13 +2997,48 @@ export default function Settings() {
           </div>
         </LemonCard>
 
-        <LemonCard title="Coming later" elevation="z1">
-          <ul className="p-4 space-y-2 text-sm text-ink dark:text-bright list-disc list-inside">
-            <li>Add model + multi-provider secret vault (SPR-02)</li>
-            <li>Antiek-bench weekly model quality report (UI polish)</li>
-            <li>Midnight oil: time + goals + price-ceiling approve UI</li>
-            <li>Keyboard map customisation + layout export</li>
-          </ul>
+        {/* Residual (wc): honest deferred map — never list shipped spine as "coming later". */}
+        <LemonCard title="Deferred (honest)" elevation="z1">
+          <div
+            className="p-4 space-y-2 text-sm text-ink dark:text-bright"
+            data-testid="settings-deferred-honest"
+            data-view-format="html"
+            role="status"
+          >
+            <p className="text-[11px] font-mono text-ink-soft dark:text-starlight">
+              Offline product spine is live on this branch. Items below are
+              truly deferred or operator dual-gate — never silent live.
+            </p>
+            <ul className="space-y-2 list-disc list-inside">
+              <li data-deferred="l1-l4-live" data-testid="settings-deferred-l1-l4">
+                Live L1–L4 injectors (arxiv/substack hydrate · twin seed · MO
+                step) — dual-gate only · offline default
+              </li>
+              <li data-deferred="l5-payment" data-testid="settings-deferred-l5">
+                L5 marketplace payment rails — manual receipt only today
+              </li>
+              <li data-deferred="l6-collective" data-testid="settings-deferred-l6">
+                L6 live multi-agent council — offline merge unit only today
+              </li>
+              <li data-deferred="l7-nd" data-testid="settings-deferred-l7">
+                L7 NotDiamond as router — never · advisory only (correct)
+              </li>
+              <li data-deferred="secret-vault" data-testid="settings-deferred-vault">
+                Multi-provider secret vault polish (SPR-02) beyond register model
+              </li>
+              <li data-deferred="keyboard-map" data-testid="settings-deferred-keyboard">
+                Keyboard map customisation + layout export
+              </li>
+            </ul>
+            <p
+              className="text-[11px] font-mono text-ink-soft dark:text-starlight"
+              data-testid="settings-deferred-shipped-spine"
+            >
+              Shipped offline spine (not a backlog item): Midnight Oil
+              create→approve→run·deposit · Antiek-bench propose/approve + dogfood ·
+              free PD marketplace host · launch remaining-after budget.
+            </p>
+          </div>
         </LemonCard>
       </div>
     </div>

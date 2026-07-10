@@ -1364,3 +1364,9 @@ dispatch — budget-before-fire foresight complete on shared launch chokepoint.
 Decision-tree mini estimate + full prompt-cost-projection stamp remaining − high
 (parity launch wa). Competitive delta: Settings driver chokepoint answers
 "how does this sample prompt affect my daily cap?" before install/dispatch.
+
+## Residual wc · 2026-07-10 — Settings deferred map honesty
+Replaced stale "Coming later" with Deferred (honest): L1–L4 dual-gate, L5/L6
+deferred, L7 never-router, vault polish, keyboard map — plus shipped offline
+spine note. Competitive delta: Settings never mislabels complete MO/bench as
+backlog (propose≠rebuild thrash).

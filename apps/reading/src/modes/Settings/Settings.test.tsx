@@ -782,6 +782,40 @@ describe("Settings SPR-01 + decision-tree install", () => {
     );
   });
 
+  it("surfaces honest deferred map (not stale coming-later) (wc)", async () => {
+    render(<Settings />);
+    await waitFor(() => {
+      expect(screen.getByTestId("settings-deferred-honest")).toBeTruthy();
+    });
+    const panel = screen.getByTestId("settings-deferred-honest");
+    expect(panel.textContent).toMatch(/truly deferred|dual-gate/i);
+    expect(screen.getByTestId("settings-deferred-shipped-spine").textContent).toMatch(
+      /Shipped offline spine/i,
+    );
+    expect(screen.getByTestId("settings-deferred-shipped-spine").textContent).toMatch(
+      /Midnight Oil/i,
+    );
+    // Stale backlog claims removed (Midnight Oil UI is offline-complete).
+    expect(panel.textContent).not.toMatch(
+      /Midnight oil: time \+ goals \+ price-ceiling approve UI/i,
+    );
+    expect(panel.textContent).not.toMatch(
+      /Antiek-bench weekly model quality report \(UI polish\)/i,
+    );
+    expect(screen.getByTestId("settings-deferred-l5").getAttribute("data-deferred")).toBe(
+      "l5-payment",
+    );
+    expect(screen.getByTestId("settings-deferred-l6").getAttribute("data-deferred")).toBe(
+      "l6-collective",
+    );
+    expect(screen.getByTestId("settings-deferred-l7").getAttribute("data-deferred")).toBe(
+      "l7-nd",
+    );
+    expect(screen.getByTestId("settings-deferred-l7").textContent).toMatch(
+      /advisory only/i,
+    );
+  });
+
   it("surfaces dual-gate L1–L4 prep strip on decision-tree (sw)", async () => {
     render(<Settings />);
     await waitFor(() => {
