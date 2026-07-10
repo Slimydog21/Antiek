@@ -2975,3 +2975,8 @@ P0 operator merge PR #465. Pivot ajf+ outside scorecard thrash.
 HostedHtml context mount stamps catalog subjects so ResearchContext domain-aware
 twin search defaults fire for free STEM hosted books (reading ≡ research).
 vitest HostedHtml 25 green. P0 operator merge PR #465. Pivot ajg+ outside thrash.
+
+## Residual ajg · 2026-07-10 — SESSION-ARC aja–ajf scorecard STEM flywheel
+Wave handoff: dogfood v30 · attach/flywheel/badge scorecard · free STEM domainSubjects.
+Scorecard matrix dense — next residuals prefer non-scorecard product. P0 merge #465.
+Pivot ajh+ outside thrash.

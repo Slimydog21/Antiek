@@ -1,0 +1,13 @@
+# inventory-ajg · SESSION-ARC aja–ajf scorecard STEM flywheel
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ajg
+date: 2026-07-10
+parent_tip: e1631a20 (ajf)
+
+## Closed
+- SESSION-ARC-aja-ajf-scorecard-stem-flywheel.md
+- Documents scorecard matrix density · STEM twin flywheel · pivot outside thrash
+
+## Next
+ajh+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)
