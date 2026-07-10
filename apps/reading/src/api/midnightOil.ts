@@ -4673,6 +4673,35 @@ export interface MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHan
   adapter_plan_notes: string[];
 }
 
+export interface MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationResultReconciliationVerificationCommitPlanRequest
+  extends MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationResultReconciliationPlanRequest {
+  operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_plan_receipt: MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationResultReconciliationPlanReceipt;
+}
+
+export interface MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationResultReconciliationVerificationCommitPlanReceipt
+  extends Omit<
+    MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationResultReconciliationPlanReceipt,
+    "receipt_id" | "status" | "adapter_key" | "blocker_reason" | "adapter_plan_notes"
+  > {
+  receipt_id: string;
+  operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_plan_receipt_id: string;
+  status: "blocked_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_unimplemented";
+  adapter_key: "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit";
+  planned_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_receipt_id: string;
+  planned_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_entry_id: string;
+  planned_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_commit_entry_id: string;
+  planned_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_commit_audit_entry_id: string;
+  operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_blockers: string[];
+  required_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_invariants: string[];
+  required_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_receipt_fields: string[];
+  blocker_reason: "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_unimplemented";
+  operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_allowed: boolean;
+  operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verified: boolean;
+  operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_commit_created: boolean;
+  operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_commit_audit_created: boolean;
+  adapter_plan_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -6197,4 +6226,24 @@ export async function operatorArchivePackageDeliveryReportFinalDeliveryHandoffRe
     );
   }
   return (await resp.json()) as MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationResultReconciliationPlanReceipt;
+}
+
+export async function operatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationResultReconciliationVerificationCommitPlanMidnightOil(
+  request: MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationResultReconciliationVerificationCommitPlanRequest,
+): Promise<MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationResultReconciliationVerificationCommitPlanReceipt> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/midnight-oil/operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-result-reconciliation-verification-commit-plan`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+  );
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(
+      `POST /research/midnight-oil/operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-result-reconciliation-verification-commit-plan: HTTP ${resp.status}: ${body}`,
+    );
+  }
+  return (await resp.json()) as MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationResultReconciliationVerificationCommitPlanReceipt;
 }
