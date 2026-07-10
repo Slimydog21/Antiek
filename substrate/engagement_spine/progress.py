@@ -210,6 +210,15 @@ def progress_payload(
         latest_stage=latest,
         is_terminal=is_terminal,
     )
+    # Residual (aqf): world-class readiness from multi-stage only (hops unknown
+    # on progress surface · never invent hop coverage).
+    from .evidence import competitive_dr_world_class_readiness
+
+    world_class = competitive_dr_world_class_readiness(
+        stage_coverage_ratio=float(stage_pipeline.get("coverage_ratio") or 0),
+        hop_coverage_ratio=None,
+        stage_is_terminal=bool(stage_pipeline.get("is_terminal")),
+    )
     payload: dict[str, Any] = {
         "spawn_id": spawn_id,
         "event_count": len(events),
@@ -217,6 +226,7 @@ def progress_payload(
         "latest_stage": latest,
         "is_terminal": is_terminal,
         "stage_pipeline": stage_pipeline,
+        "world_class_readiness": world_class,
         "research_tier": tier,
         "view_format": "html",
         "product_panel": "research_progress",

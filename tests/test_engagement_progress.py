@@ -67,6 +67,11 @@ def test_record_progress_pipeline():
     assert abs(stage_pipe["coverage_ratio"] - 0.8) < 1e-9
     assert "Competitive pipeline" in payload["html"]
     assert "4/5" in payload["html"]
+    # Residual (aqf): world-class readiness on progress (hops unknown).
+    wc = payload["world_class_readiness"]
+    assert wc["multi_stage_ready"] is True
+    assert wc["citation_hops_ready"] is None
+    assert wc["world_class_bar"] == "multi_stage"
     record_progress(spawn.spawn_id, "complete", "done", store=store)
     payload2 = progress_payload(spawn.spawn_id, store=store)
     assert payload2["latest_stage"] == "complete"
