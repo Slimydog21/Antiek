@@ -40,8 +40,21 @@ class JudgeRequest:
 
 
 @dataclass(frozen=True)
+class PrivateCandidateBinding:
+    """Private identity seam; response_hash is raw hex, blinded hash is prefixed."""
+
+    label: str
+    provider_id: str
+    model_id: str
+    response_hash: str
+    blinded_candidate_hash: str
+
+
+@dataclass(frozen=True)
 class PrivateJoin:
-    labels_to_candidates: tuple[tuple[str, str, str], tuple[str, str, str]]
+    """Ephemeral mapping only; never send to a judge or public projection."""
+
+    labels_to_candidates: tuple[PrivateCandidateBinding, PrivateCandidateBinding]
 
 
 def blind_candidates(
@@ -66,8 +79,20 @@ def blind_candidates(
         BlindedCandidate("B", candidates[order[1]].content, hashes[order[1]]),
     )
     joins = (
-        ("A", candidates[order[0]].provider_id, candidates[order[0]].model_id),
-        ("B", candidates[order[1]].provider_id, candidates[order[1]].model_id),
+        PrivateCandidateBinding(
+            "A",
+            candidates[order[0]].provider_id,
+            candidates[order[0]].model_id,
+            hashlib.sha256(candidates[order[0]].content.encode()).hexdigest(),
+            hashes[order[0]],
+        ),
+        PrivateCandidateBinding(
+            "B",
+            candidates[order[1]].provider_id,
+            candidates[order[1]].model_id,
+            hashlib.sha256(candidates[order[1]].content.encode()).hexdigest(),
+            hashes[order[1]],
+        ),
     )
     return (
         JudgeRequest(

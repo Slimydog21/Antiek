@@ -1,9 +1,22 @@
 """Versioned, blinded, advisory qualitative judge evidence."""
 
 from .anchors import AnchorCalibration, AnchorItem, AnchorSet, calibrate_against_anchors
-from .blinding import CandidateArtifact, JudgeRequest, PrivateJoin, blind_candidates
+from .blinding import (
+    CandidateArtifact,
+    JudgeRequest,
+    PrivateCandidateBinding,
+    PrivateJoin,
+    blind_candidates,
+)
 from .calibration import PositionSwapReport, compare_position_swap
 from .disagreement import AxisDisagreement, DisagreementReport, compute_disagreement
+from .join import (
+    PrivateJoinEnvelope,
+    PrivateResponseBinding,
+    VerifiedJudgedJoin,
+    seal_private_join,
+    verify_private_join,
+)
 from .journal import (
     EvidenceJournal,
     EvidenceJournalCorruptionError,
@@ -43,6 +56,9 @@ __all__ = [
     "JudgeResponse",
     "JudgeRunResult",
     "PrivateJoin",
+    "PrivateCandidateBinding",
+    "PrivateJoinEnvelope",
+    "PrivateResponseBinding",
     "PositionSwapReport",
     "QualitativeVerdict",
     "ReconciliationRequiredError",
@@ -50,6 +66,7 @@ __all__ = [
     "SUPPRESSION_REASONS",
     "SuppressionReason",
     "VerdictPolicy",
+    "VerifiedJudgedJoin",
     "blind_candidates",
     "build_qualitative_verdict",
     "calibrate_against_anchors",
@@ -57,5 +74,7 @@ __all__ = [
     "compute_disagreement",
     "collect_judge_evidence",
     "rubric_for",
+    "seal_private_join",
     "validate_judgments",
+    "verify_private_join",
 ]
