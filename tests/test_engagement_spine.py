@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import os
 import sys
-import tempfile
 
 import pytest
 
@@ -18,7 +17,6 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 from substrate.engagement_spine import (  # noqa: E402
-    FileEngagementStore,
     HighlightSelection,
     InMemoryEngagementStore,
     complete_spawn,
