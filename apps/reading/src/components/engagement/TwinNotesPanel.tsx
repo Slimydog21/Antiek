@@ -50,6 +50,8 @@
  * (true when note/unit body text non-empty; parity ResearchProgress acp).
  * Residual (adi): twin-draft-metrics data-research-tier for depth audit on
  * recursive note-taker HTML draft path (prop/API tier; parity chase metrics).
+ * Residual (adl): twin-promote-metrics data-research-tier for promote→context
+ * depth audit (parity draft adi / chase).
  * Residual (ps): twin HTML draft full working-region window (parity chase full).
  * Residual (pt): twin-draft-metrics echo note_ids provenance (parity ni chase).
  * Residual (pw): mergeTwinChaseNotes pure helper — dedupe by note_id, questions
@@ -1656,7 +1658,7 @@ export function TwinNotesPanel({
           data-view-format="html"
           className="font-mono text-sm"
         >
-          {/* Residual (hi/my): machine-readable promote→context metrics. */}
+          {/* Residual (hi/my/adl): machine-readable promote→context metrics + depth. */}
           <div
             data-testid="twin-promote-metrics"
             data-promoted-count={String(promoted.promoted_count ?? 0)}
@@ -1672,6 +1674,8 @@ export function TwinNotesPanel({
               Array.isArray(promoted.note_ids) ? promoted.note_ids.length : 0,
             )}
             data-view-format="html"
+            // Residual (adl): depth posture on promote→context path (parity adi draft).
+            data-research-tier={normalizedResearchTier || ""}
             data-product-panel={
               promoted.product_panel ?? "twin_promote_context"
             }
@@ -1683,6 +1687,9 @@ export function TwinNotesPanel({
             {promoteKinds !== "all" ? ` · kinds=${promoteKinds}` : ""}
             {Array.isArray(promoted.note_ids) && promoted.note_ids.length > 0
               ? ` · note_ids=${promoted.note_ids.length}`
+              : ""}
+            {normalizedResearchTier
+              ? ` · tier=${normalizedResearchTier}`
               : ""}
           </div>
           <p>

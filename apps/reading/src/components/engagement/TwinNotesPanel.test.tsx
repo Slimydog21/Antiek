@@ -630,7 +630,7 @@ describe("TwinNotesPanel", () => {
       html: "<p>[insight] Attention is routing.</p>",
     });
 
-    render(<TwinNotesPanel assetId="paper" />);
+    render(<TwinNotesPanel assetId="paper" researchTier="deep" />);
     fireEvent.click(screen.getByTestId("twin-promote-context"));
     await waitFor(() => {
       expect(screen.getByTestId("twin-promote-result").textContent).toMatch(
@@ -659,6 +659,9 @@ describe("TwinNotesPanel", () => {
       "engagement_spine.twin_promote",
     );
     expect(metrics.textContent).toMatch(/Twin promote → context/);
+    // Residual (adl): research_tier on promote metrics (depth audit parity adi).
+    expect(metrics.getAttribute("data-research-tier")).toBe("deep");
+    expect(metrics.textContent).toMatch(/tier=deep/);
     // Residual (rr): Open Write twin_seed from promoted context units.
     expect(buildTwinPromoteWriteHref).toHaveBeenCalled();
     const write = screen.getByTestId("twin-promote-open-write");
