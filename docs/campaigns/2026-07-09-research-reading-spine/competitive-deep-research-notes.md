@@ -847,3 +847,9 @@ hosted_html_document (HTML-first, never PDF) alongside Open Write twin_seed.
 Competitive delta: Perplexity/OpenAI show citations in chat; Antiek joins
 the evidence pack into the reading/research window flywheel as a first-class
 HTML asset operators can float while wrestling the primary paper.
+
+## Residual sg · 2026-07-10 — Evidence pack full window
+Citation-trust evidence packs open as full working-region HTML windows
+(float|full parity with spawn merge / collective). Competitive delta:
+operators pin evidence full-screen while the source paper stays in another
+region — HTML-first citation workstation, never PDF.

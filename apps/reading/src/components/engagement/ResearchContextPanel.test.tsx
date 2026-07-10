@@ -472,6 +472,7 @@ describe("ResearchContextPanel", () => {
     // Residual (sf): float evidence pack as HTML reading window.
     const floatBtn = screen.getByTestId("evidence-pack-open-float");
     expect(floatBtn.getAttribute("data-view-format")).toBe("html");
+    expect(floatBtn.getAttribute("data-window-mode")).toBe("floating");
     expect(floatBtn.getAttribute("data-ref-count")).toBe("1");
     fireEvent.click(floatBtn);
     expect(openWindow).toHaveBeenCalled();
@@ -486,6 +487,19 @@ describe("ResearchContextPanel", () => {
     expect(payload.html).toMatch(/Attention is routing/);
     expect(payload.title).toMatch(/Evidence pack/i);
     expect(winOpts.mode).toBe("floating");
+    // Residual (sg): full working-region evidence window (float|full parity).
+    const fullBtn = screen.getByTestId("evidence-pack-open-full");
+    expect(fullBtn.getAttribute("data-window-mode")).toBe("full");
+    fireEvent.click(fullBtn);
+    const fullCall = openWindow.mock.calls.at(-1) as [
+      string,
+      { source?: string; view_format?: string },
+      { mode?: string },
+    ];
+    expect(fullCall[0]).toBe("hosted_html_document");
+    expect(fullCall[1].source).toBe("evidence_pack");
+    expect(fullCall[1].view_format).toBe("html");
+    expect(fullCall[2].mode).toBe("full");
   });
 
   it("flags ungrounded evidence when ref_count is zero (dm)", async () => {

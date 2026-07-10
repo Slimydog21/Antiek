@@ -17,6 +17,7 @@
  * Residual (rh): Open Write twin_seed from single hydrate-ref result.
  * Residual (ri): Open Write twin_seed from research context prompt_block.
  * Residual (sf): float evidence pack as hosted HTML reading window (citation trust).
+ * Residual (sg): open evidence pack as full working-region window (float|full parity).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -569,18 +570,20 @@ export function ResearchContextPanel({
               Citation trust: grounded · {evidence.ref_count} source ref(s)
             </p>
           )}
-          {/* Residual (sf): float evidence pack as HTML reading window. */}
+          {/* Residual (sf/sg): evidence pack → float|full HTML reading windows. */}
           {evidence.html?.trim() ? (
-            <p className="meta font-mono text-[11px]">
+            <p className="meta font-mono text-[11px] space-x-3">
               <button
                 type="button"
                 data-testid="evidence-pack-open-float"
                 data-view-format="html"
+                data-window-mode="floating"
                 data-ref-count={String(evidence.ref_count ?? 0)}
                 className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
                 title="Open evidence pack as floating HTML window (citation trust · never PDF)"
                 onClick={() => {
-                  const id = `evidence:${String(evidence.asset_id || assetId).trim()}:${Date.now().toString(36)}`;
+                  const stem = String(evidence.asset_id || assetId).trim() || "asset";
+                  const id = `evidence:${stem}:${Date.now().toString(36)}`;
                   openWindow(
                     "hosted_html_document",
                     {
@@ -600,6 +603,37 @@ export function ResearchContextPanel({
                 }}
               >
                 Open float (evidence HTML)
+              </button>
+              <button
+                type="button"
+                data-testid="evidence-pack-open-full"
+                data-view-format="html"
+                data-window-mode="full"
+                data-ref-count={String(evidence.ref_count ?? 0)}
+                className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
+                title="Open evidence pack as full working-region HTML window (citation trust · never PDF)"
+                onClick={() => {
+                  const stem = String(evidence.asset_id || assetId).trim() || "asset";
+                  const id = `evidence:${stem}:full:${Date.now().toString(36)}`;
+                  openWindow(
+                    "hosted_html_document",
+                    {
+                      document_id: id,
+                      title: "Evidence pack (citation trust · full)",
+                      html: evidence.html,
+                      view_format: "html",
+                      source: "evidence_pack",
+                      research_tier: evidence.research_tier || null,
+                    },
+                    {
+                      id: `win:evidence:${id}:full`,
+                      title: "Evidence pack (full)",
+                      mode: "full",
+                    },
+                  );
+                }}
+              >
+                Open full (evidence HTML)
               </button>
             </p>
           ) : null}
