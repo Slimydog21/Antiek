@@ -793,7 +793,7 @@ class RouteReceiptCandidate(_PayloadBase):
 
 
 class RouteReceiptSelection(_PayloadBase):
-    """The provider/model attempt represented by this DispatchCall."""
+    """A provider attempt, or an explicitly synthetic no-provider selection."""
 
     provider: str
     model: str
@@ -806,6 +806,7 @@ class RouteReceiptSelection(_PayloadBase):
         "provider_unregistered",
         "circuit_breaker_open",
         "provider_error",
+        "synthetic_no_provider",
     ]
     pricing_known: bool
 
@@ -830,13 +831,13 @@ class RouteReceiptCacheState(_PayloadBase):
 
 
 class RouteReceipt(_PayloadBase):
-    """Audit object explaining why a DispatchCall used a given model.
+    """Audit object explaining a provider route or synthetic route proof.
 
     The receipt deliberately stores only model-routing metadata. It must not
     carry raw prompts, provider request bodies, API keys, or provider-native
-    secrets. The containing DispatchCall envelope is the canonical
-    ``dispatch_event_id``; ``route_receipt_id`` is a stable local receipt key
-    derived from non-secret routing metadata and the existing prompt hash.
+    secrets. Provider-backed receipts live on the containing DispatchCall
+    envelope. Synthetic receipts remain outside DispatchCall and use an
+    explicit ``synthetic_no_provider`` reason code.
     """
 
     route_receipt_id: str

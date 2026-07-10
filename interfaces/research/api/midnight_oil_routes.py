@@ -58,6 +58,8 @@ from substrate.midnight_oil import (
     MidnightOilLiveDispatchFinalEnablementPlanRequest,
     MidnightOilLiveRunActivationSettingsReceipt,
     MidnightOilLiveRunActivationSettingsRequest,
+    MidnightOilMockExecutionReceipt,
+    MidnightOilMockExecutionRequest,
     MidnightOilOperatorArchiveHandoffPackageDeliveryAuditPlanReceipt,
     MidnightOilOperatorArchiveHandoffPackageDeliveryAuditPlanRequest,
     MidnightOilOperatorArchiveHandoffPackageDeliveryAuditResultReconciliationPlanReceipt,
@@ -189,6 +191,7 @@ from substrate.midnight_oil import (
     delivery_notification_reconciliation_plan_midnight_oil,
     dispatch_midnight_oil,
     dry_run_midnight_oil,
+    execute_mock_midnight_oil,
     final_artifact_adapter_plan_midnight_oil,
     final_artifact_completion_finalization_plan_midnight_oil,
     final_artifact_graph_commit_plan_midnight_oil,
@@ -278,6 +281,13 @@ def post_midnight_oil_preflight(req: MidnightOilRequest) -> MidnightOilPreflight
 @midnight_oil_router.post("/dry-run", response_model=MidnightOilAppliedRunReceipt)
 def post_midnight_oil_dry_run(req: MidnightOilDryRunRequest) -> MidnightOilAppliedRunReceipt:
     return dry_run_midnight_oil(req)
+
+
+@midnight_oil_router.post("/mock-execution", response_model=MidnightOilMockExecutionReceipt)
+def post_midnight_oil_mock_execution(
+    req: MidnightOilMockExecutionRequest,
+) -> MidnightOilMockExecutionReceipt:
+    return execute_mock_midnight_oil(req)
 
 
 @midnight_oil_router.post(
@@ -1171,6 +1181,7 @@ __all__ = [
     "post_midnight_oil_live_dispatch_final_enablement_apply_plan",
     "post_midnight_oil_live_dispatch_final_enablement_plan",
     "post_midnight_oil_live_run_activation_settings",
+    "post_midnight_oil_mock_execution",
     "post_midnight_oil_operator_archive_handoff_package_delivery_audit_plan",
     "post_midnight_oil_operator_archive_handoff_package_delivery_audit_result_reconciliation_plan",
     "post_midnight_oil_operator_archive_handoff_package_plan",

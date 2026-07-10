@@ -263,8 +263,17 @@ from .contracts import (
     worker_synthesis_handoff_plan_midnight_oil,
     workspace_delivery_card_reconciliation_plan_midnight_oil,
 )
+from .mock_execution import (
+    MidnightOilMockExecutionReceipt,
+    MidnightOilMockExecutionRequest,
+    MidnightOilMockRoleOutput,
+    execute_mock_midnight_oil,
+)
 
 __all__ = [
+    "MidnightOilMockExecutionReceipt",
+    "MidnightOilMockExecutionRequest",
+    "MidnightOilMockRoleOutput",
     "MidnightOilActivationChecklistReceipt",
     "MidnightOilActivationChecklistRequest",
     "MidnightOilAppliedRunReceipt",
@@ -450,6 +459,7 @@ __all__ = [
     "delivery_notification_reconciliation_plan_midnight_oil",
     "dispatch_midnight_oil",
     "dry_run_midnight_oil",
+    "execute_mock_midnight_oil",
     "final_artifact_adapter_plan_midnight_oil",
     "final_artifact_completion_finalization_plan_midnight_oil",
     "final_artifact_graph_commit_plan_midnight_oil",

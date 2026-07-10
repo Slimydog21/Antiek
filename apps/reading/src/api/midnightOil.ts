@@ -1,4 +1,5 @@
 import { API_BASE, apiFetch } from "../lib/api";
+import type { RouteReceipt } from "../generated/types";
 
 export type MidnightOilRouteMode =
   | "auto_quality"
@@ -117,6 +118,46 @@ export interface MidnightOilAppliedRunReceipt {
   graph_mutated: boolean;
   final_artifact_created: boolean;
   applied_notes: string[];
+}
+
+export interface MidnightOilMockExecutionRequest {
+  launch_packet: MidnightOilLaunchPacket;
+  approval_receipt: MidnightOilApprovalReceipt;
+  runner_handoff: MidnightOilRunnerHandoff;
+  applied_run_receipt: MidnightOilAppliedRunReceipt;
+  role_plans: MidnightOilRolePlan[];
+}
+
+export interface MidnightOilMockRoleOutput {
+  role: "planner" | "gatherer" | "verifier" | "synthesizer";
+  status: "synthetic_complete";
+  execution_mode: "synthetic_no_provider";
+  route_receipt: RouteReceipt;
+  source_receipt_ids: string[];
+  output_summary: string;
+}
+
+export interface MidnightOilMockExecutionReceipt {
+  receipt_id: string;
+  run_id: string;
+  launch_packet_id: string;
+  approval_receipt_id: string;
+  runner_handoff_id: string;
+  applied_run_receipt_id: string;
+  status: "mock_completed";
+  synthetic: true;
+  goal_fingerprint: string;
+  role_outputs: MidnightOilMockRoleOutput[];
+  html_information_asset: string;
+  twin_note_html: string;
+  actual_cost_usd: 0;
+  dispatch_performed: false;
+  budget_reserved: false;
+  provider_calls_made: false;
+  retrieval_performed: false;
+  graph_mutated: false;
+  persisted: false;
+  notes: string[];
 }
 
 export interface MidnightOilPreflight {
@@ -4817,6 +4858,21 @@ export async function dryRunMidnightOil(
     throw new Error(`POST /research/midnight-oil/dry-run: HTTP ${resp.status}: ${body}`);
   }
   return (await resp.json()) as MidnightOilAppliedRunReceipt;
+}
+
+export async function executeMockMidnightOil(
+  request: MidnightOilMockExecutionRequest,
+): Promise<MidnightOilMockExecutionReceipt> {
+  const resp = await apiFetch(`${API_BASE}/research/midnight-oil/mock-execution`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`POST /research/midnight-oil/mock-execution: HTTP ${resp.status}: ${body}`);
+  }
+  return (await resp.json()) as MidnightOilMockExecutionReceipt;
 }
 
 export async function liveRunActivationSettingsMidnightOil(

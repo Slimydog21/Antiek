@@ -236,14 +236,14 @@ export interface RouteReceiptCandidate {
 }
 
 /**
- * The provider/model attempt represented by this DispatchCall.
+ * A provider attempt, or an explicitly synthetic no-provider selection.
  */
 export interface RouteReceiptSelection {
   provider: string;
   model: string;
   tier: string;
   fallback_chain_index: number;
-  reason_code: "primary" | "operator_override" | "fallback_after_error" | "provider_unregistered" | "circuit_breaker_open" | "provider_error";
+  reason_code: "primary" | "operator_override" | "fallback_after_error" | "provider_unregistered" | "circuit_breaker_open" | "provider_error" | "synthetic_no_provider";
   pricing_known: boolean;
 }
 
@@ -269,13 +269,13 @@ export interface RouteReceiptCacheState {
 }
 
 /**
- * Audit object explaining why a DispatchCall used a given model.
+ * Audit object explaining a provider route or synthetic route proof.
  *
  * The receipt deliberately stores only model-routing metadata. It must not
  * carry raw prompts, provider request bodies, API keys, or provider-native
- * secrets. The containing DispatchCall envelope is the canonical
- * ``dispatch_event_id``; ``route_receipt_id`` is a stable local receipt key
- * derived from non-secret routing metadata and the existing prompt hash.
+ * secrets. Provider-backed receipts live on the containing DispatchCall
+ * envelope. Synthetic receipts remain outside DispatchCall and use an
+ * explicit ``synthetic_no_provider`` reason code.
  */
 export interface RouteReceipt {
   route_receipt_id: string;
