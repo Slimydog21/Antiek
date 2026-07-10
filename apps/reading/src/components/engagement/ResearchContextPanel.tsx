@@ -861,11 +861,36 @@ export function ResearchContextPanel({
                     source: "client" as const,
                   };
             // Residual (apv): world-class bar from hop coverage; stage unknown on evidence.
-            const wc = competitiveDrWorldClassReadiness({
+            // Residual (aqi): prefer substrate world_class_readiness when shaped (aqg).
+            const serverWc = evidence.world_class_readiness;
+            const fromSubstrateWc =
+              serverWc &&
+              typeof serverWc.world_class_bar === "string" &&
+              typeof serverWc.citation_hops_ready !== "undefined";
+            const clientWc = competitiveDrWorldClassReadiness({
               stage_coverage_ratio: null,
               hop_coverage_ratio: hopPipe.coverage_ratio,
               stage_is_terminal: null,
             });
+            const wc = fromSubstrateWc
+              ? {
+                  multi_stage_ready: Boolean(serverWc.multi_stage_ready),
+                  citation_hops_ready:
+                    serverWc.citation_hops_ready === undefined
+                      ? null
+                      : serverWc.citation_hops_ready,
+                  stage_coverage_ratio:
+                    typeof serverWc.stage_coverage_ratio === "number"
+                      ? serverWc.stage_coverage_ratio
+                      : 0,
+                  hop_coverage_ratio:
+                    typeof serverWc.hop_coverage_ratio === "number"
+                      ? serverWc.hop_coverage_ratio
+                      : hopPipe.coverage_ratio,
+                  world_class_bar: String(serverWc.world_class_bar),
+                  source: "substrate" as const,
+                }
+              : { ...clientWc, source: "client" as const };
             return (
               <div
                 className="font-mono text-[11px] space-y-0.5 border border-ink/10 rounded p-2 my-1 dark:border-bright/10"
@@ -921,15 +946,24 @@ export function ResearchContextPanel({
                 <p
                   data-testid="evidence-world-class-readiness"
                   data-world-class-bar={wc.world_class_bar}
+                  data-world-class-source={wc.source}
                   data-citation-hops-ready={
                     wc.citation_hops_ready == null
                       ? "unknown"
                       : String(wc.citation_hops_ready)
                   }
                   data-hop-coverage-ratio={String(
-                    Math.round(hopPipe.coverage_ratio * 1000) / 1000,
+                    Math.round(
+                      (typeof wc.hop_coverage_ratio === "number"
+                        ? wc.hop_coverage_ratio
+                        : hopPipe.coverage_ratio) * 1000,
+                    ) / 1000,
                   )}
-                  data-multi-stage-ready="unknown"
+                  data-multi-stage-ready={
+                    fromSubstrateWc
+                      ? String(wc.multi_stage_ready)
+                      : "unknown"
+                  }
                   role="status"
                 >
                   World-class DR bar · hops=

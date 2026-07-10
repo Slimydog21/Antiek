@@ -366,6 +366,18 @@ export type EvidencePackResponse = {
     ref_count?: number;
   } | null;
   /**
+   * Residual (aqg/aqi): substrate world-class readiness (hops known ·
+   * multi-stage unknown on evidence · never invent stage coverage).
+   */
+  world_class_readiness?: {
+    multi_stage_ready?: boolean;
+    citation_hops_ready?: boolean | null;
+    stage_coverage_ratio?: number;
+    hop_coverage_ratio?: number | null;
+    world_class_bar?: string;
+    notes?: string[];
+  } | null;
+  /**
    * Residual (kc/kd): reserved spawn research_tier when spawn_id set
    * (null when pack has no spawn identity).
    */

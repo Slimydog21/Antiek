@@ -3880,3 +3880,9 @@ P0 PR #465. Pivot aqh+ outside thrash.
 ResearchProgressPanel prefers substrate world_class_readiness when present
 (data-world-class-source=substrate) · client fallback. Closes progress frontend↔substrate
 world-class loop (aqf). vitest ResearchProgress 13 green. P0 PR #465. Pivot aqi+.
+
+## Residual aqi · 2026-07-10 — wire substrate world_class_readiness into ResearchContext UI
+Evidence UI prefers substrate world_class_readiness when present
+(data-world-class-source=substrate). Closes evidence frontend↔substrate loop (aqg).
+World-class DR bar offline spine complete api–aqi. vitest ResearchContext 21 green.
+P0 PR #465. Pivot aqj+ HARD off hop/stage/world-class thrash.

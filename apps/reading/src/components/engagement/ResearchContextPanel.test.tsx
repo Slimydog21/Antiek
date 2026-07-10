@@ -818,6 +818,15 @@ describe("ResearchContextPanel", () => {
         question_count: 0,
         ref_count: 1,
       },
+      // Residual (aqi): substrate world_class_readiness (aqg).
+      world_class_readiness: {
+        multi_stage_ready: false,
+        citation_hops_ready: true,
+        stage_coverage_ratio: 0,
+        hop_coverage_ratio: 2 / 3,
+        world_class_bar: "incomplete",
+        notes: ["multi-stage incomplete", "citation hop pipeline ready"],
+      },
       citation_chain: [
         {
           hop: "insights",
@@ -937,12 +946,14 @@ describe("ResearchContextPanel", () => {
         .getAttribute("data-present"),
     ).toBe("false");
     expect(hopPipe.textContent).toMatch(/Competitive citation hops/i);
-    // Residual (apv): world-class readiness from hop coverage (stages unknown here).
+    // Residual (apv/aqi): world-class readiness prefers substrate when present.
     expect(hopPipe.getAttribute("data-citation-hops-ready")).toBe("true");
     const wcEv = screen.getByTestId("evidence-world-class-readiness");
+    expect(wcEv.getAttribute("data-world-class-source")).toBe("substrate");
     expect(wcEv.getAttribute("data-citation-hops-ready")).toBe("true");
-    expect(wcEv.getAttribute("data-multi-stage-ready")).toBe("unknown");
+    expect(wcEv.getAttribute("data-multi-stage-ready")).toBe("false");
     expect(wcEv.getAttribute("data-hop-coverage-ratio")).toBe("0.667");
+    expect(wcEv.getAttribute("data-world-class-bar")).toBe("incomplete");
     expect(wcEv.textContent).toMatch(/World-class DR bar/i);
     expect(wcEv.textContent).toMatch(/hops=ready/i);
     expect(wcEv.textContent).toMatch(/stages unknown/i);

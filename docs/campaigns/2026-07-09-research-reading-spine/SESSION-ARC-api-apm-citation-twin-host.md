@@ -36,3 +36,4 @@ one residual/cycle · campaign push only · operator merges PR #465.
 | **aqf** | progress_payload world_class_readiness stamp | multi-stage known · hops unknown |
 | **aqg** | evidence_pack world_class_readiness (hops known) | stages unknown · parity aqf |
 | **aqh** | wire substrate world_class_readiness into ResearchProgress UI | progress loop closed |
+| **aqi** | wire substrate world_class_readiness into ResearchContext UI | evidence loop closed · world-class spine complete |
