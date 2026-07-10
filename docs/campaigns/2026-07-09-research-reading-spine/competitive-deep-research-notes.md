@@ -1508,3 +1508,8 @@ hydrate prep matrix navigates deferred L1 policy.
 ResearchContext panel + citation-trust dual-gate links jump to #l1-arxiv.
 Competitive delta: recursive note-taker context navigates hydrate deferred
 policy (parity reading host hydrate matrix xd).
+
+## Residual xf · 2026-07-10 — FUTURE-AGENT tip re-anchor through xe
+FUTURE-AGENT-SPEC tip → b94b4c37. Competitive delta: dual-gate L1–L7 section
+deep-link matrix complete across engagement surfaces; operator merge PR #465
+highest leverage.
