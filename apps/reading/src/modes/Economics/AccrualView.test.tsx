@@ -109,7 +109,7 @@ describe("AccrualView — accrual shown, never paid (M2/M4)", () => {
     getAttributionReportMock.mockResolvedValue(report());
     getConsentViewMock.mockResolvedValue(consent());
     render(<AccrualView synthesisId="syn-1" />);
-    await waitFor(() => expect(screen.getByText(/whose work grounds this/i)).toBeTruthy());
+    await screen.findByRole("button", { name: /try a payout/i });
     expect(screen.getAllByText(/would be owed/i).length).toBeGreaterThan(0);
     // The honest "today" balance is $0, never a fabricated owed amount.
     expect(screen.getAllByText(/\$0\.00/).length).toBeGreaterThan(0);
@@ -140,7 +140,7 @@ describe("AccrualView — NO money path (M4, BINDING)", () => {
     await waitFor(() => expect(screen.getByText(/whose work grounds this/i)).toBeTruthy());
     // No control that would move money. "Try a payout" is the gated refusal,
     // not a money-mover — it's matched and excluded by name below.
-    const buttons = screen.getAllByRole("button");
+    const buttons = await screen.findAllByRole("button");
     for (const b of buttons) {
       expect(b.textContent ?? "").not.toMatch(/disburse|send money|transfer|pay out now|withdraw/i);
     }
@@ -151,8 +151,7 @@ describe("AccrualView — NO money path (M4, BINDING)", () => {
     getConsentViewMock.mockResolvedValue(consent());
     const onPayoutRefused = vi.fn();
     render(<AccrualView synthesisId="syn-1" onPayoutRefused={onPayoutRefused} />);
-    await waitFor(() => expect(screen.getByText(/whose work grounds this/i)).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: /try a payout/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /try a payout/i }));
     // It surfaces the specific gate reason (G2 + G3) and says nothing was paid.
     expect(screen.getByText(/G2 \+ G3/)).toBeTruthy();
     expect(screen.getByText(/Nothing was paid/i)).toBeTruthy();
@@ -166,8 +165,7 @@ describe("AccrualView — NO money path (M4, BINDING)", () => {
     getAttributionReportMock.mockResolvedValue(report());
     getConsentViewMock.mockResolvedValue(consent());
     render(<AccrualView synthesisId="syn-1" />); // no onPayoutRefused
-    await waitFor(() => expect(screen.getByText(/whose work grounds this/i)).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: /try a payout/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /try a payout/i }));
     expect(screen.getByText(/Nothing was paid/i)).toBeTruthy();
   });
 
