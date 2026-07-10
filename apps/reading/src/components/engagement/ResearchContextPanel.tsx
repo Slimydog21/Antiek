@@ -20,6 +20,7 @@
  * Residual (sg): open evidence pack as full working-region window (float|full parity).
  * Residual (sj): float|full intelligent context search hits as HTML reading windows.
  * Residual (sk): float|full hydrated publication HTML (arxiv/substack identity).
+ * Residual (sl): float|full research context pack (prompt_block) as HTML.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -465,6 +466,109 @@ export function ResearchContextPanel({
           <pre className="prompt-block" data-testid="prompt-block">
             {pack.prompt_block}
           </pre>
+          {/* Residual (sl): context pack → float|full HTML reading windows. */}
+          {(pack.prompt_block || "").trim() ? (
+            <p className="meta font-mono text-[11px] space-x-3">
+              <button
+                type="button"
+                data-testid="research-context-open-float"
+                data-view-format="html"
+                data-window-mode="floating"
+                data-twin-count={String(pack.twin_count ?? 0)}
+                data-ref-count={String(pack.ref_count ?? 0)}
+                className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
+                title="Open research context pack as floating HTML window (never PDF)"
+                onClick={() => {
+                  const stem =
+                    String(pack.asset_id || assetId).trim() || "asset";
+                  const id = `research_context:${stem}:${Date.now().toString(36)}`;
+                  const escape = (s: string) =>
+                    String(s || "")
+                      .replace(/&/g, "&amp;")
+                      .replace(/</g, "&lt;")
+                      .replace(/>/g, "&gt;");
+                  const html = [
+                    `<article data-source="research_context_pack" data-view-format="html">`,
+                    `<h1>Research context pack</h1>`,
+                    `<p class="meta">asset=${escape(stem)} · twins=${pack.twin_count ?? 0} · refs=${pack.ref_count ?? 0}`,
+                    pack.research_tier
+                      ? ` · tier=${escape(String(pack.research_tier))}`
+                      : "",
+                    `</p>`,
+                    `<pre>${escape(pack.prompt_block || "")}</pre>`,
+                    `</article>`,
+                  ].join("");
+                  openWindow(
+                    "hosted_html_document",
+                    {
+                      document_id: id,
+                      title: `Research context · ${stem}`,
+                      html,
+                      view_format: "html",
+                      source: "research_context_pack",
+                      research_tier: pack.research_tier || null,
+                    },
+                    {
+                      id: `win:research_context:${id}`,
+                      title: "Research context",
+                      mode: "floating",
+                    },
+                  );
+                }}
+              >
+                Open float (context pack)
+              </button>
+              <button
+                type="button"
+                data-testid="research-context-open-full"
+                data-view-format="html"
+                data-window-mode="full"
+                data-twin-count={String(pack.twin_count ?? 0)}
+                data-ref-count={String(pack.ref_count ?? 0)}
+                className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
+                title="Open research context pack as full working-region HTML window (never PDF)"
+                onClick={() => {
+                  const stem =
+                    String(pack.asset_id || assetId).trim() || "asset";
+                  const id = `research_context:${stem}:full:${Date.now().toString(36)}`;
+                  const escape = (s: string) =>
+                    String(s || "")
+                      .replace(/&/g, "&amp;")
+                      .replace(/</g, "&lt;")
+                      .replace(/>/g, "&gt;");
+                  const html = [
+                    `<article data-source="research_context_pack" data-view-format="html">`,
+                    `<h1>Research context pack</h1>`,
+                    `<p class="meta">asset=${escape(stem)} · twins=${pack.twin_count ?? 0} · refs=${pack.ref_count ?? 0}`,
+                    pack.research_tier
+                      ? ` · tier=${escape(String(pack.research_tier))}`
+                      : "",
+                    `</p>`,
+                    `<pre>${escape(pack.prompt_block || "")}</pre>`,
+                    `</article>`,
+                  ].join("");
+                  openWindow(
+                    "hosted_html_document",
+                    {
+                      document_id: id,
+                      title: `Research context · ${stem} (full)`,
+                      html,
+                      view_format: "html",
+                      source: "research_context_pack",
+                      research_tier: pack.research_tier || null,
+                    },
+                    {
+                      id: `win:research_context:${id}:full`,
+                      title: "Research context (full)",
+                      mode: "full",
+                    },
+                  );
+                }}
+              >
+                Open full (context pack)
+              </button>
+            </p>
+          ) : null}
           {/* Residual (ri): context pack prompt_block → Write twin_seed. */}
           {(() => {
             const href = buildResearchContextWriteHref({

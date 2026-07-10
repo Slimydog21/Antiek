@@ -259,13 +259,16 @@ export default function HostedHtmlDocumentHost(
   const isContextSearch = payloadSource === "context_search";
   // Residual (sk): hydrated arxiv/substack HTML windows join note-taker path.
   const isPublicationHydrate = payloadSource === "publication_hydrate";
+  const isResearchContextPack = payloadSource === "research_context_pack";
   const twinSeedTitle = isEvidencePack
     ? `Evidence pack (citation trust) · ${title}`
     : isContextSearch
       ? `Context search · ${title}`
       : isPublicationHydrate
         ? `Hydrated publication · ${title}`
-        : title;
+        : isResearchContextPack
+          ? `Research context pack · ${title}`
+          : title;
   const twinSeedBody = html
     ? html.replace(/<[^>]+>/g, " ").slice(0, 500)
     : twinSeedTitle;
@@ -320,7 +323,9 @@ export default function HostedHtmlDocumentHost(
                       ? "context_search"
                       : isPublicationHydrate
                         ? "publication_hydrate"
-                        : "hosted_html_document"
+                        : isResearchContextPack
+                          ? "research_context_pack"
+                          : "hosted_html_document"
                 }
                 className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
                 title={
@@ -330,7 +335,9 @@ export default function HostedHtmlDocumentHost(
                       ? "Open Write with context search HTML + twin_seed (intelligent search · seeds note-taker)"
                       : isPublicationHydrate
                         ? "Open Write with hydrated publication HTML + twin_seed (seeds note-taker)"
-                        : "Open Write with hosted HTML + twin_seed (seeds note-taker when empty)"
+                        : isResearchContextPack
+                          ? "Open Write with research context pack HTML + twin_seed (seeds note-taker)"
+                          : "Open Write with hosted HTML + twin_seed (seeds note-taker when empty)"
                 }
               >
                 Open Write (HTML draft handoff)

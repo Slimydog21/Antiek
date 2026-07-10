@@ -149,6 +149,27 @@ describe("ResearchContextPanel", () => {
     expect(href).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
     expect(href).not.toMatch(/html_draft=/);
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
+    // Residual (sl): float|full research context pack HTML.
+    fireEvent.click(screen.getByTestId("research-context-open-float"));
+    const floatCall = openWindow.mock.calls.at(-1) as [
+      string,
+      { source?: string; html?: string; view_format?: string },
+      { mode?: string },
+    ];
+    expect(floatCall[0]).toBe("hosted_html_document");
+    expect(floatCall[1].source).toBe("research_context_pack");
+    expect(floatCall[1].view_format).toBe("html");
+    expect(floatCall[1].html).toMatch(/Research context pack/);
+    expect(floatCall[1].html).toMatch(/data-source="research_context_pack"/);
+    expect(floatCall[2].mode).toBe("floating");
+    fireEvent.click(screen.getByTestId("research-context-open-full"));
+    const fullCall = openWindow.mock.calls.at(-1) as [
+      string,
+      { source?: string },
+      { mode?: string },
+    ];
+    expect(fullCall[1].source).toBe("research_context_pack");
+    expect(fullCall[2].mode).toBe("full");
     // Residual (ff): recursive note-taker metrics strip.
     const metrics = screen.getByTestId("research-context-twin-metrics");
     expect(metrics.getAttribute("data-twin-insights")).toBe("1");

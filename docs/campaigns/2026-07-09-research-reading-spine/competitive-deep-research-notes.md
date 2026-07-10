@@ -877,3 +877,9 @@ Hydrated arxiv/substack identity HTML opens as float|full hosted documents
 (source=publication_hydrate) with note-taker Write provenance. Competitive
 delta: knowledge-dense pubs never dead-end as attach rows — they join the
 HTML reading flywheel offline-honest (body when injector live).
+
+## Residual sl · 2026-07-10 — Research context pack float|full
+The recursive context pack (prompt_block + twin/ref substrate) opens as
+float|full HTML (source=research_context_pack). Competitive delta: the same
+substrate that drives deep-research turns is first-class reading material —
+operators pin context full-screen while wrestling the source document.

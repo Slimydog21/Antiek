@@ -282,7 +282,8 @@ export function buildHostedHtmlWriteHref(opts: {
   const source =
     srcRaw === "evidence_pack" ||
     srcRaw === "context_search" ||
-    srcRaw === "publication_hydrate"
+    srcRaw === "publication_hydrate" ||
+    srcRaw === "research_context_pack"
       ? srcRaw
       : "hosted_html_document";
   const titleDefault =
@@ -292,7 +293,9 @@ export function buildHostedHtmlWriteHref(opts: {
         ? `Context search · ${doc}`
         : source === "publication_hydrate"
           ? `Hydrated publication · ${doc}`
-          : `Hosted HTML · ${doc}`;
+          : source === "research_context_pack"
+            ? `Research context pack · ${doc}`
+            : `Hosted HTML · ${doc}`;
   const seedKey = storeTwinWriteSeed({
     plain_text: plain,
     html: String(opts.html || ""),
