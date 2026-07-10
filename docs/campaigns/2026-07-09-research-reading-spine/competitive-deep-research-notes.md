@@ -2011,3 +2011,8 @@ free_only+technology catalog HTML free_count ≥5 includes Hooke; free physics
 set includes Hooke (len ≥5); API technology by_subject ≥5. Competitive delta:
 instrumented-observation STEM joins tech-researcher free technology/physics filters.
 
+## Residual abl · 2026-07-10 — free method HTML free_count + free science Hooke
+free_only+method catalog HTML free_count=2 (Novum+Hooke); free science set
+includes Hooke (len ≥7). Competitive delta: research-methodology free filter is
+identity-honest; free science spine includes instrumented observation.
+

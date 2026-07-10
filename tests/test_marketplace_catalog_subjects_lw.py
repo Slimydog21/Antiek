@@ -284,9 +284,11 @@ def test_free_science_stem_set_size() -> None:
         "pd-novum",
         "pd-faraday-electricity",
         "pd-shannon-communication",
+        # Residual (abl): Hooke Micrographia free science (instruments · method).
+        "pd-hooke-micrographia",
     }
     assert all(e.source_format == "html" for e in free_sci if e.book_id in ids)
-    assert len(free_sci) >= 6
+    assert len(free_sci) >= 7
     assert all(e.is_free for e in free_sci)
 
 
