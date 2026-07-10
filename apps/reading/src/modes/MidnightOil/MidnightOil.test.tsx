@@ -30,6 +30,7 @@ import {
   runnerDispatchSchedulerPlanMidnightOil,
   runnerDispatchWorkerBootstrapPlanMidnightOil,
   runnerReadinessMidnightOil,
+  schedulerLeaseRetryPlanMidnightOil,
 } from "../../api/midnightOil";
 
 vi.mock("../../api/midnightOil", () => ({
@@ -1483,6 +1484,106 @@ vi.mock("../../api/midnightOil", () => ({
       "runner dispatch worker bootstrap plan only: no worker is created, no scheduler job is created, and no runner dispatch is enqueued",
     ],
   })),
+  schedulerLeaseRetryPlanMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-scheduler-lease-retry-plan",
+    runner_dispatch_worker_bootstrap_plan_receipt_id:
+      "midnight-oil-test-runner-dispatch-worker-bootstrap-plan",
+    runner_dispatch_scheduler_plan_receipt_id:
+      "midnight-oil-test-runner-dispatch-scheduler-plan",
+    live_dispatch_final_enablement_apply_plan_receipt_id:
+      "midnight-oil-test-live-dispatch-final-enablement-apply-plan",
+    runner_control_plan_receipt_id: "midnight-oil-test-runner-control-plan",
+    runner_readiness_receipt_id: "midnight-oil-test-runner-readiness",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    run_id: "midnight-oil-test",
+    status: "blocked_scheduler_lease_retry_unimplemented",
+    adapter_key: "scheduler_lease_retry",
+    planned_lease_policy_id: "midnight-oil-test-scheduler-lease-policy",
+    planned_retry_policy_id: "midnight-oil-test-runner-dispatch-retry-policy",
+    planned_dead_letter_queue_id:
+      "midnight-oil-test-runner-dispatch-dead-letter-queue",
+    planned_visibility_timeout_seconds: 900,
+    planned_lease_ttl_seconds: 300,
+    planned_heartbeat_interval_seconds: 60,
+    planned_max_attempts: 3,
+    planned_backoff_policy: "exponential_jitter",
+    planned_scheduler_job_id: "midnight-oil-test-runner-dispatch-scheduler-job",
+    planned_queue_id: "midnight-oil-test-runner-dispatch-queue",
+    planned_worker_id: "midnight-oil-test-runner-dispatch-worker",
+    planned_worker_lease_id: "midnight-oil-test-runner-dispatch-worker-lease",
+    planned_runner_dispatch_id: "midnight-oil-test-midnight-oil-runner-dispatch",
+    planned_live_dispatch_receipt_id: "midnight-oil-test-live-dispatch-final-enable-receipt",
+    planned_idempotency_key: "midnight-oil-test-live-dispatch-final-enable-idempotency-key",
+    lease_retry_blockers: [
+      "lease policy persistence",
+      "retry backoff executor",
+      "dead-letter queue persistence",
+      "worker heartbeat monitor",
+    ],
+    required_lease_retry_invariants: [
+      "lease retry planner must require a worker bootstrap plan before any lease policy is created",
+      "lease retry planner must keep retry and dead-letter policies disabled until a worker can claim the queue transactionally",
+    ],
+    required_lease_retry_receipt_fields: [
+      "lease_policy_id",
+      "retry_policy_id",
+      "dead_letter_queue_id",
+      "visibility_timeout_seconds",
+      "lease_ttl_seconds",
+      "heartbeat_interval_seconds",
+      "max_attempts",
+      "backoff_policy",
+      "worker_bootstrap_plan_receipt_id",
+      "worker_lease_id",
+      "runner_dispatch_id",
+      "live_dispatch_receipt_id",
+      "idempotency_key",
+    ],
+    blocker_reason: "scheduler_lease_retry_unimplemented",
+    lease_retry_allowed: false,
+    lease_policy_created: false,
+    retry_policy_created: false,
+    dead_letter_queue_created: false,
+    worker_bootstrap_allowed: false,
+    worker_bootstrap_created: false,
+    worker_started: false,
+    scheduler_allowed: false,
+    scheduler_job_created: false,
+    runner_dispatch_enqueued: false,
+    final_enablement_apply_allowed: false,
+    final_enablement_allowed: false,
+    live_dispatch_enabled: false,
+    live_dispatch_ready: false,
+    activation_readiness_allowed: false,
+    activation_ready: false,
+    transaction_opened: false,
+    transaction_committed: false,
+    setting_persisted: false,
+    control_ledger_written: false,
+    audit_log_written: false,
+    rollback_receipt_created: false,
+    operator_dispatch_allowed: false,
+    operator_live_dispatch_enabled: false,
+    live_run_allowed: false,
+    dispatch_allowed: false,
+    dispatch_performed: false,
+    budget_reservation_allowed: false,
+    budget_reserved: false,
+    provider_execution_allowed: false,
+    provider_calls_made: false,
+    retrieval_allowed: false,
+    retrieval_performed: false,
+    source_receipts_created: false,
+    graph_mutation_allowed: false,
+    graph_mutated: false,
+    final_artifact_allowed: false,
+    final_artifact_created: false,
+    adapter_plan_notes: [
+      "scheduler lease retry plan only: no lease policy, retry policy, dead-letter queue, worker runtime, scheduler job, or runner dispatch is created",
+    ],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -2640,5 +2741,83 @@ describe("MidnightOil", () => {
     ).toBeTruthy();
     expect(screen.getByText(/Worker blockers:/)).toBeTruthy();
     expect(screen.getByText(/Worker receipt fields:/)).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Scheduler lease retry plan" }));
+
+    await waitFor(() => expect(schedulerLeaseRetryPlanMidnightOil).toHaveBeenCalled());
+    expect(schedulerLeaseRetryPlanMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      runner_control_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-control-plan",
+      }),
+      budget_provider_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-budget-provider-adapter-plan",
+      }),
+      provider_executor_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-provider-executor-adapter-plan",
+      }),
+      retrieval_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-retrieval-adapter-plan",
+      }),
+      graph_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-graph-adapter-plan",
+      }),
+      final_artifact_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-final-artifact-adapter-plan",
+      }),
+      operator_dispatch_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-operator-dispatch-adapter-plan",
+      }),
+      control_ledger_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-adapter-plan",
+      }),
+      control_ledger_persistence_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-persistence-plan",
+      }),
+      control_ledger_persistence_apply_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-persistence-apply-plan",
+      }),
+      operator_dispatch_activation_readiness_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-operator-dispatch-activation-readiness-plan",
+      }),
+      live_dispatch_final_enablement_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-live-dispatch-final-enablement-plan",
+      }),
+      live_dispatch_final_enablement_apply_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-live-dispatch-final-enablement-apply-plan",
+      }),
+      runner_dispatch_scheduler_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-dispatch-scheduler-plan",
+      }),
+      runner_dispatch_worker_bootstrap_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-dispatch-worker-bootstrap-plan",
+      }),
+    });
+    expect(screen.getByText("Scheduler lease retry receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-scheduler-lease-retry-plan")).toBeTruthy();
+    expect(screen.getByText("blocked scheduler lease retry unimplemented")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-scheduler-lease-policy")).toBeTruthy();
+    expect(screen.getAllByText("midnight-oil-test-runner-dispatch-retry-policy").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("midnight-oil-test-runner-dispatch-dead-letter-queue").length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByText("900s")).toBeTruthy();
+    expect(screen.getByText("exponential jitter")).toBeTruthy();
+    expect(screen.getAllByText("scheduler lease retry").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(
+        "lease retry planner must require a worker bootstrap plan before any lease policy is created",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Lease retry blockers:/)).toBeTruthy();
+    expect(screen.getByText(/Lease retry receipt fields:/)).toBeTruthy();
   });
 });
