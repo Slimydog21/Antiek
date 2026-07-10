@@ -34,8 +34,12 @@ from .nd_shadow import (
 )
 from .wedge_config import BENCH_ROLE, LiveWedgeConfig, validate_live_suite
 from .weekly_verdict import (
+    JudgedCandidateJoin,
+    JudgedItemJoin,
+    JudgedJoinManifest,
     WeeklyVerdict,
     build_weekly_verdict,
+    judged_join_mapping_digest,
     project_weekly_verdict_html,
 )
 
@@ -62,6 +66,10 @@ __all__ = [
     "NDShadowResponse",
     "collect_nd_shadow",
     "WeeklyVerdict",
+    "JudgedCandidateJoin",
+    "JudgedItemJoin",
+    "JudgedJoinManifest",
+    "judged_join_mapping_digest",
     "build_weekly_verdict",
     "project_weekly_verdict_html",
 ]

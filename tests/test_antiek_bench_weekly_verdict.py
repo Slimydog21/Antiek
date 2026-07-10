@@ -63,6 +63,7 @@ def add_call(
             cost_usd=Decimal("0.001"),
             latency_ms=latency,
             route_receipt_id=f"evt-{model}-{item}",
+            response_hash=hashlib.sha256(f"response:{model}:{item}".encode()).hexdigest(),
             keyword_score=Decimal(score) if status == "ok" else None,
         )
     )

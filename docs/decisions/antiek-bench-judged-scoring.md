@@ -1,6 +1,6 @@
 # Antiek-bench judged scoring decision record
 
-Status: Sprint 1 and Sprint 2 implemented; weekly integration intentionally not yet claimed.
+Status: Sprints 1-3 implemented; paid/live judged quality remains unmeasured.
 
 ## Decision
 
@@ -43,8 +43,8 @@ identity. The in-memory `PrivateJoin` currently maps labels to provider/model, b
 durable or signed artifact and does not bind the live response hash to the blinded candidate hash.
 
 Therefore, joining judged rows to weekly model rows by item/task alone, by tuple position, or by
-model names supplied later would be unverifiable. Sprint 3 must first add an operator-local,
-non-journaled join envelope that binds:
+model names supplied later would be unverifiable. Sprint 3 adds an operator-local, non-journaled
+join envelope that binds:
 
 - exact week, suite, item, task, and prompt hash;
 - live call ID, provider/model identity, and unsalted live response hash;
@@ -52,10 +52,11 @@ non-journaled join envelope that binds:
 - blinding policy version and a digest of the complete mapping;
 - the exact evidence IDs, judge allowlist, rubric fingerprint, and position-swap pair.
 
-The envelope may exist in process memory or an operator-private store, but must never be sent to a
-judge or embedded in the public weekly HTML. The public verdict may embed only its digest and the
-derived model-local qualitative axes. A forged prompt, response, model, order, judge, rubric, or
-mapping digest must yield `NOT MEASURED`, never a partial join.
+The HMAC-sealed envelope exists at the caller boundary and must never be sent to a judge or embedded in the
+public weekly HTML. The version-2 public verdict embeds only its digest, aggregate evaluator
+reliability, and derived model-local qualitative axes. Legacy callers retain the exact version-1
+serialized shape. A forged prompt, response, model, order, judge, rubric, evidence ID, or mapping
+digest yields `NOT MEASURED`, never a partial join.
 
 ## Weekly acceptance threshold
 
@@ -79,7 +80,8 @@ future recommendation export, and cannot mutate routing or suite state.
 
 - No paid/live judge sample has run.
 - No production judge pricing or approved judge-spend cap is recorded.
-- No weekly join envelope implementation or public HTML projection exists yet.
+- No durable operator-private envelope store exists; Sprint 3 verifies HMAC-sealed in-memory
+  envelopes and publishes only their aggregate mapping digest.
 - Human anchor coverage is fixture-only; it does not establish real evaluator accuracy.
 - NotDiamond shadow evidence remains an inert comparison and has not proved routing superiority.
 
