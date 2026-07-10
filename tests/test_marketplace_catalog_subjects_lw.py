@@ -211,6 +211,30 @@ def test_free_electricity_stem_trio() -> None:
     assert all(e.is_free for e in free_elec)
 
 
+def test_free_physics_stem_set_size() -> None:
+    """Residual (aav): free physics subject is non-trivial for tech researchers.
+
+    Principia + electricity EM trio (Faraday/Maxwell/Heaviside) all free PD HTML.
+    Parity electricity/computing/technology domain size honesty.
+    """
+    cat = default_demo_catalog()
+    free_phys = [
+        e
+        for e in cat.filter_by_subject("physics")
+        if e.is_free and e.license_class == "public_domain"
+    ]
+    ids = {e.book_id for e in free_phys}
+    assert ids >= {
+        "pd-principia",
+        "pd-faraday-electricity",
+        "pd-maxwell-em",
+        "pd-heaviside-em",
+    }
+    assert all(e.source_format == "html" for e in free_phys if e.book_id in ids)
+    assert len(free_phys) >= 4
+    assert all(e.is_free for e in free_phys)
+
+
 def test_turing_computability_subjects_and_free_pd() -> None:
     """Residual (wl): Turing tagged computing+computability, free PD."""
     cat = default_demo_catalog()

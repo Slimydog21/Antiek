@@ -1933,3 +1933,8 @@ Research progress panel labels Dual-gate L4 Midnight Oil checklist (href
 #l4-moil). Competitive delta: multi-minute plan→cite progress path honesty
 matches MO live-step dual-gate doctrine (parity aat L6 label fix).
 
+## Residual aav · 2026-07-10 — free physics STEM set size honesty
+Free physics subject set len ≥4 all free PD HTML (Principia + Faraday/Maxwell/
+Heaviside). Competitive delta: tech-researcher physics domain is non-trivial free
+STEM corpus (parity electricity/computing/technology size honesty).
+

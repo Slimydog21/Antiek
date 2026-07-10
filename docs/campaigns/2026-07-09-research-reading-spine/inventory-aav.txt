@@ -1,0 +1,19 @@
+# inventory-aav · free physics STEM set size honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aav
+date: 2026-07-10
+tip_before: 42a7ae28 (aau)
+
+## Problem
+Free electricity/computing/technology had set-size honesty; free physics (tech
+researcher core domain) lacked an explicit ≥4 free PD HTML guarantee.
+
+## Fix
+- test_free_physics_stem_set_size: Principia + Faraday/Maxwell/Heaviside
+- len ≥4 · all free PD · source_format html
+
+## Verified
+pytest test_free_physics_stem_set_size → passed
+
+## Not in scope
+- Operator merge PR #465 (gated)
