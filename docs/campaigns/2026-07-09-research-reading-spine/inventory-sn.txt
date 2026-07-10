@@ -1,0 +1,14 @@
+# inventory-sn · Session flywheel complete float|full HTML
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: sn
+date: 2026-07-10
+
+## Closed
+- session-flywheel-open-float / open-full
+- source=session_flywheel_complete · HTML from output + prompt_block
+- buildHostedHtmlWriteHref preserves session_flywheel_complete
+- vitest SessionFlywheelPanel 5 · SCRATCH residual-tests-sn.log
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live L1–L4 dual-gate (operator-only)

@@ -889,3 +889,9 @@ Multi-minute plan→cite progress HTML opens as float|full hosted documents
 (source=research_progress_complete|draft). Competitive delta: long-horizon
 Deep Research jobs leave readable HTML artifacts in the window flywheel —
 not only chat timeline or Write seed.
+
+## Residual sn · 2026-07-10 — Session flywheel complete float|full
+Completed floating deep-research sessions open as float|full HTML
+(source=session_flywheel_complete) with output + context prompt_block.
+Competitive delta: autonomous/interactive session close lands a readable
+HTML artifact in the window flywheel — not only usage events + Write seed.

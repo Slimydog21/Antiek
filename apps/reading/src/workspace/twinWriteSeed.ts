@@ -286,6 +286,7 @@ export function buildHostedHtmlWriteHref(opts: {
     "research_context_pack",
     "research_progress_complete",
     "research_progress_draft",
+    "session_flywheel_complete",
   ]);
   const source = KNOWN_HOST_WRITE_SOURCES.has(srcRaw)
     ? srcRaw

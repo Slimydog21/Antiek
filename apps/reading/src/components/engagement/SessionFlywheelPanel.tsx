@@ -16,6 +16,7 @@
  * Residual (qn): DecisionTreeDriverBadge promptText from session output.
  * Residual (np): dual-gate L1–L4 checklist deep-link (prep only).
  * Residual (re): Open Write twin_seed after flywheel complete.
+ * Residual (sn): float|full session complete HTML (output + prompt_block).
  * Composes shipped completeSessionFlywheel. HTML-first context pack.
  */
 
@@ -25,7 +26,39 @@ import {
   type SessionFlywheelResponse,
 } from "../../api/engagement";
 import { buildSessionFlywheelWriteHref } from "../../workspace/twinWriteSeed";
+import { openWindow } from "../windows/openWindow";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
+
+function buildSessionFlywheelHtml(opts: {
+  sessionId: string;
+  spawnId?: string | null;
+  status?: string | null;
+  outputText?: string | null;
+  promptBlock?: string | null;
+  researchTier?: string | null;
+}): string {
+  const escape = (s: string) =>
+    String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  const out = String(opts.outputText || "").trim();
+  const pb = String(opts.promptBlock || "").trim();
+  return [
+    `<article data-source="session_flywheel_complete" data-view-format="html">`,
+    `<h1>Session flywheel complete</h1>`,
+    `<p class="meta">session=${escape(opts.sessionId)}`,
+    opts.spawnId ? ` · spawn=${escape(String(opts.spawnId))}` : "",
+    opts.status ? ` · status=${escape(String(opts.status))}` : "",
+    opts.researchTier ? ` · tier=${escape(String(opts.researchTier))}` : "",
+    `</p>`,
+    out ? `<section><h2>Output</h2><pre>${escape(out)}</pre></section>` : "",
+    pb
+      ? `<section><h2>Context prompt_block</h2><pre>${escape(pb)}</pre></section>`
+      : "",
+    `</article>`,
+  ].join("");
+}
 
 export type SessionFlywheelPanelProps = {
   sessionId: string;
@@ -284,6 +317,89 @@ export function SessionFlywheelPanel({
             >
               {result.prompt_block}
             </pre>
+          ) : null}
+          {/* Residual (sn): flywheel complete → float|full HTML reading windows. */}
+          {(output.trim() || (result.prompt_block || "").trim()) ? (
+            <p className="space-x-3">
+              <button
+                type="button"
+                data-testid="session-flywheel-open-float"
+                data-view-format="html"
+                data-window-mode="floating"
+                data-status={result.status ?? ""}
+                className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
+                title="Open session flywheel complete as floating HTML window (never PDF)"
+                onClick={() => {
+                  const sid = result.session_id || sessionId;
+                  const id = `session_flywheel:${sid}:${Date.now().toString(36)}`;
+                  const tier = flywheelResearchTier(result).effective;
+                  openWindow(
+                    "hosted_html_document",
+                    {
+                      document_id: id,
+                      title: `Session flywheel · ${sid}`,
+                      html: buildSessionFlywheelHtml({
+                        sessionId: sid,
+                        spawnId: result.spawn_id,
+                        status: result.status,
+                        outputText: output,
+                        promptBlock: result.prompt_block,
+                        researchTier: tier,
+                      }),
+                      view_format: "html",
+                      source: "session_flywheel_complete",
+                      research_tier: tier || null,
+                    },
+                    {
+                      id: `win:flywheel:${id}`,
+                      title: "Session flywheel",
+                      mode: "floating",
+                    },
+                  );
+                }}
+              >
+                Open float (session HTML)
+              </button>
+              <button
+                type="button"
+                data-testid="session-flywheel-open-full"
+                data-view-format="html"
+                data-window-mode="full"
+                data-status={result.status ?? ""}
+                className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
+                title="Open session flywheel complete as full working-region HTML window (never PDF)"
+                onClick={() => {
+                  const sid = result.session_id || sessionId;
+                  const id = `session_flywheel:${sid}:full:${Date.now().toString(36)}`;
+                  const tier = flywheelResearchTier(result).effective;
+                  openWindow(
+                    "hosted_html_document",
+                    {
+                      document_id: id,
+                      title: `Session flywheel · ${sid} (full)`,
+                      html: buildSessionFlywheelHtml({
+                        sessionId: sid,
+                        spawnId: result.spawn_id,
+                        status: result.status,
+                        outputText: output,
+                        promptBlock: result.prompt_block,
+                        researchTier: tier,
+                      }),
+                      view_format: "html",
+                      source: "session_flywheel_complete",
+                      research_tier: tier || null,
+                    },
+                    {
+                      id: `win:flywheel:${id}:full`,
+                      title: "Session flywheel (full)",
+                      mode: "full",
+                    },
+                  );
+                }}
+              >
+                Open full (session HTML)
+              </button>
+            </p>
           ) : null}
           {/* Residual (re): flywheel complete → Write twin_seed. */}
           {(() => {

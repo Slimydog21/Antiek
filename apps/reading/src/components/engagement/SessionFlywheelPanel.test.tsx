@@ -4,6 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionFlywheelPanel } from "./SessionFlywheelPanel";
 
 const completeSessionFlywheel = vi.fn();
+const openWindow = vi.fn(() => "win:flywheel:test");
+
+vi.mock("../windows/openWindow", () => ({
+  openWindow: (...args: unknown[]) => openWindow(...args),
+}));
 
 vi.mock("../../api/engagement", () => ({
   completeSessionFlywheel: (...args: unknown[]) =>
@@ -27,6 +32,7 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
   afterEach(() => cleanup());
   beforeEach(() => {
     completeSessionFlywheel.mockReset();
+    openWindow.mockClear();
   });
 
   it("completes flywheel with twins and shows context pack", async () => {
@@ -123,6 +129,23 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
     expect(
       screen.getByTestId("session-flywheel-context-research-tier").textContent,
     ).toMatch(/wrestle/);
+    // Residual (sn): float|full session complete HTML.
+    fireEvent.click(screen.getByTestId("session-flywheel-open-float"));
+    const floatCall = openWindow.mock.calls.at(-1) as [
+      string,
+      { source?: string; html?: string; view_format?: string },
+      { mode?: string },
+    ];
+    expect(floatCall[0]).toBe("hosted_html_document");
+    expect(floatCall[1].source).toBe("session_flywheel_complete");
+    expect(floatCall[1].view_format).toBe("html");
+    expect(floatCall[1].html).toMatch(/Session flywheel complete/);
+    expect(floatCall[1].html).toMatch(/Attention is content-addressable/);
+    expect(floatCall[2].mode).toBe("floating");
+    fireEvent.click(screen.getByTestId("session-flywheel-open-full"));
+    expect(
+      (openWindow.mock.calls.at(-1) as [{}, {}, { mode?: string }])[2].mode,
+    ).toBe("full");
     // Residual (re): Open Write twin_seed after flywheel complete.
     const write = screen.getByTestId("session-flywheel-open-write");
     const href = write.getAttribute("href") || "";
