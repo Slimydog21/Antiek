@@ -3945,3 +3945,10 @@ prep is offline-honest by default. vitest Settings 37 green. P0 PR #465. Pivot a
 MO L4 panel stamps HTML-first · never-enables-live + honesty nav to decision-tree ·
 prompt-cost. Completes Settings dual-gate honesty matrix L1–L4 offline. vitest
 Settings 37 green. P0 PR #465. Pivot aqv+ outside thrash.
+
+## Residual aqv · 2026-07-10 — Antiek-bench vision feed expansion for recursive rewrite
+VISION_USAGE_FEED_SOURCES += collective_written_analysis · spawn_merge ·
+marketplace_host · research_context_pack · twin_promote_context. Task-class →
+feed maps expanded so weekly rewrite learns from multi-agent analysis, merge,
+HTML host, and wrestle substrate. propose≠promote. vitest 46 green. P0 PR #465.
+Pivot aqw+ outside thrash.

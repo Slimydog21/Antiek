@@ -1849,7 +1849,8 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(train.getAttribute("data-propose-not-promote")).toBe("true");
     const wrestleTrain = screen.getByTestId("antiek-bench-task-training-wrestle");
     expect(wrestleTrain.getAttribute("data-task-class")).toBe("wrestle");
-    expect(Number(wrestleTrain.getAttribute("data-total") || 0)).toBe(3);
+    // Residual (aqv): wrestle trains on 5 vision feeds (context pack + twin promote).
+    expect(Number(wrestleTrain.getAttribute("data-total") || 0)).toBe(5);
     expect(wrestleTrain.getAttribute("data-covered") || "").toMatch(/twin_chase/);
     expect(wrestleTrain.getAttribute("data-covered") || "").toMatch(
       /midnight_oil/,

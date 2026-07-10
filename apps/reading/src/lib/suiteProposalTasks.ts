@@ -84,6 +84,9 @@ export function rankedFeedSourcesFromBySource(
  * Residual (aoy): north-star product surfaces that should feed Antiek-bench
  * recursive weekly rewrite. Listing/coverage honesty only — never invents
  * events or auto-promotes suite items.
+ * Residual (aqv): expand vision feed with multi-agent written analysis ·
+ * spawn merge · marketplace host · research context pack · twin promote
+ * (reading ≡ research ≡ writing flywheel for recursive rewrite).
  */
 export const VISION_USAGE_FEED_SOURCES = [
   "twin_chase",
@@ -92,6 +95,16 @@ export const VISION_USAGE_FEED_SOURCES = [
   "midnight_oil_deposit",
   "collective_merge",
   "book_qa",
+  // Residual (aqv): multi-agent written analysis from collective deep research.
+  "collective_written_analysis",
+  // Residual (aqv): single-spawn merge path (highlight float → merge unit).
+  "spawn_merge",
+  // Residual (aqv): HTML-first marketplace host into account.
+  "marketplace_host",
+  // Residual (aqv): wrestle substrate pack from ResearchContext.
+  "research_context_pack",
+  // Residual (aqv): recursive twin promote → context depth-graph.
+  "twin_promote_context",
 ] as const;
 
 export type VisionUsageFeedSource = (typeof VISION_USAGE_FEED_SOURCES)[number];
@@ -122,16 +135,31 @@ export function benchTaskClassToVisionFeeds(
     .trim()
     .toLowerCase();
   if (t === "wrestle") {
-    return ["twin_chase", "midnight_oil", "collective_merge"];
+    // Residual (aqv): research_context_pack + twin_promote train wrestle.
+    return [
+      "twin_chase",
+      "midnight_oil",
+      "collective_merge",
+      "research_context_pack",
+      "twin_promote_context",
+    ];
   }
   if (t === "synthesize") {
-    return ["floating_deep_research", "twin_chase", "midnight_oil_deposit"];
+    // Residual (aqv): multi-agent analysis + spawn merge train synthesize.
+    return [
+      "floating_deep_research",
+      "twin_chase",
+      "midnight_oil_deposit",
+      "collective_written_analysis",
+      "spawn_merge",
+    ];
   }
   if (t === "distill") {
-    return ["floating_deep_research", "book_qa"];
+    return ["floating_deep_research", "book_qa", "spawn_merge"];
   }
   if (t === "book_qa") {
-    return ["book_qa", "midnight_oil_deposit"];
+    // Residual (aqv): marketplace HTML host trains book_qa.
+    return ["book_qa", "midnight_oil_deposit", "marketplace_host"];
   }
   return [];
 }

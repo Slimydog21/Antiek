@@ -79,7 +79,13 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
     expect(VISION_USAGE_FEED_SOURCES).toContain("midnight_oil_deposit");
     expect(VISION_USAGE_FEED_SOURCES).toContain("collective_merge");
     expect(VISION_USAGE_FEED_SOURCES).toContain("book_qa");
-    expect(VISION_USAGE_FEED_SOURCES.length).toBeGreaterThanOrEqual(6);
+    // Residual (aqv): expanded multi-agent · merge · host · context · promote feeds.
+    expect(VISION_USAGE_FEED_SOURCES).toContain("collective_written_analysis");
+    expect(VISION_USAGE_FEED_SOURCES).toContain("spawn_merge");
+    expect(VISION_USAGE_FEED_SOURCES).toContain("marketplace_host");
+    expect(VISION_USAGE_FEED_SOURCES).toContain("research_context_pack");
+    expect(VISION_USAGE_FEED_SOURCES).toContain("twin_promote_context");
+    expect(VISION_USAGE_FEED_SOURCES.length).toBeGreaterThanOrEqual(11);
   });
 
   it("reports covered vs uncovered vision surfaces without inventing events", () => {
@@ -92,6 +98,8 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
     expect(cov.uncovered).toContain("floating_deep_research");
     expect(cov.uncovered).toContain("collective_merge");
     expect(cov.uncovered).toContain("book_qa");
+    expect(cov.uncovered).toContain("collective_written_analysis");
+    expect(cov.uncovered).toContain("spawn_merge");
     expect(cov.covered_count).toBe(2);
     expect(cov.uncovered_count).toBe(cov.total - 2);
     expect(cov.covered_event_count).toBe(4);
@@ -111,12 +119,20 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
       "twin_chase",
       "midnight_oil",
       "collective_merge",
+      "research_context_pack",
+      "twin_promote_context",
     ]);
     expect(benchTaskClassToVisionFeeds("synthesize")).toContain(
       "floating_deep_research",
     );
+    expect(benchTaskClassToVisionFeeds("synthesize")).toContain(
+      "collective_written_analysis",
+    );
+    expect(benchTaskClassToVisionFeeds("synthesize")).toContain("spawn_merge");
     expect(benchTaskClassToVisionFeeds("distill")).toContain("book_qa");
+    expect(benchTaskClassToVisionFeeds("distill")).toContain("spawn_merge");
     expect(benchTaskClassToVisionFeeds("book_qa")).toContain("book_qa");
+    expect(benchTaskClassToVisionFeeds("book_qa")).toContain("marketplace_host");
     expect(benchTaskClassToVisionFeeds(null)).toEqual([]);
     expect(benchTaskClassToVisionFeeds("unknown")).toEqual([]);
   });
@@ -128,10 +144,14 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
     });
     expect(cov.task_class).toBe("wrestle");
     expect(cov.covered).toEqual(["twin_chase", "midnight_oil"]);
-    expect(cov.uncovered).toEqual(["collective_merge"]);
+    expect(cov.uncovered).toEqual([
+      "collective_merge",
+      "research_context_pack",
+      "twin_promote_context",
+    ]);
     expect(cov.covered_count).toBe(2);
-    expect(cov.total).toBe(3);
-    expect(cov.coverage_ratio).toBeCloseTo(2 / 3);
+    expect(cov.total).toBe(5);
+    expect(cov.coverage_ratio).toBeCloseTo(2 / 5);
     expect(taskTrainingFeedCoverage("", null).total).toBe(0);
   });
 });

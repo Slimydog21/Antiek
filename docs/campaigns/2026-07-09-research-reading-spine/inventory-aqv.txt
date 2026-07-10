@@ -1,0 +1,19 @@
+# inventory-aqv · Antiek-bench vision feed expansion for recursive rewrite
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aqv
+date: 2026-07-10
+parent_tip: e288c862a (aqu)
+
+## Closed
+- VISION_USAGE_FEED_SOURCES += collective_written_analysis · spawn_merge ·
+  marketplace_host · research_context_pack · twin_promote_context
+- benchTaskClassToVisionFeeds maps expanded (wrestle/synthesize/distill/book_qa)
+- Product residual outside dual-gate honesty thrash (aqs–aqu closed)
+- vitest suiteProposalTasks 9 + Settings 37 = 46 green
+- evidence: {SCRATCH}/aqv-vision-feed-vitest.txt
+
+## Next
+aqw+ product residual outside thrash
+Prefer: highlight→merge-into-parent product · MO price-ceiling depth · free catalog subject · SESSION-ARC aqs–aqv
+Avoid: dual-gate honesty · soft-budget honesty · vision-feed thrash after aqv
+Operator merge PR #465 remains highest leverage (gated)
