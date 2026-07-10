@@ -1304,3 +1304,8 @@ highest leverage.
 buildHostedHtmlWriteHref + HostedHtml preserve spawn_merge and
 collective_doc_merge. Competitive delta: auto-opened merge draft floats keep
 Write provenance when operator Open Writes from the host.
+
+## Residual vq · 2026-07-10 — FUTURE-AGENT tip re-anchor through vp
+FUTURE-AGENT-SPEC tip → 7ee710a7 with closed arcs tt–vp (49 residual ships).
+Competitive delta: swarm handoff tip-true; operator merge PR #465 remains
+highest leverage.
