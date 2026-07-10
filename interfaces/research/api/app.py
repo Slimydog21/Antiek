@@ -1328,6 +1328,8 @@ def create_app(
     wrestling_db_path: str | None = None,
     wrestling_embedder: Any = None,
     register_providers: bool = True,
+    html_projection_db_path: str | None = None,
+    html_projection_object_root: str | None = None,
 ) -> FastAPI:
     """Create the FastAPI app. Pass ``broadcaster`` for tests that want to
     inspect subscriber state; production calls ``create_app()`` and gets
@@ -6395,6 +6397,12 @@ def create_app(
     # operator workstation, matching write_routes).
     from interfaces.research.api.supersession_routes import supersession_router
     app.include_router(supersession_router)
+
+    from interfaces.research.api.html_projection_routes import make_html_projection_router
+    app.include_router(make_html_projection_router(
+        db_path=html_projection_db_path,
+        object_root=html_projection_object_root,
+    ))
 
     return app
 
