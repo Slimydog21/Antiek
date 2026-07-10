@@ -1884,3 +1884,8 @@ FUTURE-AGENT-SPEC tip re-anchored after 117 residual ships this continuation
 (write-seed provenance wave aah–aaj closed). Competitive delta: swarm handoff
 tip-true; operator merge PR #465 highest leverage.
 
+## Residual aal · 2026-07-10 — marketplace host L2 Substack dual-gate deep-link
+Host-land pub-refs prep now deep-links #l2-substack (parity Settings xr) in
+addition to #l1-arxiv. Competitive delta: knowledge-dense Substack hydrate prep
+is visible on free STEM book → DR launch path (label honesty, not live enable).
+

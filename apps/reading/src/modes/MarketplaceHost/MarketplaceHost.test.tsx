@@ -3053,6 +3053,12 @@ describe("MarketplaceHost mode", () => {
         .getByTestId("marketplace-host-hydrate-dual-gate-link")
         .getAttribute("href") || "",
     ).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    // Residual (aal): L2 Substack checklist section (parity Settings xr).
+    expect(
+      screen
+        .getByTestId("marketplace-host-hydrate-dual-gate-l2-link")
+        .getAttribute("href") || "",
+    ).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
     fireEvent.change(screen.getByTestId("marketplace-host-refs-input"), {
       target: { value: "arxiv:1706.03762" },
     });
