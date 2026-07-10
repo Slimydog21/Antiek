@@ -1,0 +1,19 @@
+# inventory-abq · MarketplaceHost free chip is is_free only
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: abq
+date: 2026-07-10
+tip_before: d9e3606b (abp)
+
+## Problem
+MarketplaceHost free-PD chip required public_domain AND is_free; free inventory
+doctrine (abn–abp) is is_free only.
+
+## Fix
+- freePdOnly filter: if (!e.is_free) return false
+- MarketplaceHost.test free filter locks abq
+
+## Verified
+vitest MarketplaceHost free filter → passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

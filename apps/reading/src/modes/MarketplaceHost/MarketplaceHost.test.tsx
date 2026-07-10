@@ -907,7 +907,8 @@ describe("MarketplaceHost mode", () => {
     );
   });
 
-  it("filters free public-domain research spine (is)", async () => {
+  it("filters free public-domain research spine (is/abq)", async () => {
+    // Residual (abq): free chip uses is_free only (parity free_count / free_only HTML).
     fetchMarketplaceCatalog.mockResolvedValue({
       entries: [
         {

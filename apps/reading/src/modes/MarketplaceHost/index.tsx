@@ -189,9 +189,10 @@ export default function MarketplaceHost({
     const subject = subjectFilter.trim().toLowerCase();
     const source = sourceFilter.trim().toLowerCase();
     return entries.filter((e) => {
-      // Residual (is): free public_domain research spine filter.
+      // Residual (is/abq): free inventory filter is is_free only (parity free_count
+      // abn/abo + free_only HTML abp — never invent free via license_class alone).
       if (freePdOnly) {
-        if (!(e.license_class === "public_domain" && e.is_free)) return false;
+        if (!e.is_free) return false;
       }
       // Residual (lw): exact research-domain subject chip.
       if (subject) {

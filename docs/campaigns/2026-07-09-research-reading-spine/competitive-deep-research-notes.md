@@ -2034,3 +2034,8 @@ delta: HTML catalog free inventory identity matches API free_count doctrine end-
 project_catalog_html free_only filter uses is_free only (parity free_count abn/abo).
 Competitive delta: free-PD chip filter and free_count share one free-inventory doctrine.
 
+## Residual abq · 2026-07-10 — MarketplaceHost free chip is is_free only
+free-PD catalog chip filter uses is_free only (parity free_count abn/abo + free_only
+HTML abp). Competitive delta: UI free spine filter and free inventory honesty share
+one doctrine end-to-end (API · HTML · client).
+
