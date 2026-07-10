@@ -1843,3 +1843,8 @@ delta: free PD honesty has no silent aggregate drift.
 ## Residual aac · 2026-07-10 — FUTURE-AGENT tip re-anchor through aab
 FUTURE-AGENT-SPEC tip re-anchored after 109 residual ships this continuation.
 Competitive delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
+
+## Residual aad · 2026-07-10 — catalog public_domain_count matches license_class
+Marketplace catalog public_domain_count equals sum of entry license_class
+public_domain flags. Competitive delta: PD honesty has no silent aggregate drift
+(parity free_count aab).
