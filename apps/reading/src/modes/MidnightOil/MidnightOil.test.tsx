@@ -28,6 +28,7 @@ import {
   liveDispatchFinalEnablementApplyPlanMidnightOil,
   liveDispatchFinalEnablementPlanMidnightOil,
   liveRunActivationSettingsMidnightOil,
+  operatorArchiveHandoffPackagePlanMidnightOil,
   operatorDeliveryLedgerReconciliationPlanMidnightOil,
   operatorDispatchActivationReadinessPlanMidnightOil,
   operatorDispatchAdapterPlanMidnightOil,
@@ -4515,6 +4516,84 @@ vi.mock("../../api/midnightOil", () => ({
       "final closeout archive reconciliation plan only: no final run closure receipt, run closeout record, archive manifest, handoff summary, quality attestation, completion audit, retention manifest, billing reconciliation, model usage rollup, source lineage archive, notification, URL activation, or final artifact is created",
     ],
   })),
+  operatorArchiveHandoffPackagePlanMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-operator-archive-handoff-package-plan",
+    final_closeout_archive_reconciliation_plan_receipt_id:
+      "midnight-oil-test-final-closeout-archive-reconciliation-plan",
+    retention_billing_reconciliation_plan_receipt_id:
+      "midnight-oil-test-retention-billing-reconciliation-plan",
+    delivery_notification_reconciliation_plan_receipt_id:
+      "midnight-oil-test-delivery-notification-reconciliation-plan",
+    workspace_delivery_card_reconciliation_plan_receipt_id:
+      "midnight-oil-test-workspace-delivery-card-reconciliation-plan",
+    operator_delivery_ledger_reconciliation_plan_receipt_id:
+      "midnight-oil-test-operator-delivery-ledger-reconciliation-plan",
+    operator_notification_delivery_result_reconciliation_plan_receipt_id:
+      "midnight-oil-test-operator-notification-delivery-result-reconciliation-plan",
+    operator_notification_delivery_apply_plan_receipt_id:
+      "midnight-oil-test-operator-notification-delivery-apply-plan",
+    operator_notification_delivery_readiness_plan_receipt_id:
+      "midnight-oil-test-operator-notification-delivery-readiness-plan",
+    final_run_closure_plan_receipt_id: "midnight-oil-test-final-run-closure-plan",
+    final_artifact_completion_finalization_plan_receipt_id:
+      "midnight-oil-test-final-artifact-completion-finalization-plan",
+    final_artifact_publish_plan_receipt_id:
+      "midnight-oil-test-final-artifact-publish-plan",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    run_id: "midnight-oil-test",
+    status: "blocked_operator_archive_handoff_package_unimplemented",
+    adapter_key: "operator_archive_handoff_package",
+    planned_operator_archive_handoff_package_receipt_id:
+      "midnight-oil-test-operator-archive-handoff-package-receipt",
+    planned_operator_archive_package_id:
+      "midnight-oil-test-operator-archive-package",
+    planned_operator_archive_manifest_id:
+      "midnight-oil-test-operator-archive-manifest",
+    planned_operator_handoff_bundle_id:
+      "midnight-oil-test-operator-handoff-bundle",
+    planned_final_closeout_archive_reconciliation_receipt_id:
+      "midnight-oil-test-final-closeout-archive-reconciliation-receipt",
+    planned_artifact_archive_manifest_id:
+      "midnight-oil-test-final-artifact-archive-manifest",
+    planned_operator_handoff_summary_id:
+      "midnight-oil-test-operator-handoff-summary",
+    operator_archive_handoff_package_blockers: [
+      "operator archive handoff package receipt writer",
+      "operator archive package writer",
+      "operator archive manifest writer",
+      "operator handoff bundle writer",
+      "operator archive handoff package replay guard",
+    ],
+    required_operator_archive_handoff_package_invariants: [
+      "operator archive handoff package planner must require final closeout archive reconciliation planning before operator archive handoff packages can be written",
+    ],
+    required_operator_archive_handoff_package_receipt_fields: [
+      "operator_archive_handoff_package_plan_receipt_id",
+      "final_closeout_archive_reconciliation_plan_receipt_id",
+      "operator_archive_manifest_id",
+      "operator_handoff_bundle_id",
+      "artifact_archive_manifest_id",
+      "operator_handoff_summary_id",
+    ],
+    blocker_reason: "operator_archive_handoff_package_unimplemented",
+    operator_archive_handoff_package_allowed: false,
+    operator_archive_package_created: false,
+    operator_archive_manifest_created: false,
+    operator_handoff_bundle_created: false,
+    final_closeout_archive_reconciliation_allowed: false,
+    final_run_closure_receipt_reconciled: false,
+    run_closeout_record_reconciled: false,
+    artifact_archive_manifest_reconciled: false,
+    operator_handoff_summary_reconciled: false,
+    quality_attestation_reconciled: false,
+    completion_audit_entry_reconciled: false,
+    retention_billing_reconciliation_allowed: false,
+    adapter_plan_notes: [
+      "operator archive handoff package plan only: no operator archive package, operator archive manifest, handoff bundle, final closeout archive reconciliation receipt, archive manifest, handoff summary, quality attestation, completion audit, retention manifest, billing reconciliation, source lineage archive, notification, URL activation, or final artifact is created",
+    ],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -7793,5 +7872,61 @@ describe("MidnightOil", () => {
     expect(screen.getAllByText(/operator_handoff_summary_id/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/quality_attestation_id/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/completion_audit_entry_id/).length).toBeGreaterThan(0);
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Operator archive handoff package plan",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(operatorArchiveHandoffPackagePlanMidnightOil).toHaveBeenCalled(),
+    );
+    expect(operatorArchiveHandoffPackagePlanMidnightOil).toHaveBeenCalledWith(
+      expect.objectContaining({
+        final_closeout_archive_reconciliation_plan_receipt:
+          expect.objectContaining({
+            receipt_id: "midnight-oil-test-final-closeout-archive-reconciliation-plan",
+          }),
+        retention_billing_reconciliation_plan_receipt: expect.objectContaining({
+          receipt_id: "midnight-oil-test-retention-billing-reconciliation-plan",
+        }),
+      }),
+    );
+    expect(screen.getByText("Operator archive handoff package receipt")).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-operator-archive-handoff-package-plan"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("blocked operator archive handoff package unimplemented"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-operator-archive-handoff-package-receipt"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-operator-archive-package"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-operator-archive-manifest"),
+    ).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-operator-handoff-bundle")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "operator archive handoff package planner must require final closeout archive reconciliation planning before operator archive handoff packages can be written",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Operator archive handoff package blockers:/)).toBeTruthy();
+    expect(screen.getByText(/operator archive package writer/)).toBeTruthy();
+    expect(screen.getByText(/operator archive manifest writer/)).toBeTruthy();
+    expect(screen.getByText(/operator handoff bundle writer/)).toBeTruthy();
+    expect(
+      screen.getByText(/Operator archive handoff package receipt fields:/),
+    ).toBeTruthy();
+    expect(
+      screen.getAllByText(/final_closeout_archive_reconciliation_plan_receipt_id/)
+        .length,
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByText(/operator_archive_manifest_id/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/operator_handoff_bundle_id/).length).toBeGreaterThan(0);
   }, 15000);
 });
