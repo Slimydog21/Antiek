@@ -1,0 +1,13 @@
+# inventory-abe · FUTURE tip re-anchor through abd
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: abe
+date: 2026-07-10
+tip_sha: aee524aa
+
+## Closed
+- FUTURE-AGENT tip → aee524aa · 138 residual ships this continuation
+- Hooke biology/method wave abc–abd closed
+- Highest leverage: operator merge PR #465 OPEN
+
+## Not in scope
+- Operator merge PR #465 (gated)
