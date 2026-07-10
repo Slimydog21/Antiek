@@ -3,6 +3,8 @@
 from .bench_bridge import BENCH_TASK, IncompleteRunError, deep_research_bench_record
 from .dataset import (
     EXPECTED_QUERY_COUNT,
+    QUERIES_V1_SHA256,
+    UNPINNED_DIGEST_TEST_ONLY,
     DatasetValidationError,
     Query,
     QueryDataset,
@@ -47,6 +49,8 @@ __all__ = [
     "DEFAULT_MAX_COVERAGE_DROP",
     "DEFAULT_MAX_JUDGE_SCORE_DROP",
     "EXPECTED_QUERY_COUNT",
+    "QUERIES_V1_SHA256",
+    "UNPINNED_DIGEST_TEST_ONLY",
     "JUDGE_MODEL_ID",
     "RUBRIC_VERSION",
     "STATUS_MEASURED",

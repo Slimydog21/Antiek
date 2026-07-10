@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -14,13 +15,16 @@ from substrate.deep_research_eval import (
     EXPECTED_QUERY_COUNT,
     JUDGE_MODEL_ID,
     RUBRIC_VERSION,
+    UNPINNED_DIGEST_TEST_ONLY,
     DatasetValidationError,
+    EvalJournalCorruptionError,
     EvalRun,
     EvalRunJournal,
     IncompleteRunError,
     NotComparableError,
     Query,
     QueryDataset,
+    RegressionThresholds,
     ResearchReport,
     SourceRef,
     compare_runs,
@@ -90,13 +94,15 @@ def test_dataset_loads_20_frozen_unique(dataset: QueryDataset, tmp_path: Path) -
     assert all(q.expected_coverage for q in dataset.queries)
     assert dataset.dataset_key == "deep_research_eval_v1@1.0.0"
 
-    # Validation fails closed on a mutated copy (frozen file itself untouched).
+    # Structural validation fails closed on a mutated copy (frozen file itself
+    # untouched; digest pin bypassed with the test-only sentinel so the
+    # "exactly 20" invariant is exercised independently of the content pin).
     data = json.loads(default_dataset_path().read_text(encoding="utf-8"))
     data["queries"] = data["queries"][:19]
     truncated = tmp_path / "queries_truncated.json"
     truncated.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(DatasetValidationError, match="exactly 20"):
-        load_dataset(truncated)
+        load_dataset(truncated, expected_sha256=UNPINNED_DIGEST_TEST_ONLY)
 
 
 # 2. Deterministic run: same stubs → identical run_id + scores.
@@ -213,3 +219,110 @@ def test_journal_round_trip(
     replayed = journal.read_all()
     assert replayed == (healthy_run, degraded)
     assert [r.run_id for r in replayed] == [healthy_run.run_id, degraded.run_id]
+
+
+# 8. Tamper-evidence: forged aggregates/completeness refuse deserialization.
+def test_from_dict_rejects_forged_aggregates(
+    dataset: QueryDataset, healthy_run: EvalRun
+) -> None:
+    forgeries: tuple[tuple[str, object], ...] = (
+        ("mean_judge_score", 999.0),
+        ("mean_coverage_hit_rate", 0.0),
+        ("measured_count", 3),
+        ("complete", False),
+    )
+    for field, forged_value in forgeries:
+        data = healthy_run.to_dict()
+        data[field] = forged_value
+        with pytest.raises(ValueError, match="aggregates"):
+            EvalRun.from_dict(data)
+
+    forged_axes = healthy_run.to_dict()
+    forged_axes["mean_axis_scores"]["completeness"] = 1.0
+    with pytest.raises(ValueError, match="aggregates"):
+        EvalRun.from_dict(forged_axes)
+
+    # Forging complete=true onto an incomplete run must also refuse — this is
+    # the laundering path into deep_research_bench_record.
+    incomplete = run_eval(
+        dataset, healthy_provider, malformed_judge, run_id_seed=SEED, week_id=WEEK_CANDIDATE
+    )
+    laundered = incomplete.to_dict()
+    laundered["complete"] = True
+    with pytest.raises(ValueError, match="aggregates"):
+        EvalRun.from_dict(laundered)
+
+    # Honest round-trip still deserializes.
+    assert EvalRun.from_dict(healthy_run.to_dict()) == healthy_run
+
+
+# 9. Tamper-evidence: out-of-range/NaN per-score values refuse deserialization.
+def test_from_dict_rejects_out_of_range_score_values(healthy_run: EvalRun) -> None:
+    for bad_value in (999.0, math.nan, math.inf, -0.1, True, "0.9"):
+        data = healthy_run.to_dict()
+        data["scores"][0]["judge_scores"]["completeness"] = bad_value
+        with pytest.raises(ValueError):
+            EvalRun.from_dict(data)
+    data = healthy_run.to_dict()
+    data["scores"][0]["coverage_hit_rate"] = 2.0
+    with pytest.raises(ValueError, match="coverage_hit_rate"):
+        EvalRun.from_dict(data)
+
+
+# 10. NaN/negative/inf thresholds must refuse, never fail open to COMPARABLE.
+def test_thresholds_must_be_finite_and_nonnegative(
+    dataset: QueryDataset, healthy_run: EvalRun
+) -> None:
+    degraded = run_eval(
+        dataset, degraded_provider, fixed_judge, run_id_seed=SEED, week_id=WEEK_CANDIDATE
+    )
+    bad_thresholds = (
+        RegressionThresholds(max_judge_score_drop=math.nan, max_coverage_drop=math.nan),
+        RegressionThresholds(max_judge_score_drop=-0.1, max_coverage_drop=0.1),
+        RegressionThresholds(max_judge_score_drop=0.05, max_coverage_drop=math.inf),
+    )
+    for thresholds in bad_thresholds:
+        with pytest.raises(ValueError, match="finite and non-negative"):
+            compare_runs(healthy_run, degraded, thresholds)
+
+
+# 11. Journal: blank middle row raises; torn tail stays tolerated.
+def test_journal_blank_middle_row_raises_torn_tail_tolerated(
+    healthy_run: EvalRun, tmp_path: Path
+) -> None:
+    path = tmp_path / "blank_middle.jsonl"
+    journal = EvalRunJournal(path)
+    journal.append(healthy_run)
+    with path.open("ab") as fh:
+        fh.write(b"\n")
+    journal.append(healthy_run)
+    with pytest.raises(EvalJournalCorruptionError, match="blank"):
+        journal.read_all()
+
+    torn_path = tmp_path / "torn_tail.jsonl"
+    torn_journal = EvalRunJournal(torn_path)
+    torn_journal.append(healthy_run)
+    with torn_path.open("ab") as fh:
+        fh.write(b'{"torn":')  # crash mid-append: unterminated final line
+    assert torn_journal.read_all() == (healthy_run,)
+
+
+# 12. Tamper-evidence: per-score identity tamper breaks the deterministic run_id.
+def test_tampered_score_identity_breaks_run_id(healthy_run: EvalRun) -> None:
+    data = healthy_run.to_dict()
+    data["scores"][0]["query_id"] = "drq-999"  # aggregates unchanged, identity not
+    with pytest.raises(ValueError, match="run_id"):
+        EvalRun.from_dict(data)
+
+
+# 13. Dataset content pin: same-version content edit fails closed.
+def test_dataset_digest_pin(tmp_path: Path) -> None:
+    data = json.loads(default_dataset_path().read_text(encoding="utf-8"))
+    data["curation_note"] = "tampered without a version bump"
+    tampered = tmp_path / "queries_tampered.json"
+    tampered.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(DatasetValidationError, match="digest mismatch"):
+        load_dataset(tampered)
+    # Test-only escape hatch still applies full structural validation.
+    variant = load_dataset(tampered, expected_sha256=UNPINNED_DIGEST_TEST_ONLY)
+    assert len(variant.queries) == EXPECTED_QUERY_COUNT

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -10,6 +11,16 @@ from typing import Any
 
 DATASET_FILENAME = "queries_v1.json"
 EXPECTED_QUERY_COUNT = 20
+
+# Content pin for the frozen v1 file: sha256 of the exact file bytes. Editing
+# queries_v1.json without a version bump (and a new pin) fails loading closed —
+# the comparability key alone cannot see a same-version content edit.
+QUERIES_V1_SHA256 = "c329d9152ea84875befa7dc33ecc89b60c6f6b987fcefba7a555b1eca0cd832e"
+
+# TEST-ONLY escape hatch: pass as ``expected_sha256`` to load a synthetic
+# dataset variant (structural validation still applies in full). Production
+# callers must never pass this sentinel.
+UNPINNED_DIGEST_TEST_ONLY = "unpinned-digest-test-only"
 
 
 class DatasetValidationError(ValueError):
@@ -52,21 +63,36 @@ def _require_str(mapping: Mapping[str, Any], key: str, context: str) -> str:
     return value
 
 
-def load_dataset(path: Path | None = None) -> QueryDataset:
+def load_dataset(
+    path: Path | None = None,
+    *,
+    expected_sha256: str = QUERIES_V1_SHA256,
+) -> QueryDataset:
     """Load + validate the frozen dataset. Any structural deviation raises.
 
     Invariants (v1): exactly ``EXPECTED_QUERY_COUNT`` queries, unique ids,
     ``frozen`` is true, version string present, every query carries a
-    non-empty ``expected_coverage`` anchor list.
+    non-empty ``expected_coverage`` anchor list. The file bytes must match
+    ``expected_sha256`` (default: the pinned ``QUERIES_V1_SHA256``) — a
+    same-version content edit fails closed. Tests loading synthetic variants
+    may pass ``UNPINNED_DIGEST_TEST_ONLY`` (or a recomputed digest); nothing
+    else may.
     """
     dataset_path = path if path is not None else default_dataset_path()
     try:
-        raw = dataset_path.read_text(encoding="utf-8")
+        raw_bytes = dataset_path.read_bytes()
     except OSError as exc:
         raise DatasetValidationError(f"cannot read dataset at {dataset_path}") from exc
+    if expected_sha256 != UNPINNED_DIGEST_TEST_ONLY:
+        digest = hashlib.sha256(raw_bytes).hexdigest()
+        if digest != expected_sha256:
+            raise DatasetValidationError(
+                f"dataset digest mismatch at {dataset_path}: sha256={digest} "
+                f"expected={expected_sha256} (frozen content changed without a pin bump)"
+            )
     try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as exc:
+        data = json.loads(raw_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise DatasetValidationError(f"dataset at {dataset_path} is not valid JSON") from exc
     if not isinstance(data, dict):
         raise DatasetValidationError("dataset root must be a JSON object")

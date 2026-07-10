@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -29,6 +30,17 @@ STATUS_MEASURED: QueryStatus = "MEASURED"
 STATUS_NOT_MEASURED: QueryStatus = "NOT_MEASURED"
 
 RUN_SCHEMA_VERSION = 1
+
+
+def _unit_interval(value: object, field: str) -> float:
+    """Deserialization guard: same rules as the live judge parser — numeric
+    (bools rejected), finite, within [0, 1]. Fail closed on any deviation."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"{field} must be a number")
+    number = float(value)
+    if not math.isfinite(number) or not 0.0 <= number <= 1.0:
+        raise ValueError(f"{field} must be finite and within [0, 1]")
+    return number
 
 
 @dataclass(frozen=True)
@@ -65,12 +77,15 @@ class QueryScore:
         if raw_judge is not None:
             if not isinstance(raw_judge, dict) or set(raw_judge) != set(AXES):
                 raise ValueError("judge_scores must carry exactly the rubric axes")
+            values = {
+                axis: _unit_interval(raw_judge[axis], f"judge_scores[{axis}]") for axis in AXES
+            }
             judge_scores = JudgeScores(
-                factual_accuracy=float(raw_judge["factual_accuracy"]),
-                citation_accuracy=float(raw_judge["citation_accuracy"]),
-                completeness=float(raw_judge["completeness"]),
-                source_quality=float(raw_judge["source_quality"]),
-                tool_efficiency=float(raw_judge["tool_efficiency"]),
+                factual_accuracy=values["factual_accuracy"],
+                citation_accuracy=values["citation_accuracy"],
+                completeness=values["completeness"],
+                source_quality=values["source_quality"],
+                tool_efficiency=values["tool_efficiency"],
             )
         if (status == STATUS_MEASURED) != (judge_scores is not None):
             raise ValueError("status and judge_scores presence must agree")
@@ -79,7 +94,7 @@ class QueryScore:
             query_id=query_id,
             status=status,
             judge_scores=judge_scores,
-            coverage_hit_rate=float(data["coverage_hit_rate"]),
+            coverage_hit_rate=_unit_interval(data["coverage_hit_rate"], "coverage_hit_rate"),
             hit_anchors=hit_anchors,
         )
 
@@ -133,6 +148,9 @@ class EvalRun:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> EvalRun:
+        """Tamper-evident deserialization: aggregates and completeness are
+        RECOMPUTED from the per-query scores and must equal the stored values;
+        run_id must equal its deterministic recomputation. Fail closed."""
         if data.get("schema_version") != RUN_SCHEMA_VERSION:
             raise ValueError(
                 f"unsupported eval run schema: {data.get('schema_version')!r} "
@@ -142,9 +160,36 @@ class EvalRun:
         if not isinstance(scores_raw, list):
             raise ValueError("scores must be a list")
         scores = tuple(QueryScore.from_dict(row) for row in scores_raw)
-        mean_axis_raw = data["mean_axis_scores"]
-        if not isinstance(mean_axis_raw, dict):
+        recomputed = _aggregate(scores)
+
+        stored_axis_raw = data["mean_axis_scores"]
+        if not isinstance(stored_axis_raw, dict):
             raise ValueError("mean_axis_scores must be an object")
+        stored_axis = {
+            str(k): _stored_number(v, f"mean_axis_scores[{k}]")
+            for k, v in stored_axis_raw.items()
+        }
+        stored_mean_judge = _stored_number(data["mean_judge_score"], "mean_judge_score")
+        stored_mean_coverage = _stored_number(
+            data["mean_coverage_hit_rate"], "mean_coverage_hit_rate"
+        )
+        stored_measured = data["measured_count"]
+        if isinstance(stored_measured, bool) or not isinstance(stored_measured, int):
+            raise ValueError("measured_count must be an integer")
+        stored_complete = data["complete"]
+        if not isinstance(stored_complete, bool):
+            raise ValueError("complete must be a boolean")
+        if (
+            stored_axis != recomputed.mean_axis_scores
+            or stored_mean_judge != recomputed.mean_judge_score
+            or stored_mean_coverage != recomputed.mean_coverage_hit_rate
+            or stored_measured != recomputed.measured_count
+            or stored_complete is not recomputed.complete
+        ):
+            raise ValueError(
+                "stored aggregates do not match recomputation from scores (tampered or corrupt)"
+            )
+
         run = cls(
             run_id=str(data["run_id"]),
             week_id=str(data["week_id"]),
@@ -154,11 +199,11 @@ class EvalRun:
             rubric_version=str(data["rubric_version"]),
             judge_model_id=str(data["judge_model_id"]),
             scores=scores,
-            mean_axis_scores={str(k): float(v) for k, v in mean_axis_raw.items()},
-            mean_judge_score=float(data["mean_judge_score"]),
-            mean_coverage_hit_rate=float(data["mean_coverage_hit_rate"]),
-            measured_count=int(data["measured_count"]),
-            complete=bool(data["complete"]),
+            mean_axis_scores=recomputed.mean_axis_scores,
+            mean_judge_score=recomputed.mean_judge_score,
+            mean_coverage_hit_rate=recomputed.mean_coverage_hit_rate,
+            measured_count=recomputed.measured_count,
+            complete=recomputed.complete,
         )
         if list(run.comparability_key) != list(data["comparability_key"]):
             raise ValueError("stored comparability_key does not match run identity")
@@ -166,6 +211,51 @@ class EvalRun:
         if run.run_id != expected_run_id:
             raise ValueError("stored run_id does not match deterministic identity")
         return run
+
+
+def _stored_number(value: object, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"{field} must be a number")
+    return float(value)
+
+
+@dataclass(frozen=True)
+class _Aggregates:
+    mean_axis_scores: dict[str, float]
+    mean_judge_score: float
+    mean_coverage_hit_rate: float
+    measured_count: int
+    complete: bool
+
+
+def _aggregate(scores: tuple[QueryScore, ...]) -> _Aggregates:
+    """Single source of truth for run aggregates — used by ``run_eval`` and
+    re-used by ``EvalRun.from_dict`` so stored aggregates cannot be forged."""
+    per_axis: dict[str, list[float]] = {axis: [] for axis in AXES}
+    judge_means: list[float] = []
+    for score in scores:
+        if score.judge_scores is not None:
+            for axis, value in score.judge_scores.as_dict().items():
+                per_axis[axis].append(value)
+            judge_means.append(score.judge_scores.mean())
+    mean_axis_scores = {
+        axis: round(sum(values) / len(values), 6) if values else 0.0
+        for axis, values in per_axis.items()
+    }
+    mean_judge_score = round(sum(judge_means) / len(judge_means), 6) if judge_means else 0.0
+    mean_coverage_hit_rate = (
+        round(sum(score.coverage_hit_rate for score in scores) / len(scores), 6)
+        if scores
+        else 0.0
+    )
+    measured_count = len(judge_means)
+    return _Aggregates(
+        mean_axis_scores=mean_axis_scores,
+        mean_judge_score=mean_judge_score,
+        mean_coverage_hit_rate=mean_coverage_hit_rate,
+        measured_count=measured_count,
+        complete=bool(scores) and measured_count == len(scores),
+    )
 
 
 def _coverage(answer_text: str, anchors: tuple[str, ...]) -> tuple[float, tuple[str, ...]]:
@@ -227,8 +317,6 @@ def run_eval(
         raise ValueError("run_id_seed is required")
 
     scores: list[QueryScore] = []
-    per_axis: dict[str, list[float]] = {axis: [] for axis in AXES}
-    judge_means: list[float] = []
     for query in dataset.queries:
         report = provider(query)
         if not isinstance(report, ResearchReport):
@@ -241,10 +329,6 @@ def run_eval(
         status: QueryStatus = (
             STATUS_MEASURED if judge_scores is not None else STATUS_NOT_MEASURED
         )
-        if judge_scores is not None:
-            for axis, value in judge_scores.as_dict().items():
-                per_axis[axis].append(value)
-            judge_means.append(judge_scores.mean())
         scores.append(
             QueryScore(
                 query_id=query.query_id,
@@ -255,19 +339,9 @@ def run_eval(
             )
         )
 
-    mean_axis_scores = {
-        axis: round(sum(values) / len(values), 6) if values else 0.0
-        for axis, values in per_axis.items()
-    }
-    mean_judge_score = round(sum(judge_means) / len(judge_means), 6) if judge_means else 0.0
-    mean_coverage_hit_rate = (
-        round(sum(score.coverage_hit_rate for score in scores) / len(scores), 6)
-        if scores
-        else 0.0
-    )
-    measured_count = len(judge_means)
-    comparability_key = (dataset.dataset_key, RUBRIC_VERSION, JUDGE_MODEL_ID)
     frozen_scores = tuple(scores)
+    aggregates = _aggregate(frozen_scores)
+    comparability_key = (dataset.dataset_key, RUBRIC_VERSION, JUDGE_MODEL_ID)
     return EvalRun(
         run_id=_run_id(wid, seed, comparability_key, frozen_scores),
         week_id=wid,
@@ -277,9 +351,9 @@ def run_eval(
         rubric_version=RUBRIC_VERSION,
         judge_model_id=JUDGE_MODEL_ID,
         scores=frozen_scores,
-        mean_axis_scores=mean_axis_scores,
-        mean_judge_score=mean_judge_score,
-        mean_coverage_hit_rate=mean_coverage_hit_rate,
-        measured_count=measured_count,
-        complete=bool(frozen_scores) and measured_count == len(frozen_scores),
+        mean_axis_scores=aggregates.mean_axis_scores,
+        mean_judge_score=aggregates.mean_judge_score,
+        mean_coverage_hit_rate=aggregates.mean_coverage_hit_rate,
+        measured_count=aggregates.measured_count,
+        complete=aggregates.complete,
     )

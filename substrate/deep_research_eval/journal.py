@@ -52,10 +52,10 @@ class EvalRunJournal:
         lines = raw.splitlines(keepends=True)
         runs: list[EvalRun] = []
         for index, line in enumerate(lines):
-            if not line.strip():
-                continue
             if index == len(lines) - 1 and not line.endswith(b"\n"):
-                break
+                break  # torn tail (crash mid-append) — tolerated by design
+            if not line.strip():
+                raise EvalJournalCorruptionError(f"blank eval run row {index + 1}")
             try:
                 data = json.loads(line)
                 if not isinstance(data, dict):

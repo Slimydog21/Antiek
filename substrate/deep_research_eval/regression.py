@@ -8,6 +8,7 @@ verdict for reporting surfaces that want a record instead of a traceback.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Literal
 
@@ -70,8 +71,14 @@ def compare_runs(
     coverage drop beyond threshold. Raises ``NotComparableError`` (fail
     closed) on comparability-key mismatch or incomplete runs."""
     limits = thresholds if thresholds is not None else RegressionThresholds()
-    if limits.max_judge_score_drop < 0.0 or limits.max_coverage_drop < 0.0:
-        raise ValueError("regression thresholds must be non-negative")
+    for name, value in (
+        ("max_judge_score_drop", limits.max_judge_score_drop),
+        ("max_coverage_drop", limits.max_coverage_drop),
+    ):
+        # NaN/inf thresholds would make every drop comparison False — fail OPEN.
+        # Refuse them (and negatives) up front.
+        if not math.isfinite(value) or value < 0.0:
+            raise ValueError(f"regression threshold {name} must be finite and non-negative")
 
     if baseline.comparability_key != candidate.comparability_key:
         raise _refuse(
