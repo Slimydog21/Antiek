@@ -1,0 +1,17 @@
+# inventory-um · MO ceiling remaining-after-approve budget projection
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: um
+date: 2026-07-10
+
+## Closed
+- moil-ceiling-remaining-after chrome (remaining − ceiling projection)
+- data-remaining-after-usd honesty · never invent $0 when remaining unknown
+- vitest MidnightOil 19 green · /tmp/residual-tests-um.log
+
+## Product why
+North star: know if a prompt/ceiling will go over budget. Fit label alone is
+binary; remaining-after projects how approve affects the daily cap before fire.
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Hard-halt spending (already worker path)

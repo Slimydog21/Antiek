@@ -1154,3 +1154,9 @@ hosted research workstation.
 ## Residual ul · 2026-07-10 — FUTURE-AGENT tip re-anchor through uk
 FUTURE-AGENT-SPEC tip → 0242e858 with closed arcs tt–uk. Competitive delta:
 swarm handoff stays tip-true after hydrate prep honesty + Select open + free STEM.
+
+## Residual um · 2026-07-10 — MO ceiling remaining-after budget projection
+Midnight Oil shows projected remaining daily budget if full recommended
+ceiling is spent (remaining − ceiling). Competitive delta: approve foresight
+beyond binary fit — operator sees how the swarm price ceiling affects the
+daily cap before fire (never invent $0 when remaining unknown).

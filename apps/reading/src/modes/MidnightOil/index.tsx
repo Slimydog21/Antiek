@@ -26,6 +26,7 @@
  * Residual (js): deposit progress panels pass researchTier + tier poll cadence.
  * Residual (md): recommended ceiling vs remaining daily budget fit chrome
  * (fits | may_exceed | unknown) — never invent $0 remaining.
+ * Residual (um): remaining-after-ceiling projection (how approve affects daily cap).
  * Residual (me): soft-gate approve when ceiling may_exceed remaining budget
  * (force override required; unknown remaining never blocks).
  * Residual (ml): dual-gate L1–L4 checklist deep-link (parity mj; prep only).
@@ -958,39 +959,70 @@ export default function MidnightOil() {
             Recommended ceiling:{" "}
             <strong>${job.recommended_price_ceiling_usd.toFixed(2)}</strong>
           </p>
-          {/* Residual (md): ceiling vs remaining daily budget fit (honest unknown). */}
+          {/* Residual (md/um): ceiling vs remaining daily budget fit + after-approve projection. */}
           {(() => {
             const rec = job.recommended_price_ceiling_usd;
             let fit: "fits" | "may_exceed" | "unknown" = "unknown";
+            let remainingAfter: number | null = null;
             if (budgetRemainingUsd != null && Number.isFinite(budgetRemainingUsd)) {
               fit = rec <= budgetRemainingUsd + 1e-9 ? "fits" : "may_exceed";
+              // Residual (um): projected remaining if operator approves this ceiling
+              // (soft foresight only — does not spend or invent $0 when unknown).
+              remainingAfter = budgetRemainingUsd - rec;
             }
             return (
-              <p
-                className="text-[11px] font-mono opacity-80"
-                data-testid="moil-ceiling-budget-fit"
-                data-fit={fit}
-                data-recommended-usd={String(rec)}
-                data-remaining-usd={
-                  budgetRemainingUsd != null
-                    ? String(budgetRemainingUsd)
-                    : "unknown"
-                }
-                data-view-format="html"
-                role="status"
-              >
-                Budget fit:{" "}
-                <strong data-testid="moil-ceiling-budget-fit-label">
-                  {fit === "fits"
-                    ? "fits remaining daily budget"
-                    : fit === "may_exceed"
-                      ? "may exceed remaining daily budget"
+              <>
+                <p
+                  className="text-[11px] font-mono opacity-80"
+                  data-testid="moil-ceiling-budget-fit"
+                  data-fit={fit}
+                  data-recommended-usd={String(rec)}
+                  data-remaining-usd={
+                    budgetRemainingUsd != null
+                      ? String(budgetRemainingUsd)
+                      : "unknown"
+                  }
+                  data-view-format="html"
+                  role="status"
+                >
+                  Budget fit:{" "}
+                  <strong data-testid="moil-ceiling-budget-fit-label">
+                    {fit === "fits"
+                      ? "fits remaining daily budget"
+                      : fit === "may_exceed"
+                        ? "may exceed remaining daily budget"
+                        : "unknown (remaining budget unset)"}
+                  </strong>
+                  {budgetRemainingUsd != null
+                    ? ` · remaining=$${budgetRemainingUsd.toFixed(2)} · ceiling=$${rec.toFixed(2)}`
+                    : " · remaining unknown — never invent $0"}
+                </p>
+                <p
+                  className="text-[11px] font-mono opacity-80"
+                  data-testid="moil-ceiling-remaining-after"
+                  data-remaining-after-usd={
+                    remainingAfter != null ? String(remainingAfter) : "unknown"
+                  }
+                  data-recommended-usd={String(rec)}
+                  data-remaining-usd={
+                    budgetRemainingUsd != null
+                      ? String(budgetRemainingUsd)
+                      : "unknown"
+                  }
+                  data-view-format="html"
+                  role="status"
+                >
+                  After approve (projection):{" "}
+                  <strong data-testid="moil-ceiling-remaining-after-label">
+                    {remainingAfter != null
+                      ? `remaining≈$${remainingAfter.toFixed(2)}`
                       : "unknown (remaining budget unset)"}
-                </strong>
-                {budgetRemainingUsd != null
-                  ? ` · remaining=$${budgetRemainingUsd.toFixed(2)} · ceiling=$${rec.toFixed(2)}`
-                  : " · remaining unknown — never invent $0"}
-              </p>
+                  </strong>
+                  {remainingAfter != null
+                    ? ` · if full ceiling $${rec.toFixed(2)} is spent`
+                    : " · never invent $0"}
+                </p>
+              </>
             );
           })()}
           <p

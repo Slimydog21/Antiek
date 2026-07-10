@@ -577,6 +577,14 @@ describe("MidnightOil mode", () => {
     expect(
       screen.getByTestId("moil-ceiling-budget-fit-label").textContent,
     ).toMatch(/fits remaining/i);
+    // Residual (um): after-approve remaining projection (5 − 3.6 = 1.4).
+    const after = screen.getByTestId("moil-ceiling-remaining-after");
+    expect(after.getAttribute("data-remaining-after-usd")).toBe("1.4");
+    expect(after.getAttribute("data-recommended-usd")).toBe("3.6");
+    expect(after.getAttribute("data-remaining-usd")).toBe("5");
+    expect(
+      screen.getByTestId("moil-ceiling-remaining-after-label").textContent,
+    ).toMatch(/remaining≈\$1\.40/);
 
     fireEvent.click(
       screen.getByRole("button", { name: /approve at recommended/i }),
