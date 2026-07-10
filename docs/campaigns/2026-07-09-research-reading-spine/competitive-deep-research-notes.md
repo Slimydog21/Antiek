@@ -2016,3 +2016,8 @@ free_only+method catalog HTML free_count=2 (Novum+Hooke); free science set
 includes Hooke (len ≥7). Competitive delta: research-methodology free filter is
 identity-honest; free science spine includes instrumented observation.
 
+## Residual abm · 2026-07-10 — SESSION-ARC + FUTURE tip through abl
+SESSION-ARC-abc-abl documents Hooke free STEM + catalog HTML free_count honesty wave.
+FUTURE tip re-anchored after 146 residual ships. Competitive delta: compaction-safe
+multi-agent handoff; operator merge PR #465 highest leverage.
+
