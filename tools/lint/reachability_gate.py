@@ -443,11 +443,24 @@ def find_unreachable_routes() -> list[tuple[Path, int, str, str]]:
 
 def _finding_to_key(finding: tuple[Path, int, str, str]) -> ViolationKey:
     path, line, kind, _ = finding
+    # Populate the shared machinery's snippet field (normalized source line,
+    # per baseline.py) so a grandfathered finding survives pure line drift:
+    # without it, any insertion above a baselined route re-keys the SAME
+    # stranding as NEW and reds the gate on unrelated edits (observed:
+    # App.tsx 137/180/238 → 138/181/245 on 2026-07-10).
+    snippet = ""
+    try:
+        src_lines = path.read_text(encoding="utf-8").splitlines()
+        if 0 < line <= len(src_lines):
+            snippet = src_lines[line - 1].strip()
+    except OSError:
+        pass
     return ViolationKey(
         path=path.relative_to(_REPO).as_posix(),
         line=line,
         col=0,
         kind=kind,
+        snippet=snippet,
     )
 
 

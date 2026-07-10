@@ -1,25 +1,28 @@
 {
-  "generated_at": "2026-07-08T08:03:45.291293+00:00",
+  "generated_at": "2026-07-10T19:50:52.459271+00:00",
   "lint": "reachability_gate",
   "schema_version": 1,
   "violations": [
     {
       "col": 0,
       "kind": "route:no-inbound-link:/notebook/auto",
-      "line": 137,
-      "path": "apps/reading/src/App.tsx"
+      "line": 138,
+      "path": "apps/reading/src/App.tsx",
+      "snippet": "<Route path=\"/notebook/auto/:investigationId\" element={<AutoNotebook />} />"
     },
     {
       "col": 0,
       "kind": "route:no-inbound-link:/coordination/cost-consent",
-      "line": 180,
-      "path": "apps/reading/src/App.tsx"
+      "line": 181,
+      "path": "apps/reading/src/App.tsx",
+      "snippet": "<Route path=\"/coordination/cost-consent\" element={<CostConsent />} />"
     },
     {
       "col": 0,
       "kind": "route:no-inbound-link:/_panel",
-      "line": 238,
-      "path": "apps/reading/src/App.tsx"
+      "line": 245,
+      "path": "apps/reading/src/App.tsx",
+      "snippet": "<Route path=\"/_panel/:panelId\" element={<PanelWindowApp />} />"
     }
   ]
 }
