@@ -3445,6 +3445,124 @@ export interface MidnightOilWorkspaceDeliveryCardReconciliationPlanReceipt {
   adapter_plan_notes: string[];
 }
 
+export interface MidnightOilDeliveryNotificationReconciliationPlanRequest
+  extends MidnightOilWorkspaceDeliveryCardReconciliationPlanRequest {
+  workspace_delivery_card_reconciliation_plan_receipt: MidnightOilWorkspaceDeliveryCardReconciliationPlanReceipt;
+}
+
+export interface MidnightOilDeliveryNotificationReconciliationPlanReceipt {
+  receipt_id: string;
+  workspace_delivery_card_reconciliation_plan_receipt_id: string;
+  operator_delivery_ledger_reconciliation_plan_receipt_id: string;
+  operator_notification_delivery_result_reconciliation_plan_receipt_id: string;
+  operator_notification_delivery_apply_plan_receipt_id: string;
+  operator_notification_delivery_readiness_plan_receipt_id: string;
+  final_run_closure_plan_receipt_id: string;
+  final_artifact_completion_finalization_plan_receipt_id: string;
+  final_artifact_publish_plan_receipt_id: string;
+  launch_packet_id: string;
+  approval_receipt_id: string;
+  runner_handoff_id: string;
+  run_id: string;
+  status: "blocked_delivery_notification_reconciliation_unimplemented";
+  adapter_key: "delivery_notification_reconciliation";
+  planned_delivery_notification_reconciliation_receipt_id: string;
+  planned_delivery_notification_id: string;
+  planned_delivery_notification_status_entry_id: string;
+  planned_delivery_notification_result_entry_id: string;
+  planned_delivery_notification_operator_visible_event_id: string;
+  planned_delivery_notification_replay_guard_id: string;
+  planned_workspace_delivery_card_reconciliation_receipt_id: string;
+  planned_workspace_delivery_card_id: string;
+  planned_workspace_delivery_card_result_entry_id: string;
+  planned_workspace_delivery_card_status_entry_id: string;
+  planned_workspace_delivery_card_notification_entry_id: string;
+  planned_workspace_delivery_card_replay_guard_id: string;
+  planned_operator_delivery_ledger_reconciliation_receipt_id: string;
+  planned_operator_delivery_ledger_entry_id: string;
+  planned_operator_delivery_ledger_result_entry_id: string;
+  planned_operator_delivery_ledger_status_entry_id: string;
+  planned_operator_delivery_ledger_retry_entry_id: string;
+  planned_operator_delivery_ledger_dead_letter_entry_id: string;
+  planned_operator_notification_delivery_outcome_record_id: string;
+  planned_operator_notification_delivery_reconciliation_entry_id: string;
+  planned_operator_notification_delivery_retry_decision_id: string;
+  planned_operator_notification_dead_letter_entry_id: string;
+  planned_operator_notification_delivery_result_id: string;
+  planned_operator_notification_delivery_status_id: string;
+  planned_private_read_url_id: string;
+  planned_reading_workspace_entry_id: string;
+  planned_hosted_html_asset_id: string;
+  planned_model_usage_rollup_id: string;
+  planned_source_lineage_archive_id: string;
+  planned_idempotency_key: string;
+  delivery_notification_reconciliation_blockers: string[];
+  required_delivery_notification_reconciliation_invariants: string[];
+  required_delivery_notification_reconciliation_receipt_fields: string[];
+  blocker_reason: "delivery_notification_reconciliation_unimplemented";
+  delivery_notification_reconciliation_allowed: boolean;
+  delivery_notification_status_entry_created: boolean;
+  delivery_notification_result_entry_created: boolean;
+  delivery_notification_operator_visible_event_created: boolean;
+  delivery_notification_created: boolean;
+  workspace_delivery_card_reconciliation_allowed: boolean;
+  workspace_delivery_card_result_entry_created: boolean;
+  workspace_delivery_card_status_entry_created: boolean;
+  workspace_delivery_card_notification_entry_created: boolean;
+  workspace_delivery_card_created: boolean;
+  operator_delivery_ledger_reconciliation_allowed: boolean;
+  operator_delivery_ledger_result_entry_created: boolean;
+  operator_delivery_ledger_status_entry_created: boolean;
+  operator_delivery_ledger_retry_entry_created: boolean;
+  operator_delivery_ledger_dead_letter_entry_created: boolean;
+  operator_delivery_ledger_entry_created: boolean;
+  operator_notification_delivery_result_reconciliation_allowed: boolean;
+  operator_notification_delivery_outcome_record_created: boolean;
+  operator_notification_delivery_reconciliation_entry_created: boolean;
+  operator_notification_delivery_retry_decision_created: boolean;
+  operator_notification_dead_letter_entry_created: boolean;
+  operator_notification_delivery_apply_allowed: boolean;
+  operator_notification_delivery_transaction_created: boolean;
+  operator_notification_dispatch_created: boolean;
+  operator_notification_payload_created: boolean;
+  operator_delivery_channel_policy_created: boolean;
+  operator_notification_template_created: boolean;
+  operator_notification_audit_entry_created: boolean;
+  operator_notification_delivery_attempt_created: boolean;
+  operator_notification_delivery_result_created: boolean;
+  operator_notification_delivery_status_created: boolean;
+  operator_notification_retry_policy_created: boolean;
+  operator_notification_dead_letter_created: boolean;
+  operator_notification_delivery_readiness_allowed: boolean;
+  run_closeout_record_created: boolean;
+  final_run_closure_allowed: boolean;
+  final_artifact_completion_finalization_allowed: boolean;
+  completion_record_created: boolean;
+  finalization_transaction_created: boolean;
+  artifact_archive_manifest_created: boolean;
+  operator_handoff_summary_created: boolean;
+  delivery_status_marked_complete: boolean;
+  quality_attestation_created: boolean;
+  completion_audit_entry_created: boolean;
+  final_artifact_publish_allowed: boolean;
+  publish_transaction_created: boolean;
+  information_asset_published: boolean;
+  account_visible_asset_created: boolean;
+  reading_workspace_entry_created: boolean;
+  search_index_entry_created: boolean;
+  private_read_url_created: boolean;
+  operator_notification_created: boolean;
+  graph_commit_created: boolean;
+  graph_mutated: boolean;
+  final_artifact_created: boolean;
+  dispatch_performed: boolean;
+  budget_reserved: boolean;
+  provider_calls_made: boolean;
+  retrieval_performed: boolean;
+  source_receipts_created: boolean;
+  adapter_plan_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -4309,4 +4427,24 @@ export async function workspaceDeliveryCardReconciliationPlanMidnightOil(
     );
   }
   return (await resp.json()) as MidnightOilWorkspaceDeliveryCardReconciliationPlanReceipt;
+}
+
+export async function deliveryNotificationReconciliationPlanMidnightOil(
+  request: MidnightOilDeliveryNotificationReconciliationPlanRequest,
+): Promise<MidnightOilDeliveryNotificationReconciliationPlanReceipt> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/midnight-oil/delivery-notification-reconciliation-plan`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+  );
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(
+      `POST /research/midnight-oil/delivery-notification-reconciliation-plan: HTTP ${resp.status}: ${body}`,
+    );
+  }
+  return (await resp.json()) as MidnightOilDeliveryNotificationReconciliationPlanReceipt;
 }

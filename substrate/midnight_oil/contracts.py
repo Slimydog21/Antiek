@@ -9279,6 +9279,322 @@ class MidnightOilWorkspaceDeliveryCardReconciliationPlanReceipt(BaseModel):
     adapter_plan_notes: list[str] = Field(default_factory=list)
 
 
+class MidnightOilDeliveryNotificationReconciliationPlanRequest(
+    MidnightOilWorkspaceDeliveryCardReconciliationPlanRequest
+):
+    workspace_delivery_card_reconciliation_plan_receipt: (
+        MidnightOilWorkspaceDeliveryCardReconciliationPlanReceipt
+    )
+
+    @model_validator(mode="after")
+    def _workspace_delivery_card_reconciliation_plan_matches(
+        self,
+    ) -> MidnightOilDeliveryNotificationReconciliationPlanRequest:
+        card_plan = self.workspace_delivery_card_reconciliation_plan_receipt
+        ledger_plan = self.operator_delivery_ledger_reconciliation_plan_receipt
+        result_plan = (
+            self.operator_notification_delivery_result_reconciliation_plan_receipt
+        )
+        if (
+            card_plan.operator_delivery_ledger_reconciliation_plan_receipt_id
+            != ledger_plan.receipt_id
+        ):
+            raise ValueError(
+                "workspace_delivery_card_reconciliation_plan_receipt must reference operator_delivery_ledger_reconciliation_plan_receipt"
+            )
+        if (
+            card_plan.operator_notification_delivery_result_reconciliation_plan_receipt_id
+            != result_plan.receipt_id
+        ):
+            raise ValueError(
+                "workspace_delivery_card_reconciliation_plan_receipt must reference operator_notification_delivery_result_reconciliation_plan_receipt"
+            )
+        if (
+            card_plan.operator_notification_delivery_apply_plan_receipt_id
+            != self.operator_notification_delivery_apply_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "workspace_delivery_card_reconciliation_plan_receipt must reference operator_notification_delivery_apply_plan_receipt"
+            )
+        if (
+            card_plan.operator_notification_delivery_readiness_plan_receipt_id
+            != self.operator_notification_delivery_readiness_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "workspace_delivery_card_reconciliation_plan_receipt must reference operator_notification_delivery_readiness_plan_receipt"
+            )
+        if (
+            card_plan.final_run_closure_plan_receipt_id
+            != self.final_run_closure_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "workspace_delivery_card_reconciliation_plan_receipt must reference final_run_closure_plan_receipt"
+            )
+        if (
+            card_plan.final_artifact_completion_finalization_plan_receipt_id
+            != self.final_artifact_completion_finalization_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "workspace_delivery_card_reconciliation_plan_receipt must reference final_artifact_completion_finalization_plan_receipt"
+            )
+        if (
+            card_plan.final_artifact_publish_plan_receipt_id
+            != self.final_artifact_publish_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "workspace_delivery_card_reconciliation_plan_receipt must reference final_artifact_publish_plan_receipt"
+            )
+        if card_plan.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError(
+                "workspace_delivery_card_reconciliation_plan_receipt must reference runner_handoff"
+            )
+        if card_plan.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError(
+                "workspace_delivery_card_reconciliation_plan_receipt must reference approval_receipt"
+            )
+        if card_plan.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError(
+                "workspace_delivery_card_reconciliation_plan_receipt must reference launch_packet"
+            )
+        if card_plan.run_id != self.launch_packet.run_id:
+            raise ValueError(
+                "workspace_delivery_card_reconciliation_plan_receipt must reference launch run"
+            )
+        if (
+            card_plan.status
+            != "blocked_workspace_delivery_card_reconciliation_unimplemented"
+        ):
+            raise ValueError(
+                "workspace_delivery_card_reconciliation_plan_receipt must be blocked_workspace_delivery_card_reconciliation_unimplemented"
+            )
+        if (
+            card_plan.workspace_delivery_card_reconciliation_allowed
+            or card_plan.workspace_delivery_card_result_entry_created
+            or card_plan.workspace_delivery_card_status_entry_created
+            or card_plan.workspace_delivery_card_notification_entry_created
+            or card_plan.workspace_delivery_card_created
+        ):
+            raise ValueError(
+                "workspace_delivery_card_reconciliation_plan_receipt must not create workspace card state"
+            )
+        if (
+            card_plan.operator_delivery_ledger_reconciliation_allowed
+            or card_plan.operator_delivery_ledger_result_entry_created
+            or card_plan.operator_delivery_ledger_status_entry_created
+            or card_plan.operator_delivery_ledger_retry_entry_created
+            or card_plan.operator_delivery_ledger_dead_letter_entry_created
+            or card_plan.operator_delivery_ledger_entry_created
+        ):
+            raise ValueError(
+                "workspace_delivery_card_reconciliation_plan_receipt must not create ledger state"
+            )
+        if (
+            card_plan.operator_notification_delivery_result_reconciliation_allowed
+            or card_plan.operator_notification_delivery_outcome_record_created
+            or card_plan.operator_notification_delivery_reconciliation_entry_created
+            or card_plan.operator_notification_delivery_retry_decision_created
+            or card_plan.operator_notification_dead_letter_entry_created
+        ):
+            raise ValueError(
+                "workspace_delivery_card_reconciliation_plan_receipt must not create result reconciliation state"
+            )
+        if (
+            card_plan.operator_notification_delivery_apply_allowed
+            or card_plan.operator_notification_delivery_transaction_created
+            or card_plan.operator_notification_dispatch_created
+            or card_plan.operator_notification_payload_created
+            or card_plan.operator_delivery_channel_policy_created
+            or card_plan.operator_notification_template_created
+            or card_plan.operator_notification_audit_entry_created
+            or card_plan.operator_notification_delivery_attempt_created
+            or card_plan.operator_notification_delivery_result_created
+            or card_plan.operator_notification_delivery_status_created
+            or card_plan.operator_notification_retry_policy_created
+            or card_plan.operator_notification_dead_letter_created
+            or card_plan.operator_notification_delivery_readiness_allowed
+        ):
+            raise ValueError(
+                "workspace_delivery_card_reconciliation_plan_receipt must not create delivery apply state"
+            )
+        if (
+            card_plan.delivery_notification_created
+            or card_plan.run_closeout_record_created
+            or card_plan.final_run_closure_allowed
+            or card_plan.final_artifact_completion_finalization_allowed
+            or card_plan.completion_record_created
+            or card_plan.finalization_transaction_created
+            or card_plan.artifact_archive_manifest_created
+            or card_plan.operator_handoff_summary_created
+            or card_plan.delivery_status_marked_complete
+            or card_plan.quality_attestation_created
+            or card_plan.completion_audit_entry_created
+        ):
+            raise ValueError(
+                "workspace_delivery_card_reconciliation_plan_receipt must not create delivery, completion, finalization, or closure state"
+            )
+        if (
+            card_plan.final_artifact_publish_allowed
+            or card_plan.publish_transaction_created
+            or card_plan.information_asset_published
+            or card_plan.account_visible_asset_created
+            or card_plan.reading_workspace_entry_created
+            or card_plan.search_index_entry_created
+            or card_plan.private_read_url_created
+            or card_plan.operator_notification_created
+        ):
+            raise ValueError(
+                "workspace_delivery_card_reconciliation_plan_receipt must not create publish or notification state"
+            )
+        if card_plan.graph_commit_created or card_plan.graph_mutated:
+            raise ValueError(
+                "workspace_delivery_card_reconciliation_plan_receipt must not create graph state"
+            )
+        if card_plan.dispatch_performed:
+            raise ValueError(
+                "workspace_delivery_card_reconciliation_plan_receipt must not dispatch"
+            )
+        if card_plan.budget_reserved:
+            raise ValueError(
+                "workspace_delivery_card_reconciliation_plan_receipt must not reserve budget"
+            )
+        if card_plan.provider_calls_made:
+            raise ValueError(
+                "workspace_delivery_card_reconciliation_plan_receipt must not include provider calls"
+            )
+        if card_plan.retrieval_performed:
+            raise ValueError(
+                "workspace_delivery_card_reconciliation_plan_receipt must not perform retrieval"
+            )
+        if card_plan.source_receipts_created:
+            raise ValueError(
+                "workspace_delivery_card_reconciliation_plan_receipt must not create source receipts"
+            )
+        if card_plan.final_artifact_created:
+            raise ValueError(
+                "workspace_delivery_card_reconciliation_plan_receipt must not create final artifact"
+            )
+        return self
+
+
+class MidnightOilDeliveryNotificationReconciliationPlanReceipt(BaseModel):
+    receipt_id: str
+    workspace_delivery_card_reconciliation_plan_receipt_id: str
+    operator_delivery_ledger_reconciliation_plan_receipt_id: str
+    operator_notification_delivery_result_reconciliation_plan_receipt_id: str
+    operator_notification_delivery_apply_plan_receipt_id: str
+    operator_notification_delivery_readiness_plan_receipt_id: str
+    final_run_closure_plan_receipt_id: str
+    final_artifact_completion_finalization_plan_receipt_id: str
+    final_artifact_publish_plan_receipt_id: str
+    launch_packet_id: str
+    approval_receipt_id: str
+    runner_handoff_id: str
+    run_id: str
+    status: Literal[
+        "blocked_delivery_notification_reconciliation_unimplemented"
+    ] = "blocked_delivery_notification_reconciliation_unimplemented"
+    adapter_key: Literal["delivery_notification_reconciliation"] = (
+        "delivery_notification_reconciliation"
+    )
+    planned_delivery_notification_reconciliation_receipt_id: str
+    planned_delivery_notification_id: str
+    planned_delivery_notification_status_entry_id: str
+    planned_delivery_notification_result_entry_id: str
+    planned_delivery_notification_operator_visible_event_id: str
+    planned_delivery_notification_replay_guard_id: str
+    planned_workspace_delivery_card_reconciliation_receipt_id: str
+    planned_workspace_delivery_card_id: str
+    planned_workspace_delivery_card_result_entry_id: str
+    planned_workspace_delivery_card_status_entry_id: str
+    planned_workspace_delivery_card_notification_entry_id: str
+    planned_workspace_delivery_card_replay_guard_id: str
+    planned_operator_delivery_ledger_reconciliation_receipt_id: str
+    planned_operator_delivery_ledger_entry_id: str
+    planned_operator_delivery_ledger_result_entry_id: str
+    planned_operator_delivery_ledger_status_entry_id: str
+    planned_operator_delivery_ledger_retry_entry_id: str
+    planned_operator_delivery_ledger_dead_letter_entry_id: str
+    planned_operator_notification_delivery_outcome_record_id: str
+    planned_operator_notification_delivery_reconciliation_entry_id: str
+    planned_operator_notification_delivery_retry_decision_id: str
+    planned_operator_notification_dead_letter_entry_id: str
+    planned_operator_notification_delivery_result_id: str
+    planned_operator_notification_delivery_status_id: str
+    planned_private_read_url_id: str
+    planned_reading_workspace_entry_id: str
+    planned_hosted_html_asset_id: str
+    planned_model_usage_rollup_id: str
+    planned_source_lineage_archive_id: str
+    planned_idempotency_key: str
+    delivery_notification_reconciliation_blockers: list[str]
+    required_delivery_notification_reconciliation_invariants: list[str]
+    required_delivery_notification_reconciliation_receipt_fields: list[str]
+    blocker_reason: Literal["delivery_notification_reconciliation_unimplemented"] = (
+        "delivery_notification_reconciliation_unimplemented"
+    )
+    delivery_notification_reconciliation_allowed: bool = False
+    delivery_notification_status_entry_created: bool = False
+    delivery_notification_result_entry_created: bool = False
+    delivery_notification_operator_visible_event_created: bool = False
+    delivery_notification_created: bool = False
+    workspace_delivery_card_reconciliation_allowed: bool = False
+    workspace_delivery_card_result_entry_created: bool = False
+    workspace_delivery_card_status_entry_created: bool = False
+    workspace_delivery_card_notification_entry_created: bool = False
+    workspace_delivery_card_created: bool = False
+    operator_delivery_ledger_reconciliation_allowed: bool = False
+    operator_delivery_ledger_result_entry_created: bool = False
+    operator_delivery_ledger_status_entry_created: bool = False
+    operator_delivery_ledger_retry_entry_created: bool = False
+    operator_delivery_ledger_dead_letter_entry_created: bool = False
+    operator_delivery_ledger_entry_created: bool = False
+    operator_notification_delivery_result_reconciliation_allowed: bool = False
+    operator_notification_delivery_outcome_record_created: bool = False
+    operator_notification_delivery_reconciliation_entry_created: bool = False
+    operator_notification_delivery_retry_decision_created: bool = False
+    operator_notification_dead_letter_entry_created: bool = False
+    operator_notification_delivery_apply_allowed: bool = False
+    operator_notification_delivery_transaction_created: bool = False
+    operator_notification_dispatch_created: bool = False
+    operator_notification_payload_created: bool = False
+    operator_delivery_channel_policy_created: bool = False
+    operator_notification_template_created: bool = False
+    operator_notification_audit_entry_created: bool = False
+    operator_notification_delivery_attempt_created: bool = False
+    operator_notification_delivery_result_created: bool = False
+    operator_notification_delivery_status_created: bool = False
+    operator_notification_retry_policy_created: bool = False
+    operator_notification_dead_letter_created: bool = False
+    operator_notification_delivery_readiness_allowed: bool = False
+    run_closeout_record_created: bool = False
+    final_run_closure_allowed: bool = False
+    final_artifact_completion_finalization_allowed: bool = False
+    completion_record_created: bool = False
+    finalization_transaction_created: bool = False
+    artifact_archive_manifest_created: bool = False
+    operator_handoff_summary_created: bool = False
+    delivery_status_marked_complete: bool = False
+    quality_attestation_created: bool = False
+    completion_audit_entry_created: bool = False
+    final_artifact_publish_allowed: bool = False
+    publish_transaction_created: bool = False
+    information_asset_published: bool = False
+    account_visible_asset_created: bool = False
+    reading_workspace_entry_created: bool = False
+    search_index_entry_created: bool = False
+    private_read_url_created: bool = False
+    operator_notification_created: bool = False
+    graph_commit_created: bool = False
+    graph_mutated: bool = False
+    final_artifact_created: bool = False
+    dispatch_performed: bool = False
+    budget_reserved: bool = False
+    provider_calls_made: bool = False
+    retrieval_performed: bool = False
+    source_receipts_created: bool = False
+    adapter_plan_notes: list[str] = Field(default_factory=list)
+
+
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
     price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
@@ -14335,6 +14651,222 @@ def workspace_delivery_card_reconciliation_plan_midnight_oil(
             "workspace delivery card reconciliation plan only: no workspace card, card result entry, card status entry, card notification entry, ledger entry, delivery transaction, URL activation, operator notification, or final artifact is created",
             "this receipt documents workspace delivery card reconciliation requirements after operator delivery ledger reconciliation planning",
             "no activation readiness, live dispatch, scheduler job, worker runtime, budget reservation, provider call, retrieval, source receipt, graph mutation, publish, notification, URL activation, run closeout, workspace card reconciliation, ledger reconciliation, or artifact write is performed",
+        ],
+    )
+
+
+def delivery_notification_reconciliation_plan_midnight_oil(
+    req: MidnightOilDeliveryNotificationReconciliationPlanRequest,
+) -> MidnightOilDeliveryNotificationReconciliationPlanReceipt:
+    run_id = req.launch_packet.run_id
+    card_plan = req.workspace_delivery_card_reconciliation_plan_receipt
+    return MidnightOilDeliveryNotificationReconciliationPlanReceipt(
+        receipt_id=f"{run_id}-delivery-notification-reconciliation-plan",
+        workspace_delivery_card_reconciliation_plan_receipt_id=card_plan.receipt_id,
+        operator_delivery_ledger_reconciliation_plan_receipt_id=(
+            card_plan.operator_delivery_ledger_reconciliation_plan_receipt_id
+        ),
+        operator_notification_delivery_result_reconciliation_plan_receipt_id=(
+            card_plan.operator_notification_delivery_result_reconciliation_plan_receipt_id
+        ),
+        operator_notification_delivery_apply_plan_receipt_id=(
+            card_plan.operator_notification_delivery_apply_plan_receipt_id
+        ),
+        operator_notification_delivery_readiness_plan_receipt_id=(
+            card_plan.operator_notification_delivery_readiness_plan_receipt_id
+        ),
+        final_run_closure_plan_receipt_id=card_plan.final_run_closure_plan_receipt_id,
+        final_artifact_completion_finalization_plan_receipt_id=(
+            card_plan.final_artifact_completion_finalization_plan_receipt_id
+        ),
+        final_artifact_publish_plan_receipt_id=(
+            card_plan.final_artifact_publish_plan_receipt_id
+        ),
+        launch_packet_id=req.launch_packet.packet_id,
+        approval_receipt_id=req.approval_receipt.receipt_id,
+        runner_handoff_id=req.runner_handoff.handoff_id,
+        run_id=run_id,
+        planned_delivery_notification_reconciliation_receipt_id=(
+            f"{run_id}-delivery-notification-reconciliation-receipt"
+        ),
+        planned_delivery_notification_id=card_plan.planned_delivery_notification_id,
+        planned_delivery_notification_status_entry_id=(
+            f"{run_id}-delivery-notification-status-entry"
+        ),
+        planned_delivery_notification_result_entry_id=(
+            f"{run_id}-delivery-notification-result-entry"
+        ),
+        planned_delivery_notification_operator_visible_event_id=(
+            f"{run_id}-delivery-notification-operator-visible-event"
+        ),
+        planned_delivery_notification_replay_guard_id=(
+            f"{run_id}-delivery-notification-replay-guard"
+        ),
+        planned_workspace_delivery_card_reconciliation_receipt_id=(
+            card_plan.planned_workspace_delivery_card_reconciliation_receipt_id
+        ),
+        planned_workspace_delivery_card_id=card_plan.planned_workspace_delivery_card_id,
+        planned_workspace_delivery_card_result_entry_id=(
+            card_plan.planned_workspace_delivery_card_result_entry_id
+        ),
+        planned_workspace_delivery_card_status_entry_id=(
+            card_plan.planned_workspace_delivery_card_status_entry_id
+        ),
+        planned_workspace_delivery_card_notification_entry_id=(
+            card_plan.planned_workspace_delivery_card_notification_entry_id
+        ),
+        planned_workspace_delivery_card_replay_guard_id=(
+            card_plan.planned_workspace_delivery_card_replay_guard_id
+        ),
+        planned_operator_delivery_ledger_reconciliation_receipt_id=(
+            card_plan.planned_operator_delivery_ledger_reconciliation_receipt_id
+        ),
+        planned_operator_delivery_ledger_entry_id=(
+            card_plan.planned_operator_delivery_ledger_entry_id
+        ),
+        planned_operator_delivery_ledger_result_entry_id=(
+            card_plan.planned_operator_delivery_ledger_result_entry_id
+        ),
+        planned_operator_delivery_ledger_status_entry_id=(
+            card_plan.planned_operator_delivery_ledger_status_entry_id
+        ),
+        planned_operator_delivery_ledger_retry_entry_id=(
+            card_plan.planned_operator_delivery_ledger_retry_entry_id
+        ),
+        planned_operator_delivery_ledger_dead_letter_entry_id=(
+            card_plan.planned_operator_delivery_ledger_dead_letter_entry_id
+        ),
+        planned_operator_notification_delivery_outcome_record_id=(
+            card_plan.planned_operator_notification_delivery_outcome_record_id
+        ),
+        planned_operator_notification_delivery_reconciliation_entry_id=(
+            card_plan.planned_operator_notification_delivery_reconciliation_entry_id
+        ),
+        planned_operator_notification_delivery_retry_decision_id=(
+            card_plan.planned_operator_notification_delivery_retry_decision_id
+        ),
+        planned_operator_notification_dead_letter_entry_id=(
+            card_plan.planned_operator_notification_dead_letter_entry_id
+        ),
+        planned_operator_notification_delivery_result_id=(
+            card_plan.planned_operator_notification_delivery_result_id
+        ),
+        planned_operator_notification_delivery_status_id=(
+            card_plan.planned_operator_notification_delivery_status_id
+        ),
+        planned_private_read_url_id=card_plan.planned_private_read_url_id,
+        planned_reading_workspace_entry_id=(
+            card_plan.planned_reading_workspace_entry_id
+        ),
+        planned_hosted_html_asset_id=card_plan.planned_hosted_html_asset_id,
+        planned_model_usage_rollup_id=card_plan.planned_model_usage_rollup_id,
+        planned_source_lineage_archive_id=card_plan.planned_source_lineage_archive_id,
+        planned_idempotency_key=card_plan.planned_idempotency_key,
+        delivery_notification_reconciliation_blockers=[
+            *card_plan.workspace_delivery_card_reconciliation_blockers,
+            "delivery notification reconciliation receipt writer",
+            "delivery notification status entry writer",
+            "delivery notification result entry writer",
+            "delivery notification operator visible event writer",
+            "delivery notification replay guard",
+            "operator notification visibility sync writer",
+        ],
+        required_delivery_notification_reconciliation_invariants=[
+            "delivery notification reconciliation planner must require workspace delivery card reconciliation planning before delivery notifications can be reconciled",
+            "delivery notification reconciliation planner must bind delivery notification, workspace card, delivery ledger, delivery outcome, private read URL, hosted HTML asset, source lineage archive, and idempotency key to the same planned closed run",
+            "delivery notification reconciliation planner must keep notification rows uncreated until real workspace card and delivery ledger reconciliation rows exist",
+            "delivery notification reconciliation planner must preserve operator-visible delivery lineage without notifying, activating URLs, mutating workspace state, or closing the run during planning",
+            "delivery notification reconciliation planner must not dispatch providers, perform retrieval, mutate graph, publish assets, notify operators, activate URLs, close runs, write cards, write ledgers, or write final artifacts while planning reconciliation",
+        ],
+        required_delivery_notification_reconciliation_receipt_fields=[
+            "delivery_notification_reconciliation_plan_receipt_id",
+            "workspace_delivery_card_reconciliation_plan_receipt_id",
+            "operator_delivery_ledger_reconciliation_plan_receipt_id",
+            "operator_notification_delivery_result_reconciliation_plan_receipt_id",
+            "delivery_notification_reconciliation_receipt_id",
+            "delivery_notification_id",
+            "delivery_notification_status_entry_id",
+            "delivery_notification_result_entry_id",
+            "delivery_notification_operator_visible_event_id",
+            "delivery_notification_replay_guard_id",
+            "workspace_delivery_card_id",
+            "workspace_delivery_card_status_entry_id",
+            "operator_delivery_ledger_entry_id",
+            "operator_delivery_ledger_status_entry_id",
+            "operator_notification_delivery_outcome_record_id",
+            "operator_notification_delivery_reconciliation_entry_id",
+            "operator_notification_delivery_result_id",
+            "operator_notification_delivery_status_id",
+            "private_read_url_id",
+            "source_lineage_archive_id",
+            "idempotency_key",
+            "created_at",
+        ],
+        blocker_reason="delivery_notification_reconciliation_unimplemented",
+        delivery_notification_reconciliation_allowed=False,
+        delivery_notification_status_entry_created=False,
+        delivery_notification_result_entry_created=False,
+        delivery_notification_operator_visible_event_created=False,
+        delivery_notification_created=False,
+        workspace_delivery_card_reconciliation_allowed=False,
+        workspace_delivery_card_result_entry_created=False,
+        workspace_delivery_card_status_entry_created=False,
+        workspace_delivery_card_notification_entry_created=False,
+        workspace_delivery_card_created=False,
+        operator_delivery_ledger_reconciliation_allowed=False,
+        operator_delivery_ledger_result_entry_created=False,
+        operator_delivery_ledger_status_entry_created=False,
+        operator_delivery_ledger_retry_entry_created=False,
+        operator_delivery_ledger_dead_letter_entry_created=False,
+        operator_delivery_ledger_entry_created=False,
+        operator_notification_delivery_result_reconciliation_allowed=False,
+        operator_notification_delivery_outcome_record_created=False,
+        operator_notification_delivery_reconciliation_entry_created=False,
+        operator_notification_delivery_retry_decision_created=False,
+        operator_notification_dead_letter_entry_created=False,
+        operator_notification_delivery_apply_allowed=False,
+        operator_notification_delivery_transaction_created=False,
+        operator_notification_dispatch_created=False,
+        operator_notification_payload_created=False,
+        operator_delivery_channel_policy_created=False,
+        operator_notification_template_created=False,
+        operator_notification_audit_entry_created=False,
+        operator_notification_delivery_attempt_created=False,
+        operator_notification_delivery_result_created=False,
+        operator_notification_delivery_status_created=False,
+        operator_notification_retry_policy_created=False,
+        operator_notification_dead_letter_created=False,
+        operator_notification_delivery_readiness_allowed=False,
+        run_closeout_record_created=False,
+        final_run_closure_allowed=False,
+        final_artifact_completion_finalization_allowed=False,
+        completion_record_created=False,
+        finalization_transaction_created=False,
+        artifact_archive_manifest_created=False,
+        operator_handoff_summary_created=False,
+        delivery_status_marked_complete=False,
+        quality_attestation_created=False,
+        completion_audit_entry_created=False,
+        final_artifact_publish_allowed=False,
+        publish_transaction_created=False,
+        information_asset_published=False,
+        account_visible_asset_created=False,
+        reading_workspace_entry_created=False,
+        search_index_entry_created=False,
+        private_read_url_created=False,
+        operator_notification_created=False,
+        graph_commit_created=False,
+        graph_mutated=False,
+        final_artifact_created=False,
+        dispatch_performed=False,
+        budget_reserved=False,
+        provider_calls_made=False,
+        retrieval_performed=False,
+        source_receipts_created=False,
+        adapter_plan_notes=[
+            "delivery notification reconciliation plan only: no delivery notification, status entry, result entry, operator visible event, workspace card, ledger entry, URL activation, operator notification, or final artifact is created",
+            "this receipt documents delivery notification reconciliation requirements after workspace delivery card reconciliation planning",
+            "no activation readiness, live dispatch, scheduler job, worker runtime, budget reservation, provider call, retrieval, source receipt, graph mutation, publish, notification, URL activation, run closeout, delivery notification reconciliation, workspace card reconciliation, ledger reconciliation, or artifact write is performed",
         ],
     )
 

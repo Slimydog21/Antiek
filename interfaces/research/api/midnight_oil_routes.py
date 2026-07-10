@@ -23,6 +23,8 @@ from substrate.midnight_oil import (
     MidnightOilControlLedgerPersistenceApplyPlanRequest,
     MidnightOilControlLedgerPersistencePlanReceipt,
     MidnightOilControlLedgerPersistencePlanRequest,
+    MidnightOilDeliveryNotificationReconciliationPlanReceipt,
+    MidnightOilDeliveryNotificationReconciliationPlanRequest,
     MidnightOilDispatchReceipt,
     MidnightOilDispatchRequest,
     MidnightOilDryRunRequest,
@@ -112,6 +114,7 @@ from substrate.midnight_oil import (
     control_ledger_adapter_plan_midnight_oil,
     control_ledger_persistence_apply_plan_midnight_oil,
     control_ledger_persistence_plan_midnight_oil,
+    delivery_notification_reconciliation_plan_midnight_oil,
     dispatch_midnight_oil,
     dry_run_midnight_oil,
     final_artifact_adapter_plan_midnight_oil,
@@ -600,6 +603,16 @@ def post_midnight_oil_workspace_delivery_card_reconciliation_plan(
     return workspace_delivery_card_reconciliation_plan_midnight_oil(req)
 
 
+@midnight_oil_router.post(
+    "/delivery-notification-reconciliation-plan",
+    response_model=MidnightOilDeliveryNotificationReconciliationPlanReceipt,
+)
+def post_midnight_oil_delivery_notification_reconciliation_plan(
+    req: MidnightOilDeliveryNotificationReconciliationPlanRequest,
+) -> MidnightOilDeliveryNotificationReconciliationPlanReceipt:
+    return delivery_notification_reconciliation_plan_midnight_oil(req)
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
@@ -612,6 +625,7 @@ __all__ = [
     "post_midnight_oil_control_ledger_adapter_plan",
     "post_midnight_oil_control_ledger_persistence_apply_plan",
     "post_midnight_oil_control_ledger_persistence_plan",
+    "post_midnight_oil_delivery_notification_reconciliation_plan",
     "post_midnight_oil_dispatch",
     "post_midnight_oil_dry_run",
     "post_midnight_oil_final_artifact",
