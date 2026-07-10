@@ -298,12 +298,17 @@ export function buildMarketplaceWriteHref(opts: {
 
 /**
  * Residual (qd): dual Write handoff for spawn-merge / collective draft docs.
+ * Residual (afg): collective written analysis may pass source=
+ * collective_written_analysis (do not collapse to collective_doc_merge).
  */
 export function buildMergedDocWriteHref(opts: {
   documentId: string;
   title?: string | null;
   html?: string | null;
-  source?: "spawn_merge" | "collective_doc_merge";
+  source?:
+    | "spawn_merge"
+    | "collective_doc_merge"
+    | "collective_written_analysis";
 }): string {
   const doc = String(opts.documentId || "").trim();
   if (!doc) return "/write";
@@ -312,11 +317,21 @@ export function buildMergedDocWriteHref(opts: {
     fromHtml ||
     String(opts.title || "").trim() ||
     doc;
-  const src = opts.source === "collective_doc_merge" ? opts.source : "spawn_merge";
+  // Residual (afg): preserve written analysis Write-seed provenance.
+  const src: TwinWriteSeedSource =
+    opts.source === "collective_written_analysis"
+      ? "collective_written_analysis"
+      : opts.source === "collective_doc_merge"
+        ? "collective_doc_merge"
+        : "spawn_merge";
+  const defaultTitle =
+    src === "collective_written_analysis"
+      ? `Written analysis · ${doc}`
+      : `Merged research · ${doc}`;
   const seedKey = storeTwinWriteSeed({
     plain_text: plain,
     html: String(opts.html || ""),
-    title: String(opts.title || "").trim() || `Merged research · ${doc}`,
+    title: String(opts.title || "").trim() || defaultTitle,
     asset_id: doc,
     note_ids: [],
     source: src,

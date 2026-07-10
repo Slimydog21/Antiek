@@ -718,12 +718,29 @@ describe("CollectiveResearchPanel", () => {
     });
     expect(screen.getByTestId("collective-auto-open-window")).toBeTruthy();
     expect(screen.getByTestId("collective-open-analysis-window")).toBeTruthy();
-    // Residual (fn/qe/acm): Write dual handoff for analysis draft document.
+    // Residual (fn/qe/acm/afg): Write dual handoff preserves written analysis source.
     const write = screen.getByTestId("collective-open-write");
     expect(write.getAttribute("href") || "").toMatch(/html_draft=draft_analysis_1/);
     expect(write.getAttribute("href") || "").toMatch(/twin_seed=antiek\.twin_write_seed\./);
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
     expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
+    // Residual (afg): do not collapse analysis to collective_doc_merge Write seed.
+    expect(write.getAttribute("data-write-seed-source")).toBe(
+      "collective_written_analysis",
+    );
+    expect(write.getAttribute("data-analysis-write")).toBe("true");
+    expect(write.textContent).toMatch(/Open Write \(written analysis\)/i);
+    expect(write.getAttribute("title") || "").toMatch(/written analysis/i);
+    // Session seed must also preserve analysis source (not collective_doc_merge).
+    const twinKey = (write.getAttribute("href") || "").match(
+      /twin_seed=(antiek\.twin_write_seed\.[^&]+)/,
+    )?.[1];
+    expect(twinKey).toBeTruthy();
+    const raw = sessionStorage.getItem(twinKey!);
+    expect(raw).toBeTruthy();
+    const seed = JSON.parse(raw!) as { source?: string; title?: string };
+    expect(seed.source).toBe("collective_written_analysis");
+    expect(seed.title || "").toMatch(/Written analysis/i);
   });
 
   it("links dual-gate L1–L4 checklist for L6 collective prep (nl)", () => {

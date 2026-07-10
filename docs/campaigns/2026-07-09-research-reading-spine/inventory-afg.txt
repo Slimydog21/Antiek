@@ -1,0 +1,20 @@
+# inventory-afg · written analysis Open Write source honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: afg
+date: 2026-07-10
+parent_tip: 31aa4377 (aff)
+
+## Closed
+- buildMergedDocWriteHref accepts collective_written_analysis
+- CollectiveResearchPanel docMergeWriteSource tracks analysis vs merge
+- collective-open-write: data-write-seed-source · data-analysis-write
+- vitest CollectiveResearchPanel 25 · twinWriteSeed 35
+
+## Why this residual
+User vision: multi-select sub-agents → written analysis → Write note-taker.
+Float open correctly used source=collective_written_analysis; Open Write
+collapsed to collective_doc_merge, corrupting Antiek-bench Write-seed feed
+and recursive note-taker provenance.
+
+## Not in scope
+- L6 live multi-agent council

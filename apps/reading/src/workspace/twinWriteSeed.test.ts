@@ -222,6 +222,20 @@ describe("twinWriteSeed (pp)", () => {
     expect(href).toMatch(/twin_seed=antiek\.twin_write_seed\./);
   });
 
+  it("builds written analysis Write seed source via merge helper (afg)", () => {
+    const href = buildMergedDocWriteHref({
+      documentId: "draft_analysis_afg",
+      title: "Written analysis · draft_analysis_afg",
+      html: "<article><p>Analysis body</p></article>",
+      source: "collective_written_analysis",
+    });
+    expect(href).toMatch(/html_draft=draft_analysis_afg/);
+    const key = href.match(/twin_seed=(antiek\.twin_write_seed\.[^&]+)/)?.[1];
+    expect(key).toBeTruthy();
+    expect(loadTwinWriteSeed(key!)?.source).toBe("collective_written_analysis");
+    expect(loadTwinWriteSeed(key!)?.title || "").toMatch(/Written analysis/i);
+  });
+
   it("builds marketplace dual Write href with twin_seed (qc)", () => {
     const href = buildMarketplaceWriteHref({
       documentId: "hdoc_abc",

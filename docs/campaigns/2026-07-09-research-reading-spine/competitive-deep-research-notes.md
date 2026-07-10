@@ -2403,3 +2403,9 @@ model-quality-at-fire loop (ads→afb→afc→afe). vitest DecisionTreeDriverBad
 ResearchLaunchBudgetPanel Install best for {task} when bench best differs from
 installed driver (parity badge afe). Explicit operator action · never auto-route.
 Model-quality-at-fire loop complete at launch + badge. vitest launch budget 12 green.
+
+## Residual afg · 2026-07-10 — written analysis Open Write source honesty
+Create written analysis Open Write now stamps twin_seed source=
+collective_written_analysis (was incorrectly collective_doc_merge). Competitive
+multi-spawn analysis → Write note-taker feed is honest. vitest Collective 25 +
+twinWriteSeed 35 green.

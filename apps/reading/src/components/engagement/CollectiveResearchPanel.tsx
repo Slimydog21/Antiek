@@ -21,6 +21,8 @@
  * 25. Residual (qe): dual handoff html_draft + twin_seed on Open Write (parity qd).
  * 27. Residual (aeq): Open Write stamps mode · draft_leaves_parent · parent
  *     path honesty (multi-spawn draft vs into_parent; parity aem spawn merge).
+ * 31. Residual (afg): written analysis Open Write source=
+ *     collective_written_analysis (not collapse to collective_doc_merge).
  * 11. Residual (hm): collective-unit-metrics machine attrs for multi-spawn
  *     cohesive unit audit (parity twin/flywheel/progress metrics).
  * 12. Residual (ig): Settings deep-link for driver + budget before continue.
@@ -243,6 +245,13 @@ export function CollectiveResearchPanel({
 
   const [unit, setUnit] = useState<CollectiveResponse | null>(null);
   const [docMerge, setDocMerge] = useState<MergeProductResponse | null>(null);
+  /**
+   * Residual (afg): distinguish document merge vs written analysis for Open
+   * Write seed provenance (float already used collective_written_analysis).
+   */
+  const [docMergeWriteSource, setDocMergeWriteSource] = useState<
+    "collective_doc_merge" | "collective_written_analysis"
+  >("collective_doc_merge");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [continueWindowId, setContinueWindowId] = useState<string | null>(null);
@@ -545,6 +554,7 @@ export function CollectiveResearchPanel({
                 idPrefix: "win:collective-merge",
               })
             : withTwins;
+        setDocMergeWriteSource("collective_doc_merge");
         setDocMerge(final);
         // Residual (ep): parent remounts research context after merge + twin seed.
         onDocMerged?.(final);
@@ -625,6 +635,8 @@ export function CollectiveResearchPanel({
         source: "collective_written_analysis",
         idPrefix: "win:analysis",
       });
+      // Residual (afg): Open Write must preserve written analysis seed source.
+      setDocMergeWriteSource("collective_written_analysis");
       setDocMerge(final);
       // Residual (ep): parent remounts research context after analysis + twin seed.
       onDocMerged?.(final);
@@ -1360,13 +1372,16 @@ export function CollectiveResearchPanel({
               >
                 Open analysis full
               </button>
-              {/* Residual (fn/qe/aeq): dual handoff + draft vs into_parent path. */}
+              {/* Residual (fn/qe/aeq/afg): dual handoff + analysis vs merge source. */}
               <a
                 href={buildMergedDocWriteHref({
                   documentId: docMerge.document_id,
-                  title: `Collective merge · ${docMerge.document_id}`,
+                  title:
+                    docMergeWriteSource === "collective_written_analysis"
+                      ? `Written analysis · ${docMerge.document_id}`
+                      : `Collective merge · ${docMerge.document_id}`,
                   html: docMerge.html,
-                  source: "collective_doc_merge",
+                  source: docMergeWriteSource,
                 })}
                 data-testid="collective-open-write"
                 data-view-format="html"
@@ -1401,14 +1416,23 @@ export function CollectiveResearchPanel({
                     ).trim(),
                   ),
                 )}
+                // Residual (afg): written analysis vs document merge Write seed.
+                data-write-seed-source={docMergeWriteSource}
+                data-analysis-write={String(
+                  docMergeWriteSource === "collective_written_analysis",
+                )}
                 className="underline"
                 title={
-                  docMerge.mode === "into_parent"
-                    ? "Open Write with collective into_parent merge HTML + twin_seed (merged into reading asset · seeds note-taker)"
-                    : "Open Write with collective draft_combined HTML + twin_seed (draft leaves parent · seeds note-taker)"
+                  docMergeWriteSource === "collective_written_analysis"
+                    ? "Open Write with collective written analysis HTML + twin_seed (multi-spawn analysis · seeds note-taker)"
+                    : docMerge.mode === "into_parent"
+                      ? "Open Write with collective into_parent merge HTML + twin_seed (merged into reading asset · seeds note-taker)"
+                      : "Open Write with collective draft_combined HTML + twin_seed (draft leaves parent · seeds note-taker)"
                 }
               >
-                Open Write (HTML draft)
+                {docMergeWriteSource === "collective_written_analysis"
+                  ? "Open Write (written analysis)"
+                  : "Open Write (HTML draft)"}
               </a>
             </div>
           ) : null}
