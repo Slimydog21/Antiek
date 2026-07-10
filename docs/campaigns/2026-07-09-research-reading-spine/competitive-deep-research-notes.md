@@ -1269,3 +1269,8 @@ highest leverage.
 HostedHtmlDocumentHost seeds TwinNotesPanel with Twin cross-asset merge /
 Twin multi-select draft titles. Competitive delta: recursive note-taker twin
 floats self-seed honestly when re-opened as reading windows.
+
+## Residual vj · 2026-07-10 — SESSION-ARC + FUTURE-AGENT tip through vi
+SESSION-ARC-tt-vi + FUTURE-AGENT tip 22495c4b (42 residual ships). Competitive
+delta: compaction-safe handoff for multi-agent swarm; operator merge PR #465
+is highest leverage remaining.
