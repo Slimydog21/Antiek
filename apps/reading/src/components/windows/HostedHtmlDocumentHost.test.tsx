@@ -252,6 +252,26 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     ).toBe("research_progress_complete");
   });
 
+  it("stamps twin_cross_asset_merge Open Write source (vg)", () => {
+    render(
+      <HostedHtmlDocumentHost
+        document_id="twin_draft_a_b"
+        title="Twin draft · a+b"
+        view_format="html"
+        source="twin_cross_asset_merge"
+        html='<article data-source="twin_cross_asset_merge"><h1>Cross</h1></article>'
+      />,
+    );
+    expect(
+      screen.getByTestId("hosted-html-open-write").getAttribute(
+        "data-write-seed-source",
+      ),
+    ).toBe("twin_cross_asset_merge");
+    expect(
+      screen.getByTestId("hosted-html-open-write").getAttribute("title") || "",
+    ).toMatch(/cross-asset merge/i);
+  });
+
   it("stamps collective_unit_prompt honesty (ts)", () => {
     render(
       <HostedHtmlDocumentHost

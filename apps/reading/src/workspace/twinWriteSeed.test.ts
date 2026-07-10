@@ -60,6 +60,22 @@ describe("twinWriteSeed (pp)", () => {
     expect(loaded?.asset_id).toBe("a+b");
   });
 
+  it("builds hosted twin_cross_asset_merge Write seed source (vg)", () => {
+    const href = buildHostedHtmlWriteHref({
+      documentId: "twin_draft_a_b",
+      title: "Twin draft · a+b",
+      html: '<article data-source="twin_cross_asset_merge"><p>Cross merge.</p></article>',
+      source: "twin_cross_asset_merge",
+    });
+    expect(href).toMatch(/twin_seed=antiek\.twin_write_seed\./);
+    const key = decodeURIComponent(
+      (href.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    const seed = loadTwinWriteSeed(key);
+    expect(seed?.source).toBe("twin_cross_asset_merge");
+    expect(seed?.title).toMatch(/Twin draft|Cross-asset|a\+b/i);
+  });
+
   it("rejects empty plain_text and foreign keys", () => {
     expect(
       storeTwinWriteSeed({

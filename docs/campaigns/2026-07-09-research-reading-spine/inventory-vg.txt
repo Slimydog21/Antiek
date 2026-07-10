@@ -1,0 +1,18 @@
+# inventory-vg · hosted twin draft Open Write source preservation
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: vg
+date: 2026-07-10
+
+## Closed
+- buildHostedHtmlWriteHref KNOWN_HOST_WRITE_SOURCES += twin_cross_asset_merge + twin_draft_selected
+- storeTwinWriteSeed allowlist includes twin_draft_selected explicitly
+- HostedHtml Open Write data-write-seed-source + title for twin floats
+- vitest twinWriteSeed 27 + HostedHtml 17 green
+
+## Product why
+TwinNotesPanel opens twin drafts as hosted HTML with source stamps; Open Write
+from host was collapsing provenance to hosted_html_document. Full path now
+preserves twin_cross_asset_merge / twin_draft_selected (parity vd store path).
+
+## Not in scope
+- Operator merge PR #465 (gated)

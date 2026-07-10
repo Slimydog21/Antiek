@@ -293,6 +293,9 @@ export default function HostedHtmlDocumentHost(
   const isSessionFlywheel = payloadSource === "session_flywheel_complete";
   // Residual (tr): cohesive multi-spawn unit prompt HTML window.
   const isCollectiveUnitPrompt = payloadSource === "collective_unit_prompt";
+  // Residual (vg): twin draft floats from TwinNotesPanel multi-select / cross-asset.
+  const isTwinCrossAssetMerge = payloadSource === "twin_cross_asset_merge";
+  const isTwinDraftSelected = payloadSource === "twin_draft_selected";
   // Residual (tq): intelligent search query + hit count honesty.
   const searchQuery = String(props.search_query || "").trim();
   const searchHitCount =
@@ -445,7 +448,11 @@ export default function HostedHtmlDocumentHost(
                               ? "session_flywheel_complete"
                               : isCollectiveUnitPrompt
                                 ? "collective_unit_prompt"
-                                : "hosted_html_document"
+                                : isTwinCrossAssetMerge
+                                  ? "twin_cross_asset_merge"
+                                  : isTwinDraftSelected
+                                    ? "twin_draft_selected"
+                                    : "hosted_html_document"
                 }
                 className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
                 title={
@@ -459,9 +466,13 @@ export default function HostedHtmlDocumentHost(
                           ? "Open Write with research context pack HTML + twin_seed (seeds note-taker)"
                           : isCollectiveUnitPrompt
                             ? "Open Write with collective cohesive unit prompt HTML + twin_seed (multi-spawn unit · seeds note-taker)"
-                            : isResearchProgress || isSessionFlywheel
-                              ? "Open Write with research HTML + twin_seed (seeds note-taker)"
-                              : "Open Write with hosted HTML + twin_seed (seeds note-taker when empty)"
+                            : isTwinCrossAssetMerge
+                              ? "Open Write with twin cross-asset merge HTML + twin_seed (recursive note-taker · seeds note-taker)"
+                              : isTwinDraftSelected
+                                ? "Open Write with twin multi-select draft HTML + twin_seed (seeds note-taker)"
+                                : isResearchProgress || isSessionFlywheel
+                                  ? "Open Write with research HTML + twin_seed (seeds note-taker)"
+                                  : "Open Write with hosted HTML + twin_seed (seeds note-taker when empty)"
                 }
               >
                 Open Write (HTML draft handoff)

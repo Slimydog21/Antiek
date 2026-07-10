@@ -1254,3 +1254,8 @@ learns multi-asset twin merge Write seed as first-class wrestle task.
 FUTURE-AGENT-SPEC tip → 783ce272 with closed arcs tt–ve (38 residual ships).
 Competitive delta: swarm handoff tip-true; operator merge PR #465 remains
 highest leverage.
+
+## Residual vg · 2026-07-10 — hosted twin draft Open Write source preservation
+buildHostedHtmlWriteHref + HostedHtml Open Write preserve twin_cross_asset_merge
+and twin_draft_selected (no collapse to hosted_html_document). Competitive
+delta: recursive note-taker float → Open Write path is provenance-complete.
