@@ -23,8 +23,10 @@ def test_default_demo_catalog_includes_knowledge_dense_pd() -> None:
     assert "pd-federalist" in ids
     assert "pd-discourse" in ids
     assert "pd-liberty" in ids
+    # Residual (tx): computing/logic PD for tech researchers.
+    assert "pd-boole-laws-of-thought" in ids
     assert "buy-modern" in ids
-    assert len(ids) >= 7
+    assert len(ids) >= 8
 
     sources = {e.source for e in cat.search("")}
     assert "project_gutenberg" in sources

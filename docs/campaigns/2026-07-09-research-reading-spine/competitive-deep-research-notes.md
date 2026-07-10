@@ -1076,3 +1076,9 @@ first-class offline posture (propose≠promote · never auto-activate).
 FUTURE-AGENT-SPEC tip → d76ef2ed with closed arcs tq–tv so multi-agent swarms
 do not rebuild write-seed SSOT / collective unit allowlist / dogfood v4.
 Competitive delta: handoff craftsmanship — parallel agents share one tip truth.
+
+## Residual tx · 2026-07-10 — Boole free PD computing/logic catalog
+pd-boole-laws-of-thought joins the marketplace free PD spine (HTML · Gutenberg ·
+subjects computing+logic+mathematics). Competitive delta: technology researchers
+host foundational logic/calculus texts without payment rails — marketplace is
+not only literature/electricity PD.

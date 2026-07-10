@@ -493,6 +493,33 @@ def default_demo_catalog() -> Catalog:
                 source_format="html",
                 subjects=("physics", "mathematics", "science", "technology", "electricity"),
             ),
+            # Residual (tx): computing/logic PD spine for technology researchers.
+            CatalogEntry(
+                book_id="pd-boole-laws-of-thought",
+                title="An Investigation of the Laws of Thought",
+                author="George Boole",
+                source="project_gutenberg",
+                license_class="public_domain",
+                is_free=True,
+                body_text=(
+                    "The design of the following treatise is to investigate the "
+                    "fundamental laws of those operations of the mind by which "
+                    "reasoning is performed; to give expression to them in the "
+                    "symbolical language of a Calculus, and upon this foundation "
+                    "to establish the science of Logic and construct its method.\n\n"
+                    "That language is an instrument of human reason, and not merely "
+                    "a medium for the expression of thought, is a truth generally admitted."
+                ),
+                source_format="html",
+                subjects=(
+                    "mathematics",
+                    "logic",
+                    "philosophy",
+                    "science",
+                    "technology",
+                    "computing",
+                ),
+            ),
             CatalogEntry(
                 book_id="buy-modern",
                 title="Modern Systems Research",

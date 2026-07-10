@@ -76,7 +76,9 @@ def test_stem_pd_spine_in_demo_catalog() -> None:
     # Residual (td): Faraday / Maxwell knowledge-dense electricity STEM.
     assert "pd-faraday-electricity" in ids
     assert "pd-maxwell-em" in ids
-    assert len(ids) >= 12
+    # Residual (tx): Boole laws of thought computing/logic PD.
+    assert "pd-boole-laws-of-thought" in ids
+    assert len(ids) >= 13
     elements = cat.get("pd-elements")
     assert elements is not None
     assert elements.license_class == "public_domain"
@@ -106,12 +108,41 @@ def test_stem_electricity_subjects_and_free_pd() -> None:
         for e in cat.search("")
         if e.license_class == "public_domain" and e.is_free
     ]
-    assert len(free_pd) >= 11
+    assert len(free_pd) >= 12
     physics = cat.filter_by_subject("physics")
     assert any(e.book_id == "pd-faraday-electricity" for e in physics)
     assert any(e.book_id == "pd-maxwell-em" for e in physics)
     assert faraday.source_format == "html"
     assert maxwell.source_format == "html"
+
+
+def test_boole_computing_logic_pd_html_first() -> None:
+    """Residual (tx): Boole free PD hosts HTML for computing researchers."""
+    cat = default_demo_catalog()
+    boole = cat.get("pd-boole-laws-of-thought")
+    assert boole is not None
+    assert boole.license_class == "public_domain"
+    assert boole.is_free is True
+    assert boole.source_format == "html"
+    assert "computing" in boole.subjects
+    assert "logic" in boole.subjects
+    assert "mathematics" in boole.subjects
+    computing = cat.filter_by_subject("computing")
+    assert any(e.book_id == "pd-boole-laws-of-thought" for e in computing)
+    logic = cat.filter_by_subject("logic")
+    assert any(e.book_id == "pd-boole-laws-of-thought" for e in logic)
+    store = InMemoryHostStore()
+    r = host_book_into_account(
+        owner_id="tech-researcher",
+        store=store,
+        book_id="pd-boole-laws-of-thought",
+        catalog=cat,
+    )
+    assert r.view_format == "html"
+    assert r.host.license_class == "public_domain"
+    assert not r.html.lstrip().lower().startswith("%pdf")
+    assert "application/pdf" not in r.html.lower()
+    assert "logic" in r.html.lower() or "calculus" in r.html.lower() or "boole" in r.html.lower()
 
 
 def test_host_stem_pd_html_first() -> None:
