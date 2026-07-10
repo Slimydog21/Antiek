@@ -1886,7 +1886,26 @@ export default function MidnightOil() {
                     type="button"
                     data-testid="moil-run-offline"
                     onClick={() => void onRunOffline()}
-                    disabled={busy}
+                    data-runnable={String(Boolean(job.runnable))}
+                    data-run-ready={String(
+                      Boolean(job.runnable) &&
+                        (job.status === "approved" || job.status === "running"),
+                    )}
+                    data-job-status={job.status}
+                    data-l4-live-step="deferred"
+                    data-offline-worker="true"
+                    disabled={
+                      busy ||
+                      !job.runnable ||
+                      (job.status !== "approved" && job.status !== "running")
+                    }
+                    title={
+                      !job.runnable
+                        ? "Job not runnable — approve a price ceiling first"
+                        : job.status === "running"
+                          ? "Continue offline worker step (L4 live multi-provider deferred)"
+                          : "Run offline worker (stub steps · L4 live deferred · never invent live swarm)"
+                    }
                   >
                     {busy ? "Running…" : "Run offline worker"}
                   </button>

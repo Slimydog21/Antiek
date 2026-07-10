@@ -4138,3 +4138,9 @@ vitest Collective 31 green. P0 PR #465. Pivot asd+ outside thrash.
 Install driver disabled until model id present · never-auto-route · ND advisory
 stamps. Competitive delta: operator model choice path hard-to-vary (no empty install).
 P0 PR #465. Pivot ase+ outside thrash.
+
+## Residual ase · 2026-07-10 — MO offline run CTA gated on runnable
+moil-run-offline disabled when !runnable or status not approved/running · L4
+live deferred stamps. Competitive delta: approve→run path hard-to-vary pure
+contract (never invent live swarm). vitest MidnightOil 30 green. P0 PR #465.
+Pivot asf+ outside thrash.

@@ -1,0 +1,22 @@
+# inventory-ase · MO offline run CTA gated on runnable + approved/running
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ase
+date: 2026-07-10
+parent_tip: ee3c48c2f (asd)
+
+## Closed
+- moil-run-offline: disabled when !runnable or status not approved/running
+- Stamps: data-runnable · data-run-ready · data-job-status · data-l4-live-step=deferred · data-offline-worker
+- Title honesty when not runnable
+- MidnightOil.test offline run asserts run-ready stamps
+- vitest MidnightOil: 30 green
+
+## Doctrine
+goals → ceiling approve → runnable offline worker · L4 live multi-provider deferred
+Never invent live swarm · soft budget + explicit approve before run
+
+## Next
+asf+ offline product residual outside thrash
+Prefer SESSION-ARC asb–ase · competitive DR · Antiek-bench · HTML engagement
+Avoid thrash: MO run gate · approve soft-gate · install · path · pub-attach · free-host
+Operator merge PR #465 remains P0 (gated)

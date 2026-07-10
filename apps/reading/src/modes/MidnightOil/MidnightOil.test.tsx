@@ -1349,7 +1349,14 @@ describe("MidnightOil mode", () => {
     await waitFor(() => {
       expect(screen.getByTestId("moil-run-offline")).toBeTruthy();
     });
-    fireEvent.click(screen.getByTestId("moil-run-offline"));
+    // Residual (ase): offline run CTA gated on runnable + approved/running.
+    const runBtn = screen.getByTestId("moil-run-offline") as HTMLButtonElement;
+    expect(runBtn.getAttribute("data-runnable")).toBe("true");
+    expect(runBtn.getAttribute("data-run-ready")).toBe("true");
+    expect(runBtn.getAttribute("data-l4-live-step")).toBe("deferred");
+    expect(runBtn.getAttribute("data-offline-worker")).toBe("true");
+    expect(runBtn.disabled).toBe(false);
+    fireEvent.click(runBtn);
     await waitFor(() => {
       expect(runMidnightOilJob).toHaveBeenCalledWith({
         job_id: "moil_run",
