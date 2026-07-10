@@ -1158,6 +1158,15 @@ export default function Settings() {
                 >
                   L3 twin seed
                 </a>
+                {/* Residual (xb): L3 checklist section deep-link (parity TwinNotes xa). */}
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l3-twin"
+                  className="underline opacity-80 hover:opacity-100"
+                  data-testid="settings-dual-gate-l3-checklist-link"
+                  title="L3 twin live seed checklist section (prep only)"
+                >
+                  L3 checklist
+                </a>
                 <a
                   href="#moil-live-step-status"
                   className="underline opacity-80 hover:opacity-100"

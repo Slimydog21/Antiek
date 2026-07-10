@@ -891,6 +891,12 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("settings-dual-gate-l3-link").getAttribute("href")).toBe(
       "#twin-seed-live-status",
     );
+    // Residual (xb): L3 checklist section #l3-twin (parity TwinNotes xa).
+    expect(
+      screen
+        .getByTestId("settings-dual-gate-l3-checklist-link")
+        .getAttribute("href"),
+    ).toMatch(/DUAL-GATE-L1-L4.*#l3-twin/);
     expect(screen.getByTestId("settings-dual-gate-l4-link").getAttribute("href")).toBe(
       "#moil-live-step-status",
     );

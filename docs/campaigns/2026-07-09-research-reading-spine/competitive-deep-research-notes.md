@@ -1489,3 +1489,7 @@ after MO L4 deep-links + free STEM compose; operator merge PR #465 highest lever
 TwinNotes dual-gate checklist jumps to #l3-twin. Competitive delta: recursive
 note-taker surface navigates live-seed deferred policy without inventing
 injectors (parity MO L4 · Settings L5–L7).
+
+## Residual xb · 2026-07-10 — Settings dual-gate L3 checklist #l3-twin
+Settings L3 checklist deep-links #l3-twin (parity TwinNotes xa). Competitive
+delta: decision-tree dual-gate prep navigates twin live-seed policy section.
