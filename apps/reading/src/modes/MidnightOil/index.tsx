@@ -175,6 +175,13 @@ export default function MidnightOil() {
     null,
   );
   const [ceilingInput, setCeilingInput] = useState("");
+  /**
+   * Residual (aeg): last create-form preview USD (for post-create match audit).
+   * Null until create; compared to server recommended_price_ceiling_usd.
+   */
+  const [lastPreviewCeilingUsd, setLastPreviewCeilingUsd] = useState<
+    number | null
+  >(null);
   const [forceBelow, setForceBelow] = useState(false);
   const [autoDeposit, setAutoDeposit] = useState(true);
   /** Residual (ex): auto-open hosted HTML after deposit (default on). */
@@ -459,6 +466,14 @@ export default function MidnightOil() {
         Number.isFinite(fanoutDepth) && fanoutDepth > 0
           ? Math.floor(fanoutDepth)
           : MOIL_CEILING_DEFAULT_FANOUT_DEPTH;
+      // Residual (aeg): capture form preview before create for server match audit.
+      const previewBeforeCreate = estimateMoilRecommendedCeilingUsd({
+        durationMinutes,
+        fanoutDepth: fanout,
+        researchTier,
+        modelId,
+      });
+      setLastPreviewCeilingUsd(previewBeforeCreate);
       const created = await createMidnightOilJob({
         goals,
         duration_minutes: durationMinutes,
@@ -1046,6 +1061,12 @@ export default function MidnightOil() {
                 : Number.isFinite(fanoutDepth) && fanoutDepth > 0
                   ? "form"
                   : "default";
+            // Residual (aeg): preview vs server recommended match audit.
+            const serverRec = Number(job.recommended_price_ceiling_usd);
+            const previewMatch =
+              lastPreviewCeilingUsd != null &&
+              Number.isFinite(serverRec) &&
+              Math.abs(lastPreviewCeilingUsd - serverRec) < 0.005;
             return (
           <div
             data-testid="moil-ceiling-metrics"
@@ -1069,6 +1090,15 @@ export default function MidnightOil() {
             data-runnable={String(Boolean(job.runnable))}
             data-fanout-depth={String(effectiveFanout)}
             data-fanout-source={fanoutSource}
+            // Residual (aeg): form preview vs authoritative server ceiling.
+            data-preview-usd={
+              lastPreviewCeilingUsd != null
+                ? String(lastPreviewCeilingUsd)
+                : ""
+            }
+            data-preview-matches-server={
+              lastPreviewCeilingUsd != null ? String(previewMatch) : "unknown"
+            }
             data-view-format="html"
             role="status"
           >
@@ -1082,6 +1112,14 @@ export default function MidnightOil() {
             · fanout={effectiveFanout} · model=
             {job.model_id || "default"} · recommended=$
             {job.recommended_price_ceiling_usd.toFixed(2)}
+            {lastPreviewCeilingUsd != null ? (
+              <>
+                {" "}
+                · preview=$
+                {lastPreviewCeilingUsd.toFixed(2)}
+                {previewMatch ? " · preview=server" : " · preview≠server"}
+              </>
+            ) : null}
           </div>
             );
           })()}

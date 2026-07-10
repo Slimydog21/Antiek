@@ -449,6 +449,37 @@ describe("MidnightOil mode", () => {
     });
   });
 
+  it("stamps preview-matches-server when create ceiling equals form preview (aeg)", async () => {
+    createMidnightOilJob.mockResolvedValue({
+      job_id: "moil_preview_match",
+      goals: ["Match preview"],
+      duration_minutes: 60,
+      status: "awaiting_approval",
+      research_tier: "deep",
+      fanout_depth: 3,
+      recommended_price_ceiling_usd: 3.6,
+      view_format: "html",
+      runnable: false,
+      html: "<p>Match</p>",
+    });
+    render(<MidnightOil />);
+    fireEvent.change(screen.getByLabelText(/^Goals \(one per line\)$/i), {
+      target: { value: "Match preview" },
+    });
+    // Default fanout 3 · deep · default rates → preview $3.60
+    fireEvent.click(
+      screen.getByRole("button", { name: /create job \+ recommend ceiling/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("moil-ceiling-metrics")).toBeTruthy();
+    });
+    const metrics = screen.getByTestId("moil-ceiling-metrics");
+    expect(metrics.getAttribute("data-recommended-usd")).toBe("3.6");
+    expect(metrics.getAttribute("data-preview-usd")).toBe("3.6");
+    expect(metrics.getAttribute("data-preview-matches-server")).toBe("true");
+    expect(metrics.textContent).toMatch(/preview=server/);
+  });
+
   it("mounts budget projection panel before create (cs)", () => {
     render(<MidnightOil />);
     expect(screen.getByTestId("moil-budget-mount")).toBeTruthy();
@@ -611,6 +642,10 @@ describe("MidnightOil mode", () => {
     expect(metrics.getAttribute("data-fanout-source")).toBe("form");
     expect(metrics.textContent).toMatch(/Ceiling audit/);
     expect(metrics.textContent).toMatch(/fanout=5/);
+    // Residual (aeg): form preview vs server recommended (fanout 5 → preview $6 ≠ mock $3.6).
+    expect(metrics.getAttribute("data-preview-usd")).toBe("6");
+    expect(metrics.getAttribute("data-preview-matches-server")).toBe("false");
+    expect(metrics.textContent).toMatch(/preview≠server/);
     const formula = screen.getByTestId("moil-ceiling-formula-note");
     expect(formula.textContent).toMatch(/1\.25 safety/);
     // Residual (ada/add): machine-readable ceiling formula constants + form fanout.

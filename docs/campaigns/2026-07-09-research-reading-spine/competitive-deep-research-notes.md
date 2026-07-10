@@ -2266,3 +2266,9 @@ vitest Settings 35 green.
 SESSION-ARC documents L1/L2 hydrate + L3 twin + L4 MO gate matrices on Settings.
 Tip af73dccc · swarm handoff tip-true. Competitive delta: multi-agent infinite continues
 outside dual-gate readiness thrash; operator merge PR #465 highest leverage.
+
+## Residual aeg · 2026-07-10 — MO preview vs server recommended match audit
+Create captures form preview USD; job ceiling metrics stamp data-preview-usd +
+data-preview-matches-server (create remains authoritative). Competitive delta:
+operator sees when form preview drifts from server ceiling (fanout/model/tier).
+vitest MidnightOil 24 green.
