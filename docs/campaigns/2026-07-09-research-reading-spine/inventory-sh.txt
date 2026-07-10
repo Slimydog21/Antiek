@@ -1,0 +1,14 @@
+# inventory-sh · Evidence pack host twin-seed honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: sh
+date: 2026-07-10
+
+## Closed
+- HostedHtmlDocumentHost data-source / data-evidence-pack when source=evidence_pack
+- TwinNotes seedTitle prefixed Evidence pack (citation trust)
+- twins mount data-auto-seed-if-empty
+- vitest HostedHtmlDocumentHost 13 · SCRATCH residual-tests-sh.log
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live L1–L4 dual-gate (operator-only)

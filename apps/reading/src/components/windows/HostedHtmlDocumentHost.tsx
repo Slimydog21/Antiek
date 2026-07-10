@@ -28,6 +28,8 @@
  * context so collective merge / promote reload recursive note-taker twins.
  * Residual (gn): allowTierPick on ResearchLaunchBudgetPanel (flash|pro|wrestle).
  * Residual (jd): prefill researchTier from Settings depth-tier (parity marketplace jc).
+ * Residual (sh): source=evidence_pack honesty + recursive note-taker seed title
+ * when citation-trust evidence floats from ResearchContextPanel (sf/sg).
  *
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
  */
@@ -251,12 +253,23 @@ export default function HostedHtmlDocumentHost(
     }
   };
 
+  const payloadSource = (props.source || "").trim();
+  const isEvidencePack = payloadSource === "evidence_pack";
+  const twinSeedTitle = isEvidencePack
+    ? `Evidence pack (citation trust) · ${title}`
+    : title;
+  const twinSeedBody = html
+    ? html.replace(/<[^>]+>/g, " ").slice(0, 500)
+    : twinSeedTitle;
+
   return (
     <div
       className="flex h-full flex-col gap-3 bg-transparent p-6"
       data-testid="hosted-html-document-host"
       data-view-format={viewFormat}
       data-document-id={props.document_id ?? ""}
+      data-source={payloadSource}
+      data-evidence-pack={String(isEvidencePack)}
     >
       <header className="space-y-1 border-b border-black/10 pb-3 dark:border-white/10">
         <div className="flex flex-wrap items-start justify-between gap-2">
@@ -491,8 +504,12 @@ export default function HostedHtmlDocumentHost(
           className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
           data-testid="hosted-html-twins-mount"
           data-view-format="html"
+          data-source={payloadSource}
+          data-evidence-pack={String(isEvidencePack)}
+          data-auto-seed-if-empty="true"
         >
           {/* Residual (ez): remount twins with context refresh key. */}
+          {/* Residual (sh): evidence_pack seed title for recursive note-taker. */}
           <div
             data-testid="hosted-html-twins-refresh"
             data-refresh-key={String(contextRefreshKey)}
@@ -505,10 +522,8 @@ export default function HostedHtmlDocumentHost(
               autoSeedIfEmpty
               autoPromoteAfterLoad
               onPromoted={onContextNeedsRefresh}
-              seedTitle={title}
-              seedBodyText={
-                html ? html.replace(/<[^>]+>/g, " ").slice(0, 500) : title
-              }
+              seedTitle={twinSeedTitle}
+              seedBodyText={twinSeedBody}
               researchTier={researchTier}
             />
           </div>

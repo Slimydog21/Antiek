@@ -853,3 +853,9 @@ Citation-trust evidence packs open as full working-region HTML windows
 (float|full parity with spawn merge / collective). Competitive delta:
 operators pin evidence full-screen while the source paper stays in another
 region — HTML-first citation workstation, never PDF.
+
+## Residual sh · 2026-07-10 — Evidence pack host twin-seed honesty
+Floated evidence packs (source=evidence_pack) stamp host data-evidence-pack
+and seed TwinNotes with "Evidence pack (citation trust)" title so recursive
+note-taker substrate knows citation-trust provenance. Competitive delta:
+evidence windows are not orphaned HTML — they join the twin note-taker path.

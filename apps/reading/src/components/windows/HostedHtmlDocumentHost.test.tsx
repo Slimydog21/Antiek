@@ -80,10 +80,14 @@ vi.mock("../engagement/TwinNotesPanel", () => ({
   TwinNotesPanel: (props: {
     assetId: string;
     researchTier?: string | null;
+    seedTitle?: string | null;
+    autoSeedIfEmpty?: boolean;
   }) => (
     <div
       data-testid="twin-notes-panel-stub"
       data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+      data-seed-title={props.seedTitle || ""}
+      data-auto-seed={String(Boolean(props.autoSeedIfEmpty))}
     >
       {props.assetId}
       {props.researchTier ? `:tier=${props.researchTier}` : ""}
@@ -225,6 +229,29 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(href).toMatch(/html_draft=doc_abc/);
     expect(href).toMatch(/twin_seed=antiek\.twin_write_seed\./);
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
+  });
+
+  it("stamps evidence_pack source and twin seed title (sh)", () => {
+    render(
+      <HostedHtmlDocumentHost
+        document_id="evidence:paper:abc"
+        title="Evidence pack (citation trust)"
+        view_format="html"
+        source="evidence_pack"
+        html="<p>Evidence pack · Insight: routing.</p>"
+      />,
+    );
+    const host = screen.getByTestId("hosted-html-document-host");
+    expect(host.getAttribute("data-source")).toBe("evidence_pack");
+    expect(host.getAttribute("data-evidence-pack")).toBe("true");
+    const twinsMount = screen.getByTestId("hosted-html-twins-mount");
+    expect(twinsMount.getAttribute("data-evidence-pack")).toBe("true");
+    expect(twinsMount.getAttribute("data-auto-seed-if-empty")).toBe("true");
+    const twins = screen.getByTestId("twin-notes-panel-stub");
+    expect(twins.getAttribute("data-auto-seed")).toBe("true");
+    expect(twins.getAttribute("data-seed-title") || "").toMatch(
+      /Evidence pack \(citation trust\)/,
+    );
   });
 
   it("prefills research tier from Settings wrestle (jd)", async () => {
