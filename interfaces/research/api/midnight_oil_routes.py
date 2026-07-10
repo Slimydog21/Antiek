@@ -68,6 +68,8 @@ from substrate.midnight_oil import (
     MidnightOilOperatorArchiveHandoffPackageResultReconciliationPlanRequest,
     MidnightOilOperatorArchivePackageDeliveryReportPlanReceipt,
     MidnightOilOperatorArchivePackageDeliveryReportPlanRequest,
+    MidnightOilOperatorArchivePackageDeliveryReportResultReconciliationPlanReceipt,
+    MidnightOilOperatorArchivePackageDeliveryReportResultReconciliationPlanRequest,
     MidnightOilOperatorDeliveryLedgerReconciliationPlanReceipt,
     MidnightOilOperatorDeliveryLedgerReconciliationPlanRequest,
     MidnightOilOperatorDispatchActivationReadinessPlanReceipt,
@@ -151,6 +153,7 @@ from substrate.midnight_oil import (
     operator_archive_handoff_package_plan_midnight_oil,
     operator_archive_handoff_package_result_reconciliation_plan_midnight_oil,
     operator_archive_package_delivery_report_plan_midnight_oil,
+    operator_archive_package_delivery_report_result_reconciliation_plan_midnight_oil,
     operator_delivery_ledger_reconciliation_plan_midnight_oil,
     operator_dispatch_activation_readiness_plan_midnight_oil,
     operator_dispatch_adapter_plan_midnight_oil,
@@ -706,6 +709,18 @@ def post_midnight_oil_operator_archive_package_delivery_report_plan(
     return operator_archive_package_delivery_report_plan_midnight_oil(req)
 
 
+@midnight_oil_router.post(
+    "/operator-archive-package-delivery-report-result-reconciliation-plan",
+    response_model=MidnightOilOperatorArchivePackageDeliveryReportResultReconciliationPlanReceipt,
+)
+def post_midnight_oil_operator_archive_package_delivery_report_result_reconciliation_plan(
+    req: MidnightOilOperatorArchivePackageDeliveryReportResultReconciliationPlanRequest,
+) -> MidnightOilOperatorArchivePackageDeliveryReportResultReconciliationPlanReceipt:
+    return operator_archive_package_delivery_report_result_reconciliation_plan_midnight_oil(
+        req
+    )
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
@@ -741,6 +756,7 @@ __all__ = [
     "post_midnight_oil_operator_archive_handoff_package_plan",
     "post_midnight_oil_operator_archive_handoff_package_result_reconciliation_plan",
     "post_midnight_oil_operator_archive_package_delivery_report_plan",
+    "post_midnight_oil_operator_archive_package_delivery_report_result_reconciliation_plan",
     "post_midnight_oil_operator_delivery_ledger_reconciliation_plan",
     "post_midnight_oil_operator_dispatch_activation_readiness_plan",
     "post_midnight_oil_operator_dispatch_adapter_plan",
