@@ -4304,3 +4304,9 @@ KNOWLEDGE_DENSE_PUBLICATION_PRESETS += arxiv:2305.10601 (Tree of Thoughts).
 Multi-path deliberate reasoning joins ReAct/Toolformer agentic spine.
 Insert-only · never auto-hydrate. vitest PublicationAttach 7 green.
 P0 PR #465. Pivot atj+.
+
+## Residual atj · 2026-07-10 — competitiveDurationBand pure helper extraction
+competitiveDurationBand lives in competitiveDrQuality (single source). Progress
+re-exports; DecisionTree + LaunchBudget import pure module. Hard-to-vary
+multi-minute foresight for atf/atg. vitest 47 green across quality/progress/DT/launch.
+P0 PR #465. Pivot atk+.

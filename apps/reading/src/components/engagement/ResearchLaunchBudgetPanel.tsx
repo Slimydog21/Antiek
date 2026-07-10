@@ -44,7 +44,7 @@ import {
   formatResearchTierCeilingFactor,
   mapResearchTierToCeilingMultiplier,
 } from "../../lib/researchTier";
-import { competitiveDurationBand } from "./ResearchProgressPanel";
+import { competitiveDurationBand } from "../../workspace/competitiveDrQuality";
 
 export type ResearchLaunchBudgetProjection = {
   wouldExceedBudget: boolean | null;

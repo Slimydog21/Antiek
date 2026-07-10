@@ -4,6 +4,7 @@ import {
   COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES,
   COMPETITIVE_DR_PIPELINE_STAGES,
   citationHopStageProgress,
+  competitiveDurationBand,
   competitiveDrOfflineSurfaceCatalog,
   competitiveDrStageProgress,
   competitiveDrWorldClassReadiness,
@@ -24,6 +25,20 @@ describe("competitiveDrQuality workspace pure helpers (apw)", () => {
       "questions",
       "sources",
     ]);
+  });
+
+  // Residual (atj): competitive duration bands extracted for DT/launch foresight.
+  it("maps research tier to competitive duration band without inventing ETA", () => {
+    const wrestle = competitiveDurationBand("wrestle");
+    expect(wrestle.label).toMatch(/wrestle long-horizon/i);
+    expect(wrestle.bandMinutes).toMatch(/10–30|10-30/);
+    expect(wrestle.pollMs).toBeGreaterThan(0);
+    const deep = competitiveDurationBand("deep");
+    expect(deep.label).toMatch(/deep synthesize/i);
+    expect(deep.bandMinutes).toMatch(/3–10|3-10/);
+    const fast = competitiveDurationBand("fast");
+    expect(fast.label).toMatch(/fast distill/i);
+    expect(competitiveDurationBand(null).label).toMatch(/deep synthesize/i);
   });
 
   it("normalizes stages and derives multi-stage progress without inventing", () => {

@@ -40,10 +40,7 @@ import {
   seedResearchProgress,
   type ResearchProgressResponse,
 } from "../../api/engagement";
-import {
-  mapResearchTierToProgressPollMs,
-  RESEARCH_TIER_PROGRESS_POLL_MS,
-} from "../../lib/researchTier";
+import { mapResearchTierToProgressPollMs } from "../../lib/researchTier";
 import {
   buildResearchProgressWriteHref,
   plainTextFromHtml,
@@ -51,48 +48,21 @@ import {
 import { openWindow } from "../windows/openWindow";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 
-/**
- * Residual (mw): competitive long-horizon duration bands (honest estimates).
- * Not a timer — posture for operator expectations vs OpenAI Deep Research-class
- * multi-minute jobs. Offline offline-honest; does not invent live ETA.
- */
-export function competitiveDurationBand(
-  tier: "fast" | "deep" | "wrestle" | null,
-): { label: string; bandMinutes: string; pollMs: number } {
-  if (tier === "wrestle") {
-    return {
-      label: "wrestle long-horizon",
-      bandMinutes: "10–30+",
-      pollMs: RESEARCH_TIER_PROGRESS_POLL_MS.wrestle,
-    };
-  }
-  if (tier === "fast") {
-    return {
-      label: "fast distill",
-      bandMinutes: "1–3",
-      pollMs: RESEARCH_TIER_PROGRESS_POLL_MS.fast,
-    };
-  }
-  // deep default
-  return {
-    label: "deep synthesize",
-    bandMinutes: "3–10",
-    pollMs: RESEARCH_TIER_PROGRESS_POLL_MS.deep,
-  };
-}
-
-// Residual (apw): pure helpers live in workspace/competitiveDrQuality — re-export
-// for existing test/import paths (ResearchProgressPanel tests · ape/apu).
+// Residual (apw/atj): pure helpers live in workspace/competitiveDrQuality —
+// re-export for existing test/import paths (ResearchProgressPanel · DecisionTree · launch).
 export {
   COMPETITIVE_DR_PIPELINE_STAGES,
+  competitiveDurationBand,
   competitiveDrStageProgress,
   competitiveDrWorldClassReadiness,
   normalizeCompetitiveDrStage,
   type CompetitiveDrPipelineStage,
   type CompetitiveDrStageProgress,
   type CompetitiveDrWorldClassReadiness,
+  type CompetitiveDurationBand,
 } from "../../workspace/competitiveDrQuality";
 import {
+  competitiveDurationBand,
   competitiveDrStageProgress,
   competitiveDrWorldClassReadiness,
 } from "../../workspace/competitiveDrQuality";

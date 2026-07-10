@@ -7,9 +7,48 @@
  * - Multi-stage pipeline: plan → gather → synthesize → cite → terminal (ape)
  * - Citation hop pipeline: insights → questions → sources (api)
  * - World-class readiness: multi-stage × hops (apu)
+ * - Residual (atj): competitive duration bands by tier (mw · atf/atg foresight)
  *
  * Never invents stages or hops that inputs do not report.
  */
+
+import { RESEARCH_TIER_PROGRESS_POLL_MS } from "../lib/researchTier";
+
+/**
+ * Residual (mw/atj): competitive long-horizon duration bands (honest estimates).
+ * Not a timer — posture for operator expectations vs OpenAI Deep Research-class
+ * multi-minute jobs. Offline-honest; does not invent live ETA.
+ */
+export type CompetitiveDurationBand = {
+  label: string;
+  bandMinutes: string;
+  pollMs: number;
+};
+
+export function competitiveDurationBand(
+  tier: "fast" | "deep" | "wrestle" | null,
+): CompetitiveDurationBand {
+  if (tier === "wrestle") {
+    return {
+      label: "wrestle long-horizon",
+      bandMinutes: "10–30+",
+      pollMs: RESEARCH_TIER_PROGRESS_POLL_MS.wrestle,
+    };
+  }
+  if (tier === "fast") {
+    return {
+      label: "fast distill",
+      bandMinutes: "1–3",
+      pollMs: RESEARCH_TIER_PROGRESS_POLL_MS.fast,
+    };
+  }
+  // deep default (and null → deep synthesize posture for projection honesty)
+  return {
+    label: "deep synthesize",
+    bandMinutes: "3–10",
+    pollMs: RESEARCH_TIER_PROGRESS_POLL_MS.deep,
+  };
+}
 
 /** Residual (ape): competitive multi-stage deep-research pipeline. */
 export const COMPETITIVE_DR_PIPELINE_STAGES = [

@@ -45,7 +45,7 @@ import {
 } from "../../api/settings";
 import { notDiamondImplementationVerdict } from "../../lib/notDiamondDriverDelta";
 import { benchTaskClassToVisionFeeds } from "../../lib/suiteProposalTasks";
-import { competitiveDurationBand } from "./ResearchProgressPanel";
+import { competitiveDurationBand } from "../../workspace/competitiveDrQuality";
 import {
   bestModelForTaskClass,
   researchTierToBenchTaskClass,
