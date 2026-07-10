@@ -245,20 +245,48 @@ export function PublicationAttachPanel({
                   : " · deep / synthesize depth"}
             </p>
           ) : null}
-          {/* Residual (ef): competitive bar — attached pubs are citation ground. */}
-          <p
+          {/* Residual (ef/uq): competitive bar — attached pubs are citation ground. */}
+          <div
             className={
               hydrated.length > 0
-                ? "text-aurora"
-                : "text-emperor"
+                ? "text-aurora space-y-1"
+                : "text-emperor space-y-1"
             }
             data-testid="publication-attach-citation-trust"
+            data-citation-trust={
+              hydrated.length > 0 ? "grounded" : "ungrounded"
+            }
+            data-offline-hydrate-default={
+              hydrated.length > 0 ? "false" : "true"
+            }
             role="status"
           >
-            {hydrated.length > 0
-              ? `Citation trust: grounded · ${hydrated.length} HTML publication asset(s)`
-              : "Citation trust: ungrounded — hydrate failed; re-attach refs"}
-          </p>
+            <p>
+              {hydrated.length > 0
+                ? `Citation trust: grounded · ${hydrated.length} HTML publication asset(s)`
+                : "Citation trust: ungrounded — hydrate failed; re-attach refs"}
+            </p>
+            {hydrated.length === 0 ? (
+              <p className="space-x-2 opacity-90">
+                <a
+                  href="/settings#hydrate-live-status"
+                  data-testid="publication-attach-hydrate-settings-link"
+                  className="underline hover:opacity-100"
+                  title="Settings publication hydrate readiness (arxiv/substack · offline default)"
+                >
+                  Settings · hydrate readiness
+                </a>
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+                  data-testid="publication-attach-hydrate-dual-gate-link"
+                  className="underline hover:opacity-100"
+                  title="Dual-gate L1–L4 checklist (arxiv/substack hydrate prep; offline default)"
+                >
+                  Dual-gate L1–L2 hydrate checklist
+                </a>
+              </p>
+            ) : null}
+          </div>
           {/* Residual (hc): offline-honest identity vs injector body. */}
           {hydrated.length > 0 ? (
             <p

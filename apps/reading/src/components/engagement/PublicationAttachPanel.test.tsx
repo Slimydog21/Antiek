@@ -269,6 +269,38 @@ describe("PublicationAttachPanel residual ck/ed", () => {
     ).toBe("wrestle");
   });
 
+  it("surfaces hydrate prep links when attach ungrounded (uq)", async () => {
+    attachSourceRefs.mockResolvedValue({
+      spawn_id: "spn_ug",
+      source_references: [{ kind: "arxiv", raw: "arxiv:broken" }],
+      research_tier: "deep",
+      view_format: "html",
+    });
+    hydratePublicationRef.mockRejectedValue(new Error("hydrate failed"));
+    render(<PublicationAttachPanel spawnId="spn_ug" />);
+    fireEvent.change(screen.getByTestId("publication-attach-input"), {
+      target: { value: "arxiv:broken" },
+    });
+    fireEvent.click(screen.getByTestId("publication-attach-submit"));
+    await waitFor(() => {
+      expect(screen.getByTestId("publication-attach-result")).toBeTruthy();
+    });
+    const trust = screen.getByTestId("publication-attach-citation-trust");
+    expect(trust.getAttribute("data-citation-trust")).toBe("ungrounded");
+    expect(trust.getAttribute("data-offline-hydrate-default")).toBe("true");
+    expect(trust.textContent).toMatch(/ungrounded/i);
+    expect(
+      screen
+        .getByTestId("publication-attach-hydrate-settings-link")
+        .getAttribute("href"),
+    ).toBe("/settings#hydrate-live-status");
+    expect(
+      screen
+        .getByTestId("publication-attach-hydrate-dual-gate-link")
+        .getAttribute("href") || "",
+    ).toMatch(/DUAL-GATE-L1-L4/);
+  });
+
   it("falls back to attach response research_tier when prop absent (lz)", async () => {
     attachSourceRefs.mockResolvedValue({
       spawn_id: "spn_fb",

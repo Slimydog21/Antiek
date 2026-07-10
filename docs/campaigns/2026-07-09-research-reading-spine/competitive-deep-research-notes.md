@@ -1174,3 +1174,8 @@ infinite wave handoff is compaction-safe for multi-agent swarm.
 Ungrounded evidence packs deep-link Settings hydrate readiness + dual-gate
 L1–L2 checklist with data-offline-hydrate-default. Competitive delta: citation
 trust failure is actionable prep — never silent live arxiv/substack enable.
+
+## Residual uq · 2026-07-10 — publication attach ungrounded hydrate prep
+PublicationAttachPanel ungrounded path deep-links Settings hydrate readiness
++ dual-gate checklist (parity evidence pack up). Competitive delta: attach
+failure surfaces L1/L2 prep without inventing live bodies.
