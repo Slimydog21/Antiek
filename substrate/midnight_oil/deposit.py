@@ -10,7 +10,7 @@ rows via ``ensure_spawn`` before ``complete_spawn`` / ``merge_spawn_outputs``.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, Literal
 
 from substrate.engagement_spine import (
     InMemoryEngagementStore,
@@ -41,7 +41,7 @@ class DepositResult:
     document_id: str
     draft_combined: bool
     usage_recorded: bool = False
-    usage_event: dict | None = None
+    usage_event: dict[str, Any] | None = None
     progress_seeded: bool = False
 
 
@@ -225,7 +225,9 @@ def deposit_job_results(
             )
             _track(spawn.spawn_id)
 
-    mode = "draft_combined" if draft_combined else "into_parent"
+    mode: Literal["draft_combined", "into_parent"] = (
+        "draft_combined" if draft_combined else "into_parent"
+    )
     title = parent_title or f"Midnight Oil: {job.goals[0][:80] if job.goals else job.job_id}"
     engagement_store.put_document(
         asset_id,

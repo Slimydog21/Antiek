@@ -21,12 +21,13 @@ from substrate.marketplace_host import (
     project_hosted_book_html,
     record_purchase_and_host,
 )
+from substrate.marketplace_host.catalog import Catalog
 from substrate.marketplace_host.library import HostStore
 
 marketplace_host_router = APIRouter(prefix="/marketplace", tags=["marketplace-host"])
 
 _store: HostStore | None = None
-_catalog = None
+_catalog: Catalog | None = None
 
 
 def reset_marketplace_host_store(store: HostStore | None = None) -> None:
@@ -42,7 +43,7 @@ def _s() -> HostStore:
     return _store
 
 
-def _c():
+def _c() -> Catalog:
     global _catalog
     if _catalog is None:
         _catalog = default_demo_catalog()

@@ -16,7 +16,8 @@ from substrate.engagement_spine.research_context import ResearchContextPack
 from substrate.engagement_spine.store import EngagementStore
 
 from .context_bridge import session_research_context
-from .session import FloatingSession, SessionStore, complete_session_research
+from .session import FloatingSession, complete_session_research
+from .store import SessionStore
 
 
 @dataclass(frozen=True)

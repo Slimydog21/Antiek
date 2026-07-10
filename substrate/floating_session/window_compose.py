@@ -24,7 +24,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, runtime_checkable
 
-from .session import FloatingSession, SessionStore, ViewMode, get_session, set_view_mode
+from .session import FloatingSession, ViewMode, get_session, set_view_mode
+from .store import SessionStore
 
 # Matches apps/reading WindowMode
 WindowMode = Literal["floating", "full"]

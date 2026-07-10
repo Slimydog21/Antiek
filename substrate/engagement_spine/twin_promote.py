@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, cast
 
 from .store import EngagementStore
 from .twin import TwinKind, TwinNote, list_twin_notes
@@ -144,13 +144,13 @@ def _canonical_text(text: str) -> str:
 def _default_promote_insight() -> PromoteInsightFn:
     from substrate.graph.insight_question import promote_insight
 
-    return promote_insight
+    return cast(PromoteInsightFn, promote_insight)
 
 
 def _default_promote_question() -> PromoteQuestionFn:
     from substrate.graph.insight_question import promote_question
 
-    return promote_question
+    return cast(PromoteQuestionFn, promote_question)
 
 
 def expected_graph_node_id(kind: TwinKind, text: str) -> str:
@@ -434,9 +434,9 @@ def twin_promote_context_payload(
     if kinds is not None:
         allowed: list[TwinKind] = []
         for k in kinds:
-            raw = str(k or "").strip().lower()
-            if raw in ("insight", "question") and raw not in allowed:
-                allowed.append(raw)  # type: ignore[arg-type]
+            kind_token = str(k or "").strip().lower()
+            if kind_token in ("insight", "question") and kind_token not in allowed:
+                allowed.append(cast(TwinKind, kind_token))
         kinds_norm = tuple(allowed) if allowed else None
     # Residual (mx): normalize note_ids (strip empties; preserve order unique).
     note_ids_norm: tuple[str, ...] | None = None
@@ -461,17 +461,19 @@ def twin_promote_context_payload(
         kinds=kinds_norm,
         note_ids=note_ids_norm,
     )
-    raw = result.to_dict()
+    result_data = result.to_dict()
     # Residual (ajo/ajt): content-addressed depth-graph honesty (pure helper).
-    depth = depth_graph_honesty_fields(raw["promoted"], raw["context_units"])
+    depth = depth_graph_honesty_fields(
+        result_data["promoted"], result_data["context_units"]
+    )
     unique_graph = depth["graph_node_ids"]
     content_addressed_alignment = depth["content_addressed_alignment"]
     payload: dict[str, Any] = {
         "asset_id": asset_id.strip(),
         "promoted_count": len(result.promoted),
         "context_unit_count": len(result.context_units),
-        "promoted": raw["promoted"],
-        "context_units": raw["context_units"],
+        "promoted": result_data["promoted"],
+        "context_units": result_data["context_units"],
         "query": query,
         "kinds": list(kinds_norm) if kinds_norm is not None else ["insight", "question"],
         "note_ids": list(note_ids_norm) if note_ids_norm is not None else [],

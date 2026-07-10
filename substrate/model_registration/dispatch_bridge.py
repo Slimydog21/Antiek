@@ -52,9 +52,10 @@ def resolve_dispatch_override(
     if model_id is not None:
         mid = select_driver(registry, model_id)
     else:
-        mid = selected_driver(registry)
-        if mid is None:
+        selected = selected_driver(registry)
+        if selected is None:
             raise ValueError("no model selected on the decision-tree registry")
+        mid = selected
     entry = get_model(registry, mid)
     if entry is None:
         raise KeyError(f"unknown model_id: {mid}")

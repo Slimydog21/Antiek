@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from .spawn import ResearchSpawn, _from_row
 from .store import EngagementStore
@@ -212,7 +212,7 @@ def project_merge_html(
             ],
         }
         document_id = str(result.get("document_id") or "merge")
-        mode = str(result.get("mode") or "")
+        mode = cast(MergeMode, str(result.get("mode") or ""))
         parent = str(result.get("parent_asset_id") or "")
         if research_tiers is None and result.get("research_tiers"):
             research_tiers = list(result.get("research_tiers") or [])
