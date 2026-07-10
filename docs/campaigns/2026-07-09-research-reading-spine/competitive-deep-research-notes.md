@@ -1987,3 +1987,8 @@ Free engineering subject set len ≥3 all free PD HTML (Heaviside · Shannon ·
 Lovelace). Competitive delta: tech-researcher engineering filter is a non-trivial
 free STEM corpus (parity electricity trio).
 
+## Residual abg · 2026-07-10 — free_count floor ≥17 after Hooke
+Marketplace catalog free_count / public_domain_count floor raised to ≥17 after
+Hooke Micrographia free PD HTML. Competitive delta: free STEM catalog non-trivial
+size honesty tracks corpus growth.
+

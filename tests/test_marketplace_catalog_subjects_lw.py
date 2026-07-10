@@ -554,8 +554,9 @@ def test_catalog_route_subjects_and_by_subject(client) -> None:
     # Residual (yr): technology domain honesty spans free STEM electricity+computing.
     assert body["by_subject"].get("technology", 0) >= 4
     # Residual (zb): free_count honesty includes full free PD catalog (STEM expanded).
-    assert body.get("free_count", 0) >= 16
-    assert body.get("public_domain_count", 0) >= 16
+    # Residual (abg): free_count floor after Hooke Micrographia (abc) ≥17 free PD.
+    assert body.get("free_count", 0) >= 17
+    assert body.get("public_domain_count", 0) >= 17
     # Residual (aab): free_count matches entry-level free flags (no silent drift).
     free_from_entries = sum(1 for e in body["entries"] if e.get("is_free"))
     assert body["free_count"] == free_from_entries
