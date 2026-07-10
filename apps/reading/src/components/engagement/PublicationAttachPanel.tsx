@@ -72,6 +72,19 @@ export const KNOWLEDGE_DENSE_PUBLICATION_PRESETS: readonly {
     reference: "arxiv:2001.08361",
     kind: "arxiv",
   },
+  // Residual (ask): RAG + Constitutional AI — knowledge-dense deep research spine.
+  {
+    id: "retrieval-augmented-generation",
+    label: "RAG (arXiv)",
+    reference: "arxiv:2005.11401",
+    kind: "arxiv",
+  },
+  {
+    id: "constitutional-ai",
+    label: "Constitutional AI (arXiv)",
+    reference: "arxiv:2212.08073",
+    kind: "arxiv",
+  },
   {
     id: "lilian-weng-attention",
     label: "Lilian Weng · Attention",

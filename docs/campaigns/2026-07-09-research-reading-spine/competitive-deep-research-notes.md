@@ -4169,3 +4169,8 @@ VISION_USAGE_FEED_SOURCES += publication_attach · marketplace_free_host ·
 decision_tree_install · task_class maps updated. Competitive delta: recursive
 bench rewrite tracks readiness→CTA product surfaces. vitest 9 green. P0 PR #465.
 Pivot ask+ outside thrash.
+
+## Residual ask · 2026-07-10 — knowledge-dense presets RAG + Constitutional AI
+Quick-call spine += arxiv:2005.11401 · arxiv:2212.08073 · insert-only never
+auto-hydrate. Competitive delta: world-class DR source connectors expand offline.
+vitest 7 green. P0 PR #465. Pivot asl+ outside thrash.

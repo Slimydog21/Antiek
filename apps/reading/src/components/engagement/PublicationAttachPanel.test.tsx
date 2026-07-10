@@ -100,7 +100,7 @@ describe("PublicationAttachPanel residual ck/ed", () => {
     const panel = screen.getByTestId("publication-attach-panel");
     expect(panel.getAttribute("data-seamless-pub-quick-call")).toBe("true");
     expect(Number(panel.getAttribute("data-knowledge-dense-presets"))).toBeGreaterThanOrEqual(
-      4,
+      6,
     );
     const presets = screen.getByTestId("publication-quick-call-presets");
     expect(presets.getAttribute("data-auto-hydrate")).toBe("false");
@@ -108,6 +108,23 @@ describe("PublicationAttachPanel residual ck/ed", () => {
     expect(
       screen.getByTestId("publication-preset-attention-is-all-you-need"),
     ).toBeTruthy();
+    // Residual (ask): RAG + Constitutional AI knowledge-dense presets.
+    expect(
+      screen.getByTestId("publication-preset-retrieval-augmented-generation"),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("publication-preset-retrieval-augmented-generation")
+        .getAttribute("data-reference"),
+    ).toBe("arxiv:2005.11401");
+    expect(
+      screen.getByTestId("publication-preset-constitutional-ai"),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("publication-preset-constitutional-ai")
+        .getAttribute("data-reference"),
+    ).toBe("arxiv:2212.08073");
     fireEvent.click(
       screen.getByTestId("publication-preset-attention-is-all-you-need"),
     );
