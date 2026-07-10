@@ -70,6 +70,8 @@ from substrate.midnight_oil import (
     MidnightOilSchedulerLeaseRetryPlanRequest,
     MidnightOilWorkerCancellationAbandonPlanReceipt,
     MidnightOilWorkerCancellationAbandonPlanRequest,
+    MidnightOilWorkerCompletionFinalizationPlanReceipt,
+    MidnightOilWorkerCompletionFinalizationPlanRequest,
     MidnightOilWorkerDispatchLeaseHeartbeatPlanReceipt,
     MidnightOilWorkerDispatchLeaseHeartbeatPlanRequest,
     MidnightOilWorkerQueueClaimPlanReceipt,
@@ -104,6 +106,7 @@ from substrate.midnight_oil import (
     runner_readiness_midnight_oil,
     scheduler_lease_retry_plan_midnight_oil,
     worker_cancellation_abandon_plan_midnight_oil,
+    worker_completion_finalization_plan_midnight_oil,
     worker_dispatch_lease_heartbeat_plan_midnight_oil,
     worker_queue_claim_plan_midnight_oil,
 )
@@ -392,6 +395,16 @@ def post_midnight_oil_worker_cancellation_abandon_plan(
     return worker_cancellation_abandon_plan_midnight_oil(req)
 
 
+@midnight_oil_router.post(
+    "/worker-completion-finalization-plan",
+    response_model=MidnightOilWorkerCompletionFinalizationPlanReceipt,
+)
+def post_midnight_oil_worker_completion_finalization_plan(
+    req: MidnightOilWorkerCompletionFinalizationPlanRequest,
+) -> MidnightOilWorkerCompletionFinalizationPlanReceipt:
+    return worker_completion_finalization_plan_midnight_oil(req)
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
@@ -428,6 +441,7 @@ __all__ = [
     "post_midnight_oil_runner_readiness",
     "post_midnight_oil_scheduler_lease_retry_plan",
     "post_midnight_oil_worker_cancellation_abandon_plan",
+    "post_midnight_oil_worker_completion_finalization_plan",
     "post_midnight_oil_worker_dispatch_lease_heartbeat_plan",
     "post_midnight_oil_worker_queue_claim_plan",
     "register_midnight_oil_routes",
