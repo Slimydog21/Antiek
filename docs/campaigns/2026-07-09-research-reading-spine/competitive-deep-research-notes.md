@@ -4199,3 +4199,9 @@ vitest twinWriteSeed 37 green. P0 PR #465. Pivot asp+.
 Spine postures (v36) chrome + mock suite 56 items · readiness CTA · RAG/CAI ·
 free-host HTML port listed. Settings honesty tracks substrate v36.
 vitest Settings 37 green. P0 PR #465. Pivot asq+.
+
+## Residual asq · 2026-07-10 — highlight→DR launch readiness pure + CTAs
+highlightDrLaunchReadiness: document+HTML → launch_ready · has_highlight honesty.
+ResearchThis + HostedHtml float|full CTAs gated. Competitive delta: HTML reading
+highlight→float|full path hard-to-vary pure contract · never PDF launch.
+vitest 53 green. P0 PR #465. Pivot asr+ outside thrash.

@@ -1193,6 +1193,19 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     ).toBeGreaterThan(0);
     const launch = screen.getByTestId("hosted-html-research-launch");
     expect(launch.getAttribute("data-view-format")).toBe("html");
+    // Residual (asq): highlight DR launch readiness pure helper chrome + CTA gate.
+    const drReady = screen.getByTestId("hosted-html-dr-launch-readiness");
+    expect(drReady.getAttribute("data-launch-ready")).toBe("true");
+    expect(drReady.getAttribute("data-html-ready")).toBe("true");
+    expect(drReady.getAttribute("data-document-bound")).toBe("true");
+    expect(drReady.getAttribute("data-has-highlight")).toBe("false");
+    expect(drReady.textContent).toMatch(/book\/page-level|launch ready/i);
+    const floatBtn = screen.getByTestId(
+      "hosted-html-deep-research",
+    ) as HTMLButtonElement;
+    expect(floatBtn.getAttribute("data-launch-ready")).toBe("true");
+    expect(floatBtn.getAttribute("data-html-first")).toBe("true");
+    expect(floatBtn.disabled).toBe(false);
     await waitFor(() => {
       expect(fetchDepthTiers).toHaveBeenCalled();
     });

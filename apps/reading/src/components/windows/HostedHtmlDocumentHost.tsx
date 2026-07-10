@@ -83,6 +83,7 @@ import {
   formatResearchDomainsClause,
   normalizeDomainSubjects,
 } from "../../workspace/domainSearchDefaults";
+import { highlightDrLaunchReadiness } from "../../workspace/highlightDrLaunchReadiness";
 import {
   ResearchLaunchBudgetPanel,
   type ResearchLaunchBudgetProjection,
@@ -267,6 +268,16 @@ export default function HostedHtmlDocumentHost(
         }),
       [title, assetId, docId, highlightText],
     );
+  // Residual (asq): highlight → float|full DR launch readiness (HTML-first).
+  const drLaunch = useMemo(
+    () =>
+      highlightDrLaunchReadiness({
+        documentId: assetId,
+        viewFormat,
+        highlightText,
+      }),
+    [assetId, viewFormat, highlightText],
+  );
 
   const captureHighlight = useCallback(() => {
     if (typeof window === "undefined" || !window.getSelection) return;
@@ -1341,6 +1352,20 @@ export default function HostedHtmlDocumentHost(
               Force open despite budget projection
             </label>
           ) : null}
+          <p
+            className="text-[10px] font-mono opacity-80"
+            data-testid="hosted-html-dr-launch-readiness"
+            data-launch-ready={String(drLaunch.launch_ready)}
+            data-document-bound={String(drLaunch.document_bound)}
+            data-html-ready={String(drLaunch.html_ready)}
+            data-has-highlight={String(drLaunch.has_highlight)}
+            data-from-highlight={String(fromHighlight)}
+            data-view-format={drLaunch.view_format}
+            role="status"
+            title="Highlight → float|full deep research launch readiness (HTML-first · never PDF)"
+          >
+            DR launch · {drLaunch.summary}
+          </p>
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -1348,12 +1373,25 @@ export default function HostedHtmlDocumentHost(
               data-testid="hosted-html-deep-research"
               data-research-domains={hostedDomainsCsv || ""}
               data-domain-aware-dr={String(hostedDomainAware)}
-              disabled={busy || (budgetWarn && !forceOverBudget)}
+              data-launch-ready={String(drLaunch.launch_ready)}
+              data-has-highlight={String(drLaunch.has_highlight)}
+              data-from-highlight={String(fromHighlight)}
+              data-html-first="true"
+              data-view-format="html"
+              disabled={
+                busy ||
+                !drLaunch.launch_ready ||
+                (budgetWarn && !forceOverBudget)
+              }
               onClick={() => void spinDeepResearch("floating")}
               title={
-                hostedDomainAware
-                  ? `Deep research hosted HTML (floating) · research_domains=${hostedDomainsCsv}`
-                  : "Deep research hosted HTML (floating window)"
+                !drLaunch.launch_ready
+                  ? drLaunch.summary
+                  : hostedDomainAware
+                    ? `Deep research hosted HTML (floating) · research_domains=${hostedDomainsCsv}`
+                    : fromHighlight
+                      ? "Deep research highlight in floating window (HTML-first · never PDF)"
+                      : "Deep research hosted HTML (floating window)"
               }
             >
               {busy
@@ -1362,19 +1400,30 @@ export default function HostedHtmlDocumentHost(
                   ? "Deep research highlight (window)"
                   : "Deep research (window)"}
             </button>
-            {/* Residual (es/aoq/aou): full window · domain stamps (memoized). */}
+            {/* Residual (es/aoq/aou/asq): full window · domain stamps · launch readiness. */}
             <button
               type="button"
               className="rounded border border-ink/20 px-3 py-1.5 text-xs font-mono dark:border-bright/20"
               data-testid="hosted-html-deep-research-full"
               data-research-domains={hostedDomainsCsv || ""}
               data-domain-aware-dr={String(hostedDomainAware)}
-              disabled={busy || (budgetWarn && !forceOverBudget)}
+              data-launch-ready={String(drLaunch.launch_ready)}
+              data-has-highlight={String(drLaunch.has_highlight)}
+              data-from-highlight={String(fromHighlight)}
+              data-html-first="true"
+              data-view-format="html"
+              disabled={
+                busy ||
+                !drLaunch.launch_ready ||
+                (budgetWarn && !forceOverBudget)
+              }
               onClick={() => void spinDeepResearch("full")}
               title={
-                hostedDomainAware
-                  ? `Open deep research full working region · research_domains=${hostedDomainsCsv}`
-                  : "Open deep research expanded to full working region"
+                !drLaunch.launch_ready
+                  ? drLaunch.summary
+                  : hostedDomainAware
+                    ? `Open deep research full working region · research_domains=${hostedDomainsCsv}`
+                    : "Open deep research expanded to full working region (HTML-first)"
               }
             >
               {busy ? "Opening…" : "Deep research (full)"}

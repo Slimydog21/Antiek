@@ -22,6 +22,7 @@ import {
 } from "../ResearchWorkstation/publicationRefs";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
 import { competitiveDrOfflineSurfaceCatalog } from "../../workspace/competitiveDrQuality";
+import { highlightDrLaunchReadiness } from "../../workspace/highlightDrLaunchReadiness";
 import { listRecentDeepResearchSpawnIds } from "../../workspace/recentDeepResearchSpawns";
 import type { WindowMode } from "../../workspace/windowsStore";
 import { useWindows } from "../../workspace/windowsStore";
@@ -152,6 +153,17 @@ export default function ResearchThis({
     (passageText || "").trim() ||
     `Page ${pageIndex + 1} of document ${documentId}`;
 
+  // Residual (asq): highlight → float|full DR launch readiness (HTML reading ≡ research).
+  const drLaunch = useMemo(
+    () =>
+      highlightDrLaunchReadiness({
+        documentId,
+        viewFormat: "html",
+        highlightText: passageText,
+      }),
+    [documentId, passageText],
+  );
+
   const onProjectionChange = useCallback(
     (p: ResearchLaunchBudgetProjection) => {
       setBudgetWarn(p.wouldExceedBudget === true);
@@ -245,6 +257,9 @@ export default function ResearchThis({
       data-soft-budget="true"
       data-budget-before-fire="true"
       data-never-auto-route="true"
+      data-launch-ready={String(drLaunch.launch_ready)}
+      data-has-highlight={String(drLaunch.has_highlight)}
+      data-dr-launch-source="highlightDrLaunchReadiness"
     >
       {/* Residual (aps): competitive DR map on highlight research path. */}
       <p
@@ -507,15 +522,41 @@ export default function ResearchThis({
           </label>
         ) : null}
       </div>
+      <p
+        className="text-[10px] font-mono opacity-80"
+        data-testid="research-this-dr-launch-readiness"
+        data-launch-ready={String(drLaunch.launch_ready)}
+        data-document-bound={String(drLaunch.document_bound)}
+        data-html-ready={String(drLaunch.html_ready)}
+        data-has-highlight={String(drLaunch.has_highlight)}
+        data-view-format={drLaunch.view_format}
+        role="status"
+        title="Highlight → float|full deep research launch readiness (HTML reading ≡ research)"
+      >
+        DR launch · {drLaunch.summary}
+      </p>
       <div className="inline-flex flex-wrap items-center gap-2">
         <LemonButton
           type="button"
           variant="secondary"
           size="sm"
-          disabled={busy || (budgetWarn && !forceOverBudget)}
+          disabled={
+            busy ||
+            !drLaunch.launch_ready ||
+            (budgetWarn && !forceOverBudget)
+          }
           onClick={() => void spinDeepResearchWindow("floating")}
-          title="Open deep research in a floating window over the scene"
+          title={
+            !drLaunch.launch_ready
+              ? drLaunch.summary
+              : drLaunch.has_highlight
+                ? "Open deep research in a floating window from highlight (HTML-first)"
+                : "Open deep research in a floating window over the scene (page-level)"
+          }
           data-testid="research-this-floating"
+          data-launch-ready={String(drLaunch.launch_ready)}
+          data-has-highlight={String(drLaunch.has_highlight)}
+          data-html-first="true"
         >
           {busy ? "Opening…" : "Deep research (window)"}
         </LemonButton>
@@ -523,10 +564,21 @@ export default function ResearchThis({
           type="button"
           variant="secondary"
           size="sm"
-          disabled={busy || (budgetWarn && !forceOverBudget)}
+          disabled={
+            busy ||
+            !drLaunch.launch_ready ||
+            (budgetWarn && !forceOverBudget)
+          }
           onClick={() => void spinDeepResearchWindow("full")}
-          title="Open deep research expanded to full working region"
+          title={
+            !drLaunch.launch_ready
+              ? drLaunch.summary
+              : "Open deep research expanded to full working region (HTML-first)"
+          }
           data-testid="research-this-deep-full"
+          data-launch-ready={String(drLaunch.launch_ready)}
+          data-has-highlight={String(drLaunch.has_highlight)}
+          data-html-first="true"
         >
           {busy ? "Opening…" : "Deep research (full)"}
         </LemonButton>

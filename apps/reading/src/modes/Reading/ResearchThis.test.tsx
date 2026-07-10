@@ -412,13 +412,28 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
         <ResearchThis documentId="doc-1" pageIndex={0} passageText="hello world" />
       </MemoryRouter>,
     );
-    // Residual (aob): HTML-first highlight DR surface stamps.
+    // Residual (aob/asq): HTML-first highlight DR surface stamps + launch readiness.
     const root = screen.getByTestId("research-this");
     expect(root.getAttribute("data-view-format")).toBe("html");
     expect(root.getAttribute("data-html-first")).toBe("true");
     expect(root.getAttribute("data-document-id")).toBe("doc-1");
     expect(root.getAttribute("data-seamless-research-this")).toBe("true");
     expect(root.getAttribute("data-research-tier")).toMatch(/deep|fast|wrestle/);
+    expect(root.getAttribute("data-launch-ready")).toBe("true");
+    expect(root.getAttribute("data-has-highlight")).toBe("true");
+    expect(root.getAttribute("data-dr-launch-source")).toBe(
+      "highlightDrLaunchReadiness",
+    );
+    const launchReady = screen.getByTestId("research-this-dr-launch-readiness");
+    expect(launchReady.getAttribute("data-launch-ready")).toBe("true");
+    expect(launchReady.getAttribute("data-has-highlight")).toBe("true");
+    expect(launchReady.textContent).toMatch(/highlight selection/i);
+    expect(
+      screen.getByTestId("research-this-floating").getAttribute("data-launch-ready"),
+    ).toBe("true");
+    expect(
+      (screen.getByTestId("research-this-floating") as HTMLButtonElement).disabled,
+    ).toBe(false);
     // Residual (aqq): soft budget · budget-before-fire · never auto-route.
     expect(root.getAttribute("data-soft-budget")).toBe("true");
     expect(root.getAttribute("data-budget-before-fire")).toBe("true");

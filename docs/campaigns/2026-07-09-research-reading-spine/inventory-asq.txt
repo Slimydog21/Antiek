@@ -1,0 +1,23 @@
+# inventory-asq · highlight→DR launch readiness pure helper + CTAs
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: asq
+date: 2026-07-10
+parent_tip: 9f86919ef (asp)
+
+## Closed
+- workspace/highlightDrLaunchReadiness.ts pure helper
+  - document_bound · html_ready · has_highlight · launch_ready
+- HostedHtml: DR launch chrome + float/full CTAs gated by launch_ready (+ budget soft-gate)
+- ResearchThis: same pure helper · root + button stamps · CTA gate
+- HTML reading ≡ research · never PDF launch surface
+- vitest pure 3 + ResearchThis 13 + HostedHtml 37 = 53 green
+- proof: {SCRATCH}/asq-vitest.log
+
+## Doctrine
+Highlight → float|full DR · book/page-level launch still ready when no highlight
+Hard-to-vary pure contract (parity readiness→CTA wave) · offline-honest
+
+## Next
+asr+ offline product residual outside thrash
+Avoid: highlight DR launch thrash after asq · readiness→CTA stamp thrash · dogfood · free-host source
+Operator merge PR #465 remains P0 (gated)
