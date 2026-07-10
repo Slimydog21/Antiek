@@ -1422,3 +1422,8 @@ information theory + computability on HTML-first free path.
 Hosted Turing free PD launches float DR with computing+computability domains
 in goal_hint (parity Shannon). Competitive delta: reading≡research on
 computability STEM is mechanically proven.
+
+## Residual wn · 2026-07-10 — FUTURE-AGENT tip re-anchor through wm
+FUTURE-AGENT-SPEC tip → d545fac5 with closed arcs vz–wm (14 residual ships).
+Competitive delta: swarm handoff tip-true; operator merge PR #465 remains
+highest leverage.
