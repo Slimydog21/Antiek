@@ -58,7 +58,11 @@ export function openMergedResearchWindow(
     return null;
   }
   const stem = (opts.titleStem || "Merged research").trim() || "Merged research";
-  const source = (opts.source || "spawn_merge_panel").trim() || "spawn_merge_panel";
+  // Residual (aah): default source must be `spawn_merge` so auto-open / manual
+  // hosted HTML floats preserve Open Write + Antiek-bench write-seed provenance
+  // (KNOWN_HOST_WRITE_SOURCES). Prior `spawn_merge_panel` collapsed to
+  // hosted_html_document on HostedHtml Open Write.
+  const source = (opts.source || "spawn_merge").trim() || "spawn_merge";
   const idPrefix = (opts.idPrefix || "win:merge").trim() || "win:merge";
   const windowMode = opts.windowMode === "full" ? "full" : "floating";
   const idSuffix = windowMode === "full" ? ":full" : "";

@@ -1860,3 +1860,10 @@ listing has no silent truncation (parity free_count / PD count honesty).
 ## Residual aag · 2026-07-10 — FUTURE-AGENT tip re-anchor through aaf
 FUTURE-AGENT-SPEC tip re-anchored after 113 residual ships this continuation.
 Competitive delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
+
+## Residual aah · 2026-07-10 — spawn_merge window source provenance
+openMergedResearchWindow default source spawn_merge_panel → spawn_merge so
+auto-open merge floats preserve HostedHtml Open Write + Antiek-bench write-seed
+feed (no collapse to hosted_html_document). Competitive delta: highlight →
+float DR → merge → Write is identity-honest end-to-end.
+

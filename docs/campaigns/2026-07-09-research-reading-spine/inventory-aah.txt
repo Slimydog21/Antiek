@@ -1,0 +1,25 @@
+# inventory-aah · spawn_merge window source provenance
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aah
+date: 2026-07-10
+tip_before: 17826d19 (aag)
+
+## Problem
+openMergedResearchWindow defaulted source to `spawn_merge_panel`. Auto-open
+and manual "Open merged HTML" floats carried that tag, but HostedHtml Open
+Write only preserves KNOWN_HOST_WRITE_SOURCES — so spawn_merge_panel collapsed
+to hosted_html_document and dropped Antiek-bench write-seed provenance for
+highlight→float DR→merge→Write (north-star reading≡research path).
+
+## Fix
+- SpawnMergePanel openMergedResearchWindow default source → `spawn_merge`
+- SpawnMergePanel.test auto-open + open-window assert source=spawn_merge
+- HostedHtmlDocumentHost.test stamps spawn_merge Open Write source (aah)
+
+## Verified
+npm test -- --run SpawnMergePanel.test.tsx HostedHtmlDocumentHost.test.tsx
+→ 27 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live L1–L4 dual-gate injectors

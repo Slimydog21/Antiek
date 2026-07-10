@@ -166,7 +166,7 @@ describe("SpawnMergePanel residual ci", () => {
           document_id: "draft_book-1_abc",
           view_format: "html",
           html: "<p>Draft merge HTML · recommended_tier=wrestle</p>",
-          source: "spawn_merge_panel",
+          source: "spawn_merge",
         }),
         expect.objectContaining({
           id: "win:merge:draft_book-1_abc",
@@ -320,11 +320,13 @@ describe("SpawnMergePanel residual ci", () => {
     expect(openWindow).not.toHaveBeenCalled();
     expect(screen.queryByTestId("spawn-merge-auto-open-window")).toBeNull();
     fireEvent.click(screen.getByTestId("spawn-merge-open-window"));
+    // Residual (aah): default window source is spawn_merge (not spawn_merge_panel).
     expect(openWindow).toHaveBeenCalledWith(
       "hosted_html_document",
       expect.objectContaining({
         document_id: "book-1",
         view_format: "html",
+        source: "spawn_merge",
       }),
       expect.objectContaining({ mode: "floating" }),
     );

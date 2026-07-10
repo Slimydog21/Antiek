@@ -252,6 +252,32 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     ).toBe("research_progress_complete");
   });
 
+  it("stamps spawn_merge Open Write source from auto-open float (aah)", () => {
+    // Residual (aah): openMergedResearchWindow defaults to source=spawn_merge so
+    // HostedHtml Open Write preserves Antiek-bench write-seed provenance.
+    render(
+      <HostedHtmlDocumentHost
+        document_id="draft_spawn_merge_1"
+        title="Merged research (draft_combined)"
+        view_format="html"
+        source="spawn_merge"
+        html="<p>Spawn merge body</p>"
+      />,
+    );
+    expect(
+      screen.getByTestId("hosted-html-open-write").getAttribute(
+        "data-write-seed-source",
+      ),
+    ).toBe("spawn_merge");
+    expect(
+      screen.getByTestId("hosted-html-open-write").getAttribute("title") || "",
+    ).toMatch(/spawn merge/i);
+    expect(
+      screen.getByTestId("twin-notes-panel-stub").getAttribute("data-seed-title") ||
+        "",
+    ).toMatch(/Spawn merge/i);
+  });
+
   it("stamps marketplace_host and midnight_oil_deposit Open Write sources (vv)", () => {
     const { unmount } = render(
       <HostedHtmlDocumentHost
