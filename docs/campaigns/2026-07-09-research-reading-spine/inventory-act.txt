@@ -1,0 +1,16 @@
+# inventory-act · Antiek-bench write-seed has_body for recursive rewrite
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: act
+date: 2026-07-10
+parent_tip: ecf37108 (acs)
+
+## Closed
+- record_twin_write_seed_usage(has_body=…) stamps body honesty on usage events
+- has_body=False → outcome=failed (title-only weak rewrite signal)
+- weekly_usage_summary: write_seed_with_body_count / title_only / body_unknown
+- settings_usage_summary_payload + HTML projection body honesty line
+- pytest test_twin_write_seed_usage_act + regression qy/ry · 6 passed
+
+## Not in scope
+- Settings React chrome for body counts (acu candidate)
+- Live multi-provider weekly bench run

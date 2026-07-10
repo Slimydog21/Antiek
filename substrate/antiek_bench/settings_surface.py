@@ -64,6 +64,16 @@ def settings_usage_summary_payload(
         "write_seed_source_count": int(summary.get("write_seed_source_count") or 0),
         "write_seed_event_count": int(summary.get("write_seed_event_count") or 0),
         "write_seed_known_count": int(summary.get("write_seed_known_count") or 0),
+        # Residual (act): body honesty aggregates for recursive rewrite.
+        "write_seed_with_body_count": int(
+            summary.get("write_seed_with_body_count") or 0
+        ),
+        "write_seed_title_only_count": int(
+            summary.get("write_seed_title_only_count") or 0
+        ),
+        "write_seed_body_unknown_count": int(
+            summary.get("write_seed_body_unknown_count") or 0
+        ),
         "view_format": "html",
         "settings_panel": "antiek_bench_usage_weekly",
         "source": "antiek_bench.usage_events",
@@ -139,6 +149,27 @@ def project_usage_summary_html(summary: dict[str, Any]) -> str:
                     ],
                 }
             )
+    # Residual (act): body honesty for recursive suite rewrite quality.
+    with_body = int(summary.get("write_seed_with_body_count") or 0)
+    title_only = int(summary.get("write_seed_title_only_count") or 0)
+    body_unknown = int(summary.get("write_seed_body_unknown_count") or 0)
+    if with_body or title_only or body_unknown:
+        blocks.append(
+            {
+                "type": "paragraph",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "Write seed body honesty: "
+                            f"with_body={with_body} · title_only={title_only} · "
+                            f"unknown={body_unknown} "
+                            "(title-only → failed outcome for suite rewrite)"
+                        ),
+                    }
+                ],
+            }
+        )
     # Residual (nx): catalog of known feed sources (twin_chase, floating DR, …).
     known = summary.get("known_sources") or []
     if known:

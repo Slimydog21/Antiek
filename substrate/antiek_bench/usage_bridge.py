@@ -184,12 +184,18 @@ def record_twin_write_seed_usage(
     model_id: str | None = None,
     week_id: str | None = None,
     research_tier: str | None = None,
+    has_body: bool | None = None,
 ) -> dict[str, Any] | None:
     """Residual (qy/ra): record Write twin_seed handoff → Antiek-bench usage.
 
     Feeds recursive suite rewrite by_source for DR session/terminal seeds and
     dual-handoff matrix sources (MO, marketplace, merges, hosted HTML).
     twin_draft_selected returns None (covered by twin_chase).
+
+    Residual (act): optional ``has_body`` stamps body honesty from the
+    engagement Open Write matrix (acf–acs). Title-only seeds
+    (``has_body=False``) record outcome=failed so weekly rewrite learns which
+    Write paths lack real body substrate; omit has_body for legacy callers.
     """
     src = str(seed_source or "").strip()
     if src not in TWIN_WRITE_SEED_USAGE_SOURCES:
@@ -205,17 +211,19 @@ def record_twin_write_seed_usage(
     hint = (prompt_hint or "").strip()
     if src and src not in hint:
         hint = f"[{src}] {hint}".strip()
-    return record_usage_event(
-        UsageEvent(
-            task_class=task,
-            outcome="worked",
-            prompt_hint=hint[:280],
-            source=src,
-            model_id=model_id,
-            week_id=week_id,
-        ),
-        store=store,
-    )
+    # Residual (act): title-only twin_seed is weak recursive-rewrite signal.
+    outcome: Outcome = "failed" if has_body is False else "worked"
+    row = UsageEvent(
+        task_class=task,
+        outcome=outcome,
+        prompt_hint=hint[:280],
+        source=src,
+        model_id=model_id,
+        week_id=week_id,
+    ).to_dict()
+    if has_body is not None:
+        row["has_body"] = bool(has_body)
+    return record_usage_event(row, store=store)
 
 
 def propose_from_recorded_usage(
@@ -306,10 +314,15 @@ def weekly_usage_summary(*, store: BenchStore) -> dict[str, Any]:
     investigation starts vs Midnight Oil / session flywheel deposits.
     Residual (nx): known_sources legend for twin_chase / floating_deep_research
     (session open feed) so Settings UI can label the recursive rewrite feed.
+    Residual (act): write-seed body honesty aggregates for recursive rewrite
+    (has_body true/false/unknown from engagement Open Write matrix).
     """
     events = list_usage_events(store=store)
     by_class: dict[str, dict[str, int]] = {}
     by_source: dict[str, int] = {}
+    write_seed_with_body_count = 0
+    write_seed_title_only_count = 0
+    write_seed_body_unknown_count = 0
     for e in events:
         tc = str(e.get("task_class") or "unknown")
         oc = str(e.get("outcome") or "unknown")
@@ -319,6 +332,14 @@ def weekly_usage_summary(*, store: BenchStore) -> dict[str, Any]:
             bucket[oc] += 1
         bucket["total"] += 1
         by_source[src] = by_source.get(src, 0) + 1
+        if src in TWIN_WRITE_SEED_USAGE_SOURCES:
+            hb = e.get("has_body")
+            if hb is True:
+                write_seed_with_body_count += 1
+            elif hb is False:
+                write_seed_title_only_count += 1
+            else:
+                write_seed_body_unknown_count += 1
     # Residual (ry): Write twin_seed aggregates — single source of truth for
     # Settings + HTML honesty (parity frontend WRITE_SEED_FEED_SOURCES).
     write_seed_by_source = {
@@ -342,5 +363,9 @@ def weekly_usage_summary(*, store: BenchStore) -> dict[str, Any]:
         "write_seed_source_count": write_seed_source_count,
         "write_seed_event_count": write_seed_event_count,
         "write_seed_known_count": write_seed_known_count,
+        # Residual (act): body honesty for recursive suite rewrite quality.
+        "write_seed_with_body_count": write_seed_with_body_count,
+        "write_seed_title_only_count": write_seed_title_only_count,
+        "write_seed_body_unknown_count": write_seed_body_unknown_count,
         "view_format": "html",
     }
