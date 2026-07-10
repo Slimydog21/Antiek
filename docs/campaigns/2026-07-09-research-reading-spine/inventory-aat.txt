@@ -1,0 +1,21 @@
+# inventory-aat · L6 collective dual-gate label honesty (spawn + collective)
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aat
+date: 2026-07-10
+tip_before: 6556958d (aas)
+
+## Problem
+SpawnMerge + CollectiveResearch linked #l6-collective but labeled
+"Dual-gate L1–L4 checklist" — label/href mismatch.
+
+## Fix
+- Copy → Dual-gate L6 collective checklist
+- Spawn title matches L6 offline merge unit
+- tests lock L6 copy
+
+## Verified
+npm test SpawnMergePanel + CollectiveResearchPanel → 32 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live L6 multi-agent council

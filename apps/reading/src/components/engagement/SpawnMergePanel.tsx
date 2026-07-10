@@ -227,9 +227,10 @@ export function SpawnMergePanel({
             href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l6-collective"
             data-testid="spawn-merge-dual-gate-checklist-link"
             className="underline opacity-80 hover:opacity-100"
-            title="Dual-gate L1–L4 checklist (prep only; offline default)"
+            title="Dual-gate L6 live multi-agent checklist (prep only · offline merge unit)"
           >
-            Dual-gate L1–L4 checklist
+            {/* Residual (aat): label matches #l6-collective href (was L1–L4). */}
+            Dual-gate L6 collective checklist
           </a>
         </p>
         {/* Residual (lj): model driver + budget + depth (parity collective lg). */}

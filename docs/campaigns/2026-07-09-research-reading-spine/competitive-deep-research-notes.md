@@ -1923,3 +1923,8 @@ compaction-safe multi-agent handoff; operator merge PR #465 highest leverage.
 Session land dual-gate prep deep-links #l2-substack (parity aal–aaq). Competitive
 delta: session flywheel complete path surfaces Substack hydrate prep beside arxiv.
 
+## Residual aat · 2026-07-10 — L6 collective dual-gate label honesty
+Spawn merge + collective multi-spawn panels label Dual-gate L6 collective
+checklist (href #l6-collective) — no more L1–L4 label/href mismatch. Competitive
+delta: multi-spawn merge path honesty matches offline merge unit doctrine.
+

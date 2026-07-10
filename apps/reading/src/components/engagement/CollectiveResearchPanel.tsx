@@ -742,7 +742,8 @@ export function CollectiveResearchPanel({
             data-testid="collective-dual-gate-checklist-link"
             title="Dual-gate L6 live multi-agent checklist (prep only · offline merge unit)"
           >
-            Dual-gate L1–L4 checklist
+            {/* Residual (aat): label matches #l6-collective href (was L1–L4). */}
+            Dual-gate L6 collective checklist
           </a>
         </p>
         {/* Residual (lg): model driver + budget + depth co-display (parity ku). */}

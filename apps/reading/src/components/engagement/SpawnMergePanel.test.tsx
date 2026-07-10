@@ -79,8 +79,9 @@ describe("SpawnMergePanel residual ci", () => {
     // Residual (ih): Settings deep-link for driver + budget.
     const settings = screen.getByTestId("spawn-merge-settings-link");
     const dual = screen.getByTestId("spawn-merge-dual-gate-checklist-link");
-    // Residual (xn): multi-spawn merge prep → L6 collective checklist section.
+    // Residual (xn/aat): multi-spawn merge prep → L6 collective checklist section.
     expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l6-collective/);
+    expect(dual.textContent).toMatch(/L6 collective checklist/i);
     expect(settings.getAttribute("href")).toBe("/settings#decision-tree-panel");
     expect(settings.textContent).toMatch(/driver & budget/i);
     // Residual (lj): driver badge defaults deep pre-merge.

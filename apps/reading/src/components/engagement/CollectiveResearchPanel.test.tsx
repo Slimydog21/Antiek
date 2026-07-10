@@ -698,9 +698,9 @@ describe("CollectiveResearchPanel", () => {
       <CollectiveResearchPanel availableSpawnIds={["spn_1"]} parentAssetId="p" />,
     );
     const dual = screen.getByTestId("collective-dual-gate-checklist-link");
-    // Residual (xg): L6 collective checklist section deep-link.
+    // Residual (xg/aat): L6 collective checklist section deep-link + label honesty.
     expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l6-collective/);
-    expect(dual.textContent).toMatch(/Dual-gate/i);
+    expect(dual.textContent).toMatch(/L6 collective checklist/i);
   });
 
   it("auto-selects newest recent_ring spawn when selection empty (ol)", async () => {
