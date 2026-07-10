@@ -14,6 +14,8 @@ export type TwinWriteSeedSource =
   | "midnight_oil_deposit"
   | "collective_doc_merge"
   | "marketplace_host"
+  // Residual (aso): free Host-into-account float → Write seed (vision/write-seed free-host).
+  | "marketplace_free_host"
   // Residual (aaj): catalog HTML projection float → Write seed (filter-aware listing).
   | "marketplace_catalog"
   | "spawn_merge"
@@ -84,6 +86,8 @@ export function storeTwinWriteSeed(input: {
     "midnight_oil_deposit",
     "collective_doc_merge",
     "marketplace_host",
+    // Residual (aso): free Host-into-account Write seed provenance.
+    "marketplace_free_host",
     "marketplace_catalog",
     "spawn_merge",
     "hosted_html_document",
@@ -159,6 +163,8 @@ export function loadTwinWriteSeed(key: string): TwinWriteSeedPayload | null {
       "midnight_oil_deposit",
       "collective_doc_merge",
       "marketplace_host",
+      // Residual (aso): free Host-into-account Write seed provenance.
+      "marketplace_free_host",
       "marketplace_catalog",
       "spawn_merge",
       "hosted_html_document",
@@ -401,6 +407,8 @@ export function buildHostedHtmlWriteHref(opts: {
     "collective_doc_merge",
     // Residual (vr): marketplace host + MO deposit floats → Write seed.
     "marketplace_host",
+    // Residual (aso): free Host-into-account → Write seed (distinct free-host feed).
+    "marketplace_free_host",
     "midnight_oil_deposit",
     // Residual (aai): library surface aliases (normalized below).
     "marketplace_library",
@@ -439,13 +447,15 @@ export function buildHostedHtmlWriteHref(opts: {
                           ? `Spawn merge · ${doc}`
                           : source === "collective_doc_merge"
                             ? `Collective document merge · ${doc}`
-                            : source === "marketplace_host"
-                              ? `Marketplace host · ${doc}`
-                              : source === "marketplace_catalog"
-                                ? `Marketplace catalog · ${doc}`
-                                : source === "midnight_oil_deposit"
-                                  ? `Midnight Oil deposit · ${doc}`
-                                  : `Hosted HTML · ${doc}`;
+                            : source === "marketplace_free_host"
+                              ? `Marketplace free host · ${doc}`
+                              : source === "marketplace_host"
+                                ? `Marketplace host · ${doc}`
+                                : source === "marketplace_catalog"
+                                  ? `Marketplace catalog · ${doc}`
+                                  : source === "midnight_oil_deposit"
+                                    ? `Midnight Oil deposit · ${doc}`
+                                    : `Hosted HTML · ${doc}`;
   const seedKey = storeTwinWriteSeed({
     plain_text: plain,
     html: String(opts.html || ""),

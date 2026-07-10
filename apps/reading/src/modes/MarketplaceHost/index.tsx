@@ -1016,6 +1016,8 @@ export default function MarketplaceHost({
       await seedHostedTwins(result);
       // Residual (dk): seamless port into reading surface.
       if (autoOpenWindow) {
+        // Residual (aso): free Host-into-account usage source for Antiek-bench
+        // vision/write-seed (marketplace_free_host · parity asj/asl).
         openHostedWindow({
           document_id: result.document_id,
           title: result.title,
@@ -1023,7 +1025,7 @@ export default function MarketplaceHost({
           view_format: result.view_format,
           license_class: result.license_class,
           owner_id: result.owner_id,
-          source: "marketplace_host",
+          source: "marketplace_free_host",
           book_id: result.book_id,
           // Residual (apk): free host path honesty into float twin seed.
           is_free:

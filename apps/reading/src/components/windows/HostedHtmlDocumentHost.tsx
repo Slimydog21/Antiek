@@ -384,8 +384,11 @@ export default function HostedHtmlDocumentHost(
   // (not collapse to hosted_html_document).
   const isMarketplaceHost =
     payloadSource === "marketplace_host" ||
+    // Residual (aso): free Host-into-account path (vision/write-seed free-host).
+    payloadSource === "marketplace_free_host" ||
     payloadSource === "marketplace_library" ||
     payloadSource === "marketplace_library_rehydrate";
+  const isMarketplaceFreeHost = payloadSource === "marketplace_free_host";
   // Residual (aaj): filter-aware catalog HTML projection (not a hosted book).
   const isMarketplaceCatalog = payloadSource === "marketplace_catalog";
   const isMidnightOilDeposit = payloadSource === "midnight_oil_deposit";
@@ -1045,10 +1048,12 @@ export default function HostedHtmlDocumentHost(
                                         ? "spawn_merge"
                                         : isCollectiveDocMerge
                                           ? "collective_doc_merge"
-                                          : isMarketplaceHost
-                                            ? "marketplace_host"
-                                            : isMarketplaceCatalog
-                                              ? "marketplace_catalog"
+                                          : isMarketplaceFreeHost
+                                            ? "marketplace_free_host"
+                                            : isMarketplaceHost
+                                              ? "marketplace_host"
+                                              : isMarketplaceCatalog
+                                                ? "marketplace_catalog"
                                               : isMidnightOilDeposit
                                                 ? "midnight_oil_deposit"
                                                 : "hosted_html_document"

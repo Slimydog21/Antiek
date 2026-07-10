@@ -147,6 +147,32 @@ describe("twinWriteSeed (pp)", () => {
     expect(loadTwinWriteSeed(keyCol)?.source).toBe("collective_doc_merge");
   });
 
+  it("builds marketplace_free_host Write seed source (aso)", () => {
+    const href = buildHostedHtmlWriteHref({
+      documentId: "hdoc_free_aso_1",
+      html: "<p>Free PD book body.</p>",
+      title: "Free PD book",
+      source: "marketplace_free_host",
+    });
+    expect(href).toMatch(/twin_seed=/);
+    const key = decodeURIComponent(
+      (href.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    const seed = loadTwinWriteSeed(key);
+    expect(seed?.source).toBe("marketplace_free_host");
+    expect(seed?.title).toMatch(/Free PD book/i);
+    // Default title path when title omitted.
+    const href2 = buildHostedHtmlWriteHref({
+      documentId: "hdoc_free_aso_2",
+      html: "<p>body</p>",
+      source: "marketplace_free_host",
+    });
+    const key2 = decodeURIComponent(
+      (href2.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    expect(loadTwinWriteSeed(key2)?.title).toMatch(/Marketplace free host/i);
+  });
+
   it("builds hosted marketplace_host and midnight_oil_deposit Write seed sources (vr)", () => {
     const hrefMkt = buildHostedHtmlWriteHref({
       documentId: "hdoc_mkt",

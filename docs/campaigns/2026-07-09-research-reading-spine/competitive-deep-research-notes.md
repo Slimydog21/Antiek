@@ -4188,3 +4188,9 @@ product honesty from arw–ask wave. propose≠promote. P0 PR #465. Pivot asn+.
 ## Residual asn · 2026-07-10 — SESSION-ARC asj–asm Antiek-bench flywheel
 Vision → write-seed → dogfood v36 handoff after readiness→CTA. P0 PR #465.
 Pivot aso+ outside thrash.
+
+## Residual aso · 2026-07-10 — free host marketplace_free_host Write/vision source
+onHost opens hosted window with source=marketplace_free_host · twin seed
+store/load allowlist · HostedHtml Open Write maps free-host. Competitive
+delta: free vs paid host usage paths distinct for recursive bench rewrite.
+vitest twinWriteSeed 37 green. P0 PR #465. Pivot asp+.
