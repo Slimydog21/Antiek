@@ -1754,3 +1754,7 @@ Competitive delta: swarm handoff tip-true; operator merge PR #465 highest levera
 antiek-bench-dogfood-panel stamps data-suite-version and data-item-count after
 fixtures load. Competitive delta: panel shell is suite-identity honest without
 opening summary metrics only.
+
+## Residual zi · 2026-07-10 — FUTURE-AGENT tip re-anchor through zh
+FUTURE-AGENT-SPEC tip re-anchored after 88 residual ships this continuation.
+Competitive delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
