@@ -102,6 +102,58 @@ describe("ResearchProgressPanel", () => {
       "engagement_spine.progress",
     );
     expect(metrics.textContent).toMatch(/Research progress/);
+    // Non-terminal: no Write handoff (qw).
+    expect(screen.queryByTestId("research-progress-open-write")).toBeNull();
+  });
+
+  it("links Open Write twin_seed when progress is terminal (qw)", async () => {
+    fetchResearchProgress.mockResolvedValue({
+      spawn_id: "spn_done",
+      event_count: 2,
+      events: [
+        {
+          spawn_id: "spn_done",
+          stage: "synthesize",
+          message: "syn",
+          ts: 1,
+          sequence: 1,
+        },
+        {
+          spawn_id: "spn_done",
+          stage: "cite",
+          message: "done",
+          ts: 2,
+          sequence: 2,
+        },
+      ],
+      latest_stage: "cite",
+      is_terminal: true,
+      research_tier: "deep",
+      view_format: "html",
+      product_panel: "research_progress",
+      source: "engagement_spine.progress",
+      notes: [],
+      html: "<p>Final synthesis</p>",
+    });
+    render(
+      <ResearchProgressPanel
+        spawnId="spn_done"
+        autoLoad
+        parentAssetId="book-qw"
+        goal="Prove attention routing"
+        researchTier="deep"
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("research-progress-open-write")).toBeTruthy();
+    });
+    const write = screen.getByTestId("research-progress-open-write");
+    const href = write.getAttribute("href") || "";
+    expect(href).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
+    expect(href).not.toMatch(/html_draft=/);
+    expect(write.getAttribute("data-has-twin-seed")).toBe("1");
+    expect(write.getAttribute("data-is-terminal")).toBe("true");
+    expect(write.getAttribute("data-view-format")).toBe("html");
   });
 
   it("auto-loads progress on mount (cp)", async () => {

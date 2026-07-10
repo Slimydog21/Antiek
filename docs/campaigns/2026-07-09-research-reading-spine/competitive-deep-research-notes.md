@@ -693,3 +693,10 @@ without inventing a server document_id (offline-honest unfinished sessions).
 Competitive delta: Perplexity/Elicit/Consensus dump to chat or export PDF;
 Antiek keeps the recursive note-taker path HTML-first and session-seeded so
 highlight → float DR → Write brainstorm stays one continuous substrate.
+
+## Residual qw · 2026-07-10 — Progress terminal → Write
+When multi-minute plan→cite reaches is_terminal, ResearchProgressPanel offers
+Open Write with twin_seed of stages/HTML (source=research_progress_complete).
+Competitive delta: ChatGPT Deep Research / Perplexity dump chat export; Antiek
+closes float-session → terminal → writing substrate without inventing doc ids
+and without PDF as the intermediate format.

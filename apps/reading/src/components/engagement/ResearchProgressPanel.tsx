@@ -13,6 +13,8 @@
  * Residual (qm): DecisionTreeDriverBadge promptText for progress posture foresight.
  * Residual (mw): competitive duration band + poll cadence honesty by tier
  * (fast/deep/wrestle) for long-horizon Deep Research posture.
+ * Residual (qw): Open Write twin_seed when progress is terminal (progress
+ * events/HTML seed recursive note-taker; no invented document_id).
  * HTML-first; never PDF.
  */
 
@@ -26,6 +28,7 @@ import {
   mapResearchTierToProgressPollMs,
   RESEARCH_TIER_PROGRESS_POLL_MS,
 } from "../../lib/researchTier";
+import { buildResearchProgressWriteHref } from "../../workspace/twinWriteSeed";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 
 /**
@@ -77,6 +80,10 @@ export type ResearchProgressPanelProps = {
    * (wrestle → multi-minute long-horizon note).
    */
   researchTier?: "fast" | "deep" | "wrestle" | string | null;
+  /** Residual (qw): optional parent asset for twin_seed asset_id provenance. */
+  parentAssetId?: string | null;
+  /** Residual (qw): optional goal line in terminal Write seed. */
+  goal?: string | null;
 };
 
 export function ResearchProgressPanel({
@@ -85,6 +92,8 @@ export function ResearchProgressPanel({
   autoSeedIfEmpty = false,
   pollIntervalMs = 0,
   researchTier = null,
+  parentAssetId = null,
+  goal = null,
 }: ResearchProgressPanelProps) {
   const [progress, setProgress] = useState<ResearchProgressResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -177,6 +186,32 @@ export function ResearchProgressPanel({
     pollIntervalMs && pollIntervalMs >= 500
       ? pollIntervalMs
       : mapResearchTierToProgressPollMs(tierKnown);
+
+  /** Residual (qw): terminal progress → Write twin_seed handoff. */
+  const writeHref = useMemo(() => {
+    if (!progress?.is_terminal) return null;
+    return buildResearchProgressWriteHref({
+      spawnId: progress.spawn_id || spawnId,
+      parentAssetId,
+      researchTier: tierKnown,
+      latestStage: progress.latest_stage,
+      isTerminal: true,
+      events: progress.events,
+      html: progress.html,
+      goal,
+    });
+  }, [
+    progress?.is_terminal,
+    progress?.spawn_id,
+    progress?.latest_stage,
+    progress?.event_count,
+    progress?.html,
+    progress?.events,
+    spawnId,
+    parentAssetId,
+    tierKnown,
+    goal,
+  ]);
 
   return (
     <section
@@ -306,6 +341,22 @@ export function ResearchProgressPanel({
             latest=<strong>{progress.latest_stage ?? "(none)"}</strong> · events=
             {progress.event_count} · terminal={String(progress.is_terminal)}
           </p>
+          {/* Residual (qw): terminal → Open Write twin seed. */}
+          {writeHref ? (
+            <p className="meta font-mono text-[11px]">
+              <a
+                href={writeHref}
+                data-testid="research-progress-open-write"
+                data-view-format="html"
+                data-has-twin-seed="1"
+                data-is-terminal="true"
+                className="underline opacity-90 hover:opacity-100"
+                title="Open Write with terminal research progress as twin_seed (sessionStorage; no invented document_id)"
+              >
+                Open Write (research complete)
+              </a>
+            </p>
+          ) : null}
           <ol data-testid="research-progress-events">
             {progress.events.map((e) => (
               <li key={`${e.sequence}-${e.stage}`}>

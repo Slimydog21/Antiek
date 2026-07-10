@@ -11,6 +11,7 @@
 | Collective merge/analysis | qe | collective_doc_merge | html_draft + twin_seed |
 | Hosted HTML document | qu | hosted_html_document | html_draft + twin_seed |
 | Deep research session (live) | qv | deep_research_session | twin_seed only (no invent doc) |
+| Research progress terminal | qw | research_progress_complete | twin_seed only (no invent doc) |
 
 Write create seeds twins via fz/pq when `html_draft` and/or `twin_seed` present.
 

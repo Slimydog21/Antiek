@@ -390,6 +390,9 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
               autoSeedIfEmpty
               researchTier={researchTier}
               pollIntervalMs={mapResearchTierToProgressPollMs(researchTier)}
+              /* Residual (qw): terminal Open Write seed provenance. */
+              parentAssetId={props.parent_asset_id}
+              goal={props.goal}
             />
           </div>
         </section>

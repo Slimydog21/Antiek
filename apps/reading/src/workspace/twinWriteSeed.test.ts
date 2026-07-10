@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   TWIN_WRITE_SEED_KEY_PREFIX,
   buildDeepResearchWriteHref,
+  buildResearchProgressWriteHref,
   buildTwinWriteHref,
   buildHostedHtmlWriteHref,
   buildMarketplaceWriteHref,
@@ -164,6 +165,43 @@ describe("twinWriteSeed (pp)", () => {
       (href!.match(/twin_seed=([^&]+)/) || [])[1] || "",
     );
     expect(loadTwinWriteSeed(key)?.asset_id).toBe("deep_research:spn_orphan");
+  });
+
+  it("builds terminal progress Write twin_seed only when isTerminal (qw)", () => {
+    expect(
+      buildResearchProgressWriteHref({
+        spawnId: "spn_prog",
+        isTerminal: false,
+        latestStage: "cite",
+        events: [{ stage: "cite", message: "done" }],
+      }),
+    ).toBeNull();
+    const href = buildResearchProgressWriteHref({
+      spawnId: "spn_prog",
+      parentAssetId: "book-1",
+      researchTier: "wrestle",
+      latestStage: "cite",
+      isTerminal: true,
+      goal: "Prove attention",
+      events: [
+        { stage: "plan", message: "planned" },
+        { stage: "cite", message: "cited" },
+      ],
+      html: "<p>Synthesis body</p>",
+    });
+    expect(href).toBeTruthy();
+    expect(href!).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
+    expect(href!).not.toMatch(/html_draft=/);
+    const key = decodeURIComponent(
+      (href!.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    const seed = loadTwinWriteSeed(key);
+    expect(seed?.source).toBe("research_progress_complete");
+    expect(seed?.asset_id).toBe("book-1");
+    expect(seed?.plain_text).toMatch(/Prove attention/);
+    expect(seed?.plain_text).toMatch(/\[cite\] cited/);
+    expect(seed?.html).toMatch(/data-source="research_progress_complete"/);
+    expect(seed?.html).toMatch(/data-is-terminal="true"/);
   });
 
 });

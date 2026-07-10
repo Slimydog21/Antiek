@@ -16,7 +16,8 @@ export type TwinWriteSeedSource =
   | "marketplace_host"
   | "spawn_merge"
   | "hosted_html_document"
-  | "deep_research_session";
+  | "deep_research_session"
+  | "research_progress_complete";
 
 export type TwinWriteSeedPayload = {
   plain_text: string;
@@ -57,6 +58,7 @@ export function storeTwinWriteSeed(input: {
     "spawn_merge",
     "hosted_html_document",
     "deep_research_session",
+    "research_progress_complete",
   ];
   const source: TwinWriteSeedSource = allowed.includes(
     input.source as TwinWriteSeedSource,
@@ -99,6 +101,7 @@ export function loadTwinWriteSeed(key: string): TwinWriteSeedPayload | null {
       "spawn_merge",
       "hosted_html_document",
       "deep_research_session",
+      "research_progress_complete",
     ];
     const source: TwinWriteSeedSource = allowedLoad.includes(
       srcRaw as TwinWriteSeedSource,
@@ -283,6 +286,89 @@ export function buildDeepResearchWriteHref(opts: {
     asset_id: asset,
     note_ids: [],
     source: "deep_research_session",
+  });
+  if (!seedKey) return null;
+  return buildTwinWriteHref(seedKey);
+}
+
+/**
+ * Residual (qw): Write handoff when research progress reaches terminal.
+ * twin_seed only — progress HTML/events seed the recursive note-taker;
+ * does not invent a server document_id until Write create.
+ */
+export function buildResearchProgressWriteHref(opts: {
+  spawnId: string;
+  parentAssetId?: string | null;
+  researchTier?: string | null;
+  latestStage?: string | null;
+  isTerminal: boolean;
+  events?: ReadonlyArray<{
+    stage?: string | null;
+    message?: string | null;
+    sequence?: number | null;
+  }>;
+  html?: string | null;
+  goal?: string | null;
+}): string | null {
+  if (!opts.isTerminal) return null;
+  const spawn = String(opts.spawnId || "").trim();
+  if (!spawn) return null;
+  const goal = String(opts.goal || "").trim();
+  const stage = String(opts.latestStage || "").trim();
+  const tier = String(opts.researchTier || "").trim();
+  const events = opts.events || [];
+  const eventLines = events
+    .map((e) => {
+      const st = String(e.stage || "").trim();
+      const msg = String(e.message || "").trim();
+      if (!st && !msg) return "";
+      return st ? `[${st}] ${msg}` : msg;
+    })
+    .filter(Boolean);
+  const plainParts = [
+    goal ? `Goal: ${goal}` : "",
+    `Spawn: ${spawn}`,
+    stage ? `Terminal stage: ${stage}` : "Terminal: complete",
+    tier ? `Tier: ${tier}` : "",
+    ...eventLines,
+  ].filter(Boolean);
+  const plainFromHtml = plainTextFromHtml(opts.html || "");
+  const plain =
+    plainParts.join("\n") +
+    (plainFromHtml ? `\n\n${plainFromHtml}` : "");
+  if (!plain.trim()) return null;
+  const escape = (s: string) =>
+    String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  const eventHtml = eventLines
+    .map((line) => `<li>${escape(line)}</li>`)
+    .join("");
+  const bodyHtml =
+    String(opts.html || "").trim() ||
+    (eventHtml
+      ? `<ol class="progress-events">${eventHtml}</ol>`
+      : `<p>Deep research terminal · ${escape(spawn)}</p>`);
+  const html =
+    `<article data-view-format="html" data-source="research_progress_complete" data-spawn-id="${escape(spawn)}" data-is-terminal="true">` +
+    `<h1>Research complete · ${escape(spawn)}</h1>` +
+    (goal ? `<p class="goal"><strong>Goal:</strong> ${escape(goal)}</p>` : "") +
+    (stage
+      ? `<p class="stage"><strong>Stage:</strong> ${escape(stage)}</p>`
+      : "") +
+    (tier ? `<p class="tier"><strong>Tier:</strong> ${escape(tier)}</p>` : "") +
+    bodyHtml +
+    `</article>`;
+  const asset =
+    String(opts.parentAssetId || "").trim() || `deep_research:${spawn}`;
+  const seedKey = storeTwinWriteSeed({
+    plain_text: plain,
+    html,
+    title: `Research complete · ${spawn}`,
+    asset_id: asset,
+    note_ids: [],
+    source: "research_progress_complete",
   });
   if (!seedKey) return null;
   return buildTwinWriteHref(seedKey);
