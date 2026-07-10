@@ -2860,3 +2860,7 @@ Evidence pack surfaces citation chain chrome: insights→questions→source refs
 with data-chain-complete and multi-hop grounding copy when insights+refs present.
 Competitive citation-required synthesis honesty. vitest ResearchContext 14 green.
 P0 operator merge PR #465. Pivot aik+.
+
+## Residual aik · 2026-07-10 — scorecard citation chain + SESSION-ARC competitive DR
+Settings scorecard citation-trust row names citation chain (aij). SESSION-ARC
+aih–aij competitive DR quality wave. P0 operator merge PR #465. Pivot ail+.

@@ -4007,7 +4007,8 @@ export default function Settings() {
                 (collective · continue-as-unit · written analysis)
               </li>
               <li data-status="shipped" data-testid="competitive-dr-citation-trust">
-                Citation-trust / evidence pack — <strong>shipped offline</strong>
+                Citation-trust / evidence pack / citation chain (aij) —{" "}
+                <strong>shipped offline</strong>
               </li>
               <li data-status="shipped" data-testid="competitive-dr-budget-before-fire">
                 Budget-before-fire · pub-ref foresight chrome —{" "}
