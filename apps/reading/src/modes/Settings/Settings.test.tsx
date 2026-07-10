@@ -924,6 +924,15 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(
       screen.getByTestId("competitive-dr-nd-router").getAttribute("data-status"),
     ).toBe("never");
+    // Residual (akf): L5 payment deferred row links FUTURE digital book port brief.
+    expect(
+      screen.getByTestId("competitive-dr-payment").getAttribute("data-status"),
+    ).toBe("deferred");
+    expect(
+      screen
+        .getByTestId("competitive-dr-payment-l5-future-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-l5-digital-book-seamless-port/);
     expect(
       screen
         .getByTestId("settings-competitive-dr-future-agent-link")

@@ -1,0 +1,14 @@
+# inventory-akf · scorecard L5 payment row FUTURE digital book port link
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: akf
+date: 2026-07-10
+parent_tip: e43bf237 (ake)
+
+## Closed
+- competitive-dr-payment row: FUTURE L5 digital book seamless port deep-link (akb)
+- vitest Settings 37 green
+- proof: SCRATCH residual-akf-vitest.log
+
+## Next
+akg+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

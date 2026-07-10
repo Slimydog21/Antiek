@@ -4194,7 +4194,16 @@ export default function Settings() {
               </li>
               <li data-status="deferred" data-testid="competitive-dr-payment">
                 Live marketplace payment rails —{" "}
-                <strong>deferred L5</strong> · manual receipt only
+                <strong>deferred L5</strong> · manual receipt only · host land
+                FUTURE L5 deep-links (akb) ·{" "}
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-l5-digital-book-seamless-port.md"
+                  data-testid="competitive-dr-payment-l5-future-link"
+                  className="underline opacity-90 hover:opacity-100"
+                  title="FUTURE-AGENT L5 digital book seamless port brief"
+                >
+                  FUTURE L5 digital book port
+                </a>
               </li>
               <li data-status="never" data-testid="competitive-dr-nd-router">
                 NotDiamond as auto-router — <strong>never</strong> (advisory only

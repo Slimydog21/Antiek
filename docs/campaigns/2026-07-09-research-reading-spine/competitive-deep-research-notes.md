@@ -3097,3 +3097,8 @@ P0 operator merge PR #465. Pivot ake+ outside thrash.
 Settings prompt-cost projection panel links competitive DR scorecard + FUTURE
 brief + decision-tree (budget-before-fire Settings surface · parity ajm launch).
 vitest Settings 37 green. P0 operator merge PR #465. Pivot akf+ outside thrash.
+
+## Residual akf · 2026-07-10 — scorecard L5 payment FUTURE digital book port link
+Competitive DR scorecard payment deferred row deep-links FUTURE-AGENT L5 digital
+book seamless port (parity marketplace host akb). vitest Settings 37 green.
+P0 operator merge PR #465. Pivot akg+ outside thrash.
