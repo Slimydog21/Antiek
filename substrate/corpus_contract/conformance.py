@@ -7,6 +7,12 @@ validate their own adapters against the same bar.
 Each test function accepts an adapter factory and fixture data, so the kit is
 parametrizable by corpus.  The test file (``tests/test_corpus_contract.py``)
 calls each helper for every reference adapter.
+
+Clock discipline: adapters accept an injectable ``now_fn`` for
+``provenance.retrieved_at``.  The wall-clock default (``datetime.now(UTC)``)
+exists for production ergonomics only.  The kit itself never relies on the
+wall clock — every test passes a fixed ``now_fn`` so that deterministic
+replay is proven, not merely possible.
 """
 
 from __future__ import annotations
@@ -200,6 +206,28 @@ def assert_miss_has_id(adapter: CorpusAdapter) -> None:
     result = adapter.fetch("__conformance_miss_id_check__")
     assert isinstance(result, CorpusMiss)
     assert result.id == "__conformance_miss_id_check__"
+
+
+def assert_fetch_determinism(adapter: CorpusAdapter, fixture: FixtureDoc) -> None:
+    """Two fetches of the same id with the same clock produce equal results.
+
+    This proves that the adapter's clock is injectable and deterministic —
+    when a fixed ``now_fn`` is used, ``provenance.retrieved_at`` is identical
+    across calls.  The wall-clock default exists for production ergonomics
+    only; the kit never relies on it.
+    """
+    first = adapter.fetch(fixture.id)
+    second = adapter.fetch(fixture.id)
+    assert isinstance(first, CorpusDocument), (
+        f"expected CorpusDocument for {fixture.id!r}, got {type(first).__name__}"
+    )
+    assert isinstance(second, CorpusDocument), (
+        f"expected CorpusDocument for {fixture.id!r}, got {type(second).__name__}"
+    )
+    assert first == second, (
+        f"two fetches of {fixture.id!r} with the same clock produced "
+        f"different results:\n  first:  {first}\n  second: {second}"
+    )
 
 
 # ---------------------------------------------------------------------------

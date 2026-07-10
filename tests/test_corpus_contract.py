@@ -10,6 +10,7 @@ adapters against the same bar.
 
 from __future__ import annotations
 
+import datetime
 import pathlib
 from typing import Any
 
@@ -21,6 +22,7 @@ from substrate.corpus_contract.conformance import (
     BrokenProvenanceAdapter,
     FixtureDoc,
     assert_empty_query_returns_no_hits,
+    assert_fetch_determinism,
     assert_fetch_roundtrip,
     assert_miss_has_id,
     assert_provenance_completeness,
@@ -55,6 +57,10 @@ HOSTED_FIXTURE = FixtureDoc(
         "publications into my deep researches' one uniform mechanism."
     ),
 )
+
+# Fixed clock for deterministic testing — the kit never relies on wall time.
+def _fixed_now() -> datetime.datetime:
+    return datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -112,7 +118,7 @@ def _make_twin_adapter() -> TwinNotesCorpusAdapter:
             },
         ]
     )
-    return TwinNotesCorpusAdapter(reader, asset_id="asset-1")
+    return TwinNotesCorpusAdapter(reader, asset_id="asset-1", now_fn=_fixed_now)
 
 
 def _make_hosted_adapter() -> HostedDocsCorpusAdapter:
@@ -144,7 +150,7 @@ def _make_hosted_adapter() -> HostedDocsCorpusAdapter:
     }
     memberships = {"owner-1": [HOSTED_FIXTURE.id, "hdoc_other"]}
     reader = InMemoryHostedDocReader(docs, memberships)
-    return HostedDocsCorpusAdapter(reader, owner_id="owner-1")
+    return HostedDocsCorpusAdapter(reader, owner_id="owner-1", now_fn=_fixed_now)
 
 
 # ---------------------------------------------------------------------------
@@ -181,10 +187,9 @@ class TestTwinNotesConformance:
         adapter = _make_twin_adapter()
         assert_miss_has_id(adapter)
 
-
-# ---------------------------------------------------------------------------
-# Hosted-documents adapter conformance
-# ---------------------------------------------------------------------------
+    def test_fetch_determinism(self) -> None:
+        adapter = _make_twin_adapter()
+        assert_fetch_determinism(adapter, TWIN_FIXTURE)
 
 
 class TestHostedDocsConformance:
@@ -216,35 +221,46 @@ class TestHostedDocsConformance:
         adapter = _make_hosted_adapter()
         assert_miss_has_id(adapter)
 
+    def test_fetch_determinism(self) -> None:
+        adapter = _make_hosted_adapter()
+        assert_fetch_determinism(adapter, HOSTED_FIXTURE)
+
     def test_cross_owner_fetch_returns_miss(self) -> None:
         """A document belonging to owner-B must NOT be fetchable by an adapter
-        scoped to owner-A.  The adapter enforces owner scope by checking
-        membership before calling get_document.
+        scoped to owner-A.  The document EXISTS in the store (it is not an
+        unknown-id miss) — the denial is purely an owner-scope enforcement.
+
+        The adapter checks ``list_membership(owner_id)`` before calling
+        ``get_document``; a document outside the declared owner's membership
+        list returns ``CorpusMiss`` even though the store has it.
         """
-        # hdoc_other belongs to owner-1.  An adapter scoped to owner-2
-        # must not be able to fetch it even though the store has it.
+        foreign_doc_id = "hdoc_belongs_to_owner_b"
         docs = {
-            "hdoc_owner2": {
-                "document_id": "hdoc_owner2",
-                "owner_id": "owner-2",
-                "book_id": "book-x",
-                "content_hash": "xxx",
-                "title": "Owner 2 Doc",
+            foreign_doc_id: {
+                "document_id": foreign_doc_id,
+                "owner_id": "owner-B",
+                "book_id": "book-foreign",
+                "content_hash": "foreign123",
+                "title": "Foreign Owner Document",
                 "license_class": "public_domain",
-                "body_text": "This belongs to owner 2.",
+                "body_text": "This document exists in the store and belongs to owner-B.",
                 "source_format": "text",
                 "receipt_id": None,
                 "view_format": "html",
             },
         }
-        memberships = {"owner-2": ["hdoc_owner2"]}
+        # owner-B owns the document; owner-A has an empty library.
+        memberships: dict[str, list[str]] = {
+            "owner-B": [foreign_doc_id],
+            "owner-A": [],
+        }
         reader = InMemoryHostedDocReader(docs, memberships)
-        adapter2 = HostedDocsCorpusAdapter(reader, owner_id="owner-2")
-        # Fetching a document that exists in the store but belongs to a
-        # different owner MUST return CorpusMiss.
-        result = adapter2.fetch(HOSTED_FIXTURE.id)
+        # Adapter scoped to owner-A — must NOT see owner-B's document.
+        adapter_a = HostedDocsCorpusAdapter(reader, owner_id="owner-A")
+        result = adapter_a.fetch(foreign_doc_id)
         assert isinstance(result, CorpusMiss), (
-            f"cross-owner fetch should return CorpusMiss, got {type(result).__name__}"
+            f"cross-owner fetch of existing doc should return CorpusMiss, "
+            f"got {type(result).__name__}"
         )
 
 
@@ -258,7 +274,7 @@ class TestBrokenAdapterRedProof:
         """A BrokenProvenanceAdapter (empty source_kind/origin_ref) MUST fail
         assert_provenance_completeness — proof the kit is not a rubber stamp.
         """
-        broken = BrokenProvenanceAdapter(TWIN_FIXTURE)
+        broken = BrokenProvenanceAdapter(TWIN_FIXTURE, now_fn=_fixed_now)
         with pytest.raises(AssertionError, match="provenance"):
             assert_provenance_completeness(broken, TWIN_FIXTURE)
 
@@ -267,11 +283,11 @@ class TestBrokenAdapterRedProof:
         concern).  This is intentional: the red-proof targets provenance,
         not search.
         """
-        broken = BrokenProvenanceAdapter(TWIN_FIXTURE)
+        broken = BrokenProvenanceAdapter(TWIN_FIXTURE, now_fn=_fixed_now)
         assert_search_retrieval(broken, TWIN_FIXTURE)
 
     def test_broken_adapter_passes_miss(self) -> None:
-        broken = BrokenProvenanceAdapter(TWIN_FIXTURE)
+        broken = BrokenProvenanceAdapter(TWIN_FIXTURE, now_fn=_fixed_now)
         assert_unknown_id_returns_miss(broken)
 
 

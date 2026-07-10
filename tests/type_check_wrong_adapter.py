@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from substrate.corpus_contract.protocol import CorpusAdapter, CorpusHit, FetchResult
+from substrate.corpus_contract.protocol import CorpusAdapter, CorpusHit
 
 
 class WrongSignatureAdapter:
