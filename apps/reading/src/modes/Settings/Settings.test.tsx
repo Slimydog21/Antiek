@@ -740,8 +740,47 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(mini.getAttribute("data-would-exceed")).toBe("unknown");
     // Residual (wb): remaining-after empty when high band unknown (never invent).
     expect(mini.getAttribute("data-remaining-after-usd")).toBe("");
+    // Residual (aej): goes-negative unknown when remaining-after cannot be computed.
+    expect(mini.getAttribute("data-goes-negative")).toBe("unknown");
     expect(mini.textContent).toMatch(/Sample projection/i);
     expect(mini.textContent).toMatch(/never invents \$0/i);
+  });
+
+  it("stamps data-goes-negative on mini+full when high band burns past remaining (aej)", async () => {
+    const user = userEvent.setup();
+    estimatePromptCost.mockResolvedValueOnce({
+      estimated_usd_low: 3,
+      estimated_usd_high: 5,
+      would_exceed_budget: true,
+      pricing_known: true,
+      notes: [],
+      assumed_input_tokens: 500,
+      assumed_output_tokens: 2500,
+      tier: "pro",
+      provider: "zai",
+      model: "glm-5.2",
+    });
+    render(<Settings />);
+    await waitFor(() => {
+      expect(screen.getByTestId("decision-tree-project-cost")).toBeTruthy();
+    });
+    await user.click(screen.getByTestId("decision-tree-project-cost"));
+    await waitFor(() => {
+      expect(screen.getByTestId("decision-tree-mini-estimate")).toBeTruthy();
+    });
+    const mini = screen.getByTestId("decision-tree-mini-estimate");
+    // remaining 4 − high 5 = −1
+    expect(mini.getAttribute("data-remaining-after-usd")).toBe("-1");
+    expect(mini.getAttribute("data-goes-negative")).toBe("true");
+    expect(mini.getAttribute("data-would-exceed")).toBe("yes");
+    expect(mini.textContent).toMatch(/over remaining \(soft foresight\)/i);
+    await waitFor(() => {
+      expect(screen.getByTestId("prompt-cost-remaining-after")).toBeTruthy();
+    });
+    const full = screen.getByTestId("prompt-cost-remaining-after");
+    expect(full.getAttribute("data-remaining-after-usd")).toBe("-1");
+    expect(full.getAttribute("data-goes-negative")).toBe("true");
+    expect(full.textContent).toMatch(/over remaining \(soft foresight\)/i);
   });
 
   it("surfaces remaining-after on mini + full projection when high known (wb)", async () => {
@@ -770,6 +809,8 @@ describe("Settings SPR-01 + decision-tree install", () => {
     // remaining 4 − high 0.12 = 3.88
     expect(mini.getAttribute("data-remaining-after-usd")).toBe("3.88");
     expect(mini.getAttribute("data-would-exceed")).toBe("no");
+    // Residual (aej): within remaining → goes-negative false.
+    expect(mini.getAttribute("data-goes-negative")).toBe("false");
     expect(mini.textContent).toMatch(/remaining after≈\$3\.8800/);
     // Full projection panel shares estimate state after mini project.
     await waitFor(() => {
@@ -777,6 +818,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
     });
     const full = screen.getByTestId("prompt-cost-remaining-after");
     expect(full.getAttribute("data-remaining-after-usd")).toBe("3.88");
+    expect(full.getAttribute("data-goes-negative")).toBe("false");
     expect(full.textContent).toMatch(/Remaining after prompt/i);
     expect(full.textContent).toMatch(/\$3\.880000/);
     expect(

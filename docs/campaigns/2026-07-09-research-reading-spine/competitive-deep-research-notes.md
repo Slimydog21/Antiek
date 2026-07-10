@@ -2284,3 +2284,9 @@ Deep research · progress · evidence · publications · flywheel · context sea
 context pack · twin promote storeTwinWriteSeed stamp has_body=true (content-bearing
 builders). Competitive delta: recursive rewrite feed is explicit end-to-end for all
 engagement Open Write paths (title-only marketplace/merge keep false). vitest twinWriteSeed 34 green.
+
+## Residual aej · 2026-07-10 — Settings decision-tree projection goes-negative
+Mini estimate + full prompt-cost-remaining-after stamp data-goes-negative when
+high band burns past remaining (soft foresight · parity aeb launch/badge).
+Competitive delta: model-picker budget surface is machine-readable for over-cap
+foresight end-to-end. vitest Settings 36 green.

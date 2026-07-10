@@ -1541,6 +1541,16 @@ export default function Settings() {
                         )
                       : ""
                   }
+                  // Residual (aej): parity launch/badge aeb — machine-readable over-cap foresight.
+                  data-goes-negative={
+                    budget?.remaining_usd != null &&
+                    estimate.estimated_usd_high != null
+                      ? String(
+                          budget.remaining_usd - estimate.estimated_usd_high <
+                            0,
+                        )
+                      : "unknown"
+                  }
                   data-provider={estimate.provider ?? selectedProvider ?? ""}
                   data-model={estimate.model ?? selectedModel ?? ""}
                   role="status"
@@ -1558,6 +1568,11 @@ export default function Settings() {
                   {budget?.remaining_usd != null &&
                   estimate.estimated_usd_high != null
                     ? ` · remaining after≈$${(budget.remaining_usd - estimate.estimated_usd_high).toFixed(4)}`
+                    : ""}
+                  {budget?.remaining_usd != null &&
+                  estimate.estimated_usd_high != null &&
+                  budget.remaining_usd - estimate.estimated_usd_high < 0
+                    ? " · over remaining (soft foresight)"
                     : ""}{" "}
                   (soft gate · never invents $0)
                 </p>
@@ -3659,7 +3674,7 @@ export default function Settings() {
                         : "no"
                   }
                 />
-                {/* Residual (wb): remaining after high-band fire (parity launch wa). */}
+                {/* Residual (wb/aej): remaining after high-band fire + goes-negative (parity aeb). */}
                 <div
                   data-testid="prompt-cost-remaining-after"
                   data-remaining-after-usd={
@@ -3670,6 +3685,15 @@ export default function Settings() {
                         )
                       : ""
                   }
+                  data-goes-negative={
+                    budget?.remaining_usd != null &&
+                    estimate.estimated_usd_high != null
+                      ? String(
+                          budget.remaining_usd - estimate.estimated_usd_high <
+                            0,
+                        )
+                      : "unknown"
+                  }
                   role="status"
                 >
                   <Row
@@ -3677,7 +3701,12 @@ export default function Settings() {
                     value={
                       budget?.remaining_usd != null &&
                       estimate.estimated_usd_high != null
-                        ? `$${(budget.remaining_usd - estimate.estimated_usd_high).toFixed(6)}`
+                        ? `$${(budget.remaining_usd - estimate.estimated_usd_high).toFixed(6)}${
+                            budget.remaining_usd - estimate.estimated_usd_high <
+                            0
+                              ? " · over remaining (soft foresight)"
+                              : ""
+                          }`
                         : "—"
                     }
                   />
