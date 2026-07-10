@@ -171,6 +171,85 @@ export function competitiveDrStageProgress(opts: {
   };
 }
 
+/**
+ * Residual (apu): world-class DR bar readiness combining multi-stage coverage
+ * (ape) with optional citation hop coverage (api). Null hop ratio = unknown
+ * (hops live on evidence pack · never invent hop counts on progress).
+ */
+export type CompetitiveDrWorldClassReadiness = {
+  multi_stage_ready: boolean;
+  citation_hops_ready: boolean | null;
+  stage_coverage_ratio: number;
+  hop_coverage_ratio: number | null;
+  world_class_bar: "incomplete" | "multi_stage" | "multi_stage_and_hops";
+  notes: string[];
+};
+
+export function competitiveDrWorldClassReadiness(opts: {
+  stage_coverage_ratio?: number | null;
+  hop_coverage_ratio?: number | null;
+  stage_is_terminal?: boolean | null;
+  /** Minimum stage coverage for multi-stage ready (default 0.6 = 3/5). */
+  stage_ready_threshold?: number;
+  /** Minimum hop coverage when known (default 2/3). */
+  hop_ready_threshold?: number;
+}): CompetitiveDrWorldClassReadiness {
+  const stageRatio =
+    typeof opts.stage_coverage_ratio === "number" &&
+    Number.isFinite(opts.stage_coverage_ratio)
+      ? Math.max(0, Math.min(1, opts.stage_coverage_ratio))
+      : 0;
+  const hopRatio =
+    typeof opts.hop_coverage_ratio === "number" &&
+    Number.isFinite(opts.hop_coverage_ratio)
+      ? Math.max(0, Math.min(1, opts.hop_coverage_ratio))
+      : null;
+  const stageThresh =
+    typeof opts.stage_ready_threshold === "number" &&
+    Number.isFinite(opts.stage_ready_threshold)
+      ? opts.stage_ready_threshold
+      : 0.6;
+  const hopThresh =
+    typeof opts.hop_ready_threshold === "number" &&
+    Number.isFinite(opts.hop_ready_threshold)
+      ? opts.hop_ready_threshold
+      : 2 / 3;
+  const multi_stage_ready =
+    stageRatio >= stageThresh || opts.stage_is_terminal === true;
+  const citation_hops_ready =
+    hopRatio == null ? null : hopRatio >= hopThresh;
+  let world_class_bar: CompetitiveDrWorldClassReadiness["world_class_bar"] =
+    "incomplete";
+  if (multi_stage_ready && citation_hops_ready === true) {
+    world_class_bar = "multi_stage_and_hops";
+  } else if (multi_stage_ready) {
+    world_class_bar = "multi_stage";
+  }
+  const notes: string[] = [];
+  if (!multi_stage_ready) {
+    notes.push("multi-stage pipeline incomplete (plan→gather→synthesize→cite→terminal)");
+  } else {
+    notes.push("multi-stage pipeline ready");
+  }
+  if (citation_hops_ready === null) {
+    notes.push(
+      "citation hops unknown on progress surface · open evidence pack (never invent hops)",
+    );
+  } else if (citation_hops_ready) {
+    notes.push("citation hop pipeline ready (insights→questions→sources)");
+  } else {
+    notes.push("citation hop pipeline incomplete");
+  }
+  return {
+    multi_stage_ready,
+    citation_hops_ready,
+    stage_coverage_ratio: stageRatio,
+    hop_coverage_ratio: hopRatio,
+    world_class_bar,
+    notes,
+  };
+}
+
 export type ResearchProgressPanelProps = {
   spawnId: string;
   /** Residual (cp): fetch progress on mount. */
@@ -535,36 +614,76 @@ export function ResearchProgressPanel({
               })}
             </ol>
             {/* Residual (apn): competitive multi-stage × multi-hop citation bar. */}
-            <p
-              className="flex flex-wrap gap-x-3 gap-y-1 opacity-90 mt-1"
-              data-testid="research-progress-pipeline-competitive-nav"
-              data-view-format="html"
-              data-is-terminal={String(stagePipeline.is_terminal)}
-              data-completed-count={String(stagePipeline.completed_count)}
-              role="navigation"
-              aria-label="Competitive DR pipeline and citation hop navigation"
-            >
-              <span data-testid="research-progress-pipeline-citation-hop-hint">
-                Citation hops (insights → questions → sources) live on evidence
-                pack · never invent hops here
-              </span>
-              <a
-                href="/settings#settings-competitive-dr-scorecard"
-                data-testid="research-progress-pipeline-scorecard-link"
-                className="underline opacity-90 hover:opacity-100"
-                title="Settings competitive deep-research scorecard"
-              >
-                Settings · competitive DR scorecard
-              </a>
-              <a
-                href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
-                data-testid="research-progress-pipeline-future-agent-link"
-                className="underline opacity-90 hover:opacity-100"
-                title="FUTURE-AGENT competitive deep-research quality brief"
-              >
-                FUTURE · competitive DR brief
-              </a>
-            </p>
+            {/* Residual (apu): world-class readiness pure helper chrome. */}
+            {(() => {
+              const wc = competitiveDrWorldClassReadiness({
+                stage_coverage_ratio: stagePipeline.coverage_ratio,
+                hop_coverage_ratio: null,
+                stage_is_terminal: stagePipeline.is_terminal,
+              });
+              return (
+                <>
+                  <p
+                    className="font-mono text-[11px] opacity-90 mt-1"
+                    data-testid="research-progress-world-class-readiness"
+                    data-multi-stage-ready={String(wc.multi_stage_ready)}
+                    data-citation-hops-ready={
+                      wc.citation_hops_ready == null
+                        ? "unknown"
+                        : String(wc.citation_hops_ready)
+                    }
+                    data-world-class-bar={wc.world_class_bar}
+                    data-stage-coverage-ratio={String(
+                      Math.round(wc.stage_coverage_ratio * 1000) / 1000,
+                    )}
+                    data-view-format="html"
+                    role="status"
+                  >
+                    World-class DR bar · {wc.world_class_bar.replace(/_/g, " ")}
+                    {" · "}
+                    stage=
+                    {Math.round(wc.stage_coverage_ratio * 100)}%
+                    {" · hops="}
+                    {wc.citation_hops_ready == null
+                      ? "unknown (evidence pack)"
+                      : wc.citation_hops_ready
+                        ? "ready"
+                        : "incomplete"}
+                  </p>
+                  <p
+                    className="flex flex-wrap gap-x-3 gap-y-1 opacity-90 mt-1"
+                    data-testid="research-progress-pipeline-competitive-nav"
+                    data-view-format="html"
+                    data-is-terminal={String(stagePipeline.is_terminal)}
+                    data-completed-count={String(stagePipeline.completed_count)}
+                    data-world-class-bar={wc.world_class_bar}
+                    role="navigation"
+                    aria-label="Competitive DR pipeline and citation hop navigation"
+                  >
+                    <span data-testid="research-progress-pipeline-citation-hop-hint">
+                      Citation hops (insights → questions → sources) live on
+                      evidence pack · never invent hops here
+                    </span>
+                    <a
+                      href="/settings#settings-competitive-dr-scorecard"
+                      data-testid="research-progress-pipeline-scorecard-link"
+                      className="underline opacity-90 hover:opacity-100"
+                      title="Settings competitive deep-research scorecard"
+                    >
+                      Settings · competitive DR scorecard
+                    </a>
+                    <a
+                      href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+                      data-testid="research-progress-pipeline-future-agent-link"
+                      className="underline opacity-90 hover:opacity-100"
+                      title="FUTURE-AGENT competitive deep-research quality brief"
+                    >
+                      FUTURE · competitive DR brief
+                    </a>
+                  </p>
+                </>
+              );
+            })()}
           </div>
           <p>
             latest=<strong>{progress.latest_stage ?? "(none)"}</strong> · events=

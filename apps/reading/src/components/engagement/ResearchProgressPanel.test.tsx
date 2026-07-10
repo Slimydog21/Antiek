@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   competitiveDrStageProgress,
+  competitiveDrWorldClassReadiness,
   COMPETITIVE_DR_PIPELINE_STAGES,
   normalizeCompetitiveDrStage,
   ResearchProgressPanel,
@@ -75,6 +76,35 @@ describe("competitive DR stage pipeline pure helpers (ape)", () => {
     const empty = competitiveDrStageProgress({});
     expect(empty.completed).toEqual([]);
     expect(empty.current).toBeNull();
+  });
+});
+
+describe("competitive DR world-class readiness pure helper (apu)", () => {
+  it("derives multi-stage readiness without inventing hop coverage", () => {
+    const mid = competitiveDrWorldClassReadiness({
+      stage_coverage_ratio: 0.6,
+      hop_coverage_ratio: null,
+    });
+    expect(mid.multi_stage_ready).toBe(true);
+    expect(mid.citation_hops_ready).toBeNull();
+    expect(mid.world_class_bar).toBe("multi_stage");
+    expect(mid.notes.join(" ")).toMatch(/hops unknown/i);
+
+    const full = competitiveDrWorldClassReadiness({
+      stage_coverage_ratio: 1,
+      hop_coverage_ratio: 1,
+      stage_is_terminal: true,
+    });
+    expect(full.world_class_bar).toBe("multi_stage_and_hops");
+    expect(full.citation_hops_ready).toBe(true);
+
+    const weak = competitiveDrWorldClassReadiness({
+      stage_coverage_ratio: 0.2,
+      hop_coverage_ratio: 0.3,
+    });
+    expect(weak.multi_stage_ready).toBe(false);
+    expect(weak.citation_hops_ready).toBe(false);
+    expect(weak.world_class_bar).toBe("incomplete");
   });
 });
 
@@ -225,6 +255,13 @@ describe("ResearchProgressPanel", () => {
         .getByTestId("research-progress-pipeline-future-agent-link")
         .getAttribute("href") || "",
     ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    // Residual (apu): world-class DR bar readiness (stage known · hops unknown).
+    const wc = screen.getByTestId("research-progress-world-class-readiness");
+    expect(wc.getAttribute("data-multi-stage-ready")).toBe("true");
+    expect(wc.getAttribute("data-citation-hops-ready")).toBe("unknown");
+    expect(wc.getAttribute("data-world-class-bar")).toBe("multi_stage");
+    expect(wc.textContent).toMatch(/World-class DR bar/i);
+    expect(wc.textContent).toMatch(/hops=unknown/i);
     // Residual (rp): non-terminal still offers progress draft Write handoff.
     const draftWrite = screen.getByTestId("research-progress-open-write");
     expect(draftWrite.getAttribute("data-is-terminal")).toBe("false");

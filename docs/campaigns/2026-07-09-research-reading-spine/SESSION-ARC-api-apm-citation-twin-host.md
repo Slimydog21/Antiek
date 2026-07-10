@@ -22,3 +22,4 @@ one residual/cycle · campaign push only · operator merges PR #465.
 | **apr** | Settings scorecard hop pipeline + stage pipeline honesty | operator-visible ape/api map |
 | **aps** | ResearchThis competitive DR + hop/stage deep-links | highlight path · reading ≡ research |
 | **apt** | TalkToBook + MetaReading hop/stage pipeline hints | reading conversation matrix |
+| **apu** | competitiveDrWorldClassReadiness pure helper + progress chrome | multi-stage × hops bar |

@@ -3813,3 +3813,8 @@ vitest ResearchThis 13 green. P0 PR #465. Pivot apt+ outside thrash.
 Conversation reading surfaces stamp data-hop-pipeline=api · data-stage-pipeline=ape
 + pipeline hint text (parity ResearchThis aps). Completes reading ≡ research
 world-class DR map chrome. vitest Talk 13 · Meta 16 green. P0 PR #465. Pivot apu+.
+
+## Residual apu · 2026-07-10 — competitive DR world-class readiness pure helper
+competitiveDrWorldClassReadiness combines multi-stage coverage (ape) with optional
+hop coverage (api); null hops = unknown on progress (never invent). Progress UI stamps
+world-class bar. vitest ResearchProgress 13 green. P0 PR #465. Pivot apv+.
