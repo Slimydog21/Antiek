@@ -1,0 +1,13 @@
+# inventory-abt · FUTURE tip re-anchor free inventory through abs
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: abt
+date: 2026-07-10
+tip_sha: ccb433c2
+
+## Closed
+- SESSION-ARC free inventory abn–abs includes host-land
+- FUTURE tip → ccb433c2 · 153 residual ships this continuation
+- Highest leverage: operator merge PR #465 OPEN
+
+## Not in scope
+- Operator merge PR #465 (gated)

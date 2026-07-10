@@ -2048,3 +2048,8 @@ multi-agent handoff; operator merge PR #465 highest leverage.
 Host-land free_host honesty uses catalog is_free only (parity free inventory
 abn–abq). Competitive delta: free host path identity is end-to-end (API·HTML·UI·host land).
 
+## Residual abt · 2026-07-10 — FUTURE tip free inventory doctrine through abs
+FUTURE + SESSION-ARC free inventory is_free-only doctrine closed API·HTML·UI·host land
+(abn–abs). Tip ccb433c2 · 153 ships. Competitive delta: swarm handoff tip-true;
+operator merge PR #465 highest leverage.
+
