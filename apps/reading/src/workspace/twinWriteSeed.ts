@@ -18,7 +18,8 @@ export type TwinWriteSeedSource =
   | "hosted_html_document"
   | "deep_research_session"
   | "research_progress_complete"
-  | "evidence_pack";
+  | "evidence_pack"
+  | "publication_hydrate";
 
 export type TwinWriteSeedPayload = {
   plain_text: string;
@@ -61,6 +62,7 @@ export function storeTwinWriteSeed(input: {
     "deep_research_session",
     "research_progress_complete",
     "evidence_pack",
+    "publication_hydrate",
   ];
   const source: TwinWriteSeedSource = allowed.includes(
     input.source as TwinWriteSeedSource,
@@ -105,6 +107,7 @@ export function loadTwinWriteSeed(key: string): TwinWriteSeedPayload | null {
       "deep_research_session",
       "research_progress_complete",
       "evidence_pack",
+      "publication_hydrate",
     ];
     const source: TwinWriteSeedSource = allowedLoad.includes(
       srcRaw as TwinWriteSeedSource,
@@ -473,3 +476,89 @@ export function buildEvidencePackWriteHref(opts: {
   if (!seedKey) return null;
   return buildTwinWriteHref(seedKey);
 }
+
+/**
+ * Residual (rc): Write handoff from publication hydrate (arxiv/substack/url).
+ * twin_seed only — knowledge-dense pubs seed writing without inventing docs.
+ */
+export function buildPublicationHydrateWriteHref(opts: {
+  spawnId?: string | null;
+  assets: ReadonlyArray<{
+    asset_id?: string | null;
+    title?: string | null;
+    body_text?: string | null;
+    html?: string | null;
+    offline_honest?: boolean | null;
+    fetched?: boolean | null;
+    ref?: {
+      kind?: string | null;
+      raw?: string | null;
+      canonical_url?: string | null;
+      title_hint?: string | null;
+    } | null;
+  }>;
+}): string | null {
+  const assets = opts.assets || [];
+  if (!assets.length) return null;
+  const escape = (s: string) =>
+    String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  const lines: string[] = [];
+  const sections: string[] = [];
+  for (const a of assets) {
+    const id = String(a.asset_id || "").trim() || "pub";
+    const title = String(a.title || a.ref?.title_hint || a.ref?.raw || id).trim();
+    const body = String(a.body_text || "").trim() || plainTextFromHtml(a.html || "");
+    const kind = String(a.ref?.kind || "").trim();
+    const raw = String(a.ref?.raw || "").trim();
+    const url = String(a.ref?.canonical_url || "").trim();
+    lines.push(
+      [
+        `[pub] ${title}`,
+        kind ? `kind=${kind}` : "",
+        raw ? `raw=${raw}` : "",
+        url ? url : "",
+        body ? body.slice(0, 1200) : "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    );
+    sections.push(
+      `<section data-asset-id="${escape(id)}">` +
+        `<h2>${escape(title)}</h2>` +
+        (kind || raw
+          ? `<p class="ref">${escape([kind, raw, url].filter(Boolean).join(" · "))}</p>`
+          : "") +
+        (String(a.html || "").trim()
+          ? String(a.html)
+          : body
+            ? `<pre>${escape(body.slice(0, 4000))}</pre>`
+            : "") +
+        `</section>`,
+    );
+  }
+  const plain = lines.join("\n\n");
+  if (!plain.trim()) return null;
+  const spawn = String(opts.spawnId || "").trim();
+  const firstId = String(assets[0]?.asset_id || "").trim() || "publication";
+  const html =
+    `<article data-view-format="html" data-source="publication_hydrate"` +
+    (spawn ? ` data-spawn-id="${escape(spawn)}"` : "") +
+    ` data-pub-count="${assets.length}">` +
+    `<h1>Publications · ${escape(spawn || firstId)}</h1>` +
+    sections.join("") +
+    `</article>`;
+  const seedKey = storeTwinWriteSeed({
+    plain_text: plain,
+    html,
+    title: `Publications · ${spawn || firstId}`,
+    asset_id: firstId,
+    note_ids: [],
+    source: "publication_hydrate",
+  });
+  if (!seedKey) return null;
+  return buildTwinWriteHref(seedKey);
+}
+

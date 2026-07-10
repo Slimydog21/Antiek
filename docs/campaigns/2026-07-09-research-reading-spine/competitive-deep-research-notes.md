@@ -722,3 +722,8 @@ any dual-handoff surface feeds weekly recursive suite rewrite by_source.
 Evidence packs (insights + questions + arxiv/substack refs) hand off into Write
 as twin_seed source=evidence_pack. Competitive delta: citation-trust packs stay
 HTML-first and feed the recursive note-taker writing path + Antiek-bench.
+
+## Residual rc · 2026-07-10 — Publication hydrate → Write
+Attached arxiv/substack/URL hydrates hand off into Write as twin_seed
+source=publication_hydrate. Competitive delta: knowledge-dense pubs never
+dead-end in a sidebar — they seed the recursive note-taker writing path.

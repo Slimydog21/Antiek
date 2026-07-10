@@ -14,6 +14,7 @@
  * before/after attach (prop tier preferred; attach response fills when known).
  * Residual (mj): dual-gate L1–L4 checklist deep-link for arxiv/substack
  * live-injector dogfood prep (never enables injectors).
+ * Residual (rc): Open Write twin_seed from hydrated publications.
  * HTML-first; offline hydrate by default.
  */
 
@@ -26,6 +27,7 @@ import {
 import {
   parsePublicationRefs,
 } from "../../modes/ResearchWorkstation/publicationRefs";
+import { buildPublicationHydrateWriteHref } from "../../workspace/twinWriteSeed";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 
 export type PublicationAttachResult = {
@@ -279,6 +281,30 @@ export function PublicationAttachPanel({
               })()}
             </p>
           ) : null}
+          {/* Residual (rc): hydrated pubs → Write twin_seed. */}
+          {hydrated.length > 0
+            ? (() => {
+                const href = buildPublicationHydrateWriteHref({
+                  spawnId,
+                  assets: hydrated,
+                });
+                return href ? (
+                  <p>
+                    <a
+                      href={href}
+                      data-testid="publication-attach-open-write"
+                      data-view-format="html"
+                      data-has-twin-seed="1"
+                      data-hydrated-count={String(hydrated.length)}
+                      className="underline opacity-90 hover:opacity-100"
+                      title="Open Write with hydrated publications as twin_seed (arxiv/substack/URL; no invented document_id)"
+                    >
+                      Open Write (publications)
+                    </a>
+                  </p>
+                ) : null;
+              })()
+            : null}
           <ul data-testid="publication-attach-asset-list">
             {hydrated.map((a) => {
               const offline =

@@ -3,6 +3,7 @@ import {
   TWIN_WRITE_SEED_KEY_PREFIX,
   buildDeepResearchWriteHref,
   buildEvidencePackWriteHref,
+  buildPublicationHydrateWriteHref,
   buildResearchProgressWriteHref,
   buildTwinWriteHref,
   buildHostedHtmlWriteHref,
@@ -167,6 +168,34 @@ describe("twinWriteSeed (pp)", () => {
       (href!.match(/twin_seed=([^&]+)/) || [])[1] || "",
     );
     expect(loadTwinWriteSeed(key)?.asset_id).toBe("deep_research:spn_orphan");
+  });
+
+  it("builds publication hydrate Write twin_seed (rc)", () => {
+    const href = buildPublicationHydrateWriteHref({
+      spawnId: "spn_pub",
+      assets: [
+        {
+          asset_id: "pub_arxiv_1",
+          title: "Attention Is All You Need",
+          body_text: "Transformers.",
+          html: "<p>Transformers.</p>",
+          ref: {
+            kind: "arxiv",
+            raw: "arxiv:1706.03762",
+            canonical_url: "https://arxiv.org/abs/1706.03762",
+          },
+        },
+      ],
+    });
+    expect(href).toBeTruthy();
+    expect(href!).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
+    const key = decodeURIComponent(
+      (href!.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    const seed = loadTwinWriteSeed(key);
+    expect(seed?.source).toBe("publication_hydrate");
+    expect(seed?.plain_text).toMatch(/\[pub\] Attention/);
+    expect(seed?.html).toMatch(/data-source="publication_hydrate"/);
   });
 
   it("builds evidence pack Write twin_seed (rb)", () => {

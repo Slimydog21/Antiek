@@ -78,6 +78,13 @@ describe("PublicationAttachPanel residual ck/ed", () => {
         /pub_arxiv_abc/,
       );
     });
+    // Residual (rc): Open Write twin_seed from hydrated publications.
+    const write = screen.getByTestId("publication-attach-open-write");
+    const href = write.getAttribute("href") || "";
+    expect(href).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
+    expect(href).not.toMatch(/html_draft=/);
+    expect(write.getAttribute("data-has-twin-seed")).toBe("1");
+    expect(write.getAttribute("data-hydrated-count")).toBe("1");
     expect(
       screen.getByTestId("publication-attach-panel").getAttribute("data-view-format"),
     ).toBe("html");
