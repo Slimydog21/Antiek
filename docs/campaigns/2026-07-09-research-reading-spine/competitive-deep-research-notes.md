@@ -2875,3 +2875,8 @@ Pivot aim+ outside thrash.
 Multi-minute ResearchProgressPanel links Settings competitive DR scorecard so
 long-horizon wrestle jobs navigate world-class DR honesty map (aii). vitest
 ResearchProgress green. P0 operator merge PR #465. Pivot ain+.
+
+## Residual ain · 2026-07-10 — SESSION-ARC aif–aim foresight + competitive DR
+Wave handoff: pub-ref foresight chrome matrix complete · competitive DR quality
+brief · Settings scorecard · citation chain · progress deep-link · dogfood v27–v28.
+P0 operator merge PR #465. Pivot aio+ outside thrash.
