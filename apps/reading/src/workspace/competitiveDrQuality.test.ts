@@ -73,10 +73,18 @@ describe("competitiveDrQuality workspace pure helpers (apw)", () => {
     expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
       "midnight_oil_goals_duration_ceiling",
     );
+    // Residual (art): twin substrate + L5 receipt surfaces.
+    expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
+      "twin_substrate_insights_questions",
+    );
+    expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
+      "marketplace_l5_receipt_readiness",
+    );
     const cat = competitiveDrOfflineSurfaceCatalog();
     expect(cat.live_injectors_deferred).toBe(true);
     expect(cat.notdiamond_is_router).toBe(false);
     expect(cat.count).toBe(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES.length);
+    expect(cat.count).toBeGreaterThanOrEqual(14);
     expect(cat.summary).toMatch(/offline product surfaces/i);
     expect(cat.summary).toMatch(/ND never router/i);
   });

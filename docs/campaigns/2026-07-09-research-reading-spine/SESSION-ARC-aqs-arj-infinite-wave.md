@@ -48,3 +48,9 @@ Inventory-first product residual outside thrash. Prefer competitive DR depth · 
 ## Doctrine
 
 Complete work, never complete the goal. Infinite until STOP.
+
+## Residual arq–art · 2026-07-10
+| arq–arr | twin substrate readiness (TwinNotes · ResearchContext) |
+| ars | marketplace L5 receipt pure helper |
+| art | offline catalog expands twin substrate + L5 receipt |
+Tip after art: see git log.

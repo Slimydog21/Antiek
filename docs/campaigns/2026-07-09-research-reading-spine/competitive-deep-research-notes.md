@@ -4074,3 +4074,8 @@ P0 PR #465. Pivot ars+ outside thrash.
 marketplaceReceiptReadiness: receipt_ready · is_demo_default · never invent charge ·
 L5 live deferred. MarketplaceHost wired. Competitive delta: purchase+host path
 is hard-to-vary pure contract. vitest 47 green. P0 PR #465. Pivot art+.
+
+## Residual art · 2026-07-10 — offline catalog twin substrate + L5 receipt
+COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES += twin_substrate_insights_questions ·
+marketplace_l5_receipt_readiness. Scorecard inherits. vitest 42 green. P0 PR #465.
+Pivot aru+.

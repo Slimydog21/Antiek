@@ -1,0 +1,14 @@
+# inventory-art · offline surface catalog + twin substrate + L5 receipt
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: art
+date: 2026-07-10
+parent_tip: 648119fa8 (ars)
+
+## Closed
+- COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES += twin_substrate_insights_questions · marketplace_l5_receipt_readiness
+- Catalog count ≥14 · Settings scorecard inherits via pure helper
+- vitest competitiveDrQuality 5 + Settings 37 = 42 green
+- evidence: {SCRATCH}/art-offline-catalog-vitest.txt
+
+## Next
+aru+ outside thrash · Operator merge PR #465

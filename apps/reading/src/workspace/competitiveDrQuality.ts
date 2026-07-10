@@ -299,9 +299,13 @@ export const COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES = [
   "collective_multi_select_written_analysis",
   "midnight_oil_goals_duration_ceiling",
   "twin_seed_recursive_note_taker",
+  // Residual (art): twin substrate readiness (arq–arr).
+  "twin_substrate_insights_questions",
   "research_context_evidence_hop_pipeline",
   "multi_stage_progress_pipeline",
   "marketplace_html_free_host",
+  // Residual (art): L5 offline receipt readiness (ars).
+  "marketplace_l5_receipt_readiness",
   "publication_hydrate_offline_identity",
   "decision_tree_budget_foresight",
   "antiek_bench_recursive_rewrite",
