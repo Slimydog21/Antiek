@@ -1,0 +1,15 @@
+# inventory-akl · ResearchProgress Settings prompt-cost projection deep-link
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: akl
+date: 2026-07-10
+parent_tip: d31d317c (akk)
+
+## Closed
+- research-progress-prompt-cost-projection-link → /settings#prompt-cost-projection
+- Multi-minute wrestle budget-before-fire navigates Settings projection (parity akk MO)
+- vitest ResearchProgress 10 green
+- proof: SCRATCH residual-akl-vitest.log
+
+## Next
+akm+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

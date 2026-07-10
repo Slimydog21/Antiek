@@ -3127,3 +3127,8 @@ Pivot akk+ outside thrash.
 Autonomous Midnight Oil navigates Settings prompt-cost projection for
 budget-before-fire foresight (parity ake Settings surface). vitest MidnightOil 26 green.
 P0 operator merge PR #465. Pivot akl+ outside thrash.
+
+## Residual akl · 2026-07-10 — ResearchProgress Settings prompt-cost projection deep-link
+Multi-minute wrestle progress navigates Settings prompt-cost projection for
+budget-before-fire foresight (parity akk Midnight Oil · ake Settings).
+vitest ResearchProgress 10 green. P0 operator merge PR #465. Pivot akm+ outside thrash.

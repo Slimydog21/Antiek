@@ -293,6 +293,14 @@ export function ResearchProgressPanel({
           >
             Settings · competitive DR scorecard
           </a>
+          {/* Residual (akl): multi-minute wrestle budget-before-fire → Settings prompt-cost (ake/akk). */}
+          <a
+            href="/settings#prompt-cost-projection"
+            data-testid="research-progress-prompt-cost-projection-link"
+            title="Settings prompt-cost projection: estimate how long-horizon wrestle spend hits remaining daily budget"
+          >
+            Settings · prompt-cost projection
+          </a>
         </p>
         {/* Residual (lr): model+budget+depth during multi-minute plan→cite. */}
         {tierKnown ? (

@@ -59,6 +59,16 @@ describe("ResearchProgressPanel", () => {
         .getByTestId("research-progress-competitive-scorecard-link")
         .getAttribute("href"),
     ).toBe("/settings#settings-competitive-dr-scorecard");
+    // Residual (akl): multi-minute budget-before-fire → Settings prompt-cost (parity akk).
+    expect(
+      screen
+        .getByTestId("research-progress-prompt-cost-projection-link")
+        .getAttribute("href"),
+    ).toBe("/settings#prompt-cost-projection");
+    expect(
+      screen.getByTestId("research-progress-prompt-cost-projection-link")
+        .textContent,
+    ).toMatch(/prompt-cost projection/i);
     const dual = screen.getByTestId("research-progress-dual-gate-checklist-link");
     // Residual (xu/aau): multi-minute job prep → L4 MO live-step checklist section.
     expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l4-moil/);
