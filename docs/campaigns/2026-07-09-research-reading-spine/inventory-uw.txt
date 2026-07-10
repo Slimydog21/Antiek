@@ -1,0 +1,16 @@
+# inventory-uw · MO pub-refs Settings hydrate readiness deep-link
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: uw
+date: 2026-07-10
+
+## Closed
+- moil-pub-refs-hydrate-settings-link → /settings#hydrate-live-status
+- parity marketplace uu / HostedHtml uj
+- vitest MidnightOil 20 green · /tmp/residual-tests-uw.log
+
+## Product why
+Midnight Oil autonomous swarm pub grounding already had dual-gate checklist;
+Settings hydrate readiness completes L1/L2 prep matrix on create form.
+
+## Not in scope
+- Operator merge PR #465 (gated)

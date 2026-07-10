@@ -1203,3 +1203,8 @@ Competitive delta: free STEM catalog books ground DR without leaving host land.
 ## Residual uv · 2026-07-10 — FUTURE-AGENT tip re-anchor through uu
 FUTURE-AGENT-SPEC tip → 22129e6b with closed arcs tt–uu (28 residual ships).
 Competitive delta: swarm handoff tip-true after marketplace host pub-refs wave.
+
+## Residual uw · 2026-07-10 — MO pub-refs Settings hydrate readiness
+Midnight Oil create form pub-refs deep-link Settings #hydrate-live-status
+(parity marketplace uu). Competitive delta: autonomous swarm grounding has full
+L1/L2 prep matrix (Settings + dual-gate checklist).

@@ -1074,6 +1074,13 @@ describe("MidnightOil mode", () => {
     expect(offline.textContent).toMatch(/offline identity default/i);
   });
 
+  it("links Settings hydrate readiness beside pub refs (uw)", () => {
+    render(<MidnightOil />);
+    const settings = screen.getByTestId("moil-pub-refs-hydrate-settings-link");
+    expect(settings.getAttribute("href")).toBe("/settings#hydrate-live-status");
+    expect(settings.textContent).toMatch(/hydrate readiness/i);
+  });
+
   it("hydrates pub refs and appends grounded goals on create (oy)", async () => {
     createMidnightOilJob.mockResolvedValue({
       job_id: "moil_pubs",

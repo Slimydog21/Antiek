@@ -704,8 +704,16 @@ export default function MidnightOil() {
             placeholder={"arxiv:1706.03762\nhttps://…"}
             aria-label="Publication references for Midnight Oil grounding"
           />
-          {/* Residual (pb): L1/L2 hydrate prep deep-link (parity ml dual-gate). */}
-          <p className="text-[11px] font-mono">
+          {/* Residual (pb/uw): L1/L2 hydrate prep deep-links (parity marketplace uu). */}
+          <p className="text-[11px] font-mono space-x-2">
+            <a
+              href="/settings#hydrate-live-status"
+              data-testid="moil-pub-refs-hydrate-settings-link"
+              className="underline opacity-80 hover:opacity-100"
+              title="Settings publication hydrate readiness (arxiv/substack · offline default)"
+            >
+              Settings · hydrate readiness
+            </a>
             <a
               href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
               data-testid="moil-pub-refs-dual-gate-link"
@@ -715,7 +723,7 @@ export default function MidnightOil() {
               Dual-gate L1–L2 hydrate checklist
             </a>
             <span
-              className="ml-2 opacity-70"
+              className="opacity-70"
               data-testid="moil-pub-refs-offline-default"
               data-offline-honest="true"
               role="status"
