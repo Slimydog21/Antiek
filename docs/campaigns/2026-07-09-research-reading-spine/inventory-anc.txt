@@ -1,0 +1,13 @@
+# inventory-anc · SESSION-ARC + FUTURE twin matrix promote remount complete
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: anc
+date: 2026-07-10
+parent_tip: 0e2717c4 (anb)
+
+## Closed
+- FUTURE twin matrix rows: ResearchThis · TalkToBook · MetaReading promote remount
+- Reading conversation promote remount path offline-complete (amy · ana · anb)
+
+## Next
+and+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)
