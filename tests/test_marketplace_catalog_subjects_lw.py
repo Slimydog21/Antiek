@@ -165,6 +165,23 @@ def test_free_computing_stem_quartet() -> None:
     assert all(e.source_format == "html" for e in free_comp if e.book_id in ids)
 
 
+def test_free_electricity_stem_trio() -> None:
+    """Residual (xv): free electricity subject includes Faraday/Maxwell/Heaviside."""
+    cat = default_demo_catalog()
+    free_elec = [
+        e
+        for e in cat.filter_by_subject("electricity")
+        if e.is_free and e.license_class == "public_domain"
+    ]
+    ids = {e.book_id for e in free_elec}
+    assert ids >= {
+        "pd-faraday-electricity",
+        "pd-maxwell-em",
+        "pd-heaviside-em",
+    }
+    assert all(e.source_format == "html" for e in free_elec if e.book_id in ids)
+
+
 def test_turing_computability_subjects_and_free_pd() -> None:
     """Residual (wl): Turing tagged computing+computability, free PD."""
     cat = default_demo_catalog()

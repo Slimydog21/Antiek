@@ -1581,3 +1581,8 @@ spine is substrate-true (parity frontend compose xp).
 ResearchProgress dual-gate checklist jumps to #l4-moil (parity MO wx).
 Competitive delta: multi-minute progress surface navigates live-step deferred
 policy without inventing injectors.
+
+## Residual xv · 2026-07-10 — free electricity STEM trio substrate proof
+default_demo_catalog filter_by_subject(electricity) free PD includes Faraday ·
+Maxwell · Heaviside as HTML. Competitive delta: free electricity STEM spine is
+substrate-true (parity computing quartet xt).
