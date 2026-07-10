@@ -1,0 +1,25 @@
+# inventory-atl · TwinNotes cross-asset merge draft CTAs HTML-first · L3 deferred
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: atl
+date: 2026-07-10
+parent_tip: 29b2b1308 (atk)
+
+## Closed
+- twin-merge-draft-html · twin-merge-draft-html-full stamp:
+  data-view-format=html · data-html-first · data-window-mode ·
+  data-cross-asset-merge · data-multi-select-draft · data-draft-ready ·
+  data-selected-count · data-merge-bucket-count · data-l3-live-seed=deferred ·
+  data-source=twin_cross_asset_merge
+- Title honesty: load/select both sides vs open merge · never PDF
+- Parity atk multi-select draft · HostedHtml atc land honesty
+- vitest TwinNotesPanel 35 green
+
+## Doctrine
+Cross-asset twin merge → HTML draft before promote · recursive note-taker
+multi-asset substrate · L3 deferred · HTML-first · not PDF
+
+## Next
+atm+ offline product residual outside thrash
+Avoid: twin draft/merge CTA thrash after atk/atl · HostedHtml twin honesty ·
+presets · duration-band · MO deposit · vision · path-choices · dogfood · readiness→CTA
+Operator merge PR #465 remains P0 (gated)

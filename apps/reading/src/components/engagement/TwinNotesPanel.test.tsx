@@ -1955,8 +1955,22 @@ describe("TwinNotesPanel", () => {
       (screen.getByTestId("twin-merge-draft-html") as HTMLButtonElement)
         .disabled,
     ).toBe(false);
+    // Residual (atl): cross-asset merge draft CTAs HTML-first · L3 deferred.
+    const mergeDraft = screen.getByTestId("twin-merge-draft-html");
+    expect(mergeDraft.getAttribute("data-html-first")).toBe("true");
+    expect(mergeDraft.getAttribute("data-cross-asset-merge")).toBe("true");
+    expect(mergeDraft.getAttribute("data-draft-ready")).toBe("true");
+    expect(mergeDraft.getAttribute("data-source")).toBe("twin_cross_asset_merge");
+    expect(mergeDraft.getAttribute("data-l3-live-seed")).toBe("deferred");
+    expect(mergeDraft.getAttribute("data-merge-bucket-count")).toBe("1");
+    expect(mergeDraft.getAttribute("title") || "").toMatch(/never PDF/i);
+    expect(
+      screen.getByTestId("twin-merge-draft-html-full").getAttribute(
+        "data-window-mode",
+      ),
+    ).toBe("full");
 
-    fireEvent.click(screen.getByTestId("twin-merge-draft-html"));
+    fireEvent.click(mergeDraft);
 
     await waitFor(() => {
       expect(openWindow).toHaveBeenCalled();

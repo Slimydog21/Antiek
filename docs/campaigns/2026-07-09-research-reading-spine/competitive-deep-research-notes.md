@@ -4316,3 +4316,8 @@ Draft HTML float|full CTAs stamp html-first · multi-select-draft · draft-ready
 L3 deferred · source=twin_draft_selected. Title honesty never PDF.
 Complements ath HostedHtml land. vitest TwinNotesPanel 35 green. P0 PR #465.
 Pivot atl+.
+
+## Residual atl · 2026-07-10 — TwinNotes cross-asset merge draft CTA honesty
+Merge draft HTML float|full CTAs stamp html-first · cross-asset-merge ·
+draft-ready · L3 deferred · source=twin_cross_asset_merge. Parity atk ·
+HostedHtml atc. vitest TwinNotesPanel 35 green. P0 PR #465. Pivot atm+.

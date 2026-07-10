@@ -1454,9 +1454,27 @@ export function TwinNotesPanel({
             >
               {mergeBuckets.length > 0 ? "Add merge asset" : "Load merge asset"}
             </button>
+            {/* Residual (atl): cross-asset merge draft CTAs HTML-first · L3 deferred
+                (parity atk multi-select draft · HostedHtml atc land honesty). */}
             <button
               type="button"
               data-testid="twin-merge-draft-html"
+              data-view-format="html"
+              data-html-first="true"
+              data-window-mode="floating"
+              data-cross-asset-merge="true"
+              data-multi-select-draft="true"
+              data-draft-ready={String(
+                mergeBuckets.length > 0 &&
+                  selectedNoteIds.size > 0 &&
+                  mergeSelectedNoteIds.size > 0,
+              )}
+              data-selected-count={String(
+                selectedNoteIds.size + mergeSelectedNoteIds.size,
+              )}
+              data-merge-bucket-count={String(mergeBuckets.length)}
+              data-l3-live-seed="deferred"
+              data-source="twin_cross_asset_merge"
               onClick={() => openTwinDraft("floating", { crossAsset: true })}
               disabled={
                 busy ||
@@ -1464,13 +1482,35 @@ export function TwinNotesPanel({
                 selectedNoteIds.size === 0 ||
                 mergeSelectedNoteIds.size === 0
               }
-              title="Merge selected primary + all merge-asset twins → HTML draft window"
+              title={
+                mergeBuckets.length > 0 &&
+                selectedNoteIds.size > 0 &&
+                mergeSelectedNoteIds.size > 0
+                  ? `Merge selected primary + merge-asset twins → floating HTML draft (${selectedNoteIds.size + mergeSelectedNoteIds.size} notes · L3 live seed deferred · never PDF)`
+                  : "Load merge asset and multi-select notes on both sides to open cross-asset HTML draft"
+              }
             >
               Merge draft HTML
             </button>
             <button
               type="button"
               data-testid="twin-merge-draft-html-full"
+              data-view-format="html"
+              data-html-first="true"
+              data-window-mode="full"
+              data-cross-asset-merge="true"
+              data-multi-select-draft="true"
+              data-draft-ready={String(
+                mergeBuckets.length > 0 &&
+                  selectedNoteIds.size > 0 &&
+                  mergeSelectedNoteIds.size > 0,
+              )}
+              data-selected-count={String(
+                selectedNoteIds.size + mergeSelectedNoteIds.size,
+              )}
+              data-merge-bucket-count={String(mergeBuckets.length)}
+              data-l3-live-seed="deferred"
+              data-source="twin_cross_asset_merge"
               onClick={() => openTwinDraft("full", { crossAsset: true })}
               disabled={
                 busy ||
@@ -1478,7 +1518,13 @@ export function TwinNotesPanel({
                 selectedNoteIds.size === 0 ||
                 mergeSelectedNoteIds.size === 0
               }
-              title="Merge selected twins → full working-region HTML draft"
+              title={
+                mergeBuckets.length > 0 &&
+                selectedNoteIds.size > 0 &&
+                mergeSelectedNoteIds.size > 0
+                  ? `Merge selected twins → full HTML draft (${selectedNoteIds.size + mergeSelectedNoteIds.size} notes · L3 live seed deferred · never PDF)`
+                  : "Load merge asset and multi-select notes on both sides to open full cross-asset HTML draft"
+              }
             >
               Merge draft full
             </button>
