@@ -1648,13 +1648,27 @@ export default function MarketplaceHost({
             data-free-count={String(libraryFreeCount)}
             data-filtered-free-count={String(libraryFilteredFreeCount)}
             data-filters-active={String(libraryFiltersActive)}
+            // Residual (ace): free_count provenance — api when server free_count loaded.
+            data-free-count-source={
+              libraryApiFreeCount != null && Number.isFinite(libraryApiFreeCount)
+                ? "api"
+                : "client"
+            }
+            data-library-api-free-count={
+              libraryApiFreeCount != null && Number.isFinite(libraryApiFreeCount)
+                ? String(libraryApiFreeCount)
+                : ""
+            }
             data-view-format="html"
             role="status"
           >
             <p>
               Library · docs={libraryDocs.length} · filtered=
-              {filteredLibraryDocs.length} · free_pd=
+              {filteredLibraryDocs.length} · free_inventory=
               {libraryFreeCount} · human view=HTML
+              {libraryApiFreeCount != null && Number.isFinite(libraryApiFreeCount)
+                ? " · free_count_source=api"
+                : " · free_count_source=client"}
             </p>
             {libraryFiltersActive ? (
               <p
@@ -1676,12 +1690,16 @@ export default function MarketplaceHost({
                 className="border rounded p-2 flex flex-wrap justify-between gap-2 items-center"
                 data-testid={`library-doc-${d.document_id}`}
                 data-view-format="html"
+                // Residual (ace): free inventory machine attrs (parity catalog rows).
+                data-license-class={d.license_class ?? ""}
+                data-is-free={String(libraryDocIsFree(d))}
               >
                 <div className="text-sm">
                   <strong>{d.title || d.document_id}</strong>
                   <div className="font-mono text-[11px] opacity-70">
                     {d.document_id}
                     {d.license_class ? ` · ${d.license_class}` : ""}
+                    {libraryDocIsFree(d) ? " · free" : " · paid"}
                     {" · "}
                     {(d.view_format || "html") === "html" ? "HTML" : d.view_format}
                     {" · not PDF"}

@@ -2102,3 +2102,8 @@ Free inventory is_free-only doctrine complete including library free_count API+c
 (abn–acc). Tip 1516889d · 163 ships. Competitive delta: swarm handoff tip-true;
 operator merge PR #465 highest leverage; next leave free-inventory thrash.
 
+## Residual ace · 2026-07-10 — library free_count_source + row free inventory stamps
+Library metrics stamp free_count_source=api|client and library-api-free-count;
+library rows stamp data-is-free + data-license-class (parity catalog). Competitive
+delta: account library free inventory is machine-readable end-to-end after host.
+

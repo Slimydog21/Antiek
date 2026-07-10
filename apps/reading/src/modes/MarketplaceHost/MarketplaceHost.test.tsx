@@ -225,9 +225,11 @@ describe("MarketplaceHost mode", () => {
           title: "Pride",
           license_class: "public_domain",
           view_format: "html",
+          is_free: true,
         },
       ],
       count: 1,
+      free_count: 1,
       view_format: "html",
       html: "<p>Library</p>",
     });
@@ -479,10 +481,19 @@ describe("MarketplaceHost mode", () => {
     expect(libMetrics.getAttribute("data-doc-count")).toBe("1");
     expect(libMetrics.getAttribute("data-view-format")).toBe("html");
     expect(libMetrics.textContent).toMatch(/Library/);
-    // Residual (tb): free_pd honesty (unfiltered).
+    // Residual (tb): free inventory honesty (unfiltered).
     expect(libMetrics.getAttribute("data-free-count")).toBe("1");
     expect(libMetrics.getAttribute("data-filtered-free-count")).toBe("1");
     expect(libMetrics.getAttribute("data-filters-active")).toBe("false");
+    // Residual (ace): free_count provenance from API free_count (acb/acc).
+    expect(libMetrics.getAttribute("data-free-count-source")).toBe("api");
+    expect(libMetrics.getAttribute("data-library-api-free-count")).toBe("1");
+    expect(libMetrics.textContent).toMatch(/free_count_source=api/);
+    // Residual (ace): library row free inventory machine attrs (parity catalog).
+    const libRow = screen.getByTestId("library-doc-hdoc_abc");
+    expect(libRow.getAttribute("data-is-free")).toBe("true");
+    expect(libRow.getAttribute("data-license-class")).toBe("public_domain");
+    expect(libRow.textContent).toMatch(/free/);
     fireEvent.change(screen.getByTestId("library-filter"), {
       target: { value: "hdoc_abc" },
     });

@@ -1,0 +1,22 @@
+# inventory-ace · library free_count_source + row free inventory stamps
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ace
+date: 2026-07-10
+tip_before: 95481ef9 (acd)
+
+## Problem
+Library metrics preferred API free_count (acc) but did not stamp free_count_source;
+library rows lacked data-is-free / data-license-class (catalog rows already had them).
+
+## Fix
+- marketplace-library-metrics: data-free-count-source=api|client + data-library-api-free-count
+- library-doc rows: data-is-free + data-license-class + free|paid chrome
+- free_inventory wording on metrics strip
+- MarketplaceHost host test locks ace attrs with free_count on library mock
+
+## Verified
+vitest MarketplaceHost loads catalog and hosts → passed
+scratch: residual-ace-tests.log
+
+## Not in scope
+- Operator merge PR #465 (gated)
