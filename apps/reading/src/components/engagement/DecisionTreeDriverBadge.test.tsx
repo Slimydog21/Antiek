@@ -337,6 +337,12 @@ describe("DecisionTreeDriverBadge residual cw/eq", () => {
     const nd = screen.getByTestId("decision-tree-notdiamond-advisory-link");
     expect(nd.getAttribute("href")).toBe("/settings#notdiamond-advisory");
     expect(nd.getAttribute("data-notdiamond-authority")).toBe("advisory_only");
+    // Residual (arl): L7 implement verdict stamps on driver chokepoint (parity arj).
+    expect(nd.getAttribute("data-implement-as-router")).toBe("false");
+    expect(nd.getAttribute("data-implement-as-advisory")).toBe("true");
+    expect(nd.getAttribute("data-dual-gate")).toBe("L7");
+    expect(nd.getAttribute("data-never-auto-route")).toBe("true");
+    expect(nd.getAttribute("title") || "").toMatch(/advisor only|never.*router/i);
     expect(nd.textContent).toMatch(/ND advisory/i);
   });
 

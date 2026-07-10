@@ -4033,3 +4033,8 @@ Settings verdict chrome. vitest 46 green. P0 PR #465. Pivot ark+.
 Compaction-safe multi-agent handoff through dual-gate · path · MO plan · free-PD
 domain · knowledge-dense vision · NotDiamond L7 advisor-only verdict. P0 PR #465.
 Pivot arl+ outside thrash.
+
+## Residual arl · 2026-07-10 — DecisionTreeDriverBadge ND L7 implement verdict
+Driver chokepoint ND advisory link stamps implement-as-router=false · L7 ·
+never-auto-route (parity Settings arj verdict). vitest 15 green. P0 PR #465.
+Pivot arm+ outside thrash.

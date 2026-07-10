@@ -41,6 +41,7 @@ import {
   type DecisionTreeSelectionResponse,
   type PromptCostEstimateResponse,
 } from "../../api/settings";
+import { notDiamondImplementationVerdict } from "../../lib/notDiamondDriverDelta";
 import { benchTaskClassToVisionFeeds } from "../../lib/suiteProposalTasks";
 import {
   bestModelForTaskClass,
@@ -253,13 +254,17 @@ export function DecisionTreeDriverBadge({
         >
           Settings
         </a>
-        {/* Residual (rm): NotDiamond weekly advisory delta (never auto-route). */}
+        {/* Residual (rm/arl): NotDiamond weekly advisory · L7 implement verdict (arj). */}
         <a
           href="/settings#notdiamond-advisory"
           data-testid="decision-tree-notdiamond-advisory-link"
           data-notdiamond-authority="advisory_only"
+          data-implement-as-router="false"
+          data-implement-as-advisory="true"
+          data-dual-gate="L7"
+          data-never-auto-route="true"
           className="underline opacity-80 hover:opacity-100"
-          title="Open Settings → NotDiamond weekly advisory vs installed driver (advisory only · never dispatch authority)"
+          title={notDiamondImplementationVerdict().summary}
         >
           ND advisory
         </a>
