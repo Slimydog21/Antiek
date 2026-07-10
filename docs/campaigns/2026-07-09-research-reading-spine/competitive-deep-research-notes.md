@@ -1679,3 +1679,7 @@ domain path is free-PD-only + technology.
 free technology subject includes Faraday + Shannon + Turing + Lovelace as HTML.
 Competitive delta: tech-researcher technology domain is substrate-true for
 cross-electricity/computing free STEM (parity frontend compose yo).
+
+## Residual yq · 2026-07-10 — FUTURE-AGENT tip re-anchor through yp
+FUTURE-AGENT-SPEC tip re-anchored after 70 residual ships this continuation.
+Competitive delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
