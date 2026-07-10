@@ -1462,4 +1462,70 @@ describe("MarketplaceHost mode", () => {
       screen.getByTestId("marketplace-host-free-pd-honesty").textContent,
     ).toMatch(/free_host=true/);
   });
+
+  it("launches Faraday DR with electricity domains in goal_hint (to)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-faraday-electricity",
+          title: "Experimental Researches in Electricity",
+          author: "Michael Faraday",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: ["physics", "science", "technology", "electricity"],
+        },
+      ],
+      count: 1,
+      view_format: "html",
+      free_count: 1,
+      public_domain_count: 1,
+      payment_rails: "manual_receipt_only",
+    });
+    hostBookIntoAccount.mockResolvedValue({
+      document_id: "hdoc_faraday_dr",
+      owner_id: "tech-researcher",
+      book_id: "pd-faraday-electricity",
+      content_hash: "f2",
+      title: "Experimental Researches in Electricity",
+      license_class: "public_domain",
+      already_hosted: false,
+      source_format: "html",
+      library_document_ids: ["hdoc_faraday_dr"],
+      view_format: "html",
+      html: "<p>Induction of electric currents</p>",
+    });
+    fetchAccountLibrary.mockResolvedValue({
+      owner_id: "tech-researcher",
+      documents: [],
+      count: 0,
+      view_format: "html",
+      html: "",
+    });
+    render(<MarketplaceHost ownerId="tech-researcher" />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("catalog-entry-pd-faraday-electricity"),
+      ).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /host into account/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId("marketplace-host-deep-research")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("marketplace-host-deep-research"));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalled();
+    });
+    const call = launchFloatingDeepResearch.mock.calls.at(-1)?.[0] as {
+      asset_id: string;
+      goal_hint: string;
+      view_mode: string;
+      research_tier: string;
+    };
+    expect(call.asset_id).toBe("hdoc_faraday_dr");
+    expect(call.view_mode).toBe("floating");
+    expect(call.goal_hint).toMatch(/domains=.*electricity/);
+    expect(call.goal_hint).toMatch(/marketplace HTML host/);
+    expect(call.goal_hint).toMatch(/Experimental Researches/);
+  });
 });

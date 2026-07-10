@@ -1,0 +1,13 @@
+# inventory-to · Faraday DR goal_hint carries electricity domains
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: to
+date: 2026-07-10
+
+## Closed
+- After host Faraday free PD, Deep research (float) launches with
+  goal_hint containing domains=…electricity… and marketplace HTML host
+- reading ≡ research domain continuity
+- vitest MarketplaceHost 17 · SCRATCH residual-tests-to.log
+
+## Not in scope
+- Operator merge PR #465 (gated)

@@ -1023,3 +1023,9 @@ host → research substrate with domain-aware twin seed continuity.
 Hosting Maxwell free PD stamps free_host honesty + electricity/mathematics
 subjects on host land (parity Faraday tm). Competitive delta: full
 electricity STEM free host path is product-proven for tech researchers.
+
+## Residual to · 2026-07-10 — Faraday DR goal_hint electricity domains
+Hosting Faraday free PD then launching floating deep research puts
+domains=electricity (and related STEM tags) into goal_hint. Competitive
+delta: free marketplace STEM hosts feed domain-aware deep research without
+re-entering domain context by hand (reading ≡ research).
