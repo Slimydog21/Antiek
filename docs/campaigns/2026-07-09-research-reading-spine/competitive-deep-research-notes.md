@@ -3557,3 +3557,8 @@ FUTURE remaining vision tip 56b2eb5b; closed table names ang–anr collective ·
 budget merge soft-gates · Nicomachean free PD · open-vs-recent honesty matrix.
 P1 offline: twin flywheel · MO · competitive DR · HTML engagement.
 P0 operator merge PR #465. Pivot ant+ outside thrash.
+
+## Residual ant · 2026-07-10 — SessionFlywheel complete budget soft-gate
+Session land Complete flywheel soft-gates on budget projection before fire
+(parity merge ank/anl · continue-as-unit). vitest SessionFlywheelPanel 8 green.
+P0 operator merge PR #465. Pivot anu+ outside thrash (prefer non-budget-gate).

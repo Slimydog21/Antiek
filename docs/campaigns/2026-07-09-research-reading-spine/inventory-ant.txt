@@ -1,0 +1,15 @@
+# inventory-ant · SessionFlywheel complete budget soft-gate
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ant
+date: 2026-07-10
+parent_tip: 5a46f58e (ans)
+
+## Closed
+- SessionFlywheelPanel mounts ResearchLaunchBudgetPanel before complete
+- Soft-gate Complete flywheel when projection exceeds budget (force override)
+- Budget-before-fire on session land (parity merge ank/anl · continue di)
+- vitest SessionFlywheelPanel 8 green
+
+## Next
+anu+ product residual outside thrash · prefer non-budget-soft-gate
+Operator merge PR #465 remains highest leverage (gated)

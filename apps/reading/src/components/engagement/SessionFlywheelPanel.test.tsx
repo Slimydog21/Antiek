@@ -28,9 +28,49 @@ vi.mock("./DecisionTreeDriverBadge", () => ({
   ),
 }));
 
+const budgetProjection = vi.hoisted(() => ({
+  wouldExceedBudget: false as boolean,
+}));
+
+vi.mock("./ResearchLaunchBudgetPanel", () => {
+  const React = require("react") as typeof import("react");
+  return {
+    ResearchLaunchBudgetPanel: (props: {
+      promptText: string;
+      researchTier?: string;
+      onProjectionChange?: (p: {
+        wouldExceedBudget: boolean | null;
+        pricingKnown: boolean;
+        estimatedUsdHigh: number | null;
+        remainingUsd: number | null;
+        modelId: string | null;
+      }) => void;
+    }) => {
+      React.useEffect(() => {
+        props.onProjectionChange?.({
+          wouldExceedBudget: budgetProjection.wouldExceedBudget,
+          pricingKnown: true,
+          estimatedUsdHigh: budgetProjection.wouldExceedBudget ? 99 : 0.1,
+          remainingUsd: budgetProjection.wouldExceedBudget ? 0.5 : 5,
+          modelId: null,
+        });
+      }, [props.onProjectionChange, props.promptText]);
+      return (
+        <div
+          data-testid="research-launch-budget-panel-stub"
+          data-research-tier={props.researchTier || "deep"}
+        >
+          budget len={props.promptText.length}
+        </div>
+      );
+    },
+  };
+});
+
 describe("SessionFlywheelPanel residual cl/ee", () => {
   afterEach(() => cleanup());
   beforeEach(() => {
+    budgetProjection.wouldExceedBudget = false;
     completeSessionFlywheel.mockReset();
     openWindow.mockClear();
   });
@@ -262,5 +302,51 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
     );
     expect(link.getAttribute("href")).toBe("/settings#prompt-cost-projection");
     expect(link.textContent).toMatch(/prompt-cost projection/i);
+  });
+
+  it("soft-gates complete flywheel on budget projection (ant)", async () => {
+    budgetProjection.wouldExceedBudget = true;
+    completeSessionFlywheel.mockResolvedValue({
+      session_id: "fsess_over",
+      spawn_id: "spn_over",
+      status: "complete",
+      view_format: "html",
+      context: { twin_count: 0, ref_count: 0 },
+    });
+    render(
+      <SessionFlywheelPanel
+        sessionId="fsess_over"
+        defaultOutputText="Substantial session synthesis for budget gate."
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("session-flywheel-budget-mount")).toBeTruthy();
+    });
+    expect(
+      screen
+        .getByTestId("session-flywheel-budget-mount")
+        .getAttribute("data-budget-soft-gate"),
+    ).toBe("true");
+    await waitFor(() => {
+      expect(screen.getByTestId("session-flywheel-over-budget-warn")).toBeTruthy();
+    });
+    const btn = screen.getByTestId(
+      "session-flywheel-complete",
+    ) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(btn.getAttribute("data-budget-soft-gate")).toBe("true");
+    fireEvent.click(btn);
+    expect(completeSessionFlywheel).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("session-flywheel-force-over-budget"));
+    await waitFor(() => {
+      expect(
+        (screen.getByTestId("session-flywheel-complete") as HTMLButtonElement)
+          .disabled,
+      ).toBe(false);
+    });
+    fireEvent.click(screen.getByTestId("session-flywheel-complete"));
+    await waitFor(() => {
+      expect(completeSessionFlywheel).toHaveBeenCalled();
+    });
   });
 });

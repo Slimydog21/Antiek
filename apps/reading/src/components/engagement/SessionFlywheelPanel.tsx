@@ -18,6 +18,8 @@
  * Residual (re): Open Write twin_seed after flywheel complete.
  * Residual (acs): data-write-seed-has-body when output or prompt_block non-empty.
  * Residual (sn): float|full session complete HTML (output + prompt_block).
+ * Residual (ant): budget soft-gate on Complete flywheel (budget-before-fire ·
+ * parity merge ank/anl · continue-as-unit di · session land foresight).
  * Composes shipped completeSessionFlywheel. HTML-first context pack.
  */
 
@@ -29,6 +31,11 @@ import {
 import { buildSessionFlywheelWriteHref } from "../../workspace/twinWriteSeed";
 import { openWindow } from "../windows/openWindow";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
+import {
+  ResearchLaunchBudgetPanel,
+  type ResearchLaunchBudgetProjection,
+  type ResearchLaunchTier,
+} from "./ResearchLaunchBudgetPanel";
 
 function buildSessionFlywheelHtml(opts: {
   sessionId: string;
@@ -85,6 +92,16 @@ export function SessionFlywheelPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SessionFlywheelResponse | null>(null);
+  // Residual (ant): budget soft-gate before session flywheel complete.
+  const [budgetWarn, setBudgetWarn] = useState(false);
+  const [forceOverBudget, setForceOverBudget] = useState(false);
+  const [flywheelTier, setFlywheelTier] = useState<ResearchLaunchTier>(() => {
+    const t = (researchTier || "").trim().toLowerCase();
+    return t === "fast" || t === "deep" || t === "wrestle" ? t : "deep";
+  });
+  const onProjectionChange = useCallback((p: ResearchLaunchBudgetProjection) => {
+    setBudgetWarn(p.wouldExceedBudget === true);
+  }, []);
 
   const complete = useCallback(async () => {
     const sid = sessionId.trim();
@@ -95,6 +112,13 @@ export function SessionFlywheelPanel({
     }
     if (text.length < 3) {
       setError("Output text must be at least 3 characters");
+      return;
+    }
+    // Residual (ant): budget-before-fire on session land complete.
+    if (budgetWarn && !forceOverBudget) {
+      setError(
+        "Projected cost may exceed remaining daily budget — enable force override or reduce scope before complete flywheel.",
+      );
       return;
     }
     setBusy(true);
@@ -116,8 +140,14 @@ export function SessionFlywheelPanel({
     } finally {
       setBusy(false);
     }
-  }, [sessionId, output, recordTwins, onCompleted]);
-
+  }, [
+    sessionId,
+    output,
+    recordTwins,
+    onCompleted,
+    budgetWarn,
+    forceOverBudget,
+  ]);
   const flywheelTwinCount = (r: SessionFlywheelResponse): number => {
     const ctx = r.context;
     if (typeof ctx?.twin_count === "number") return ctx.twin_count;
@@ -150,8 +180,14 @@ export function SessionFlywheelPanel({
       if (eff) return eff;
     }
     const fromProp = (researchTier || "").trim().toLowerCase();
-    return fromProp || "deep";
-  }, [result, researchTier]);
+    return fromProp || flywheelTier || "deep";
+  }, [result, researchTier, flywheelTier]);
+
+  const flywheelPromptText = useMemo(() => {
+    const text = output.trim();
+    if (text) return text.slice(0, 4000);
+    return `session flywheel complete · ${sessionId.trim()}`;
+  }, [output, sessionId]);
 
   return (
     <section
@@ -256,12 +292,60 @@ export function SessionFlywheelPanel({
         />
         Record twin notes + promote to context
       </label>
+      {/* Residual (ant): budget foresight before session flywheel complete. */}
+      <div
+        className="space-y-2"
+        data-testid="session-flywheel-budget-mount"
+        data-view-format="html"
+        data-research-tier={badgeResearchTier}
+        data-budget-warn={String(budgetWarn)}
+        data-budget-soft-gate="true"
+      >
+        <ResearchLaunchBudgetPanel
+          promptText={flywheelPromptText}
+          researchTier={
+            badgeResearchTier === "fast" ||
+            badgeResearchTier === "deep" ||
+            badgeResearchTier === "wrestle"
+              ? badgeResearchTier
+              : flywheelTier
+          }
+          allowTierPick
+          onResearchTierChange={setFlywheelTier}
+          onProjectionChange={onProjectionChange}
+        />
+        {budgetWarn ? (
+          <label
+            className="flex items-center gap-2 text-[11px] font-mono text-emperor"
+            data-testid="session-flywheel-over-budget-warn"
+          >
+            <input
+              type="checkbox"
+              data-testid="session-flywheel-force-over-budget"
+              checked={forceOverBudget}
+              onChange={(e) => setForceOverBudget(e.target.checked)}
+              disabled={busy}
+            />
+            Force complete flywheel despite budget projection
+          </label>
+        ) : null}
+      </div>
       <button
         type="button"
         data-testid="session-flywheel-complete"
-        disabled={busy || output.trim().length < 3}
+        data-budget-soft-gate={String(budgetWarn && !forceOverBudget)}
+        disabled={
+          busy ||
+          output.trim().length < 3 ||
+          (budgetWarn && !forceOverBudget)
+        }
         onClick={() => void complete()}
         className="rounded border border-ink/30 px-2 py-1 text-[12px] font-mono hover:bg-ink/5 disabled:opacity-50 dark:border-bright/30"
+        title={
+          budgetWarn && !forceOverBudget
+            ? "Over budget — enable force override before complete flywheel"
+            : "Land output → twins/context pack → usage events"
+        }
       >
         {busy ? "Completing…" : "Complete flywheel"}
       </button>
