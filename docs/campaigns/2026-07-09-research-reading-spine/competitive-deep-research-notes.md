@@ -1533,3 +1533,8 @@ information theory + computability + computing history on HTML-first free path.
 ## Residual xj · 2026-07-10 — history subject chip for Lovelace
 Catalog subject chip history isolates Lovelace free PD. Competitive delta:
 tech researchers domain-filter computing history on free STEM path.
+
+## Residual xk · 2026-07-10 — Lovelace DR goal_hint domain parity
+Hosted Lovelace free PD launches float DR with computing+history domains in
+goal_hint (parity Turing/Shannon). Competitive delta: reading≡research on
+computing-history STEM is mechanically proven.

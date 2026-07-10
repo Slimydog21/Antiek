@@ -2367,6 +2367,79 @@ describe("MarketplaceHost mode", () => {
     expect(metrics.getAttribute("data-subject-filter")).toBe("computability");
   });
 
+  it("launches Lovelace DR with computing+history domains in goal_hint (xk)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-lovelace-analytical-engine",
+          title: "Sketch of the Analytical Engine Invented by Charles Babbage",
+          author: "Ada Lovelace",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: [
+            "mathematics",
+            "science",
+            "technology",
+            "computing",
+            "history",
+            "engineering",
+          ],
+        },
+      ],
+      count: 1,
+      view_format: "html",
+      free_count: 1,
+      public_domain_count: 1,
+      payment_rails: "manual_receipt_only",
+    });
+    hostBookIntoAccount.mockResolvedValue({
+      document_id: "hdoc_lovelace_dr",
+      owner_id: "tech-researcher",
+      book_id: "pd-lovelace-analytical-engine",
+      content_hash: "l2",
+      title: "Sketch of the Analytical Engine",
+      license_class: "public_domain",
+      already_hosted: false,
+      source_format: "html",
+      library_document_ids: ["hdoc_lovelace_dr"],
+      view_format: "html",
+      html: "<p>Algebraical patterns and the Jacquard-loom metaphor</p>",
+    });
+    fetchAccountLibrary.mockResolvedValue({
+      owner_id: "tech-researcher",
+      documents: [],
+      count: 0,
+      view_format: "html",
+      html: "",
+    });
+    render(<MarketplaceHost ownerId="tech-researcher" />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("catalog-entry-pd-lovelace-analytical-engine"),
+      ).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /host into account/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId("marketplace-host-deep-research")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("marketplace-host-deep-research"));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalled();
+    });
+    const call = launchFloatingDeepResearch.mock.calls.at(-1)?.[0] as {
+      asset_id: string;
+      goal_hint: string;
+      view_mode: string;
+    };
+    expect(call.asset_id).toBe("hdoc_lovelace_dr");
+    expect(call.view_mode).toBe("floating");
+    expect(call.goal_hint).toMatch(/domains=.*computing/);
+    expect(call.goal_hint).toMatch(/domains=.*history/);
+    expect(call.goal_hint).toMatch(/marketplace HTML host/);
+    expect(call.goal_hint).toMatch(/Analytical Engine|Lovelace|Babbage/i);
+  });
+
   it("filters catalog by history subject chip for Lovelace (xj)", async () => {
     fetchMarketplaceCatalog.mockResolvedValue({
       entries: [
