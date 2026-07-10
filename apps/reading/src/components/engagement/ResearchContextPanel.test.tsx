@@ -605,9 +605,21 @@ describe("ResearchContextPanel", () => {
         screen.getByTestId("evidence-pack-result").getAttribute("data-citation-trust"),
       ).toBe("ungrounded");
     });
-    expect(screen.getByTestId("evidence-citation-trust").textContent).toMatch(
-      /ungrounded/i,
-    );
+    const trust = screen.getByTestId("evidence-citation-trust");
+    expect(trust.textContent).toMatch(/ungrounded/i);
+    // Residual (up): ungrounded pack deep-links hydrate prep (never silent live).
+    expect(trust.getAttribute("data-citation-trust")).toBe("ungrounded");
+    expect(trust.getAttribute("data-offline-hydrate-default")).toBe("true");
+    expect(
+      screen
+        .getByTestId("evidence-citation-trust-hydrate-settings-link")
+        .getAttribute("href"),
+    ).toBe("/settings#hydrate-live-status");
+    expect(
+      screen
+        .getByTestId("evidence-citation-trust-dual-gate-link")
+        .getAttribute("href") || "",
+    ).toMatch(/DUAL-GATE-L1-L4/);
   });
 
   it("mounts DecisionTreeDriverBadge with prompt_block foresight (qq)", async () => {

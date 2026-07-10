@@ -1169,3 +1169,8 @@ foresight as recommended — no silent over-budget custom approve without chrome
 ## Residual uo · 2026-07-10 — SESSION-ARC + FUTURE-AGENT tip through un
 SESSION-ARC-tt-un + FUTURE-AGENT tip 313070dc. Competitive delta: 21-commit
 infinite wave handoff is compaction-safe for multi-agent swarm.
+
+## Residual up · 2026-07-10 — ungrounded evidence citation-trust hydrate prep
+Ungrounded evidence packs deep-link Settings hydrate readiness + dual-gate
+L1–L2 checklist with data-offline-hydrate-default. Competitive delta: citation
+trust failure is actionable prep — never silent live arxiv/substack enable.

@@ -660,19 +660,43 @@ export function ResearchContextPanel({
           ) : null}
           {/* Residual (dm): competitive bar — never pretend citations exist. */}
           {(evidence.ref_count ?? 0) === 0 ? (
-            <p
-              className="meta font-mono text-[11px] text-emperor"
+            <div
+              className="meta font-mono text-[11px] text-emperor space-y-1"
               data-testid="evidence-citation-trust"
+              data-citation-trust="ungrounded"
+              data-offline-hydrate-default="true"
               role="status"
             >
-              Citation trust: ungrounded — attach arxiv/substack/URL refs or
-              seed twins before treating this pack as competitive-grade
-              synthesis.
-            </p>
+              <p>
+                Citation trust: ungrounded — attach arxiv/substack/URL refs or
+                seed twins before treating this pack as competitive-grade
+                synthesis.
+              </p>
+              {/* Residual (up): prep links when ungrounded (never silent live hydrate). */}
+              <p className="space-x-2 opacity-90">
+                <a
+                  href="/settings#hydrate-live-status"
+                  data-testid="evidence-citation-trust-hydrate-settings-link"
+                  className="underline hover:opacity-100"
+                  title="Settings publication hydrate readiness (arxiv/substack · offline default)"
+                >
+                  Settings · hydrate readiness
+                </a>
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+                  data-testid="evidence-citation-trust-dual-gate-link"
+                  className="underline hover:opacity-100"
+                  title="Dual-gate L1–L4 checklist (arxiv/substack hydrate prep; offline default)"
+                >
+                  Dual-gate L1–L2 hydrate checklist
+                </a>
+              </p>
+            </div>
           ) : (
             <p
               className="meta font-mono text-[11px]"
               data-testid="evidence-citation-trust"
+              data-citation-trust="grounded"
               role="status"
             >
               Citation trust: grounded · {evidence.ref_count} source ref(s)
