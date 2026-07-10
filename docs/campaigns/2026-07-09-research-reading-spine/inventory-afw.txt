@@ -1,0 +1,18 @@
+# inventory-afw · highlight → DR float|full path honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: afw
+date: 2026-07-10
+parent_tip: e9258833 (afv)
+
+## Closed
+- floatmenu-deep-research-float · seamless-highlight-dr · view-mode=floating
+- floatmenu-deep-research-full · seamless-highlight-dr · view-mode=full
+- MenuButton testId + dataAttrs
+- vitest FloatMenu · 25 passed
+
+## Why this residual
+User vision: highlight → floating deep research windows. Path was behavioral;
+machine-readable seamless path stamps close honesty loop for shared FloatMenu.
+
+## Not in scope
+- Hybrid clarifying questions · withheld body changes

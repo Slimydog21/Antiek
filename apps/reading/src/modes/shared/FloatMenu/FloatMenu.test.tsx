@@ -423,6 +423,24 @@ describe("DEEP-RESEARCH spawns a child linked to the highlight (M2)", () => {
     expect(opts).toEqual({ viewMode: "floating" });
   });
 
+  it("stamps highlight → DR float|full path honesty (afw)", () => {
+    render(
+      <Host
+        onDeepResearch={vi.fn()}
+        provenance={{ servable: true, documentId: "d", chunkId: null }}
+      />,
+    );
+    selectTextIn(screen.getByTestId("scope"), "path honesty");
+    const floatBtn = screen.getByTestId("floatmenu-deep-research-float");
+    expect(floatBtn.getAttribute("data-seamless-highlight-dr")).toBe("true");
+    expect(floatBtn.getAttribute("data-view-mode")).toBe("floating");
+    expect(floatBtn.getAttribute("data-view-format")).toBe("html");
+    const fullBtn = screen.getByTestId("floatmenu-deep-research-full");
+    expect(fullBtn.getAttribute("data-seamless-highlight-dr")).toBe("true");
+    expect(fullBtn.getAttribute("data-view-mode")).toBe("full");
+    expect(fullBtn.getAttribute("data-view-format")).toBe("html");
+  });
+
   it("Deep-research full hands host viewMode full (fe)", () => {
     const onDeepResearch = vi.fn();
     render(

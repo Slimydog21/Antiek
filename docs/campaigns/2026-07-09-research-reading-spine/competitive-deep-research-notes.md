@@ -2489,3 +2489,8 @@ merge PR #465. Pivot afv+ outside thrash.
 Suite suite-competitive-dogfood-v17 adds wrestle fixtures for Select recent
 path (afp) and ResearchWorkstation spine (afr–aft). Settings spine postures
 v17. pytest dogfood 5 · Settings 36 green. propose≠promote.
+
+## Residual afw · 2026-07-10 — highlight → DR float|full path honesty
+FloatMenu Deep-research / Deep-research full stamp data-seamless-highlight-dr
+· view-mode · view-format=html so highlight→floating/full deep research path is
+machine-readable (shared Read/Research FloatMenu host). vitest FloatMenu 25 green.

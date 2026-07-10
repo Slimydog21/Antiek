@@ -201,6 +201,13 @@ export default function FloatMenu({
             <MenuButton label="Search" onClick={() => setView({ kind: "search" })} />
             <MenuButton
               label="Deep-research"
+              // Residual (afw): highlight → floating DR path honesty.
+              testId="floatmenu-deep-research-float"
+              dataAttrs={{
+                "data-seamless-highlight-dr": "true",
+                "data-view-mode": "floating",
+                "data-view-format": "html",
+              }}
               onClick={() => {
                 // DEEP-RESEARCH → the REUSED chase path (host wires
                 // ChaseThread + startInvestigation). §9.0: hand the host the
@@ -211,9 +218,15 @@ export default function FloatMenu({
                 });
               }}
             />
-            {/* Residual (fe): full working-region deep research (parity et/es). */}
+            {/* Residual (fe/afw): full working-region deep research path honesty. */}
             <MenuButton
               label="Deep-research full"
+              testId="floatmenu-deep-research-full"
+              dataAttrs={{
+                "data-seamless-highlight-dr": "true",
+                "data-view-mode": "full",
+                "data-view-format": "html",
+              }}
               onClick={() => {
                 onDeepResearch(outboundText(selection), selection, {
                   viewMode: "full",
@@ -298,12 +311,25 @@ export default function FloatMenu({
   );
 }
 
-function MenuButton({ label, onClick }: { label: string; onClick: () => void }) {
+function MenuButton({
+  label,
+  onClick,
+  testId,
+  dataAttrs,
+}: {
+  label: string;
+  onClick: () => void;
+  /** Residual (afw): optional test id for path honesty controls. */
+  testId?: string;
+  dataAttrs?: Record<string, string>;
+}) {
   return (
     <button
       type="button"
       role="menuitem"
       onClick={onClick}
+      data-testid={testId}
+      {...dataAttrs}
       className="px-3 py-1.5 hover:bg-shadow-2 transition-colors first:rounded-l-md last:rounded-r-md"
     >
       {label}

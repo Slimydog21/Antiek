@@ -1,13 +1,13 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** residual **afv** (dogfood v17 select-recent + RW spine) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
+**Campaign tip at write:** residual **afw** (highlight → DR float|full path honesty) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **URL:** https://github.com/Slimydog21/Antiek/pull/465  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
 
 ## Do not rebuild
 
-Prefer **inventory-afv** + **SESSION-ARC-afr-aft-research-workstation-spine.md** + **SESSION-ARC-afn-afp-multi-select-assembly-path.md**.  
+Prefer **inventory-afw** + **SESSION-ARC-afr-aft-research-workstation-spine.md** + **SESSION-ARC-afn-afp-multi-select-assembly-path.md**.  
 This continuation: **250 residual ships** from vy tip `8e280766`.
 
 ### Closed product (high signal)
@@ -26,7 +26,7 @@ This continuation: **250 residual ships** from vy tip `8e280766`.
 ### P0 — Operator merge PR #465
 **Highest leverage remaining.** Agents never merge main/prod.
 
-### P1 next offline (residual **afw+**)
+### P1 next offline (residual **afx+**)
 Outside thrash: MO live multi-provider · paid L5 · competitive depth. Leave thrash.
 
 ## Doctrine
