@@ -2127,3 +2127,8 @@ Library Open Write stamps data-write-seed-has-body=false until rehydrate/host
 provides body. Competitive delta: write-seed body honesty matrix complete
 (title-only → rehydrate body → twin seed offline).
 
+## Residual acj · 2026-07-10 — SESSION-ARC + FUTURE tip through aci
+SESSION-ARC-acf-aci documents library → Write twin_seed body + rehydrate twins.
+Tip 396618e9 · 169 ships. Competitive delta: swarm handoff tip-true; operator merge
+PR #465 highest leverage.
+

@@ -1,0 +1,13 @@
+# inventory-acj · SESSION-ARC + FUTURE tip through aci
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: acj
+date: 2026-07-10
+tip_sha: 396618e9
+
+## Closed
+- SESSION-ARC-acf-aci-library-write-seed.md
+- FUTURE tip → 396618e9 · 169 residual ships this continuation
+- Highest leverage: operator merge PR #465 OPEN
+
+## Not in scope
+- Operator merge PR #465 (gated)
