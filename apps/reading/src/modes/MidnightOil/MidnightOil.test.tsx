@@ -38,6 +38,7 @@ import {
   providerRouteMidnightOil,
   repositoryCommitRollbackPlanMidnightOil,
   repositoryTransactionPlanMidnightOil,
+  retentionBillingReconciliationPlanMidnightOil,
   retrievalAdapterPlanMidnightOil,
   retrievalMidnightOil,
   runnerControlPlanMidnightOil,
@@ -4207,6 +4208,168 @@ vi.mock("../../api/midnightOil", () => ({
       "delivery notification reconciliation plan only: no delivery notification, status entry, result entry, operator visible event, workspace card, ledger entry, URL activation, operator notification, or final artifact is created",
     ],
   })),
+  retentionBillingReconciliationPlanMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-retention-billing-reconciliation-plan",
+    delivery_notification_reconciliation_plan_receipt_id:
+      "midnight-oil-test-delivery-notification-reconciliation-plan",
+    workspace_delivery_card_reconciliation_plan_receipt_id:
+      "midnight-oil-test-workspace-delivery-card-reconciliation-plan",
+    operator_delivery_ledger_reconciliation_plan_receipt_id:
+      "midnight-oil-test-operator-delivery-ledger-reconciliation-plan",
+    operator_notification_delivery_result_reconciliation_plan_receipt_id:
+      "midnight-oil-test-operator-notification-delivery-result-reconciliation-plan",
+    operator_notification_delivery_apply_plan_receipt_id:
+      "midnight-oil-test-operator-notification-delivery-apply-plan",
+    operator_notification_delivery_readiness_plan_receipt_id:
+      "midnight-oil-test-operator-notification-delivery-readiness-plan",
+    final_run_closure_plan_receipt_id: "midnight-oil-test-final-run-closure-plan",
+    final_artifact_completion_finalization_plan_receipt_id:
+      "midnight-oil-test-final-artifact-completion-finalization-plan",
+    final_artifact_publish_plan_receipt_id:
+      "midnight-oil-test-final-artifact-publish-plan",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    run_id: "midnight-oil-test",
+    status: "blocked_retention_billing_reconciliation_unimplemented",
+    adapter_key: "retention_billing_reconciliation",
+    planned_retention_billing_reconciliation_receipt_id:
+      "midnight-oil-test-retention-billing-reconciliation-receipt",
+    planned_run_retention_manifest_id: "midnight-oil-test-run-retention-manifest",
+    planned_billing_reconciliation_id: "midnight-oil-test-billing-reconciliation",
+    planned_model_usage_rollup_id: "midnight-oil-test-model-usage-rollup",
+    planned_source_lineage_archive_id: "midnight-oil-test-source-lineage-archive",
+    planned_run_retention_manifest_status_entry_id:
+      "midnight-oil-test-run-retention-manifest-status-entry",
+    planned_billing_reconciliation_status_entry_id:
+      "midnight-oil-test-billing-reconciliation-status-entry",
+    planned_model_usage_rollup_reconciliation_entry_id:
+      "midnight-oil-test-model-usage-rollup-reconciliation-entry",
+    planned_source_lineage_archive_reconciliation_entry_id:
+      "midnight-oil-test-source-lineage-archive-reconciliation-entry",
+    planned_delivery_notification_reconciliation_receipt_id:
+      "midnight-oil-test-delivery-notification-reconciliation-receipt",
+    planned_delivery_notification_id: "midnight-oil-test-delivery-notification",
+    planned_delivery_notification_status_entry_id:
+      "midnight-oil-test-delivery-notification-status-entry",
+    planned_delivery_notification_result_entry_id:
+      "midnight-oil-test-delivery-notification-result-entry",
+    planned_delivery_notification_operator_visible_event_id:
+      "midnight-oil-test-delivery-notification-operator-visible-event",
+    planned_delivery_notification_replay_guard_id:
+      "midnight-oil-test-delivery-notification-replay-guard",
+    planned_workspace_delivery_card_reconciliation_receipt_id:
+      "midnight-oil-test-workspace-delivery-card-reconciliation-receipt",
+    planned_workspace_delivery_card_id: "midnight-oil-test-workspace-delivery-card",
+    planned_operator_delivery_ledger_reconciliation_receipt_id:
+      "midnight-oil-test-operator-delivery-ledger-reconciliation-receipt",
+    planned_operator_delivery_ledger_entry_id:
+      "midnight-oil-test-operator-delivery-ledger-entry",
+    planned_operator_delivery_ledger_status_entry_id:
+      "midnight-oil-test-operator-delivery-ledger-status-entry",
+    planned_operator_notification_delivery_outcome_record_id:
+      "midnight-oil-test-operator-notification-delivery-outcome-record",
+    planned_operator_notification_delivery_reconciliation_entry_id:
+      "midnight-oil-test-operator-notification-delivery-reconciliation-entry",
+    planned_private_read_url_id: "midnight-oil-test-private-read-url",
+    planned_reading_workspace_entry_id: "midnight-oil-test-reading-workspace-entry",
+    planned_hosted_html_asset_id: "midnight-oil-test-hosted-html-asset",
+    planned_idempotency_key: "midnight-oil-test-live-dispatch-final-enable-idempotency-key",
+    retention_billing_reconciliation_blockers: [
+      "run retention manifest reconciliation receipt writer",
+      "run retention manifest status entry writer",
+      "billing reconciliation receipt writer",
+      "billing reconciliation status entry writer",
+      "model usage rollup reconciliation writer",
+      "source lineage archive reconciliation writer",
+      "retention and billing replay guard",
+    ],
+    required_retention_billing_reconciliation_invariants: [
+      "retention billing reconciliation planner must require delivery notification reconciliation planning before retention, billing, usage, or source lineage rows can be reconciled",
+      "retention billing reconciliation planner must keep retention, billing, usage, and source lineage rows uncreated until real delivery notification reconciliation rows exist",
+    ],
+    required_retention_billing_reconciliation_receipt_fields: [
+      "retention_billing_reconciliation_plan_receipt_id",
+      "delivery_notification_reconciliation_plan_receipt_id",
+      "run_retention_manifest_id",
+      "billing_reconciliation_id",
+      "model_usage_rollup_reconciliation_entry_id",
+      "source_lineage_archive_reconciliation_entry_id",
+    ],
+    blocker_reason: "retention_billing_reconciliation_unimplemented",
+    retention_billing_reconciliation_allowed: false,
+    run_retention_manifest_created: false,
+    billing_reconciliation_created: false,
+    model_usage_rollup_created: false,
+    source_lineage_archive_created: false,
+    run_retention_manifest_status_entry_created: false,
+    billing_reconciliation_status_entry_created: false,
+    model_usage_rollup_reconciliation_entry_created: false,
+    source_lineage_archive_reconciliation_entry_created: false,
+    delivery_notification_reconciliation_allowed: false,
+    delivery_notification_status_entry_created: false,
+    delivery_notification_result_entry_created: false,
+    delivery_notification_operator_visible_event_created: false,
+    delivery_notification_created: false,
+    workspace_delivery_card_reconciliation_allowed: false,
+    workspace_delivery_card_result_entry_created: false,
+    workspace_delivery_card_status_entry_created: false,
+    workspace_delivery_card_notification_entry_created: false,
+    workspace_delivery_card_created: false,
+    operator_delivery_ledger_reconciliation_allowed: false,
+    operator_delivery_ledger_result_entry_created: false,
+    operator_delivery_ledger_status_entry_created: false,
+    operator_delivery_ledger_retry_entry_created: false,
+    operator_delivery_ledger_dead_letter_entry_created: false,
+    operator_delivery_ledger_entry_created: false,
+    operator_notification_delivery_result_reconciliation_allowed: false,
+    operator_notification_delivery_outcome_record_created: false,
+    operator_notification_delivery_reconciliation_entry_created: false,
+    operator_notification_delivery_retry_decision_created: false,
+    operator_notification_dead_letter_entry_created: false,
+    operator_notification_delivery_apply_allowed: false,
+    operator_notification_delivery_transaction_created: false,
+    operator_notification_dispatch_created: false,
+    operator_notification_payload_created: false,
+    operator_delivery_channel_policy_created: false,
+    operator_notification_template_created: false,
+    operator_notification_audit_entry_created: false,
+    operator_notification_delivery_attempt_created: false,
+    operator_notification_delivery_result_created: false,
+    operator_notification_delivery_status_created: false,
+    operator_notification_retry_policy_created: false,
+    operator_notification_dead_letter_created: false,
+    operator_notification_delivery_readiness_allowed: false,
+    run_closeout_record_created: false,
+    final_run_closure_allowed: false,
+    final_artifact_completion_finalization_allowed: false,
+    completion_record_created: false,
+    finalization_transaction_created: false,
+    artifact_archive_manifest_created: false,
+    operator_handoff_summary_created: false,
+    delivery_status_marked_complete: false,
+    quality_attestation_created: false,
+    completion_audit_entry_created: false,
+    final_artifact_publish_allowed: false,
+    publish_transaction_created: false,
+    information_asset_published: false,
+    account_visible_asset_created: false,
+    reading_workspace_entry_created: false,
+    search_index_entry_created: false,
+    private_read_url_created: false,
+    operator_notification_created: false,
+    graph_commit_created: false,
+    graph_mutated: false,
+    final_artifact_created: false,
+    dispatch_performed: false,
+    budget_reserved: false,
+    provider_calls_made: false,
+    retrieval_performed: false,
+    source_receipts_created: false,
+    adapter_plan_notes: [
+      "retention billing reconciliation plan only: no retention manifest, billing reconciliation, model usage rollup, source lineage archive, delivery notification, workspace card, ledger entry, URL activation, operator notification, or final artifact is created",
+    ],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -7344,5 +7507,75 @@ describe("MidnightOil", () => {
     expect(
       screen.getByText(/delivery_notification_operator_visible_event_id/),
     ).toBeTruthy();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Retention billing reconciliation plan",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(retentionBillingReconciliationPlanMidnightOil).toHaveBeenCalled(),
+    );
+    expect(retentionBillingReconciliationPlanMidnightOil).toHaveBeenCalledWith(
+      expect.objectContaining({
+        delivery_notification_reconciliation_plan_receipt: expect.objectContaining({
+          receipt_id: "midnight-oil-test-delivery-notification-reconciliation-plan",
+        }),
+        final_run_closure_plan_receipt: expect.objectContaining({
+          receipt_id: "midnight-oil-test-final-run-closure-plan",
+        }),
+      }),
+    );
+    expect(screen.getByText("Retention billing reconciliation receipt")).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-retention-billing-reconciliation-plan"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("blocked retention billing reconciliation unimplemented"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-retention-billing-reconciliation-receipt"),
+    ).toBeTruthy();
+    expect(
+      screen.getAllByText("midnight-oil-test-run-retention-manifest").length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("midnight-oil-test-billing-reconciliation").length,
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByText("midnight-oil-test-model-usage-rollup").length).toBeGreaterThan(
+      0,
+    );
+    expect(
+      screen.getAllByText("midnight-oil-test-source-lineage-archive").length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getByText("midnight-oil-test-run-retention-manifest-status-entry"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-billing-reconciliation-status-entry"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-model-usage-rollup-reconciliation-entry"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-source-lineage-archive-reconciliation-entry"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "retention billing reconciliation planner must require delivery notification reconciliation planning before retention, billing, usage, or source lineage rows can be reconciled",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Retention billing reconciliation blockers:/)).toBeTruthy();
+    expect(screen.getByText(/run retention manifest reconciliation receipt writer/)).toBeTruthy();
+    expect(screen.getByText(/billing reconciliation status entry writer/)).toBeTruthy();
+    expect(screen.getByText(/source lineage archive reconciliation writer/)).toBeTruthy();
+    expect(
+      screen.getByText(/Retention billing reconciliation receipt fields:/),
+    ).toBeTruthy();
+    expect(screen.getByText(/run_retention_manifest_id/)).toBeTruthy();
+    expect(screen.getByText(/billing_reconciliation_id/)).toBeTruthy();
+    expect(screen.getByText(/model_usage_rollup_reconciliation_entry_id/)).toBeTruthy();
+    expect(screen.getByText(/source_lineage_archive_reconciliation_entry_id/)).toBeTruthy();
   }, 15000);
 });
