@@ -1233,3 +1233,8 @@ prep for live injectors — never silent capability.
 PublicationAttachPanel always shows Settings hydrate + dual-gate links
 (grounded and ungrounded). Competitive delta: attach success stays L1/L2
 prep-visible — full citation-trust matrix with evidence pack va.
+
+## Residual vc · 2026-07-10 — FUTURE-AGENT tip re-anchor through vb
+FUTURE-AGENT-SPEC tip → 1a34c354 with closed arcs tt–vb (35 residual ships).
+Competitive delta: swarm handoff tip-true; operator merge PR #465 remains
+highest leverage.
