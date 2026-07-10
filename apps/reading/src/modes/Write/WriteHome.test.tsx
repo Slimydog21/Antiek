@@ -340,6 +340,24 @@ describe("WriteHome — the re-homed door", () => {
     expect(home.getAttribute("data-html-first")).toBe("true");
     expect(home.getAttribute("data-product-panel")).toBe("write_home");
     expect(home.textContent).toMatch(/HTML-first/i);
+    // Residual (apx): competitive DR hop/stage honesty on Write home.
+    const writeComp = screen.getByTestId("write-home-competitive-links");
+    expect(writeComp.getAttribute("data-html-first")).toBe("true");
+    expect(writeComp.getAttribute("data-hop-pipeline")).toBe("api");
+    expect(writeComp.getAttribute("data-stage-pipeline")).toBe("ape");
+    expect(
+      screen
+        .getByTestId("write-home-competitive-scorecard-link")
+        .getAttribute("href"),
+    ).toBe("/settings#settings-competitive-dr-scorecard");
+    expect(
+      screen
+        .getByTestId("write-home-competitive-dr-future-agent-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    expect(
+      screen.getByTestId("write-home-competitive-pipeline-hint").textContent,
+    ).toMatch(/insights.*questions.*sources/i);
 
     getDeliverableMock.mockResolvedValue({
       deliverable_id: "del_html",

@@ -3828,3 +3828,7 @@ vitest ResearchContextPanel 21 green. P0 PR #465. Pivot apw+ outside thrash.
 workspace/competitiveDrQuality.ts hosts multi-stage (ape) · hop pipeline (api) ·
 world-class readiness (apu). Panels re-export for stable imports · no Context→Progress
 coupling. vitest 38 green (workspace 4 + Progress 13 + Context 21). P0 PR #465. Pivot apx+.
+
+## Residual apx · 2026-07-10 — Write home competitive DR hop/stage deep-links
+Write home stamps competitive scorecard + FUTURE + pipeline hint
+(reading ≡ research ≡ writing). vitest WriteHome 31 green. P0 PR #465. Pivot apy+.

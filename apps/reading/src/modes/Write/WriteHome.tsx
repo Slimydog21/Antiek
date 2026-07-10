@@ -840,7 +840,7 @@ export default function WriteHome() {
         data-html-first="true"
         data-product-panel="write_home"
       >
-        <header className="mb-6">
+        <header className="mb-6 space-y-2">
           <h1 className="font-serif text-2xl font-semibold text-ink dark:text-bright">
             Write a piece
           </h1>
@@ -848,6 +848,40 @@ export default function WriteHome() {
             Pull your research notes into an outline, generate a first draft
             from them, then edit. Or dump a raw idea and let the blocks fall out.
             HTML-first deliverables only (never PDF view).
+          </p>
+          {/* Residual (apx): competitive DR map on Write home (reading ≡ research ≡ writing). */}
+          <p
+            className="text-[10px] font-mono space-x-2"
+            data-testid="write-home-competitive-links"
+            data-view-format="html"
+            data-html-first="true"
+            data-hop-pipeline="api"
+            data-stage-pipeline="ape"
+            role="navigation"
+            aria-label="Competitive deep-research scorecard navigation"
+          >
+            <a
+              href="/settings#settings-competitive-dr-scorecard"
+              data-testid="write-home-competitive-scorecard-link"
+              className="underline opacity-80 hover:opacity-100"
+              title="Settings competitive deep-research scorecard (Write · hop/stage pipelines · reading ≡ research ≡ writing)"
+            >
+              Settings · competitive DR
+            </a>
+            <a
+              href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+              data-testid="write-home-competitive-dr-future-agent-link"
+              className="underline opacity-80 hover:opacity-100"
+              title="FUTURE-AGENT competitive deep-research quality brief"
+            >
+              FUTURE · competitive DR
+            </a>
+            <span
+              className="opacity-70"
+              data-testid="write-home-competitive-pipeline-hint"
+            >
+              hops insights→questions→sources · stages plan→terminal
+            </span>
           </p>
         </header>
 

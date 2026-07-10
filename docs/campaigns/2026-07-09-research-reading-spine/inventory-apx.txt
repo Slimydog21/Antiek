@@ -1,0 +1,14 @@
+# inventory-apx · Write home competitive DR hop/stage deep-links
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: apx
+date: 2026-07-10
+parent_tip: 5e292ec2 (apw)
+
+## Closed
+- write-home-competitive-links (scorecard + FUTURE + hop/stage hint)
+- reading ≡ research ≡ writing competitive map parity ResearchThis aps
+- vitest WriteHome 31 green
+
+## Next
+apy+ product residual outside thrash
+Operator merge PR #465 remains highest leverage (gated)
