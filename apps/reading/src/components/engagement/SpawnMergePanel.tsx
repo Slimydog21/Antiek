@@ -21,6 +21,8 @@
  * Residual (lj): DecisionTreeDriverBadge with merge recommended tier (or prop).
  * Residual (qh): DecisionTreeDriverBadge promptText for cost projection foresight.
  * Residual (nn): dual-gate L1–L4 checklist deep-link (prep only).
+ * Residual (agu): seamless highlight→DR→merge path honesty stamps when
+ * spawn + parent reading asset are bound (draft vs into_parent choices).
  */
 
 import { useCallback, useMemo, useState } from "react";
@@ -197,12 +199,21 @@ export function SpawnMergePanel({
     [spawnId, parentAssetId, onMerged, autoOpenDraft],
   );
 
+  const parentBound = Boolean(String(parentAssetId || "").trim());
+  const spawnBound = Boolean(String(spawnId || "").trim());
+  // Residual (agu): reading-asset merge path is seamless when both ends bound.
+  const seamlessSpawnMerge = parentBound && spawnBound;
+
   return (
     <section
       className="spawn-merge-panel space-y-2"
       data-testid="spawn-merge-panel"
       data-view-format="html"
       data-auto-open-draft={autoOpenDraft ? "true" : "false"}
+      data-spawn-id={String(spawnId || "").trim() || ""}
+      data-parent-asset-id={String(parentAssetId || "").trim() || ""}
+      data-seamless-spawn-merge={String(seamlessSpawnMerge)}
+      data-seamless-highlight-dr-merge={String(seamlessSpawnMerge)}
       aria-label="Merge this deep research"
     >
       <header>
@@ -214,6 +225,9 @@ export function SpawnMergePanel({
           {autoOpenDraft
             ? " · draft auto-opens HTML window"
             : " · draft open is manual"}
+          {seamlessSpawnMerge
+            ? " · seamless highlight→DR→merge path"
+            : " · bind spawn + parent for seamless merge"}
         </p>
         {/* Residual (ih/nn): Settings + dual-gate checklist (merge path prep). */}
         <p className="text-[11px] font-mono space-x-3">
@@ -254,22 +268,40 @@ export function SpawnMergePanel({
         </div>
       </header>
 
-      <div className="flex flex-wrap gap-2">
+      <div
+        className="flex flex-wrap gap-2"
+        data-testid="spawn-merge-actions"
+        data-seamless-spawn-merge={String(seamlessSpawnMerge)}
+      >
         <button
           type="button"
           data-testid="spawn-merge-draft"
+          data-seamless-merge-draft={String(seamlessSpawnMerge)}
+          data-mode="draft_combined"
           disabled={busy}
           onClick={() => void merge("draft_combined")}
           className="rounded border border-ink/30 px-2 py-1 text-[12px] font-mono hover:bg-ink/5 disabled:opacity-50 dark:border-bright/30"
+          title={
+            seamlessSpawnMerge
+              ? "Create draft-combined HTML (leaves parent reading asset · seamless path)"
+              : "Create draft-combined HTML"
+          }
         >
           {busy ? "Merging…" : "Create draft combined"}
         </button>
         <button
           type="button"
           data-testid="spawn-merge-parent"
+          data-seamless-merge-parent={String(seamlessSpawnMerge)}
+          data-mode="into_parent"
           disabled={busy}
           onClick={() => void merge("into_parent")}
           className="rounded border border-ink/30 px-2 py-1 text-[12px] font-mono hover:bg-ink/5 disabled:opacity-50 dark:border-bright/30"
+          title={
+            seamlessSpawnMerge
+              ? "Merge into parent reading asset (HTML · seamless highlight→DR→merge)"
+              : "Merge into parent reading asset"
+          }
         >
           {busy ? "Merging…" : "Merge into parent"}
         </button>

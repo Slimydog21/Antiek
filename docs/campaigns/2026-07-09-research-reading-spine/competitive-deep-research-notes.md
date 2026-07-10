@@ -2612,3 +2612,10 @@ MarketplaceHost catalog metrics stamp data-heat-count · data-signal-processing-
 data-has-fourier-pd after free STEM Fourier (ags). Subject chips filter heat +
 signal_processing. Parity foundations/Gödel agl. vitest MarketplaceHost 41 green.
 P0 operator merge PR #465. Pivot agu+ outside free-STEM thrash.
+
+## Residual agu · 2026-07-10 — seamless highlight→DR→merge path honesty
+SpawnMergePanel + DeepResearchSessionHost mount stamp data-seamless-spawn-merge ·
+data-seamless-highlight-dr-merge when spawn+parent reading asset bound. Draft vs
+into_parent action stamps. Completes offline path honesty for highlight float DR
+→ merge into reading asset / draft-combined. vitest SpawnMerge 8 · DR host 30 green.
+P0 operator merge PR #465. Pivot agv+ outside thrash.

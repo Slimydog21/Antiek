@@ -496,12 +496,16 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
         </section>
       ) : null}
 
-      {/* Residual (ci): one-click merge this spawn into reading parent/draft. */}
+      {/* Residual (ci/agu): one-click merge this spawn into reading parent/draft. */}
       {props.spawn_id?.trim() && props.parent_asset_id?.trim() ? (
         <section
           className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
           data-testid="deep-research-spawn-merge-mount"
           data-view-format="html"
+          data-spawn-id={props.spawn_id.trim()}
+          data-parent-asset-id={props.parent_asset_id.trim()}
+          data-seamless-spawn-merge="true"
+          data-seamless-highlight-dr-merge="true"
         >
           <SpawnMergePanel
             spawnId={props.spawn_id.trim()}

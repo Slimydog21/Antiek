@@ -348,9 +348,16 @@ describe("DeepResearchSessionHost", () => {
     expect(screen.getByTestId("research-launch-budget-panel")).toBeTruthy();
   });
 
-  it("mounts SpawnMergePanel when spawn and parent present (ci)", () => {
+  it("mounts SpawnMergePanel when spawn and parent present (ci/agu)", () => {
     render(<DeepResearchSessionHost {...FIXTURE} />);
-    expect(screen.getByTestId("deep-research-spawn-merge-mount")).toBeTruthy();
+    const mount = screen.getByTestId("deep-research-spawn-merge-mount");
+    expect(mount).toBeTruthy();
+    // Residual (agu): seamless highlight→DR→merge mount path honesty.
+    expect(mount.getAttribute("data-seamless-spawn-merge")).toBe("true");
+    expect(mount.getAttribute("data-seamless-highlight-dr-merge")).toBe("true");
+    expect(mount.getAttribute("data-spawn-id")).toBe("spn_launch_1");
+    expect(mount.getAttribute("data-parent-asset-id")).toBe("launch-asset");
+    expect(mount.getAttribute("data-view-format")).toBe("html");
     expect(screen.getByTestId("spawn-merge-panel-stub").textContent).toMatch(
       /spn_launch_1→launch-asset/,
     );

@@ -1,0 +1,19 @@
+# inventory-agu · seamless highlight→DR→merge path honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: agu
+date: 2026-07-10
+parent_tip: 1ff17f8c (agt)
+
+## Closed
+- SpawnMergePanel stamps:
+  - data-seamless-spawn-merge · data-seamless-highlight-dr-merge
+  - data-spawn-id · data-parent-asset-id on panel root
+  - data-seamless-merge-draft · data-seamless-merge-parent on actions
+  - copy: "seamless highlight→DR→merge path" when bound
+- DeepResearchSessionHost merge mount stamps same seamless attrs
+- Product path: highlight float DR → merge draft_combined OR into_parent reading asset
+- vitest SpawnMergePanel 8 · DeepResearchSessionHost 30 green
+
+## Next
+agv+ outside thrash · product residual (not merge stamp thrash)
+Operator merge PR #465 remains highest leverage (gated)

@@ -73,8 +73,22 @@ describe("SpawnMergePanel residual ci", () => {
         onMerged={onMerged}
       />,
     );
+    const panel = screen.getByTestId("spawn-merge-panel");
+    expect(panel.getAttribute("data-auto-open-draft")).toBe("true");
+    // Residual (agu): seamless highlight→DR→merge path honesty when spawn+parent bound.
+    expect(panel.getAttribute("data-seamless-spawn-merge")).toBe("true");
+    expect(panel.getAttribute("data-seamless-highlight-dr-merge")).toBe("true");
+    expect(panel.getAttribute("data-spawn-id")).toBe("spn_1");
+    expect(panel.getAttribute("data-parent-asset-id")).toBe("book-1");
+    expect(panel.textContent).toMatch(/seamless highlight→DR→merge path/i);
     expect(
-      screen.getByTestId("spawn-merge-panel").getAttribute("data-auto-open-draft"),
+      screen.getByTestId("spawn-merge-draft").getAttribute("data-seamless-merge-draft"),
+    ).toBe("true");
+    expect(
+      screen.getByTestId("spawn-merge-parent").getAttribute("data-seamless-merge-parent"),
+    ).toBe("true");
+    expect(
+      screen.getByTestId("spawn-merge-actions").getAttribute("data-seamless-spawn-merge"),
     ).toBe("true");
     // Residual (ih): Settings deep-link for driver + budget.
     const settings = screen.getByTestId("spawn-merge-settings-link");
