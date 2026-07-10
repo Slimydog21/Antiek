@@ -3132,3 +3132,8 @@ P0 operator merge PR #465. Pivot akl+ outside thrash.
 Multi-minute wrestle progress navigates Settings prompt-cost projection for
 budget-before-fire foresight (parity akk Midnight Oil · ake Settings).
 vitest ResearchProgress 10 green. P0 operator merge PR #465. Pivot akm+ outside thrash.
+
+## Residual akm · 2026-07-10 — CollectiveResearchPanel prompt-cost projection deep-link
+Multi-agent collective merge navigates Settings prompt-cost projection for
+budget-before-fire (parity akl progress · akk MO). vitest Collective 29 green.
+P0 operator merge PR #465. Pivot akn+ outside thrash.

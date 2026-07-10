@@ -197,6 +197,15 @@ describe("CollectiveResearchPanel", () => {
     expect(future.textContent).toMatch(/competitive DR brief/i);
   });
 
+  it("links Settings prompt-cost projection for budget-before-fire (akm)", () => {
+    render(
+      <CollectiveResearchPanel availableSpawnIds={["spn_1", "spn_2"]} />,
+    );
+    const link = screen.getByTestId("collective-prompt-cost-projection-link");
+    expect(link.getAttribute("href")).toBe("/settings#prompt-cost-projection");
+    expect(link.textContent).toMatch(/prompt-cost projection/i);
+  });
+
   it("merges selected spawns into collective prompt", async () => {
     fetchCollectiveResearch.mockResolvedValue({
       collective_id: "col_abc",

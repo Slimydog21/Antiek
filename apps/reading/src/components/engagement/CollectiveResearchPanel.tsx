@@ -825,6 +825,14 @@ export function CollectiveResearchPanel({
           >
             FUTURE · competitive DR brief
           </a>
+          {/* Residual (akm): multi-agent merge budget-before-fire → Settings prompt-cost (ake/akl). */}
+          <a
+            href="/settings#prompt-cost-projection"
+            data-testid="collective-prompt-cost-projection-link"
+            title="Settings prompt-cost projection: estimate how multi-spawn collective unit spend hits remaining daily budget"
+          >
+            Settings · prompt-cost projection
+          </a>
         </p>
         {/* Residual (lg): model driver + budget + depth co-display (parity ku). */}
         <div

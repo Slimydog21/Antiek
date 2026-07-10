@@ -1,0 +1,15 @@
+# inventory-akm · CollectiveResearchPanel Settings prompt-cost projection deep-link
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: akm
+date: 2026-07-10
+parent_tip: 35c10881 (akl)
+
+## Closed
+- collective-prompt-cost-projection-link → /settings#prompt-cost-projection
+- Multi-agent merge budget-before-fire navigates Settings projection
+- vitest Collective 29 green
+- proof: SCRATCH residual-akm-vitest.log
+
+## Next
+akn+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)
