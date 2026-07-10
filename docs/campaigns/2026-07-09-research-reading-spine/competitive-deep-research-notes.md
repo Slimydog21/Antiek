@@ -3153,3 +3153,10 @@ Launch budget foresight panel navigates full Settings prompt-cost projection.
 Budget-before-fire matrix complete across launch · MO · progress · collective ·
 spawn · flywheel (akk–akp). vitest ResearchLaunchBudget 12 green.
 P0 operator merge PR #465. Pivot akq+ outside thrash.
+
+## Residual akq · 2026-07-10 — domain-aware twin search free PD economics/politics/philosophy/engineering
+Intelligent twin search defaults expand beyond STEM (aiy) to free PD catalog
+subjects: economics (Wealth of Nations), politics (Federalist), bare philosophy
+(Discourse/Liberty after method precedence), engineering (after heat|electricity).
+FUTURE twin matrix gap #3 updated. vitest ResearchContext 15 green.
+P0 operator merge PR #465. Pivot akr+ outside thrash.

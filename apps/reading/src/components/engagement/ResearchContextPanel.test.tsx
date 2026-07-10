@@ -57,7 +57,7 @@ describe("ResearchContextPanel", () => {
     openWindow.mockClear();
   });
 
-  it("domainAwareSearchDefault maps free STEM subjects (ahr/aiy)", () => {
+  it("domainAwareSearchDefault maps free STEM subjects (ahr/aiy/akq)", () => {
     expect(domainAwareSearchDefault(["heat", "signal_processing"])).toMatch(
       /heat signal processing/i,
     );
@@ -81,8 +81,51 @@ describe("ResearchContextPanel", () => {
     expect(
       domainAwareSearchDefault(["physics", "electricity"]),
     ).toMatch(/electricity electromagnetism/i);
+    // Residual (akq): free PD economics / politics / philosophy / engineering.
+    expect(domainAwareSearchDefault(["economics", "philosophy"])).toMatch(
+      /economics wealth nations/i,
+    );
+    expect(domainAwareSearchDefault(["politics", "philosophy"])).toMatch(
+      /politics constitution federalist/i,
+    );
+    // Bare philosophy (no method) → Discourse/Liberty spine, not Novum method.
+    expect(domainAwareSearchDefault(["philosophy", "science"])).toMatch(
+      /philosophy liberty discourse/i,
+    );
+    // Method still precedence over bare philosophy when both present.
+    expect(domainAwareSearchDefault(["philosophy", "method"])).toMatch(
+      /method observation novum organum/i,
+    );
+    // Bare engineering (no heat/electricity) → operational calculus spine.
+    expect(domainAwareSearchDefault(["engineering", "technology"])).toMatch(
+      /engineering electromagnetic operational/i,
+    );
+    // Heat still wins over bare engineering when both present (Fourier).
+    expect(
+      domainAwareSearchDefault(["engineering", "heat", "signal_processing"]),
+    ).toMatch(/heat signal processing/i);
+    // Electricity still wins over engineering when both present (Heaviside).
+    expect(
+      domainAwareSearchDefault(["engineering", "electricity"]),
+    ).toMatch(/electricity electromagnetism/i);
     expect(domainAwareSearchDefault([])).toBe("");
     expect(domainAwareSearchDefault(null)).toBe("");
+  });
+
+  it("prefills intelligent search from free PD economics subjects (akq)", () => {
+    render(
+      <ResearchContextPanel
+        assetId="pd-wealth"
+        domainSubjects={["economics", "philosophy"]}
+      />,
+    );
+    const controls = screen.getByTestId("research-context-query-controls");
+    expect(controls.getAttribute("data-domain-aware-default")).toBe("true");
+    expect(controls.getAttribute("data-domain-subjects")).toMatch(/economics/);
+    expect(
+      (screen.getByTestId("research-context-query-input") as HTMLInputElement)
+        .value,
+    ).toMatch(/economics wealth nations/i);
   });
 
   it("prefills intelligent search query from domain subjects (ahr)", () => {

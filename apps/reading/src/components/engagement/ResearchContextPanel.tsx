@@ -80,10 +80,13 @@ export function twinNoteMetrics(
 }
 
 /**
- * Residual (ahr/aiy): domain-aware intelligent-search default from asset subjects
+ * Residual (ahr/aiy/akq): domain-aware intelligent-search default from asset subjects
  * (e.g. free STEM Fourier heat/signal_processing → grounded twin search query).
  * Never invents subjects; empty when no domain match.
  * Residual (aiy): biology / method / physics / mathematics free STEM pairs.
+ * Residual (akq): free PD economics / politics / philosophy / engineering pairs
+ * (Wealth of Nations · Federalist · Discourse/Liberty · Heaviside engineering)
+ * so intelligent search covers the full offline marketplace subject spine.
  */
 export function domainAwareSearchDefault(
   subjects?: readonly string[] | null,
@@ -111,6 +114,7 @@ export function domainAwareSearchDefault(
     return "biology instruments micrographia natural history twin insights";
   }
   // Residual (aiy): method / Baconian Novum Organum + instrumented observation.
+  // Precedence over bare philosophy (Novum carries philosophy+method).
   if (set.has("method") || set.has("observation")) {
     return "method observation novum organum twin insights";
   }
@@ -121,6 +125,24 @@ export function domainAwareSearchDefault(
   // Residual (aiy): pure mathematics STEM (Euclid Elements).
   if (set.has("mathematics") && !set.has("physics") && !set.has("computing")) {
     return "mathematics geometry elements axioms twin insights";
+  }
+  // Residual (akq): free PD economics (Wealth of Nations).
+  if (set.has("economics") || set.has("political_economy")) {
+    return "economics wealth nations labour markets twin insights";
+  }
+  // Residual (akq): free PD politics (Federalist Papers).
+  if (set.has("politics") || set.has("government") || set.has("constitution")) {
+    return "politics constitution federalist government twin insights";
+  }
+  // Residual (akq): free PD philosophy when method did not already match
+  // (Discourse on the Method · On Liberty · Mill/Descartes spine).
+  if (set.has("philosophy") || set.has("liberty") || set.has("ethics")) {
+    return "philosophy liberty discourse method twin insights";
+  }
+  // Residual (akq): engineering when electricity/heat did not already match
+  // (Heaviside EM engineering tags; Fourier engineering yields to heat above).
+  if (set.has("engineering") || set.has("electrical_engineering")) {
+    return "engineering electromagnetic operational calculus twin insights";
   }
   return "";
 }
