@@ -3613,3 +3613,8 @@ vitest ResearchThis 13 green. P0 operator merge PR #465. Pivot aoc+ outside thra
 buildTwinChasePayload + chaseSelected append research_domains= from host domainSubjects
 (lower-case dedupe; never invent). Marketplace free STEM hosts already pass subjects.
 vitest TwinNotesPanel 34 green. P0 operator merge PR #465. Pivot aod+ outside thrash.
+
+## Residual aod · 2026-07-10 — HostedHtml domain-aware DR + shared research_domains clause
+normalizeDomainSubjects + formatResearchDomainsClause chokepoint; HostedHtml float DR
+goal_hint + launch stamp; twin chase metrics audit. vitest domainSearchDefaults/HostedHtml/TwinNotes green.
+P0 operator merge PR #465. Pivot aoe+ outside thrash.

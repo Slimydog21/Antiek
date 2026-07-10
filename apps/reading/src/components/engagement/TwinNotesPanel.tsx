@@ -88,7 +88,11 @@ import {
   type ResearchLaunchBudgetProjection,
   type ResearchLaunchTier,
 } from "./ResearchLaunchBudgetPanel";
-import { domainSearchCoverage } from "../../workspace/domainSearchDefaults";
+import {
+  domainSearchCoverage,
+  formatResearchDomainsClause,
+  normalizeDomainSubjects,
+} from "../../workspace/domainSearchDefaults";
 
 /** Minimal twin note shape for residual (mz) chase payload. */
 export type TwinChaseNote = {
@@ -126,20 +130,12 @@ export function buildTwinChasePayload(
     note_ids.length <= 4
       ? note_ids.join(",")
       : `${note_ids.slice(0, 4).join(",")},+${note_ids.length - 4}`;
-  // Residual (aoc): domain-aware chase context when host supplies subjects.
-  const domains = (domainSubjects || [])
-    .map((s) => String(s || "").trim().toLowerCase())
-    .filter(Boolean);
-  const uniqueDomains = [...new Set(domains)];
-  const domainClause =
-    uniqueDomains.length > 0
-      ? ` · research_domains=${uniqueDomains.join(",")}`
-      : "";
+  // Residual (aoc/aod): domain-aware chase via shared formatResearchDomainsClause.
   const goal_hint =
     `Twin chase on ${assetId.trim() || "asset"}: ` +
     `${ordered.length} note(s) (questions=${qCount}, insights=${iCount})` +
     (idsPreview ? ` · note_ids=${idsPreview}` : "") +
-    domainClause;
+    formatResearchDomainsClause(domainSubjects);
   return { selection_text, goal_hint, note_ids };
 }
 
@@ -341,6 +337,8 @@ export function TwinNotesPanel({
     /** Residual (nw): Antiek-bench usage source/task_class when recorded. */
     usageSource: string | null;
     usageTaskClass: string | null;
+    /** Residual (aod): domain subjects stamped on last chase (audit). */
+    researchDomains: string[];
   } | null>(null);
   /**
    * Residual (na): soft budget gate before twin chase launch.
@@ -980,6 +978,8 @@ export function TwinNotesPanel({
           viewFormat: out.view_format,
           usageSource: usage?.source ?? null,
           usageTaskClass: usage?.task_class ?? null,
+          // Residual (aod): audit stamp for domain-aware chase goal_hint.
+          researchDomains: normalizeDomainSubjects(domainSubjects),
         });
         const modelLabel = out.model_id?.trim()
           ? ` · model=${out.model_id.trim()}`
@@ -1642,6 +1642,7 @@ export function TwinNotesPanel({
           data-view-format={chaseMetrics.viewFormat}
           data-usage-source={chaseMetrics.usageSource ?? ""}
           data-usage-task-class={chaseMetrics.usageTaskClass ?? ""}
+          data-research-domains={chaseMetrics.researchDomains.join(",") || ""}
           data-collective-recent="true"
           className="font-mono text-[11px] opacity-80"
           role="status"
@@ -1651,6 +1652,9 @@ export function TwinNotesPanel({
           mode={chaseMetrics.viewMode} · notes={chaseMetrics.noteIdCount}
           {chaseMetrics.noteIds.length > 0
             ? ` · note_ids=${chaseMetrics.noteIds.join(",")}`
+            : ""}
+          {chaseMetrics.researchDomains.length > 0
+            ? ` · research_domains=${chaseMetrics.researchDomains.join(",")}`
             : ""}
           {chaseMetrics.usageSource
             ? ` · bench=${chaseMetrics.usageSource}/${chaseMetrics.usageTaskClass ?? "?"}`

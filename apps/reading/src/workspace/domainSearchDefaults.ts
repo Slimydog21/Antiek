@@ -124,3 +124,29 @@ export function domainSearchCoverage(
     uncovered,
   };
 }
+
+/**
+ * Residual (aod): normalize host subjects for domain-aware deep-research
+ * goal_hint (lower-case, dedupe, first-seen). Never invents domains.
+ */
+export function normalizeDomainSubjects(
+  subjects?: readonly string[] | null,
+): string[] {
+  const domains = (subjects || [])
+    .map((s) => String(s || "").trim().toLowerCase())
+    .filter(Boolean);
+  return [...new Set(domains)];
+}
+
+/**
+ * Residual (aod): goal_hint clause ` · research_domains=a,b` or empty.
+ * Shared by TwinNotes chase (aoc) + HostedHtml float DR (aod).
+ */
+export function formatResearchDomainsClause(
+  subjects?: readonly string[] | null,
+): string {
+  const unique = normalizeDomainSubjects(subjects);
+  return unique.length > 0
+    ? ` · research_domains=${unique.join(",")}`
+    : "";
+}

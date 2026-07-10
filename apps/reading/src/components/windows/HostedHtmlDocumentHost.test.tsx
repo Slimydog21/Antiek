@@ -812,11 +812,59 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     };
     expect(call.selection_text).toMatch(/Hosted Book/);
     expect(call.goal_hint).toMatch(/Hosted Book/);
+    expect(call.goal_hint).not.toMatch(/research_domains=/);
     await waitFor(() => {
       expect(
         screen.getByTestId("hosted-html-research-window-id").textContent,
       ).toMatch(/wdr_host_1/);
     });
+  });
+
+  it("appends research_domains to float DR goal_hint when subjects present (aod)", async () => {
+    launchFloatingDeepResearch.mockResolvedValue({
+      session_id: "fsess_domain",
+      spawn_id: "spn_domain",
+      investigation_id: "inv_domain",
+      parent_asset_id: "doc_fourier",
+      window_id: "wdr_domain",
+      view_format: "html",
+      view_mode: "floating",
+      status: "reserved",
+      model_id: null,
+    });
+    render(
+      <HostedHtmlDocumentHost
+        document_id="doc_fourier"
+        title="Analytical Theory of Heat"
+        view_format="html"
+        html="<p>Heat conduction equations.</p>"
+        subjects={["Heat", "signal_processing", "heat"]}
+      />,
+    );
+    const launch = screen.getByTestId("hosted-html-research-launch");
+    expect(launch.getAttribute("data-research-domains")).toBe(
+      "heat,signal_processing",
+    );
+    fireEvent.click(screen.getByTestId("hosted-html-deep-research"));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "doc_fourier",
+          goal_hint: expect.stringMatching(
+            /research_domains=heat,signal_processing/,
+          ),
+        }),
+      );
+    });
+    const call = launchFloatingDeepResearch.mock.calls.at(-1)?.[0] as {
+      goal_hint: string;
+    };
+    expect(call.goal_hint).toMatch(/Analytical Theory of Heat/);
+    // Domain tags lower-cased + deduped (title may still contain Heat).
+    expect(call.goal_hint).toMatch(
+      /research_domains=heat,signal_processing/,
+    );
+    expect(call.goal_hint).not.toMatch(/research_domains=Heat/);
   });
 
   it("rejects non-html view_format", () => {

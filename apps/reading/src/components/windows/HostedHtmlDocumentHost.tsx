@@ -42,6 +42,8 @@
  * (store/load allowlist; no collapse to twin_draft_selected).
  * Residual (aen): Open Write stamps document_id + seamless-host-write path
  * honesty (hosted HTML reading surface → Write note-taker; parity ael/aem).
+ * Residual (aod): free PD / STEM props.subjects join float DR goal_hint as
+ * research_domains= (parity twin chase aoc · marketplace domains= · never invent).
  *
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
  */
@@ -63,7 +65,11 @@ import { CollectiveResearchPanel } from "../engagement/CollectiveResearchPanel";
 import { DecisionTreeDriverBadge } from "../engagement/DecisionTreeDriverBadge";
 import { KNOWLEDGE_DENSE_PUBLICATION_PRESETS } from "../engagement/PublicationAttachPanel";
 import { ResearchContextPanel } from "../engagement/ResearchContextPanel";
-import { domainSearchCoverage } from "../../workspace/domainSearchDefaults";
+import {
+  domainSearchCoverage,
+  formatResearchDomainsClause,
+  normalizeDomainSubjects,
+} from "../../workspace/domainSearchDefaults";
 import {
   ResearchLaunchBudgetPanel,
   type ResearchLaunchBudgetProjection,
@@ -292,6 +298,8 @@ export default function HostedHtmlDocumentHost(
           setHighlightText(selection);
         }
       }
+      // Residual (aod): domain-aware goal_hint when free PD / STEM subjects present.
+      goal = `${goal}${formatResearchDomainsClause(props.subjects)}`;
       // Residual (er): optional knowledge-dense publication refs (HTML-first hydrate).
       const refs = parsePublicationRefs(pubRefs);
       if (refs.length > 0) {
@@ -715,6 +723,9 @@ export default function HostedHtmlDocumentHost(
           data-testid="hosted-html-research-launch"
           data-view-format="html"
           data-from-highlight={fromHighlight ? "true" : "false"}
+          data-research-domains={
+            normalizeDomainSubjects(props.subjects).join(",") || ""
+          }
         >
           <div
             className="rounded border border-ink/10 p-2 text-[11px] font-mono dark:border-bright/10"

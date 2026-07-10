@@ -1,0 +1,18 @@
+# inventory-aod · HostedHtml domain-aware DR goal_hint + shared clause
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aod
+date: 2026-07-10
+parent_tip: 3550af3c (aoc)
+
+## Closed
+- domainSearchDefaults: normalizeDomainSubjects + formatResearchDomainsClause
+  (shared chokepoint · lower-case · dedupe · never invent)
+- HostedHtml float/full DR goal_hint appends research_domains= from props.subjects
+- hosted-html-research-launch data-research-domains stamp
+- TwinNotes chase metrics data-research-domains + text audit (completes aoc)
+- TwinNotes buildTwinChasePayload uses shared formatResearchDomainsClause
+- vitest: domainSearchDefaults 3 · HostedHtml 27 · TwinNotes 34 green
+
+## Next
+aoe+ product residual outside thrash · prefer non-domain-clause thrash
+Operator merge PR #465 remains highest leverage (gated)

@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 import {
   domainAwareSearchDefault,
   domainSearchCoverage,
+  formatResearchDomainsClause,
+  normalizeDomainSubjects,
 } from "./domainSearchDefaults";
 
 describe("domainSearchDefaults pure module (alq)", () => {
@@ -42,5 +44,19 @@ describe("domainSearchDefaults pure module (alq)", () => {
     expect(cov.uncovered).toContain("unknown_tag");
     expect(domainSearchCoverage(["totally_unknown"]).has_default).toBe(false);
     expect(domainSearchCoverage(["totally_unknown"]).default_query).toBe("");
+  });
+
+  it("normalizes domain subjects and formats research_domains clause (aod)", () => {
+    expect(normalizeDomainSubjects(["Heat", "signal_processing", "heat", "  "])).toEqual([
+      "heat",
+      "signal_processing",
+    ]);
+    expect(normalizeDomainSubjects(null)).toEqual([]);
+    expect(normalizeDomainSubjects([])).toEqual([]);
+    expect(formatResearchDomainsClause(["Heat", "signal_processing", "heat"])).toBe(
+      " · research_domains=heat,signal_processing",
+    );
+    expect(formatResearchDomainsClause(null)).toBe("");
+    expect(formatResearchDomainsClause([])).toBe("");
   });
 });

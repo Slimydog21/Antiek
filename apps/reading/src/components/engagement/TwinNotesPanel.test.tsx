@@ -1340,6 +1340,17 @@ describe("TwinNotesPanel", () => {
         }),
       );
     });
+    // Residual (aod): chase metrics audit stamp for domain-aware chase.
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("twin-chase-metrics").getAttribute(
+          "data-research-domains",
+        ),
+      ).toBe("heat,signal_processing");
+    });
+    expect(screen.getByTestId("twin-chase-metrics").textContent).toMatch(
+      /research_domains=heat,signal_processing/,
+    );
   });
 
   it("chases selected twins in full window mode (mz)", async () => {
