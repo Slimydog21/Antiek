@@ -1541,6 +1541,14 @@ describe("MarketplaceHost mode", () => {
       expect(screen.getByTestId("catalog-entry-pd-elements")).toBeTruthy();
       expect(screen.getByTestId("catalog-subject-chips")).toBeTruthy();
     });
+    // Residual (arf): free-PD twin-search default catalog honesty on domain chips.
+    const chips = screen.getByTestId("catalog-subject-chips");
+    expect(chips.getAttribute("data-html-first")).toBe("true");
+    expect(chips.getAttribute("data-twin-search-defaults")).toBe("true");
+    expect(chips.getAttribute("data-domain-defaults-all-ready")).toBe("true");
+    expect(
+      Number(chips.getAttribute("data-domain-default-count") || 0),
+    ).toBeGreaterThanOrEqual(40);
     // Server honesty by_subject strip.
     expect(
       screen.getByTestId("marketplace-catalog-by-subject").textContent,

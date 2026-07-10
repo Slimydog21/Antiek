@@ -4003,3 +4003,8 @@ plan. vitest 30 green. P0 PR #465. Pivot are+.
 DOMAIN_SUBJECTS_WITH_DEFAULTS + domainDefaultSubjectCatalog regression guard
 so twin-search spine cannot silently drop free-PD domains. vitest 5 green.
 P0 PR #465. Pivot arf+.
+
+## Residual arf · 2026-07-10 — Marketplace domain chips twin-search defaults honesty
+Catalog subject chips stamp domainDefaultSubjectCatalog count + all-ready.
+Reading ≡ marketplace twin-search spine is operator-visible. vitest 43 green.
+P0 PR #465. Pivot arg+.

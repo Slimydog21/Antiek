@@ -95,7 +95,10 @@ import { seedTwinNotes } from "../../api/engagement";
 import { CollectiveResearchPanel } from "../../components/engagement/CollectiveResearchPanel";
 import { ResearchContextPanel } from "../../components/engagement/ResearchContextPanel";
 import { TwinNotesPanel } from "../../components/engagement/TwinNotesPanel";
-import { domainSearchCoverage } from "../../workspace/domainSearchDefaults";
+import {
+  domainDefaultSubjectCatalog,
+  domainSearchCoverage,
+} from "../../workspace/domainSearchDefaults";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
 import { listRecentDeepResearchSpawnIds } from "../../workspace/recentDeepResearchSpawns";
 import { useWindows } from "../../workspace/windowsStore";
@@ -288,6 +291,9 @@ export default function MarketplaceHost({
   const subjectChipList = useMemo(() => {
     return Object.keys(catalogBySubject).sort((a, b) => a.localeCompare(b));
   }, [catalogBySubject]);
+
+  // Residual (arf): free-PD twin-search default catalog honesty on domain chips.
+  const domainDefaultCatalog = useMemo(() => domainDefaultSubjectCatalog(), []);
 
   /** Residual (lx): sorted knowledge-source chips for catalog filter UI. */
   const sourceChipList = useMemo(() => {
@@ -1217,12 +1223,20 @@ export default function MarketplaceHost({
           />
           Free inventory only
         </label>
-        {/* Residual (lw): research-domain subject chips (STEM / philosophy / …). */}
+        {/* Residual (lw/arf): research-domain subject chips + twin-search default catalog honesty. */}
         <div
           className="flex flex-wrap gap-1 items-center pb-1"
           data-testid="catalog-subject-chips"
+          data-view-format="html"
+          data-html-first="true"
+          data-domain-default-count={String(domainDefaultCatalog.count)}
+          data-domain-defaults-all-ready={String(
+            domainDefaultCatalog.all_have_default,
+          )}
+          data-twin-search-defaults="true"
           role="group"
           aria-label="Filter catalog by research domain"
+          title={`Twin-search domain defaults catalog: ${domainDefaultCatalog.count} subjects (all_have_default=${domainDefaultCatalog.all_have_default})`}
         >
           <button
             type="button"
