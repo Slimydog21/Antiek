@@ -39,6 +39,7 @@ from substrate.midnight_oil import (
     MidnightOilWorkerCancellationAbandonPlanRequest,
     MidnightOilWorkerCompletionFinalizationPlanRequest,
     MidnightOilWorkerDispatchLeaseHeartbeatPlanRequest,
+    MidnightOilWorkerOutputAggregationPlanRequest,
     MidnightOilWorkerQueueClaimPlanRequest,
     activation_checklist_midnight_oil,
     budget_provider_adapter_plan_midnight_oil,
@@ -72,6 +73,7 @@ from substrate.midnight_oil import (
     worker_cancellation_abandon_plan_midnight_oil,
     worker_completion_finalization_plan_midnight_oil,
     worker_dispatch_lease_heartbeat_plan_midnight_oil,
+    worker_output_aggregation_plan_midnight_oil,
     worker_queue_claim_plan_midnight_oil,
 )
 
@@ -1019,6 +1021,72 @@ def _accepted_midnight_oil_worker_cancellation_abandon_plan_chain(
     return {
         **chain,
         "worker_cancellation_abandon_plan": worker_cancellation_abandon_plan,
+    }
+
+
+def _accepted_midnight_oil_worker_completion_finalization_plan_chain(
+    *,
+    goal: str,
+    source_policy: list[str],
+    requested_control_scope: list[str],
+) -> dict[str, object]:
+    chain = _accepted_midnight_oil_worker_cancellation_abandon_plan_chain(
+        goal=goal,
+        source_policy=source_policy,
+        requested_control_scope=requested_control_scope,
+    )
+    preflight = chain["preflight"]
+    worker_completion_finalization_plan = worker_completion_finalization_plan_midnight_oil(
+        MidnightOilWorkerCompletionFinalizationPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=chain["control_plan"],
+            budget_provider_adapter_plan_receipt=chain["budget_adapter_plan"],
+            provider_executor_adapter_plan_receipt=chain["provider_adapter_plan"],
+            retrieval_adapter_plan_receipt=chain["retrieval_adapter_plan"],
+            graph_adapter_plan_receipt=chain["graph_adapter_plan"],
+            final_artifact_adapter_plan_receipt=chain["final_artifact_adapter_plan"],
+            operator_dispatch_adapter_plan_receipt=chain["operator_adapter_plan"],
+            control_ledger_adapter_plan_receipt=chain["control_ledger_plan"],
+            control_ledger_persistence_plan_receipt=chain[
+                "control_ledger_persistence_plan"
+            ],
+            control_ledger_persistence_apply_plan_receipt=chain[
+                "control_ledger_persistence_apply_plan"
+            ],
+            operator_dispatch_activation_readiness_plan_receipt=chain[
+                "operator_dispatch_activation_readiness_plan"
+            ],
+            live_dispatch_final_enablement_plan_receipt=chain[
+                "live_dispatch_final_enablement_plan"
+            ],
+            live_dispatch_final_enablement_apply_plan_receipt=chain[
+                "live_dispatch_final_enablement_apply_plan"
+            ],
+            runner_dispatch_scheduler_plan_receipt=chain[
+                "runner_dispatch_scheduler_plan"
+            ],
+            runner_dispatch_worker_bootstrap_plan_receipt=chain[
+                "runner_dispatch_worker_bootstrap_plan"
+            ],
+            scheduler_lease_retry_plan_receipt=chain["scheduler_lease_retry_plan"],
+            worker_queue_claim_plan_receipt=chain["worker_queue_claim_plan"],
+            repository_transaction_plan_receipt=chain["repository_transaction_plan"],
+            repository_commit_rollback_plan_receipt=chain[
+                "repository_commit_rollback_plan"
+            ],
+            worker_dispatch_lease_heartbeat_plan_receipt=chain[
+                "worker_dispatch_lease_heartbeat_plan"
+            ],
+            worker_cancellation_abandon_plan_receipt=chain[
+                "worker_cancellation_abandon_plan"
+            ],
+        )
+    )
+    return {
+        **chain,
+        "worker_completion_finalization_plan": worker_completion_finalization_plan,
     }
 
 
@@ -7293,6 +7361,279 @@ def test_midnight_oil_worker_completion_finalization_plan_api_contract() -> None
     )
     assert body["blocker_reason"] == "worker_completion_finalization_unimplemented"
     assert body["worker_completion_allowed"] is False
+    assert body["worker_completed"] is False
+    assert body["worker_finalized"] is False
+    assert body["worker_result_manifest_created"] is False
+    assert body["worker_output_bundle_created"] is False
+    assert body["worker_cancelled"] is False
+    assert body["worker_abandoned"] is False
+    assert body["worker_lease_heartbeat_recorded"] is False
+    assert body["worker_started"] is False
+    assert body["repository_transaction_committed"] is False
+    assert body["commit_receipt_created"] is False
+    assert body["rollback_receipt_created"] is False
+    assert body["queue_claim_created"] is False
+    assert body["claim_transaction_committed"] is False
+    assert body["dispatch_performed"] is False
+    assert body["budget_reserved"] is False
+    assert body["provider_calls_made"] is False
+    assert body["retrieval_performed"] is False
+    assert body["source_receipts_created"] is False
+    assert body["graph_mutated"] is False
+    assert body["final_artifact_created"] is False
+
+
+def _worker_output_aggregation_request_kwargs(
+    chain: dict[str, object],
+    completion_plan: object,
+) -> dict[str, object]:
+    preflight = chain["preflight"]
+    return {
+        "launch_packet": preflight.launch_packet,
+        "approval_receipt": preflight.approval_receipt,
+        "runner_handoff": preflight.runner_handoff,
+        "runner_control_plan_receipt": chain["control_plan"],
+        "budget_provider_adapter_plan_receipt": chain["budget_adapter_plan"],
+        "provider_executor_adapter_plan_receipt": chain["provider_adapter_plan"],
+        "retrieval_adapter_plan_receipt": chain["retrieval_adapter_plan"],
+        "graph_adapter_plan_receipt": chain["graph_adapter_plan"],
+        "final_artifact_adapter_plan_receipt": chain["final_artifact_adapter_plan"],
+        "operator_dispatch_adapter_plan_receipt": chain["operator_adapter_plan"],
+        "control_ledger_adapter_plan_receipt": chain["control_ledger_plan"],
+        "control_ledger_persistence_plan_receipt": chain[
+            "control_ledger_persistence_plan"
+        ],
+        "control_ledger_persistence_apply_plan_receipt": chain[
+            "control_ledger_persistence_apply_plan"
+        ],
+        "operator_dispatch_activation_readiness_plan_receipt": chain[
+            "operator_dispatch_activation_readiness_plan"
+        ],
+        "live_dispatch_final_enablement_plan_receipt": chain[
+            "live_dispatch_final_enablement_plan"
+        ],
+        "live_dispatch_final_enablement_apply_plan_receipt": chain[
+            "live_dispatch_final_enablement_apply_plan"
+        ],
+        "runner_dispatch_scheduler_plan_receipt": chain[
+            "runner_dispatch_scheduler_plan"
+        ],
+        "runner_dispatch_worker_bootstrap_plan_receipt": chain[
+            "runner_dispatch_worker_bootstrap_plan"
+        ],
+        "scheduler_lease_retry_plan_receipt": chain["scheduler_lease_retry_plan"],
+        "worker_queue_claim_plan_receipt": chain["worker_queue_claim_plan"],
+        "repository_transaction_plan_receipt": chain["repository_transaction_plan"],
+        "repository_commit_rollback_plan_receipt": chain[
+            "repository_commit_rollback_plan"
+        ],
+        "worker_dispatch_lease_heartbeat_plan_receipt": chain[
+            "worker_dispatch_lease_heartbeat_plan"
+        ],
+        "worker_cancellation_abandon_plan_receipt": chain[
+            "worker_cancellation_abandon_plan"
+        ],
+        "worker_completion_finalization_plan_receipt": completion_plan,
+    }
+
+
+def test_worker_output_aggregation_plan_records_disabled_requirements() -> None:
+    chain = _accepted_midnight_oil_worker_completion_finalization_plan_chain(
+        goal="Plan worker output aggregation requirements after completion planning.",
+        source_policy=["arxiv", "web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    completion_plan = chain["worker_completion_finalization_plan"]
+
+    aggregation_plan = worker_output_aggregation_plan_midnight_oil(
+        MidnightOilWorkerOutputAggregationPlanRequest(
+            **_worker_output_aggregation_request_kwargs(chain, completion_plan)
+        )
+    )
+
+    assert aggregation_plan.receipt_id == (
+        f"{preflight.run_id}-worker-output-aggregation-plan"
+    )
+    assert aggregation_plan.worker_completion_finalization_plan_receipt_id == (
+        completion_plan.receipt_id
+    )
+    assert aggregation_plan.worker_cancellation_abandon_plan_receipt_id == (
+        completion_plan.worker_cancellation_abandon_plan_receipt_id
+    )
+    assert aggregation_plan.status == "blocked_worker_output_aggregation_unimplemented"
+    assert aggregation_plan.adapter_key == "worker_output_aggregation"
+    assert aggregation_plan.planned_worker_output_aggregation_receipt_id == (
+        f"{preflight.run_id}-worker-output-aggregation-receipt"
+    )
+    assert aggregation_plan.planned_worker_output_index_id == (
+        f"{preflight.run_id}-worker-output-index"
+    )
+    assert aggregation_plan.planned_worker_output_manifest_id == (
+        f"{preflight.run_id}-worker-output-manifest"
+    )
+    assert aggregation_plan.planned_worker_output_summary_id == (
+        f"{preflight.run_id}-worker-output-summary"
+    )
+    assert aggregation_plan.planned_worker_result_manifest_id == (
+        completion_plan.planned_worker_result_manifest_id
+    )
+    assert aggregation_plan.planned_worker_output_bundle_id == (
+        completion_plan.planned_worker_output_bundle_id
+    )
+    assert aggregation_plan.planned_output_aggregation_ledger_entry_id == (
+        f"{preflight.run_id}-worker-output-aggregation-ledger-entry"
+    )
+    assert aggregation_plan.planned_queue_claim_id == (
+        completion_plan.planned_queue_claim_id
+    )
+    assert aggregation_plan.planned_claim_lease_token_id == (
+        completion_plan.planned_claim_lease_token_id
+    )
+    assert aggregation_plan.planned_worker_lease_id == (
+        completion_plan.planned_worker_lease_id
+    )
+    assert "worker output aggregation receipt writer" in (
+        aggregation_plan.worker_output_aggregation_blockers
+    )
+    assert "worker_output_index_id" in (
+        aggregation_plan.required_worker_output_aggregation_receipt_fields
+    )
+    assert "worker output aggregation planner must require worker completion" in (
+        aggregation_plan.required_worker_output_aggregation_invariants[0]
+    )
+    assert aggregation_plan.blocker_reason == "worker_output_aggregation_unimplemented"
+    assert aggregation_plan.worker_output_aggregation_allowed is False
+    assert aggregation_plan.worker_output_aggregated is False
+    assert aggregation_plan.worker_output_index_created is False
+    assert aggregation_plan.worker_output_manifest_created is False
+    assert aggregation_plan.worker_output_summary_created is False
+    assert aggregation_plan.worker_completed is False
+    assert aggregation_plan.worker_finalized is False
+    assert aggregation_plan.worker_result_manifest_created is False
+    assert aggregation_plan.worker_output_bundle_created is False
+    assert aggregation_plan.worker_cancelled is False
+    assert aggregation_plan.worker_abandoned is False
+    assert aggregation_plan.worker_lease_heartbeat_recorded is False
+    assert aggregation_plan.worker_started is False
+    assert aggregation_plan.repository_transaction_committed is False
+    assert aggregation_plan.commit_receipt_created is False
+    assert aggregation_plan.rollback_receipt_created is False
+    assert aggregation_plan.queue_claim_created is False
+    assert aggregation_plan.claim_transaction_committed is False
+    assert aggregation_plan.dispatch_performed is False
+    assert aggregation_plan.budget_reserved is False
+    assert aggregation_plan.provider_calls_made is False
+    assert aggregation_plan.retrieval_performed is False
+    assert aggregation_plan.source_receipts_created is False
+    assert aggregation_plan.graph_mutated is False
+    assert aggregation_plan.final_artifact_created is False
+    assert "no worker output aggregation" in aggregation_plan.adapter_plan_notes[0]
+
+
+def test_worker_output_aggregation_plan_rejects_completed_worker() -> None:
+    chain = _accepted_midnight_oil_worker_completion_finalization_plan_chain(
+        goal="Reject worker completion before output aggregation planning.",
+        source_policy=["web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    bad_completion_plan = chain["worker_completion_finalization_plan"].model_copy(
+        update={"worker_completed": True}
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match="worker_completion_finalization_plan_receipt must not complete or finalize workers",
+    ):
+        MidnightOilWorkerOutputAggregationPlanRequest(
+            **_worker_output_aggregation_request_kwargs(chain, bad_completion_plan)
+        )
+
+
+def test_midnight_oil_worker_output_aggregation_plan_api_contract() -> None:
+    from interfaces.research.api.app import create_app
+
+    chain = _accepted_midnight_oil_worker_completion_finalization_plan_chain(
+        goal="Expose worker output aggregation planning over the API.",
+        source_policy=["arxiv", "substack"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    completion_plan = chain["worker_completion_finalization_plan"]
+
+    request_json = {
+        key: value.model_dump(mode="json")
+        for key, value in _worker_output_aggregation_request_kwargs(
+            chain, completion_plan
+        ).items()
+    }
+
+    with TestClient(create_app()) as client:
+        r = client.post(
+            "/research/midnight-oil/worker-output-aggregation-plan",
+            json=request_json,
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["receipt_id"] == f"{preflight.run_id}-worker-output-aggregation-plan"
+    assert body["worker_completion_finalization_plan_receipt_id"] == (
+        completion_plan.receipt_id
+    )
+    assert body["status"] == "blocked_worker_output_aggregation_unimplemented"
+    assert body["adapter_key"] == "worker_output_aggregation"
+    assert body["planned_worker_output_aggregation_receipt_id"] == (
+        f"{preflight.run_id}-worker-output-aggregation-receipt"
+    )
+    assert body["planned_worker_output_index_id"] == (
+        f"{preflight.run_id}-worker-output-index"
+    )
+    assert body["planned_worker_output_manifest_id"] == (
+        f"{preflight.run_id}-worker-output-manifest"
+    )
+    assert body["planned_worker_output_summary_id"] == (
+        f"{preflight.run_id}-worker-output-summary"
+    )
+    assert body["planned_worker_result_manifest_id"] == (
+        completion_plan.planned_worker_result_manifest_id
+    )
+    assert body["planned_worker_output_bundle_id"] == (
+        completion_plan.planned_worker_output_bundle_id
+    )
+    assert body["planned_worker_lease_id"] == completion_plan.planned_worker_lease_id
+    assert "worker output aggregation receipt writer" in body[
+        "worker_output_aggregation_blockers"
+    ]
+    assert "worker_output_manifest_id" in (
+        body["required_worker_output_aggregation_receipt_fields"]
+    )
+    assert body["blocker_reason"] == "worker_output_aggregation_unimplemented"
+    assert body["worker_output_aggregation_allowed"] is False
+    assert body["worker_output_aggregated"] is False
+    assert body["worker_output_index_created"] is False
+    assert body["worker_output_manifest_created"] is False
+    assert body["worker_output_summary_created"] is False
     assert body["worker_completed"] is False
     assert body["worker_finalized"] is False
     assert body["worker_result_manifest_created"] is False

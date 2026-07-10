@@ -74,6 +74,8 @@ from substrate.midnight_oil import (
     MidnightOilWorkerCompletionFinalizationPlanRequest,
     MidnightOilWorkerDispatchLeaseHeartbeatPlanReceipt,
     MidnightOilWorkerDispatchLeaseHeartbeatPlanRequest,
+    MidnightOilWorkerOutputAggregationPlanReceipt,
+    MidnightOilWorkerOutputAggregationPlanRequest,
     MidnightOilWorkerQueueClaimPlanReceipt,
     MidnightOilWorkerQueueClaimPlanRequest,
     activation_checklist_midnight_oil,
@@ -108,6 +110,7 @@ from substrate.midnight_oil import (
     worker_cancellation_abandon_plan_midnight_oil,
     worker_completion_finalization_plan_midnight_oil,
     worker_dispatch_lease_heartbeat_plan_midnight_oil,
+    worker_output_aggregation_plan_midnight_oil,
     worker_queue_claim_plan_midnight_oil,
 )
 
@@ -405,6 +408,16 @@ def post_midnight_oil_worker_completion_finalization_plan(
     return worker_completion_finalization_plan_midnight_oil(req)
 
 
+@midnight_oil_router.post(
+    "/worker-output-aggregation-plan",
+    response_model=MidnightOilWorkerOutputAggregationPlanReceipt,
+)
+def post_midnight_oil_worker_output_aggregation_plan(
+    req: MidnightOilWorkerOutputAggregationPlanRequest,
+) -> MidnightOilWorkerOutputAggregationPlanReceipt:
+    return worker_output_aggregation_plan_midnight_oil(req)
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
@@ -443,6 +456,7 @@ __all__ = [
     "post_midnight_oil_worker_cancellation_abandon_plan",
     "post_midnight_oil_worker_completion_finalization_plan",
     "post_midnight_oil_worker_dispatch_lease_heartbeat_plan",
+    "post_midnight_oil_worker_output_aggregation_plan",
     "post_midnight_oil_worker_queue_claim_plan",
     "register_midnight_oil_routes",
 ]

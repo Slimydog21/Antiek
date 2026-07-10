@@ -2100,6 +2100,101 @@ export interface MidnightOilWorkerCompletionFinalizationPlanReceipt {
   adapter_plan_notes: string[];
 }
 
+export interface MidnightOilWorkerOutputAggregationPlanRequest
+  extends MidnightOilWorkerCompletionFinalizationPlanRequest {
+  worker_completion_finalization_plan_receipt: MidnightOilWorkerCompletionFinalizationPlanReceipt;
+}
+
+export interface MidnightOilWorkerOutputAggregationPlanReceipt {
+  receipt_id: string;
+  worker_completion_finalization_plan_receipt_id: string;
+  worker_cancellation_abandon_plan_receipt_id: string;
+  worker_dispatch_lease_heartbeat_plan_receipt_id: string;
+  repository_commit_rollback_plan_receipt_id: string;
+  repository_transaction_plan_receipt_id: string;
+  worker_queue_claim_plan_receipt_id: string;
+  scheduler_lease_retry_plan_receipt_id: string;
+  runner_dispatch_worker_bootstrap_plan_receipt_id: string;
+  runner_dispatch_scheduler_plan_receipt_id: string;
+  runner_control_plan_receipt_id: string;
+  runner_readiness_receipt_id: string;
+  runner_handoff_id: string;
+  approval_receipt_id: string;
+  launch_packet_id: string;
+  run_id: string;
+  status: "blocked_worker_output_aggregation_unimplemented";
+  adapter_key: "worker_output_aggregation";
+  planned_worker_output_aggregation_receipt_id: string;
+  planned_worker_output_index_id: string;
+  planned_worker_output_manifest_id: string;
+  planned_worker_output_summary_id: string;
+  planned_worker_result_manifest_id: string;
+  planned_worker_output_bundle_id: string;
+  planned_output_aggregation_ledger_entry_id: string;
+  planned_queue_claim_id: string;
+  planned_claim_lease_token_id: string;
+  planned_queue_id: string;
+  planned_worker_id: string;
+  planned_worker_lease_id: string;
+  planned_runner_dispatch_id: string;
+  planned_idempotency_key: string;
+  worker_output_aggregation_blockers: string[];
+  required_worker_output_aggregation_invariants: string[];
+  required_worker_output_aggregation_receipt_fields: string[];
+  blocker_reason: "worker_output_aggregation_unimplemented";
+  worker_output_aggregation_allowed: boolean;
+  worker_output_aggregated: boolean;
+  worker_output_index_created: boolean;
+  worker_output_manifest_created: boolean;
+  worker_output_summary_created: boolean;
+  worker_completion_allowed: boolean;
+  worker_completed: boolean;
+  worker_finalization_allowed: boolean;
+  worker_finalized: boolean;
+  worker_result_manifest_created: boolean;
+  worker_output_bundle_created: boolean;
+  worker_cancellation_allowed: boolean;
+  worker_cancelled: boolean;
+  worker_abandon_allowed: boolean;
+  worker_abandoned: boolean;
+  worker_lease_heartbeat_allowed: boolean;
+  worker_lease_heartbeat_recorded: boolean;
+  worker_lease_renewal_allowed: boolean;
+  worker_lease_renewed: boolean;
+  worker_lease_expiry_allowed: boolean;
+  worker_lease_expired: boolean;
+  worker_started: boolean;
+  repository_commit_allowed: boolean;
+  repository_rollback_allowed: boolean;
+  commit_receipt_created: boolean;
+  rollback_receipt_created: boolean;
+  repository_transaction_allowed: boolean;
+  repository_transaction_opened: boolean;
+  repository_transaction_committed: boolean;
+  queue_claim_allowed: boolean;
+  queue_claim_created: boolean;
+  claim_transaction_opened: boolean;
+  claim_transaction_committed: boolean;
+  scheduler_allowed: boolean;
+  scheduler_job_created: boolean;
+  runner_dispatch_enqueued: boolean;
+  live_run_allowed: boolean;
+  dispatch_allowed: boolean;
+  dispatch_performed: boolean;
+  budget_reservation_allowed: boolean;
+  budget_reserved: boolean;
+  provider_execution_allowed: boolean;
+  provider_calls_made: boolean;
+  retrieval_allowed: boolean;
+  retrieval_performed: boolean;
+  source_receipts_created: boolean;
+  graph_mutation_allowed: boolean;
+  graph_mutated: boolean;
+  final_artifact_allowed: boolean;
+  final_artifact_created: boolean;
+  adapter_plan_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -2664,4 +2759,24 @@ export async function workerCompletionFinalizationPlanMidnightOil(
     );
   }
   return (await resp.json()) as MidnightOilWorkerCompletionFinalizationPlanReceipt;
+}
+
+export async function workerOutputAggregationPlanMidnightOil(
+  request: MidnightOilWorkerOutputAggregationPlanRequest,
+): Promise<MidnightOilWorkerOutputAggregationPlanReceipt> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/midnight-oil/worker-output-aggregation-plan`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+  );
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(
+      `POST /research/midnight-oil/worker-output-aggregation-plan: HTTP ${resp.status}: ${body}`,
+    );
+  }
+  return (await resp.json()) as MidnightOilWorkerOutputAggregationPlanReceipt;
 }
