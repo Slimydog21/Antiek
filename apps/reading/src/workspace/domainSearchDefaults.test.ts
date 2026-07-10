@@ -8,6 +8,7 @@ import {
   domainSearchCoverage,
   formatResearchDomainsClause,
   normalizeDomainSubjects,
+  parseResearchDomainsFromGoal,
 } from "./domainSearchDefaults";
 
 describe("domainSearchDefaults pure module (alq)", () => {
@@ -58,5 +59,26 @@ describe("domainSearchDefaults pure module (alq)", () => {
     );
     expect(formatResearchDomainsClause(null)).toBe("");
     expect(formatResearchDomainsClause([])).toBe("");
+  });
+
+  it("parses research_domains (and domains= alias) from goal_hint (aoe)", () => {
+    expect(
+      parseResearchDomainsFromGoal(
+        "Twin chase on pd-fourier: 1 note(s) · research_domains=heat,signal_processing",
+      ),
+    ).toEqual(["heat", "signal_processing"]);
+    expect(
+      parseResearchDomainsFromGoal(
+        'Wrestle claims (marketplace HTML host · domains=electricity,mathematics).',
+      ),
+    ).toEqual(["electricity", "mathematics"]);
+    expect(parseResearchDomainsFromGoal("no domains here")).toEqual([]);
+    expect(parseResearchDomainsFromGoal(null)).toEqual([]);
+    // Prefer research_domains when both present.
+    expect(
+      parseResearchDomainsFromGoal(
+        "x domains=a,b · research_domains=heat,signal_processing",
+      ),
+    ).toEqual(["heat", "signal_processing"]);
   });
 });

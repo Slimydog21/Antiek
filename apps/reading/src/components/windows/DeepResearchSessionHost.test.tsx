@@ -157,9 +157,13 @@ vi.mock("../engagement/TwinNotesPanel", () => ({
     assetId: string;
     spawnId?: string | null;
     autoLoad?: boolean;
+    domainSubjects?: readonly string[] | null;
     onPromoted?: (r: { promoted_count: number }) => void;
   }) => (
-    <div data-testid="twin-notes-panel-stub">
+    <div
+      data-testid="twin-notes-panel-stub"
+      data-domain-subjects={(props.domainSubjects || []).join(",") || ""}
+    >
       {props.assetId}:auto={String(Boolean(props.autoLoad))}
       {props.onPromoted ? (
         <button
@@ -349,7 +353,13 @@ describe("DeepResearchSessionHost", () => {
     const mount = screen.getByTestId("deep-research-budget-mount");
     expect(mount).toBeTruthy();
     expect(mount.getAttribute("data-view-format")).toBe("html");
-    expect(screen.getByTestId("research-launch-budget-panel")).toBeTruthy();
+    // Host budget + nested engagement panels may each mount a budget panel.
+    expect(
+      screen.getAllByTestId("research-launch-budget-panel").length,
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      mount.querySelector('[data-testid="research-launch-budget-panel"]'),
+    ).toBeTruthy();
   });
 
   it("mounts SpawnMergePanel when spawn and parent present (ci/agu)", () => {
@@ -499,6 +509,32 @@ describe("DeepResearchSessionHost", () => {
     expect(screen.getByTestId("twin-notes-panel-stub").textContent).toMatch(
       /launch-asset:auto=true/,
     );
+  });
+
+  it("parses research_domains from goal into twin domainSubjects (aoe)", () => {
+    render(
+      <DeepResearchSessionHost
+        {...FIXTURE}
+        goal="Twin chase on launch-asset: 2 note(s) · research_domains=heat,signal_processing"
+      />,
+    );
+    const host = screen.getByTestId("deep-research-session-host");
+    expect(host.getAttribute("data-research-domains")).toBe(
+      "heat,signal_processing",
+    );
+    expect(
+      screen
+        .getByTestId("twin-notes-panel-stub")
+        .getAttribute("data-domain-subjects"),
+    ).toBe("heat,signal_processing");
+    // ResearchContextPanel (real) stamps domain subjects on query controls.
+    const ctx = screen.getByTestId("research-context-query-controls");
+    const ctxDomains = String(ctx.getAttribute("data-domain-subjects") || "");
+    expect(ctxDomains).toContain("heat");
+    expect(ctxDomains).toContain("signal_processing");
+    expect(
+      screen.getByTestId("research-context-domain-search-coverage"),
+    ).toBeTruthy();
   });
 
   it("remounts research context after twin promote notify (ec)", () => {

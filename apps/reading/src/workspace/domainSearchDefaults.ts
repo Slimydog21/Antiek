@@ -150,3 +150,29 @@ export function formatResearchDomainsClause(
     ? ` · research_domains=${unique.join(",")}`
     : "";
 }
+
+/**
+ * Residual (aoe): parse research_domains= from a goal / goal_hint string so
+ * DeepResearchSessionHost can rehydrate domainSubjects for twin/context panels
+ * (domain-aware chase/search survives into the DR session). Never invents.
+ * Accepts marketplace `domains=` as a secondary alias.
+ */
+export function parseResearchDomainsFromGoal(
+  goal?: string | null,
+): string[] {
+  const text = String(goal || "");
+  if (!text.trim()) return [];
+  // Prefer research_domains= (aoc/aod); fall back to marketplace domains=.
+  const m =
+    text.match(/research_domains=([^\s·]+)/i) ||
+    text.match(/(?:^|[·\s])domains=([^\s·]+)/i);
+  if (!m?.[1]) return [];
+  const raw = m[1]
+    .split(",")
+    .map((s) =>
+      // Strip trailing punctuation from marketplace goal_hint wrappers.
+      s.trim().replace(/[).,;:]+$/g, "").trim(),
+    )
+    .filter(Boolean);
+  return normalizeDomainSubjects(raw);
+}

@@ -1,0 +1,17 @@
+# inventory-aoe · DR session rehydrates domainSubjects from goal
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aoe
+date: 2026-07-10
+parent_tip: 32fc0099 (aod)
+
+## Closed
+- parseResearchDomainsFromGoal (research_domains= preferred; domains= alias;
+  strip trailing punctuation; never invent)
+- DeepResearchSessionHost: domainSubjects from goal → TwinNotes + ResearchContext
+- Host data-research-domains stamp
+- Domain-aware chase/search survives into DR session flywheel
+- vitest domainSearchDefaults 4 · DeepResearchSessionHost 33 green
+
+## Next
+aof+ product residual outside thrash · prefer non-domain thrash
+Operator merge PR #465 remains highest leverage (gated)

@@ -47,6 +47,8 @@
  * document_id; parity twin draft path; recursive note-taker seed).
  * Residual (acv): data-write-seed-has-body true when selection_text non-empty
  * (goal-only is meta; selection is body; parity ResearchProgress acp).
+ * Residual (aoe): parse research_domains= from goal → domainSubjects on twin +
+ * research context (domain-aware chase/search survives into DR session).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -70,6 +72,7 @@ import { SpawnMergePanel } from "../engagement/SpawnMergePanel";
 import { TwinNotesPanel } from "../engagement/TwinNotesPanel";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
 import { syncDeepResearchWindowMode } from "../../workspace/deepResearchWindow";
+import { parseResearchDomainsFromGoal } from "../../workspace/domainSearchDefaults";
 import { listRecentDeepResearchSpawnIds } from "../../workspace/recentDeepResearchSpawns";
 import { buildDeepResearchWriteHref } from "../../workspace/twinWriteSeed";
 import { useWindows } from "../../workspace/windowsStore";
@@ -231,6 +234,13 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
     props.seamless_highlight_dr === true ||
     props.seamless_highlight_dr === "true";
 
+  // Residual (aoe): rehydrate domain subjects from goal_hint research_domains=
+  // so twin chase + intelligent search stay domain-aware inside the session.
+  const domainSubjects = useMemo(
+    () => parseResearchDomainsFromGoal(props.goal),
+    [props.goal],
+  );
+
   return (
     <div
       className="flex h-full flex-col gap-4 bg-transparent p-6"
@@ -240,6 +250,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
       data-window-mode={hostWindow?.mode ?? "unknown"}
       // Residual (afx): highlight → DR window path honesty.
       data-seamless-highlight-dr={String(seamlessHighlightDr)}
+      data-research-domains={domainSubjects.join(",") || ""}
     >
       <header className="space-y-1">
         <div className="flex flex-wrap items-start justify-between gap-2">
@@ -406,6 +417,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
               spawnId={props.spawn_id?.trim() || null}
               autoLoad
               researchTier={researchTier}
+              domainSubjects={domainSubjects}
             />
           </div>
         </section>
@@ -461,6 +473,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
                 props.selection_text?.trim() || props.goal?.trim() || ""
               }
               researchTier={researchTier}
+              domainSubjects={domainSubjects}
             />
           </div>
         </section>

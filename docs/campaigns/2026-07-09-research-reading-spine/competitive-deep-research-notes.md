@@ -3618,3 +3618,8 @@ vitest TwinNotesPanel 34 green. P0 operator merge PR #465. Pivot aod+ outside th
 normalizeDomainSubjects + formatResearchDomainsClause chokepoint; HostedHtml float DR
 goal_hint + launch stamp; twin chase metrics audit. vitest domainSearchDefaults/HostedHtml/TwinNotes green.
 P0 operator merge PR #465. Pivot aoe+ outside thrash.
+
+## Residual aoe · 2026-07-10 — DR session rehydrates domainSubjects from goal
+parseResearchDomainsFromGoal + TwinNotes/ResearchContext domainSubjects on
+DeepResearchSessionHost so domain-aware chase/search survives into the session.
+vitest domainSearchDefaults 4 · DR host 33 green. P0 operator merge PR #465. Pivot aof+.
