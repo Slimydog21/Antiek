@@ -768,3 +768,10 @@ synthesis substrate during long-horizon jobs without waiting for terminal.
 After promote→context, TwinNotesPanel offers Open Write with promoted units
 as twin_seed (source=twin_promote_context). Competitive delta: recursive
 note-taker promote path feeds writing without re-export or PDF.
+
+## Residual rt · 2026-07-10 — Write-seed primary feed honesty
+Settings suite primary rewrite feed stamps data-write-seed-feed and labels
+"Write seed feed (recursive note-taker → Write)" when the week's top by_source
+is a twin_seed path (WRITE_SEED_FEED_SOURCES). Competitive delta: operators
+see whether weekly Antiek-bench rewrite was driven by research→Write substrate
+vs chase/investigation paths — without inventing promote authority.

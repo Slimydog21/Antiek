@@ -27,6 +27,7 @@ const {
   fetchNotDiamondAdvisory,
   fetchHydrateLiveStatus,
   fetchTwinSeedLiveStatus,
+  defaultUsageSummary,
 } = vi.hoisted(() => {
   const models = {
     models: [
@@ -41,6 +42,50 @@ const {
     count: 1,
     providers_ready: true,
     source: "test",
+  };
+  const defaultUsageSummary = {
+    event_count: 2,
+    by_task_class: {
+      wrestle: { worked: 1, failed: 0, total: 1 },
+      book_qa: { worked: 0, failed: 1, total: 1 },
+    },
+    by_source: {
+      investigation_start: 1,
+      session_flywheel: 1,
+      twin_chase: 3,
+      floating_deep_research: 1,
+      midnight_oil: 1,
+      collective_merge: 1,
+    },
+    known_sources: [
+      "investigation_start",
+      "session_flywheel",
+      "midnight_oil",
+      "midnight_oil_deposit",
+      "marketplace_host",
+      "floating_deep_research",
+      "twin_chase",
+      "collective_merge",
+      "collective_doc_merge",
+      "spawn_merge",
+      "hosted_html_document",
+      "deep_research_session",
+      "research_progress_complete",
+      "research_progress_draft",
+      "evidence_pack",
+      "publication_hydrate",
+      "session_flywheel_complete",
+      "context_search",
+      "research_context_pack",
+      "twin_promote_context",
+      "antiek_bench.offline_dogfood",
+      "engagement",
+    ],
+    view_format: "html" as const,
+    settings_panel: "antiek_bench_usage_weekly",
+    source: "antiek_bench.usage_events",
+    notes: [] as string[],
+    html: "<p>Events recorded: 2 · By source: investigation_start=1 · Known feed sources: twin_chase</p>",
   };
   const budget = {
     daily_cap_usd: 5,
@@ -86,53 +131,8 @@ const {
     })),
     fetchSettingsModels: vi.fn(async () => models),
     fetchSettingsBudget: vi.fn(async () => budget),
-    fetchAntiekBenchUsageSummary: vi.fn(async () => ({
-      event_count: 2,
-      by_task_class: {
-        wrestle: { worked: 1, failed: 0, total: 1 },
-        book_qa: { worked: 0, failed: 1, total: 1 },
-      },
-      by_source: {
-        investigation_start: 1,
-        session_flywheel: 1,
-        // Residual (qa): twin_chase highest so primary feed is unambiguous.
-        twin_chase: 3,
-        floating_deep_research: 1,
-        // Residual (os): MO + collective feed honesty after om–oq engagement.
-        midnight_oil: 1,
-        collective_merge: 1,
-      },
-      // Residual (nx/os/qy/ra/rk): known feed sources legend (full Write seed matrix).
-      known_sources: [
-        "investigation_start",
-        "session_flywheel",
-        "midnight_oil",
-        "midnight_oil_deposit",
-        "marketplace_host",
-        "floating_deep_research",
-        "twin_chase",
-        "collective_merge",
-        "collective_doc_merge",
-        "spawn_merge",
-        "hosted_html_document",
-        "deep_research_session",
-        "research_progress_complete",
-        "research_progress_draft",
-        "evidence_pack",
-        "publication_hydrate",
-        "session_flywheel_complete",
-        "context_search",
-        "research_context_pack",
-        "twin_promote_context",
-        "antiek_bench.offline_dogfood",
-        "engagement",
-      ],
-      view_format: "html",
-      settings_panel: "antiek_bench_usage_weekly",
-      source: "antiek_bench.usage_events",
-      notes: [],
-      html: "<p>Events recorded: 2 · By source: investigation_start=1 · Known feed sources: twin_chase</p>",
-    })),
+    fetchAntiekBenchUsageSummary: vi.fn(async () => defaultUsageSummary),
+    defaultUsageSummary,
     fetchAntiekBenchSuiteProposal: vi.fn(async () => ({
       has_proposal: true,
       proposal_id: "prop_testdeadbeef01",
@@ -466,6 +466,8 @@ describe("Settings SPR-01 + decision-tree install", () => {
     fetchSettingsModels.mockClear();
     fetchSettingsBudget.mockClear();
     fetchAntiekBenchUsageSummary.mockClear();
+    // Residual (rt): restore default primary twin_chase after write-seed override tests.
+    fetchAntiekBenchUsageSummary.mockResolvedValue(defaultUsageSummary);
     fetchAntiekBenchSuiteProposal.mockClear();
     approveAntiekBenchSuiteProposal.mockClear();
     fetchDepthTiers.mockClear();
@@ -829,6 +831,42 @@ describe("Settings SPR-01 + decision-tree install", () => {
         "data-propose-not-promote",
       ),
     ).toBe("true");
+    // Residual (rt): default primary twin_chase is not a Write seed feed.
+    const primary = screen.getByTestId("antiek-bench-suite-proposal-primary-feed");
+    expect(primary.getAttribute("data-primary-feed-source")).toBe("twin_chase");
+    expect(primary.getAttribute("data-write-seed-feed")).toBe("false");
+    expect(screen.queryByTestId("antiek-bench-primary-feed-write-seed")).toBeNull();
+  });
+
+  it("labels primary rewrite feed when it is a Write seed source (rt)", async () => {
+    fetchAntiekBenchUsageSummary.mockResolvedValue({
+      event_count: 5,
+      by_task_class: {},
+      by_source: {
+        twin_promote_context: 9,
+        twin_chase: 2,
+      },
+      known_sources: ["twin_promote_context", "twin_chase"],
+      view_format: "html",
+      settings_panel: "antiek_bench_usage_weekly",
+      source: "antiek_bench.usage_events",
+      notes: [],
+      html: "<p>Write seed primary</p>",
+    });
+    render(<Settings />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("antiek-bench-suite-proposal-primary-feed"),
+      ).toBeTruthy();
+    });
+    const primary = screen.getByTestId("antiek-bench-suite-proposal-primary-feed");
+    expect(primary.getAttribute("data-primary-feed-source")).toBe(
+      "twin_promote_context",
+    );
+    expect(primary.getAttribute("data-write-seed-feed")).toBe("true");
+    expect(screen.getByTestId("antiek-bench-primary-feed-write-seed").textContent).toMatch(
+      /Write seed feed/i,
+    );
   });
 
   it("surfaces suite rewrite rationale + feed source count (pe)", async () => {

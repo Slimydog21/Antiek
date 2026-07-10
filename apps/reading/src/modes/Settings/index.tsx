@@ -8,6 +8,7 @@ import {
   primaryFeedSourceFromBySource,
   rankedFeedSourcesFromBySource,
 } from "../../lib/suiteProposalTasks";
+import { isWriteSeedFeedSource } from "../../lib/writeSeedFeedSources";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import {
@@ -1944,6 +1945,9 @@ export default function Settings() {
                     data-testid="antiek-bench-suite-proposal-primary-feed"
                     data-primary-feed-source={primaryRewriteFeed.source}
                     data-primary-feed-count={String(primaryRewriteFeed.count)}
+                    data-write-seed-feed={String(
+                      isWriteSeedFeedSource(primaryRewriteFeed.source),
+                    )}
                     data-proposed-task-count={String(
                       (suiteProposal?.added_item_ids || []).length,
                     )}
@@ -1957,6 +1961,15 @@ export default function Settings() {
                     {primaryRewriteFeed.count} event(s) · proposed_tasks=
                     {(suiteProposal?.added_item_ids || []).length} (not
                     auto-promoted)
+                    {isWriteSeedFeedSource(primaryRewriteFeed.source) ? (
+                      <>
+                        {" "}
+                        ·{" "}
+                        <span data-testid="antiek-bench-primary-feed-write-seed">
+                          Write seed feed (recursive note-taker → Write)
+                        </span>
+                      </>
+                    ) : null}
                   </p>
                 ) : null}
                 <p
