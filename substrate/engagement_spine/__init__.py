@@ -114,8 +114,10 @@ from .progress import (
     seed_default_pipeline,
 )
 from .evidence import (
+    CITATION_HOP_PIPELINE_STAGES,
     build_citation_chain_hops,
     citation_chain_complete,
+    citation_hop_pipeline_progress,
     evidence_pack_payload,
     project_evidence_html,
 )
@@ -157,8 +159,10 @@ __all__ = [
     "compose_fetch_publication",
     "configure_engagement_hydrate_injectors",
     "env_flag",
+    "CITATION_HOP_PIPELINE_STAGES",
     "build_citation_chain_hops",
     "citation_chain_complete",
+    "citation_hop_pipeline_progress",
     "evidence_pack_payload",
     "get_spawn",
     "hydrate_reference",

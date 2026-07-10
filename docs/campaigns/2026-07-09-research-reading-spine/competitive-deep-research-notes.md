@@ -3836,3 +3836,8 @@ Write home stamps competitive scorecard + FUTURE + pipeline hint
 ## Residual apy · 2026-07-10 — SessionFlywheel hop/stage pipeline hint
 Session land competitive nav names hops insights→questions→sources · stages plan→terminal
 (parity aps/apx). vitest SessionFlywheel 8 green. P0 PR #465. Pivot apz+ outside thrash.
+
+## Residual apz · 2026-07-10 — substrate citation hop pipeline on evidence pack
+citation_hop_pipeline_progress pure helper + evidence_pack_payload.citation_hop_pipeline
+(present/missing/coverage_ratio · never invent hops). Parity frontend api pure helper.
+pytest test_engagement_evidence 5 green. P0 PR #465. Pivot aqa+ outside thrash.

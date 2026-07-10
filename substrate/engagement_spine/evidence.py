@@ -117,6 +117,73 @@ def citation_chain_complete(
     return int(insight_count or 0) > 0 and int(ref_count or 0) > 0
 
 
+# Residual (apz): closed hop pipeline stages (parity frontend CITATION_HOP_PIPELINE_STAGES).
+CITATION_HOP_PIPELINE_STAGES: tuple[str, ...] = ("insights", "questions", "sources")
+
+
+def citation_hop_pipeline_progress(
+    *,
+    insight_count: int = 0,
+    question_count: int = 0,
+    ref_count: int = 0,
+    citation_chain: list[dict[str, Any]] | None = None,
+    chain_complete: bool | None = None,
+) -> dict[str, Any]:
+    """Residual (apz): hop pipeline completeness for competitive citation bar.
+
+    Mirrors frontend ``citationHopStageProgress`` — never invents empty hops.
+    """
+    present: list[str] = []
+    chain = citation_chain or []
+    for stage in CITATION_HOP_PIPELINE_STAGES:
+        hop_row = next(
+            (
+                h
+                for h in chain
+                if isinstance(h, dict)
+                and str(h.get("hop") or "").lower() == stage
+            ),
+            None,
+        )
+        if hop_row is not None:
+            count = hop_row.get("count")
+            items = hop_row.get("items") or []
+            n = (
+                int(count)
+                if isinstance(count, (int, float)) and count == count
+                else len(items)
+            )
+            if n > 0:
+                present.append(stage)
+                continue
+        # Fall back to pack-level counts when chain omits empty hops.
+        if stage == "insights" and int(insight_count or 0) > 0:
+            present.append(stage)
+        elif stage == "questions" and int(question_count or 0) > 0:
+            present.append(stage)
+        elif stage == "sources" and int(ref_count or 0) > 0:
+            present.append(stage)
+    missing = [s for s in CITATION_HOP_PIPELINE_STAGES if s not in present]
+    total = len(CITATION_HOP_PIPELINE_STAGES)
+    present_count = len(present)
+    complete = (
+        chain_complete is True
+        or (int(insight_count or 0) > 0 and int(ref_count or 0) > 0)
+    )
+    return {
+        "stages": list(CITATION_HOP_PIPELINE_STAGES),
+        "present": present,
+        "missing": missing,
+        "present_count": present_count,
+        "total": total,
+        "coverage_ratio": (present_count / total) if total else 0.0,
+        "chain_complete": bool(complete),
+        "insight_count": int(insight_count or 0),
+        "question_count": int(question_count or 0),
+        "ref_count": int(ref_count or 0),
+    }
+
+
 def evidence_pack_payload(
     asset_id: str,
     *,
@@ -129,6 +196,8 @@ def evidence_pack_payload(
     Residual (kc): when ``spawn_id`` is set, include reserved ``research_tier``
     so citation-trust surfaces can show depth posture (default deep).
     Residual (air): includes ``citation_chain`` hops for multi-hop navigation.
+    Residual (apz): includes ``citation_hop_pipeline`` completeness summary
+    (parity frontend citationHopStageProgress · never invent empty hops).
     """
     from substrate.dispatch.research_tier import normalize_research_tier
 
@@ -147,6 +216,14 @@ def evidence_pack_payload(
         row = store.get_spawn(spawn_id) or {}
         research_tier = normalize_research_tier(row.get("research_tier"))
     chain = build_citation_chain_hops(insight_texts, question_texts, ref_dicts)
+    chain_complete = citation_chain_complete(len(insights), len(refs))
+    hop_pipeline = citation_hop_pipeline_progress(
+        insight_count=len(insights),
+        question_count=len(questions),
+        ref_count=len(refs),
+        citation_chain=chain,
+        chain_complete=chain_complete,
+    )
     payload: dict[str, Any] = {
         "asset_id": asset_id,
         "spawn_id": spawn_id,
@@ -157,7 +234,9 @@ def evidence_pack_payload(
         "questions": question_texts,
         "source_references": ref_dicts,
         "citation_chain": chain,
-        "chain_complete": citation_chain_complete(len(insights), len(refs)),
+        "chain_complete": chain_complete,
+        # Residual (apz): hop pipeline completeness for competitive citation bar.
+        "citation_hop_pipeline": hop_pipeline,
         "research_tier": research_tier,
         "view_format": "html",
         "product_panel": "evidence_pack",

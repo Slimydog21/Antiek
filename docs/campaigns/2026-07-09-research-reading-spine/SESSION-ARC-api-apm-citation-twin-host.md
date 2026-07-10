@@ -27,3 +27,4 @@ one residual/cycle · campaign push only · operator merges PR #465.
 | **apw** | competitiveDrQuality workspace extract | hard-to-vary pure helpers · re-exports |
 | **apx** | Write home competitive DR hop/stage deep-links | writing surface · reading ≡ research ≡ writing |
 | **apy** | SessionFlywheel hop/stage pipeline hint | flywheel land competitive map |
+| **apz** | substrate citation hop pipeline on evidence pack | data-layer parity frontend api |

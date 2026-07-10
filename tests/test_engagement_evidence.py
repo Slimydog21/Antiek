@@ -28,6 +28,10 @@ from substrate.engagement_spine import (  # noqa: E402
     record_twin_question,
     spawn_from_highlight,
 )
+from substrate.engagement_spine.evidence import (  # noqa: E402
+    CITATION_HOP_PIPELINE_STAGES,
+    citation_hop_pipeline_progress,
+)
 
 
 @pytest.fixture
@@ -68,6 +72,29 @@ def test_build_citation_chain_hops_ordered_stages():
     assert [h["hop"] for h in only_q] == ["questions"]
 
 
+def test_citation_hop_pipeline_progress_never_invents():
+    """Residual (apz): hop pipeline completeness mirrors frontend pure helper."""
+    assert list(CITATION_HOP_PIPELINE_STAGES) == [
+        "insights",
+        "questions",
+        "sources",
+    ]
+    mid = citation_hop_pipeline_progress(
+        insight_count=2, question_count=0, ref_count=1
+    )
+    assert mid["present"] == ["insights", "sources"]
+    assert mid["missing"] == ["questions"]
+    assert mid["present_count"] == 2
+    assert mid["total"] == 3
+    assert abs(mid["coverage_ratio"] - (2 / 3)) < 1e-9
+    assert mid["chain_complete"] is True
+
+    empty = citation_hop_pipeline_progress()
+    assert empty["present"] == []
+    assert empty["missing"] == ["insights", "questions", "sources"]
+    assert empty["chain_complete"] is False
+
+
 def test_evidence_pack_with_twins_and_refs():
     store = eng_mod._eng()
     spawn = spawn_from_highlight(
@@ -98,6 +125,13 @@ def test_evidence_pack_with_twins_and_refs():
     assert pack["chain_complete"] is True
     chain = pack["citation_chain"]
     assert isinstance(chain, list) and len(chain) == 3
+    # Residual (apz): hop pipeline completeness summary on pack payload.
+    hop_pipe = pack["citation_hop_pipeline"]
+    assert hop_pipe["present"] == ["insights", "questions", "sources"]
+    assert hop_pipe["missing"] == []
+    assert hop_pipe["present_count"] == 3
+    assert hop_pipe["coverage_ratio"] == 1.0
+    assert hop_pipe["chain_complete"] is True
     assert [h["hop"] for h in chain] == ["insights", "questions", "sources"]
     assert chain[0]["items"][0]["anchor"] == "evidence-insight-0"
     assert chain[2]["items"][0]["anchor"] == "evidence-source-0"
