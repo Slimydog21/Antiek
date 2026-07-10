@@ -2652,3 +2652,9 @@ research Ask. vitest StartResearch 22 green. P0 operator merge PR #465.
 Wave handoff: Fourier free STEM · heat metrics · seamless single+multi merge ·
 dogfood v22 · pub quick-call launch+mid-session. See
 SESSION-ARC-ags-agy-fourier-merge-pub-quickcall.md. Pivot agz+ outside thrash.
+
+## Residual agz · 2026-07-10 — ChatInputArea knowledge-dense pub quick-call
+Docked chat chase follow-ups mount shared KNOWLEDGE_DENSE_PUBLICATION_PRESETS
+(parity StartResearch agy · PublicationAttach agx). Completes launch + mid-session
++ chase quick-call matrix for knowledge-dense arxiv/URL refs. Insert-only · offline
+hydrate. vitest ChatInputArea.refs 4 green. P0 operator merge PR #465. Pivot aha+.

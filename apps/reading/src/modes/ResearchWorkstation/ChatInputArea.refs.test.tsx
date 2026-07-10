@@ -114,6 +114,34 @@ describe("ChatInputArea publication refs (ct)", () => {
     expect(l2.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
   });
 
+  it("inserts knowledge-dense quick-call presets on chase follow-ups (agz)", () => {
+    render(
+      <MemoryRouter>
+        <ChatInputArea />
+      </MemoryRouter>,
+    );
+    const panel = screen.getByTestId("chat-input-publication-refs");
+    expect(panel.getAttribute("data-seamless-pub-quick-call")).toBe("true");
+    expect(
+      Number(panel.getAttribute("data-knowledge-dense-presets") || 0),
+    ).toBeGreaterThanOrEqual(4);
+    const chips = screen.getByTestId("chat-input-publication-quick-call");
+    expect(chips.getAttribute("data-auto-hydrate")).toBe("false");
+    fireEvent.click(
+      screen.getByTestId("chat-input-preset-attention-is-all-you-need"),
+    );
+    expect(
+      (screen.getByTestId("chat-publication-refs-input") as HTMLTextAreaElement)
+        .value,
+    ).toMatch(/arxiv:1706\.03762/);
+    fireEvent.click(screen.getByTestId("chat-input-preset-scaling-laws"));
+    const value = (
+      screen.getByTestId("chat-publication-refs-input") as HTMLTextAreaElement
+    ).value;
+    expect(value).toMatch(/arxiv:2001\.08361/);
+    expect(value).toMatch(/arxiv:1706\.03762/);
+  });
+
   it("hydrates refs and grounds question on Ask", async () => {
     parsePublicationRefs.mockReturnValue(["arxiv:1706.03762"]);
     hydratePublicationRefs.mockResolvedValue({

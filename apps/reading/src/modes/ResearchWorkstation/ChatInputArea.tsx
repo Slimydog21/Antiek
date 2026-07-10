@@ -19,6 +19,7 @@ import {
   parsePublicationRefs,
   questionWithPublicationRefs,
 } from "./publicationRefs";
+import { KNOWLEDGE_DENSE_PUBLICATION_PRESETS } from "../../components/engagement/PublicationAttachPanel";
 
 /**
  * Bottom-of-center chat input. Submit on Cmd/Ctrl+Enter; click "Ask"
@@ -42,6 +43,8 @@ import {
  *
  * Residual (bq): live budget + #440 projection (parity with StartResearch bp).
  * Residual (ct): publication refs (arxiv/substack/url) parity with StartResearch cj.
+ * Residual (agz): knowledge-dense quick-call presets on chase follow-ups
+ * (parity StartResearch agy · mid-session attach agx).
  * Residual (df): soft-gate Ask when budget projection would exceed (parity de).
  * Residual (ln): DecisionTreeDriverBadge with launchTier (parity StartResearch ll).
  * Residual (qp): DecisionTreeDriverBadge promptText = question + pub refs.
@@ -195,11 +198,15 @@ export default function ChatInputArea({
           <div className="text-xs font-mono text-emperor mt-2">{error}</div>
         )}
       </div>
-      {/* Residual (ct): arxiv/substack/URL handles for chase follow-ups. */}
+      {/* Residual (ct/agz): arxiv/substack/URL handles for chase follow-ups. */}
       <div
         className="mt-2 space-y-1"
         data-testid="chat-input-publication-refs"
         data-view-format="html"
+        data-seamless-pub-quick-call="true"
+        data-knowledge-dense-presets={String(
+          KNOWLEDGE_DENSE_PUBLICATION_PRESETS.length,
+        )}
       >
         <label
           className="text-[10px] font-mono uppercase tracking-wider text-ink-mute dark:text-moonlight"
@@ -207,6 +214,49 @@ export default function ChatInputArea({
         >
           Publication refs
         </label>
+        {/* Residual (agz): chase follow-up quick-call (parity agy launch · agx attach). */}
+        <div
+          className="flex flex-wrap gap-1 items-center"
+          data-testid="chat-input-publication-quick-call"
+          data-preset-count={String(KNOWLEDGE_DENSE_PUBLICATION_PRESETS.length)}
+          data-seamless-pub-quick-call="true"
+          data-auto-hydrate="false"
+          role="group"
+          aria-label="Knowledge-dense publication quick-call presets"
+        >
+          <span className="text-[10px] font-mono opacity-70 mr-1">Quick-call:</span>
+          {KNOWLEDGE_DENSE_PUBLICATION_PRESETS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              data-testid={`chat-input-preset-${p.id}`}
+              data-preset-id={p.id}
+              data-kind={p.kind}
+              data-reference={p.reference}
+              data-auto-hydrate="false"
+              disabled={busy}
+              onClick={() => {
+                const ref = p.reference.trim();
+                if (!ref) return;
+                setPubRefs((prev) => {
+                  const existing = new Set(
+                    prev
+                      .split(/\r?\n/)
+                      .map((l) => l.trim())
+                      .filter(Boolean),
+                  );
+                  if (existing.has(ref)) return prev;
+                  const base = prev.trim();
+                  return base ? `${base}\n${ref}` : ref;
+                });
+              }}
+              className="text-[10px] font-mono border rounded px-1.5 py-0.5 opacity-80 hover:opacity-100 disabled:opacity-50 border-ink/20 dark:border-bright/20"
+              title={`Insert ${p.reference} (hydrates offline-honest on Ask · never auto-live)`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
         <textarea
           id="chat-publication-refs-input"
           data-testid="chat-publication-refs-input"

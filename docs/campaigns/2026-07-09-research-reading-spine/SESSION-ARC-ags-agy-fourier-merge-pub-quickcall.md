@@ -37,3 +37,6 @@ Outside thrash: competitive depth product · budget foresight polish · twin fly
 ## Doctrine
 
 Complete work, never complete the goal. Infinite until operator STOP.
+
+## Residual agz · 2026-07-10
+ChatInputArea chase follow-up quick-call completes pub matrix with agx/agy.
