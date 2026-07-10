@@ -1,0 +1,12 @@
+# inventory-ago · SESSION-ARC agm–agn reading twins complete
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ago
+date: 2026-07-10
+parent_tip: 05e5b99a (agn)
+
+## Closed
+- SESSION-ARC-agm-agn-reading-twins.md
+- FUTURE + NEXT-WAVE re-anchor agp+
+
+## Next
+Outside reading-twins thrash · inventory-first product residual

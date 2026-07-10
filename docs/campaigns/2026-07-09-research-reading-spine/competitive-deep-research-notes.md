@@ -2579,3 +2579,7 @@ vitest TalkToBook 10 green.
 Meta-reading deliverable mounts TwinNotesPanel for asset_id (autoLoad ·
 autoSeedIfEmpty · seed from prompt/report). Corpus synthesis assets get twin
 insights/questions substrate (parity TalkToBook agm). vitest MetaReading 13 green.
+
+## Residual ago · 2026-07-10 — SESSION-ARC agm–agn reading twins
+Handoff: TalkToBook + MetaReading TwinNotes recursive note-taker. Reading
+surface twins complete offline. P0 operator merge PR #465. Pivot agp+ outside thrash.
