@@ -3782,3 +3782,9 @@ Stage pipeline chrome deep-links competitive scorecard + FUTURE DR brief and
 names citation hops (insights→questions→sources) live on evidence pack (api) —
 never invent hops on progress surface. Cross-links multi-stage (ape) × multi-hop (api).
 vitest ResearchProgressPanel 12 green. P0 PR #465. Pivot apo+ outside thrash.
+
+## Residual apo · 2026-07-10 — HostedHtml evidence hop pipeline completeness honesty
+evidence_pack float honesty stamps data-has-hop-pipeline + names insights→questions→sources
+(api) with soft questions-missing signal · never invent hops. Completes float path for
+citation hop pipeline after apn progress cross-link. vitest HostedHtml 34 green.
+P0 PR #465. Pivot app+ outside thrash.

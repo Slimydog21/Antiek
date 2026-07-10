@@ -16,3 +16,4 @@ HTML-first · offline-honest · never invent entitlement · L4/L5 live dual-gate
 one residual/cycle · campaign push only · operator merges PR #465.
 
 | **apn** | ResearchProgress stage pipeline × citation hop competitive nav | ape × api world-class DR bar |
+| **apo** | HostedHtml evidence hop pipeline completeness honesty | float path for api hop pipeline |

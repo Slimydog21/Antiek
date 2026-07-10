@@ -940,11 +940,17 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(host.getAttribute("data-evidence-pack")).toBe("true");
     expect(host.getAttribute("data-evidence-chain-complete")).toBe("true");
     expect(host.getAttribute("data-evidence-has-hop-strip")).toBe("true");
+    // Residual (apo): hop strip implies hop pipeline territory on float.
+    expect(host.getAttribute("data-evidence-has-hop-pipeline")).toBe("true");
     const honesty = screen.getByTestId("hosted-html-evidence-pack-honesty");
     expect(honesty.getAttribute("data-chain-complete")).toBe("true");
     expect(honesty.getAttribute("data-has-hop-strip")).toBe("true");
+    expect(honesty.getAttribute("data-has-hop-pipeline")).toBe("true");
     expect(honesty.textContent).toMatch(/chain_complete=true/i);
     expect(honesty.textContent).toMatch(/multi-hop hop strip present/i);
+    expect(honesty.textContent).toMatch(
+      /citation hop pipeline \(insights → questions → sources\)/i,
+    );
     expect(
       screen
         .getByTestId("hosted-html-evidence-scorecard-link")
@@ -955,6 +961,30 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
         .getByTestId("hosted-html-evidence-future-agent-link")
         .getAttribute("href") || "",
     ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+  });
+
+  it("stamps evidence hop pipeline completeness from Competitive citation hops HTML (apo)", () => {
+    render(
+      <HostedHtmlDocumentHost
+        document_id="evidence:paper:hop-pipe"
+        title="Evidence pack hop pipeline"
+        view_format="html"
+        source="evidence_pack"
+        html={
+          '<div data-testid="evidence-citation-hop-pipeline">' +
+          "Competitive citation hops · 2/3 · missing=questions · never invent sources" +
+          "</div>" +
+          "<p>[evidence-insight-0] Insight</p>" +
+          "<p>[evidence-source-0] Source</p>"
+        }
+      />,
+    );
+    const host = screen.getByTestId("hosted-html-document-host");
+    expect(host.getAttribute("data-evidence-has-hop-pipeline")).toBe("true");
+    const honesty = screen.getByTestId("hosted-html-evidence-pack-honesty");
+    expect(honesty.getAttribute("data-has-hop-pipeline")).toBe("true");
+    expect(honesty.textContent).toMatch(/citation hop pipeline/i);
+    expect(honesty.textContent).toMatch(/questions hop may be missing/i);
   });
 
   it("prefills research tier from Settings wrestle (jd)", async () => {

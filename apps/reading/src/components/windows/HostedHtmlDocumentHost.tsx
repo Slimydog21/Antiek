@@ -50,6 +50,8 @@
  * (parity aho mode seed · apj MO float · L5 live payment deferred).
  * Residual (apm): marketplace_catalog filter-aware listing float twin seed path
  * honesty (not a hosted book · HTML projection · never invent entitlement).
+ * Residual (apo): evidence_pack float honesty names citation hop pipeline
+ * completeness (api) when hop strip present (parity ResearchContext chrome).
  *
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
  */
@@ -415,7 +417,22 @@ export default function HostedHtmlDocumentHost(
     isEvidencePack &&
     (/Citation chain hops/i.test(evidenceHtml) ||
       /evidence-insight-\d+/i.test(evidenceHtml) ||
-      /evidence-source-\d+/i.test(evidenceHtml));
+      /evidence-source-\d+/i.test(evidenceHtml) ||
+      /evidence-citation-hop-pipeline/i.test(evidenceHtml) ||
+      /Competitive citation hops/i.test(evidenceHtml));
+  // Residual (apo): hop pipeline completeness signals from floated evidence HTML.
+  const evidenceHasHopPipeline =
+    isEvidencePack &&
+    (/evidence-citation-hop-pipeline/i.test(evidenceHtml) ||
+      /Competitive citation hops/i.test(evidenceHtml) ||
+      evidenceHasHopStrip);
+  const evidenceHopHasQuestions =
+    isEvidencePack &&
+    (/evidence-question-\d+/i.test(evidenceHtml) ||
+      (/questions\s*=\s*[1-9]/i.test(evidenceHtml) &&
+        !/missing\s*=\s*[^"'>\n]*questions/i.test(evidenceHtml)) ||
+      (/data-present\s*=\s*["'][^"']*questions/i.test(evidenceHtml) &&
+        !/missing\s*=\s*[^"'>\n]*questions/i.test(evidenceHtml)));
   const twinSeedTitle = isEvidencePack
     ? `Evidence pack (citation trust) · ${title}`
     : isContextSearch
@@ -523,6 +540,9 @@ export default function HostedHtmlDocumentHost(
       data-evidence-has-hop-strip={
         isEvidencePack ? String(evidenceHasHopStrip) : ""
       }
+      data-evidence-has-hop-pipeline={
+        isEvidencePack ? String(evidenceHasHopPipeline) : ""
+      }
       data-context-search={String(isContextSearch)}
       data-search-query={isContextSearch ? searchQuery : ""}
       data-search-hit-count={
@@ -585,6 +605,7 @@ export default function HostedHtmlDocumentHost(
               </p>
             ) : null}
             {/* Residual (aiw): evidence pack multi-hop hop honesty + scorecard nav. */}
+            {/* Residual (apo): citation hop pipeline completeness stamps (api). */}
             {isEvidencePack ? (
               <div
                 className="text-[11px] font-mono opacity-80 mt-1 space-y-1"
@@ -592,6 +613,8 @@ export default function HostedHtmlDocumentHost(
                 data-evidence-pack="true"
                 data-chain-complete={String(evidenceChainComplete)}
                 data-has-hop-strip={String(evidenceHasHopStrip)}
+                data-has-hop-pipeline={String(evidenceHasHopPipeline)}
+                data-hop-has-questions={String(evidenceHopHasQuestions)}
                 data-view-format="html"
                 role="status"
               >
@@ -602,7 +625,13 @@ export default function HostedHtmlDocumentHost(
                     : "chain incomplete until claims+sources"}
                   {evidenceHasHopStrip
                     ? " · multi-hop hop strip present"
-                    : " · hop strip absent"}{" "}
+                    : " · hop strip absent"}
+                  {evidenceHasHopPipeline
+                    ? " · citation hop pipeline (insights → questions → sources)"
+                    : ""}
+                  {evidenceHasHopPipeline && !evidenceHopHasQuestions
+                    ? " · questions hop may be missing"
+                    : ""}{" "}
                   · HTML · not PDF · never invent sources
                 </p>
                 <p className="space-x-3">
@@ -610,7 +639,7 @@ export default function HostedHtmlDocumentHost(
                     href="/settings#settings-competitive-dr-scorecard"
                     data-testid="hosted-html-evidence-scorecard-link"
                     className="underline opacity-90 hover:opacity-100"
-                    title="Settings competitive deep-research scorecard (citation chain · multi-hop hops)"
+                    title="Settings competitive deep-research scorecard (citation chain · multi-hop hops · hop pipeline)"
                   >
                     Settings · competitive DR scorecard
                   </a>
