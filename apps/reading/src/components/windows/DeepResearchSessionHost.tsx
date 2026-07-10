@@ -280,29 +280,69 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
               <div
                 className="flex flex-wrap gap-2"
                 data-testid="deep-research-mode-controls"
+                data-view-format="html"
+                data-seamless-highlight-dr={String(seamlessHighlightDr)}
+                data-window-mode={hostWindow?.mode ?? "unknown"}
               >
                 <button
                   type="button"
                   data-testid="deep-research-expand-full"
+                  data-view-mode-target="full"
+                  data-seamless-highlight-dr={String(seamlessHighlightDr)}
+                  data-view-format="html"
                   disabled={isFull}
                   onClick={() => syncDeepResearchWindowMode(rawSessionId, "full")}
                   className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono hover:bg-ink/5 disabled:opacity-40 dark:border-bright/30"
+                  title="Open this deep research full-screen (highlight→float stays HTML · not PDF)"
                 >
                   Expand full
                 </button>
                 <button
                   type="button"
                   data-testid="deep-research-restore-floating"
+                  data-view-mode-target="floating"
+                  data-seamless-highlight-dr={String(seamlessHighlightDr)}
+                  data-view-format="html"
                   disabled={!isFull}
                   onClick={() =>
                     syncDeepResearchWindowMode(rawSessionId, "floating")
                   }
                   className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono hover:bg-ink/5 disabled:opacity-40 dark:border-bright/30"
+                  title="Restore floating window (highlight→float path · HTML-first)"
                 >
                   Restore floating
                 </button>
               </div>
             ) : null}
+            {/* Residual (aqw): operator path choices — float|full · draft merge · into parent. */}
+            <p
+              className="max-w-xs text-right text-[10px] font-mono opacity-80"
+              data-testid="deep-research-path-choices"
+              data-view-format="html"
+              data-html-first="true"
+              data-seamless-highlight-dr={String(seamlessHighlightDr)}
+              data-float-full-ready={String(Boolean(rawSessionId))}
+              data-draft-merge-ready={String(
+                Boolean(
+                  String(props.spawn_id || "").trim() &&
+                    String(props.parent_asset_id || "").trim(),
+                ),
+              )}
+              data-into-parent-ready={String(
+                Boolean(
+                  String(props.spawn_id || "").trim() &&
+                    String(props.parent_asset_id || "").trim(),
+                ),
+              )}
+              data-window-mode={hostWindow?.mode ?? "unknown"}
+              role="status"
+              title="Highlight→DR product path: float or full, then draft-combined or merge into the reading asset"
+            >
+              Path: float|full · draft merge · into parent
+              {String(props.parent_asset_id || "").trim()
+                ? " · parent bound"
+                : " · bind parent for merge"}
+            </p>
             {/* Residual (qv/acv/ael): Open Write twin seed + reading→research→Write path honesty. */}
             {writeHref ? (
               <a

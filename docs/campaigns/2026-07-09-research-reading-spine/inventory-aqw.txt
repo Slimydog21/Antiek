@@ -1,0 +1,21 @@
+# inventory-aqw · DR path choices float|full · draft · into-parent honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aqw
+date: 2026-07-10
+parent_tip: 2e32f4bea (aqv)
+
+## Closed
+- DeepResearchSessionHost expand-full / restore-floating path stamps
+  (data-view-mode-target · html-first · seamless-highlight-dr)
+- deep-research-path-choices chrome: float|full · draft merge · into parent
+  readiness (spawn+parent bound)
+- Product residual for operator vision: open float vs full then merge draft
+  or into reading asset
+- vitest DeepResearchSessionHost 34 green
+- evidence: {SCRATCH}/aqw-dr-path-vitest.txt
+
+## Next
+aqx+ product residual outside thrash
+Prefer: SESSION-ARC aqs–aqw · collective path-choices parity · MO price ceiling depth
+Avoid: dual-gate honesty · soft-budget · vision-feed thrash
+Operator merge PR #465 remains highest leverage (gated)

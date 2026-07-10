@@ -607,8 +607,34 @@ describe("DeepResearchSessionHost", () => {
     const restore = screen.getByTestId("deep-research-restore-floating");
     expect((expand as HTMLButtonElement).disabled).toBe(false);
     expect((restore as HTMLButtonElement).disabled).toBe(true);
+    // Residual (aqw): float|full path stamps + operator path choices chrome.
+    expect(expand.getAttribute("data-view-mode-target")).toBe("full");
+    expect(restore.getAttribute("data-view-mode-target")).toBe("floating");
+    expect(expand.getAttribute("data-view-format")).toBe("html");
+    const path = screen.getByTestId("deep-research-path-choices");
+    expect(path.getAttribute("data-html-first")).toBe("true");
+    expect(path.getAttribute("data-float-full-ready")).toBe("true");
+    expect(path.getAttribute("data-draft-merge-ready")).toBe("true");
+    expect(path.getAttribute("data-into-parent-ready")).toBe("true");
+    expect(path.textContent).toMatch(/float\|full/i);
+    expect(path.textContent).toMatch(/into parent/i);
+    expect(path.textContent).toMatch(/parent bound/i);
     fireEvent.click(expand);
     expect(useWindows.getState().windows[id]?.mode).toBe("full");
+  });
+
+  it("path choices require parent+spawn for draft/into-parent readiness (aqw)", () => {
+    const { parent_asset_id: _drop, ...noParent } = FIXTURE;
+    render(
+      <DeepResearchSessionHost
+        {...noParent}
+        session_id="fsess_no_parent"
+      />,
+    );
+    const path = screen.getByTestId("deep-research-path-choices");
+    expect(path.getAttribute("data-draft-merge-ready")).toBe("false");
+    expect(path.getAttribute("data-into-parent-ready")).toBe("false");
+    expect(path.textContent).toMatch(/bind parent/i);
   });
 
   it("mounts ResearchContextPanel with parent asset and spawn identity", () => {

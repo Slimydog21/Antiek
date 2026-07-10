@@ -3952,3 +3952,10 @@ marketplace_host · research_context_pack · twin_promote_context. Task-class �
 feed maps expanded so weekly rewrite learns from multi-agent analysis, merge,
 HTML host, and wrestle substrate. propose≠promote. vitest 46 green. P0 PR #465.
 Pivot aqw+ outside thrash.
+
+## Residual aqw · 2026-07-10 — DR path choices float|full · draft · into-parent
+DeepResearchSessionHost stamps expand-full / restore-floating targets + path
+choices chrome (float|full · draft merge · into parent readiness when
+spawn+parent bound). Competitive delta: highlight→DR operator can open full or
+float then draft or merge into reading asset — product path, not silent. vitest
+34 green. SESSION-ARC aqs–aqw. P0 PR #465. Pivot aqx+.
