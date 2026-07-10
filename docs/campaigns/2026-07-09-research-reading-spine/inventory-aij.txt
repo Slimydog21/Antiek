@@ -1,0 +1,16 @@
+# inventory-aij · evidence pack citation chain honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aij
+date: 2026-07-10
+parent_tip: ce540456 (aii)
+
+## Closed
+- ResearchContextPanel evidence pack citation chain chrome:
+  insights → questions → source refs
+  data-chain-complete · data-citation-trust · multi-hop grounding copy
+- Competitive citation-required synthesis UX honesty (never invent sources)
+- vitest ResearchContextPanel 14 green
+
+## Next
+aik+ product residual · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

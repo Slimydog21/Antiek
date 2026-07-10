@@ -2854,3 +2854,9 @@ Settings surfaces honest competitive DR scorecard (shipped vs deferred vs never)
 Operators see multi-agent merge, budget foresight, source connectors shipped
 offline; live hydrate/MO/council deferred; ND never router. Links FUTURE-AGENT
 competitive brief. vitest Settings 36 green. P0 operator merge PR #465. Pivot aij+.
+
+## Residual aij · 2026-07-10 — evidence pack citation chain honesty
+Evidence pack surfaces citation chain chrome: insights→questions→source refs
+with data-chain-complete and multi-hop grounding copy when insights+refs present.
+Competitive citation-required synthesis honesty. vitest ResearchContext 14 green.
+P0 operator merge PR #465. Pivot aik+.

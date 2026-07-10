@@ -605,6 +605,14 @@ describe("ResearchContextPanel", () => {
     expect(metrics.getAttribute("data-citation-trust")).toBe("grounded");
     expect(metrics.getAttribute("data-view-format")).toBe("html");
     expect(metrics.textContent).toMatch(/Evidence pack/);
+    // Residual (aij): competitive citation chain honesty (insight→question→ref).
+    const chain = screen.getByTestId("evidence-citation-chain");
+    expect(chain.getAttribute("data-insight-count")).toBe("1");
+    expect(chain.getAttribute("data-ref-count")).toBe("1");
+    expect(chain.getAttribute("data-citation-trust")).toBe("grounded");
+    expect(chain.getAttribute("data-chain-complete")).toBe("true");
+    expect(chain.textContent).toMatch(/Citation chain/i);
+    expect(chain.textContent).toMatch(/multi-hop grounding/i);
     // Residual (kd): spawn research_tier chrome on evidence pack.
     expect(metrics.getAttribute("data-research-tier")).toBe("wrestle");
     expect(

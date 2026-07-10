@@ -712,6 +712,35 @@ export function ResearchContextPanel({
               ? ` · tier=${evidence.research_tier}`
               : ""}
           </div>
+          {/* Residual (aij): competitive citation chain honesty (insight→question→ref). */}
+          <div
+            className="meta font-mono text-[11px] opacity-90"
+            data-testid="evidence-citation-chain"
+            data-view-format="html"
+            data-insight-count={String(evidence.insight_count ?? 0)}
+            data-question-count={String(evidence.question_count ?? 0)}
+            data-ref-count={String(evidence.ref_count ?? 0)}
+            data-citation-trust={
+              (evidence.ref_count ?? 0) > 0 ? "grounded" : "ungrounded"
+            }
+            data-chain-complete={String(
+              (evidence.insight_count ?? 0) > 0 &&
+                (evidence.ref_count ?? 0) > 0,
+            )}
+            role="status"
+          >
+            Citation chain: insights=
+            <strong>{evidence.insight_count ?? 0}</strong>
+            {" → "}
+            questions=<strong>{evidence.question_count ?? 0}</strong>
+            {" → "}
+            source refs=<strong>{evidence.ref_count ?? 0}</strong>
+            {(evidence.ref_count ?? 0) > 0 && (evidence.insight_count ?? 0) > 0
+              ? " · multi-hop grounding path present (competitive citation bar)"
+              : (evidence.ref_count ?? 0) > 0
+                ? " · refs present · seed insights for full chain"
+                : " · incomplete chain · attach pubs / seed twins (never invent sources)"}
+          </div>
           <p className="counts">
             evidence · insights={evidence.insight_count} · questions=
             {evidence.question_count} · refs={evidence.ref_count}
