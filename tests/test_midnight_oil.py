@@ -196,9 +196,7 @@ def test_worker_budget_hard_halt():
     )
     assert j1.status == "running"
     assert j1.spent_usd == pytest.approx(0.6)
-    from substrate.midnight_oil.budget_ledger import BudgetLedger
-
-    assert BudgetLedger(store.budget_db_path()).balance(job.job_id).held_cents == 0
+    assert j1.reserved_usd is None
     # Second step projects 0.6 more → would exceed 1.0 → halted BEFORE the
     # step runs: no charge, no step execution.
     j2 = run_worker_iteration(
@@ -433,3 +431,4 @@ def test_tier_multiplier_contract_matches_closed_set():
     assert tier_multiplier("wrestle") == 2.0
     assert tier_multiplier(None) == 1.0
     assert tier_multiplier("turbo") == 1.0  # normalize → deep
+

@@ -37,6 +37,15 @@ class MidnightOilJob:
     status: JobStatus
     approved_ceiling_usd: float | None = None
     spent_usd: float = 0.0
+    # Projected max USD reserved for an in-flight step (reserve-before-spend).
+    # None = no step in flight; any float (including 0.0) marks an in-flight
+    # step, so a crash mid-step is detectable even for zero-cost projections.
+    # Non-None on a loaded row means a prior step never settled — fail closed.
+    reserved_usd: float | None = None
+    # Unique token written with the reservation; re-read before the step runs
+    # to detect an interleaved concurrent worker (best-effort under a
+    # put/get store — the platform invariant is single-writer per job).
+    reservation_token: str | None = None
     asset_id: str | None = None
     spawn_ids: tuple[str, ...] = ()
     started_at_ms: int | None = None
@@ -85,6 +94,8 @@ def _job_to_row(job: MidnightOilJob) -> dict[str, Any]:
         "status": job.status,
         "approved_ceiling_usd": job.approved_ceiling_usd,
         "spent_usd": job.spent_usd,
+        "reserved_usd": job.reserved_usd,
+        "reservation_token": job.reservation_token,
         "asset_id": job.asset_id,
         "spawn_ids": list(job.spawn_ids),
         "started_at_ms": job.started_at_ms,
@@ -113,6 +124,12 @@ def _job_from_row(row: dict[str, Any]) -> MidnightOilJob:
             else float(row["approved_ceiling_usd"])
         ),
         spent_usd=float(row.get("spent_usd") or 0.0),
+        reserved_usd=(
+            None
+            if row.get("reserved_usd") is None
+            else float(row["reserved_usd"])
+        ),
+        reservation_token=row.get("reservation_token"),
         asset_id=row.get("asset_id"),
         spawn_ids=tuple(row.get("spawn_ids") or ()),
         started_at_ms=row.get("started_at_ms"),

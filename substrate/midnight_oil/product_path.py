@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from .ceiling import ModelPricing, recommend_price_ceiling
 from .job import (
@@ -214,13 +214,10 @@ def job_summary_html(job: MidnightOilJob) -> str:
                 "content": [{"type": "text", "text": line}],
             }
         )
-    return cast(
-        str,
-        project_to_html(
-            {"type": "doc", "content": blocks},
-            document_id=job.job_id,
-            creator="midnight_oil",
-        ),
+    return project_to_html(
+        {"type": "doc", "content": blocks},
+        document_id=job.job_id,
+        creator="midnight_oil",
     )
 
 
@@ -291,8 +288,8 @@ def configure_midnight_oil_live_step(
 
     A live step spends real money, so installing one REQUIRES a matching
     ``project_fn`` declaring each step's projected maximum cost — the worker
-    places that projection in the durable budget ledger before the step runs.
-    Passing ``step_fn=None`` clears both.
+    reserves that projection against the approved ceiling before the step
+    runs. Passing ``step_fn=None`` clears both.
 
     Does nothing by itself — ``live_step_enabled()`` must also be true
     for ``run_job_offline`` to use the injector.
