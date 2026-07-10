@@ -1071,3 +1071,8 @@ suite-competitive-dogfood-v4 adds dogfood-wrestle-collective-unit-write-seed.
 Settings honesty data-has-collective-unit-write-seed-posture. Competitive delta:
 Antiek-bench recursive rewrite learns multi-spawn unit → Write twin_seed as a
 first-class offline posture (propose≠promote · never auto-activate).
+
+## Residual tw · 2026-07-10 — FUTURE-AGENT tip re-anchor tq–tv
+FUTURE-AGENT-SPEC tip → d76ef2ed with closed arcs tq–tv so multi-agent swarms
+do not rebuild write-seed SSOT / collective unit allowlist / dogfood v4.
+Competitive delta: handoff craftsmanship — parallel agents share one tip truth.
