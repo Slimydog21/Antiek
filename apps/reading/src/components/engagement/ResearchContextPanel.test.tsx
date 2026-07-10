@@ -776,6 +776,15 @@ describe("ResearchContextPanel", () => {
         .getByTestId("evidence-competitive-dr-future-agent-link")
         .getAttribute("href") || "",
     ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    // Residual (alc): evidence pack budget-before-fire → prompt-cost projection.
+    expect(
+      screen
+        .getByTestId("evidence-prompt-cost-projection-link")
+        .getAttribute("href"),
+    ).toBe("/settings#prompt-cost-projection");
+    expect(
+      screen.getByTestId("evidence-prompt-cost-projection-link").textContent,
+    ).toMatch(/prompt-cost projection/i);
     expect(
       screen
         .getByTestId("evidence-citation-hops-scorecard-link")

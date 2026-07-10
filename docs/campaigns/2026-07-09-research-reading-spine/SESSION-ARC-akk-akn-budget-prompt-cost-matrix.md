@@ -20,3 +20,10 @@ research spend surface before firing multi-minute / multi-agent / merge work.
 
 ## P0
 Operator merge PR **#465**. Infinite continues · prefer non-budget thrash next.
+
+## Extended (akx–alc · 2026-07-10)
+| Residual | Surface | Link |
+|---|---|---|
+| **akx** | DecisionTreeDriverBadge | → `#prompt-cost-projection` (+ FUTURE) |
+| **aky** | TwinNotesPanel | → `#prompt-cost-projection` (+ FUTURE) |
+| **alc** | ResearchContext evidence pack | → `#prompt-cost-projection` |

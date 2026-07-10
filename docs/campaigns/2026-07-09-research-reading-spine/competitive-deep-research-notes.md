@@ -3221,3 +3221,9 @@ P0 operator merge PR #465. Pivot alb+ outside thrash.
 Wave handoff: L5 Sprint 1 adapter · Sprint 1 honesty · Sprint 2 purchase path ·
 Sprint 3 deferred CTA — offline product-complete for digital book payment.
 P0 operator merge PR #465. Pivot alc+ outside thrash (prefer non-L5).
+
+## Residual alc · 2026-07-10 — evidence pack Settings prompt-cost projection deep-link
+Evidence/search/hydrate substrate navigates Settings prompt-cost projection for
+budget-before-fire (parity progress/driver/twin). Evidence nav: scorecard ·
+FUTURE · prompt-cost. vitest ResearchContext 16 green.
+P0 operator merge PR #465. Pivot ald+ outside thrash.

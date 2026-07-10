@@ -819,6 +819,15 @@ export function ResearchContextPanel({
             >
               FUTURE · competitive DR brief
             </a>
+            {/* Residual (alc): evidence/search substrate budget-before-fire → prompt-cost. */}
+            <a
+              href="/settings#prompt-cost-projection"
+              data-testid="evidence-prompt-cost-projection-link"
+              className="underline opacity-80 hover:opacity-100"
+              title="Settings prompt-cost projection: estimate how evidence/search/hydrate spend hits remaining daily budget"
+            >
+              Settings · prompt-cost projection
+            </a>
           </p>
           {/* Residual (air): multi-hop claim→source navigation (anchors · no invented edges). */}
           {(evidence.citation_chain || []).length > 0 ? (
