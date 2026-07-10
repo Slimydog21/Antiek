@@ -319,6 +319,10 @@ export function DecisionTreeDriverBadge({
           data-remaining-after-usd={
             remainingAfter != null ? String(remainingAfter) : ""
           }
+          // Residual (aeb): machine-readable when projected high burns past remaining.
+          data-goes-negative={
+            remainingAfter != null ? String(remainingAfter < 0) : "unknown"
+          }
           data-view-format="html"
           role="status"
         >
@@ -335,10 +339,17 @@ export function DecisionTreeDriverBadge({
           </p>
           {remainingAfter != null ? (
             <p
-              className="opacity-80"
+              className={remainingAfter < 0 ? "font-semibold opacity-100" : "opacity-80"}
               data-testid="decision-tree-prompt-remaining-after"
+              data-remaining-after-usd={String(remainingAfter)}
+              // Residual (aeb): soft foresight when remaining goes negative.
+              data-goes-negative={String(remainingAfter < 0)}
+              role="status"
             >
               Remaining after prompt ≈ {formatUsd(remainingAfter)}
+              {remainingAfter < 0
+                ? " · over remaining high-band (soft foresight · not a hard block)"
+                : ""}
             </p>
           ) : null}
         </div>

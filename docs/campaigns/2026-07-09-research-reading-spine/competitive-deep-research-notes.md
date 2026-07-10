@@ -2237,3 +2237,10 @@ Host metrics + marketplace-seamless-port stamp catalog → account library lande
 HTML host → twin seed status. Competitive delta: operator can audit seamless port
 of purchased/hosted books into Antiek account (HTML-first · L5 still deferred).
 vitest purchase host path green.
+
+## Residual aeb · 2026-07-10 — budget goes-negative foresight + free host seamless
+ResearchLaunchBudgetPanel + DecisionTreeDriverBadge stamp data-goes-negative when
+high-band projection burns past remaining (soft foresight · not hard block). Free
+host path asserts seamless-port library-landed (parity purchase aea). Competitive
+delta: operator can machine-read whether a prompt would go over budget before fire.
+vitest 62 green (badge 12 · launch 11 · marketplace 39).

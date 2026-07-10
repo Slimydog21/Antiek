@@ -432,6 +432,12 @@ export function ResearchLaunchBudgetPanel({
               data-remaining-after-usd={
                 remainingAfterUsd != null ? String(remainingAfterUsd) : ""
               }
+              // Residual (aeb): machine-readable foresight when high band burns past remaining.
+              data-goes-negative={
+                remainingAfterUsd != null
+                  ? String(remainingAfterUsd < 0)
+                  : "unknown"
+              }
               data-view-format="html"
               role="status"
             >
@@ -474,14 +480,21 @@ export function ResearchLaunchBudgetPanel({
             {/* Residual (wa): remaining after high-band prompt (parity badge pg / MO um). */}
             {remainingAfterUsd != null ? (
               <p
-                className="text-[11px] font-mono text-ink-mute dark:text-moonlight"
+                className={
+                  "text-[11px] font-mono " +
+                  (remainingAfterUsd < 0
+                    ? "text-emperor font-semibold"
+                    : "text-ink-mute dark:text-moonlight")
+                }
                 data-testid="research-launch-remaining-after"
                 data-remaining-after-usd={String(remainingAfterUsd)}
+                // Residual (aeb): soft foresight — negative remaining is machine-readable.
+                data-goes-negative={String(remainingAfterUsd < 0)}
                 role="status"
               >
                 Remaining after prompt ≈ {formatUsd(remainingAfterUsd)}
                 {remainingAfterUsd < 0
-                  ? " · over remaining high-band"
+                  ? " · over remaining high-band (soft foresight · not a hard block)"
                   : ""}
               </p>
             ) : null}

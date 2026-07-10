@@ -321,6 +321,14 @@ describe("MarketplaceHost mode", () => {
     // Residual (adh): L5 deferred + HTML-first host land honesty.
     expect(hostMetrics.getAttribute("data-l5-payment-rails")).toBe("deferred");
     expect(hostMetrics.getAttribute("data-html-first")).toBe("true");
+    // Residual (aeb): free host seamless port parity with purchase path (aea).
+    expect(hostMetrics.getAttribute("data-seamless-port")).toBe("true");
+    expect(hostMetrics.getAttribute("data-library-landed")).toBe("true");
+    const seamless = screen.getByTestId("marketplace-seamless-port");
+    expect(seamless.getAttribute("data-seamless-port")).toBe("true");
+    expect(seamless.getAttribute("data-library-landed")).toBe("true");
+    expect(seamless.textContent).toMatch(/Seamless port/i);
+    expect(seamless.textContent).toMatch(/account library=landed/);
     const freeHonesty = screen.getByTestId("marketplace-host-free-pd-honesty");
     expect(freeHonesty.getAttribute("data-is-public-domain")).toBe("true");
     expect(freeHonesty.getAttribute("data-is-free-host")).toBe("true");

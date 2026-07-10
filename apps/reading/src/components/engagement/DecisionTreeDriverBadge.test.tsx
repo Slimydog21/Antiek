@@ -319,6 +319,69 @@ describe("DecisionTreeDriverBadge residual cw/eq", () => {
     expect(
       screen.getByTestId("decision-tree-prompt-remaining-after").textContent,
     ).toMatch(/Remaining after prompt/i);
+    // Residual (aeb): within budget → goes-negative false.
+    expect(
+      screen
+        .getByTestId("decision-tree-prompt-remaining-after")
+        .getAttribute("data-goes-negative"),
+    ).toBe("false");
+    expect(
+      screen
+        .getByTestId("decision-tree-prompt-projection")
+        .getAttribute("data-goes-negative"),
+    ).toBe("false");
+  });
+
+  it("stamps data-goes-negative when high band burns past remaining (aeb)", async () => {
+    fetchDecisionTreeSelection.mockResolvedValue({
+      model_id: "glm-5.2",
+      provider_id: "zai",
+      installed: true,
+      notes: [],
+      source: "test",
+    });
+    fetchSettingsBudget.mockResolvedValue({
+      daily_cap_usd: 10,
+      spent_usd: 8,
+      remaining_usd: 2,
+      spent_status: "known",
+      cap_env: "ANTIEK_DAILY_BUDGET_USD",
+      notes: [],
+    });
+    estimatePromptCost.mockResolvedValue({
+      estimated_usd_low: 3,
+      estimated_usd_high: 5,
+      would_exceed_budget: true,
+      pricing_known: true,
+      notes: [],
+      assumed_input_tokens: 100,
+      assumed_output_tokens: 2500,
+      tier: "deep",
+      provider: "zai",
+      model: "glm-5.2",
+    });
+    render(
+      <DecisionTreeDriverBadge
+        researchTier="deep"
+        promptText="Large prompt that will burn past remaining daily budget high band"
+      />,
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("decision-tree-prompt-remaining-after"),
+      ).toBeTruthy();
+    });
+    const after = screen.getByTestId("decision-tree-prompt-remaining-after");
+    // remaining 2 − high 5 = −3
+    expect(after.getAttribute("data-remaining-after-usd")).toBe("-3");
+    expect(after.getAttribute("data-goes-negative")).toBe("true");
+    expect(
+      screen
+        .getByTestId("decision-tree-prompt-projection")
+        .getAttribute("data-goes-negative"),
+    ).toBe("true");
+    expect(after.textContent).toMatch(/over remaining high-band/i);
+    expect(after.textContent).toMatch(/soft foresight/i);
   });
 
   it("omits prompt projection when promptText is empty (pg)", async () => {

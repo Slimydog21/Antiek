@@ -317,7 +317,15 @@ describe("ResearchLaunchBudgetPanel", () => {
     const after = screen.getByTestId("research-launch-remaining-after");
     // remaining 4 − high 5 = −1
     expect(after.getAttribute("data-remaining-after-usd")).toBe("-1");
+    // Residual (aeb): machine-readable goes-negative foresight.
+    expect(after.getAttribute("data-goes-negative")).toBe("true");
+    expect(
+      screen
+        .getByTestId("research-launch-projection-metrics")
+        .getAttribute("data-goes-negative"),
+    ).toBe("true");
     expect(after.textContent).toMatch(/over remaining high-band/i);
+    expect(after.textContent).toMatch(/soft foresight/i);
   });
 
   it("notifies parent via onProjectionChange (de)", async () => {
