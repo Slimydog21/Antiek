@@ -1254,6 +1254,22 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(panel.id).toBe("moil-live-step-status");
     expect(panel.getAttribute("data-offline-honest")).toBe("true");
     expect(panel.getAttribute("data-injector-installed")).toBe("false");
+    // Residual (aqu): HTML-first · never-enables-live honesty on MO L4 panel.
+    expect(panel.getAttribute("data-view-format")).toBe("html");
+    expect(panel.getAttribute("data-html-first")).toBe("true");
+    expect(panel.getAttribute("data-never-enables-live")).toBe("true");
+    const honesty = screen.getByTestId("moil-live-honesty-nav");
+    expect(honesty.getAttribute("data-never-enables-live")).toBe("true");
+    expect(honesty.getAttribute("data-dual-gate")).toBe("L4");
+    expect(
+      screen.getByTestId("moil-live-decision-tree-link").getAttribute("href"),
+    ).toBe("#decision-tree-panel");
+    expect(
+      screen.getByTestId("moil-live-prompt-cost-link").getAttribute("href"),
+    ).toBe("#prompt-cost-projection");
+    expect(
+      screen.getByTestId("moil-live-never-enables-hint").textContent,
+    ).toMatch(/offline-honest|never enables live/i);
     // Residual (aed): offline default is not L4 live ready.
     expect(panel.getAttribute("data-l4-live-ready")).toBe("false");
     const metrics = screen.getByTestId("moil-live-step-status-metrics");

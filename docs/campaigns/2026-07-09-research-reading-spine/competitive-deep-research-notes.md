@@ -3940,3 +3940,8 @@ vitest Settings hydrate green. P0 PR #465. Pivot aqt+ outside thrash.
 Twin seed L3 panel stamps HTML-first · never-enables-live + honesty nav to
 decision-tree · prompt-cost (parity aqs hydrate). Recursive note-taker dual-gate
 prep is offline-honest by default. vitest Settings 37 green. P0 PR #465. Pivot aqu+.
+
+## Residual aqu · 2026-07-10 — moil-live-step L4 dual-gate honesty + product deep-links
+MO L4 panel stamps HTML-first · never-enables-live + honesty nav to decision-tree ·
+prompt-cost. Completes Settings dual-gate honesty matrix L1–L4 offline. vitest
+Settings 37 green. P0 PR #465. Pivot aqv+ outside thrash.

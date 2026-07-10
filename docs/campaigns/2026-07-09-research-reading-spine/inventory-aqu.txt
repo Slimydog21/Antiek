@@ -1,0 +1,17 @@
+# inventory-aqu · moil-live-step L4 dual-gate honesty + product deep-links
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aqu
+date: 2026-07-10
+parent_tip: d15308e1c (aqt)
+
+## Closed
+- moil-live-step-status-panel data-html-first · never-enables-live
+- honesty nav → decision-tree · prompt-cost · L4 dual-gate hint
+- Completes Settings dual-gate honesty matrix: L1/L2 hydrate (aqs) · L3 twin (aqt) · L4 MO (aqu)
+- vitest Settings 37 green
+- evidence: {SCRATCH}/aqu-moil-vitest.txt
+
+## Next
+aqv+ product residual OUTSIDE dual-gate honesty thrash
+Prefer: Antiek-bench recursive rewrite · twin product · marketplace HTML port · highlight→float merge
+Operator merge PR #465 remains highest leverage (gated)

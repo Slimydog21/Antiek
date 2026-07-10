@@ -1932,6 +1932,8 @@ export default function Settings() {
             className="p-4 space-y-3"
             data-testid="moil-live-step-status-panel"
             data-view-format="html"
+            data-html-first="true"
+            data-never-enables-live="true"
             data-offline-honest={
               moilLive ? String(moilLive.offline_honest) : undefined
             }
@@ -1950,9 +1952,43 @@ export default function Settings() {
             }
           >
             <p className="text-sm text-ink dark:text-bright">
-              Autonomous Midnight Oil worker steps default offline. Live step
-              requires dual env gate + injector — this panel never enables the
-              live worker.
+              Autonomous Midnight Oil worker steps default offline (stub only).
+              Live step requires dual env gate + injector — never silent worker
+              from this UI. Dual-gate L4 · never enables live from this panel.
+            </p>
+            {/* Residual (aqu): MO L4 dual-gate honesty + product deep-links (parity aqs/aqt). */}
+            <p
+              className="text-[11px] font-mono flex flex-wrap gap-x-3 gap-y-1 opacity-90"
+              data-testid="moil-live-honesty-nav"
+              data-view-format="html"
+              data-html-first="true"
+              data-never-enables-live="true"
+              data-dual-gate="L4"
+              role="navigation"
+              aria-label="Midnight Oil live-step dual-gate honesty navigation"
+            >
+              <a
+                href="#decision-tree-panel"
+                data-testid="moil-live-decision-tree-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Decision-tree driver used when Midnight Oil swarm steps run prompts"
+              >
+                Decision-tree driver
+              </a>
+              <a
+                href="#prompt-cost-projection"
+                data-testid="moil-live-prompt-cost-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Prompt-cost projection when MO goals and duration set a price ceiling"
+              >
+                Prompt-cost projection
+              </a>
+              <span
+                className="opacity-70"
+                data-testid="moil-live-never-enables-hint"
+              >
+                offline-honest default · never enables live · L4 dual-gate
+              </span>
             </p>
             {/* Residual (aed): in-panel L4 checklist deep-link (parity twin L3 aec / MO wx). */}
             <div
