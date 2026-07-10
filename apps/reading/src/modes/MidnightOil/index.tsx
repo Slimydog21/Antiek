@@ -691,7 +691,7 @@ export default function MidnightOil() {
       ) : null}
 
 
-      {/* Residual (ic/ml/uh): Settings + L4 live-step + dual-gate checklist (prep only). */}
+      {/* Residual (ic/ml/uh/aiu): Settings + L4 + dual-gate + competitive DR scorecard. */}
       <p className="mb-4 max-w-xl text-[11px] font-mono space-x-3">
         <a
           href="/settings#decision-tree-panel"
@@ -717,6 +717,23 @@ export default function MidnightOil() {
           title="Dual-gate L4 Midnight Oil live-step checklist (prep only · offline default)"
         >
           Dual-gate L4 MO checklist
+        </a>
+        {/* Residual (aiu): autonomous swarm → competitive DR honesty map (parity aim/ait). */}
+        <a
+          href="/settings#settings-competitive-dr-scorecard"
+          data-testid="moil-competitive-scorecard-link"
+          className="underline opacity-80 hover:opacity-100"
+          title="Settings competitive deep-research scorecard (shipped offline MO vs deferred L4 live · never invent live swarm)"
+        >
+          Settings · competitive DR scorecard
+        </a>
+        <a
+          href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+          data-testid="moil-competitive-dr-future-agent-link"
+          className="underline opacity-80 hover:opacity-100"
+          title="FUTURE-AGENT competitive deep-research quality brief (L4 MO live dual-gate)"
+        >
+          FUTURE · competitive DR brief
         </a>
       </p>
 

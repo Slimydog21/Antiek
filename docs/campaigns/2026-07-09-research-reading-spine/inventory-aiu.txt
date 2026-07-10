@@ -1,0 +1,17 @@
+# inventory-aiu · Midnight Oil competitive DR scorecard deep-links
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aiu
+date: 2026-07-10
+parent_tip: c2ab852a (ait)
+
+## Closed
+- Midnight Oil header nav:
+  - moil-competitive-scorecard-link → Settings competitive DR scorecard
+  - moil-competitive-dr-future-agent-link → FUTURE-AGENT competitive DR brief
+- Autonomous swarm honesty map parity (progress/evidence/decision-tree)
+- Offline MO vs deferred L4 live never invent claim
+- vitest MidnightOil 25 green
+
+## Next
+aiv+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

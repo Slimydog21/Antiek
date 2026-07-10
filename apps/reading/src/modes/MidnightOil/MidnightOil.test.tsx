@@ -393,6 +393,20 @@ describe("MidnightOil mode", () => {
     expect(link.textContent).toMatch(/model driver & budget/i);
   });
 
+  it("links competitive DR scorecard and FUTURE brief (aiu)", () => {
+    render(<MidnightOil />);
+    const scorecard = screen.getByTestId("moil-competitive-scorecard-link");
+    expect(scorecard.getAttribute("href")).toBe(
+      "/settings#settings-competitive-dr-scorecard",
+    );
+    expect(scorecard.textContent).toMatch(/competitive DR scorecard/i);
+    const future = screen.getByTestId("moil-competitive-dr-future-agent-link");
+    expect(future.getAttribute("href") || "").toMatch(
+      /FUTURE-AGENT-SPEC-competitive-deep-research-quality/,
+    );
+    expect(future.textContent).toMatch(/competitive DR brief/i);
+  });
+
   it("links dual-gate L4 MO checklist section for live-step prep (ml/wx)", () => {
     render(<MidnightOil />);
     const dual = screen.getByTestId("moil-dual-gate-checklist-link");

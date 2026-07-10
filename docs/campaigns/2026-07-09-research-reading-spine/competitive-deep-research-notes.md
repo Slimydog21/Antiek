@@ -2914,3 +2914,8 @@ FUTURE-AGENT competitive DR brief; hop strip links multi-hop hops row (air/ais).
 Parity progress/TwinNotes/decision-tree scorecard navigation. vitest
 ResearchContext 14 green. SESSION-ARC air–ait. P0 operator merge PR #465.
 Pivot aiu+ outside thrash.
+
+## Residual aiu · 2026-07-10 — Midnight Oil competitive DR scorecard deep-links
+Autonomous swarm mode navigates Settings competitive DR scorecard + FUTURE brief
+so operators see offline MO shipped vs L4 live deferred honesty before goals+ceiling.
+vitest MidnightOil 25 green. P0 operator merge PR #465. Pivot aiv+ outside thrash.
