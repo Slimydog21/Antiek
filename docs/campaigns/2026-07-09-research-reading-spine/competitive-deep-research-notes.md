@@ -3450,3 +3450,7 @@ P0 operator merge PR #465. Pivot amy+ outside thrash.
 Highlight DR path remounts TwinNotes + ResearchContext after twin promote
 (parity marketplace alz · HostedHtml ez). vitest ResearchThis 13 green.
 P0 operator merge PR #465. Pivot amz+ outside thrash.
+
+## Residual amz · 2026-07-10 — SESSION-ARC amr–amy reading context complete
+Wave handoff: ResearchThis · TalkToBook · MetaReading ResearchContext substrate +
+ResearchThis promote remount. P0 operator merge PR #465. Pivot ana+ outside thrash.
