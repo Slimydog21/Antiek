@@ -1,0 +1,15 @@
+# inventory-acr · ResearchContext Open Write twin_seed has-body honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: acr
+date: 2026-07-10
+parent_tip: 3c08bcf9 (acq)
+
+## Closed
+- research-context-open-write: has-body from prompt_block
+- evidence-pack-open-write: has-body from insights/questions/HTML
+- hydrate-ref-open-write: has-body from body_text/HTML
+- context-search-open-write: has-body from hit text/HTML
+- vitest ResearchContextPanel.test.tsx · 12 passed
+
+## Not in scope
+- Operator merge PR #465

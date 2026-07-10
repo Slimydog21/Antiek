@@ -154,6 +154,8 @@ describe("ResearchContextPanel", () => {
     expect(href).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
     expect(href).not.toMatch(/html_draft=/);
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
+    // Residual (acr): prompt_block body → has-body true.
+    expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
     // Residual (sl): float|full research context pack HTML.
     fireEvent.click(screen.getByTestId("research-context-open-float"));
     const floatCall = openWindow.mock.calls.at(-1) as [
@@ -305,6 +307,8 @@ describe("ResearchContextPanel", () => {
     expect(href).not.toMatch(/html_draft=/);
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
     expect(write.getAttribute("data-asset-id")).toBe("pub_arxiv_abc");
+    // Residual (acr): body_text/html body → has-body true.
+    expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
     // Residual (sk): float|full hydrated publication HTML.
     fireEvent.click(screen.getByTestId("hydrate-ref-open-float"));
     const floatCall = openWindow.mock.calls.at(-1) as [
@@ -431,6 +435,8 @@ describe("ResearchContextPanel", () => {
     expect(href).not.toMatch(/html_draft=/);
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
     expect(write.getAttribute("data-hit-count")).toBe("1");
+    // Residual (acr): hit text body → has-body true.
+    expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
     // Residual (sj/tq): float|full HTML reading windows for search hits.
     const floatBtn = screen.getByTestId("context-search-open-float");
     expect(floatBtn.getAttribute("data-window-mode")).toBe("floating");
@@ -570,6 +576,8 @@ describe("ResearchContextPanel", () => {
     expect(href).not.toMatch(/html_draft=/);
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
     expect(write.getAttribute("data-ref-count")).toBe("1");
+    // Residual (acr): insights/questions/html body → has-body true.
+    expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
     // Residual (sf): float evidence pack as HTML reading window.
     const floatBtn = screen.getByTestId("evidence-pack-open-float");
     expect(floatBtn.getAttribute("data-view-format")).toBe("html");

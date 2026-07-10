@@ -16,6 +16,8 @@
  * Residual (rf): Open Write twin_seed from intelligent context search hits.
  * Residual (rh): Open Write twin_seed from single hydrate-ref result.
  * Residual (ri): Open Write twin_seed from research context prompt_block.
+ * Residual (acr): data-write-seed-has-body on all four Open Write links
+ * (prompt/insights/units/hits body non-empty; parity TwinNotes acq).
  * Residual (sf): float evidence pack as hosted HTML reading window (citation trust).
  * Residual (sg): open evidence pack as full working-region window (float|full parity).
  * Residual (sj): float|full intelligent context search hits as HTML reading windows.
@@ -45,6 +47,7 @@ import {
   buildEvidencePackWriteHref,
   buildPublicationHydrateWriteHref,
   buildResearchContextWriteHref,
+  plainTextFromHtml,
 } from "../../workspace/twinWriteSeed";
 import { openWindow } from "../windows/openWindow";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
@@ -580,7 +583,7 @@ export function ResearchContextPanel({
               </button>
             </p>
           ) : null}
-          {/* Residual (ri): context pack prompt_block → Write twin_seed. */}
+          {/* Residual (ri/acr): context pack prompt_block → Write twin_seed + body honesty. */}
           {(() => {
             const href = buildResearchContextWriteHref({
               assetId: pack.asset_id || assetId,
@@ -591,6 +594,7 @@ export function ResearchContextPanel({
               twinCount: pack.twin_count,
               refCount: pack.ref_count,
             });
+            const hasBody = Boolean(String(pack.prompt_block || "").trim());
             return href ? (
               <p className="meta font-mono text-[11px]">
                 <a
@@ -598,6 +602,7 @@ export function ResearchContextPanel({
                   data-testid="research-context-open-write"
                   data-view-format="html"
                   data-has-twin-seed="1"
+                  data-write-seed-has-body={String(hasBody)}
                   className="underline opacity-90 hover:opacity-100"
                   title="Open Write with research context prompt_block as twin_seed (no invented document_id)"
                 >
@@ -817,7 +822,7 @@ export function ResearchContextPanel({
               </button>
             </p>
           ) : null}
-          {/* Residual (rb): evidence pack → Write twin_seed handoff. */}
+          {/* Residual (rb/acr): evidence pack → Write twin_seed + body honesty. */}
           {(() => {
             const href = buildEvidencePackWriteHref({
               assetId: evidence.asset_id || assetId,
@@ -828,6 +833,17 @@ export function ResearchContextPanel({
               html: evidence.html,
               researchTier: evidence.research_tier,
             });
+            const insightBody = (evidence.insights || []).some((x) =>
+              Boolean(String(x || "").trim()),
+            );
+            const questionBody = (evidence.questions || []).some((x) =>
+              Boolean(String(x || "").trim()),
+            );
+            const hasBody = Boolean(
+              insightBody ||
+                questionBody ||
+                plainTextFromHtml(evidence.html || "").trim(),
+            );
             return href ? (
               <p className="meta font-mono text-[11px]">
                 <a
@@ -836,6 +852,7 @@ export function ResearchContextPanel({
                   data-view-format="html"
                   data-has-twin-seed="1"
                   data-ref-count={String(evidence.ref_count ?? 0)}
+                  data-write-seed-has-body={String(hasBody)}
                   className="underline opacity-90 hover:opacity-100"
                   title="Open Write with evidence pack as twin_seed (insights/questions/refs; no invented document_id)"
                 >
@@ -950,12 +967,16 @@ export function ResearchContextPanel({
               </button>
             </p>
           ) : null}
-          {/* Residual (rh): single hydrate → Write twin_seed. */}
+          {/* Residual (rh/acr): single hydrate → Write twin_seed + body honesty. */}
           {(() => {
             const href = buildPublicationHydrateWriteHref({
               spawnId,
               assets: [hydrated],
             });
+            const hasBody = Boolean(
+              String(hydrated.body_text || "").trim() ||
+                plainTextFromHtml(hydrated.html || "").trim(),
+            );
             return href ? (
               <p className="meta font-mono text-[11px]">
                 <a
@@ -964,6 +985,7 @@ export function ResearchContextPanel({
                   data-view-format="html"
                   data-has-twin-seed="1"
                   data-asset-id={hydrated.asset_id}
+                  data-write-seed-has-body={String(hasBody)}
                   className="underline opacity-90 hover:opacity-100"
                   title="Open Write with hydrated publication as twin_seed (no invented document_id)"
                 >
@@ -1102,7 +1124,7 @@ export function ResearchContextPanel({
               </button>
             </p>
           ) : null}
-          {/* Residual (rf): search hits → Write twin_seed. */}
+          {/* Residual (rf/acr): search hits → Write twin_seed + body honesty. */}
           {(() => {
             const href = buildContextSearchWriteHref({
               assetId: searchHits.asset_id || assetId,
@@ -1111,6 +1133,12 @@ export function ResearchContextPanel({
               html: searchHits.html,
               researchTier: searchHits.research_tier,
             });
+            const hitBody = (searchHits.hits || []).some((h) =>
+              Boolean(String(h?.text || "").trim()),
+            );
+            const hasBody = Boolean(
+              hitBody || plainTextFromHtml(searchHits.html || "").trim(),
+            );
             return href ? (
               <p className="meta font-mono text-[11px]">
                 <a
@@ -1119,6 +1147,7 @@ export function ResearchContextPanel({
                   data-view-format="html"
                   data-has-twin-seed="1"
                   data-hit-count={String(searchHits.hit_count ?? 0)}
+                  data-write-seed-has-body={String(hasBody)}
                   className="underline opacity-90 hover:opacity-100"
                   title="Open Write with context search hits as twin_seed (no invented document_id)"
                 >
