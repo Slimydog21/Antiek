@@ -1159,6 +1159,15 @@ export default function Settings() {
                 >
                   L1 checklist
                 </a>
+                {/* Residual (xr): L2 substack checklist section deep-link. */}
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l2-substack"
+                  className="underline opacity-80 hover:opacity-100"
+                  data-testid="settings-dual-gate-l2-checklist-link"
+                  title="L2 Substack hydrate checklist section (prep only · ToS factory)"
+                >
+                  L2 checklist
+                </a>
                 <a
                   href="#twin-seed-live-status"
                   className="underline opacity-80 hover:opacity-100"

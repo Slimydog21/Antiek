@@ -1561,3 +1561,8 @@ computing STEM path is compose-complete on HTML-first marketplace.
 FUTURE-AGENT-SPEC tip re-anchored after free STEM quartet compose + dual-gate
 L1–L7 matrix. Competitive delta: swarm handoff tip-true; operator merge PR #465
 highest leverage.
+
+## Residual xr · 2026-07-10 — Settings dual-gate L2 checklist #l2-substack
+Settings L2 checklist deep-links #l2-substack (completes L1–L2 pair with xh).
+Competitive delta: decision-tree dual-gate prep navigates Substack ToS factory
+deferred policy section.

@@ -1,0 +1,20 @@
+# inventory-xr · Settings dual-gate L2 checklist #l2-substack deep-link
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: xr
+date: 2026-07-10
+tip_before: d9d85d87 (xq)
+
+## Problem
+Settings dual-gate had L1 checklist #l1-arxiv but not L2 #l2-substack (ToS
+factory path) — L1–L2 pair incomplete on decision-tree strip.
+
+## Fix
+- settings-dual-gate-l2-checklist-link → …#l2-substack
+- Test locks href
+
+## Verified
+npm test Settings.test.tsx → 34 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live L2 Substack injector

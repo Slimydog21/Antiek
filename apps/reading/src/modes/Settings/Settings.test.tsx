@@ -899,6 +899,12 @@ describe("Settings SPR-01 + decision-tree install", () => {
         .getByTestId("settings-dual-gate-l1-checklist-link")
         .getAttribute("href"),
     ).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    // Residual (xr): L2 checklist section #l2-substack.
+    expect(
+      screen
+        .getByTestId("settings-dual-gate-l2-checklist-link")
+        .getAttribute("href"),
+    ).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
     expect(screen.getByTestId("settings-dual-gate-l3-link").getAttribute("href")).toBe(
       "#twin-seed-live-status",
     );
