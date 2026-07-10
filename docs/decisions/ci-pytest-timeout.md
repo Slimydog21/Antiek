@@ -20,6 +20,19 @@
 **Context:** PR #31 (`ingest/integration` → `main`, the 10-sprint corpus-ingest
 architecture). CI's `pytest` job was reported **cancelled**, not failed.
 
+> **2026-07-10 resolution (40 → 30 plus bounded xdist).** The serial core suite
+> reached **6424 passed, 19 skipped, 3 deselected, 2 xfailed** in **36:59**, then
+> the same job passed the 490-test HTML projection/service suite before GitHub
+> cancelled the remaining tail gates at the 40-minute wall. The deferred
+> throughput trigger has therefore fired. CI now runs the unchanged core suite
+> with **two workers** and `--dist loadscope`: two matches the standard GitHub
+> runner's vCPU count, while loadscope keeps each module together to preserve
+> module-local ordering and avoid needlessly multiplying DuckDB contention. The
+> suite's per-test DB fixture and schema template are already worker-isolated.
+> The job wall drops conservatively to **30 minutes**, retaining installation,
+> projection-suite, and tail-gate headroom while runtime data settles. No tests,
+> markers, assertions, or post-pytest gates were removed or weakened.
+
 > **2026-06-01 amendment (SECOND bump, 25 → 40).** The flywheel-foundation run
 > (SPR-01..07) plus two parallel-session merges (PR #42 rights kill-gate, PR #44
 > caddy routes) grew the suite again. SPR-06 passed at ~23.5 min execution —
