@@ -1879,3 +1879,8 @@ Antiek-bench write-seed feed (known_count 18). Competitive delta: STEM catalog
 projection → Write is identity-honest for recursive suite rewrite (not silent
 hosted_html_document collapse).
 
+## Residual aak · 2026-07-10 — FUTURE-AGENT tip re-anchor through aaj
+FUTURE-AGENT-SPEC tip re-anchored after 117 residual ships this continuation
+(write-seed provenance wave aah–aaj closed). Competitive delta: swarm handoff
+tip-true; operator merge PR #465 highest leverage.
+
