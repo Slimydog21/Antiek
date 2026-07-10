@@ -2870,3 +2870,8 @@ Suite suite-competitive-dogfood-v28 adds wrestle fixtures for citation chain
 (aij) and Settings competitive DR scorecard (aii). item_count 44 · wrestle=31.
 Settings spine v28. pytest dogfood 5 · Settings 36 green. P0 operator merge PR #465.
 Pivot aim+ outside thrash.
+
+## Residual aim · 2026-07-10 — progress panel competitive DR scorecard deep-link
+Multi-minute ResearchProgressPanel links Settings competitive DR scorecard so
+long-horizon wrestle jobs navigate world-class DR honesty map (aii). vitest
+ResearchProgress green. P0 operator merge PR #465. Pivot ain+.

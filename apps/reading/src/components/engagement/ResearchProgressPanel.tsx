@@ -19,6 +19,8 @@
  * Residual (sm): float|full progress HTML reading windows (plan→cite substrate).
  * Residual (acp): data-write-seed-has-body on Open Write — true only when
  * progress.html yields non-empty plain text (parity marketplace/MO/spawn).
+ * Residual (aim): Settings competitive DR scorecard deep-link during multi-minute
+ * jobs (world-class DR honesty map · residual aii).
  * HTML-first; never PDF.
  */
 
@@ -282,6 +284,14 @@ export function ResearchProgressPanel({
           >
             {/* Residual (aau): label matches #l4-moil href (was L1–L4). */}
             Dual-gate L4 Midnight Oil checklist
+          </a>
+          {/* Residual (aim): competitive DR quality scorecard during multi-minute jobs. */}
+          <a
+            href="/settings#settings-competitive-dr-scorecard"
+            data-testid="research-progress-competitive-scorecard-link"
+            title="Settings competitive deep-research scorecard (shipped vs deferred honesty)"
+          >
+            Settings · competitive DR scorecard
           </a>
         </p>
         {/* Residual (lr): model+budget+depth during multi-minute plan→cite. */}

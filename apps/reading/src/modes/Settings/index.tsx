@@ -3997,6 +3997,7 @@ export default function Settings() {
         {/* Residual (aii): competitive DR quality scorecard — honest shipped vs deferred. */}
         <LemonCard title="Competitive deep-research scorecard" elevation="z1" colour="glacial">
           <div
+            id="settings-competitive-dr-scorecard"
             className="p-4 space-y-2 text-sm text-ink dark:text-bright"
             data-testid="settings-competitive-dr-scorecard"
             data-view-format="html"

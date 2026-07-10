@@ -53,6 +53,12 @@ describe("ResearchProgressPanel", () => {
     expect(band.getAttribute("data-poll-ms")).toBe("8000");
     expect(band.textContent).toMatch(/long-horizon/i);
     expect(band.textContent).toMatch(/offline-honest estimate/i);
+    // Residual (aim): competitive DR scorecard deep-link during multi-minute jobs.
+    expect(
+      screen
+        .getByTestId("research-progress-competitive-scorecard-link")
+        .getAttribute("href"),
+    ).toBe("/settings#settings-competitive-dr-scorecard");
     const dual = screen.getByTestId("research-progress-dual-gate-checklist-link");
     // Residual (xu/aau): multi-minute job prep → L4 MO live-step checklist section.
     expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l4-moil/);
