@@ -141,6 +141,8 @@ def get_job_route(job_id: str) -> dict[str, Any]:
         "duration_minutes": job.duration_minutes,
         "model_id": job.model_id,
         "research_tier": job.research_tier,
+        # Residual (adb): fanout used for recommended ceiling formula honesty.
+        "fanout_depth": int(job.fanout_depth),
         "status": job.status,
         "recommended_price_ceiling_usd": job.recommended_price_ceiling_usd,
         "approved_ceiling_usd": job.approved_ceiling_usd,

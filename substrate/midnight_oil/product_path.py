@@ -38,6 +38,8 @@ class MidnightOilProductResult:
             "duration_minutes": j.duration_minutes,
             "model_id": j.model_id,
             "research_tier": j.research_tier,
+            # Residual (adb): fanout used for recommended ceiling formula honesty.
+            "fanout_depth": int(j.fanout_depth),
             "status": j.status,
             "recommended_price_ceiling_usd": self.recommended_price_ceiling_usd,
             "approved_ceiling_usd": j.approved_ceiling_usd,

@@ -43,6 +43,8 @@ class MidnightOilJob:
     notes: str = ""
     # Residual (gs): curated research tier for autonomous runs (fast|deep|wrestle).
     research_tier: str = DEFAULT_RESEARCH_TIER
+    # Residual (adb): fan-out depth used for recommended ceiling (parity formula).
+    fanout_depth: int = 3
 
 
 @runtime_checkable
@@ -80,10 +82,14 @@ def _job_to_row(job: MidnightOilJob) -> dict[str, Any]:
         "force_below_recommended": job.force_below_recommended,
         "notes": job.notes,
         "research_tier": job.research_tier,
+        "fanout_depth": int(job.fanout_depth),
     }
 
 
 def _job_from_row(row: dict[str, Any]) -> MidnightOilJob:
+    fanout = int(row.get("fanout_depth") or 3)
+    if fanout <= 0:
+        fanout = 3
     return MidnightOilJob(
         job_id=row["job_id"],
         goals=tuple(row.get("goals") or ()),
@@ -104,6 +110,7 @@ def _job_from_row(row: dict[str, Any]) -> MidnightOilJob:
         force_below_recommended=bool(row.get("force_below_recommended") or False),
         notes=str(row.get("notes") or ""),
         research_tier=normalize_research_tier(row.get("research_tier")),
+        fanout_depth=fanout,
     )
 
 
@@ -148,6 +155,8 @@ def create_job(
         status="awaiting_approval",
         asset_id=asset_id or f"moil_asset_{jid.removeprefix('moil_')}",
         research_tier=tier,
+        # Residual (adb): persist fanout used for ceiling so API/UI formula match.
+        fanout_depth=int(fanout_depth) if int(fanout_depth) > 0 else 3,
     )
     store.put_job(_job_to_row(job))
     return job
