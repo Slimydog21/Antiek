@@ -34,3 +34,4 @@ one residual/cycle · campaign push only · operator merges PR #465.
 | **aqd** | wire substrate stage_pipeline into ResearchProgress UI | multi-stage frontend↔substrate loop closed |
 | **aqe** | substrate competitive_dr_world_class_readiness | data-layer parity frontend apu |
 | **aqf** | progress_payload world_class_readiness stamp | multi-stage known · hops unknown |
+| **aqg** | evidence_pack world_class_readiness (hops known) | stages unknown · parity aqf |

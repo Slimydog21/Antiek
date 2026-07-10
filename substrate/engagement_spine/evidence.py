@@ -224,6 +224,13 @@ def evidence_pack_payload(
         citation_chain=chain,
         chain_complete=chain_complete,
     )
+    # Residual (aqg): world-class readiness from hops only (stages unknown
+    # on evidence surface · never invent multi-stage coverage).
+    world_class = competitive_dr_world_class_readiness(
+        stage_coverage_ratio=None,
+        hop_coverage_ratio=float(hop_pipeline.get("coverage_ratio") or 0),
+        stage_is_terminal=None,
+    )
     payload: dict[str, Any] = {
         "asset_id": asset_id,
         "spawn_id": spawn_id,
@@ -237,6 +244,8 @@ def evidence_pack_payload(
         "chain_complete": chain_complete,
         # Residual (apz): hop pipeline completeness for competitive citation bar.
         "citation_hop_pipeline": hop_pipeline,
+        # Residual (aqg): hops known · multi-stage unknown on evidence.
+        "world_class_readiness": world_class,
         "research_tier": research_tier,
         "view_format": "html",
         "product_panel": "evidence_pack",

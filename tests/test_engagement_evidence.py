@@ -136,6 +136,13 @@ def test_evidence_pack_with_twins_and_refs():
     assert "Competitive citation hops" in pack["html"]
     assert "3/3" in pack["html"] or "never invent sources" in pack["html"]
     assert "never invent sources" in pack["html"]
+    # Residual (aqg): world-class readiness from hops (stages unknown).
+    wc = pack["world_class_readiness"]
+    assert wc["citation_hops_ready"] is True
+    assert wc["hop_coverage_ratio"] == 1.0
+    # multi-stage unknown → not multi_stage_ready (never invent stages).
+    assert wc["multi_stage_ready"] is False
+    assert wc["world_class_bar"] == "incomplete"
     assert [h["hop"] for h in chain] == ["insights", "questions", "sources"]
     assert chain[0]["items"][0]["anchor"] == "evidence-insight-0"
     assert chain[2]["items"][0]["anchor"] == "evidence-source-0"
