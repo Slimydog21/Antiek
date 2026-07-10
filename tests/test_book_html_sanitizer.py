@@ -29,6 +29,7 @@ from substrate.books.html_sanitizer import (
     is_trusted_sanitized,
     sanitize_book_html,
     sanitized_html_provenance,
+    strip_trust_markers,
 )
 
 # ---------------------------------------------------------------------------
@@ -344,3 +345,69 @@ def test_trusted_predicate_accepts_older_versions() -> None:
     assert is_trusted_sanitized(
         {CONTENT_SANITIZED_KEY: True, SANITIZER_VERSION_KEY: "books-allowlist/0.9.0"}
     )
+
+
+# ---------------------------------------------------------------------------
+# Suppression-stack semantics (judge r1 F5) — a mismatched foreign close must
+# not end a different container's suppression.
+# ---------------------------------------------------------------------------
+
+
+def test_mismatched_foreign_close_does_not_end_suppression() -> None:
+    """</svg> with no open <svg> is a no-op: the open <math> keeps
+    suppressing, so nothing inside it (handler, text) leaks; content after
+    the real </math> renders normally."""
+    out = sanitize_book_html(
+        '<math><p onclick="alert(1)">evil</p></svg>leaked?</math><p>safe</p>'
+    )
+    assert out == "<p>safe</p>"
+    assert "evil" not in out
+    assert "leaked?" not in out
+    assert not _looks_dangerous(out)
+
+
+def test_foreign_close_pops_through_unclosed_inner_container() -> None:
+    """</svg> against <svg><math> pops the unclosed <math> too (same repair
+    semantics as the emit stack); the trailing stray </math> is a no-op. The
+    <p> must survive exactly once, with no dangerous content leaking."""
+    out = sanitize_book_html("<svg><math></svg></math><p>visible</p>")
+    assert out == "<p>visible</p>"
+    assert out.count("visible") == 1
+
+
+def test_unbalanced_drop_close_alone_is_noop() -> None:
+    """A stray </script> with no open <script> neither suppresses nor emits."""
+    assert sanitize_book_html("</script><p>ok</p>") == "<p>ok</p>"
+
+
+def test_suppression_stack_version_bumped() -> None:
+    """The F5 semantics change is a behavioural change for malformed foreign
+    content — the pinned version must reflect it (auditability contract)."""
+    assert SANITIZER_VERSION == "books-allowlist/1.1.0"
+
+
+# ---------------------------------------------------------------------------
+# strip_trust_markers (judge r1 F6) — client-metadata paths must not relay a
+# forged trust bit.
+# ---------------------------------------------------------------------------
+
+
+def test_strip_trust_markers_defeats_forged_client_metadata() -> None:
+    forged = {
+        CONTENT_SANITIZED_KEY: True,
+        SANITIZER_VERSION_KEY: SANITIZER_VERSION,
+        "client_note": "keep me",
+    }
+    # The forgery WOULD pass the predicate if persisted verbatim — that is
+    # exactly the relay hole the strip closes.
+    assert is_trusted_sanitized(forged)
+    stripped = strip_trust_markers(forged)
+    assert not is_trusted_sanitized(stripped)
+    assert stripped == {"client_note": "keep me"}
+    # Input mapping is not mutated (callers may still need the original).
+    assert forged[CONTENT_SANITIZED_KEY] is True
+
+
+def test_strip_trust_markers_on_unmarked_metadata_is_identity() -> None:
+    plain = {"title": "x", "book_import": {"chapter_count": 3}}
+    assert strip_trust_markers(plain) == plain

@@ -19,6 +19,7 @@ of XHTML) — no network, no binary blobs in the repo. The suite proves:
 
 from __future__ import annotations
 
+import hashlib
 import os
 import tempfile
 import zipfile
@@ -38,6 +39,8 @@ from substrate.book_import import (
     NotAnEpubError,
     NoTextContentError,
     PublishedBookImport,
+    RepublishRightsChangeError,
+    StoredBodyMismatchError,
     UnsafeArchivePathError,
     ZipBombSuspectedError,
     convert_epub_to_antiek_html,
@@ -46,6 +49,7 @@ from substrate.book_import import (
 from substrate.books.html_sanitizer import is_trusted_sanitized, sanitize_book_html
 from substrate.books.model import get_book_asset
 from substrate.books.serve import serve_full_text
+from substrate.graph.ops import insert_document
 from substrate.graph.schema import init_database
 
 # ---------------------------------------------------------------------------
@@ -395,12 +399,19 @@ def _publish(
     converted: ConvertedBook,
     *,
     content_class: str | None = None,
+    rights_holder_name: str | None = None,
+    license_basis: str | None = None,
     embedder: StubEmbedding | None = None,
 ) -> PublishedBookImport:
     con = connect_write(db_path, purpose="book-import-publish")
     try:
         return publish_converted_book(
-            con, converted, content_class=content_class, embedder=embedder
+            con,
+            converted,
+            content_class=content_class,
+            rights_holder_name=rights_holder_name,
+            license_basis=license_basis,
+            embedder=embedder,
         )
     finally:
         con.close()
@@ -500,22 +511,47 @@ def test_publish_chunking_parity_with_native_seam(db: str) -> None:
 
 
 def test_publish_is_idempotent_on_same_content(db: str) -> None:
+    """Republish with identical args returns the existing state UNTOUCHED —
+    content_class, servability, rights holder, license basis, provenance, and
+    TOC are all byte-for-byte unchanged (judge r1 F7, tied to F1)."""
     converted = convert_epub_to_antiek_html(_build_epub())
-    first = _publish(db, converted)
-    second = _publish(db, converted)
-    assert first.document_id == second.document_id
+    first = _publish(db, converted, content_class="public_domain")
+    con = connect_read(db)
+    try:
+        before = get_book_asset(con, first.document_id)
+    finally:
+        con.close()
+
+    # Identical explicit args → allowed, no-op.
+    second = _publish(db, converted, content_class="public_domain")
+    # None args (no change requested) → also allowed, no-op.
+    third = _publish(db, converted)
+
+    assert first.document_id == second.document_id == third.document_id
     assert first.was_new is True
-    assert second.was_new is False
+    assert second.was_new is False and third.was_new is False
+    assert second.chunk_count == 0 and third.chunk_count == 0
+    assert second.content_class == "public_domain"
+    assert third.servability == "public_domain"
+
     con = connect_read(db)
     try:
         row = con.execute(
             "SELECT COUNT(*) FROM chunks WHERE document_id = ?",
             [first.document_id],
         ).fetchone()
+        after = get_book_asset(con, first.document_id)
     finally:
         con.close()
     assert row is not None
     assert row[0] == first.chunk_count
+    assert before is not None and after is not None
+    assert after.content_class == before.content_class == "public_domain"
+    assert after.servability == before.servability
+    assert after.ip_holder_id == before.ip_holder_id
+    assert after.license_basis == before.license_basis
+    assert after.provenance == before.provenance
+    assert after.toc == before.toc
 
 
 def test_publish_retrieval_gate_parity(db: str) -> None:
@@ -560,3 +596,150 @@ def test_hostile_container_publishes_nothing(db: str) -> None:
         con.close()
     assert row is not None
     assert row[0] == 0
+
+
+# ---------------------------------------------------------------------------
+# Republish rights-stability (judge r1 F1) + id-shadow detection (F2).
+# ---------------------------------------------------------------------------
+
+
+def test_republish_cannot_upgrade_rights_red_proof(db: str) -> None:
+    """THE F1 red-proof: import lands gated (restricted); re-publishing the
+    IDENTICAL body with content_class='public_domain' must be a typed refusal
+    — and the DB must prove servability did not move."""
+    converted = convert_epub_to_antiek_html(_build_epub())
+    first = _publish(db, converted)  # deny-by-default → restricted_pending_opt_in
+    assert first.servability == "gated_metadata_only"
+
+    with pytest.raises(RepublishRightsChangeError):
+        _publish(db, converted, content_class="public_domain")
+
+    con = connect_read(db)
+    try:
+        row = con.execute(
+            "SELECT content_class FROM documents WHERE document_id = ?",
+            [first.document_id],
+        ).fetchone()
+        served = serve_full_text(con, first.document_id)
+        asset = get_book_asset(con, first.document_id)
+    finally:
+        con.close()
+    assert row is not None and row[0] == "restricted_pending_opt_in"
+    assert served.servable is False and served.full_text is None
+    assert asset is not None and asset.servability.value == "gated_metadata_only"
+
+
+def test_republish_license_and_rights_holder_changes_refused(db: str) -> None:
+    """The other rights-state fields are equally frozen on republish."""
+    converted = convert_epub_to_antiek_html(_build_epub())
+    _publish(db, converted, content_class="public_domain")
+    with pytest.raises(RepublishRightsChangeError):
+        _publish(
+            db, converted, content_class="public_domain",
+            license_basis="a new license story",
+        )
+    with pytest.raises(RepublishRightsChangeError):
+        _publish(
+            db, converted, content_class="public_domain",
+            rights_holder_name="Suddenly A Publisher",
+        )
+    # And the refusal minted NO escrow account as a side effect.
+    con = connect_read(db)
+    try:
+        row = con.execute(
+            "SELECT COUNT(*) FROM ip_holders WHERE display_name = ?",
+            ["Suddenly A Publisher"],
+        ).fetchone()
+    finally:
+        con.close()
+    assert row is not None and row[0] == 0
+
+
+def test_id_shadow_is_detected_not_adopted(db: str) -> None:
+    """A pre-existing document under our content-addressed id whose body is
+    NOT ours is an id shadow: publish must refuse (typed), not adopt or
+    overwrite it (judge r1 F2 — byte-equality is the binding defense)."""
+    converted = convert_epub_to_antiek_html(_build_epub())
+    body_sha = hashlib.sha256(converted.html.encode("utf-8")).hexdigest()
+    shadow_id = f"doc-bookimport-{body_sha[:32]}"  # 128-bit prefix (F2)
+    wcon = connect_write(db, purpose="shadow-insert")
+    try:
+        insert_document(
+            wcon, document_id=shadow_id, source_tier=2, document_type="book",
+            title="Impostor", raw_text="<p>an impostor body</p>",
+        )
+    finally:
+        wcon.close()
+
+    with pytest.raises(StoredBodyMismatchError):
+        _publish(db, converted)
+
+    con = connect_read(db)
+    try:
+        row = con.execute(
+            "SELECT raw_text FROM documents WHERE document_id = ?", [shadow_id]
+        ).fetchone()
+    finally:
+        con.close()
+    assert row is not None and row[0] == "<p>an impostor body</p>"  # untouched
+
+
+def test_document_id_uses_128_bit_prefix(db: str) -> None:
+    converted = convert_epub_to_antiek_html(_build_epub())
+    result = _publish(db, converted)
+    body_sha = hashlib.sha256(converted.html.encode("utf-8")).hexdigest()
+    assert result.document_id == f"doc-bookimport-{body_sha[:32]}"
+
+
+# ---------------------------------------------------------------------------
+# Container byte budget BEFORE buffering (judge r1 F3) + cumulative actual
+# inflation budget (F4).
+# ---------------------------------------------------------------------------
+
+
+def test_container_byte_budget_fires_before_reading(tmp_path: Path) -> None:
+    data = _build_epub()
+    tight = EpubLimits(max_container_bytes=100)
+    # Bytes source: len() checked before buffering.
+    with pytest.raises(ZipBombSuspectedError):
+        convert_epub_to_antiek_html(data, limits=tight)
+    # Path source: stat().st_size checked before read_bytes().
+    epub_path = tmp_path / "big.epub"
+    epub_path.write_bytes(data)
+    with pytest.raises(ZipBombSuspectedError):
+        convert_epub_to_antiek_html(str(epub_path), limits=tight)
+
+
+def test_container_budget_precedes_any_parsing(tmp_path: Path) -> None:
+    """An oversized NON-zip file raises the budget error, not NotAnEpubError —
+    proving the size check runs before the file is even opened as a zip."""
+    junk = tmp_path / "junk.bin"
+    junk.write_bytes(b"x" * 1_000)
+    with pytest.raises(ZipBombSuspectedError):
+        convert_epub_to_antiek_html(
+            str(junk), limits=EpubLimits(max_container_bytes=100)
+        )
+
+
+def test_cumulative_actual_inflation_budget_fires() -> None:
+    """The F4 accumulator, exercised at its real seam: per-entry cap generous,
+    total tight — members that individually pass must cumulatively trip
+    ZipBombSuspectedError on ACTUAL inflated bytes. (Unit-level because
+    stdlib zipfile truncates each read at the declared header size, so a
+    forged-low-header archive cannot inflate past declared totals through
+    read_epub itself — the accumulator is the belt underneath that behavior.)"""
+    from substrate.book_import.epub import _BudgetedReader
+
+    data = _build_epub()
+    with zipfile.ZipFile(BytesIO(data)) as zf:
+        reader = _BudgetedReader(
+            zf, EpubLimits(max_entry_bytes=10_000_000, max_total_bytes=600)
+        )
+        with pytest.raises(ZipBombSuspectedError):
+            for name in (
+                "OEBPS/ch1.xhtml", "OEBPS/ch2.xhtml",
+                "OEBPS/ch3.xhtml", "OEBPS/content.opf",
+            ):
+                reader.read(name)
+        # It accumulated real bytes before refusing — not a pre-emptive raise.
+        assert reader.total_actual_bytes > 600

@@ -36,6 +36,8 @@ from .errors import (
     MalformedEpubError,
     NotAnEpubError,
     NoTextContentError,
+    RepublishRightsChangeError,
+    StoredBodyMismatchError,
     UnsafeArchivePathError,
     ZipBombSuspectedError,
 )
@@ -62,6 +64,8 @@ __all__ = [
     "NoTextContentError",
     "NotAnEpubError",
     "PublishedBookImport",
+    "RepublishRightsChangeError",
+    "StoredBodyMismatchError",
     "TocHeading",
     "UnsafeArchivePathError",
     "ZipBombSuspectedError",
