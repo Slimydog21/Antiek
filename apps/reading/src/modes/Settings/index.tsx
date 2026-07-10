@@ -27,6 +27,7 @@ import {
 } from "../../workspace/leaderboardDriverInstallReadiness";
 import { registerModelReadiness } from "../../workspace/registerModelReadiness";
 import { clearDecisionTreeReadiness } from "../../workspace/clearDecisionTreeReadiness";
+import { suiteProposalApproveReadiness } from "../../workspace/suiteProposalApproveReadiness";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import {
@@ -100,6 +101,8 @@ import {
  * (model+provider required · select-as-driver never auto-routes).
  * Residual (auw): pure clearDecisionTreeReadiness drives Clear CTA
  * (only when installed · never auto-route).
+ * Residual (aux): pure suiteProposalApproveReadiness drives Approve/Reject
+ * (propose≠promote · never auto-promote).
  */
 export default function Settings() {
   const tier = useViewportTier();
@@ -845,15 +848,24 @@ export default function Settings() {
   }
 
   async function onApproveSuiteProposal(approve: boolean) {
-    if (!suiteProposal?.proposal_id) {
-      setSuiteProposalError("No proposal_id to approve/reject");
+    // Residual (aux): pure gate — proposed proposal_id · never auto-promote.
+    const gate = suiteProposalApproveReadiness({
+      has_proposal: suiteProposal?.has_proposal,
+      proposal_id: suiteProposal?.proposal_id,
+      status: suiteProposal?.status,
+      auto_promoted: suiteProposal?.auto_promoted,
+    });
+    if (!(approve ? gate.approve_ready : gate.reject_ready)) {
+      setSuiteProposalError(
+        approve ? gate.approve_title : gate.reject_title,
+      );
       return;
     }
     setSuiteApproveBusy(true);
     setSuiteProposalError(null);
     try {
       const result = await approveAntiekBenchSuiteProposal({
-        proposal_id: suiteProposal.proposal_id,
+        proposal_id: gate.proposal_id,
         approve,
         includeHtml: true,
       });
@@ -942,6 +954,26 @@ export default function Settings() {
         provider_id: tree?.provider_id,
       }),
     [tree?.installed, tree?.model_id, tree?.provider_id],
+  );
+
+  /**
+   * Residual (aux): pure suite proposal Approve/Reject CTA readiness.
+   * propose≠promote · never auto-promote · status=proposed + proposal_id.
+   */
+  const suiteApproveReady = useMemo(
+    () =>
+      suiteProposalApproveReadiness({
+        has_proposal: suiteProposal?.has_proposal,
+        proposal_id: suiteProposal?.proposal_id,
+        status: suiteProposal?.status,
+        auto_promoted: suiteProposal?.auto_promoted,
+      }),
+    [
+      suiteProposal?.has_proposal,
+      suiteProposal?.proposal_id,
+      suiteProposal?.status,
+      suiteProposal?.auto_promoted,
+    ],
   );
 
   const spendPct = useMemo(() => {
@@ -4474,13 +4506,19 @@ export default function Settings() {
               <button
                 type="button"
                 data-testid="antiek-bench-suite-approve"
+                // Residual (aux): pure approve readiness stamps.
+                data-approve-ready={String(suiteApproveReady.approve_ready)}
+                data-block-reason={suiteApproveReady.block_reason}
+                data-propose-neq-promote={String(
+                  suiteApproveReady.propose_neq_promote,
+                )}
+                data-never-auto-promote={String(
+                  suiteApproveReady.never_auto_promote,
+                )}
+                data-proposal-id={suiteApproveReady.proposal_id}
                 onClick={() => void onApproveSuiteProposal(true)}
-                disabled={
-                  suiteApproveBusy ||
-                  !suiteProposal?.has_proposal ||
-                  !suiteProposal?.proposal_id ||
-                  suiteProposal.status !== "proposed"
-                }
+                disabled={suiteApproveBusy || !suiteApproveReady.approve_ready}
+                title={suiteApproveReady.approve_title}
                 className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
               >
                 {suiteApproveBusy ? "Working…" : "Approve & promote"}
@@ -4488,13 +4526,18 @@ export default function Settings() {
               <button
                 type="button"
                 data-testid="antiek-bench-suite-reject"
+                data-reject-ready={String(suiteApproveReady.reject_ready)}
+                data-block-reason={suiteApproveReady.block_reason}
+                data-propose-neq-promote={String(
+                  suiteApproveReady.propose_neq_promote,
+                )}
+                data-never-auto-promote={String(
+                  suiteApproveReady.never_auto_promote,
+                )}
+                data-proposal-id={suiteApproveReady.proposal_id}
                 onClick={() => void onApproveSuiteProposal(false)}
-                disabled={
-                  suiteApproveBusy ||
-                  !suiteProposal?.has_proposal ||
-                  !suiteProposal?.proposal_id ||
-                  suiteProposal.status !== "proposed"
-                }
+                disabled={suiteApproveBusy || !suiteApproveReady.reject_ready}
+                title={suiteApproveReady.reject_title}
                 className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
               >
                 Reject proposal

@@ -1996,6 +1996,11 @@ describe("Settings SPR-01 + decision-tree install", () => {
       expect(screen.getByTestId("antiek-bench-suite-approve")).toBeTruthy();
     });
     const approveBtn = screen.getByTestId("antiek-bench-suite-approve");
+    // Residual (aux): pure approve readiness stamps.
+    expect(approveBtn.getAttribute("data-approve-ready")).toBe("true");
+    expect(approveBtn.getAttribute("data-block-reason")).toBe("ok");
+    expect(approveBtn.getAttribute("data-propose-neq-promote")).toBe("true");
+    expect(approveBtn.getAttribute("data-never-auto-promote")).toBe("true");
     expect(approveBtn).toBeTruthy();
     await waitFor(() => {
       expect((approveBtn as HTMLButtonElement).disabled).toBe(false);
