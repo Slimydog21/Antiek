@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 from decimal import Decimal
@@ -35,13 +36,18 @@ class LiveWedgeConfig:
                 raise ValueError(f"candidate {candidate.model_id} is disabled")
             if not candidate.provider_id.strip():
                 raise ValueError(f"candidate {candidate.model_id} has no provider")
-            if candidate.input_usd_per_1m <= 0 or candidate.output_usd_per_1m <= 0:
+            if (
+                not math.isfinite(candidate.input_usd_per_1m)
+                or not math.isfinite(candidate.output_usd_per_1m)
+                or candidate.input_usd_per_1m <= 0
+                or candidate.output_usd_per_1m <= 0
+            ):
                 raise ValueError(
                     f"candidate {candidate.model_id} requires verified positive pricing"
                 )
-        if self.cap_usd <= 0:
+        if not self.cap_usd.is_finite() or self.cap_usd <= 0:
             raise ValueError("cap_usd must be positive")
-        if self.timeout_s <= 0:
+        if not math.isfinite(self.timeout_s) or self.timeout_s <= 0:
             raise ValueError("timeout_s must be positive")
         if self.max_output_tokens <= 0:
             raise ValueError("max_output_tokens must be positive")
@@ -51,12 +57,17 @@ class LiveWedgeConfig:
         # One token cannot encode less than one byte, so UTF-8 bytes are a
         # conservative tokenizer-independent upper bound for reservation.
         input_tokens = max(1, len(prompt.encode("utf-8")))
-        input_cost = Decimal(input_tokens) * Decimal(
-            str(candidate.input_usd_per_1m)
-        ) / Decimal(1_000_000)
-        output_cost = Decimal(self.max_output_tokens) * Decimal(
-            str(candidate.output_usd_per_1m)
-        ) / Decimal(1_000_000)
+        input_cost = (
+            Decimal(input_tokens)
+            * Decimal(str(candidate.input_usd_per_1m))
+            * Decimal("1.25")
+            / Decimal(1_000_000)
+        )
+        output_cost = (
+            Decimal(self.max_output_tokens)
+            * Decimal(str(candidate.output_usd_per_1m))
+            / Decimal(1_000_000)
+        )
         return input_cost + output_cost
 
     def dispatch_config(self, candidate: ModelEntry) -> DispatchConfig:

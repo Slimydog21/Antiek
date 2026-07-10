@@ -50,7 +50,16 @@ def reservation(**changes: object) -> LiveCallRecord:
 
 
 def test_identity_is_wedge_scoped() -> None:
-    args = ("wedge", "2026-W28", "suite-1", "provider-a", "model-a", "distill", "item-1", "sha256:a")
+    args = (
+        "wedge",
+        "2026-W28",
+        "suite-1",
+        "provider-a",
+        "model-a",
+        "distill",
+        "item-1",
+        "sha256:a",
+    )
     first = deterministic_call_id(*args)
     assert first == deterministic_call_id(*args)
     assert first != deterministic_call_id(*args[:3], "provider-b", *args[4:])
@@ -146,9 +155,7 @@ def test_success_is_reserved_before_dispatch_and_replayed(tmp_path: Path) -> Non
 
     def provider() -> ProviderResult:
         assert budget.total_charged == Decimal("0.25")
-        return ProviderResult(
-            "model-a", 10, 4, Decimal("0.20"), 120, "answer", "openai", "evt-1"
-        )
+        return ProviderResult("model-a", 10, 4, Decimal("0.20"), 120, "answer", "openai", "evt-1")
 
     runner = LiveCallRunner(journal, budget, DirectTimeout())
     kwargs = dict(
@@ -168,7 +175,7 @@ def test_success_is_reserved_before_dispatch_and_replayed(tmp_path: Path) -> Non
     assert (
         result.response_hash == "0db52f4076c082518412afd3dd3576e2cb0c63703fd7fed5e23ade60efef31d9"
     )
-    assert budget.total_charged == Decimal("0.25")
+    assert budget.total_charged == Decimal("0.20")
     assert runner.execute(**kwargs) == result
 
 

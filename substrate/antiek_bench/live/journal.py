@@ -243,7 +243,12 @@ class Journal:
             if record.call_id in current:
                 return False
             charged = sum(
-                (max(event.reserved_usd, event.cost_usd) for event in current.values()),
+                (
+                    event.cost_usd
+                    if event.status == "ok"
+                    else max(event.reserved_usd, event.cost_usd)
+                    for event in current.values()
+                ),
                 Decimal("0"),
             )
             if charged + record.reserved_usd > cap_usd:

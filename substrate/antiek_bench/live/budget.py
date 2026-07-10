@@ -29,7 +29,11 @@ class HardBudget:
             # Outstanding reservations, timeouts, and failures are conservatively
             # charged at the reservation. Successful calls use at least that amount:
             # underestimation must never make the approved ceiling porous.
-            total += max(record.reserved_usd, record.cost_usd)
+            total += (
+                record.cost_usd
+                if record.status == "ok"
+                else max(record.reserved_usd, record.cost_usd)
+            )
         return total
 
     @property

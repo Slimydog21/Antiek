@@ -31,6 +31,10 @@ class DispatchFn(Protocol):
     ) -> DispatchResult: ...
 
 
+class ReconciliationRequiredError(RuntimeError):
+    """A billed-or-issued reservation has no terminal settlement after a crash."""
+
+
 def _score(response: str, expected: tuple[str, ...]) -> tuple[Decimal, tuple[str, ...]]:
     text = response.lower()
     hits = tuple(keyword for keyword in expected if keyword.lower() in text)
@@ -52,14 +56,21 @@ def _wedge_id(config: LiveWedgeConfig, suite: SuiteDefinition) -> str:
                 for item in suite.items
             ],
             "models": [
-                [row.provider_id, row.model_id] for row in config.candidates
+                [
+                    row.provider_id,
+                    row.model_id,
+                    row.input_usd_per_1m,
+                    row.output_usd_per_1m,
+                ]
+                for row in config.candidates
             ],
             "max_output_tokens": config.max_output_tokens,
+            "timeout_s": config.timeout_s,
         },
         sort_keys=True,
         separators=(",", ":"),
     )
-    return "wedge_" + hashlib.sha256(material.encode()).hexdigest()[:20]
+    return "wedge_" + hashlib.sha256(material.encode()).hexdigest()
 
 
 def run_live_wedge(
@@ -128,6 +139,10 @@ def run_live_wedge(
                 timeout_s=config.timeout_s,
                 maximum_cost=config.maximum_cost(candidate, item.prompt),
             )
+            if record.status == "reserved":
+                raise ReconciliationRequiredError(
+                    f"call {record.call_id} requires provider reconciliation"
+                )
             value = float(record.keyword_score or Decimal("0")) if record.status == "ok" else 0.0
             scores.append(
                 TaskScore(
@@ -145,7 +160,8 @@ def run_live_wedge(
             for task_class, values in sorted(class_scores.items())
         }
         mean = round(sum(row.score for row in scores) / len(scores), 6)
-        run_id = f"live_{wedge_id}_{candidate.model_id}"
+        model_key = hashlib.sha256(candidate.model_id.encode()).hexdigest()
+        run_id = f"live_{wedge_id}_{model_key}"
         run = BenchRunResult(
             run_id=run_id,
             week_id=config.week_id,

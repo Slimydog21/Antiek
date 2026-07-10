@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import hashlib
 from decimal import Decimal
 
 import pytest
 
-from substrate.antiek_bench.live import Journal, LiveWedgeConfig, run_live_wedge
-from substrate.antiek_bench.live.live_run import fake_dispatch_result
+from substrate.antiek_bench.live import (
+    Journal,
+    LiveCallRecord,
+    LiveWedgeConfig,
+    ReconciliationRequiredError,
+    run_live_wedge,
+)
+from substrate.antiek_bench.live.live_run import _wedge_id, fake_dispatch_result
 from substrate.antiek_bench.store import InMemoryBenchStore
 from substrate.antiek_bench.suite import SuiteDefinition, SuiteItem
 from substrate.model_registration.registry import ModelEntry
@@ -208,3 +215,105 @@ def test_cap_exhaustion_fails_before_dispatch(tmp_path) -> None:
             live_enabled=True,
         )
     assert called is False
+
+
+def test_maximum_cost_covers_cache_creation_premium() -> None:
+    config = wedge()
+    candidate = config.candidates[0]
+    prompt = "four"
+    expected = (
+        Decimal(len(prompt.encode())) * Decimal("1.25") * Decimal(str(candidate.input_usd_per_1m))
+        + Decimal(config.max_output_tokens) * Decimal(str(candidate.output_usd_per_1m))
+    ) / Decimal(1_000_000)
+    assert config.maximum_cost(candidate, prompt) == expected
+
+
+def test_wedge_identity_changes_with_pricing_and_timeout() -> None:
+    base = wedge()
+    current_suite = suite()
+    first, second = base.candidates
+    repriced = LiveWedgeConfig(
+        week_id=base.week_id,
+        candidates=(
+            ModelEntry(
+                first.model_id,
+                first.provider_id,
+                input_usd_per_1m=2,
+                output_usd_per_1m=first.output_usd_per_1m,
+            ),
+            second,
+        ),
+        cap_usd=base.cap_usd,
+        timeout_s=base.timeout_s,
+        max_output_tokens=base.max_output_tokens,
+    )
+    retimed = LiveWedgeConfig(
+        week_id=base.week_id,
+        candidates=base.candidates,
+        cap_usd=base.cap_usd,
+        timeout_s=base.timeout_s + 1,
+        max_output_tokens=base.max_output_tokens,
+    )
+    assert _wedge_id(base, current_suite) != _wedge_id(repriced, current_suite)
+    assert _wedge_id(base, current_suite) != _wedge_id(retimed, current_suite)
+
+
+@pytest.mark.parametrize(
+    ("cap", "timeout", "input_price"),
+    [
+        (Decimal("Infinity"), 5.0, 1.0),
+        (Decimal("1"), float("nan"), 1.0),
+        (Decimal("1"), 5.0, float("nan")),
+    ],
+)
+def test_wedge_rejects_non_finite_values(cap, timeout, input_price) -> None:  # type: ignore[no-untyped-def]
+    base = wedge()
+    first, second = base.candidates
+    first = ModelEntry(
+        first.model_id,
+        first.provider_id,
+        input_usd_per_1m=input_price,
+        output_usd_per_1m=first.output_usd_per_1m,
+    )
+    with pytest.raises(ValueError):
+        LiveWedgeConfig(
+            week_id=base.week_id,
+            candidates=(first, second),
+            cap_usd=cap,
+            timeout_s=timeout,
+            max_output_tokens=base.max_output_tokens,
+        )
+
+
+def test_unsettled_reservation_requires_reconciliation(tmp_path) -> None:
+    config = wedge()
+    current_suite = suite()
+    first_candidate = config.candidates[0]
+    first_item = current_suite.items[0]
+    journal = Journal(tmp_path / "live.jsonl")
+    journal.append(
+        LiveCallRecord(
+            wedge_id=_wedge_id(config, current_suite),
+            week_id=config.week_id,
+            suite_version=current_suite.suite_version,
+            requested_provider=first_candidate.provider_id,
+            requested_model=first_candidate.model_id,
+            task_class=first_item.task_class,
+            item_id=first_item.item_id,
+            status="reserved",
+            reserved_usd=config.maximum_cost(first_candidate, first_item.prompt),
+            prompt_hash="sha256:" + hashlib.sha256(first_item.prompt.encode()).hexdigest(),
+        )
+    )
+    with pytest.raises(ReconciliationRequiredError):
+        run_live_wedge(
+            config=config,
+            suite=current_suite,
+            store=InMemoryBenchStore(),
+            journal=journal,
+            timeout_runner=DirectTimeout(),
+            dispatch_fn=lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("reconciliation must not redispatch")
+            ),
+            live_enabled=True,
+        )

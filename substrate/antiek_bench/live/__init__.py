@@ -23,7 +23,7 @@ from .journal import (
     Status,
     deterministic_call_id,
 )
-from .live_run import DispatchFn, run_live_wedge
+from .live_run import DispatchFn, ReconciliationRequiredError, run_live_wedge
 from .nd_shadow import (
     NDShadowClient,
     NDShadowConfig,
@@ -46,6 +46,7 @@ __all__ = [
     "LiveCallRecord",
     "LiveCallRunner",
     "ProviderResult",
+    "ReconciliationRequiredError",
     "Status",
     "TimeoutRunner",
     "BENCH_ROLE",
