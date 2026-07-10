@@ -600,6 +600,22 @@ describe("CollectiveResearchPanel", () => {
     expect(
       screen.getByTestId("collective-merge-draft").getAttribute("data-seamless-merge-draft"),
     ).toBe("true");
+    // Residual (asw): draft/parent CTAs honor pathChoices pure readiness.
+    expect(
+      screen
+        .getByTestId("collective-merge-draft")
+        .getAttribute("data-draft-merge-ready"),
+    ).toBe("true");
+    expect(
+      screen
+        .getByTestId("collective-merge-draft")
+        .getAttribute("data-path-choices-source"),
+    ).toBe("researchPathChoicesReadiness");
+    expect(
+      screen
+        .getByTestId("collective-merge-parent")
+        .getAttribute("data-into-parent-ready"),
+    ).toBe("true");
     // Residual (asc): written analysis needs ≥2 — single selection is draft-ready only.
     expect(
       screen

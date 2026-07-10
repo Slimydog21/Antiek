@@ -1,0 +1,22 @@
+# inventory-asw · collective draft/parent CTAs use pathChoices readiness
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: asw
+date: 2026-07-10
+parent_tip: a25365e80 (asv)
+
+## Closed
+- collective-merge-draft gated by pathChoices.draft_merge_ready (+ budget soft-gate)
+- collective-merge-parent gated by pathChoices.into_parent_ready (+ budget soft-gate)
+- CTA stamps: data-draft-merge-ready · data-into-parent-ready · data-view-format=html · path-choices-source
+- Title honesty via pathChoices.summary when not ready
+- Parity SpawnMerge (ary) + written analysis (asc)
+- vitest CollectiveResearchPanel 31 green · asw-vitest.log
+
+## Doctrine
+HTML multi-spawn draft_combined / into_parent merge hard-to-vary pure contract
+Never invent parent/spawn binding · HTML-first deliverable
+
+## Next
+asx+ offline product residual outside thrash
+Avoid: path-choices CTA thrash after aqw–aqz/ary/asw · usage-source thrash · highlight thrash
+Operator merge PR #465 remains P0 (gated)

@@ -4229,3 +4229,8 @@ asu-unit.log green. P0 PR #465. Pivot asv+ outside thrash.
 Classifier also matches "highlighted synthesis" (workstation HighlightToolbar).
 Reading ≡ research highlight launches share Antiek-bench feed. asv-unit.log green.
 P0 PR #465. Pivot asw+ outside thrash.
+
+## Residual asw · 2026-07-10 — collective draft/parent pathChoices CTAs
+draft_merge_ready / into_parent_ready drive Merge to draft / into parent CTAs
+(parity SpawnMerge ary · written analysis asc). HTML multi-spawn merge path
+hard-to-vary pure contract. vitest Collective 31 green. P0 PR #465. Pivot asx+.

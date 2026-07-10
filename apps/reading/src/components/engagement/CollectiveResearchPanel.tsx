@@ -1215,21 +1215,23 @@ export function CollectiveResearchPanel({
           type="button"
           data-testid="collective-merge-draft"
           data-seamless-merge-draft={String(seamlessCollectiveMergeReady)}
+          data-draft-merge-ready={String(pathChoices.draft_merge_ready)}
           data-mode="draft_combined"
+          data-view-format="html"
+          data-path-choices-source="researchPathChoicesReadiness"
           data-budget-soft-gate={String(budgetWarn && !forceOverBudget)}
           onClick={() => void mergeDocument("draft_combined")}
           disabled={
             busy ||
-            selected.length < 1 ||
-            !parentAssetId ||
+            !pathChoices.draft_merge_ready ||
             (budgetWarn && !forceOverBudget)
           }
           title={
-            parentAssetId
-              ? budgetWarn && !forceOverBudget
+            !pathChoices.draft_merge_ready
+              ? pathChoices.summary
+              : budgetWarn && !forceOverBudget
                 ? "Over budget — enable force override before draft merge"
-                : "Create draft-combined document; parent unchanged · seamless multi-spawn path"
-              : "Requires parentAssetId"
+                : "Create draft-combined HTML document; parent unchanged · seamless multi-spawn path"
           }
         >
           Merge to draft document
@@ -1238,21 +1240,23 @@ export function CollectiveResearchPanel({
           type="button"
           data-testid="collective-merge-parent"
           data-seamless-merge-parent={String(seamlessCollectiveMergeReady)}
+          data-into-parent-ready={String(pathChoices.into_parent_ready)}
           data-mode="into_parent"
+          data-view-format="html"
+          data-path-choices-source="researchPathChoicesReadiness"
           data-budget-soft-gate={String(budgetWarn && !forceOverBudget)}
           onClick={() => void mergeDocument("into_parent")}
           disabled={
             busy ||
-            selected.length < 1 ||
-            !parentAssetId ||
+            !pathChoices.into_parent_ready ||
             (budgetWarn && !forceOverBudget)
           }
           title={
-            parentAssetId
-              ? budgetWarn && !forceOverBudget
+            !pathChoices.into_parent_ready
+              ? pathChoices.summary
+              : budgetWarn && !forceOverBudget
                 ? "Over budget — enable force override before parent merge"
-                : "Merge into parent reading asset in-place · seamless multi-spawn path"
-              : "Requires parentAssetId"
+                : "Merge into parent reading asset in-place · seamless multi-spawn path · HTML-first"
           }
         >
           Merge into parent
