@@ -1,0 +1,12 @@
+# inventory-akj · SESSION-ARC akh–aki scorecard deferred map
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: akj
+date: 2026-07-10
+parent_tip: b92c2647 (aki)
+
+## Closed
+- SESSION-ARC-akh-aki-scorecard-deferred-map.md
+
+## Next
+akk+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

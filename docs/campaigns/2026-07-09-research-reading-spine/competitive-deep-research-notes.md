@@ -3117,3 +3117,8 @@ vitest Settings 37 green. P0 operator merge PR #465. Pivot aki+ outside thrash.
 Competitive DR scorecard twin-notes row deep-links FUTURE twin note-taker
 completeness matrix (promote depth-graph path ajn–ajw). vitest Settings 37 green.
 P0 operator merge PR #465. Pivot akj+ outside thrash.
+
+## Residual akj · 2026-07-10 — SESSION-ARC akh–aki scorecard deferred map
+Wave handoff: scorecard deferred live dual-gate deep-links + twin FUTURE matrix.
+Scorecard map dense — prefer non-scorecard product next. P0 operator merge PR #465.
+Pivot akk+ outside thrash.
