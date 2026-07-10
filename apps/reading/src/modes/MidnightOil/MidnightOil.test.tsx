@@ -28,6 +28,7 @@ import {
   liveDispatchFinalEnablementApplyPlanMidnightOil,
   liveDispatchFinalEnablementPlanMidnightOil,
   liveRunActivationSettingsMidnightOil,
+  operatorArchiveHandoffPackageDeliveryAuditPlanMidnightOil,
   operatorArchiveHandoffPackagePlanMidnightOil,
   operatorArchiveHandoffPackageResultReconciliationPlanMidnightOil,
   operatorDeliveryLedgerReconciliationPlanMidnightOil,
@@ -4691,6 +4692,118 @@ vi.mock("../../api/midnightOil", () => ({
       "operator archive handoff package result reconciliation plan only: no package result entry, archive manifest status entry, handoff bundle status entry, operator archive package, operator archive manifest, handoff bundle, closeout archive reconciliation receipt, archive manifest, handoff summary, quality attestation, completion audit, retention manifest, billing reconciliation, source lineage archive, notification, URL activation, or final artifact is created",
     ],
   })),
+  operatorArchiveHandoffPackageDeliveryAuditPlanMidnightOil: vi.fn(async () => ({
+    receipt_id:
+      "midnight-oil-test-operator-archive-handoff-package-delivery-audit-plan",
+    operator_archive_handoff_package_result_reconciliation_plan_receipt_id:
+      "midnight-oil-test-operator-archive-handoff-package-result-reconciliation-plan",
+    operator_archive_handoff_package_plan_receipt_id:
+      "midnight-oil-test-operator-archive-handoff-package-plan",
+    final_closeout_archive_reconciliation_plan_receipt_id:
+      "midnight-oil-test-final-closeout-archive-reconciliation-plan",
+    retention_billing_reconciliation_plan_receipt_id:
+      "midnight-oil-test-retention-billing-reconciliation-plan",
+    delivery_notification_reconciliation_plan_receipt_id:
+      "midnight-oil-test-delivery-notification-reconciliation-plan",
+    workspace_delivery_card_reconciliation_plan_receipt_id:
+      "midnight-oil-test-workspace-delivery-card-reconciliation-plan",
+    operator_delivery_ledger_reconciliation_plan_receipt_id:
+      "midnight-oil-test-operator-delivery-ledger-reconciliation-plan",
+    operator_notification_delivery_result_reconciliation_plan_receipt_id:
+      "midnight-oil-test-operator-notification-delivery-result-reconciliation-plan",
+    operator_notification_delivery_apply_plan_receipt_id:
+      "midnight-oil-test-operator-notification-delivery-apply-plan",
+    operator_notification_delivery_readiness_plan_receipt_id:
+      "midnight-oil-test-operator-notification-delivery-readiness-plan",
+    final_run_closure_plan_receipt_id: "midnight-oil-test-final-run-closure-plan",
+    final_artifact_completion_finalization_plan_receipt_id:
+      "midnight-oil-test-final-artifact-completion-finalization-plan",
+    final_artifact_publish_plan_receipt_id:
+      "midnight-oil-test-final-artifact-publish-plan",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    run_id: "midnight-oil-test",
+    status: "blocked_operator_archive_handoff_package_delivery_audit_unimplemented",
+    adapter_key: "operator_archive_handoff_package_delivery_audit",
+    planned_operator_archive_handoff_package_delivery_audit_receipt_id:
+      "midnight-oil-test-operator-archive-handoff-package-delivery-audit-receipt",
+    planned_operator_archive_package_delivery_audit_entry_id:
+      "midnight-oil-test-operator-archive-package-delivery-audit-entry",
+    planned_operator_archive_manifest_delivery_audit_entry_id:
+      "midnight-oil-test-operator-archive-manifest-delivery-audit-entry",
+    planned_operator_handoff_bundle_delivery_audit_entry_id:
+      "midnight-oil-test-operator-handoff-bundle-delivery-audit-entry",
+    planned_operator_archive_delivery_audit_evidence_bundle_id:
+      "midnight-oil-test-operator-archive-delivery-audit-evidence-bundle",
+    planned_operator_archive_handoff_package_result_reconciliation_receipt_id:
+      "midnight-oil-test-operator-archive-handoff-package-result-reconciliation-receipt",
+    planned_operator_archive_package_result_entry_id:
+      "midnight-oil-test-operator-archive-package-result-entry",
+    planned_operator_archive_manifest_status_entry_id:
+      "midnight-oil-test-operator-archive-manifest-status-entry",
+    planned_operator_handoff_bundle_status_entry_id:
+      "midnight-oil-test-operator-handoff-bundle-status-entry",
+    planned_operator_archive_handoff_package_receipt_id:
+      "midnight-oil-test-operator-archive-handoff-package-receipt",
+    planned_operator_archive_package_id:
+      "midnight-oil-test-operator-archive-package",
+    planned_operator_archive_manifest_id:
+      "midnight-oil-test-operator-archive-manifest",
+    planned_operator_handoff_bundle_id:
+      "midnight-oil-test-operator-handoff-bundle",
+    planned_final_closeout_archive_reconciliation_receipt_id:
+      "midnight-oil-test-final-closeout-archive-reconciliation-receipt",
+    planned_artifact_archive_manifest_id:
+      "midnight-oil-test-final-artifact-archive-manifest",
+    planned_operator_handoff_summary_id:
+      "midnight-oil-test-operator-handoff-summary",
+    operator_archive_handoff_package_delivery_audit_blockers: [
+      "operator archive handoff package delivery audit receipt writer",
+      "operator archive package delivery audit entry writer",
+      "operator archive manifest delivery audit entry writer",
+      "operator handoff bundle delivery audit entry writer",
+      "operator archive delivery audit evidence bundle writer",
+      "operator archive delivery audit replay guard",
+    ],
+    required_operator_archive_handoff_package_delivery_audit_invariants: [
+      "operator archive handoff package delivery audit planner must require package result reconciliation planning before delivery audit rows can be planned",
+    ],
+    required_operator_archive_handoff_package_delivery_audit_receipt_fields: [
+      "operator_archive_handoff_package_delivery_audit_plan_receipt_id",
+      "operator_archive_handoff_package_result_reconciliation_plan_receipt_id",
+      "operator_archive_handoff_package_delivery_audit_receipt_id",
+      "operator_archive_package_delivery_audit_entry_id",
+      "operator_archive_manifest_delivery_audit_entry_id",
+      "operator_handoff_bundle_delivery_audit_entry_id",
+      "operator_archive_delivery_audit_evidence_bundle_id",
+    ],
+    blocker_reason: "operator_archive_handoff_package_delivery_audit_unimplemented",
+    operator_archive_handoff_package_delivery_audit_allowed: false,
+    operator_archive_package_delivery_audit_entry_created: false,
+    operator_archive_manifest_delivery_audit_entry_created: false,
+    operator_handoff_bundle_delivery_audit_entry_created: false,
+    operator_archive_delivery_audit_evidence_bundle_created: false,
+    operator_archive_handoff_package_result_reconciliation_allowed: false,
+    operator_archive_package_result_entry_created: false,
+    operator_archive_manifest_status_entry_created: false,
+    operator_handoff_bundle_status_entry_created: false,
+    operator_archive_handoff_package_allowed: false,
+    operator_archive_package_created: false,
+    operator_archive_manifest_created: false,
+    operator_handoff_bundle_created: false,
+    final_closeout_archive_reconciliation_allowed: false,
+    final_run_closure_receipt_reconciled: false,
+    run_closeout_record_reconciled: false,
+    artifact_archive_manifest_reconciled: false,
+    operator_handoff_summary_reconciled: false,
+    quality_attestation_reconciled: false,
+    completion_audit_entry_reconciled: false,
+    retention_billing_reconciliation_allowed: false,
+    adapter_plan_notes: [
+      "operator archive handoff package delivery audit plan only: no package delivery audit entry, archive manifest delivery audit entry, handoff bundle delivery audit entry, evidence bundle, package result entry, archive manifest status entry, handoff bundle status entry, operator archive package, operator archive manifest, handoff bundle, notification, URL activation, or final artifact is created",
+    ],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -8100,6 +8213,93 @@ describe("MidnightOil", () => {
     ).toBeGreaterThan(0);
     expect(
       screen.getAllByText(/operator_handoff_bundle_status_entry_id/).length,
+    ).toBeGreaterThan(0);
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Operator archive package delivery audit plan",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(operatorArchiveHandoffPackageDeliveryAuditPlanMidnightOil).toHaveBeenCalled(),
+    );
+    expect(operatorArchiveHandoffPackageDeliveryAuditPlanMidnightOil).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operator_archive_handoff_package_result_reconciliation_plan_receipt:
+          expect.objectContaining({
+            receipt_id:
+              "midnight-oil-test-operator-archive-handoff-package-result-reconciliation-plan",
+          }),
+        operator_archive_handoff_package_plan_receipt:
+          expect.objectContaining({
+            receipt_id: "midnight-oil-test-operator-archive-handoff-package-plan",
+          }),
+      }),
+    );
+    expect(
+      screen.getByText("Operator archive package delivery audit receipt"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-handoff-package-delivery-audit-plan",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "blocked operator archive handoff package delivery audit unimplemented",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-handoff-package-delivery-audit-receipt",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-operator-archive-package-delivery-audit-entry"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-operator-archive-manifest-delivery-audit-entry"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-operator-handoff-bundle-delivery-audit-entry"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-operator-archive-delivery-audit-evidence-bundle"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "operator archive handoff package delivery audit planner must require package result reconciliation planning before delivery audit rows can be planned",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/Operator archive package delivery audit blockers:/),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/operator archive package delivery audit entry writer/),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/operator archive manifest delivery audit entry writer/),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/operator handoff bundle delivery audit entry writer/),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/operator archive delivery audit evidence bundle writer/),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/Operator archive package delivery audit receipt fields:/),
+    ).toBeTruthy();
+    expect(
+      screen.getAllByText(/operator_archive_package_delivery_audit_entry_id/).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/operator_archive_manifest_delivery_audit_entry_id/)
+        .length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/operator_archive_delivery_audit_evidence_bundle_id/)
+        .length,
     ).toBeGreaterThan(0);
   }, 15000);
 });
