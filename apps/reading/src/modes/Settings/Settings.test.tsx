@@ -1106,6 +1106,25 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("notdiamond-advisory-html").innerHTML).toMatch(
       /authority|REJECT/i,
     );
+    // Residual (aez): L7 gate matrix + prep (never-router posture).
+    expect(screen.getByTestId("notdiamond-live-l7-prep").getAttribute("data-dual-gate")).toBe(
+      "L7",
+    );
+    expect(
+      screen.getByTestId("notdiamond-live-l7-checklist-link").getAttribute("href") || "",
+    ).toMatch(/#l7-notdiamond/);
+    const l7 = screen.getByTestId("notdiamond-live-l7-gate-matrix");
+    expect(l7.getAttribute("data-l7-advisory-only")).toBe("true");
+    expect(l7.getAttribute("data-l7-is-dispatch-authority")).toBe("false");
+    expect(l7.getAttribute("data-l7-authority-rejected")).toBe("true");
+    expect(l7.getAttribute("data-l7-advisory-allowed")).toBe("true");
+    expect(l7.getAttribute("data-l7-never-router-posture")).toBe("true");
+    expect(l7.textContent).toMatch(/L7 gate matrix/i);
+    expect(
+      screen
+        .getByTestId("notdiamond-advisory-panel")
+        .getAttribute("data-l7-never-router-posture"),
+    ).toBe("true");
     // Residual (rl): advisory vs installed driver delta (no driver by default).
     expect(
       screen.getByTestId("notdiamond-advisory-panel").getAttribute("data-advisory-only"),

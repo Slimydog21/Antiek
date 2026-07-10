@@ -2368,3 +2368,8 @@ and session complete → Write note-taker path honesty. vitest 15 green.
 Full matrix of Open Write path honesty closed (DR→merge→host→marketplace→MO→
 collective→context→evidence→twins→progress/flywheel) + dogfood v14. Pivot aez+
 outside path thrash. P0 operator merge PR #465.
+
+## Residual aez · 2026-07-10 — Settings L7 ND never-router gate matrix
+NotDiamond advisory panel gains L7 gate matrix (advisory_allowed · authority_rejected
+· is_dispatch_authority · never_router_posture) parity with L1–L4. Router remains
+forever REJECT; install-as-driver stays explicit. vitest Settings 36 green.

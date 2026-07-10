@@ -2040,12 +2040,52 @@ export default function Settings() {
             data-kill-switch={nd?.kill_switch_enabled ? "on" : "off"}
             data-suggestion-week={nd?.suggestion_week_id || leaderboardWeek || ""}
             data-driver-delta={ndDriverDelta.status}
+            // Residual (aez): L7 never-router posture (parity L1–L4 gate matrices).
+            data-l7-never-router-posture={
+              nd
+                ? String(
+                    nd.authority_rejected === true &&
+                      nd.notdiamond_is_dispatch_authority !== true &&
+                      nd.advisory_allowed === true,
+                  )
+                : undefined
+            }
+            data-l7-advisory-only="true"
           >
             <p className="text-sm text-ink dark:text-bright">
               Campaign verdict: advisory GO (measured wedge only); authoritative
               dispatch REJECT under §16. NotDiamond is never the dispatch owner
               — decision-tree + Hermes remain primary.
             </p>
+            {/* Residual (aez): L7 dual-gate prep + gate matrix (never enables router). */}
+            <div
+              className="flex flex-wrap items-center gap-2 text-[11px]"
+              data-testid="notdiamond-live-l7-prep"
+              data-dual-gate="L7"
+              data-l7-advisory-only="true"
+              role="navigation"
+              aria-label="L7 NotDiamond advisory dual-gate prep"
+            >
+              <a
+                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l7-notdiamond"
+                className="underline opacity-80 hover:opacity-100"
+                data-testid="notdiamond-live-l7-checklist-link"
+                title="L7 NotDiamond never-router checklist (advisory only forever)"
+              >
+                Dual-gate L7 checklist
+              </a>
+              <span className="opacity-40" aria-hidden>
+                ·
+              </span>
+              <a
+                href="#antiek-bench-leaderboard"
+                className="underline opacity-80 hover:opacity-100"
+                data-testid="notdiamond-live-l7-leaderboard-link"
+                title="Weekly leaderboard feeds advisory suggestion (never auto-routes)"
+              >
+                Weekly leaderboard
+              </a>
+            </div>
             {/* Residual (he): weekly advisory refresh tied to leaderboard week. */}
             <div className="flex flex-wrap items-center gap-2">
               <label className="text-[11px] font-mono text-ink-soft dark:text-starlight">
@@ -2078,6 +2118,46 @@ export default function Settings() {
                 className="font-mono text-[13px] space-y-2"
                 data-testid="notdiamond-advisory-summary"
               >
+                {/* Residual (aez): L7 gate matrix — never-router posture honesty. */}
+                <p
+                  className="text-[11px] font-mono opacity-90"
+                  data-testid="notdiamond-live-l7-gate-matrix"
+                  data-l7-advisory-allowed={String(nd.advisory_allowed === true)}
+                  data-l7-authority-rejected={String(
+                    nd.authority_rejected === true,
+                  )}
+                  data-l7-is-dispatch-authority={String(
+                    nd.notdiamond_is_dispatch_authority === true,
+                  )}
+                  data-l7-kill-switch={
+                    nd.kill_switch_enabled ? "on" : "off"
+                  }
+                  data-l7-advisory-only="true"
+                  data-l7-never-router-posture={String(
+                    nd.authority_rejected === true &&
+                      nd.notdiamond_is_dispatch_authority !== true &&
+                      nd.advisory_allowed === true,
+                  )}
+                  role="status"
+                >
+                  L7 gate matrix: advisory_allowed=
+                  {nd.advisory_allowed === true ? "true" : "false"} ·
+                  authority_rejected=
+                  {nd.authority_rejected === true ? "true" : "false"} ·
+                  is_dispatch_authority=
+                  {nd.notdiamond_is_dispatch_authority === true
+                    ? "true"
+                    : "false"}{" "}
+                  · kill_switch=
+                  {nd.kill_switch_enabled ? "on" : "off"} · never_router_posture=
+                  {nd.authority_rejected === true &&
+                  nd.notdiamond_is_dispatch_authority !== true &&
+                  nd.advisory_allowed === true
+                    ? "true"
+                    : "false"}{" "}
+                  (advisory GO + authority REJECT + never dispatch · install
+                  remains explicit)
+                </p>
                 <Row
                   label="Advisory"
                   value={`${nd.advisory_verdict} (allowed=${String(nd.advisory_allowed)})`}
