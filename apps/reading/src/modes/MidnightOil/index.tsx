@@ -21,6 +21,7 @@ import {
   preflightMidnightOil,
   providerExecutorAdapterPlanMidnightOil,
   providerRouteMidnightOil,
+  repositoryTransactionPlanMidnightOil,
   retrievalAdapterPlanMidnightOil,
   retrievalMidnightOil,
   runnerControlPlanMidnightOil,
@@ -49,6 +50,7 @@ import {
   type MidnightOilPreflight,
   type MidnightOilProviderExecutorAdapterPlanReceipt,
   type MidnightOilProviderRouteReceipt,
+  type MidnightOilRepositoryTransactionPlanReceipt,
   type MidnightOilRetrievalAdapterPlanReceipt,
   type MidnightOilRetrievalReceipt,
   type MidnightOilRunnerControlPlanReceipt,
@@ -145,6 +147,8 @@ export default function MidnightOil() {
     useState<MidnightOilSchedulerLeaseRetryPlanReceipt | null>(null);
   const [workerQueueClaimPlanReceipt, setWorkerQueueClaimPlanReceipt] =
     useState<MidnightOilWorkerQueueClaimPlanReceipt | null>(null);
+  const [repositoryTransactionPlanReceipt, setRepositoryTransactionPlanReceipt] =
+    useState<MidnightOilRepositoryTransactionPlanReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -182,6 +186,7 @@ export default function MidnightOil() {
     useState(false);
   const [schedulerLeaseRetryPlanBusy, setSchedulerLeaseRetryPlanBusy] = useState(false);
   const [workerQueueClaimPlanBusy, setWorkerQueueClaimPlanBusy] = useState(false);
+  const [repositoryTransactionPlanBusy, setRepositoryTransactionPlanBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
   const [liveSettingsError, setLiveSettingsError] = useState<string | null>(null);
@@ -229,10 +234,18 @@ export default function MidnightOil() {
   const [schedulerLeaseRetryPlanError, setSchedulerLeaseRetryPlanError] =
     useState<string | null>(null);
   const [workerQueueClaimPlanError, setWorkerQueueClaimPlanError] = useState<string | null>(null);
+  const [repositoryTransactionPlanError, setRepositoryTransactionPlanError] =
+    useState<string | null>(null);
+
+  function clearRepositoryTransactionPlan() {
+    setRepositoryTransactionPlanError(null);
+    setRepositoryTransactionPlanReceipt(null);
+  }
 
   function clearWorkerQueueClaimPlan() {
     setWorkerQueueClaimPlanError(null);
     setWorkerQueueClaimPlanReceipt(null);
+    clearRepositoryTransactionPlan();
   }
 
   function clearSchedulerLeaseRetryPlan() {
@@ -1618,6 +1631,7 @@ export default function MidnightOil() {
     setWorkerQueueClaimPlanBusy(true);
     setWorkerQueueClaimPlanError(null);
     setWorkerQueueClaimPlanReceipt(null);
+    clearRepositoryTransactionPlan();
     try {
       const result = await workerQueueClaimPlanMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -1647,6 +1661,71 @@ export default function MidnightOil() {
       setWorkerQueueClaimPlanError(e instanceof Error ? e.message : String(e));
     } finally {
       setWorkerQueueClaimPlanBusy(false);
+    }
+  }
+
+  async function onRepositoryTransactionPlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerControlPlanReceipt ||
+      !budgetProviderAdapterPlanReceipt ||
+      !providerExecutorAdapterPlanReceipt ||
+      !retrievalAdapterPlanReceipt ||
+      !graphAdapterPlanReceipt ||
+      !finalArtifactAdapterPlanReceipt ||
+      !operatorDispatchAdapterPlanReceipt ||
+      !controlLedgerAdapterPlanReceipt ||
+      !controlLedgerPersistencePlanReceipt ||
+      !controlLedgerPersistenceApplyPlanReceipt ||
+      !operatorDispatchActivationReadinessPlanReceipt ||
+      !liveDispatchFinalEnablementPlanReceipt ||
+      !liveDispatchFinalEnablementApplyPlanReceipt ||
+      !runnerDispatchSchedulerPlanReceipt ||
+      !runnerDispatchWorkerBootstrapPlanReceipt ||
+      !schedulerLeaseRetryPlanReceipt ||
+      !workerQueueClaimPlanReceipt
+    ) {
+      setRepositoryTransactionPlanError(
+        "Repository transaction plan requires launch packet, approval receipt, runner handoff, runner control plan receipt, budget provider adapter plan receipt, provider executor adapter plan receipt, retrieval adapter plan receipt, graph adapter plan receipt, final artifact adapter plan receipt, operator dispatch adapter plan receipt, control ledger adapter plan receipt, control ledger persistence plan receipt, control ledger persistence apply plan receipt, operator dispatch activation readiness plan receipt, live dispatch final enablement plan receipt, live dispatch final enablement apply plan receipt, runner dispatch scheduler plan receipt, runner dispatch worker bootstrap plan receipt, scheduler lease retry plan receipt, and worker queue claim plan receipt.",
+      );
+      return;
+    }
+
+    setRepositoryTransactionPlanBusy(true);
+    setRepositoryTransactionPlanError(null);
+    setRepositoryTransactionPlanReceipt(null);
+    try {
+      const result = await repositoryTransactionPlanMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        runner_control_plan_receipt: runnerControlPlanReceipt,
+        budget_provider_adapter_plan_receipt: budgetProviderAdapterPlanReceipt,
+        provider_executor_adapter_plan_receipt: providerExecutorAdapterPlanReceipt,
+        retrieval_adapter_plan_receipt: retrievalAdapterPlanReceipt,
+        graph_adapter_plan_receipt: graphAdapterPlanReceipt,
+        final_artifact_adapter_plan_receipt: finalArtifactAdapterPlanReceipt,
+        operator_dispatch_adapter_plan_receipt: operatorDispatchAdapterPlanReceipt,
+        control_ledger_adapter_plan_receipt: controlLedgerAdapterPlanReceipt,
+        control_ledger_persistence_plan_receipt: controlLedgerPersistencePlanReceipt,
+        control_ledger_persistence_apply_plan_receipt: controlLedgerPersistenceApplyPlanReceipt,
+        operator_dispatch_activation_readiness_plan_receipt:
+          operatorDispatchActivationReadinessPlanReceipt,
+        live_dispatch_final_enablement_plan_receipt: liveDispatchFinalEnablementPlanReceipt,
+        live_dispatch_final_enablement_apply_plan_receipt:
+          liveDispatchFinalEnablementApplyPlanReceipt,
+        runner_dispatch_scheduler_plan_receipt: runnerDispatchSchedulerPlanReceipt,
+        runner_dispatch_worker_bootstrap_plan_receipt: runnerDispatchWorkerBootstrapPlanReceipt,
+        scheduler_lease_retry_plan_receipt: schedulerLeaseRetryPlanReceipt,
+        worker_queue_claim_plan_receipt: workerQueueClaimPlanReceipt,
+      });
+      setRepositoryTransactionPlanReceipt(result);
+    } catch (e) {
+      setRepositoryTransactionPlanError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRepositoryTransactionPlanBusy(false);
     }
   }
 
@@ -4669,6 +4748,184 @@ export default function MidnightOil() {
                   <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
                     Queue claim receipt fields:{" "}
                     {workerQueueClaimPlanReceipt.required_queue_claim_receipt_fields.join(", ")}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Repository transaction plan
+                </p>
+                <button
+                  type="button"
+                  onClick={onRepositoryTransactionPlanGate}
+                  disabled={
+                    repositoryTransactionPlanBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !runnerControlPlanReceipt ||
+                    !budgetProviderAdapterPlanReceipt ||
+                    !providerExecutorAdapterPlanReceipt ||
+                    !retrievalAdapterPlanReceipt ||
+                    !graphAdapterPlanReceipt ||
+                    !finalArtifactAdapterPlanReceipt ||
+                    !operatorDispatchAdapterPlanReceipt ||
+                    !controlLedgerAdapterPlanReceipt ||
+                    !controlLedgerPersistencePlanReceipt ||
+                    !controlLedgerPersistenceApplyPlanReceipt ||
+                    !operatorDispatchActivationReadinessPlanReceipt ||
+                    !liveDispatchFinalEnablementPlanReceipt ||
+                    !liveDispatchFinalEnablementApplyPlanReceipt ||
+                    !runnerDispatchSchedulerPlanReceipt ||
+                    !runnerDispatchWorkerBootstrapPlanReceipt ||
+                    !schedulerLeaseRetryPlanReceipt ||
+                    !workerQueueClaimPlanReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {repositoryTransactionPlanBusy
+                    ? "Planning transaction..."
+                    : "Repository transaction plan"}
+                </button>
+              </div>
+
+              {repositoryTransactionPlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {repositoryTransactionPlanError}
+                </p>
+              )}
+
+              {repositoryTransactionPlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Repository transaction receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {repositoryTransactionPlanReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={repositoryTransactionPlanReceipt.status.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Repository tx"
+                      value={
+                        repositoryTransactionPlanReceipt.repository_transaction_allowed
+                          ? "allowed"
+                          : "blocked"
+                      }
+                    />
+                    <Metric
+                      label="Opened"
+                      value={
+                        repositoryTransactionPlanReceipt.repository_transaction_opened
+                          ? "opened"
+                          : "not opened"
+                      }
+                    />
+                    <Metric
+                      label="Committed"
+                      value={
+                        repositoryTransactionPlanReceipt.repository_transaction_committed
+                          ? "committed"
+                          : "not committed"
+                      }
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Queue claim plan"
+                      value={repositoryTransactionPlanReceipt.worker_queue_claim_plan_receipt_id}
+                    />
+                    <Metric
+                      label="Lease retry plan"
+                      value={repositoryTransactionPlanReceipt.scheduler_lease_retry_plan_receipt_id}
+                    />
+                    <Metric
+                      label="Repository tx"
+                      value={repositoryTransactionPlanReceipt.planned_repository_transaction_id}
+                    />
+                    <Metric
+                      label="Scope"
+                      value={repositoryTransactionPlanReceipt.planned_transaction_scope.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                    <Metric
+                      label="Write set"
+                      value={repositoryTransactionPlanReceipt.planned_write_set_id}
+                    />
+                    <Metric label="Lock" value={repositoryTransactionPlanReceipt.planned_lock_id} />
+                    <Metric
+                      label="Commit receipt"
+                      value={repositoryTransactionPlanReceipt.planned_commit_receipt_id}
+                    />
+                    <Metric
+                      label="Rollback receipt"
+                      value={repositoryTransactionPlanReceipt.planned_rollback_receipt_id}
+                    />
+                    <Metric
+                      label="Queue claim"
+                      value={repositoryTransactionPlanReceipt.planned_queue_claim_id}
+                    />
+                    <Metric
+                      label="Claim transaction"
+                      value={repositoryTransactionPlanReceipt.planned_claim_transaction_id}
+                    />
+                    <Metric
+                      label="Lease token"
+                      value={repositoryTransactionPlanReceipt.planned_claim_lease_token_id}
+                    />
+                    <Metric
+                      label="Claim cursor"
+                      value={repositoryTransactionPlanReceipt.planned_claim_cursor_id}
+                    />
+                    <Metric
+                      label="Queue"
+                      value={repositoryTransactionPlanReceipt.planned_queue_id}
+                    />
+                    <Metric
+                      label="Worker"
+                      value={repositoryTransactionPlanReceipt.planned_worker_id}
+                    />
+                    <Metric
+                      label="Worker lease"
+                      value={repositoryTransactionPlanReceipt.planned_worker_lease_id}
+                    />
+                    <Metric
+                      label="Idempotency key"
+                      value={repositoryTransactionPlanReceipt.planned_idempotency_key}
+                    />
+                    <Metric
+                      label="Adapter"
+                      value={repositoryTransactionPlanReceipt.adapter_key.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Blocker"
+                      value={repositoryTransactionPlanReceipt.blocker_reason.replaceAll("_", " ")}
+                    />
+                  </div>
+                  <ul className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {repositoryTransactionPlanReceipt.required_repository_transaction_invariants
+                      .slice(0, 5)
+                      .map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                  </ul>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Repository transaction blockers:{" "}
+                    {repositoryTransactionPlanReceipt.repository_transaction_blockers.join(", ")}
+                  </p>
+                  <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Repository transaction receipt fields:{" "}
+                    {repositoryTransactionPlanReceipt.required_repository_transaction_receipt_fields.join(
+                      ", ",
+                    )}
                   </p>
                 </div>
               )}
