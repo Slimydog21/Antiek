@@ -57,4 +57,3 @@ class ResearchBrief:
             object.__setattr__(self, "budget", BudgetTuple(*self.budget))
         if self.price_ceiling is not None and self.price_ceiling <= 0:
             raise ValueError("price_ceiling must be positive")
-

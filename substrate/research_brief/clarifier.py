@@ -35,4 +35,3 @@ def fold_answers(
         raise ValueError("every clarifying question requires an answer")
     additions = "\n".join(f"{q}: {answers[q].strip()}" for q in questions)
     return replace(brief, scope=f"{brief.scope.rstrip()}\n\nClarifications:\n{additions}")
-

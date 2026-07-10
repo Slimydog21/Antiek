@@ -45,4 +45,3 @@ def run_token(brief: ResearchBrief) -> RunToken:
     if brief.unattended and brief.price_ceiling is None:
         raise ValueError("unattended brief requires a price ceiling")
     return RunToken(brief.brief_id, brief_content_hash(brief))
-

@@ -87,4 +87,3 @@ def parse_html(html: str) -> ResearchBrief:
         unattended=fields["unattended"].strip().lower() == "true",
         state=BriefState(parser.state),
     )
-

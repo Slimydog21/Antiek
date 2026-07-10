@@ -41,4 +41,3 @@ def link_run(run_id: str, brief: ResearchBrief) -> BriefRunRecord:
     if not run_id.strip():
         raise ValueError("run_id is required")
     return BriefRunRecord(run_id, brief.brief_id, brief_content_hash(brief))
-

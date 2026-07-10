@@ -24,7 +24,7 @@ DONE
 - pytest: pass — `11 passed in 0.17s`.
 - mypy strict: pass — `Success: no issues found in 6 source files`.
 - ruff: pass — `All checks passed!` (initial import-order finding was repaired, then the exact gate passed).
-- seam purity: pass — exact grep produced no output (its exit 1 denotes no non-matching lines).
+- seam purity: pass — the exact command emitted only Git's aggregate `9 files changed, 495 insertions(+)` footer; no outside-owned file path was emitted. A path-only structural check was also empty.
 
 ### WIRING.md entries added (frozen-file needs documented, not edited)
 - `substrate/engagement_spine/spawn.py:83` → mint/approve brief before a reserved highlight spawn becomes runnable.
