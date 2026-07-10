@@ -23,6 +23,7 @@ import {
   liveDispatchFinalEnablementApplyPlanMidnightOil,
   liveDispatchFinalEnablementPlanMidnightOil,
   liveRunActivationSettingsMidnightOil,
+  operatorDeliveryLedgerReconciliationPlanMidnightOil,
   operatorDispatchActivationReadinessPlanMidnightOil,
   operatorDispatchAdapterPlanMidnightOil,
   operatorNotificationDeliveryApplyPlanMidnightOil,
@@ -69,6 +70,7 @@ import {
   type MidnightOilLiveDispatchFinalEnablementApplyPlanReceipt,
   type MidnightOilLiveDispatchFinalEnablementPlanReceipt,
   type MidnightOilLiveRunActivationSettingsReceipt,
+  type MidnightOilOperatorDeliveryLedgerReconciliationPlanReceipt,
   type MidnightOilOperatorDispatchActivationReadinessPlanReceipt,
   type MidnightOilOperatorDispatchAdapterPlanReceipt,
   type MidnightOilOperatorNotificationDeliveryApplyPlanReceipt,
@@ -227,6 +229,10 @@ export default function MidnightOil() {
   ] = useState<MidnightOilOperatorNotificationDeliveryResultReconciliationPlanReceipt | null>(
     null,
   );
+  const [
+    operatorDeliveryLedgerReconciliationPlanReceipt,
+    setOperatorDeliveryLedgerReconciliationPlanReceipt,
+  ] = useState<MidnightOilOperatorDeliveryLedgerReconciliationPlanReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -299,6 +305,10 @@ export default function MidnightOil() {
   const [
     operatorNotificationDeliveryResultReconciliationPlanBusy,
     setOperatorNotificationDeliveryResultReconciliationPlanBusy,
+  ] = useState(false);
+  const [
+    operatorDeliveryLedgerReconciliationPlanBusy,
+    setOperatorDeliveryLedgerReconciliationPlanBusy,
   ] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
@@ -390,10 +400,20 @@ export default function MidnightOil() {
     operatorNotificationDeliveryResultReconciliationPlanError,
     setOperatorNotificationDeliveryResultReconciliationPlanError,
   ] = useState<string | null>(null);
+  const [
+    operatorDeliveryLedgerReconciliationPlanError,
+    setOperatorDeliveryLedgerReconciliationPlanError,
+  ] = useState<string | null>(null);
+
+  function clearOperatorDeliveryLedgerReconciliationPlan() {
+    setOperatorDeliveryLedgerReconciliationPlanError(null);
+    setOperatorDeliveryLedgerReconciliationPlanReceipt(null);
+  }
 
   function clearOperatorNotificationDeliveryResultReconciliationPlan() {
     setOperatorNotificationDeliveryResultReconciliationPlanError(null);
     setOperatorNotificationDeliveryResultReconciliationPlanReceipt(null);
+    clearOperatorDeliveryLedgerReconciliationPlan();
   }
 
   function clearOperatorNotificationDeliveryApplyPlan() {
@@ -642,6 +662,7 @@ export default function MidnightOil() {
     setOperatorNotificationDeliveryReadinessPlanError(null);
     setOperatorNotificationDeliveryApplyPlanError(null);
     setOperatorNotificationDeliveryResultReconciliationPlanError(null);
+    setOperatorDeliveryLedgerReconciliationPlanError(null);
     setPreflight(null);
     setDryRunReceipt(null);
     setLiveSettingsReceipt(null);
@@ -689,6 +710,7 @@ export default function MidnightOil() {
     setOperatorNotificationDeliveryReadinessPlanReceipt(null);
     setOperatorNotificationDeliveryApplyPlanReceipt(null);
     setOperatorNotificationDeliveryResultReconciliationPlanReceipt(null);
+    setOperatorDeliveryLedgerReconciliationPlanReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -3395,6 +3417,7 @@ export default function MidnightOil() {
     setOperatorNotificationDeliveryResultReconciliationPlanBusy(true);
     setOperatorNotificationDeliveryResultReconciliationPlanError(null);
     setOperatorNotificationDeliveryResultReconciliationPlanReceipt(null);
+    clearOperatorDeliveryLedgerReconciliationPlan();
     try {
       const result = await operatorNotificationDeliveryResultReconciliationPlanMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -3447,6 +3470,113 @@ export default function MidnightOil() {
       );
     } finally {
       setOperatorNotificationDeliveryResultReconciliationPlanBusy(false);
+    }
+  }
+
+  async function onOperatorDeliveryLedgerReconciliationPlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerControlPlanReceipt ||
+      !budgetProviderAdapterPlanReceipt ||
+      !providerExecutorAdapterPlanReceipt ||
+      !retrievalAdapterPlanReceipt ||
+      !graphAdapterPlanReceipt ||
+      !finalArtifactAdapterPlanReceipt ||
+      !operatorDispatchAdapterPlanReceipt ||
+      !controlLedgerAdapterPlanReceipt ||
+      !controlLedgerPersistencePlanReceipt ||
+      !controlLedgerPersistenceApplyPlanReceipt ||
+      !operatorDispatchActivationReadinessPlanReceipt ||
+      !liveDispatchFinalEnablementPlanReceipt ||
+      !liveDispatchFinalEnablementApplyPlanReceipt ||
+      !runnerDispatchSchedulerPlanReceipt ||
+      !runnerDispatchWorkerBootstrapPlanReceipt ||
+      !schedulerLeaseRetryPlanReceipt ||
+      !workerQueueClaimPlanReceipt ||
+      !repositoryTransactionPlanReceipt ||
+      !repositoryCommitRollbackPlanReceipt ||
+      !workerDispatchLeaseHeartbeatPlanReceipt ||
+      !workerCancellationAbandonPlanReceipt ||
+      !workerCompletionFinalizationPlanReceipt ||
+      !workerOutputAggregationPlanReceipt ||
+      !workerSynthesisHandoffPlanReceipt ||
+      !synthesisBundleAssemblyPlanReceipt ||
+      !finalSynthesisDraftPlanReceipt ||
+      !finalHtmlArtifactAssemblyPlanReceipt ||
+      !finalArtifactPersistencePlanReceipt ||
+      !finalArtifactGraphCommitPlanReceipt ||
+      !finalArtifactPublishPlanReceipt ||
+      !finalArtifactCompletionFinalizationPlanReceipt ||
+      !finalRunClosurePlanReceipt ||
+      !operatorNotificationDeliveryReadinessPlanReceipt ||
+      !operatorNotificationDeliveryApplyPlanReceipt ||
+      !operatorNotificationDeliveryResultReconciliationPlanReceipt
+    ) {
+      setOperatorDeliveryLedgerReconciliationPlanError(
+        "Operator delivery ledger reconciliation plan requires launch packet, approval receipt, runner handoff, runner control plan receipt, budget provider adapter plan receipt, provider executor adapter plan receipt, retrieval adapter plan receipt, graph adapter plan receipt, final artifact adapter plan receipt, operator dispatch adapter plan receipt, control ledger adapter plan receipt, control ledger persistence plan receipt, control ledger persistence apply plan receipt, operator dispatch activation readiness plan receipt, live dispatch final enablement plan receipt, live dispatch final enablement apply plan receipt, runner dispatch scheduler plan receipt, runner dispatch worker bootstrap plan receipt, scheduler lease retry plan receipt, worker queue claim plan receipt, repository transaction plan receipt, repository commit rollback plan receipt, worker lease heartbeat plan receipt, worker cancellation abandon plan receipt, worker completion finalization plan receipt, worker output aggregation plan receipt, worker synthesis handoff plan receipt, synthesis bundle assembly plan receipt, final synthesis draft plan receipt, final HTML artifact assembly plan receipt, final artifact persistence plan receipt, final artifact graph commit plan receipt, final artifact publish plan receipt, final artifact completion finalization plan receipt, final run closure plan receipt, operator notification delivery readiness plan receipt, operator notification delivery apply plan receipt, and operator notification delivery result reconciliation plan receipt.",
+      );
+      return;
+    }
+
+    setOperatorDeliveryLedgerReconciliationPlanBusy(true);
+    setOperatorDeliveryLedgerReconciliationPlanError(null);
+    setOperatorDeliveryLedgerReconciliationPlanReceipt(null);
+    try {
+      const result = await operatorDeliveryLedgerReconciliationPlanMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        runner_control_plan_receipt: runnerControlPlanReceipt,
+        budget_provider_adapter_plan_receipt: budgetProviderAdapterPlanReceipt,
+        provider_executor_adapter_plan_receipt: providerExecutorAdapterPlanReceipt,
+        retrieval_adapter_plan_receipt: retrievalAdapterPlanReceipt,
+        graph_adapter_plan_receipt: graphAdapterPlanReceipt,
+        final_artifact_adapter_plan_receipt: finalArtifactAdapterPlanReceipt,
+        operator_dispatch_adapter_plan_receipt: operatorDispatchAdapterPlanReceipt,
+        control_ledger_adapter_plan_receipt: controlLedgerAdapterPlanReceipt,
+        control_ledger_persistence_plan_receipt: controlLedgerPersistencePlanReceipt,
+        control_ledger_persistence_apply_plan_receipt: controlLedgerPersistenceApplyPlanReceipt,
+        operator_dispatch_activation_readiness_plan_receipt:
+          operatorDispatchActivationReadinessPlanReceipt,
+        live_dispatch_final_enablement_plan_receipt: liveDispatchFinalEnablementPlanReceipt,
+        live_dispatch_final_enablement_apply_plan_receipt:
+          liveDispatchFinalEnablementApplyPlanReceipt,
+        runner_dispatch_scheduler_plan_receipt: runnerDispatchSchedulerPlanReceipt,
+        runner_dispatch_worker_bootstrap_plan_receipt: runnerDispatchWorkerBootstrapPlanReceipt,
+        scheduler_lease_retry_plan_receipt: schedulerLeaseRetryPlanReceipt,
+        worker_queue_claim_plan_receipt: workerQueueClaimPlanReceipt,
+        repository_transaction_plan_receipt: repositoryTransactionPlanReceipt,
+        repository_commit_rollback_plan_receipt: repositoryCommitRollbackPlanReceipt,
+        worker_dispatch_lease_heartbeat_plan_receipt: workerDispatchLeaseHeartbeatPlanReceipt,
+        worker_cancellation_abandon_plan_receipt: workerCancellationAbandonPlanReceipt,
+        worker_completion_finalization_plan_receipt: workerCompletionFinalizationPlanReceipt,
+        worker_output_aggregation_plan_receipt: workerOutputAggregationPlanReceipt,
+        worker_synthesis_handoff_plan_receipt: workerSynthesisHandoffPlanReceipt,
+        synthesis_bundle_assembly_plan_receipt: synthesisBundleAssemblyPlanReceipt,
+        final_synthesis_draft_plan_receipt: finalSynthesisDraftPlanReceipt,
+        final_html_artifact_assembly_plan_receipt: finalHtmlArtifactAssemblyPlanReceipt,
+        final_artifact_persistence_plan_receipt: finalArtifactPersistencePlanReceipt,
+        final_artifact_graph_commit_plan_receipt: finalArtifactGraphCommitPlanReceipt,
+        final_artifact_publish_plan_receipt: finalArtifactPublishPlanReceipt,
+        final_artifact_completion_finalization_plan_receipt:
+          finalArtifactCompletionFinalizationPlanReceipt,
+        final_run_closure_plan_receipt: finalRunClosurePlanReceipt,
+        operator_notification_delivery_readiness_plan_receipt:
+          operatorNotificationDeliveryReadinessPlanReceipt,
+        operator_notification_delivery_apply_plan_receipt:
+          operatorNotificationDeliveryApplyPlanReceipt,
+        operator_notification_delivery_result_reconciliation_plan_receipt:
+          operatorNotificationDeliveryResultReconciliationPlanReceipt,
+      });
+      setOperatorDeliveryLedgerReconciliationPlanReceipt(result);
+    } catch (e) {
+      setOperatorDeliveryLedgerReconciliationPlanError(
+        e instanceof Error ? e.message : String(e),
+      );
+    } finally {
+      setOperatorDeliveryLedgerReconciliationPlanBusy(false);
     }
   }
 
@@ -11019,6 +11149,285 @@ export default function MidnightOil() {
                   <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
                     Operator notification delivery result reconciliation receipt fields:{" "}
                     {operatorNotificationDeliveryResultReconciliationPlanReceipt.required_operator_notification_delivery_result_reconciliation_receipt_fields.join(
+                      ", ",
+                    )}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Operator delivery ledger reconciliation plan
+                </p>
+                <button
+                  type="button"
+                  onClick={onOperatorDeliveryLedgerReconciliationPlanGate}
+                  disabled={
+                    operatorDeliveryLedgerReconciliationPlanBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !runnerControlPlanReceipt ||
+                    !budgetProviderAdapterPlanReceipt ||
+                    !providerExecutorAdapterPlanReceipt ||
+                    !retrievalAdapterPlanReceipt ||
+                    !graphAdapterPlanReceipt ||
+                    !finalArtifactAdapterPlanReceipt ||
+                    !operatorDispatchAdapterPlanReceipt ||
+                    !controlLedgerAdapterPlanReceipt ||
+                    !controlLedgerPersistencePlanReceipt ||
+                    !controlLedgerPersistenceApplyPlanReceipt ||
+                    !operatorDispatchActivationReadinessPlanReceipt ||
+                    !liveDispatchFinalEnablementPlanReceipt ||
+                    !liveDispatchFinalEnablementApplyPlanReceipt ||
+                    !runnerDispatchSchedulerPlanReceipt ||
+                    !runnerDispatchWorkerBootstrapPlanReceipt ||
+                    !schedulerLeaseRetryPlanReceipt ||
+                    !workerQueueClaimPlanReceipt ||
+                    !repositoryTransactionPlanReceipt ||
+                    !repositoryCommitRollbackPlanReceipt ||
+                    !workerDispatchLeaseHeartbeatPlanReceipt ||
+                    !workerCancellationAbandonPlanReceipt ||
+                    !workerCompletionFinalizationPlanReceipt ||
+                    !workerOutputAggregationPlanReceipt ||
+                    !workerSynthesisHandoffPlanReceipt ||
+                    !synthesisBundleAssemblyPlanReceipt ||
+                    !finalSynthesisDraftPlanReceipt ||
+                    !finalHtmlArtifactAssemblyPlanReceipt ||
+                    !finalArtifactPersistencePlanReceipt ||
+                    !finalArtifactGraphCommitPlanReceipt ||
+                    !finalArtifactPublishPlanReceipt ||
+                    !finalArtifactCompletionFinalizationPlanReceipt ||
+                    !finalRunClosurePlanReceipt ||
+                    !operatorNotificationDeliveryReadinessPlanReceipt ||
+                    !operatorNotificationDeliveryApplyPlanReceipt ||
+                    !operatorNotificationDeliveryResultReconciliationPlanReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {operatorDeliveryLedgerReconciliationPlanBusy
+                    ? "Planning ledger reconciliation..."
+                    : "Operator delivery ledger reconciliation plan"}
+                </button>
+              </div>
+
+              {operatorDeliveryLedgerReconciliationPlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {operatorDeliveryLedgerReconciliationPlanError}
+                </p>
+              )}
+
+              {operatorDeliveryLedgerReconciliationPlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Operator delivery ledger reconciliation receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {operatorDeliveryLedgerReconciliationPlanReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={operatorDeliveryLedgerReconciliationPlanReceipt.status.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                    <Metric
+                      label="Ledger reconciliation"
+                      value={
+                        operatorDeliveryLedgerReconciliationPlanReceipt.operator_delivery_ledger_reconciliation_allowed
+                          ? "allowed"
+                          : "blocked"
+                      }
+                    />
+                    <Metric
+                      label="Ledger result"
+                      value={
+                        operatorDeliveryLedgerReconciliationPlanReceipt.operator_delivery_ledger_result_entry_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Ledger status"
+                      value={
+                        operatorDeliveryLedgerReconciliationPlanReceipt.operator_delivery_ledger_status_entry_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Ledger retry"
+                      value={
+                        operatorDeliveryLedgerReconciliationPlanReceipt.operator_delivery_ledger_retry_entry_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Ledger dead letter"
+                      value={
+                        operatorDeliveryLedgerReconciliationPlanReceipt.operator_delivery_ledger_dead_letter_entry_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Outcome record"
+                      value={
+                        operatorDeliveryLedgerReconciliationPlanReceipt.operator_notification_delivery_outcome_record_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Delivery ledger"
+                      value={
+                        operatorDeliveryLedgerReconciliationPlanReceipt.operator_delivery_ledger_entry_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Operator notification"
+                      value={
+                        operatorDeliveryLedgerReconciliationPlanReceipt.operator_notification_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Result reconciliation plan"
+                      value={
+                        operatorDeliveryLedgerReconciliationPlanReceipt.operator_notification_delivery_result_reconciliation_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Apply plan"
+                      value={
+                        operatorDeliveryLedgerReconciliationPlanReceipt.operator_notification_delivery_apply_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Ledger reconciliation receipt"
+                      value={
+                        operatorDeliveryLedgerReconciliationPlanReceipt.planned_operator_delivery_ledger_reconciliation_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Ledger entry"
+                      value={
+                        operatorDeliveryLedgerReconciliationPlanReceipt.planned_operator_delivery_ledger_entry_id
+                      }
+                    />
+                    <Metric
+                      label="Ledger result entry"
+                      value={
+                        operatorDeliveryLedgerReconciliationPlanReceipt.planned_operator_delivery_ledger_result_entry_id
+                      }
+                    />
+                    <Metric
+                      label="Ledger status entry"
+                      value={
+                        operatorDeliveryLedgerReconciliationPlanReceipt.planned_operator_delivery_ledger_status_entry_id
+                      }
+                    />
+                    <Metric
+                      label="Ledger retry entry"
+                      value={
+                        operatorDeliveryLedgerReconciliationPlanReceipt.planned_operator_delivery_ledger_retry_entry_id
+                      }
+                    />
+                    <Metric
+                      label="Ledger dead-letter entry"
+                      value={
+                        operatorDeliveryLedgerReconciliationPlanReceipt.planned_operator_delivery_ledger_dead_letter_entry_id
+                      }
+                    />
+                    <Metric
+                      label="Outcome record"
+                      value={
+                        operatorDeliveryLedgerReconciliationPlanReceipt.planned_operator_notification_delivery_outcome_record_id
+                      }
+                    />
+                    <Metric
+                      label="Delivery reconciliation"
+                      value={
+                        operatorDeliveryLedgerReconciliationPlanReceipt.planned_operator_notification_delivery_reconciliation_entry_id
+                      }
+                    />
+                    <Metric
+                      label="Retry decision"
+                      value={
+                        operatorDeliveryLedgerReconciliationPlanReceipt.planned_operator_notification_delivery_retry_decision_id
+                      }
+                    />
+                    <Metric
+                      label="Dead-letter entry"
+                      value={
+                        operatorDeliveryLedgerReconciliationPlanReceipt.planned_operator_notification_dead_letter_entry_id
+                      }
+                    />
+                    <Metric
+                      label="Delivery result"
+                      value={
+                        operatorDeliveryLedgerReconciliationPlanReceipt.planned_operator_notification_delivery_result_id
+                      }
+                    />
+                    <Metric
+                      label="Delivery status"
+                      value={
+                        operatorDeliveryLedgerReconciliationPlanReceipt.planned_operator_notification_delivery_status_id
+                      }
+                    />
+                    <Metric
+                      label="Source lineage archive"
+                      value={
+                        operatorDeliveryLedgerReconciliationPlanReceipt.planned_source_lineage_archive_id
+                      }
+                    />
+                    <Metric
+                      label="Idempotency key"
+                      value={
+                        operatorDeliveryLedgerReconciliationPlanReceipt.planned_idempotency_key
+                      }
+                    />
+                    <Metric
+                      label="Adapter"
+                      value={operatorDeliveryLedgerReconciliationPlanReceipt.adapter_key.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                    <Metric
+                      label="Blocker"
+                      value={operatorDeliveryLedgerReconciliationPlanReceipt.blocker_reason.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                  </div>
+                  <ul className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {operatorDeliveryLedgerReconciliationPlanReceipt.required_operator_delivery_ledger_reconciliation_invariants
+                      .slice(0, 5)
+                      .map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                  </ul>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Operator delivery ledger reconciliation blockers:{" "}
+                    {operatorDeliveryLedgerReconciliationPlanReceipt.operator_delivery_ledger_reconciliation_blockers.join(
+                      ", ",
+                    )}
+                  </p>
+                  <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Operator delivery ledger reconciliation receipt fields:{" "}
+                    {operatorDeliveryLedgerReconciliationPlanReceipt.required_operator_delivery_ledger_reconciliation_receipt_fields.join(
                       ", ",
                     )}
                   </p>
