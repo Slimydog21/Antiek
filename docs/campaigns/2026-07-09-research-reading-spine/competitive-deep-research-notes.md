@@ -3680,3 +3680,7 @@ FUTURE remaining vision re-anchored tip aor. vitest MidnightOil 30 green. P0 PR 
 ## Residual aos · 2026-07-10 — dogfood spine postures aoc–aor wave
 Settings Antiek-bench spine postures list domain-aware chase · MO multi-goal ·
 multi-agent written analysis ≥2 (listing only · propose≠promote). P0 PR #465. Pivot aot+.
+
+## Residual aot · 2026-07-10 — memoize twin chase domain stamps
+useMemo normalizeDomainSubjects for chase titles/stamps (aoc/aoo craftsmanship).
+vitest TwinNotes 34 green. P0 PR #465. Pivot aou+.

@@ -1,0 +1,13 @@
+# inventory-aot · memoize twin chase domain stamps
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aot
+date: 2026-07-10
+parent_tip: e4d53d7b (aos)
+
+## Closed
+- chaseDomains useMemo for TwinNotes chase button titles/stamps
+- vitest TwinNotesPanel 34 green
+
+## Next
+aou+ product residual outside thrash
+Operator merge PR #465 remains highest leverage (gated)

@@ -382,6 +382,13 @@ export function TwinNotesPanel({
     () => domainSearchCoverage(domainSubjects),
     [domainSubjects],
   );
+  // Residual (aot): single normalize for chase titles/stamps (aoc/aoo).
+  const chaseDomains = useMemo(
+    () => normalizeDomainSubjects(domainSubjects),
+    [domainSubjects],
+  );
+  const chaseDomainsCsv = chaseDomains.join(",");
+  const chaseDomainAware = chaseDomains.length > 0;
 
   // Residual (na): prefill chase tier from host researchTier when closed-set.
   useEffect(() => {
@@ -1278,12 +1285,8 @@ export function TwinNotesPanel({
         <button
           type="button"
           data-testid="twin-chase-selected"
-          data-research-domains={
-            normalizeDomainSubjects(domainSubjects).join(",") || ""
-          }
-          data-domain-aware-chase={String(
-            normalizeDomainSubjects(domainSubjects).length > 0,
-          )}
+          data-research-domains={chaseDomainsCsv || ""}
+          data-domain-aware-chase={String(chaseDomainAware)}
           onClick={() => void chaseSelected("floating")}
           disabled={
             busy ||
@@ -1291,8 +1294,8 @@ export function TwinNotesPanel({
             (chaseBudgetWarn && !chaseForceBudget)
           }
           title={
-            normalizeDomainSubjects(domainSubjects).length > 0
-              ? `Spin floating deep research from multi-selected twin notes (questions preferred · research_domains=${normalizeDomainSubjects(domainSubjects).join(",")})`
+            chaseDomainAware
+              ? `Spin floating deep research from multi-selected twin notes (questions preferred · research_domains=${chaseDomainsCsv})`
               : "Spin floating deep research from multi-selected twin notes (questions preferred)"
           }
         >
@@ -1301,12 +1304,8 @@ export function TwinNotesPanel({
         <button
           type="button"
           data-testid="twin-chase-selected-full"
-          data-research-domains={
-            normalizeDomainSubjects(domainSubjects).join(",") || ""
-          }
-          data-domain-aware-chase={String(
-            normalizeDomainSubjects(domainSubjects).length > 0,
-          )}
+          data-research-domains={chaseDomainsCsv || ""}
+          data-domain-aware-chase={String(chaseDomainAware)}
           onClick={() => void chaseSelected("full")}
           disabled={
             busy ||
@@ -1314,8 +1313,8 @@ export function TwinNotesPanel({
             (chaseBudgetWarn && !chaseForceBudget)
           }
           title={
-            normalizeDomainSubjects(domainSubjects).length > 0
-              ? `Spin full working-region deep research from multi-selected twin notes · research_domains=${normalizeDomainSubjects(domainSubjects).join(",")}`
+            chaseDomainAware
+              ? `Spin full working-region deep research from multi-selected twin notes · research_domains=${chaseDomainsCsv}`
               : "Spin full working-region deep research from multi-selected twin notes"
           }
         >
