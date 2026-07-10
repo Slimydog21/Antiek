@@ -102,15 +102,19 @@ const {
         midnight_oil: 1,
         collective_merge: 1,
       },
-      // Residual (nx/os/qy): known feed sources legend (chase/DR + MO/collective + write seeds).
+      // Residual (nx/os/qy/ra): known feed sources legend (chase/DR + MO/collective + write seeds).
       known_sources: [
         "investigation_start",
         "session_flywheel",
         "midnight_oil",
+        "midnight_oil_deposit",
         "marketplace_host",
         "floating_deep_research",
         "twin_chase",
         "collective_merge",
+        "collective_doc_merge",
+        "spawn_merge",
+        "hosted_html_document",
         "deep_research_session",
         "research_progress_complete",
         "antiek_bench.offline_dogfood",
@@ -685,12 +689,17 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(legend.getAttribute("data-has-research-progress-complete")).toBe(
       "true",
     );
+    // Residual (ra): dual-handoff Write seed sources in known legend.
+    expect(legend.getAttribute("data-has-midnight-oil-deposit")).toBe("true");
+    expect(legend.getAttribute("data-has-hosted-html-document")).toBe("true");
     expect(legend.textContent).toMatch(/twin_chase/);
     expect(legend.textContent).toMatch(/floating_deep_research/);
     expect(legend.textContent).toMatch(/midnight_oil/);
     expect(legend.textContent).toMatch(/collective_merge/);
     expect(legend.textContent).toMatch(/deep_research_session/);
     expect(legend.textContent).toMatch(/research_progress_complete/);
+    expect(legend.textContent).toMatch(/midnight_oil_deposit/);
+    expect(legend.textContent).toMatch(/hosted_html_document/);
     // Residual (nx): by_source list includes chase open sources when present.
     const sources = screen.getByTestId("antiek-bench-usage-sources");
     expect(sources.textContent).toMatch(/twin_chase/);

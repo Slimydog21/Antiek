@@ -712,3 +712,8 @@ deep_research_session and research_progress_complete are known usage feed
 sources; Write create → twins/seed records them when usage_source is set.
 Competitive delta: weekly recursive suite rewrite can learn from highlight→
 float DR→Write paths, not only investigation_start / midnight_oil / chase.
+
+## Residual ra · 2026-07-10 — Dual-handoff Write seeds in bench feed
+midnight_oil_deposit, marketplace_host, spawn_merge, collective_doc_merge,
+hosted_html_document join TWIN_WRITE_SEED_USAGE_SOURCES so Write create from
+any dual-handoff surface feeds weekly recursive suite rewrite by_source.

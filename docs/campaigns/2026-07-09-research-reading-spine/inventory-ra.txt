@@ -1,0 +1,13 @@
+# inventory-ra · Expand twin-write seed usage for dual-handoff matrix
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ra
+date: 2026-07-10
+
+## Closed
+- TWIN_WRITE_SEED_USAGE_SOURCES += midnight_oil_deposit, marketplace_host,
+  spawn_merge, collective_doc_merge, hosted_html_document
+- KNOWN_USAGE_FEED_SOURCES aligned (same set + midnight_oil_deposit etc.)
+- task_class heuristic: book surfaces → book_qa; merges → synthesize
+- Settings legend data-has-midnight-oil-deposit + data-has-hosted-html-document
+- pytest 2 + vitest Settings 23 passed
+  (SCRATCH residual-tests-ra*.log)

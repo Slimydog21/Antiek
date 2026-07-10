@@ -185,18 +185,22 @@ def record_twin_write_seed_usage(
     week_id: str | None = None,
     research_tier: str | None = None,
 ) -> dict[str, Any] | None:
-    """Residual (qy): record Write twin_seed handoff → Antiek-bench usage.
+    """Residual (qy/ra): record Write twin_seed handoff → Antiek-bench usage.
 
-    Only deep_research_session and research_progress_complete feed the
-    recursive suite rewrite by_source (selection seed + terminal progress).
-    Other twin_seed sources return None (twin_draft_selected already has
-    twin_chase / twin paths elsewhere).
+    Feeds recursive suite rewrite by_source for DR session/terminal seeds and
+    dual-handoff matrix sources (MO, marketplace, merges, hosted HTML).
+    twin_draft_selected returns None (covered by twin_chase).
     """
     src = str(seed_source or "").strip()
     if src not in TWIN_WRITE_SEED_USAGE_SOURCES:
         return None
+    # Book-adjacent surfaces prefer book_qa when tier unset.
+    is_book = src in ("marketplace_host", "hosted_html_document")
+    is_collective = src in ("collective_doc_merge", "spawn_merge")
     task = research_tier_to_task_class(research_tier) or classify_engagement_task(
         has_twins=True,
+        is_book_asset=is_book,
+        is_collective=is_collective,
     )
     hint = (prompt_hint or "").strip()
     if src and src not in hint:
@@ -230,25 +234,37 @@ def propose_from_recorded_usage(
 # Includes twin_chase + floating_deep_research from residual (nw).
 # Residual (qy): deep_research_session + research_progress_complete from
 # Write twin_seed handoffs (qv/qw recursive note-taker → Write path).
+# Residual (ra): dual-handoff Write seed sources (MO deposit, marketplace,
+# spawn/collective merge, hosted HTML) join known feed for recursive rewrite.
 KNOWN_USAGE_FEED_SOURCES: tuple[str, ...] = (
     "investigation_start",
     "session_flywheel",
     "midnight_oil",
+    "midnight_oil_deposit",
     "marketplace_host",
     "floating_deep_research",
     "twin_chase",
     "collective_merge",
+    "collective_doc_merge",
+    "spawn_merge",
+    "hosted_html_document",
     "deep_research_session",
     "research_progress_complete",
     "antiek_bench.offline_dogfood",
     "engagement",
 )
 
-# Twin-write seed sources that feed Antiek-bench by_source (qy).
+# Twin-write seed sources that feed Antiek-bench by_source (qy/ra).
+# twin_draft_selected omitted — multi-select draft already covered by twin_chase.
 TWIN_WRITE_SEED_USAGE_SOURCES: frozenset[str] = frozenset(
     {
         "deep_research_session",
         "research_progress_complete",
+        "midnight_oil_deposit",
+        "marketplace_host",
+        "spawn_merge",
+        "collective_doc_merge",
+        "hosted_html_document",
     }
 )
 

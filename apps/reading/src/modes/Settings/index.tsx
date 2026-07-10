@@ -1728,6 +1728,16 @@ export default function Settings() {
                         "research_progress_complete",
                       ),
                     )}
+                    data-has-midnight-oil-deposit={String(
+                      (usage.known_sources || []).includes(
+                        "midnight_oil_deposit",
+                      ),
+                    )}
+                    data-has-hosted-html-document={String(
+                      (usage.known_sources || []).includes(
+                        "hosted_html_document",
+                      ),
+                    )}
                     role="status"
                   >
                     Known feed sources: {(usage.known_sources || []).join(", ")}
