@@ -2057,6 +2057,7 @@ export default function Settings() {
             data-auto-promoted="false"
             data-suite-version={dogfood?.suite_version || ""}
             data-label={dogfood?.label || ""}
+            data-source={dogfood?.source || ""}
             data-item-count={
               dogfood ? String(dogfood.item_count ?? 0) : ""
             }

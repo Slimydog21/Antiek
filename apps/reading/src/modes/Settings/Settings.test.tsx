@@ -1472,6 +1472,10 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(panel.getAttribute("data-label")).toBe(
       "antiek-bench-competitive-dogfood",
     );
+    // Residual (zo): panel source honesty after load.
+    expect(panel.getAttribute("data-source")).toBe(
+      "antiek_bench.dogfood_fixtures",
+    );
     expect(panel.getAttribute("data-item-count")).toBe("18");
     const summary = screen.getByTestId("antiek-bench-dogfood-summary");
     // Residual (su/ti/tv/tz/ud/us/ve/vl/wd/wl/xi): v12 spine posture machine attrs.
