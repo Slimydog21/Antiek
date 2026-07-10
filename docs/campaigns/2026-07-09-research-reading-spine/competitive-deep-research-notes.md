@@ -3024,3 +3024,8 @@ ajn. pytest twin promote 15 green. P0 operator merge PR #465. Pivot ajp+.
 ## Residual ajp · 2026-07-10 — SESSION-ARC ajm–ajo budget twin depth
 Wave handoff: launch budget scorecard · twin promote UI depth-graph · substrate
 payload depth-graph honesty. P0 operator merge PR #465. Pivot ajq+ outside thrash.
+
+## Residual ajq · 2026-07-10 — dogfood v32 twin promote depth-graph honesty
+Suite suite-competitive-dogfood-v32 learns twin promote depth-graph unit≡node
+(ajn/ajo). item_count 48 · wrestle=35. pytest dogfood 5 · Settings 36 green.
+P0 operator merge PR #465. Pivot ajr+ outside thrash.

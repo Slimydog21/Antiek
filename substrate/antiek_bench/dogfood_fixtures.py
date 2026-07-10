@@ -43,7 +43,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (ais): v29 learns multi-hop citation chain hop navigation (air).
 # Residual (ajb): v30 learns expanded domain-aware twin search (aiy biology/method/physics/math).
 # Residual (ajk): v31 learns evidence pack Write seed multi-hop hop honesty (aji).
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v31"
+# Residual (ajq): v32 learns twin promote depth-graph unit≡node honesty (ajn/ajo).
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v32"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -657,6 +658,26 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "chain_complete",
                 "evidence_pack",
                 "write",
+            ),
+        ),
+        # Residual (ajq/ajn/ajo): twin promote depth-graph content-addressed honesty.
+        SuiteItem(
+            item_id="dogfood-wrestle-twin-promote-depth-graph",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with twin promote → depth-graph honesty: when twin_promote_context_payload "
+                "emits graph_node_ids, unique_graph_node_count, content_addressed_alignment "
+                "(unit_id ≡ graph_node_id), and TwinNotesPanel twin-promote-metrics stamps "
+                "data-content-addressed-alignment with FUTURE twin matrix deep-links without "
+                "inventing graph edges, how should Antiek-bench learn models that preserve "
+                "recursive note-taker promote→context content-addressed identity?"
+            ),
+            expected_keywords=(
+                "depth-graph",
+                "content-addressed",
+                "graph_node",
+                "promote",
+                "twin",
             ),
         ),
         # Residual (ail/aii): Settings competitive DR quality scorecard honesty.
