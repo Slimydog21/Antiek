@@ -1704,3 +1704,7 @@ Competitive delta: swarm handoff tip-true; operator merge PR #465 highest levera
 ## Residual yv · 2026-07-10 — dogfood summary data-source honesty
 antiek-bench-dogfood-summary stamps data-source=antiek_bench.dogfood_fixtures.
 Competitive delta: Settings dogfood provenance is machine-auditable.
+
+## Residual yw · 2026-07-10 — FUTURE-AGENT tip re-anchor through yv
+FUTURE-AGENT-SPEC tip re-anchored after 76 residual ships this continuation.
+Competitive delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
