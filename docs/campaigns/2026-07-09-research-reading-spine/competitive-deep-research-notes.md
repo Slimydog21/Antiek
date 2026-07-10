@@ -2499,3 +2499,8 @@ machine-readable (shared Read/Research FloatMenu host). vitest FloatMenu 25 gree
 openDeepResearchFromHighlight stamps payload.seamless_highlight_dr=true;
 launchFloatingDeepResearch result seamless_highlight_dr; host surfaces
 data-seamless-highlight-dr (parity FloatMenu afw). vitest window 5 + launch 7 green.
+
+## Residual afy · 2026-07-10 — SESSION-ARC afw–afx highlight DR path
+Handoff: FloatMenu seamless-highlight-dr + window payload + host stamp.
+End-to-end highlight→floating/full deep research path honesty. P0 operator
+merge PR #465. Pivot afz+ outside thrash.
