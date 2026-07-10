@@ -4343,3 +4343,8 @@ Scorecard adds duration-band foresight · MO deposit HTML open · marketplace
 hosted open rows with data-offline-surface stamps (parity atn catalog).
 Settings wrestle vision feed total 11 (atd). vitest Settings 37 green.
 P0 PR #465. Pivot atq+.
+
+## Residual atq · 2026-07-10 — library Open window HTML-first reading stamps
+library-open-* CTAs stamp html-first · never-pdf · library-open · free path.
+Rehydrate path honesty for seamless Antiek HTML account reading.
+vitest MarketplaceHost 43 green. P0 PR #465. Pivot atr+.

@@ -1,0 +1,24 @@
+# inventory-atq · library Open window CTA HTML-first reading path stamps
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: atq
+date: 2026-07-10
+parent_tip: 5e2823d1c (atp)
+
+## Closed
+- library-open-{document_id} stamps:
+  data-view-format=html · data-html-first · data-never-pdf-view ·
+  data-library-open · data-document-id · data-is-free
+- disabled when view_format ≠ html
+- Title honesty: rehydrate if needed · seamless account port · never PDF
+- Complements atm hosted-land open for library rehydrate path
+- vitest MarketplaceHost 43 green · atq-vitest.log in SCRATCH
+
+## Doctrine
+Account library → HTML reading window (rehydrate) · never invent PDF surface ·
+seamless port into Antiek HTML account
+
+## Next
+atr+ offline product residual outside thrash
+Avoid: library-open stamp thrash after atq · marketplace hosted-open atm ·
+scorecard · offline catalog · twin draft · presets · duration · vision · dogfood · readiness→CTA
+Operator merge PR #465 remains P0 (gated)

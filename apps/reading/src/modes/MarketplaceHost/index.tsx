@@ -2533,11 +2533,26 @@ export default function MarketplaceHost({
                 </div>
                 {(d.view_format || "html") === "html" ? (
                   <div className="flex flex-wrap items-center gap-2">
+                    {/* Residual (atq): library open stamps HTML-first reading path
+                        (rehydrate if needed · never invent PDF surface). */}
                     <button
                       type="button"
                       data-testid={`library-open-${d.document_id}`}
-                      className="text-xs font-mono border rounded px-2 py-1"
-                      disabled={busy}
+                      data-view-format="html"
+                      data-html-first="true"
+                      data-never-pdf-view="true"
+                      data-library-open="true"
+                      data-document-id={d.document_id}
+                      data-is-free={String(libraryDocIsFree(d))}
+                      className="text-xs font-mono border rounded px-2 py-1 disabled:opacity-50"
+                      disabled={
+                        busy || (d.view_format || "html").toLowerCase() !== "html"
+                      }
+                      title={
+                        (d.view_format || "html").toLowerCase() === "html"
+                          ? "Open library document as HTML reading window (rehydrate if needed · seamless account port · never PDF)"
+                          : "Library document view_format must be html — PDF is not a reading surface"
+                      }
                       onClick={() => void onOpenLibraryDoc(d)}
                     >
                       Open window

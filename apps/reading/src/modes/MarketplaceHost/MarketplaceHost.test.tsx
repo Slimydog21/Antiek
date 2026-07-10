@@ -902,8 +902,17 @@ describe("MarketplaceHost mode", () => {
     // Residual (aci): before rehydrate, library Open Write is title-only twin seed.
     const writeBefore = screen.getByTestId("library-open-write-hdoc_old");
     expect(writeBefore.getAttribute("data-write-seed-has-body")).toBe("false");
+    // Residual (atq): library Open window stamps HTML-first reading path.
+    const libOpen = screen.getByTestId("library-open-hdoc_old");
+    expect(libOpen.getAttribute("data-html-first")).toBe("true");
+    expect(libOpen.getAttribute("data-view-format")).toBe("html");
+    expect(libOpen.getAttribute("data-never-pdf-view")).toBe("true");
+    expect(libOpen.getAttribute("data-library-open")).toBe("true");
+    expect(libOpen.getAttribute("data-document-id")).toBe("hdoc_old");
+    expect(libOpen.getAttribute("title") || "").toMatch(/never PDF/i);
+    expect((libOpen as HTMLButtonElement).disabled).toBe(false);
     openWindow.mockClear();
-    fireEvent.click(screen.getByTestId("library-open-hdoc_old"));
+    fireEvent.click(libOpen);
     await waitFor(() => {
       expect(fetchHostedDocumentHtml).toHaveBeenCalledWith("hdoc_old");
     });
