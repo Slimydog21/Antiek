@@ -1213,3 +1213,8 @@ L1/L2 prep matrix (Settings + dual-gate checklist).
 SESSION-ARC-tt-uw documents 30 residual ships (write-seed · free STEM · Select
 open · MO foresight · arxiv/substack honesty). Competitive delta: long infinite
 waves stay auditable for parallel agents after compaction.
+
+## Residual uy · 2026-07-10 — marketplace L5 payment rails honesty
+Catalog stamps L5 deferred · manual_receipt_only · live_payment=false with
+dual-gate checklist link. Competitive delta: marketplace never pretends live
+checkout exists — purchase+host is operator receipt only.

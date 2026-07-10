@@ -264,6 +264,16 @@ describe("MarketplaceHost mode", () => {
     expect(catMetrics.getAttribute("data-payment-rails")).toBe(
       "manual_receipt_only",
     );
+    // Residual (uy): L5 payment rails honesty (manual receipt · no live checkout).
+    const l5 = screen.getByTestId("marketplace-l5-payment-honesty");
+    expect(l5.getAttribute("data-payment-rails")).toBe("manual_receipt_only");
+    expect(l5.getAttribute("data-l5-payment-rails")).toBe("deferred");
+    expect(l5.getAttribute("data-live-payment")).toBe("false");
+    expect(l5.textContent).toMatch(/manual_receipt_only|live checkout deferred/i);
+    expect(
+      screen.getByTestId("marketplace-l5-dual-gate-link").getAttribute("href") ||
+        "",
+    ).toMatch(/DUAL-GATE-L1-L4/);
     // Residual (ir): server honesty preferred.
     expect(catMetrics.getAttribute("data-honesty-source")).toBe("server");
     expect(catMetrics.getAttribute("data-public-domain-count")).toBe("1");

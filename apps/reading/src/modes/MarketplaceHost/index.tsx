@@ -1118,6 +1118,35 @@ export default function MarketplaceHost({
           {catalogHonesty?.payment_rails || "manual_receipt_only"} (no live
           rails)
         </p>
+        {/* Residual (uy): L5 payment rails honesty — manual receipt only. */}
+        <p
+          className="text-[11px] font-mono opacity-80 space-x-2"
+          data-testid="marketplace-l5-payment-honesty"
+          data-payment-rails={
+            catalogHonesty?.payment_rails || "manual_receipt_only"
+          }
+          data-l5-payment-rails="deferred"
+          data-live-payment="false"
+          data-view-format="html"
+          role="status"
+        >
+          <span>
+            L5 payment rails:{" "}
+            <strong>
+              {catalogHonesty?.payment_rails || "manual_receipt_only"}
+            </strong>{" "}
+            · live checkout deferred · purchase+host requires operator receipt
+            token (never invent paid entitlement)
+          </span>
+          <a
+            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+            data-testid="marketplace-l5-dual-gate-link"
+            className="underline hover:opacity-100"
+            title="Dual-gate checklist (L5 payment rails deferred; L1–L4 hydrate/seed/MO prep)"
+          >
+            Dual-gate prep checklist
+          </a>
+        </p>
         {/* Residual (ta): free-PD honesty under active filters. */}
         {catalogFiltersActive ? (
           <p
