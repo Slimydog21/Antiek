@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Mapping, Optional
+from typing import Any, Mapping, Optional
 
 import duckdb
 
@@ -68,8 +68,7 @@ class SynthesisAttributionResult:
 
 
 def _build_claims(
-    con: duckdb.DuckDBPyConnection,
-    thesis_components: list[dict],
+    thesis_components: list[dict[str, Any]],
     chunk_to_doc: Mapping[str, str],
     doc_to_tier: Mapping[str, int],
 ) -> list[AttributionClaim]:
@@ -91,21 +90,44 @@ def _build_claims(
     return claims
 
 
-def compute_attribution_for_synthesis(
-    synthesis_id: str,
-    *,
-    db_path: Optional[str] = None,
-    emit_event: bool = False,
-    investigation_id: Optional[str] = None,
-) -> SynthesisAttributionResult:
-    """Compute attribution for one archived synthesis. Returns all
-    three algorithms' results.
+@dataclass(frozen=True)
+class ResolvedSynthesisProvenance:
+    """The raw provenance resolution for one synthesis — read from DuckDB, BEFORE any
+    surface gate is applied.
 
-    When ``emit_event`` is true, emits a
-    ``PAGE_ATTRIBUTION_COMPUTED`` event tagged to ``investigation_id``
-    (defaults to the synthesis's investigation_id). The phase-1
-    pipeline uses ``emit_event=True``; ad-hoc analytic dashboards
-    use ``emit_event=False`` to compute without writing to the log."""
+    Both attribution surfaces consume this ONE resolution:
+      * the *display* attribution (``compute_attribution_for_synthesis``) then drops the
+        §9.0 union (``restricted_pending_opt_in`` ∪ ``personal_reading``);
+      * the *earn* split (``ad_inventory.synthesis_earn_split``) then drops only the
+        §9.10 earn exclusion (``personal_reading``), retaining the gated-but-public
+        ``restricted_pending_opt_in`` that earns to escrow.
+    Sharing the resolution means the two surfaces cannot drift on HOW they read the
+    provenance chain (chunk→document→tier/content_class/ip_holder); they differ only on
+    the gate, which is the one thing §9.10 requires to differ. All maps are UNFILTERED —
+    the caller applies its own gate."""
+
+    synthesis_id: str
+    target_question: str
+    investigation_id: str | None
+    thesis_components: list[dict[str, Any]]
+    chunk_to_doc: dict[str, str]
+    doc_to_tier: dict[str, int]
+    doc_to_title: dict[str, str]
+    doc_to_content_class: dict[str, str | None]
+    doc_to_ip_holder: dict[str, str | None]
+    ip_status: dict[str, str]
+
+
+def _resolve_synthesis_provenance(
+    synthesis_id: str, *, db_path: str | None = None,
+) -> ResolvedSynthesisProvenance:
+    """Read a synthesis and resolve its chunk→document→(tier, title, content_class,
+    ip_holder) chain plus each owner's ip_holder status. Read-only; applies NO surface
+    gate — the caller does. Raises ``ValueError`` if the synthesis does not exist.
+
+    ``ip_status`` is resolved over ALL owners in the provenance (a superset of any single
+    surface's survivors); extra entries are harmless because each surface reads status
+    only for the owners that survive its own gate."""
     resolved = db_path or default_db_path()
     ensure_initialized(resolved)
     con = duckdb.connect(resolved, read_only=True)
@@ -154,50 +176,9 @@ def compute_attribution_for_synthesis(
             doc_rows = []
         doc_to_tier: dict[str, int] = {r[0]: int(r[1]) for r in doc_rows}
         doc_to_title: dict[str, str] = {r[0]: (r[2] or "") for r in doc_rows}
-        doc_to_content_class: dict[str, Optional[str]] = {r[0]: r[3] for r in doc_rows}
-        doc_to_ip_holder: dict[str, Optional[str]] = {r[0]: r[4] for r in doc_rows}
+        doc_to_content_class: dict[str, str | None] = {r[0]: r[3] for r in doc_rows}
+        doc_to_ip_holder: dict[str, str | None] = {r[0]: r[4] for r in doc_rows}
 
-        # §9.0 retrieval-time gating, on the SURFACED (attribution) path.
-        # Two content_classes must NOT surface into an attribution-triggering
-        # synthesis — neither body, nor title, nor a share:
-        #   - restricted_pending_opt_in (gated-but-public copyrighted work
-        #     withheld pending opt-in), and
-        #   - personal_reading (the owner's private third-party reading — the
-        #     Personal-Reading Lane, SPR-01).
-        # This endpoint resolves WHATEVER chunks a given synthesis cited, so a
-        # synthesis built on a privileged (private_research / operator_only)
-        # path could legitimately have included personal_reading chunks; when
-        # attribution is later computed here — an attribution-ELIGIBLE surface,
-        # not a privileged owner read — both classes must be dropped so they
-        # receive zero display share and zero title (personal_reading accrues
-        # zero ad attribution by construction, master-spec §9.0 / lane invariant).
-        # We filter on the SAME non-privileged exclusion union the public
-        # chunk-search gate uses (substrate/graph/search.py
-        # _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES = RESTRICTED ∪ PERSONAL_ONLY)
-        # so the two surfaces can never drift apart. (SPR-01 M2 defense-in-depth;
-        # supersedes the RESTRICTED-only filter from SPR-10 M1.)
-        from substrate.graph.retrieval_gate import (
-            _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES,
-        )
-
-        excluded_docs = {
-            d for d, cc in doc_to_content_class.items()
-            if cc in _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES
-        }
-        if excluded_docs:
-            chunk_to_doc = {
-                cid: d for cid, d in chunk_to_doc.items()
-                if d not in excluded_docs
-            }
-            for d in excluded_docs:
-                doc_to_tier.pop(d, None)
-                doc_to_title.pop(d, None)
-                doc_to_ip_holder.pop(d, None)
-
-        # Resolve the ip_holder status word for each surfaced (non-restricted)
-        # owner. Drives the opt-in-only escrow framing on the surface: a
-        # pre_onboarded holder is escrow-framework-eligible, never "money
-        # waiting" (§9.10 / Google Books opt-out rejection).
         owner_ids = {h for h in doc_to_ip_holder.values() if h}
         ip_status: dict[str, str] = {}
         if owner_ids:
@@ -211,7 +192,81 @@ def compute_attribution_for_synthesis(
     finally:
         con.close()
 
-    claims = _build_claims(None, thesis_components, chunk_to_doc, doc_to_tier)
+    return ResolvedSynthesisProvenance(
+        synthesis_id=synthesis_id,
+        target_question=target_question or "",
+        investigation_id=syn_inv_id,
+        thesis_components=thesis_components,
+        chunk_to_doc=chunk_to_doc,
+        doc_to_tier=doc_to_tier,
+        doc_to_title=doc_to_title,
+        doc_to_content_class=doc_to_content_class,
+        doc_to_ip_holder=doc_to_ip_holder,
+        ip_status=ip_status,
+    )
+
+
+def compute_attribution_for_synthesis(
+    synthesis_id: str,
+    *,
+    db_path: Optional[str] = None,
+    emit_event: bool = False,
+    investigation_id: Optional[str] = None,
+) -> SynthesisAttributionResult:
+    """Compute attribution for one archived synthesis. Returns all
+    three algorithms' results.
+
+    When ``emit_event`` is true, emits a
+    ``PAGE_ATTRIBUTION_COMPUTED`` event tagged to ``investigation_id``
+    (defaults to the synthesis's investigation_id). The phase-1
+    pipeline uses ``emit_event=True``; ad-hoc analytic dashboards
+    use ``emit_event=False`` to compute without writing to the log."""
+    prov = _resolve_synthesis_provenance(synthesis_id, db_path=db_path)
+    target_question = prov.target_question
+    syn_inv_id = prov.investigation_id
+    thesis_components = prov.thesis_components
+    # Mutable copies: the display gate below filters these; the shared resolution on
+    # ``prov`` stays intact for any other surface (the earn split reads it ungated).
+    chunk_to_doc = dict(prov.chunk_to_doc)
+    doc_to_tier = dict(prov.doc_to_tier)
+    doc_to_title = dict(prov.doc_to_title)
+    doc_to_ip_holder = dict(prov.doc_to_ip_holder)
+    ip_status = prov.ip_status
+
+    # §9.0 retrieval-time gating, on the SURFACED (display) attribution path.
+    # Two content_classes must NOT surface into an attribution-triggering
+    # synthesis — neither body, nor title, nor a share:
+    #   - restricted_pending_opt_in (gated-but-public copyrighted work
+    #     withheld pending opt-in), and
+    #   - personal_reading (the owner's private third-party reading — the
+    #     Personal-Reading Lane, SPR-01).
+    # Both are dropped here so they receive zero display share and zero title.
+    # This is the DISPLAY gate (the union). The EARN split deliberately keeps
+    # restricted_pending_opt_in (it accrues to escrow for its pre-onboarded holder,
+    # master-spec §9.10) — see ad_inventory.synthesis_earn_split, which shares this
+    # same resolution but applies the narrower earn gate. We filter on the SAME
+    # non-privileged exclusion union the public chunk-search gate uses
+    # (_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES = RESTRICTED ∪ PERSONAL_ONLY) so the
+    # display surfaces can never drift apart (SPR-01 M2 defense-in-depth).
+    from substrate.graph.retrieval_gate import (
+        _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES,
+    )
+
+    excluded_docs = {
+        d for d, cc in prov.doc_to_content_class.items()
+        if cc in _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES
+    }
+    if excluded_docs:
+        chunk_to_doc = {
+            cid: d for cid, d in chunk_to_doc.items()
+            if d not in excluded_docs
+        }
+        for d in excluded_docs:
+            doc_to_tier.pop(d, None)
+            doc_to_title.pop(d, None)
+            doc_to_ip_holder.pop(d, None)
+
+    claims = _build_claims(thesis_components, chunk_to_doc, doc_to_tier)
 
     a_shares = attribution_option_a(claims)
     b_shares = attribution_option_b(claims)
@@ -234,7 +289,7 @@ def compute_attribution_for_synthesis(
 
     result = SynthesisAttributionResult(
         synthesis_id=synthesis_id,
-        target_question=target_question or "",
+        target_question=target_question,  # already coalesced to "" by the resolver
         option_a=_r("A", a_shares),
         option_b=_r("B", b_shares),
         option_c=_r("C", c_shares),

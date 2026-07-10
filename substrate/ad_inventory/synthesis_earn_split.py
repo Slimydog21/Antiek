@@ -162,8 +162,47 @@ def earn_split_for_synthesis(
     return lines
 
 
+def resolve_and_split_synthesis_earn(
+    synthesis_id: str,
+    total_cents: int,
+    *,
+    db_path: str | None = None,
+    algorithm: str = "B",
+) -> list[SourceEarnLine]:
+    """DB-backed entry point: resolve a synthesis's provenance and split ``total_cents``
+    across its source documents' IP holders by earn-gated §9.3 attribution.
+
+    Reuses ``compute.py``'s ``_resolve_synthesis_provenance`` — the SAME provenance
+    resolution the display attribution uses — so the earn and display surfaces cannot
+    drift on how they read the chunk→document→ip_holder chain; they differ only on the
+    gate (this path applies the §9.10 earn gate inside :func:`earn_split_for_synthesis`,
+    retaining ``restricted_pending_opt_in``; the display path drops it). Read-only; writes
+    no escrow — the caller accrues each returned line.
+
+    Raises ``ValueError`` if the synthesis does not exist (propagated from the resolver),
+    or on a malformed ``total_cents`` / ``algorithm`` (from the pure split)."""
+    # Imported lazily: the ad_inventory package must not hard-depend on the attribution
+    # package at import time (keeps the module graph acyclic; the coupling is a runtime
+    # provenance read, not a structural dependency).
+    from substrate.attribution.compute import (
+        _build_claims,
+        _resolve_synthesis_provenance,
+    )
+
+    prov = _resolve_synthesis_provenance(synthesis_id, db_path=db_path)
+    claims = _build_claims(prov.thesis_components, prov.chunk_to_doc, prov.doc_to_tier)
+    return earn_split_for_synthesis(
+        claims=claims,
+        doc_to_content_class=prov.doc_to_content_class,
+        doc_to_ip_holder=prov.doc_to_ip_holder,
+        total_cents=total_cents,
+        algorithm=algorithm,
+    )
+
+
 __all__ = [
     "EARN_EXCLUDED_CONTENT_CLASSES",
     "SourceEarnLine",
     "earn_split_for_synthesis",
+    "resolve_and_split_synthesis_earn",
 ]
