@@ -642,9 +642,17 @@ export default function Settings() {
     }
   }
 
-  async function onInstallRecommendedFromLeaderboard() {
-    if (!leaderboard?.recommended_model_id) {
-      setLeaderboardError("No recommended model to install");
+  /**
+   * Residual (ads): advisory install of a leaderboard model (overall or
+   * best-by-task) into the decision-tree. Never auto-routes dispatch.
+   */
+  async function onInstallLeaderboardModelAsDriver(
+    modelId: string,
+    opts?: { taskClass?: string | null },
+  ) {
+    const mid = String(modelId || "").trim();
+    if (!mid) {
+      setLeaderboardError("No model id to install");
       return;
     }
     setTreeBusy(true);
@@ -659,10 +667,9 @@ export default function Settings() {
         null;
       if (!provider) {
         throw new Error(
-          "Select a provider (or ensure models inventory has one) before installing recommended driver",
+          "Select a provider (or ensure models inventory has one) before installing leaderboard driver",
         );
       }
-      const mid = leaderboard.recommended_model_id;
       const result = await installDecisionTreeSelection({
         model_id: mid,
         provider_id: provider,
@@ -677,12 +684,24 @@ export default function Settings() {
       } catch {
         /* optional */
       }
+      // Surface task-class provenance for best-by-task installs (ads).
+      if (opts?.taskClass) {
+        setLeaderboardError(null);
+      }
     } catch (e) {
       setLeaderboardError(e instanceof Error ? e.message : String(e));
       setTreeError(e instanceof Error ? e.message : String(e));
     } finally {
       setTreeBusy(false);
     }
+  }
+
+  async function onInstallRecommendedFromLeaderboard() {
+    if (!leaderboard?.recommended_model_id) {
+      setLeaderboardError("No recommended model to install");
+      return;
+    }
+    await onInstallLeaderboardModelAsDriver(leaderboard.recommended_model_id);
   }
 
   async function onApplyDepthTier(tier: string) {
@@ -2160,16 +2179,38 @@ export default function Settings() {
                             {bestByTask.map((row) => (
                               <li
                                 key={row.task_class}
+                                className="flex flex-wrap items-center gap-2"
                                 data-task-class={row.task_class}
                                 data-best-model-id={row.model_id}
                                 data-best-score={String(row.score)}
                               >
-                                <strong>{row.task_class}</strong>:{" "}
-                                {row.model_id} (
-                                {Number.isFinite(row.score)
-                                  ? row.score.toFixed(2)
-                                  : "—"}
-                                )
+                                <span>
+                                  <strong>{row.task_class}</strong>:{" "}
+                                  {row.model_id} (
+                                  {Number.isFinite(row.score)
+                                    ? row.score.toFixed(2)
+                                    : "—"}
+                                  )
+                                </span>
+                                {/* Residual (ads): install best-by-task as driver (advisory). */}
+                                <button
+                                  type="button"
+                                  data-testid={`antiek-bench-leaderboard-install-task-${row.task_class}`}
+                                  data-install-model-id={row.model_id}
+                                  data-install-task-class={row.task_class}
+                                  data-advisory-only="true"
+                                  disabled={treeBusy || leaderboardBusy}
+                                  onClick={() =>
+                                    void onInstallLeaderboardModelAsDriver(
+                                      row.model_id,
+                                      { taskClass: row.task_class },
+                                    )
+                                  }
+                                  className="px-2 py-0.5 rounded border border-ink/40 dark:border-bright/40 text-[10px] font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+                                  title={`Install ${row.model_id} (best ${row.task_class}) as decision-tree driver — advisory only`}
+                                >
+                                  Install as driver
+                                </button>
                               </li>
                             ))}
                           </ul>

@@ -1850,6 +1850,33 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(call.provider_id).toBeTruthy();
   });
 
+  it("installs best-by-task model as decision-tree driver (ads)", async () => {
+    const user = userEvent.setup();
+    render(<Settings />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("antiek-bench-leaderboard-install-task-book_qa"),
+      ).toBeTruthy();
+    });
+    const btn = screen.getByTestId(
+      "antiek-bench-leaderboard-install-task-book_qa",
+    );
+    expect(btn.getAttribute("data-install-model-id")).toBe("book-specialist");
+    expect(btn.getAttribute("data-install-task-class")).toBe("book_qa");
+    expect(btn.getAttribute("data-advisory-only")).toBe("true");
+    installDecisionTreeSelection.mockClear();
+    await user.click(btn);
+    await waitFor(() => {
+      expect(installDecisionTreeSelection).toHaveBeenCalled();
+    });
+    const call = installDecisionTreeSelection.mock.calls.at(-1)?.[0] as {
+      model_id: string;
+      provider_id?: string;
+    };
+    expect(call.model_id).toBe("book-specialist");
+    expect(call.provider_id).toBeTruthy();
+  });
+
   it("registers an operator model via Add model panel", async () => {
     const user = userEvent.setup();
     render(<Settings />);

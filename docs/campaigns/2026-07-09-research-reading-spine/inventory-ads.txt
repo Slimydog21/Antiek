@@ -1,0 +1,19 @@
+# inventory-ads · install best-by-task leaderboard model as decision-tree driver
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ads
+date: 2026-07-10
+parent_tip: c96237e0 (adr)
+
+## Closed
+- onInstallLeaderboardModelAsDriver shared helper (overall + per-task)
+- Task winners strip: Install as driver buttons (data-install-task-class)
+- advisory-only stamps · never auto-route
+- vitest Settings · 35 passed (install book_qa → book-specialist)
+
+## Why this residual
+adr showed best model per task; operator still had only overall recommended
+install. Task-specialist install closes model-quality-for-task product loop.
+
+## Not in scope
+- Auto-routing by task class at dispatch time
+- NotDiamond as router

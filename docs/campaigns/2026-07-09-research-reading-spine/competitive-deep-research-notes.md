@@ -2184,3 +2184,10 @@ model per task class (book_qa/wrestle/distill/synthesize) as advisory only.
 Competitive delta: operator can weekly know which models win which tasks without
 opening raw HTML or auto-routing dispatch (parity NotDiamond advisory doctrine).
 vitest Settings 34 green.
+
+## Residual ads · 2026-07-10 — install best-by-task as decision-tree driver
+Leaderboard task winners offer Install as driver (advisory only) so operator can
+pick book_qa/wrestle specialists from weekly Antiek-bench into decision-tree.
+Competitive delta: model quality for a given task is not only visible (adr) but
+actionable without auto-routing (parity NotDiamond install-advisory doctrine).
+vitest Settings 35 green.
