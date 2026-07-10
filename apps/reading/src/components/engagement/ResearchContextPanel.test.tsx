@@ -805,6 +805,19 @@ describe("ResearchContextPanel", () => {
       ],
       // Residual (air): multi-hop citation chain hops from substrate.
       chain_complete: true,
+      // Residual (aqa): substrate hop pipeline summary (apz).
+      citation_hop_pipeline: {
+        stages: ["insights", "questions", "sources"],
+        present: ["insights", "sources"],
+        missing: ["questions"],
+        present_count: 2,
+        total: 3,
+        coverage_ratio: 2 / 3,
+        chain_complete: true,
+        insight_count: 1,
+        question_count: 0,
+        ref_count: 1,
+      },
       citation_chain: [
         {
           hop: "insights",
@@ -904,7 +917,9 @@ describe("ResearchContextPanel", () => {
     expect(chain.textContent).toMatch(/Citation chain/i);
     expect(chain.textContent).toMatch(/multi-hop grounding/i);
     // Residual (api): competitive citation hop pipeline completeness.
+    // Residual (aqa): prefers substrate citation_hop_pipeline when present.
     const hopPipe = screen.getByTestId("evidence-citation-hop-pipeline");
+    expect(hopPipe.getAttribute("data-pipeline-source")).toBe("substrate");
     expect(hopPipe.getAttribute("data-present-count")).toBe("2");
     expect(hopPipe.getAttribute("data-total")).toBe("3");
     expect(hopPipe.getAttribute("data-chain-complete")).toBe("true");

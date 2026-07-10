@@ -350,6 +350,22 @@ export type EvidencePackResponse = {
   /** Residual (air): true when insights and source refs both non-empty. */
   chain_complete?: boolean;
   /**
+   * Residual (apz/aqa): substrate hop pipeline completeness summary
+   * (present/missing/coverage_ratio · never invent empty hops).
+   */
+  citation_hop_pipeline?: {
+    stages?: string[];
+    present?: string[];
+    missing?: string[];
+    present_count?: number;
+    total?: number;
+    coverage_ratio?: number;
+    chain_complete?: boolean;
+    insight_count?: number;
+    question_count?: number;
+    ref_count?: number;
+  } | null;
+  /**
    * Residual (kc/kd): reserved spawn research_tier when spawn_id set
    * (null when pack has no spawn identity).
    */

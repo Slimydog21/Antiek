@@ -29,6 +29,8 @@
  * (insights → questions → sources · never invents hops).
  * Residual (apv): evidence hop pipeline stamps world-class readiness (apu)
  * using hop coverage_ratio · stage unknown here (never invent stages).
+ * Residual (aqa): prefer substrate citation_hop_pipeline when present (apz)
+ * · fall back to client pure helper (never invent hops).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -821,13 +823,43 @@ export function ResearchContextPanel({
           </div>
           {/* Residual (api): competitive citation hop pipeline completeness. */}
           {(() => {
-            const hopPipe = citationHopStageProgress({
-              citation_chain: evidence.citation_chain,
-              insight_count: evidence.insight_count,
-              question_count: evidence.question_count,
-              ref_count: evidence.ref_count,
-              chain_complete: evidence.chain_complete,
-            });
+            // Residual (aqa): prefer substrate citation_hop_pipeline when shaped.
+            const serverPipe = evidence.citation_hop_pipeline;
+            const hopPipe =
+              serverPipe &&
+              typeof serverPipe.present_count === "number" &&
+              typeof serverPipe.total === "number" &&
+              Array.isArray(serverPipe.present) &&
+              Array.isArray(serverPipe.missing)
+                ? {
+                    stages: (serverPipe.stages?.length
+                      ? serverPipe.stages
+                      : CITATION_HOP_PIPELINE_STAGES) as readonly string[],
+                    present: serverPipe.present as string[],
+                    missing: serverPipe.missing as string[],
+                    present_count: serverPipe.present_count,
+                    total: serverPipe.total,
+                    coverage_ratio:
+                      typeof serverPipe.coverage_ratio === "number"
+                        ? serverPipe.coverage_ratio
+                        : serverPipe.total > 0
+                          ? serverPipe.present_count / serverPipe.total
+                          : 0,
+                    chain_complete: Boolean(
+                      serverPipe.chain_complete ?? evidence.chain_complete,
+                    ),
+                    source: "substrate" as const,
+                  }
+                : {
+                    ...citationHopStageProgress({
+                      citation_chain: evidence.citation_chain,
+                      insight_count: evidence.insight_count,
+                      question_count: evidence.question_count,
+                      ref_count: evidence.ref_count,
+                      chain_complete: evidence.chain_complete,
+                    }),
+                    source: "client" as const,
+                  };
             // Residual (apv): world-class bar from hop coverage; stage unknown on evidence.
             const wc = competitiveDrWorldClassReadiness({
               stage_coverage_ratio: null,
@@ -846,6 +878,7 @@ export function ResearchContextPanel({
                 data-present={hopPipe.present.join(",") || ""}
                 data-missing={hopPipe.missing.join(",") || ""}
                 data-chain-complete={String(hopPipe.chain_complete)}
+                data-pipeline-source={hopPipe.source}
                 data-world-class-bar={wc.world_class_bar}
                 data-citation-hops-ready={
                   wc.citation_hops_ready == null

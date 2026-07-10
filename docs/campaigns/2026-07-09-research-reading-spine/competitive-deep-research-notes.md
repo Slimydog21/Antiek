@@ -3841,3 +3841,9 @@ Session land competitive nav names hops insights→questions→sources · stages
 citation_hop_pipeline_progress pure helper + evidence_pack_payload.citation_hop_pipeline
 (present/missing/coverage_ratio · never invent hops). Parity frontend api pure helper.
 pytest test_engagement_evidence 5 green. P0 PR #465. Pivot aqa+ outside thrash.
+
+## Residual aqa · 2026-07-10 — wire substrate citation_hop_pipeline into ResearchContext UI
+EvidencePackResponse.citation_hop_pipeline typed; ResearchContextPanel prefers substrate
+summary when present (data-pipeline-source=substrate) · client pure helper fallback.
+Closes frontend↔substrate hop pipeline loop (api + apz). vitest ResearchContext 21 green.
+P0 PR #465. Pivot aqb+ outside thrash.

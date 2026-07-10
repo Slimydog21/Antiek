@@ -9,7 +9,8 @@
 | Competitor pattern | Technical decision | Antiek map (shipped / deferred) |
 |---|---|---|
 | Multi-agent fan-out + shared memory | Parallel sub-Qs + merge | CollectiveResearchPanel · continue-as-unit · L6 FUTURE offline/live |
-| Citation-required synthesis | Claims ↔ source chunks | Evidence pack · multi-hop hops (air) · citation-trust · hydrate refs |
+| Citation-required synthesis | Claims ↔ source chunks | Evidence pack · multi-hop hops (air) · **hop pipeline completeness (api)** · world-class readiness (apu/apv) · citation-trust · hydrate refs |
+| Multi-stage long-horizon DR | plan→gather→synthesize→cite→terminal | **ResearchProgress stage pipeline (ape)** · progress × hop-nav (apn) · world-class readiness (apu) |
 | Budget-capped autonomous runs | Hard/soft USD halt | Soft budget projection · launch budget scorecard (ajm) · MO ceiling · L4 dual-gate live |
 | HTML/notebook deliverable | Agent-editable portable view | HTML-first host · Write land · never PDF view |
 | Source connectors (arxiv, web, newsletters) | First-class acquisition | Quick-call presets · hydrate adapters · L1/L2 dual-gate live |
