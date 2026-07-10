@@ -270,10 +270,14 @@ describe("MarketplaceHost mode", () => {
     expect(l5.getAttribute("data-l5-payment-rails")).toBe("deferred");
     expect(l5.getAttribute("data-live-payment")).toBe("false");
     expect(l5.textContent).toMatch(/manual_receipt_only|live checkout deferred/i);
+    // Residual (wj): L5 checklist section deep-link.
     expect(
       screen.getByTestId("marketplace-l5-dual-gate-link").getAttribute("href") ||
         "",
-    ).toMatch(/DUAL-GATE-L1-L4/);
+    ).toMatch(/DUAL-GATE-L1-L4.*#l5-payment/);
+    expect(
+      screen.getByTestId("marketplace-l5-dual-gate-link").textContent,
+    ).toMatch(/L5 payment checklist/i);
     // Residual (ir): server honesty preferred.
     expect(catMetrics.getAttribute("data-honesty-source")).toBe("server");
     expect(catMetrics.getAttribute("data-public-domain-count")).toBe("1");

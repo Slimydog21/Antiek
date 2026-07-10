@@ -1138,13 +1138,14 @@ export default function MarketplaceHost({
             · live checkout deferred · purchase+host requires operator receipt
             token (never invent paid entitlement)
           </span>
+          {/* Residual (wj): L5 checklist section deep-link (parity Settings wh). */}
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l5-payment"
             data-testid="marketplace-l5-dual-gate-link"
             className="underline hover:opacity-100"
-            title="Dual-gate checklist (L5 payment rails deferred; L1–L4 hydrate/seed/MO prep)"
+            title="Dual-gate checklist L5 payment rails deferred (manual receipt only)"
           >
-            Dual-gate prep checklist
+            L5 payment checklist
           </a>
         </p>
         {/* Residual (ta): free-PD honesty under active filters. */}

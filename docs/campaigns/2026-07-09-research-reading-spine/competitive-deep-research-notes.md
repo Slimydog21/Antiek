@@ -1401,3 +1401,8 @@ chokepoint is navigable end-to-end for deferred + never-router honesty.
 CollectiveResearchPanel L6 honesty strip links dual-gate #l6-collective
 (parity Settings wh). Competitive delta: multi-select collective surface
 navigates deferred live-council policy without inventing injectors.
+
+## Residual wj · 2026-07-10 — Marketplace L5 checklist deep-link
+Marketplace L5 payment honesty links dual-gate #l5-payment (parity Settings
+wh · Collective wi). Competitive delta: free PD host never implies live
+checkout; deferred rails are one click from catalog honesty.
