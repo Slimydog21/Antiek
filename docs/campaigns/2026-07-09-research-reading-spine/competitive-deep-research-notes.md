@@ -1651,3 +1651,7 @@ delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
 Suite proposal dual-gate checklist jumps to #l7-notdiamond. Competitive delta:
 recursive rewrite surface navigates ND never-router policy (parity ND panel
 advisory-only link).
+
+## Residual yk · 2026-07-10 — FUTURE-AGENT tip re-anchor through yj
+FUTURE-AGENT-SPEC tip re-anchored after 64 residual ships. Competitive delta:
+swarm handoff tip-true; operator merge PR #465 highest leverage.
