@@ -1,15 +1,19 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { LemonButton } from "../../../components/lemon";
 import { generateMetaReading, getSavedMetaReading } from "../../../api/books";
 import type { BookCitation, MetaReadingResponse } from "../../../api/books";
+import { CollectiveResearchPanel } from "../../../components/engagement/CollectiveResearchPanel";
 import { DecisionTreeDriverBadge } from "../../../components/engagement/DecisionTreeDriverBadge";
 import { ResearchContextPanel } from "../../../components/engagement/ResearchContextPanel";
 import { TwinNotesPanel } from "../../../components/engagement/TwinNotesPanel";
 import { useSettingsResearchTier } from "../../../lib/useSettingsResearchTier";
 import ReadAloud from "../../../components/voice/ReadAloud";
 import { acceptPromotion, suggestPromotion } from "../../../lib/researchSuggestion";
+import { collectDeepResearchSpawnIds } from "../../../workspace/collectDeepResearchSpawnIds";
+import { listRecentDeepResearchSpawnIds } from "../../../workspace/recentDeepResearchSpawns";
+import { useWindows } from "../../../workspace/windowsStore";
 
 /**
  * MetaReading — the one-shot, READ-ONLY, page-cited synthesis over the OWNED
@@ -36,6 +40,9 @@ import { acceptPromotion, suggestPromotion } from "../../../lib/researchSuggesti
  * Residual (amt): ResearchContext with researchTier when deliverable exists
  *   (intelligent search over twin substrate · parity amr/ams).
  * Residual (anb): remount twins + context after twin promote (parity ana/amy).
+ * Residual (anh): CollectiveResearchPanel when open/recent DR spawns exist so
+ *   multi-select merge/analysis runs against the meta-reading deliverable
+ *   (reading ≡ research · parity TalkToBook ang · ResearchThis fc/ou).
  *
  * PROPOSED BOUNDARY (operator decision 2, sign-off pending): the surface
  * carries the "proposed (sign-off pending)" banner. Reversible to a soft corpus
@@ -68,6 +75,31 @@ export default function MetaReading() {
   const onContextNeedsRefresh = useCallback(() => {
     setContextRefreshKey((k) => k + 1);
   }, []);
+  // Residual (anh): open + recent DR session spawns for collective multi-select
+  // against the meta-reading deliverable (reading ≡ research · parity ang).
+  const windows = useWindows((s) => s.windows);
+  const [recentTick, setRecentTick] = useState(0);
+  const recentSpawnIds = useMemo(
+    () => listRecentDeepResearchSpawnIds(),
+    [windows, recentTick],
+  );
+  const openSpawnIds = useMemo(
+    () =>
+      collectDeepResearchSpawnIds({
+        currentSpawnId: null,
+        windows,
+      }),
+    [windows],
+  );
+  const availableSpawnIds = useMemo(
+    () =>
+      collectDeepResearchSpawnIds({
+        currentSpawnId: null,
+        windows,
+        recentSpawnIds,
+      }),
+    [windows, recentSpawnIds],
+  );
 
   // Re-open a saved asset by id. Maps the saved shape onto MetaReadingResponse
   // (the read-only render path is identical); the generation-only fields
@@ -358,6 +390,28 @@ export default function MetaReading() {
                       researchTier={researchTier}
                     />
                   </div>
+                </section>
+              ) : null}
+              {/* Residual (anh): multi-select open + recent DR spawns → meta deliverable. */}
+              {deliverable.asset_id?.trim() && availableSpawnIds.length > 0 ? (
+                <section
+                  className="rounded-md border border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 px-3 py-2"
+                  data-testid="meta-reading-collective-mount"
+                  data-view-format="html"
+                  data-asset-id={deliverable.asset_id.trim()}
+                  data-seamless-meta-collective="true"
+                  data-available-spawn-count={String(availableSpawnIds.length)}
+                  data-recent-count={String(recentSpawnIds.length)}
+                  data-research-tier={researchTier}
+                >
+                  <CollectiveResearchPanel
+                    availableSpawnIds={availableSpawnIds}
+                    parentAssetId={deliverable.asset_id.trim()}
+                    recentSpawnIds={recentSpawnIds}
+                    openSpawnIds={openSpawnIds}
+                    onRecentSpawnsCleared={() => setRecentTick((n) => n + 1)}
+                    onDocMerged={onContextNeedsRefresh}
+                  />
                 </section>
               ) : null}
 

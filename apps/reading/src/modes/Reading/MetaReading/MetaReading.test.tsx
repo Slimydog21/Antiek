@@ -14,17 +14,25 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { BookCitation, MetaReadingResponse } from "../../../api/books";
 import MetaReading from "./index";
 
-const { generateMock, navigateMock, acceptPromotionMock, fetchDepthTiersMock } =
-  vi.hoisted(() => ({
-    generateMock: vi.fn(),
-    navigateMock: vi.fn(),
-    acceptPromotionMock: vi.fn(),
-    fetchDepthTiersMock: vi.fn(async () => ({
-      active_depth_tier: null as string | null,
-      active_preset: null,
-      tiers: [],
-    })),
-  }));
+const {
+  generateMock,
+  navigateMock,
+  acceptPromotionMock,
+  fetchDepthTiersMock,
+  collectDeepResearchSpawnIds,
+  listRecentDeepResearchSpawnIds,
+} = vi.hoisted(() => ({
+  generateMock: vi.fn(),
+  navigateMock: vi.fn(),
+  acceptPromotionMock: vi.fn(),
+  fetchDepthTiersMock: vi.fn(async () => ({
+    active_depth_tier: null as string | null,
+    active_preset: null,
+    tiers: [],
+  })),
+  collectDeepResearchSpawnIds: vi.fn(() => [] as string[]),
+  listRecentDeepResearchSpawnIds: vi.fn(() => [] as string[]),
+}));
 
 vi.mock("../../../api/books", async (orig) => {
   const actual = await orig<typeof import("../../../api/books")>();
@@ -106,6 +114,53 @@ vi.mock("../../../components/engagement/ResearchContextPanel", () => ({
   ),
 }));
 
+// Residual (anh): collective multi-select from meta-reading deliverable (parity ang).
+vi.mock("../../../workspace/collectDeepResearchSpawnIds", () => ({
+  collectDeepResearchSpawnIds: (...args: unknown[]) =>
+    collectDeepResearchSpawnIds(...args),
+}));
+
+vi.mock("../../../workspace/recentDeepResearchSpawns", () => ({
+  listRecentDeepResearchSpawnIds: (...args: unknown[]) =>
+    listRecentDeepResearchSpawnIds(...args),
+}));
+
+vi.mock("../../../workspace/windowsStore", () => ({
+  useWindows: (sel: (s: { windows: Record<string, unknown> }) => unknown) =>
+    sel({ windows: {} }),
+}));
+
+vi.mock("../../../components/engagement/CollectiveResearchPanel", () => ({
+  CollectiveResearchPanel: (props: {
+    availableSpawnIds: string[];
+    parentAssetId?: string | null;
+    recentSpawnIds?: readonly string[] | null;
+    openSpawnIds?: readonly string[] | null;
+    onRecentSpawnsCleared?: () => void;
+    onDocMerged?: () => void;
+  }) => (
+    <div
+      data-testid="collective-research-panel-stub"
+      data-recent={
+        props.recentSpawnIds != null ? props.recentSpawnIds.join(",") : ""
+      }
+      data-has-clear={props.onRecentSpawnsCleared ? "1" : "0"}
+      data-has-merged={props.onDocMerged ? "1" : "0"}
+    >
+      {props.parentAssetId}:{props.availableSpawnIds.join(",")}
+      {props.onDocMerged ? (
+        <button
+          type="button"
+          data-testid="meta-reading-collective-merge-notify"
+          onClick={() => props.onDocMerged?.()}
+        >
+          notify merge
+        </button>
+      ) : null}
+    </div>
+  ),
+}));
+
 vi.mock("../../../lib/researchSuggestion", async (orig) => {
   const actual = await orig<typeof import("../../../lib/researchSuggestion")>();
   // Keep the REAL suggestPromotion (pure); stub only acceptPromotion (the
@@ -161,6 +216,8 @@ beforeEach(() => {
     active_preset: null,
     tiers: [],
   });
+  collectDeepResearchSpawnIds.mockReset().mockReturnValue([]);
+  listRecentDeepResearchSpawnIds.mockReset().mockReturnValue([]);
   window.sessionStorage.clear();
 });
 afterEach(cleanup);
@@ -364,5 +421,79 @@ describe("MetaReading (M4)", () => {
     expect(await screen.findByText(/readable corpus is empty/)).toBeTruthy();
     // No deliverable section, no report.
     expect(screen.queryByTestId("meta-reading-deliverable")).toBeNull();
+  });
+
+  it("mounts collective panel when open DR spawns exist (anh)", async () => {
+    collectDeepResearchSpawnIds.mockReturnValue(["spn_meta_1", "spn_meta_2"]);
+    await generate();
+    const mount = screen.getByTestId("meta-reading-collective-mount");
+    expect(mount.getAttribute("data-view-format")).toBe("html");
+    expect(mount.getAttribute("data-asset-id")).toBe("mr-abc123");
+    expect(mount.getAttribute("data-seamless-meta-collective")).toBe("true");
+    expect(mount.getAttribute("data-available-spawn-count")).toBe("2");
+    expect(screen.getByTestId("collective-research-panel-stub").textContent).toMatch(
+      /mr-abc123:spn_meta_1,spn_meta_2/,
+    );
+    // Collective merge remounts twins + context (parity ang / ResearchThis and).
+    expect(
+      screen
+        .getByTestId("collective-research-panel-stub")
+        .getAttribute("data-has-merged"),
+    ).toBe("1");
+    expect(
+      screen
+        .getByTestId("meta-reading-context-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("0");
+    fireEvent.click(screen.getByTestId("meta-reading-collective-merge-notify"));
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId("meta-reading-context-refresh")
+          .getAttribute("data-refresh-key"),
+      ).toBe("1");
+    });
+    expect(
+      screen
+        .getByTestId("meta-reading-twins-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("1");
+  });
+
+  it("wires recent_ring into collect + meta collective mount (anh)", async () => {
+    listRecentDeepResearchSpawnIds.mockReturnValue([
+      "spn_meta_recent",
+      "spn_meta_older",
+    ]);
+    collectDeepResearchSpawnIds.mockImplementation(
+      (source: { recentSpawnIds?: readonly string[] | null }) =>
+        [...(source.recentSpawnIds ?? [])],
+    );
+    await generate();
+    expect(collectDeepResearchSpawnIds).toHaveBeenCalled();
+    const lastCall = collectDeepResearchSpawnIds.mock.calls.at(-1)?.[0] as {
+      recentSpawnIds?: readonly string[];
+    };
+    expect(lastCall.recentSpawnIds).toEqual([
+      "spn_meta_recent",
+      "spn_meta_older",
+    ]);
+    const mount = screen.getByTestId("meta-reading-collective-mount");
+    expect(mount.getAttribute("data-recent-count")).toBe("2");
+    expect(mount.getAttribute("data-available-spawn-count")).toBe("2");
+    const stub = screen.getByTestId("collective-research-panel-stub");
+    expect(stub.getAttribute("data-recent")).toBe(
+      "spn_meta_recent,spn_meta_older",
+    );
+    expect(stub.getAttribute("data-has-clear")).toBe("1");
+    expect(stub.textContent).toMatch(
+      /mr-abc123:spn_meta_recent,spn_meta_older/,
+    );
+  });
+
+  it("omits collective panel when no open spawns (anh)", async () => {
+    collectDeepResearchSpawnIds.mockReturnValue([]);
+    await generate();
+    expect(screen.queryByTestId("meta-reading-collective-mount")).toBeNull();
   });
 });

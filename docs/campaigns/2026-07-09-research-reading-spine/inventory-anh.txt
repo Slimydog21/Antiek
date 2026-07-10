@@ -1,0 +1,16 @@
+# inventory-anh · MetaReading collective multi-select mount
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: anh
+date: 2026-07-10
+parent_tip: 487a5b28 (ang)
+
+## Closed
+- MetaReading mounts CollectiveResearchPanel when open/recent DR spawns exist
+- parentAssetId = meta-reading deliverable asset_id · open + recent ring · clear · onDocMerged remount
+- reading ≡ research multi-select merge/analysis from meta-reading deliverable (parity ang · ResearchThis fc/ou)
+- vitest MetaReading 16 green (was 13; +3 anh)
+- Completes reading conversation collective matrix: ResearchThis · TalkToBook · MetaReading
+
+## Next
+ani+ product residual outside thrash · prefer non-collective-mount if thrash risk
+Operator merge PR #465 remains highest leverage (gated)
