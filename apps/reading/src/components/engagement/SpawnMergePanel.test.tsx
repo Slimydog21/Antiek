@@ -109,6 +109,15 @@ describe("SpawnMergePanel residual ci", () => {
         .getByTestId("spawn-merge-competitive-dr-future-agent-link")
         .getAttribute("href") || "",
     ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    // Residual (akn): highlight→DR→merge budget-before-fire → Settings prompt-cost.
+    expect(
+      screen
+        .getByTestId("spawn-merge-prompt-cost-projection-link")
+        .getAttribute("href"),
+    ).toBe("/settings#prompt-cost-projection");
+    expect(
+      screen.getByTestId("spawn-merge-prompt-cost-projection-link").textContent,
+    ).toMatch(/prompt-cost projection/i);
     // Residual (lj): driver badge defaults deep pre-merge.
     expect(
       screen

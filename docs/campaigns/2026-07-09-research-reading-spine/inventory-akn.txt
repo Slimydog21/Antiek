@@ -1,0 +1,16 @@
+# inventory-akn · SpawnMergePanel Settings prompt-cost projection deep-link
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: akn
+date: 2026-07-10
+parent_tip: 2e1c6724 (akm)
+
+## Closed
+- spawn-merge-prompt-cost-projection-link → /settings#prompt-cost-projection
+- Highlight→DR→merge budget-before-fire navigates Settings projection
+- Completes prompt-cost matrix: Settings · launch · MO · progress · collective · spawn
+- vitest SpawnMerge 8 green
+- proof: SCRATCH residual-akn-vitest.log
+
+## Next
+ako+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

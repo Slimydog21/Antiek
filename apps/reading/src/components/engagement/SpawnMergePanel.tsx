@@ -265,6 +265,15 @@ export function SpawnMergePanel({
           >
             FUTURE · competitive DR brief
           </a>
+          {/* Residual (akn): highlight→DR→merge budget-before-fire → Settings prompt-cost. */}
+          <a
+            href="/settings#prompt-cost-projection"
+            data-testid="spawn-merge-prompt-cost-projection-link"
+            className="underline opacity-80 hover:opacity-100"
+            title="Settings prompt-cost projection: estimate merge/analysis spend vs remaining daily budget"
+          >
+            Settings · prompt-cost projection
+          </a>
         </p>
         {/* Residual (lj): model driver + budget + depth (parity collective lg). */}
         <div

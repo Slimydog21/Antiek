@@ -3137,3 +3137,8 @@ vitest ResearchProgress 10 green. P0 operator merge PR #465. Pivot akm+ outside 
 Multi-agent collective merge navigates Settings prompt-cost projection for
 budget-before-fire (parity akl progress · akk MO). vitest Collective 29 green.
 P0 operator merge PR #465. Pivot akn+ outside thrash.
+
+## Residual akn · 2026-07-10 — SpawnMergePanel prompt-cost projection deep-link
+Highlight→DR→merge navigates Settings prompt-cost projection. Completes
+budget-before-fire prompt-cost matrix (akk–akn + ake/ajm). vitest SpawnMerge 8 green.
+P0 operator merge PR #465. Pivot ako+ outside thrash.
