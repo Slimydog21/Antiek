@@ -17,6 +17,7 @@ from substrate.midnight_oil import (
     MidnightOilDryRunRequest,
     MidnightOilFinalArtifactAdapterPlanRequest,
     MidnightOilFinalArtifactRequest,
+    MidnightOilFinalSynthesisDraftPlanRequest,
     MidnightOilGraphAdapterPlanRequest,
     MidnightOilGraphMutationRequest,
     MidnightOilLiveDispatchFinalEnablementApplyPlanRequest,
@@ -53,6 +54,7 @@ from substrate.midnight_oil import (
     dry_run_midnight_oil,
     final_artifact_adapter_plan_midnight_oil,
     final_artifact_midnight_oil,
+    final_synthesis_draft_plan_midnight_oil,
     graph_adapter_plan_midnight_oil,
     graph_mutation_midnight_oil,
     live_dispatch_final_enablement_apply_plan_midnight_oil,
@@ -7883,6 +7885,223 @@ def test_midnight_oil_synthesis_bundle_assembly_plan_api_contract() -> None:
     assert body["claim_transaction_committed"] is False
     assert body["dispatch_performed"] is False
     assert body["budget_reserved"] is False
+    assert body["provider_calls_made"] is False
+    assert body["retrieval_performed"] is False
+    assert body["source_receipts_created"] is False
+    assert body["graph_mutated"] is False
+    assert body["final_artifact_created"] is False
+
+
+def _final_synthesis_draft_request_kwargs(
+    chain: dict[str, object],
+    output_aggregation_plan: object,
+    synthesis_handoff_plan: object,
+    synthesis_bundle_assembly_plan: object,
+) -> dict[str, object]:
+    return {
+        **_synthesis_bundle_assembly_request_kwargs(
+            chain, output_aggregation_plan, synthesis_handoff_plan
+        ),
+        "synthesis_bundle_assembly_plan_receipt": synthesis_bundle_assembly_plan,
+    }
+
+
+def _accepted_midnight_oil_synthesis_bundle_assembly_plan_chain(
+    *,
+    goal: str,
+    source_policy: list[str],
+    requested_control_scope: list[str],
+) -> dict[str, object]:
+    chain = _accepted_midnight_oil_worker_output_aggregation_plan_chain(
+        goal=goal,
+        source_policy=source_policy,
+        requested_control_scope=requested_control_scope,
+    )
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = worker_synthesis_handoff_plan_midnight_oil(
+        MidnightOilWorkerSynthesisHandoffPlanRequest(
+            **_worker_synthesis_handoff_request_kwargs(chain, output_plan)
+        )
+    )
+    assembly_plan = synthesis_bundle_assembly_plan_midnight_oil(
+        MidnightOilSynthesisBundleAssemblyPlanRequest(
+            **_synthesis_bundle_assembly_request_kwargs(
+                chain, output_plan, handoff_plan
+            )
+        )
+    )
+    return {
+        **chain,
+        "worker_synthesis_handoff_plan": handoff_plan,
+        "synthesis_bundle_assembly_plan": assembly_plan,
+    }
+
+
+def test_final_synthesis_draft_plan_records_disabled_requirements() -> None:
+    chain = _accepted_midnight_oil_synthesis_bundle_assembly_plan_chain(
+        goal="Plan final synthesis draft requirements after bundle assembly planning.",
+        source_policy=["arxiv", "web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+
+    draft_plan = final_synthesis_draft_plan_midnight_oil(
+        MidnightOilFinalSynthesisDraftPlanRequest(
+            **_final_synthesis_draft_request_kwargs(
+                chain, output_plan, handoff_plan, assembly_plan
+            )
+        )
+    )
+
+    assert draft_plan.receipt_id == f"{preflight.run_id}-final-synthesis-draft-plan"
+    assert draft_plan.synthesis_bundle_assembly_plan_receipt_id == (
+        assembly_plan.receipt_id
+    )
+    assert draft_plan.worker_synthesis_handoff_plan_receipt_id == handoff_plan.receipt_id
+    assert draft_plan.status == "blocked_final_synthesis_draft_unimplemented"
+    assert draft_plan.adapter_key == "final_synthesis_draft"
+    assert draft_plan.planned_final_synthesis_draft_receipt_id == (
+        f"{preflight.run_id}-final-synthesis-draft-receipt"
+    )
+    assert draft_plan.planned_final_synthesis_draft_id == (
+        f"{preflight.run_id}-final-synthesis-draft"
+    )
+    assert draft_plan.planned_final_synthesis_claim_map_id == (
+        f"{preflight.run_id}-final-synthesis-claim-map"
+    )
+    assert draft_plan.planned_final_synthesis_citation_map_id == (
+        f"{preflight.run_id}-final-synthesis-citation-map"
+    )
+    assert draft_plan.planned_synthesis_bundle_id == (
+        assembly_plan.planned_synthesis_bundle_id
+    )
+    assert "final synthesis draft receipt writer" in (
+        draft_plan.final_synthesis_draft_blockers
+    )
+    assert "final_synthesis_citation_map_id" in (
+        draft_plan.required_final_synthesis_draft_receipt_fields
+    )
+    assert "final synthesis draft planner must require synthesis bundle" in (
+        draft_plan.required_final_synthesis_draft_invariants[0]
+    )
+    assert draft_plan.blocker_reason == "final_synthesis_draft_unimplemented"
+    assert draft_plan.final_synthesis_draft_allowed is False
+    assert draft_plan.final_synthesis_draft_created is False
+    assert draft_plan.final_synthesis_claim_map_created is False
+    assert draft_plan.final_synthesis_citation_map_created is False
+    assert draft_plan.final_synthesis_quality_report_created is False
+    assert draft_plan.synthesis_bundle_assembled is False
+    assert draft_plan.provider_calls_made is False
+    assert draft_plan.retrieval_performed is False
+    assert draft_plan.source_receipts_created is False
+    assert draft_plan.graph_mutated is False
+    assert draft_plan.final_artifact_created is False
+    assert "no final draft" in draft_plan.adapter_plan_notes[0]
+
+
+def test_final_synthesis_draft_plan_rejects_assembled_bundle() -> None:
+    chain = _accepted_midnight_oil_synthesis_bundle_assembly_plan_chain(
+        goal="Reject assembled synthesis bundle before final draft planning.",
+        source_policy=["web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    bad_assembly_plan = chain["synthesis_bundle_assembly_plan"].model_copy(
+        update={"synthesis_bundle_assembled": True}
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match="synthesis_bundle_assembly_plan_receipt must not create synthesis bundle state",
+    ):
+        MidnightOilFinalSynthesisDraftPlanRequest(
+            **_final_synthesis_draft_request_kwargs(
+                chain, output_plan, handoff_plan, bad_assembly_plan
+            )
+        )
+
+
+def test_midnight_oil_final_synthesis_draft_plan_api_contract() -> None:
+    from interfaces.research.api.app import create_app
+
+    chain = _accepted_midnight_oil_synthesis_bundle_assembly_plan_chain(
+        goal="Expose final synthesis draft planning over the API.",
+        source_policy=["arxiv", "substack"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+    request_json = {
+        key: value.model_dump(mode="json")
+        for key, value in _final_synthesis_draft_request_kwargs(
+            chain, output_plan, handoff_plan, assembly_plan
+        ).items()
+    }
+
+    with TestClient(create_app()) as client:
+        r = client.post(
+            "/research/midnight-oil/final-synthesis-draft-plan",
+            json=request_json,
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["receipt_id"] == f"{preflight.run_id}-final-synthesis-draft-plan"
+    assert body["synthesis_bundle_assembly_plan_receipt_id"] == assembly_plan.receipt_id
+    assert body["worker_synthesis_handoff_plan_receipt_id"] == handoff_plan.receipt_id
+    assert body["status"] == "blocked_final_synthesis_draft_unimplemented"
+    assert body["adapter_key"] == "final_synthesis_draft"
+    assert body["planned_final_synthesis_draft_receipt_id"] == (
+        f"{preflight.run_id}-final-synthesis-draft-receipt"
+    )
+    assert body["planned_final_synthesis_draft_id"] == (
+        f"{preflight.run_id}-final-synthesis-draft"
+    )
+    assert body["planned_final_synthesis_outline_id"] == (
+        f"{preflight.run_id}-final-synthesis-outline"
+    )
+    assert body["planned_final_synthesis_citation_map_id"] == (
+        f"{preflight.run_id}-final-synthesis-citation-map"
+    )
+    assert "final synthesis draft receipt writer" in body[
+        "final_synthesis_draft_blockers"
+    ]
+    assert "final_synthesis_quality_report_id" in (
+        body["required_final_synthesis_draft_receipt_fields"]
+    )
+    assert body["blocker_reason"] == "final_synthesis_draft_unimplemented"
+    assert body["final_synthesis_draft_allowed"] is False
+    assert body["final_synthesis_draft_created"] is False
+    assert body["final_synthesis_citation_map_created"] is False
+    assert body["final_synthesis_quality_report_created"] is False
+    assert body["synthesis_bundle_assembled"] is False
     assert body["provider_calls_made"] is False
     assert body["retrieval_performed"] is False
     assert body["source_receipts_created"] is False

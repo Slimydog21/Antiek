@@ -30,6 +30,8 @@ from substrate.midnight_oil import (
     MidnightOilFinalArtifactAdapterPlanRequest,
     MidnightOilFinalArtifactReceipt,
     MidnightOilFinalArtifactRequest,
+    MidnightOilFinalSynthesisDraftPlanReceipt,
+    MidnightOilFinalSynthesisDraftPlanRequest,
     MidnightOilGraphAdapterPlanReceipt,
     MidnightOilGraphAdapterPlanRequest,
     MidnightOilGraphMutationReceipt,
@@ -92,6 +94,7 @@ from substrate.midnight_oil import (
     dry_run_midnight_oil,
     final_artifact_adapter_plan_midnight_oil,
     final_artifact_midnight_oil,
+    final_synthesis_draft_plan_midnight_oil,
     graph_adapter_plan_midnight_oil,
     graph_mutation_midnight_oil,
     live_dispatch_final_enablement_apply_plan_midnight_oil,
@@ -444,6 +447,16 @@ def post_midnight_oil_synthesis_bundle_assembly_plan(
     return synthesis_bundle_assembly_plan_midnight_oil(req)
 
 
+@midnight_oil_router.post(
+    "/final-synthesis-draft-plan",
+    response_model=MidnightOilFinalSynthesisDraftPlanReceipt,
+)
+def post_midnight_oil_final_synthesis_draft_plan(
+    req: MidnightOilFinalSynthesisDraftPlanRequest,
+) -> MidnightOilFinalSynthesisDraftPlanReceipt:
+    return final_synthesis_draft_plan_midnight_oil(req)
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
@@ -460,6 +473,7 @@ __all__ = [
     "post_midnight_oil_dry_run",
     "post_midnight_oil_final_artifact",
     "post_midnight_oil_final_artifact_adapter_plan",
+    "post_midnight_oil_final_synthesis_draft_plan",
     "post_midnight_oil_graph_adapter_plan",
     "post_midnight_oil_graph_mutation",
     "post_midnight_oil_live_dispatch_final_enablement_apply_plan",

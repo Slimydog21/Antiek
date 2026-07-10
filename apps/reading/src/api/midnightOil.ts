@@ -2418,6 +2418,82 @@ export interface MidnightOilSynthesisBundleAssemblyPlanReceipt {
   adapter_plan_notes: string[];
 }
 
+export interface MidnightOilFinalSynthesisDraftPlanRequest
+  extends MidnightOilSynthesisBundleAssemblyPlanRequest {
+  synthesis_bundle_assembly_plan_receipt: MidnightOilSynthesisBundleAssemblyPlanReceipt;
+}
+
+export interface MidnightOilFinalSynthesisDraftPlanReceipt {
+  receipt_id: string;
+  synthesis_bundle_assembly_plan_receipt_id: string;
+  worker_synthesis_handoff_plan_receipt_id: string;
+  worker_output_aggregation_plan_receipt_id: string;
+  launch_packet_id: string;
+  approval_receipt_id: string;
+  runner_handoff_id: string;
+  run_id: string;
+  status: "blocked_final_synthesis_draft_unimplemented";
+  adapter_key: "final_synthesis_draft";
+  planned_final_synthesis_draft_receipt_id: string;
+  planned_final_synthesis_draft_id: string;
+  planned_final_synthesis_outline_id: string;
+  planned_final_synthesis_claim_map_id: string;
+  planned_final_synthesis_citation_map_id: string;
+  planned_final_synthesis_gap_list_id: string;
+  planned_final_synthesis_quality_report_id: string;
+  planned_synthesis_bundle_assembly_receipt_id: string;
+  planned_synthesis_bundle_id: string;
+  planned_synthesis_source_packet_id: string;
+  planned_synthesis_evidence_map_id: string;
+  planned_synthesis_composition_plan_id: string;
+  planned_synthesis_quality_gate_id: string;
+  planned_synthesis_input_bundle_id: string;
+  planned_synthesis_context_manifest_id: string;
+  planned_synthesis_outline_id: string;
+  planned_worker_output_index_id: string;
+  planned_worker_output_manifest_id: string;
+  planned_worker_output_summary_id: string;
+  planned_worker_result_manifest_id: string;
+  planned_worker_output_bundle_id: string;
+  planned_worker_id: string;
+  planned_worker_lease_id: string;
+  planned_runner_dispatch_id: string;
+  planned_idempotency_key: string;
+  final_synthesis_draft_blockers: string[];
+  required_final_synthesis_draft_invariants: string[];
+  required_final_synthesis_draft_receipt_fields: string[];
+  blocker_reason: "final_synthesis_draft_unimplemented";
+  final_synthesis_draft_allowed: boolean;
+  final_synthesis_draft_created: boolean;
+  final_synthesis_outline_created: boolean;
+  final_synthesis_claim_map_created: boolean;
+  final_synthesis_citation_map_created: boolean;
+  final_synthesis_gap_list_created: boolean;
+  final_synthesis_quality_report_created: boolean;
+  synthesis_bundle_assembly_allowed: boolean;
+  synthesis_bundle_assembled: boolean;
+  synthesis_source_packet_created: boolean;
+  synthesis_evidence_map_created: boolean;
+  synthesis_composition_plan_created: boolean;
+  synthesis_quality_gate_created: boolean;
+  worker_synthesis_handoff_created: boolean;
+  synthesis_input_bundle_created: boolean;
+  synthesis_context_manifest_created: boolean;
+  synthesis_outline_created: boolean;
+  worker_output_aggregated: boolean;
+  worker_started: boolean;
+  scheduler_job_created: boolean;
+  runner_dispatch_enqueued: boolean;
+  dispatch_performed: boolean;
+  budget_reserved: boolean;
+  provider_calls_made: boolean;
+  retrieval_performed: boolean;
+  source_receipts_created: boolean;
+  graph_mutated: boolean;
+  final_artifact_created: boolean;
+  adapter_plan_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -3042,4 +3118,24 @@ export async function synthesisBundleAssemblyPlanMidnightOil(
     );
   }
   return (await resp.json()) as MidnightOilSynthesisBundleAssemblyPlanReceipt;
+}
+
+export async function finalSynthesisDraftPlanMidnightOil(
+  request: MidnightOilFinalSynthesisDraftPlanRequest,
+): Promise<MidnightOilFinalSynthesisDraftPlanReceipt> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/midnight-oil/final-synthesis-draft-plan`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+  );
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(
+      `POST /research/midnight-oil/final-synthesis-draft-plan: HTTP ${resp.status}: ${body}`,
+    );
+  }
+  return (await resp.json()) as MidnightOilFinalSynthesisDraftPlanReceipt;
 }
