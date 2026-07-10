@@ -32,8 +32,8 @@ import type { DistilledNode } from "../../lib/api";
 const postTypedEventMock = vi.fn((_envelope: unknown) =>
   Promise.resolve({ event_id: "ev-note-1", action_type: "marginalia.noted" }),
 );
-const launchFloatingDeepResearch = vi.fn();
-const startInvestigation = vi.fn();
+const launchFloatingDeepResearch = vi.fn<(...args: unknown[]) => unknown>();
+const startInvestigation = vi.fn<(...args: unknown[]) => unknown>();
 const fetchDepthTiers = vi.hoisted(() =>
   vi.fn(async () => ({
     active_depth_tier: null as string | null,
@@ -47,7 +47,7 @@ vi.mock("../../lib/api", async (importOriginal) => {
   return {
     ...actual,
     postTypedEvent: (envelope: unknown) => postTypedEventMock(envelope),
-    startInvestigation: (...args: unknown[]) => startInvestigation(...args),
+    startInvestigation: (...args: unknown[]) => startInvestigation(...(args as Parameters<typeof startInvestigation>)),
   };
 });
 
@@ -64,7 +64,7 @@ vi.mock("../../api/settings", () => ({
     provider: null,
     model: null,
   })),
-  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...args),
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...(args as Parameters<typeof fetchDepthTiers>)),
   fetchDecisionTreeSelection: vi.fn(async () => ({
     model_id: null,
     provider_id: null,
@@ -90,7 +90,7 @@ vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
 
 vi.mock("../Reading/launchFloatingDeepResearch", () => ({
   launchFloatingDeepResearch: (...args: unknown[]) =>
-    launchFloatingDeepResearch(...args),
+    launchFloatingDeepResearch(...(args as Parameters<typeof launchFloatingDeepResearch>)),
 }));
 
 import BlockDetail from "./BlockDetail";

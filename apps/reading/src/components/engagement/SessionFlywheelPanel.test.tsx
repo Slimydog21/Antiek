@@ -3,16 +3,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SessionFlywheelPanel } from "./SessionFlywheelPanel";
 
-const completeSessionFlywheel = vi.fn();
-const openWindow = vi.fn(() => "win:flywheel:test");
+const completeSessionFlywheel = vi.fn<(...args: unknown[]) => unknown>();
+const openWindow = vi.fn<typeof import("../windows/openWindow").openWindow>(() => "win:flywheel:test");
 
 vi.mock("../windows/openWindow", () => ({
-  openWindow: (...args: unknown[]) => openWindow(...args),
+  openWindow: (...args: unknown[]) => openWindow(...(args as Parameters<typeof openWindow>)),
 }));
 
 vi.mock("../../api/engagement", () => ({
   completeSessionFlywheel: (...args: unknown[]) =>
-    completeSessionFlywheel(...args),
+    completeSessionFlywheel(...(args as Parameters<typeof completeSessionFlywheel>)),
 }));
 
 vi.mock("./DecisionTreeDriverBadge", () => ({
@@ -194,9 +194,7 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
     expect(openFull.getAttribute("data-html-first")).toBe("true");
     expect(openFull.getAttribute("data-flywheel-open-ready")).toBe("true");
     fireEvent.click(openFull);
-    expect(
-      (openWindow.mock.calls.at(-1) as [{}, {}, { mode?: string }])[2].mode,
-    ).toBe("full");
+    expect(openWindow.mock.calls.at(-1)?.[2]?.mode).toBe("full");
     // Residual (re/aex/ats): Open Write twin_seed after flywheel complete + path.
     const write = screen.getByTestId("session-flywheel-open-write");
     const href = write.getAttribute("href") || "";

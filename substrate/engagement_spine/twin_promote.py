@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, cast
 
 from .store import EngagementStore
 from .twin import TwinKind, TwinNote, list_twin_notes
@@ -144,13 +144,13 @@ def _canonical_text(text: str) -> str:
 def _default_promote_insight() -> PromoteInsightFn:
     from substrate.graph.insight_question import promote_insight
 
-    return promote_insight
+    return cast(PromoteInsightFn, promote_insight)
 
 
 def _default_promote_question() -> PromoteQuestionFn:
     from substrate.graph.insight_question import promote_question
 
-    return promote_question
+    return cast(PromoteQuestionFn, promote_question)
 
 
 def expected_graph_node_id(kind: TwinKind, text: str) -> str:
@@ -461,17 +461,19 @@ def twin_promote_context_payload(
         kinds=kinds_norm,
         note_ids=note_ids_norm,
     )
-    raw = result.to_dict()
+    result_dict = result.to_dict()
     # Residual (ajo/ajt): content-addressed depth-graph honesty (pure helper).
-    depth = depth_graph_honesty_fields(raw["promoted"], raw["context_units"])
+    depth = depth_graph_honesty_fields(
+        result_dict["promoted"], result_dict["context_units"]
+    )
     unique_graph = depth["graph_node_ids"]
     content_addressed_alignment = depth["content_addressed_alignment"]
     payload: dict[str, Any] = {
         "asset_id": asset_id.strip(),
         "promoted_count": len(result.promoted),
         "context_unit_count": len(result.context_units),
-        "promoted": raw["promoted"],
-        "context_units": raw["context_units"],
+        "promoted": result_dict["promoted"],
+        "context_units": result_dict["context_units"],
         "query": query,
         "kinds": list(kinds_norm) if kinds_norm is not None else ["insight", "question"],
         "note_ids": list(note_ids_norm) if note_ids_norm is not None else [],

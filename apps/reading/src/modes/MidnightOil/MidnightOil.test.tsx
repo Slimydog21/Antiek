@@ -17,11 +17,11 @@ const {
   listRecentDeepResearchSpawnIdsMock,
   pushRecentDeepResearchSpawnIdMock,
 } = vi.hoisted(() => ({
-  createMidnightOilJob: vi.fn(),
-  approveMidnightOilCeiling: vi.fn(),
-  depositMidnightOilJob: vi.fn(),
-  runMidnightOilJob: vi.fn(),
-  getMidnightOilJob: vi.fn(),
+  createMidnightOilJob: vi.fn<(...args: unknown[]) => unknown>(),
+  approveMidnightOilCeiling: vi.fn<(...args: unknown[]) => unknown>(),
+  depositMidnightOilJob: vi.fn<(...args: unknown[]) => unknown>(),
+  runMidnightOilJob: vi.fn<(...args: unknown[]) => unknown>(),
+  getMidnightOilJob: vi.fn<(...args: unknown[]) => unknown>(),
   fetchMidnightOilLiveStepStatus: vi.fn(async () => ({
     view_format: "html",
     product_panel: "midnight_oil_live_step_status",
@@ -35,8 +35,8 @@ const {
     ],
     html: "<p>offline_honest=true</p>",
   })),
-  fetchDecisionTreeSelection: vi.fn(),
-  seedTwinNotes: vi.fn(),
+  fetchDecisionTreeSelection: vi.fn<(...args: unknown[]) => unknown>(),
+  seedTwinNotes: vi.fn<(...args: unknown[]) => unknown>(),
   hydratePublicationRefsMock: vi.fn(async (refs: string[]) => ({
     ok: refs.map((reference) => ({
       asset_id: `pub_${reference}`,
@@ -101,7 +101,7 @@ vi.mock("../../api/midnightOil", () => ({
 }));
 
 vi.mock("../../api/engagement", () => ({
-  seedTwinNotes: (...args: unknown[]) => seedTwinNotes(...args),
+  seedTwinNotes: (...args: unknown[]) => seedTwinNotes(...(args as Parameters<typeof seedTwinNotes>)),
 }));
 
 const fetchDepthTiers = vi.hoisted(() =>
@@ -131,8 +131,8 @@ vi.mock("../../api/settings", () => ({
     model: null,
   })),
   fetchDecisionTreeSelection: (...args: unknown[]) =>
-    fetchDecisionTreeSelection(...args),
-  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...args),
+    fetchDecisionTreeSelection(...(args as Parameters<typeof fetchDecisionTreeSelection>)),
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...(args as Parameters<typeof fetchDepthTiers>)),
 }));
 
 vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", () => {
@@ -306,19 +306,19 @@ vi.mock("../ResearchWorkstation/publicationRefs", () => ({
 
 vi.mock("../../workspace/collectDeepResearchSpawnIds", () => ({
   collectDeepResearchSpawnIds: (...args: unknown[]) =>
-    collectDeepResearchSpawnIdsMock(...args),
+    collectDeepResearchSpawnIdsMock(...(args as Parameters<typeof collectDeepResearchSpawnIdsMock>)),
 }));
 
 vi.mock("../../workspace/recentDeepResearchSpawns", () => ({
   listRecentDeepResearchSpawnIds: (...args: unknown[]) =>
-    listRecentDeepResearchSpawnIdsMock(...args),
+    listRecentDeepResearchSpawnIdsMock(...(args as Parameters<typeof listRecentDeepResearchSpawnIdsMock>)),
   pushRecentDeepResearchSpawnId: (...args: unknown[]) =>
     pushRecentDeepResearchSpawnIdMock(...(args as [string])),
 }));
 
 const openWindow = vi.fn(() => "win:moil-deposit:draft_moil_asset_dep_abc");
 vi.mock("../../components/windows/openWindow", () => ({
-  openWindow: (...args: unknown[]) => openWindow(...args),
+  openWindow: (...args: unknown[]) => openWindow(...(args as Parameters<typeof openWindow>)),
 }));
 
 describe("MidnightOil mode", () => {

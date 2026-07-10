@@ -22,16 +22,16 @@ const {
   collectDeepResearchSpawnIds,
   listRecentDeepResearchSpawnIds,
 } = vi.hoisted(() => ({
-  generateMock: vi.fn(),
-  navigateMock: vi.fn(),
-  acceptPromotionMock: vi.fn(),
-  fetchDepthTiersMock: vi.fn(async () => ({
+  generateMock: vi.fn<(...args: unknown[]) => unknown>(),
+  navigateMock: vi.fn<(...args: unknown[]) => unknown>(),
+  acceptPromotionMock: vi.fn<(...args: unknown[]) => unknown>(),
+  fetchDepthTiersMock: vi.fn<(options?: unknown) => unknown>(async () => ({
     active_depth_tier: null as string | null,
     active_preset: null,
     tiers: [],
   })),
-  collectDeepResearchSpawnIds: vi.fn(() => [] as string[]),
-  listRecentDeepResearchSpawnIds: vi.fn(() => [] as string[]),
+  collectDeepResearchSpawnIds: vi.fn<typeof import("../../../workspace/collectDeepResearchSpawnIds").collectDeepResearchSpawnIds>(() => []),
+  listRecentDeepResearchSpawnIds: vi.fn<typeof import("../../../workspace/collectDeepResearchSpawnIds").collectDeepResearchSpawnIds>(() => []),
 }));
 
 vi.mock("../../../api/books", async (orig) => {
@@ -40,7 +40,7 @@ vi.mock("../../../api/books", async (orig) => {
 });
 
 vi.mock("../../../api/settings", () => ({
-  estimatePromptCost: vi.fn(async () => ({
+  estimatePromptCost: vi.fn<(options?: unknown) => unknown>(async () => ({
     estimated_usd_low: null,
     estimated_usd_high: null,
     would_exceed_budget: null,
@@ -52,15 +52,15 @@ vi.mock("../../../api/settings", () => ({
     provider: null,
     model: null,
   })),
-  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiersMock(...args),
-  fetchDecisionTreeSelection: vi.fn(async () => ({
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiersMock(...(args as Parameters<typeof fetchDepthTiersMock>)),
+  fetchDecisionTreeSelection: vi.fn<(options?: unknown) => unknown>(async () => ({
     model_id: null,
     provider_id: null,
     installed: false,
     notes: [],
     source: "test",
   })),
-  fetchSettingsBudget: vi.fn(async () => null),
+  fetchSettingsBudget: vi.fn<(options?: unknown) => unknown>(async () => null),
 }));
 
 vi.mock("../../../components/engagement/DecisionTreeDriverBadge", () => ({
@@ -129,12 +129,12 @@ vi.mock("../../../components/engagement/ResearchContextPanel", () => ({
 // Residual (anh): collective multi-select from meta-reading deliverable (parity ang).
 vi.mock("../../../workspace/collectDeepResearchSpawnIds", () => ({
   collectDeepResearchSpawnIds: (...args: unknown[]) =>
-    collectDeepResearchSpawnIds(...args),
+    collectDeepResearchSpawnIds(...(args as Parameters<typeof collectDeepResearchSpawnIds>)),
 }));
 
 vi.mock("../../../workspace/recentDeepResearchSpawns", () => ({
   listRecentDeepResearchSpawnIds: (...args: unknown[]) =>
-    listRecentDeepResearchSpawnIds(...args),
+    listRecentDeepResearchSpawnIds(...(args as Parameters<typeof listRecentDeepResearchSpawnIds>)),
 }));
 
 vi.mock("../../../workspace/windowsStore", () => ({

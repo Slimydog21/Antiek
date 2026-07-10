@@ -9,16 +9,16 @@ import {
   twinNoteMetrics,
 } from "./ResearchContextPanel";
 
-const fetchResearchContext = vi.fn();
-const attachSourceRefs = vi.fn();
-const fetchEvidencePack = vi.fn();
-const hydratePublicationRef = vi.fn();
-const searchEngagementContext = vi.fn();
-const promoteTwinsToContext = vi.fn();
-const openWindow = vi.fn(() => "win:evidence:test");
+const fetchResearchContext = vi.fn<(...args: unknown[]) => unknown>();
+const attachSourceRefs = vi.fn<(...args: unknown[]) => unknown>();
+const fetchEvidencePack = vi.fn<(...args: unknown[]) => unknown>();
+const hydratePublicationRef = vi.fn<(...args: unknown[]) => unknown>();
+const searchEngagementContext = vi.fn<(...args: unknown[]) => unknown>();
+const promoteTwinsToContext = vi.fn<(...args: unknown[]) => unknown>();
+const openWindow = vi.fn<typeof import("../windows/openWindow").openWindow>(() => "win:evidence:test");
 
 vi.mock("../windows/openWindow", () => ({
-  openWindow: (...args: unknown[]) => openWindow(...args),
+  openWindow: (...args: unknown[]) => openWindow(...(args as Parameters<typeof openWindow>)),
 }));
 
 vi.mock("./DecisionTreeDriverBadge", () => ({
@@ -36,13 +36,13 @@ vi.mock("./DecisionTreeDriverBadge", () => ({
   ),
 }));
 vi.mock("../../api/engagement", () => ({
-  fetchResearchContext: (...args: unknown[]) => fetchResearchContext(...args),
-  attachSourceRefs: (...args: unknown[]) => attachSourceRefs(...args),
-  fetchEvidencePack: (...args: unknown[]) => fetchEvidencePack(...args),
-  hydratePublicationRef: (...args: unknown[]) => hydratePublicationRef(...args),
+  fetchResearchContext: (...args: unknown[]) => fetchResearchContext(...(args as Parameters<typeof fetchResearchContext>)),
+  attachSourceRefs: (...args: unknown[]) => attachSourceRefs(...(args as Parameters<typeof attachSourceRefs>)),
+  fetchEvidencePack: (...args: unknown[]) => fetchEvidencePack(...(args as Parameters<typeof fetchEvidencePack>)),
+  hydratePublicationRef: (...args: unknown[]) => hydratePublicationRef(...(args as Parameters<typeof hydratePublicationRef>)),
   searchEngagementContext: (...args: unknown[]) =>
-    searchEngagementContext(...args),
-  promoteTwinsToContext: (...args: unknown[]) => promoteTwinsToContext(...args),
+    searchEngagementContext(...(args as Parameters<typeof searchEngagementContext>)),
+  promoteTwinsToContext: (...args: unknown[]) => promoteTwinsToContext(...(args as Parameters<typeof promoteTwinsToContext>)),
 }));
 
 describe("citation hop pipeline pure helpers (api)", () => {

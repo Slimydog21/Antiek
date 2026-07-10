@@ -7,34 +7,34 @@ import {
   TwinNotesPanel,
 } from "./TwinNotesPanel";
 
-const fetchTwinNotes = vi.fn();
-const recordTwinNote = vi.fn();
-const promoteTwinsToContext = vi.fn();
-const seedTwinNotes = vi.fn();
-const launchFloatingDeepResearch = vi.fn();
-const openWindow = vi.fn(() => "win:twin-draft:test");
-const storeTwinWriteSeed = vi.fn(() => "antiek.twin_write_seed.testkey");
+const fetchTwinNotes = vi.fn<typeof import("../../api/engagement").fetchTwinNotes>();
+const recordTwinNote = vi.fn<(...args: unknown[]) => unknown>();
+const promoteTwinsToContext = vi.fn<(...args: unknown[]) => unknown>();
+const seedTwinNotes = vi.fn<(...args: unknown[]) => unknown>();
+const launchFloatingDeepResearch = vi.fn<(...args: unknown[]) => unknown>();
+const openWindow = vi.fn<typeof import("../windows/openWindow").openWindow>(() => "win:twin-draft:test");
+const storeTwinWriteSeed = vi.fn<typeof import("../../workspace/twinWriteSeed").storeTwinWriteSeed>(() => "antiek.twin_write_seed.testkey");
 const buildTwinWriteHref = vi.fn(
   (key: string) => `/write?twin_seed=${encodeURIComponent(key)}`,
 );
-const buildTwinPromoteWriteHref = vi.fn(
+const buildTwinPromoteWriteHref = vi.fn<typeof import("../../workspace/twinWriteSeed").buildTwinPromoteWriteHref>(
   () => "/write?twin_seed=antiek.twin_write_seed.promote",
 );
 
 vi.mock("../../api/engagement", () => ({
-  fetchTwinNotes: (...args: unknown[]) => fetchTwinNotes(...args),
-  recordTwinNote: (...args: unknown[]) => recordTwinNote(...args),
-  promoteTwinsToContext: (...args: unknown[]) => promoteTwinsToContext(...args),
-  seedTwinNotes: (...args: unknown[]) => seedTwinNotes(...args),
+  fetchTwinNotes: (...args: unknown[]) => fetchTwinNotes(...(args as Parameters<typeof fetchTwinNotes>)),
+  recordTwinNote: (...args: unknown[]) => recordTwinNote(...(args as Parameters<typeof recordTwinNote>)),
+  promoteTwinsToContext: (...args: unknown[]) => promoteTwinsToContext(...(args as Parameters<typeof promoteTwinsToContext>)),
+  seedTwinNotes: (...args: unknown[]) => seedTwinNotes(...(args as Parameters<typeof seedTwinNotes>)),
 }));
 
 vi.mock("../../modes/Reading/launchFloatingDeepResearch", () => ({
   launchFloatingDeepResearch: (...args: unknown[]) =>
-    launchFloatingDeepResearch(...args),
+    launchFloatingDeepResearch(...(args as Parameters<typeof launchFloatingDeepResearch>)),
 }));
 
 vi.mock("../windows/openWindow", () => ({
-  openWindow: (...args: unknown[]) => openWindow(...args),
+  openWindow: (...args: unknown[]) => openWindow(...(args as Parameters<typeof openWindow>)),
 }));
 
 vi.mock("../../workspace/twinWriteSeed", async (importOriginal) => {
@@ -43,11 +43,11 @@ vi.mock("../../workspace/twinWriteSeed", async (importOriginal) => {
   >();
   return {
     ...actual,
-    storeTwinWriteSeed: (...args: unknown[]) => storeTwinWriteSeed(...args),
+    storeTwinWriteSeed: (...args: unknown[]) => storeTwinWriteSeed(...(args as Parameters<typeof storeTwinWriteSeed>)),
     buildTwinWriteHref: (...args: unknown[]) =>
       buildTwinWriteHref(...(args as [string])),
     buildTwinPromoteWriteHref: (...args: unknown[]) =>
-      buildTwinPromoteWriteHref(...args),
+      buildTwinPromoteWriteHref(...(args as Parameters<typeof buildTwinPromoteWriteHref>)),
   };
 });
 
@@ -1393,9 +1393,13 @@ describe("TwinNotesPanel", () => {
   it("passes domain-aware research_domains into twin chase goal_hint (aoc)", async () => {
     fetchTwinNotes.mockResolvedValue({
       asset_id: "pd-fourier",
+      note_count: 1,
+      insight_count: 0,
+      question_count: 1,
       notes: [
         {
           note_id: "twin_q",
+          asset_id: "pd-fourier",
           kind: "question",
           text: "How does heat conduction map?",
         },
@@ -1984,10 +1988,10 @@ describe("TwinNotesPanel", () => {
         html: expect.stringMatching(/data-merge-assets="paper-a\|paper-b"/),
       }),
     );
-    expect(openArgs?.[1].html).toMatch(/Q from A/);
-    expect(openArgs?.[1].html).toMatch(/Q from B/);
+    expect(openArgs?.[1]?.html).toMatch(/Q from A/);
+    expect(openArgs?.[1]?.html).toMatch(/Q from B/);
     // Deduped merge includes B insight too (all secondary selected).
-    expect(openArgs?.[1].html).toMatch(/I from B/);
+    expect(openArgs?.[1]?.html).toMatch(/I from B/);
     expect(storeTwinWriteSeed).toHaveBeenCalledWith(
       expect.objectContaining({
         asset_id: "paper-a+paper-b",

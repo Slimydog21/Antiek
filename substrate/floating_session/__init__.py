@@ -28,7 +28,6 @@ from .product_path import (
 )
 from .session import (
     FloatingSession,
-    SessionStore,
     ViewMode,
     complete_session_research,
     get_session,
@@ -37,6 +36,7 @@ from .session import (
     open_from_highlight,
     set_view_mode,
 )
+from .store import SessionStore
 from .view import project_session_html
 from .window_compose import (
     DEEP_RESEARCH_WINDOW_KIND,

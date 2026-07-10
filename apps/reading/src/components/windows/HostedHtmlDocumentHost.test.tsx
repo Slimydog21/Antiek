@@ -5,16 +5,16 @@ import HostedHtmlDocumentHost, {
   resolveHostedResearchSelection,
 } from "./HostedHtmlDocumentHost";
 
-const launchFloatingDeepResearch = vi.fn();
-const hydratePublicationRefs = vi.fn();
+const launchFloatingDeepResearch = vi.fn<(...args: unknown[]) => unknown>();
+const hydratePublicationRefs = vi.fn<(...args: unknown[]) => unknown>();
 const parsePublicationRefs = vi.fn((raw: string) =>
   raw
     .split("\n")
     .map((s) => s.trim())
     .filter(Boolean),
 );
-const collectDeepResearchSpawnIds = vi.fn(() => [] as string[]);
-const listRecentDeepResearchSpawnIds = vi.fn(() => [] as string[]);
+const collectDeepResearchSpawnIds = vi.fn<typeof import("../../workspace/collectDeepResearchSpawnIds").collectDeepResearchSpawnIds>(() => []);
+const listRecentDeepResearchSpawnIds = vi.fn<typeof import("../../workspace/collectDeepResearchSpawnIds").collectDeepResearchSpawnIds>(() => []);
 
 vi.mock("./windowHostContext", () => ({
   useInWindow: () => undefined,
@@ -22,24 +22,24 @@ vi.mock("./windowHostContext", () => ({
 
 vi.mock("../../modes/Reading/launchFloatingDeepResearch", () => ({
   launchFloatingDeepResearch: (...args: unknown[]) =>
-    launchFloatingDeepResearch(...args),
+    launchFloatingDeepResearch(...(args as Parameters<typeof launchFloatingDeepResearch>)),
 }));
 
 vi.mock("../../modes/ResearchWorkstation/publicationRefs", () => ({
   parsePublicationRefs: (...args: unknown[]) =>
     parsePublicationRefs(...(args as [string])),
   hydratePublicationRefs: (...args: unknown[]) =>
-    hydratePublicationRefs(...args),
+    hydratePublicationRefs(...(args as Parameters<typeof hydratePublicationRefs>)),
 }));
 
 vi.mock("../../workspace/collectDeepResearchSpawnIds", () => ({
   collectDeepResearchSpawnIds: (...args: unknown[]) =>
-    collectDeepResearchSpawnIds(...args),
+    collectDeepResearchSpawnIds(...(args as Parameters<typeof collectDeepResearchSpawnIds>)),
 }));
 
 vi.mock("../../workspace/recentDeepResearchSpawns", () => ({
   listRecentDeepResearchSpawnIds: (...args: unknown[]) =>
-    listRecentDeepResearchSpawnIds(...args),
+    listRecentDeepResearchSpawnIds(...(args as Parameters<typeof listRecentDeepResearchSpawnIds>)),
 }));
 
 vi.mock("../../workspace/windowsStore", () => ({
@@ -118,7 +118,7 @@ vi.mock("../engagement/ResearchContextPanel", () => ({
 }));
 
 const fetchDepthTiers = vi.hoisted(() =>
-  vi.fn(async () => ({
+  vi.fn<(options?: unknown) => unknown>(async () => ({
     active_depth_tier: null as string | null,
     active_preset: null,
     presets: [],
@@ -131,7 +131,7 @@ const fetchDepthTiers = vi.hoisted(() =>
 );
 
 vi.mock("../../api/settings", () => ({
-  estimatePromptCost: vi.fn(async () => ({
+  estimatePromptCost: vi.fn<(options?: unknown) => unknown>(async () => ({
     estimated_usd_low: null,
     estimated_usd_high: null,
     would_exceed_budget: null,
@@ -143,7 +143,7 @@ vi.mock("../../api/settings", () => ({
     provider: null,
     model: null,
   })),
-  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...args),
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...(args as Parameters<typeof fetchDepthTiers>)),
 }));
 
 vi.mock("../engagement/ResearchLaunchBudgetPanel", () => {
@@ -1515,7 +1515,7 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
       status: "reserved",
       model_id: null,
     });
-    const getSelection = vi.fn(() => ({
+    const getSelection = vi.fn<(options?: unknown) => unknown>(() => ({
       toString: () => "Transformers changed NLP forever",
     }));
     vi.stubGlobal("getSelection", getSelection);

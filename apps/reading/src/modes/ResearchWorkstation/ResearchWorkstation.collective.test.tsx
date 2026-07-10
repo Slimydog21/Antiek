@@ -9,12 +9,12 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
-const useInvestigationMock = vi.fn();
-const collectDeepResearchSpawnIdsMock = vi.fn(() => [] as string[]);
-const listRecentDeepResearchSpawnIdsMock = vi.fn(() => [] as string[]);
+const useInvestigationMock = vi.fn<(...args: unknown[]) => unknown>();
+const collectDeepResearchSpawnIdsMock = vi.fn<typeof import("../../workspace/collectDeepResearchSpawnIds").collectDeepResearchSpawnIds>(() => []);
+const listRecentDeepResearchSpawnIdsMock = vi.fn<typeof import("../../workspace/recentDeepResearchSpawns").listRecentDeepResearchSpawnIds>(() => []);
 const windowsState = { windows: {} as Record<string, unknown> };
 
 vi.mock("../../hooks/useInvestigation", () => ({
@@ -23,7 +23,7 @@ vi.mock("../../hooks/useInvestigation", () => ({
 
 vi.mock("../../workspace/collectDeepResearchSpawnIds", () => ({
   collectDeepResearchSpawnIds: (...args: unknown[]) =>
-    collectDeepResearchSpawnIdsMock(...args),
+    collectDeepResearchSpawnIdsMock(...(args as Parameters<typeof collectDeepResearchSpawnIdsMock>)),
 }));
 
 vi.mock("../../workspace/recentDeepResearchSpawns", () => ({
@@ -37,7 +37,7 @@ vi.mock("../../workspace/windowsStore", () => ({
 
 vi.mock("../../workspace/WorkspaceStore", () => ({
   useWorkspace: (sel: (s: { open: () => void }) => unknown) =>
-    sel({ open: vi.fn() }),
+    sel({ open: vi.fn<(...args: unknown[]) => unknown>() }),
 }));
 
 vi.mock("../../workspace/PanelHost", () => ({
@@ -136,7 +136,7 @@ vi.mock("../../components/engagement/ResearchContextPanel", () => ({
 }));
 
 const fetchDepthTiers = vi.hoisted(() =>
-  vi.fn(async () => ({
+  vi.fn<(options?: unknown) => unknown>(async () => ({
     active_depth_tier: "wrestle" as string | null,
     active_preset: null,
     presets: [],
@@ -145,7 +145,7 @@ const fetchDepthTiers = vi.hoisted(() =>
 );
 
 vi.mock("../../api/settings", () => ({
-  estimatePromptCost: vi.fn(async () => ({
+  estimatePromptCost: vi.fn<(options?: unknown) => unknown>(async () => ({
     estimated_usd_low: null,
     estimated_usd_high: null,
     would_exceed_budget: null,
@@ -157,7 +157,7 @@ vi.mock("../../api/settings", () => ({
     provider: null,
     model: null,
   })),
-  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...args),
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...(args as Parameters<typeof fetchDepthTiers>)),
 }));
 
 vi.mock("./HighlightToolbar", () => ({

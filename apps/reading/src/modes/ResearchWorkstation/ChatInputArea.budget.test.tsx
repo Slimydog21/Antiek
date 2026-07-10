@@ -57,14 +57,14 @@ vi.mock("../../api/settings", () => ({
   fetchSettingsBudget,
   estimatePromptCost,
   fetchDecisionTreeSelection,
-  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...args),
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...(args as Parameters<typeof fetchDepthTiers>)),
 }));
 
 vi.mock("../../lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/api")>();
   return {
     ...actual,
-    startInvestigation: vi.fn(),
+    startInvestigation: vi.fn<(...args: unknown[]) => unknown>(),
   };
 });
 

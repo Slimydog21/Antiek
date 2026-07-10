@@ -22,7 +22,7 @@ vi.mock("../api/settings", () => ({
     provider: null,
     model: null,
   })),
-  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...args),
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...(args as Parameters<typeof fetchDepthTiers>)),
 }));
 
 import { useSettingsResearchTier } from "./useSettingsResearchTier";

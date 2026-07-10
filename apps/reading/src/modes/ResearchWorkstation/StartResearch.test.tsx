@@ -23,8 +23,8 @@ import type { Event } from "../../generated/types";
 
 const { startInvestigationMock, navigateMock, eventStreamState } = vi.hoisted(
   () => ({
-    startInvestigationMock: vi.fn(),
-    navigateMock: vi.fn(),
+    startInvestigationMock: vi.fn<(...args: unknown[]) => unknown>(),
+    navigateMock: vi.fn<(...args: unknown[]) => unknown>(),
     eventStreamState: {
       current: {
         events: [] as Event[],
@@ -58,11 +58,11 @@ vi.mock("../../api/settings", async (orig) => {
     const actual = await orig<typeof import("../../api/settings")>();
     return {
       ...actual,
-      fetchDepthTiers: (...args: unknown[]) => fetchDepthTiersMock(...args),
+      fetchDepthTiers: (...args: unknown[]) => fetchDepthTiersMock(...(args as Parameters<typeof fetchDepthTiersMock>)),
     };
   } catch {
     return {
-      fetchDepthTiers: (...args: unknown[]) => fetchDepthTiersMock(...args),
+      fetchDepthTiers: (...args: unknown[]) => fetchDepthTiersMock(...(args as Parameters<typeof fetchDepthTiersMock>)),
       estimatePromptCost: vi.fn(async () => ({
         estimated_usd_low: 0.01,
         estimated_usd_high: 0.02,

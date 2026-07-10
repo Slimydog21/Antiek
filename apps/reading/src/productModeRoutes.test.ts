@@ -70,7 +70,7 @@ describe("productModeRoutes shell registration", () => {
     expect(moil?.blurb || "").toMatch(/price ceiling/i);
     expect(moil?.viewFormat).toBe("html");
     const tax = modeById("MidnightOil");
-    expect(tax?.description || tax?.blurb || "").toMatch(/multi-goal/i);
+    expect(tax?.blurb || "").toMatch(/multi-goal/i);
   });
 
   it("Marketplace host blurb stamps domain-aware HTML research land (aon)", () => {

@@ -111,28 +111,28 @@ const {
     notes: ["test note"],
   };
   return {
-    installDecisionTreeSelection: vi.fn(async () => ({
+    installDecisionTreeSelection: vi.fn<(options?: unknown) => unknown>(async () => ({
       model_id: "glm-5.2",
       provider_id: "zai",
       installed: true,
       notes: ["installed into process-local decision-tree registry"],
       source: "test",
     })),
-    clearDecisionTreeSelection: vi.fn(async () => ({
+    clearDecisionTreeSelection: vi.fn<(options?: unknown) => unknown>(async () => ({
       model_id: null,
       provider_id: null,
       installed: false,
       notes: ["decision-tree selection cleared"],
       source: "test",
     })),
-    fetchDecisionTreeSelection: vi.fn(async () => ({
+    fetchDecisionTreeSelection: vi.fn<(options?: unknown) => unknown>(async () => ({
       model_id: null,
       provider_id: null,
       installed: false,
       notes: ["no decision-tree selection installed in this process"],
       source: "test",
     })),
-    estimatePromptCost: vi.fn(async () => ({
+    estimatePromptCost: vi.fn<(options?: unknown) => unknown>(async () => ({
       estimated_usd_low: null,
       estimated_usd_high: null,
       would_exceed_budget: null,
@@ -144,11 +144,11 @@ const {
       provider: "zai",
       model: "glm-5.2",
     })),
-    fetchSettingsModels: vi.fn(async () => models),
-    fetchSettingsBudget: vi.fn(async () => budget),
-    fetchAntiekBenchUsageSummary: vi.fn(async () => defaultUsageSummary),
+    fetchSettingsModels: vi.fn<(options?: unknown) => unknown>(async () => models),
+    fetchSettingsBudget: vi.fn<(options?: unknown) => unknown>(async () => budget),
+    fetchAntiekBenchUsageSummary: vi.fn<(options?: unknown) => unknown>(async () => defaultUsageSummary),
     defaultUsageSummary,
-    fetchAntiekBenchSuiteProposal: vi.fn(async () => ({
+    fetchAntiekBenchSuiteProposal: vi.fn<(options?: unknown) => unknown>(async () => ({
       has_proposal: true,
       proposal_id: "prop_testdeadbeef01",
       status: "proposed",
@@ -195,7 +195,7 @@ const {
       ],
       html: null,
     })),
-    fetchDepthTiers: vi.fn(async () => ({
+    fetchDepthTiers: vi.fn<(options?: unknown) => unknown>(async () => ({
       active_depth_tier: null,
       active_preset: null,
       presets: [
@@ -273,7 +273,7 @@ const {
       notes: [`Active depth tier set to ${opts.depth_tier}`],
       html: `<p>Active: ${opts.depth_tier}</p>`,
     })),
-    fetchAntiekBenchDogfoodFixtures: vi.fn(async () => ({
+    fetchAntiekBenchDogfoodFixtures: vi.fn<(options?: unknown) => unknown>(async () => ({
       // Residual (st/…/asm/asp): competitive dogfood v36 postures.
       suite_version: "suite-competitive-dogfood-v36",
       label: "antiek-bench-competitive-dogfood",
@@ -351,7 +351,7 @@ const {
       notes: ["Competitive dogfood fixtures are offline prompts only."],
       html: "<p>Suite suite-competitive-dogfood-v36 · items=56 · dogfood-wrestle-readiness-cta-matrix · dogfood-book-free-host-html-port</p>",
     })),
-    fetchAntiekBenchLeaderboard: vi.fn(async () => ({
+    fetchAntiekBenchLeaderboard: vi.fn<(options?: unknown) => unknown>(async () => ({
       week_id: "2026-W28",
       models: [
         {
@@ -382,7 +382,7 @@ const {
       notes: [],
       html: "<p>Leaderboard week 2026-W28 · strong-model</p>",
     })),
-    runAntiekBenchOffline: vi.fn(async () => ({
+    runAntiekBenchOffline: vi.fn<(options?: unknown) => unknown>(async () => ({
       week_id: "2026-W28",
       suite_version: "suite-competitive-dogfood-v1",
       suite_label: "antiek-bench-competitive-dogfood",
@@ -418,7 +418,7 @@ const {
       notes: ["Offline dogfood suite run — keyword stub providers only."],
       html: "<p>Antiek-bench offline dogfood week 2026-W28</p>",
     })),
-    fetchRegisteredModels: vi.fn(async () => ({
+    fetchRegisteredModels: vi.fn<(options?: unknown) => unknown>(async () => ({
       models: [],
       count: 0,
       active_model_id: null,
@@ -452,7 +452,7 @@ const {
       selected: Boolean(opts.select),
       registered_count: 1,
     })),
-    fetchNotDiamondAdvisory: vi.fn(async () => ({
+    fetchNotDiamondAdvisory: vi.fn<(options?: unknown) => unknown>(async () => ({
       advisory_allowed: true,
       advisory_verdict: "GO",
       authority_allowed: false,
@@ -475,7 +475,7 @@ const {
       html: "<p>Authority REJECT — not the dispatch authority · Suggested model (advisory): stub-strong</p>",
     })),
     // Residual (hq): offline-honest hydrate status default.
-    fetchHydrateLiveStatus: vi.fn(async () => ({
+    fetchHydrateLiveStatus: vi.fn<(options?: unknown) => unknown>(async () => ({
       view_format: "html",
       product_panel: "hydrate_live_status",
       source: "engagement_spine.hydrate_live_wiring",
@@ -498,7 +498,7 @@ const {
       html: "<p>offline_honest=true</p>",
     })),
     // Residual (hs): offline-honest twin seed status default.
-    fetchTwinSeedLiveStatus: vi.fn(async () => ({
+    fetchTwinSeedLiveStatus: vi.fn<(options?: unknown) => unknown>(async () => ({
       view_format: "html",
       product_panel: "twin_seed_live_status",
       source: "engagement_spine.twin_seed_live_wiring",
@@ -514,7 +514,7 @@ const {
       html: "<p>offline_honest=true</p>",
     })),
     // Residual (sz): offline-honest MO live-step status default.
-    fetchMidnightOilLiveStepStatus: vi.fn(async () => ({
+    fetchMidnightOilLiveStepStatus: vi.fn<(options?: unknown) => unknown>(async () => ({
       view_format: "html",
       product_panel: "midnight_oil_live_step_status",
       source: "midnight_oil.live_step_wiring",
@@ -800,7 +800,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
   });
 
   it("scrolls to Settings hash anchors on mount (sp)", async () => {
-    const scrollIntoView = vi.fn();
+    const scrollIntoView = vi.fn<(...args: unknown[]) => unknown>();
     const el = document.createElement("div");
     el.id = "decision-tree-panel";
     el.scrollIntoView = scrollIntoView;

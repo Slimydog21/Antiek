@@ -13,7 +13,7 @@ function win(
     kind: kind as WorkspaceWindowDescriptor["kind"],
     mode: "floating",
     z: 1,
-    rect: { x: 0, y: 0, w: 100, h: 100 },
+    rect: { x: 0, y: 0, width: 100, height: 100 },
     title: id,
     payload: spawn_id ? { spawn_id } : {},
   };

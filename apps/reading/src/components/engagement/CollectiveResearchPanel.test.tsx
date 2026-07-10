@@ -9,29 +9,29 @@ import {
   CollectiveResearchPanel,
 } from "./CollectiveResearchPanel";
 
-const fetchCollectiveResearch = vi.fn();
-const mergeSpawnOutputs = vi.fn();
-const seedTwinNotes = vi.fn();
-const openWindow = vi.fn(() => "win:analysis:draft_1");
-const launchFloatingDeepResearch = vi.fn();
+const fetchCollectiveResearch = vi.fn<(...args: unknown[]) => unknown>();
+const mergeSpawnOutputs = vi.fn<(...args: unknown[]) => unknown>();
+const seedTwinNotes = vi.fn<(...args: unknown[]) => unknown>();
+const openWindow = vi.fn<typeof import("../windows/openWindow").openWindow>(() => "win:analysis:draft_1");
+const launchFloatingDeepResearch = vi.fn<(...args: unknown[]) => unknown>();
 
 vi.mock("../../api/engagement", () => ({
-  fetchCollectiveResearch: (...args: unknown[]) => fetchCollectiveResearch(...args),
-  mergeSpawnOutputs: (...args: unknown[]) => mergeSpawnOutputs(...args),
-  seedTwinNotes: (...args: unknown[]) => seedTwinNotes(...args),
+  fetchCollectiveResearch: (...args: unknown[]) => fetchCollectiveResearch(...(args as Parameters<typeof fetchCollectiveResearch>)),
+  mergeSpawnOutputs: (...args: unknown[]) => mergeSpawnOutputs(...(args as Parameters<typeof mergeSpawnOutputs>)),
+  seedTwinNotes: (...args: unknown[]) => seedTwinNotes(...(args as Parameters<typeof seedTwinNotes>)),
 }));
 
 vi.mock("../windows/openWindow", () => ({
-  openWindow: (...args: unknown[]) => openWindow(...args),
+  openWindow: (...args: unknown[]) => openWindow(...(args as Parameters<typeof openWindow>)),
 }));
 
 vi.mock("../../modes/Reading/launchFloatingDeepResearch", () => ({
   launchFloatingDeepResearch: (...args: unknown[]) =>
-    launchFloatingDeepResearch(...args),
+    launchFloatingDeepResearch(...(args as Parameters<typeof launchFloatingDeepResearch>)),
 }));
 
 const fetchDepthTiers = vi.hoisted(() =>
-  vi.fn(async () => ({
+  vi.fn(async (_options?: { includeHtml?: boolean }) => ({
     active_depth_tier: null as string | null,
     active_preset: null,
     presets: [],
@@ -56,7 +56,7 @@ vi.mock("../../api/settings", () => ({
     provider: null,
     model: null,
   })),
-  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...args),
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...(args as Parameters<typeof fetchDepthTiers>)),
 }));
 
 vi.mock("./DecisionTreeDriverBadge", () => ({

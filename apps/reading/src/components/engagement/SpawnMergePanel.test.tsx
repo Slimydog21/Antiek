@@ -3,17 +3,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SpawnMergePanel } from "./SpawnMergePanel";
 
-const mergeSpawnOutputs = vi.fn();
-const seedTwinNotes = vi.fn();
+const mergeSpawnOutputs = vi.fn<(...args: unknown[]) => unknown>();
+const seedTwinNotes = vi.fn<(...args: unknown[]) => unknown>();
 const openWindow = vi.fn(() => "win:merge:draft_1");
 
 vi.mock("../../api/engagement", () => ({
-  mergeSpawnOutputs: (...args: unknown[]) => mergeSpawnOutputs(...args),
-  seedTwinNotes: (...args: unknown[]) => seedTwinNotes(...args),
+  mergeSpawnOutputs: (...args: unknown[]) => mergeSpawnOutputs(...(args as Parameters<typeof mergeSpawnOutputs>)),
+  seedTwinNotes: (...args: unknown[]) => seedTwinNotes(...(args as Parameters<typeof seedTwinNotes>)),
 }));
 
 vi.mock("../windows/openWindow", () => ({
-  openWindow: (...args: unknown[]) => openWindow(...args),
+  openWindow: (...args: unknown[]) => openWindow(...(args as Parameters<typeof openWindow>)),
 }));
 
 vi.mock("./DecisionTreeDriverBadge", () => ({

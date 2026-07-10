@@ -19,16 +19,16 @@ const {
   collectDeepResearchSpawnIds,
   listRecentDeepResearchSpawnIds,
 } = vi.hoisted(() => ({
-  fetchMarketplaceCatalog: vi.fn(),
-  hostBookIntoAccount: vi.fn(),
-  fetchAccountLibrary: vi.fn(),
-  purchaseAndHost: vi.fn(),
-  fetchHostedDocumentHtml: vi.fn(),
-  openWindow: vi.fn(() => "win:hosted:hdoc_abc"),
-  seedTwinNotes: vi.fn(),
-  launchFloatingDeepResearch: vi.fn(),
-  hydratePublicationRefs: vi.fn(),
-  fetchDepthTiers: vi.fn(async () => ({
+  fetchMarketplaceCatalog: vi.fn<(...args: unknown[]) => unknown>(),
+  hostBookIntoAccount: vi.fn<(...args: unknown[]) => unknown>(),
+  fetchAccountLibrary: vi.fn<(...args: unknown[]) => unknown>(),
+  purchaseAndHost: vi.fn<(...args: unknown[]) => unknown>(),
+  fetchHostedDocumentHtml: vi.fn<(...args: unknown[]) => unknown>(),
+  openWindow: vi.fn<typeof import("../../components/windows/openWindow").openWindow>(() => "win:hosted:hdoc_abc"),
+  seedTwinNotes: vi.fn<(...args: unknown[]) => unknown>(),
+  launchFloatingDeepResearch: vi.fn<(...args: unknown[]) => unknown>(),
+  hydratePublicationRefs: vi.fn<(...args: unknown[]) => unknown>(),
+  fetchDepthTiers: vi.fn<(options?: unknown) => unknown>(async () => ({
     active_depth_tier: null as string | null,
     active_preset: null,
     presets: [],
@@ -38,8 +38,8 @@ const {
     source: "test",
     notes: [] as string[],
   })),
-  collectDeepResearchSpawnIds: vi.fn(() => [] as string[]),
-  listRecentDeepResearchSpawnIds: vi.fn(() => [] as string[]),
+  collectDeepResearchSpawnIds: vi.fn<(options?: unknown) => unknown>(() => [] as string[]),
+  listRecentDeepResearchSpawnIds: vi.fn<(options?: unknown) => unknown>(() => [] as string[]),
 }));
 
 vi.mock("../../api/marketplaceHost", () => ({
@@ -51,7 +51,7 @@ vi.mock("../../api/marketplaceHost", () => ({
 }));
 
 vi.mock("../../api/engagement", () => ({
-  seedTwinNotes: (...args: unknown[]) => seedTwinNotes(...args),
+  seedTwinNotes: (...args: unknown[]) => seedTwinNotes(...(args as Parameters<typeof seedTwinNotes>)),
 }));
 
 vi.mock("../../components/windows/openWindow", () => ({
@@ -69,11 +69,11 @@ vi.mock("../ResearchWorkstation/publicationRefs", () => ({
       .map((s) => s.trim())
       .filter(Boolean),
   hydratePublicationRefs: (...args: unknown[]) =>
-    hydratePublicationRefs(...args),
+    hydratePublicationRefs(...(args as Parameters<typeof hydratePublicationRefs>)),
 }));
 
 vi.mock("../../api/settings", () => ({
-  estimatePromptCost: vi.fn(async () => ({
+  estimatePromptCost: vi.fn<(options?: unknown) => unknown>(async () => ({
     estimated_usd_low: null,
     estimated_usd_high: null,
     would_exceed_budget: null,
@@ -85,7 +85,7 @@ vi.mock("../../api/settings", () => ({
     provider: null,
     model: null,
   })),
-  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...args),
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...(args as Parameters<typeof fetchDepthTiers>)),
 }));
 
 vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
@@ -185,12 +185,12 @@ vi.mock("../../components/engagement/ResearchContextPanel", () => ({
 // Residual (ani): collective multi-select on marketplace host land.
 vi.mock("../../workspace/collectDeepResearchSpawnIds", () => ({
   collectDeepResearchSpawnIds: (...args: unknown[]) =>
-    collectDeepResearchSpawnIds(...args),
+    collectDeepResearchSpawnIds(...(args as Parameters<typeof collectDeepResearchSpawnIds>)),
 }));
 
 vi.mock("../../workspace/recentDeepResearchSpawns", () => ({
   listRecentDeepResearchSpawnIds: (...args: unknown[]) =>
-    listRecentDeepResearchSpawnIds(...args),
+    listRecentDeepResearchSpawnIds(...(args as Parameters<typeof listRecentDeepResearchSpawnIds>)),
 }));
 
 vi.mock("../../workspace/windowsStore", () => ({
@@ -1702,10 +1702,10 @@ describe("MarketplaceHost mode", () => {
     );
     expect(call).toBeTruthy();
     // Residual (mi): chip-aware catalog document id (default chips = all/any).
-    expect(call![1].document_id).toMatch(/^marketplace-catalog-/);
-    expect(call![1].view_format).toBe("html");
-    expect(call![1].html).toContain("marketplace catalog");
-    expect(call![1].source).toBe("marketplace_catalog");
+    expect(call?.[1]?.document_id).toMatch(/^marketplace-catalog-/);
+    expect(call?.[1]?.view_format).toBe("html");
+    expect(call?.[1]?.html).toContain("marketplace catalog");
+    expect(call?.[1]?.source).toBe("marketplace_catalog");
   });
 
   it("filters catalog by knowledge-source chip (lx)", async () => {

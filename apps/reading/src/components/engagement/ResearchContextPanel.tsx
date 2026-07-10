@@ -71,7 +71,10 @@ import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 
 /** Pure twin-kind metrics for recursive note-taker substrate (residual ff). */
 export function twinNoteMetrics(
-  pack: Pick<ResearchContextResponse, "twin_units" | "twin_count"> | null,
+  pack: {
+    twin_units?: Array<{ kind?: string | null }>;
+    twin_count?: number | null;
+  } | null,
 ): {
   total: number;
   insights: number;
@@ -1009,7 +1012,7 @@ export function ResearchContextPanel({
                   data-testid="evidence-citation-hop-pipeline-list"
                 >
                   {hopPipe.stages.map((stage, i) => {
-                    const done = hopPipe.present.includes(stage);
+                    const done = hopPipe.present.some((present) => present === stage);
                     return (
                       <li
                         key={stage}

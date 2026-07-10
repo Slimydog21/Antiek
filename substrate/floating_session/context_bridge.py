@@ -25,7 +25,8 @@ from substrate.engagement_spine.collective import CollectiveResearchUnit
 from substrate.engagement_spine.research_context import ResearchContextPack
 from substrate.engagement_spine.store import EngagementStore
 
-from .session import FloatingSession, SessionStore, ViewMode, _from_row, _session_id, _to_row
+from .session import FloatingSession, ViewMode, _from_row, _session_id, _to_row
+from .store import SessionStore
 
 
 def open_from_highlight_with_references(

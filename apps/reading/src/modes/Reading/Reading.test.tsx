@@ -22,13 +22,13 @@ const {
   launchFloatingDeepResearchMock,
   fetchDepthTiersMock,
 } = vi.hoisted(() => ({
-  getBookMock: vi.fn(),
-  getFullTextMock: vi.fn(),
-  listBooksMock: vi.fn(),
-  spinResearchMock: vi.fn(),
-  recordAdImpressionsMock: vi.fn().mockResolvedValue(undefined),
-  navigateMock: vi.fn(),
-  useInvestigationMock: vi.fn(),
+  getBookMock: vi.fn<(...args: unknown[]) => unknown>(),
+  getFullTextMock: vi.fn<(...args: unknown[]) => unknown>(),
+  listBooksMock: vi.fn<(...args: unknown[]) => unknown>(),
+  spinResearchMock: vi.fn<(...args: unknown[]) => unknown>(),
+  recordAdImpressionsMock: vi.fn<typeof import("../../api/books").recordAdImpressions>().mockResolvedValue(undefined),
+  navigateMock: vi.fn<(...args: unknown[]) => unknown>(),
+  useInvestigationMock: vi.fn<(...args: unknown[]) => unknown>(),
   postTypedEventMock: vi.fn((_e: unknown) =>
     Promise.resolve({ event_id: "ev-1", action_type: "marginalia.noted" }),
   ),
@@ -39,7 +39,7 @@ const {
   apiFetchMock: vi.fn((_i: unknown, _init?: unknown) =>
     Promise.resolve(new Response(JSON.stringify({ text: "reply" }), { status: 200 })),
   ),
-  launchFloatingDeepResearchMock: vi.fn(async () => ({
+  launchFloatingDeepResearchMock: vi.fn<(options?: unknown) => unknown>(async () => ({
     session_id: "fsess_test",
     spawn_id: "spn_test",
     investigation_id: "inv_test",
@@ -50,7 +50,7 @@ const {
     status: "reserved",
     research_tier: "deep",
   })),
-  fetchDepthTiersMock: vi.fn(async () => ({
+  fetchDepthTiersMock: vi.fn<(options?: unknown) => unknown>(async () => ({
     active_depth_tier: null as string | null,
     active_preset: null,
     tiers: [],
@@ -59,11 +59,11 @@ const {
 
 vi.mock("./launchFloatingDeepResearch", () => ({
   launchFloatingDeepResearch: (...args: unknown[]) =>
-    launchFloatingDeepResearchMock(...args),
+    launchFloatingDeepResearchMock(...(args as Parameters<typeof launchFloatingDeepResearchMock>)),
 }));
 
 vi.mock("../../api/settings", () => ({
-  estimatePromptCost: vi.fn(async () => ({
+  estimatePromptCost: vi.fn<(options?: unknown) => unknown>(async () => ({
     estimated_usd_low: null,
     estimated_usd_high: null,
     would_exceed_budget: null,
@@ -75,7 +75,7 @@ vi.mock("../../api/settings", () => ({
     provider: null,
     model: null,
   })),
-  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiersMock(...args),
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiersMock(...(args as Parameters<typeof fetchDepthTiersMock>)),
 }));
 
 vi.mock("../../api/books", async (orig) => {

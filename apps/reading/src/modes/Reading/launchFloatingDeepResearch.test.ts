@@ -6,12 +6,12 @@ import {
 } from "../../workspace/recentDeepResearchSpawns";
 import { launchFloatingDeepResearch } from "./launchFloatingDeepResearch";
 
-const openEngagementSession = vi.fn();
+const openEngagementSession = vi.fn<(...args: unknown[]) => unknown>();
 const openDeepResearchFromHighlight = vi.fn(() => "wdr_fsess_1");
-const fetchDecisionTreeSelection = vi.fn();
+const fetchDecisionTreeSelection = vi.fn<(...args: unknown[]) => unknown>();
 
 vi.mock("../../api/engagement", () => ({
-  openEngagementSession: (...args: unknown[]) => openEngagementSession(...args),
+  openEngagementSession: (...args: unknown[]) => openEngagementSession(...(args as Parameters<typeof openEngagementSession>)),
 }));
 
 vi.mock("../../api/settings", () => ({
@@ -28,12 +28,12 @@ vi.mock("../../api/settings", () => ({
     model: null,
   })),
   fetchDecisionTreeSelection: (...args: unknown[]) =>
-    fetchDecisionTreeSelection(...args),
+    fetchDecisionTreeSelection(...(args as Parameters<typeof fetchDecisionTreeSelection>)),
 }));
 
 vi.mock("../../workspace/deepResearchWindow", () => ({
   openDeepResearchFromHighlight: (...args: unknown[]) =>
-    openDeepResearchFromHighlight(...args),
+    openDeepResearchFromHighlight(...(args as Parameters<typeof openDeepResearchFromHighlight>)),
 }));
 
 describe("launchFloatingDeepResearch residual cc/cy", () => {

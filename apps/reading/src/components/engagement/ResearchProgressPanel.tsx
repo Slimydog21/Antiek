@@ -479,7 +479,9 @@ export function ResearchProgressPanel({
               data-testid="research-progress-stage-pipeline-list"
             >
               {stagePipeline.stages.map((stage) => {
-                const done = stagePipeline.completed.includes(stage);
+                const done = stagePipeline.completed.some(
+                  (completed) => completed === stage,
+                );
                 const isCurrent = stagePipeline.current === stage;
                 return (
                   <li

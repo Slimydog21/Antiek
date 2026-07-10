@@ -8,17 +8,17 @@ import {
   ResearchProgressPanel,
 } from "./ResearchProgressPanel";
 
-const fetchResearchProgress = vi.fn();
-const seedResearchProgress = vi.fn();
-const openWindow = vi.fn(() => "win:progress:test");
+const fetchResearchProgress = vi.fn<(...args: unknown[]) => unknown>();
+const seedResearchProgress = vi.fn<(...args: unknown[]) => unknown>();
+const openWindow = vi.fn<typeof import("../windows/openWindow").openWindow>(() => "win:progress:test");
 
 vi.mock("../windows/openWindow", () => ({
-  openWindow: (...args: unknown[]) => openWindow(...args),
+  openWindow: (...args: unknown[]) => openWindow(...(args as Parameters<typeof openWindow>)),
 }));
 
 vi.mock("../../api/engagement", () => ({
-  fetchResearchProgress: (...args: unknown[]) => fetchResearchProgress(...args),
-  seedResearchProgress: (...args: unknown[]) => seedResearchProgress(...args),
+  fetchResearchProgress: (...args: unknown[]) => fetchResearchProgress(...(args as Parameters<typeof fetchResearchProgress>)),
+  seedResearchProgress: (...args: unknown[]) => seedResearchProgress(...(args as Parameters<typeof seedResearchProgress>)),
 }));
 
 vi.mock("./DecisionTreeDriverBadge", () => ({

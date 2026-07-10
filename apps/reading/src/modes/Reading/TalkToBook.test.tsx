@@ -20,14 +20,14 @@ const {
   collectDeepResearchSpawnIds,
   listRecentDeepResearchSpawnIds,
 } = vi.hoisted(() => ({
-  askBookMock: vi.fn(),
-  fetchDepthTiersMock: vi.fn(async () => ({
+  askBookMock: vi.fn<typeof import("../../api/books").askBook>(),
+  fetchDepthTiersMock: vi.fn<(options?: unknown) => unknown>(async () => ({
     active_depth_tier: null as string | null,
     active_preset: null,
     tiers: [],
   })),
-  collectDeepResearchSpawnIds: vi.fn(() => [] as string[]),
-  listRecentDeepResearchSpawnIds: vi.fn(() => [] as string[]),
+  collectDeepResearchSpawnIds: vi.fn<typeof import("../../workspace/collectDeepResearchSpawnIds").collectDeepResearchSpawnIds>(() => []),
+  listRecentDeepResearchSpawnIds: vi.fn<typeof import("../../workspace/collectDeepResearchSpawnIds").collectDeepResearchSpawnIds>(() => []),
 }));
 
 vi.mock("../../api/books", async (orig) => {
@@ -36,7 +36,7 @@ vi.mock("../../api/books", async (orig) => {
 });
 
 vi.mock("../../api/settings", () => ({
-  estimatePromptCost: vi.fn(async () => ({
+  estimatePromptCost: vi.fn<(options?: unknown) => unknown>(async () => ({
     estimated_usd_low: null,
     estimated_usd_high: null,
     would_exceed_budget: null,
@@ -48,15 +48,15 @@ vi.mock("../../api/settings", () => ({
     provider: null,
     model: null,
   })),
-  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiersMock(...args),
-  fetchDecisionTreeSelection: vi.fn(async () => ({
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiersMock(...(args as Parameters<typeof fetchDepthTiersMock>)),
+  fetchDecisionTreeSelection: vi.fn<(options?: unknown) => unknown>(async () => ({
     model_id: null,
     provider_id: null,
     installed: false,
     notes: [],
     source: "test",
   })),
-  fetchSettingsBudget: vi.fn(async () => null),
+  fetchSettingsBudget: vi.fn<(options?: unknown) => unknown>(async () => null),
 }));
 
 // Stub ReadAloud so the TTS network path isn't coupled into this test (the real
@@ -136,12 +136,12 @@ vi.mock("../../components/engagement/ResearchContextPanel", () => ({
 // Residual (ang): collective multi-select from talk bookmark (parity ResearchThis fc).
 vi.mock("../../workspace/collectDeepResearchSpawnIds", () => ({
   collectDeepResearchSpawnIds: (...args: unknown[]) =>
-    collectDeepResearchSpawnIds(...args),
+    collectDeepResearchSpawnIds(...(args as Parameters<typeof collectDeepResearchSpawnIds>)),
 }));
 
 vi.mock("../../workspace/recentDeepResearchSpawns", () => ({
   listRecentDeepResearchSpawnIds: (...args: unknown[]) =>
-    listRecentDeepResearchSpawnIds(...args),
+    listRecentDeepResearchSpawnIds(...(args as Parameters<typeof listRecentDeepResearchSpawnIds>)),
 }));
 
 vi.mock("../../workspace/windowsStore", () => ({
@@ -213,7 +213,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 async function openAndAsk(
-  jump = vi.fn(),
+  jump = vi.fn<(...args: unknown[]) => unknown>(),
   question = "what is on page seven?",
   expectAnswer = "Page seven discusses entanglement.",
 ) {
@@ -230,7 +230,7 @@ async function openAndAsk(
 describe("TalkToBook (M2)", () => {
   it("mounts DecisionTreeDriverBadge with researchTier when open (lh)", async () => {
     askBookMock.mockResolvedValue(answer());
-    render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
+    render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn<(...args: unknown[]) => unknown>()} />);
     fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
     await waitFor(() => {
       expect(screen.getByTestId("talk-to-book-driver-badge-mount")).toBeTruthy();
@@ -249,7 +249,7 @@ describe("TalkToBook (M2)", () => {
 
   it("answers cite pages and a citation click jumps the reader to that page", async () => {
     askBookMock.mockResolvedValue(answer());
-    const jump = vi.fn();
+    const jump = vi.fn<(...args: unknown[]) => unknown>();
     await openAndAsk(jump);
 
     // The citation chip shows the 1-based page; clicking jumps to the 0-based
@@ -261,7 +261,7 @@ describe("TalkToBook (M2)", () => {
 
   it("an unresolved page is shown honestly (no fabricated page, no jump)", async () => {
     askBookMock.mockResolvedValue(answer({ citations: [cite({ page_index: null, page_resolved: false })] }));
-    const jump = vi.fn();
+    const jump = vi.fn<(...args: unknown[]) => unknown>();
     await openAndAsk(jump);
     expect(screen.getByText("in the book (page not pinpointed)")).toBeTruthy();
     expect(jump).not.toHaveBeenCalled();
@@ -271,7 +271,7 @@ describe("TalkToBook (M2)", () => {
     askBookMock
       .mockResolvedValueOnce(answer({ answer: "First answer." }))
       .mockResolvedValueOnce(answer({ answer: "Second answer, building on the first." }));
-    await openAndAsk(vi.fn(), "first question", "First answer.");
+    await openAndAsk(vi.fn<(...args: unknown[]) => unknown>(), "first question", "First answer.");
 
     fireEvent.change(screen.getByPlaceholderText("Ask about this book…"), {
       target: { value: "what about that?" },
@@ -281,8 +281,10 @@ describe("TalkToBook (M2)", () => {
 
     // The second call carries the first turn as history (multi-turn memory).
     const secondCallOpts = askBookMock.mock.calls[1][2];
-    expect(secondCallOpts.history).toHaveLength(1);
-    expect(secondCallOpts.history[0]).toEqual({
+    if (!secondCallOpts) throw new Error("Expected second ask options");
+    const history = secondCallOpts.history;
+    expect(history).toHaveLength(1);
+    expect(history?.[0]).toEqual({
       question: "first question",
       answer: "First answer.",
     });
@@ -300,7 +302,7 @@ describe("TalkToBook (M2)", () => {
     });
     askBookMock.mockResolvedValue(answer({ answer: "Wrestle answer." }));
     render(
-      <TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />,
+      <TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn<(...args: unknown[]) => unknown>()} />,
     );
     fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
     await waitFor(() => {
@@ -335,13 +337,13 @@ describe("TalkToBook (M2)", () => {
 
   it("persists the conversation across a re-mount (the bookmark carries it)", async () => {
     askBookMock.mockResolvedValue(answer({ answer: "A persisted answer." }));
-    const { unmount } = await openAndAsk(vi.fn(), "a question", "A persisted answer.");
+    const { unmount } = await openAndAsk(vi.fn<(...args: unknown[]) => unknown>(), "a question", "A persisted answer.");
     expect(screen.getByText("A persisted answer.")).toBeTruthy();
     unmount();
 
     // Re-mount the SAME book: the bookmark shows the prior turn count, and the
     // thread is restored from session state (not refetched).
-    render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
+    render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn<(...args: unknown[]) => unknown>()} />);
     expect(screen.getByTestId("talk-turn-count").textContent).toBe("1");
     fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
     expect(screen.getByText("A persisted answer.")).toBeTruthy();
@@ -358,13 +360,13 @@ describe("TalkToBook (M2)", () => {
     askBookMock.mockResolvedValue(
       answer({ answer: "No readable text here.", citations: [], grounded: false }),
     );
-    await openAndAsk(vi.fn(), "anything", "No readable text here.");
+    await openAndAsk(vi.fn<(...args: unknown[]) => unknown>(), "anything", "No readable text here.");
     expect(screen.getByText(/isn’t grounded in the book’s text/)).toBeTruthy();
   });
 
   it("mounts TwinNotes recursive note-taker for the book asset (agm)", async () => {
     render(
-      <TalkToBook documentId="doc-twin" title="Twin Book" onJumpToPage={vi.fn()} />,
+      <TalkToBook documentId="doc-twin" title="Twin Book" onJumpToPage={vi.fn<(...args: unknown[]) => unknown>()} />,
     );
     // Bookmark closed: twins not mounted until open.
     expect(screen.queryByTestId("talk-to-book-twins-mount")).toBeNull();
@@ -450,7 +452,7 @@ describe("TalkToBook (M2)", () => {
       <TalkToBook
         documentId="doc-talk-coll"
         title="Talk Collective Book"
-        onJumpToPage={vi.fn()}
+        onJumpToPage={vi.fn<(...args: unknown[]) => unknown>()}
       />,
     );
     // Bookmark closed: collective not mounted until open.
@@ -505,7 +507,7 @@ describe("TalkToBook (M2)", () => {
       <TalkToBook
         documentId="doc-talk-recent"
         title="Recent Talk"
-        onJumpToPage={vi.fn()}
+        onJumpToPage={vi.fn<(...args: unknown[]) => unknown>()}
       />,
     );
     fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
@@ -533,7 +535,7 @@ describe("TalkToBook (M2)", () => {
   it("omits collective panel when no open spawns (ang)", () => {
     collectDeepResearchSpawnIds.mockReturnValue([]);
     render(
-      <TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />,
+      <TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn<(...args: unknown[]) => unknown>()} />,
     );
     fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
     expect(screen.queryByTestId("talk-to-book-collective-mount")).toBeNull();

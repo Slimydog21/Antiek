@@ -161,6 +161,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   const navigate = useNavigate();
   const start = useStartInvestigation();
   const [question, setQuestion] = useState("");
+  const lastQuestionRef = useRef("");
   // SPR-01 M3 / residual (gp): curated fast|deep|wrestle tier. Closed set;
   // defaults to deep. Residual (gr): budget-panel picker writes the same state.
   // Residual (gt): prefill from Settings active_depth_tier when installed.
@@ -233,6 +234,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   } = start;
 
   const onSubmit = useCallback(async () => {
+    lastQuestionRef.current = question;
     if (budgetWarn && !forceOverBudget) {
       // Soft gate — do not start investigation without explicit force.
       return;
@@ -256,8 +258,10 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
       researchTier: tier,
     });
     if (id) {
-      setQuestion("");
-      // Keep refs visible for follow-up asks; operator clears manually.
+      // Keep the human-authored prompt until navigation unmounts this surface.
+      // A run can fail immediately after returning an id; clearing here races
+      // the failure transition and can destroy the operator's recoverable input.
+      // Publication refs likewise remain visible for follow-up asks.
     }
   }, [submit, question, tier, pubRefs, budgetWarn, forceOverBudget]);
 
@@ -377,7 +381,6 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   // On failure, restore the question the operator typed so the run is
   // recoverable. (onSubmit clears it only on a successful POST; but the run
   // can fail *after* the POST returned an id, so we re-seed it here.)
-  const lastQuestionRef = useRef("");
   useEffect(() => {
     if (question) lastQuestionRef.current = question;
   }, [question]);

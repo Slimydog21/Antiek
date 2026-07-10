@@ -25,27 +25,27 @@ const {
   collectDeepResearchSpawnIdsMock, listRecentDeepResearchSpawnIdsMock,
   fetchDepthTiersMock,
 } = vi.hoisted(() => ({
-  listDeliverablesMock: vi.fn(),
-  getTraceTargetMock: vi.fn(),
-  listInvestigationsMock: vi.fn(),
-  startInvestigationMock: vi.fn(),
-  createDeliverableMock: vi.fn(),
-  fetchHostedDocumentHtmlMock: vi.fn(),
-  createSectionMock: vi.fn(),
-  updateSectionProseMock: vi.fn(),
-  seedTwinNotesMock: vi.fn(),
-  getDeliverableMock: vi.fn(),
-  launchFloatingDeepResearchMock: vi.fn(),
-  hydratePublicationRefsMock: vi.fn(),
+  listDeliverablesMock: vi.fn<(...args: unknown[]) => unknown>(),
+  getTraceTargetMock: vi.fn<(...args: unknown[]) => unknown>(),
+  listInvestigationsMock: vi.fn<(...args: unknown[]) => unknown>(),
+  startInvestigationMock: vi.fn<(...args: unknown[]) => unknown>(),
+  createDeliverableMock: vi.fn<(...args: unknown[]) => unknown>(),
+  fetchHostedDocumentHtmlMock: vi.fn<(...args: unknown[]) => unknown>(),
+  createSectionMock: vi.fn<(...args: unknown[]) => unknown>(),
+  updateSectionProseMock: vi.fn<(...args: unknown[]) => unknown>(),
+  seedTwinNotesMock: vi.fn<(...args: unknown[]) => unknown>(),
+  getDeliverableMock: vi.fn<(...args: unknown[]) => unknown>(),
+  launchFloatingDeepResearchMock: vi.fn<(...args: unknown[]) => unknown>(),
+  hydratePublicationRefsMock: vi.fn<(...args: unknown[]) => unknown>(),
   parsePublicationRefsMock: vi.fn((raw: string) =>
     (raw || "")
       .split(/\r?\n+/)
       .map((l) => l.trim())
       .filter(Boolean),
   ),
-  collectDeepResearchSpawnIdsMock: vi.fn(() => [] as string[]),
-  listRecentDeepResearchSpawnIdsMock: vi.fn(() => [] as string[]),
-  fetchDepthTiersMock: vi.fn(async () => ({
+  collectDeepResearchSpawnIdsMock: vi.fn<typeof import("../../workspace/collectDeepResearchSpawnIds").collectDeepResearchSpawnIds>(() => []),
+  listRecentDeepResearchSpawnIdsMock: vi.fn<typeof import("../../workspace/collectDeepResearchSpawnIds").collectDeepResearchSpawnIds>(() => []),
+  fetchDepthTiersMock: vi.fn<(options?: unknown) => unknown>(async () => ({
     active_depth_tier: null as string | null,
     active_preset: null,
     tiers: [],
@@ -55,21 +55,21 @@ const {
 vi.mock("../../lib/api", async (orig) => ({
   ...(await orig<typeof import("../../lib/api")>()),
   listDeliverables: listDeliverablesMock,
-  getDeliverable: (...args: unknown[]) => getDeliverableMock(...args),
+  getDeliverable: (...args: unknown[]) => getDeliverableMock(...(args as Parameters<typeof getDeliverableMock>)),
   createDeliverable: createDeliverableMock,
   listInvestigations: listInvestigationsMock,
   startInvestigation: startInvestigationMock,
-  createSection: (...args: unknown[]) => createSectionMock(...args),
-  updateSectionProse: (...args: unknown[]) => updateSectionProseMock(...args),
+  createSection: (...args: unknown[]) => createSectionMock(...(args as Parameters<typeof createSectionMock>)),
+  updateSectionProse: (...args: unknown[]) => updateSectionProseMock(...(args as Parameters<typeof updateSectionProseMock>)),
 }));
 
 vi.mock("../../api/marketplaceHost", () => ({
   fetchHostedDocumentHtml: (...args: unknown[]) =>
-    fetchHostedDocumentHtmlMock(...args),
+    fetchHostedDocumentHtmlMock(...(args as Parameters<typeof fetchHostedDocumentHtmlMock>)),
 }));
 
 vi.mock("../../api/settings", () => ({
-  estimatePromptCost: vi.fn(async () => ({
+  estimatePromptCost: vi.fn<(options?: unknown) => unknown>(async () => ({
     estimated_usd_low: null,
     estimated_usd_high: null,
     would_exceed_budget: null,
@@ -81,12 +81,12 @@ vi.mock("../../api/settings", () => ({
     provider: null,
     model: null,
   })),
-  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiersMock(...args),
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiersMock(...(args as Parameters<typeof fetchDepthTiersMock>)),
 }));
 
 vi.mock("../../api/engagement", () => ({
-  seedTwinNotes: (...args: unknown[]) => seedTwinNotesMock(...args),
-  fetchTwinNotes: vi.fn(async () => ({
+  seedTwinNotes: (...args: unknown[]) => seedTwinNotesMock(...(args as Parameters<typeof seedTwinNotesMock>)),
+  fetchTwinNotes: vi.fn<(options?: unknown) => unknown>(async () => ({
     asset_id: "dlv-open",
     note_count: 0,
     insight_count: 0,
@@ -98,8 +98,8 @@ vi.mock("../../api/engagement", () => ({
     messages: [],
     html: "",
   })),
-  promoteTwinsToContext: vi.fn(),
-  recordTwinNote: vi.fn(),
+  promoteTwinsToContext: vi.fn<(...args: unknown[]) => unknown>(),
+  recordTwinNote: vi.fn<(...args: unknown[]) => unknown>(),
 }));
 
 vi.mock("../../components/engagement/TwinNotesPanel", () => ({
@@ -205,24 +205,24 @@ vi.mock("../../workspace/windowsStore", () => ({
 
 vi.mock("../../workspace/collectDeepResearchSpawnIds", () => ({
   collectDeepResearchSpawnIds: (...args: unknown[]) =>
-    collectDeepResearchSpawnIdsMock(...args),
+    collectDeepResearchSpawnIdsMock(...(args as Parameters<typeof collectDeepResearchSpawnIdsMock>)),
 }));
 
 vi.mock("../../workspace/recentDeepResearchSpawns", () => ({
   listRecentDeepResearchSpawnIds: (...args: unknown[]) =>
-    listRecentDeepResearchSpawnIdsMock(...args),
+    listRecentDeepResearchSpawnIdsMock(...(args as Parameters<typeof listRecentDeepResearchSpawnIdsMock>)),
 }));
 
 vi.mock("../Reading/launchFloatingDeepResearch", () => ({
   launchFloatingDeepResearch: (...args: unknown[]) =>
-    launchFloatingDeepResearchMock(...args),
+    launchFloatingDeepResearchMock(...(args as Parameters<typeof launchFloatingDeepResearchMock>)),
 }));
 
 vi.mock("../ResearchWorkstation/publicationRefs", () => ({
   parsePublicationRefs: (...args: unknown[]) =>
     parsePublicationRefsMock(...(args as [string])),
   hydratePublicationRefs: (...args: unknown[]) =>
-    hydratePublicationRefsMock(...args),
+    hydratePublicationRefsMock(...(args as Parameters<typeof hydratePublicationRefsMock>)),
 }));
 
 vi.mock("./Outline", () => ({

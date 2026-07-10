@@ -196,10 +196,11 @@ def project_merge_html(
     """HTML-first projection of a merge result (never PDF)."""
     from .project import project_to_html
 
+    mode_text: str
     if isinstance(result, MergeResult):
         doc_model = result.doc_model
         document_id = result.document_id
-        mode = result.mode
+        mode_text = result.mode
         parent = result.parent_asset_id
     else:
         doc_model = result.get("doc_model") or {
@@ -212,7 +213,7 @@ def project_merge_html(
             ],
         }
         document_id = str(result.get("document_id") or "merge")
-        mode = str(result.get("mode") or "")
+        mode_text = str(result.get("mode") or "")
         parent = str(result.get("parent_asset_id") or "")
         if research_tiers is None and result.get("research_tiers"):
             research_tiers = list(result.get("research_tiers") or [])
@@ -226,7 +227,8 @@ def project_merge_html(
             tier_suffix += f" · tiers={','.join(research_tiers)}"
 
     banner_text = (
-        f"Merge mode: {mode} · parent: {parent} · document: {document_id}"
+        f"Merge mode: {mode_text}"
+        f" · parent: {parent} · document: {document_id}"
         f"{tier_suffix} · view: HTML"
     )
 

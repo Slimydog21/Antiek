@@ -785,8 +785,11 @@ def post_twins_seed(body: TwinSeedBody) -> dict[str, Any]:
                 has_body = bool(body.has_body)
             else:
                 has_body = bool(str(body.body_text or "").strip())
+            usage_store = resolve_usage_store()
+            if usage_store is None:
+                raise RuntimeError("bench usage store unavailable")
             usage = record_twin_write_seed_usage(
-                store=resolve_usage_store(),
+                store=usage_store,
                 seed_source=body.usage_source,
                 prompt_hint=(body.title or body.asset_id or "")[:200],
                 research_tier=body.research_tier,

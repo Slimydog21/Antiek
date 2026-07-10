@@ -11,7 +11,7 @@ const {
   fetchAntiekBenchLeaderboard,
   installDecisionTreeSelection,
 } = vi.hoisted(() => ({
-  fetchSettingsBudget: vi.fn(async () => ({
+  fetchSettingsBudget: vi.fn<(options?: unknown) => unknown>(async () => ({
     daily_cap_usd: 5,
     spent_usd: 1,
     remaining_usd: 4,
@@ -19,7 +19,7 @@ const {
     cap_env: null,
     notes: [],
   })),
-  estimatePromptCost: vi.fn(async () => ({
+  estimatePromptCost: vi.fn<(options?: unknown) => unknown>(async () => ({
     estimated_usd_low: 0.08,
     estimated_usd_high: 0.12,
     would_exceed_budget: false,
@@ -31,14 +31,14 @@ const {
     provider: "zai",
     model: "glm-5.2",
   })),
-  fetchDecisionTreeSelection: vi.fn(async () => ({
+  fetchDecisionTreeSelection: vi.fn<(options?: unknown) => unknown>(async () => ({
     model_id: "glm-5.2",
     provider_id: "zai",
     installed: true,
     notes: [],
     source: "test",
   })),
-  fetchAntiekBenchLeaderboard: vi.fn(async () => ({
+  fetchAntiekBenchLeaderboard: vi.fn<(options?: unknown) => unknown>(async () => ({
     week_id: "2026-W28",
     models: [
       {
@@ -62,7 +62,7 @@ const {
     source: "test",
     notes: [],
   })),
-  installDecisionTreeSelection: vi.fn(async () => ({
+  installDecisionTreeSelection: vi.fn<(options?: unknown) => unknown>(async () => ({
     model_id: "strong-model",
     provider_id: "zai",
     installed: true,

@@ -57,7 +57,7 @@ vi.mock("../../api/settings", () => ({
     notes: [],
     source: "test",
   })),
-  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...args),
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...(args as Parameters<typeof fetchDepthTiers>)),
 }));
 
 vi.mock("../engagement/SpawnMergePanel", () => ({

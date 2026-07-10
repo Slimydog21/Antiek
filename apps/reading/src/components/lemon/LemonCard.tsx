@@ -9,7 +9,7 @@ import type { ReactNode } from "react";
  *   colour:    card | sun | aurora | ink | glacial
  */
 type Elevation = "z1" | "z2" | "z3";
-type Colour = "card" | "sun" | "aurora" | "ink" | "glacial";
+type Colour = "card" | "sun" | "aurora" | "ink" | "glacial" | "parchment";
 
 type Props = {
   title?: ReactNode;
@@ -32,6 +32,7 @@ const bg: Record<Colour, string> = {
   aurora:  "bg-aurora text-ink",
   ink:     "bg-ink text-ice-1",
   glacial: "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright",
+  parchment: "bg-parchment dark:bg-charcoal-2 text-ink dark:text-bright",
 };
 
 export function LemonCard({

@@ -12,7 +12,8 @@ from typing import Any
 from substrate.engagement_spine import HighlightSelection
 from substrate.engagement_spine.store import EngagementStore
 
-from .session import FloatingSession, SessionStore, ViewMode, open_from_highlight
+from .session import FloatingSession, ViewMode, open_from_highlight
+from .store import SessionStore
 from .window_compose import (
     WindowOpenDescriptor,
     WindowStore,
