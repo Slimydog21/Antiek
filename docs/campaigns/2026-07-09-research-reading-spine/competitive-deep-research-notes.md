@@ -2226,3 +2226,8 @@ MO ceiling preview uses substrate DEFAULT_PRICING offline table (gpt-5.5 · glm-
 composer-2.5 · mimo-v2.5 · default). Competitive delta: decision-tree model prefill
 moves recommended price ceiling preview before create (create remains authoritative).
 vitest researchTier+MO 34 green.
+
+## Residual adz · 2026-07-10 — SESSION-ARC adx–ady MO ceiling preview
+SESSION-ARC-adx-ady documents live create-form recommended ceiling preview + model-aware
+offline rates. Tip 8fe3b551 · swarm handoff tip-true. Competitive delta: multi-agent
+infinite continues outside closed MO preview arc; operator merge PR #465 highest leverage.
