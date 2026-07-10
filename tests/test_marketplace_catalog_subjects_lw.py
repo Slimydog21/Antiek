@@ -147,6 +147,24 @@ def test_shannon_information_theory_subjects_and_free_pd() -> None:
     }
 
 
+def test_free_computing_stem_quartet() -> None:
+    """Residual (xt): free computing subject includes Boole/Shannon/Turing/Lovelace."""
+    cat = default_demo_catalog()
+    free_comp = [
+        e
+        for e in cat.filter_by_subject("computing")
+        if e.is_free and e.license_class == "public_domain"
+    ]
+    ids = {e.book_id for e in free_comp}
+    assert ids >= {
+        "pd-boole-laws-of-thought",
+        "pd-shannon-communication",
+        "pd-turing-computable-numbers",
+        "pd-lovelace-analytical-engine",
+    }
+    assert all(e.source_format == "html" for e in free_comp if e.book_id in ids)
+
+
 def test_turing_computability_subjects_and_free_pd() -> None:
     """Residual (wl): Turing tagged computing+computability, free PD."""
     cat = default_demo_catalog()

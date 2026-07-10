@@ -1571,3 +1571,8 @@ deferred policy section.
 FUTURE-AGENT-SPEC tip re-anchored after Settings L2 checklist + free STEM
 quartet. Competitive delta: swarm handoff tip-true; operator merge PR #465
 highest leverage.
+
+## Residual xt · 2026-07-10 — free computing STEM quartet substrate proof
+default_demo_catalog filter_by_subject(computing) free PD includes Boole ·
+Shannon · Turing · Lovelace as HTML. Competitive delta: free computing STEM
+spine is substrate-true (parity frontend compose xp).
