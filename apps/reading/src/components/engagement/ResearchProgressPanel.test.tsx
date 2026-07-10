@@ -193,6 +193,15 @@ describe("ResearchProgressPanel", () => {
         coverage_ratio: 0.8,
         is_terminal: false,
       },
+      // Residual (aqh): substrate world_class_readiness (aqf).
+      world_class_readiness: {
+        multi_stage_ready: true,
+        citation_hops_ready: null,
+        stage_coverage_ratio: 0.8,
+        hop_coverage_ratio: null,
+        world_class_bar: "multi_stage",
+        notes: ["multi-stage pipeline ready", "citation hops unknown"],
+      },
       view_format: "html",
       product_panel: "research_progress",
       source: "engagement_spine.progress",
@@ -267,8 +276,9 @@ describe("ResearchProgressPanel", () => {
         .getByTestId("research-progress-pipeline-future-agent-link")
         .getAttribute("href") || "",
     ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
-    // Residual (apu): world-class DR bar readiness (stage known · hops unknown).
+    // Residual (apu/aqh): world-class DR bar prefers substrate when present.
     const wc = screen.getByTestId("research-progress-world-class-readiness");
+    expect(wc.getAttribute("data-world-class-source")).toBe("substrate");
     expect(wc.getAttribute("data-multi-stage-ready")).toBe("true");
     expect(wc.getAttribute("data-citation-hops-ready")).toBe("unknown");
     expect(wc.getAttribute("data-world-class-bar")).toBe("multi_stage");

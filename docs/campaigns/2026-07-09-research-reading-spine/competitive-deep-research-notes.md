@@ -3875,3 +3875,8 @@ Parity frontend apu progress chrome. pytest progress 4 green. P0 PR #465. Pivot 
 evidence_pack_payload.world_class_readiness from hop coverage; multi-stage unknown
 (never invent stages). Completes aqf progress half. pytest evidence 6 green.
 P0 PR #465. Pivot aqh+ outside thrash.
+
+## Residual aqh · 2026-07-10 — wire substrate world_class_readiness into ResearchProgress UI
+ResearchProgressPanel prefers substrate world_class_readiness when present
+(data-world-class-source=substrate) · client fallback. Closes progress frontend↔substrate
+world-class loop (aqf). vitest ResearchProgress 13 green. P0 PR #465. Pivot aqi+.

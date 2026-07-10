@@ -420,6 +420,18 @@ export type ResearchProgressResponse = {
     coverage_ratio?: number;
     is_terminal?: boolean;
   } | null;
+  /**
+   * Residual (aqf/aqh): substrate world-class readiness (multi-stage known ·
+   * hops unknown on progress · never invent hop coverage).
+   */
+  world_class_readiness?: {
+    multi_stage_ready?: boolean;
+    citation_hops_ready?: boolean | null;
+    stage_coverage_ratio?: number;
+    hop_coverage_ratio?: number | null;
+    world_class_bar?: string;
+    notes?: string[];
+  } | null;
   /** Residual (jz/ka): spawn reserved research_tier when present. */
   research_tier?: "fast" | "deep" | "wrestle" | string | null;
   view_format: "html" | string;

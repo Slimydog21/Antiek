@@ -497,12 +497,37 @@ export function ResearchProgressPanel({
             </ol>
             {/* Residual (apn): competitive multi-stage × multi-hop citation bar. */}
             {/* Residual (apu): world-class readiness pure helper chrome. */}
+            {/* Residual (aqh): prefer substrate world_class_readiness when shaped (aqf). */}
             {(() => {
-              const wc = competitiveDrWorldClassReadiness({
+              const serverWc = progress?.world_class_readiness;
+              const fromSubstrate =
+                serverWc &&
+                typeof serverWc.world_class_bar === "string" &&
+                typeof serverWc.multi_stage_ready === "boolean";
+              const clientWc = competitiveDrWorldClassReadiness({
                 stage_coverage_ratio: stagePipeline.coverage_ratio,
                 hop_coverage_ratio: null,
                 stage_is_terminal: stagePipeline.is_terminal,
               });
+              const wc = fromSubstrate
+                ? {
+                    multi_stage_ready: Boolean(serverWc.multi_stage_ready),
+                    citation_hops_ready:
+                      serverWc.citation_hops_ready === undefined
+                        ? null
+                        : serverWc.citation_hops_ready,
+                    stage_coverage_ratio:
+                      typeof serverWc.stage_coverage_ratio === "number"
+                        ? serverWc.stage_coverage_ratio
+                        : stagePipeline.coverage_ratio,
+                    hop_coverage_ratio:
+                      serverWc.hop_coverage_ratio === undefined
+                        ? null
+                        : serverWc.hop_coverage_ratio,
+                    world_class_bar: String(serverWc.world_class_bar),
+                    source: "substrate" as const,
+                  }
+                : { ...clientWc, source: "client" as const };
               return (
                 <>
                   <p
@@ -515,6 +540,7 @@ export function ResearchProgressPanel({
                         : String(wc.citation_hops_ready)
                     }
                     data-world-class-bar={wc.world_class_bar}
+                    data-world-class-source={wc.source}
                     data-stage-coverage-ratio={String(
                       Math.round(wc.stage_coverage_ratio * 1000) / 1000,
                     )}
