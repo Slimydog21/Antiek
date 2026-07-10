@@ -2082,3 +2082,8 @@ Marketplace free chip label/strip say free inventory only / free-only=on (parity
 is_free doctrine abn–abx). Competitive delta: operator-facing free filter copy
 matches free inventory identity end-to-end.
 
+## Residual aca · 2026-07-10 — FUTURE tip free inventory complete through abz
+Free inventory is_free-only doctrine complete end-to-end including operator-facing
+free-only chip copy (abn–abz). Tip 2ff4fe73 · 160 ships. Competitive delta: swarm
+handoff tip-true; operator merge PR #465 highest leverage; next residuals leave free thrash.
+

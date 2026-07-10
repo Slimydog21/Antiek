@@ -1,12 +1,12 @@
 # SESSION-ARC · abn–abq · Free inventory is_free-only doctrine
 
-**Tip:** `08ef962c` · **PR #465** OPEN · https://github.com/Slimydog21/Antiek/pull/465  
+**Tip:** `2ff4fe73` · **PR #465** OPEN · https://github.com/Slimydog21/Antiek/pull/465  
 **Branch:** `campaign/research-reading-spine-2026-07-09-main`  
 **NO_STOP** · agents never merge main/prod
 
 ## Doctrine (hard to vary)
 **free inventory signal = `is_free=True` only.**  
-`public_domain_count` is separate license honesty. Never invent free via license OR.
+`public_domain_count` is separate license honesty. Never invent free via license OR. Operator-facing free chip says free inventory only.
 
 | Residual | Surface |
 |---|---|
