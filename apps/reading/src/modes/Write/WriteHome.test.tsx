@@ -117,8 +117,15 @@ vi.mock("../../components/engagement/TwinNotesPanel", () => ({
 }));
 
 vi.mock("../../components/engagement/ResearchContextPanel", () => ({
-  ResearchContextPanel: (props: { assetId: string; autoLoad?: boolean }) => (
-    <div data-testid="research-context-panel-stub">
+  ResearchContextPanel: (props: {
+    assetId: string;
+    autoLoad?: boolean;
+    researchTier?: string | null;
+  }) => (
+    <div
+      data-testid="research-context-panel-stub"
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+    >
       {props.assetId}:auto={String(Boolean(props.autoLoad))}
     </div>
   ),
@@ -728,6 +735,39 @@ describe("WriteHome — the re-homed door", () => {
         .getByTestId("write-piece-context-refresh")
         .getAttribute("data-refresh-key"),
     ).toBe("1");
+  });
+
+  it("passes writeResearchTier into ResearchContext host prefill (amq)", async () => {
+    getDeliverableMock.mockResolvedValue({
+      deliverable_id: "dlv-amq",
+      title: "Depth prefill piece",
+      deliverable_kind: "general_essay",
+      investigation_root_id: null,
+      status: "draft",
+      sections: [],
+      created_at: null,
+      updated_at: null,
+      section_count: 0,
+    });
+    mountAt("/write/dlv-amq");
+    await waitFor(() => {
+      expect(screen.getByTestId("write-piece-context-mount")).toBeTruthy();
+    });
+    expect(
+      screen
+        .getByTestId("write-piece-context-mount")
+        .getAttribute("data-research-tier"),
+    ).toBe("deep");
+    expect(
+      screen
+        .getByTestId("write-piece-context-mount")
+        .getAttribute("data-seamless-write-context"),
+    ).toBe("true");
+    expect(
+      screen
+        .getByTestId("research-context-panel-stub")
+        .getAttribute("data-research-tier"),
+    ).toBe("deep");
   });
 
   it("mounts ResearchContextPanel and remounts after twin promote (gb)", async () => {

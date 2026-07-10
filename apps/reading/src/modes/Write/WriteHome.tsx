@@ -86,6 +86,8 @@ import { composeDriverPromptText } from "../../lib/driverPromptText";
  * Residual (ga): TwinNotesPanel on open piece so writing assets share the
  * recursive note-taker UI with reading/research hosts.
  * Residual (gb): ResearchContextPanel on open piece + remount after twin
+ * Residual (amq): Write piece ResearchContext inherits writeResearchTier prefill
+ * (parity host-tier path amj–amp · reading ≡ research ≡ writing).
  * promote (reading≡write context flywheel).
  * Residual (gc): DecisionTreeDriverBadge on open piece (model + budget bar).
  * Residual (gd): re-import html_draft into an existing open piece (not only create).
@@ -1289,16 +1291,20 @@ export default function WriteHome() {
               data-testid="write-piece-context-mount"
               data-view-format="html"
               data-asset-id={detail.deliverable_id}
+              data-research-tier={writeResearchTier}
+              data-seamless-write-context="true"
             >
               <div
                 data-testid="write-piece-context-refresh"
                 data-refresh-key={String(contextRefreshKey)}
               >
+                {/* Residual (amq): Write depth posture into intelligent context. */}
                 <ResearchContextPanel
                   key={`ctx-${detail.deliverable_id}-${contextRefreshKey}`}
                   assetId={detail.deliverable_id}
                   spawnId={null}
                   autoLoad
+                  researchTier={writeResearchTier}
                 />
               </div>
             </section>
