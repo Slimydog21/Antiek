@@ -73,6 +73,13 @@ describe("productModeRoutes shell registration", () => {
     expect(tax?.description || tax?.blurb || "").toMatch(/multi-goal/i);
   });
 
+  it("Marketplace host blurb stamps domain-aware HTML research land (aon)", () => {
+    const mkt = productModeByPath("/marketplace/host");
+    expect(mkt?.blurb || "").toMatch(/HTML/i);
+    expect(mkt?.blurb || "").toMatch(/domain-aware|twin|DR/i);
+    expect(mkt?.viewFormat).toBe("html");
+  });
+
   it("App.tsx consumes PRODUCT_MODE_ROUTES for shell wiring", () => {
     const appSrc = readFileSync(join(__dirname, "App.tsx"), "utf-8");
     expect(appSrc).toContain("PRODUCT_MODE_ROUTES");

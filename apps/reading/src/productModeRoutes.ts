@@ -44,7 +44,7 @@ export const PRODUCT_MODE_ROUTES: readonly ProductModeRoute[] = [
     Component: MarketplaceHost,
     viewFormat: "html",
     blurb:
-      "Catalog → host book into account → HTML library view (PDF ingest source only).",
+      "Catalog → host book into account → HTML library view (PDF ingest source only) · domain-aware twin/DR on free PD hosts · HTML-first research land.",
   },
 ] as const;
 

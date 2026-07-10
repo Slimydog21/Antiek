@@ -255,7 +255,7 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     workflow: "read",
     label: "Marketplace host",
     blurb:
-      "Catalog → host book into account → HTML library view (PDF may be ingest source only).",
+      "Catalog → host book into account → HTML library view (PDF may be ingest source only) · domain-aware twin/DR on free PD hosts · HTML-first research land.",
     built: true,
     route: "/marketplace/host",
   },

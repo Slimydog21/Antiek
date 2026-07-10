@@ -3656,3 +3656,7 @@ rehydrates domains (aoe). SESSION-ARC wave map for handoff. P0 PR #465. Pivot ao
 ## Residual aom · 2026-07-10 — collective written analysis readiness chrome
 Operator-visible multi-agent readiness under Create written analysis (≥2 / Merge
 draft guidance). vitest CollectiveResearchPanel 31 green. P0 PR #465. Pivot aon+.
+
+## Residual aon · 2026-07-10 — marketplace host domain-aware HTML research blurb
+PRODUCT_MODE_ROUTES + taxonomy MarketplaceHost blurb stamps domain-aware twin/DR
++ HTML-first land. vitest productModeRoutes green. P0 PR #465. Pivot aoo+.
