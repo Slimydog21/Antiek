@@ -3067,3 +3067,8 @@ Write seed · dogfood v32–v33. P0 operator merge PR #465. Pivot ajy+ outside t
 Install advisory control stamps never-dispatch-authority · decision-tree-only ·
 advisory_only; ND panel links competitive DR scorecard (L7 never router).
 vitest Settings 36 green. P0 operator merge PR #465. Pivot ajz+ outside thrash.
+
+## Residual ajz · 2026-07-10 — scorecard model-choice / ND never rows name ajy
+Competitive DR scorecard model-choice and ND-never-router rows name
+decision-tree-only install + never-dispatch-authority stamps (ajy).
+vitest Settings 36 green. P0 operator merge PR #465. Pivot aka+ outside thrash.

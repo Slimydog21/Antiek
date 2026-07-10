@@ -4106,7 +4106,8 @@ export default function Settings() {
               </li>
               <li data-status="shipped" data-testid="competitive-dr-model-choice">
                 Manual model decision-tree + Antiek-bench weekly —{" "}
-                <strong>shipped</strong> · ND never router (L7)
+                <strong>shipped</strong> · ND advisory install is
+                decision-tree-only (ajy) · never dispatch authority (L7)
               </li>
               <li data-status="shipped" data-testid="competitive-dr-twin-notes">
                 Recursive twin note-taker · promote depth-graph unit≡node (ajn/ajo)
@@ -4129,7 +4130,8 @@ export default function Settings() {
                 <strong>deferred L5</strong> · manual receipt only
               </li>
               <li data-status="never" data-testid="competitive-dr-nd-router">
-                NotDiamond as auto-router — <strong>never</strong> (advisory only)
+                NotDiamond as auto-router — <strong>never</strong> (advisory only
+                · install stamps never-dispatch-authority · ajy)
               </li>
             </ul>
             <p className="text-[11px] font-mono space-x-2">
