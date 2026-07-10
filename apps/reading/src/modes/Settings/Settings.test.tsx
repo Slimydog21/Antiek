@@ -570,9 +570,26 @@ describe("Settings SPR-01 + decision-tree install", () => {
     const panel = screen.getByTestId("twin-seed-live-status-panel");
     expect(panel.getAttribute("data-offline-honest")).toBe("true");
     expect(panel.getAttribute("data-injector-installed")).toBe("false");
+    // Residual (aec): offline default is not L3 live ready.
+    expect(panel.getAttribute("data-l3-live-ready")).toBe("false");
     const metrics = screen.getByTestId("twin-seed-live-status-metrics");
     expect(metrics.getAttribute("data-offline-honest")).toBe("true");
+    expect(metrics.getAttribute("data-l3-live-ready")).toBe("false");
+    expect(metrics.getAttribute("data-l3-gates-live-env")).toBe("false");
+    expect(metrics.getAttribute("data-l3-gates-use-dispatch")).toBe("false");
+    expect(metrics.getAttribute("data-l3-gates-injector")).toBe("false");
     expect(metrics.textContent).toMatch(/offline-honest identity stubs/);
+    // Residual (aec): in-panel L3 checklist deep-link + gate matrix.
+    expect(screen.getByTestId("twin-seed-live-l3-prep")).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("twin-seed-live-l3-checklist-link")
+        .getAttribute("href"),
+    ).toMatch(/DUAL-GATE-L1-L4.*#l3-twin/);
+    const gateMatrix = screen.getByTestId("twin-seed-live-l3-gate-matrix");
+    expect(gateMatrix.getAttribute("data-l3-live-ready")).toBe("false");
+    expect(gateMatrix.textContent).toMatch(/L3 gate matrix/i);
+    expect(gateMatrix.textContent).toMatch(/live_ready=false/);
   });
 
   it("surfaces offline-honest hydrate live status (hq)", async () => {
@@ -598,7 +615,8 @@ describe("Settings SPR-01 + decision-tree install", () => {
     await waitFor(() => {
       expect(screen.getAllByText(/zai/).length).toBeGreaterThan(0);
     });
-    expect(screen.getByText(/ready/i)).toBeTruthy();
+    // Residual (aec): /ready/i also matches twin L3 live_ready=false — use getAllByText.
+    expect(screen.getAllByText(/ready/i).length).toBeGreaterThan(0);
     // Residual (sa): cap/spent appear on Budget card and decision-tree bar.
     expect(screen.getAllByText("$5.00").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("$1.0000").length).toBeGreaterThanOrEqual(1);

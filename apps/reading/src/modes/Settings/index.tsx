@@ -1585,12 +1585,46 @@ export default function Settings() {
                 ? String(twinSeedLive.injector_installed)
                 : undefined
             }
+            // Residual (aec): L3 live ready only when all three gates true.
+            data-l3-live-ready={
+              twinSeedLive
+                ? String(
+                    twinSeedLive.live_env === true &&
+                      twinSeedLive.use_dispatch === true &&
+                      twinSeedLive.injector_installed === true &&
+                      twinSeedLive.offline_honest === false,
+                  )
+                : undefined
+            }
           >
             <p className="text-sm text-ink dark:text-bright">
               Recursive note-taker UI always force_offline seeds. Live
               note_taker requires dual env gate + boot install — never silent
               LLM from this panel.
             </p>
+            {/* Residual (aec): in-panel L3 checklist deep-link (parity TwinNotes xa). */}
+            <div
+              className="flex flex-wrap items-center gap-2 text-[11px]"
+              data-testid="twin-seed-live-l3-prep"
+              data-dual-gate="L3"
+              role="navigation"
+              aria-label="L3 twin live seed dual-gate prep"
+            >
+              <a
+                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l3-twin"
+                className="underline opacity-80 hover:opacity-100"
+                data-testid="twin-seed-live-l3-checklist-link"
+                title="Dual-gate L3 twin live seed checklist (prep only · offline default)"
+              >
+                Dual-gate L3 twin checklist
+              </a>
+              <span className="opacity-40" aria-hidden>
+                ·
+              </span>
+              <span className="font-mono opacity-70">
+                prep only · never enables live from this panel
+              </span>
+            </div>
             <button
               type="button"
               data-testid="twin-seed-live-status-refresh"
@@ -1615,6 +1649,20 @@ export default function Settings() {
                 data-injector-installed={String(
                   twinSeedLive.injector_installed,
                 )}
+                // Residual (aec): composite L3 readiness (all gates + not offline-only).
+                data-l3-live-ready={String(
+                  twinSeedLive.live_env === true &&
+                    twinSeedLive.use_dispatch === true &&
+                    twinSeedLive.injector_installed === true &&
+                    twinSeedLive.offline_honest === false,
+                )}
+                data-l3-gates-live-env={String(twinSeedLive.live_env === true)}
+                data-l3-gates-use-dispatch={String(
+                  twinSeedLive.use_dispatch === true,
+                )}
+                data-l3-gates-injector={String(
+                  twinSeedLive.injector_installed === true,
+                )}
                 role="status"
               >
                 <p>
@@ -1631,6 +1679,28 @@ export default function Settings() {
                   <code>{twinSeedLive.use_dispatch_env_flag}</code>=
                   {String(twinSeedLive.use_dispatch)} · injector=
                   {String(twinSeedLive.injector_installed)}
+                </p>
+                <p
+                  data-testid="twin-seed-live-l3-gate-matrix"
+                  data-l3-live-ready={String(
+                    twinSeedLive.live_env === true &&
+                      twinSeedLive.use_dispatch === true &&
+                      twinSeedLive.injector_installed === true &&
+                      twinSeedLive.offline_honest === false,
+                  )}
+                >
+                  L3 gate matrix: live_env=
+                  {twinSeedLive.live_env === true ? "on" : "off"} · use_dispatch=
+                  {twinSeedLive.use_dispatch === true ? "on" : "off"} · injector=
+                  {twinSeedLive.injector_installed === true ? "on" : "off"} ·
+                  live_ready=
+                  {twinSeedLive.live_env === true &&
+                  twinSeedLive.use_dispatch === true &&
+                  twinSeedLive.injector_installed === true &&
+                  twinSeedLive.offline_honest === false
+                    ? "true"
+                    : "false"}{" "}
+                  (all three + offline_honest=false required)
                 </p>
                 {twinSeedLive.notes.map((n) => (
                   <p key={n} className="opacity-80">

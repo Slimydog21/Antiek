@@ -2244,3 +2244,9 @@ high-band projection burns past remaining (soft foresight · not hard block). Fr
 host path asserts seamless-port library-landed (parity purchase aea). Competitive
 delta: operator can machine-read whether a prompt would go over budget before fire.
 vitest 62 green (badge 12 · launch 11 · marketplace 39).
+
+## Residual aec · 2026-07-10 — Settings twin seed L3 gate matrix + checklist
+Settings twin-seed-live-status panel stamps data-l3-live-ready + per-gate attrs
+(live_env · use_dispatch · injector) and Dual-gate L3 twin checklist deep-link.
+Competitive delta: operator dual-gate L3 prep is complete on the readiness panel
+itself (parity TwinNotes xa · never enables live). vitest Settings 35 green.
