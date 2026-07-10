@@ -31,6 +31,7 @@ from substrate.midnight_oil import (
     MidnightOilLiveRunActivationSettingsRequest,
     MidnightOilOperatorDispatchActivationReadinessPlanRequest,
     MidnightOilOperatorDispatchAdapterPlanRequest,
+    MidnightOilOperatorNotificationDeliveryReadinessPlanRequest,
     MidnightOilProviderExecutorAdapterPlanRequest,
     MidnightOilProviderRouteRequest,
     MidnightOilRepositoryCommitRollbackPlanRequest,
@@ -74,6 +75,7 @@ from substrate.midnight_oil import (
     live_run_activation_settings_midnight_oil,
     operator_dispatch_activation_readiness_plan_midnight_oil,
     operator_dispatch_adapter_plan_midnight_oil,
+    operator_notification_delivery_readiness_plan_midnight_oil,
     preflight_midnight_oil,
     provider_executor_adapter_plan_midnight_oil,
     provider_route_midnight_oil,
@@ -9735,6 +9737,316 @@ def test_midnight_oil_final_run_closure_plan_api_contract() -> None:
     assert body["source_lineage_archive_created"] is False
     assert body["completion_record_created"] is False
     assert body["publish_transaction_created"] is False
+    assert body["graph_mutated"] is False
+    assert body["provider_calls_made"] is False
+    assert body["retrieval_performed"] is False
+    assert body["final_artifact_created"] is False
+
+
+def _operator_notification_delivery_readiness_request_kwargs(
+    chain: dict[str, object],
+    output_aggregation_plan: object,
+    synthesis_handoff_plan: object,
+    synthesis_bundle_assembly_plan: object,
+    final_synthesis_draft_plan: object,
+    final_html_artifact_assembly_plan: object,
+    final_artifact_persistence_plan: object,
+    final_artifact_graph_commit_plan: object,
+    final_artifact_publish_plan: object,
+    final_artifact_completion_finalization_plan: object,
+    final_run_closure_plan: object,
+) -> dict[str, object]:
+    return {
+        **_final_run_closure_request_kwargs(
+            chain,
+            output_aggregation_plan,
+            synthesis_handoff_plan,
+            synthesis_bundle_assembly_plan,
+            final_synthesis_draft_plan,
+            final_html_artifact_assembly_plan,
+            final_artifact_persistence_plan,
+            final_artifact_graph_commit_plan,
+            final_artifact_publish_plan,
+            final_artifact_completion_finalization_plan,
+        ),
+        "final_run_closure_plan_receipt": final_run_closure_plan,
+    }
+
+
+def _accepted_midnight_oil_final_run_closure_plan_chain(
+    *,
+    goal: str,
+    source_policy: list[str],
+    requested_control_scope: list[str],
+) -> dict[str, object]:
+    chain = _accepted_midnight_oil_final_artifact_completion_finalization_plan_chain(
+        goal=goal,
+        source_policy=source_policy,
+        requested_control_scope=requested_control_scope,
+    )
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+    draft_plan = chain["final_synthesis_draft_plan"]
+    html_plan = chain["final_html_artifact_assembly_plan"]
+    persistence_plan = chain["final_artifact_persistence_plan"]
+    graph_commit_plan = chain["final_artifact_graph_commit_plan"]
+    publish_plan = chain["final_artifact_publish_plan"]
+    completion_plan = chain["final_artifact_completion_finalization_plan"]
+    closure_plan = final_run_closure_plan_midnight_oil(
+        MidnightOilFinalRunClosurePlanRequest(
+            **_final_run_closure_request_kwargs(
+                chain,
+                output_plan,
+                handoff_plan,
+                assembly_plan,
+                draft_plan,
+                html_plan,
+                persistence_plan,
+                graph_commit_plan,
+                publish_plan,
+                completion_plan,
+            )
+        )
+    )
+    return {
+        **chain,
+        "final_run_closure_plan": closure_plan,
+    }
+
+
+def test_operator_notification_delivery_readiness_plan_records_disabled_requirements() -> None:
+    chain = _accepted_midnight_oil_final_run_closure_plan_chain(
+        goal="Plan operator notification readiness after final run closure planning.",
+        source_policy=["arxiv", "web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+    draft_plan = chain["final_synthesis_draft_plan"]
+    html_plan = chain["final_html_artifact_assembly_plan"]
+    persistence_plan = chain["final_artifact_persistence_plan"]
+    graph_commit_plan = chain["final_artifact_graph_commit_plan"]
+    publish_plan = chain["final_artifact_publish_plan"]
+    completion_plan = chain["final_artifact_completion_finalization_plan"]
+    closure_plan = chain["final_run_closure_plan"]
+
+    readiness_plan = operator_notification_delivery_readiness_plan_midnight_oil(
+        MidnightOilOperatorNotificationDeliveryReadinessPlanRequest(
+            **_operator_notification_delivery_readiness_request_kwargs(
+                chain,
+                output_plan,
+                handoff_plan,
+                assembly_plan,
+                draft_plan,
+                html_plan,
+                persistence_plan,
+                graph_commit_plan,
+                publish_plan,
+                completion_plan,
+                closure_plan,
+            )
+        )
+    )
+
+    assert readiness_plan.receipt_id == (
+        f"{preflight.run_id}-operator-notification-delivery-readiness-plan"
+    )
+    assert readiness_plan.final_run_closure_plan_receipt_id == closure_plan.receipt_id
+    assert readiness_plan.status == (
+        "blocked_operator_notification_delivery_readiness_unimplemented"
+    )
+    assert readiness_plan.adapter_key == "operator_notification_delivery_readiness"
+    assert readiness_plan.planned_operator_notification_dispatch_id == (
+        f"{preflight.run_id}-operator-notification-dispatch"
+    )
+    assert readiness_plan.planned_operator_notification_payload_id == (
+        f"{preflight.run_id}-operator-notification-payload"
+    )
+    assert readiness_plan.planned_operator_delivery_channel_policy_id == (
+        f"{preflight.run_id}-operator-delivery-channel-policy"
+    )
+    assert readiness_plan.planned_workspace_delivery_card_id == (
+        closure_plan.planned_workspace_delivery_card_id
+    )
+    assert readiness_plan.planned_private_read_url_id == (
+        closure_plan.planned_private_read_url_id
+    )
+    assert "operator notification payload writer" in (
+        readiness_plan.operator_notification_delivery_readiness_blockers
+    )
+    assert "operator_notification_dispatch_id" in (
+        readiness_plan.required_operator_notification_delivery_readiness_receipt_fields
+    )
+    assert "must require final run closure planning" in (
+        readiness_plan.required_operator_notification_delivery_readiness_invariants[0]
+    )
+    assert readiness_plan.blocker_reason == (
+        "operator_notification_delivery_readiness_unimplemented"
+    )
+    assert readiness_plan.operator_notification_delivery_readiness_allowed is False
+    assert readiness_plan.operator_notification_dispatch_created is False
+    assert readiness_plan.operator_notification_payload_created is False
+    assert readiness_plan.operator_delivery_channel_policy_created is False
+    assert readiness_plan.operator_notification_template_created is False
+    assert readiness_plan.operator_notification_audit_entry_created is False
+    assert readiness_plan.delivery_notification_created is False
+    assert readiness_plan.workspace_delivery_card_created is False
+    assert readiness_plan.operator_delivery_ledger_entry_created is False
+    assert readiness_plan.run_closeout_record_created is False
+    assert readiness_plan.operator_notification_created is False
+    assert readiness_plan.private_read_url_created is False
+    assert readiness_plan.graph_mutated is False
+    assert readiness_plan.provider_calls_made is False
+    assert readiness_plan.retrieval_performed is False
+    assert readiness_plan.final_artifact_created is False
+    assert "no notification dispatch" in readiness_plan.adapter_plan_notes[0]
+
+
+def test_operator_notification_delivery_readiness_plan_rejects_closure_state() -> None:
+    chain = _accepted_midnight_oil_final_run_closure_plan_chain(
+        goal="Reject delivery state before operator notification readiness planning.",
+        source_policy=["web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+    draft_plan = chain["final_synthesis_draft_plan"]
+    html_plan = chain["final_html_artifact_assembly_plan"]
+    persistence_plan = chain["final_artifact_persistence_plan"]
+    graph_commit_plan = chain["final_artifact_graph_commit_plan"]
+    publish_plan = chain["final_artifact_publish_plan"]
+    completion_plan = chain["final_artifact_completion_finalization_plan"]
+    bad_closure_plan = chain["final_run_closure_plan"].model_copy(
+        update={"delivery_notification_created": True}
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match=(
+            "final_run_closure_plan_receipt must not create run closure or "
+            "delivery state"
+        ),
+    ):
+        MidnightOilOperatorNotificationDeliveryReadinessPlanRequest(
+            **_operator_notification_delivery_readiness_request_kwargs(
+                chain,
+                output_plan,
+                handoff_plan,
+                assembly_plan,
+                draft_plan,
+                html_plan,
+                persistence_plan,
+                graph_commit_plan,
+                publish_plan,
+                completion_plan,
+                bad_closure_plan,
+            )
+        )
+
+
+def test_midnight_oil_operator_notification_delivery_readiness_plan_api_contract() -> None:
+    from interfaces.research.api.app import create_app
+
+    chain = _accepted_midnight_oil_final_run_closure_plan_chain(
+        goal="Expose operator notification delivery readiness planning over the API.",
+        source_policy=["arxiv", "substack"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+    draft_plan = chain["final_synthesis_draft_plan"]
+    html_plan = chain["final_html_artifact_assembly_plan"]
+    persistence_plan = chain["final_artifact_persistence_plan"]
+    graph_commit_plan = chain["final_artifact_graph_commit_plan"]
+    publish_plan = chain["final_artifact_publish_plan"]
+    completion_plan = chain["final_artifact_completion_finalization_plan"]
+    closure_plan = chain["final_run_closure_plan"]
+    request_json = {
+        key: value.model_dump(mode="json")
+        for key, value in _operator_notification_delivery_readiness_request_kwargs(
+            chain,
+            output_plan,
+            handoff_plan,
+            assembly_plan,
+            draft_plan,
+            html_plan,
+            persistence_plan,
+            graph_commit_plan,
+            publish_plan,
+            completion_plan,
+            closure_plan,
+        ).items()
+    }
+
+    with TestClient(create_app()) as client:
+        r = client.post(
+            "/research/midnight-oil/operator-notification-delivery-readiness-plan",
+            json=request_json,
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["receipt_id"] == (
+        f"{preflight.run_id}-operator-notification-delivery-readiness-plan"
+    )
+    assert body["final_run_closure_plan_receipt_id"] == closure_plan.receipt_id
+    assert body["status"] == (
+        "blocked_operator_notification_delivery_readiness_unimplemented"
+    )
+    assert body["adapter_key"] == "operator_notification_delivery_readiness"
+    assert body["planned_operator_notification_dispatch_id"] == (
+        f"{preflight.run_id}-operator-notification-dispatch"
+    )
+    assert body["planned_operator_notification_audit_entry_id"] == (
+        f"{preflight.run_id}-operator-notification-audit-entry"
+    )
+    assert "operator notification template writer" in body[
+        "operator_notification_delivery_readiness_blockers"
+    ]
+    assert "operator_notification_payload_id" in (
+        body["required_operator_notification_delivery_readiness_receipt_fields"]
+    )
+    assert body["blocker_reason"] == (
+        "operator_notification_delivery_readiness_unimplemented"
+    )
+    assert body["operator_notification_delivery_readiness_allowed"] is False
+    assert body["operator_notification_dispatch_created"] is False
+    assert body["operator_notification_payload_created"] is False
+    assert body["operator_delivery_channel_policy_created"] is False
+    assert body["operator_notification_template_created"] is False
+    assert body["operator_notification_audit_entry_created"] is False
+    assert body["delivery_notification_created"] is False
+    assert body["workspace_delivery_card_created"] is False
+    assert body["operator_delivery_ledger_entry_created"] is False
+    assert body["operator_notification_created"] is False
+    assert body["private_read_url_created"] is False
     assert body["graph_mutated"] is False
     assert body["provider_calls_made"] is False
     assert body["retrieval_performed"] is False
