@@ -764,12 +764,23 @@ describe("Settings SPR-01 + decision-tree install", () => {
       '[data-testid="decision-tree-install"]',
     ) as HTMLButtonElement | null;
     expect(installBtn).toBeTruthy();
+    // Residual (asd): Install driver gated until model id present (never auto-route).
     const modelInput = container.querySelector(
       '[data-testid="decision-tree-model"]',
     ) as HTMLInputElement;
     expect(modelInput).toBeTruthy();
     await user.clear(modelInput);
+    expect(installBtn!.getAttribute("data-install-ready")).toBe("false");
+    expect(installBtn!.disabled).toBe(true);
+    expect(installBtn!.getAttribute("data-never-auto-route")).toBe("true");
+    expect(installBtn!.getAttribute("data-notdiamond-authority")).toBe(
+      "advisory_only",
+    );
+    expect(installBtn!.getAttribute("title") || "").toMatch(/Enter a model id/i);
     await user.type(modelInput, "glm-5.2");
+    expect(installBtn!.getAttribute("data-install-ready")).toBe("true");
+    expect(installBtn!.getAttribute("data-model-id")).toBe("glm-5.2");
+    expect(installBtn!.disabled).toBe(false);
     await user.click(installBtn!);
     await waitFor(() => {
       expect(installDecisionTreeSelection).toHaveBeenCalled();

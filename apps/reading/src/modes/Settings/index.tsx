@@ -1479,7 +1479,17 @@ export default function Settings() {
                 type="button"
                 data-testid="decision-tree-install"
                 onClick={onInstallDriver}
-                disabled={treeBusy}
+                data-install-ready={String(Boolean(selectedModel.trim()))}
+                data-model-id={selectedModel.trim() || ""}
+                data-provider-id={selectedProvider.trim() || ""}
+                data-never-auto-route="true"
+                data-notdiamond-authority="advisory_only"
+                disabled={treeBusy || !selectedModel.trim()}
+                title={
+                  selectedModel.trim()
+                    ? "Install process-local decision-tree driver (manual · never auto-route · ND advisory only)"
+                    : "Enter a model id before installing the decision-tree driver"
+                }
                 className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
               >
                 {treeBusy ? "Working…" : "Install driver"}

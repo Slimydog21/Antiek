@@ -4133,3 +4133,8 @@ written_analysis_ready (parent + ≥2) drives Create written analysis CTA + chro
 Fixed honesty: seamless-written-analysis no longer aliases draft_merge_ready.
 Competitive delta: multi-agent analysis path hard-to-vary pure contract.
 vitest Collective 31 green. P0 PR #465. Pivot asd+ outside thrash.
+
+## Residual asd · 2026-07-10 — decision-tree Install driver CTA model gate
+Install driver disabled until model id present · never-auto-route · ND advisory
+stamps. Competitive delta: operator model choice path hard-to-vary (no empty install).
+P0 PR #465. Pivot ase+ outside thrash.
