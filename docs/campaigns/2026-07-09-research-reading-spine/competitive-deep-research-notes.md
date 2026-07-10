@@ -1669,3 +1669,8 @@ budget chokepoint never implies silent live injectors or ND dispatch authority.
 ## Residual yn · 2026-07-10 — FUTURE-AGENT tip re-anchor through ym
 FUTURE-AGENT-SPEC tip re-anchored after 67 residual ships this continuation.
 Competitive delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
+
+## Residual yo · 2026-07-10 — free-PD + technology chip tech-researcher path
+free-PD-only composed with technology chip surfaces free STEM technology texts
+and excludes literature/paid stubs. Competitive delta: tech-researcher default
+domain path is free-PD-only + technology.
