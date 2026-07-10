@@ -56,6 +56,25 @@ vi.mock("../../../components/engagement/DecisionTreeDriverBadge", () => ({
   ),
 }));
 
+vi.mock("../../../components/engagement/TwinNotesPanel", () => ({
+  TwinNotesPanel: (props: {
+    assetId: string;
+    autoLoad?: boolean;
+    autoSeedIfEmpty?: boolean;
+    seedTitle?: string;
+  }) => (
+    <div
+      data-testid="twin-notes-panel-stub"
+      data-asset-id={props.assetId}
+      data-auto-load={String(Boolean(props.autoLoad))}
+      data-auto-seed={String(Boolean(props.autoSeedIfEmpty))}
+      data-seed-title={props.seedTitle ?? ""}
+    >
+      twins={props.assetId}
+    </div>
+  ),
+}));
+
 vi.mock("../../../lib/researchSuggestion", async (orig) => {
   const actual = await orig<typeof import("../../../lib/researchSuggestion")>();
   // Keep the REAL suggestPromotion (pure); stub only acceptPromotion (the
@@ -168,6 +187,22 @@ describe("MetaReading (M4)", () => {
     fireEvent.click(screen.getByRole("button", { name: "open the book" }));
     expect(window.sessionStorage.getItem("antiek.read.pos.doc-mr")).toBeNull();
     expect(navigateMock).toHaveBeenCalledWith("/read/doc-mr");
+  });
+
+  it("mounts TwinNotes recursive note-taker on deliverable (agn)", async () => {
+    await generate({}, "free will across my books");
+    expect(screen.queryByTestId("meta-reading-twins-mount")).toBeTruthy();
+    const mount = screen.getByTestId("meta-reading-twins-mount");
+    expect(mount.getAttribute("data-view-format")).toBe("html");
+    expect(mount.getAttribute("data-asset-id")).toBe("mr-abc123");
+    expect(mount.getAttribute("data-seamless-meta-twins")).toBe("true");
+    const twins = screen.getByTestId("twin-notes-panel-stub");
+    expect(twins.getAttribute("data-asset-id")).toBe("mr-abc123");
+    expect(twins.getAttribute("data-auto-load")).toBe("true");
+    expect(twins.getAttribute("data-auto-seed")).toBe("true");
+    expect(twins.getAttribute("data-seed-title")).toBe(
+      "free will across my books",
+    );
   });
 
   it("the deliverable is generated + saved (the endpoint persists it); the surface shows it read-only", async () => {

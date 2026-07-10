@@ -5,6 +5,7 @@ import { LemonButton } from "../../../components/lemon";
 import { generateMetaReading, getSavedMetaReading } from "../../../api/books";
 import type { BookCitation, MetaReadingResponse } from "../../../api/books";
 import { DecisionTreeDriverBadge } from "../../../components/engagement/DecisionTreeDriverBadge";
+import { TwinNotesPanel } from "../../../components/engagement/TwinNotesPanel";
 import { useSettingsResearchTier } from "../../../lib/useSettingsResearchTier";
 import ReadAloud from "../../../components/voice/ReadAloud";
 import { acceptPromotion, suggestPromotion } from "../../../lib/researchSuggestion";
@@ -29,6 +30,8 @@ import { acceptPromotion, suggestPromotion } from "../../../lib/researchSuggesti
  * Residual (jy): Settings depth-tier → research_tier on generate (parity DR).
  * Residual (lh): DecisionTreeDriverBadge researchTier (reading ≡ research).
  * Residual (qp): DecisionTreeDriverBadge promptText from meta-reading prompt.
+ * Residual (agn): TwinNotes recursive note-taker when deliverable exists
+ *   (meta-reading asset twin · reading ≡ research · parity TalkToBook agm).
  *
  * PROPOSED BOUNDARY (operator decision 2, sign-off pending): the surface
  * carries the "proposed (sign-off pending)" banner. Reversible to a soft corpus
@@ -287,6 +290,33 @@ export default function MetaReading() {
               <article className="font-serif text-[15px] leading-[1.7] text-ink dark:text-bright whitespace-pre-wrap rounded-md border border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 px-4 py-3">
                 {deliverable.report}
               </article>
+
+              {/* Residual (agn): recursive note-taker twin for meta-reading asset. */}
+              {deliverable.asset_id?.trim() ? (
+                <section
+                  className="rounded-md border border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 px-3 py-2"
+                  data-testid="meta-reading-twins-mount"
+                  data-view-format="html"
+                  data-asset-id={deliverable.asset_id.trim()}
+                  data-seamless-meta-twins="true"
+                  data-research-tier={researchTier}
+                >
+                  <TwinNotesPanel
+                    assetId={deliverable.asset_id.trim()}
+                    autoLoad
+                    autoSeedIfEmpty
+                    seedTitle={
+                      prompt.trim() || deliverable.asset_id.trim()
+                    }
+                    seedBodyText={
+                      deliverable.report?.slice(0, 2000) ||
+                      prompt.trim() ||
+                      ""
+                    }
+                    researchTier={researchTier}
+                  />
+                </section>
+              ) : null}
 
               {/* Page-cited links back into the SPR-07 reader. */}
               {deliverable.citations.length > 0 && (

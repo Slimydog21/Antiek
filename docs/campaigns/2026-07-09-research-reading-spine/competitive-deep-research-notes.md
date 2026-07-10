@@ -2574,3 +2574,8 @@ TalkToBook open panel mounts TwinNotesPanel for documentId (autoLoad ·
 autoSeedIfEmpty · seed from title). Book assets get twin insights/questions
 substrate while talking (reading ≡ research · recursive note-taker).
 vitest TalkToBook 10 green.
+
+## Residual agn · 2026-07-10 — MetaReading TwinNotes recursive note-taker
+Meta-reading deliverable mounts TwinNotesPanel for asset_id (autoLoad ·
+autoSeedIfEmpty · seed from prompt/report). Corpus synthesis assets get twin
+insights/questions substrate (parity TalkToBook agm). vitest MetaReading 13 green.
