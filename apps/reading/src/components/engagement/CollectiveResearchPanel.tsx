@@ -1169,8 +1169,22 @@ export function CollectiveResearchPanel({
                     data-collective-id={cid}
                     data-spawn-count={String(unit.spawn_count ?? selected.length)}
                     data-l6-live-multiagent="deferred"
+                    // Residual (afa): multi-select cohesive unit → Write path honesty.
+                    data-parent-asset-id={
+                      String(parentAssetId || "").trim() || ""
+                    }
+                    data-research-tier={
+                      String(
+                        unit.recommended_research_tier || researchTier || "",
+                      )
+                        .trim()
+                        .toLowerCase() || ""
+                    }
+                    data-seamless-unit-write={String(
+                      Boolean(cid && selected.length >= 1),
+                    )}
                     className="underline opacity-90 hover:opacity-100 font-mono text-[11px]"
-                    title="Open Write with cohesive unit prompt as twin_seed (recursive note-taker · offline unit · L6 live multi-agent deferred)"
+                    title="Open Write with cohesive unit prompt as twin_seed (multi-select unit · recursive note-taker · L6 live multi-agent deferred)"
                   >
                     Open Write (unit prompt)
                   </a>

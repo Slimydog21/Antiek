@@ -1,0 +1,18 @@
+# inventory-afa · collective unit prompt Open Write path honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: afa
+date: 2026-07-10
+parent_tip: 736130e0 (aez)
+
+## Closed
+- collective-unit-open-write: data-parent-asset-id · data-research-tier
+  · data-seamless-unit-write (plus existing collective-id · spawn-count · L6 deferred)
+- vitest CollectiveResearchPanel · 25 passed
+
+## Why this residual
+Multi-select cohesive unit → Write (aeh) had has_body + L6 deferred; path
+honesty for parent reading asset + seamless-unit-write closes the unit→Write
+leg (parity aeq doc merge path).
+
+## Not in scope
+- L6 live multi-agent chat

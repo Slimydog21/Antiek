@@ -201,7 +201,10 @@ describe("CollectiveResearchPanel", () => {
     });
 
     render(
-      <CollectiveResearchPanel availableSpawnIds={["spn_1", "spn_2", "spn_3"]} />,
+      <CollectiveResearchPanel
+        availableSpawnIds={["spn_1", "spn_2", "spn_3"]}
+        parentAssetId="asset_x"
+      />,
     );
 
     const boxes = screen.getAllByRole("checkbox");
@@ -260,7 +263,7 @@ describe("CollectiveResearchPanel", () => {
     ];
     expect(fullCall[1].source).toBe("collective_unit_prompt");
     expect(fullCall[2].mode).toBe("full");
-    // Residual (aeh): unit prompt → Open Write twin_seed (has_body when prompt non-empty).
+    // Residual (aeh/afa): unit prompt → Open Write twin_seed + path honesty.
     const unitWrite = screen.getByTestId("collective-unit-open-write");
     expect(unitWrite.getAttribute("data-view-format")).toBe("html");
     expect(unitWrite.getAttribute("data-write-seed-has-body")).toBe("true");
@@ -270,6 +273,10 @@ describe("CollectiveResearchPanel", () => {
     expect(unitWrite.getAttribute("href")).toMatch(
       /^\/write\?twin_seed=antiek\.twin_write_seed\./,
     );
+    // Residual (afa): multi-select cohesive unit → Write path honesty.
+    expect(unitWrite.getAttribute("data-seamless-unit-write")).toBe("true");
+    expect(unitWrite.getAttribute("data-spawn-count")).toBe("2");
+    expect(unitWrite.getAttribute("data-parent-asset-id")).toBe("asset_x");
     // Residual (jf): depth prefill none when Settings unset.
     await waitFor(() => {
       expect(

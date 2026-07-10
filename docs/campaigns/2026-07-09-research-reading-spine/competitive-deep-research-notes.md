@@ -2373,3 +2373,8 @@ outside path thrash. P0 operator merge PR #465.
 NotDiamond advisory panel gains L7 gate matrix (advisory_allowed · authority_rejected
 · is_dispatch_authority · never_router_posture) parity with L1–L4. Router remains
 forever REJECT; install-as-driver stays explicit. vitest Settings 36 green.
+
+## Residual afa · 2026-07-10 — collective unit prompt Open Write path
+Collective unit Open Write stamps data-seamless-unit-write · parent_asset_id ·
+research_tier so multi-select cohesive unit → Write note-taker is machine-readable
+(parity aeq doc merge). L6 live multi-agent remains deferred. vitest Collective 25 green.
