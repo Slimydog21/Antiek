@@ -117,6 +117,8 @@ import { composeDriverPromptText } from "../../lib/driverPromptText";
  * (parity jc–jg · reading≡research≡write).
  * Residual (anv): knowledge-dense pub quick-call on open-piece DR path
  * (parity Midnight Oil anu · ResearchThis ahc · reading≡research≡writing).
+ * Residual (anx): L1/L2 dual-gate hydrate prep deep-links on write-piece pubs
+ * (parity ResearchThis uk · MO pb · offline-honest never enable injectors).
  */
 export default function WriteHome() {
   const { deliverableId } = useParams<{ deliverableId?: string }>();
@@ -1198,6 +1200,46 @@ export default function WriteHome() {
                 placeholder={"arxiv:1706.03762\nhttps://…"}
                 className="w-full rounded border border-ink/20 bg-transparent px-2 py-1 text-[11px] font-mono dark:border-bright/20"
               />
+              {/* Residual (anx): L1/L2 hydrate prep deep-links (parity ResearchThis uk). */}
+              <p
+                className="text-[10px] font-mono space-x-2"
+                data-testid="write-piece-pub-refs-prep"
+                data-l1-l2-hydrate-prep="true"
+                data-offline-honest="true"
+              >
+                <a
+                  href="/settings#hydrate-live-status"
+                  data-testid="write-piece-hydrate-settings-link"
+                  className="underline opacity-80 hover:opacity-100"
+                  title="Settings publication hydrate readiness (arxiv/substack · offline default)"
+                >
+                  Settings · hydrate readiness
+                </a>
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
+                  data-testid="write-piece-dual-gate-l1-link"
+                  className="underline opacity-80 hover:opacity-100"
+                  title="Dual-gate L1 arxiv hydrate checklist (prep only · offline identity default)"
+                >
+                  Dual-gate L1 arxiv checklist
+                </a>
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l2-substack"
+                  data-testid="write-piece-dual-gate-l2-link"
+                  className="underline opacity-80 hover:opacity-100"
+                  title="Dual-gate L2 Substack hydrate checklist (prep only · factory + ToS)"
+                >
+                  Dual-gate L2 Substack checklist
+                </a>
+                <span
+                  className="opacity-70"
+                  data-testid="write-piece-pub-refs-offline-default"
+                  data-offline-honest="true"
+                  role="status"
+                >
+                  offline identity default
+                </span>
+              </p>
               {writePubRefStatus ? (
                 <p
                   className="text-[10px] text-aurora"

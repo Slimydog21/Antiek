@@ -1056,6 +1056,43 @@ describe("WriteHome — the re-homed door", () => {
     ).toBe("arxiv:1706.03762\narxiv:1810.04805");
   });
 
+  it("links dual-gate L1–L2 hydrate prep on write-piece pubs (anx)", async () => {
+    getDeliverableMock.mockResolvedValue({
+      deliverable_id: "dlv-gate",
+      title: "Gate prep write piece",
+      deliverable_kind: "general_essay",
+      investigation_root_id: null,
+      status: "draft",
+      sections: [],
+      created_at: null,
+      updated_at: null,
+      section_count: 0,
+    });
+    mountAt("/write/dlv-gate");
+    await waitFor(() => {
+      expect(screen.getByTestId("write-piece-research-launch")).toBeTruthy();
+    });
+    const prep = screen.getByTestId("write-piece-pub-refs-prep");
+    expect(prep.getAttribute("data-l1-l2-hydrate-prep")).toBe("true");
+    expect(prep.getAttribute("data-offline-honest")).toBe("true");
+    expect(
+      screen.getByTestId("write-piece-hydrate-settings-link").getAttribute("href"),
+    ).toBe("/settings#hydrate-live-status");
+    expect(
+      screen.getByTestId("write-piece-dual-gate-l1-link").getAttribute("href") ||
+        "",
+    ).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    expect(
+      screen.getByTestId("write-piece-dual-gate-l2-link").getAttribute("href") ||
+        "",
+    ).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
+    expect(
+      screen
+        .getByTestId("write-piece-pub-refs-offline-default")
+        .getAttribute("data-offline-honest"),
+    ).toBe("true");
+  });
+
   it("prefills Write piece DR research tier from Settings wrestle depth (jh)", async () => {
     fetchDepthTiersMock.mockResolvedValue({
       active_depth_tier: "wrestle",

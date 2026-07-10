@@ -3579,3 +3579,9 @@ Owned-corpus meta-reading HTML synthesis opens Write via twin_seed
 (meta_reading_deliverable · has_body honesty · write_seed_known_count 19).
 reading ≡ research ≡ writing flywheel. vitest twinWriteSeed + MetaReading anw green.
 P0 operator merge PR #465. Pivot anx+ outside thrash.
+
+## Residual anx · 2026-07-10 — Write piece dual-gate L1–L2 hydrate prep
+Write open-piece pub refs mount Settings hydrate readiness + L1 arxiv + L2 Substack
+deep-links (offline-honest prep only · never enable injectors). Completes hydrate
+prep matrix on writing path (parity ResearchThis uk · MO pb).
+vitest WriteHome anx green. P0 operator merge PR #465. Pivot any+ outside thrash.
