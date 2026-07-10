@@ -3454,3 +3454,8 @@ P0 operator merge PR #465. Pivot amz+ outside thrash.
 ## Residual amz · 2026-07-10 — SESSION-ARC amr–amy reading context complete
 Wave handoff: ResearchThis · TalkToBook · MetaReading ResearchContext substrate +
 ResearchThis promote remount. P0 operator merge PR #465. Pivot ana+ outside thrash.
+
+## Residual ana · 2026-07-10 — TalkToBook remount twins+context after promote
+Talk bookmark remounts TwinNotes + ResearchContext after twin promote (parity
+ResearchThis amy). vitest TalkToBook 10 green.
+P0 operator merge PR #465. Pivot anb+ outside thrash.

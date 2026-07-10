@@ -69,18 +69,30 @@ vi.mock("../../components/engagement/TwinNotesPanel", () => ({
     assetId: string;
     autoLoad?: boolean;
     autoSeedIfEmpty?: boolean;
+    autoPromoteAfterLoad?: boolean;
     seedTitle?: string;
     researchTier?: string | null;
+    onPromoted?: () => void;
   }) => (
     <div
       data-testid="twin-notes-panel-stub"
       data-asset-id={props.assetId}
       data-auto-load={String(Boolean(props.autoLoad))}
       data-auto-seed={String(Boolean(props.autoSeedIfEmpty))}
+      data-auto-promote={String(Boolean(props.autoPromoteAfterLoad))}
       data-seed-title={props.seedTitle ?? ""}
       data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
     >
       twins={props.assetId}
+      {props.onPromoted ? (
+        <button
+          type="button"
+          data-testid="talk-to-book-twin-promote-notify"
+          onClick={() => props.onPromoted?.()}
+        >
+          notify promote
+        </button>
+      ) : null}
     </div>
   ),
 }));
@@ -282,7 +294,7 @@ describe("TalkToBook (M2)", () => {
     expect(screen.getByText(/isn’t grounded in the book’s text/)).toBeTruthy();
   });
 
-  it("mounts TwinNotes recursive note-taker for the book asset (agm)", () => {
+  it("mounts TwinNotes recursive note-taker for the book asset (agm)", async () => {
     render(
       <TalkToBook documentId="doc-twin" title="Twin Book" onJumpToPage={vi.fn()} />,
     );
@@ -309,5 +321,30 @@ describe("TalkToBook (M2)", () => {
     expect(ctx.getAttribute("data-asset-id")).toBe("doc-twin");
     expect(ctx.getAttribute("data-auto-load")).toBe("true");
     expect(ctx.getAttribute("data-research-tier")).toMatch(/deep|fast|wrestle/);
+    // Residual (ana): promote remounts twins + context (parity amy ResearchThis).
+    expect(twins.getAttribute("data-auto-promote")).toBe("true");
+    expect(
+      screen
+        .getByTestId("talk-to-book-twins-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("0");
+    expect(
+      screen
+        .getByTestId("talk-to-book-context-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("0");
+    fireEvent.click(screen.getByTestId("talk-to-book-twin-promote-notify"));
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId("talk-to-book-twins-refresh")
+          .getAttribute("data-refresh-key"),
+      ).toBe("1");
+    });
+    expect(
+      screen
+        .getByTestId("talk-to-book-context-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("1");
   });
 });

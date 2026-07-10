@@ -33,6 +33,7 @@ import type { TalkMessage } from "./useTalkThread";
  *   (reading ≡ research · every information asset has twin substrate).
  * Residual (ams): ResearchContext with researchTier on talk bookmark so
  *   intelligent search over twins sits next to multi-turn ask (parity amr).
+ * Residual (ana): remount twins + context after twin promote (parity ResearchThis amy).
  *
  * §9.0: a withheld region can never be cited — the backend search gate keeps a
  * withheld body out of the model context and the citation set, so this surface
@@ -61,6 +62,11 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
   const [error, setError] = useState<string | null>(null);
   // Residual (jn): Settings depth-tier for talk-to-book research_tier.
   const { researchTier, depthPrefill } = useSettingsResearchTier();
+  // Residual (ana): remount twins + context after promote (parity amy).
+  const [contextRefreshKey, setContextRefreshKey] = useState(0);
+  const onContextNeedsRefresh = useCallback(() => {
+    setContextRefreshKey((k) => k + 1);
+  }, []);
 
   const turnCount = thread.messages.length;
   const branchCount = thread.state.branches.length;
@@ -232,6 +238,7 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
       </form>
 
       {/* Residual (agm): recursive note-taker twin for this book asset. */}
+      {/* Residual (ana): remount after promote so context sees promoted substrate. */}
       <section
         className="max-h-40 overflow-y-auto border-t border-rule dark:border-charcoal-1 px-3 py-2"
         data-testid="talk-to-book-twins-mount"
@@ -240,16 +247,25 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
         data-seamless-talk-twins="true"
         data-research-tier={researchTier}
       >
-        <TwinNotesPanel
-          assetId={documentId}
-          autoLoad
-          autoSeedIfEmpty
-          seedTitle={title?.trim() || documentId}
-          seedBodyText={title?.trim() || documentId}
-          researchTier={researchTier}
-        />
+        <div
+          data-testid="talk-to-book-twins-refresh"
+          data-refresh-key={String(contextRefreshKey)}
+        >
+          <TwinNotesPanel
+            key={`twins-${documentId}-${contextRefreshKey}`}
+            assetId={documentId}
+            autoLoad
+            autoSeedIfEmpty
+            autoPromoteAfterLoad
+            onPromoted={onContextNeedsRefresh}
+            seedTitle={title?.trim() || documentId}
+            seedBodyText={title?.trim() || documentId}
+            researchTier={researchTier}
+          />
+        </div>
       </section>
       {/* Residual (ams): intelligent context over twins on talk bookmark. */}
+      {/* Residual (ana): remount context after twin promote. */}
       <section
         className="max-h-48 overflow-y-auto border-t border-rule dark:border-charcoal-1 px-3 py-2"
         data-testid="talk-to-book-context-mount"
@@ -257,12 +273,19 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
         data-document-id={documentId}
         data-seamless-talk-context="true"
         data-research-tier={researchTier}
+        data-refresh-key={String(contextRefreshKey)}
       >
-        <ResearchContextPanel
-          assetId={documentId}
-          autoLoad
-          researchTier={researchTier}
-        />
+        <div
+          data-testid="talk-to-book-context-refresh"
+          data-refresh-key={String(contextRefreshKey)}
+        >
+          <ResearchContextPanel
+            key={`ctx-${documentId}-${contextRefreshKey}`}
+            assetId={documentId}
+            autoLoad
+            researchTier={researchTier}
+          />
+        </div>
       </section>
     </aside>
   );
