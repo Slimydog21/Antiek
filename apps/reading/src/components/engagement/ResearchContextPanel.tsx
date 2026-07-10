@@ -79,11 +79,45 @@ export function twinNoteMetrics(
   return { total, insights, questions, other };
 }
 
+/**
+ * Residual (ahr): domain-aware intelligent-search default from asset subjects
+ * (e.g. free STEM Fourier heat/signal_processing → grounded twin search query).
+ * Never invents subjects; empty when no domain match.
+ */
+export function domainAwareSearchDefault(
+  subjects?: readonly string[] | null,
+): string {
+  const set = new Set(
+    (subjects || []).map((s) => String(s || "").trim().toLowerCase()).filter(Boolean),
+  );
+  if (set.has("heat") || set.has("signal_processing")) {
+    return "heat signal processing mathematical laws twin insights";
+  }
+  if (set.has("foundations") || set.has("computability") || set.has("logic")) {
+    return "foundations incompleteness computability twin insights";
+  }
+  if (set.has("electricity") || set.has("electromagnetism")) {
+    return "electricity electromagnetism induction twin insights";
+  }
+  if (set.has("information_theory") || set.has("communication")) {
+    return "information theory communication twin insights";
+  }
+  if (set.has("computing") || set.has("history")) {
+    return "computing analytical engine twin insights";
+  }
+  return "";
+}
+
 export type ResearchContextPanelProps = {
   assetId: string;
   spawnId?: string | null;
   /** Optional controlled initial query filter */
   initialQuery?: string;
+  /**
+   * Residual (ahr): research-domain subjects for intelligent search default
+   * when initialQuery is empty (free STEM catalog continuity).
+   */
+  domainSubjects?: readonly string[] | null;
   /**
    * Residual (co): auto-load research context + evidence pack on mount
    * (competitive citation-trust surface without extra clicks).
@@ -95,9 +129,14 @@ export function ResearchContextPanel({
   assetId,
   spawnId = null,
   initialQuery = "",
+  domainSubjects = null,
   autoLoad = false,
 }: ResearchContextPanelProps) {
-  const [query, setQuery] = useState(initialQuery);
+  const [query, setQuery] = useState(
+    () =>
+      (initialQuery || "").trim() ||
+      domainAwareSearchDefault(domainSubjects),
+  );
   const [refInput, setRefInput] = useState("");
   const [pack, setPack] = useState<ResearchContextResponse | null>(null);
   const [evidence, setEvidence] = useState<EvidencePackResponse | null>(null);
@@ -323,14 +362,27 @@ export function ResearchContextPanel({
         </div>
       </header>
 
-      <div className="controls">
+      <div
+        className="controls"
+        data-testid="research-context-query-controls"
+        data-domain-aware-default={String(
+          Boolean(domainAwareSearchDefault(domainSubjects)),
+        )}
+        data-domain-subjects={(domainSubjects || []).join(",") || ""}
+        data-query={query}
+      >
         <label>
           Query filter
           <input
             type="search"
+            data-testid="research-context-query-input"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="filter twins / refs"
+            placeholder={
+              domainAwareSearchDefault(domainSubjects)
+                ? `domain default: ${domainAwareSearchDefault(domainSubjects)}`
+                : "filter twins / refs"
+            }
             disabled={busy}
           />
         </label>

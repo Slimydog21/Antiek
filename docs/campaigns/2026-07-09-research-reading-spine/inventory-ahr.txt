@@ -1,0 +1,17 @@
+# inventory-ahr · domain-aware twin intelligent search default
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ahr
+date: 2026-07-10
+parent_tip: 85309b50 (ahq)
+
+## Closed
+- domainAwareSearchDefault(subjects) for heat/signal_processing, foundations, electricity, info theory, computing
+- ResearchContextPanel domainSubjects prop prefills intelligent search query
+- HostedHtml accepts subjects payload · passes domainSubjects to ResearchContextPanel
+- Marketplace openHostedWindow resolves subjects from catalog book_id
+- Free STEM Fourier → domain-aware twin search continuity
+- vitest ResearchContext 14 · Marketplace 41 · HostedHtml 23 green
+
+## Next
+ahs+ product residual · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

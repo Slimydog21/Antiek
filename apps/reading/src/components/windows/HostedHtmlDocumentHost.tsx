@@ -86,6 +86,8 @@ export type HostedHtmlDocumentHostProps = {
   license_class?: string;
   owner_id?: string;
   source?: string;
+  /** Residual (ahr): research-domain subjects for intelligent search default. */
+  subjects?: string[] | null;
   /** Residual (tq): intelligent search query when source=context_search. */
   search_query?: string | null;
   /** Residual (tq): hit count when source=context_search. */
@@ -879,6 +881,7 @@ export default function HostedHtmlDocumentHost(
               assetId={assetId}
               spawnId={null}
               autoLoad
+              domainSubjects={props.subjects || null}
             />
           </div>
         </section>

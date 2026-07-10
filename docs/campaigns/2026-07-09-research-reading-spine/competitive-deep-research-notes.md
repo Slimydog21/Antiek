@@ -2756,3 +2756,10 @@ P0 operator merge PR #465. Pivot ahq+.
 Maps recursive note-taker mounts across reading/research/write/marketplace and
 names offline product gaps (MO deposit twin · domain-aware twin search · unit
 float twin). L3 live remains dual-gate. P0 operator merge PR #465. Pivot ahr+.
+
+## Residual ahr · 2026-07-10 — domain-aware twin intelligent search default
+ResearchContextPanel prefills intelligent search from domain subjects (heat /
+signal_processing for Fourier free STEM). Marketplace host openWindow passes
+catalog subjects into HostedHtml twin context. Completes twin completeness gap
+#3 from ahq. vitest ResearchContext 14 · Marketplace 41 · HostedHtml 23 green.
+P0 operator merge PR #465. Pivot ahs+.

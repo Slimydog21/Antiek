@@ -1,6 +1,10 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ResearchContextPanel, twinNoteMetrics } from "./ResearchContextPanel";
+import {
+  ResearchContextPanel,
+  domainAwareSearchDefault,
+  twinNoteMetrics,
+} from "./ResearchContextPanel";
 
 const fetchResearchContext = vi.fn();
 const attachSourceRefs = vi.fn();
@@ -51,6 +55,33 @@ describe("ResearchContextPanel", () => {
     searchEngagementContext.mockReset();
     promoteTwinsToContext.mockReset();
     openWindow.mockClear();
+  });
+
+  it("domainAwareSearchDefault maps free STEM subjects (ahr)", () => {
+    expect(domainAwareSearchDefault(["heat", "signal_processing"])).toMatch(
+      /heat signal processing/i,
+    );
+    expect(domainAwareSearchDefault(["foundations", "logic"])).toMatch(
+      /foundations incompleteness/i,
+    );
+    expect(domainAwareSearchDefault([])).toBe("");
+    expect(domainAwareSearchDefault(null)).toBe("");
+  });
+
+  it("prefills intelligent search query from domain subjects (ahr)", () => {
+    render(
+      <ResearchContextPanel
+        assetId="pd-fourier-heat"
+        domainSubjects={["heat", "signal_processing", "engineering"]}
+      />,
+    );
+    const controls = screen.getByTestId("research-context-query-controls");
+    expect(controls.getAttribute("data-domain-aware-default")).toBe("true");
+    expect(controls.getAttribute("data-domain-subjects")).toMatch(/heat/);
+    expect(
+      (screen.getByTestId("research-context-query-input") as HTMLInputElement)
+        .value,
+    ).toMatch(/heat signal processing/i);
   });
 
   it("links dual-gate L1–L4 checklist for hydrate prep (mu)", () => {

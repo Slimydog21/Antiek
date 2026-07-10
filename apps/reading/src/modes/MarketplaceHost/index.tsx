@@ -445,8 +445,18 @@ export default function MarketplaceHost({
     license_class?: string;
     owner_id?: string;
     source?: string;
+    /** Residual (ahr): research-domain subjects for twin intelligent search default. */
+    subjects?: string[] | null;
+    book_id?: string | null;
   }) {
     if ((opts.view_format || "html") !== "html" || !opts.html) return;
+    // Residual (ahr): resolve subjects from catalog entry when book_id known.
+    const fromCatalog =
+      opts.subjects ||
+      (opts.book_id
+        ? entries.find((e) => e.book_id === opts.book_id)?.subjects
+        : null) ||
+      null;
     openWindow(
       "hosted_html_document",
       {
@@ -457,6 +467,7 @@ export default function MarketplaceHost({
         license_class: opts.license_class,
         owner_id: opts.owner_id,
         source: opts.source || "marketplace_host",
+        subjects: fromCatalog || undefined,
       },
       {
         id: `win:hosted:${opts.document_id}`,
@@ -876,6 +887,7 @@ export default function MarketplaceHost({
           license_class: result.license_class,
           owner_id: result.owner_id,
           source: "marketplace_host",
+          book_id: result.book_id,
         });
       }
     } catch (e) {
@@ -920,6 +932,8 @@ export default function MarketplaceHost({
           license_class: result.license_class,
           owner_id: result.owner_id,
           source: "marketplace_host",
+          book_id: result.book_id || entry.book_id,
+          subjects: entry.subjects || null,
         });
       }
     } catch (e) {
