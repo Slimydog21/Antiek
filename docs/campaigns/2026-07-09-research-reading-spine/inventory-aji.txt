@@ -1,0 +1,16 @@
+# inventory-aji · evidence pack Write seed multi-hop citation chain honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aji
+date: 2026-07-10
+parent_tip: 302d0920 (ajh)
+
+## Closed
+- buildEvidencePackWriteHref stamps:
+  - chain_complete · hop strip · stable anchors on plain_text + HTML article
+  - empty packs still null (never invent substrate)
+- Recursive note-taker Write path preserves multi-hop claim→source honesty (air)
+- vitest twinWriteSeed 35 green
+
+## Next
+ajj+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

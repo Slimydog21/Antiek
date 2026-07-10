@@ -639,11 +639,34 @@ export function buildEvidencePackWriteHref(opts: {
       return [title, url, src ? `(${src})` : ""].filter(Boolean).join(" ");
     })
     .filter(Boolean);
+  // Residual (aji/air): multi-hop chain honesty on Write seed (never invent edges).
+  // Empty packs (no insights/questions/refs/html) stay null — never invent substrate.
+  if (
+    insights.length === 0 &&
+    questions.length === 0 &&
+    refs.length === 0 &&
+    !String(opts.html || "").trim()
+  ) {
+    return null;
+  }
+  const chainComplete = insights.length > 0 && refs.length > 0;
+  const hopStrip = [
+    insights.length ? `Insights (claims)(${insights.length})` : "",
+    questions.length ? `Open questions(${questions.length})` : "",
+    refs.length ? `Source references(${refs.length})` : "",
+  ]
+    .filter(Boolean)
+    .join(" → ");
   const plainParts = [
-    ...insights.map((i) => `[insight] ${i}`),
-    ...questions.map((q) => `[question] ${q}`),
-    ...refs.map((r) => `[ref] ${r}`),
-  ];
+    hopStrip || insights.length || questions.length || refs.length
+      ? chainComplete
+        ? `[citation_chain] chain_complete=true · hops: ${hopStrip}`
+        : `[citation_chain] chain_complete=false · hops: ${hopStrip || "(incomplete)"}`
+      : "",
+    ...insights.map((i, idx) => `[insight] [evidence-insight-${idx}] ${i}`),
+    ...questions.map((q, idx) => `[question] [evidence-question-${idx}] ${q}`),
+    ...refs.map((r, idx) => `[ref] [evidence-source-${idx}] ${r}`),
+  ].filter(Boolean);
   const plainFromHtml = plainTextFromHtml(opts.html || "");
   const plain =
     plainParts.join("\n") + (plainFromHtml ? `\n\n${plainFromHtml}` : "");
@@ -665,9 +688,15 @@ export function buildEvidencePackWriteHref(opts: {
   const html =
     `<article data-view-format="html" data-source="evidence_pack" data-asset-id="${escape(asset)}"` +
     (spawn ? ` data-spawn-id="${escape(spawn)}"` : "") +
-    ` data-ref-count="${refs.length}">` +
+    ` data-ref-count="${refs.length}"` +
+    ` data-chain-complete="${chainComplete ? "true" : "false"}"` +
+    (hopStrip ? ` data-citation-chain-hops="${escape(hopStrip)}"` : "") +
+    `>` +
     `<h1>Evidence pack · ${escape(asset)}</h1>` +
-    (tier ? `<p class="tier"><strong>Tier:</strong> ${escape(tier)}</p>` : "") +
+    (tier ? `<p class="tier"><strong>tier:</strong> ${escape(tier)}</p>` : "") +
+    (hopStrip
+      ? `<p class="citation-chain-hops">Citation chain hops: ${escape(hopStrip)}</p>`
+      : "") +
     bodyHtml +
     `</article>`;
   const seedKey = storeTwinWriteSeed({

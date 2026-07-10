@@ -553,10 +553,19 @@ describe("twinWriteSeed (pp)", () => {
     const seed = loadTwinWriteSeed(key);
     expect(seed?.source).toBe("evidence_pack");
     expect(seed?.asset_id).toBe("paper-1");
-    expect(seed?.plain_text).toMatch(/\[insight\] Attention is routing/);
-    expect(seed?.plain_text).toMatch(/\[question\] Why multi-head/);
+    expect(seed?.plain_text).toMatch(
+      /\[insight\].*Attention is routing/,
+    );
+    expect(seed?.plain_text).toMatch(/\[question\].*Why multi-head/);
     expect(seed?.plain_text).toMatch(/\[ref\]/);
     expect(seed?.html).toMatch(/data-source="evidence_pack"/);
+    // Residual (aji/air): multi-hop citation chain honesty on Write seed.
+    expect(seed?.plain_text).toMatch(/chain_complete=true/);
+    expect(seed?.plain_text).toMatch(/evidence-insight-0/);
+    expect(seed?.plain_text).toMatch(/evidence-source-0/);
+    expect(seed?.html).toMatch(/data-chain-complete="true"/);
+    expect(seed?.html).toMatch(/data-citation-chain-hops=/);
+    expect(seed?.html).toMatch(/Citation chain hops:/);
   });
 
   it("returns null for empty evidence pack (rb)", () => {

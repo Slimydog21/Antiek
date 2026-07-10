@@ -2985,3 +2985,8 @@ Pivot ajh+ outside thrash.
 engagement_spine exports build_citation_chain_hops + citation_chain_complete
 for agent-readable multi-hop claim→source API (air). pytest evidence 4 green.
 P0 operator merge PR #465. Pivot aji+ outside thrash.
+
+## Residual aji · 2026-07-10 — evidence pack Write seed multi-hop citation chain honesty
+buildEvidencePackWriteHref stamps chain_complete · hop strip · stable anchors into
+twin_seed plain/HTML so recursive note-taker Write preserves multi-hop honesty.
+vitest twinWriteSeed 35 green. P0 operator merge PR #465. Pivot ajj+ outside thrash.
