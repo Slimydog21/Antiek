@@ -16,6 +16,7 @@
  * Residual (qn): DecisionTreeDriverBadge promptText from session output.
  * Residual (np): dual-gate L1–L4 checklist deep-link (prep only).
  * Residual (re): Open Write twin_seed after flywheel complete.
+ * Residual (acs): data-write-seed-has-body when output or prompt_block non-empty.
  * Residual (sn): float|full session complete HTML (output + prompt_block).
  * Composes shipped completeSessionFlywheel. HTML-first context pack.
  */
@@ -410,7 +411,7 @@ export function SessionFlywheelPanel({
               </button>
             </p>
           ) : null}
-          {/* Residual (re): flywheel complete → Write twin_seed. */}
+          {/* Residual (re/acs): flywheel complete → Write twin_seed + body honesty. */}
           {(() => {
             const href = buildSessionFlywheelWriteHref({
               sessionId: result.session_id || sessionId,
@@ -420,6 +421,10 @@ export function SessionFlywheelPanel({
               status: result.status,
               researchTier: flywheelResearchTier(result).effective,
             });
+            const hasBody = Boolean(
+              String(output || "").trim() ||
+                String(result.prompt_block || "").trim(),
+            );
             return href ? (
               <p>
                 <a
@@ -428,6 +433,7 @@ export function SessionFlywheelPanel({
                   data-view-format="html"
                   data-has-twin-seed="1"
                   data-status={result.status ?? ""}
+                  data-write-seed-has-body={String(hasBody)}
                   className="underline opacity-90 hover:opacity-100"
                   title="Open Write with session flywheel output as twin_seed (no invented document_id)"
                 >

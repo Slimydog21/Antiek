@@ -15,6 +15,7 @@
  * Residual (mj): dual-gate L1–L4 checklist deep-link for arxiv/substack
  * live-injector dogfood prep (never enables injectors).
  * Residual (rc): Open Write twin_seed from hydrated publications.
+ * Residual (acs): data-write-seed-has-body when any pub body_text/HTML non-empty.
  * HTML-first; offline hydrate by default.
  */
 
@@ -27,7 +28,10 @@ import {
 import {
   parsePublicationRefs,
 } from "../../modes/ResearchWorkstation/publicationRefs";
-import { buildPublicationHydrateWriteHref } from "../../workspace/twinWriteSeed";
+import {
+  buildPublicationHydrateWriteHref,
+  plainTextFromHtml,
+} from "../../workspace/twinWriteSeed";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 
 export type PublicationAttachResult = {
@@ -325,13 +329,18 @@ export function PublicationAttachPanel({
               })()}
             </p>
           ) : null}
-          {/* Residual (rc): hydrated pubs → Write twin_seed. */}
+          {/* Residual (rc/acs): hydrated pubs → Write twin_seed + body honesty. */}
           {hydrated.length > 0
             ? (() => {
                 const href = buildPublicationHydrateWriteHref({
                   spawnId,
                   assets: hydrated,
                 });
+                const hasBody = hydrated.some(
+                  (a) =>
+                    Boolean(String(a.body_text || "").trim()) ||
+                    Boolean(plainTextFromHtml(a.html || "").trim()),
+                );
                 return href ? (
                   <p>
                     <a
@@ -340,6 +349,7 @@ export function PublicationAttachPanel({
                       data-view-format="html"
                       data-has-twin-seed="1"
                       data-hydrated-count={String(hydrated.length)}
+                      data-write-seed-has-body={String(hasBody)}
                       className="underline opacity-90 hover:opacity-100"
                       title="Open Write with hydrated publications as twin_seed (arxiv/substack/URL; no invented document_id)"
                     >

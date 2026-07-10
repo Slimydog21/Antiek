@@ -153,6 +153,8 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
     expect(href).not.toMatch(/html_draft=/);
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
     expect(write.getAttribute("data-status")).toBe("complete");
+    // Residual (acs): output/prompt_block body → has-body true.
+    expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
     // Residual (lt): post-complete badge adopts session/pack effective tier.
     expect(
       screen

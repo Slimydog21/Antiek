@@ -85,6 +85,8 @@ describe("PublicationAttachPanel residual ck/ed", () => {
     expect(href).not.toMatch(/html_draft=/);
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
     expect(write.getAttribute("data-hydrated-count")).toBe("1");
+    // Residual (acs): body_text/HTML body → has-body true.
+    expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
     expect(
       screen.getByTestId("publication-attach-panel").getAttribute("data-view-format"),
     ).toBe("html");
