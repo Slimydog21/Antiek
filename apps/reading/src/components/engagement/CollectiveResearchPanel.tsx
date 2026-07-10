@@ -1332,9 +1332,25 @@ export function CollectiveResearchPanel({
                 <span
                   className="meta"
                   data-testid="collective-continue-window-id"
+                  // Residual (afk): post-continue unit→DR path audit.
+                  data-collective-id={unit.collective_id ?? ""}
+                  data-parent-asset-id={
+                    String(parentAssetId || unit.asset_ids?.[0] || "").trim() ||
+                    ""
+                  }
+                  data-window-id={continueWindowId}
+                  data-research-tier={
+                    unit.recommended_research_tier || researchTier || ""
+                  }
+                  data-l6-live-multiagent="deferred"
+                  data-seamless-unit-continue="true"
                   role="status"
                 >
                   Window {continueWindowId}
+                  {unit.collective_id
+                    ? ` · unit=${unit.collective_id}`
+                    : ""}{" "}
+                  · offline unit re-entry · not live L6 council
                 </span>
               ) : null}
             </div>

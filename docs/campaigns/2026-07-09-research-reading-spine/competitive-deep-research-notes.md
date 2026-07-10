@@ -2424,3 +2424,8 @@ Settings spine postures v15. pytest dogfood 5 · Settings 36 green.
 ## Residual afj · 2026-07-10 — SESSION-ARC afg–afi collective multi-spawn path
 Handoff: written analysis Open Write source fix + continue-as-unit path stamps +
 dogfood v15. P0 operator merge PR #465. Pivot afk+ outside thrash.
+
+## Residual afk · 2026-07-10 — continue-as-unit window path audit
+Post-continue window status stamps collective_id · parent · seamless-unit-continue
+· L6 deferred + offline re-entry copy. Closes unit→DR audit loop after afh.
+vitest CollectiveResearchPanel 25 green.

@@ -443,6 +443,14 @@ describe("CollectiveResearchPanel", () => {
         /wdr_col_unit/,
       );
     });
+    // Residual (afk): post-continue path audit stamps.
+    const contWin = screen.getByTestId("collective-continue-window-id");
+    expect(contWin.getAttribute("data-window-id")).toMatch(/wdr_col_unit/);
+    expect(contWin.getAttribute("data-collective-id")).toBe("col_dc");
+    expect(contWin.getAttribute("data-parent-asset-id")).toBe("book-1");
+    expect(contWin.getAttribute("data-seamless-unit-continue")).toBe("true");
+    expect(contWin.getAttribute("data-l6-live-multiagent")).toBe("deferred");
+    expect(contWin.textContent).toMatch(/offline unit re-entry/i);
 
     // Residual (ey): full working-region continue.
     launchFloatingDeepResearch.mockClear();

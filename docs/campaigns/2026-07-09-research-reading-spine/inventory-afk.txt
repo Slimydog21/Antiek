@@ -1,0 +1,18 @@
+# inventory-afk · continue-as-unit window status path audit
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: afk
+date: 2026-07-10
+parent_tip: 0c90008d (afj)
+
+## Closed
+- collective-continue-window-id: data-collective-id · data-parent-asset-id
+  · data-window-id · data-research-tier · data-seamless-unit-continue · L6 deferred
+- offline unit re-entry copy honesty
+- vitest CollectiveResearchPanel · 25 passed
+
+## Why this residual
+After continue-as-unit launch, only window id text existed. Post-continue path
+audit closes the unit re-entry → DR loop (parity afh button stamps).
+
+## Not in scope
+- L6 live multi-agent
