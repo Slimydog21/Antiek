@@ -1,0 +1,17 @@
+# inventory-ua · FUTURE-AGENT tip re-anchor through tz
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ua
+date: 2026-07-10
+tip_sha: 89cb9a7d
+
+## Closed
+- FUTURE-AGENT-SPEC tip → 89cb9a7d with arcs tt–tz closed
+- Boole path (tx–tz) + dogfood v5 + write-seed allowlist marked do-not-rebuild
+- Next product candidates: Heaviside PD · MO L4 polish · multi-float collective UX
+
+## Product why
+Parallel swarm agents (codex/grok/mimo/glm-cc) need tip truth after Boole path
+lands so they do not thrash closed marketplace/dogfood/write-seed work.
+
+## Not in scope
+- Operator merge PR #465 (gated)

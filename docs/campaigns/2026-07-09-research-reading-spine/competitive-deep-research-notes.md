@@ -1094,3 +1094,8 @@ suite-competitive-dogfood-v5 adds dogfood-book-boole-laws-of-thought.
 Settings data-has-boole-book-qa-posture. Competitive delta: Antiek-bench
 recursive rewrite covers free computing PD reading (parity Faraday electricity
 book_qa) without auto-promote.
+
+## Residual ua · 2026-07-10 — FUTURE-AGENT tip re-anchor through tz
+FUTURE-AGENT-SPEC tip → 89cb9a7d with closed arcs tt–tz (write-seed allowlist,
+dogfood v4–v5, Boole free PD path). Competitive delta: multi-agent swarm
+handoff stays tip-true so parallel engines do not rebuild closed product.

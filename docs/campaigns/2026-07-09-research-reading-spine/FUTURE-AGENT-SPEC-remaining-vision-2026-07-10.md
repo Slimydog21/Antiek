@@ -1,13 +1,13 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** `d76ef2ed` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465**  
+**Campaign tip at write:** `89cb9a7d` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465**  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **Audience:** next agent swarm (grok / codex / mimo / glm-cc) with zero session memory  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
 
 ## Do not rebuild (already shipped offline)
 
-Engagement spine on this branch includes everything below. Prefer **inventory-tv.txt** + SESSION-ARC docs over re-deriving from main. Tip residual letters: **tt–tv** (after tq–ts flywheel).
+Engagement spine on this branch includes everything below. Prefer **inventory-tz.txt** + SESSION-ARC docs over re-deriving from main. Tip residual letters: **tt–tz** (after tq–ts flywheel).
 
 ### Core engagement spine
 - Twin notes · promote/chase multi-select · recent_ring · collective merge/analysis  
