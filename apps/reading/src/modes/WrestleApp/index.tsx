@@ -1,197 +1,69 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-
-import LemonButton from "../../components/lemon/LemonButton";
-import PdfViewer from "../../components/PdfViewer";
-import type { DocumentLoadedPayload } from "../../generated/types";
+import { getHtmlProjectionByDocument, HtmlProjectionError, type HtmlProjection } from "../../api/htmlProjections";
+import HtmlReader, { type HtmlReaderSelection } from "../../components/HtmlReader";
 import { useEventStream } from "../../hooks/useEventStream";
 import { postTypedEvent } from "../../lib/api";
-import { sha256Hex } from "../../lib/hash";
-import { PanelHost } from "../../workspace/PanelHost";
-import type { StarterPanel } from "../../workspace/PanelHost";
+import { PanelHost, type StarterPanel } from "../../workspace/PanelHost";
 
-/**
- * Mode B — Document Wrestler (S6 redesign).
- *
- * Pre-S6 the route hand-rolled a 3-column grid (PDF | NotesPanel |
- * CrossDocSidebar) and rendered HeaderBar at the top. After S6 the
- * route renders inside `PanelHost`, which provides the chrome via
- * `AppShell`:
- *
- *   - NotesPanel        docked-left  (trajectory chat panel)
- *   - CrossDocSidebar   docked-right (cross-document bridges)
- *   - PdfViewer         main slot    (the PDF you're wrestling)
- *
- * The "load PDF" upload affordance has moved out of the legacy
- * HeaderBar (now no-op) into the empty-state of the main slot.
- * The investigation id is still stable per browser tab via
- * sessionStorage.
- *
- * pdf.js inside a docked panel uses `usePanelSizeStable` to debounce
- * re-rasterisation so the worker doesn't thrash during resize gestures.
- */
-export default function WrestleApp() {
-  const params = useParams<{ documentId?: string }>();
-  const initialDocumentId = params.documentId ?? null;
+type LoadState = { kind: "loading" } | { kind: "ready"; projection: HtmlProjection } | { kind: "error"; message: string };
 
-  // Read ?page= deep-link from Mode A's chunk-citation modal.
-  const initialPage = (() => {
-    const usp = new URLSearchParams(window.location.search);
-    const raw = usp.get("page");
-    if (!raw) return null;
-    const n = parseInt(raw, 10);
-    return Number.isFinite(n) && n > 0 ? n : null;
-  })();
-
-  const [investigationId] = useState<string>(() => {
-    const stored = window.sessionStorage.getItem("antiek.investigation_id");
-    if (stored) return stored;
-    const fresh = "inv-" + crypto.randomUUID().replace(/-/g, "").slice(0, 12);
-    window.sessionStorage.setItem("antiek.investigation_id", fresh);
-    return fresh;
-  });
-
-  const [pdfBytes, setPdfBytes] = useState<Uint8Array | null>(null);
-  const [documentId, setDocumentId] = useState<string | null>(initialDocumentId);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  const { events, status, reconnects } = useEventStream(investigationId);
-
-  const onFileSelected = useCallback(
-    async (file: File) => {
-      setLoadError(null);
-      try {
-        const buf = new Uint8Array(await file.arrayBuffer());
-        const hash = await sha256Hex(buf);
-        const docId = "doc-" + hash.slice(0, 16);
-
-        const payload: DocumentLoadedPayload = {
-          action_type: "document.loaded",
-          media_type: "pdf",
-          content_hash: "sha256:" + hash,
-          size_bytes: file.size,
-          title: file.name,
-          page_count: null,
-          source_uri: null,
-        };
-
-        await postTypedEvent({
-          investigation_id: investigationId,
-          document_id: docId,
-          payload,
-          role: "user_agent",
-        });
-
-        setPdfBytes(buf);
-        setDocumentId(docId);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        setLoadError(msg);
-      }
-    },
-    [investigationId],
-  );
-
-  useEffect(() => {
-    console.info(
-      "[antiek/wrestle] investigation_id:",
-      investigationId,
-      "documentId:",
-      documentId,
-      "initialPage:",
-      initialPage,
-    );
-  }, [investigationId, documentId, initialPage]);
-
-  // Side panels start only when a document is loaded. Until then the
-  // PanelHost shows just the upload-prompting EmptyState in the main slot.
-  const starters: StarterPanel[] = documentId
-    ? ([
-        {
-          kind: "Notes",
-          mode: "docked-left",
-          props: {
-            events,
-            status,
-            reconnects,
-            investigationId,
-            documentId,
-          },
-          title: "Notes · trajectory",
-          id: `wrestle:notes:${investigationId}`,
-        },
-        {
-          kind: "CrossDocs",
-          mode: "docked-right",
-          props: { events },
-          title: "Cross-doc",
-          id: `wrestle:crossdocs:${investigationId}`,
-        },
-      ] as StarterPanel[])
-    : [];
-
-  return (
-    <PanelHost starters={starters}>
-      {pdfBytes && documentId ? (
-        <div className="h-full overflow-hidden bg-ice-2 dark:bg-space-2">
-          <PdfViewer
-            pdfBytes={pdfBytes}
-            investigationId={investigationId}
-            documentId={documentId}
-            initialPage={initialPage ?? undefined}
-          />
-        </div>
-      ) : (
-        <EmptyState
-          onFileSelected={onFileSelected}
-          loadError={loadError}
-          investigationId={investigationId}
-        />
-      )}
-    </PanelHost>
-  );
+function loadMessage(error: unknown): string {
+  if (error instanceof HtmlProjectionError) {
+    if (error.status === 404) return "No ready HTML projection is available for this document.";
+    if (error.status === 409) return "This document has multiple ready HTML projections, so it cannot be opened unambiguously.";
+    if (error.status === 503) return "HTML projection storage is temporarily unavailable.";
+    return `The HTML projection service failed (HTTP ${error.status}).${error.detail ? ` ${error.detail}` : ""}`;
+  }
+  return error instanceof Error ? `Could not reach the HTML projection service. ${error.message}` : "Could not reach the HTML projection service.";
 }
 
-function EmptyState({
-  onFileSelected,
-  loadError,
-  investigationId,
-}: {
-  onFileSelected: (file: File) => void;
-  loadError: string | null;
-  investigationId: string;
-}) {
-  return (
-    <div className="h-full flex items-center justify-center bg-ice-2 dark:bg-space-2">
-      <div className="max-w-md text-center px-6 text-ink dark:text-bright">
-        <h1 className="text-2xl font-serif mb-3">Load a PDF to wrestle.</h1>
-        <p className="text-sm text-shadow-1 dark:text-moonlight font-serif leading-relaxed mb-5">
-          Drop the PDF. Highlight any passage to capture it as a region.
-          The trajectory feed will appear as a docked panel; cross-document
-          bridges appear on the right.
-        </p>
-        <label className="inline-flex">
-          <LemonButton variant="primary" size="lg" type="button" tabIndex={-1}>
-            Choose PDF…
-          </LemonButton>
-          <input
-            type="file"
-            accept="application/pdf"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) onFileSelected(f);
-            }}
-          />
-        </label>
-        {loadError && (
-          <div className="text-xs font-mono text-emperor mt-4">{loadError}</div>
-        )}
-        <p className="mt-6 text-[11px] font-mono text-ink-mute dark:text-moonlight">
-          investigation:{" "}
-          <span className="text-ink dark:text-bright">{investigationId}</span>
-        </p>
-      </div>
+export default function WrestleApp() {
+  const { documentId } = useParams<{ documentId?: string }>();
+  const anchor = new URLSearchParams(window.location.search).get("anchor") || undefined;
+  const [investigationId] = useState(() => {
+    const stored = sessionStorage.getItem("antiek.investigation_id");
+    if (stored) return stored;
+    const fresh = `inv-${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+    sessionStorage.setItem("antiek.investigation_id", fresh);
+    return fresh;
+  });
+  const [attempt, setAttempt] = useState(0);
+  const [state, setState] = useState<LoadState>(() => documentId ? { kind: "loading" } : { kind: "error", message: "A document ID is required to open WrestleApp." });
+  const [postError, setPostError] = useState<string | null>(null);
+  const { events, status, reconnects } = useEventStream(investigationId);
+
+  useEffect(() => {
+    if (!documentId) { setState({ kind: "error", message: "A document ID is required to open WrestleApp." }); return; }
+    const controller = new AbortController();
+    setState({ kind: "loading" }); setPostError(null);
+    void getHtmlProjectionByDocument(documentId, controller.signal).then(
+      (projection) => { if (!controller.signal.aborted) setState({ kind: "ready", projection }); },
+      (error) => { if (!controller.signal.aborted) setState({ kind: "error", message: loadMessage(error) }); },
+    );
+    return () => controller.abort();
+  }, [documentId, attempt]);
+
+  const onRegionSelected = useCallback(async (selection: HtmlReaderSelection) => {
+    if (!documentId) return;
+    setPostError(null);
+    try {
+      await postTypedEvent({ investigation_id: investigationId, document_id: documentId, payload: selection.payload, role: "user_agent" });
+    } catch (error) {
+      setPostError(error instanceof Error ? `Could not save selection: ${error.message}` : "Could not save selection.");
+    }
+  }, [documentId, investigationId]);
+
+  const starters: StarterPanel[] = documentId ? [{
+    kind: "Notes", mode: "docked-left", props: { events, status, reconnects, investigationId, documentId },
+    title: "Notes · trajectory", id: `wrestle:notes:${investigationId}`,
+  }, { kind: "CrossDocs", mode: "docked-right", props: { events }, title: "Cross-doc", id: `wrestle:crossdocs:${investigationId}` }] : [];
+
+  return <PanelHost starters={starters}>
+    <div className="h-full overflow-hidden bg-ice-2 dark:bg-space-2">
+      {state.kind === "loading" && <div role="status" className="flex h-full items-center justify-center">Loading HTML projection…</div>}
+      {state.kind === "error" && <div role="alert" className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center"><p>{state.message}</p>{documentId && <button type="button" onClick={() => setAttempt((value) => value + 1)}>Retry</button>}</div>}
+      {state.kind === "ready" && <><HtmlReader html={state.projection.html} investigationId={investigationId} documentId={documentId!} initialAnchorId={anchor} onRegionSelected={onRegionSelected} />{postError && <p role="alert" className="absolute bottom-4 left-4 right-4">{postError}</p>}</>}
     </div>
-  );
+  </PanelHost>;
 }
