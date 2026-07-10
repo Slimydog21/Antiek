@@ -2077,6 +2077,16 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
       /intelligent search/i,
     );
+    // Residual (aos): aoc–aor product postures in spine listing (propose≠promote).
+    expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
+      /domain-aware twin chase/i,
+    );
+    expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
+      /MO multi-goal templates/i,
+    );
+    expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
+      /multi-agent written analysis/i,
+    );
     expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
       /Select open path/i,
     );

@@ -3158,7 +3158,7 @@ export default function Settings() {
                     TalkToBook twins · MetaReading twins · ResearchThis twins ·
                     spawn merge path · multi-spawn collective merge ·
                     knowledge-dense pub quick-call matrix · budget foresight with pubs ·
-                    purchase seamless port · domain-aware twin search · collective unit twin seed · MO deposit twin honesty · pub-ref foresight chrome · citation chain · multi-hop citation chain hops · domain-aware STEM expanded · evidence Write multi-hop · twin promote depth-graph · twin promote Write depth-graph · TalkToBook collective · MetaReading collective · MarketplaceHost collective · Nicomachean Ethics book_qa · competitive DR scorecard
+                    purchase seamless port · domain-aware twin search · collective unit twin seed · MO deposit twin honesty · pub-ref foresight chrome · citation chain · multi-hop citation chain hops · domain-aware STEM expanded · evidence Write multi-hop · twin promote depth-graph · twin promote Write depth-graph · TalkToBook collective · MetaReading collective · MarketplaceHost collective · Nicomachean Ethics book_qa · competitive DR scorecard · domain-aware twin chase · HostedHtml domain DR · DR session domain rehydrate · MO multi-goal templates · MO fan-out match · multi-agent written analysis ≥2 · MO multi-goal mode intro
                     (listing only · not auto-promoted)
                   </p>
                 ) : null}

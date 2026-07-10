@@ -1,0 +1,14 @@
+# inventory-aos · dogfood spine postures aoc–aor wave
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aos
+date: 2026-07-10
+parent_tip: 4da34903 (aor docs)
+
+## Closed
+- antiek-bench-dogfood-v2-postures listing includes aoc–aor product postures
+- propose≠promote honesty preserved (listing only)
+- Settings tests green
+
+## Next
+aot+ product residual outside thrash
+Operator merge PR #465 remains highest leverage (gated)
