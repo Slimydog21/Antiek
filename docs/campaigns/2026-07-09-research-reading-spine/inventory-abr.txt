@@ -1,0 +1,13 @@
+# inventory-abr · SESSION-ARC + FUTURE tip through abq
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: abr
+date: 2026-07-10
+tip_sha: 75c5aa0d
+
+## Closed
+- SESSION-ARC-abn-abq-free-inventory-doctrine.md
+- FUTURE-AGENT tip → 75c5aa0d · 151 residual ships this continuation
+- Highest leverage: operator merge PR #465 OPEN
+
+## Not in scope
+- Operator merge PR #465 (gated)

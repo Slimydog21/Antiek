@@ -2039,3 +2039,8 @@ free-PD catalog chip filter uses is_free only (parity free_count abn/abo + free_
 HTML abp). Competitive delta: UI free spine filter and free inventory honesty share
 one doctrine end-to-end (API · HTML · client).
 
+## Residual abr · 2026-07-10 — SESSION-ARC + FUTURE tip through abq
+SESSION-ARC-abn-abq documents free inventory is_free-only doctrine (API·HTML·UI).
+FUTURE tip re-anchored after 151 residual ships. Competitive delta: compaction-safe
+multi-agent handoff; operator merge PR #465 highest leverage.
+
