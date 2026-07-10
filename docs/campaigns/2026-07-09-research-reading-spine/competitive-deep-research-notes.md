@@ -3112,3 +3112,8 @@ Pivot akh+ outside thrash.
 Competitive DR scorecard deferred live rows deep-link dual-gate L1/L2 hydrate,
 L4 Midnight Oil, L6 collective checklist + FUTURE L6 multi-agent brief.
 vitest Settings 37 green. P0 operator merge PR #465. Pivot aki+ outside thrash.
+
+## Residual aki · 2026-07-10 — scorecard twin-notes FUTURE completeness matrix deep-link
+Competitive DR scorecard twin-notes row deep-links FUTURE twin note-taker
+completeness matrix (promote depth-graph path ajn–ajw). vitest Settings 37 green.
+P0 operator merge PR #465. Pivot akj+ outside thrash.

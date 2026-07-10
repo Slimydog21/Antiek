@@ -933,6 +933,12 @@ describe("Settings SPR-01 + decision-tree install", () => {
         .getByTestId("competitive-dr-payment-l5-future-link")
         .getAttribute("href") || "",
     ).toMatch(/FUTURE-AGENT-SPEC-l5-digital-book-seamless-port/);
+    // Residual (aki): twin notes row FUTURE completeness matrix deep-link.
+    expect(
+      screen
+        .getByTestId("competitive-dr-twin-notes-future-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix/);
     // Residual (akh): deferred live rows deep-link dual-gate L1/L2/L4/L6 prep.
     expect(
       screen

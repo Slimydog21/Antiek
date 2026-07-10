@@ -4177,8 +4177,17 @@ export default function Settings() {
                 decision-tree-only (ajy) · never dispatch authority (L7)
               </li>
               <li data-status="shipped" data-testid="competitive-dr-twin-notes">
-                Recursive twin note-taker · promote depth-graph unit≡node (ajn/ajo)
-                — <strong>shipped offline</strong> · L3 live seed dual-gate
+                Recursive twin note-taker · promote depth-graph unit≡node
+                (ajn–ajw) — <strong>shipped offline</strong> · L3 live seed
+                dual-gate ·{" "}
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md"
+                  data-testid="competitive-dr-twin-notes-future-link"
+                  className="underline opacity-90 hover:opacity-100"
+                  title="FUTURE-AGENT twin note-taker completeness matrix"
+                >
+                  FUTURE twin completeness matrix
+                </a>
               </li>
               <li data-status="deferred" data-testid="competitive-dr-live-hydrate">
                 Live arxiv/Substack body hydrate —{" "}
