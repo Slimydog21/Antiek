@@ -3043,3 +3043,8 @@ P0 operator merge PR #465. Pivot ajt+ outside thrash.
 Extract content-addressed unit≡node honesty into pure helper used by promote
 payload (ajo). pytest twin promote product 8 green. P0 operator merge PR #465.
 Pivot aju+ outside thrash.
+
+## Residual aju · 2026-07-10 — public export depth_graph_honesty_fields
+engagement_spine exports pure depth_graph_honesty_fields (ajt) for agent-readable
+promote depth-graph audit. pytest public import green. P0 operator merge PR #465.
+Pivot ajv+ outside thrash.

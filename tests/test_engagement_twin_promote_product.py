@@ -84,8 +84,8 @@ def test_promote_context_idempotent_double_run():
 
 
 def test_depth_graph_honesty_fields_pure():
-    """Residual (ajt): pure helper — alignment and empty cases without I/O."""
-    from substrate.engagement_spine.twin_promote import depth_graph_honesty_fields
+    """Residual (ajt/aju): pure helper — alignment and empty cases without I/O."""
+    from substrate.engagement_spine import depth_graph_honesty_fields
 
     ok = depth_graph_honesty_fields(
         [{"graph_node_id": "n1"}, {"graph_node_id": "n1"}],  # dedupe
