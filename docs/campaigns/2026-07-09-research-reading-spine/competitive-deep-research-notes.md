@@ -1259,3 +1259,8 @@ highest leverage.
 buildHostedHtmlWriteHref + HostedHtml Open Write preserve twin_cross_asset_merge
 and twin_draft_selected (no collapse to hosted_html_document). Competitive
 delta: recursive note-taker float → Open Write path is provenance-complete.
+
+## Residual vh · 2026-07-10 — FUTURE-AGENT tip re-anchor through vg
+FUTURE-AGENT-SPEC tip → 447182e2 with closed arcs tt–vg (40 residual ships).
+Competitive delta: swarm handoff tip-true; operator merge PR #465 remains
+highest leverage.
