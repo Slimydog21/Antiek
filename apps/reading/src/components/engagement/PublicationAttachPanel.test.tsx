@@ -140,8 +140,15 @@ describe("PublicationAttachPanel residual ck/ed", () => {
         .getByTestId("publication-preset-toolformer")
         .getAttribute("data-reference"),
     ).toBe("arxiv:2302.04761");
+    // Residual (ati): Tree of Thoughts multi-path deliberate reasoning.
+    expect(screen.getByTestId("publication-preset-tree-of-thoughts")).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("publication-preset-tree-of-thoughts")
+        .getAttribute("data-reference"),
+    ).toBe("arxiv:2305.10601");
     expect(Number(panel.getAttribute("data-knowledge-dense-presets"))).toBeGreaterThanOrEqual(
-      8,
+      9,
     );
     fireEvent.click(
       screen.getByTestId("publication-preset-attention-is-all-you-need"),

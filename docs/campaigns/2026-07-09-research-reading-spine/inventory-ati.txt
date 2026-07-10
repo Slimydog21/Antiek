@@ -1,0 +1,22 @@
+# inventory-ati · knowledge-dense preset Tree of Thoughts
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ati
+date: 2026-07-10
+parent_tip: 62d0cb300 (ath)
+
+## Closed
+- KNOWLEDGE_DENSE_PUBLICATION_PRESETS +=
+  tree-of-thoughts → arxiv:2305.10601
+- Multi-path deliberate reasoning for competitive long-horizon DR
+- Insert-only · never auto-hydrate · shared quick-call matrix inherits
+- vitest PublicationAttachPanel 7 green
+
+## Doctrine
+Agentic DR connector spine: RAG · Constitutional · ReAct · Toolformer · ToT
+HTML-first hydrate path · never invent live body
+
+## Next
+atj+ offline product residual outside thrash
+Avoid: knowledge-dense preset thrash after ask/asy/ati · HostedHtml honesty ·
+duration-band · MO deposit · vision · path-choices · dogfood · readiness→CTA
+Operator merge PR #465 remains P0 (gated)

@@ -4298,3 +4298,9 @@ horizon honesty. vitest ResearchLaunchBudgetPanel 12 green. P0 PR #465. Pivot at
 Twin multi-select draft float stamps honesty chrome + Port path (selected
 insights/questions · L3 deferred · promote≠invent). Scorecard · twin matrix ·
 dual-gate L3. vitest HostedHtml 40 green. P0 PR #465. Pivot ati+.
+
+## Residual ati · 2026-07-10 — knowledge-dense Tree of Thoughts preset
+KNOWLEDGE_DENSE_PUBLICATION_PRESETS += arxiv:2305.10601 (Tree of Thoughts).
+Multi-path deliberate reasoning joins ReAct/Toolformer agentic spine.
+Insert-only · never auto-hydrate. vitest PublicationAttach 7 green.
+P0 PR #465. Pivot atj+.

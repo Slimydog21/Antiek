@@ -99,6 +99,14 @@ export const KNOWLEDGE_DENSE_PUBLICATION_PRESETS: readonly {
     reference: "arxiv:2302.04761",
     kind: "arxiv",
   },
+  // Residual (ati): Tree of Thoughts — multi-path deliberate reasoning for
+  // competitive long-horizon deep research (insert-only · never auto-hydrate).
+  {
+    id: "tree-of-thoughts",
+    label: "Tree of Thoughts (arXiv)",
+    reference: "arxiv:2305.10601",
+    kind: "arxiv",
+  },
   {
     id: "lilian-weng-attention",
     label: "Lilian Weng · Attention",
