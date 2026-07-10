@@ -51,7 +51,7 @@
 5. **Write-land from DR analysis** — keep has-body matrix; never invent outline when HTML is title-only.  
 6. **Marketplace L5** — **Offline Sprint 1–3 complete** (akr–ala) · live rails dual-gate only.  
 7. **Twin promote depth-graph** — **Shipped end-to-end** (ajn–ajw).  
-8. **Budget-before-fire matrix** — **Shipped** spend + driver + twin + evidence + attach (akk–akp · akx–ald). Prefer non-deep-link product next.
+8. **Budget-before-fire matrix** — **Shipped** spend + driver + twin + evidence + attach (akk–akp · akx–ald) · collective merge/analysis soft-gate (**ank**). Prefer non-budget-gate thrash next.
 
 ## Live injectors (operator dual-gate only)
 

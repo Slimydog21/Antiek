@@ -8,6 +8,8 @@
  * 4. Residual (dc): Continue the collective prompt as a new floating deep
  *    research session (cohesive unit re-entry).
  * 5. Residual (di): budget projection + soft-gate on continue-as-unit.
+ * 34. Residual (ank): budget soft-gate on document merge + written analysis
+ *     (budget-before-fire parity continue-as-unit · multi-select merge actions).
  * 6. Residual (em): auto-open draft_combined / written-analysis HTML via shared
  *    openMergedResearchWindow (parity with spawn merge el); into_parent manual.
  * 7. Residual (eo): seed twin notes on draft_combined document merge (parity
@@ -531,6 +533,13 @@ export function CollectiveResearchPanel({
         setError("parentAssetId is required for document merge");
         return;
       }
+      // Residual (ank): budget-before-fire on multi-select document merge.
+      if (budgetWarn && !forceOverBudget) {
+        setError(
+          "Projected cost may exceed remaining daily budget — enable force override or reduce scope before document merge.",
+        );
+        return;
+      }
       setBusy(true);
       setError(null);
       setAutoOpenedWindowId(null);
@@ -584,7 +593,14 @@ export function CollectiveResearchPanel({
         setBusy(false);
       }
     },
-    [selected, parentAssetId, maybeAutoOpenDraft, onDocMerged],
+    [
+      selected,
+      parentAssetId,
+      maybeAutoOpenDraft,
+      onDocMerged,
+      budgetWarn,
+      forceOverBudget,
+    ],
   );
 
   /** Residual (cf): cohesive unit prompt + draft HTML analysis document. */
@@ -592,6 +608,13 @@ export function CollectiveResearchPanel({
     if (selected.length < 1) return;
     if (!parentAssetId?.trim()) {
       setError("parentAssetId is required for written analysis draft");
+      return;
+    }
+    // Residual (ank): budget-before-fire on multi-select written analysis.
+    if (budgetWarn && !forceOverBudget) {
+      setError(
+        "Projected cost may exceed remaining daily budget — enable force override or reduce scope before written analysis.",
+      );
       return;
     }
     setBusy(true);
@@ -671,6 +694,8 @@ export function CollectiveResearchPanel({
     maybeAutoOpenDraft,
     onDocMerged,
     rememberUnitMembership,
+    budgetWarn,
+    forceOverBudget,
   ]);
 
   /**
@@ -1092,6 +1117,46 @@ export function CollectiveResearchPanel({
         ) : null}
       </div>
 
+      {/* Residual (ank): budget foresight before multi-select document merge / analysis. */}
+      {selected.length >= 1 ? (
+        <div
+          className="space-y-2"
+          style={{ marginTop: "0.5rem" }}
+          data-testid="collective-merge-budget-mount"
+          data-view-format="html"
+          data-research-tier={researchTier}
+          data-selected-count={String(selected.length)}
+          data-budget-warn={String(budgetWarn)}
+          data-budget-soft-gate="true"
+        >
+          <ResearchLaunchBudgetPanel
+            promptText={
+              (unit?.prompt_block || "").trim() ||
+              `collective merge · ${selected.length} spawn(s): ${selected.join(",")}`
+            }
+            researchTier={researchTier}
+            allowTierPick
+            onResearchTierChange={setResearchTier}
+            onProjectionChange={onProjectionChange}
+          />
+          {budgetWarn ? (
+            <label
+              className="flex items-center gap-2 text-[11px] font-mono text-emperor"
+              data-testid="collective-merge-over-budget-warn"
+            >
+              <input
+                type="checkbox"
+                data-testid="collective-merge-force-over-budget"
+                checked={forceOverBudget}
+                onChange={(e) => setForceOverBudget(e.target.checked)}
+                disabled={busy}
+              />
+              Force merge / written analysis despite budget projection
+            </label>
+          ) : null}
+        </div>
+      ) : null}
+
       <div
         className="collective-actions"
         style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}
@@ -1101,6 +1166,7 @@ export function CollectiveResearchPanel({
           seamlessCollectiveMergeReady,
         )}
         data-selected-count={String(selected.length)}
+        data-budget-soft-gate={String(budgetWarn && !forceOverBudget)}
       >
         <button
           type="button"
@@ -1116,11 +1182,19 @@ export function CollectiveResearchPanel({
           data-testid="collective-merge-draft"
           data-seamless-merge-draft={String(seamlessCollectiveMergeReady)}
           data-mode="draft_combined"
+          data-budget-soft-gate={String(budgetWarn && !forceOverBudget)}
           onClick={() => void mergeDocument("draft_combined")}
-          disabled={busy || selected.length < 1 || !parentAssetId}
+          disabled={
+            busy ||
+            selected.length < 1 ||
+            !parentAssetId ||
+            (budgetWarn && !forceOverBudget)
+          }
           title={
             parentAssetId
-              ? "Create draft-combined document; parent unchanged · seamless multi-spawn path"
+              ? budgetWarn && !forceOverBudget
+                ? "Over budget — enable force override before draft merge"
+                : "Create draft-combined document; parent unchanged · seamless multi-spawn path"
               : "Requires parentAssetId"
           }
         >
@@ -1131,11 +1205,19 @@ export function CollectiveResearchPanel({
           data-testid="collective-merge-parent"
           data-seamless-merge-parent={String(seamlessCollectiveMergeReady)}
           data-mode="into_parent"
+          data-budget-soft-gate={String(budgetWarn && !forceOverBudget)}
           onClick={() => void mergeDocument("into_parent")}
-          disabled={busy || selected.length < 1 || !parentAssetId}
+          disabled={
+            busy ||
+            selected.length < 1 ||
+            !parentAssetId ||
+            (budgetWarn && !forceOverBudget)
+          }
           title={
             parentAssetId
-              ? "Merge into parent reading asset in-place · seamless multi-spawn path"
+              ? budgetWarn && !forceOverBudget
+                ? "Over budget — enable force override before parent merge"
+                : "Merge into parent reading asset in-place · seamless multi-spawn path"
               : "Requires parentAssetId"
           }
         >
@@ -1145,11 +1227,19 @@ export function CollectiveResearchPanel({
           type="button"
           data-testid="collective-written-analysis"
           data-seamless-written-analysis={String(seamlessCollectiveMergeReady)}
+          data-budget-soft-gate={String(budgetWarn && !forceOverBudget)}
           onClick={() => void createWrittenAnalysis()}
-          disabled={busy || selected.length < 1 || !parentAssetId}
+          disabled={
+            busy ||
+            selected.length < 1 ||
+            !parentAssetId ||
+            (budgetWarn && !forceOverBudget)
+          }
           title={
             parentAssetId
-              ? "Collective prompt unit + draft-combined HTML analysis · seamless multi-spawn path"
+              ? budgetWarn && !forceOverBudget
+                ? "Over budget — enable force override before written analysis"
+                : "Collective prompt unit + draft-combined HTML analysis · seamless multi-spawn path"
               : "Requires parentAssetId"
           }
         >

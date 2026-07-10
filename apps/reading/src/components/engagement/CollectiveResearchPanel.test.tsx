@@ -62,6 +62,10 @@ vi.mock("./DecisionTreeDriverBadge", () => ({
   ),
 }));
 
+const budgetProjection = vi.hoisted(() => ({
+  wouldExceedBudget: false as boolean,
+}));
+
 vi.mock("./ResearchLaunchBudgetPanel", () => {
   const React = require("react") as typeof import("react");
   return {
@@ -79,18 +83,19 @@ vi.mock("./ResearchLaunchBudgetPanel", () => {
     }) => {
       React.useEffect(() => {
         props.onProjectionChange?.({
-          wouldExceedBudget: false,
+          wouldExceedBudget: budgetProjection.wouldExceedBudget,
           pricingKnown: true,
-          estimatedUsdHigh: 0.1,
-          remainingUsd: 5,
+          estimatedUsdHigh: budgetProjection.wouldExceedBudget ? 99 : 0.1,
+          remainingUsd: budgetProjection.wouldExceedBudget ? 0.5 : 5,
           modelId: null,
         });
-      }, [props.onProjectionChange]);
+      }, [props.onProjectionChange, props.promptText]);
       return (
         <div
           data-testid="research-launch-budget-panel-stub"
           data-research-tier={props.researchTier || "deep"}
           data-allow-tier-pick={props.allowTierPick ? "true" : "false"}
+          data-would-exceed={String(budgetProjection.wouldExceedBudget)}
         >
           budget len={props.promptText.length}
         </div>
@@ -103,6 +108,7 @@ describe("CollectiveResearchPanel", () => {
   afterEach(() => cleanup());
   beforeEach(() => {
     clearCollectiveUnitMembership();
+    budgetProjection.wouldExceedBudget = false;
     fetchDepthTiers.mockReset().mockResolvedValue({
       active_depth_tier: null,
       active_preset: null,
@@ -395,8 +401,9 @@ describe("CollectiveResearchPanel", () => {
     );
     expect(
       screen
-        .getByTestId("research-launch-budget-panel-stub")
-        .getAttribute("data-research-tier"),
+        .getByTestId("collective-continue-budget-mount")
+        .querySelector('[data-testid="research-launch-budget-panel-stub"]')
+        ?.getAttribute("data-research-tier"),
     ).toBe("wrestle");
   });
 
@@ -458,7 +465,13 @@ describe("CollectiveResearchPanel", () => {
     expect(contFull.getAttribute("data-parent-asset-id")).toBe("book-1");
     expect(contFull.getAttribute("data-seamless-unit-continue")).toBe("true");
     expect(screen.getByTestId("collective-continue-budget-mount")).toBeTruthy();
-    expect(screen.getByTestId("research-launch-budget-panel-stub")).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("collective-continue-budget-mount")
+        .querySelector('[data-testid="research-launch-budget-panel-stub"]'),
+    ).toBeTruthy();
+    // Residual (ank): merge-budget foresight also mounts when multi-select non-empty.
+    expect(screen.getByTestId("collective-merge-budget-mount")).toBeTruthy();
     fireEvent.click(screen.getByTestId("collective-continue-as-unit"));
     await waitFor(() => {
       expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
@@ -1409,6 +1422,62 @@ describe("CollectiveResearchPanel", () => {
         .getByTestId("collective-select-controls")
         .getAttribute("data-has-open-spawn-ids"),
     ).toBe("false");
+  });
+
+  it("soft-gates document merge and written analysis on budget projection (ank)", async () => {
+    budgetProjection.wouldExceedBudget = true;
+    mergeSpawnOutputs.mockResolvedValue({
+      document_id: "doc_over",
+      mode: "draft_combined",
+      draft_leaves_parent: true,
+      view_format: "html",
+      html: "<p>should not run without force</p>",
+      notes: [],
+    });
+    render(
+      <CollectiveResearchPanel
+        availableSpawnIds={["spn_budget_a", "spn_budget_b"]}
+        parentAssetId="book_budget"
+        preferredSpawnId="spn_budget_a"
+        autoSelectNewestRecent={false}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("collective-select-spn_budget_b"));
+    // Residual (ank): merge-budget foresight mounts when multi-select non-empty.
+    await waitFor(() => {
+      expect(screen.getByTestId("collective-merge-budget-mount")).toBeTruthy();
+    });
+    expect(
+      screen.getByTestId("collective-merge-budget-mount").getAttribute("data-budget-soft-gate"),
+    ).toBe("true");
+    await waitFor(() => {
+      expect(screen.getByTestId("collective-merge-over-budget-warn")).toBeTruthy();
+    });
+    const draftBtn = screen.getByTestId(
+      "collective-merge-draft",
+    ) as HTMLButtonElement;
+    const analysisBtn = screen.getByTestId(
+      "collective-written-analysis",
+    ) as HTMLButtonElement;
+    expect(draftBtn.disabled).toBe(true);
+    expect(analysisBtn.disabled).toBe(true);
+    expect(draftBtn.getAttribute("data-budget-soft-gate")).toBe("true");
+    expect(analysisBtn.getAttribute("data-budget-soft-gate")).toBe("true");
+    // Soft-gate blocks API even if disabled bypassed.
+    fireEvent.click(draftBtn);
+    expect(mergeSpawnOutputs).not.toHaveBeenCalled();
+    // Force override unlocks merge actions.
+    fireEvent.click(screen.getByTestId("collective-merge-force-over-budget"));
+    await waitFor(() => {
+      expect(
+        (screen.getByTestId("collective-merge-draft") as HTMLButtonElement)
+          .disabled,
+      ).toBe(false);
+    });
+    fireEvent.click(screen.getByTestId("collective-merge-draft"));
+    await waitFor(() => {
+      expect(mergeSpawnOutputs).toHaveBeenCalled();
+    });
   });
 
 });

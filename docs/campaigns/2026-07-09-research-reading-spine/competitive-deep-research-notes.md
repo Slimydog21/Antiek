@@ -3506,3 +3506,9 @@ P0 operator merge PR #465. Pivot anj+ outside thrash (prefer non-collective-moun
 Suite suite-competitive-dogfood-v34 learns TalkToBook · MetaReading · MarketplaceHost
 collective multi-select paths (ang–ani). item_count 52 · wrestle=39 · Settings spine
 postures v34. propose≠promote. P0 operator merge PR #465. Pivot ank+ outside thrash.
+
+## Residual ank · 2026-07-10 — collective merge/analysis budget soft-gate
+Multi-select document merge (draft · into_parent) and written analysis soft-gate
+on budget projection before fire (parity continue-as-unit di). Merge-budget
+foresight mount when spawns selected. vitest CollectiveResearchPanel 30 green.
+P0 operator merge PR #465. Pivot anl+ outside thrash.

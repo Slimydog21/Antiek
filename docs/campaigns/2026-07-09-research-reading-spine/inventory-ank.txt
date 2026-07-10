@@ -1,0 +1,15 @@
+# inventory-ank · collective merge/analysis budget soft-gate
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ank
+date: 2026-07-10
+parent_tip: 1d96fea9 (anj)
+
+## Closed
+- CollectiveResearchPanel budget foresight mount before multi-select document merge
+- Soft-gate draft merge · into_parent · written analysis when projection exceeds budget
+- Force override unlocks merge/analysis (parity continue-as-unit di)
+- vitest CollectiveResearchPanel 30 green
+
+## Next
+anl+ product residual outside thrash · prefer non-budget-soft-gate · non-collective thrash
+Operator merge PR #465 remains highest leverage (gated)
