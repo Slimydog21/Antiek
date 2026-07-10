@@ -2479,3 +2479,8 @@ substrate on research workstation (parity DR/hosted). vitest RW 8 green.
 /inv/:id mounts ResearchContextPanel (autoLoad) and TwinNotes autoPromoteAfterLoad
 with shared contextRefreshKey remount (parity DR ea/ec). Intelligent search over
 twin substrate on research workstation. vitest RW 10 green.
+
+## Residual afu · 2026-07-10 — SESSION-ARC afr–aft ResearchWorkstation spine
+Handoff: collective multi-select · TwinNotes · ResearchContext+autoPromote on
+/inv/:id. Reading ≡ research workstation offline spine complete. P0 operator
+merge PR #465. Pivot afv+ outside thrash.

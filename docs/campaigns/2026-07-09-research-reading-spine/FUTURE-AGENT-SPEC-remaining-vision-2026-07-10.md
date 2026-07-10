@@ -1,13 +1,13 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** residual **aft** (RW ResearchContext + twin auto-promote) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
+**Campaign tip at write:** residual **afu** (SESSION-ARC afr–aft ResearchWorkstation spine) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **URL:** https://github.com/Slimydog21/Antiek/pull/465  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
 
 ## Do not rebuild
 
-Prefer **inventory-aft** + **inventory-afr** + **SESSION-ARC-afn-afp-multi-select-assembly-path.md**.  
+Prefer **inventory-afu** + **SESSION-ARC-afr-aft-research-workstation-spine.md** + **SESSION-ARC-afn-afp-multi-select-assembly-path.md**.  
 This continuation: **250 residual ships** from vy tip `8e280766`.
 
 ### Closed product (high signal)
@@ -26,8 +26,8 @@ This continuation: **250 residual ships** from vy tip `8e280766`.
 ### P0 — Operator merge PR #465
 **Highest leverage remaining.** Agents never merge main/prod.
 
-### P1 next offline (residual **afu+**)
-Outside thrash: MO live multi-provider · paid L5 · competitive depth. RW spine closed (afr–aft). Leave thrash.
+### P1 next offline (residual **afv+**)
+Outside thrash: MO live multi-provider · paid L5 · competitive depth. RW spine SESSION-ARC afu. Leave thrash.
 
 ## Doctrine
 One residual letter/cycle · inventory-first · green tests · campaign push only · complete work never complete goal · Infinite until STOP.
