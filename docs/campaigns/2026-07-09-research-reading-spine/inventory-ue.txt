@@ -1,0 +1,19 @@
+# inventory-ue · collective Select open only multi-select
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ue
+date: 2026-07-10
+
+## Closed
+- CollectiveResearchPanel openSpawnIds prop + Select open (N) control
+- data-open-in-available / data-has-open-spawn-ids honesty chrome
+- Wire openSpawnIds (no recent) on DeepResearchSessionHost · HostedHtml · ResearchThis
+- vitest CollectiveResearchPanel 24 green · /tmp/residual-tests-ue.log
+
+## Product why
+North star: multi-select floating deep researches into a cohesive unit.
+Select recent covers closed chase batch; Select open covers live floats only —
+operators can merge currently open windows without closed recent-ring noise.
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live multi-agent L6

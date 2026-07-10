@@ -1115,3 +1115,9 @@ suite-competitive-dogfood-v6 adds dogfood-book-heaviside-em. Settings
 data-has-heaviside-book-qa-posture. Competitive delta: Antiek-bench recursive
 rewrite covers free electricity engineering PD (Maxwell → Heaviside line)
 without auto-promote.
+
+## Residual ue · 2026-07-10 — collective Select open only multi-select
+CollectiveResearchPanel Select open (N) selects currently open deep_research
+windows without closed recent-ring-only ids. Competitive delta: multi-float
+cohesive unit assembly distinguishes live floats from session history —
+operator can merge what is on screen now.

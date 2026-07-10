@@ -1099,4 +1099,55 @@ describe("CollectiveResearchPanel", () => {
     ).toBe("2");
   });
 
+  it("selects open-window spawns only when openSpawnIds provided (ue)", () => {
+    render(
+      <CollectiveResearchPanel
+        availableSpawnIds={["spn_open_a", "spn_open_b", "spn_closed_recent"]}
+        openSpawnIds={["spn_open_a", "spn_open_b"]}
+        recentSpawnIds={["spn_closed_recent", "spn_open_a"]}
+        autoSelectNewestRecent={false}
+      />,
+    );
+    const controls = screen.getByTestId("collective-select-controls");
+    expect(controls.getAttribute("data-has-open-spawn-ids")).toBe("true");
+    expect(controls.getAttribute("data-open-in-available")).toBe("2");
+    expect(screen.getByTestId("collective-select-open")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("collective-select-open"));
+    expect(
+      screen
+        .getByTestId("collective-selection-count")
+        .getAttribute("data-selected-count"),
+    ).toBe("2");
+    expect(
+      (screen.getByTestId("collective-select-spn_open_a") as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    expect(
+      (screen.getByTestId("collective-select-spn_open_b") as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    expect(
+      (
+        screen.getByTestId(
+          "collective-select-spn_closed_recent",
+        ) as HTMLInputElement
+      ).checked,
+    ).toBe(false);
+  });
+
+  it("hides select-open control when openSpawnIds omitted (ue)", () => {
+    render(
+      <CollectiveResearchPanel
+        availableSpawnIds={["spn_1", "spn_2"]}
+        autoSelectNewestRecent={false}
+      />,
+    );
+    expect(screen.queryByTestId("collective-select-open")).toBeNull();
+    expect(
+      screen
+        .getByTestId("collective-select-controls")
+        .getAttribute("data-has-open-spawn-ids"),
+    ).toBe("false");
+  });
+
 });

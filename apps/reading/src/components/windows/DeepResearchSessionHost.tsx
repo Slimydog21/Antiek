@@ -176,6 +176,16 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
     () => listRecentDeepResearchSpawnIds(),
     [windows, recentTick],
   );
+  /** Residual (ue): currently open DR windows only (no recent-ring closed ids). */
+  const openSpawnIds = useMemo(
+    () =>
+      collectDeepResearchSpawnIds({
+        currentSpawnId: props.spawn_id,
+        extraSpawnIds: props.available_spawn_ids,
+        windows,
+      }),
+    [props.spawn_id, props.available_spawn_ids, windows],
+  );
   const availableSpawnIds = useMemo(
     () =>
       collectDeepResearchSpawnIds({
@@ -490,6 +500,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
             parentAssetId={props.parent_asset_id?.trim() || null}
             preferredSpawnId={props.spawn_id?.trim() || null}
             recentSpawnIds={recentSpawnIds}
+            openSpawnIds={openSpawnIds}
             onDocMerged={onContextNeedsRefresh}
             onRecentSpawnsCleared={() => setRecentTick((n) => n + 1)}
           />

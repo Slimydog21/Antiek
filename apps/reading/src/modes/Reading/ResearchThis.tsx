@@ -70,6 +70,15 @@ export default function ResearchThis({
     () => listRecentDeepResearchSpawnIds(),
     [windows, recentTick],
   );
+  /** Residual (ue): currently open DR windows only (no recent-ring closed ids). */
+  const openSpawnIds = useMemo(
+    () =>
+      collectDeepResearchSpawnIds({
+        currentSpawnId: null,
+        windows,
+      }),
+    [windows],
+  );
   const availableSpawnIds = useMemo(
     () =>
       collectDeepResearchSpawnIds({
@@ -351,6 +360,7 @@ export default function ResearchThis({
             availableSpawnIds={availableSpawnIds}
             parentAssetId={documentId.trim()}
             recentSpawnIds={recentSpawnIds}
+            openSpawnIds={openSpawnIds}
             onRecentSpawnsCleared={() => setRecentTick((n) => n + 1)}
           />
         </section>

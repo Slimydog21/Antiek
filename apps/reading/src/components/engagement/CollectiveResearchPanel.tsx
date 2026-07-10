@@ -39,6 +39,8 @@
  *     so operators can see which multi-select ids survive window close.
  * 21. Residual (og): Select recent only — one-click multi-select of recent_ring
  *     rows (twin-chase batch merge path).
+ * 29. Residual (ue): Select open only — multi-select currently open
+ *     deep_research_session windows (excludes closed recent-only ids).
  * 22. Residual (oj): surface usage_event from collective/merge on metrics
  *     (Antiek-bench recursive rewrite audit).
  * 23. Residual (ol): auto-select newest recent_ring spawn when selection is
@@ -145,6 +147,12 @@ export type CollectiveResearchPanelProps = {
    */
   recentSpawnIds?: readonly string[] | null;
   /**
+   * Residual (ue): spawn ids from currently open deep_research_session windows
+   * (and current host spawn). When provided, enables Select open only so the
+   * operator can merge live floats without closed recent-ring noise.
+   */
+  openSpawnIds?: readonly string[] | null;
+  /**
    * Residual (ol): when true (default), auto-select newest recent_ring spawn
    * if selection is empty and preferredSpawnId is unset.
    */
@@ -159,6 +167,7 @@ export function CollectiveResearchPanel({
   onDocMerged,
   onRecentSpawnsCleared,
   recentSpawnIds = null,
+  openSpawnIds = null,
   autoSelectNewestRecent = true,
 }: CollectiveResearchPanelProps) {
   const [selected, setSelected] = useState<string[]>([]);
@@ -360,6 +369,28 @@ export function CollectiveResearchPanel({
     const next = availableSpawnIds.filter((id) => recentSet.has(id));
     setSelected(next);
   }, [availableSpawnIds, recentSet]);
+
+  /** Residual (ue): open-window spawn ids intersected with available list. */
+  const openSet = useMemo(() => {
+    if (openSpawnIds == null) return null;
+    return new Set(
+      [...openSpawnIds].map((x) => String(x || "").trim()).filter(Boolean),
+    );
+  }, [openSpawnIds]);
+  const openInAvailable = useMemo(() => {
+    if (!openSet) return 0;
+    return availableSpawnIds.filter((id) => openSet.has(id)).length;
+  }, [availableSpawnIds, openSet]);
+
+  /**
+   * Residual (ue): select only currently open deep_research_session spawns
+   * (excludes closed recent-ring-only ids when openSpawnIds is provided).
+   */
+  const selectOpenOnly = useCallback(() => {
+    if (!openSet) return;
+    const next = availableSpawnIds.filter((id) => openSet.has(id));
+    setSelected(next);
+  }, [availableSpawnIds, openSet]);
 
   /** Residual (py): remember unit membership after merge / analysis / continue. */
   const rememberUnitMembership = useCallback(
@@ -758,6 +789,8 @@ export function CollectiveResearchPanel({
         data-available-count={String(availableSpawnIds.length)}
         data-recent-count={String(recentCount)}
         data-recent-in-available={String(recentInAvailable)}
+        data-open-in-available={String(openInAvailable)}
+        data-has-open-spawn-ids={String(openSet != null)}
         data-auto-select-newest-recent={String(autoSelectNewestRecent)}
         data-view-format="html"
         title="Includes open deep-research windows and recent session opens (twin chase / float)"
@@ -781,6 +814,18 @@ export function CollectiveResearchPanel({
         >
           Select recent ({recentInAvailable})
         </button>
+        {/* Residual (ue): one-click select currently open DR windows only. */}
+        {openSet != null ? (
+          <button
+            type="button"
+            data-testid="collective-select-open"
+            onClick={() => selectOpenOnly()}
+            disabled={busy || openInAvailable === 0}
+            title="Select only spawns from currently open deep-research windows (excludes closed recent-only)"
+          >
+            Select open ({openInAvailable})
+          </button>
+        ) : null}
         <button
           type="button"
           data-testid="collective-invert-selection"

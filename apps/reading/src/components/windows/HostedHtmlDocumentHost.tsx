@@ -123,6 +123,15 @@ export default function HostedHtmlDocumentHost(
     () => listRecentDeepResearchSpawnIds(),
     [windows, recentTick],
   );
+  /** Residual (ue): currently open DR windows only (no recent-ring closed ids). */
+  const openSpawnIds = useMemo(
+    () =>
+      collectDeepResearchSpawnIds({
+        currentSpawnId: null,
+        windows,
+      }),
+    [windows],
+  );
   const availableSpawnIds = useMemo(
     () =>
       collectDeepResearchSpawnIds({
@@ -712,6 +721,7 @@ export default function HostedHtmlDocumentHost(
             availableSpawnIds={availableSpawnIds}
             parentAssetId={assetId}
             recentSpawnIds={recentSpawnIds}
+            openSpawnIds={openSpawnIds}
             onDocMerged={onContextNeedsRefresh}
             onRecentSpawnsCleared={() => setRecentTick((n) => n + 1)}
           />
