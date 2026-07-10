@@ -120,6 +120,7 @@ from .evidence import (
     build_citation_chain_hops,
     citation_chain_complete,
     citation_hop_pipeline_progress,
+    competitive_dr_world_class_readiness,
     evidence_pack_payload,
     project_evidence_html,
 )
@@ -165,6 +166,7 @@ __all__ = [
     "build_citation_chain_hops",
     "citation_chain_complete",
     "citation_hop_pipeline_progress",
+    "competitive_dr_world_class_readiness",
     "evidence_pack_payload",
     "get_spawn",
     "hydrate_reference",

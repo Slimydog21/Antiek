@@ -32,3 +32,4 @@ one residual/cycle · campaign push only · operator merges PR #465.
 | **aqb** | evidence HTML competitive hop pipeline line | substrate HTML for float apo detection |
 | **aqc** | substrate multi-stage progress pipeline summary | data-layer parity frontend ape |
 | **aqd** | wire substrate stage_pipeline into ResearchProgress UI | multi-stage frontend↔substrate loop closed |
+| **aqe** | substrate competitive_dr_world_class_readiness | data-layer parity frontend apu |

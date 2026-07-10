@@ -200,3 +200,25 @@ def test_api_evidence_pack_double_run(client):
     assert r1.json().get("chain_complete") is False
     assert isinstance(r1.json().get("citation_chain"), list)
     assert r1.json()["citation_chain"][0]["hop"] == "insights"
+
+
+def test_competitive_dr_world_class_readiness_never_invents_hops():
+    """Residual (aqe): substrate world-class readiness pure helper."""
+    from substrate.engagement_spine.evidence import (
+        competitive_dr_world_class_readiness,
+    )
+
+    mid = competitive_dr_world_class_readiness(
+        stage_coverage_ratio=0.6, hop_coverage_ratio=None
+    )
+    assert mid["multi_stage_ready"] is True
+    assert mid["citation_hops_ready"] is None
+    assert mid["world_class_bar"] == "multi_stage"
+
+    full = competitive_dr_world_class_readiness(
+        stage_coverage_ratio=1.0,
+        hop_coverage_ratio=1.0,
+        stage_is_terminal=True,
+    )
+    assert full["world_class_bar"] == "multi_stage_and_hops"
+    assert full["citation_hops_ready"] is True

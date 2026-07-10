@@ -407,3 +407,62 @@ def project_evidence_html(
     # one coherent document; refs are already listed above.
     _ = refs_html_fn
     return html
+
+
+# Residual (aqe): world-class DR bar combining multi-stage × citation hops.
+# Mirrors frontend competitiveDrWorldClassReadiness (apu).
+
+
+def competitive_dr_world_class_readiness(
+    *,
+    stage_coverage_ratio: float | None = None,
+    hop_coverage_ratio: float | None = None,
+    stage_is_terminal: bool | None = None,
+    stage_ready_threshold: float = 0.6,
+    hop_ready_threshold: float = 2 / 3,
+) -> dict[str, Any]:
+    """Combine multi-stage + hop coverage without inventing unknown halves."""
+    stage_ratio = (
+        max(0.0, min(1.0, float(stage_coverage_ratio)))
+        if stage_coverage_ratio is not None
+        else 0.0
+    )
+    hop_ratio = (
+        max(0.0, min(1.0, float(hop_coverage_ratio)))
+        if hop_coverage_ratio is not None
+        else None
+    )
+    multi_stage_ready = stage_ratio >= stage_ready_threshold or bool(
+        stage_is_terminal
+    )
+    citation_hops_ready = (
+        None if hop_ratio is None else hop_ratio >= hop_ready_threshold
+    )
+    if multi_stage_ready and citation_hops_ready is True:
+        world_class_bar = "multi_stage_and_hops"
+    elif multi_stage_ready:
+        world_class_bar = "multi_stage"
+    else:
+        world_class_bar = "incomplete"
+    notes: list[str] = []
+    notes.append(
+        "multi-stage pipeline ready"
+        if multi_stage_ready
+        else "multi-stage pipeline incomplete (plan→gather→synthesize→cite→terminal)"
+    )
+    if citation_hops_ready is None:
+        notes.append(
+            "citation hops unknown · open evidence pack (never invent hops)"
+        )
+    elif citation_hops_ready:
+        notes.append("citation hop pipeline ready (insights→questions→sources)")
+    else:
+        notes.append("citation hop pipeline incomplete")
+    return {
+        "multi_stage_ready": multi_stage_ready,
+        "citation_hops_ready": citation_hops_ready,
+        "stage_coverage_ratio": stage_ratio,
+        "hop_coverage_ratio": hop_ratio,
+        "world_class_bar": world_class_bar,
+        "notes": notes,
+    }
