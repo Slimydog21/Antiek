@@ -38,6 +38,9 @@ See **FUTURE-AGENT-SPEC-l5-digital-book-seamless-port.md** · offline purchase h
 ### L6 live multi-agent collective (when unlocked)
 See **FUTURE-AGENT-SPEC-l6-live-multiagent-collective.md** · offline merge unit **agv**.
 
+### Twin note-taker completeness
+See **FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md** · free/purchased seed honesty **aho**.
+
 ### P1 next offline (residual **ahk+**)
 Outside thrash: competitive depth · twin flywheel · MO only if non-colliding offline. Leave free-STEM · merge · pub matrix · foresight stamp thrash. See **SESSION-ARC-ags-ahi-fourier-merge-pub-budget.md**.
 
