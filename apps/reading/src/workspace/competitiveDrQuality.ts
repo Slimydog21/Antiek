@@ -377,6 +377,10 @@ export const COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES = [
   "research_context_pack_open_readiness",
   // Residual (aud): Add model install-path budget bar foresight (auc).
   "add_model_budget_bar_foresight",
+  // Residual (aug): MO duration competitiveDurationBand stamps (aue).
+  "moil_competitive_duration_band",
+  // Residual (aug): pure moilCeilingBudgetFit soft foresight (auf).
+  "moil_ceiling_budget_fit",
 ] as const;
 
 export type CompetitiveDrOfflineProductSurface =

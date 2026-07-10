@@ -1,0 +1,20 @@
+# inventory-aug · SESSION-ARC aue–auf + offline catalog MO foresight surfaces
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aug
+date: 2026-07-10
+parent_tip: 63dc1dfaf (auf)
+
+## Closed
+- SESSION-ARC-aue-auf-moil-foresight.md wave handoff
+- COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES +=
+  moil_competitive_duration_band · moil_ceiling_budget_fit
+- competitiveDrQuality.test tracks aue/auf surfaces
+
+## Doctrine
+Wave handoff · catalog never invents live · soft budget · ND never router
+
+## Next
+auh+ offline product residual outside thrash
+HARD AVOID: MO foresight thrash · pure-open · open-stamp · catalog · scorecard · vision
+Prefer: knowledge connector residual · model non-budget · competitive non-MO non-catalog
+Operator merge PR #465 remains P0 (gated)
