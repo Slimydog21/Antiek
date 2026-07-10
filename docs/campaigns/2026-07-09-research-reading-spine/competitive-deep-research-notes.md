@@ -3092,3 +3092,8 @@ FUTURE L5 seamless port. P0 operator merge PR #465. Pivot akd+ outside thrash.
 Executable competitive DR brief refreshed with tip SHA and shipped map through
 akb (multi-hop · depth-graph · ND never-dispatch · L5 host deep-links · dogfood v33).
 P0 operator merge PR #465. Pivot ake+ outside thrash.
+
+## Residual ake · 2026-07-10 — Settings prompt-cost competitive DR deep-links
+Settings prompt-cost projection panel links competitive DR scorecard + FUTURE
+brief + decision-tree (budget-before-fire Settings surface · parity ajm launch).
+vitest Settings 37 green. P0 operator merge PR #465. Pivot akf+ outside thrash.

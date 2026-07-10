@@ -3957,11 +3957,48 @@ export default function Settings() {
             id="prompt-cost-projection"
             className="p-4 space-y-3"
             data-testid="prompt-cost-projection-panel"
+            data-view-format="html"
+            data-soft-budget="true"
+            data-budget-before-fire="true"
           >
             <p className="text-sm text-ink dark:text-bright">
               Estimate how a proposed pro-tier prompt would hit today&apos;s
               remaining budget. Projection uses dispatch config rates —
               placeholder 0.0 rates yield an honest null, not a fake price.
+            </p>
+            {/* Residual (ake): Settings budget-before-fire → competitive DR honesty map. */}
+            <p
+              className="text-[11px] font-mono space-x-3"
+              data-testid="prompt-cost-competitive-nav"
+              data-soft-budget="true"
+              data-budget-before-fire="true"
+              role="navigation"
+              aria-label="Prompt cost projection competitive DR navigation"
+            >
+              <a
+                href="#settings-competitive-dr-scorecard"
+                data-testid="prompt-cost-competitive-scorecard-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Competitive DR scorecard: budget-before-fire shipped offline · soft foresight"
+              >
+                Competitive DR scorecard
+              </a>
+              <a
+                href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+                data-testid="prompt-cost-competitive-dr-future-agent-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="FUTURE-AGENT competitive deep-research quality brief (budget-capped runs)"
+              >
+                FUTURE · competitive DR brief
+              </a>
+              <a
+                href="#decision-tree-panel"
+                data-testid="prompt-cost-decision-tree-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Decision-tree: model driver + daily budget bar"
+              >
+                Decision-tree · driver
+              </a>
             </p>
             <div className="grid grid-cols-2 gap-3 font-mono text-[13px]">
               <label className="flex flex-col gap-1">
@@ -4123,8 +4160,8 @@ export default function Settings() {
               </li>
               <li data-status="shipped" data-testid="competitive-dr-budget-before-fire">
                 Budget-before-fire · pub-ref foresight chrome · launch budget
-                panel (ajm) — <strong>shipped offline</strong> (aic–aif · dogfood
-                v27)
+                panel (ajm) · Settings prompt-cost (ake) —{" "}
+                <strong>shipped offline</strong> (aic–aif · dogfood v27)
               </li>
               <li data-status="shipped" data-testid="competitive-dr-html-first">
                 HTML deliverable · free STEM marketplace —{" "}

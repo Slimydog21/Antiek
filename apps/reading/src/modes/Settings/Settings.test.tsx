@@ -813,6 +813,29 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(full.textContent).toMatch(/over remaining \(soft foresight\)/i);
   });
 
+  it("links competitive DR scorecard from prompt-cost projection panel (ake)", async () => {
+    render(<Settings />);
+    await waitFor(() => {
+      expect(screen.getByTestId("prompt-cost-projection-panel")).toBeTruthy();
+    });
+    const panel = screen.getByTestId("prompt-cost-projection-panel");
+    expect(panel.getAttribute("data-soft-budget")).toBe("true");
+    expect(panel.getAttribute("data-budget-before-fire")).toBe("true");
+    expect(
+      screen
+        .getByTestId("prompt-cost-competitive-scorecard-link")
+        .getAttribute("href"),
+    ).toBe("#settings-competitive-dr-scorecard");
+    expect(
+      screen
+        .getByTestId("prompt-cost-competitive-dr-future-agent-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    expect(
+      screen.getByTestId("prompt-cost-decision-tree-link").getAttribute("href"),
+    ).toBe("#decision-tree-panel");
+  });
+
   it("surfaces remaining-after on mini + full projection when high known (wb)", async () => {
     const user = userEvent.setup();
     estimatePromptCost.mockResolvedValueOnce({
