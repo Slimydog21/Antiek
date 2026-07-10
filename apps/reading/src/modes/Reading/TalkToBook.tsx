@@ -4,6 +4,7 @@ import { LemonButton } from "../../components/lemon";
 import { askBook } from "../../api/books";
 import type { BookCitation } from "../../api/books";
 import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
+import { TwinNotesPanel } from "../../components/engagement/TwinNotesPanel";
 import { useSettingsResearchTier } from "../../lib/useSettingsResearchTier";
 import ReadAloud from "../../components/voice/ReadAloud";
 import { useTalkThread } from "./useTalkThread";
@@ -27,6 +28,8 @@ import type { TalkMessage } from "./useTalkThread";
  * Residual (jn): Settings depth-tier → researchTier on each ask (parity DR).
  * Residual (lh): DecisionTreeDriverBadge researchTier (reading ≡ research).
  * Residual (qp): DecisionTreeDriverBadge promptText from draft question.
+ * Residual (agm): TwinNotes recursive note-taker for this book asset when open
+ *   (reading ≡ research · every information asset has twin substrate).
  *
  * §9.0: a withheld region can never be cited — the backend search gate keeps a
  * withheld body out of the model context and the citation set, so this surface
@@ -224,6 +227,25 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
           Ask
         </LemonButton>
       </form>
+
+      {/* Residual (agm): recursive note-taker twin for this book asset. */}
+      <section
+        className="max-h-40 overflow-y-auto border-t border-rule dark:border-charcoal-1 px-3 py-2"
+        data-testid="talk-to-book-twins-mount"
+        data-view-format="html"
+        data-document-id={documentId}
+        data-seamless-talk-twins="true"
+        data-research-tier={researchTier}
+      >
+        <TwinNotesPanel
+          assetId={documentId}
+          autoLoad
+          autoSeedIfEmpty
+          seedTitle={title?.trim() || documentId}
+          seedBodyText={title?.trim() || documentId}
+          researchTier={researchTier}
+        />
+      </section>
     </aside>
   );
 }

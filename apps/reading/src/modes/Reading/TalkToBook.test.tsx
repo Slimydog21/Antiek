@@ -64,6 +64,25 @@ vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
   ),
 }));
 
+vi.mock("../../components/engagement/TwinNotesPanel", () => ({
+  TwinNotesPanel: (props: {
+    assetId: string;
+    autoLoad?: boolean;
+    autoSeedIfEmpty?: boolean;
+    seedTitle?: string;
+  }) => (
+    <div
+      data-testid="twin-notes-panel-stub"
+      data-asset-id={props.assetId}
+      data-auto-load={String(Boolean(props.autoLoad))}
+      data-auto-seed={String(Boolean(props.autoSeedIfEmpty))}
+      data-seed-title={props.seedTitle ?? ""}
+    >
+      twins={props.assetId}
+    </div>
+  ),
+}));
+
 const cite = (over: Partial<BookCitation> = {}): BookCitation => ({
   chunk_id: "c1",
   document_id: "doc-x",
@@ -242,5 +261,23 @@ describe("TalkToBook (M2)", () => {
     );
     await openAndAsk(vi.fn(), "anything", "No readable text here.");
     expect(screen.getByText(/isn’t grounded in the book’s text/)).toBeTruthy();
+  });
+
+  it("mounts TwinNotes recursive note-taker for the book asset (agm)", () => {
+    render(
+      <TalkToBook documentId="doc-twin" title="Twin Book" onJumpToPage={vi.fn()} />,
+    );
+    // Bookmark closed: twins not mounted until open.
+    expect(screen.queryByTestId("talk-to-book-twins-mount")).toBeNull();
+    fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
+    const mount = screen.getByTestId("talk-to-book-twins-mount");
+    expect(mount.getAttribute("data-view-format")).toBe("html");
+    expect(mount.getAttribute("data-document-id")).toBe("doc-twin");
+    expect(mount.getAttribute("data-seamless-talk-twins")).toBe("true");
+    const twins = screen.getByTestId("twin-notes-panel-stub");
+    expect(twins.getAttribute("data-asset-id")).toBe("doc-twin");
+    expect(twins.getAttribute("data-auto-load")).toBe("true");
+    expect(twins.getAttribute("data-auto-seed")).toBe("true");
+    expect(twins.getAttribute("data-seed-title")).toBe("Twin Book");
   });
 });

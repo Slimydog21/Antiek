@@ -2568,3 +2568,9 @@ P0 operator merge PR #465. Pivot agl+ outside thrash.
 Marketplace catalog metrics stamp data-foundations-count · data-has-godel-pd and
 show foundations=N copy. Foundations subject chip filters to Gödel free PD HTML.
 vitest MarketplaceHost foundations test green.
+
+## Residual agm · 2026-07-10 — TalkToBook TwinNotes recursive note-taker
+TalkToBook open panel mounts TwinNotesPanel for documentId (autoLoad ·
+autoSeedIfEmpty · seed from title). Book assets get twin insights/questions
+substrate while talking (reading ≡ research · recursive note-taker).
+vitest TalkToBook 10 green.
