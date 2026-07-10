@@ -2131,6 +2131,83 @@ describe("MarketplaceHost mode", () => {
     expect(call.goal_hint).toMatch(/Mathematical Theory of Communication/);
   });
 
+  it("hosts Turing free PD with computability subjects on host land (wl)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-turing-computable-numbers",
+          title: "On Computable Numbers, with an Application to the Entscheidungsproblem",
+          author: "Alan M. Turing",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: [
+            "mathematics",
+            "science",
+            "technology",
+            "computing",
+            "logic",
+            "computability",
+          ],
+        },
+      ],
+      count: 1,
+      view_format: "html",
+      free_count: 1,
+      public_domain_count: 1,
+      by_subject: {
+        computing: 1,
+        computability: 1,
+        logic: 1,
+      },
+      payment_rails: "manual_receipt_only",
+    });
+    hostBookIntoAccount.mockResolvedValue({
+      document_id: "hdoc_turing",
+      owner_id: "tech-researcher",
+      book_id: "pd-turing-computable-numbers",
+      content_hash: "t1",
+      title: "On Computable Numbers",
+      license_class: "public_domain",
+      already_hosted: false,
+      source_format: "html",
+      library_document_ids: ["hdoc_turing"],
+      view_format: "html",
+      html: "<p>Turing machines and the Entscheidungsproblem</p>",
+    });
+    fetchAccountLibrary.mockResolvedValue({
+      owner_id: "tech-researcher",
+      documents: [],
+      count: 0,
+      view_format: "html",
+      html: "<p>Library Turing</p>",
+    });
+    render(<MarketplaceHost ownerId="tech-researcher" />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("catalog-entry-pd-turing-computable-numbers"),
+      ).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /host into account/i }));
+    await waitFor(() => {
+      expect(hostBookIntoAccount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          owner_id: "tech-researcher",
+          book_id: "pd-turing-computable-numbers",
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("marketplace-host-metrics")).toBeTruthy();
+    });
+    const hostMetrics = screen.getByTestId("marketplace-host-metrics");
+    expect(hostMetrics.getAttribute("data-subjects")).toMatch(/computability/);
+    expect(hostMetrics.getAttribute("data-subjects")).toMatch(/computing/);
+    expect(
+      screen.getByTestId("marketplace-host-free-pd-honesty").textContent,
+    ).toMatch(/free_host=true/);
+  });
+
   it("grounds marketplace DR with optional arxiv pub refs (uu)", async () => {
     fetchMarketplaceCatalog.mockResolvedValue({
       entries: [

@@ -82,7 +82,9 @@ def test_stem_pd_spine_in_demo_catalog() -> None:
     assert "pd-heaviside-em" in ids
     # Residual (wd): Shannon mathematical theory of communication.
     assert "pd-shannon-communication" in ids
-    assert len(ids) >= 15
+    # Residual (wl): Turing on computable numbers.
+    assert "pd-turing-computable-numbers" in ids
+    assert len(ids) >= 16
     elements = cat.get("pd-elements")
     assert elements is not None
     assert elements.license_class == "public_domain"
@@ -139,7 +141,24 @@ def test_shannon_information_theory_subjects_and_free_pd() -> None:
     assert {e.book_id for e in computing} >= {
         "pd-boole-laws-of-thought",
         "pd-shannon-communication",
+        "pd-turing-computable-numbers",
     }
+
+
+def test_turing_computability_subjects_and_free_pd() -> None:
+    """Residual (wl): Turing tagged computing+computability, free PD."""
+    cat = default_demo_catalog()
+    turing = cat.get("pd-turing-computable-numbers")
+    assert turing is not None
+    assert turing.license_class == "public_domain"
+    assert turing.is_free is True
+    assert turing.source == "project_gutenberg"
+    assert turing.source_format == "html"
+    assert "computing" in turing.subjects
+    assert "computability" in turing.subjects
+    assert "logic" in turing.subjects
+    comp = cat.filter_by_subject("computability")
+    assert {e.book_id for e in comp} >= {"pd-turing-computable-numbers"}
 
 
 def test_boole_computing_logic_pd_html_first() -> None:

@@ -572,6 +572,32 @@ def default_demo_catalog() -> Catalog:
                     "engineering",
                 ),
             ),
+            # Residual (wl): computability / computing theory PD for tech researchers.
+            CatalogEntry(
+                book_id="pd-turing-computable-numbers",
+                title="On Computable Numbers, with an Application to the Entscheidungsproblem",
+                author="Alan M. Turing",
+                source="project_gutenberg",
+                license_class="public_domain",
+                is_free=True,
+                body_text=(
+                    "The 'computable' numbers may be described briefly as the real "
+                    "numbers whose expressions as a decimal are calculable by finite means.\n\n"
+                    "According to my definition, a number is computable if its decimal "
+                    "can be written down by a machine. The Entscheidungsproblem is "
+                    "shown to be unsolvable: there is no general process for determining "
+                    "whether a given formula is provable."
+                ),
+                source_format="html",
+                subjects=(
+                    "mathematics",
+                    "science",
+                    "technology",
+                    "computing",
+                    "logic",
+                    "computability",
+                ),
+            ),
             CatalogEntry(
                 book_id="buy-modern",
                 title="Modern Systems Research",

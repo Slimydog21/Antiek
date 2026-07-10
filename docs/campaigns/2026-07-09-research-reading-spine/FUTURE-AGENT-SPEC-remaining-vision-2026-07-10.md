@@ -1,6 +1,6 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** `8a4c6844` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
+**Campaign tip at write:** `b74fcfe4` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **URL:** https://github.com/Slimydog21/Antiek/pull/465  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
@@ -14,14 +14,14 @@ Prefer **SESSION-ARC-vz-we-budget-stem-honesty.md** + **SESSION-ARC-tt-vt-infini
 | Theme | Status |
 |---|---|
 | Write-seed SSOT | known_count **17** · full hosted Open Write provenance matrix + tests |
-| Free STEM marketplace | Boole · Heaviside · **Shannon** · host+DR+dogfood **v10** |
+| Free STEM marketplace | Boole · Heaviside · Shannon · **Turing** · dogfood **v11** |
 | Multi-float Select open | all surfaces |
 | Midnight Oil foresight | L4 · remaining-after · hydrate Settings |
 | Launch + Settings budget foresight | remaining-after-prompt (wa · wb) |
 | arxiv/substack honesty | full matrix |
 | Marketplace L5 | manual_receipt_only + Settings L5 deferred |
 | Collective L6 | deferred · offline merge unit (vx panel + vz Settings) |
-| Dogfood recursive | **v4–v10** propose≠promote · full list (we) |
+| Dogfood recursive | **v4–v11** propose≠promote · full list (we) |
 | Deferred map honesty | Settings Deferred (honest) not stale Coming later (wc) |
 | Dual-gate checklist L5–L7 | full operator map (wg) |
 
@@ -31,7 +31,7 @@ Prefer **SESSION-ARC-vz-we-budget-stem-honesty.md** + **SESSION-ARC-tt-vt-infini
 ### P2 — Dual-gate live injectors (operator-only)
 L1–L4 offline default · L5 payment deferred · L6 live multi-agent · L7 ND **never** router
 
-### P1 next offline (residual **wj+** / continue lettering)
+### P1 next offline (residual **wm+** / continue lettering)
 Outside saturated write-seed host matrix thrash unless regression. Prefer:
 - real product bugs found by inventory
 - operator-facing polish with load-bearing reason

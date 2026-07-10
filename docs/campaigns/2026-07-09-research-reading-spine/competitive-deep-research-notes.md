@@ -1411,3 +1411,9 @@ checkout; deferred rails are one click from catalog honesty.
 Deferred (honest) L5/L6/L7 rows link dual-gate checklist sections. Competitive
 delta: Settings bottom deferred map is navigable end-to-end with dual-gate prep
 strip (wh) — never silent deferred policy.
+
+## Residual wl · 2026-07-10 — Turing free PD + dogfood v11
+Catalog hosts On Computable Numbers (HTML free PD) with computing +
+computability subjects; dogfood v11 book_qa Turing; Settings posture honesty.
+Competitive delta: tech-researcher STEM spine covers electricity + logic +
+information theory + computability on HTML-first free path.

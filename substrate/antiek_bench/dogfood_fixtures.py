@@ -22,7 +22,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (ve): v8 adds wrestle twin_cross_asset_merge Write seed posture.
 # Residual (vl): v9 adds wrestle collective_written_analysis Write seed posture.
 # Residual (wd): v10 adds book_qa information theory (Shannon free PD).
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v10"
+# Residual (wl): v11 adds book_qa computability (Turing free PD).
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v11"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -266,6 +267,24 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "information",
                 "entropy",
                 "communication",
+                "html",
+            ),
+        ),
+        # Residual (wl): free computability PD → book_qa (Turing).
+        SuiteItem(
+            item_id="dogfood-book-turing-computable-numbers",
+            task_class="book_qa",
+            prompt=(
+                "From Turing On Computable Numbers (free PD HTML): what is a computable "
+                "number, how does the Entscheidungsproblem relate to machine calculation, "
+                "and why does free public-domain hosting of foundational computability "
+                "texts matter for technology research workstations?"
+            ),
+            expected_keywords=(
+                "turing",
+                "computable",
+                "machine",
+                "entscheidungsproblem",
                 "html",
             ),
         ),

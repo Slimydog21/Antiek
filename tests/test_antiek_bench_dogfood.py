@@ -35,7 +35,7 @@ def test_dogfood_suite_covers_task_classes():
     assert suite.suite_version == COMPETITIVE_DOGFOOD_VERSION
     classes = set(suite.task_classes())
     assert {"distill", "synthesize", "wrestle", "book_qa"} <= classes
-    assert len(suite.items) >= 16
+    assert len(suite.items) >= 17
     # Residual (st): write-seed / float HTML / budget foresight postures.
     ids = {i.item_id for i in suite.items}
     assert "dogfood-wrestle-write-seed" in ids
@@ -57,6 +57,8 @@ def test_dogfood_suite_covers_task_classes():
     assert "dogfood-wrestle-collective-written-analysis-write-seed" in ids
     # Residual (wd): Shannon information-theory book_qa.
     assert "dogfood-book-shannon-communication" in ids
+    # Residual (wl): Turing computability book_qa.
+    assert "dogfood-book-turing-computable-numbers" in ids
 
 
 def test_register_does_not_auto_activate():
