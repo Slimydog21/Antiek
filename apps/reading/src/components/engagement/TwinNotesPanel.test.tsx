@@ -662,7 +662,7 @@ describe("TwinNotesPanel", () => {
     // Residual (adl): research_tier on promote metrics (depth audit parity adi).
     expect(metrics.getAttribute("data-research-tier")).toBe("deep");
     expect(metrics.textContent).toMatch(/tier=deep/);
-    // Residual (rr): Open Write twin_seed from promoted context units.
+    // Residual (rr/aew): Open Write twin_seed from promoted context units + path.
     expect(buildTwinPromoteWriteHref).toHaveBeenCalled();
     const write = screen.getByTestId("twin-promote-open-write");
     expect(write.getAttribute("href")).toMatch(/twin_seed=/);
@@ -671,6 +671,9 @@ describe("TwinNotesPanel", () => {
     expect(write.textContent).toMatch(/Open Write \(promoted twins\)/i);
     // Residual (acq): context unit body → has-body true.
     expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
+    // Residual (aew): promote → Write recursive note-taker path honesty.
+    expect(write.getAttribute("data-seamless-twin-write")).toBe("true");
+    expect(write.getAttribute("data-asset-id")).toBeTruthy();
   });
 
   it("promotes visible list filter in one click (ms)", async () => {
@@ -1304,6 +1307,11 @@ describe("TwinNotesPanel", () => {
     expect(write.getAttribute("data-view-format")).toBe("html");
     // Residual (acq): selected note body → has-body true.
     expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
+    // Residual (aew): twin draft → Write recursive note-taker path honesty.
+    expect(write.getAttribute("data-asset-id")).toBe("paper");
+    expect(write.getAttribute("data-note-count")).toBe("2");
+    expect(write.getAttribute("data-research-tier")).toBe("wrestle");
+    expect(write.getAttribute("data-seamless-twin-write")).toBe("true");
   });
 
   it("opens twin HTML draft in full working-region window (ps)", async () => {

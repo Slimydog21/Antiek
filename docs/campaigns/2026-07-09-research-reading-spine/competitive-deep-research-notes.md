@@ -2353,3 +2353,8 @@ pytest dogfood 5 · Settings 36 green.
 ## Residual aev · 2026-07-10 — SESSION-ARC aes–aeu context+bench
 Handoff: intelligent search/evidence Open Write (aes–aet) + dogfood v14 (aeu).
 Do not thrash ael–aeu stamps/version pins. P0 remains operator merge PR #465.
+
+## Residual aew · 2026-07-10 — twin draft + promote Open Write path
+TwinNotes draft and promote Open Write stamp data-seamless-twin-write · asset ·
+note-count/promoted · research_tier so recursive note-taker → Write is
+machine-readable. vitest TwinNotesPanel 30 green.

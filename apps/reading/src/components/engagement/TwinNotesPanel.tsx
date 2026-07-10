@@ -1438,8 +1438,18 @@ export function TwinNotesPanel({
                 data-write-seed-has-body={String(
                   Boolean(draftMetrics.write_seed_has_body),
                 )}
+                // Residual (aew): recursive note-taker draft → Write path honesty.
+                data-asset-id={String(assetId || "").trim()}
+                data-note-count={String(draftMetrics.note_count ?? 0)}
+                data-research-tier={draftMetrics.research_tier || ""}
+                data-merge-assets={
+                  draftMetrics.merge_asset_ids?.join("|") ?? ""
+                }
+                data-seamless-twin-write={String(
+                  Boolean(String(assetId || "").trim()),
+                )}
                 className="underline opacity-90 hover:opacity-100"
-                title="Open Write with twin draft as brainstorm seed (sessionStorage; no server invent)"
+                title="Open Write with twin draft as brainstorm seed (recursive note-taker · sessionStorage; no server invent)"
               >
                 Open Write (twin seed)
               </a>
@@ -1705,7 +1715,7 @@ export function TwinNotesPanel({
               </li>
             ))}
           </ul>
-          {/* Residual (rr/acq): promote → Write twin_seed + body honesty. */}
+          {/* Residual (rr/acq/aew): promote → Write twin_seed + path honesty. */}
           {(() => {
             const href = buildTwinPromoteWriteHref({
               assetId: promoted.asset_id || assetId,
@@ -1721,6 +1731,9 @@ export function TwinNotesPanel({
             const hasBody = Boolean(
               unitBody || plainTextFromHtml(promoted.html || "").trim(),
             );
+            const promoteAsset = String(
+              promoted.asset_id || assetId || "",
+            ).trim();
             return href ? (
               <p className="meta font-mono text-[11px]">
                 <a
@@ -1731,8 +1744,15 @@ export function TwinNotesPanel({
                   data-promoted-count={String(promoted.promoted_count ?? 0)}
                   // Residual (acq): body honesty when units or HTML body non-empty.
                   data-write-seed-has-body={String(hasBody)}
+                  // Residual (aew): promote→context → Write recursive note-taker path.
+                  data-asset-id={promoteAsset}
+                  data-query={String(promoted.query || "").trim()}
+                  data-research-tier={
+                    (promoted.research_tier || "").trim().toLowerCase() || ""
+                  }
+                  data-seamless-twin-write={String(Boolean(promoteAsset))}
                   className="underline opacity-90 hover:opacity-100"
-                  title="Open Write with promoted twin context units as twin_seed (sessionStorage; no invented document_id)"
+                  title="Open Write with promoted twin context units as twin_seed (recursive note-taker · no invented document_id)"
                 >
                   Open Write (promoted twins)
                 </a>
