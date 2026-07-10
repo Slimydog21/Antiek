@@ -132,6 +132,16 @@ describe("competitiveDrQuality workspace pure helpers (apw)", () => {
     expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
       "publication_hydrate_open_readiness",
     );
+    // Residual (aud): aua/aub/auc surfaces for scorecard honesty.
+    expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
+      "evidence_pack_open_readiness",
+    );
+    expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
+      "research_context_pack_open_readiness",
+    );
+    expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
+      "add_model_budget_bar_foresight",
+    );
     const cat = competitiveDrOfflineSurfaceCatalog();
     expect(cat.live_injectors_deferred).toBe(true);
     expect(cat.notdiamond_is_router).toBe(false);

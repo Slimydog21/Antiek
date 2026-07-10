@@ -371,6 +371,12 @@ export const COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES = [
   "context_search_open_readiness",
   // Residual (atz): publication hydrate open pure readiness (aty · offline-honest).
   "publication_hydrate_open_readiness",
+  // Residual (aud): evidence pack open pure readiness (aua · citation-trust).
+  "evidence_pack_open_readiness",
+  // Residual (aud): research context pack open pure readiness (aub).
+  "research_context_pack_open_readiness",
+  // Residual (aud): Add model install-path budget bar foresight (auc).
+  "add_model_budget_bar_foresight",
 ] as const;
 
 export type CompetitiveDrOfflineProductSurface =
