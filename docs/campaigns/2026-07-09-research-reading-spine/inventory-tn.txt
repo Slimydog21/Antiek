@@ -1,0 +1,12 @@
+# inventory-tn · Host Maxwell free PD with electricity subjects
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: tn
+date: 2026-07-10
+
+## Closed
+- UI host of pd-maxwell-em → free_host + electricity + mathematics subjects
+- vitest MarketplaceHost 16 · SCRATCH residual-tests-tn.log
+- Parity Faraday (tm)
+
+## Not in scope
+- Operator merge PR #465 (gated)

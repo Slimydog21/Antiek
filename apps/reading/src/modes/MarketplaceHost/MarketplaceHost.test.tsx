@@ -1375,4 +1375,91 @@ describe("MarketplaceHost mode", () => {
       }),
     );
   });
+
+  it("hosts Maxwell free PD with electricity subjects on host land (tn)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-maxwell-em",
+          title: "A Treatise on Electricity and Magnetism",
+          author: "James Clerk Maxwell",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: [
+            "physics",
+            "mathematics",
+            "science",
+            "technology",
+            "electricity",
+          ],
+        },
+      ],
+      count: 1,
+      view_format: "html",
+      by_source: { project_gutenberg: 1 },
+      by_subject: {
+        electricity: 1,
+        physics: 1,
+        technology: 1,
+        science: 1,
+        mathematics: 1,
+      },
+      free_count: 1,
+      public_domain_count: 1,
+      purchased_count: 0,
+      payment_rails: "manual_receipt_only",
+    });
+    hostBookIntoAccount.mockResolvedValue({
+      document_id: "hdoc_maxwell",
+      owner_id: "tech-researcher",
+      book_id: "pd-maxwell-em",
+      content_hash: "m1",
+      title: "A Treatise on Electricity and Magnetism",
+      license_class: "public_domain",
+      already_hosted: false,
+      source_format: "html",
+      library_document_ids: ["hdoc_maxwell"],
+      view_format: "html",
+      html: "<p>electromagnetic field waves</p>",
+      usage_event: {
+        task_class: "book_qa",
+        outcome: "worked",
+        source: "marketplace_host",
+        prompt_hint: "host pd-maxwell-em",
+      },
+    });
+    fetchAccountLibrary.mockResolvedValue({
+      owner_id: "tech-researcher",
+      documents: [
+        {
+          document_id: "hdoc_maxwell",
+          title: "A Treatise on Electricity and Magnetism",
+          license_class: "public_domain",
+          view_format: "html",
+        },
+      ],
+      count: 1,
+      view_format: "html",
+      html: "<p>Library Maxwell</p>",
+    });
+    render(<MarketplaceHost ownerId="tech-researcher" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("catalog-entry-pd-maxwell-em")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /host into account/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId("host-result").textContent).toContain(
+        "hdoc_maxwell",
+      );
+    });
+    const hostMetrics = screen.getByTestId("marketplace-host-metrics");
+    expect(hostMetrics.getAttribute("data-book-id")).toBe("pd-maxwell-em");
+    expect(hostMetrics.getAttribute("data-is-free-host")).toBe("true");
+    expect(hostMetrics.getAttribute("data-subjects")).toMatch(/electricity/);
+    expect(hostMetrics.getAttribute("data-subjects")).toMatch(/mathematics/);
+    expect(
+      screen.getByTestId("marketplace-host-free-pd-honesty").textContent,
+    ).toMatch(/free_host=true/);
+  });
 });
