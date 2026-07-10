@@ -3755,3 +3755,9 @@ CITATION_HOP_PIPELINE_STAGES + citationHopStageProgress pure helpers on Research
 evidence-citation-hop-pipeline UI: present/missing hops · coverage_ratio · chain_complete ·
 never invents empty stages (parity ape DR stage pipeline for citation multi-hop bar).
 vitest ResearchContextPanel 21 green. P0 PR #465. Pivot apj+ outside thrash.
+
+## Residual apj · 2026-07-10 — HostedHtml MO deposit twin seed path honesty
+midnight_oil_deposit float: twin seed Port path + honesty chrome (L4 deferred ·
+auto-seed · free/purchased/MO · HTML-first) · twin matrix + scorecard + dual-gate L4
+deep-links. Closes FUTURE twin completeness gap #1 float path (parity aiz).
+vitest HostedHtmlDocumentHost 28 green. P0 PR #465. Pivot apk+ outside thrash.

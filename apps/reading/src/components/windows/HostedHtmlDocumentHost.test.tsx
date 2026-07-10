@@ -352,6 +352,72 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     ).toMatch(/Midnight Oil deposit/i);
   });
 
+  it("stamps midnight_oil_deposit twin seed path honesty (apj)", () => {
+    render(
+      <HostedHtmlDocumentHost
+        document_id="draft_moil_asset_apj"
+        title="MO deposit · goals"
+        view_format="html"
+        source="midnight_oil_deposit"
+        html='<article data-source="midnight_oil_deposit"><h1>Deposit</h1><p>Autonomous research result.</p></article>'
+      />,
+    );
+    const host = screen.getByTestId("hosted-html-document-host");
+    expect(host.getAttribute("data-source")).toBe("midnight_oil_deposit");
+    expect(host.getAttribute("data-midnight-oil-deposit")).toBe("true");
+    const honesty = screen.getByTestId("hosted-html-moil-deposit-honesty");
+    expect(honesty.getAttribute("data-twin-seed-path")).toBe(
+      "midnight_oil_deposit",
+    );
+    expect(honesty.getAttribute("data-auto-seed-if-empty")).toBe("true");
+    expect(honesty.getAttribute("data-l4-live-step")).toBe("deferred");
+    expect(honesty.getAttribute("data-html-first")).toBe("true");
+    expect(honesty.textContent).toMatch(/Midnight Oil deposit/i);
+    expect(honesty.textContent).toMatch(/twin auto-seed if empty/i);
+    expect(honesty.textContent).toMatch(/L4 live step deferred/i);
+    expect(honesty.textContent).toMatch(/never invent live worker/i);
+    expect(
+      screen
+        .getByTestId("hosted-html-moil-deposit-scorecard-link")
+        .getAttribute("href"),
+    ).toBe("/settings#settings-competitive-dr-scorecard");
+    expect(
+      screen
+        .getByTestId("hosted-html-moil-deposit-twin-matrix-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix/);
+    expect(
+      screen
+        .getByTestId("hosted-html-moil-deposit-dual-gate-l4-link")
+        .getAttribute("href") || "",
+    ).toMatch(/DUAL-GATE-L1-L4.*#l4-moil/);
+    const twinsMount = screen.getByTestId("hosted-html-twins-mount");
+    expect(twinsMount.getAttribute("data-midnight-oil-deposit")).toBe("true");
+    expect(twinsMount.getAttribute("data-auto-seed-if-empty")).toBe("true");
+    const twins = screen.getByTestId("twin-notes-panel-stub");
+    expect(twins.getAttribute("data-auto-seed")).toBe("true");
+    expect(twins.getAttribute("data-seed-title") || "").toMatch(
+      /Midnight Oil deposit/,
+    );
+    expect(twins.getAttribute("data-seed-body") || "").toMatch(
+      /Port path: Midnight Oil deposit HTML float/i,
+    );
+    expect(twins.getAttribute("data-seed-body") || "").toMatch(
+      /document_id=draft_moil_asset_apj/,
+    );
+    expect(twins.getAttribute("data-seed-body") || "").toMatch(
+      /source=midnight_oil_deposit/,
+    );
+    expect(twins.getAttribute("data-seed-body") || "").toMatch(
+      /L4 deferred|never invent L4/i,
+    );
+    expect(
+      screen.getByTestId("hosted-html-open-write").getAttribute(
+        "data-write-seed-source",
+      ),
+    ).toBe("midnight_oil_deposit");
+  });
+
   it("stamps marketplace_catalog Open Write source (aaj)", () => {
     render(
       <HostedHtmlDocumentHost

@@ -44,6 +44,8 @@
  * honesty (hosted HTML reading surface → Write note-taker; parity ael/aem).
  * Residual (aod): free PD / STEM props.subjects join float DR goal_hint as
  * research_domains= (parity twin chase aoc · marketplace domains= · never invent).
+ * Residual (apj): midnight_oil_deposit twin seed path honesty on float host
+ * (parity aiz collective unit · FUTURE twin matrix gap #1 · offline · L4 deferred).
  *
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
  */
@@ -424,6 +426,7 @@ export default function HostedHtmlDocumentHost(
                                 ? `Midnight Oil deposit · ${title}`
                                 : title;
   // Residual (aiz): collective unit float twin seed body path honesty (FUTURE twin gap #2).
+  // Residual (apj): Midnight Oil deposit float twin seed body path honesty (FUTURE twin gap #1).
   const twinSeedBodyBase = html
     ? html.replace(/<[^>]+>/g, " ").slice(0, 500)
     : twinSeedTitle;
@@ -439,7 +442,18 @@ export default function HostedHtmlDocumentHost(
         .filter(Boolean)
         .join("\n")
         .slice(0, 900)
-    : twinSeedBodyBase;
+    : isMidnightOilDeposit
+      ? [
+          twinSeedBodyBase,
+          "",
+          "Port path: Midnight Oil deposit HTML float (offline-honest · autonomous swarm deliverable · free/purchased/MO path honesty · live multi-provider step dual-gate L4 deferred · never invent L4 live worker).",
+          assetId ? `document_id=${assetId}` : "",
+          "source=midnight_oil_deposit · HTML-first · twin auto-seed if empty · recursive note-taker.",
+        ]
+          .filter(Boolean)
+          .join("\n")
+          .slice(0, 900)
+      : twinSeedBodyBase;
 
   return (
     <div
@@ -467,6 +481,7 @@ export default function HostedHtmlDocumentHost(
       data-spawn-count={
         isCollectiveUnitPrompt && spawnCount != null ? String(spawnCount) : ""
       }
+      data-midnight-oil-deposit={String(isMidnightOilDeposit)}
       data-research-progress={String(isResearchProgress)}
       data-session-flywheel={String(isSessionFlywheel)}
     >
@@ -591,6 +606,52 @@ export default function HostedHtmlDocumentHost(
                     title="FUTURE-AGENT twin note-taker completeness matrix"
                   >
                     FUTURE · twin completeness matrix
+                  </a>
+                </p>
+              </div>
+            ) : null}
+            {/* Residual (apj): Midnight Oil deposit float twin seed path honesty. */}
+            {isMidnightOilDeposit ? (
+              <div
+                className="text-[11px] font-mono opacity-80 mt-1 space-y-1"
+                data-testid="hosted-html-moil-deposit-honesty"
+                data-twin-seed-path="midnight_oil_deposit"
+                data-auto-seed-if-empty="true"
+                data-l4-live-step="deferred"
+                data-html-first="true"
+                data-view-format="html"
+                role="status"
+              >
+                <p>
+                  Midnight Oil deposit · autonomous swarm HTML deliverable ·
+                  offline-honest · twin auto-seed if empty (recursive note-taker)
+                  · free/purchased/MO path honesty · L4 live step deferred ·
+                  never invent live worker · not PDF
+                </p>
+                <p className="space-x-3">
+                  <a
+                    href="/settings#settings-competitive-dr-scorecard"
+                    data-testid="hosted-html-moil-deposit-scorecard-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="Settings competitive DR scorecard (MO multi-goal · offline deposit · L4 live deferred)"
+                  >
+                    Settings · competitive DR scorecard
+                  </a>
+                  <a
+                    href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md"
+                    data-testid="hosted-html-moil-deposit-twin-matrix-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="FUTURE-AGENT twin note-taker completeness matrix (MO deposit gap #1)"
+                  >
+                    FUTURE · twin completeness matrix
+                  </a>
+                  <a
+                    href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l4-moil"
+                    data-testid="hosted-html-moil-deposit-dual-gate-l4-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="Dual-gate L4 Midnight Oil live worker step (operator only)"
+                  >
+                    Dual-gate · L4 MO live
                   </a>
                 </p>
               </div>
@@ -1010,15 +1071,18 @@ export default function HostedHtmlDocumentHost(
           data-evidence-pack={String(isEvidencePack)}
           data-context-search={String(isContextSearch)}
           data-collective-unit-prompt={String(isCollectiveUnitPrompt)}
+          data-midnight-oil-deposit={String(isMidnightOilDeposit)}
           data-auto-seed-if-empty="true"
         >
           {/* Residual (ez): remount twins with context refresh key. */}
           {/* Residual (sh): evidence_pack seed title for recursive note-taker. */}
           {/* Residual (aiz): collective_unit_prompt twin seed path honesty. */}
+          {/* Residual (apj): midnight_oil_deposit twin seed path honesty. */}
           <div
             data-testid="hosted-html-twins-refresh"
             data-refresh-key={String(contextRefreshKey)}
             data-collective-unit-prompt={String(isCollectiveUnitPrompt)}
+            data-midnight-oil-deposit={String(isMidnightOilDeposit)}
           >
             <TwinNotesPanel
               key={`twins-${assetId}-${contextRefreshKey}`}

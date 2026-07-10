@@ -29,7 +29,7 @@
 
 ## Completeness gaps for future agents (product residuals)
 
-1. **Midnight Oil deposit twin seed** — if deposit lands HTML asset, ensure twin seed + free/purchased/MO path honesty (avoid MO live stack collision; offline seed only).
+1. **Midnight Oil deposit twin seed** — **Shipped offline** (mode reseed gk/ahu/oo · float host **apj** path honesty · L4 live deferred). Prefer non-MO-deposit thrash next.
 2. **Collective unit prompt float twin** — when opening cohesive unit as HTML window (tr), optional twin seed on that ephemeral doc. **Shipped offline (aiz):** path honesty seed body · auto-seed if empty · scorecard + twin matrix deep-links.
 3. **Intelligent search over twins across free STEM catalog** — **Offline product-complete (akq–alo):** domain-aware defaults for free PD STEM + social/philosophy/literature/tech/science catch-all (aiy · akq · akw · alf) · domainSearchCoverage honesty (alj) · path ResearchContext · MarketplaceHost · HostedHtml (alm–alo) · pure util `workspace/domainSearchDefaults.ts`. Prefer new catalog subjects only when free PD spine expands.
 4. **Twin cross-asset merge write-seed body honesty** — keep has-body matrix (adn) when merging multi-asset twins.
