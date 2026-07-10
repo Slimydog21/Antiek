@@ -386,6 +386,10 @@ export type AntiekBenchSuiteProposalResponse = {
    * (has_body=false → failed usage). Structured count for Settings chrome.
    */
   title_only_write_seed_count?: number;
+  /** Residual (adp): with_body Write seed events in proposal usage window. */
+  with_body_write_seed_count?: number;
+  /** Residual (adp): Write seed events missing has_body stamp. */
+  body_unknown_write_seed_count?: number;
   event_count: number;
   view_format: "html" | string;
   settings_panel: string;

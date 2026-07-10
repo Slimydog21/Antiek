@@ -160,14 +160,16 @@ const {
       rationale:
         "Ingested 2 usage events; added 1 items from failed outcomes · title-only Write seeds (has_body=false): 1 (body honesty → suite rewrite)",
       added_item_ids: ["usage-distill-abcd12-0"],
-      // Residual (acy): structured title-only Write seed count.
+      // Residual (acy/adp): full body honesty matrix on suite proposal.
       title_only_write_seed_count: 1,
+      with_body_write_seed_count: 2,
+      body_unknown_write_seed_count: 0,
       event_count: 2,
       view_format: "html",
       settings_panel: "antiek_bench_suite_proposal",
       source: "antiek_bench.propose_from_recorded_usage",
       notes: ["Proposal status is proposed only"],
-      html: "<p>Status: proposal only · proposed · Title-only Write seeds (has_body=false): 1</p>",
+      html: "<p>Status: proposal only · proposed · Body honesty matrix: with_body=2 · title_only=1 · unknown=0</p>",
     })),
     approveAntiekBenchSuiteProposal: vi.fn(async (opts: {
       proposal_id: string;
@@ -1413,8 +1415,16 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(metrics.getAttribute("data-auto-promoted")).toBe("false");
     expect(metrics.getAttribute("data-propose-not-promote")).toBe("true");
     expect(metrics.getAttribute("data-title-only-write-seed-count")).toBe("1");
+    // Residual (adp): full body honesty matrix on suite proposal metrics.
+    expect(metrics.getAttribute("data-with-body-write-seed-count")).toBe("2");
+    expect(metrics.getAttribute("data-body-unknown-write-seed-count")).toBe(
+      "0",
+    );
     expect(metrics.textContent).toMatch(/Recursive rewrite/);
     expect(metrics.textContent).toMatch(/title_only_write_seeds=1/);
+    expect(metrics.textContent).toMatch(/with_body=2/);
+    expect(metrics.textContent).toMatch(/title_only=1/);
+    expect(metrics.textContent).toMatch(/unknown=0/);
     const tasks = screen.getByTestId("antiek-bench-proposed-tasks");
     expect(tasks.getAttribute("data-task-count")).toBe("1");
     expect(screen.getByTestId("antiek-bench-proposed-task-id").textContent).toMatch(

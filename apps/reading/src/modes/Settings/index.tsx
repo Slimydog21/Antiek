@@ -2705,9 +2705,15 @@ export default function Settings() {
                 data-has-rationale={String(
                   Boolean((suiteProposal.rationale || "").trim()),
                 )}
-                // Residual (acy): title-only Write seed body honesty for rewrite.
+                // Residual (acy/adp): full body honesty matrix for rewrite.
                 data-title-only-write-seed-count={String(
                   suiteProposal.title_only_write_seed_count ?? 0,
+                )}
+                data-with-body-write-seed-count={String(
+                  suiteProposal.with_body_write_seed_count ?? 0,
+                )}
+                data-body-unknown-write-seed-count={String(
+                  suiteProposal.body_unknown_write_seed_count ?? 0,
                 )}
                 data-propose-not-promote="true"
                 data-view-format="html"
@@ -2718,6 +2724,12 @@ export default function Settings() {
                 {(suiteProposal.added_item_ids || []).length} · status=
                 {suiteProposal.status ?? "—"} · feed_sources=
                 {Object.keys(usage?.by_source || {}).length}
+                {" · body honesty: with_body="}
+                {suiteProposal.with_body_write_seed_count ?? 0}
+                {" · title_only="}
+                {suiteProposal.title_only_write_seed_count ?? 0}
+                {" · unknown="}
+                {suiteProposal.body_unknown_write_seed_count ?? 0}
                 {(suiteProposal.title_only_write_seed_count ?? 0) > 0 ? (
                   <>
                     {" "}

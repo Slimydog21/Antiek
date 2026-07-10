@@ -588,6 +588,10 @@ class AntiekBenchSuiteProposalResponse(BaseModel):
     auto_promoted: bool = False
     rationale: str | None = None
     added_item_ids: list[str] = Field(default_factory=list)
+    # Residual (acy/adp): body honesty matrix for recursive rewrite (API must not strip).
+    title_only_write_seed_count: int = 0
+    with_body_write_seed_count: int = 0
+    body_unknown_write_seed_count: int = 0
     event_count: int = 0
     view_format: str = "html"
     settings_panel: str = "antiek_bench_suite_proposal"
@@ -649,6 +653,16 @@ def get_antiek_bench_suite_proposal(
         auto_promoted=bool(payload.get("auto_promoted", False)),
         rationale=payload.get("rationale"),
         added_item_ids=list(payload.get("added_item_ids") or []),
+        # Residual (adp): wire body honesty matrix through response_model (was stripped).
+        title_only_write_seed_count=int(
+            payload.get("title_only_write_seed_count") or 0
+        ),
+        with_body_write_seed_count=int(
+            payload.get("with_body_write_seed_count") or 0
+        ),
+        body_unknown_write_seed_count=int(
+            payload.get("body_unknown_write_seed_count") or 0
+        ),
         event_count=int(payload.get("event_count") or 0),
         view_format=str(payload.get("view_format") or "html"),
         settings_panel=str(

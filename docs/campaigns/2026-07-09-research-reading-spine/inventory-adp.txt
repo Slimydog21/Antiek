@@ -1,0 +1,24 @@
+# inventory-adp · suite proposal body honesty matrix + API wire
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: adp
+date: 2026-07-10
+parent_tip: e7dda6d8 (ado)
+
+## Closed
+- SuiteProposal: with_body_write_seed_count + body_unknown_write_seed_count
+- propose_suite_delta rationale cites full body honesty matrix
+- settings_surface empty + proposed payloads pass matrix fields
+- project_suite_proposal_html shows with_body · title_only · unknown
+- AntiekBenchSuiteProposalResponse: title_only + with_body + unknown
+  (title_only was previously stripped by Pydantic response_model)
+- Settings suite-proposal metrics: data-with-body / data-body-unknown + chrome
+- pytest test_suite_rewrite_title_only_acx · 2 passed
+- vitest Settings · 34 passed
+
+## Why this residual
+Recursive rewrite audit had title_only on substrate but API response_model
+dropped it; usage summary already showed full matrix — proposal path incomplete.
+
+## Not in scope
+- Auto-promote dogfood into weekly suite
+- Live multi-provider bench runs

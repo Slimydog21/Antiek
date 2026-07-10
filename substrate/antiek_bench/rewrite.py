@@ -24,6 +24,9 @@ class SuiteProposal:
     # Residual (acy): structured count of title-only Write seed failures
     # (has_body=false → failed) for Settings / recursive rewrite audit.
     title_only_write_seed_count: int = 0
+    # Residual (adp): full body honesty matrix on proposal (parity usage summary).
+    with_body_write_seed_count: int = 0
+    body_unknown_write_seed_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -35,6 +38,9 @@ class SuiteProposal:
             "status": self.status,
             # Residual (acy): body honesty aggregate (parity rationale acx).
             "title_only_write_seed_count": int(self.title_only_write_seed_count),
+            # Residual (adp): with_body + unknown for full rewrite audit matrix.
+            "with_body_write_seed_count": int(self.with_body_write_seed_count),
+            "body_unknown_write_seed_count": int(self.body_unknown_write_seed_count),
             "suite": {
                 "suite_version": self.suite.suite_version,
                 "label": self.suite.label,
@@ -127,6 +133,11 @@ def propose_suite_delta(
         if str(ev.get("outcome") or "").lower() == "failed"
         and ev.get("has_body") is False
     )
+    # Residual (adp): with_body + unknown counts (full matrix; parity usage summary).
+    with_body_n = sum(1 for ev in events if ev.get("has_body") is True)
+    body_unknown_n = sum(
+        1 for ev in events if "has_body" not in ev or ev.get("has_body") is None
+    )
     if not added:
         # Still form a proposal that re-states base (no-op delta) so operator sees honesty
         rationale = "No failed usage events; proposal is a no-op snapshot of the base suite."
@@ -139,6 +150,11 @@ def propose_suite_delta(
         rationale = (
             f"{rationale} · title-only Write seeds (has_body=false): "
             f"{title_only_failed} (body honesty → suite rewrite)"
+        )
+    if with_body_n or body_unknown_n:
+        rationale = (
+            f"{rationale} · body honesty matrix: with_body={with_body_n} · "
+            f"title_only={title_only_failed} · unknown={body_unknown_n}"
         )
 
     proposed_version = f"{base.suite_version}+usage-{fp[:8]}"
@@ -157,6 +173,8 @@ def propose_suite_delta(
         status="proposed",
         suite=suite,
         title_only_write_seed_count=int(title_only_failed),
+        with_body_write_seed_count=int(with_body_n),
+        body_unknown_write_seed_count=int(body_unknown_n),
     )
     store.put_proposal(pid, proposal.to_dict())
     return proposal

@@ -2163,3 +2163,10 @@ Settings data-has-write-seed-has-body-posture + Spine postures (v13) · write-se
 has-body (substrate fixture adn now operator-visible). Competitive delta:
 recursive rewrite dogfood honesty is machine-readable on Settings summary, not
 only in item list. Vitest Settings 34 green.
+
+## Residual adp · 2026-07-10 — suite proposal body honesty matrix + API wire
+SuiteProposal + Settings surface full body honesty matrix (with_body · title_only ·
+unknown); AntiekBenchSuiteProposalResponse now carries title_only (was Pydantic-stripped)
+plus with_body/unknown. Competitive delta: recursive rewrite audit is machine-readable
+end-to-end from usage events → propose → Settings metrics (parity usage summary acu).
+pytest 2 · vitest Settings 34 green.
