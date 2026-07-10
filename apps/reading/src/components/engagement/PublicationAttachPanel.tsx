@@ -10,6 +10,7 @@
  * Residual (ia): Settings deep-link for hydrate live-injector readiness (hq).
  * Residual (ko): surface spawn research_tier from attach-refs response.
  * Residual (lz): DecisionTreeDriverBadge — model+budget+depth co-display
+ * Residual (qo): DecisionTreeDriverBadge promptText from pub ref list.
  * before/after attach (prop tier preferred; attach response fills when known).
  * Residual (mj): dual-gate L1–L4 checklist deep-link for arxiv/substack
  * live-injector dogfood prep (never enables injectors).
@@ -136,7 +137,14 @@ export function PublicationAttachPanel({
           data-view-format="html"
           data-research-tier={researchTier || ""}
         >
-          <DecisionTreeDriverBadge researchTier={researchTier} />
+          <DecisionTreeDriverBadge
+            researchTier={researchTier}
+            promptText={
+              raw.trim()
+                ? `publication attach · ${raw.trim().slice(0, 2000)}`
+                : undefined
+            }
+          />
         </div>
       </header>
       <textarea

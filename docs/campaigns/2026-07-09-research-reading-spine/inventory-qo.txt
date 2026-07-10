@@ -1,0 +1,4 @@
+# inventory-qo · PublicationAttach driver badge promptText
+residual: qo · 2026-07-10
+- DecisionTreeDriverBadge promptText from arxiv/substack/URL raw refs
+- vitest PublicationAttachPanel 5 passed
