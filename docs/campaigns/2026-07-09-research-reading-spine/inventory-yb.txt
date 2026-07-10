@@ -1,0 +1,19 @@
+# inventory-yb · Settings dogfood mock full v12 item list (matches substrate)
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: yb
+date: 2026-07-10
+tip_before: 260fa2e5 (ya)
+
+## Problem
+Settings dogfood mock listed 14 of 18 v12 items while item_count=18 — test
+fixture was not substrate-true (data-item-count-matches-listed false).
+
+## Fix
+- Expand mock items to full 18 competitive_dogfood_items()
+- Assert listed-count=18 · matches-listed=true
+
+## Verified
+npm test Settings.test.tsx → 34 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

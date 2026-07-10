@@ -274,77 +274,26 @@ const {
         wrestle: 7,
         book_qa: 7,
       },
+      // Residual (yb): full v12 item list (matches substrate; item_count-matches-listed).
       items: [
-        {
-          item_id: "dogfood-distill-attention",
-          task_class: "distill",
-          prompt: "Distill attention claim",
-        },
-        {
-          item_id: "dogfood-wrestle-write-seed",
-          task_class: "wrestle",
-          prompt: "twin_seed Write path",
-        },
-        {
-          item_id: "dogfood-synth-float-evidence",
-          task_class: "synthesize",
-          prompt: "float evidence HTML",
-        },
-        {
-          item_id: "dogfood-distill-budget-foresight",
-          task_class: "distill",
-          prompt: "budget projection",
-        },
-        {
-          item_id: "dogfood-book-faraday-induction",
-          task_class: "book_qa",
-          prompt: "Faraday induction free PD HTML",
-        },
-        {
-          item_id: "dogfood-wrestle-collective-unit-write-seed",
-          task_class: "wrestle",
-          prompt: "collective_unit_prompt twin_seed Write path",
-        },
-        {
-          item_id: "dogfood-book-boole-laws-of-thought",
-          task_class: "book_qa",
-          prompt: "Boole laws of thought free PD HTML",
-        },
-        {
-          item_id: "dogfood-book-heaviside-em",
-          task_class: "book_qa",
-          prompt: "Heaviside electromagnetic free PD HTML",
-        },
-        {
-          item_id: "dogfood-wrestle-citation-trust-ungrounded",
-          task_class: "wrestle",
-          prompt: "citation trust ungrounded hydrate prep",
-        },
-        {
-          item_id: "dogfood-wrestle-twin-cross-asset-merge-write-seed",
-          task_class: "wrestle",
-          prompt: "twin_cross_asset_merge Write twin_seed path",
-        },
-        {
-          item_id: "dogfood-wrestle-collective-written-analysis-write-seed",
-          task_class: "wrestle",
-          prompt: "collective_written_analysis Write twin_seed path",
-        },
-        {
-          item_id: "dogfood-book-shannon-communication",
-          task_class: "book_qa",
-          prompt: "Shannon mathematical theory of communication free PD HTML",
-        },
-        {
-          item_id: "dogfood-book-turing-computable-numbers",
-          task_class: "book_qa",
-          prompt: "Turing on computable numbers free PD HTML",
-        },
-        {
-          item_id: "dogfood-book-lovelace-analytical-engine",
-          task_class: "book_qa",
-          prompt: "Lovelace Analytical Engine free PD HTML",
-        },
+        { item_id: "dogfood-distill-attention", task_class: "distill", prompt: "Distill attention claim" },
+        { item_id: "dogfood-synth-perplexity-vs-openai", task_class: "synthesize", prompt: "Perplexity vs OpenAI" },
+        { item_id: "dogfood-wrestle-twin-notes", task_class: "wrestle", prompt: "twin notes wrestle" },
+        { item_id: "dogfood-book-html-first", task_class: "book_qa", prompt: "HTML-first book QA" },
+        { item_id: "dogfood-wrestle-citations", task_class: "wrestle", prompt: "citations wrestle" },
+        { item_id: "dogfood-wrestle-write-seed", task_class: "wrestle", prompt: "twin_seed Write path" },
+        { item_id: "dogfood-synth-float-evidence", task_class: "synthesize", prompt: "float evidence HTML" },
+        { item_id: "dogfood-distill-budget-foresight", task_class: "distill", prompt: "budget projection" },
+        { item_id: "dogfood-book-faraday-induction", task_class: "book_qa", prompt: "Faraday induction free PD HTML" },
+        { item_id: "dogfood-wrestle-collective-unit-write-seed", task_class: "wrestle", prompt: "collective_unit_prompt twin_seed Write path" },
+        { item_id: "dogfood-book-boole-laws-of-thought", task_class: "book_qa", prompt: "Boole laws of thought free PD HTML" },
+        { item_id: "dogfood-book-heaviside-em", task_class: "book_qa", prompt: "Heaviside electromagnetic free PD HTML" },
+        { item_id: "dogfood-wrestle-citation-trust-ungrounded", task_class: "wrestle", prompt: "citation trust ungrounded hydrate prep" },
+        { item_id: "dogfood-wrestle-twin-cross-asset-merge-write-seed", task_class: "wrestle", prompt: "twin_cross_asset_merge Write twin_seed path" },
+        { item_id: "dogfood-wrestle-collective-written-analysis-write-seed", task_class: "wrestle", prompt: "collective_written_analysis Write twin_seed path" },
+        { item_id: "dogfood-book-shannon-communication", task_class: "book_qa", prompt: "Shannon mathematical theory of communication free PD HTML" },
+        { item_id: "dogfood-book-turing-computable-numbers", task_class: "book_qa", prompt: "Turing on computable numbers free PD HTML" },
+        { item_id: "dogfood-book-lovelace-analytical-engine", task_class: "book_qa", prompt: "Lovelace Analytical Engine free PD HTML" },
       ],
       auto_promoted: false,
       view_format: "html",
@@ -1582,11 +1531,11 @@ describe("Settings SPR-01 + decision-tree install", () => {
     // Residual (we): full dogfood item list — no silent top-12 truncate.
     const itemsList = screen.getByTestId("antiek-bench-dogfood-items");
     expect(itemsList.getAttribute("data-truncated")).toBe("false");
-    expect(itemsList.getAttribute("data-listed-count")).toBe("14");
-    // Residual (ya): mock has item_count 18 but lists 14 posture rows — honesty stamp.
+    // Residual (yb): full v12 mock lists all 18 items — matches item_count.
+    expect(itemsList.getAttribute("data-listed-count")).toBe("18");
     expect(itemsList.getAttribute("data-item-count")).toBe("18");
     expect(itemsList.getAttribute("data-item-count-matches-listed")).toBe(
-      "false",
+      "true",
     );
     // Mock lists posture items including Shannon + Turing + Lovelace (v12).
     expect(

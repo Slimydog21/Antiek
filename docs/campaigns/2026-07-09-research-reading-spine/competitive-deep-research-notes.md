@@ -1610,3 +1610,7 @@ delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
 ## Residual ya · 2026-07-10 — dogfood list item_count match honesty
 antiek-bench-dogfood-items stamps data-item-count-matches-listed. Competitive
 delta: Settings never silently diverges listed fixtures from item_count.
+
+## Residual yb · 2026-07-10 — dogfood mock full v12 item list
+Settings dogfood test fixture lists all 18 v12 items (matches substrate).
+Competitive delta: data-item-count-matches-listed=true for substrate-true path.
