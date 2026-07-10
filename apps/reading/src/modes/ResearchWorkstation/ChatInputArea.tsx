@@ -13,7 +13,10 @@ import { track, trackException } from "../../lib/analytics";
 import { startInvestigation } from "../../lib/api";
 import type { ResearchTier } from "../../lib/api";
 import { mapDepthTierToResearchTier } from "../../lib/researchTier";
-import { composeDriverPromptText } from "../../lib/driverPromptText";
+import {
+  composeDriverPromptText,
+  countPublicationRefs,
+} from "../../lib/driverPromptText";
 import {
   hydratePublicationRefs,
   parsePublicationRefs,
@@ -49,6 +52,7 @@ import { KNOWLEDGE_DENSE_PUBLICATION_PRESETS } from "../../components/engagement
  * Residual (ln): DecisionTreeDriverBadge with launchTier (parity StartResearch ll).
  * Residual (qp): DecisionTreeDriverBadge promptText = question + pub refs.
  * Residual (qr): budget panel shares composeDriverPromptText (badge ≡ budget).
+ * Residual (ahh): budget foresight pub-ref count stamps (parity StartResearch ahg).
  */
 export default function ChatInputArea({
   parentInvestigationId,
@@ -305,17 +309,24 @@ export default function ChatInputArea({
           </p>
         ) : null}
       </div>
-      {/* Residual (bq/df/ln): budget panel + driver badge (parity StartResearch). */}
+      {/* Residual (bq/df/ln/ahh): budget panel + driver badge · pub-ref foresight. */}
       <div
         className="mt-2"
         data-testid="chat-input-budget-mount"
         data-depth-prefill={depthPrefill}
         data-research-tier={launchTier}
+        data-pub-ref-count={String(countPublicationRefs(pubRefs))}
+        data-has-pub-refs={String(countPublicationRefs(pubRefs) > 0)}
+        data-prompt-chars={String(
+          composeDriverPromptText(question, pubRefs).length,
+        )}
       >
         <div
           data-testid="chat-input-driver-badge-mount"
           data-view-format="html"
           data-research-tier={launchTier}
+          data-pub-ref-count={String(countPublicationRefs(pubRefs))}
+          data-has-pub-refs={String(countPublicationRefs(pubRefs) > 0)}
         >
           <DecisionTreeDriverBadge
             researchTier={launchTier}

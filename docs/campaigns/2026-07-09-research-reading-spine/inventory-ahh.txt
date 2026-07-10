@@ -1,0 +1,15 @@
+# inventory-ahh · ChatInputArea budget foresight pub-ref count
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ahh
+date: 2026-07-10
+parent_tip: 47cec15b (ahg)
+
+## Closed
+- ChatInputArea budget mount stamps data-pub-ref-count · data-has-pub-refs · data-prompt-chars
+- Driver badge mount stamps pub-ref-count (parity StartResearch ahg)
+- Chase follow-up foresight when knowledge-dense quick-call inserts refs
+- vitest ChatInputArea.refs green
+
+## Next
+ahi+ product residual · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

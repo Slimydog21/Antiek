@@ -142,6 +142,32 @@ describe("ChatInputArea publication refs (ct)", () => {
     expect(value).toMatch(/arxiv:1706\.03762/);
   });
 
+  it("stamps budget foresight pub-ref count after quick-call (ahh)", () => {
+    render(
+      <MemoryRouter>
+        <ChatInputArea />
+      </MemoryRouter>,
+    );
+    const mount = screen.getByTestId("chat-input-budget-mount");
+    expect(mount.getAttribute("data-pub-ref-count")).toBe("0");
+    expect(mount.getAttribute("data-has-pub-refs")).toBe("false");
+    fireEvent.click(
+      screen.getByTestId("chat-input-preset-attention-is-all-you-need"),
+    );
+    fireEvent.click(screen.getByTestId("chat-input-preset-scaling-laws"));
+    const after = screen.getByTestId("chat-input-budget-mount");
+    expect(after.getAttribute("data-pub-ref-count")).toBe("2");
+    expect(after.getAttribute("data-has-pub-refs")).toBe("true");
+    expect(Number(after.getAttribute("data-prompt-chars") || 0)).toBeGreaterThan(
+      10,
+    );
+    expect(
+      screen
+        .getByTestId("chat-input-driver-badge-mount")
+        .getAttribute("data-pub-ref-count"),
+    ).toBe("2");
+  });
+
   it("hydrates refs and grounds question on Ask", async () => {
     parsePublicationRefs.mockReturnValue(["arxiv:1706.03762"]);
     hydratePublicationRefs.mockResolvedValue({

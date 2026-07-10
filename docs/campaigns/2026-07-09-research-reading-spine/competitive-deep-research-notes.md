@@ -2703,3 +2703,8 @@ countPublicationRefs + start-research-budget-foresight stamps data-pub-ref-count
 after knowledge-dense quick-call. Competitive budget-before-fire honesty when
 grounding research with arxiv/URL refs. vitest StartResearch 23 green.
 P0 operator merge PR #465. Pivot ahh+.
+
+## Residual ahh · 2026-07-10 — ChatInputArea budget foresight pub-ref count
+Chase follow-up budget mount stamps data-pub-ref-count after knowledge-dense
+quick-call (parity StartResearch ahg). vitest ChatInputArea.refs green.
+P0 operator merge PR #465. Pivot ahi+.
