@@ -30,6 +30,7 @@ import {
   runnerDispatchWorkerBootstrapPlanMidnightOil,
   runnerReadinessMidnightOil,
   schedulerLeaseRetryPlanMidnightOil,
+  workerCancellationAbandonPlanMidnightOil,
   workerDispatchLeaseHeartbeatPlanMidnightOil,
   workerQueueClaimPlanMidnightOil,
   type MidnightOilActivationChecklistReceipt,
@@ -63,6 +64,7 @@ import {
   type MidnightOilRouteMode,
   type MidnightOilSchedulerLeaseRetryPlanReceipt,
   type MidnightOilSourcePolicy,
+  type MidnightOilWorkerCancellationAbandonPlanReceipt,
   type MidnightOilWorkerDispatchLeaseHeartbeatPlanReceipt,
   type MidnightOilWorkerQueueClaimPlanReceipt,
 } from "../../api/midnightOil";
@@ -157,6 +159,8 @@ export default function MidnightOil() {
     useState<MidnightOilRepositoryCommitRollbackPlanReceipt | null>(null);
   const [workerDispatchLeaseHeartbeatPlanReceipt, setWorkerDispatchLeaseHeartbeatPlanReceipt] =
     useState<MidnightOilWorkerDispatchLeaseHeartbeatPlanReceipt | null>(null);
+  const [workerCancellationAbandonPlanReceipt, setWorkerCancellationAbandonPlanReceipt] =
+    useState<MidnightOilWorkerCancellationAbandonPlanReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -197,6 +201,8 @@ export default function MidnightOil() {
   const [repositoryTransactionPlanBusy, setRepositoryTransactionPlanBusy] = useState(false);
   const [repositoryCommitRollbackPlanBusy, setRepositoryCommitRollbackPlanBusy] = useState(false);
   const [workerDispatchLeaseHeartbeatPlanBusy, setWorkerDispatchLeaseHeartbeatPlanBusy] =
+    useState(false);
+  const [workerCancellationAbandonPlanBusy, setWorkerCancellationAbandonPlanBusy] =
     useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
@@ -251,10 +257,18 @@ export default function MidnightOil() {
     useState<string | null>(null);
   const [workerDispatchLeaseHeartbeatPlanError, setWorkerDispatchLeaseHeartbeatPlanError] =
     useState<string | null>(null);
+  const [workerCancellationAbandonPlanError, setWorkerCancellationAbandonPlanError] =
+    useState<string | null>(null);
+
+  function clearWorkerCancellationAbandonPlan() {
+    setWorkerCancellationAbandonPlanError(null);
+    setWorkerCancellationAbandonPlanReceipt(null);
+  }
 
   function clearWorkerDispatchLeaseHeartbeatPlan() {
     setWorkerDispatchLeaseHeartbeatPlanError(null);
     setWorkerDispatchLeaseHeartbeatPlanReceipt(null);
+    clearWorkerCancellationAbandonPlan();
   }
 
   function clearRepositoryCommitRollbackPlan() {
@@ -402,6 +416,7 @@ export default function MidnightOil() {
     setSchedulerLeaseRetryPlanError(null);
     setWorkerQueueClaimPlanError(null);
     setWorkerDispatchLeaseHeartbeatPlanError(null);
+    setWorkerCancellationAbandonPlanError(null);
     setPreflight(null);
     setDryRunReceipt(null);
     setLiveSettingsReceipt(null);
@@ -434,6 +449,7 @@ export default function MidnightOil() {
     setRepositoryTransactionPlanReceipt(null);
     setRepositoryCommitRollbackPlanReceipt(null);
     setWorkerDispatchLeaseHeartbeatPlanReceipt(null);
+    setWorkerCancellationAbandonPlanReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -1863,6 +1879,7 @@ export default function MidnightOil() {
     setWorkerDispatchLeaseHeartbeatPlanBusy(true);
     setWorkerDispatchLeaseHeartbeatPlanError(null);
     setWorkerDispatchLeaseHeartbeatPlanReceipt(null);
+    clearWorkerCancellationAbandonPlan();
     try {
       const result = await workerDispatchLeaseHeartbeatPlanMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -1895,6 +1912,77 @@ export default function MidnightOil() {
       setWorkerDispatchLeaseHeartbeatPlanError(e instanceof Error ? e.message : String(e));
     } finally {
       setWorkerDispatchLeaseHeartbeatPlanBusy(false);
+    }
+  }
+
+  async function onWorkerCancellationAbandonPlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerControlPlanReceipt ||
+      !budgetProviderAdapterPlanReceipt ||
+      !providerExecutorAdapterPlanReceipt ||
+      !retrievalAdapterPlanReceipt ||
+      !graphAdapterPlanReceipt ||
+      !finalArtifactAdapterPlanReceipt ||
+      !operatorDispatchAdapterPlanReceipt ||
+      !controlLedgerAdapterPlanReceipt ||
+      !controlLedgerPersistencePlanReceipt ||
+      !controlLedgerPersistenceApplyPlanReceipt ||
+      !operatorDispatchActivationReadinessPlanReceipt ||
+      !liveDispatchFinalEnablementPlanReceipt ||
+      !liveDispatchFinalEnablementApplyPlanReceipt ||
+      !runnerDispatchSchedulerPlanReceipt ||
+      !runnerDispatchWorkerBootstrapPlanReceipt ||
+      !schedulerLeaseRetryPlanReceipt ||
+      !workerQueueClaimPlanReceipt ||
+      !repositoryTransactionPlanReceipt ||
+      !repositoryCommitRollbackPlanReceipt ||
+      !workerDispatchLeaseHeartbeatPlanReceipt
+    ) {
+      setWorkerCancellationAbandonPlanError(
+        "Worker cancellation abandon plan requires launch packet, approval receipt, runner handoff, runner control plan receipt, budget provider adapter plan receipt, provider executor adapter plan receipt, retrieval adapter plan receipt, graph adapter plan receipt, final artifact adapter plan receipt, operator dispatch adapter plan receipt, control ledger adapter plan receipt, control ledger persistence plan receipt, control ledger persistence apply plan receipt, operator dispatch activation readiness plan receipt, live dispatch final enablement plan receipt, live dispatch final enablement apply plan receipt, runner dispatch scheduler plan receipt, runner dispatch worker bootstrap plan receipt, scheduler lease retry plan receipt, worker queue claim plan receipt, repository transaction plan receipt, repository commit rollback plan receipt, and worker lease heartbeat plan receipt.",
+      );
+      return;
+    }
+
+    setWorkerCancellationAbandonPlanBusy(true);
+    setWorkerCancellationAbandonPlanError(null);
+    setWorkerCancellationAbandonPlanReceipt(null);
+    try {
+      const result = await workerCancellationAbandonPlanMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        runner_control_plan_receipt: runnerControlPlanReceipt,
+        budget_provider_adapter_plan_receipt: budgetProviderAdapterPlanReceipt,
+        provider_executor_adapter_plan_receipt: providerExecutorAdapterPlanReceipt,
+        retrieval_adapter_plan_receipt: retrievalAdapterPlanReceipt,
+        graph_adapter_plan_receipt: graphAdapterPlanReceipt,
+        final_artifact_adapter_plan_receipt: finalArtifactAdapterPlanReceipt,
+        operator_dispatch_adapter_plan_receipt: operatorDispatchAdapterPlanReceipt,
+        control_ledger_adapter_plan_receipt: controlLedgerAdapterPlanReceipt,
+        control_ledger_persistence_plan_receipt: controlLedgerPersistencePlanReceipt,
+        control_ledger_persistence_apply_plan_receipt: controlLedgerPersistenceApplyPlanReceipt,
+        operator_dispatch_activation_readiness_plan_receipt:
+          operatorDispatchActivationReadinessPlanReceipt,
+        live_dispatch_final_enablement_plan_receipt: liveDispatchFinalEnablementPlanReceipt,
+        live_dispatch_final_enablement_apply_plan_receipt:
+          liveDispatchFinalEnablementApplyPlanReceipt,
+        runner_dispatch_scheduler_plan_receipt: runnerDispatchSchedulerPlanReceipt,
+        runner_dispatch_worker_bootstrap_plan_receipt: runnerDispatchWorkerBootstrapPlanReceipt,
+        scheduler_lease_retry_plan_receipt: schedulerLeaseRetryPlanReceipt,
+        worker_queue_claim_plan_receipt: workerQueueClaimPlanReceipt,
+        repository_transaction_plan_receipt: repositoryTransactionPlanReceipt,
+        repository_commit_rollback_plan_receipt: repositoryCommitRollbackPlanReceipt,
+        worker_dispatch_lease_heartbeat_plan_receipt: workerDispatchLeaseHeartbeatPlanReceipt,
+      });
+      setWorkerCancellationAbandonPlanReceipt(result);
+    } catch (e) {
+      setWorkerCancellationAbandonPlanError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setWorkerCancellationAbandonPlanBusy(false);
     }
   }
 
@@ -5487,6 +5575,214 @@ export default function MidnightOil() {
                   <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
                     Worker lease heartbeat receipt fields:{" "}
                     {workerDispatchLeaseHeartbeatPlanReceipt.required_worker_dispatch_lease_heartbeat_receipt_fields.join(
+                      ", ",
+                    )}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Worker cancellation abandon plan
+                </p>
+                <button
+                  type="button"
+                  onClick={onWorkerCancellationAbandonPlanGate}
+                  disabled={
+                    workerCancellationAbandonPlanBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !runnerControlPlanReceipt ||
+                    !budgetProviderAdapterPlanReceipt ||
+                    !providerExecutorAdapterPlanReceipt ||
+                    !retrievalAdapterPlanReceipt ||
+                    !graphAdapterPlanReceipt ||
+                    !finalArtifactAdapterPlanReceipt ||
+                    !operatorDispatchAdapterPlanReceipt ||
+                    !controlLedgerAdapterPlanReceipt ||
+                    !controlLedgerPersistencePlanReceipt ||
+                    !controlLedgerPersistenceApplyPlanReceipt ||
+                    !operatorDispatchActivationReadinessPlanReceipt ||
+                    !liveDispatchFinalEnablementPlanReceipt ||
+                    !liveDispatchFinalEnablementApplyPlanReceipt ||
+                    !runnerDispatchSchedulerPlanReceipt ||
+                    !runnerDispatchWorkerBootstrapPlanReceipt ||
+                    !schedulerLeaseRetryPlanReceipt ||
+                    !workerQueueClaimPlanReceipt ||
+                    !repositoryTransactionPlanReceipt ||
+                    !repositoryCommitRollbackPlanReceipt ||
+                    !workerDispatchLeaseHeartbeatPlanReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {workerCancellationAbandonPlanBusy
+                    ? "Planning shutdown..."
+                    : "Worker cancellation abandon plan"}
+                </button>
+              </div>
+
+              {workerCancellationAbandonPlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {workerCancellationAbandonPlanError}
+                </p>
+              )}
+
+              {workerCancellationAbandonPlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Worker cancellation abandon receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {workerCancellationAbandonPlanReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={workerCancellationAbandonPlanReceipt.status.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Cancellation"
+                      value={
+                        workerCancellationAbandonPlanReceipt.worker_cancellation_allowed
+                          ? "allowed"
+                          : "blocked"
+                      }
+                    />
+                    <Metric
+                      label="Abandon"
+                      value={
+                        workerCancellationAbandonPlanReceipt.worker_abandon_allowed
+                          ? "allowed"
+                          : "blocked"
+                      }
+                    />
+                    <Metric
+                      label="Receipt write"
+                      value={
+                        workerCancellationAbandonPlanReceipt.worker_cancelled ||
+                        workerCancellationAbandonPlanReceipt.worker_abandoned
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Heartbeat plan"
+                      value={
+                        workerCancellationAbandonPlanReceipt.worker_dispatch_lease_heartbeat_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Commit rollback plan"
+                      value={
+                        workerCancellationAbandonPlanReceipt.repository_commit_rollback_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Transaction plan"
+                      value={
+                        workerCancellationAbandonPlanReceipt.repository_transaction_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Queue claim plan"
+                      value={workerCancellationAbandonPlanReceipt.worker_queue_claim_plan_receipt_id}
+                    />
+                    <Metric
+                      label="Cancellation receipt"
+                      value={workerCancellationAbandonPlanReceipt.planned_cancellation_receipt_id}
+                    />
+                    <Metric
+                      label="Abandon receipt"
+                      value={workerCancellationAbandonPlanReceipt.planned_abandon_receipt_id}
+                    />
+                    <Metric
+                      label="Cancellation ledger"
+                      value={
+                        workerCancellationAbandonPlanReceipt.planned_cancellation_ledger_entry_id
+                      }
+                    />
+                    <Metric
+                      label="Abandon ledger"
+                      value={workerCancellationAbandonPlanReceipt.planned_abandon_ledger_entry_id}
+                    />
+                    <Metric
+                      label="Queue claim"
+                      value={workerCancellationAbandonPlanReceipt.planned_queue_claim_id}
+                    />
+                    <Metric
+                      label="Claim lease token"
+                      value={workerCancellationAbandonPlanReceipt.planned_claim_lease_token_id}
+                    />
+                    <Metric
+                      label="Queue"
+                      value={workerCancellationAbandonPlanReceipt.planned_queue_id}
+                    />
+                    <Metric
+                      label="Worker"
+                      value={workerCancellationAbandonPlanReceipt.planned_worker_id}
+                    />
+                    <Metric
+                      label="Worker lease"
+                      value={workerCancellationAbandonPlanReceipt.planned_worker_lease_id}
+                    />
+                    <Metric
+                      label="Runner dispatch"
+                      value={workerCancellationAbandonPlanReceipt.planned_runner_dispatch_id}
+                    />
+                    <Metric
+                      label="Visibility timeout"
+                      value={`${workerCancellationAbandonPlanReceipt.planned_visibility_timeout_seconds}s`}
+                    />
+                    <Metric
+                      label="Lease ttl"
+                      value={`${workerCancellationAbandonPlanReceipt.planned_lease_ttl_seconds}s`}
+                    />
+                    <Metric
+                      label="Abandon after missed"
+                      value={String(
+                        workerCancellationAbandonPlanReceipt.planned_abandon_after_missed_heartbeats,
+                      )}
+                    />
+                    <Metric
+                      label="Idempotency key"
+                      value={workerCancellationAbandonPlanReceipt.planned_idempotency_key}
+                    />
+                    <Metric
+                      label="Adapter"
+                      value={workerCancellationAbandonPlanReceipt.adapter_key.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                    <Metric
+                      label="Blocker"
+                      value={workerCancellationAbandonPlanReceipt.blocker_reason.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                  </div>
+                  <ul className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {workerCancellationAbandonPlanReceipt.required_worker_cancellation_abandon_invariants
+                      .slice(0, 5)
+                      .map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                  </ul>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Worker cancellation abandon blockers:{" "}
+                    {workerCancellationAbandonPlanReceipt.worker_cancellation_abandon_blockers.join(
+                      ", ",
+                    )}
+                  </p>
+                  <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Worker cancellation abandon receipt fields:{" "}
+                    {workerCancellationAbandonPlanReceipt.required_worker_cancellation_abandon_receipt_fields.join(
                       ", ",
                     )}
                   </p>
