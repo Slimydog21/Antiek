@@ -43,6 +43,7 @@ import {
   operatorArchivePackageDeliveryReportFinalDispatchAttestationPlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalDispatchAttestationResultReconciliationPlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalDeliveryHandoffPlanMidnightOil,
+  operatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationPlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistencePlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalDeliveryHandoffResultReconciliationPlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalOperatorArchiveSealAcknowledgementPlanMidnightOil,
@@ -6949,6 +6950,102 @@ vi.mock("../../api/midnightOil", () => ({
         "operator archive package delivery report final delivery handoff result persistence plan only: no final delivery handoff result persistence receipt, ledger entry, status entry, audit entry, dispatch, URL activation, or final artifact is created",
       ],
     })),
+  operatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationPlanMidnightOil:
+    vi.fn(async () => ({
+      receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-plan",
+      operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_plan_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-plan",
+      operator_archive_package_delivery_report_final_delivery_handoff_result_reconciliation_plan_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-reconciliation-plan",
+      operator_archive_package_delivery_report_final_delivery_handoff_plan_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-plan",
+      status:
+        "blocked_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_unimplemented",
+      adapter_key:
+        "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation",
+      planned_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-receipt",
+      planned_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-entry",
+      planned_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_status_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-status-entry",
+      planned_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_audit_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-audit-entry",
+      planned_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-receipt",
+      planned_operator_archive_package_delivery_report_final_delivery_handoff_result_ledger_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-ledger-entry",
+      planned_operator_archive_package_delivery_report_final_delivery_handoff_result_status_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-status-entry",
+      planned_operator_archive_package_delivery_report_final_delivery_handoff_result_audit_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-audit-entry",
+      operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_blockers:
+        [
+          "operator archive package delivery report final delivery handoff result persistence audit-attestation receipt writer",
+          "operator archive package delivery report final delivery handoff result persistence audit-attestation entry writer",
+          "operator archive package delivery report final delivery handoff result persistence audit-attestation status entry writer",
+          "operator archive package delivery report final delivery handoff result persistence audit-attestation audit entry writer",
+        ],
+      required_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_invariants:
+        [
+          "operator archive package delivery report final delivery handoff result persistence audit-attestation planner must require persistence planning before audit attestation rows can be planned",
+        ],
+      required_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_receipt_fields:
+        [
+          "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_receipt_id",
+          "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_entry_id",
+          "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_status_entry_id",
+          "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_audit_entry_id",
+        ],
+      operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_blockers:
+        [
+          "operator archive package delivery report final delivery handoff result persistence receipt writer",
+        ],
+      required_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_invariants:
+        [
+          "operator archive package delivery report final delivery handoff result persistence planner must require final delivery handoff result reconciliation before final delivery handoff result persistence rows can be planned",
+        ],
+      required_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_receipt_fields:
+        [
+          "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_receipt_id",
+        ],
+      blocker_reason:
+        "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_unimplemented",
+      operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_allowed:
+        false,
+      operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_entry_created:
+        false,
+      operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_status_entry_created:
+        false,
+      operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_audit_entry_created:
+        false,
+      operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_allowed:
+        false,
+      operator_archive_package_delivery_report_final_delivery_handoff_result_ledger_entry_created:
+        false,
+      operator_archive_package_delivery_report_final_delivery_handoff_result_status_entry_created:
+        false,
+      operator_archive_package_delivery_report_final_delivery_handoff_result_audit_entry_created:
+        false,
+      operator_archive_package_delivery_report_final_delivery_handoff_result_reconciliation_allowed:
+        false,
+      operator_archive_package_delivery_report_final_delivery_handoff_result_entry_created:
+        false,
+      operator_archive_package_delivery_report_final_delivery_handoff_allowed:
+        false,
+      operator_archive_package_delivery_report_final_delivery_handoff_entry_created:
+        false,
+      operator_notification_created: false,
+      private_read_url_created: false,
+      graph_mutated: false,
+      provider_calls_made: false,
+      retrieval_performed: false,
+      final_artifact_created: false,
+      adapter_plan_notes: [
+        "operator archive package delivery report final delivery handoff result persistence audit-attestation plan only: no audit attestation receipt, entry, status entry, audit entry, dispatch, URL activation, or final artifact is created",
+      ],
+    })),
 }));
 
 describe("MidnightOil", () => {
@@ -12957,6 +13054,104 @@ describe("MidnightOil", () => {
     expect(
       screen.getAllByText(
         /operator_archive_package_delivery_report_final_delivery_handoff_result_audit_entry_id/,
+      ).length,
+    ).toBeGreaterThan(0);
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Operator archive package delivery report final delivery handoff result persistence audit-attestation plan",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(
+        operatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationPlanMidnightOil,
+      ).toHaveBeenCalled(),
+    );
+    expect(
+      operatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationPlanMidnightOil,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_plan_receipt:
+          expect.objectContaining({
+            receipt_id:
+              "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-plan",
+          }),
+        operator_archive_package_delivery_report_final_delivery_handoff_result_reconciliation_plan_receipt:
+          expect.objectContaining({
+            receipt_id:
+              "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-reconciliation-plan",
+          }),
+      }),
+    );
+    expect(
+      screen.getByText(
+        "Operator archive package delivery report final delivery handoff result persistence audit-attestation receipt",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-plan",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "blocked operator archive package delivery report final delivery handoff result persistence audit attestation unimplemented",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-receipt",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-entry",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-status-entry",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-audit-entry",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "operator archive package delivery report final delivery handoff result persistence audit-attestation planner must require persistence planning before audit attestation rows can be planned",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Operator archive package delivery report final delivery handoff result persistence audit-attestation blockers:/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /operator archive package delivery report final delivery handoff result persistence audit-attestation receipt writer/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Operator archive package delivery report final delivery handoff result persistence audit-attestation receipt fields:/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getAllByText(
+        /operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_entry_id/,
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(
+        /operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_status_entry_id/,
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(
+        /operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_audit_entry_id/,
       ).length,
     ).toBeGreaterThan(0);
   }, 25000);
