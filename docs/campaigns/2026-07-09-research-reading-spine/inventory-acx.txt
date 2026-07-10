@@ -1,0 +1,13 @@
+# inventory-acx · suite rewrite rationale title-only Write seed honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: acx
+date: 2026-07-10
+parent_tip: 3edee132 (acw)
+
+## Closed
+- propose_suite_delta rationale appends title-only Write seed (has_body=false) count
+- Closes recursive rewrite loop: UI has-body → usage failed → suite proposal audit
+- pytest test_suite_rewrite_title_only_acx + test_antiek_bench · 10 passed
+
+## Not in scope
+- Operator merge PR #465

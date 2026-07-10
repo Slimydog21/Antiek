@@ -114,6 +114,14 @@ def propose_suite_delta(
         )
         added.append(item_id)
 
+    # Residual (acx): title-only Write seeds (has_body=false → failed) feed
+    # recursive rewrite — surface count so operators audit body honesty.
+    title_only_failed = sum(
+        1
+        for ev in events
+        if str(ev.get("outcome") or "").lower() == "failed"
+        and ev.get("has_body") is False
+    )
     if not added:
         # Still form a proposal that re-states base (no-op delta) so operator sees honesty
         rationale = "No failed usage events; proposal is a no-op snapshot of the base suite."
@@ -121,6 +129,11 @@ def propose_suite_delta(
         rationale = (
             f"Ingested {len(events)} usage events; added {len(added)} items "
             f"from failed outcomes for task classes present in usage."
+        )
+    if title_only_failed:
+        rationale = (
+            f"{rationale} · title-only Write seeds (has_body=false): "
+            f"{title_only_failed} (body honesty → suite rewrite)"
         )
 
     proposed_version = f"{base.suite_version}+usage-{fp[:8]}"
