@@ -15529,6 +15529,168 @@ class MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultP
     )
 
 
+class MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationPlanRequest(
+    MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistencePlanRequest
+):
+    operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_plan_receipt: (
+        MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistencePlanReceipt
+    )
+
+    @model_validator(mode="after")
+    def _operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_plan_matches(
+        self,
+    ) -> MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationPlanRequest:
+        persistence_plan = (
+            self.operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_plan_receipt
+        )
+        result_plan = (
+            self.operator_archive_package_delivery_report_final_delivery_handoff_result_reconciliation_plan_receipt
+        )
+        if (
+            persistence_plan.operator_archive_package_delivery_report_final_delivery_handoff_result_reconciliation_plan_receipt_id
+            != result_plan.receipt_id
+        ):
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_plan_receipt must reference operator_archive_package_delivery_report_final_delivery_handoff_result_reconciliation_plan_receipt"
+            )
+        if (
+            persistence_plan.operator_archive_package_delivery_report_final_delivery_handoff_plan_receipt_id
+            != self.operator_archive_package_delivery_report_final_delivery_handoff_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_plan_receipt must reference operator_archive_package_delivery_report_final_delivery_handoff_plan_receipt"
+            )
+        if (
+            persistence_plan.operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle_result_reconciliation_plan_receipt_id
+            != self.operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle_result_reconciliation_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_plan_receipt must reference operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle_result_reconciliation_plan_receipt"
+            )
+        if persistence_plan.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_plan_receipt must reference runner_handoff"
+            )
+        if persistence_plan.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_plan_receipt must reference approval_receipt"
+            )
+        if persistence_plan.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_plan_receipt must reference launch_packet"
+            )
+        if persistence_plan.run_id != self.launch_packet.run_id:
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_plan_receipt must reference launch run"
+            )
+        if (
+            persistence_plan.status
+            != "blocked_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_unimplemented"
+        ):
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_plan_receipt must be blocked_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_unimplemented"
+            )
+        if (
+            persistence_plan.operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_allowed
+            or persistence_plan.operator_archive_package_delivery_report_final_delivery_handoff_result_ledger_entry_created
+            or persistence_plan.operator_archive_package_delivery_report_final_delivery_handoff_result_status_entry_created
+            or persistence_plan.operator_archive_package_delivery_report_final_delivery_handoff_result_audit_entry_created
+        ):
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_plan_receipt must not create operator archive delivery report final delivery handoff result persistence state"
+            )
+        if (
+            persistence_plan.operator_archive_package_delivery_report_final_delivery_handoff_result_reconciliation_allowed
+            or persistence_plan.operator_archive_package_delivery_report_final_delivery_handoff_result_entry_created
+            or persistence_plan.operator_archive_package_delivery_report_final_delivery_handoff_status_result_entry_created
+            or persistence_plan.operator_archive_package_delivery_report_final_delivery_handoff_audit_result_entry_created
+        ):
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_plan_receipt must not create operator archive delivery report final delivery handoff result state"
+            )
+        if (
+            persistence_plan.operator_archive_package_delivery_report_final_delivery_handoff_allowed
+            or persistence_plan.operator_archive_package_delivery_report_final_delivery_handoff_entry_created
+            or persistence_plan.operator_archive_package_delivery_report_final_delivery_handoff_status_entry_created
+            or persistence_plan.operator_archive_package_delivery_report_final_delivery_handoff_audit_entry_created
+        ):
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_plan_receipt must not create operator archive delivery report final delivery handoff state"
+            )
+        if (
+            persistence_plan.final_artifact_publish_allowed
+            or persistence_plan.publish_transaction_created
+            or persistence_plan.information_asset_published
+            or persistence_plan.account_visible_asset_created
+            or persistence_plan.reading_workspace_entry_created
+            or persistence_plan.search_index_entry_created
+            or persistence_plan.private_read_url_created
+            or persistence_plan.operator_notification_created
+            or persistence_plan.graph_commit_created
+            or persistence_plan.graph_mutated
+            or persistence_plan.dispatch_performed
+            or persistence_plan.budget_reserved
+            or persistence_plan.provider_calls_made
+            or persistence_plan.retrieval_performed
+            or persistence_plan.source_receipts_created
+            or persistence_plan.final_artifact_created
+        ):
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_plan_receipt must not publish, notify, dispatch, spend, call providers, retrieve, mutate graph, or create final artifacts"
+            )
+        return self
+
+
+class MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationPlanReceipt(
+    MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistencePlanReceipt
+):
+    operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_plan_receipt_id: (
+        str
+    )
+    status: Literal[
+        "blocked_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_unimplemented"
+    ] = "blocked_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_unimplemented"
+    adapter_key: Literal[
+        "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation"
+    ] = "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation"
+    planned_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_receipt_id: (
+        str
+    )
+    planned_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_entry_id: (
+        str
+    )
+    planned_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_status_entry_id: (
+        str
+    )
+    planned_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_audit_entry_id: (
+        str
+    )
+    operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_blockers: list[
+        str
+    ]
+    required_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_invariants: list[
+        str
+    ]
+    required_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_receipt_fields: list[
+        str
+    ]
+    blocker_reason: Literal[
+        "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_unimplemented"
+    ] = "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_unimplemented"
+    operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_allowed: bool = (
+        False
+    )
+    operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_entry_created: bool = (
+        False
+    )
+    operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_status_entry_created: bool = (
+        False
+    )
+    operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_audit_entry_created: bool = (
+        False
+    )
+
+
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
     price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
@@ -23913,6 +24075,109 @@ def operator_archive_package_delivery_report_final_delivery_handoff_result_persi
             "this receipt documents operator archive package delivery report final delivery handoff result persistence requirements after final delivery handoff result reconciliation planning",
             "no activation readiness, live dispatch, scheduler job, worker runtime, budget reservation, provider call, retrieval, source receipt, graph mutation, publish, notification, URL activation, run closeout, archive write, package write, package result write, delivery audit write, delivery audit result write, delivery report write, delivery report result write, delivery confirmation write, delivery confirmation result write, final operator acknowledgement write, acknowledgement result write, final closeout acknowledgement write, final operator delivery closeout write, final operator delivery closeout result write, final delivery audit envelope write, final delivery audit envelope result write, final dispatch attestation write, final dispatch attestation result write, final delivery evidence seal write, final operator archive seal acknowledgement write, final delivery evidence seal attestation write, final delivery evidence seal attestation result write, final operator delivery acknowledgement bundle write, final operator delivery acknowledgement bundle result write, final delivery handoff write, final delivery handoff result write, final delivery handoff result persistence write, retention write, billing write, usage write, source archive write, or artifact write is performed",
             f"operator archive package delivery report final delivery handoff result reconciliation lineage remains planned-only at {result_plan.receipt_id}",
+        ],
+    )
+
+
+def operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_plan_midnight_oil(
+    req: MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationPlanRequest,
+) -> MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationPlanReceipt:
+    run_id = req.launch_packet.run_id
+    persistence_plan = (
+        req.operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_plan_receipt
+    )
+    persistence_kwargs = persistence_plan.model_dump(
+        exclude={
+            "receipt_id",
+            "status",
+            "adapter_key",
+            "blocker_reason",
+            "adapter_plan_notes",
+        }
+    )
+    return MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationPlanReceipt(
+        **persistence_kwargs,
+        receipt_id=(
+            f"{run_id}-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-plan"
+        ),
+        operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_plan_receipt_id=(
+            persistence_plan.receipt_id
+        ),
+        planned_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_receipt_id=(
+            f"{run_id}-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-receipt"
+        ),
+        planned_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_entry_id=(
+            f"{run_id}-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-entry"
+        ),
+        planned_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_status_entry_id=(
+            f"{run_id}-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-status-entry"
+        ),
+        planned_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_audit_entry_id=(
+            f"{run_id}-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-audit-entry"
+        ),
+        operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_blockers=[
+            *persistence_plan.operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_blockers,
+            "operator archive package delivery report final delivery handoff result persistence audit attestation receipt writer",
+            "operator archive package delivery report final delivery handoff result persistence audit attestation entry writer",
+            "operator archive package delivery report final delivery handoff result persistence audit attestation status entry writer",
+            "operator archive package delivery report final delivery handoff result persistence audit attestation audit entry writer",
+            "operator archive package delivery report final delivery handoff result persistence audit attestation replay guard",
+        ],
+        required_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_invariants=[
+            "operator archive package delivery report final delivery handoff result persistence audit attestation planner must require final delivery handoff result persistence planning before final delivery handoff result persistence audit attestation rows can be planned",
+            "operator archive package delivery report final delivery handoff result persistence audit attestation planner must bind final delivery handoff result persistence audit attestation receipt, entry, status entry, audit entry, final delivery handoff result persistence receipt, final delivery handoff result ledger entry, final delivery handoff result reconciliation receipt, final delivery handoff result entry, final delivery handoff receipt, private read URL, hosted HTML asset, and idempotency key to the same planned closed run",
+            "operator archive package delivery report final delivery handoff result persistence audit attestation planner must keep audit attestation rows uncreated until real final delivery handoff result persistence rows exist",
+            "operator archive package delivery report final delivery handoff result persistence audit attestation planner must preserve final delivery handoff result persistence lineage without sending notifications, publishing assets, activating URLs, mutating graph state, billing accounts, dispatching providers, or closing the run during planning",
+            "operator archive package delivery report final delivery handoff result persistence audit attestation planner must not dispatch providers, perform retrieval, mutate graph, publish assets, notify operators, activate URLs, close runs, write final delivery handoff result persistence audit attestation rows, write final delivery handoff result persistence rows, write final delivery handoff result rows, write final delivery handoff rows, write final operator delivery acknowledgement bundle result rows, write final operator delivery acknowledgement bundle rows, write final delivery evidence seal attestation result rows, write final delivery evidence seal attestation rows, write final operator archive seal acknowledgement rows, write final delivery evidence seal rows, write final dispatch attestation result rows, write final dispatch attestation rows, write final delivery audit envelope result rows, write final delivery audit envelope rows, write final operator delivery closeout result rows, write final operator delivery closeout rows, write final closeout acknowledgement rows, write acknowledgement result rows, write acknowledgement rows, write confirmation result rows, write confirmation rows, write notification rows, write archive rows, write package rows, write delivery report rows, write retention rows, write billing rows, write usage rollups, write source archives, or write final artifacts while planning final delivery handoff result persistence audit attestation",
+        ],
+        required_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_receipt_fields=[
+            "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_plan_receipt_id",
+            "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_plan_receipt_id",
+            "operator_archive_package_delivery_report_final_delivery_handoff_result_reconciliation_plan_receipt_id",
+            "operator_archive_package_delivery_report_final_delivery_handoff_plan_receipt_id",
+            "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_receipt_id",
+            "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_entry_id",
+            "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_status_entry_id",
+            "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_audit_entry_id",
+            "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_receipt_id",
+            "operator_archive_package_delivery_report_final_delivery_handoff_result_ledger_entry_id",
+            "operator_archive_package_delivery_report_final_delivery_handoff_result_status_entry_id",
+            "operator_archive_package_delivery_report_final_delivery_handoff_result_audit_entry_id",
+            "operator_archive_package_delivery_report_final_delivery_handoff_result_reconciliation_receipt_id",
+            "operator_archive_package_delivery_report_final_delivery_handoff_result_entry_id",
+            "operator_archive_package_delivery_report_final_delivery_handoff_receipt_id",
+            "operator_archive_package_delivery_report_final_delivery_handoff_entry_id",
+            "operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle_result_reconciliation_receipt_id",
+            "operator_archive_package_delivery_report_final_operator_delivery_acknowledgement_bundle_result_entry_id",
+            "operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_result_reconciliation_receipt_id",
+            "operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_receipt_id",
+            "operator_archive_package_delivery_report_final_delivery_evidence_seal_receipt_id",
+            "operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_receipt_id",
+            "operator_archive_package_delivery_report_final_delivery_audit_envelope_result_reconciliation_receipt_id",
+            "operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_receipt_id",
+            "operator_archive_package_delivery_report_final_closeout_acknowledgement_receipt_id",
+            "operator_archive_package_delivery_report_acknowledgement_result_reconciliation_receipt_id",
+            "operator_archive_package_delivery_report_final_operator_acknowledgement_receipt_id",
+            "operator_archive_package_delivery_report_delivery_confirmation_result_reconciliation_receipt_id",
+            "operator_archive_package_delivery_report_notification_result_reconciliation_receipt_id",
+            "operator_archive_package_delivery_report_result_reconciliation_receipt_id",
+            "private_read_url_id",
+            "hosted_html_asset_id",
+            "idempotency_key",
+            "created_at",
+        ],
+        blocker_reason=(
+            "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_unimplemented"
+        ),
+        operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_allowed=False,
+        operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_entry_created=False,
+        operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_status_entry_created=False,
+        operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_audit_entry_created=False,
+        adapter_plan_notes=[
+            "operator archive package delivery report final delivery handoff result persistence audit attestation plan only: no audit attestation receipt, entry, status entry, audit entry, dispatch, URL activation, or final artifact is created",
+            "this receipt documents operator archive package delivery report final delivery handoff result persistence audit attestation requirements after final delivery handoff result persistence planning",
+            "no activation readiness, live dispatch, scheduler job, worker runtime, budget reservation, provider call, retrieval, source receipt, graph mutation, publish, notification, URL activation, run closeout, archive write, package write, package result write, delivery audit write, delivery audit result write, delivery report write, delivery report result write, delivery confirmation write, final operator acknowledgement write, acknowledgement result write, final closeout acknowledgement write, final operator delivery closeout write, final operator delivery closeout result write, final delivery audit envelope write, final delivery audit envelope result write, final dispatch attestation write, final dispatch attestation result write, final delivery evidence seal write, final operator archive seal acknowledgement write, final delivery evidence seal attestation write, final delivery evidence seal attestation result write, final operator delivery acknowledgement bundle write, final operator delivery acknowledgement bundle result write, final delivery handoff write, final delivery handoff result write, final delivery handoff result persistence write, final delivery handoff result persistence audit attestation write, retention write, billing write, usage write, source archive write, or artifact write is performed",
+            f"operator archive package delivery report final delivery handoff result persistence lineage remains planned-only at {persistence_plan.receipt_id}",
         ],
     )
 

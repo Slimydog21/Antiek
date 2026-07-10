@@ -4615,6 +4615,35 @@ export interface MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHan
   adapter_plan_notes: string[];
 }
 
+export interface MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationPlanRequest
+  extends MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistencePlanRequest {
+  operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_plan_receipt: MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistencePlanReceipt;
+}
+
+export interface MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationPlanReceipt
+  extends Omit<
+    MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistencePlanReceipt,
+    "receipt_id" | "status" | "adapter_key" | "blocker_reason" | "adapter_plan_notes"
+  > {
+  receipt_id: string;
+  operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_plan_receipt_id: string;
+  status: "blocked_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_unimplemented";
+  adapter_key: "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation";
+  planned_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_receipt_id: string;
+  planned_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_entry_id: string;
+  planned_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_status_entry_id: string;
+  planned_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_audit_entry_id: string;
+  operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_blockers: string[];
+  required_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_invariants: string[];
+  required_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_receipt_fields: string[];
+  blocker_reason: "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_unimplemented";
+  operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_allowed: boolean;
+  operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_entry_created: boolean;
+  operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_status_entry_created: boolean;
+  operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_audit_entry_created: boolean;
+  adapter_plan_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -6099,4 +6128,24 @@ export async function operatorArchivePackageDeliveryReportFinalDeliveryHandoffRe
     );
   }
   return (await resp.json()) as MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistencePlanReceipt;
+}
+
+export async function operatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationPlanMidnightOil(
+  request: MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationPlanRequest,
+): Promise<MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationPlanReceipt> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/midnight-oil/operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-plan`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+  );
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(
+      `POST /research/midnight-oil/operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-plan: HTTP ${resp.status}: ${body}`,
+    );
+  }
+  return (await resp.json()) as MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationPlanReceipt;
 }
