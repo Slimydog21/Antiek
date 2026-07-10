@@ -4179,3 +4179,8 @@ vitest 7 green. P0 PR #465. Pivot asl+ outside thrash.
 WRITE_SEED_FEED_SOURCES + TWIN_WRITE_SEED_USAGE_SOURCES += marketplace_free_host ·
 publication_attach. Competitive delta: reading≡writing flywheel tracks free host
 and knowledge-dense attach. Frontend↔substrate parity. P0 PR #465. Pivot asm+.
+
+## Residual asm · 2026-07-10 — dogfood v36 readiness→CTA · RAG/CAI · free-host
+suite-competitive-dogfood-v36 · 56 items · readiness CTA matrix · RAG/Constitutional
+presets · free-host HTML port book_qa. Competitive delta: recursive rewrite learns
+product honesty from arw–ask wave. propose≠promote. P0 PR #465. Pivot asn+.

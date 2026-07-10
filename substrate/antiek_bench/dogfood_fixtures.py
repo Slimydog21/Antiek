@@ -47,7 +47,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (ajw): v33 learns twin promote Write seed depth-graph honesty (ajv).
 # Residual (anj): v34 learns reading conversation + marketplace host collective multi-select (ang–ani).
 # Residual (ano): v35 learns free PD Nicomachean Ethics philosophy book_qa (anm).
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v35"
+# Residual (asm): v36 learns readiness→CTA · free-host · pub attach · RAG/CAI presets (arw–ask).
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v36"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -1010,6 +1011,66 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "html",
                 "philosophy",
                 "aristotle",
+            ),
+        ),
+        # Residual (asm/arw–asb): readiness pure helpers drive product CTAs.
+        SuiteItem(
+            item_id="dogfood-wrestle-readiness-cta-matrix",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with readiness→CTA contracts: when free-host Host-into-account, "
+                "twin promote, SpawnMerge draft/parent, MO approve/run, publication Attach, "
+                "collective written analysis (≥2), decision-tree Install, and DR float|full "
+                "CTAs disable until pure readiness (host_ready · substrate kind · pathChoices · "
+                "ceiling budget · runnable · attach_ready · written_analysis_ready · model id · "
+                "float_full_ready), how should Antiek-bench learn models that never invent free "
+                "host, notes, parent bind, $0 budget block, live swarm, or auto-route?"
+            ),
+            expected_keywords=(
+                "readiness",
+                "cta",
+                "host",
+                "budget",
+                "offline",
+            ),
+        ),
+        # Residual (asm/ask): RAG + Constitutional AI knowledge-dense presets.
+        SuiteItem(
+            item_id="dogfood-wrestle-pub-rag-constitutional-presets",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with knowledge-dense quick-call expansion: when PublicationAttachPanel "
+                "presets include RAG (arxiv:2005.11401) and Constitutional AI (arxiv:2212.08073) "
+                "as insert-only chips (data-auto-hydrate=false · never invent live body) gated by "
+                "publicationAttachReadiness before Attach+hydrate, how should Antiek-bench learn "
+                "models that ground world-class deep research with arxiv connectors offline-honest "
+                "until dual-gate L1/L2 live injectors?"
+            ),
+            expected_keywords=(
+                "rag",
+                "arxiv",
+                "constitutional",
+                "hydrate",
+                "offline",
+            ),
+        ),
+        # Residual (asm/asj–asl): free-host + attach vision/write-seed feeds.
+        SuiteItem(
+            item_id="dogfood-book-free-host-html-port",
+            task_class="book_qa",
+            prompt=(
+                "Book QA over free HTML marketplace host path: when free public-domain books "
+                "use marketplaceFreeHostReadiness.host_ready to gate Host into account and "
+                "marketplace_free_host / publication_attach feed Antiek-bench vision + Write "
+                "seed weekly rewrite (propose≠promote), how should models keep HTML-first "
+                "seamless port without inventing free inventory or PDF view?"
+            ),
+            expected_keywords=(
+                "free",
+                "host",
+                "html",
+                "marketplace",
+                "pdf",
             ),
         ),
     )
