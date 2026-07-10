@@ -920,6 +920,17 @@ describe("Settings SPR-01 + decision-tree install", () => {
         .getByTestId("settings-deferred-l7-checklist-link")
         .getAttribute("href"),
     ).toMatch(/#l7-notdiamond/);
+    // Residual (ahz): FUTURE-AGENT L5/L6 executable briefs from deferred map.
+    expect(
+      screen
+        .getByTestId("settings-deferred-l5-future-agent-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-l5-digital-book-seamless-port/);
+    expect(
+      screen
+        .getByTestId("settings-deferred-l6-future-agent-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-l6-live-multiagent-collective/);
     // Residual (wo): Deferred L7 → in-app ND advisory panel (never-router).
     expect(
       screen

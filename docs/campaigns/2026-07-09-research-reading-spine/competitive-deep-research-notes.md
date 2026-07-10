@@ -2799,3 +2799,8 @@ PR #465. Pivot ahy+ outside thrash.
 NotDiamond L7 prep nav links FUTURE-AGENT-SPEC-notdiamond-advisory-only.md so
 operators reach advisory-only / never-router verdict from Settings. vitest
 Settings 36 green. P0 operator merge PR #465. Pivot ahz+.
+
+## Residual ahz · 2026-07-10 — Settings deferred map FUTURE-AGENT L5/L6 deep-links
+Deferred map L5/L6 rows link FUTURE-AGENT digital book port + live multi-agent
+council briefs. Completes Settings navigation for L5–L7 FUTURE-AGENT doctrine.
+vitest Settings 36 green. P0 operator merge PR #465. Pivot aia+.

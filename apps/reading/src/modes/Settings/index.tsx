@@ -3998,6 +3998,16 @@ export default function Settings() {
                 >
                   L5 checklist
                 </a>
+                {" · "}
+                {/* Residual (ahz): FUTURE-AGENT L5 digital book port brief. */}
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-l5-digital-book-seamless-port.md"
+                  data-testid="settings-deferred-l5-future-agent-link"
+                  className="underline opacity-90 hover:opacity-100"
+                  title="Future-agent executable brief for L5 digital book seamless port"
+                >
+                  FUTURE-AGENT L5 port
+                </a>
               </li>
               <li data-deferred="l6-collective" data-testid="settings-deferred-l6">
                 L6 live multi-agent council — offline merge unit only today ·{" "}
@@ -4007,6 +4017,16 @@ export default function Settings() {
                   className="underline opacity-90 hover:opacity-100"
                 >
                   L6 checklist
+                </a>
+                {" · "}
+                {/* Residual (ahz): FUTURE-AGENT L6 live multi-agent brief. */}
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-l6-live-multiagent-collective.md"
+                  data-testid="settings-deferred-l6-future-agent-link"
+                  className="underline opacity-90 hover:opacity-100"
+                  title="Future-agent executable brief for L6 live multi-agent collective"
+                >
+                  FUTURE-AGENT L6 council
                 </a>
               </li>
               <li data-deferred="l7-nd" data-testid="settings-deferred-l7">

@@ -1,0 +1,14 @@
+# inventory-ahz · Settings deferred map FUTURE-AGENT L5/L6 deep-links
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ahz
+date: 2026-07-10
+parent_tip: 58897d94 (ahy)
+
+## Closed
+- Settings deferred map L5/L6 rows link FUTURE-AGENT L5 port + L6 council briefs
+- Completes Settings chokepoint navigation for L5–L7 FUTURE-AGENT briefs
+- vitest Settings 36 green
+
+## Next
+aia+ product residual · infinite continues
+Operator merge PR #465 remains highest leverage (gated)
