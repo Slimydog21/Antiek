@@ -1,0 +1,19 @@
+# inventory-abi · catalog HTML free_count/public_domain_count honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: abi
+date: 2026-07-10
+tip_before: 486bb869 (abh)
+
+## Problem
+project_catalog_html stamped Entries + payment honesty but omitted free_count /
+public_domain_count — HTML catalog window lacked API-parity free/PD identity.
+
+## Fix
+- free_count + public_domain_count on filtered projection header line
+- test_marketplace_catalog_html_ly locks free_count= in HTML · free_only ≥17
+
+## Verified
+pytest test_marketplace_catalog_html_ly → 5 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

@@ -36,6 +36,17 @@ def test_project_catalog_html_never_pdf() -> None:
     assert "By subject:" in html or "by subject" in html.lower()
     assert "project_gutenberg" in html
     assert "mathematics" in html or "science" in html
+    # Residual (abi): free_count / public_domain_count on HTML projection (parity API).
+    assert "free_count=" in html
+    assert "public_domain_count=" in html
+    free_only = project_catalog_html(default_demo_catalog(), free_only=True)
+    assert "free_count=" in free_only
+    # free_only projection: free_count equals filtered entries (all free).
+    import re
+
+    m = re.search(r"free_count=(\d+)", free_only)
+    assert m is not None
+    assert int(m.group(1)) >= 17
 
 
 def test_project_catalog_html_filters_compose() -> None:

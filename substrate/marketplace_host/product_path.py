@@ -221,6 +221,15 @@ def project_catalog_html(
     subject_line = " · ".join(
         f"{k}={v}" for k, v in sorted(by_subject.items())
     ) or "(none)"
+    # Residual (abi): free / PD counts on filtered projection (parity API free_count).
+    free_count = sum(
+        1
+        for e in filtered
+        if e.license_class == "public_domain" and e.is_free
+    )
+    public_domain_count = sum(
+        1 for e in filtered if e.license_class == "public_domain"
+    )
 
     blocks: list[dict[str, Any]] = [
         {
@@ -235,6 +244,7 @@ def project_catalog_html(
                     "type": "text",
                     "text": (
                         f"Entries={len(filtered)} of {len(entries)} · view=HTML · "
+                        f"free_count={free_count} · public_domain_count={public_domain_count} · "
                         "payment=manual_receipt_only (no live rails)"
                         + (f" · free_only={free_only}" if free_only else "")
                         + (f" · subject={subj_token}" if subj_token else "")

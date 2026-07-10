@@ -1996,3 +1996,8 @@ size honesty tracks corpus growth.
 Offline free_pd catalog spine floor raised to ≥17 free PD HTML hosts after Hooke.
 Competitive delta: free STEM corpus size honesty tracks growth (parity free_count abg).
 
+## Residual abi · 2026-07-10 — catalog HTML free_count/public_domain_count honesty
+project_catalog_html header stamps free_count + public_domain_count (parity API
+catalog honesty). Competitive delta: filter-aware HTML catalog window is
+identity-honest for free/PD STEM browse without a second network hop.
+
