@@ -997,6 +997,18 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(scorecard.getAttribute("data-view-format")).toBe("html");
     expect(scorecard.getAttribute("data-html-first")).toBe("true");
     expect(scorecard.getAttribute("data-propose-not-promote")).toBe("true");
+    // Residual (arm): offline product surface catalog honesty.
+    expect(scorecard.getAttribute("data-live-injectors-deferred")).toBe("true");
+    expect(scorecard.getAttribute("data-notdiamond-is-router")).toBe("false");
+    expect(
+      Number(scorecard.getAttribute("data-offline-surface-count") || 0),
+    ).toBeGreaterThanOrEqual(10);
+    const offlineCat = screen.getByTestId(
+      "competitive-dr-offline-surface-catalog",
+    );
+    expect(offlineCat.getAttribute("data-notdiamond-is-router")).toBe("false");
+    expect(offlineCat.textContent).toMatch(/Offline surface catalog/i);
+    expect(offlineCat.textContent).toMatch(/ND never router/i);
     // Residual (apr): citation hop pipeline (api) + multi-stage pipeline (ape) honesty.
     const citationTrust = screen.getByTestId("competitive-dr-citation-trust");
     expect(citationTrust.getAttribute("data-status")).toBe("shipped");

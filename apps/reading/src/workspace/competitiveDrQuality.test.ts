@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   CITATION_HOP_PIPELINE_STAGES,
+  COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES,
   COMPETITIVE_DR_PIPELINE_STAGES,
   citationHopStageProgress,
+  competitiveDrOfflineSurfaceCatalog,
   competitiveDrStageProgress,
   competitiveDrWorldClassReadiness,
   normalizeCompetitiveDrStage,
@@ -59,5 +61,23 @@ describe("competitiveDrQuality workspace pure helpers (apw)", () => {
       stage_is_terminal: true,
     });
     expect(both.world_class_bar).toBe("multi_stage_and_hops");
+  });
+
+  it("ships closed offline product surface catalog (arm)", () => {
+    expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES.length).toBeGreaterThanOrEqual(
+      10,
+    );
+    expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
+      "notdiamond_advisory_never_router",
+    );
+    expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
+      "midnight_oil_goals_duration_ceiling",
+    );
+    const cat = competitiveDrOfflineSurfaceCatalog();
+    expect(cat.live_injectors_deferred).toBe(true);
+    expect(cat.notdiamond_is_router).toBe(false);
+    expect(cat.count).toBe(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES.length);
+    expect(cat.summary).toMatch(/offline product surfaces/i);
+    expect(cat.summary).toMatch(/ND never router/i);
   });
 });

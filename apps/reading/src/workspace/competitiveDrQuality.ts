@@ -287,3 +287,45 @@ export function competitiveDrWorldClassReadiness(opts: {
     notes,
   };
 }
+
+/**
+ * Residual (arm): closed catalog of offline product surfaces that constitute
+ * Antiek competitive DR quality (scorecard honesty · never invents live).
+ * Live injectors (L1–L7) remain dual-gate deferred — not listed as shipped live.
+ */
+export const COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES = [
+  "highlight_float_full_path",
+  "spawn_merge_draft_into_parent",
+  "collective_multi_select_written_analysis",
+  "midnight_oil_goals_duration_ceiling",
+  "twin_seed_recursive_note_taker",
+  "research_context_evidence_hop_pipeline",
+  "multi_stage_progress_pipeline",
+  "marketplace_html_free_host",
+  "publication_hydrate_offline_identity",
+  "decision_tree_budget_foresight",
+  "antiek_bench_recursive_rewrite",
+  "notdiamond_advisory_never_router",
+] as const;
+
+export type CompetitiveDrOfflineProductSurface =
+  (typeof COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES)[number];
+
+export type CompetitiveDrOfflineSurfaceCatalog = {
+  surfaces: readonly CompetitiveDrOfflineProductSurface[];
+  count: number;
+  live_injectors_deferred: true;
+  notdiamond_is_router: false;
+  summary: string;
+};
+
+/** Honesty catalog for Settings competitive scorecard / FUTURE agents. */
+export function competitiveDrOfflineSurfaceCatalog(): CompetitiveDrOfflineSurfaceCatalog {
+  return {
+    surfaces: COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES,
+    count: COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES.length,
+    live_injectors_deferred: true,
+    notdiamond_is_router: false,
+    summary: `${COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES.length} offline product surfaces shipped · live L1–L7 dual-gate deferred · ND never router`,
+  };
+}

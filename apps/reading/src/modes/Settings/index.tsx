@@ -18,6 +18,7 @@ import {
   countWriteSeedKnownSources,
   isWriteSeedFeedSource,
 } from "../../lib/writeSeedFeedSources";
+import { competitiveDrOfflineSurfaceCatalog } from "../../workspace/competitiveDrQuality";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import {
@@ -4659,12 +4660,33 @@ export default function Settings() {
             data-view-format="html"
             data-propose-not-promote="true"
             data-html-first="true"
+            data-offline-surface-count={String(
+              competitiveDrOfflineSurfaceCatalog().count,
+            )}
+            data-live-injectors-deferred="true"
+            data-notdiamond-is-router="false"
+            data-twin-search-defaults="true"
             role="status"
           >
             <p className="text-[11px] font-mono text-ink-soft dark:text-starlight">
               Honest map of world-class DR patterns vs Antiek spine — never
               claim live injectors offline. HTML-first · soft budget · ND
               advisory only.
+            </p>
+            {/* Residual (arm): closed offline product surface catalog honesty. */}
+            <p
+              className="text-[11px] font-mono opacity-90"
+              data-testid="competitive-dr-offline-surface-catalog"
+              data-offline-surface-count={String(
+                competitiveDrOfflineSurfaceCatalog().count,
+              )}
+              data-live-injectors-deferred="true"
+              data-notdiamond-is-router="false"
+              data-html-first="true"
+              role="status"
+            >
+              Offline surface catalog ·{" "}
+              {competitiveDrOfflineSurfaceCatalog().summary}
             </p>
             <ul
               className="space-y-1.5 text-[11px] font-mono"

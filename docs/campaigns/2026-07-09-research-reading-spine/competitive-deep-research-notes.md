@@ -4038,3 +4038,8 @@ Pivot arl+ outside thrash.
 Driver chokepoint ND advisory link stamps implement-as-router=false · L7 ·
 never-auto-route (parity Settings arj verdict). vitest 15 green. P0 PR #465.
 Pivot arm+ outside thrash.
+
+## Residual arm · 2026-07-10 — competitive offline product surface catalog
+COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES + scorecard chrome. Honest map of 12
+offline surfaces · live deferred · ND never router. vitest 42 green. P0 PR #465.
+Pivot arn+.

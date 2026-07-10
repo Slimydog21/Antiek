@@ -1,0 +1,15 @@
+# inventory-arm · competitive offline product surface catalog
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: arm
+date: 2026-07-10
+parent_tip: 3caab81ef (arl)
+
+## Closed
+- COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES closed catalog (12 surfaces)
+- competitiveDrOfflineSurfaceCatalog() pure helper
+- Settings scorecard stamps + chrome
+- vitest competitiveDrQuality 5 + Settings 37 = 42 green
+- evidence: {SCRATCH}/arm-offline-catalog-vitest.txt
+
+## Next
+arn+ outside thrash · Operator merge PR #465
