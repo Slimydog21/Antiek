@@ -183,14 +183,9 @@ def run_worker_iteration(
         put_job_state(failed, store=store)
         raise
 
-    spawn_ids = job.spawn_ids
-    if result.spawn_id and result.spawn_id not in spawn_ids:
-        spawn_ids += (result.spawn_id,)
     job = replace(
         job,
         spent_usd=balance.spent_cents / 100,
-        spawn_ids=spawn_ids,
-        elapsed_ms=max(0, clock.now_ms() - (job.started_at_ms or clock.now_ms())),
     )
     actual_cents = _usd_to_cents(
         float(result.spent_usd), ceiling=False, field="step spent_usd"
@@ -206,6 +201,16 @@ def run_worker_iteration(
             ),
         )
     else:
+        spawn_ids = job.spawn_ids
+        if result.spawn_id and result.spawn_id not in spawn_ids:
+            spawn_ids += (result.spawn_id,)
+        job = replace(
+            job,
+            spawn_ids=spawn_ids,
+            elapsed_ms=max(
+                0, clock.now_ms() - (job.started_at_ms or clock.now_ms())
+            ),
+        )
         if on_spawn is not None:
             on_spawn(job, result)
         if result.done:
