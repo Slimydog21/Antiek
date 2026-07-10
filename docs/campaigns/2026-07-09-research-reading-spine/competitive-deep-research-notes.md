@@ -3316,3 +3316,8 @@ spine + TwinNotes coverage path. P0 operator merge PR #465. Pivot alw+ outside t
 ## Residual alw · 2026-07-10 — FUTURE twin search residual coverage-path note
 Competitive residual #3 names full free PD spine + TwinNotes coverage path.
 P0 operator merge PR #465. Pivot alx+ outside thrash (prefer code product).
+
+## Residual alx · 2026-07-10 — MarketplaceHost TwinNotes host-land with domainSubjects
+After catalog host land, TwinNotesPanel mounts with free PD domainSubjects so
+recursive note-taker is available without opening HostedHtml (reading ≡ research).
+vitest MarketplaceHost 41 green. P0 operator merge PR #465. Pivot aly+ outside thrash.

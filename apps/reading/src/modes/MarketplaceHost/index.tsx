@@ -72,10 +72,13 @@
  * recursive note-taker substrate after host/purchase.
  * Residual (alm): host-land domain-search coverage honesty (alj) so free PD
  * catalog subjects map to intelligent twin-search defaults after host.
+ * Residual (alx): TwinNotesPanel on host land with catalog domainSubjects
+ * (reading ≡ research recursive note-taker without requiring open window).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { seedTwinNotes } from "../../api/engagement";
+import { TwinNotesPanel } from "../../components/engagement/TwinNotesPanel";
 import { domainSearchCoverage } from "../../workspace/domainSearchDefaults";
 import {
   fetchAccountLibrary,
@@ -1679,6 +1682,60 @@ export default function MarketplaceHost({
             Research substrate: HTML host + offline twin seed path (recursive
             note-taker) — ready for floating deep research on this book
           </p>
+          {/* Residual (alx): TwinNotes on host land with catalog domain subjects. */}
+          {hosted.document_id?.trim() ? (
+            <section
+              className="mt-2 space-y-1 border rounded p-3"
+              data-testid="marketplace-host-twins-mount"
+              data-view-format="html"
+              data-document-id={hosted.document_id.trim()}
+              data-book-id={hosted.book_id || ""}
+              data-domain-subjects={
+                catalogSubjectsForBook(hosted.book_id).join(",") || "none"
+              }
+              data-domain-search-has-default={String(
+                Boolean(hostedDomainCoverage?.has_default),
+              )}
+              data-seamless-marketplace-twins="true"
+              data-research-tier={hostDrTier}
+            >
+              <div
+                data-testid="marketplace-host-twins-refresh"
+                data-refresh-key={
+                  twinSeedStatus
+                    ? twinSeedHonesty?.seeded === false
+                      ? "skipped"
+                      : "seeded"
+                    : "pending"
+                }
+              >
+                <TwinNotesPanel
+                  key={`mkt-twins-${hosted.document_id.trim()}-${
+                    twinSeedStatus
+                      ? twinSeedHonesty?.seeded === false
+                        ? "skipped"
+                        : "seeded"
+                      : "pending"
+                  }`}
+                  assetId={hosted.document_id.trim()}
+                  autoLoad
+                  autoSeedIfEmpty
+                  seedTitle={
+                    hosted.title?.trim() ||
+                    hosted.book_id ||
+                    hosted.document_id.trim()
+                  }
+                  seedBodyText={
+                    (hosted.body_preview || hosted.html || "").slice(0, 2000) ||
+                    hosted.title ||
+                    ""
+                  }
+                  researchTier={hostDrTier}
+                  domainSubjects={catalogSubjectsForBook(hosted.book_id)}
+                />
+              </div>
+            </section>
+          ) : null}
           {/* Residual (mb): Antiek-bench usage feed honesty after host. */}
           {hosted.usage_event ? (
             <p

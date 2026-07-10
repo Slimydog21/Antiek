@@ -85,6 +85,28 @@ vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
   ),
 }));
 
+// Residual (alx): TwinNotes on host land — stub avoids engagement API surface.
+vi.mock("../../components/engagement/TwinNotesPanel", () => ({
+  TwinNotesPanel: (props: {
+    assetId: string;
+    researchTier?: string | null;
+    domainSubjects?: readonly string[] | null;
+    autoLoad?: boolean;
+    autoSeedIfEmpty?: boolean;
+  }) => (
+    <div
+      data-testid="twin-notes-panel-stub"
+      data-asset-id={props.assetId}
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+      data-domain-subjects={(props.domainSubjects || []).join(",") || ""}
+      data-auto-load={String(Boolean(props.autoLoad))}
+      data-auto-seed={String(Boolean(props.autoSeedIfEmpty))}
+    >
+      twins={props.assetId}
+    </div>
+  ),
+}));
+
 vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", async () => {
   const React = await import("react");
   return {
@@ -356,6 +378,25 @@ describe("MarketplaceHost mode", () => {
     expect(domainCov.getAttribute("data-has-default")).toBe("true");
     expect(domainCov.textContent).toMatch(/default active/i);
     expect(domainCov.textContent).toMatch(/literature/i);
+    // Residual (alx): TwinNotes recursive note-taker on host land with subjects.
+    const twinsMount = screen.getByTestId("marketplace-host-twins-mount");
+    expect(twinsMount.getAttribute("data-document-id")).toBe("hdoc_abc");
+    expect(twinsMount.getAttribute("data-domain-subjects")).toMatch(
+      /literature/,
+    );
+    expect(twinsMount.getAttribute("data-domain-search-has-default")).toBe(
+      "true",
+    );
+    expect(twinsMount.getAttribute("data-seamless-marketplace-twins")).toBe(
+      "true",
+    );
+    const twinsStub = screen.getByTestId("twin-notes-panel-stub");
+    expect(twinsStub.getAttribute("data-asset-id")).toBe("hdoc_abc");
+    expect(twinsStub.getAttribute("data-domain-subjects")).toMatch(
+      /literature/,
+    );
+    expect(twinsStub.getAttribute("data-auto-load")).toBe("true");
+    expect(twinsStub.getAttribute("data-auto-seed")).toBe("true");
     // Residual (tc): free/PD host path honesty.
     expect(hostMetrics.getAttribute("data-license-class")).toBe("public_domain");
     expect(hostMetrics.getAttribute("data-is-public-domain")).toBe("true");
