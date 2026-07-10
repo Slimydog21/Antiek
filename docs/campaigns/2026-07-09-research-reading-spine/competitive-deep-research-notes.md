@@ -3167,3 +3167,9 @@ FUTURE L5 Sprint 1: payment_adapter.py with DeferredPaymentAdapter default
 LivePaymentAdapter only when ANTIEK_MARKETPLACE_LIVE_PAYMENT + injected
 upstream; never invents $0 entitlement. pytest 10 green.
 P0 operator merge PR #465. Pivot aks+ outside thrash.
+
+## Residual aks · 2026-07-10 — MarketplaceHost L5 payment adapter Sprint 1 honesty chrome
+Catalog + host-land L5 honesty stamps payment-adapter Sprint 1 shipped offline
+(akr · DeferredPaymentAdapter · ANTIEK_MARKETPLACE_LIVE_PAYMENT · never $0) and
+Sprint 2 purchase path still deferred. vitest MarketplaceHost 41 green.
+P0 operator merge PR #465. Pivot akt+ outside thrash.

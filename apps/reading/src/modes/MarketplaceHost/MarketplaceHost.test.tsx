@@ -284,6 +284,24 @@ describe("MarketplaceHost mode", () => {
     expect(l5.getAttribute("data-l5-payment-rails")).toBe("deferred");
     expect(l5.getAttribute("data-live-payment")).toBe("false");
     expect(l5.textContent).toMatch(/manual_receipt_only|live checkout deferred/i);
+    // Residual (aks): Sprint 1 payment_adapter boundary shipped offline (akr).
+    expect(l5.getAttribute("data-payment-adapter-sprint")).toBe("1");
+    expect(l5.getAttribute("data-payment-adapter-boundary")).toBe(
+      "shipped_offline",
+    );
+    expect(l5.getAttribute("data-payment-adapter-env")).toBe(
+      "ANTIEK_MARKETPLACE_LIVE_PAYMENT",
+    );
+    const adapterStatus = screen.getByTestId(
+      "marketplace-l5-payment-adapter-status",
+    );
+    expect(adapterStatus.getAttribute("data-payment-adapter-boundary")).toBe(
+      "shipped_offline",
+    );
+    expect(adapterStatus.getAttribute("data-live-payment")).toBe("false");
+    expect(adapterStatus.textContent).toMatch(/Sprint 1 shipped offline/i);
+    expect(adapterStatus.textContent).toMatch(/DeferredPaymentAdapter/i);
+    expect(adapterStatus.textContent).toMatch(/Sprint 2/i);
     // Residual (wj): L5 checklist section deep-link.
     expect(
       screen.getByTestId("marketplace-l5-dual-gate-link").getAttribute("href") ||
@@ -348,15 +366,29 @@ describe("MarketplaceHost mode", () => {
     expect(freeHonesty.textContent).toMatch(/free_host=true/);
     expect(freeHonesty.textContent).toMatch(/manual_receipt_only/);
     // Residual (akb): host land L5 FUTURE + dual-gate + scorecard navigation.
+    // Residual (aks): host land Sprint 1 payment_adapter stamps (akr).
     const l5nav = screen.getByTestId("marketplace-host-l5-nav");
     expect(l5nav.getAttribute("data-l5-payment-rails")).toBe("deferred");
     expect(l5nav.getAttribute("data-payment-rails")).toBe("manual_receipt_only");
     expect(l5nav.getAttribute("data-html-first")).toBe("true");
+    expect(l5nav.getAttribute("data-payment-adapter-sprint")).toBe("1");
+    expect(l5nav.getAttribute("data-payment-adapter-boundary")).toBe(
+      "shipped_offline",
+    );
+    expect(l5nav.getAttribute("data-payment-adapter-env")).toBe(
+      "ANTIEK_MARKETPLACE_LIVE_PAYMENT",
+    );
+    expect(l5nav.getAttribute("data-live-payment")).toBe("false");
     expect(
       screen
         .getByTestId("marketplace-host-l5-future-agent-link")
         .getAttribute("href") || "",
     ).toMatch(/FUTURE-AGENT-SPEC-l5-digital-book-seamless-port/);
+    expect(
+      screen
+        .getByTestId("marketplace-host-l5-future-agent-link")
+        .getAttribute("title") || "",
+    ).toMatch(/Sprint 1 payment adapter shipped offline/i);
     expect(
       screen
         .getByTestId("marketplace-host-l5-dual-gate-link")

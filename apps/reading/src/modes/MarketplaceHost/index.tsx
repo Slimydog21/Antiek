@@ -1234,6 +1234,7 @@ export default function MarketplaceHost({
           rails)
         </p>
         {/* Residual (uy): L5 payment rails honesty — manual receipt only. */}
+        {/* Residual (aks): Sprint 1 payment_adapter boundary shipped offline (akr). */}
         <p
           className="text-[11px] font-mono opacity-80 space-x-2"
           data-testid="marketplace-l5-payment-honesty"
@@ -1242,6 +1243,9 @@ export default function MarketplaceHost({
           }
           data-l5-payment-rails="deferred"
           data-live-payment="false"
+          data-payment-adapter-sprint="1"
+          data-payment-adapter-boundary="shipped_offline"
+          data-payment-adapter-env="ANTIEK_MARKETPLACE_LIVE_PAYMENT"
           data-view-format="html"
           role="status"
         >
@@ -1252,6 +1256,18 @@ export default function MarketplaceHost({
             </strong>{" "}
             · live checkout deferred · purchase+host requires operator receipt
             token (never invent paid entitlement)
+          </span>
+          <span
+            data-testid="marketplace-l5-payment-adapter-status"
+            data-payment-adapter-sprint="1"
+            data-payment-adapter-boundary="shipped_offline"
+            data-payment-adapter-env="ANTIEK_MARKETPLACE_LIVE_PAYMENT"
+            data-live-payment="false"
+          >
+            · payment adapter Sprint 1 shipped offline (akr ·
+            DeferredPaymentAdapter · zero upstream · never invent $0) · Sprint 2
+            purchase path still deferred · env=
+            ANTIEK_MARKETPLACE_LIVE_PAYMENT
           </span>
           {/* Residual (wj): L5 checklist section deep-link (parity Settings wh). */}
           <a
@@ -1523,11 +1539,16 @@ export default function MarketplaceHost({
               (no live rails)
             </p>
             {/* Residual (akb): host land → FUTURE L5 digital book port + dual-gate L5. */}
+            {/* Residual (aks): host land stamps Sprint 1 payment_adapter shipped offline (akr). */}
             <p
               className="space-x-3"
               data-testid="marketplace-host-l5-nav"
               data-l5-payment-rails="deferred"
               data-payment-rails="manual_receipt_only"
+              data-payment-adapter-sprint="1"
+              data-payment-adapter-boundary="shipped_offline"
+              data-payment-adapter-env="ANTIEK_MARKETPLACE_LIVE_PAYMENT"
+              data-live-payment="false"
               data-html-first="true"
               data-view-format="html"
               role="navigation"
@@ -1537,7 +1558,7 @@ export default function MarketplaceHost({
                 href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-l5-digital-book-seamless-port.md"
                 data-testid="marketplace-host-l5-future-agent-link"
                 className="underline opacity-90 hover:opacity-100"
-                title="Future-agent L5 digital book seamless port brief (manual receipt · live rails deferred)"
+                title="Future-agent L5 digital book seamless port brief (Sprint 1 payment adapter shipped offline akr · Sprint 2 purchase path deferred · manual receipt)"
               >
                 FUTURE · L5 digital book seamless port
               </a>
