@@ -1,0 +1,168 @@
+{
+  "dataset_id": "deep_research_eval_v1",
+  "version": "1.0.0",
+  "frozen": true,
+  "curation_note": "20 operator-real deep-research queries per doctrine W0 (PR #716). Every query traces to a documented operator investigation (provenance field names the artifact). Expected_coverage anchors are claims/entities a competent report MUST address; they drive regression detection (W0 done-bar: a deliberately degraded retriever run is detected). Editing this file requires a version bump; scores across versions are non-comparable (I-9).",
+  "queries": [
+    {
+      "id": "drq-001",
+      "question": "Does multi-agent orchestration lift autonomous pentest benchmark performance over a thin single-agent harness, and under what conditions does the lift appear or vanish?",
+      "provenance": "operator XBEN diligence: Strix (56% < thin-Opus 66%), HexStrike (89% > thin 67%) — orchestration is not the lever, rich code-exec surface is",
+      "domain": "ai_security_benchmarks",
+      "class": "verdict",
+      "expected_coverage": ["code execution surface", "single-agent baseline", "harness overhead", "tool richness", "benchmark contamination or answer-key leakage"]
+    },
+    {
+      "id": "drq-002",
+      "question": "Is a learned model router (e.g. NotDiamond) worth integrating into a personal research platform, or should model selection remain advisory and operator-controlled? What evidence exists for routing accuracy gains?",
+      "provenance": "operator NotDiamond wedge verdict: advisory-only, never dispatch authority (§16.1 REJECT list)",
+      "domain": "llm_routing",
+      "class": "verdict",
+      "expected_coverage": ["router training data requirements", "advisory vs authoritative routing", "per-task model quality variance", "cost of misroute", "evaluation methodology"]
+    },
+    {
+      "id": "drq-003",
+      "question": "What technical decisions distinguish the leading deep-research products (OpenAI Deep Research, Perplexity, Gemini, Anthropic Research), and which of those decisions are adoptable at personal-workstation scale?",
+      "provenance": "operator competitive study 2026-07-10: 4 dossiers in .infinite/research/competitive-deep-research/ -> doctrine PR #716",
+      "domain": "deep_research_products",
+      "class": "survey",
+      "expected_coverage": ["citation binding strategy", "parallel subagents vs iterative single agent", "compression at retrieval boundary", "eval harness before quality claims", "in-house index vs vendor API"]
+    },
+    {
+      "id": "drq-004",
+      "question": "What is the defensible wedge for a web-native gaming platform against Roblox in 2026, and what are the binary blockers for a new entrant?",
+      "provenance": "operator investigation ~/research/web-gaming-2026/ (Nilo vs Roblox thesis; wedge $25-50M; Rosebud + behavioral moderation blockers)",
+      "domain": "market_analysis",
+      "class": "verdict",
+      "expected_coverage": ["distribution moat", "UGC creator economics", "moderation as blocker", "web tech stack maturity", "wedge sizing"]
+    },
+    {
+      "id": "drq-005",
+      "question": "Should a single-writer research synthesis store adopt DuckDB's MERGE, VARIANT, and vector-similarity (VSS) features, or defer them? What are the concurrency and durability constraints?",
+      "provenance": "operator Researchmaxx DuckDB verdicts v1.5.2 (MERGE/VARIANT/VSS deferred; db_lock.py single-writer invariant)",
+      "domain": "data_engineering",
+      "class": "verdict",
+      "expected_coverage": ["single-writer invariant", "VSS extension experimental status", "MERGE semantics", "lock contention", "migration risk"]
+    },
+    {
+      "id": "drq-006",
+      "question": "How should a personal platform ingest arXiv at scale without triggering rate bans — what do arXiv's compliance rules actually require, and what architecture (polling vs OAI-PMH harvest) satisfies them?",
+      "provenance": "operator arXiv ingestion failures (IP 429-ban on export.arxiv.org) + compliant-ingest ship ebfb36a (rights-tier + host-global governor)",
+      "domain": "data_acquisition",
+      "class": "multi_hop",
+      "expected_coverage": ["OAI-PMH", "rate limits and Retry-After", "burst vs sustained politeness", "bulk data via S3/Kaggle", "metadata vs fulltext licensing"]
+    },
+    {
+      "id": "drq-007",
+      "question": "Is integrating AppLovin's Axon ad engine viable for a content platform that wants per-frame attention-based revenue attribution, and what are the hard blockers?",
+      "provenance": "operator ads verdict PR #118 (no web supply; Axon in-substrate; W2 attribution program)",
+      "domain": "adtech",
+      "class": "verdict",
+      "expected_coverage": ["web supply availability", "attribution granularity", "SDK vs API integration surface", "revenue share mechanics", "privacy/compliance gates"]
+    },
+    {
+      "id": "drq-008",
+      "question": "For a small lab, when does RL fine-tuning of research agents beat orchestration/prompting improvements, and what substrate (event logs, verifiers, state machines) must exist before RL is even attemptable?",
+      "provenance": "operator Researchmaxx RL readiness plan (6-phase substrate-first) + Prime Intellect lab notes",
+      "domain": "rl_agents",
+      "class": "verdict",
+      "expected_coverage": ["verifiable reward design", "SFT before RL", "event-log substrate", "hosted RL platforms", "orchestration captures most of the premium"]
+    },
+    {
+      "id": "drq-009",
+      "question": "Which parts of PostHog's small-team operating model transfer to coordinating a fleet of autonomous coding agents, and which parts break?",
+      "provenance": "operator CEO-DIRECTIVE.md operating model section (adopted PostHog small-team doctrine for agent fleet after the 348-PR runaway)",
+      "domain": "eng_management",
+      "class": "survey",
+      "expected_coverage": ["ownership of outcomes vs task queues", "async transparency artifacts", "small team coordination edges", "failure mode: unowned gaps", "ship-evidence culture"]
+    },
+    {
+      "id": "drq-010",
+      "question": "What sandbox isolation approach (Daytona, Firecracker microVMs, gVisor, containers) is appropriate for executing untrusted model-written code inside a research loop, balancing startup latency against isolation strength?",
+      "provenance": "operator DRW §16 Daytona gate + integration_daytona.md draft",
+      "domain": "infra_security",
+      "class": "survey",
+      "expected_coverage": ["microVM vs container isolation", "startup latency", "snapshot/resume", "network egress policy", "cost per execution"]
+    },
+    {
+      "id": "drq-011",
+      "question": "For web research infrastructure, what is the cost/quality asymmetry between semantic discovery APIs (Exa) and cheap extraction services (Jina-class), and should one vendor ever serve both legs?",
+      "provenance": "operator Exa Wedge-1 (merged 28430d09) + doctrine W8 two-vendor verdict",
+      "domain": "web_infra",
+      "class": "verdict",
+      "expected_coverage": ["discovery vs extraction pricing", "findSimilar semantics", "recall parity measurement", "vendor lock-in", "cost per report"]
+    },
+    {
+      "id": "drq-012",
+      "question": "At matched token budget, do parallel subagent swarms beat a single iterative agent with test-time compute for deep research? What do Anthropic's and Google's published results actually support?",
+      "provenance": "doctrine L2 open disagreement (Anthropic 90.2% lift vs Gemini single-agent iterative)",
+      "domain": "agent_architecture",
+      "class": "multi_hop",
+      "expected_coverage": ["matched-budget comparison validity", "task decomposability", "context isolation benefits", "orchestrator bottleneck", "effort-scaling rules"]
+    },
+    {
+      "id": "drq-013",
+      "question": "For grounding research reports, is assembly-time extractive citation binding or a post-hoc citation agent more accurate, and what failure modes does each carry?",
+      "provenance": "doctrine W4 (assembly-time shipped) vs L5 challenger (Anthropic post-hoc CitationAgent)",
+      "domain": "grounding_citations",
+      "class": "verdict",
+      "expected_coverage": ["span-level attribution", "citation drift", "hallucinated support", "judge-based citation accuracy measurement", "cost of post-hoc pass"]
+    },
+    {
+      "id": "drq-014",
+      "question": "How can a self-rewriting benchmark that learns from usage patterns avoid Goodhart drift and score non-comparability across rewrites?",
+      "provenance": "operator Antiek-bench recursive vision (goal.md addendum 2026-07-10) + I-9 judge-swap non-comparability warning",
+      "domain": "evaluation",
+      "class": "multi_hop",
+      "expected_coverage": ["Goodhart's law", "frozen anchor sets", "versioned rubrics", "judge pinning", "human spot-audit"]
+    },
+    {
+      "id": "drq-015",
+      "question": "What digital book acquisition channels permit programmatic purchase and DRM-free (or DRM-strippable-with-rights) hosting of a user's own library, and what are the legal boundaries per jurisdiction?",
+      "provenance": "operator marketplace + seamless-port requirement (goal.md 2026-07-10) + §9.0 rights-state substrate",
+      "domain": "content_rights",
+      "class": "survey",
+      "expected_coverage": ["DRM-free storefronts", "format-shifting legality", "publisher API availability", "EPUB as source format", "personal-use rights states"]
+    },
+    {
+      "id": "drq-016",
+      "question": "What is the current state of high-fidelity PDF-to-HTML conversion for scholarly documents (math, tables, figures), and which pipeline best serves an HTML-canonical reading platform?",
+      "provenance": "operator HTML-projection spec (canonical-HTML vision; Adobe REJECTED) + apps/reading HTML-native viewer",
+      "domain": "document_engineering",
+      "class": "survey",
+      "expected_coverage": ["layout-aware ML parsers", "MathML/LaTeX recovery", "table structure extraction", "reading-order fidelity", "arXiv LaTeX-source advantage"]
+    },
+    {
+      "id": "drq-017",
+      "question": "What are the strongest published evaluation frameworks for judging research-report quality (RACE, FACT, DeepResearch-Bench and successors), and what design choices make judge scores comparable week over week?",
+      "provenance": "doctrine I-9 (RACE+FACT self-benchmark mandate) — the harness evaluating itself",
+      "domain": "evaluation",
+      "class": "survey",
+      "expected_coverage": ["RACE rubric axes", "FACT citation verification", "judge model pinning", "reference-free vs reference-based judging", "inter-judge agreement"]
+    },
+    {
+      "id": "drq-018",
+      "question": "How do leading LLM platforms meter usage against user-set budgets, and what projection UX (pre-prompt cost estimates, reserve-before-spend) actually prevents overruns rather than reporting them after the fact?",
+      "provenance": "operator budget/decision-tree requirement (goal.md 2026-07-10) + MO reserve-before-spend finding (worker.py:97 spend-before-check defect)",
+      "domain": "product_billing",
+      "class": "multi_hop",
+      "expected_coverage": ["reserve-before-spend", "token estimation pre-call", "hard vs soft caps", "per-key metering", "projection error bounds"]
+    },
+    {
+      "id": "drq-019",
+      "question": "For newsletter and blog acquisition (Substack and similar), what change-detection and backfill architecture respects publisher rate limits while keeping a personal corpus fresh within 24 hours?",
+      "provenance": "doctrine W7 (Substack RSS /feed + api/v1/archive backfill, honoring Retry-After) + operator publication-reference requirement",
+      "domain": "data_acquisition",
+      "class": "multi_hop",
+      "expected_coverage": ["RSS change detection", "archive API pagination", "Retry-After honoring", "dedup on canonical URL", "paywalled content boundaries"]
+    },
+    {
+      "id": "drq-020",
+      "question": "What checkpointing and resume architecture keeps a 30-minute autonomous research run durable against transient tool failures, and how do production agent platforms implement kill-and-resume determinism?",
+      "provenance": "doctrine W9 (midnight-oil durability, I-7) + operator midnight-oil unattended mode requirement",
+      "domain": "agent_durability",
+      "class": "multi_hop",
+      "expected_coverage": ["checkpointed run state", "idempotent tool calls", "resume-from-error semantics", "trace/journal replay", "notify-on-done"]
+    }
+  ]
+}
