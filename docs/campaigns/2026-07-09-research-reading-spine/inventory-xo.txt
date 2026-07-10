@@ -1,0 +1,18 @@
+# inventory-xo · catalog route by_subject Lovelace history honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: xo
+date: 2026-07-10
+tip_before: 0c2ca8d0 (xn)
+
+## Problem
+Frontend history chip for Lovelace (xj) needed server catalog route by_subject
+honesty (parity Shannon/Turing ws).
+
+## Fix
+- test_catalog_route_subjects_and_by_subject asserts history + Lovelace entry
+
+## Verified
+pytest test_catalog_route_subjects_and_by_subject → passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

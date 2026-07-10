@@ -313,14 +313,18 @@ def test_catalog_route_subjects_and_by_subject(client) -> None:
     assert "physics" in by_id["pd-principia"]["subjects"]
     assert "pd-novum" in by_id
     assert "method" in by_id["pd-novum"]["subjects"]
-    # Residual (ws): Shannon + Turing domain honesty on catalog route by_subject.
+    # Residual (ws/xo): Shannon + Turing + Lovelace domain honesty on catalog route.
     assert body["by_subject"].get("information_theory", 0) >= 1
     assert body["by_subject"].get("computability", 0) >= 1
-    assert body["by_subject"].get("computing", 0) >= 2  # Boole + Shannon + Turing
+    assert body["by_subject"].get("history", 0) >= 1
+    assert body["by_subject"].get("computing", 0) >= 3  # Boole + Shannon + Turing + Lovelace
     assert "pd-shannon-communication" in by_id
     assert "information_theory" in by_id["pd-shannon-communication"]["subjects"]
     assert "pd-turing-computable-numbers" in by_id
     assert "computability" in by_id["pd-turing-computable-numbers"]["subjects"]
+    assert "pd-lovelace-analytical-engine" in by_id
+    assert "history" in by_id["pd-lovelace-analytical-engine"]["subjects"]
+    assert "computing" in by_id["pd-lovelace-analytical-engine"]["subjects"]
 
 
 def test_electricity_chip_filter_includes_faraday_maxwell() -> None:

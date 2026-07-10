@@ -1547,3 +1547,7 @@ path never mixes paid entitlement.
 ## Residual xn · 2026-07-10 — SpawnMerge dual-gate #l6-collective
 SpawnMerge dual-gate checklist jumps to #l6-collective (parity Collective xg).
 Competitive delta: multi-spawn merge prep shares deferred live-council policy.
+
+## Residual xo · 2026-07-10 — catalog route by_subject Lovelace history
+Marketplace catalog API by_subject stamps history with Lovelace entry.
+Competitive delta: history domain chip is server-honest (parity Shannon/Turing).
