@@ -1,0 +1,12 @@
+# inventory-ux · SESSION-ARC tt–uw full infinite wave handoff
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ux
+date: 2026-07-10
+tip_sha: 73f60054
+
+## Closed
+- SESSION-ARC-tt-uw-infinite-wave.md (30 residual ships)
+- Compaction-safe map for multi-agent swarm
+
+## Not in scope
+- Operator merge PR #465 (gated)

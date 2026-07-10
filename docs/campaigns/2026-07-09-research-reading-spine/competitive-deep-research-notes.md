@@ -1208,3 +1208,8 @@ Competitive delta: swarm handoff tip-true after marketplace host pub-refs wave.
 Midnight Oil create form pub-refs deep-link Settings #hydrate-live-status
 (parity marketplace uu). Competitive delta: autonomous swarm grounding has full
 L1/L2 prep matrix (Settings + dual-gate checklist).
+
+## Residual ux · 2026-07-10 — SESSION-ARC tt–uw infinite wave
+SESSION-ARC-tt-uw documents 30 residual ships (write-seed · free STEM · Select
+open · MO foresight · arxiv/substack honesty). Competitive delta: long infinite
+waves stay auditable for parallel agents after compaction.
