@@ -73,6 +73,7 @@ def test_dogfood_suite_covers_task_classes():
     assert "dogfood-wrestle-unit-restore-path" in ids
     assert "dogfood-wrestle-select-recent-path" in ids
     assert "dogfood-wrestle-research-workstation-spine" in ids
+    assert "dogfood-wrestle-highlight-deep-research-path" in ids
 
 
 def test_dogfood_fixture_payload_includes_shannon_turing_lovelace_v12() -> None:
@@ -81,8 +82,8 @@ def test_dogfood_fixture_payload_includes_shannon_turing_lovelace_v12() -> None:
 
     payload = dogfood_fixture_payload(include_html=True)
     assert payload["suite_version"] == COMPETITIVE_DOGFOOD_VERSION
-    assert payload["suite_version"] == "suite-competitive-dogfood-v17"
-    assert payload["item_count"] >= 27
+    assert payload["suite_version"] == "suite-competitive-dogfood-v18"
+    assert payload["item_count"] >= 28
     assert payload["auto_promoted"] is False
     assert payload["by_task_class"].get("book_qa", 0) >= 7
     ids = {i["item_id"] for i in payload["items"]}
@@ -98,9 +99,10 @@ def test_dogfood_fixture_payload_includes_shannon_turing_lovelace_v12() -> None:
     assert "dogfood-wrestle-unit-restore-path" in ids
     assert "dogfood-wrestle-select-recent-path" in ids
     assert "dogfood-wrestle-research-workstation-spine" in ids
+    assert "dogfood-wrestle-highlight-deep-research-path" in ids
     html = (payload.get("html") or "").lower()
     assert (
-        "v17" in html or "select-recent" in html or "workstation" in html
+        "v18" in html or "highlight" in html or "v17" in html or "select-recent" in html or "workstation" in html
         or "v16" in html or "select-open" in html or "unit-restore" in html
         or "v15" in html or "written-analysis" in html or "v14" in html
         or "seamless" in html
@@ -142,8 +144,8 @@ def test_payload_and_api_html():
     assert payload["view_format"] == "html"
     # Residual (zj/adn/aeu/afo): v17 STEM + RW spine dogfood.
     assert payload["suite_version"] == COMPETITIVE_DOGFOOD_VERSION
-    assert payload["suite_version"] == "suite-competitive-dogfood-v17"
-    assert payload["item_count"] >= 27
+    assert payload["suite_version"] == "suite-competitive-dogfood-v18"
+    assert payload["item_count"] >= 28
     assert payload["settings_panel"] == "antiek_bench_dogfood_fixtures"
     assert payload["source"] == "antiek_bench.dogfood_fixtures"
     assert payload["html"]
@@ -159,6 +161,7 @@ def test_payload_and_api_html():
     assert "dogfood-wrestle-unit-restore-path" in payload["html"]
     assert "dogfood-wrestle-select-recent-path" in payload["html"]
     assert "dogfood-wrestle-research-workstation-spine" in payload["html"]
+    assert "dogfood-wrestle-highlight-deep-research-path" in payload["html"]
     assert "twin_seed" in payload["html"]
     assert "dogfood-book-faraday-induction" in payload["html"]
     assert "faraday" in payload["html"].lower()
@@ -189,8 +192,8 @@ def test_payload_and_api_html():
     r2 = client.get("/settings/antiek-bench/dogfood-fixtures?include_html=true")
     assert r1.status_code == 200 and r2.status_code == 200
     assert r1.json()["suite_version"] == r2.json()["suite_version"]
-    assert r1.json()["suite_version"] == "suite-competitive-dogfood-v17"
+    assert r1.json()["suite_version"] == "suite-competitive-dogfood-v18"
     assert r1.json()["item_count"] == r2.json()["item_count"]
-    assert r1.json()["item_count"] >= 27
+    assert r1.json()["item_count"] >= 28
     assert r1.json()["by_task_class"]["book_qa"] == 7
-    assert r1.json()["by_task_class"]["wrestle"] == 16
+    assert r1.json()["by_task_class"]["wrestle"] == 17

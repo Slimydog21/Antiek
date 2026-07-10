@@ -2504,3 +2504,8 @@ data-seamless-highlight-dr (parity FloatMenu afw). vitest window 5 + launch 7 gr
 Handoff: FloatMenu seamless-highlight-dr + window payload + host stamp.
 End-to-end highlight→floating/full deep research path honesty. P0 operator
 merge PR #465. Pivot afz+ outside thrash.
+
+## Residual afz · 2026-07-10 — dogfood v18 highlight→DR path
+Suite suite-competitive-dogfood-v18 adds wrestle fixture for highlight→floating
+deep research path honesty (afw–afx). Settings spine postures v18. pytest
+dogfood 5 · Settings 36 green. propose≠promote.

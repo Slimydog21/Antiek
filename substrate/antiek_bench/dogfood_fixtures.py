@@ -29,7 +29,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (afi): v15 learns written analysis Open Write source + unit continue path.
 # Residual (afo): v16 learns Select open multi-select assembly + unit restore path.
 # Residual (afv): v17 learns Select recent path + ResearchWorkstation spine.
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v17"
+# Residual (afz): v18 learns highlight → floating DR path honesty (afw–afx).
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v18"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -483,6 +484,26 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "context",
                 "collective",
                 "promote",
+            ),
+        ),
+        # Residual (afz/afw–afx): highlight → floating deep research path honesty.
+        SuiteItem(
+            item_id="dogfood-wrestle-highlight-deep-research-path",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with highlight → deep research path honesty: when FloatMenu "
+                "Deep-research stamps data-seamless-highlight-dr · view-mode float|full "
+                "and openDeepResearchFromHighlight stamps payload.seamless_highlight_dr "
+                "with host data-seamless-highlight-dr, how should Antiek-bench weekly "
+                "rewrite learn models that keep highlight→session→window path continuous "
+                "without inventing live multi-agent council?"
+            ),
+            expected_keywords=(
+                "highlight",
+                "seamless",
+                "floating",
+                "deep",
+                "research",
             ),
         ),
     )

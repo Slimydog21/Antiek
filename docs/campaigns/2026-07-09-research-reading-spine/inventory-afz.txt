@@ -1,0 +1,17 @@
+# inventory-afz · dogfood v18 highlight→DR path
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: afz
+date: 2026-07-10
+parent_tip: 40dba087 (afy)
+
+## Closed
+- COMPETITIVE_DOGFOOD_VERSION → suite-competitive-dogfood-v18
+- dogfood-wrestle-highlight-deep-research-path
+- Settings spine postures (v18) + posture attr
+- pytest dogfood 5 · vitest Settings 36
+
+## Why this residual
+Bench recursive rewrite learns highlight→session→window path after afw–afx.
+
+## Not in scope
+- Live multi-provider · auto-promote
