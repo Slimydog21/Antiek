@@ -1,0 +1,12 @@
+# inventory-agk · SESSION-ARC agh–agj free STEM + FloatMenu panels
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: agk
+date: 2026-07-10
+parent_tip: b173c60f (agj)
+
+## Closed
+- SESSION-ARC-agh-agj-free-stem-floatmenu-panels.md
+- FUTURE + NEXT-WAVE re-anchor agl+
+
+## Next
+Outside free-STEM / FloatMenu panel thrash · inventory-first

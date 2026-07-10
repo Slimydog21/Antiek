@@ -2559,3 +2559,7 @@ FloatMenu Dialogue panel stamps data-seamless-highlight-dialogue · dialogue-sta
 idle|pending|replied|failure; model reply stamps data-source-kind=model. Failure
 path chrome separate. Completes highlight dialogue path with Note save (agi).
 vitest FloatMenu 28 green.
+
+## Residual agk · 2026-07-10 — SESSION-ARC agh–agj free STEM + panels
+Handoff: Gödel free PD + dogfood v19 · Note save path · Dialogue path.
+P0 operator merge PR #465. Pivot agl+ outside thrash.
