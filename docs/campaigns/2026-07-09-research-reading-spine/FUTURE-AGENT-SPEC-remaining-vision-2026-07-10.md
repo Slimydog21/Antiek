@@ -1,14 +1,14 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** residual **agc** (SESSION-ARC afw–agb FloatMenu highlight path) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
+**Campaign tip at write:** residual **agd** (SESSION-ARC afn–agc infinite continuation wave) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **URL:** https://github.com/Slimydog21/Antiek/pull/465  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
 
 ## Do not rebuild
 
-Prefer **inventory-agc** + **SESSION-ARC-afw-agb-floatmenu-highlight-path.md** + **SESSION-ARC-afr-aft-research-workstation-spine.md**.  
-This continuation: **250 residual ships** from vy tip `8e280766`.
+Prefer **inventory-agd** + **SESSION-ARC-afn-agc-infinite-continuation.md** (full wave map).  
+This continuation: **266+ residual ships** from vy tip `8e280766` · wave **afn–agd** closed.
 
 ### Closed product (high signal)
 
@@ -26,8 +26,8 @@ This continuation: **250 residual ships** from vy tip `8e280766`.
 ### P0 — Operator merge PR #465
 **Highest leverage remaining.** Agents never merge main/prod.
 
-### P1 next offline (residual **agd+**)
-Outside thrash: MO live multi-provider · paid L5 · competitive depth. FloatMenu SESSION-ARC agc. Leave thrash.
+### P1 next offline (residual **age+**)
+Outside thrash: MO live multi-provider · paid L5 · competitive depth. Wave afn–agc closed (SESSION-ARC agd). Leave thrash.
 
 ## Doctrine
 One residual letter/cycle · inventory-first · green tests · campaign push only · complete work never complete goal · Infinite until STOP.

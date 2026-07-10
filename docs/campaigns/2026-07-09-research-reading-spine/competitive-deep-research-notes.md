@@ -2524,3 +2524,7 @@ view_format=html. Completes highlight float-menu action path matrix
 Handoff: Deep-research path + dogfood v18 + Search + Note + Dialogue. Full
 highlight FloatMenu path honesty matrix. P0 operator merge PR #465.
 Pivot agd+ outside thrash.
+
+## Residual agd · 2026-07-10 — SESSION-ARC afn–agc infinite continuation
+Full wave handoff: multi-select assembly · ResearchWorkstation spine · FloatMenu
+highlight path · dogfood v16–v18. P0 operator merge PR #465. Pivot age+ outside thrash.
