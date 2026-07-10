@@ -1,0 +1,15 @@
+# inventory-aht · collective unit HTML float/full offline twin seed
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aht
+date: 2026-07-10
+parent_tip: e341e4b6 (ahs)
+
+## Closed
+- Open float/full cohesive unit HTML seeds twin notes offline (force_offline)
+- Body port honesty: multi-spawn cohesive unit prompt · never invent L6 live council
+- Closes twin completeness gap #2 from ahq matrix
+- vitest CollectiveResearchPanel 27 green
+
+## Next
+ahu+ product residual · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

@@ -1227,6 +1227,19 @@ export function CollectiveResearchPanel({
                       mode: "floating",
                     },
                   );
+                  // Residual (aht): recursive note-taker substrate for unit HTML float.
+                  void seedTwinNotes({
+                    asset_id: id,
+                    title: `Collective unit · ${cid}`,
+                    body_text: (
+                      `Port path: multi-spawn cohesive unit prompt (offline · never invent live L6 council).\n\n` +
+                      (unit.prompt_block || "")
+                    ).slice(0, 2200),
+                    include_html: false,
+                    force_offline: true,
+                  }).catch(() => {
+                    /* non-fatal twin seed */
+                  });
                 }}
               >
                 Open float (unit HTML)
@@ -1272,6 +1285,19 @@ export function CollectiveResearchPanel({
                       mode: "full",
                     },
                   );
+                  // Residual (aht): recursive note-taker substrate for unit HTML full.
+                  void seedTwinNotes({
+                    asset_id: id,
+                    title: `Collective unit · ${cid} (full)`,
+                    body_text: (
+                      `Port path: multi-spawn cohesive unit prompt full (offline · never invent live L6 council).\n\n` +
+                      (unit.prompt_block || "")
+                    ).slice(0, 2200),
+                    include_html: false,
+                    force_offline: true,
+                  }).catch(() => {
+                    /* non-fatal twin seed */
+                  });
                 }}
               >
                 Open full (unit HTML)

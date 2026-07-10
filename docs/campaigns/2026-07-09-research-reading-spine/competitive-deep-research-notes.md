@@ -2768,3 +2768,8 @@ P0 operator merge PR #465. Pivot ahs+.
 Suite suite-competitive-dogfood-v25 adds wrestle fixture for domain-aware twin
 search (ahr). item_count 39 · wrestle=26. Settings spine v25.
 pytest dogfood 5 · Settings 36 green. P0 operator merge PR #465. Pivot aht+.
+
+## Residual aht · 2026-07-10 — collective unit HTML float/full offline twin seed
+Opening multi-spawn cohesive unit as float|full HTML seeds recursive note-taker
+twins offline (force_offline · L6 never invented). Closes twin completeness gap
+#2 (ahq). vitest Collective 27 green. P0 operator merge PR #465. Pivot ahu+.

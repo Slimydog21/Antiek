@@ -255,6 +255,15 @@ describe("CollectiveResearchPanel", () => {
     expect(floatCall[1].html).toMatch(/Cohesive prompt_block/);
     expect(floatCall[1].html).toMatch(/col_abc/);
     expect(floatCall[2].mode).toBe("floating");
+    // Residual (aht): offline twin seed for cohesive unit HTML float.
+    await waitFor(() => {
+      expect(seedTwinNotes).toHaveBeenCalledWith(
+        expect.objectContaining({
+          force_offline: true,
+          body_text: expect.stringMatching(/multi-spawn cohesive unit prompt/i),
+        }),
+      );
+    });
     fireEvent.click(screen.getByTestId("collective-unit-open-full"));
     const fullCall = openWindow.mock.calls.at(-1) as [
       string,
