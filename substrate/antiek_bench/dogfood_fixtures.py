@@ -34,7 +34,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (agp): v20 learns TalkToBook + MetaReading twin note-taker paths.
 # Residual (ags): v21 learns Fourier heat free PD book_qa + ResearchThis twins.
 # Residual (agw): v22 learns seamless spawn merge + multi-spawn collective merge paths.
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v22"
+# Residual (ahd): v23 learns knowledge-dense publication quick-call matrix (agx–ahc).
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v23"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -431,6 +432,27 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "spawn",
                 "merge",
                 "seamless",
+            ),
+        ),
+        # Residual (ahd/agx–ahc): knowledge-dense publication quick-call matrix.
+        SuiteItem(
+            item_id="dogfood-wrestle-pub-quick-call-matrix",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with knowledge-dense publication quick-call matrix: when "
+                "KNOWLEDGE_DENSE_PUBLICATION_PRESETS insert arxiv/URL handles on StartResearch, "
+                "ChatInputArea, PublicationAttachPanel, HostedHtml, MarketplaceHost, and "
+                "ResearchThis with data-seamless-pub-quick-call · data-auto-hydrate=false "
+                "(insert-only · never invent live body), how should Antiek-bench learn models "
+                "that ground deep research with competitive source connectors while staying "
+                "offline-honest until Attach/Ask/DR and dual-gate L1/L2 live injectors?"
+            ),
+            expected_keywords=(
+                "publication",
+                "arxiv",
+                "quick",
+                "hydrate",
+                "offline",
             ),
         ),
         # Residual (aeu): seamless Write path honesty across reading/research surfaces.

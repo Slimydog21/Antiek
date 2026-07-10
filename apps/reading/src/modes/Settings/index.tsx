@@ -2898,6 +2898,12 @@ export default function Settings() {
                       "dogfood-wrestle-collective-multi-spawn-merge",
                   ),
                 )}
+                data-has-pub-quick-call-matrix-posture={String(
+                  (dogfood.items || []).some(
+                    (it) =>
+                      it.item_id === "dogfood-wrestle-pub-quick-call-matrix",
+                  ),
+                )}
                 data-propose-not-promote="true"
               >
                 <Row label="Suite" value={dogfood.suite_version} />
@@ -2941,6 +2947,7 @@ export default function Settings() {
                     "dogfood-wrestle-research-this-twins",
                     "dogfood-wrestle-spawn-merge-path",
                     "dogfood-wrestle-collective-multi-spawn-merge",
+                    "dogfood-wrestle-pub-quick-call-matrix",
                   ].includes(it.item_id),
                 ) ? (
                   <p
@@ -2948,7 +2955,7 @@ export default function Settings() {
                     data-testid="antiek-bench-dogfood-v2-postures"
                     role="status"
                   >
-                    Spine postures (v22): write-seed · float evidence · budget
+                    Spine postures (v23): write-seed · float evidence · budget
                     foresight · Faraday book_qa · collective unit write-seed ·
                     Boole book_qa · Heaviside book_qa · Shannon book_qa ·
                     Turing book_qa · Lovelace book_qa · citation-trust
@@ -2960,7 +2967,8 @@ export default function Settings() {
                     path · Select recent path · ResearchWorkstation spine ·
                     highlight → DR path · Gödel book_qa · Fourier book_qa ·
                     TalkToBook twins · MetaReading twins · ResearchThis twins ·
-                    spawn merge path · multi-spawn collective merge
+                    spawn merge path · multi-spawn collective merge ·
+                    knowledge-dense pub quick-call matrix
                     (listing only · not auto-promoted)
                   </p>
                 ) : null}

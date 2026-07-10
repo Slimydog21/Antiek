@@ -68,6 +68,8 @@ def test_dogfood_suite_covers_task_classes():
     # Residual (agw): seamless spawn merge + multi-spawn collective merge path.
     assert "dogfood-wrestle-spawn-merge-path" in ids
     assert "dogfood-wrestle-collective-multi-spawn-merge" in ids
+    # Residual (ahd): knowledge-dense pub quick-call matrix.
+    assert "dogfood-wrestle-pub-quick-call-matrix" in ids
     # Residual (adn): write-seed has-body honesty → recursive rewrite.
     assert "dogfood-wrestle-write-seed-has-body" in ids
     # Residual (aeu): seamless Write path + intelligent search context Write.
@@ -91,8 +93,8 @@ def test_dogfood_fixture_payload_includes_shannon_turing_lovelace_v12() -> None:
 
     payload = dogfood_fixture_payload(include_html=True)
     assert payload["suite_version"] == COMPETITIVE_DOGFOOD_VERSION
-    assert payload["suite_version"] == "suite-competitive-dogfood-v22"
-    assert payload["item_count"] >= 35
+    assert payload["suite_version"] == "suite-competitive-dogfood-v23"
+    assert payload["item_count"] >= 36
     assert payload["auto_promoted"] is False
     assert payload["by_task_class"].get("book_qa", 0) >= 9
     ids = {i["item_id"] for i in payload["items"]}
@@ -104,6 +106,7 @@ def test_dogfood_fixture_payload_includes_shannon_turing_lovelace_v12() -> None:
     assert "dogfood-wrestle-research-this-twins" in ids
     assert "dogfood-wrestle-spawn-merge-path" in ids
     assert "dogfood-wrestle-collective-multi-spawn-merge" in ids
+    assert "dogfood-wrestle-pub-quick-call-matrix" in ids
     assert "dogfood-wrestle-write-seed-has-body" in ids
     assert "dogfood-wrestle-seamless-write-path" in ids
     assert "dogfood-wrestle-intelligent-search-context-write" in ids
@@ -118,7 +121,8 @@ def test_dogfood_fixture_payload_includes_shannon_turing_lovelace_v12() -> None:
     assert "dogfood-wrestle-meta-reading-twins" in ids
     html = (payload.get("html") or "").lower()
     assert (
-        "v22" in html or "spawn-merge" in html or "multi-spawn" in html
+        "v23" in html or "quick-call" in html or "publication" in html
+        or "v22" in html or "spawn-merge" in html or "multi-spawn" in html
         or "v21" in html or "fourier" in html or "research-this" in html
         or "v20" in html or "talk-to-book" in html or "meta-reading" in html or "v19" in html or "godel" in html or "v18" in html or "highlight" in html or "v17" in html or "select-recent" in html or "workstation" in html
         or "v16" in html or "select-open" in html or "unit-restore" in html
@@ -162,8 +166,8 @@ def test_payload_and_api_html():
     assert payload["view_format"] == "html"
     # Residual (zj/adn/aeu/afo/ags): v21 STEM + Fourier + ResearchThis twins dogfood.
     assert payload["suite_version"] == COMPETITIVE_DOGFOOD_VERSION
-    assert payload["suite_version"] == "suite-competitive-dogfood-v22"
-    assert payload["item_count"] >= 35
+    assert payload["suite_version"] == "suite-competitive-dogfood-v23"
+    assert payload["item_count"] >= 36
     assert payload["settings_panel"] == "antiek_bench_dogfood_fixtures"
     assert payload["source"] == "antiek_bench.dogfood_fixtures"
     assert payload["html"]
@@ -185,6 +189,7 @@ def test_payload_and_api_html():
     assert "dogfood-wrestle-research-this-twins" in payload["html"]
     assert "dogfood-wrestle-spawn-merge-path" in payload["html"]
     assert "dogfood-wrestle-collective-multi-spawn-merge" in payload["html"]
+    assert "dogfood-wrestle-pub-quick-call-matrix" in payload["html"]
     assert "twin_seed" in payload["html"]
     assert "dogfood-book-faraday-induction" in payload["html"]
     assert "faraday" in payload["html"].lower()
@@ -218,8 +223,8 @@ def test_payload_and_api_html():
     r2 = client.get("/settings/antiek-bench/dogfood-fixtures?include_html=true")
     assert r1.status_code == 200 and r2.status_code == 200
     assert r1.json()["suite_version"] == r2.json()["suite_version"]
-    assert r1.json()["suite_version"] == "suite-competitive-dogfood-v22"
+    assert r1.json()["suite_version"] == "suite-competitive-dogfood-v23"
     assert r1.json()["item_count"] == r2.json()["item_count"]
-    assert r1.json()["item_count"] >= 35
+    assert r1.json()["item_count"] >= 36
     assert r1.json()["by_task_class"]["book_qa"] == 9
-    assert r1.json()["by_task_class"]["wrestle"] == 22
+    assert r1.json()["by_task_class"]["wrestle"] == 23

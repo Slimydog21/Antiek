@@ -2677,3 +2677,10 @@ Highlight → Research this passage ground-with-pubs mounts shared quick-call
 presets (parity hosted aha · marketplace ahb). Completes reading highlight DR
 path in knowledge-dense pub matrix. vitest ResearchThis 13 green.
 P0 operator merge PR #465. Pivot ahd+ outside pub-matrix thrash.
+
+## Residual ahd · 2026-07-10 — dogfood v23 knowledge-dense pub quick-call matrix
+Suite suite-competitive-dogfood-v23 adds wrestle fixture for the full
+knowledge-dense publication quick-call matrix (agx–ahc). Settings spine v23.
+item_count 36 · wrestle=23. Recursive Antiek-bench rewrite feed.
+pytest dogfood 5 · Settings 36 green. P0 operator merge PR #465.
+Pivot ahe+ outside thrash.
