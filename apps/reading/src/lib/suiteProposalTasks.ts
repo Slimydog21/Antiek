@@ -121,6 +121,10 @@ export const VISION_USAGE_FEED_SOURCES = [
   "session_flywheel_complete",
   // Residual (atd): recursive note-taker multi-asset twin merge (atc host path).
   "twin_cross_asset_merge",
+  // Residual (atx): intelligent context search open path (atv) → recursive rewrite.
+  "context_search",
+  // Residual (atx): citation-trust evidence pack open path (atu) → recursive rewrite.
+  "evidence_pack",
 ] as const;
 
 export type VisionUsageFeedSource = (typeof VISION_USAGE_FEED_SOURCES)[number];
@@ -151,7 +155,7 @@ export function benchTaskClassToVisionFeeds(
     .trim()
     .toLowerCase();
   if (t === "wrestle") {
-    // Residual (aqv/ari/asj/atd): long-horizon progress + session flywheel + twin cross-asset train wrestle.
+    // Residual (aqv/ari/asj/atd/atx): long-horizon + intelligent search + evidence pack train wrestle.
     return [
       "twin_chase",
       "midnight_oil",
@@ -164,10 +168,12 @@ export function benchTaskClassToVisionFeeds(
       "research_progress_complete",
       "session_flywheel_complete",
       "twin_cross_asset_merge",
+      "context_search",
+      "evidence_pack",
     ];
   }
   if (t === "synthesize") {
-    // Residual (aqv/ast/atd): multi-agent analysis + progress complete + twin cross-asset train synthesize.
+    // Residual (aqv/ast/atd/atx): multi-agent analysis + evidence pack train synthesize.
     return [
       "floating_deep_research",
       "twin_chase",
@@ -177,16 +183,18 @@ export function benchTaskClassToVisionFeeds(
       "highlight_dr_launch",
       "research_progress_complete",
       "twin_cross_asset_merge",
+      "evidence_pack",
     ];
   }
   if (t === "distill") {
-    // Residual (ari/asj): knowledge-dense hydrate + attach also train distill.
+    // Residual (ari/asj/atx): knowledge-dense hydrate + attach + intelligent search train distill.
     return [
       "floating_deep_research",
       "book_qa",
       "spawn_merge",
       "publication_hydrate",
       "publication_attach",
+      "context_search",
     ];
   }
   if (t === "book_qa") {

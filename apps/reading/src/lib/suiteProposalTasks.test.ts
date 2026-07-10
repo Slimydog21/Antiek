@@ -97,7 +97,10 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
     expect(VISION_USAGE_FEED_SOURCES).toContain("research_progress_complete");
     expect(VISION_USAGE_FEED_SOURCES).toContain("session_flywheel_complete");
     expect(VISION_USAGE_FEED_SOURCES).toContain("twin_cross_asset_merge");
-    expect(VISION_USAGE_FEED_SOURCES.length).toBeGreaterThanOrEqual(19);
+    // Residual (atx): intelligent search + citation-trust evidence pack vision feeds.
+    expect(VISION_USAGE_FEED_SOURCES).toContain("context_search");
+    expect(VISION_USAGE_FEED_SOURCES).toContain("evidence_pack");
+    expect(VISION_USAGE_FEED_SOURCES.length).toBeGreaterThanOrEqual(21);
   });
 
   it("reports covered vs uncovered vision surfaces without inventing events", () => {
@@ -126,7 +129,7 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
     );
   });
 
-  it("maps bench task_class to vision feed surfaces (apa/asj/atd)", () => {
+  it("maps bench task_class to vision feed surfaces (apa/asj/atd/atx)", () => {
     expect(benchTaskClassToVisionFeeds("wrestle")).toEqual([
       "twin_chase",
       "midnight_oil",
@@ -139,6 +142,8 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
       "research_progress_complete",
       "session_flywheel_complete",
       "twin_cross_asset_merge",
+      "context_search",
+      "evidence_pack",
     ]);
     expect(benchTaskClassToVisionFeeds("synthesize")).toContain(
       "floating_deep_research",
@@ -156,12 +161,14 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
     expect(benchTaskClassToVisionFeeds("synthesize")).toContain(
       "twin_cross_asset_merge",
     );
+    expect(benchTaskClassToVisionFeeds("synthesize")).toContain("evidence_pack");
     expect(benchTaskClassToVisionFeeds("distill")).toContain("book_qa");
     expect(benchTaskClassToVisionFeeds("distill")).toContain("spawn_merge");
     expect(benchTaskClassToVisionFeeds("distill")).toContain(
       "publication_hydrate",
     );
     expect(benchTaskClassToVisionFeeds("distill")).toContain("publication_attach");
+    expect(benchTaskClassToVisionFeeds("distill")).toContain("context_search");
     expect(benchTaskClassToVisionFeeds("book_qa")).toContain("book_qa");
     expect(benchTaskClassToVisionFeeds("book_qa")).toContain("marketplace_host");
     expect(benchTaskClassToVisionFeeds("book_qa")).toContain(
@@ -188,11 +195,13 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
       "research_progress_complete",
       "session_flywheel_complete",
       "twin_cross_asset_merge",
+      "context_search",
+      "evidence_pack",
     ]);
     expect(cov.covered_count).toBe(2);
-    // Residual (atd): wrestle feeds include progress · flywheel · twin cross-asset (11).
-    expect(cov.total).toBe(11);
-    expect(cov.coverage_ratio).toBeCloseTo(2 / 11);
+    // Residual (atd/atx): wrestle feeds include progress · flywheel · twin-cross · search · evidence (13).
+    expect(cov.total).toBe(13);
+    expect(cov.coverage_ratio).toBeCloseTo(2 / 13);
     expect(taskTrainingFeedCoverage("", null).total).toBe(0);
   });
 });

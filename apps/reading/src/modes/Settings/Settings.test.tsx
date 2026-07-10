@@ -1906,8 +1906,8 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(train.getAttribute("data-propose-not-promote")).toBe("true");
     const wrestleTrain = screen.getByTestId("antiek-bench-task-training-wrestle");
     expect(wrestleTrain.getAttribute("data-task-class")).toBe("wrestle");
-    // Residual (aqv/ari/asj/atd): wrestle trains on 11 vision feeds (+ progress · flywheel · twin-cross).
-    expect(Number(wrestleTrain.getAttribute("data-total") || 0)).toBe(11);
+    // Residual (aqv/ari/asj/atd/atx): wrestle trains on 13 vision feeds (+ context_search · evidence_pack).
+    expect(Number(wrestleTrain.getAttribute("data-total") || 0)).toBe(13);
     expect(wrestleTrain.getAttribute("data-covered") || "").toMatch(/twin_chase/);
     expect(wrestleTrain.getAttribute("data-covered") || "").toMatch(
       /midnight_oil/,

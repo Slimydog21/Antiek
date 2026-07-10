@@ -1,0 +1,27 @@
+# inventory-atx · Antiek-bench vision feeds context_search + evidence_pack
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: atx
+date: 2026-07-10
+parent_tip: ddf5fddee (atw)
+
+## Closed
+- VISION_USAGE_FEED_SOURCES += context_search · evidence_pack (21 total)
+- benchTaskClassToVisionFeeds:
+  - wrestle += context_search · evidence_pack (13 feeds)
+  - synthesize += evidence_pack
+  - distill += context_search
+- Settings wrestle training total → 13
+- Closes open-path wave into recursive bench rewrite flywheel
+  (atv intelligent search · atu citation evidence)
+- vitest suiteProposalTasks + Settings green · atx-vitest.log in SCRATCH
+
+## Doctrine
+Usage on intelligent search + evidence pack trains Antiek-bench weekly rewrite ·
+propose≠promote · never invents events · model quality for wrestle/synthesize/distill
+
+## Next
+aty+ offline product residual outside thrash
+Avoid: vision/usage thrash after atx · open-stamp wave att–atw · presets · duration ·
+catalog · scorecard · dogfood · readiness→CTA
+Prefer: competitive non-open-stamp · pure readiness extract · SESSION-ARC open-path wave
+Operator merge PR #465 remains P0 (gated)
