@@ -89,6 +89,8 @@ export function twinNoteMetrics(
  * so intelligent search covers the full offline marketplace subject spine.
  * Residual (akw): free PD literature + bare technology (Pride · tech spine when
  * not already matched by computing/electricity/heat).
+ * Residual (alf): bare science catch-all.
+ * Residual (alj): domainSearchCoverage for honesty stamps (covered vs uncovered).
  */
 export function domainAwareSearchDefault(
   subjects?: readonly string[] | null,
@@ -163,6 +165,41 @@ export function domainAwareSearchDefault(
   return "";
 }
 
+/**
+ * Residual (alj): report which asset subjects map to a domain-aware twin-search
+ * default vs remain uncovered (honest empty default — never invent a query).
+ */
+export function domainSearchCoverage(
+  subjects?: readonly string[] | null,
+): {
+  subjects: string[];
+  has_default: boolean;
+  default_query: string;
+  covered: string[];
+  uncovered: string[];
+} {
+  const list = (subjects || [])
+    .map((s) => String(s || "").trim().toLowerCase())
+    .filter(Boolean);
+  const default_query = domainAwareSearchDefault(list);
+  const has_default = Boolean(default_query);
+  // Subjects that participate in a match when has_default (heuristic: any subject
+  // that alone produces a non-empty default is covered; others are co-tags).
+  const covered: string[] = [];
+  const uncovered: string[] = [];
+  for (const s of list) {
+    if (domainAwareSearchDefault([s])) covered.push(s);
+    else uncovered.push(s);
+  }
+  return {
+    subjects: list,
+    has_default,
+    default_query,
+    covered,
+    uncovered,
+  };
+}
+
 export type ResearchContextPanelProps = {
   assetId: string;
   spawnId?: string | null;
@@ -207,6 +244,11 @@ export function ResearchContextPanel({
 
   // Residual (ff): insight/question breakdown of twin note substrate.
   const twinMetrics = useMemo(() => twinNoteMetrics(pack), [pack]);
+  // Residual (alj): domain-search coverage honesty for free PD / STEM subjects.
+  const domainCoverage = useMemo(
+    () => domainSearchCoverage(domainSubjects),
+    [domainSubjects],
+  );
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -420,12 +462,42 @@ export function ResearchContextPanel({
       <div
         className="controls"
         data-testid="research-context-query-controls"
-        data-domain-aware-default={String(
-          Boolean(domainAwareSearchDefault(domainSubjects)),
-        )}
+        data-domain-aware-default={String(domainCoverage.has_default)}
         data-domain-subjects={(domainSubjects || []).join(",") || ""}
+        data-domain-search-has-default={String(domainCoverage.has_default)}
+        data-domain-search-covered={domainCoverage.covered.join(",") || ""}
+        data-domain-search-uncovered={
+          domainCoverage.uncovered.join(",") || ""
+        }
+        data-domain-search-covered-count={String(
+          domainCoverage.covered.length,
+        )}
+        data-domain-search-uncovered-count={String(
+          domainCoverage.uncovered.length,
+        )}
         data-query={query}
       >
+        {/* Residual (alj): machine-readable domain-search coverage honesty. */}
+        {(domainSubjects || []).length > 0 ? (
+          <p
+            className="meta font-mono text-[11px] opacity-80"
+            data-testid="research-context-domain-search-coverage"
+            data-has-default={String(domainCoverage.has_default)}
+            data-covered-count={String(domainCoverage.covered.length)}
+            data-uncovered-count={String(domainCoverage.uncovered.length)}
+            data-covered={domainCoverage.covered.join(",") || ""}
+            data-uncovered={domainCoverage.uncovered.join(",") || ""}
+            role="status"
+          >
+            Domain-search coverage:{" "}
+            {domainCoverage.has_default
+              ? `default active · covered=${domainCoverage.covered.join(",") || "none"}`
+              : "no domain default (honest empty · never invent query)"}
+            {domainCoverage.uncovered.length > 0
+              ? ` · co-tags=${domainCoverage.uncovered.join(",")}`
+              : ""}
+          </p>
+        ) : null}
         <label>
           Query filter
           <input

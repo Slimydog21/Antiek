@@ -3257,3 +3257,8 @@ P0 operator merge PR #465. Pivot ali+ outside thrash.
 ## Residual ali · 2026-07-10 — FUTURE competitive execution-order re-anchor
 Execution order points at SESSION-ARC akq–aky · akr–ala · akx–ald; prefer
 non-deep-link product. P0 operator merge PR #465. Pivot alj+ outside thrash.
+
+## Residual alj · 2026-07-10 — domain-search coverage honesty stamps
+domainSearchCoverage reports covered vs uncovered free PD subjects; ResearchContext
+controls stamp data-domain-search-* and status strip (never invent empty query).
+vitest ResearchContext 17 green. P0 operator merge PR #465. Pivot alk+ outside thrash.

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ResearchContextPanel,
   domainAwareSearchDefault,
+  domainSearchCoverage,
   twinNoteMetrics,
 } from "./ResearchContextPanel";
 
@@ -165,6 +166,38 @@ describe("ResearchContextPanel", () => {
       (screen.getByTestId("research-context-query-input") as HTMLInputElement)
         .value,
     ).toMatch(/economics wealth nations/i);
+  });
+
+  it("reports domain-search coverage honesty for free PD subjects (alj)", () => {
+    const cov = domainSearchCoverage(["economics", "philosophy", "unknown_tag"]);
+    expect(cov.has_default).toBe(true);
+    expect(cov.default_query).toMatch(/economics wealth nations/i);
+    expect(cov.covered).toContain("economics");
+    expect(cov.covered).toContain("philosophy");
+    expect(cov.uncovered).toContain("unknown_tag");
+    expect(domainSearchCoverage([]).has_default).toBe(false);
+    expect(domainSearchCoverage(null).covered).toEqual([]);
+
+    render(
+      <ResearchContextPanel
+        assetId="pd-wealth"
+        domainSubjects={["economics", "philosophy"]}
+      />,
+    );
+    const controls = screen.getByTestId("research-context-query-controls");
+    expect(controls.getAttribute("data-domain-search-has-default")).toBe(
+      "true",
+    );
+    expect(controls.getAttribute("data-domain-search-covered")).toMatch(
+      /economics/,
+    );
+    expect(
+      Number(controls.getAttribute("data-domain-search-covered-count")),
+    ).toBeGreaterThanOrEqual(1);
+    const strip = screen.getByTestId("research-context-domain-search-coverage");
+    expect(strip.getAttribute("data-has-default")).toBe("true");
+    expect(strip.textContent).toMatch(/default active/i);
+    expect(strip.textContent).toMatch(/covered=/i);
   });
 
   it("prefills intelligent search query from domain subjects (ahr)", () => {
