@@ -1873,3 +1873,9 @@ to marketplace_host for HostedHtml Open Write + Antiek-bench write-seed feed.
 Competitive delta: account library → window → Write is identity-honest with
 host-land path (no silent hosted_html_document collapse).
 
+## Residual aaj · 2026-07-10 — marketplace_catalog Write seed provenance
+Filter-aware catalog HTML floats preserve marketplace_catalog Open Write +
+Antiek-bench write-seed feed (known_count 18). Competitive delta: STEM catalog
+projection → Write is identity-honest for recursive suite rewrite (not silent
+hosted_html_document collapse).
+

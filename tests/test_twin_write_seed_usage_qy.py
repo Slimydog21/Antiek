@@ -19,6 +19,7 @@ def test_known_sources_include_dr_write_seeds() -> None:
     for src in (
         "midnight_oil_deposit",
         "marketplace_host",
+        "marketplace_catalog",
         "spawn_merge",
         "collective_doc_merge",
         "hosted_html_document",

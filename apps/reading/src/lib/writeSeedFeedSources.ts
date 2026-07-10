@@ -10,6 +10,8 @@ export const WRITE_SEED_FEED_SOURCES: readonly string[] = [
   "research_progress_draft",
   "midnight_oil_deposit",
   "marketplace_host",
+  // Residual (aaj): catalog HTML projection → Write seed feed.
+  "marketplace_catalog",
   "spawn_merge",
   "collective_doc_merge",
   "hosted_html_document",

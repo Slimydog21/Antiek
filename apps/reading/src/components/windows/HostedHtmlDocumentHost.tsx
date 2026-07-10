@@ -310,6 +310,8 @@ export default function HostedHtmlDocumentHost(
     payloadSource === "marketplace_host" ||
     payloadSource === "marketplace_library" ||
     payloadSource === "marketplace_library_rehydrate";
+  // Residual (aaj): filter-aware catalog HTML projection (not a hosted book).
+  const isMarketplaceCatalog = payloadSource === "marketplace_catalog";
   const isMidnightOilDeposit = payloadSource === "midnight_oil_deposit";
   // Residual (tq): intelligent search query + hit count honesty.
   const searchQuery = String(props.search_query || "").trim();
@@ -351,9 +353,11 @@ export default function HostedHtmlDocumentHost(
                           ? `Collective document merge · ${title}`
                           : isMarketplaceHost
                             ? `Marketplace host · ${title}`
-                            : isMidnightOilDeposit
-                              ? `Midnight Oil deposit · ${title}`
-                              : title;
+                            : isMarketplaceCatalog
+                              ? `Marketplace catalog · ${title}`
+                              : isMidnightOilDeposit
+                                ? `Midnight Oil deposit · ${title}`
+                                : title;
   const twinSeedBody = html
     ? html.replace(/<[^>]+>/g, " ").slice(0, 500)
     : twinSeedTitle;
@@ -489,9 +493,11 @@ export default function HostedHtmlDocumentHost(
                                           ? "collective_doc_merge"
                                           : isMarketplaceHost
                                             ? "marketplace_host"
-                                            : isMidnightOilDeposit
-                                              ? "midnight_oil_deposit"
-                                              : "hosted_html_document"
+                                            : isMarketplaceCatalog
+                                              ? "marketplace_catalog"
+                                              : isMidnightOilDeposit
+                                                ? "midnight_oil_deposit"
+                                                : "hosted_html_document"
                 }
                 className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
                 title={
@@ -517,11 +523,13 @@ export default function HostedHtmlDocumentHost(
                                       ? "Open Write with collective document merge HTML + twin_seed (seeds note-taker)"
                                       : isMarketplaceHost
                                         ? "Open Write with marketplace hosted book HTML + twin_seed (seeds note-taker)"
-                                        : isMidnightOilDeposit
-                                          ? "Open Write with Midnight Oil deposit HTML + twin_seed (seeds note-taker)"
-                                          : isResearchProgress || isSessionFlywheel
-                                            ? "Open Write with research HTML + twin_seed (seeds note-taker)"
-                                            : "Open Write with hosted HTML + twin_seed (seeds note-taker when empty)"
+                                        : isMarketplaceCatalog
+                                          ? "Open Write with marketplace catalog HTML + twin_seed (filter-aware listing · seeds note-taker)"
+                                          : isMidnightOilDeposit
+                                            ? "Open Write with Midnight Oil deposit HTML + twin_seed (seeds note-taker)"
+                                            : isResearchProgress || isSessionFlywheel
+                                              ? "Open Write with research HTML + twin_seed (seeds note-taker)"
+                                              : "Open Write with hosted HTML + twin_seed (seeds note-taker when empty)"
                 }
               >
                 Open Write (HTML draft handoff)

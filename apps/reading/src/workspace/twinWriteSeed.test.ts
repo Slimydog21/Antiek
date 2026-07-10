@@ -227,6 +227,21 @@ describe("twinWriteSeed (pp)", () => {
     expect(loadTwinWriteSeed(key)?.source).toBe("hosted_html_document");
   });
 
+  it("builds marketplace_catalog hosted Write seed source (aaj)", () => {
+    const href = buildHostedHtmlWriteHref({
+      documentId: "marketplace-catalog-freepd",
+      title: "Marketplace catalog (HTML)",
+      html: "<article><p>By subject: science=2</p></article>",
+      source: "marketplace_catalog",
+    });
+    expect(href).toMatch(/html_draft=marketplace-catalog-freepd/);
+    const key = decodeURIComponent(
+      (href.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    const seed = loadTwinWriteSeed(key);
+    expect(seed?.source).toBe("marketplace_catalog");
+  });
+
   it("aliases marketplace_library* window sources to marketplace_host Write seed (aai)", () => {
     for (const src of [
       "marketplace_library",

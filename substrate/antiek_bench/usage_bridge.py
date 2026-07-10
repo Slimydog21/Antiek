@@ -242,6 +242,8 @@ KNOWN_USAGE_FEED_SOURCES: tuple[str, ...] = (
     "midnight_oil",
     "midnight_oil_deposit",
     "marketplace_host",
+    # Residual (aaj): catalog HTML projection Write seed.
+    "marketplace_catalog",
     "floating_deep_research",
     "twin_chase",
     "collective_merge",
@@ -277,6 +279,8 @@ TWIN_WRITE_SEED_USAGE_SOURCES: frozenset[str] = frozenset(
         "research_progress_draft",
         "midnight_oil_deposit",
         "marketplace_host",
+        # Residual (aaj): catalog HTML projection Write seed.
+        "marketplace_catalog",
         "spawn_merge",
         "collective_doc_merge",
         "hosted_html_document",

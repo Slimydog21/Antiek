@@ -317,6 +317,33 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     ).toMatch(/Midnight Oil deposit/i);
   });
 
+  it("stamps marketplace_catalog Open Write source (aaj)", () => {
+    render(
+      <HostedHtmlDocumentHost
+        document_id="marketplace-catalog-freepd_science_any-source"
+        title="Marketplace catalog (HTML) · freepd_science"
+        view_format="html"
+        source="marketplace_catalog"
+        html="<article><p>By subject: science=3</p></article>"
+      />,
+    );
+    expect(
+      screen.getByTestId("hosted-html-document-host").getAttribute("data-source"),
+    ).toBe("marketplace_catalog");
+    expect(
+      screen.getByTestId("hosted-html-open-write").getAttribute(
+        "data-write-seed-source",
+      ),
+    ).toBe("marketplace_catalog");
+    expect(
+      screen.getByTestId("hosted-html-open-write").getAttribute("title") || "",
+    ).toMatch(/marketplace catalog/i);
+    expect(
+      screen.getByTestId("twin-notes-panel-stub").getAttribute("data-seed-title") ||
+        "",
+    ).toMatch(/Marketplace catalog/i);
+  });
+
   it("maps marketplace_library* window sources to marketplace_host Open Write (aai)", () => {
     // Residual (aai): library open / rehydrate floats must not collapse Write
     // seed provenance away from the marketplace_host Antiek-bench feed.

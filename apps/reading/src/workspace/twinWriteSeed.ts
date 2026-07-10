@@ -14,6 +14,8 @@ export type TwinWriteSeedSource =
   | "midnight_oil_deposit"
   | "collective_doc_merge"
   | "marketplace_host"
+  // Residual (aaj): catalog HTML projection float → Write seed (filter-aware listing).
+  | "marketplace_catalog"
   | "spawn_merge"
   | "hosted_html_document"
   | "deep_research_session"
@@ -69,6 +71,7 @@ export function storeTwinWriteSeed(input: {
     "midnight_oil_deposit",
     "collective_doc_merge",
     "marketplace_host",
+    "marketplace_catalog",
     "spawn_merge",
     "hosted_html_document",
     "deep_research_session",
@@ -126,6 +129,7 @@ export function loadTwinWriteSeed(key: string): TwinWriteSeedPayload | null {
       "midnight_oil_deposit",
       "collective_doc_merge",
       "marketplace_host",
+      "marketplace_catalog",
       "spawn_merge",
       "hosted_html_document",
       "deep_research_session",
@@ -330,6 +334,8 @@ export function buildHostedHtmlWriteHref(opts: {
     // Residual (aai): library surface aliases (normalized below).
     "marketplace_library",
     "marketplace_library_rehydrate",
+    // Residual (aaj): catalog HTML projection float → Write seed.
+    "marketplace_catalog",
   ]);
   const source = MARKETPLACE_HOST_WRITE_ALIASES.has(srcRaw)
     ? "marketplace_host"
@@ -364,16 +370,18 @@ export function buildHostedHtmlWriteHref(opts: {
                             ? `Collective document merge · ${doc}`
                             : source === "marketplace_host"
                               ? `Marketplace host · ${doc}`
-                              : source === "midnight_oil_deposit"
-                                ? `Midnight Oil deposit · ${doc}`
-                                : `Hosted HTML · ${doc}`;
+                              : source === "marketplace_catalog"
+                                ? `Marketplace catalog · ${doc}`
+                                : source === "midnight_oil_deposit"
+                                  ? `Midnight Oil deposit · ${doc}`
+                                  : `Hosted HTML · ${doc}`;
   const seedKey = storeTwinWriteSeed({
     plain_text: plain,
     html: String(opts.html || ""),
     title: String(opts.title || "").trim() || titleDefault,
     asset_id: doc,
     note_ids: [],
-    source,
+    source: source as TwinWriteSeedSource,
   });
   return buildWriteHtmlDraftHref({
     documentId: doc,
