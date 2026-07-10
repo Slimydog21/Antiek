@@ -2924,3 +2924,8 @@ vitest MidnightOil 25 green. P0 operator merge PR #465. Pivot aiv+ outside thras
 Multi-agent merge unit navigates Settings competitive DR scorecard + FUTURE brief
 (offline merge shipped · L6 live deferred). SESSION-ARC ait–aiv scorecard navigation
 matrix complete. vitest Collective 28 green. P0 operator merge PR #465. Pivot aiw+.
+
+## Residual aiw · 2026-07-10 — HostedHtml evidence pack multi-hop hop honesty
+Float/full evidence pack windows stamp chain_complete + hop-strip honesty from
+HTML projection and deep-link competitive DR scorecard (air reading surface).
+vitest HostedHtml 24 green. P0 operator merge PR #465. Pivot aix+ outside thrash.

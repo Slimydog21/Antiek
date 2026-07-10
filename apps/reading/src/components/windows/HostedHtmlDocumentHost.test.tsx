@@ -561,6 +561,42 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(href).toMatch(/twin_seed=antiek\.twin_write_seed\./);
   });
 
+  it("surfaces multi-hop hop honesty and scorecard links for evidence_pack (aiw)", () => {
+    render(
+      <HostedHtmlDocumentHost
+        document_id="evidence:paper:hops"
+        title="Evidence pack multi-hop"
+        view_format="html"
+        source="evidence_pack"
+        html={
+          "<p>chain_complete=true</p>" +
+          "<p>Citation chain hops: Insights (claims)(1) → Source references(1)</p>" +
+          "<p>[evidence-insight-0] Insight: routing</p>" +
+          "<p>[evidence-source-0] Source: arxiv</p>"
+        }
+      />,
+    );
+    const host = screen.getByTestId("hosted-html-document-host");
+    expect(host.getAttribute("data-evidence-pack")).toBe("true");
+    expect(host.getAttribute("data-evidence-chain-complete")).toBe("true");
+    expect(host.getAttribute("data-evidence-has-hop-strip")).toBe("true");
+    const honesty = screen.getByTestId("hosted-html-evidence-pack-honesty");
+    expect(honesty.getAttribute("data-chain-complete")).toBe("true");
+    expect(honesty.getAttribute("data-has-hop-strip")).toBe("true");
+    expect(honesty.textContent).toMatch(/chain_complete=true/i);
+    expect(honesty.textContent).toMatch(/multi-hop hop strip present/i);
+    expect(
+      screen
+        .getByTestId("hosted-html-evidence-scorecard-link")
+        .getAttribute("href"),
+    ).toBe("/settings#settings-competitive-dr-scorecard");
+    expect(
+      screen
+        .getByTestId("hosted-html-evidence-future-agent-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+  });
+
   it("prefills research tier from Settings wrestle (jd)", async () => {
     fetchDepthTiers.mockResolvedValue({
       active_depth_tier: "wrestle",

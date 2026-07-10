@@ -338,6 +338,15 @@ export default function HostedHtmlDocumentHost(
     typeof props.spawn_count === "number" && Number.isFinite(props.spawn_count)
       ? Math.max(0, Math.floor(props.spawn_count))
       : null;
+  // Residual (aiw): multi-hop hop honesty from evidence HTML projection (air).
+  const evidenceHtml = isEvidencePack ? String(html || "") : "";
+  const evidenceChainComplete =
+    isEvidencePack && /chain_complete\s*=\s*true/i.test(evidenceHtml);
+  const evidenceHasHopStrip =
+    isEvidencePack &&
+    (/Citation chain hops/i.test(evidenceHtml) ||
+      /evidence-insight-\d+/i.test(evidenceHtml) ||
+      /evidence-source-\d+/i.test(evidenceHtml));
   const twinSeedTitle = isEvidencePack
     ? `Evidence pack (citation trust) · ${title}`
     : isContextSearch
@@ -383,6 +392,12 @@ export default function HostedHtmlDocumentHost(
       data-document-id={props.document_id ?? ""}
       data-source={payloadSource}
       data-evidence-pack={String(isEvidencePack)}
+      data-evidence-chain-complete={
+        isEvidencePack ? String(evidenceChainComplete) : ""
+      }
+      data-evidence-has-hop-strip={
+        isEvidencePack ? String(evidenceHasHopStrip) : ""
+      }
       data-context-search={String(isContextSearch)}
       data-search-query={isContextSearch ? searchQuery : ""}
       data-search-hit-count={
@@ -434,6 +449,47 @@ export default function HostedHtmlDocumentHost(
                 ) : null}{" "}
                 · recursive note-taker substrate · HTML · not PDF
               </p>
+            ) : null}
+            {/* Residual (aiw): evidence pack multi-hop hop honesty + scorecard nav. */}
+            {isEvidencePack ? (
+              <div
+                className="text-[11px] font-mono opacity-80 mt-1 space-y-1"
+                data-testid="hosted-html-evidence-pack-honesty"
+                data-evidence-pack="true"
+                data-chain-complete={String(evidenceChainComplete)}
+                data-has-hop-strip={String(evidenceHasHopStrip)}
+                data-view-format="html"
+                role="status"
+              >
+                <p>
+                  Evidence pack · citation trust ·{" "}
+                  {evidenceChainComplete
+                    ? "chain_complete=true (claims+sources)"
+                    : "chain incomplete until claims+sources"}
+                  {evidenceHasHopStrip
+                    ? " · multi-hop hop strip present"
+                    : " · hop strip absent"}{" "}
+                  · HTML · not PDF · never invent sources
+                </p>
+                <p className="space-x-3">
+                  <a
+                    href="/settings#settings-competitive-dr-scorecard"
+                    data-testid="hosted-html-evidence-scorecard-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="Settings competitive deep-research scorecard (citation chain · multi-hop hops)"
+                  >
+                    Settings · competitive DR scorecard
+                  </a>
+                  <a
+                    href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+                    data-testid="hosted-html-evidence-future-agent-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="FUTURE-AGENT competitive deep-research quality brief"
+                  >
+                    FUTURE · competitive DR brief
+                  </a>
+                </p>
+              </div>
             ) : null}
             {/* Residual (ts): multi-spawn cohesive unit honesty. */}
             {isCollectiveUnitPrompt ? (
