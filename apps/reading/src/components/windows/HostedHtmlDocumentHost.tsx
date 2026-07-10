@@ -142,6 +142,13 @@ export default function HostedHtmlDocumentHost(
     () => domainSearchCoverage(props.subjects || null),
     [props.subjects],
   );
+  // Residual (aou): single normalize for DR button stamps + goal_hint (aod/aoq).
+  const hostedDomains = useMemo(
+    () => normalizeDomainSubjects(props.subjects),
+    [props.subjects],
+  );
+  const hostedDomainsCsv = hostedDomains.join(",");
+  const hostedDomainAware = hostedDomains.length > 0;
 
   // Residual (eu/ob/oc): open + recent DR session spawns for collective multi-select.
   const windows = useWindows((s) => s.windows);
@@ -298,8 +305,8 @@ export default function HostedHtmlDocumentHost(
           setHighlightText(selection);
         }
       }
-      // Residual (aod): domain-aware goal_hint when free PD / STEM subjects present.
-      goal = `${goal}${formatResearchDomainsClause(props.subjects)}`;
+      // Residual (aod/aou): domain-aware goal_hint when free PD / STEM subjects present.
+      goal = `${goal}${formatResearchDomainsClause(hostedDomains)}`;
       // Residual (er): optional knowledge-dense publication refs (HTML-first hydrate).
       const refs = parsePublicationRefs(pubRefs);
       if (refs.length > 0) {
@@ -723,9 +730,7 @@ export default function HostedHtmlDocumentHost(
           data-testid="hosted-html-research-launch"
           data-view-format="html"
           data-from-highlight={fromHighlight ? "true" : "false"}
-          data-research-domains={
-            normalizeDomainSubjects(props.subjects).join(",") || ""
-          }
+          data-research-domains={hostedDomainsCsv || ""}
         >
           <div
             className="rounded border border-ink/10 p-2 text-[11px] font-mono dark:border-bright/10"
@@ -941,17 +946,13 @@ export default function HostedHtmlDocumentHost(
               type="button"
               className="rounded border border-ink/20 px-3 py-1.5 text-xs font-mono dark:border-bright/20"
               data-testid="hosted-html-deep-research"
-              data-research-domains={
-                normalizeDomainSubjects(props.subjects).join(",") || ""
-              }
-              data-domain-aware-dr={String(
-                normalizeDomainSubjects(props.subjects).length > 0,
-              )}
+              data-research-domains={hostedDomainsCsv || ""}
+              data-domain-aware-dr={String(hostedDomainAware)}
               disabled={busy || (budgetWarn && !forceOverBudget)}
               onClick={() => void spinDeepResearch("floating")}
               title={
-                normalizeDomainSubjects(props.subjects).length > 0
-                  ? `Deep research hosted HTML (floating) · research_domains=${normalizeDomainSubjects(props.subjects).join(",")}`
+                hostedDomainAware
+                  ? `Deep research hosted HTML (floating) · research_domains=${hostedDomainsCsv}`
                   : "Deep research hosted HTML (floating window)"
               }
             >
@@ -961,22 +962,18 @@ export default function HostedHtmlDocumentHost(
                   ? "Deep research highlight (window)"
                   : "Deep research (window)"}
             </button>
-            {/* Residual (es/aoq): full window over the working region · domain stamps. */}
+            {/* Residual (es/aoq/aou): full window · domain stamps (memoized). */}
             <button
               type="button"
               className="rounded border border-ink/20 px-3 py-1.5 text-xs font-mono dark:border-bright/20"
               data-testid="hosted-html-deep-research-full"
-              data-research-domains={
-                normalizeDomainSubjects(props.subjects).join(",") || ""
-              }
-              data-domain-aware-dr={String(
-                normalizeDomainSubjects(props.subjects).length > 0,
-              )}
+              data-research-domains={hostedDomainsCsv || ""}
+              data-domain-aware-dr={String(hostedDomainAware)}
               disabled={busy || (budgetWarn && !forceOverBudget)}
               onClick={() => void spinDeepResearch("full")}
               title={
-                normalizeDomainSubjects(props.subjects).length > 0
-                  ? `Open deep research full working region · research_domains=${normalizeDomainSubjects(props.subjects).join(",")}`
+                hostedDomainAware
+                  ? `Open deep research full working region · research_domains=${hostedDomainsCsv}`
                   : "Open deep research expanded to full working region"
               }
             >

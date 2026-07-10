@@ -3684,3 +3684,7 @@ multi-agent written analysis ≥2 (listing only · propose≠promote). P0 PR #46
 ## Residual aot · 2026-07-10 — memoize twin chase domain stamps
 useMemo normalizeDomainSubjects for chase titles/stamps (aoc/aoo craftsmanship).
 vitest TwinNotes 34 green. P0 PR #465. Pivot aou+.
+
+## Residual aou · 2026-07-10 — HostedHtml memoize domain stamps
+useMemo normalizeDomainSubjects for DR buttons + goal_hint (aod/aoq craftsmanship).
+vitest HostedHtml 27 green. P0 PR #465. Pivot aov+.
