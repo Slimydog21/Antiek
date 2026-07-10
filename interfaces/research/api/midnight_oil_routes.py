@@ -60,6 +60,8 @@ from substrate.midnight_oil import (
     MidnightOilLiveRunActivationSettingsRequest,
     MidnightOilOperatorArchiveHandoffPackageDeliveryAuditPlanReceipt,
     MidnightOilOperatorArchiveHandoffPackageDeliveryAuditPlanRequest,
+    MidnightOilOperatorArchiveHandoffPackageDeliveryAuditResultReconciliationPlanReceipt,
+    MidnightOilOperatorArchiveHandoffPackageDeliveryAuditResultReconciliationPlanRequest,
     MidnightOilOperatorArchiveHandoffPackagePlanReceipt,
     MidnightOilOperatorArchiveHandoffPackagePlanRequest,
     MidnightOilOperatorArchiveHandoffPackageResultReconciliationPlanReceipt,
@@ -143,6 +145,7 @@ from substrate.midnight_oil import (
     live_dispatch_final_enablement_plan_midnight_oil,
     live_run_activation_settings_midnight_oil,
     operator_archive_handoff_package_delivery_audit_plan_midnight_oil,
+    operator_archive_handoff_package_delivery_audit_result_reconciliation_plan_midnight_oil,
     operator_archive_handoff_package_plan_midnight_oil,
     operator_archive_handoff_package_result_reconciliation_plan_midnight_oil,
     operator_delivery_ledger_reconciliation_plan_midnight_oil,
@@ -678,6 +681,18 @@ def post_midnight_oil_operator_archive_handoff_package_delivery_audit_plan(
     return operator_archive_handoff_package_delivery_audit_plan_midnight_oil(req)
 
 
+@midnight_oil_router.post(
+    "/operator-archive-handoff-package-delivery-audit-result-reconciliation-plan",
+    response_model=MidnightOilOperatorArchiveHandoffPackageDeliveryAuditResultReconciliationPlanReceipt,
+)
+def post_midnight_oil_operator_archive_handoff_package_delivery_audit_result_reconciliation_plan(
+    req: MidnightOilOperatorArchiveHandoffPackageDeliveryAuditResultReconciliationPlanRequest,
+) -> MidnightOilOperatorArchiveHandoffPackageDeliveryAuditResultReconciliationPlanReceipt:
+    return operator_archive_handoff_package_delivery_audit_result_reconciliation_plan_midnight_oil(
+        req
+    )
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
@@ -709,6 +724,7 @@ __all__ = [
     "post_midnight_oil_live_dispatch_final_enablement_plan",
     "post_midnight_oil_live_run_activation_settings",
     "post_midnight_oil_operator_archive_handoff_package_delivery_audit_plan",
+    "post_midnight_oil_operator_archive_handoff_package_delivery_audit_result_reconciliation_plan",
     "post_midnight_oil_operator_archive_handoff_package_plan",
     "post_midnight_oil_operator_archive_handoff_package_result_reconciliation_plan",
     "post_midnight_oil_operator_delivery_ledger_reconciliation_plan",
