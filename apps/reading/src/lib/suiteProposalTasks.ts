@@ -115,6 +115,12 @@ export const VISION_USAGE_FEED_SOURCES = [
   "decision_tree_install",
   // Residual (ast): highlight → float|full DR launch path (asq pure helper).
   "highlight_dr_launch",
+  // Residual (atd): long-horizon progress complete (asx/asz multi-stage open → host).
+  "research_progress_complete",
+  // Residual (atd): session→prompt flywheel complete (atb host honesty path).
+  "session_flywheel_complete",
+  // Residual (atd): recursive note-taker multi-asset twin merge (atc host path).
+  "twin_cross_asset_merge",
 ] as const;
 
 export type VisionUsageFeedSource = (typeof VISION_USAGE_FEED_SOURCES)[number];
@@ -145,7 +151,7 @@ export function benchTaskClassToVisionFeeds(
     .trim()
     .toLowerCase();
   if (t === "wrestle") {
-    // Residual (aqv/ari/asj): research_context_pack + twin_promote + hydrate/attach train wrestle.
+    // Residual (aqv/ari/asj/atd): long-horizon progress + session flywheel + twin cross-asset train wrestle.
     return [
       "twin_chase",
       "midnight_oil",
@@ -155,10 +161,13 @@ export function benchTaskClassToVisionFeeds(
       "publication_hydrate",
       "publication_attach",
       "decision_tree_install",
+      "research_progress_complete",
+      "session_flywheel_complete",
+      "twin_cross_asset_merge",
     ];
   }
   if (t === "synthesize") {
-    // Residual (aqv/ast): multi-agent analysis + spawn merge + highlight DR train synthesize.
+    // Residual (aqv/ast/atd): multi-agent analysis + progress complete + twin cross-asset train synthesize.
     return [
       "floating_deep_research",
       "twin_chase",
@@ -166,6 +175,8 @@ export function benchTaskClassToVisionFeeds(
       "collective_written_analysis",
       "spawn_merge",
       "highlight_dr_launch",
+      "research_progress_complete",
+      "twin_cross_asset_merge",
     ];
   }
   if (t === "distill") {

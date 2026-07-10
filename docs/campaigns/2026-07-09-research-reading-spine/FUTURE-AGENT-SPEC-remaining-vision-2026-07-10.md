@@ -1,6 +1,6 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** residual **atc** (twin cross-asset host honesty · atb flywheel · asx–ata long-horizon/MO wave) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
+**Campaign tip at write:** residual **atd** (vision feeds progress/flywheel/twin-cross · atc host honesty · asx–atb wave) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **URL:** https://github.com/Slimydog21/Antiek/pull/465  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **STOP:** operator only (`.infinite/STOP` or explicit message)

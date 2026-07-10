@@ -4270,3 +4270,9 @@ P0 PR #465. Pivot atc+.
 Cross-asset twin merge float stamps honesty chrome + Port path (multi-asset
 insights/questions · L3 deferred · promote≠invent). Scorecard · twin matrix ·
 dual-gate L3 links. vitest HostedHtml 39 green. P0 PR #465. Pivot atd+.
+
+## Residual atd · 2026-07-10 — Antiek-bench vision feeds progress · flywheel · twin
+VISION_USAGE_FEED_SOURCES += research_progress_complete · session_flywheel_complete
+· twin_cross_asset_merge. wrestle/synthesize task_class maps updated.
+Recursive rewrite tracks asx–atc product wave. vitest suiteProposalTasks 9 green.
+P0 PR #465. Pivot ate+.

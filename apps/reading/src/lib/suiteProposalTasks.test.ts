@@ -93,7 +93,11 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
     expect(VISION_USAGE_FEED_SOURCES).toContain("decision_tree_install");
     // Residual (ast): highlight→DR launch vision feed (asq product).
     expect(VISION_USAGE_FEED_SOURCES).toContain("highlight_dr_launch");
-    expect(VISION_USAGE_FEED_SOURCES.length).toBeGreaterThanOrEqual(16);
+    // Residual (atd): long-horizon · session flywheel · twin cross-asset vision feeds.
+    expect(VISION_USAGE_FEED_SOURCES).toContain("research_progress_complete");
+    expect(VISION_USAGE_FEED_SOURCES).toContain("session_flywheel_complete");
+    expect(VISION_USAGE_FEED_SOURCES).toContain("twin_cross_asset_merge");
+    expect(VISION_USAGE_FEED_SOURCES.length).toBeGreaterThanOrEqual(19);
   });
 
   it("reports covered vs uncovered vision surfaces without inventing events", () => {
@@ -122,7 +126,7 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
     );
   });
 
-  it("maps bench task_class to vision feed surfaces (apa/asj)", () => {
+  it("maps bench task_class to vision feed surfaces (apa/asj/atd)", () => {
     expect(benchTaskClassToVisionFeeds("wrestle")).toEqual([
       "twin_chase",
       "midnight_oil",
@@ -132,6 +136,9 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
       "publication_hydrate",
       "publication_attach",
       "decision_tree_install",
+      "research_progress_complete",
+      "session_flywheel_complete",
+      "twin_cross_asset_merge",
     ]);
     expect(benchTaskClassToVisionFeeds("synthesize")).toContain(
       "floating_deep_research",
@@ -142,6 +149,12 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
     expect(benchTaskClassToVisionFeeds("synthesize")).toContain("spawn_merge");
     expect(benchTaskClassToVisionFeeds("synthesize")).toContain(
       "highlight_dr_launch",
+    );
+    expect(benchTaskClassToVisionFeeds("synthesize")).toContain(
+      "research_progress_complete",
+    );
+    expect(benchTaskClassToVisionFeeds("synthesize")).toContain(
+      "twin_cross_asset_merge",
     );
     expect(benchTaskClassToVisionFeeds("distill")).toContain("book_qa");
     expect(benchTaskClassToVisionFeeds("distill")).toContain("spawn_merge");
@@ -172,10 +185,14 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
       "publication_hydrate",
       "publication_attach",
       "decision_tree_install",
+      "research_progress_complete",
+      "session_flywheel_complete",
+      "twin_cross_asset_merge",
     ]);
     expect(cov.covered_count).toBe(2);
-    expect(cov.total).toBe(8);
-    expect(cov.coverage_ratio).toBeCloseTo(2 / 8);
+    // Residual (atd): wrestle feeds include progress · flywheel · twin cross-asset (11).
+    expect(cov.total).toBe(11);
+    expect(cov.coverage_ratio).toBeCloseTo(2 / 11);
     expect(taskTrainingFeedCoverage("", null).total).toBe(0);
   });
 });
