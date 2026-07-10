@@ -102,14 +102,20 @@ describe("AI tool-call HTML payload — end-to-end", () => {
     expect(noteHelper.parseHTML(el)).toBe("key insight: foo");
   });
 
-  it("a full <antiek-region-embed page='12' /> survives parse + render", () => {
-    const html = '<antiek-region-embed document_id="doc-1" page="12" caption="found here"></antiek-region-embed>';
+  it("a full canonical region embed preserves anchor, provenance and caption", () => {
+    const html = '<antiek-region-embed document_id="doc-1" anchor_id="anchor-12" source_page="12" caption="found here"></antiek-region-embed>';
     const container = document.createElement("div");
     container.innerHTML = html;
     const el = container.firstElementChild as HTMLElement;
 
     expect(stringAttr("document_id").parseHTML(el)).toBe("doc-1");
-    expect(intAttr("page").parseHTML(el)).toBe(12);
+    expect(stringAttr("anchor_id").parseHTML(el)).toBe("anchor-12");
+    expect(intAttr("source_page").parseHTML(el)).toBe(12);
     expect(stringAttr("caption").parseHTML(el)).toBe("found here");
+  });
+
+  it("preserves the legacy page attribute when reading old notebook HTML", () => {
+    const el = mkEl("antiek-region-embed", { document_id: "doc-old", page: "7", caption: "legacy" });
+    expect(intAttr("page").renderHTML({ page: intAttr("page").parseHTML(el) })).toEqual({ page: "7" });
   });
 });

@@ -105,3 +105,30 @@ describe("parseAssistantReply — closed-enum hardening", () => {
     expect(r.parseErrors).toHaveLength(2);
   });
 });
+
+describe("parseAssistantReply — canonical notebook regions", () => {
+  const anchor = `antiek-anchor-${"a".repeat(64)}`;
+  const parseRegion = (attrs: Record<string, unknown>) => parseAssistantReply(
+    "X.\n\n@@actions\n" + JSON.stringify([{ kind: "add_to_notebook", notebook_id: "nb", block: { kind: "region_embed", attrs } }]) + "\n@@end",
+  );
+
+  it("accepts document_id + anchor_id with optional source_page", () => {
+    const result = parseRegion({ document_id: "doc-1", anchor_id: anchor, source_page: 2 });
+    expect(result.actions).toHaveLength(1);
+    expect(result.parseErrors).toHaveLength(0);
+  });
+
+  it("rejects missing lineage and page-only/page/initialPage payloads", () => {
+    for (const attrs of [
+      { document_id: "doc-1", page: 2 },
+      { document_id: "doc-1", anchor_id: anchor, page: 2 },
+      { document_id: "doc-1", anchor_id: anchor, initialPage: 2 },
+      { document_id: "doc-1", anchor_id: "not-canonical" },
+      { anchor_id: anchor },
+    ]) {
+      const result = parseRegion(attrs);
+      expect(result.actions).toHaveLength(0);
+      expect(result.parseErrors[0]).toContain("region_embed");
+    }
+  });
+});

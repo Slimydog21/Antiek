@@ -205,6 +205,33 @@ describe("AI tool-call · full dispatch round-trip", () => {
     window.localStorage.removeItem("antiek.notebook." + nbId + ".etag");
   });
 
+  it("serializes canonical region attrs, provenance, and escaped attribute text", () => {
+    const action = {
+      kind: "add_to_notebook", notebook_id: "regions",
+      block: { kind: "region_embed", attrs: {
+        document_id: "doc&<>\"'", anchor_id: `antiek-anchor-${"a".repeat(64)}`, source_page: 12,
+        caption: "caption&<>\"'",
+      } },
+    } as const;
+    dispatchAiAction(action);
+    const stored = window.localStorage.getItem("antiek.notebook.regions") ?? "";
+    expect(stored).toContain(`anchor_id="antiek-anchor-${"a".repeat(64)}"`);
+    expect(stored).toContain('source_page="12"');
+    expect(stored).not.toMatch(/\spage=/);
+    const container = document.createElement("div");
+    container.innerHTML = stored;
+    const el = container.querySelector("antiek-region-embed")!;
+    expect(el.getAttribute("document_id")).toBe("doc&<>\"'");
+    expect(el.getAttribute("caption")).toBe("caption&<>\"'");
+  });
+
+  it("dispatcher independently refuses page-only region producers", () => {
+    expect(() => dispatchAiAction({
+      kind: "add_to_notebook", notebook_id: "regions",
+      block: { kind: "region_embed", attrs: { document_id: "doc", page: 2 } },
+    })).toThrow(/requires anchor_id/);
+  });
+
   it("toast dispatches the lemon toast queue (dynamic import resolves)", async () => {
     const { actions } = parseAssistantReply(
       "x\n\n@@actions\n" +

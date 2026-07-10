@@ -142,6 +142,24 @@ function validateOpenPanel(item: Record<string, unknown>): string | null {
   return null;
 }
 
+function validateAddToNotebook(item: Record<string, unknown>): string | null {
+  if (typeof item.notebook_id !== "string" || item.notebook_id.length === 0) return "add_to_notebook requires notebook_id";
+  const block = item.block;
+  if (typeof block !== "object" || block === null || Array.isArray(block)) return "add_to_notebook requires block";
+  const values = block as Record<string, unknown>;
+  if (values.kind !== "region_embed") return null;
+  const attrs = values.attrs;
+  if (typeof attrs !== "object" || attrs === null || Array.isArray(attrs)) return "region_embed requires attrs";
+  const region = attrs as Record<string, unknown>;
+  if (typeof region.document_id !== "string" || region.document_id.length === 0) return "region_embed requires document_id";
+  if (typeof region.anchor_id !== "string" || region.anchor_id.length === 0) return "region_embed requires anchor_id";
+  if (!/^antiek-anchor-[0-9a-f]{64}$/.test(region.anchor_id)) return "region_embed anchor_id must be canonical";
+  if ("page" in region || "initialPage" in region) return "region_embed does not accept page/initialPage; use anchor_id and optional source_page";
+  if (region.source_page !== undefined && (!Number.isSafeInteger(region.source_page) || (region.source_page as number) < 1)) return "region_embed source_page must be a positive integer";
+  if (region.caption !== undefined && typeof region.caption !== "string") return "region_embed caption must be a string";
+  return null;
+}
+
 /**
  * Parse an assistant reply. Returns the stripped prose + structured
  * actions. Tolerant of:
@@ -196,6 +214,10 @@ export function parseAssistantReply(raw: string): ParsedAssistantReply {
     if (k === "open_panel") {
       const problem = validateOpenPanel(item as Record<string, unknown>);
       if (problem) { errors.push(`Invalid open_panel action: ${problem}`); continue; }
+    }
+    if (k === "add_to_notebook") {
+      const problem = validateAddToNotebook(item as Record<string, unknown>);
+      if (problem) { errors.push(`Invalid add_to_notebook action: ${problem}`); continue; }
     }
     // Light shape validation — defer the strict typing to the executor.
     actions.push(item as AiAction);
@@ -478,6 +500,8 @@ export function dispatchAiAction(
     }
 
     case "add_to_notebook": {
+      const problem = validateAddToNotebook(action as unknown as Record<string, unknown>);
+      if (problem) throw new Error(`Refused invalid add_to_notebook action: ${problem}`);
       // The notebook editor consumes a localStorage-backed HTML string;
       // we append a custom-element tag the TipTap NodeView extensions
       // recognise. (See modes/Notebook/Editor.tsx for the storage
@@ -608,7 +632,8 @@ function aiBlockToHtml(block: AiAction extends infer A
   // Map the action's compact block schema to the custom-element tags
   // that the TipTap parseHTML extensions recognise.
   const escape = (s: string) =>
-    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   const attrs = block.attrs ?? {};
   switch (block.kind) {
     case "note":
@@ -623,10 +648,8 @@ function aiBlockToHtml(block: AiAction extends infer A
       )}"></antiek-claim-card>`;
     case "region_embed":
       return `<antiek-region-embed document_id="${escape(
-        (attrs.document_id as string) ?? "",
-      )}" page="${
-        (attrs.page as number) ?? ""
-      }" caption="${escape(
+        attrs.document_id as string,
+      )}" anchor_id="${escape(attrs.anchor_id as string)}"${attrs.source_page === undefined ? "" : ` source_page="${attrs.source_page as number}"`} caption="${escape(
         (attrs.caption as string) ?? block.text ?? "",
       )}"></antiek-region-embed>`;
     case "cross_doc_link":
