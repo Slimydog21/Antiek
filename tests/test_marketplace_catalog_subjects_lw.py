@@ -351,6 +351,28 @@ def test_free_method_includes_novum_and_hooke() -> None:
     assert all(e.is_free for e in free_method)
 
 
+def test_free_engineering_stem_trio() -> None:
+    """Residual (abf): free engineering subject for tech-researcher systems spine.
+
+    Heaviside + Shannon + Lovelace free PD HTML (len ≥3).
+    """
+    cat = default_demo_catalog()
+    free_eng = [
+        e
+        for e in cat.filter_by_subject("engineering")
+        if e.is_free and e.license_class == "public_domain"
+    ]
+    ids = {e.book_id for e in free_eng}
+    assert ids >= {
+        "pd-heaviside-em",
+        "pd-shannon-communication",
+        "pd-lovelace-analytical-engine",
+    }
+    assert all(e.source_format == "html" for e in free_eng if e.book_id in ids)
+    assert len(free_eng) >= 3
+    assert all(e.is_free for e in free_eng)
+
+
 def test_turing_computability_subjects_and_free_pd() -> None:
     """Residual (wl): Turing tagged computing+computability, free PD."""
     cat = default_demo_catalog()
