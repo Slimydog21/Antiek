@@ -1976,6 +1976,79 @@ describe("MarketplaceHost mode", () => {
     ).toBe("foundations");
   });
 
+  it("stamps heat + signal_processing counts + Fourier free PD catalog honesty (agt)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-fourier-heat",
+          title: "The Analytical Theory of Heat",
+          author: "Joseph Fourier",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: [
+            "heat",
+            "signal_processing",
+            "engineering",
+            "physics",
+            "mathematics",
+          ],
+        },
+        {
+          book_id: "pd-maxwell-em",
+          title: "A Treatise on Electricity and Magnetism",
+          author: "James Clerk Maxwell",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: ["electricity", "physics", "science"],
+        },
+      ],
+      count: 2,
+      view_format: "html",
+      free_count: 2,
+      public_domain_count: 2,
+      by_subject: {
+        heat: 1,
+        signal_processing: 1,
+        engineering: 1,
+        physics: 2,
+        electricity: 1,
+      },
+      payment_rails: "manual_receipt_only",
+    });
+    render(<MarketplaceHost ownerId="heat-reader" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("marketplace-catalog-metrics")).toBeTruthy();
+    });
+    const metrics = screen.getByTestId("marketplace-catalog-metrics");
+    expect(metrics.getAttribute("data-has-fourier-pd")).toBe("true");
+    expect(metrics.getAttribute("data-heat-count")).toBe("1");
+    expect(metrics.getAttribute("data-signal-processing-count")).toBe("1");
+    expect(metrics.getAttribute("data-view-format")).toBe("html");
+    expect(metrics.textContent).toMatch(/heat=1/);
+    expect(metrics.textContent).toMatch(/signal_processing=1/);
+    await waitFor(() => {
+      expect(screen.getByTestId("catalog-subject-heat")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("catalog-subject-heat"));
+    expect(screen.getByTestId("catalog-entry-pd-fourier-heat")).toBeTruthy();
+    expect(screen.queryByTestId("catalog-entry-pd-maxwell-em")).toBeNull();
+    expect(
+      screen
+        .getByTestId("marketplace-catalog-metrics")
+        .getAttribute("data-subject-filter"),
+    ).toBe("heat");
+    fireEvent.click(screen.getByTestId("catalog-subject-signal_processing"));
+    expect(screen.getByTestId("catalog-entry-pd-fourier-heat")).toBeTruthy();
+    expect(screen.queryByTestId("catalog-entry-pd-maxwell-em")).toBeNull();
+    expect(
+      screen
+        .getByTestId("marketplace-catalog-metrics")
+        .getAttribute("data-subject-filter"),
+    ).toBe("signal_processing");
+  });
+
   it("filters catalog by computing subject chip for Boole (ty)", async () => {
     fetchMarketplaceCatalog.mockResolvedValue({
       entries: [

@@ -2606,3 +2606,9 @@ heat · signal_processing · engineering). Antiek-bench dogfood v21 adds
 ≥19 · item_count 33 · book_qa=9 · wrestle=20. Settings spine postures v21.
 Fixed highlight-path posture `.some()` corruption. pytest 41 · Settings 36 green.
 P0 operator merge PR #465. Pivot agt+ outside thrash.
+
+## Residual agt · 2026-07-10 — marketplace heat/signal_processing Fourier honesty
+MarketplaceHost catalog metrics stamp data-heat-count · data-signal-processing-count ·
+data-has-fourier-pd after free STEM Fourier (ags). Subject chips filter heat +
+signal_processing. Parity foundations/Gödel agl. vitest MarketplaceHost 41 green.
+P0 operator merge PR #465. Pivot agu+ outside free-STEM thrash.

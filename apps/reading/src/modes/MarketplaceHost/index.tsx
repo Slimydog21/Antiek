@@ -1162,6 +1162,14 @@ export default function MarketplaceHost({
         data-has-godel-pd={String(
           entries.some((e) => e.book_id === "pd-godel-incompleteness"),
         )}
+        // Residual (agt): heat / signal_processing STEM honesty after Fourier free PD (ags).
+        data-heat-count={String(catalogBySubject["heat"] ?? 0)}
+        data-signal-processing-count={String(
+          catalogBySubject["signal_processing"] ?? 0,
+        )}
+        data-has-fourier-pd={String(
+          entries.some((e) => e.book_id === "pd-fourier-heat"),
+        )}
         role="status"
       >
         <p>
@@ -1170,6 +1178,8 @@ export default function MarketplaceHost({
           {Object.keys(catalogBySubject).length} · free=
           {catalogFreeCount}{" "}
           · foundations={catalogBySubject["foundations"] ?? 0}{" "}
+          · heat={catalogBySubject["heat"] ?? 0} · signal_processing=
+          {catalogBySubject["signal_processing"] ?? 0}{" "}
           · human view=HTML · payment=
           {catalogHonesty?.payment_rails || "manual_receipt_only"} (no live
           rails)
