@@ -142,3 +142,36 @@ export function notDiamondBenchDeltaLabel(d: NotDiamondBenchDelta): string {
       return "Advisory only";
   }
 }
+
+/**
+ * Residual (arj): product verdict — is NotDiamond useful as a router?
+ * Investigation conclusion hard-coded for Settings honesty + FUTURE agents:
+ * useful as weekly advisor only; never dispatch router (L7 · decision-tree
+ * sovereignty · Antiek-bench local recursive rewrite is the quality truth).
+ */
+export type NotDiamondImplementationVerdict = {
+  implement_as_router: false;
+  implement_as_advisory: true;
+  dual_gate: "L7";
+  never_auto_route: true;
+  rationale: readonly string[];
+  summary: string;
+};
+
+export function notDiamondImplementationVerdict(): NotDiamondImplementationVerdict {
+  const rationale = [
+    "Operator decision-tree sovereignty: model choice is explicit install, not silent route",
+    "Antiek-bench recursive weekly rewrite is local usage-truth for task quality",
+    "L7 dual-gate: NotDiamond router never under Antiek product doctrine",
+    "Advisory weekly pick still useful for operator comparison (match/differs/agree/diverge)",
+  ] as const;
+  return {
+    implement_as_router: false,
+    implement_as_advisory: true,
+    dual_gate: "L7",
+    never_auto_route: true,
+    rationale,
+    summary:
+      "Implement as weekly advisor only · never as dispatch router (L7 · decision-tree sovereignty)",
+  };
+}

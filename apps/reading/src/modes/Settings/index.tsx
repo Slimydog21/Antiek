@@ -4,6 +4,7 @@ import {
   notDiamondBenchDeltaLabel,
   notDiamondDriverDelta,
   notDiamondDriverDeltaLabel,
+  notDiamondImplementationVerdict,
 } from "../../lib/notDiamondDriverDelta";
 import {
   benchTaskClassToVisionFeeds,
@@ -2321,7 +2322,25 @@ export default function Settings() {
                 : undefined
             }
             data-l7-advisory-only="true"
+            // Residual (arj): product investigation verdict — advisory yes · router never.
+            data-implement-as-router="false"
+            data-implement-as-advisory="true"
+            data-dual-gate="L7"
           >
+            {/* Residual (arj): closed investigation verdict for NotDiamond as router. */}
+            <p
+              className="text-[11px] font-mono opacity-90"
+              data-testid="notdiamond-implementation-verdict"
+              data-implement-as-router="false"
+              data-implement-as-advisory="true"
+              data-dual-gate="L7"
+              data-never-auto-route="true"
+              data-html-first="true"
+              role="status"
+              title={notDiamondImplementationVerdict().rationale.join(" · ")}
+            >
+              Implementation verdict · {notDiamondImplementationVerdict().summary}
+            </p>
             {/* Residual (aqo): ND path honesty + model-choice deep-links (parity aqj–aqm). */}
             <p
               className="text-[11px] font-mono flex flex-wrap gap-x-3 gap-y-1 opacity-90"

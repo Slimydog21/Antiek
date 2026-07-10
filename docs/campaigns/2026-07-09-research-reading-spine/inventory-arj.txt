@@ -1,0 +1,15 @@
+# inventory-arj · NotDiamond implementation verdict (advisory yes · router never)
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: arj
+date: 2026-07-10
+parent_tip: 6cfd9f4c7 (ari)
+
+## Closed
+- notDiamondImplementationVerdict() pure helper (implement_as_router=false · L7)
+- Settings notdiamond panel verdict chrome + data-implement-as-router=false
+- Answers operator investigation: useful as advisor; never as router
+- vitest notDiamond 9 + Settings 37 = 46 green
+- evidence: {SCRATCH}/arj-nd-verdict-vitest.txt
+
+## Next
+ark+ outside thrash · Operator merge PR #465

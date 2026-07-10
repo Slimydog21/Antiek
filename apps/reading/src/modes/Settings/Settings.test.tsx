@@ -1354,6 +1354,15 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(ndPanel.getAttribute("data-notdiamond-authority")).toBe(
       "advisory_only",
     );
+    // Residual (arj): investigation verdict — implement as advisor · never router.
+    expect(ndPanel.getAttribute("data-implement-as-router")).toBe("false");
+    expect(ndPanel.getAttribute("data-implement-as-advisory")).toBe("true");
+    expect(ndPanel.getAttribute("data-dual-gate")).toBe("L7");
+    const verdict = screen.getByTestId("notdiamond-implementation-verdict");
+    expect(verdict.getAttribute("data-implement-as-router")).toBe("false");
+    expect(verdict.getAttribute("data-implement-as-advisory")).toBe("true");
+    expect(verdict.textContent).toMatch(/Implementation verdict/i);
+    expect(verdict.textContent).toMatch(/advisor only|never.*router/i);
     const honesty = screen.getByTestId("notdiamond-honesty-nav");
     expect(honesty.getAttribute("data-never-auto-route")).toBe("true");
     expect(

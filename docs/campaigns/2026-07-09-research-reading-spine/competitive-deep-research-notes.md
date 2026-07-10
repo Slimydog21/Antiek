@@ -4023,3 +4023,8 @@ arh hosted). vitest 37 green. P0 PR #465. Pivot ari+ outside domain thrash.
 Antiek-bench weekly rewrite learns from knowledge-dense arxiv/substack hydrate
 usage (publication_hydrate). Wrestle + distill training feeds expanded. propose≠promote.
 vitest 46 green. P0 PR #465. Pivot arj+.
+
+## Residual arj · 2026-07-10 — NotDiamond implementation verdict (advisor yes · router never)
+notDiamondImplementationVerdict hard-codes L7: useful weekly advisor; never
+dispatch router (decision-tree sovereignty · Antiek-bench local truth).
+Settings verdict chrome. vitest 46 green. P0 PR #465. Pivot ark+.

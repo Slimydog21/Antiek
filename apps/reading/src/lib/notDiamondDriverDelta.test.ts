@@ -4,6 +4,7 @@ import {
   notDiamondBenchDeltaLabel,
   notDiamondDriverDelta,
   notDiamondDriverDeltaLabel,
+  notDiamondImplementationVerdict,
 } from "./notDiamondDriverDelta";
 
 describe("notDiamondDriverDelta (rl)", () => {
@@ -89,5 +90,18 @@ describe("notDiamondBenchDelta (ade)", () => {
     expect(d.advisory_only).toBe(true);
     expect(notDiamondBenchDeltaLabel(d)).toMatch(/diverge/i);
     expect(notDiamondBenchDeltaLabel(d)).toMatch(/neither auto-routes/i);
+  });
+});
+
+describe("notDiamondImplementationVerdict residual (arj)", () => {
+  it("hard-codes advisory yes · router never (L7 investigation)", () => {
+    const v = notDiamondImplementationVerdict();
+    expect(v.implement_as_router).toBe(false);
+    expect(v.implement_as_advisory).toBe(true);
+    expect(v.dual_gate).toBe("L7");
+    expect(v.never_auto_route).toBe(true);
+    expect(v.rationale.length).toBeGreaterThanOrEqual(3);
+    expect(v.summary).toMatch(/advisor only/i);
+    expect(v.summary).toMatch(/never.*router/i);
   });
 });
