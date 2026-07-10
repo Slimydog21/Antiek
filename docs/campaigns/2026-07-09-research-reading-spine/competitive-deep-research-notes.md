@@ -929,3 +929,9 @@ Antiek-bench offline dogfood suite gains write-seed, float-evidence, and
 budget-foresight task postures (v2). Competitive delta: weekly recursive
 bench rewrite can learn from the same product surfaces that differentiate
 Antiek from chat-export deep research — without auto-promoting suites.
+
+## Residual su · 2026-07-10 — Dogfood Settings v2 posture honesty
+Settings dogfood summary stamps suite version, item count, and write-seed /
+float-evidence / budget-foresight postures for v2 fixtures. Competitive
+delta: operators see which recursive-spine postures weekly dogfood covers
+without auto-promoting suites.

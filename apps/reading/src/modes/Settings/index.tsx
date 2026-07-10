@@ -1828,6 +1828,25 @@ export default function Settings() {
               <div
                 className="font-mono text-[13px] space-y-2"
                 data-testid="antiek-bench-dogfood-summary"
+                data-suite-version={dogfood.suite_version || ""}
+                data-item-count={String(dogfood.item_count ?? 0)}
+                data-auto-promoted={String(dogfood.auto_promoted === true)}
+                data-has-write-seed-posture={String(
+                  (dogfood.items || []).some(
+                    (it) => it.item_id === "dogfood-wrestle-write-seed",
+                  ),
+                )}
+                data-has-float-evidence-posture={String(
+                  (dogfood.items || []).some(
+                    (it) => it.item_id === "dogfood-synth-float-evidence",
+                  ),
+                )}
+                data-has-budget-foresight-posture={String(
+                  (dogfood.items || []).some(
+                    (it) => it.item_id === "dogfood-distill-budget-foresight",
+                  ),
+                )}
+                data-propose-not-promote="true"
               >
                 <Row label="Suite" value={dogfood.suite_version} />
                 <Row label="Label" value={dogfood.label} />
@@ -1837,6 +1856,23 @@ export default function Settings() {
                   value={String(dogfood.auto_promoted)}
                 />
                 <Row label="View" value={dogfood.view_format} />
+                {/* Residual (su): v2 posture honesty for recursive rewrite. */}
+                {(dogfood.items || []).some((it) =>
+                  [
+                    "dogfood-wrestle-write-seed",
+                    "dogfood-synth-float-evidence",
+                    "dogfood-distill-budget-foresight",
+                  ].includes(it.item_id),
+                ) ? (
+                  <p
+                    className="text-[11px] text-ink-soft dark:text-starlight"
+                    data-testid="antiek-bench-dogfood-v2-postures"
+                    role="status"
+                  >
+                    Spine postures (v2): write-seed · float evidence · budget
+                    foresight (listing only · not auto-promoted)
+                  </p>
+                ) : null}
                 <ul data-testid="antiek-bench-dogfood-classes" className="space-y-1">
                   {Object.entries(dogfood.by_task_class || {}).map(
                     ([tc, n]) => (
@@ -1847,8 +1883,12 @@ export default function Settings() {
                   )}
                 </ul>
                 <ul data-testid="antiek-bench-dogfood-items" className="space-y-1 text-[11px]">
-                  {(dogfood.items || []).slice(0, 8).map((it) => (
-                    <li key={it.item_id}>
+                  {(dogfood.items || []).slice(0, 12).map((it) => (
+                    <li
+                      key={it.item_id}
+                      data-item-id={it.item_id}
+                      data-task-class={it.task_class}
+                    >
                       [{it.task_class}] {it.item_id}
                     </li>
                   ))}

@@ -259,13 +259,14 @@ const {
       html: `<p>Active: ${opts.depth_tier}</p>`,
     })),
     fetchAntiekBenchDogfoodFixtures: vi.fn(async () => ({
-      suite_version: "suite-competitive-dogfood-v1",
+      // Residual (st/su): competitive dogfood v2 postures.
+      suite_version: "suite-competitive-dogfood-v2",
       label: "antiek-bench-competitive-dogfood",
-      item_count: 5,
+      item_count: 8,
       by_task_class: {
-        distill: 1,
-        synthesize: 1,
-        wrestle: 2,
+        distill: 2,
+        synthesize: 2,
+        wrestle: 3,
         book_qa: 1,
       },
       items: [
@@ -274,13 +275,28 @@ const {
           task_class: "distill",
           prompt: "Distill attention claim",
         },
+        {
+          item_id: "dogfood-wrestle-write-seed",
+          task_class: "wrestle",
+          prompt: "twin_seed Write path",
+        },
+        {
+          item_id: "dogfood-synth-float-evidence",
+          task_class: "synthesize",
+          prompt: "float evidence HTML",
+        },
+        {
+          item_id: "dogfood-distill-budget-foresight",
+          task_class: "distill",
+          prompt: "budget projection",
+        },
       ],
       auto_promoted: false,
       view_format: "html",
       settings_panel: "antiek_bench_dogfood_fixtures",
       source: "antiek_bench.dogfood_fixtures",
       notes: ["Competitive dogfood fixtures are offline prompts only."],
-      html: "<p>Suite suite-competitive-dogfood-v1 · items=5</p>",
+      html: "<p>Suite suite-competitive-dogfood-v2 · items=8 · dogfood-wrestle-write-seed</p>",
     })),
     fetchAntiekBenchLeaderboard: vi.fn(async () => ({
       week_id: "2026-W28",
@@ -1204,18 +1220,34 @@ describe("Settings SPR-01 + decision-tree install", () => {
     await waitFor(() => {
       expect(
         screen.getByTestId("antiek-bench-dogfood-summary").textContent,
-      ).toMatch(/suite-competitive-dogfood-v1/);
+      ).toMatch(/suite-competitive-dogfood-v2/);
     });
+    const summary = screen.getByTestId("antiek-bench-dogfood-summary");
+    // Residual (su): v2 spine posture machine attrs.
+    expect(summary.getAttribute("data-suite-version")).toBe(
+      "suite-competitive-dogfood-v2",
+    );
+    expect(summary.getAttribute("data-item-count")).toBe("8");
+    expect(summary.getAttribute("data-auto-promoted")).toBe("false");
+    expect(summary.getAttribute("data-has-write-seed-posture")).toBe("true");
+    expect(summary.getAttribute("data-has-float-evidence-posture")).toBe(
+      "true",
+    );
+    expect(summary.getAttribute("data-has-budget-foresight-posture")).toBe(
+      "true",
+    );
+    expect(summary.getAttribute("data-propose-not-promote")).toBe("true");
+    expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
+      /write-seed/i,
+    );
     expect(
       screen
         .getByTestId("antiek-bench-dogfood-panel")
         .getAttribute("data-view-format"),
     ).toBe("html");
-    expect(
-      screen.getByTestId("antiek-bench-dogfood-summary").textContent,
-    ).toMatch(/Auto-promoted\s*false/i);
+    expect(summary.textContent).toMatch(/Auto-promoted\s*false/i);
     expect(screen.getByTestId("antiek-bench-dogfood-html").innerHTML).toMatch(
-      /items=5|dogfood/i,
+      /items=8|dogfood/i,
     );
   });
 

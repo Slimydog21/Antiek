@@ -1,0 +1,14 @@
+# inventory-su · Dogfood Settings v2 posture honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: su
+date: 2026-07-10
+
+## Closed
+- antiek-bench-dogfood-summary data-suite-version / item-count / postures
+- antiek-bench-dogfood-v2-postures label
+- item list shows up to 12 fixtures
+- vitest Settings 29 · SCRATCH residual-tests-su.log
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live multi-provider bench
