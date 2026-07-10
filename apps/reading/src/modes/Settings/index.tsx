@@ -71,6 +71,8 @@ import {
  *
  * Honesty: spent/pricing may be unknown; UI never invents $0.00 when the
  * ledger or rate table is unset. Cost projection stays on #440 API.
+ * Residual (wb): remaining-after-prompt on decision-tree mini estimate + full
+ * prompt-cost-projection panel (parity launch wa / badge pg / MO um).
  */
 export default function Settings() {
   const tier = useViewportTier();
@@ -1406,6 +1408,14 @@ export default function Settings() {
                         ? "yes"
                         : "no"
                   }
+                  data-remaining-after-usd={
+                    budget?.remaining_usd != null &&
+                    estimate.estimated_usd_high != null
+                      ? String(
+                          budget.remaining_usd - estimate.estimated_usd_high,
+                        )
+                      : ""
+                  }
                   data-provider={estimate.provider ?? selectedProvider ?? ""}
                   data-model={estimate.model ?? selectedModel ?? ""}
                   role="status"
@@ -1419,7 +1429,11 @@ export default function Settings() {
                       : "no"}
                   {estimate.estimated_usd_high != null
                     ? ` · high≈$${estimate.estimated_usd_high.toFixed(4)}`
-                    : " · high=—"}{" "}
+                    : " · high=—"}
+                  {budget?.remaining_usd != null &&
+                  estimate.estimated_usd_high != null
+                    ? ` · remaining after≈$${(budget.remaining_usd - estimate.estimated_usd_high).toFixed(4)}`
+                    : ""}{" "}
                   (soft gate · never invents $0)
                 </p>
               ) : null}
@@ -2907,7 +2921,16 @@ export default function Settings() {
               </p>
             )}
             {estimate && (
-              <div className="font-mono text-[13px] space-y-1">
+              <div
+                className="font-mono text-[13px] space-y-1"
+                data-testid="prompt-cost-estimate-result"
+                data-remaining-after-usd={
+                  budget?.remaining_usd != null &&
+                  estimate.estimated_usd_high != null
+                    ? String(budget.remaining_usd - estimate.estimated_usd_high)
+                    : ""
+                }
+              >
                 <Row
                   label="Pricing known"
                   value={estimate.pricing_known ? "yes" : "no"}
@@ -2938,6 +2961,29 @@ export default function Settings() {
                         : "no"
                   }
                 />
+                {/* Residual (wb): remaining after high-band fire (parity launch wa). */}
+                <div
+                  data-testid="prompt-cost-remaining-after"
+                  data-remaining-after-usd={
+                    budget?.remaining_usd != null &&
+                    estimate.estimated_usd_high != null
+                      ? String(
+                          budget.remaining_usd - estimate.estimated_usd_high,
+                        )
+                      : ""
+                  }
+                  role="status"
+                >
+                  <Row
+                    label="Remaining after prompt"
+                    value={
+                      budget?.remaining_usd != null &&
+                      estimate.estimated_usd_high != null
+                        ? `$${(budget.remaining_usd - estimate.estimated_usd_high).toFixed(6)}`
+                        : "—"
+                    }
+                  />
+                </div>
                 {estimate.notes.map((n) => (
                   <p
                     key={n}

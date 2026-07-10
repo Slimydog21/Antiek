@@ -1,0 +1,23 @@
+# inventory-wb · Settings remaining-after-prompt foresight
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: wb
+date: 2026-07-10
+tip_before: 68fa1668 (wa)
+
+## Problem
+Settings decision-tree mini estimate + full prompt-cost-projection panel
+showed would_exceed / high band but not remaining-after-prompt. Launch panel
+(wa), DecisionTree badge (pg), and MO ceiling (um) already projected after-fire
+remaining; Settings driver/budget chokepoint lagged.
+
+## Fix
+- decision-tree-mini-estimate: data-remaining-after-usd + text when remaining+high known
+- prompt-cost-estimate-result + prompt-cost-remaining-after row on full panel
+- Empty remaining-after when high unknown (never invent $0)
+- Tests: default empty; known high → 4−0.12=3.88 mini + full
+
+## Verified
+npm test -- --run src/modes/Settings/Settings.test.tsx → 33 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

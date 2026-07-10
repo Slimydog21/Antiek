@@ -710,8 +710,52 @@ describe("Settings SPR-01 + decision-tree install", () => {
     // Default estimate mock: pricing_known false → would_exceed unknown
     expect(mini.getAttribute("data-pricing-known")).toBe("false");
     expect(mini.getAttribute("data-would-exceed")).toBe("unknown");
+    // Residual (wb): remaining-after empty when high band unknown (never invent).
+    expect(mini.getAttribute("data-remaining-after-usd")).toBe("");
     expect(mini.textContent).toMatch(/Sample projection/i);
     expect(mini.textContent).toMatch(/never invents \$0/i);
+  });
+
+  it("surfaces remaining-after on mini + full projection when high known (wb)", async () => {
+    const user = userEvent.setup();
+    estimatePromptCost.mockResolvedValueOnce({
+      estimated_usd_low: 0.08,
+      estimated_usd_high: 0.12,
+      would_exceed_budget: false,
+      pricing_known: true,
+      notes: [],
+      assumed_input_tokens: 500,
+      assumed_output_tokens: 500,
+      tier: "pro",
+      provider: "zai",
+      model: "glm-5.2",
+    });
+    render(<Settings />);
+    await waitFor(() => {
+      expect(screen.getByTestId("decision-tree-project-cost")).toBeTruthy();
+    });
+    await user.click(screen.getByTestId("decision-tree-project-cost"));
+    await waitFor(() => {
+      expect(screen.getByTestId("decision-tree-mini-estimate")).toBeTruthy();
+    });
+    const mini = screen.getByTestId("decision-tree-mini-estimate");
+    // remaining 4 − high 0.12 = 3.88
+    expect(mini.getAttribute("data-remaining-after-usd")).toBe("3.88");
+    expect(mini.getAttribute("data-would-exceed")).toBe("no");
+    expect(mini.textContent).toMatch(/remaining after≈\$3\.8800/);
+    // Full projection panel shares estimate state after mini project.
+    await waitFor(() => {
+      expect(screen.getByTestId("prompt-cost-remaining-after")).toBeTruthy();
+    });
+    const full = screen.getByTestId("prompt-cost-remaining-after");
+    expect(full.getAttribute("data-remaining-after-usd")).toBe("3.88");
+    expect(full.textContent).toMatch(/Remaining after prompt/i);
+    expect(full.textContent).toMatch(/\$3\.880000/);
+    expect(
+      screen
+        .getByTestId("prompt-cost-estimate-result")
+        .getAttribute("data-remaining-after-usd"),
+    ).toBe("3.88");
   });
 
   it("deep-links decision-tree to weekly leaderboard (sq)", async () => {

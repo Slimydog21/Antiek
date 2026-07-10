@@ -1359,3 +1359,8 @@ ResearchLaunchBudgetPanel stamps remaining − high band after fire (parity
 DecisionTree badge pg + MO ceiling um). Competitive delta: every research
 Ask surface shows how the proposed prompt would affect the daily cap before
 dispatch — budget-before-fire foresight complete on shared launch chokepoint.
+
+## Residual wb · 2026-07-10 — Settings remaining-after-prompt foresight
+Decision-tree mini estimate + full prompt-cost-projection stamp remaining − high
+(parity launch wa). Competitive delta: Settings driver chokepoint answers
+"how does this sample prompt affect my daily cap?" before install/dispatch.

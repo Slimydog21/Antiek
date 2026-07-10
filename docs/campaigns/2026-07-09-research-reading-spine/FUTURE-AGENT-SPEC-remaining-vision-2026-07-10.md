@@ -1,13 +1,13 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** `2f780198` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
+**Campaign tip at write:** `68fa1668` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **URL:** https://github.com/Slimydog21/Antiek/pull/465  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
 
 ## Do not rebuild
 
-Prefer **SESSION-ARC-tt-vt-infinite-wave.md** + inventories **tt–wa** + competitive notes. Tip letters **tt–wa** (60 residual ships including tip re-anchors).
+Prefer **SESSION-ARC-tt-vt-infinite-wave.md** + inventories **tt–wb** + competitive notes. Tip letters **tt–wb** (61 residual ships including tip re-anchors).
 
 ### Closed product (high signal)
 
@@ -18,6 +18,7 @@ Prefer **SESSION-ARC-tt-vt-infinite-wave.md** + inventories **tt–wa** + compet
 | Multi-float Select open | all surfaces |
 | Midnight Oil foresight | L4 · remaining-after · hydrate Settings |
 | Launch budget foresight | remaining-after-prompt on ResearchLaunchBudgetPanel (wa) |
+| Settings budget foresight | mini + full remaining-after (wb) |
 | arxiv/substack honesty | full matrix |
 | Marketplace L5 | manual_receipt_only + Settings L5 deferred |
 | Collective L6 | deferred · offline merge unit only (vx panel + vz Settings dual-gate) |
