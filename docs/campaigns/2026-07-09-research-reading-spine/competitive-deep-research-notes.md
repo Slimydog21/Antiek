@@ -3776,3 +3776,9 @@ vitest HostedHtml 32 · MarketplaceHost 43 green. P0 PR #465. Pivot apm+ outside
 Filter-aware catalog HTML float: Port path + honesty chrome (not a hosted book ·
 never invent host entitlement · L5 deferred). Completes marketplace float twin matrix
 after apk/apl host+library paths. vitest HostedHtml 33 green. P0 PR #465. Pivot apn+.
+
+## Residual apn · 2026-07-10 — ResearchProgress stage pipeline × citation hop nav
+Stage pipeline chrome deep-links competitive scorecard + FUTURE DR brief and
+names citation hops (insights→questions→sources) live on evidence pack (api) —
+never invent hops on progress surface. Cross-links multi-stage (ape) × multi-hop (api).
+vitest ResearchProgressPanel 12 green. P0 PR #465. Pivot apo+ outside thrash.

@@ -1,0 +1,16 @@
+# inventory-apn · ResearchProgress stage pipeline × citation hop competitive nav
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: apn
+date: 2026-07-10
+parent_tip: 245d3531 (apm)
+
+## Closed
+- research-progress-pipeline-competitive-nav under stage pipeline (ape)
+- Citation hop hint (insights→questions→sources · never invent here)
+- Scorecard + FUTURE competitive DR deep-links
+- Cross-links multi-stage (ape) × multi-hop (api) world-class DR bar
+- vitest ResearchProgressPanel 12 green
+
+## Next
+apo+ product residual outside thrash
+Operator merge PR #465 remains highest leverage (gated)

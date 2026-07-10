@@ -23,6 +23,8 @@
  * jobs (world-class DR honesty map · residual aii).
  * Residual (akt): FUTURE-AGENT competitive DR quality brief deep-link (parity
  * launch/collective/spawn/flywheel/MO FUTURE matrix during multi-minute jobs).
+ * Residual (apn): stage pipeline cross-links citation hop completeness (api)
+ * + competitive FUTURE brief (world-class DR bar: multi-stage + multi-hop).
  * Residual (ape): competitive plan→gather→synthesize→cite→terminal stage
  * pipeline completeness chrome (world-class DR multi-stage honesty).
  * HTML-first; never PDF.
@@ -532,6 +534,37 @@ export function ResearchProgressPanel({
                 );
               })}
             </ol>
+            {/* Residual (apn): competitive multi-stage × multi-hop citation bar. */}
+            <p
+              className="flex flex-wrap gap-x-3 gap-y-1 opacity-90 mt-1"
+              data-testid="research-progress-pipeline-competitive-nav"
+              data-view-format="html"
+              data-is-terminal={String(stagePipeline.is_terminal)}
+              data-completed-count={String(stagePipeline.completed_count)}
+              role="navigation"
+              aria-label="Competitive DR pipeline and citation hop navigation"
+            >
+              <span data-testid="research-progress-pipeline-citation-hop-hint">
+                Citation hops (insights → questions → sources) live on evidence
+                pack · never invent hops here
+              </span>
+              <a
+                href="/settings#settings-competitive-dr-scorecard"
+                data-testid="research-progress-pipeline-scorecard-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Settings competitive deep-research scorecard"
+              >
+                Settings · competitive DR scorecard
+              </a>
+              <a
+                href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+                data-testid="research-progress-pipeline-future-agent-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="FUTURE-AGENT competitive deep-research quality brief"
+              >
+                FUTURE · competitive DR brief
+              </a>
+            </p>
           </div>
           <p>
             latest=<strong>{progress.latest_stage ?? "(none)"}</strong> · events=

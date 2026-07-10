@@ -205,6 +205,26 @@ describe("ResearchProgressPanel", () => {
       ),
     ).toBe("false");
     expect(pipeline.textContent).toMatch(/Competitive pipeline/i);
+    // Residual (apn): stage pipeline × citation hop competitive nav.
+    const pipeNav = screen.getByTestId(
+      "research-progress-pipeline-competitive-nav",
+    );
+    expect(pipeNav.getAttribute("data-is-terminal")).toBe("false");
+    expect(pipeNav.getAttribute("data-completed-count")).toBe("4");
+    expect(
+      screen.getByTestId("research-progress-pipeline-citation-hop-hint")
+        .textContent,
+    ).toMatch(/insights.*questions.*sources/i);
+    expect(
+      screen
+        .getByTestId("research-progress-pipeline-scorecard-link")
+        .getAttribute("href"),
+    ).toBe("/settings#settings-competitive-dr-scorecard");
+    expect(
+      screen
+        .getByTestId("research-progress-pipeline-future-agent-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
     // Residual (rp): non-terminal still offers progress draft Write handoff.
     const draftWrite = screen.getByTestId("research-progress-open-write");
     expect(draftWrite.getAttribute("data-is-terminal")).toBe("false");
