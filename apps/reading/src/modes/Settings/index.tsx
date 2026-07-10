@@ -1135,6 +1135,82 @@ export default function Settings() {
                 </p>
               ))}
             </div>
+            {/* Residual (sa): budget usage bar at decision-tree (model driver) selection. */}
+            <div
+              className="space-y-1.5 border border-ink/10 rounded p-2 dark:border-bright/10"
+              data-testid="decision-tree-budget-bar"
+              data-spent-status={budget?.spent_status ?? "unknown"}
+              data-has-cap={String(
+                budget?.daily_cap_usd != null && budget.daily_cap_usd > 0,
+              )}
+              data-spend-pct={
+                spendPct != null ? String(Math.round(spendPct)) : ""
+              }
+              role="status"
+            >
+              <p className="text-[11px] font-mono text-ink-soft dark:text-starlight">
+                Budget vs driver (soft gate · never invents $0)
+              </p>
+              <div className="font-mono text-[12px] space-y-0.5">
+                <Row
+                  label="Daily cap"
+                  value={
+                    budget?.daily_cap_usd == null
+                      ? "unset"
+                      : `$${budget.daily_cap_usd.toFixed(2)}`
+                  }
+                />
+                <Row
+                  label="Spent"
+                  value={
+                    budget?.spent_status === "known" &&
+                    budget.spent_usd != null
+                      ? `$${budget.spent_usd.toFixed(4)}`
+                      : budget?.spent_status === "unknown"
+                        ? "unknown"
+                        : "—"
+                  }
+                />
+                <Row
+                  label="Remaining"
+                  value={
+                    budget?.remaining_usd == null
+                      ? "unknown"
+                      : `$${budget.remaining_usd.toFixed(4)}`
+                  }
+                />
+              </div>
+              <div
+                className="h-2 w-full rounded-full bg-ink/10 dark:bg-bright/10 overflow-hidden"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={spendPct ?? 0}
+                aria-label="Decision-tree budget usage"
+                data-testid="decision-tree-budget-progress"
+              >
+                {spendPct != null ? (
+                  <div
+                    className="h-full bg-ink dark:bg-bright transition-all"
+                    style={{ width: `${spendPct}%` }}
+                  />
+                ) : (
+                  <div className="h-full w-full opacity-30" />
+                )}
+              </div>
+              <p className="text-[11px] text-ink-soft dark:text-starlight">
+                {spendPct == null
+                  ? "Usage bar empty when spend is unknown or cap is unset. Project prompts below before install."
+                  : `${Math.round(spendPct)}% of daily cap used · project any prompt cost before dispatch burns remaining.`}{" "}
+                <a
+                  href="#prompt-cost-projection"
+                  className="underline opacity-80 hover:opacity-100"
+                  data-testid="decision-tree-budget-project-link"
+                >
+                  Project prompt cost
+                </a>
+              </p>
+            </div>
           </div>
         </LemonCard>
 
@@ -2390,7 +2466,11 @@ export default function Settings() {
         </LemonCard>
 
         <LemonCard title="Prompt cost projection" elevation="z1" colour="glacial">
-          <div className="p-4 space-y-3">
+          <div
+            id="prompt-cost-projection"
+            className="p-4 space-y-3"
+            data-testid="prompt-cost-projection-panel"
+          >
             <p className="text-sm text-ink dark:text-bright">
               Estimate how a proposed pro-tier prompt would hit today&apos;s
               remaining budget. Projection uses dispatch config rates —

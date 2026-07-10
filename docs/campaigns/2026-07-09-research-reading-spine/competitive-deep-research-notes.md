@@ -811,3 +811,9 @@ readable for weekly rewrite without client-side source lists drifting.
 Settings usage panel surfaces write_seed_event_count / source_count /
 known_catalog from substrate SSOT. Competitive delta: operators see weekly
 recursive note-taker → Write volume at a glance (propose≠promote).
+
+## Residual sa · 2026-07-10 — Decision-tree budget usage bar
+Model driver install panel shows daily cap / spent / remaining + usage
+progressbar (soft gate, never invents $0) with deep-link to prompt cost
+projection. Competitive delta: operators choose the research driver with
+budget posture visible at the decision-tree — not only a separate Budget card.

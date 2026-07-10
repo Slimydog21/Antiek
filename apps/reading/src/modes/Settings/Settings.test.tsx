@@ -535,8 +535,9 @@ describe("Settings SPR-01 + decision-tree install", () => {
       expect(screen.getAllByText(/zai/).length).toBeGreaterThan(0);
     });
     expect(screen.getByText(/ready/i)).toBeTruthy();
-    expect(screen.getByText("$5.00")).toBeTruthy();
-    expect(screen.getByText("$1.0000")).toBeTruthy();
+    // Residual (sa): cap/spent appear on Budget card and decision-tree bar.
+    expect(screen.getAllByText("$5.00").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("$1.0000").length).toBeGreaterThanOrEqual(1);
   });
 
   it("projects cost and shows honest unknown pricing", async () => {
@@ -582,6 +583,24 @@ describe("Settings SPR-01 + decision-tree install", () => {
       const status = container.querySelector('[data-testid="decision-tree-status"]');
       expect(status?.textContent).toMatch(/zai\s*\/\s*glm-5\.2/i);
     });
+  });
+
+  it("embeds budget usage bar on decision-tree panel (sa)", async () => {
+    render(<Settings />);
+    await waitFor(() => {
+      expect(screen.getByTestId("decision-tree-budget-bar")).toBeTruthy();
+    });
+    const bar = screen.getByTestId("decision-tree-budget-bar");
+    expect(bar.getAttribute("data-has-cap")).toBe("true");
+    expect(bar.getAttribute("data-spent-status")).toBe("known");
+    // Default mock: spent $1 / cap $5 → 20%
+    expect(bar.getAttribute("data-spend-pct")).toBe("20");
+    expect(bar.textContent).toMatch(/Budget vs driver/i);
+    expect(bar.textContent).toMatch(/soft gate/i);
+    expect(screen.getByTestId("decision-tree-budget-progress")).toBeTruthy();
+    const projectLink = screen.getByTestId("decision-tree-budget-project-link");
+    expect(projectLink.getAttribute("href")).toBe("#prompt-cost-projection");
+    expect(screen.getByTestId("prompt-cost-projection-panel")).toBeTruthy();
   });
 
   it("loads Antiek-bench weekly usage summary in Settings", async () => {
