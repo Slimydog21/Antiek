@@ -1,0 +1,15 @@
+# inventory-tb · Library free-PD honesty under filter
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: tb
+date: 2026-07-10
+
+## Closed
+- marketplace-library-metrics:
+  - data-free-count / data-filtered-free-count / data-filters-active
+- marketplace-library-filtered-free-honesty when library text filter active
+- parity catalog residual (ta)
+- vitest MarketplaceHost 13 · SCRATCH residual-tests-tb.log
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live payment rails (L5)

@@ -965,3 +965,8 @@ Catalog metrics stamp visible_free under active free-PD/subject/source/text
 filters while preserving full-catalog free_count from server honesty.
 Competitive delta: free research spine browsing never confuses filtered
 list size with whole-catalog free inventory — HTML host only, no live rails.
+
+## Residual tb · 2026-07-10 — Library free-PD honesty under filter
+Account library metrics stamp free_pd counts and filtered free honesty when
+text filter is active. Competitive delta: hosted HTML library browsing never
+confuses filtered list size with whole-library free inventory (HTML host only).

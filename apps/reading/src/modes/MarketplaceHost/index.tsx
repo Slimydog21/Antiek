@@ -57,6 +57,7 @@
  * subjects so DR inherits research-domain context (reading ≡ research).
  * Residual (ta): filtered free-PD honesty — visible free among filtered
  * rows vs full-catalog free_count when free-only/subject/source/text filters on.
+ * Residual (tb): library free/PD honesty under text filter (parity catalog ta).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -277,6 +278,28 @@ export default function MarketplaceHost({
       return hay.includes(q);
     });
   }, [libraryDocs, libraryFilter]);
+
+  /** Residual (tb): library free/PD honesty under filter. */
+  const libraryFreeCount = useMemo(() => {
+    return libraryDocs.filter(
+      (d) =>
+        d.license_class === "public_domain" ||
+        (d.license_class || "").toLowerCase() === "free",
+    ).length;
+  }, [libraryDocs]);
+
+  const libraryFilteredFreeCount = useMemo(() => {
+    return filteredLibraryDocs.filter(
+      (d) =>
+        d.license_class === "public_domain" ||
+        (d.license_class || "").toLowerCase() === "free",
+    ).length;
+  }, [filteredLibraryDocs]);
+
+  const libraryFiltersActive = useMemo(
+    () => Boolean(libraryFilter.trim()),
+    [libraryFilter],
+  );
 
   const loadCatalog = useCallback(async () => {
     setBusy(true);
@@ -1436,17 +1459,35 @@ export default function MarketplaceHost({
           >
             Showing {filteredLibraryDocs.length} of {libraryDocs.length}
           </p>
-          {/* Residual (im): HTML-first account library metrics. */}
+          {/* Residual (im/tb): HTML-first account library metrics + free honesty. */}
           <div
-            className="text-[11px] font-mono opacity-80"
+            className="text-[11px] font-mono opacity-80 space-y-0.5"
             data-testid="marketplace-library-metrics"
             data-doc-count={String(libraryDocs.length)}
             data-filtered-count={String(filteredLibraryDocs.length)}
+            data-free-count={String(libraryFreeCount)}
+            data-filtered-free-count={String(libraryFilteredFreeCount)}
+            data-filters-active={String(libraryFiltersActive)}
             data-view-format="html"
             role="status"
           >
-            Library · docs={libraryDocs.length} · filtered=
-            {filteredLibraryDocs.length} · human view=HTML
+            <p>
+              Library · docs={libraryDocs.length} · filtered=
+              {filteredLibraryDocs.length} · free_pd=
+              {libraryFreeCount} · human view=HTML
+            </p>
+            {libraryFiltersActive ? (
+              <p
+                data-testid="marketplace-library-filtered-free-honesty"
+                data-filtered-free-count={String(libraryFilteredFreeCount)}
+                data-library-free-count={String(libraryFreeCount)}
+                role="status"
+              >
+                Filtered free honesty: visible_free_pd=
+                {libraryFilteredFreeCount} · library_free_pd=
+                {libraryFreeCount} · HTML host path only (not PDF)
+              </p>
+            ) : null}
           </div>
           <ul className="space-y-2" data-testid="library-doc-list">
             {filteredLibraryDocs.map((d) => (

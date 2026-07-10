@@ -203,7 +203,14 @@ describe("MarketplaceHost mode", () => {
     });
     fetchAccountLibrary.mockResolvedValue({
       owner_id: "operator",
-      documents: [{ document_id: "hdoc_abc", title: "Pride" }],
+      documents: [
+        {
+          document_id: "hdoc_abc",
+          title: "Pride",
+          license_class: "public_domain",
+          view_format: "html",
+        },
+      ],
       count: 1,
       view_format: "html",
       html: "<p>Library</p>",
@@ -429,14 +436,40 @@ describe("MarketplaceHost mode", () => {
     expect(libMetrics.getAttribute("data-doc-count")).toBe("1");
     expect(libMetrics.getAttribute("data-view-format")).toBe("html");
     expect(libMetrics.textContent).toMatch(/Library/);
+    // Residual (tb): free_pd honesty (unfiltered).
+    expect(libMetrics.getAttribute("data-free-count")).toBe("1");
+    expect(libMetrics.getAttribute("data-filtered-free-count")).toBe("1");
+    expect(libMetrics.getAttribute("data-filters-active")).toBe("false");
     fireEvent.change(screen.getByTestId("library-filter"), {
       target: { value: "hdoc_abc" },
     });
     expect(screen.getByTestId("library-doc-hdoc_abc")).toBeTruthy();
+    // Residual (tb): filtered free honesty strip when library filter active.
+    expect(
+      screen
+        .getByTestId("marketplace-library-metrics")
+        .getAttribute("data-filters-active"),
+    ).toBe("true");
+    expect(
+      screen
+        .getByTestId("marketplace-library-metrics")
+        .getAttribute("data-filtered-free-count"),
+    ).toBe("1");
+    const libHonesty = screen.getByTestId(
+      "marketplace-library-filtered-free-honesty",
+    );
+    expect(libHonesty.getAttribute("data-filtered-free-count")).toBe("1");
+    expect(libHonesty.getAttribute("data-library-free-count")).toBe("1");
+    expect(libHonesty.textContent).toMatch(/visible_free_pd=1/);
     fireEvent.change(screen.getByTestId("library-filter"), {
       target: { value: "nope" },
     });
     expect(screen.getByTestId("library-filter-empty")).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("marketplace-library-metrics")
+        .getAttribute("data-filtered-free-count"),
+    ).toBe("0");
   });
 
   it("loads account library on mount and rehydrates open (dq/do)", async () => {
