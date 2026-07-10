@@ -316,6 +316,47 @@ def project_evidence_html(
                 ],
             }
         )
+    # Residual (aqb): competitive hop pipeline completeness line (parity frontend
+    # evidence-citation-hop-pipeline · HostedHtml float apo detection).
+    hop_pipe = payload.get("citation_hop_pipeline")
+    if not isinstance(hop_pipe, dict):
+        hop_pipe = citation_hop_pipeline_progress(
+            insight_count=int(payload.get("insight_count") or 0),
+            question_count=int(payload.get("question_count") or 0),
+            ref_count=int(payload.get("ref_count") or 0),
+            citation_chain=chain if isinstance(chain, list) else None,
+            chain_complete=chain_complete,
+        )
+    present_n = int(hop_pipe.get("present_count") or 0)
+    total_n = int(hop_pipe.get("total") or len(CITATION_HOP_PIPELINE_STAGES))
+    missing = hop_pipe.get("missing") or []
+    missing_s = (
+        f" · missing={', '.join(str(m) for m in missing)}"
+        if missing
+        else ""
+    )
+    complete_s = (
+        " · chain complete"
+        if hop_pipe.get("chain_complete")
+        else ""
+    )
+    blocks.append(
+        {
+            "type": "paragraph",
+            "attrs": {
+                "data-testid": "evidence-citation-hop-pipeline",
+            },
+            "content": [
+                {
+                    "type": "text",
+                    "text": (
+                        f"Competitive citation hops · {present_n}/{total_n}"
+                        f"{complete_s}{missing_s} · never invent sources"
+                    ),
+                }
+            ],
+        }
+    )
     for hop in chain:
         if not isinstance(hop, dict):
             continue

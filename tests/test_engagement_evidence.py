@@ -132,6 +132,10 @@ def test_evidence_pack_with_twins_and_refs():
     assert hop_pipe["present_count"] == 3
     assert hop_pipe["coverage_ratio"] == 1.0
     assert hop_pipe["chain_complete"] is True
+    # Residual (aqb): HTML projection names competitive hop pipeline.
+    assert "Competitive citation hops" in pack["html"]
+    assert "3/3" in pack["html"] or "never invent sources" in pack["html"]
+    assert "never invent sources" in pack["html"]
     assert [h["hop"] for h in chain] == ["insights", "questions", "sources"]
     assert chain[0]["items"][0]["anchor"] == "evidence-insight-0"
     assert chain[2]["items"][0]["anchor"] == "evidence-source-0"

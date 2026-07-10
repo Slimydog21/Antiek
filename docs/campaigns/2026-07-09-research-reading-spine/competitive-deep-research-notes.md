@@ -3847,3 +3847,8 @@ EvidencePackResponse.citation_hop_pipeline typed; ResearchContextPanel prefers s
 summary when present (data-pipeline-source=substrate) · client pure helper fallback.
 Closes frontend↔substrate hop pipeline loop (api + apz). vitest ResearchContext 21 green.
 P0 PR #465. Pivot aqb+ outside thrash.
+
+## Residual aqb · 2026-07-10 — evidence HTML competitive hop pipeline line
+project_evidence_html emits "Competitive citation hops · N/3 … never invent sources"
+from citation_hop_pipeline (apz) so float HostedHtml apo detection works on real packs.
+pytest test_engagement_evidence 5 green. P0 PR #465. Pivot aqc+ outside thrash.

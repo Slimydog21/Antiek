@@ -1,0 +1,14 @@
+# inventory-aqb · evidence HTML projects competitive hop pipeline completeness
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aqb
+date: 2026-07-10
+parent_tip: f97e9aa5 (aqa)
+
+## Closed
+- project_evidence_html Competitive citation hops · present/total line
+- Enables HostedHtml float apo hop-pipeline detection from real substrate HTML
+- pytest test_engagement_evidence 5 green
+
+## Next
+aqc+ product residual outside thrash
+Operator merge PR #465 remains highest leverage (gated)
