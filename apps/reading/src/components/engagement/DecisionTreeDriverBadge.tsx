@@ -17,6 +17,8 @@
  * share one decision-tree surface (not NotDiamond authority).
  * Residual (pg): optional promptText projects estimated cost impact on remaining
  * daily budget (operator foresight before send; not a hard gate).
+ * Residual (rm): Settings deep-link anchors to #notdiamond-advisory so operators
+ * can compare weekly ND suggestion vs installed driver (advisory only).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -174,6 +176,16 @@ export function DecisionTreeDriverBadge({
           title="Open Settings to install decision-tree driver and set daily budget"
         >
           Settings
+        </a>
+        {/* Residual (rm): NotDiamond weekly advisory delta (never auto-route). */}
+        <a
+          href="/settings#notdiamond-advisory"
+          data-testid="decision-tree-notdiamond-advisory-link"
+          data-notdiamond-authority="advisory_only"
+          className="underline opacity-80 hover:opacity-100"
+          title="Open Settings → NotDiamond weekly advisory vs installed driver (advisory only · never dispatch authority)"
+        >
+          ND advisory
         </a>
         {/* Residual (oa): dual-gate prep on shared driver+budget chokepoint. */}
         <a

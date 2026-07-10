@@ -1277,7 +1277,9 @@ export default function Settings() {
         </LemonCard>
 
         <LemonCard title="NotDiamond advisory" elevation="z1" colour="glacial">
+          {/* Residual (rm): hash target for DecisionTreeDriverBadge Settings deep-link. */}
           <div
+            id="notdiamond-advisory"
             className="p-4 space-y-3"
             data-testid="notdiamond-advisory-panel"
             data-view-format="html"

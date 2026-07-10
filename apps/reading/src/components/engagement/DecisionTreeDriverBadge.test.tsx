@@ -135,6 +135,26 @@ describe("DecisionTreeDriverBadge residual cw/eq", () => {
     expect(link.textContent).toMatch(/Settings/);
   });
 
+  it("deep-links to NotDiamond advisory Settings section (rm)", async () => {
+    fetchDecisionTreeSelection.mockResolvedValue({
+      model_id: "claude-opus-4-8",
+      provider_id: "anthropic",
+      installed: true,
+      notes: [],
+      source: "test",
+    });
+    render(<DecisionTreeDriverBadge />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("decision-tree-notdiamond-advisory-link"),
+      ).toBeTruthy();
+    });
+    const nd = screen.getByTestId("decision-tree-notdiamond-advisory-link");
+    expect(nd.getAttribute("href")).toBe("/settings#notdiamond-advisory");
+    expect(nd.getAttribute("data-notdiamond-authority")).toBe("advisory_only");
+    expect(nd.textContent).toMatch(/ND advisory/i);
+  });
+
   it("shows compact budget usage bar next to driver (eq)", async () => {
     fetchDecisionTreeSelection.mockResolvedValue({
       model_id: "claude-opus-4-8",

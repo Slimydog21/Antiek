@@ -753,3 +753,8 @@ Settings shows installed decision-tree driver vs weekly NotDiamond advisory
 suggestion (match|differs|no_installed|no_suggestion). Competitive delta:
 operators see router-class suggestions without ever granting auto-dispatch
 authority — Antiek decision-tree remains the only install path.
+
+## Residual rm · 2026-07-10 — Driver badge → ND advisory Settings
+Every DecisionTreeDriverBadge mounts "ND advisory" → /settings#notdiamond-advisory
+so research hosts reach weekly suggestion-vs-installed delta without granting
+router authority. Competitive delta: model choice stays operator-owned.
