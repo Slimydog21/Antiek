@@ -2864,3 +2864,9 @@ P0 operator merge PR #465. Pivot aik+.
 ## Residual aik · 2026-07-10 — scorecard citation chain + SESSION-ARC competitive DR
 Settings scorecard citation-trust row names citation chain (aij). SESSION-ARC
 aih–aij competitive DR quality wave. P0 operator merge PR #465. Pivot ail+.
+
+## Residual ail · 2026-07-10 — dogfood v28 citation chain + competitive DR scorecard
+Suite suite-competitive-dogfood-v28 adds wrestle fixtures for citation chain
+(aij) and Settings competitive DR scorecard (aii). item_count 44 · wrestle=31.
+Settings spine v28. pytest dogfood 5 · Settings 36 green. P0 operator merge PR #465.
+Pivot aim+ outside thrash.

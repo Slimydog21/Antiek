@@ -1,0 +1,17 @@
+# inventory-ail · dogfood v28 citation chain + competitive DR scorecard
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ail
+date: 2026-07-10
+parent_tip: 41061899 (aik)
+
+## Closed
+- Antiek-bench competitive dogfood v28:
+  - dogfood-wrestle-citation-chain (aij)
+  - dogfood-wrestle-competitive-dr-scorecard (aii)
+  - item_count 44 · wrestle=31 · book_qa=9
+- Settings spine postures v28
+- pytest dogfood 5 · Settings 36 green
+
+## Next
+aim+ product residual · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

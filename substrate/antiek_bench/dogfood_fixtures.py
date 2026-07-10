@@ -39,7 +39,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (ahs): v25 learns domain-aware twin intelligent search (ahr).
 # Residual (aib): v26 learns collective unit twin seed + MO deposit twin honesty.
 # Residual (aig): v27 learns pub-ref foresight chrome matrix (aic–aif).
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v27"
+# Residual (ail): v28 learns citation chain + competitive DR scorecard honesty.
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v28"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -574,6 +575,44 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "budget",
                 "refs",
                 "soft",
+            ),
+        ),
+        # Residual (ail/aij): evidence pack citation chain honesty.
+        SuiteItem(
+            item_id="dogfood-wrestle-citation-chain",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with evidence pack citation chain: when ResearchContextPanel stamps "
+                "data-testid=evidence-citation-chain with insights→questions→source refs, "
+                "data-chain-complete when insights and refs both present, and incomplete chain "
+                "copy never invents sources, how should Antiek-bench learn models that preserve "
+                "competitive citation-required synthesis honesty?"
+            ),
+            expected_keywords=(
+                "citation",
+                "chain",
+                "insights",
+                "refs",
+                "grounded",
+            ),
+        ),
+        # Residual (ail/aii): Settings competitive DR quality scorecard honesty.
+        SuiteItem(
+            item_id="dogfood-wrestle-competitive-dr-scorecard",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with Settings competitive DR quality scorecard: when the scorecard lists "
+                "shipped offline multi-agent merge, citation chain, budget foresight, HTML-first, "
+                "source quick-call, twins, and deferred L1–L6 live injectors with ND never router, "
+                "how should Antiek-bench learn models that never claim live injectors as shipped "
+                "and never promote NotDiamond to dispatch authority?"
+            ),
+            expected_keywords=(
+                "scorecard",
+                "shipped",
+                "deferred",
+                "notdiamond",
+                "competitive",
             ),
         ),
         # Residual (aeu): seamless Write path honesty across reading/research surfaces.
