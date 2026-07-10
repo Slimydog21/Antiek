@@ -1674,3 +1674,8 @@ Competitive delta: swarm handoff tip-true; operator merge PR #465 highest levera
 free-PD-only composed with technology chip surfaces free STEM technology texts
 and excludes literature/paid stubs. Competitive delta: tech-researcher default
 domain path is free-PD-only + technology.
+
+## Residual yp · 2026-07-10 — free technology STEM substrate spans domains
+free technology subject includes Faraday + Shannon + Turing + Lovelace as HTML.
+Competitive delta: tech-researcher technology domain is substrate-true for
+cross-electricity/computing free STEM (parity frontend compose yo).

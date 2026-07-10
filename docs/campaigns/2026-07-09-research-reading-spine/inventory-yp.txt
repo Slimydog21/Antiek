@@ -1,0 +1,18 @@
+# inventory-yp · free technology STEM substrate spans electricity + computing
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: yp
+date: 2026-07-10
+tip_before: 6162fa43 (yo)
+
+## Problem
+Frontend free-PD+technology compose (yo) needed substrate proof that free
+technology subject spans electricity + computing free STEM texts.
+
+## Fix
+- test_free_technology_includes_electricity_and_computing
+
+## Verified
+pytest test_free_technology_includes_electricity_and_computing → passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

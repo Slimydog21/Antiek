@@ -165,6 +165,26 @@ def test_free_computing_stem_quartet() -> None:
     assert all(e.source_format == "html" for e in free_comp if e.book_id in ids)
 
 
+def test_free_technology_includes_electricity_and_computing() -> None:
+    """Residual (yp): free technology subject spans electricity + computing STEM."""
+    cat = default_demo_catalog()
+    free_tech = [
+        e
+        for e in cat.filter_by_subject("technology")
+        if e.is_free and e.license_class == "public_domain"
+    ]
+    ids = {e.book_id for e in free_tech}
+    # Electricity + computing free STEM both tag technology for tech researchers.
+    assert ids >= {
+        "pd-faraday-electricity",
+        "pd-shannon-communication",
+        "pd-turing-computable-numbers",
+        "pd-lovelace-analytical-engine",
+    }
+    assert all(e.source_format == "html" for e in free_tech if e.book_id in ids)
+    assert all("technology" in e.subjects for e in free_tech if e.book_id in ids)
+
+
 def test_free_electricity_stem_trio() -> None:
     """Residual (xv): free electricity subject includes Faraday/Maxwell/Heaviside."""
     cat = default_demo_catalog()
