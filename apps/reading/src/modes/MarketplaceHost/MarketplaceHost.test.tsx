@@ -15,6 +15,7 @@ const {
   seedTwinNotes,
   launchFloatingDeepResearch,
   fetchDepthTiers,
+  hydratePublicationRefs,
 } = vi.hoisted(() => ({
   fetchMarketplaceCatalog: vi.fn(),
   hostBookIntoAccount: vi.fn(),
@@ -24,6 +25,7 @@ const {
   openWindow: vi.fn(() => "win:hosted:hdoc_abc"),
   seedTwinNotes: vi.fn(),
   launchFloatingDeepResearch: vi.fn(),
+  hydratePublicationRefs: vi.fn(),
   fetchDepthTiers: vi.fn(async () => ({
     active_depth_tier: null as string | null,
     active_preset: null,
@@ -54,6 +56,16 @@ vi.mock("../../components/windows/openWindow", () => ({
 
 vi.mock("../Reading/launchFloatingDeepResearch", () => ({
   launchFloatingDeepResearch,
+}));
+
+vi.mock("../ResearchWorkstation/publicationRefs", () => ({
+  parsePublicationRefs: (raw: string) =>
+    String(raw || "")
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  hydratePublicationRefs: (...args: unknown[]) =>
+    hydratePublicationRefs(...args),
 }));
 
 vi.mock("../../api/settings", () => ({
@@ -138,6 +150,10 @@ describe("MarketplaceHost mode", () => {
       view_mode: "floating",
       status: "reserved",
       model_id: null,
+    });
+    hydratePublicationRefs.mockReset().mockResolvedValue({
+      ok: [{ asset_id: "pub_arxiv_1" }],
+      failed: [],
     });
     seedTwinNotes.mockReset().mockResolvedValue({
       asset_id: "hdoc_abc",
@@ -1949,5 +1965,90 @@ describe("MarketplaceHost mode", () => {
     expect(call.goal_hint).toMatch(/domains=.*engineering/);
     expect(call.goal_hint).toMatch(/marketplace HTML host/);
     expect(call.goal_hint).toMatch(/Electromagnetic Theory/);
+  });
+
+  it("grounds marketplace DR with optional arxiv pub refs (uu)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-boole-laws-of-thought",
+          title: "An Investigation of the Laws of Thought",
+          author: "George Boole",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: ["computing", "logic", "mathematics"],
+        },
+      ],
+      count: 1,
+      view_format: "html",
+      free_count: 1,
+      public_domain_count: 1,
+      payment_rails: "manual_receipt_only",
+    });
+    hostBookIntoAccount.mockResolvedValue({
+      document_id: "hdoc_boole_pub",
+      owner_id: "tech-researcher",
+      book_id: "pd-boole-laws-of-thought",
+      content_hash: "b3",
+      title: "An Investigation of the Laws of Thought",
+      license_class: "public_domain",
+      already_hosted: false,
+      source_format: "html",
+      library_document_ids: ["hdoc_boole_pub"],
+      view_format: "html",
+      html: "<p>Laws of Thought calculus of logic</p>",
+    });
+    fetchAccountLibrary.mockResolvedValue({
+      owner_id: "tech-researcher",
+      documents: [],
+      count: 0,
+      view_format: "html",
+      html: "",
+    });
+    render(<MarketplaceHost ownerId="tech-researcher" />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("catalog-entry-pd-boole-laws-of-thought"),
+      ).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /host into account/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId("marketplace-host-pub-refs")).toBeTruthy();
+    });
+    const pubRefs = screen.getByTestId("marketplace-host-pub-refs");
+    expect(pubRefs.getAttribute("data-offline-default")).toBe("true");
+    expect(pubRefs.getAttribute("data-l1-l2-hydrate-prep")).toBe("true");
+    expect(
+      screen
+        .getByTestId("marketplace-host-hydrate-settings-link")
+        .getAttribute("href"),
+    ).toBe("/settings#hydrate-live-status");
+    expect(
+      screen
+        .getByTestId("marketplace-host-hydrate-dual-gate-link")
+        .getAttribute("href") || "",
+    ).toMatch(/DUAL-GATE-L1-L4/);
+    fireEvent.change(screen.getByTestId("marketplace-host-refs-input"), {
+      target: { value: "arxiv:1706.03762" },
+    });
+    fireEvent.click(screen.getByTestId("marketplace-host-deep-research"));
+    await waitFor(() => {
+      expect(hydratePublicationRefs).toHaveBeenCalledWith(["arxiv:1706.03762"]);
+    });
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "hdoc_boole_pub",
+          references: ["arxiv:1706.03762"],
+          view_mode: "floating",
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("marketplace-host-refs-status").textContent,
+      ).toMatch(/Hydrated 1|HTML-first|offline-default/i);
+    });
   });
 });

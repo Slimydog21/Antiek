@@ -55,6 +55,8 @@
  * recursive note-taker substrate after host.
  * Residual (mp): deep research goal_hint + prompt preview include catalog
  * subjects so DR inherits research-domain context (reading ≡ research).
+ * Residual (uu): optional arxiv/substack/URL pub refs on host-land DR launch
+ * (parity HostedHtml er/uj · knowledge-dense grounding from free STEM books).
  * Residual (ta): filtered free-PD honesty — visible free among filtered
  * rows vs full-catalog free_count when free-only/subject/source/text filters on.
  * Residual (tb): library free/PD honesty under text filter (parity catalog ta).
@@ -87,6 +89,10 @@ import {
   plainTextFromHtml,
 } from "../../workspace/twinWriteSeed";
 import { launchFloatingDeepResearch } from "../Reading/launchFloatingDeepResearch";
+import {
+  hydratePublicationRefs,
+  parsePublicationRefs,
+} from "../ResearchWorkstation/publicationRefs";
 
 type LibraryDoc = {
   document_id: string;
@@ -349,6 +355,11 @@ export default function MarketplaceHost({
   const [hostDrForceBudget, setHostDrForceBudget] = useState(false);
   const [hostDrTier, setHostDrTier] = useState<ResearchLaunchTier>("deep");
   const [hostDrPromptPreview, setHostDrPromptPreview] = useState("");
+  /** Residual (uu): optional arxiv/substack/URL refs for host-land DR. */
+  const [hostDrPubRefs, setHostDrPubRefs] = useState("");
+  const [hostDrPubRefStatus, setHostDrPubRefStatus] = useState<string | null>(
+    null,
+  );
   /**
    * Residual (jc): Settings depth-tier prefill for host DR (pending|installed|none|error).
    */
@@ -549,14 +560,28 @@ export default function MarketplaceHost({
       domains.length > 0 ? ` · domains=${domains.join(",")}` : "";
     setHostDrBusy(true);
     setHostDrStatus(null);
+    setHostDrPubRefStatus(null);
     setError(null);
     try {
+      // Residual (uu): hydrate optional arxiv/substack/URL refs before launch.
+      const refs = parsePublicationRefs(hostDrPubRefs);
+      if (refs.length > 0) {
+        const hydrated = await hydratePublicationRefs(refs);
+        setHostDrPubRefStatus(
+          `Hydrated ${hydrated.ok.length} pub asset(s)` +
+            (hydrated.failed.length
+              ? ` · ${hydrated.failed.length} failed`
+              : "") +
+            " · HTML-first · offline-default",
+        );
+      }
       const out = await launchFloatingDeepResearch({
         asset_id: result.document_id,
         selection_text: selection,
         goal_hint: `Wrestle claims and cite evidence in “${title}” (marketplace HTML host · tier=${hostDrTier}${domainClause}).`,
         view_mode: viewMode,
         research_tier: hostDrTier,
+        references: refs.length > 0 ? refs : undefined,
       });
       if (out.view_format !== "html") {
         throw new Error("deep research view_format must be html");
@@ -579,6 +604,7 @@ export default function MarketplaceHost({
     setHostDrForceBudget(false);
     setHostDrBudgetWarn(false);
     setHostDrStatus(null);
+    setHostDrPubRefStatus(null);
     if (!hosted?.html) {
       setHostDrPromptPreview("");
       return;
@@ -1345,6 +1371,58 @@ export default function MarketplaceHost({
                 Force deep research despite budget projection
               </label>
             ) : null}
+            {/* Residual (uu): ground marketplace DR with arxiv/substack/URL refs. */}
+            <div
+              className="space-y-1"
+              data-testid="marketplace-host-pub-refs"
+              data-view-format="html"
+              data-offline-default="true"
+              data-l1-l2-hydrate-prep="true"
+            >
+              <label
+                className="text-[10px] font-mono uppercase tracking-wider opacity-80"
+                htmlFor="marketplace-host-refs-input"
+              >
+                Ground with pubs (optional · arxiv / substack / URL)
+              </label>
+              <textarea
+                id="marketplace-host-refs-input"
+                data-testid="marketplace-host-refs-input"
+                value={hostDrPubRefs}
+                onChange={(e) => setHostDrPubRefs(e.target.value)}
+                disabled={hostDrBusy || busy}
+                rows={2}
+                placeholder={"arxiv:1706.03762\nhttps://…"}
+                className="w-full rounded border border-ink/20 bg-transparent px-2 py-1 text-[11px] font-mono dark:border-bright/20"
+              />
+              <p className="text-[10px] font-mono space-x-2 opacity-80">
+                <a
+                  href="/settings#hydrate-live-status"
+                  data-testid="marketplace-host-hydrate-settings-link"
+                  className="underline hover:opacity-100"
+                  title="Settings publication hydrate readiness (arxiv/substack · offline default)"
+                >
+                  Settings · hydrate readiness
+                </a>
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+                  data-testid="marketplace-host-hydrate-dual-gate-link"
+                  className="underline hover:opacity-100"
+                  title="Dual-gate L1–L4 checklist (arxiv/substack hydrate prep; offline default)"
+                >
+                  Dual-gate L1–L2 hydrate checklist
+                </a>
+              </p>
+              {hostDrPubRefStatus ? (
+                <p
+                  className="text-[10px] font-mono text-aurora"
+                  data-testid="marketplace-host-refs-status"
+                  role="status"
+                >
+                  {hostDrPubRefStatus}
+                </p>
+              ) : null}
+            </div>
           </div>
           {/* Residual (bt/dk): open hosted HTML book in a floating window. */}
           <div className="flex flex-wrap items-center gap-2">

@@ -1194,3 +1194,8 @@ learns ungrounded → dual-gate hydrate prep as a first-class wrestle task
 ## Residual ut · 2026-07-10 — FUTURE-AGENT tip re-anchor through us
 FUTURE-AGENT-SPEC tip → 9bc669dc with closed arcs tt–us (26 residual ships).
 Competitive delta: swarm handoff tip-true after dogfood v7 citation-trust wave.
+
+## Residual uu · 2026-07-10 — marketplace host DR pub-refs grounding
+MarketplaceHost host-land deep research accepts optional arxiv/substack/URL
+refs with offline-default hydrate prep deep-links (parity HostedHtml er/uj).
+Competitive delta: free STEM catalog books ground DR without leaving host land.

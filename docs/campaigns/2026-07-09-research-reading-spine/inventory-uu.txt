@@ -1,0 +1,18 @@
+# inventory-uu · marketplace host DR arxiv/substack pub-refs grounding
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: uu
+date: 2026-07-10
+
+## Closed
+- MarketplaceHost host-land pub-refs textarea + L1/L2 hydrate prep deep-links
+- hydratePublicationRefs before launchFloatingDeepResearch with references
+- vitest MarketplaceHost 24 green · /tmp/residual-tests-uu.log
+
+## Product why
+Free STEM books hosted from marketplace now ground float DR with arxiv/substack
+refs on the host-land surface (parity HostedHtml/ResearchThis). Reading ≡
+marketplace research without leaving host land.
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live hydrate injectors
