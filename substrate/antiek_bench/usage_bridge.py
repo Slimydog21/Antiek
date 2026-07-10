@@ -257,12 +257,15 @@ KNOWN_USAGE_FEED_SOURCES: tuple[str, ...] = (
     "context_search",
     "research_context_pack",
     "twin_promote_context",
+    # Residual (tt): multi-spawn cohesive unit prompt float → Write seed feed.
+    "collective_unit_prompt",
     "antiek_bench.offline_dogfood",
     "engagement",
 )
 
 # Twin-write seed sources that feed Antiek-bench by_source (qy…rr).
 # twin_draft_selected omitted — multi-select draft already covered by twin_chase.
+# Residual (tt): collective_unit_prompt joins Write seed feed (tr float path).
 TWIN_WRITE_SEED_USAGE_SOURCES: frozenset[str] = frozenset(
     {
         "deep_research_session",
@@ -279,6 +282,7 @@ TWIN_WRITE_SEED_USAGE_SOURCES: frozenset[str] = frozenset(
         "context_search",
         "research_context_pack",
         "twin_promote_context",
+        "collective_unit_prompt",
     }
 )
 

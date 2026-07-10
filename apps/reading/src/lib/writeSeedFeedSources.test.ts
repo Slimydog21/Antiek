@@ -10,6 +10,8 @@ describe("writeSeedFeedSources (rt/ru)", () => {
     expect(WRITE_SEED_FEED_SOURCES).toContain("deep_research_session");
     expect(WRITE_SEED_FEED_SOURCES).toContain("research_progress_draft");
     expect(WRITE_SEED_FEED_SOURCES).toContain("twin_promote_context");
+    // Residual (tt): multi-spawn cohesive unit prompt float.
+    expect(WRITE_SEED_FEED_SOURCES).toContain("collective_unit_prompt");
     expect(WRITE_SEED_FEED_SOURCES).not.toContain("twin_draft_selected");
   });
 

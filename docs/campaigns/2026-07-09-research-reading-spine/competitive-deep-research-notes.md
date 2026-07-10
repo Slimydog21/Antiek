@@ -1052,3 +1052,10 @@ not only a chat prompt block.
 HostedHtmlDocumentHost stamps collective_id + spawn_count honesty for
 source=collective_unit_prompt floats. Competitive delta: multi-select
 cohesive unit HTML windows stay membership-auditable in the reading flywheel.
+
+## Residual tt · 2026-07-10 — collective_unit_prompt Write-seed catalog
+Frontend WRITE_SEED_FEED_SOURCES and substrate TWIN_WRITE_SEED_USAGE_SOURCES
+include collective_unit_prompt (known_catalog 15). Competitive delta: cohesive
+unit prompt → Write twin_seed events rank in Antiek-bench weekly rewrite
+alongside evidence/search/hydrate — recursive note-taker flywheel does not
+drop multi-spawn unit prompts from usage honesty.

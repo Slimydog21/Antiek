@@ -1,0 +1,25 @@
+# inventory-tt · collective_unit_prompt Write-seed catalog parity
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: tt
+date: 2026-07-10
+
+## Closed
+- Frontend WRITE_SEED_FEED_SOURCES += collective_unit_prompt (15 sources)
+- Substrate TWIN_WRITE_SEED_USAGE_SOURCES += collective_unit_prompt
+- KNOWN_USAGE_FEED_SOURCES already carried collective_unit_prompt (ts path)
+- Settings mock write_seed_known_count 14 → 15 + assertion parity
+- writeSeedFeedSources.test includes collective_unit_prompt
+- vitest writeSeedFeedSources 3 + Settings 32 = 35 green
+- pytest parity + aggregates + twin_write_seed + html_write_seed = 6 green
+  · /tmp/residual-tests-tt.log
+
+## Product why
+North star: multi-select cohesive unit prompt (tr/ts float|full HTML) must
+feed Antiek-bench weekly rewrite via the same Write twin_seed SSOT as
+evidence/search/hydrate/progress. Catalog drift (14 vs 15) would lie about
+known write-seed coverage in Settings honesty chrome.
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live multi-agent L6
+- Live L1–L4 dual-gate injectors

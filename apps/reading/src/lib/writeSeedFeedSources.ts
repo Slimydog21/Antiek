@@ -19,6 +19,8 @@ export const WRITE_SEED_FEED_SOURCES: readonly string[] = [
   "context_search",
   "research_context_pack",
   "twin_promote_context",
+  // Residual (tt): multi-spawn cohesive unit prompt float → Write seed feed.
+  "collective_unit_prompt",
 ] as const;
 
 export function isWriteSeedFeedSource(source: string | null | undefined): boolean {
