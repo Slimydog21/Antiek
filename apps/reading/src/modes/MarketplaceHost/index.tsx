@@ -1807,6 +1807,7 @@ export default function MarketplaceHost({
                   data-seamless-marketplace-collective="true"
                   data-available-spawn-count={String(hostAvailableSpawnIds.length)}
                   data-recent-count={String(hostRecentSpawnIds.length)}
+                  data-open-spawn-count={String(hostOpenSpawnIds.length)}
                   data-research-tier={hostDrTier}
                 >
                   <CollectiveResearchPanel

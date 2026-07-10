@@ -329,6 +329,7 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
           data-seamless-talk-collective="true"
           data-available-spawn-count={String(availableSpawnIds.length)}
           data-recent-count={String(recentSpawnIds.length)}
+          data-open-spawn-count={String(openSpawnIds.length)}
           data-research-tier={researchTier}
         >
           <CollectiveResearchPanel

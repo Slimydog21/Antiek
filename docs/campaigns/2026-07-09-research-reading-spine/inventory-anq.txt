@@ -1,0 +1,15 @@
+# inventory-anq · open-vs-recent collective honesty stamps
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: anq
+date: 2026-07-10
+parent_tip: c6cf3929 (anp)
+
+## Closed
+- DeepResearchSessionHost collective mount: data-open-spawn-count · data-seamless-dr-session-collective
+- TalkToBook · MetaReading · MarketplaceHost collective mounts: data-open-spawn-count
+- open-vs-recent honesty parity ResearchThis ou
+- vitest DR session · TalkToBook · MetaReading collective green
+
+## Next
+anr+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

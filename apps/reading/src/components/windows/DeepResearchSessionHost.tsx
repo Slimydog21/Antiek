@@ -523,6 +523,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
       ) : null}
 
       {/* Product mount (ah/ox): multi-select open + recent DR spawns. */}
+      {/* Residual (anq): open-vs-recent honesty stamps (parity ResearchThis ou). */}
       {availableSpawnIds.length > 0 ? (
         <section
           className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
@@ -530,6 +531,8 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
           data-view-format="html"
           data-available-spawn-count={String(availableSpawnIds.length)}
           data-recent-count={String(recentSpawnIds.length)}
+          data-open-spawn-count={String(openSpawnIds.length)}
+          data-seamless-dr-session-collective="true"
         >
           <CollectiveResearchPanel
             availableSpawnIds={availableSpawnIds}

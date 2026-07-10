@@ -421,6 +421,8 @@ describe("TalkToBook (M2)", () => {
     expect(mount.getAttribute("data-document-id")).toBe("doc-talk-coll");
     expect(mount.getAttribute("data-seamless-talk-collective")).toBe("true");
     expect(mount.getAttribute("data-available-spawn-count")).toBe("2");
+    // Residual (anq): open-vs-recent honesty stamp.
+    expect(mount.getAttribute("data-open-spawn-count")).toMatch(/^\d+$/);
     expect(screen.getByTestId("collective-research-panel-stub").textContent).toMatch(
       /doc-talk-coll:spn_talk_1,spn_talk_2/,
     );

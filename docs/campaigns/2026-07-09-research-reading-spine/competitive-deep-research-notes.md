@@ -3540,3 +3540,9 @@ DeepResearchSessionHost wires session/Settings researchTier into SpawnMergePanel
 so single-spawn merge budget soft-gate (anl) projects at host depth (parity host
 DR tier path). vitest DeepResearchSessionHost anp green.
 P0 operator merge PR #465. Pivot anq+ outside thrash.
+
+## Residual anq · 2026-07-10 — open-vs-recent collective honesty stamps
+DR session · TalkToBook · MetaReading · MarketplaceHost collective mounts stamp
+data-open-spawn-count (parity ResearchThis ou open-vs-recent honesty). DR session
+also stamps data-seamless-dr-session-collective. vitest green.
+P0 operator merge PR #465. Pivot anr+ outside thrash.

@@ -607,6 +607,12 @@ describe("DeepResearchSessionHost", () => {
     expect(mount).toBeTruthy();
     expect(mount.getAttribute("data-view-format")).toBe("html");
     expect(mount.getAttribute("data-available-spawn-count")).toBe("1");
+    // Residual (anq): open-vs-recent honesty + seamless DR session collective.
+    expect(mount.getAttribute("data-open-spawn-count")).toBe("1");
+    expect(mount.getAttribute("data-recent-count")).toMatch(/^\d+$/);
+    expect(mount.getAttribute("data-seamless-dr-session-collective")).toBe(
+      "true",
+    );
     // Shipped collective panel chrome
     expect(
       screen.getByRole("heading", { name: /collective deep research/i }),
@@ -621,6 +627,11 @@ describe("DeepResearchSessionHost", () => {
       screen.getByTestId("deep-research-collective-mount").getAttribute(
         "data-available-spawn-count",
       ),
+    ).toBe("1");
+    expect(
+      screen
+        .getByTestId("deep-research-collective-mount")
+        .getAttribute("data-open-spawn-count"),
     ).toBe("1");
   });
 
