@@ -35,7 +35,9 @@ export function domainAwareSearchDefault(
   if (set.has("information_theory") || set.has("communication")) {
     return "information theory communication twin insights";
   }
-  if (set.has("computing") || set.has("history")) {
+  // Residual (arb): computing only — bare history is its own domain below.
+  // Lovelace catalog carries computing+history; computing wins via this branch.
+  if (set.has("computing") || set.has("analytical_engine")) {
     return "computing analytical engine twin insights";
   }
   // Residual (aiy): free biology STEM (Origin + Hooke Micrographia).
@@ -86,6 +88,22 @@ export function domainAwareSearchDefault(
   // (catch-all for free PD science spine after physics/biology/math/etc.).
   if (set.has("science") || set.has("natural_philosophy")) {
     return "science natural philosophy research methods twin insights";
+  }
+  // Residual (arb): free PD history (not computing-aliased; Lovelace still hits computing).
+  if (set.has("history") || set.has("chronology") || set.has("historiography")) {
+    return "history chronology events societies twin insights";
+  }
+  // Residual (arb): psychology / mind free PD spine (when catalog expands).
+  if (set.has("psychology") || set.has("mind") || set.has("cognition")) {
+    return "psychology mind cognition behavior twin insights";
+  }
+  // Residual (arb): law / jurisprudence free PD spine.
+  if (set.has("law") || set.has("jurisprudence") || set.has("legal")) {
+    return "law jurisprudence rights justice twin insights";
+  }
+  // Residual (arb): classics when not already matched by literature.
+  if (set.has("classics") || set.has("classical") || set.has("antiquity")) {
+    return "classics antiquity rhetoric virtue twin insights";
   }
   return "";
 }

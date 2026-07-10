@@ -3983,3 +3983,8 @@ reading merge. Pure moilPlanReadiness (goals+duration → ceiling-ready).
 Competitive delta: autonomous swarm operators start from workstation north-star
 goals with honest plan readiness before price ceiling. vitest 37 green. P0 PR #465.
 Pivot arb+ outside thrash.
+
+## Residual arb · 2026-07-10 — free-PD domain history/psychology/law/classics
+Bare history no longer maps to computing; Lovelace computing+history still hits
+computing. Added psychology · law · classics domain defaults. vitest 4 green.
+P0 PR #465. Pivot arc+.

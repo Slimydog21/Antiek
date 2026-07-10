@@ -28,6 +28,17 @@ describe("domainSearchDefaults pure module (alq)", () => {
     expect(domainAwareSearchDefault(["biology", "science"])).toMatch(
       /biology instruments micrographia/i,
     );
+    // Residual (arb): computing still wins when paired with history (Lovelace).
+    expect(domainAwareSearchDefault(["computing", "history"])).toMatch(
+      /computing analytical engine/i,
+    );
+    // Residual (arb): bare history is no longer aliased to computing.
+    expect(domainAwareSearchDefault(["history"])).toMatch(
+      /history chronology/i,
+    );
+    expect(domainAwareSearchDefault(["psychology"])).toMatch(/psychology mind/i);
+    expect(domainAwareSearchDefault(["law"])).toMatch(/law jurisprudence/i);
+    expect(domainAwareSearchDefault(["classics"])).toMatch(/classics antiquity/i);
     expect(domainAwareSearchDefault([])).toBe("");
     expect(domainAwareSearchDefault(null)).toBe("");
   });

@@ -1,0 +1,14 @@
+# inventory-arb · free-PD domain defaults history/psychology/law/classics
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: arb
+date: 2026-07-10
+parent_tip: a497bfb2e (ara)
+
+## Closed
+- Fix bare history no longer aliased to computing (Lovelace still computing+)
+- domainAwareSearchDefault += history · psychology · law · classics
+- vitest domainSearchDefaults 4 green
+- evidence: {SCRATCH}/arb-domain-vitest.txt
+
+## Next
+arc+ outside thrash · Operator merge PR #465
