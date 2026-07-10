@@ -303,7 +303,13 @@ export default function HostedHtmlDocumentHost(
   const isSpawnMerge = payloadSource === "spawn_merge";
   const isCollectiveDocMerge = payloadSource === "collective_doc_merge";
   // Residual (vr): marketplace host + Midnight Oil deposit floats.
-  const isMarketplaceHost = payloadSource === "marketplace_host";
+  // Residual (aai): library open + rehydrate windows are still account-hosted
+  // marketplace books — Open Write must map to marketplace_host write-seed feed
+  // (not collapse to hosted_html_document).
+  const isMarketplaceHost =
+    payloadSource === "marketplace_host" ||
+    payloadSource === "marketplace_library" ||
+    payloadSource === "marketplace_library_rehydrate";
   const isMidnightOilDeposit = payloadSource === "midnight_oil_deposit";
   // Residual (tq): intelligent search query + hit count honesty.
   const searchQuery = String(props.search_query || "").trim();

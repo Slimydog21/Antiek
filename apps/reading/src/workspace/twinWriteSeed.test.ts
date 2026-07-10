@@ -227,6 +227,27 @@ describe("twinWriteSeed (pp)", () => {
     expect(loadTwinWriteSeed(key)?.source).toBe("hosted_html_document");
   });
 
+  it("aliases marketplace_library* window sources to marketplace_host Write seed (aai)", () => {
+    for (const src of [
+      "marketplace_library",
+      "marketplace_library_rehydrate",
+    ] as const) {
+      const href = buildHostedHtmlWriteHref({
+        documentId: "hdoc_lib_1",
+        title: "Library book",
+        html: "<article><p>Hosted library body</p></article>",
+        source: src,
+      });
+      expect(href).toMatch(/html_draft=hdoc_lib_1/);
+      const key = decodeURIComponent(
+        (href.match(/twin_seed=([^&]+)/) || [])[1] || "",
+      );
+      const seed = loadTwinWriteSeed(key);
+      expect(seed?.source).toBe("marketplace_host");
+      expect(seed?.title).toBe("Library book");
+    }
+  });
+
   it("builds evidence_pack hosted Write seed source (si)", () => {
     const href = buildHostedHtmlWriteHref({
       documentId: "evidence:paper:abc",

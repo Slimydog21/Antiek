@@ -299,6 +299,13 @@ export function buildHostedHtmlWriteHref(opts: {
     doc;
   const srcRaw = String(opts.source || "").trim();
   // Residual (si/sj/vg): preserve known Write-seed sources from float hosts.
+  // Residual (aai): marketplace library / rehydrate windows alias to
+  // marketplace_host for Antiek-bench write-seed feed (same account host path).
+  const MARKETPLACE_HOST_WRITE_ALIASES = new Set([
+    "marketplace_host",
+    "marketplace_library",
+    "marketplace_library_rehydrate",
+  ]);
   const KNOWN_HOST_WRITE_SOURCES = new Set([
     "evidence_pack",
     "context_search",
@@ -320,10 +327,15 @@ export function buildHostedHtmlWriteHref(opts: {
     // Residual (vr): marketplace host + MO deposit floats → Write seed.
     "marketplace_host",
     "midnight_oil_deposit",
+    // Residual (aai): library surface aliases (normalized below).
+    "marketplace_library",
+    "marketplace_library_rehydrate",
   ]);
-  const source = KNOWN_HOST_WRITE_SOURCES.has(srcRaw)
-    ? srcRaw
-    : "hosted_html_document";
+  const source = MARKETPLACE_HOST_WRITE_ALIASES.has(srcRaw)
+    ? "marketplace_host"
+    : KNOWN_HOST_WRITE_SOURCES.has(srcRaw)
+      ? srcRaw
+      : "hosted_html_document";
   const titleDefault =
     source === "evidence_pack"
       ? `Evidence pack · ${doc}`

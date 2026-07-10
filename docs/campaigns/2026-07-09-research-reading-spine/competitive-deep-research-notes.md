@@ -1867,3 +1867,9 @@ auto-open merge floats preserve HostedHtml Open Write + Antiek-bench write-seed
 feed (no collapse to hosted_html_document). Competitive delta: highlight →
 float DR → merge → Write is identity-honest end-to-end.
 
+## Residual aai · 2026-07-10 — marketplace library Write seed aliases
+marketplace_library and marketplace_library_rehydrate window sources now map
+to marketplace_host for HostedHtml Open Write + Antiek-bench write-seed feed.
+Competitive delta: account library → window → Write is identity-honest with
+host-land path (no silent hosted_html_document collapse).
+

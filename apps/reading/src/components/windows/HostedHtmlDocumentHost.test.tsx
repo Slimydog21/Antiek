@@ -317,6 +317,51 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     ).toMatch(/Midnight Oil deposit/i);
   });
 
+  it("maps marketplace_library* window sources to marketplace_host Open Write (aai)", () => {
+    // Residual (aai): library open / rehydrate floats must not collapse Write
+    // seed provenance away from the marketplace_host Antiek-bench feed.
+    const { unmount } = render(
+      <HostedHtmlDocumentHost
+        document_id="hdoc_lib"
+        title="Library book"
+        view_format="html"
+        source="marketplace_library"
+        html="<p>Library body</p>"
+      />,
+    );
+    expect(
+      screen.getByTestId("hosted-html-document-host").getAttribute("data-source"),
+    ).toBe("marketplace_library");
+    expect(
+      screen.getByTestId("hosted-html-open-write").getAttribute(
+        "data-write-seed-source",
+      ),
+    ).toBe("marketplace_host");
+    expect(
+      screen.getByTestId("twin-notes-panel-stub").getAttribute("data-seed-title") ||
+        "",
+    ).toMatch(/Marketplace host/i);
+    unmount();
+
+    render(
+      <HostedHtmlDocumentHost
+        document_id="hdoc_rehydrate"
+        title="Rehydrated book"
+        view_format="html"
+        source="marketplace_library_rehydrate"
+        html="<p>Rehydrate body</p>"
+      />,
+    );
+    expect(
+      screen.getByTestId("hosted-html-document-host").getAttribute("data-source"),
+    ).toBe("marketplace_library_rehydrate");
+    expect(
+      screen.getByTestId("hosted-html-open-write").getAttribute(
+        "data-write-seed-source",
+      ),
+    ).toBe("marketplace_host");
+  });
+
   it("stamps collective_written_analysis Open Write source (vn)", () => {
     render(
       <HostedHtmlDocumentHost
