@@ -23,7 +23,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (vl): v9 adds wrestle collective_written_analysis Write seed posture.
 # Residual (wd): v10 adds book_qa information theory (Shannon free PD).
 # Residual (wl): v11 adds book_qa computability (Turing free PD).
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v11"
+# Residual (xi): v12 adds book_qa computing history (Lovelace free PD).
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v12"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -285,6 +286,25 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "computable",
                 "machine",
                 "entscheidungsproblem",
+                "html",
+            ),
+        ),
+        # Residual (xi): free computing-history PD → book_qa (Lovelace).
+        SuiteItem(
+            item_id="dogfood-book-lovelace-analytical-engine",
+            task_class="book_qa",
+            prompt=(
+                "From Lovelace Sketch of the Analytical Engine (free PD HTML): how does "
+                "she describe the Analytical Engine as weaving algebraical patterns, what "
+                "is an operation in her most general sense, and why does free public-domain "
+                "hosting of foundational computing-history texts matter for technology "
+                "research workstations?"
+            ),
+            expected_keywords=(
+                "lovelace",
+                "analytical",
+                "engine",
+                "babbage",
                 "html",
             ),
         ),

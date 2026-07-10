@@ -1,6 +1,6 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** `b94b4c37` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
+**Campaign tip at write:** `2d66f3cf` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **URL:** https://github.com/Slimydog21/Antiek/pull/465  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
@@ -15,7 +15,7 @@ Prefer **SESSION-ARC-vz-wt-budget-stem-dualgate.md** + inventories **vz–xe** +
 |---|---|
 | Budget foresight | Launch + Settings remaining-after (wa · wb) |
 | Dual-gate section map | L1–L7 anchors + deep-links across Settings · MO · Twins · Pubs · Reading hosts · Context |
-| Free STEM | Shannon · Turing · domain chips · free-PD compose · server by_subject · dogfood v11 |
+| Free STEM | Shannon · Turing · **Lovelace** · domain chips · free-PD compose · dogfood **v12** |
 | Deferred honesty | Deferred map + ND panel · no stale Coming later |
 
 ### P0 — Operator merge PR #465
@@ -24,7 +24,7 @@ Prefer **SESSION-ARC-vz-wt-budget-stem-dualgate.md** + inventories **vz–xe** +
 ### P2 — Dual-gate live injectors (operator-only)
 L1–L4 offline default · L5 payment deferred · L6 live multi-agent · L7 ND **never** router
 
-### P1 next offline (residual **xg+**)
+### P1 next offline (residual **xj+**)
 Outside dual-gate deep-link thrash unless regression. Prefer real product bugs,
 midnight oil / collective / twin polish offline, operator-facing load-bearing work.
 

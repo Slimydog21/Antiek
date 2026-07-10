@@ -1,0 +1,23 @@
+# inventory-xi · Lovelace free PD + dogfood v12 computing history
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: xi
+date: 2026-07-10
+tip_before: 2d66f3cf (xh)
+
+## Problem
+Free STEM computing spine had Boole/Shannon/Turing but not foundational
+computing-history (Lovelace on Babbage) for tech-researcher corpus.
+
+## Fix
+- Catalog: pd-lovelace-analytical-engine (HTML free PD · computing · history)
+- Dogfood v12 book_qa Lovelace
+- Settings posture data-has-lovelace-book-qa-posture + v12 spine
+- Host land free_host honesty
+
+## Verified
+- pytest marketplace + dogfood → 19 passed
+- vitest Settings + MarketplaceHost → 67 passed combined when run separately
+- suite-competitive-dogfood-v12 · 18 items
+
+## Not in scope
+- Operator merge PR #465 (gated)

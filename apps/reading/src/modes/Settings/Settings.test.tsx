@@ -264,15 +264,15 @@ const {
       html: `<p>Active: ${opts.depth_tier}</p>`,
     })),
     fetchAntiekBenchDogfoodFixtures: vi.fn(async () => ({
-      // Residual (st/su/tf/ti/tv/tz/ud/us/ve/vl/wd/wl): competitive dogfood v11 postures.
-      suite_version: "suite-competitive-dogfood-v11",
+      // Residual (st/su/tf/ti/tv/tz/ud/us/ve/vl/wd/wl/xi): competitive dogfood v12 postures.
+      suite_version: "suite-competitive-dogfood-v12",
       label: "antiek-bench-competitive-dogfood",
-      item_count: 17,
+      item_count: 18,
       by_task_class: {
         distill: 2,
         synthesize: 2,
         wrestle: 7,
-        book_qa: 6,
+        book_qa: 7,
       },
       items: [
         {
@@ -340,13 +340,18 @@ const {
           task_class: "book_qa",
           prompt: "Turing on computable numbers free PD HTML",
         },
+        {
+          item_id: "dogfood-book-lovelace-analytical-engine",
+          task_class: "book_qa",
+          prompt: "Lovelace Analytical Engine free PD HTML",
+        },
       ],
       auto_promoted: false,
       view_format: "html",
       settings_panel: "antiek_bench_dogfood_fixtures",
       source: "antiek_bench.dogfood_fixtures",
       notes: ["Competitive dogfood fixtures are offline prompts only."],
-      html: "<p>Suite suite-competitive-dogfood-v11 · items=17 · dogfood-book-turing-computable-numbers</p>",
+      html: "<p>Suite suite-competitive-dogfood-v12 · items=18 · dogfood-book-lovelace-analytical-engine</p>",
     })),
     fetchAntiekBenchLeaderboard: vi.fn(async () => ({
       week_id: "2026-W28",
@@ -1496,14 +1501,14 @@ describe("Settings SPR-01 + decision-tree install", () => {
     await waitFor(() => {
       expect(
         screen.getByTestId("antiek-bench-dogfood-summary").textContent,
-      ).toMatch(/suite-competitive-dogfood-v11/);
+      ).toMatch(/suite-competitive-dogfood-v12/);
     });
     const summary = screen.getByTestId("antiek-bench-dogfood-summary");
-    // Residual (su/ti/tv/tz/ud/us/ve/vl/wd/wl): v11 spine posture machine attrs.
+    // Residual (su/ti/tv/tz/ud/us/ve/vl/wd/wl/xi): v12 spine posture machine attrs.
     expect(summary.getAttribute("data-suite-version")).toBe(
-      "suite-competitive-dogfood-v11",
+      "suite-competitive-dogfood-v12",
     );
-    expect(summary.getAttribute("data-item-count")).toBe("17");
+    expect(summary.getAttribute("data-item-count")).toBe("18");
     expect(summary.getAttribute("data-auto-promoted")).toBe("false");
     expect(summary.getAttribute("data-has-write-seed-posture")).toBe("true");
     expect(summary.getAttribute("data-has-float-evidence-posture")).toBe(
@@ -1528,6 +1533,9 @@ describe("Settings SPR-01 + decision-tree install", () => {
       "true",
     );
     expect(summary.getAttribute("data-has-turing-book-qa-posture")).toBe(
+      "true",
+    );
+    expect(summary.getAttribute("data-has-lovelace-book-qa-posture")).toBe(
       "true",
     );
     expect(
@@ -1562,17 +1570,25 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
       /Turing book_qa/i,
     );
+    expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(
+      /Lovelace book_qa/i,
+    );
     // Residual (we): full dogfood item list — no silent top-12 truncate.
     const itemsList = screen.getByTestId("antiek-bench-dogfood-items");
     expect(itemsList.getAttribute("data-truncated")).toBe("false");
-    expect(itemsList.getAttribute("data-listed-count")).toBe("13");
-    // Mock lists posture items including Shannon + Turing (v11).
+    expect(itemsList.getAttribute("data-listed-count")).toBe("14");
+    // Mock lists posture items including Shannon + Turing + Lovelace (v12).
     expect(
       itemsList.querySelector('[data-item-id="dogfood-book-shannon-communication"]'),
     ).toBeTruthy();
     expect(
       itemsList.querySelector(
         '[data-item-id="dogfood-book-turing-computable-numbers"]',
+      ),
+    ).toBeTruthy();
+    expect(
+      itemsList.querySelector(
+        '[data-item-id="dogfood-book-lovelace-analytical-engine"]',
       ),
     ).toBeTruthy();
     expect(screen.getByTestId("antiek-bench-dogfood-v2-postures").textContent).toMatch(

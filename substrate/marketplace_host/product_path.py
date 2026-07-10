@@ -598,6 +598,32 @@ def default_demo_catalog() -> Catalog:
                     "computability",
                 ),
             ),
+            # Residual (xi): computing history PD — Lovelace on Babbage's Analytical Engine.
+            CatalogEntry(
+                book_id="pd-lovelace-analytical-engine",
+                title="Sketch of the Analytical Engine Invented by Charles Babbage",
+                author="Ada Lovelace",
+                source="project_gutenberg",
+                license_class="public_domain",
+                is_free=True,
+                body_text=(
+                    "The Analytical Engine weaves algebraical patterns just as the "
+                    "Jacquard-loom weaves flowers and leaves.\n\n"
+                    "It may be desirable to explain, that by the word operation, we mean "
+                    "any process which alters the mutual relation of two or more things, "
+                    "be this relation of what kind it may. This is the most general "
+                    "definition, and would include all subjects in the universe."
+                ),
+                source_format="html",
+                subjects=(
+                    "mathematics",
+                    "science",
+                    "technology",
+                    "computing",
+                    "history",
+                    "engineering",
+                ),
+            ),
             CatalogEntry(
                 book_id="buy-modern",
                 title="Modern Systems Research",

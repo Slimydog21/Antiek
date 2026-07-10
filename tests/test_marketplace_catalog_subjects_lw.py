@@ -84,7 +84,9 @@ def test_stem_pd_spine_in_demo_catalog() -> None:
     assert "pd-shannon-communication" in ids
     # Residual (wl): Turing on computable numbers.
     assert "pd-turing-computable-numbers" in ids
-    assert len(ids) >= 16
+    # Residual (xi): Lovelace Analytical Engine computing history.
+    assert "pd-lovelace-analytical-engine" in ids
+    assert len(ids) >= 17
     elements = cat.get("pd-elements")
     assert elements is not None
     assert elements.license_class == "public_domain"

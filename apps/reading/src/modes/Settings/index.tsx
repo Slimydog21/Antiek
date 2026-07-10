@@ -2119,6 +2119,12 @@ export default function Settings() {
                       it.item_id === "dogfood-book-turing-computable-numbers",
                   ),
                 )}
+                data-has-lovelace-book-qa-posture={String(
+                  (dogfood.items || []).some(
+                    (it) =>
+                      it.item_id === "dogfood-book-lovelace-analytical-engine",
+                  ),
+                )}
                 data-has-citation-trust-ungrounded-posture={String(
                   (dogfood.items || []).some(
                     (it) =>
@@ -2162,6 +2168,7 @@ export default function Settings() {
                     "dogfood-book-heaviside-em",
                     "dogfood-book-shannon-communication",
                     "dogfood-book-turing-computable-numbers",
+                    "dogfood-book-lovelace-analytical-engine",
                     "dogfood-wrestle-citation-trust-ungrounded",
                     "dogfood-wrestle-twin-cross-asset-merge-write-seed",
                     "dogfood-wrestle-collective-written-analysis-write-seed",
@@ -2172,12 +2179,13 @@ export default function Settings() {
                     data-testid="antiek-bench-dogfood-v2-postures"
                     role="status"
                   >
-                    Spine postures (v11): write-seed · float evidence · budget
+                    Spine postures (v12): write-seed · float evidence · budget
                     foresight · Faraday book_qa · collective unit write-seed ·
                     Boole book_qa · Heaviside book_qa · Shannon book_qa ·
-                    Turing book_qa · citation-trust ungrounded · twin
-                    cross-asset merge write-seed · collective written analysis
-                    write-seed (listing only · not auto-promoted)
+                    Turing book_qa · Lovelace book_qa · citation-trust
+                    ungrounded · twin cross-asset merge write-seed ·
+                    collective written analysis write-seed (listing only · not
+                    auto-promoted)
                   </p>
                 ) : null}
                 <ul data-testid="antiek-bench-dogfood-classes" className="space-y-1">

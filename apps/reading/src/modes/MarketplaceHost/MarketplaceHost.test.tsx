@@ -2367,6 +2367,83 @@ describe("MarketplaceHost mode", () => {
     expect(metrics.getAttribute("data-subject-filter")).toBe("computability");
   });
 
+  it("hosts Lovelace free PD with computing history subjects on host land (xi)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-lovelace-analytical-engine",
+          title: "Sketch of the Analytical Engine Invented by Charles Babbage",
+          author: "Ada Lovelace",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: [
+            "mathematics",
+            "science",
+            "technology",
+            "computing",
+            "history",
+            "engineering",
+          ],
+        },
+      ],
+      count: 1,
+      view_format: "html",
+      free_count: 1,
+      public_domain_count: 1,
+      by_subject: {
+        computing: 1,
+        history: 1,
+        engineering: 1,
+      },
+      payment_rails: "manual_receipt_only",
+    });
+    hostBookIntoAccount.mockResolvedValue({
+      document_id: "hdoc_lovelace",
+      owner_id: "tech-researcher",
+      book_id: "pd-lovelace-analytical-engine",
+      content_hash: "l1",
+      title: "Sketch of the Analytical Engine",
+      license_class: "public_domain",
+      already_hosted: false,
+      source_format: "html",
+      library_document_ids: ["hdoc_lovelace"],
+      view_format: "html",
+      html: "<p>Lovelace weaves algebraical patterns on the Analytical Engine</p>",
+    });
+    fetchAccountLibrary.mockResolvedValue({
+      owner_id: "tech-researcher",
+      documents: [],
+      count: 0,
+      view_format: "html",
+      html: "<p>Library Lovelace</p>",
+    });
+    render(<MarketplaceHost ownerId="tech-researcher" />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("catalog-entry-pd-lovelace-analytical-engine"),
+      ).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /host into account/i }));
+    await waitFor(() => {
+      expect(hostBookIntoAccount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          owner_id: "tech-researcher",
+          book_id: "pd-lovelace-analytical-engine",
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("marketplace-host-metrics")).toBeTruthy();
+    });
+    const hostMetrics = screen.getByTestId("marketplace-host-metrics");
+    expect(hostMetrics.getAttribute("data-subjects")).toMatch(/computing/);
+    expect(hostMetrics.getAttribute("data-subjects")).toMatch(/history/);
+    expect(
+      screen.getByTestId("marketplace-host-free-pd-honesty").textContent,
+    ).toMatch(/free_host=true/);
+  });
+
   it("hosts Turing free PD with computability subjects on host land (wl)", async () => {
     fetchMarketplaceCatalog.mockResolvedValue({
       entries: [

@@ -1523,3 +1523,9 @@ and honesty strip share the same deferred live-council policy section.
 Settings L1 checklist deep-links #l1-arxiv (parity L3/L4 checklist links).
 Competitive delta: decision-tree dual-gate prep strip is complete L1–L7
 section navigation.
+
+## Residual xi · 2026-07-10 — Lovelace free PD + dogfood v12
+Catalog hosts Sketch of the Analytical Engine (HTML free PD) with computing +
+history subjects; dogfood v12 book_qa Lovelace; Settings posture honesty.
+Competitive delta: tech-researcher free STEM spine covers electricity + logic +
+information theory + computability + computing history on HTML-first free path.
