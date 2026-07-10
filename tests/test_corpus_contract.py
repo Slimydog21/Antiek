@@ -10,6 +10,7 @@ adapters against the same bar.
 
 from __future__ import annotations
 
+import pathlib
 from typing import Any
 
 import pytest
@@ -27,6 +28,7 @@ from substrate.corpus_contract.conformance import (
     assert_search_retrieval,
     assert_unknown_id_returns_miss,
 )
+from substrate.corpus_contract.protocol import CorpusMiss
 
 # ---------------------------------------------------------------------------
 # Fixture data — realistic, not synthetic
@@ -153,7 +155,7 @@ def _make_hosted_adapter() -> HostedDocsCorpusAdapter:
 class TestTwinNotesConformance:
     def test_search_retrieval(self) -> None:
         adapter = _make_twin_adapter()
-        assert_search_retrieval(adapter, TWIN_FIXTURE)
+        assert_search_retrieval(adapter, TWIN_FIXTURE, decoy_ids=frozenset({"twin_other"}))
 
     def test_fetch_roundtrip(self) -> None:
         adapter = _make_twin_adapter()
@@ -188,7 +190,7 @@ class TestTwinNotesConformance:
 class TestHostedDocsConformance:
     def test_search_retrieval(self) -> None:
         adapter = _make_hosted_adapter()
-        assert_search_retrieval(adapter, HOSTED_FIXTURE)
+        assert_search_retrieval(adapter, HOSTED_FIXTURE, decoy_ids=frozenset({"hdoc_other"}))
 
     def test_fetch_roundtrip(self) -> None:
         adapter = _make_hosted_adapter()
@@ -213,6 +215,37 @@ class TestHostedDocsConformance:
     def test_miss_has_id(self) -> None:
         adapter = _make_hosted_adapter()
         assert_miss_has_id(adapter)
+
+    def test_cross_owner_fetch_returns_miss(self) -> None:
+        """A document belonging to owner-B must NOT be fetchable by an adapter
+        scoped to owner-A.  The adapter enforces owner scope by checking
+        membership before calling get_document.
+        """
+        # hdoc_other belongs to owner-1.  An adapter scoped to owner-2
+        # must not be able to fetch it even though the store has it.
+        docs = {
+            "hdoc_owner2": {
+                "document_id": "hdoc_owner2",
+                "owner_id": "owner-2",
+                "book_id": "book-x",
+                "content_hash": "xxx",
+                "title": "Owner 2 Doc",
+                "license_class": "public_domain",
+                "body_text": "This belongs to owner 2.",
+                "source_format": "text",
+                "receipt_id": None,
+                "view_format": "html",
+            },
+        }
+        memberships = {"owner-2": ["hdoc_owner2"]}
+        reader = InMemoryHostedDocReader(docs, memberships)
+        adapter2 = HostedDocsCorpusAdapter(reader, owner_id="owner-2")
+        # Fetching a document that exists in the store but belongs to a
+        # different owner MUST return CorpusMiss.
+        result = adapter2.fetch(HOSTED_FIXTURE.id)
+        assert isinstance(result, CorpusMiss), (
+            f"cross-owner fetch should return CorpusMiss, got {type(result).__name__}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -240,3 +273,59 @@ class TestBrokenAdapterRedProof:
     def test_broken_adapter_passes_miss(self) -> None:
         broken = BrokenProvenanceAdapter(TWIN_FIXTURE)
         assert_unknown_id_returns_miss(broken)
+
+
+# ---------------------------------------------------------------------------
+# Negative static type proof — mypy MUST reject a wrong-signature adapter
+# ---------------------------------------------------------------------------
+
+
+class TestNegativeTypeProof:
+    def test_mypy_rejects_wrong_signature_adapter(self) -> None:
+        """Mypy MUST report a type error for a wrong-signature adapter
+        assigned to CorpusAdapter.  If this test ever passes (mypy exits
+        clean), the Protocol has lost its teeth — the test is designed to
+        fail in that case.
+
+        This is the negative static type proof that M1 demands: the
+        Protocol rejects adapters whose signatures don't match.
+        """
+        import os
+        import subprocess
+
+        project_root = str(pathlib.Path(__file__).resolve().parent.parent)
+        target = str(
+            pathlib.Path(__file__).resolve().parent / "type_check_wrong_adapter.py"
+        )
+        mypy_bin = str(
+            pathlib.Path(project_root) / ".venv-wt" / "bin" / "mypy"
+        )
+        env = {**os.environ, "MYPYPATH": project_root}
+
+        result = subprocess.run(
+            [
+                mypy_bin,
+                target,
+                "--strict",
+                "--no-error-summary",
+                "--ignore-missing-imports",
+                "--explicit-package-bases",
+            ],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        stdout = result.stdout
+        stderr = result.stderr
+
+        # mypy MUST find errors — the wrong-signature adapter must be rejected
+        assert result.returncode != 0, (
+            f"mypy did NOT reject the wrong-signature adapter "
+            f"(exit code {result.returncode}).  The Protocol has lost its teeth.\n"
+            f"stdout: {stdout}\nstderr: {stderr}"
+        )
+        assert "assignment" in stdout or "arg-type" in stdout or "override" in stdout, (
+            f"mypy rejected the adapter but NOT for the expected reason.\n"
+            f"Expected 'assignment', 'arg-type', or 'override' in output.\n"
+            f"stdout: {stdout}\nstderr: {stderr}"
+        )
