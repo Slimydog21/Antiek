@@ -3237,3 +3237,9 @@ vitest PublicationAttach 6 green. P0 operator merge PR #465. Pivot ale+ outside 
 Wave handoff: driver · twin · evidence · attach prompt-cost matrix extension
 beyond akk–akp multi-minute spend surfaces. P0 operator merge PR #465.
 Pivot alf+ outside thrash (prefer non-deep-link).
+
+## Residual alf · 2026-07-10 — domain-aware twin search bare science catch-all
+Intelligent twin search defaults bare science/natural_philosophy after specific
+STEM domains (never overrides biology/physics/math). Completes free PD science
+spine catch-all. FUTURE twin matrix gap #3 expanded. vitest ResearchContext 16 green.
+P0 operator merge PR #465. Pivot alg+ outside thrash.

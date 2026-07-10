@@ -1,0 +1,16 @@
+# inventory-alf · domain-aware twin search bare science catch-all
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: alf
+date: 2026-07-10
+parent_tip: e180eb8e (ale)
+
+## Closed
+- domainAwareSearchDefault bare science / natural_philosophy catch-all
+  (after specific STEM domains · never overrides biology/physics/math)
+- FUTURE twin matrix gap #3 expanded (alf)
+- vitest ResearchContext 16 green
+- proof: SCRATCH residual-alf-vitest.log
+
+## Next
+alg+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

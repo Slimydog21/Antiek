@@ -123,6 +123,14 @@ describe("ResearchContextPanel", () => {
     expect(domainAwareSearchDefault(["technology", "computing"])).toMatch(
       /computing analytical engine/i,
     );
+    // Residual (alf): bare science after more-specific STEM domains.
+    expect(domainAwareSearchDefault(["science"])).toMatch(
+      /science natural philosophy research methods/i,
+    );
+    // Biology still wins over bare science when both present.
+    expect(domainAwareSearchDefault(["science", "biology"])).toMatch(
+      /biology instruments micrographia/i,
+    );
     expect(domainAwareSearchDefault([])).toBe("");
     expect(domainAwareSearchDefault(null)).toBe("");
   });

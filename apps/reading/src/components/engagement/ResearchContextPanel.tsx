@@ -155,6 +155,11 @@ export function domainAwareSearchDefault(
   if (set.has("technology") || set.has("tech")) {
     return "technology instruments research methods twin insights";
   }
+  // Residual (alf): bare science when no more-specific STEM domain matched
+  // (catch-all for free PD science spine after physics/biology/math/etc.).
+  if (set.has("science") || set.has("natural_philosophy")) {
+    return "science natural philosophy research methods twin insights";
+  }
   return "";
 }
 
