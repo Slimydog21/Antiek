@@ -1,0 +1,25 @@
+# inventory-auf · pure moilCeilingBudgetFit (soft budget foresight)
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: auf
+date: 2026-07-10
+parent_tip: b278fd9a0 (aue)
+
+## Closed
+- moilCeilingBudgetFit pure helper in moilGoals.ts
+  fit: fits | may_exceed | unknown · may_exceed · remaining_after_usd · soft_budget
+- Unknown remaining never invents block (may_exceed=false)
+- Midnight Oil ceilingMayExceedRemaining + preview budget-fit wired to pure helper
+- moil-ceiling-preview stamps data-soft-budget
+- Soft foresight only · force override path unchanged
+- vitest moilGoals 9 + MidnightOil 30 = 39 green · auf-vitest.log in SCRATCH
+
+## Doctrine
+Goals+duration → recommended ceiling → approve · soft budget-before-fire ·
+never invent $0 remaining · pure hard to vary
+
+## Next
+aug+ offline product residual outside thrash
+Avoid: MO ceiling-fit thrash after auf · duration-band aue · pure-open · open-stamp ·
+catalog · scorecard · add-model budget · vision · dogfood
+Prefer: competitive non-MO residual · knowledge connector · model non-budget
+Operator merge PR #465 remains P0 (gated)

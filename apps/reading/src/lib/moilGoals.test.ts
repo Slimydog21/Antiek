@@ -4,6 +4,7 @@ import {
   MOIL_GOAL_TEMPLATES,
   goalsExceedFanout,
   moilDepositHtmlReadiness,
+  moilCeilingBudgetFit,
   moilPlanReadiness,
   parseMoilGoalLines,
   recommendedFanoutForGoals,
@@ -116,5 +117,29 @@ describe("moilGoals (aof)", () => {
     });
     expect(noId.deposit_html_ready).toBe(false);
     expect(noId.open_title).toMatch(/document_id missing/i);
+  });
+
+  it("computes ceiling vs remaining budget fit (auf)", () => {
+    expect(moilCeilingBudgetFit({ ceiling_usd: 5 }).fit).toBe("unknown");
+    expect(moilCeilingBudgetFit({ ceiling_usd: 5 }).may_exceed).toBe(false);
+    expect(
+      moilCeilingBudgetFit({ ceiling_usd: 3, remaining_usd: 10 }).fit,
+    ).toBe("fits");
+    expect(
+      moilCeilingBudgetFit({ ceiling_usd: 3, remaining_usd: 10 }).may_exceed,
+    ).toBe(false);
+    expect(
+      moilCeilingBudgetFit({ ceiling_usd: 3, remaining_usd: 10 })
+        .remaining_after_usd,
+    ).toBeCloseTo(7);
+    const over = moilCeilingBudgetFit({
+      ceiling_usd: 12,
+      remaining_usd: 5,
+    });
+    expect(over.fit).toBe("may_exceed");
+    expect(over.may_exceed).toBe(true);
+    expect(over.remaining_after_usd).toBeCloseTo(-7);
+    expect(over.soft_budget).toBe(true);
+    expect(over.summary).toMatch(/may exceed/i);
   });
 });

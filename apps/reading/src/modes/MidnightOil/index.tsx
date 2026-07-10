@@ -95,6 +95,7 @@ import {
   appendMoilGoalTemplate,
   MOIL_GOAL_TEMPLATES,
   goalsExceedFanout,
+  moilCeilingBudgetFit,
   moilDepositHtmlReadiness,
   moilPlanReadiness,
   parseMoilGoalLines,
@@ -561,12 +562,15 @@ export default function MidnightOil() {
     }
   }
 
-  /** Residual (me): may_exceed remaining daily budget for a ceiling amount. */
+  /**
+   * Residual (me/auf): may_exceed remaining daily budget for a ceiling amount.
+   * Pure moilCeilingBudgetFit — unknown never invents block.
+   */
   function ceilingMayExceedRemaining(ceilingUsd: number): boolean {
-    if (budgetRemainingUsd == null || !Number.isFinite(budgetRemainingUsd)) {
-      return false; // unknown → never invent block
-    }
-    return ceilingUsd > budgetRemainingUsd + 1e-9;
+    return moilCeilingBudgetFit({
+      ceiling_usd: ceilingUsd,
+      remaining_usd: budgetRemainingUsd,
+    }).may_exceed;
   }
 
   async function onApproveRecommended() {
@@ -1320,13 +1324,13 @@ export default function MidnightOil() {
             modelId,
           });
           if (previewUsd == null) return null;
-          let fit: "fits" | "may_exceed" | "unknown" = "unknown";
-          let remainingAfter: number | null = null;
-          if (budgetRemainingUsd != null && Number.isFinite(budgetRemainingUsd)) {
-            fit =
-              previewUsd <= budgetRemainingUsd + 1e-9 ? "fits" : "may_exceed";
-            remainingAfter = budgetRemainingUsd - previewUsd;
-          }
+          // Residual (auf): pure ceiling budget fit for preview foresight.
+          const budgetFit = moilCeilingBudgetFit({
+            ceiling_usd: previewUsd,
+            remaining_usd: budgetRemainingUsd,
+          });
+          const fit = budgetFit.fit;
+          const remainingAfter = budgetFit.remaining_after_usd;
           return (
             <div
               className="font-mono text-[11px] space-y-0.5 border border-ink/15 rounded p-2 dark:border-bright/15"
@@ -1344,6 +1348,7 @@ export default function MidnightOil() {
               data-research-tier={researchTier}
               data-recommended-usd={String(previewUsd)}
               data-budget-fit={fit}
+              data-soft-budget={String(budgetFit.soft_budget)}
               data-remaining-after-usd={
                 remainingAfter != null ? String(remainingAfter) : ""
               }

@@ -228,3 +228,59 @@ export function moilDepositHtmlReadiness(opts: {
     open_title,
   };
 }
+
+/**
+ * Residual (auf): pure Midnight Oil ceiling vs remaining daily budget fit.
+ *
+ * Soft foresight only — never invents $0 remaining · unknown never blocks.
+ * Parity inline ceilingMayExceedRemaining + preview budget-fit chrome.
+ */
+export type MoilCeilingBudgetFit = {
+  fit: "fits" | "may_exceed" | "unknown";
+  may_exceed: boolean;
+  remaining_usd: number | null;
+  ceiling_usd: number;
+  remaining_after_usd: number | null;
+  soft_budget: true;
+  summary: string;
+};
+
+export function moilCeilingBudgetFit(opts: {
+  ceiling_usd: number | null | undefined;
+  remaining_usd?: number | null;
+}): MoilCeilingBudgetFit {
+  const ceiling_usd =
+    typeof opts.ceiling_usd === "number" && Number.isFinite(opts.ceiling_usd)
+      ? opts.ceiling_usd
+      : 0;
+  const remaining =
+    typeof opts.remaining_usd === "number" && Number.isFinite(opts.remaining_usd)
+      ? opts.remaining_usd
+      : null;
+
+  if (remaining == null) {
+    return {
+      fit: "unknown",
+      may_exceed: false, // unknown → never invent block
+      remaining_usd: null,
+      ceiling_usd,
+      remaining_after_usd: null,
+      soft_budget: true,
+      summary: "remaining unknown · never invent $0 · soft foresight only",
+    };
+  }
+
+  const may_exceed = ceiling_usd > remaining + 1e-9;
+  const remaining_after_usd = remaining - ceiling_usd;
+  return {
+    fit: may_exceed ? "may_exceed" : "fits",
+    may_exceed,
+    remaining_usd: remaining,
+    ceiling_usd,
+    remaining_after_usd,
+    soft_budget: true,
+    summary: may_exceed
+      ? "ceiling may exceed remaining daily budget (soft · force override available)"
+      : "ceiling fits remaining daily budget",
+  };
+}
