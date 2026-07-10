@@ -2081,6 +2081,7 @@ export default function Settings() {
                 data-item-count={String(dogfood.item_count ?? 0)}
                 data-auto-promoted={String(dogfood.auto_promoted === true)}
                 data-view-format={dogfood.view_format || "html"}
+                data-source={dogfood.source || ""}
                 data-book-qa-count={String(
                   (dogfood.by_task_class || {}).book_qa ?? 0,
                 )}

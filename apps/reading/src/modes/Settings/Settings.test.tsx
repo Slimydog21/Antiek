@@ -1469,6 +1469,10 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(summary.getAttribute("data-auto-promoted")).toBe("false");
     // Residual (yt): HTML-first dogfood view_format honesty.
     expect(summary.getAttribute("data-view-format")).toBe("html");
+    // Residual (yv): substrate source honesty.
+    expect(summary.getAttribute("data-source")).toBe(
+      "antiek_bench.dogfood_fixtures",
+    );
     // Residual (yg/yh): full task-class counts on dogfood summary.
     expect(summary.getAttribute("data-book-qa-count")).toBe("7");
     expect(summary.getAttribute("data-wrestle-count")).toBe("7");

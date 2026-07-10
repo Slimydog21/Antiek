@@ -1700,3 +1700,7 @@ Antiek-bench dogfood human view is HTML-first on Settings chokepoint.
 ## Residual yu · 2026-07-10 — FUTURE-AGENT tip re-anchor through yt
 FUTURE-AGENT-SPEC tip re-anchored after 74 residual ships this continuation.
 Competitive delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
+
+## Residual yv · 2026-07-10 — dogfood summary data-source honesty
+antiek-bench-dogfood-summary stamps data-source=antiek_bench.dogfood_fixtures.
+Competitive delta: Settings dogfood provenance is machine-auditable.
