@@ -713,14 +713,16 @@ class BudgetLedger:
         ``reserve_call`` → invoke ``call()`` → ``settle(hold, actual)``.
 
         * If ``reserve_call`` raises, ``call`` is **never** invoked.
-        * If ``call`` raises, the hold is released (``held -= projected``,
-          ``spent`` unchanged) and the exception is re-raised.
+        * If ``call`` raises, provider outcome is unknown. The projected maximum
+          is charged conservatively before the exception is re-raised. A caller
+          that can prove dispatch never occurred may use a separate explicit
+          pre-dispatch path; a generic exception is never proof of zero spend.
         """
         hold = self.reserve_call(run_id, role, projected_max_cents)
         try:
             result, actual_cents = call()
         except Exception:
-            self._release_hold(hold)
+            self.settle(hold, projected_max_cents)
             raise
         balance = self.settle(hold, actual_cents)
         return result, balance

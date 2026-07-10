@@ -296,10 +296,10 @@ def test_reserve_idempotency(tmp_path: object) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 10. Failed call releases hold
+# 10. Failed call conservatively charges the projection
 # ---------------------------------------------------------------------------
 
-def test_failed_call_releases_hold(tmp_path: object) -> None:
+def test_failed_call_charges_projected_maximum(tmp_path: object) -> None:
     ledger = _ledger(tmp_path)
     ledger.reserve("r1", 300, role_budgets={"r": 300})
 
@@ -310,22 +310,47 @@ def test_failed_call_releases_hold(tmp_path: object) -> None:
         ledger.guarded_call("r1", "r", 100, exploding_call)
 
     bal = ledger.balance("r1")
-    assert bal.spent_cents == 0
+    assert bal.spent_cents == 100
     assert bal.held_cents == 0
-    assert bal.remaining_cents == 300
+    assert bal.remaining_cents == 200
 
-    # Ledger has a 'halted' event.
+    # Unknown provider outcome is accounted as projected spend, not a release.
     from runtime.db_lock import connect_read
 
     rd = connect_read(ledger._db_path)  # noqa: SLF001
     try:
         rows = rd.execute(
-            "SELECT event FROM midnight_oil_spend_ledger WHERE event = 'halted'"
+            "SELECT event, amount_cents FROM midnight_oil_spend_ledger "
+            "WHERE event = 'debit'"
         ).fetchall()
     finally:
         rd.close()
 
-    assert len(rows) == 1
+    assert rows == [("debit", 100)]
+
+
+def test_billed_timeout_cannot_restore_reusable_budget(tmp_path: object) -> None:
+    ledger = _ledger(tmp_path)
+    ledger.reserve("r1", 100, role_budgets={"researcher": 100})
+    external_spent_cents = 0
+
+    def billed_then_timed_out() -> tuple[str, int]:
+        nonlocal external_spent_cents
+        external_spent_cents += 100
+        raise TimeoutError("provider accepted request but response timed out")
+
+    with pytest.raises(TimeoutError):
+        ledger.guarded_call("r1", "researcher", 100, billed_then_timed_out)
+
+    with pytest.raises(BudgetCeilingExceeded):
+        ledger.guarded_call("r1", "researcher", 100, billed_then_timed_out)
+
+    balance = ledger.balance("r1")
+    assert external_spent_cents == 100
+    assert balance.spent_cents == 100
+    assert balance.held_cents == 0
+    assert balance.remaining_cents == 0
+    assert balance.status == "exhausted"
 
 
 # ---------------------------------------------------------------------------
