@@ -20,9 +20,9 @@ from interfaces.research.api.marketplace_host_routes import (  # noqa: E402
 )
 from substrate.marketplace_host import (  # noqa: E402
     CatalogEntry,
+    InMemoryHostStore,
     default_demo_catalog,
     host_book_into_account,
-    InMemoryHostStore,
     make_catalog,
 )
 

@@ -20,7 +20,7 @@ from substrate.midnight_oil import (
     product_result_html,
     run_job_offline,
 )
-from substrate.midnight_oil.job import InMemoryJobStore, JobStore, put_job_state, _job_from_row
+from substrate.midnight_oil.job import InMemoryJobStore, JobStore, _job_from_row, put_job_state
 
 midnight_oil_router = APIRouter(prefix="/midnight-oil", tags=["midnight-oil"])
 
@@ -200,8 +200,8 @@ def post_deposit(body: DepositBody) -> dict[str, Any]:
     approve (or simulated complete). Worker may still run out of band.
     """
     from interfaces.research.api.engagement_routes import (
-        get_bench_usage_store,
         _eng,
+        get_bench_usage_store,
     )
     from substrate.engagement_spine import progress_payload
 

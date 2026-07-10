@@ -79,7 +79,8 @@ class FileHostStore:
         path = self.root / "docs" / f"{safe}.json"
         if not path.is_file():
             return None
-        return json.loads(path.read_text(encoding="utf-8"))
+        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        return data
 
     def put_membership(self, owner_id: str, document_id: str) -> None:
         path = self.root / "lib" / f"{owner_id.replace('/', '_')}.json"
@@ -107,7 +108,8 @@ class FileHostStore:
         path = self.root / "receipts" / f"{safe}.json"
         if not path.is_file():
             return None
-        return json.loads(path.read_text(encoding="utf-8"))
+        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        return data
 
 
 @dataclass(frozen=True)

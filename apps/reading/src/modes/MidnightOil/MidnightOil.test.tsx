@@ -118,6 +118,18 @@ const fetchDepthTiers = vi.hoisted(() =>
 );
 
 vi.mock("../../api/settings", () => ({
+  estimatePromptCost: vi.fn(async () => ({
+    estimated_usd_low: null,
+    estimated_usd_high: null,
+    would_exceed_budget: null,
+    pricing_known: false,
+    notes: [],
+    assumed_input_tokens: 500,
+    assumed_output_tokens: 500,
+    tier: null,
+    provider: null,
+    model: null,
+  })),
   fetchDecisionTreeSelection: (...args: unknown[]) =>
     fetchDecisionTreeSelection(...args),
   fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...args),

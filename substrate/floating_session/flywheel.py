@@ -8,8 +8,9 @@ research context pack ready for the next prompt.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any
 
 from substrate.engagement_spine.research_context import ResearchContextPack
 from substrate.engagement_spine.store import EngagementStore

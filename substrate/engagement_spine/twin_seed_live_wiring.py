@@ -37,7 +37,7 @@ def build_dispatch_note_taker_seed_fn() -> Any:
     def _fn(title: str, body: str) -> list[tuple[str, str]]:
         # Prefer roles.note_taker if importable; otherwise raise → offline fallback
         try:
-            from roles.note_taker.parser import parse_notes_response  # type: ignore
+            from roles.note_taker.parser import parse_notes_response
         except Exception as exc:
             raise RuntimeError(f"note_taker unavailable: {exc}") from exc
 
@@ -46,9 +46,13 @@ def build_dispatch_note_taker_seed_fn() -> Any:
             "Extract 1–3 insights and 1–3 open questions as notes."
         )
         try:
-            from substrate.dispatch import dispatch  # type: ignore
+            from substrate.dispatch import dispatch
 
-            result = dispatch(prompt, "note_taker")
+            result = dispatch(
+                prompt,
+                "note_taker",
+                investigation_id=f"twin_seed:{title.strip()[:64]}",
+            )
             text = (
                 result
                 if isinstance(result, str)

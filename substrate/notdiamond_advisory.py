@@ -33,9 +33,7 @@ def kill_switch_enabled() -> bool:
     Default is **off** (unset, empty, ``0``, ``false``, ``off``, ``no``).
     """
     raw = (os.environ.get(ANTIEK_NOTDIAMOND_ENV) or "").strip().lower()
-    if raw in ("", "0", "false", "off", "no", "disabled"):
-        return False
-    return True
+    return raw not in ("", "0", "false", "off", "no", "disabled")
 
 
 # Offline measured-wedge fallback when no leaderboard run exists yet.

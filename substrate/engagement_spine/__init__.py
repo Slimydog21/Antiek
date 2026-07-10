@@ -16,78 +16,20 @@ PDF is never the canonical view surface).
 
 from __future__ import annotations
 
-from .merge import (
-    MergeMode,
-    MergeResult,
-    merge_product_payload,
-    merge_spawn_outputs,
-    project_merge_html,
-)
-from .project import project_to_html
-from .spawn import (
-    HighlightSelection,
-    ResearchSpawn,
-    SpawnStatus,
-    complete_spawn,
-    ensure_spawn,
-    get_spawn,
-    list_spawns_for_asset,
-    spawn_from_highlight,
-)
-from .store import EngagementStore, FileEngagementStore, InMemoryEngagementStore
-from .twin import (
-    TwinKind,
-    TwinNote,
-    list_twin_notes,
-    project_twins_html,
-    record_twin_insight,
-    record_twin_product,
-    record_twin_question,
-    ANTIEK_TWIN_SEED_LIVE_ENV,
-    clear_twin_seed_live,
-    configure_twin_seed_live,
-    twin_seed_live_fn_installed,
-    seed_twins_for_asset,
-    twin_seed_live_enabled,
-    twins_product_payload,
-)
-from .twin_promote import (
-    TwinContextUnit,
-    TwinPromoteContextResult,
-    TwinPromoteResult,
-    depth_graph_honesty_fields,
-    expected_graph_node_id,
-    promote_and_context_for_asset,
-    promote_twin_note,
-    promote_twin_notes_for_asset,
-    result_to_context_unit,
-    search_twin_context,
-    twin_context_html,
-    twin_promote_context_payload,
-)
-from .source_refs import (
-    SourceKind,
-    SourceReference,
-    attach_source_references,
-    detect_source_kind,
-    extract_arxiv_id,
-    filter_references,
-    list_source_references,
-    parse_source_reference,
-    parse_source_references,
-    source_references_html,
-    spawn_from_highlight_with_references,
-)
-from .research_context import (
-    ResearchContextPack,
-    assemble_research_context,
-    research_context_html,
-    research_context_sections_html,
-)
 from .collective import (
     CollectiveResearchUnit,
     collective_research_html,
     merge_spawns_collective,
+)
+from .context_search import project_context_search_html, search_engagement_context
+from .evidence import (
+    CITATION_HOP_PIPELINE_STAGES,
+    build_citation_chain_hops,
+    citation_chain_complete,
+    citation_hop_pipeline_progress,
+    competitive_dr_world_class_readiness,
+    evidence_pack_payload,
+    project_evidence_html,
 )
 from .hydrate import HydratedAsset, asset_id_for_ref, hydrate_reference, project_hydrated_html
 from .hydrate_adapters import (
@@ -104,10 +46,16 @@ from .hydrate_live_wiring import (
     env_flag,
     live_fetch_publication_from_env,
 )
-from .context_search import search_engagement_context, project_context_search_html
+from .merge import (
+    MergeMode,
+    MergeResult,
+    merge_product_payload,
+    merge_spawn_outputs,
+    project_merge_html,
+)
 from .progress import (
-    ProgressEvent,
     COMPETITIVE_DR_PIPELINE_STAGES,
+    ProgressEvent,
     competitive_stage_pipeline_progress,
     list_progress,
     progress_payload,
@@ -115,14 +63,66 @@ from .progress import (
     record_progress,
     seed_default_pipeline,
 )
-from .evidence import (
-    CITATION_HOP_PIPELINE_STAGES,
-    build_citation_chain_hops,
-    citation_chain_complete,
-    citation_hop_pipeline_progress,
-    competitive_dr_world_class_readiness,
-    evidence_pack_payload,
-    project_evidence_html,
+from .project import project_to_html
+from .research_context import (
+    ResearchContextPack,
+    assemble_research_context,
+    research_context_html,
+    research_context_sections_html,
+)
+from .source_refs import (
+    SourceKind,
+    SourceReference,
+    attach_source_references,
+    detect_source_kind,
+    extract_arxiv_id,
+    filter_references,
+    list_source_references,
+    parse_source_reference,
+    parse_source_references,
+    source_references_html,
+    spawn_from_highlight_with_references,
+)
+from .spawn import (
+    HighlightSelection,
+    ResearchSpawn,
+    SpawnStatus,
+    complete_spawn,
+    ensure_spawn,
+    get_spawn,
+    list_spawns_for_asset,
+    spawn_from_highlight,
+)
+from .store import EngagementStore, FileEngagementStore, InMemoryEngagementStore
+from .twin import (
+    ANTIEK_TWIN_SEED_LIVE_ENV,
+    TwinKind,
+    TwinNote,
+    clear_twin_seed_live,
+    configure_twin_seed_live,
+    list_twin_notes,
+    project_twins_html,
+    record_twin_insight,
+    record_twin_product,
+    record_twin_question,
+    seed_twins_for_asset,
+    twin_seed_live_enabled,
+    twin_seed_live_fn_installed,
+    twins_product_payload,
+)
+from .twin_promote import (
+    TwinContextUnit,
+    TwinPromoteContextResult,
+    TwinPromoteResult,
+    depth_graph_honesty_fields,
+    expected_graph_node_id,
+    promote_and_context_for_asset,
+    promote_twin_note,
+    promote_twin_notes_for_asset,
+    result_to_context_unit,
+    search_twin_context,
+    twin_context_html,
+    twin_promote_context_payload,
 )
 
 __all__ = [

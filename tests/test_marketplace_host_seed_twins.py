@@ -13,6 +13,7 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 from interfaces.research.api.engagement_routes import (  # noqa: E402
+    get_engagement_store,  # noqa: E402
     register_engagement_routes,
     reset_engagement_stores,
 )
@@ -21,7 +22,6 @@ from interfaces.research.api.marketplace_host_routes import (  # noqa: E402
     reset_marketplace_host_store,
 )
 from substrate.engagement_spine import list_twin_notes  # noqa: E402
-from interfaces.research.api.engagement_routes import get_engagement_store  # noqa: E402
 
 
 def test_host_seeds_twins_by_default():

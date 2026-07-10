@@ -9,7 +9,8 @@ Default offline path remains identity-only (hydrate.py).
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from .source_refs import SourceReference, extract_arxiv_id
 
@@ -41,10 +42,10 @@ def arxiv_metadata_fetch_publication(
         paper = fetch_by_id(arxiv_id)
         # Support dataclass ArxivPaper or plain dict
         if hasattr(paper, "title"):
-            title = str(getattr(paper, "title") or "")
-            abstract = str(getattr(paper, "abstract") or "")
-            abs_url = str(getattr(paper, "abs_url") or "") or None
-            authors = list(getattr(paper, "authors") or [])
+            title = str(paper.title or "")
+            abstract = str(paper.abstract or "")
+            abs_url = str(paper.abs_url or "") or None
+            authors = list(paper.authors or [])
         elif isinstance(paper, dict):
             title = str(paper.get("title") or "")
             abstract = str(paper.get("abstract") or "")
@@ -90,14 +91,14 @@ def substack_post_fetch_publication(
             )
         post = fetch_post(str(url))
         if hasattr(post, "title"):
-            title = str(getattr(post, "title") or "")
+            title = str(post.title or "")
             body = str(
-                getattr(post, "body_markdown")
-                or getattr(post, "body_html")
+                post.body_markdown
+                or post.body_html
                 or ""
             )
             post_url = getattr(post, "post_url", None) or url
-            author = str(getattr(post, "author") or "")
+            author = str(post.author or "")
             truncated = bool(getattr(post, "truncated", False))
         elif isinstance(post, dict):
             title = str(post.get("title") or "")

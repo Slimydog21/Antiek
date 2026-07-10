@@ -13,8 +13,9 @@ abstracts or article bodies without this module owning arxiv/substack clients.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Literal
+from typing import Any, Literal
 
 from .project import project_to_html
 from .source_refs import SourceReference, parse_source_reference

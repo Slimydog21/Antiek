@@ -9,8 +9,9 @@ inventing completion.
 from __future__ import annotations
 
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Literal, Sequence
+from typing import Any, Literal
 
 from .store import EngagementStore
 

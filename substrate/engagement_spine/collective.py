@@ -8,8 +8,9 @@ substrate signals and attached arxiv/substack refs without live fan-out.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any
 
 from .research_context import ResearchContextPack, assemble_research_context
 from .source_refs import SourceReference, merge_references

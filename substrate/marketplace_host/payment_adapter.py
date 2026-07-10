@@ -13,8 +13,9 @@ FUTURE-AGENT-SPEC-l5-digital-book-seamless-port Sprint 1:
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 # Dual-gate L5 env (operator-only). Unset/false ⇒ deferred adapter.
 ANTIEK_MARKETPLACE_LIVE_PAYMENT_ENV = "ANTIEK_MARKETPLACE_LIVE_PAYMENT"

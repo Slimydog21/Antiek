@@ -9,8 +9,11 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from substrate.marketplace_host import default_demo_catalog, host_book_into_account  # noqa: E402
-from substrate.marketplace_host import InMemoryHostStore  # noqa: E402
+from substrate.marketplace_host import (  # noqa: E402
+    InMemoryHostStore,  # noqa: E402
+    default_demo_catalog,
+    host_book_into_account,
+)
 
 
 def test_default_demo_catalog_includes_knowledge_dense_pd() -> None:

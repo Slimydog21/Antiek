@@ -24,10 +24,12 @@ from .payment_adapter import (
     Entitlement,
     LivePaymentAdapter,
     LivePaymentDeferredError,
-    PaymentAdapter as LiveRailsPaymentAdapter,
     PaymentUpstream,
     build_payment_adapter,
     live_payment_enabled,
+)
+from .payment_adapter import (
+    PaymentAdapter as LiveRailsPaymentAdapter,
 )
 from .product_path import (
     MarketplaceHostProductResult,

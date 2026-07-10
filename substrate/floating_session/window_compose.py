@@ -81,13 +81,13 @@ def window_id_for_session(session_id: str) -> str:
 def map_session_mode_to_window_mode(view_mode: ViewMode) -> WindowMode:
     if view_mode not in ("floating", "full"):
         raise ValueError(f"invalid session view_mode: {view_mode!r}")
-    return view_mode  # type: ignore[return-value]
+    return view_mode
 
 
 def map_window_mode_to_session_mode(mode: WindowMode) -> ViewMode:
     if mode not in ("floating", "full"):
         raise ValueError(f"invalid window mode: {mode!r}")
-    return mode  # type: ignore[return-value]
+    return mode
 
 
 def session_to_window_descriptor(

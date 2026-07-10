@@ -26,7 +26,7 @@ except ImportError:  # pragma: no cover
         DispatchResult,
         dispatch,
     )
-    from substrate.model_registration import (  # type: ignore[no-redef]
+    from substrate.model_registration import (
         ModelRegistry,
         apply_decision_tree_overrides,
     )

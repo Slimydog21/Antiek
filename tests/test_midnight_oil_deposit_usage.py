@@ -5,8 +5,6 @@ from __future__ import annotations
 import os
 import sys
 
-import pytest
-
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
@@ -21,7 +19,6 @@ from substrate.midnight_oil.product_path import (  # noqa: E402
     approve_price_ceiling,
     create_with_recommended_ceiling,
 )
-
 
 PRICING = ModelPricing("test-model", 1.0, 3.0)
 
@@ -49,7 +46,7 @@ def test_deposit_records_usage_and_progress():
     jobs.put_job(row) if hasattr(jobs, "put_job") else None
     # InMemoryJobStore uses put_job_state pattern — use deposit which reads job
     # Re-put via job module
-    from substrate.midnight_oil.job import put_job_state, _job_from_row
+    from substrate.midnight_oil.job import _job_from_row, put_job_state
 
     job = _job_from_row(row)
     put_job_state(job, store=jobs)
@@ -90,7 +87,7 @@ def test_deposit_without_bench_store_still_works():
         pricing=PRICING,
     )
     approve_price_ceiling(created.job.job_id, store=jobs, use_recommended=True)
-    from substrate.midnight_oil.job import put_job_state, _job_from_row
+    from substrate.midnight_oil.job import _job_from_row, put_job_state
 
     row = dict(jobs.get_job(created.job.job_id))
     row["status"] = "complete"

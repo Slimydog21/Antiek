@@ -9,7 +9,7 @@ prompt — pure, offline, HTML-first.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any
 
 from .source_refs import (
     SourceReference,

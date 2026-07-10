@@ -100,7 +100,7 @@ const EXAMPLE_PROMPTS: readonly string[] = [
  * Default is "deep" (mirrors DEFAULT_RESEARCH_TIER): a cold research question
  * is the high-value case; the operator opts DOWN to fast for cheap asks.
  *
- * Residual (bp): live budget bar + #440 cost projection for the typed prompt
+ * Residual (bp): live budget bar + PR 440 cost projection for the typed prompt
  * mount below the depth control (ResearchLaunchBudgetPanel). Static
  * "~$0.08–$0.16" copy is retired in favor of honest projection / unknown.
  *

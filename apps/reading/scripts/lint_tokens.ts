@@ -33,7 +33,9 @@ const ALLOW_FILES = new Set<string>([
   "src/design/tokens.css",
 ]);
 
-const HEX = /#[0-9a-fA-F]{3,8}\b/g;
+// Trailing lookahead: a real colour literal is never followed by another word
+// char or a hyphen — that shape is a URL fragment (`#add-model-panel`), not a hex.
+const HEX = /#[0-9a-fA-F]{3,8}(?![\w-])/g;
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {

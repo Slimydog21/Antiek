@@ -158,10 +158,7 @@ def record_purchase_and_host(
         opaque = (entitlement.opaque_reference or "").strip() or f"live_checkout:{session}"
         payment_path = "live_checkout"
         live_payment = True
-        if note:
-            note = f"{note} · live_checkout={session}"
-        else:
-            note = f"live_checkout={session}"
+        note = f"{note} · live_checkout={session}" if note else f"live_checkout={session}"
 
     adapter = ManualPurchaseReceipt(store=store)
     receipt = adapter.record_receipt(

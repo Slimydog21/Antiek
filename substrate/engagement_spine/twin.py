@@ -203,9 +203,7 @@ def clear_twin_seed_live() -> None:
 
 def twin_seed_live_enabled() -> bool:
     raw = (os.environ.get(ANTIEK_TWIN_SEED_LIVE_ENV) or "").strip().lower()
-    if raw in ("", "0", "false", "off", "no", "disabled"):
-        return False
-    return True
+    return raw not in ("", "0", "false", "off", "no", "disabled")
 
 
 def twin_seed_live_fn_installed() -> bool:
@@ -407,7 +405,7 @@ def _from_row(row: dict[str, Any]) -> TwinNote:
     return TwinNote(
         note_id=row["note_id"],
         asset_id=row["asset_id"],
-        kind=row["kind"],  # type: ignore[arg-type]
+        kind=row["kind"],
         text=row["text"],
         source_spawn_id=row.get("source_spawn_id"),
         investigation_id=row.get("investigation_id"),

@@ -74,7 +74,8 @@ class FileBenchStore:
         path = self.root / "runs" / f"{run_id.replace('/', '_')}.json"
         if not path.is_file():
             return None
-        return json.loads(path.read_text(encoding="utf-8"))
+        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        return data
 
     def list_runs(self) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
@@ -90,7 +91,8 @@ class FileBenchStore:
         path = self.root / "proposals" / f"{proposal_id.replace('/', '_')}.json"
         if not path.is_file():
             return None
-        return json.loads(path.read_text(encoding="utf-8"))
+        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        return data
 
 
 def usage_store_data_dir() -> Path | None:
@@ -113,11 +115,9 @@ def resolve_usage_store(
 
     Does not open a second usage writer — callers still use record_usage_event.
     """
-    base: Path | None
-    if root is not None:
-        base = Path(root).expanduser()
-    else:
-        base = usage_store_data_dir()
+    base: Path | None = (
+        Path(root).expanduser() if root is not None else usage_store_data_dir()
+    )
 
     if base is not None:
         base.mkdir(parents=True, exist_ok=True)

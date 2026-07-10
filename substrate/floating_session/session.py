@@ -71,7 +71,7 @@ def _from_row(row: dict[str, Any]) -> FloatingSession:
         parent_asset_id=row["parent_asset_id"],
         spawn_id=row["spawn_id"],
         investigation_id=row["investigation_id"],
-        view_mode=row.get("view_mode") or "floating",  # type: ignore[arg-type]
+        view_mode=row.get("view_mode") or "floating",
         selection_text=row.get("selection_text") or "",
         region_id=row.get("region_id"),
         model_id=row.get("model_id"),

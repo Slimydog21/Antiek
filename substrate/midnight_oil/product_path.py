@@ -7,9 +7,9 @@ without reimplementing ceiling math or the worker. Human view is HTML-first.
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import TYPE_CHECKING, Any
 
 from .ceiling import ModelPricing, recommend_price_ceiling
 from .job import (
@@ -19,6 +19,9 @@ from .job import (
     create_job,
     get_job,
 )
+
+if TYPE_CHECKING:
+    from .worker import WorkerStepResult
 
 
 @dataclass(frozen=True)
@@ -226,7 +229,7 @@ def offline_goal_step_fn(
     job: MidnightOilJob,
     *,
     spent_per_goal: float = 0.05,
-) -> "WorkerStepResult":
+) -> WorkerStepResult:
     """Default offline step: one synthetic result per goal, no network.
 
     Used by product ``run_job_offline`` so operators can exercise the swarm
@@ -277,9 +280,7 @@ def clear_midnight_oil_live_step() -> None:
 def live_step_enabled() -> bool:
     """True only when operator explicitly enables live Midnight Oil steps."""
     raw = (os.environ.get(ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV) or "").strip().lower()
-    if raw in ("", "0", "false", "off", "no", "disabled"):
-        return False
-    return True
+    return raw not in ("", "0", "false", "off", "no", "disabled")
 
 
 def live_step_fn_installed() -> bool:

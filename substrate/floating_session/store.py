@@ -55,7 +55,8 @@ class FileSessionStore:
         path = self.root / "sessions" / f"{session_id}.json"
         if not path.is_file():
             return None
-        return json.loads(path.read_text(encoding="utf-8"))
+        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        return data
 
     def list_sessions(self, parent_asset_id: str) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []

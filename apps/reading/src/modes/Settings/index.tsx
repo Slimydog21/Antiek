@@ -92,7 +92,7 @@ import {
  * + Residual (hs): twin seed live readiness (force_offline UI; dual-gate env).
  *
  * Honesty: spent/pricing may be unknown; UI never invents $0.00 when the
- * ledger or rate table is unset. Cost projection stays on #440 API.
+ * ledger or rate table is unset. Cost projection stays on PR 440 API.
  * Residual (wb): remaining-after-prompt on decision-tree mini estimate + full
  * prompt-cost-projection panel (parity launch wa / badge pg / MO um).
  * Residual (auc): budget usage bar on Add model panel (install-path foresight ·
@@ -835,7 +835,7 @@ export default function Settings() {
       if (hints?.input_chars != null) setInputChars(hints.input_chars);
       if (hints?.expected_output_tokens != null)
         setOutTokens(hints.expected_output_tokens);
-      // Residual (be): auto-project cost with depth-tier hints via #440 API.
+      // Residual (be): auto-project cost with depth-tier hints via PR 440 API.
       setEstimating(true);
       setEstimateError(null);
       try {
@@ -1549,7 +1549,7 @@ export default function Settings() {
             <p className="text-sm text-ink dark:text-bright">
               Flash / Pro / Wrestle map competitive speed vs depth postures onto
               dispatch tier + Antiek-bench task class + cost-projection hints
-              (#440). Process-local like the decision-tree driver.
+              (PR 440). Process-local like the decision-tree driver.
             </p>
             {depthError && (
               <p className="text-sm text-red-700 dark:text-red-300 font-mono">
@@ -1650,7 +1650,7 @@ export default function Settings() {
               Select the model driver for this process. Install writes the
               choice into the decision-tree registry so research dispatch can
               apply provider+model overrides. Cost projection still uses the
-              #440 settings estimate API (never invents $0). Explicit operator
+              PR 440 settings estimate API (never invents $0). Explicit operator
               install only · never auto-route (NotDiamond advisory only · L7 ·
               Antiek-bench propose≠promote).
             </p>

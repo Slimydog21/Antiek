@@ -20,8 +20,9 @@ Design (hard-to-vary):
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Literal, Protocol, Sequence
+from typing import Any, Literal, Protocol
 
 from .store import EngagementStore
 from .twin import TwinKind, TwinNote, list_twin_notes
@@ -267,10 +268,7 @@ def promote_twin_notes_for_asset(
     # Residual (mx): multi-select by exact twin note_id.
     if note_ids is not None:
         wanted = {str(i).strip() for i in note_ids if str(i).strip()}
-        if wanted:
-            notes = [n for n in notes if n.note_id in wanted]
-        else:
-            notes = []
+        notes = [n for n in notes if n.note_id in wanted] if wanted else []
     out: list[TwinPromoteResult] = []
     for note in notes:
         out.append(

@@ -157,11 +157,12 @@ def citation_hop_pipeline_progress(
                 present.append(stage)
                 continue
         # Fall back to pack-level counts when chain omits empty hops.
-        if stage == "insights" and int(insight_count or 0) > 0:
-            present.append(stage)
-        elif stage == "questions" and int(question_count or 0) > 0:
-            present.append(stage)
-        elif stage == "sources" and int(ref_count or 0) > 0:
+        pack_counts = {
+            "insights": insight_count,
+            "questions": question_count,
+            "sources": ref_count,
+        }
+        if int(pack_counts.get(stage) or 0) > 0:
             present.append(stage)
     missing = [s for s in CITATION_HOP_PIPELINE_STAGES if s not in present]
     total = len(CITATION_HOP_PIPELINE_STAGES)

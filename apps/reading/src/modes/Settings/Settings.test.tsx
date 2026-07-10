@@ -728,7 +728,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
         screen.getByText(/tier pricing is 0\.0 placeholder/i),
       ).toBeTruthy();
     });
-    // Projection still #440 path (mocked api/settings estimatePromptCost)
+    // Projection still PR 440 path (mocked api/settings estimatePromptCost)
     expect(estimatePromptCost).toHaveBeenCalled();
   });
 
@@ -2045,7 +2045,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(
       screen.getByTestId("depth-tier-panel").getAttribute("data-view-format"),
     ).toBe("html");
-    // Residual (be): applying depth tier auto-projects cost via #440 API
+    // Residual (be): applying depth tier auto-projects cost via PR 440 API
     await waitFor(() => {
       expect(estimatePromptCost).toHaveBeenCalled();
     });

@@ -8,7 +8,7 @@ and propose recursive suite rewrites (operator still approves/promotes).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal, Sequence
+from typing import Any, Literal
 
 from .store import BenchStore
 
@@ -252,6 +252,8 @@ KNOWN_USAGE_FEED_SOURCES: tuple[str, ...] = (
     "marketplace_host",
     # Residual (aaj): catalog HTML projection Write seed.
     "marketplace_catalog",
+    # Residual (asl): free HTML host-into-account Write seed (parity asj vision).
+    "marketplace_free_host",
     "floating_deep_research",
     # Residual (asu): highlight-passage session open (asq HTML reading path).
     "highlight_dr_launch",
@@ -265,6 +267,8 @@ KNOWN_USAGE_FEED_SOURCES: tuple[str, ...] = (
     "research_progress_draft",
     "evidence_pack",
     "publication_hydrate",
+    # Residual (asl): knowledge-dense attach path Write seed (parity asj vision).
+    "publication_attach",
     "session_flywheel_complete",
     "context_search",
     "research_context_pack",

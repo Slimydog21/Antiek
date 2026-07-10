@@ -7,7 +7,9 @@ with quality tiers so models differentiate without network.
 
 from __future__ import annotations
 
-from typing import Any, Sequence
+import contextlib
+from collections.abc import Sequence
+from typing import Any
 
 from .dogfood_fixtures import competitive_dogfood_suite
 from .run import BenchRunResult, keyword_stub_provider, run_suite
@@ -146,10 +148,8 @@ def run_offline_dogfood_product(
         first_rid = runs[0]["run_id"] if runs else None
         parts: list[str] = []
         if first_rid:
-            try:
+            with contextlib.suppress(Exception):
                 parts.append(project_run_html(first_rid, store=store))
-            except Exception:
-                pass
         lb_html = leaderboard.get("html")
         if lb_html:
             parts.append(str(lb_html))

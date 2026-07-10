@@ -20,10 +20,10 @@ from substrate.antiek_bench import (  # noqa: E402
     InMemoryBenchStore,
     SuiteRegistry,
     active_suite,
+    default_core_suite,
     record_usage_event,
     register_suite,
     settings_suite_proposal_payload,
-    default_core_suite,
 )
 from substrate.antiek_bench.usage_bridge import UsageEvent  # noqa: E402
 

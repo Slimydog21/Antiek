@@ -25,7 +25,6 @@ from substrate.midnight_oil import (  # noqa: E402
 from substrate.midnight_oil.ceiling import ModelPricing  # noqa: E402
 from substrate.midnight_oil.job import InMemoryJobStore  # noqa: E402
 
-
 GOALS = ("Map residual risks in retrieval-augmented generation.",)
 DURATION = 60
 PRICING = ModelPricing("test-model", 1.0, 3.0)

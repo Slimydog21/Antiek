@@ -38,8 +38,8 @@ from pydantic import BaseModel, Field
 from substrate.engagement_spine import (
     HighlightSelection,
     InMemoryEngagementStore,
-    attach_source_references,
     assemble_research_context,
+    attach_source_references,
     evidence_pack_payload,
     hydrate_reference,
     merge_product_payload,
@@ -47,9 +47,9 @@ from substrate.engagement_spine import (
     progress_payload,
     record_progress,
     record_twin_product,
+    search_engagement_context,
     seed_default_pipeline,
     spawn_from_highlight_with_references,
-    search_engagement_context,
     twin_promote_context_payload,
     twins_product_payload,
 )

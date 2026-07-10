@@ -244,7 +244,7 @@ def _from_row(row: dict[str, Any]) -> ResearchSpawn:
         parent_asset_id=row["parent_asset_id"],
         goal=row["goal"],
         selection_text=row["selection_text"],
-        status=row["status"],  # type: ignore[arg-type]
+        status=row["status"],
         model_id=row.get("model_id"),
         region_id=row.get("region_id"),
         output_text=row.get("output_text"),

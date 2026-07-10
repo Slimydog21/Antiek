@@ -13,12 +13,12 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
+from interfaces.research.api import engagement_routes as eng_mod  # noqa: E402
 from interfaces.research.api.engagement_routes import (  # noqa: E402
     register_engagement_routes,
     reset_engagement_stores,
 )
 from substrate.engagement_spine import record_twin_insight  # noqa: E402
-from interfaces.research.api import engagement_routes as eng_mod  # noqa: E402
 
 
 @pytest.fixture

@@ -19,8 +19,9 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Literal, Sequence
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 from .store import EngagementStore
@@ -61,7 +62,7 @@ class SourceReference:
 
 
 def _ref_id(kind: SourceKind, identity: str) -> str:
-    digest = hashlib.sha256(f"{kind}:{identity}".encode("utf-8")).hexdigest()[:16]
+    digest = hashlib.sha256(f"{kind}:{identity}".encode()).hexdigest()[:16]
     return f"sref_{digest}"
 
 
@@ -110,10 +111,13 @@ def detect_source_kind(raw: str) -> SourceKind:
 
     if host and _SUBSTACK_HOST_RE.search(host):
         return "substack"
-    if parsed and _SUBSTACK_POST_RE.search(parsed.path or ""):
+    if (
+        parsed
+        and _SUBSTACK_POST_RE.search(parsed.path or "")
         # Custom-domain Substack posts commonly use /p/<slug>
-        if "/p/" in (parsed.path or ""):
-            return "substack"
+        and "/p/" in (parsed.path or "")
+    ):
+        return "substack"
 
     if text.startswith("http://") or text.startswith("https://") or "://" in text:
         return "url"
@@ -231,7 +235,7 @@ def refs_from_rows(rows: Sequence[dict[str, Any]] | None) -> tuple[SourceReferen
             out.append(
                 SourceReference(
                     ref_id=str(r["ref_id"]),
-                    kind=r.get("kind", "unknown"),  # type: ignore[arg-type]
+                    kind=r.get("kind", "unknown"),
                     raw=str(r.get("raw") or ""),
                     canonical_url=r.get("canonical_url"),
                     external_id=r.get("external_id"),
@@ -270,7 +274,7 @@ def attach_source_references(
     refs is a no-op (stable ref_ids). Raises KeyError if spawn missing.
     """
     # Local import avoids circular import at module load (spawn imports store only)
-    from .spawn import ResearchSpawn, _from_row, _to_row
+    from .spawn import _from_row
 
     row = store.get_spawn(spawn_id)
     if row is None:

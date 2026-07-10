@@ -15,8 +15,10 @@ is only enabled when the env flag is set and the import succeeds.
 
 from __future__ import annotations
 
+import contextlib
 import os
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from .hydrate_adapters import (
     arxiv_metadata_fetch_publication,
@@ -110,14 +112,12 @@ def live_fetch_publication_from_env(
     """Compose a fetch_publication callable from env flags (or None)."""
     adapters = []
     if env_flag(ANTIEK_HYDRATE_LIVE_ARXIV_ENV, environ=environ):
-        try:
+        with contextlib.suppress(Exception):
             adapters.append(
                 arxiv_metadata_fetch_publication(
                     fetch_by_id=build_live_arxiv_fetch_by_id()
                 )
             )
-        except Exception:
-            pass
     if env_flag(ANTIEK_HYDRATE_LIVE_SUBSTACK_ENV, environ=environ) and substack_fetch_post:
         adapters.append(
             substack_post_fetch_publication(fetch_post=substack_fetch_post)

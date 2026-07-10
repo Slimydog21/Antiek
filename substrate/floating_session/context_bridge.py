@@ -7,14 +7,15 @@ the floating deep-research substrate.
 
 from __future__ import annotations
 
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from substrate.dispatch.research_tier import normalize_research_tier
 from substrate.engagement_spine import (
     HighlightSelection,
     SourceReference,
-    attach_source_references,
     assemble_research_context,
+    attach_source_references,
     collective_research_html,
     merge_spawns_collective,
     research_context_html,

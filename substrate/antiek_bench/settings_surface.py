@@ -86,11 +86,10 @@ def settings_usage_summary_payload(
 
 def project_usage_summary_html(summary: dict[str, Any]) -> str:
     """HTML-first human view of a usage summary (never PDF)."""
-    from substrate.engagement_spine.project import project_to_html
-
     # Residual (rx): Write twin_seed feed honesty in HTML projection
     # (parity Settings React chrome rt–rw).
     from substrate.antiek_bench.usage_bridge import TWIN_WRITE_SEED_USAGE_SOURCES
+    from substrate.engagement_spine.project import project_to_html
 
     count = int(summary.get("event_count") or 0)
     by_class = summary.get("by_task_class") or {}

@@ -13,11 +13,11 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
+from interfaces.research.api import engagement_routes as eng_mod  # noqa: E402
 from interfaces.research.api.engagement_routes import (  # noqa: E402
     register_engagement_routes,
     reset_engagement_stores,
 )
-from interfaces.research.api import engagement_routes as eng_mod  # noqa: E402
 from substrate.engagement_spine import (  # noqa: E402
     InMemoryEngagementStore,
     asset_id_for_ref,
@@ -90,6 +90,8 @@ def test_asset_id_stable():
     r2 = parse_source_reference("arxiv:1706.03762")
     # same kind+identity preferred; at least same kind arxiv
     assert r1.kind == "arxiv"
+    assert r2.kind == "arxiv"
+    assert asset_id_for_ref(r1) == asset_id_for_ref(r2)
     assert asset_id_for_ref(r1) == asset_id_for_ref(
         parse_source_reference(r1.raw)
     )

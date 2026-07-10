@@ -96,7 +96,7 @@ def _job_from_row(row: dict[str, Any]) -> MidnightOilJob:
         duration_minutes=int(row["duration_minutes"]),
         model_id=row.get("model_id"),
         recommended_price_ceiling_usd=float(row["recommended_price_ceiling_usd"]),
-        status=row["status"],  # type: ignore[arg-type]
+        status=row["status"],
         approved_ceiling_usd=(
             None
             if row.get("approved_ceiling_usd") is None

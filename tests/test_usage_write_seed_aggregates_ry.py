@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from substrate.antiek_bench import (
-    InMemoryBenchStore,
     TWIN_WRITE_SEED_USAGE_SOURCES,
+    InMemoryBenchStore,
     UsageEvent,
     record_twin_write_seed_usage,
     record_usage_event,

@@ -18,6 +18,17 @@ Budget projection remains #440's ``estimate_prompt_cost`` /
 
 from __future__ import annotations
 
+from .depth_tiers import (
+    DepthTierPreset,
+    apply_depth_tier,
+    clear_active_depth_tier,
+    depth_tiers_settings_payload,
+    get_active_depth_tier,
+    get_depth_tier_preset,
+    list_depth_tiers,
+    project_depth_tiers_html,
+    set_active_depth_tier,
+)
 from .dispatch_bridge import (
     DispatchOverride,
     apply_decision_tree_overrides,
@@ -52,17 +63,6 @@ from .registry import (
     model_override_for_dispatch,
     select_driver,
     selected_driver,
-)
-from .depth_tiers import (
-    DepthTierPreset,
-    apply_depth_tier,
-    clear_active_depth_tier,
-    depth_tiers_settings_payload,
-    get_active_depth_tier,
-    get_depth_tier_preset,
-    list_depth_tiers,
-    project_depth_tiers_html,
-    set_active_depth_tier,
 )
 
 __all__ = [

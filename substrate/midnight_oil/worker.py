@@ -76,6 +76,7 @@ def run_worker_iteration(
 
     if job.approved_ceiling_usd is None:
         raise ValueError("approved_ceiling_usd is required before running")
+    ceiling = job.approved_ceiling_usd
 
     now = clock.now_ms()
     if job.started_at_ms is None:
@@ -89,13 +90,13 @@ def run_worker_iteration(
         return put_job_state(job, store=store)
 
     # Pre-flight: if already at/over ceiling, halt without calling step_fn.
-    if job.spent_usd >= job.approved_ceiling_usd:
+    if job.spent_usd >= ceiling:
         job = replace(job, status="budget_halted")
         return put_job_state(job, store=store)
 
     result = step_fn(job)
     projected = job.spent_usd + float(result.spent_usd)
-    if projected > job.approved_ceiling_usd + 1e-12:
+    if projected > ceiling + 1e-12:
         # Hard halt: do not accept the charge; keep prior spend + partial state.
         job = replace(
             job,
@@ -149,7 +150,7 @@ def run_worker_loop(
         if job.status in ("complete", "timed_out", "budget_halted", "failed"):
             return job
         if hasattr(clock, "advance"):
-            clock.advance(advance_ms_per_step)  # type: ignore[attr-defined]
+            clock.advance(advance_ms_per_step)
     job = get_or_raise(job_id, store=store)
     if job.status == "running":
         job = replace(job, status="failed", notes=(job.notes + " | max_steps" if job.notes else "max_steps"))

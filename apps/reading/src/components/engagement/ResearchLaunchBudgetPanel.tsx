@@ -2,7 +2,7 @@
  * ResearchLaunchBudgetPanel — budget bar + prompt cost projection at launch.
  *
  * Residual (bp): operators see daily spend vs cap and how the *current* prompt
- * would affect remaining budget before Ask. Reuses Settings #440 estimate +
+ * would affect remaining budget before Ask. Reuses Settings PR 440 estimate +
  * decision-tree read surfaces — never invents $0 when unknown.
  *
  * Research tier maps to dispatch tier for projection only:

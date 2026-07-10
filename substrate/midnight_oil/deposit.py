@@ -300,6 +300,8 @@ def deposit_job_results(
         try:
             from substrate.engagement_spine import (
                 record_progress as _record_progress,
+            )
+            from substrate.engagement_spine import (
                 seed_default_pipeline,
             )
 

@@ -198,7 +198,11 @@ def test_live_adapter_manual_receipt_still_available():
 def test_public_exports_via_marketplace_host_package():
     from substrate.marketplace_host import (  # noqa: PLC0415
         DeferredPaymentAdapter as ExportedDeferred,
+    )
+    from substrate.marketplace_host import (
         LivePaymentDeferredError as ExportedErr,
+    )
+    from substrate.marketplace_host import (
         build_payment_adapter as exported_build,
     )
 

@@ -2310,13 +2310,13 @@ def create_app(
 
         # Residual (gx): feed Antiek-bench recursive rewrite with interactive
         # start outcomes (best-effort; never fail the start path).
-        try:
+        with contextlib.suppress(Exception):
+            # Best-effort by design — a bench recording failure must
+            # never fail the investigation start path.
             _record_investigation_start_usage(
                 research_tier=req.research_tier,
                 question=req.question,
             )
-        except Exception:  # pragma: no cover — never fail start on bench
-            pass
 
         return InvestigationStartResponse(
             investigation_id=investigation_id,

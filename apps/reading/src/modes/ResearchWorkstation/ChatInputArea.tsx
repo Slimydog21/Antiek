@@ -44,7 +44,7 @@ import { KNOWLEDGE_DENSE_PUBLICATION_PRESETS } from "../../components/engagement
  * surrounding chrome (sun-yellow border, ink offset shadow) is provided
  * by PanelLayoutPanel; this component renders only the inner controls.
  *
- * Residual (bq): live budget + #440 projection (parity with StartResearch bp).
+ * Residual (bq): live budget + PR 440 projection (parity with StartResearch bp).
  * Residual (ct): publication refs (arxiv/substack/url) parity with StartResearch cj.
  * Residual (agz): knowledge-dense quick-call presets on chase follow-ups
  * (parity StartResearch agy · mid-session attach agx).

@@ -110,7 +110,7 @@ def test_dogfood_fixture_payload_includes_shannon_turing_lovelace_v12() -> None:
 
     payload = dogfood_fixture_payload(include_html=True)
     assert payload["suite_version"] == COMPETITIVE_DOGFOOD_VERSION
-    assert payload["suite_version"] == "suite-competitive-dogfood-v35"
+    assert payload["suite_version"] == "suite-competitive-dogfood-v36"
     assert payload["item_count"] >= 53
     assert payload["auto_promoted"] is False
     assert payload["by_task_class"].get("book_qa", 0) >= 9
@@ -200,7 +200,7 @@ def test_payload_and_api_html():
     assert payload["view_format"] == "html"
     # Residual (zj/adn/aeu/afo/ags): v21 STEM + Fourier + ResearchThis twins dogfood.
     assert payload["suite_version"] == COMPETITIVE_DOGFOOD_VERSION
-    assert payload["suite_version"] == "suite-competitive-dogfood-v35"
+    assert payload["suite_version"] == "suite-competitive-dogfood-v36"
     assert payload["item_count"] >= 53
     assert payload["settings_panel"] == "antiek_bench_dogfood_fixtures"
     assert payload["source"] == "antiek_bench.dogfood_fixtures"
@@ -267,8 +267,8 @@ def test_payload_and_api_html():
     r2 = client.get("/settings/antiek-bench/dogfood-fixtures?include_html=true")
     assert r1.status_code == 200 and r2.status_code == 200
     assert r1.json()["suite_version"] == r2.json()["suite_version"]
-    assert r1.json()["suite_version"] == "suite-competitive-dogfood-v35"
+    assert r1.json()["suite_version"] == "suite-competitive-dogfood-v36"
     assert r1.json()["item_count"] == r2.json()["item_count"]
     assert r1.json()["item_count"] >= 49
-    assert r1.json()["by_task_class"]["book_qa"] == 9
-    assert r1.json()["by_task_class"]["wrestle"] == 36
+    assert r1.json()["by_task_class"]["book_qa"] == 11
+    assert r1.json()["by_task_class"]["wrestle"] == 41

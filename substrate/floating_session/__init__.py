@@ -13,6 +13,19 @@ Does **not** reimplement spawn/merge/project — those live in
 
 from __future__ import annotations
 
+from .context_bridge import (
+    attach_session_source_references,
+    open_from_highlight_with_references,
+    session_context_html,
+    session_research_context,
+    sessions_collective_html,
+    sessions_collective_research,
+)
+from .flywheel import SessionFlywheelResult, complete_session_with_context_flywheel
+from .product_path import (
+    HighlightDeepResearchResult,
+    open_deep_research_from_highlight,
+)
 from .session import (
     FloatingSession,
     SessionStore,
@@ -25,10 +38,6 @@ from .session import (
     set_view_mode,
 )
 from .view import project_session_html
-from .product_path import (
-    HighlightDeepResearchResult,
-    open_deep_research_from_highlight,
-)
 from .window_compose import (
     DEEP_RESEARCH_WINDOW_KIND,
     InMemoryWindowStore,
@@ -42,15 +51,6 @@ from .window_compose import (
     sync_session_window_mode,
     window_id_for_session,
 )
-from .context_bridge import (
-    attach_session_source_references,
-    open_from_highlight_with_references,
-    session_context_html,
-    session_research_context,
-    sessions_collective_html,
-    sessions_collective_research,
-)
-from .flywheel import SessionFlywheelResult, complete_session_with_context_flywheel
 
 __all__ = [
     "DEEP_RESEARCH_WINDOW_KIND",

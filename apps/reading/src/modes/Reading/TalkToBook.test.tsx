@@ -36,6 +36,18 @@ vi.mock("../../api/books", async (orig) => {
 });
 
 vi.mock("../../api/settings", () => ({
+  estimatePromptCost: vi.fn(async () => ({
+    estimated_usd_low: null,
+    estimated_usd_high: null,
+    would_exceed_budget: null,
+    pricing_known: false,
+    notes: [],
+    assumed_input_tokens: 500,
+    assumed_output_tokens: 500,
+    tier: null,
+    provider: null,
+    model: null,
+  })),
   fetchDepthTiers: (...args: unknown[]) => fetchDepthTiersMock(...args),
   fetchDecisionTreeSelection: vi.fn(async () => ({
     model_id: null,

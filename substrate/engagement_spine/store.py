@@ -107,7 +107,8 @@ class FileEngagementStore:
         path = self._spawn_path(spawn_id)
         if not path.is_file():
             return None
-        return json.loads(path.read_text(encoding="utf-8"))
+        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        return data
 
     def list_spawns(self, asset_id: str) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
@@ -146,7 +147,8 @@ class FileEngagementStore:
         path = self._doc_path(document_id)
         if not path.is_file():
             return None
-        return json.loads(path.read_text(encoding="utf-8"))
+        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        return data
 
 
 def spawn_to_dict(obj: Any) -> dict[str, Any]:

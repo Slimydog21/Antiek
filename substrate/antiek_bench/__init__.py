@@ -12,11 +12,21 @@ Does not auto-switch production traffic. Does not call live multi-provider APIs.
 
 from __future__ import annotations
 
+from .dogfood_fixtures import (
+    COMPETITIVE_DOGFOOD_VERSION,
+    competitive_dogfood_suite,
+    dogfood_fixture_payload,
+    register_competitive_dogfood_suite,
+)
 from .leaderboard import (
     LeaderboardSnapshot,
     ModelLeaderboardRow,
     build_leaderboard,
     project_leaderboard_html,
+)
+from .product_path import (
+    DEFAULT_OFFLINE_MODELS,
+    run_offline_dogfood_product,
 )
 from .rewrite import (
     SuiteProposal,
@@ -64,16 +74,6 @@ from .usage_bridge import (
     record_usage_event,
     research_tier_to_task_class,
     weekly_usage_summary,
-)
-from .dogfood_fixtures import (
-    COMPETITIVE_DOGFOOD_VERSION,
-    competitive_dogfood_suite,
-    dogfood_fixture_payload,
-    register_competitive_dogfood_suite,
-)
-from .product_path import (
-    DEFAULT_OFFLINE_MODELS,
-    run_offline_dogfood_product,
 )
 
 __all__ = [
