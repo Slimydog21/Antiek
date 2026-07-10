@@ -20,7 +20,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (ud): v6 adds book_qa electricity engineering (Heaviside free PD).
 # Residual (us): v7 adds wrestle citation-trust ungrounded hydrate prep.
 # Residual (ve): v8 adds wrestle twin_cross_asset_merge Write seed posture.
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v8"
+# Residual (vl): v9 adds wrestle collective_written_analysis Write seed posture.
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v9"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -227,6 +228,25 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "merge",
                 "twin_seed",
                 "write",
+            ),
+        ),
+        # Residual (vl): multi-spawn written analysis → Write twin_seed.
+        SuiteItem(
+            item_id="dogfood-wrestle-collective-written-analysis-write-seed",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with multi-select deep-research written analysis: after merging "
+                "spawn outputs into a written analysis HTML float "
+                "(source=collective_written_analysis), why must Open Write preserve that "
+                "source for Antiek-bench weekly rewrite instead of collapsing to "
+                "hosted_html_document, and how does that differ from cohesive unit prompts?"
+            ),
+            expected_keywords=(
+                "collective",
+                "analysis",
+                "twin_seed",
+                "write",
+                "html",
             ),
         ),
     )

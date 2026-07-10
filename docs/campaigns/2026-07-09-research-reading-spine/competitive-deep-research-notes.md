@@ -1279,3 +1279,8 @@ is highest leverage remaining.
 store/load + hosted Open Write preserve collective_written_analysis (known 17).
 Competitive delta: multi-spawn written analysis → Write is bench-auditable —
 parity twin_cross_asset_merge and collective_unit_prompt.
+
+## Residual vl · 2026-07-10 — dogfood v9 collective_written_analysis write-seed
+suite-competitive-dogfood-v9 adds dogfood-wrestle-collective-written-analysis-write-seed.
+Settings posture honesty. Competitive delta: Antiek-bench recursive rewrite
+learns multi-spawn written analysis Write seed as first-class wrestle task.
