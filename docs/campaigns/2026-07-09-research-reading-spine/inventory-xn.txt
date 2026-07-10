@@ -1,0 +1,19 @@
+# inventory-xn · SpawnMerge dual-gate #l6-collective deep-link
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: xn
+date: 2026-07-10
+tip_before: 54ad72fb (xm)
+
+## Problem
+SpawnMerge dual-gate checklist linked root; multi-spawn merge is L6-adjacent
+prep (parity Collective xg).
+
+## Fix
+- spawn-merge-dual-gate-checklist-link → #l6-collective
+- Test locks href
+
+## Verified
+npm test SpawnMergePanel.test.tsx → 7 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

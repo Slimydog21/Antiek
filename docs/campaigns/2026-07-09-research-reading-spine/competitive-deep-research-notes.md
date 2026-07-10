@@ -1543,3 +1543,7 @@ computing-history STEM is mechanically proven.
 Catalog free-PD-only composed with history chip isolates Lovelace (parity
 Turing/Shannon free-PD domain compose). Competitive delta: free STEM history
 path never mixes paid entitlement.
+
+## Residual xn · 2026-07-10 — SpawnMerge dual-gate #l6-collective
+SpawnMerge dual-gate checklist jumps to #l6-collective (parity Collective xg).
+Competitive delta: multi-spawn merge prep shares deferred live-council policy.

@@ -220,7 +220,7 @@ export function SpawnMergePanel({
             Settings · driver & budget
           </a>
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l6-collective"
             data-testid="spawn-merge-dual-gate-checklist-link"
             className="underline opacity-80 hover:opacity-100"
             title="Dual-gate L1–L4 checklist (prep only; offline default)"
