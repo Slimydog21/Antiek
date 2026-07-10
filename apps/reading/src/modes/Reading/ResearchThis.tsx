@@ -10,6 +10,7 @@ import {
   type ResearchLaunchBudgetProjection,
   type ResearchLaunchTier,
 } from "../../components/engagement/ResearchLaunchBudgetPanel";
+import { ResearchContextPanel } from "../../components/engagement/ResearchContextPanel";
 import { TwinNotesPanel } from "../../components/engagement/TwinNotesPanel";
 import { KNOWLEDGE_DENSE_PUBLICATION_PRESETS } from "../../components/engagement/PublicationAttachPanel";
 import { fetchDepthTiers } from "../../api/settings";
@@ -55,6 +56,8 @@ import {
  * for cost-vs-remaining projection (parity MO pg / Write ph).
  * Residual (agq): TwinNotes recursive note-taker for this book asset while
  * spinning DR (parity TalkToBook agm · MetaReading agn · reading ≡ research).
+ * Residual (amr): ResearchContextPanel with researchTier prefill on highlight
+ * DR path so intelligent search over twins sits next to launch (parity host-tier).
  * Full-page workstation handoff remains an explicit tertiary action.
  *
  * Gate-safe: passageText for gated books is still constrained server-side;
@@ -473,6 +476,23 @@ export default function ResearchThis({
             autoSeedIfEmpty
             seedTitle={documentId.trim()}
             seedBodyText={selection.trim() || documentId.trim()}
+            researchTier={researchTier}
+          />
+        </section>
+      ) : null}
+      {/* Residual (amr): intelligent context over twins on highlight DR path. */}
+      {documentId.trim() ? (
+        <section
+          className="mt-2 max-w-md space-y-1 border-t border-ink/10 pt-2 dark:border-bright/10"
+          data-testid="research-this-context-mount"
+          data-view-format="html"
+          data-document-id={documentId.trim()}
+          data-seamless-research-this-context="true"
+          data-research-tier={researchTier}
+        >
+          <ResearchContextPanel
+            assetId={documentId.trim()}
+            autoLoad
             researchTier={researchTier}
           />
         </section>

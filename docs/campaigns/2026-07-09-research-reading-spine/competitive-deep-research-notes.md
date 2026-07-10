@@ -3411,3 +3411,8 @@ P0 operator merge PR #465. Pivot amq+ outside thrash.
 Write open piece ResearchContext inherits writeResearchTier depth posture
 (reading ≡ research ≡ writing host-tier path complete). vitest WriteHome 28 green.
 P0 operator merge PR #465. Pivot amr+ outside thrash.
+
+## Residual amr · 2026-07-10 — ResearchThis ResearchContext mount with researchTier
+Highlight DR path mounts ResearchContext next to TwinNotes with depth prefill so
+intelligent search sits beside launch (reading ≡ research). vitest ResearchThis 13 green.
+P0 operator merge PR #465. Pivot ams+ outside thrash.

@@ -1,0 +1,16 @@
+# inventory-amr · ResearchThis ResearchContext mount with researchTier
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: amr
+date: 2026-07-10
+parent_tip: 981d0959 (amq)
+
+## Closed
+- research-this-context-mount next to twins on highlight DR path
+- ResearchContextPanel autoLoad · researchTier from Settings depth
+- data-seamless-research-this-context · reading ≡ research on passage launch
+- vitest ResearchThis 13 green
+- proof: SCRATCH residual-amr-vitest.log
+
+## Next
+ams+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

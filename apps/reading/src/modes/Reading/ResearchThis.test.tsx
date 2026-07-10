@@ -79,6 +79,7 @@ vi.mock("../../components/engagement/TwinNotesPanel", () => ({
     autoLoad?: boolean;
     autoSeedIfEmpty?: boolean;
     seedBodyText?: string;
+    researchTier?: string | null;
   }) => (
     <div
       data-testid="twin-notes-panel-stub"
@@ -86,8 +87,26 @@ vi.mock("../../components/engagement/TwinNotesPanel", () => ({
       data-auto-load={String(Boolean(props.autoLoad))}
       data-auto-seed={String(Boolean(props.autoSeedIfEmpty))}
       data-body-len={String((props.seedBodyText || "").length)}
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
     >
       twins={props.assetId}
+    </div>
+  ),
+}));
+
+vi.mock("../../components/engagement/ResearchContextPanel", () => ({
+  ResearchContextPanel: (props: {
+    assetId: string;
+    autoLoad?: boolean;
+    researchTier?: string | null;
+  }) => (
+    <div
+      data-testid="research-context-panel-stub"
+      data-asset-id={props.assetId}
+      data-auto-load={String(Boolean(props.autoLoad))}
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+    >
+      context={props.assetId}
     </div>
   ),
 }));
@@ -618,6 +637,19 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
     expect(twins.getAttribute("data-asset-id")).toBe("doc-twins");
     expect(twins.getAttribute("data-auto-load")).toBe("true");
     expect(twins.getAttribute("data-auto-seed")).toBe("true");
+    // Residual (amr): ResearchContext with depth prefill on highlight DR path.
+    const ctxMount = screen.getByTestId("research-this-context-mount");
+    expect(ctxMount.getAttribute("data-document-id")).toBe("doc-twins");
+    expect(ctxMount.getAttribute("data-seamless-research-this-context")).toBe(
+      "true",
+    );
+    expect(ctxMount.getAttribute("data-research-tier")).toMatch(
+      /deep|fast|wrestle/,
+    );
+    const ctx = screen.getByTestId("research-context-panel-stub");
+    expect(ctx.getAttribute("data-asset-id")).toBe("doc-twins");
+    expect(ctx.getAttribute("data-auto-load")).toBe("true");
+    expect(ctx.getAttribute("data-research-tier")).toMatch(/deep|fast|wrestle/);
     expect(Number(twins.getAttribute("data-body-len") || 0)).toBeGreaterThan(0);
   });
 });
