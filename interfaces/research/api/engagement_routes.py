@@ -444,6 +444,12 @@ hydrate_arxiv_fetch_by_id: Any = None
 # Optional Substack fetch_post(url) -> Post|dict (never silent live default).
 hydrate_substack_fetch_post: Any = None
 
+# Optional test/application injection seam. ``None`` deliberately means the
+# canonical depth-graph writers; a deployment must not silently simulate a
+# successful promotion.
+twin_promote_insight_fn: Any = None
+twin_promote_question_fn: Any = None
+
 
 def hydrate_live_status_payload(
     *,
@@ -805,11 +811,11 @@ def post_twins_seed(body: TwinSeedBody) -> dict[str, Any]:
 
 @engagement_router.post("/twins/promote-context")
 def post_twins_promote_context(body: TwinPromoteContextBody) -> dict[str, Any]:
-    """Promote asset twins into research context units (idempotent offline-safe).
+    """Promote asset twins into the depth graph and research context units.
 
-    Uses process offline promote hooks by default so API tests never need DuckDB.
-    Production can inject real promote_* via a future app factory.
-    Residual (mq): optional kinds filter for selective promote.
+    The substrate defaults are the canonical graph writers. Tests that need a
+    pure projection exercise ``twin_promote_context_payload`` with explicit
+    offline hooks; the product route must never report a simulated promotion.
     """
     try:
         return twin_promote_context_payload(
@@ -817,8 +823,8 @@ def post_twins_promote_context(body: TwinPromoteContextBody) -> dict[str, Any]:
             store=_eng(),
             query=body.query,
             investigation_id=body.investigation_id,
-            promote_insight_fn=_offline_promote_insight,
-            promote_question_fn=_offline_promote_question,
+            promote_insight_fn=twin_promote_insight_fn,
+            promote_question_fn=twin_promote_question_fn,
             include_html=body.include_html,
             kinds=body.kinds,
             note_ids=body.note_ids,

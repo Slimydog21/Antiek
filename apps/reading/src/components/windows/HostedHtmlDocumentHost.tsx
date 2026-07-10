@@ -64,6 +64,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { fetchDepthTiers } from "../../api/settings";
 import { mapDepthTierToResearchTier } from "../../lib/researchTier";
+import { sanitizeHostedHtml } from "../../lib/sanitizeHostedHtml";
 import { launchFloatingDeepResearch } from "../../modes/Reading/launchFloatingDeepResearch";
 import {
   hydratePublicationRefs,
@@ -155,6 +156,7 @@ export default function HostedHtmlDocumentHost(
   const viewFormat = (props.view_format?.trim() || "html").toLowerCase();
   const isHtml = viewFormat === "html";
   const html = props.html?.trim() || "";
+  const sanitizedHtml = useMemo(() => sanitizeHostedHtml(html), [html]);
   const assetId = props.document_id?.trim() || "";
   // Residual (alo): domain-search coverage for free PD subjects on reading host.
   const hostedDomainCoverage = useMemo(
@@ -1356,7 +1358,7 @@ export default function HostedHtmlDocumentHost(
           // Residual (en): capture highlight for float deep research.
           onMouseUp={captureHighlight}
           onKeyUp={captureHighlight}
-          dangerouslySetInnerHTML={{ __html: html }}
+          dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
         />
       ) : (
         <p

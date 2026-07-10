@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -348,3 +349,9 @@ def test_api_promote_context_note_ids():
     assert body["note_ids"] == [nid]
     assert body["promoted"][0]["twin_note_id"] == nid
     assert body["view_format"] == "html"
+
+@pytest.fixture(autouse=True)
+def _offline_api_promotion_hooks(monkeypatch):
+    """Product-route tests stay isolated while production defaults write graph."""
+    monkeypatch.setattr(eng_mod, "twin_promote_insight_fn", _offline_promote_insight)
+    monkeypatch.setattr(eng_mod, "twin_promote_question_fn", _offline_promote_question)
