@@ -1,29 +1,42 @@
 ## Sprint SPR-06 — Handoff
 
 ### Status
-DONE
+DONE (reworked — 5 review findings fixed, all gates re-greened)
+
+### Rework round (2026-07-11)
+An independent adversarial reviewer rejected the initial deliverable with 5 confirmed findings. All 5 fixed:
+
+1. **MAJOR — Clock injection.** Adapters and BrokenProvenanceAdapter now accept a `now_fn` parameter (defaults to `datetime.now(UTC)`). No `datetime.now` calls remain inside `substrate/corpus_contract/`. Two fetches of the same immutable record now return deterministically equal provenance. Provenance docstring updated.
+2. **BLOCKER — Structural read-only.** Reader protocols narrowed to expose only the read methods adapters use (`list_twins` for twin notes; `get_document` + `list_membership` for hosted docs). Reader stored in name-mangled `__reader` attribute (not `_reader`). `assert_read_only` rewritten to verify no public attribute exposes a reader-protocol instance (duck-type check for reader methods), not just name-prefix checking. `runtime_checkable` removed from reader protocols (structural typing only).
+3. **MAJOR — Hardened `assert_search_retrieval`.** Now additionally asserts: (a) non-matching decoy docs are NOT ranked above the seeded doc, (b) returned scores are non-increasing, (c) a query matching nothing returns zero hits.
+4. **BLOCKER — Negative static type proof.** `tests/type_check_wrong_adapter.py` contains a wrong-signature adapter (`search(int)` instead of `str`, `fetch` returns `str` instead of `FetchResult`). Test runs mypy programmatically and asserts it reports `assignment` error — proof the Protocol rejects bad adapters.
+5. **BLOCKER — Owner scope enforcement.** `hosted_docs.fetch` now checks `list_membership(owner_id)` before calling `get_document`. A `document_id` outside the owner's scope returns `CorpusMiss`. Cross-owner test added.
+
+Residual limits (honesty):
+- Finding 2: Python has no visibility modifiers. A determined caller can access the name-mangled `_Adapter__reader` by spelling out the class name. The double-underscore prevents casual access but does not enforce encapsulation at the language level. The reader-protocol duck-type check inspects for common read-method names (`list_twins`, `get_document`, `list_membership`); a reader with an unusual API surface might slip through, but such a reader would not satisfy the adapter's type annotation either.
 
 ### Files touched
 - `substrate/corpus_contract/__init__.py:1-31` — package init, public API exports (CorpusAdapter, CorpusHit, CorpusDocument, CorpusMiss, Provenance, FetchResult)
-- `substrate/corpus_contract/protocol.py:1-130` — typing.Protocol (CorpusAdapter) with search/fetch; CorpusHit (id, score, snippet); CorpusDocument (content, provenance); CorpusMiss (typed, not bare KeyError); Provenance (source_kind, origin_ref, retrieved_at)
+- `substrate/corpus_contract/protocol.py:1-112` — typing.Protocol (CorpusAdapter) with search/fetch; CorpusHit (id, score, snippet); CorpusDocument (content, provenance); CorpusMiss (typed, not bare KeyError); Provenance (source_kind, origin_ref, retrieved_at — clock-injected via adapter's now_fn)
 - `substrate/corpus_contract/adapters/__init__.py:1-1` — subpackage marker
-- `substrate/corpus_contract/adapters/twin_notes.py:1-124` — TwinNotesCorpusAdapter over TwinNoteReader protocol; honest substring matching; fields mirrored from real store (note_id, asset_id, kind, text, source_spawn_id, investigation_id)
-- `substrate/corpus_contract/adapters/hosted_docs.py:1-124` — HostedDocsCorpusAdapter over HostedDocReader protocol; honest substring matching; fields mirrored from real store (document_id, owner_id, book_id, content_hash, title, license_class, body_text, source_format, receipt_id, view_format)
-- `substrate/corpus_contract/conformance.py:1-179` — reusable conformance kit: 7 assert helpers + BrokenProvenanceAdapter red-proof
-- `tests/test_corpus_contract.py:1-242` — 17 tests: 7 twin-notes, 7 hosted-docs, 3 broken-adapter red-proof
+- `substrate/corpus_contract/adapters/twin_notes.py:1-137` — TwinNotesCorpusAdapter over TwinNoteReader protocol (narrowed: only list_twins); honest substring matching; clock injected via now_fn; reader stored in __reader (name-mangled)
+- `substrate/corpus_contract/adapters/hosted_docs.py:1-141` — HostedDocsCorpusAdapter over HostedDocReader protocol (narrowed: only get_document + list_membership); honest substring matching; clock injected via now_fn; fetch enforces owner scope via list_membership check
+- `substrate/corpus_contract/conformance.py:1-252` — reusable conformance kit: 7 assert helpers (assert_search_retrieval hardened with decoy exclusion + score ordering + zero-hits) + assert_read_only rewritten (structural, not name-prefix) + BrokenProvenanceAdapter red-proof (now accepts now_fn)
+- `tests/test_corpus_contract.py:1-335` — 19 tests: 7 twin-notes, 8 hosted-docs (includes cross-owner), 3 broken-adapter red-proof, 1 negative type proof (mypy)
+- `tests/type_check_wrong_adapter.py:1-32` — wrong-signature adapter for negative static type proof
 - `substrate/corpus_contract/WIRING.md:1-64` — frozen-file wiring needs + doctrine invariants
 
 ### Milestones
-- [x] M1: Protocol + document type — VERIFIED (mypy --strict green, protocol conformance type tests in protocol.py)
-- [x] M2: Reference adapter: twin notes — VERIFIED (passes conformance kit, zero writes interface-proven via TwinNoteReader protocol)
-- [x] M3: Reference adapter: hosted documents — VERIFIED (passes same conformance kit unchanged)
-- [x] M4: Conformance kit + tests + WIRING.md — VERIFIED (kit runs against both adapters, broken-adapter red-proof included)
+- [x] M1: Protocol + document type — VERIFIED (mypy --strict green, protocol conformance type tests in protocol.py, negative type proof via mypy rejection of wrong-signature adapter)
+- [x] M2: Reference adapter: twin notes — VERIFIED (passes conformance kit, zero writes interface-proven via TwinNoteReader protocol, reader stored in __reader)
+- [x] M3: Reference adapter: hosted documents — VERIFIED (passes same conformance kit, fetch enforces owner scope)
+- [x] M4: Conformance kit + tests + WIRING.md — VERIFIED (kit runs against both adapters, broken-adapter red-proof included, search retrieval hardened)
 
 ### Verification gate results
-- pytest: pass (17 passed in 0.23s)
+- pytest: pass (19 passed in 0.28s)
 - mypy strict: pass (Success: no issues found in 6 source files)
 - ruff: pass (All checks passed!)
-- seam purity: pass (all changes within owned files: substrate/corpus_contract/* + tests/test_corpus_contract.py)
+- seam purity: pass (all changes within owned files: substrate/corpus_contract/* + tests/test_corpus_contract.py + tests/type_check_wrong_adapter.py)
 
 ### WIRING.md entries added (frozen-file needs documented, not edited)
 - `substrate/engagement_spine/__init__.py` → re-export TwinNotesCorpusAdapter (SPR-05 consumes twin notes through the protocol)
@@ -35,6 +48,9 @@ DONE
 - **Decision:** Search uses simple substring matching, not TF-IDF or embeddings. **Why:** the spec says "honest lexical matching" and "no embedding dependency." The conformance kit's retrieval assertion (fixture doc with exact query phrase must rank first) works with substring. **What would reverse it:** if recall measurably degrades on real corpora — but that's the store's concern, not the contract's.
 - **Decision:** `FetchResult = CorpusDocument | CorpusMiss` (union type) rather than raising exceptions. **Why:** the spec says "fetch of an unknown id has one documented behavior (typed miss, not a bare KeyError)." A union makes the contract explicit at the type level. **What would reverse it:** if callers overwhelmingly prefer exception-based flow control — but the typed miss is more defensible for a protocol.
 - **Decision:** The hosted-docs adapter searches across all documents in an owner's library (via `list_membership`) rather than requiring a pre-scoped document set. **Why:** the real store's `AccountLibrary.load` returns all document_ids for an owner; scoping would add a parameter the real store doesn't have. **What would reverse it:** if performance degrades on large libraries — but the spec says "honest lexical is enough."
+- **Decision (rework):** Inject clock via `now_fn` parameter rather than a `Clock` protocol or dependency-injection framework. **Why:** a simple callable `() -> datetime` is the minimal injection surface. A Clock protocol would add a type for one method; a DI framework would violate §16 REJECT. **What would reverse it:** if multiple clock sources need distinguishing (unlikely — the contract only needs UTC timestamps).
+- **Decision (rework):** Name-mangle reader with `__reader` (double underscore) rather than a closure-based private capture or a separate module-private store. **Why:** Python's name mangling makes `__reader` inaccessible as `adapter._reader` from outside the class — it becomes `adapter._TwinNotesCorpusAdapter__reader`. This is the strongest encapsulation Python provides without metaclass tricks. **What would reverse it:** if a subclass needs to access the reader (would require explicit `_Adapter__reader` spelling — acceptable for subclasses that know their parent).
+- **Decision (rework):** Owner scope enforcement in `fetch` via `list_membership` check rather than scoping the reader or restricting at the store level. **Why:** the adapter is the enforcement point — the store doesn't know about the adapter's declared owner scope. Checking membership before `get_document` is the cheapest correct fix. **What would reverse it:** if `list_membership` becomes a performance bottleneck (unlikely for single-owner queries).
 
 ### Assumptions surfaced (rigor #1)
 - The twin-notes adapter scopes to a single `asset_id` (one asset's twin substrate). If the research loop needs cross-asset search, a new adapter wrapping `list_twins` across multiple assets would be needed — this sprint doesn't build that.
