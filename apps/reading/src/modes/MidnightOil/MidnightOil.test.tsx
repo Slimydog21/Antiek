@@ -46,6 +46,7 @@ import {
   operatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationPlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationResultReconciliationPlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationResultReconciliationVerificationCommitPlanMidnightOil,
+  operatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationResultReconciliationVerificationCommitResultFinalizationPlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationResultReconciliationVerificationCommitResultPlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistencePlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalDeliveryHandoffResultReconciliationPlanMidnightOil,
@@ -7213,6 +7214,62 @@ vi.mock("../../api/midnightOil", () => ({
         "operator archive package delivery report final delivery handoff result persistence audit-attestation result reconciliation verification commit result plan only: no result receipt, result entry, status result entry, audit result entry, dispatch, URL activation, or final artifact is created",
       ],
     })),
+  operatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationResultReconciliationVerificationCommitResultFinalizationPlanMidnightOil:
+    vi.fn(async () => ({
+      receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-result-reconciliation-verification-commit-result-finalization-plan",
+      operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_result_plan_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-result-reconciliation-verification-commit-result-plan",
+      operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_plan_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-result-reconciliation-verification-commit-plan",
+      operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_plan_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-result-reconciliation-plan",
+      operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_plan_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-plan",
+      status:
+        "blocked_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_result_finalization_unimplemented",
+      adapter_key:
+        "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_result_finalization",
+      planned_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_result_finalization_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-result-reconciliation-verification-commit-result-finalization-receipt",
+      planned_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_result_finalization_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-result-reconciliation-verification-commit-result-finalization-entry",
+      planned_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_result_finalization_status_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-result-reconciliation-verification-commit-result-finalization-status-entry",
+      planned_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_result_finalization_audit_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-result-reconciliation-verification-commit-result-finalization-audit-entry",
+      operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_result_finalization_blockers:
+        [
+          "operator archive package delivery report final delivery handoff result persistence audit-attestation result-reconciliation verification commit result finalization receipt writer",
+          "operator archive package delivery report final delivery handoff result persistence audit-attestation result-reconciliation verification commit result finalization entry writer",
+        ],
+      required_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_result_finalization_invariants:
+        [
+          "operator archive package delivery report final delivery handoff result persistence audit-attestation result-reconciliation verification commit result finalization planner must require verification commit result planning before finalization rows can be planned",
+        ],
+      required_operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_result_finalization_receipt_fields:
+        [
+          "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_result_finalization_receipt_id",
+          "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_result_finalization_entry_id",
+          "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_result_finalization_status_entry_id",
+          "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_result_finalization_audit_entry_id",
+        ],
+      blocker_reason:
+        "operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_result_finalization_unimplemented",
+      operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_result_finalization_allowed:
+        false,
+      operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_result_finalization_entry_created:
+        false,
+      operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_result_finalization_status_entry_created:
+        false,
+      operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_result_finalization_audit_entry_created:
+        false,
+      operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_result_entry_created:
+        false,
+      adapter_plan_notes: [
+        "operator archive package delivery report final delivery handoff result persistence audit-attestation result reconciliation verification commit result finalization plan only: no finalization receipt, finalization entry, status entry, audit entry, dispatch, URL activation, or final artifact is created",
+      ],
+    })),
 }));
 
 describe("MidnightOil", () => {
@@ -13613,6 +13670,104 @@ describe("MidnightOil", () => {
     expect(
       screen.getAllByText(
         /operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_audit_result_entry_id/,
+      ).length,
+    ).toBeGreaterThan(0);
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Operator archive package delivery report final delivery handoff result persistence audit-attestation result-reconciliation verification/commit result finalization plan",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(
+        operatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationResultReconciliationVerificationCommitResultFinalizationPlanMidnightOil,
+      ).toHaveBeenCalled(),
+    );
+    expect(
+      operatorArchivePackageDeliveryReportFinalDeliveryHandoffResultPersistenceAuditAttestationResultReconciliationVerificationCommitResultFinalizationPlanMidnightOil,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_result_plan_receipt:
+          expect.objectContaining({
+            receipt_id:
+              "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-result-reconciliation-verification-commit-result-plan",
+          }),
+        operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_plan_receipt:
+          expect.objectContaining({
+            receipt_id:
+              "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-result-reconciliation-verification-commit-plan",
+          }),
+      }),
+    );
+    expect(
+      screen.getByText(
+        "Operator archive package delivery report final delivery handoff result persistence audit-attestation result-reconciliation verification/commit result finalization receipt",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-result-reconciliation-verification-commit-result-finalization-plan",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "blocked operator archive package delivery report final delivery handoff result persistence audit attestation result reconciliation verification commit result finalization unimplemented",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-result-reconciliation-verification-commit-result-finalization-receipt",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-result-reconciliation-verification-commit-result-finalization-entry",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-result-reconciliation-verification-commit-result-finalization-status-entry",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-handoff-result-persistence-audit-attestation-result-reconciliation-verification-commit-result-finalization-audit-entry",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "operator archive package delivery report final delivery handoff result persistence audit-attestation result-reconciliation verification commit result finalization planner must require verification commit result planning before finalization rows can be planned",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Operator archive package delivery report final delivery handoff result persistence audit-attestation result-reconciliation verification\/commit result finalization blockers:/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /operator archive package delivery report final delivery handoff result persistence audit-attestation result-reconciliation verification commit result finalization entry writer/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Operator archive package delivery report final delivery handoff result persistence audit-attestation result-reconciliation verification\/commit result finalization receipt fields:/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getAllByText(
+        /operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_result_finalization_entry_id/,
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(
+        /operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_result_finalization_status_entry_id/,
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(
+        /operator_archive_package_delivery_report_final_delivery_handoff_result_persistence_audit_attestation_result_reconciliation_verification_commit_result_finalization_audit_entry_id/,
       ).length,
     ).toBeGreaterThan(0);
   }, 25000);
