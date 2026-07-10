@@ -54,9 +54,9 @@ See **FUTURE-AGENT-SPEC-notdiamond-advisory-only.md** — advisor yes · router 
 ### Competitive DR quality
 See **FUTURE-AGENT-SPEC-competitive-deep-research-quality.md** — world-class DR map · budget-before-fire merge soft-gates closed **ank–anl**.
 
-### P1 next offline (residual **aoh+**)
-Outside thrash: competitive DR product depth · Antiek-bench recursive rewrite · model decision-tree install UX · written-analysis UX · marketplace L5 offline CTA.  
-**Avoid thrash:** remount · host-tier · collective-mount · budget-soft-gate · dogfood · free-PD catalog · open-spawn honesty stamps · HTML stamps · competitive-link · dual-gate · write-seed · pub-quick-call · domain-clause/parse · MO goals/templates.
+### P1 next offline (residual **aos+**)
+Outside thrash: competitive DR product depth · Antiek-bench recursive rewrite polish · model decision-tree install UX · marketplace L5 offline CTA.  
+**Avoid thrash:** remount · host-tier · collective-mount · budget-soft-gate · dogfood · free-PD catalog · open-spawn honesty · HTML stamps · competitive-link · dual-gate · write-seed · pub-quick-call · domain stamps/titles · MO goals/fanout · written-analysis min-spawns · scorecard rows · product blurbs.
 
 ## Doctrine
 One residual letter/cycle · inventory-first · green tests · campaign push only · complete work never complete goal · Infinite until STOP.
