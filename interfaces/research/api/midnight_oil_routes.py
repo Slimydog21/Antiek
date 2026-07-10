@@ -104,6 +104,8 @@ from substrate.midnight_oil import (
     MidnightOilWorkerQueueClaimPlanRequest,
     MidnightOilWorkerSynthesisHandoffPlanReceipt,
     MidnightOilWorkerSynthesisHandoffPlanRequest,
+    MidnightOilWorkspaceDeliveryCardReconciliationPlanReceipt,
+    MidnightOilWorkspaceDeliveryCardReconciliationPlanRequest,
     activation_checklist_midnight_oil,
     budget_provider_adapter_plan_midnight_oil,
     budget_reservation_midnight_oil,
@@ -151,6 +153,7 @@ from substrate.midnight_oil import (
     worker_output_aggregation_plan_midnight_oil,
     worker_queue_claim_plan_midnight_oil,
     worker_synthesis_handoff_plan_midnight_oil,
+    workspace_delivery_card_reconciliation_plan_midnight_oil,
 )
 
 midnight_oil_router = APIRouter(prefix="/research/midnight-oil", tags=["deep-research"])
@@ -587,6 +590,16 @@ def post_midnight_oil_operator_delivery_ledger_reconciliation_plan(
     return operator_delivery_ledger_reconciliation_plan_midnight_oil(req)
 
 
+@midnight_oil_router.post(
+    "/workspace-delivery-card-reconciliation-plan",
+    response_model=MidnightOilWorkspaceDeliveryCardReconciliationPlanReceipt,
+)
+def post_midnight_oil_workspace_delivery_card_reconciliation_plan(
+    req: MidnightOilWorkspaceDeliveryCardReconciliationPlanRequest,
+) -> MidnightOilWorkspaceDeliveryCardReconciliationPlanReceipt:
+    return workspace_delivery_card_reconciliation_plan_midnight_oil(req)
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
@@ -640,5 +653,6 @@ __all__ = [
     "post_midnight_oil_worker_output_aggregation_plan",
     "post_midnight_oil_worker_queue_claim_plan",
     "post_midnight_oil_worker_synthesis_handoff_plan",
+    "post_midnight_oil_workspace_delivery_card_reconciliation_plan",
     "register_midnight_oil_routes",
 ]
