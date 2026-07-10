@@ -1783,3 +1783,7 @@ Competitive delta: swarm handoff tip-true; operator merge PR #465 highest levera
 ## Residual zo · 2026-07-10 — dogfood panel data-source after load
 antiek-bench-dogfood-panel stamps data-source after fixtures load. Competitive
 delta: panel shell provenance complete (version · label · source · count).
+
+## Residual zp · 2026-07-10 — FUTURE-AGENT tip re-anchor through zo
+FUTURE-AGENT-SPEC tip re-anchored after 95 residual ships this continuation.
+Competitive delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
