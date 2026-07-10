@@ -1179,3 +1179,8 @@ trust failure is actionable prep — never silent live arxiv/substack enable.
 PublicationAttachPanel ungrounded path deep-links Settings hydrate readiness
 + dual-gate checklist (parity evidence pack up). Competitive delta: attach
 failure surfaces L1/L2 prep without inventing live bodies.
+
+## Residual ur · 2026-07-10 — FUTURE-AGENT tip re-anchor through uq
+FUTURE-AGENT-SPEC tip → 5ec87cc5 with closed arcs tt–uq (24 residual ships).
+Competitive delta: multi-agent swarm handoff stays tip-true after citation-trust
+hydrate prep wave.
