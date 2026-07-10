@@ -1166,11 +1166,12 @@ export default function Settings() {
                 >
                   L4 MO live-step
                 </a>
+                {/* Residual (wy): L4 checklist section deep-link (parity MO wx). */}
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l4-moil"
                   className="underline opacity-80 hover:opacity-100"
                   data-testid="settings-dual-gate-l4-checklist-link"
-                  title="L4 Midnight Oil live-step checklist (prep only)"
+                  title="L4 Midnight Oil live-step checklist section (prep only)"
                 >
                   L4 checklist
                 </a>

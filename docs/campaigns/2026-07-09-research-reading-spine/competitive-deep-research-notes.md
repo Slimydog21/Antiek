@@ -1476,3 +1476,7 @@ filters never mix paid entitlement.
 MO dual-gate checklist jumps to #l4-moil section. Competitive delta: midnight
 oil surface navigates deferred live-step policy without inventing injectors
 (parity Settings L5–L7 deep-links).
+
+## Residual wy · 2026-07-10 — Settings dual-gate L4 checklist #l4-moil
+Settings L4 checklist deep-links #l4-moil (parity MO wx). Competitive delta:
+decision-tree dual-gate prep navigates MO live-step policy section directly.

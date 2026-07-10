@@ -894,9 +894,10 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("settings-dual-gate-l4-link").getAttribute("href")).toBe(
       "#moil-live-step-status",
     );
+    // Residual (wy): L4 checklist section #l4-moil (parity MO wx).
     expect(
       screen.getByTestId("settings-dual-gate-l4-checklist-link").getAttribute("href"),
-    ).toMatch(/DUAL-GATE-L1-L4/);
+    ).toMatch(/DUAL-GATE-L1-L4.*#l4-moil/);
     // Residual (wh): L5/L6/L7 checklist deep-links (complete operator map).
     expect(
       screen.getByTestId("settings-dual-gate-l5-payment").getAttribute("href"),
