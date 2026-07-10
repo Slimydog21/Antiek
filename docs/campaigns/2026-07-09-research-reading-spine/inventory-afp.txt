@@ -1,0 +1,20 @@
+# inventory-afp · Select recent path honesty stamps
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: afp
+date: 2026-07-10
+parent_tip: 0d022870 (afo)
+
+## Closed
+- collective-select-recent: data-seamless-select-recent · view_format=html ·
+  recent-in-available · L6 deferred
+- selectRecentOnly → lastSelectMode=recent
+- controls + selection-count: data-seamless-select-recent
+- collective-select-recent-path-status after recent select
+- vitest CollectiveResearchPanel · 27 passed
+
+## Why this residual
+Parity afn Select open for recent_ring twin-chase batch → collective unit.
+Completes multi-select assembly path matrix (open | recent | restore).
+
+## Not in scope
+- L6 live multi-agent · dogfood v17 (afq candidate)

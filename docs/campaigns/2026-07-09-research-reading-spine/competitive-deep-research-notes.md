@@ -2451,3 +2451,10 @@ vitest CollectiveResearchPanel 26 green.
 Suite suite-competitive-dogfood-v16 adds wrestle fixtures for Select open path
 (afn) and restore last unit path (afl). Settings spine postures v16 + summary
 attrs. pytest dogfood 5 · Settings 36 green. propose≠promote.
+
+## Residual afp · 2026-07-10 — Select recent path honesty
+Select recent control stamps data-seamless-select-recent · view_format=html ·
+recent-in-available · L6 deferred. After click: last-select-mode=recent on
+controls + selection count + path status (parity Select open afn). Twin-chase
+closed-window multi-select assembly path is machine-readable.
+vitest CollectiveResearchPanel 27 green.

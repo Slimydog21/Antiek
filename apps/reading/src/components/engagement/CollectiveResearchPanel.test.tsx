@@ -855,6 +855,60 @@ describe("CollectiveResearchPanel", () => {
     ).toBe(false);
   });
 
+  it("stamps Select recent path honesty after multi-select assembly (afp)", () => {
+    render(
+      <CollectiveResearchPanel
+        availableSpawnIds={["spn_open", "spn_chased", "spn_other"]}
+        parentAssetId="asset_afp_parent"
+        recentSpawnIds={["spn_chased", "spn_other"]}
+        autoSelectNewestRecent={false}
+      />,
+    );
+    const recentBtn = screen.getByTestId("collective-select-recent");
+    expect(recentBtn.getAttribute("data-seamless-select-recent")).toBe("true");
+    expect(recentBtn.getAttribute("data-view-format")).toBe("html");
+    expect(recentBtn.getAttribute("data-recent-in-available")).toBe("2");
+    expect(recentBtn.getAttribute("data-l6-live-multiagent")).toBe("deferred");
+    expect(
+      screen
+        .getByTestId("collective-select-controls")
+        .getAttribute("data-seamless-select-recent"),
+    ).toBe("false");
+    expect(
+      screen.queryByTestId("collective-select-recent-path-status"),
+    ).toBeNull();
+
+    fireEvent.click(recentBtn);
+
+    const controls = screen.getByTestId("collective-select-controls");
+    expect(controls.getAttribute("data-last-select-mode")).toBe("recent");
+    expect(controls.getAttribute("data-seamless-select-recent")).toBe("true");
+    expect(controls.getAttribute("data-seamless-select-open")).toBe("false");
+    const count = screen.getByTestId("collective-selection-count");
+    expect(count.getAttribute("data-last-select-mode")).toBe("recent");
+    expect(count.getAttribute("data-seamless-select-recent")).toBe("true");
+    expect(count.getAttribute("data-selected-count")).toBe("2");
+    expect(count.textContent).toMatch(/seamless select recent/);
+
+    const pathStatus = screen.getByTestId(
+      "collective-select-recent-path-status",
+    );
+    expect(pathStatus.getAttribute("data-last-select-mode")).toBe("recent");
+    expect(pathStatus.getAttribute("data-seamless-select-recent")).toBe(
+      "true",
+    );
+    expect(pathStatus.getAttribute("data-selected-count")).toBe("2");
+    expect(pathStatus.getAttribute("data-recent-in-available")).toBe("2");
+    expect(pathStatus.getAttribute("data-view-format")).toBe("html");
+    expect(pathStatus.getAttribute("data-l6-live-multiagent")).toBe(
+      "deferred",
+    );
+    expect(pathStatus.getAttribute("data-parent-asset-id")).toBe(
+      "asset_afp_parent",
+    );
+    expect(pathStatus.textContent).toMatch(/seamless select recent/);
+  });
+
   it("marks available spawns from recent_ring with origin badge (of)", async () => {
     const {
       pushRecentDeepResearchSpawnId,

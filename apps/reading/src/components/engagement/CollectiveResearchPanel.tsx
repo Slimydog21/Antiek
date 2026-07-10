@@ -47,6 +47,8 @@
  *     deep_research_session windows (excludes closed recent-only ids).
  * 32. Residual (afn): Select open path honesty — seamless-select-open stamps
  *     on control + last-select-mode audit (multi-spawn assembly · open windows).
+ * 33. Residual (afp): Select recent path honesty — seamless-select-recent
+ *     stamps + last-select-mode=recent (closed chase/float batch assembly).
  * 30. Residual (vx): L6 live multi-agent council deferred honesty stamp
  *     (offline merge unit only · never silent live council).
  * 22. Residual (oj): surface usage_event from collective/merge on metrics
@@ -395,12 +397,14 @@ export function CollectiveResearchPanel({
   );
 
   /**
-   * Residual (og): select only spawns present in both available list and
+   * Residual (og/afp): select only spawns present in both available list and
    * recent_ring (closed chase/float batch → collective unit).
+   * Path honesty: lastSelectMode=recent for seamless-select-recent audit.
    */
   const selectRecentOnly = useCallback(() => {
     const next = availableSpawnIds.filter((id) => recentSet.has(id));
     setSelected(next);
+    setLastSelectMode("recent");
   }, [availableSpawnIds, recentSet]);
 
   /** Residual (ue): open-window spawn ids intersected with available list. */
@@ -853,9 +857,10 @@ export function CollectiveResearchPanel({
         data-has-open-spawn-ids={String(openSet != null)}
         data-auto-select-newest-recent={String(autoSelectNewestRecent)}
         data-view-format="html"
-        // Residual (afn): last multi-select helper path audit.
+        // Residual (afn/afp): last multi-select helper path audit.
         data-last-select-mode={lastSelectMode ?? ""}
         data-seamless-select-open={String(lastSelectMode === "open")}
+        data-seamless-select-recent={String(lastSelectMode === "recent")}
         title="Includes open deep-research windows and recent session opens (twin chase / float)"
       >
         <button
@@ -867,13 +872,18 @@ export function CollectiveResearchPanel({
         >
           Select all ({availableSpawnIds.length})
         </button>
-        {/* Residual (og): one-click select recent_ring rows only. */}
+        {/* Residual (og/afp): one-click select recent_ring rows + path. */}
         <button
           type="button"
           data-testid="collective-select-recent"
           onClick={() => selectRecentOnly()}
           disabled={busy || recentInAvailable === 0}
-          title="Select only spawns from the session recent ring (twin chase / float opens)"
+          // Residual (afp): Select recent multi-spawn assembly path honesty.
+          data-seamless-select-recent="true"
+          data-view-format="html"
+          data-recent-in-available={String(recentInAvailable)}
+          data-l6-live-multiagent="deferred"
+          title="Select only spawns from the session recent ring (twin chase / float opens · multi-select assembly · offline unit · not live L6 council)"
         >
           Select recent ({recentInAvailable})
         </button>
@@ -942,9 +952,10 @@ export function CollectiveResearchPanel({
           data-recent-count={String(recentCount)}
           data-recent-in-available={String(recentInAvailable)}
           data-open-in-available={String(openInAvailable)}
-          // Residual (afn): selection count mirrors last Select open path.
+          // Residual (afn/afp): selection count mirrors last select path.
           data-last-select-mode={lastSelectMode ?? ""}
           data-seamless-select-open={String(lastSelectMode === "open")}
+          data-seamless-select-recent={String(lastSelectMode === "recent")}
         >
           Selected: {selected.length}/{availableSpawnIds.length}
           {recentCount > 0 ? ` · recent=${recentCount}` : ""}
@@ -955,6 +966,7 @@ export function CollectiveResearchPanel({
             ? ` · open_in_list=${openInAvailable}`
             : ""}
           {lastSelectMode === "open" ? " · seamless select open" : ""}
+          {lastSelectMode === "recent" ? " · seamless select recent" : ""}
         </span>
         {lastSelectMode === "open" ? (
           <span
@@ -972,6 +984,24 @@ export function CollectiveResearchPanel({
             Select open path · multi-select assembly · selected=
             {selected.length}/{openInAvailable} open · L6 live multi-agent
             deferred · seamless select open
+          </span>
+        ) : null}
+        {lastSelectMode === "recent" ? (
+          <span
+            className="text-[11px] font-mono opacity-80 w-full"
+            data-testid="collective-select-recent-path-status"
+            data-last-select-mode="recent"
+            data-seamless-select-recent="true"
+            data-selected-count={String(selected.length)}
+            data-recent-in-available={String(recentInAvailable)}
+            data-view-format="html"
+            data-l6-live-multiagent="deferred"
+            data-parent-asset-id={String(parentAssetId || "").trim() || ""}
+            role="status"
+          >
+            Select recent path · multi-select assembly · selected=
+            {selected.length}/{recentInAvailable} recent_ring · L6 live
+            multi-agent deferred · seamless select recent
           </span>
         ) : null}
         {membershipStatus ? (
