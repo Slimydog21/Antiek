@@ -44,6 +44,8 @@
  * 23. Residual (ol): auto-select newest recent_ring spawn when selection is
  *     empty and preferredSpawnId is unset (chase → collective one less click).
  * 24. Residual (py / FUTURE-AGENT V2): persist cohesive unit membership
+ * 27. Residual (ql): auto-restore last unit multi-select on mount when empty
+ *     (preferredSpawnId wins; ≥2 restored ids for multi-select honesty).
  *     (spawn_ids by collective_id) in sessionStorage; restore last multi-select
  *     after continue-as-unit re-entry (intersection with available).
  */
@@ -129,6 +131,8 @@ export function CollectiveResearchPanel({
   const recentCount = recentRing.length;
   /** Residual (ol): skip re-auto-selecting same newest after operator clears. */
   const lastAutoSelectedRecent = useRef<string | null>(null);
+  /** Residual (ql): only auto-restore last unit once per mount (operator clear sticks). */
+  const didAutoRestoreUnit = useRef(false);
 
   // Auto-select preferred spawn once when available (residual cn).
   useEffect(() => {
@@ -155,6 +159,27 @@ export function CollectiveResearchPanel({
     recentRing,
     availableSpawnIds,
   ]);
+
+  // Residual (ql): auto-restore last cohesive unit multi-select once when
+  // available list is known. Do not depend on selected.length so operator clear
+  // does not re-restore. preferredSpawnId wins; require ≥2 restored ids.
+  useEffect(() => {
+    if (didAutoRestoreUnit.current) return;
+    if ((preferredSpawnId || "").trim()) return;
+    if (availableSpawnIds.length < 1) return;
+    const last = getLastCollectiveUnitMembership();
+    const restored = restoreCollectiveSelection(last, availableSpawnIds);
+    if (restored.length < 2 || !last) return;
+    didAutoRestoreUnit.current = true;
+    setSelected((prev) => (prev.length > 0 ? prev : restored));
+    setMembershipStatus({
+      collective_id: last.collective_id,
+      spawn_count: last.spawn_ids.length,
+      restored_count: restored.length,
+      action: "restored",
+      document_id: last.document_id,
+    });
+  }, [preferredSpawnId, availableSpawnIds]);
 
   const [unit, setUnit] = useState<CollectiveResponse | null>(null);
   const [docMerge, setDocMerge] = useState<MergeProductResponse | null>(null);

@@ -663,3 +663,5 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (qj, 2026-07-10) **marketplace DecisionTreeDriverBadge promptText** from hosted book
 
 - Closed (qk, 2026-07-10) **SESSION-ARC px–qj** FUTURE-AGENT + dual handoff + driver foresight handoff
+
+- Closed (ql, 2026-07-10) **auto-restore last cohesive unit multi-select on mount** (V2 complete)

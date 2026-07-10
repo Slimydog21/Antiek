@@ -1,0 +1,6 @@
+# inventory-ql · auto-restore last collective unit on mount
+residual: ql · 2026-07-10
+- Auto-restore last unit multi-select once when available known (≥2 ids)
+- Operator clear does not re-restore
+- preferredSpawnId wins
+- vitest CollectiveResearchPanel 21 passed

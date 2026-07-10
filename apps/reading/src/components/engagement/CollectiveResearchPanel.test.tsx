@@ -1,6 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearCollectiveUnitMembership } from "../../workspace/collectiveUnitMembership";
+import {
+  clearCollectiveUnitMembership,
+  storeCollectiveUnitMembership,
+} from "../../workspace/collectiveUnitMembership";
 import { CollectiveResearchPanel } from "./CollectiveResearchPanel";
 
 const fetchCollectiveResearch = vi.fn();
@@ -1010,6 +1013,37 @@ describe("CollectiveResearchPanel", () => {
           .getAttribute("data-prompt-len") || 0,
       ),
     ).toBeGreaterThan(20);
+  });
+
+
+  it("auto-restores last unit membership multi-select on mount (ql)", () => {
+    storeCollectiveUnitMembership({
+      collective_id: "col_auto",
+      spawn_ids: ["spn_a", "spn_b", "spn_gone"],
+      parent_asset_id: "asset_x",
+    });
+    render(
+      <CollectiveResearchPanel
+        availableSpawnIds={["spn_a", "spn_b", "spn_c"]}
+        parentAssetId="asset_x"
+        autoSelectNewestRecent={false}
+      />,
+    );
+    expect(
+      screen
+        .getByTestId("collective-selection-count")
+        .getAttribute("data-selected-count"),
+    ).toBe("2");
+    expect(
+      screen
+        .getByTestId("collective-unit-membership-status")
+        .getAttribute("data-action"),
+    ).toBe("restored");
+    expect(
+      screen
+        .getByTestId("collective-unit-membership-status")
+        .getAttribute("data-restored-count"),
+    ).toBe("2");
   });
 
 });

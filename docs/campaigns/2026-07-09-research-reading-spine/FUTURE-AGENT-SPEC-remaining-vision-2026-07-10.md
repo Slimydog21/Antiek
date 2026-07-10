@@ -29,7 +29,7 @@ Highest leverage. Agents never merge main/prod.
 | ID | Gap | Acceptance | Notes |
 |---|---|---|---|
 | V1 | **Recursive twin cross-asset merge UI** | ✅ **pn–px + qb**: second asset_id + N>2 merge buckets → merge draft float|full + Write | Closed offline |
-| V2 | **Collective “cohesive unit prompt” history** | ✅ **py**: sessionStorage unit membership + Restore last unit multi-select (merge/analysis/continue) | Optional: server-side membership later |
+| V2 | **Collective “cohesive unit prompt” history** | ✅ **py+ql**: store membership + Restore button + auto-restore on mount (≥2) | Optional: server-side membership later |
 | V3 | **Antiek-bench recursive rewrite weekly chrome** | ✅ **pe+qa**: rationale + primary by_source feed driver + ranked feeds (propose≠promote) | Closed offline polish |
 | V4 | **Model decision-tree “prompt projection vs cap”** | ✅ **Closed pg–pj** DecisionTreeDriverBadge promptText on MO/Write/ResearchThis/Hosted | See SESSION-ARC-pg-pj |
 | V5 | **Marketplace free→account host polish** | ✅ **iu–iw + qc**: host/library DR + dual Write html_draft+twin_seed | Closed offline polish |
