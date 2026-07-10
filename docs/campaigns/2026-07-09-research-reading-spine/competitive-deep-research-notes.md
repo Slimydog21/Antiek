@@ -4064,3 +4064,8 @@ twinSubstrateReadiness pure helper: substrate_ready when both insights and
 questions exist. TwinNotesPanel chrome. Competitive delta: recursive note-taker
 legs are operator-visible without inventing notes. vitest 39 green. P0 PR #465.
 Pivot arr+ outside thrash.
+
+## Residual arr · 2026-07-10 — ResearchContext twin substrate readiness
+Wire twinSubstrateReadiness into research-context-twin-metrics (parity TwinNotes
+arq). Reading ≡ research recursive note-taker substrate honesty. vitest 21 green.
+P0 PR #465. Pivot ars+ outside thrash.

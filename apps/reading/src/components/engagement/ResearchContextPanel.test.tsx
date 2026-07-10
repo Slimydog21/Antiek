@@ -483,6 +483,16 @@ describe("ResearchContextPanel", () => {
     expect(metrics.getAttribute("data-twin-questions")).toBe("0");
     expect(metrics.getAttribute("data-twin-total")).toBe("1");
     expect(metrics.textContent).toMatch(/insights=1/);
+    // Residual (arr): substrate readiness (insights only → not ready).
+    expect(metrics.getAttribute("data-substrate-ready")).toBe("false");
+    expect(metrics.getAttribute("data-has-insights")).toBe("true");
+    expect(metrics.getAttribute("data-has-questions")).toBe("false");
+    const substrate = screen.getByTestId(
+      "research-context-twin-substrate-readiness",
+    );
+    expect(substrate.getAttribute("data-substrate-ready")).toBe("false");
+    expect(substrate.getAttribute("data-html-first")).toBe("true");
+    expect(substrate.textContent).toMatch(/missing questions/i);
     // Residual (kl): pack research_tier chrome (parity evidence kd).
     expect(metrics.getAttribute("data-research-tier")).toBe("wrestle");
     expect(

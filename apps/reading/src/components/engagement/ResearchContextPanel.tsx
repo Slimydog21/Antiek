@@ -111,6 +111,7 @@ import {
   domainDefaultSubjectCatalog,
   domainSearchCoverage,
 } from "../../workspace/domainSearchDefaults";
+import { twinSubstrateReadiness } from "../../workspace/twinSubstrateReadiness";
 
 export type ResearchContextPanelProps = {
   assetId: string;
@@ -162,6 +163,16 @@ export function ResearchContextPanel({
 
   // Residual (ff): insight/question breakdown of twin note substrate.
   const twinMetrics = useMemo(() => twinNoteMetrics(pack), [pack]);
+  // Residual (arr): recursive note-taker substrate readiness (parity TwinNotes arq).
+  const substrate = useMemo(
+    () =>
+      twinSubstrateReadiness({
+        insight_count: twinMetrics.insights,
+        question_count: twinMetrics.questions,
+        note_count: twinMetrics.total,
+      }),
+    [twinMetrics],
+  );
   // Residual (alj): domain-search coverage honesty for free PD / STEM subjects.
   const domainCoverage = useMemo(
     () => domainSearchCoverage(domainSubjects),
@@ -564,7 +575,7 @@ export function ResearchContextPanel({
             {pack.ref_count ?? pack.source_references?.length ?? 0}
             {pack.research_tier ? ` · tier=${pack.research_tier}` : ""}
           </p>
-          {/* Residual (ff): recursive note-taker metrics (insight/question twin substrate). */}
+          {/* Residual (ff/arr): recursive note-taker metrics + substrate readiness. */}
           <div
             className="meta font-mono text-[11px]"
             data-testid="research-context-twin-metrics"
@@ -572,6 +583,10 @@ export function ResearchContextPanel({
             data-twin-insights={String(twinMetrics.insights)}
             data-twin-questions={String(twinMetrics.questions)}
             data-twin-other={String(twinMetrics.other)}
+            data-substrate-ready={String(substrate.substrate_ready)}
+            data-substrate-empty={String(substrate.empty)}
+            data-has-insights={String(substrate.has_insights)}
+            data-has-questions={String(substrate.has_questions)}
             data-research-tier={
               (pack.research_tier || "").trim().toLowerCase() || ""
             }
@@ -583,6 +598,19 @@ export function ResearchContextPanel({
             total={twinMetrics.total}
             {pack.research_tier ? ` · tier=${pack.research_tier}` : ""}
           </div>
+          <p
+            className="meta font-mono text-[11px] opacity-90"
+            data-testid="research-context-twin-substrate-readiness"
+            data-substrate-ready={String(substrate.substrate_ready)}
+            data-substrate-empty={String(substrate.empty)}
+            data-has-insights={String(substrate.has_insights)}
+            data-has-questions={String(substrate.has_questions)}
+            data-html-first="true"
+            role="status"
+            title="Recursive note-taker substrate ready when both insights and questions exist"
+          >
+            Substrate · {substrate.summary}
+          </p>
           {/* Residual (kl): spawn research_tier depth posture on context pack. */}
           {pack.research_tier ? (
             <p
