@@ -3304,3 +3304,7 @@ Recursive note-taker accepts free PD subjects and stamps domain-search coverage;
 HostedHtml passes catalog subjects into TwinNotes (reading ≡ research).
 vitest TwinNotes 31 · HostedHtml 25 green. P0 operator merge PR #465.
 Pivot alu+ outside thrash.
+
+## Residual alu · 2026-07-10 — SESSION-ARC alj–alt domain coverage including TwinNotes
+Wave handoff: domain-search coverage path includes TwinNotes recursive note-taker
+(alt). P0 operator merge PR #465. Pivot alv+ outside thrash.
