@@ -61,6 +61,8 @@ import {
  * Residual (amy): remount twins + context after twin promote (parity marketplace alz).
  * Residual (aob): HTML-first root stamps + document identity on highlight DR
  * surface (parity TalkToBook aoa · MetaReading anz · reading ≡ research).
+ * Residual (aps): competitive DR scorecard + FUTURE deep-links on highlight path
+ * (parity TalkToBook aoa · names hop pipeline api + multi-stage ape · apr map).
  * Full-page workstation handoff remains an explicit tertiary action.
  *
  * Gate-safe: passageText for gated books is still constrained server-side;
@@ -240,6 +242,40 @@ export default function ResearchThis({
       data-seamless-research-this="true"
       data-depth-prefill={depthPrefill}
     >
+      {/* Residual (aps): competitive DR map on highlight research path. */}
+      <p
+        className="text-[10px] font-mono space-x-2 max-w-md"
+        data-testid="research-this-competitive-links"
+        data-view-format="html"
+        data-html-first="true"
+        data-hop-pipeline="api"
+        data-stage-pipeline="ape"
+        role="navigation"
+        aria-label="Competitive deep-research scorecard navigation"
+      >
+        <a
+          href="/settings#settings-competitive-dr-scorecard"
+          data-testid="research-this-competitive-scorecard-link"
+          className="underline opacity-80 hover:opacity-100"
+          title="Settings competitive deep-research scorecard (highlight DR · hop pipeline · multi-stage · reading ≡ research)"
+        >
+          Settings · competitive DR
+        </a>
+        <a
+          href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+          data-testid="research-this-competitive-dr-future-agent-link"
+          className="underline opacity-80 hover:opacity-100"
+          title="FUTURE-AGENT competitive deep-research quality brief"
+        >
+          FUTURE · competitive DR
+        </a>
+        <span
+          className="opacity-70"
+          data-testid="research-this-competitive-pipeline-hint"
+        >
+          hops insights→questions→sources · stages plan→terminal
+        </span>
+      </p>
       <div
         className="space-y-1 max-w-md"
         data-testid="research-this-pub-refs"

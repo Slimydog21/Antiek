@@ -419,6 +419,27 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
     expect(root.getAttribute("data-document-id")).toBe("doc-1");
     expect(root.getAttribute("data-seamless-research-this")).toBe("true");
     expect(root.getAttribute("data-research-tier")).toMatch(/deep|fast|wrestle/);
+    // Residual (aps): competitive DR scorecard + hop/stage pipeline honesty.
+    const competitive = screen.getByTestId("research-this-competitive-links");
+    expect(competitive.getAttribute("data-html-first")).toBe("true");
+    expect(competitive.getAttribute("data-hop-pipeline")).toBe("api");
+    expect(competitive.getAttribute("data-stage-pipeline")).toBe("ape");
+    expect(
+      screen
+        .getByTestId("research-this-competitive-scorecard-link")
+        .getAttribute("href"),
+    ).toBe("/settings#settings-competitive-dr-scorecard");
+    expect(
+      screen
+        .getByTestId("research-this-competitive-dr-future-agent-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    expect(
+      screen.getByTestId("research-this-competitive-pipeline-hint").textContent,
+    ).toMatch(/insights.*questions.*sources/i);
+    expect(
+      screen.getByTestId("research-this-competitive-pipeline-hint").textContent,
+    ).toMatch(/plan.*terminal/i);
     const pubRefs = screen.getByTestId("research-this-pub-refs");
     expect(pubRefs).toBeTruthy();
     // Residual (uk): L1/L2 hydrate prep honesty + deep-links (parity uj).

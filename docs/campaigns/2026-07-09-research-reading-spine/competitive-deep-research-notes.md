@@ -3803,3 +3803,8 @@ vitest HostedHtml 37 green. P0 PR #465. Pivot apr+ outside HostedHtml twin-seed 
 competitive-dr-citation-trust names api hop pipeline; new competitive-dr-stage-pipeline
 row for ape multi-stage + apn nav. Operator-visible world-class DR map tip-true.
 vitest Settings scorecard path green. P0 PR #465. Pivot aps+ outside thrash.
+
+## Residual aps · 2026-07-10 — ResearchThis competitive DR + hop/stage deep-links
+Highlight DR path gets competitive scorecard + FUTURE + pipeline hint
+(insights→questions→sources · plan→terminal). Parity TalkToBook aoa · reading ≡ research.
+vitest ResearchThis 13 green. P0 PR #465. Pivot apt+ outside thrash.

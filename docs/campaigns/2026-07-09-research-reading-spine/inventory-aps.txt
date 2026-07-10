@@ -1,0 +1,15 @@
+# inventory-aps · ResearchThis competitive DR + hop/stage pipeline deep-links
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aps
+date: 2026-07-10
+parent_tip: 4bf3fdbd (apr)
+
+## Closed
+- research-this-competitive-links (scorecard + FUTURE + hop/stage hint)
+- Parity TalkToBook aoa on highlight DR path · reading ≡ research
+- Names api hop pipeline + ape multi-stage (apr operator map)
+- vitest ResearchThis 13 green
+
+## Next
+apt+ product residual outside thrash
+Operator merge PR #465 remains highest leverage (gated)
