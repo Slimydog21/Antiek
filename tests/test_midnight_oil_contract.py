@@ -40,6 +40,7 @@ from substrate.midnight_oil import (
     MidnightOilOperatorArchivePackageDeliveryReportDeliveryConfirmationResultReconciliationPlanRequest,
     MidnightOilOperatorArchivePackageDeliveryReportFinalCloseoutAcknowledgementPlanRequest,
     MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorAcknowledgementPlanRequest,
+    MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseoutPlanRequest,
     MidnightOilOperatorArchivePackageDeliveryReportNotificationReadinessPlanRequest,
     MidnightOilOperatorArchivePackageDeliveryReportNotificationResultReconciliationPlanRequest,
     MidnightOilOperatorArchivePackageDeliveryReportPlanRequest,
@@ -104,6 +105,7 @@ from substrate.midnight_oil import (
     operator_archive_package_delivery_report_delivery_confirmation_result_reconciliation_plan_midnight_oil,
     operator_archive_package_delivery_report_final_closeout_acknowledgement_plan_midnight_oil,
     operator_archive_package_delivery_report_final_operator_acknowledgement_plan_midnight_oil,
+    operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_midnight_oil,
     operator_archive_package_delivery_report_notification_readiness_plan_midnight_oil,
     operator_archive_package_delivery_report_notification_result_reconciliation_plan_midnight_oil,
     operator_archive_package_delivery_report_plan_midnight_oil,
@@ -9657,6 +9659,481 @@ def test_midnight_oil_operator_archive_package_delivery_report_final_closeout_ac
     assert (
         body[
             "operator_archive_package_delivery_report_acknowledgement_result_entry_created"
+        ]
+        is False
+    )
+    assert body["operator_notification_created"] is False
+    assert body["private_read_url_created"] is False
+    assert body["graph_mutated"] is False
+    assert body["provider_calls_made"] is False
+    assert body["retrieval_performed"] is False
+    assert body["final_artifact_created"] is False
+
+
+def _operator_archive_package_delivery_report_final_operator_delivery_closeout_request_kwargs(
+    chain: dict[str, object],
+    output_aggregation_plan: object,
+    synthesis_handoff_plan: object,
+    synthesis_bundle_assembly_plan: object,
+    final_synthesis_draft_plan: object,
+    final_html_artifact_assembly_plan: object,
+    final_artifact_persistence_plan: object,
+    final_artifact_graph_commit_plan: object,
+    final_artifact_publish_plan: object,
+    final_artifact_completion_finalization_plan: object,
+    final_run_closure_plan: object,
+    operator_notification_delivery_readiness_plan: object,
+    operator_notification_delivery_apply_plan: object,
+    operator_notification_delivery_result_reconciliation_plan: object,
+    operator_delivery_ledger_reconciliation_plan: object,
+    workspace_delivery_card_reconciliation_plan: object,
+    delivery_notification_reconciliation_plan: object,
+    retention_billing_reconciliation_plan: object,
+    final_closeout_archive_reconciliation_plan: object,
+    operator_archive_handoff_package_plan: object,
+    operator_archive_handoff_package_result_reconciliation_plan: object,
+    operator_archive_handoff_package_delivery_audit_plan: object,
+    operator_archive_handoff_package_delivery_audit_result_reconciliation_plan: object,
+    operator_archive_package_delivery_report_plan: object,
+    operator_archive_package_delivery_report_result_reconciliation_plan: object,
+    operator_archive_package_delivery_report_notification_readiness_plan: object,
+    operator_archive_package_delivery_report_notification_result_reconciliation_plan: object,
+    operator_archive_package_delivery_report_delivery_confirmation_plan: object,
+    operator_archive_package_delivery_report_delivery_confirmation_result_reconciliation_plan: object,
+    operator_archive_package_delivery_report_final_operator_acknowledgement_plan: object,
+    operator_archive_package_delivery_report_acknowledgement_result_reconciliation_plan: object,
+    operator_archive_package_delivery_report_final_closeout_acknowledgement_plan: object,
+) -> dict[str, object]:
+    return {
+        **_operator_archive_package_delivery_report_final_closeout_acknowledgement_request_kwargs(
+            chain,
+            output_aggregation_plan,
+            synthesis_handoff_plan,
+            synthesis_bundle_assembly_plan,
+            final_synthesis_draft_plan,
+            final_html_artifact_assembly_plan,
+            final_artifact_persistence_plan,
+            final_artifact_graph_commit_plan,
+            final_artifact_publish_plan,
+            final_artifact_completion_finalization_plan,
+            final_run_closure_plan,
+            operator_notification_delivery_readiness_plan,
+            operator_notification_delivery_apply_plan,
+            operator_notification_delivery_result_reconciliation_plan,
+            operator_delivery_ledger_reconciliation_plan,
+            workspace_delivery_card_reconciliation_plan,
+            delivery_notification_reconciliation_plan,
+            retention_billing_reconciliation_plan,
+            final_closeout_archive_reconciliation_plan,
+            operator_archive_handoff_package_plan,
+            operator_archive_handoff_package_result_reconciliation_plan,
+            operator_archive_handoff_package_delivery_audit_plan,
+            operator_archive_handoff_package_delivery_audit_result_reconciliation_plan,
+            operator_archive_package_delivery_report_plan,
+            operator_archive_package_delivery_report_result_reconciliation_plan,
+            operator_archive_package_delivery_report_notification_readiness_plan,
+            operator_archive_package_delivery_report_notification_result_reconciliation_plan,
+            operator_archive_package_delivery_report_delivery_confirmation_plan,
+            operator_archive_package_delivery_report_delivery_confirmation_result_reconciliation_plan,
+            operator_archive_package_delivery_report_final_operator_acknowledgement_plan,
+            operator_archive_package_delivery_report_acknowledgement_result_reconciliation_plan,
+        ),
+        "operator_archive_package_delivery_report_final_closeout_acknowledgement_plan_receipt": (
+            operator_archive_package_delivery_report_final_closeout_acknowledgement_plan
+        ),
+    }
+
+
+def _accepted_midnight_oil_operator_archive_package_delivery_report_final_closeout_acknowledgement_plan_chain(
+    *,
+    goal: str,
+    source_policy: list[str],
+    requested_control_scope: list[str],
+) -> dict[str, object]:
+    chain = _accepted_midnight_oil_operator_archive_package_delivery_report_acknowledgement_result_reconciliation_plan_chain(
+        goal=goal,
+        source_policy=source_policy,
+        requested_control_scope=requested_control_scope,
+    )
+    closeout = operator_archive_package_delivery_report_final_closeout_acknowledgement_plan_midnight_oil(
+        MidnightOilOperatorArchivePackageDeliveryReportFinalCloseoutAcknowledgementPlanRequest(
+            **_operator_archive_package_delivery_report_final_closeout_acknowledgement_request_kwargs(
+                chain,
+                chain["worker_output_aggregation_plan"],
+                chain["worker_synthesis_handoff_plan"],
+                chain["synthesis_bundle_assembly_plan"],
+                chain["final_synthesis_draft_plan"],
+                chain["final_html_artifact_assembly_plan"],
+                chain["final_artifact_persistence_plan"],
+                chain["final_artifact_graph_commit_plan"],
+                chain["final_artifact_publish_plan"],
+                chain["final_artifact_completion_finalization_plan"],
+                chain["final_run_closure_plan"],
+                chain["operator_notification_delivery_readiness_plan"],
+                chain["operator_notification_delivery_apply_plan"],
+                chain["operator_notification_delivery_result_reconciliation_plan"],
+                chain["operator_delivery_ledger_reconciliation_plan"],
+                chain["workspace_delivery_card_reconciliation_plan"],
+                chain["delivery_notification_reconciliation_plan"],
+                chain["retention_billing_reconciliation_plan"],
+                chain["final_closeout_archive_reconciliation_plan"],
+                chain["operator_archive_handoff_package_plan"],
+                chain["operator_archive_handoff_package_result_reconciliation_plan"],
+                chain["operator_archive_handoff_package_delivery_audit_plan"],
+                chain[
+                    "operator_archive_handoff_package_delivery_audit_result_reconciliation_plan"
+                ],
+                chain["operator_archive_package_delivery_report_plan"],
+                chain[
+                    "operator_archive_package_delivery_report_result_reconciliation_plan"
+                ],
+                chain[
+                    "operator_archive_package_delivery_report_notification_readiness_plan"
+                ],
+                chain[
+                    "operator_archive_package_delivery_report_notification_result_reconciliation_plan"
+                ],
+                chain["operator_archive_package_delivery_report_delivery_confirmation_plan"],
+                chain[
+                    "operator_archive_package_delivery_report_delivery_confirmation_result_reconciliation_plan"
+                ],
+                chain[
+                    "operator_archive_package_delivery_report_final_operator_acknowledgement_plan"
+                ],
+                chain[
+                    "operator_archive_package_delivery_report_acknowledgement_result_reconciliation_plan"
+                ],
+            )
+        )
+    )
+    return {
+        **chain,
+        "operator_archive_package_delivery_report_final_closeout_acknowledgement_plan": closeout,
+    }
+
+
+def test_operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_records_disabled_requirements() -> None:
+    chain = _accepted_midnight_oil_operator_archive_package_delivery_report_final_closeout_acknowledgement_plan_chain(
+        goal="Plan operator archive package delivery report final operator delivery closeout after final closeout acknowledgement.",
+        source_policy=["arxiv", "web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    closeout = chain[
+        "operator_archive_package_delivery_report_final_closeout_acknowledgement_plan"
+    ]
+
+    delivery_closeout = operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_midnight_oil(
+        MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseoutPlanRequest(
+            **_operator_archive_package_delivery_report_final_operator_delivery_closeout_request_kwargs(
+                chain,
+                chain["worker_output_aggregation_plan"],
+                chain["worker_synthesis_handoff_plan"],
+                chain["synthesis_bundle_assembly_plan"],
+                chain["final_synthesis_draft_plan"],
+                chain["final_html_artifact_assembly_plan"],
+                chain["final_artifact_persistence_plan"],
+                chain["final_artifact_graph_commit_plan"],
+                chain["final_artifact_publish_plan"],
+                chain["final_artifact_completion_finalization_plan"],
+                chain["final_run_closure_plan"],
+                chain["operator_notification_delivery_readiness_plan"],
+                chain["operator_notification_delivery_apply_plan"],
+                chain["operator_notification_delivery_result_reconciliation_plan"],
+                chain["operator_delivery_ledger_reconciliation_plan"],
+                chain["workspace_delivery_card_reconciliation_plan"],
+                chain["delivery_notification_reconciliation_plan"],
+                chain["retention_billing_reconciliation_plan"],
+                chain["final_closeout_archive_reconciliation_plan"],
+                chain["operator_archive_handoff_package_plan"],
+                chain["operator_archive_handoff_package_result_reconciliation_plan"],
+                chain["operator_archive_handoff_package_delivery_audit_plan"],
+                chain[
+                    "operator_archive_handoff_package_delivery_audit_result_reconciliation_plan"
+                ],
+                chain["operator_archive_package_delivery_report_plan"],
+                chain[
+                    "operator_archive_package_delivery_report_result_reconciliation_plan"
+                ],
+                chain[
+                    "operator_archive_package_delivery_report_notification_readiness_plan"
+                ],
+                chain[
+                    "operator_archive_package_delivery_report_notification_result_reconciliation_plan"
+                ],
+                chain["operator_archive_package_delivery_report_delivery_confirmation_plan"],
+                chain[
+                    "operator_archive_package_delivery_report_delivery_confirmation_result_reconciliation_plan"
+                ],
+                chain[
+                    "operator_archive_package_delivery_report_final_operator_acknowledgement_plan"
+                ],
+                chain[
+                    "operator_archive_package_delivery_report_acknowledgement_result_reconciliation_plan"
+                ],
+                closeout,
+            )
+        )
+    )
+
+    assert delivery_closeout.receipt_id == (
+        f"{preflight.run_id}-operator-archive-package-delivery-report-final-operator-delivery-closeout-plan"
+    )
+    assert (
+        delivery_closeout.operator_archive_package_delivery_report_final_closeout_acknowledgement_plan_receipt_id
+        == closeout.receipt_id
+    )
+    assert delivery_closeout.status == (
+        "blocked_operator_archive_package_delivery_report_final_operator_delivery_closeout_unimplemented"
+    )
+    assert (
+        delivery_closeout.adapter_key
+        == "operator_archive_package_delivery_report_final_operator_delivery_closeout"
+    )
+    assert (
+        delivery_closeout.planned_operator_archive_package_delivery_report_final_operator_delivery_closeout_receipt_id
+        == f"{preflight.run_id}-operator-archive-package-delivery-report-final-operator-delivery-closeout-receipt"
+    )
+    assert "operator archive package delivery report final operator delivery closeout entry writer" in (
+        delivery_closeout.operator_archive_package_delivery_report_final_operator_delivery_closeout_blockers
+    )
+    assert "operator_archive_package_delivery_report_final_operator_delivery_closeout_status_entry_id" in (
+        delivery_closeout.required_operator_archive_package_delivery_report_final_operator_delivery_closeout_receipt_fields
+    )
+    assert delivery_closeout.required_operator_archive_package_delivery_report_final_operator_delivery_closeout_invariants[
+        0
+    ].startswith(
+        "operator archive package delivery report final operator delivery closeout planner must require final closeout acknowledgement"
+    )
+    assert delivery_closeout.blocker_reason == (
+        "operator_archive_package_delivery_report_final_operator_delivery_closeout_unimplemented"
+    )
+    assert (
+        delivery_closeout.operator_archive_package_delivery_report_final_operator_delivery_closeout_allowed
+        is False
+    )
+    assert (
+        delivery_closeout.operator_archive_package_delivery_report_final_operator_delivery_closeout_entry_created
+        is False
+    )
+    assert (
+        delivery_closeout.operator_archive_package_delivery_report_final_closeout_acknowledgement_entry_created
+        is False
+    )
+    assert delivery_closeout.operator_notification_created is False
+    assert delivery_closeout.private_read_url_created is False
+    assert delivery_closeout.graph_mutated is False
+    assert delivery_closeout.provider_calls_made is False
+    assert delivery_closeout.retrieval_performed is False
+    assert delivery_closeout.final_artifact_created is False
+
+
+def test_operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_rejects_final_closeout_acknowledgement_state() -> None:
+    chain = _accepted_midnight_oil_operator_archive_package_delivery_report_final_closeout_acknowledgement_plan_chain(
+        goal="Reject final closeout acknowledgement state before final operator delivery closeout planning.",
+        source_policy=["web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    bad_closeout = chain[
+        "operator_archive_package_delivery_report_final_closeout_acknowledgement_plan"
+    ].model_copy(
+        update={
+            "operator_archive_package_delivery_report_final_closeout_acknowledgement_entry_created": True
+        }
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match=(
+            "operator_archive_package_delivery_report_final_closeout_acknowledgement_plan_receipt "
+            "must not create operator archive delivery report final closeout acknowledgement state"
+        ),
+    ):
+        MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseoutPlanRequest(
+            **_operator_archive_package_delivery_report_final_operator_delivery_closeout_request_kwargs(
+                chain,
+                chain["worker_output_aggregation_plan"],
+                chain["worker_synthesis_handoff_plan"],
+                chain["synthesis_bundle_assembly_plan"],
+                chain["final_synthesis_draft_plan"],
+                chain["final_html_artifact_assembly_plan"],
+                chain["final_artifact_persistence_plan"],
+                chain["final_artifact_graph_commit_plan"],
+                chain["final_artifact_publish_plan"],
+                chain["final_artifact_completion_finalization_plan"],
+                chain["final_run_closure_plan"],
+                chain["operator_notification_delivery_readiness_plan"],
+                chain["operator_notification_delivery_apply_plan"],
+                chain["operator_notification_delivery_result_reconciliation_plan"],
+                chain["operator_delivery_ledger_reconciliation_plan"],
+                chain["workspace_delivery_card_reconciliation_plan"],
+                chain["delivery_notification_reconciliation_plan"],
+                chain["retention_billing_reconciliation_plan"],
+                chain["final_closeout_archive_reconciliation_plan"],
+                chain["operator_archive_handoff_package_plan"],
+                chain["operator_archive_handoff_package_result_reconciliation_plan"],
+                chain["operator_archive_handoff_package_delivery_audit_plan"],
+                chain[
+                    "operator_archive_handoff_package_delivery_audit_result_reconciliation_plan"
+                ],
+                chain["operator_archive_package_delivery_report_plan"],
+                chain[
+                    "operator_archive_package_delivery_report_result_reconciliation_plan"
+                ],
+                chain[
+                    "operator_archive_package_delivery_report_notification_readiness_plan"
+                ],
+                chain[
+                    "operator_archive_package_delivery_report_notification_result_reconciliation_plan"
+                ],
+                chain["operator_archive_package_delivery_report_delivery_confirmation_plan"],
+                chain[
+                    "operator_archive_package_delivery_report_delivery_confirmation_result_reconciliation_plan"
+                ],
+                chain[
+                    "operator_archive_package_delivery_report_final_operator_acknowledgement_plan"
+                ],
+                chain[
+                    "operator_archive_package_delivery_report_acknowledgement_result_reconciliation_plan"
+                ],
+                bad_closeout,
+            )
+        )
+
+
+def test_midnight_oil_operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_api_contract() -> None:
+    from interfaces.research.api.app import create_app
+
+    chain = _accepted_midnight_oil_operator_archive_package_delivery_report_final_closeout_acknowledgement_plan_chain(
+        goal="Expose operator archive package delivery report final operator delivery closeout planning over the API.",
+        source_policy=["arxiv", "substack"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    closeout = chain[
+        "operator_archive_package_delivery_report_final_closeout_acknowledgement_plan"
+    ]
+    request_json = {
+        key: value.model_dump(mode="json")
+        for key, value in _operator_archive_package_delivery_report_final_operator_delivery_closeout_request_kwargs(
+            chain,
+            chain["worker_output_aggregation_plan"],
+            chain["worker_synthesis_handoff_plan"],
+            chain["synthesis_bundle_assembly_plan"],
+            chain["final_synthesis_draft_plan"],
+            chain["final_html_artifact_assembly_plan"],
+            chain["final_artifact_persistence_plan"],
+            chain["final_artifact_graph_commit_plan"],
+            chain["final_artifact_publish_plan"],
+            chain["final_artifact_completion_finalization_plan"],
+            chain["final_run_closure_plan"],
+            chain["operator_notification_delivery_readiness_plan"],
+            chain["operator_notification_delivery_apply_plan"],
+            chain["operator_notification_delivery_result_reconciliation_plan"],
+            chain["operator_delivery_ledger_reconciliation_plan"],
+            chain["workspace_delivery_card_reconciliation_plan"],
+            chain["delivery_notification_reconciliation_plan"],
+            chain["retention_billing_reconciliation_plan"],
+            chain["final_closeout_archive_reconciliation_plan"],
+            chain["operator_archive_handoff_package_plan"],
+            chain["operator_archive_handoff_package_result_reconciliation_plan"],
+            chain["operator_archive_handoff_package_delivery_audit_plan"],
+            chain[
+                "operator_archive_handoff_package_delivery_audit_result_reconciliation_plan"
+            ],
+            chain["operator_archive_package_delivery_report_plan"],
+            chain["operator_archive_package_delivery_report_result_reconciliation_plan"],
+            chain["operator_archive_package_delivery_report_notification_readiness_plan"],
+            chain[
+                "operator_archive_package_delivery_report_notification_result_reconciliation_plan"
+            ],
+            chain["operator_archive_package_delivery_report_delivery_confirmation_plan"],
+            chain[
+                "operator_archive_package_delivery_report_delivery_confirmation_result_reconciliation_plan"
+            ],
+            chain["operator_archive_package_delivery_report_final_operator_acknowledgement_plan"],
+            chain[
+                "operator_archive_package_delivery_report_acknowledgement_result_reconciliation_plan"
+            ],
+            closeout,
+        ).items()
+    }
+
+    with TestClient(create_app()) as client:
+        r = client.post(
+            "/research/midnight-oil/operator-archive-package-delivery-report-final-operator-delivery-closeout-plan",
+            json=request_json,
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["receipt_id"] == (
+        f"{preflight.run_id}-operator-archive-package-delivery-report-final-operator-delivery-closeout-plan"
+    )
+    assert (
+        body[
+            "operator_archive_package_delivery_report_final_closeout_acknowledgement_plan_receipt_id"
+        ]
+        == closeout.receipt_id
+    )
+    assert body["status"] == (
+        "blocked_operator_archive_package_delivery_report_final_operator_delivery_closeout_unimplemented"
+    )
+    assert (
+        body["adapter_key"]
+        == "operator_archive_package_delivery_report_final_operator_delivery_closeout"
+    )
+    assert body[
+        "planned_operator_archive_package_delivery_report_final_operator_delivery_closeout_entry_id"
+    ] == f"{preflight.run_id}-operator-archive-package-delivery-report-final-operator-delivery-closeout-entry"
+    assert body[
+        "planned_operator_archive_package_delivery_report_final_operator_delivery_closeout_status_entry_id"
+    ] == f"{preflight.run_id}-operator-archive-package-delivery-report-final-operator-delivery-closeout-status-entry"
+    assert "operator archive package delivery report final operator delivery closeout receipt writer" in body[
+        "operator_archive_package_delivery_report_final_operator_delivery_closeout_blockers"
+    ]
+    assert "operator_archive_package_delivery_report_final_operator_delivery_closeout_audit_entry_id" in body[
+        "required_operator_archive_package_delivery_report_final_operator_delivery_closeout_receipt_fields"
+    ]
+    assert body["blocker_reason"] == (
+        "operator_archive_package_delivery_report_final_operator_delivery_closeout_unimplemented"
+    )
+    assert (
+        body[
+            "operator_archive_package_delivery_report_final_operator_delivery_closeout_allowed"
+        ]
+        is False
+    )
+    assert (
+        body[
+            "operator_archive_package_delivery_report_final_operator_delivery_closeout_entry_created"
+        ]
+        is False
+    )
+    assert (
+        body[
+            "operator_archive_package_delivery_report_final_closeout_acknowledgement_entry_created"
         ]
         is False
     )
