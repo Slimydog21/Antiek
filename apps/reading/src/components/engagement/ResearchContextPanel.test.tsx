@@ -2,6 +2,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ResearchContextPanel,
+  CITATION_HOP_PIPELINE_STAGES,
+  citationHopStageProgress,
   domainAwareSearchDefault,
   domainSearchCoverage,
   twinNoteMetrics,
@@ -42,6 +44,81 @@ vi.mock("../../api/engagement", () => ({
     searchEngagementContext(...args),
   promoteTwinsToContext: (...args: unknown[]) => promoteTwinsToContext(...args),
 }));
+
+describe("citation hop pipeline pure helpers (api)", () => {
+  it("exports closed three-hop stage list", () => {
+    expect([...CITATION_HOP_PIPELINE_STAGES]).toEqual([
+      "insights",
+      "questions",
+      "sources",
+    ]);
+  });
+
+  it("derives hop completeness without inventing empty stages", () => {
+    const mid = citationHopStageProgress({
+      insight_count: 2,
+      question_count: 0,
+      ref_count: 1,
+    });
+    expect(mid.stages).toEqual([...CITATION_HOP_PIPELINE_STAGES]);
+    expect(mid.present).toEqual(["insights", "sources"]);
+    expect(mid.missing).toEqual(["questions"]);
+    expect(mid.present_count).toBe(2);
+    expect(mid.total).toBe(3);
+    expect(mid.coverage_ratio).toBeCloseTo(2 / 3);
+    expect(mid.chain_complete).toBe(true);
+    expect(mid.insight_count).toBe(2);
+    expect(mid.question_count).toBe(0);
+    expect(mid.ref_count).toBe(1);
+
+    const full = citationHopStageProgress({
+      citation_chain: [
+        { hop: "insights", count: 1, items: ["a"] },
+        { hop: "questions", count: 1, items: ["q"] },
+        { hop: "sources", count: 1, items: ["s"] },
+      ],
+      insight_count: 1,
+      question_count: 1,
+      ref_count: 1,
+    });
+    expect(full.present).toEqual(["insights", "questions", "sources"]);
+    expect(full.missing).toEqual([]);
+    expect(full.present_count).toBe(3);
+    expect(full.coverage_ratio).toBe(1);
+    expect(full.chain_complete).toBe(true);
+
+    const empty = citationHopStageProgress({});
+    expect(empty.present).toEqual([]);
+    expect(empty.missing).toEqual(["insights", "questions", "sources"]);
+    expect(empty.present_count).toBe(0);
+    expect(empty.chain_complete).toBe(false);
+    expect(empty.coverage_ratio).toBe(0);
+
+    // Explicit chain_complete false does not invent when counts empty
+    const forced = citationHopStageProgress({
+      chain_complete: true,
+      insight_count: 0,
+      ref_count: 0,
+    });
+    expect(forced.chain_complete).toBe(true);
+    expect(forced.present).toEqual([]);
+  });
+
+  it("reads hop rows from citation_chain when pack counts are zero", () => {
+    const fromChain = citationHopStageProgress({
+      citation_chain: [
+        { hop: "questions", count: 3 },
+        { hop: "sources", items: [{ id: "r1" }] },
+      ],
+      insight_count: 0,
+      question_count: 0,
+      ref_count: 0,
+    });
+    expect(fromChain.present).toEqual(["questions", "sources"]);
+    expect(fromChain.missing).toEqual(["insights"]);
+    expect(fromChain.present_count).toBe(2);
+  });
+});
 
 describe("ResearchContextPanel", () => {
   afterEach(() => {
@@ -826,6 +903,25 @@ describe("ResearchContextPanel", () => {
     expect(chain.getAttribute("data-hop-stage-count")).toBe("2");
     expect(chain.textContent).toMatch(/Citation chain/i);
     expect(chain.textContent).toMatch(/multi-hop grounding/i);
+    // Residual (api): competitive citation hop pipeline completeness.
+    const hopPipe = screen.getByTestId("evidence-citation-hop-pipeline");
+    expect(hopPipe.getAttribute("data-present-count")).toBe("2");
+    expect(hopPipe.getAttribute("data-total")).toBe("3");
+    expect(hopPipe.getAttribute("data-chain-complete")).toBe("true");
+    expect(hopPipe.getAttribute("data-present") || "").toMatch(/insights/);
+    expect(hopPipe.getAttribute("data-present") || "").toMatch(/sources/);
+    expect(hopPipe.getAttribute("data-missing") || "").toMatch(/questions/);
+    expect(
+      screen
+        .getByTestId("evidence-citation-hop-pipeline-insights")
+        .getAttribute("data-present"),
+    ).toBe("true");
+    expect(
+      screen
+        .getByTestId("evidence-citation-hop-pipeline-questions")
+        .getAttribute("data-present"),
+    ).toBe("false");
+    expect(hopPipe.textContent).toMatch(/Competitive citation hops/i);
     // Residual (air): multi-hop hop list with stable anchors (claim→source nav).
     const hops = screen.getByTestId("evidence-citation-chain-hops");
     expect(hops.getAttribute("data-chain-complete")).toBe("true");

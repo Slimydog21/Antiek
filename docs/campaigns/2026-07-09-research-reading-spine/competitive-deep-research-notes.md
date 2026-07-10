@@ -3749,3 +3749,9 @@ P0 PR #465. Pivot aph+ outside thrash.
 ## Residual aph · 2026-07-10 — free Host into account HTML-first stamps
 free-host-{book_id} buttons: data-html-first · free-host · seamless-port · never PDF title.
 vitest MarketplaceHost free host path green. P0 PR #465. Pivot api+ outside thrash.
+
+## Residual api · 2026-07-10 — competitive citation hop pipeline completeness
+CITATION_HOP_PIPELINE_STAGES + citationHopStageProgress pure helpers on ResearchContextPanel.
+evidence-citation-hop-pipeline UI: present/missing hops · coverage_ratio · chain_complete ·
+never invents empty stages (parity ape DR stage pipeline for citation multi-hop bar).
+vitest ResearchContextPanel 21 green. P0 PR #465. Pivot apj+ outside thrash.

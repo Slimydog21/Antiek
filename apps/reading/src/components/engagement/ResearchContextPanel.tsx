@@ -25,6 +25,8 @@
  * Residual (sl): float|full research context pack (prompt_block) as HTML.
  * Residual (tq): context_search float/full carries search_query + search_hit_count
  * into HostedHtmlDocumentHost honesty chrome.
+ * Residual (api): competitive citation hop pipeline completeness
+ * (insights → questions → sources · never invents hops).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -77,6 +79,114 @@ export function twinNoteMetrics(
       ? pack.twin_count
       : fromUnits;
   return { total, insights, questions, other };
+}
+
+/**
+ * Residual (api): competitive citation multi-hop pipeline
+ * insights → questions → sources (world-class citation-required synthesis bar).
+ * Never invents hops — present only when count/items non-empty.
+ */
+export const CITATION_HOP_PIPELINE_STAGES = [
+  "insights",
+  "questions",
+  "sources",
+] as const;
+
+export type CitationHopPipelineStage =
+  (typeof CITATION_HOP_PIPELINE_STAGES)[number];
+
+export type CitationHopStageProgress = {
+  stages: readonly CitationHopPipelineStage[];
+  present: CitationHopPipelineStage[];
+  missing: CitationHopPipelineStage[];
+  present_count: number;
+  total: number;
+  coverage_ratio: number;
+  chain_complete: boolean;
+  insight_count: number;
+  question_count: number;
+  ref_count: number;
+};
+
+function hopStagePresent(
+  stage: CitationHopPipelineStage,
+  opts: {
+    citation_chain?: readonly { hop?: string; count?: number; items?: unknown[] }[] | null;
+    insight_count?: number;
+    question_count?: number;
+    ref_count?: number;
+  },
+): boolean {
+  const chain = opts.citation_chain || [];
+  const hopRow = chain.find(
+    (h) => String(h.hop || "").toLowerCase() === stage,
+  );
+  if (hopRow) {
+    const n =
+      typeof hopRow.count === "number" && Number.isFinite(hopRow.count)
+        ? hopRow.count
+        : (hopRow.items || []).length;
+    if (n > 0) return true;
+  }
+  // Fall back to pack-level counts when chain stages omit empty hops.
+  if (stage === "insights") return (opts.insight_count ?? 0) > 0;
+  if (stage === "questions") return (opts.question_count ?? 0) > 0;
+  if (stage === "sources") return (opts.ref_count ?? 0) > 0;
+  return false;
+}
+
+/**
+ * Residual (api): derive citation hop pipeline completeness from evidence pack.
+ * Does not invent sources or twin content — empty counts stay missing.
+ */
+export function citationHopStageProgress(opts: {
+  citation_chain?: readonly { hop?: string; count?: number; items?: unknown[] }[] | null;
+  insight_count?: number;
+  question_count?: number;
+  ref_count?: number;
+  chain_complete?: boolean | null;
+}): CitationHopStageProgress {
+  const insight_count =
+    typeof opts.insight_count === "number" && Number.isFinite(opts.insight_count)
+      ? opts.insight_count
+      : 0;
+  const question_count =
+    typeof opts.question_count === "number" &&
+    Number.isFinite(opts.question_count)
+      ? opts.question_count
+      : 0;
+  const ref_count =
+    typeof opts.ref_count === "number" && Number.isFinite(opts.ref_count)
+      ? opts.ref_count
+      : 0;
+  const present = CITATION_HOP_PIPELINE_STAGES.filter((s) =>
+    hopStagePresent(s, {
+      citation_chain: opts.citation_chain,
+      insight_count,
+      question_count,
+      ref_count,
+    }),
+  );
+  const missing = CITATION_HOP_PIPELINE_STAGES.filter(
+    (s) => !present.includes(s),
+  );
+  const total = CITATION_HOP_PIPELINE_STAGES.length;
+  const present_count = present.length;
+  const chain_complete =
+    opts.chain_complete === true ||
+    (insight_count > 0 && ref_count > 0);
+  return {
+    stages: CITATION_HOP_PIPELINE_STAGES,
+    present,
+    missing,
+    present_count,
+    total,
+    coverage_ratio: total > 0 ? present_count / total : 0,
+    chain_complete,
+    insight_count,
+    question_count,
+    ref_count,
+  };
 }
 
 // Residual (alo): pure helpers live in workspace/domainSearchDefaults — re-export
@@ -801,6 +911,63 @@ export function ResearchContextPanel({
                 ? " · refs present · seed insights for full chain"
                 : " · incomplete chain · attach pubs / seed twins (never invent sources)"}
           </div>
+          {/* Residual (api): competitive citation hop pipeline completeness. */}
+          {(() => {
+            const hopPipe = citationHopStageProgress({
+              citation_chain: evidence.citation_chain,
+              insight_count: evidence.insight_count,
+              question_count: evidence.question_count,
+              ref_count: evidence.ref_count,
+              chain_complete: evidence.chain_complete,
+            });
+            return (
+              <div
+                className="font-mono text-[11px] space-y-0.5 border border-ink/10 rounded p-2 my-1 dark:border-bright/10"
+                data-testid="evidence-citation-hop-pipeline"
+                data-present-count={String(hopPipe.present_count)}
+                data-total={String(hopPipe.total)}
+                data-coverage-ratio={String(
+                  Math.round(hopPipe.coverage_ratio * 1000) / 1000,
+                )}
+                data-present={hopPipe.present.join(",") || ""}
+                data-missing={hopPipe.missing.join(",") || ""}
+                data-chain-complete={String(hopPipe.chain_complete)}
+                data-view-format="html"
+                role="status"
+              >
+                <p>
+                  Competitive citation hops · {hopPipe.present_count}/
+                  {hopPipe.total}
+                  {hopPipe.chain_complete
+                    ? " · chain complete"
+                    : hopPipe.missing.length > 0
+                      ? ` · missing=${hopPipe.missing.join(", ")}`
+                      : ""}
+                  {" · never invent sources"}
+                </p>
+                <ol
+                  className="flex flex-wrap gap-1 list-none p-0 m-0"
+                  data-testid="evidence-citation-hop-pipeline-list"
+                >
+                  {hopPipe.stages.map((stage, i) => {
+                    const done = hopPipe.present.includes(stage);
+                    return (
+                      <li
+                        key={stage}
+                        data-testid={`evidence-citation-hop-pipeline-${stage}`}
+                        data-stage={stage}
+                        data-present={String(done)}
+                        className={done ? "opacity-100 font-semibold" : "opacity-50"}
+                      >
+                        {done ? "✓" : "○"} {stage}
+                        {i < hopPipe.stages.length - 1 ? " →" : ""}
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
+            );
+          })()}
           {/* Residual (ait): evidence pack → competitive DR scorecard (parity aim/aio/aip). */}
           <p
             className="meta font-mono text-[11px] flex flex-wrap gap-x-3 gap-y-1 opacity-90"
