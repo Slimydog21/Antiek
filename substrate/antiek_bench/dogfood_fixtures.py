@@ -13,9 +13,9 @@ from typing import Any
 
 from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 
-# Residual (st): v2 adds write-seed / float HTML / budget foresight postures
-# from the research-reading spine campaign (rt–sr, sf–so).
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v2"
+# Residual (st): v2 adds write-seed / float HTML / budget foresight postures.
+# Residual (tf): v3 adds book_qa electricity STEM (Faraday/Maxwell free PD).
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v3"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -112,6 +112,23 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "decision-tree",
                 "pricing",
                 "soft",
+            ),
+        ),
+        # Residual (tf): free STEM electricity PD → book_qa for tech researchers.
+        SuiteItem(
+            item_id="dogfood-book-faraday-induction",
+            task_class="book_qa",
+            prompt=(
+                "From Faraday Experimental Researches in Electricity (free PD HTML): "
+                "what is electromagnetic induction, and why does free public-domain "
+                "hosting of knowledge-dense STEM books matter for research workstations?"
+            ),
+            expected_keywords=(
+                "faraday",
+                "induction",
+                "electricity",
+                "public",
+                "html",
             ),
         ),
     )

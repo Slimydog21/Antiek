@@ -35,12 +35,14 @@ def test_dogfood_suite_covers_task_classes():
     assert suite.suite_version == COMPETITIVE_DOGFOOD_VERSION
     classes = set(suite.task_classes())
     assert {"distill", "synthesize", "wrestle", "book_qa"} <= classes
-    assert len(suite.items) >= 8
+    assert len(suite.items) >= 9
     # Residual (st): write-seed / float HTML / budget foresight postures.
     ids = {i.item_id for i in suite.items}
     assert "dogfood-wrestle-write-seed" in ids
     assert "dogfood-synth-float-evidence" in ids
     assert "dogfood-distill-budget-foresight" in ids
+    # Residual (tf): Faraday book_qa electricity STEM.
+    assert "dogfood-book-faraday-induction" in ids
 
 
 def test_register_does_not_auto_activate():
@@ -73,12 +75,14 @@ def test_payload_and_api_html():
     payload = dogfood_fixture_payload(include_html=True)
     assert payload["auto_promoted"] is False
     assert payload["view_format"] == "html"
-    assert payload["item_count"] >= 8
+    assert payload["item_count"] >= 9
     assert payload["html"]
     assert "application/pdf" not in payload["html"].lower()
-    # Residual (st): v2 fixtures visible in HTML listing.
+    # Residual (st/tf): v3 fixtures visible in HTML listing.
     assert "dogfood-wrestle-write-seed" in payload["html"]
     assert "twin_seed" in payload["html"]
+    assert "dogfood-book-faraday-induction" in payload["html"]
+    assert "faraday" in payload["html"].lower()
 
     app = FastAPI()
     register_settings_budget_routes(app)

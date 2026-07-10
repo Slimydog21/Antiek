@@ -988,3 +988,8 @@ live bookstore connectors.
 host_book_into_account projects Faraday and Maxwell free PD bodies as HTML
 (not PDF). Competitive delta: knowledge-dense electricity spine is hostable
 into the Antiek account library as HTML reading assets for tech researchers.
+
+## Residual tf · 2026-07-10 — Dogfood v3 Faraday book_qa
+Competitive dogfood gains book_qa Faraday induction + free PD HTML hosting
+posture (v3). Competitive delta: weekly Antiek-bench rewrite can learn from
+marketplace free STEM electricity spine alongside write-seed/float/budget.

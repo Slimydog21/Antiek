@@ -1,0 +1,13 @@
+# inventory-tf · Dogfood v3 Faraday book_qa electricity STEM
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: tf
+date: 2026-07-10
+
+## Closed
+- COMPETITIVE_DOGFOOD_VERSION → suite-competitive-dogfood-v3
+- dogfood-book-faraday-induction (book_qa)
+- pytest dogfood 4 · SCRATCH residual-tests-tf.log
+- propose≠promote · never auto-activate
+
+## Not in scope
+- Operator merge PR #465 (gated)
