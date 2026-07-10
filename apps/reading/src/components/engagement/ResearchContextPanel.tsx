@@ -270,12 +270,13 @@ export function ResearchContextPanel({
           >
             Settings · hydrate readiness
           </a>
+          {/* Residual (xe): L1 arxiv checklist section deep-link (parity hydrate xd). */}
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
             data-testid="research-context-dual-gate-checklist-link"
-            title="Dual-gate L1–L4 checklist (arxiv/substack hydrate prep; offline default)"
+            title="Dual-gate L1 arxiv hydrate checklist (prep only · offline default)"
           >
-            Dual-gate L1–L4 checklist
+            Dual-gate L1–L2 hydrate checklist
           </a>
         </p>
         <p className="meta">
@@ -683,10 +684,10 @@ export function ResearchContextPanel({
                   Settings · hydrate readiness
                 </a>
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
                   data-testid="evidence-citation-trust-dual-gate-link"
                   className="underline hover:opacity-100"
-                  title="Dual-gate L1–L4 checklist (arxiv/substack hydrate prep; offline default)"
+                  title="Dual-gate L1 arxiv hydrate checklist (prep only · offline default)"
                 >
                   Dual-gate L1–L2 hydrate checklist
                 </a>
@@ -715,10 +716,10 @@ export function ResearchContextPanel({
                   Settings · hydrate readiness
                 </a>
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
                   data-testid="evidence-citation-trust-dual-gate-link"
                   className="underline hover:opacity-100"
-                  title="Dual-gate L1–L4 checklist (maintain hydrate prep; offline default)"
+                  title="Dual-gate L1 arxiv hydrate checklist (maintain prep · offline default)"
                 >
                   Dual-gate L1–L2 hydrate checklist
                 </a>

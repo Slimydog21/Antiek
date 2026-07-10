@@ -1,0 +1,20 @@
+# inventory-xe · ResearchContext dual-gate L1 #l1-arxiv deep-links
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: xe
+date: 2026-07-10
+tip_before: b84e2bab (xd)
+
+## Problem
+ResearchContext dual-gate + citation-trust dual-gate linked checklist root
+without #l1-arxiv (parity reading hydrate xd).
+
+## Fix
+- research-context-dual-gate-checklist-link → #l1-arxiv
+- evidence-citation-trust-dual-gate-link (grounded + ungrounded) → #l1-arxiv
+- Test locks panel dual-gate href
+
+## Verified
+npm test ResearchContextPanel.test.tsx → 12 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

@@ -58,8 +58,9 @@ describe("ResearchContextPanel", () => {
       <ResearchContextPanel assetId="a1" spawnId="spn_1" />,
     );
     const dual = screen.getByTestId("research-context-dual-gate-checklist-link");
-    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4/);
-    expect(dual.textContent).toMatch(/dual-gate/i);
+    // Residual (xe): L1 arxiv checklist section deep-link.
+    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    expect(dual.textContent).toMatch(/L1–L2 hydrate checklist/i);
   });
 
   it("links to Settings hydrate readiness (ie)", () => {

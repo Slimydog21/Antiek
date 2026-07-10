@@ -1503,3 +1503,8 @@ deferred policy without inventing live body.
 ResearchThis · HostedHtml · MarketplaceHost hydrate dual-gate links jump to
 #l1-arxiv (parity PublicationAttach xc). Competitive delta: full reading≡research
 hydrate prep matrix navigates deferred L1 policy.
+
+## Residual xe · 2026-07-10 — ResearchContext dual-gate L1 #l1-arxiv
+ResearchContext panel + citation-trust dual-gate links jump to #l1-arxiv.
+Competitive delta: recursive note-taker context navigates hydrate deferred
+policy (parity reading host hydrate matrix xd).
