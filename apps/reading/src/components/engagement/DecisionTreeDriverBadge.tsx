@@ -21,6 +21,8 @@
  * can compare weekly ND suggestion vs installed driver (advisory only).
  * Residual (afc): when researchTier is set, surface Antiek-bench weekly
  * best-by-task for mapped task_class (parity launch budget afb · never auto-route).
+ * Residual (afe): explicit Install best-for-task button when best differs from
+ * installed driver (operator click only · never auto-route).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -29,6 +31,7 @@ import {
   fetchAntiekBenchLeaderboard,
   fetchDecisionTreeSelection,
   fetchSettingsBudget,
+  installDecisionTreeSelection,
   type AntiekBenchLeaderboardResponse,
   type BudgetResponse,
   type DecisionTreeSelectionResponse,
@@ -86,6 +89,8 @@ export function DecisionTreeDriverBadge({
     useState<PromptCostEstimateResponse | null>(null);
   const [leaderboard, setLeaderboard] =
     useState<AntiekBenchLeaderboardResponse | null>(null);
+  const [installBusy, setInstallBusy] = useState(false);
+  const [installStatus, setInstallStatus] = useState<string | null>(null);
   const normalizedTier = (researchTier || "").trim().toLowerCase() || "";
   const promptChars = (promptText || "").length;
   const benchTaskClass =
@@ -101,6 +106,32 @@ export function DecisionTreeDriverBadge({
         : null,
     [leaderboard, benchTaskClass],
   );
+  const bestDiffers = Boolean(
+    bestByTask?.model_id &&
+      (!tree?.model_id || bestByTask.model_id !== tree.model_id),
+  );
+
+  const onInstallBestForTask = useCallback(async () => {
+    if (!bestByTask?.model_id || !benchTaskClass) return;
+    setInstallBusy(true);
+    setInstallStatus(null);
+    setError(null);
+    try {
+      const result = await installDecisionTreeSelection({
+        model_id: bestByTask.model_id,
+        provider_id: tree?.provider_id ?? null,
+      });
+      setTree(result);
+      setInstallStatus(
+        `Installed ${bestByTask.model_id} for ${benchTaskClass} (advisory · explicit)`,
+      );
+      setRefreshTick((n) => n + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setInstallBusy(false);
+    }
+  }, [bestByTask?.model_id, benchTaskClass, tree?.provider_id]);
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -251,10 +282,10 @@ export function DecisionTreeDriverBadge({
         </p>
       ) : null}
 
-      {/* Residual (afc): best-by-task for this depth (parity launch afb). */}
+      {/* Residual (afc/afe): best-by-task + explicit install when differs. */}
       {benchTaskClass ? (
-        <p
-          className="opacity-90"
+        <div
+          className="opacity-90 space-y-0.5"
           data-testid="decision-tree-bench-best-by-task"
           data-task-class={benchTaskClass}
           data-best-model={bestByTask?.model_id ?? ""}
@@ -270,32 +301,62 @@ export function DecisionTreeDriverBadge({
                 bestByTask.model_id === tree.model_id,
             ),
           )}
+          data-install-available={String(bestDiffers)}
           role="status"
         >
-          Bench best for {benchTaskClass}
-          {bestByTask ? (
-            <>
-              : <code data-testid="decision-tree-bench-best-model">
-                {bestByTask.model_id}
-              </code>{" "}
-              ({bestByTask.score.toFixed(2)})
-              {tree?.model_id && bestByTask.model_id === tree.model_id
-                ? " · matches installed"
-                : " · advisory only"}
-            </>
-          ) : (
-            <>: (no weekly scores)</>
-          )}{" "}
-          ·{" "}
-          <a
-            href="/settings#antiek-bench-leaderboard"
-            className="underline opacity-80 hover:opacity-100"
-            data-testid="decision-tree-bench-leaderboard-link"
-            title="Open Settings weekly leaderboard (install best-by-task explicitly)"
-          >
-            leaderboard
-          </a>
-        </p>
+          <p>
+            Bench best for {benchTaskClass}
+            {bestByTask ? (
+              <>
+                :{" "}
+                <code data-testid="decision-tree-bench-best-model">
+                  {bestByTask.model_id}
+                </code>{" "}
+                ({bestByTask.score.toFixed(2)})
+                {tree?.model_id && bestByTask.model_id === tree.model_id
+                  ? " · matches installed"
+                  : " · advisory only"}
+              </>
+            ) : (
+              <>: (no weekly scores)</>
+            )}{" "}
+            ·{" "}
+            <a
+              href="/settings#antiek-bench-leaderboard"
+              className="underline opacity-80 hover:opacity-100"
+              data-testid="decision-tree-bench-leaderboard-link"
+              title="Open Settings weekly leaderboard (install best-by-task explicitly)"
+            >
+              leaderboard
+            </a>
+          </p>
+          {bestDiffers ? (
+            <button
+              type="button"
+              data-testid="decision-tree-install-best-for-task"
+              data-install-model-id={bestByTask?.model_id ?? ""}
+              data-install-task-class={benchTaskClass}
+              data-advisory-only="true"
+              disabled={installBusy || refreshing}
+              onClick={() => void onInstallBestForTask()}
+              className="underline opacity-80 hover:opacity-100 disabled:opacity-50"
+              title={`Install ${bestByTask?.model_id} (best ${benchTaskClass}) as decision-tree driver — explicit operator action · never auto-route`}
+            >
+              {installBusy
+                ? "Installing…"
+                : `Install best for ${benchTaskClass}`}
+            </button>
+          ) : null}
+          {installStatus ? (
+            <p
+              className="text-[10px] font-mono opacity-80"
+              data-testid="decision-tree-install-best-status"
+              role="status"
+            >
+              {installStatus}
+            </p>
+          ) : null}
+        </div>
       ) : null}
 
       {/* Residual (hv/ku): machine-readable driver + budget + depth metrics. */}

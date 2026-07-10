@@ -2393,3 +2393,8 @@ vitest DecisionTreeDriverBadge 12 green.
 ## Residual afd · 2026-07-10 — SESSION-ARC afb–afc model quality at fire
 Handoff: Antiek-bench best-by-task advisory at launch (afb) and driver badge
 (afc). Advisory only. P0 operator merge PR #465. Pivot afe+ outside thrash.
+
+## Residual afe · 2026-07-10 — install best-for-task from driver badge
+When Antiek-bench best-for-task differs from installed driver, badge offers
+explicit Install best for {task} (operator click · never auto-route). Completes
+model-quality-at-fire loop (ads→afb→afc→afe). vitest DecisionTreeDriverBadge 12 green.

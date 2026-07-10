@@ -10,6 +10,7 @@ const fetchDecisionTreeSelection = vi.fn();
 const fetchSettingsBudget = vi.fn();
 const estimatePromptCost = vi.fn();
 const fetchAntiekBenchLeaderboard = vi.fn();
+const installDecisionTreeSelection = vi.fn();
 
 vi.mock("../../api/settings", () => ({
   fetchDecisionTreeSelection: (...args: unknown[]) =>
@@ -18,6 +19,8 @@ vi.mock("../../api/settings", () => ({
   estimatePromptCost: (...args: unknown[]) => estimatePromptCost(...args),
   fetchAntiekBenchLeaderboard: (...args: unknown[]) =>
     fetchAntiekBenchLeaderboard(...args),
+  installDecisionTreeSelection: (...args: unknown[]) =>
+    installDecisionTreeSelection(...args),
 }));
 
 describe("DecisionTreeDriverBadge residual cw/eq", () => {
@@ -27,6 +30,7 @@ describe("DecisionTreeDriverBadge residual cw/eq", () => {
     fetchSettingsBudget.mockReset();
     estimatePromptCost.mockReset();
     fetchAntiekBenchLeaderboard.mockReset();
+    installDecisionTreeSelection.mockReset();
     fetchSettingsBudget.mockResolvedValue({
       daily_cap_usd: 10,
       spent_usd: 2.5,
@@ -137,6 +141,31 @@ describe("DecisionTreeDriverBadge residual cw/eq", () => {
     expect(
       screen.getByTestId("decision-tree-bench-leaderboard-link").getAttribute("href"),
     ).toBe("/settings#antiek-bench-leaderboard");
+    // Residual (afe): explicit install when best differs from installed.
+    expect(bench.getAttribute("data-install-available")).toBe("true");
+    const installBtn = screen.getByTestId("decision-tree-install-best-for-task");
+    expect(installBtn.getAttribute("data-install-model-id")).toBe("strong-model");
+    expect(installBtn.getAttribute("data-install-task-class")).toBe("wrestle");
+    expect(installBtn.getAttribute("data-advisory-only")).toBe("true");
+    installDecisionTreeSelection.mockResolvedValue({
+      model_id: "strong-model",
+      provider_id: "zai",
+      installed: true,
+      notes: [],
+      source: "test",
+    });
+    fireEvent.click(installBtn);
+    await waitFor(() => {
+      expect(installDecisionTreeSelection).toHaveBeenCalledWith({
+        model_id: "strong-model",
+        provider_id: "zai",
+      });
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("decision-tree-install-best-status").textContent,
+      ).toMatch(/Installed strong-model for wrestle/i);
+    });
   });
 
   it("shows none when not installed", async () => {
