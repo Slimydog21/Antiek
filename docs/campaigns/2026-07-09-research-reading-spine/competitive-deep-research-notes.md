@@ -3294,3 +3294,7 @@ Pivot alr+ outside thrash (prefer non-domain-search).
 Deferred-gaps brief notes L5 offline Sprint 1–3 complete and free PD domain-search
 closed offline. Live injectors remain dual-gate. P0 operator merge PR #465.
 Pivot als+ outside thrash.
+
+## Residual als · 2026-07-10 — DEFERRED-GAPS domain-search + L5 closed offline notes
+Deferred-gaps items 5–6 record free PD domain-search and L5 Sprint 1–3 offline-closed.
+P0 operator merge PR #465. Pivot alt+ outside thrash.
