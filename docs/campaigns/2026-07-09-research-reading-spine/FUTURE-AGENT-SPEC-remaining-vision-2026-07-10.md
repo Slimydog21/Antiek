@@ -1,14 +1,14 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** `6939b469` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
+**Campaign tip at write:** `5b4f90a2` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **URL:** https://github.com/Slimydog21/Antiek/pull/465  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
 
 ## Do not rebuild
 
-Prefer **SESSION-ARC-vz-zk-infinite-continuation.md** + inventories **vz–zy** + competitive notes.  
-This continuation: **107 residual ships** from vy tip `8e280766`.
+Prefer **SESSION-ARC-vz-zk-infinite-continuation.md** + inventories **vz–aab** + competitive notes.  
+This continuation: **109 residual ships** from vy tip `8e280766`.
 
 ### Closed product (high signal)
 
@@ -16,7 +16,7 @@ This continuation: **107 residual ships** from vy tip `8e280766`.
 |---|---|
 | Budget foresight | Launch + Settings remaining-after-prompt |
 | Dual-gate L1–L7 | Full section anchors + deep-links + chokepoint honesty |
-| Free STEM | Electricity trio · Computing quartet · technology path · free_count ≥16 |
+| Free STEM | Electricity trio · Computing quartet · technology path · free_count honesty |
 | Dogfood **v12** | Full list · task-class counts · panel+summary+API complete honesty |
 | Deferred map | Deferred (honest) · ND advisory · no stale Coming later |
 
@@ -26,8 +26,8 @@ This continuation: **107 residual ships** from vy tip `8e280766`.
 ### P2 — Dual-gate live injectors (operator-only)
 L1–L4 offline default · L5 payment deferred · L6 live multi-agent · L7 ND **never** router
 
-### P1 next offline (residual **aab+**)
-Outside dogfood-attr thrash and STEM filter thrash unless regression. Prefer
+### P1 next offline (residual **aad+**)
+Outside catalog free_count thrash and dogfood thrash unless regression. Prefer
 real product bugs, recursive twin / collective / MO offline polish, operator craft.
 
 ## Doctrine
