@@ -14,13 +14,20 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { AskBookResponse, BookCitation } from "../../api/books";
 import TalkToBook from "./TalkToBook";
 
-const { askBookMock, fetchDepthTiersMock } = vi.hoisted(() => ({
+const {
+  askBookMock,
+  fetchDepthTiersMock,
+  collectDeepResearchSpawnIds,
+  listRecentDeepResearchSpawnIds,
+} = vi.hoisted(() => ({
   askBookMock: vi.fn(),
   fetchDepthTiersMock: vi.fn(async () => ({
     active_depth_tier: null as string | null,
     active_preset: null,
     tiers: [],
   })),
+  collectDeepResearchSpawnIds: vi.fn(() => [] as string[]),
+  listRecentDeepResearchSpawnIds: vi.fn(() => [] as string[]),
 }));
 
 vi.mock("../../api/books", async (orig) => {
@@ -114,6 +121,53 @@ vi.mock("../../components/engagement/ResearchContextPanel", () => ({
   ),
 }));
 
+// Residual (ang): collective multi-select from talk bookmark (parity ResearchThis fc).
+vi.mock("../../workspace/collectDeepResearchSpawnIds", () => ({
+  collectDeepResearchSpawnIds: (...args: unknown[]) =>
+    collectDeepResearchSpawnIds(...args),
+}));
+
+vi.mock("../../workspace/recentDeepResearchSpawns", () => ({
+  listRecentDeepResearchSpawnIds: (...args: unknown[]) =>
+    listRecentDeepResearchSpawnIds(...args),
+}));
+
+vi.mock("../../workspace/windowsStore", () => ({
+  useWindows: (sel: (s: { windows: Record<string, unknown> }) => unknown) =>
+    sel({ windows: {} }),
+}));
+
+vi.mock("../../components/engagement/CollectiveResearchPanel", () => ({
+  CollectiveResearchPanel: (props: {
+    availableSpawnIds: string[];
+    parentAssetId?: string | null;
+    recentSpawnIds?: readonly string[] | null;
+    openSpawnIds?: readonly string[] | null;
+    onRecentSpawnsCleared?: () => void;
+    onDocMerged?: () => void;
+  }) => (
+    <div
+      data-testid="collective-research-panel-stub"
+      data-recent={
+        props.recentSpawnIds != null ? props.recentSpawnIds.join(",") : ""
+      }
+      data-has-clear={props.onRecentSpawnsCleared ? "1" : "0"}
+      data-has-merged={props.onDocMerged ? "1" : "0"}
+    >
+      {props.parentAssetId}:{props.availableSpawnIds.join(",")}
+      {props.onDocMerged ? (
+        <button
+          type="button"
+          data-testid="talk-to-book-collective-merge-notify"
+          onClick={() => props.onDocMerged?.()}
+        >
+          notify merge
+        </button>
+      ) : null}
+    </div>
+  ),
+}));
+
 const cite = (over: Partial<BookCitation> = {}): BookCitation => ({
   chunk_id: "c1",
   document_id: "doc-x",
@@ -140,6 +194,8 @@ beforeEach(() => {
     active_preset: null,
     tiers: [],
   });
+  collectDeepResearchSpawnIds.mockReset().mockReturnValue([]);
+  listRecentDeepResearchSpawnIds.mockReset().mockReturnValue([]);
   window.sessionStorage.clear();
 });
 afterEach(cleanup);
@@ -346,5 +402,98 @@ describe("TalkToBook (M2)", () => {
         .getByTestId("talk-to-book-context-refresh")
         .getAttribute("data-refresh-key"),
     ).toBe("1");
+  });
+
+  it("mounts collective panel when open DR spawns exist (ang)", async () => {
+    collectDeepResearchSpawnIds.mockReturnValue(["spn_talk_1", "spn_talk_2"]);
+    render(
+      <TalkToBook
+        documentId="doc-talk-coll"
+        title="Talk Collective Book"
+        onJumpToPage={vi.fn()}
+      />,
+    );
+    // Bookmark closed: collective not mounted until open.
+    expect(screen.queryByTestId("talk-to-book-collective-mount")).toBeNull();
+    fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
+    const mount = screen.getByTestId("talk-to-book-collective-mount");
+    expect(mount.getAttribute("data-view-format")).toBe("html");
+    expect(mount.getAttribute("data-document-id")).toBe("doc-talk-coll");
+    expect(mount.getAttribute("data-seamless-talk-collective")).toBe("true");
+    expect(mount.getAttribute("data-available-spawn-count")).toBe("2");
+    expect(screen.getByTestId("collective-research-panel-stub").textContent).toMatch(
+      /doc-talk-coll:spn_talk_1,spn_talk_2/,
+    );
+    // Collective merge remounts twins + context (parity ResearchThis and).
+    expect(
+      screen
+        .getByTestId("collective-research-panel-stub")
+        .getAttribute("data-has-merged"),
+    ).toBe("1");
+    expect(
+      screen
+        .getByTestId("talk-to-book-context-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("0");
+    fireEvent.click(screen.getByTestId("talk-to-book-collective-merge-notify"));
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId("talk-to-book-context-refresh")
+          .getAttribute("data-refresh-key"),
+      ).toBe("1");
+    });
+    expect(
+      screen
+        .getByTestId("talk-to-book-twins-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("1");
+  });
+
+  it("wires recent_ring into collect + talk collective mount (ang)", () => {
+    listRecentDeepResearchSpawnIds.mockReturnValue([
+      "spn_talk_recent",
+      "spn_talk_older",
+    ]);
+    collectDeepResearchSpawnIds.mockImplementation(
+      (source: { recentSpawnIds?: readonly string[] | null }) =>
+        [...(source.recentSpawnIds ?? [])],
+    );
+    render(
+      <TalkToBook
+        documentId="doc-talk-recent"
+        title="Recent Talk"
+        onJumpToPage={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
+    expect(collectDeepResearchSpawnIds).toHaveBeenCalled();
+    const lastCall = collectDeepResearchSpawnIds.mock.calls.at(-1)?.[0] as {
+      recentSpawnIds?: readonly string[];
+    };
+    expect(lastCall.recentSpawnIds).toEqual([
+      "spn_talk_recent",
+      "spn_talk_older",
+    ]);
+    const mount = screen.getByTestId("talk-to-book-collective-mount");
+    expect(mount.getAttribute("data-recent-count")).toBe("2");
+    expect(mount.getAttribute("data-available-spawn-count")).toBe("2");
+    const stub = screen.getByTestId("collective-research-panel-stub");
+    expect(stub.getAttribute("data-recent")).toBe(
+      "spn_talk_recent,spn_talk_older",
+    );
+    expect(stub.getAttribute("data-has-clear")).toBe("1");
+    expect(stub.textContent).toMatch(
+      /doc-talk-recent:spn_talk_recent,spn_talk_older/,
+    );
+  });
+
+  it("omits collective panel when no open spawns (ang)", () => {
+    collectDeepResearchSpawnIds.mockReturnValue([]);
+    render(
+      <TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
+    expect(screen.queryByTestId("talk-to-book-collective-mount")).toBeNull();
   });
 });

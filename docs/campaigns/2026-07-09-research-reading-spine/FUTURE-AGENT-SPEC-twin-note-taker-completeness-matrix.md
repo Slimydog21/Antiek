@@ -12,7 +12,7 @@
 | Surface | Residual | TwinNotesPanel / seed |
 |---|---|---|
 | ResearchWorkstation /inv | afs · aft | TwinNotes + context + autoPromote |
-| TalkToBook | agm · **ams** · **ana** | TwinNotes + ResearchContext · promote remount |
+| TalkToBook | agm · **ams** · **ana** · **ang** | TwinNotes + ResearchContext · promote remount · collective multi-select |
 | MetaReading | agn · **amt** · **anb** | TwinNotes + ResearchContext · promote remount |
 | ResearchThis | agq · **amr** · **amy** | TwinNotes + ResearchContext · promote remount |
 | HostedHtml book | bw · ez | TwinNotes remount |

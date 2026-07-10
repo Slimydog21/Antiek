@@ -3483,3 +3483,9 @@ P0 operator merge PR #465. Pivot anf+ outside thrash.
 ## Residual anf · 2026-07-10 — SESSION-ARC amy–ane remount matrix complete
 Wave handoff: promote remount (amy/ana/anb) + collective merge remount (and/ane)
 complete remount matrix. P0 operator merge PR #465. Pivot ang+ outside thrash.
+
+## Residual ang · 2026-07-10 — TalkToBook collective multi-select mount
+Talk bookmark mounts CollectiveResearchPanel when open/recent DR spawns exist so
+multi-select merge/analysis targets the book under conversation (reading ≡ research ·
+parity ResearchThis fc/ou). vitest TalkToBook 13 green.
+P0 operator merge PR #465. Pivot anh+ outside thrash (MetaReading collective preferred).

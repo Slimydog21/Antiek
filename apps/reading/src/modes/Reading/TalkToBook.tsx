@@ -1,13 +1,17 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { LemonButton } from "../../components/lemon";
 import { askBook } from "../../api/books";
 import type { BookCitation } from "../../api/books";
+import { CollectiveResearchPanel } from "../../components/engagement/CollectiveResearchPanel";
 import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
 import { ResearchContextPanel } from "../../components/engagement/ResearchContextPanel";
 import { TwinNotesPanel } from "../../components/engagement/TwinNotesPanel";
 import { useSettingsResearchTier } from "../../lib/useSettingsResearchTier";
 import ReadAloud from "../../components/voice/ReadAloud";
+import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
+import { listRecentDeepResearchSpawnIds } from "../../workspace/recentDeepResearchSpawns";
+import { useWindows } from "../../workspace/windowsStore";
 import { useTalkThread } from "./useTalkThread";
 import type { TalkMessage } from "./useTalkThread";
 
@@ -34,6 +38,9 @@ import type { TalkMessage } from "./useTalkThread";
  * Residual (ams): ResearchContext with researchTier on talk bookmark so
  *   intelligent search over twins sits next to multi-turn ask (parity amr).
  * Residual (ana): remount twins + context after twin promote (parity ResearchThis amy).
+ * Residual (ang): CollectiveResearchPanel when open/recent DR spawns exist so
+ *   multi-select merge/analysis runs against this book from the talk bookmark
+ *   (reading ≡ research · parity ResearchThis fc/ou · non-remount product).
  *
  * §9.0: a withheld region can never be cited — the backend search gate keeps a
  * withheld body out of the model context and the citation set, so this surface
@@ -67,6 +74,31 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
   const onContextNeedsRefresh = useCallback(() => {
     setContextRefreshKey((k) => k + 1);
   }, []);
+  // Residual (ang): open + recent DR session spawns for collective multi-select
+  // from the talk bookmark (reading ≡ research · parity ResearchThis fc/ou).
+  const windows = useWindows((s) => s.windows);
+  const [recentTick, setRecentTick] = useState(0);
+  const recentSpawnIds = useMemo(
+    () => listRecentDeepResearchSpawnIds(),
+    [windows, recentTick],
+  );
+  const openSpawnIds = useMemo(
+    () =>
+      collectDeepResearchSpawnIds({
+        currentSpawnId: null,
+        windows,
+      }),
+    [windows],
+  );
+  const availableSpawnIds = useMemo(
+    () =>
+      collectDeepResearchSpawnIds({
+        currentSpawnId: null,
+        windows,
+        recentSpawnIds,
+      }),
+    [windows, recentSpawnIds],
+  );
 
   const turnCount = thread.messages.length;
   const branchCount = thread.state.branches.length;
@@ -287,6 +319,28 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
           />
         </div>
       </section>
+      {/* Residual (ang): multi-select open + recent DR spawns → this book. */}
+      {documentId.trim() && availableSpawnIds.length > 0 ? (
+        <section
+          className="max-h-56 overflow-y-auto border-t border-rule dark:border-charcoal-1 px-3 py-2"
+          data-testid="talk-to-book-collective-mount"
+          data-view-format="html"
+          data-document-id={documentId}
+          data-seamless-talk-collective="true"
+          data-available-spawn-count={String(availableSpawnIds.length)}
+          data-recent-count={String(recentSpawnIds.length)}
+          data-research-tier={researchTier}
+        >
+          <CollectiveResearchPanel
+            availableSpawnIds={availableSpawnIds}
+            parentAssetId={documentId.trim()}
+            recentSpawnIds={recentSpawnIds}
+            openSpawnIds={openSpawnIds}
+            onRecentSpawnsCleared={() => setRecentTick((n) => n + 1)}
+            onDocMerged={onContextNeedsRefresh}
+          />
+        </section>
+      ) : null}
     </aside>
   );
 }
