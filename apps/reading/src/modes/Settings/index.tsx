@@ -1738,6 +1738,27 @@ export default function Settings() {
                         "hosted_html_document",
                       ),
                     )}
+                    data-has-evidence-pack={String(
+                      (usage.known_sources || []).includes("evidence_pack"),
+                    )}
+                    data-has-publication-hydrate={String(
+                      (usage.known_sources || []).includes(
+                        "publication_hydrate",
+                      ),
+                    )}
+                    data-has-session-flywheel-complete={String(
+                      (usage.known_sources || []).includes(
+                        "session_flywheel_complete",
+                      ),
+                    )}
+                    data-has-context-search={String(
+                      (usage.known_sources || []).includes("context_search"),
+                    )}
+                    data-has-research-context-pack={String(
+                      (usage.known_sources || []).includes(
+                        "research_context_pack",
+                      ),
+                    )}
                     role="status"
                   >
                     Known feed sources: {(usage.known_sources || []).join(", ")}

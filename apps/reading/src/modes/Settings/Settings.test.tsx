@@ -102,7 +102,7 @@ const {
         midnight_oil: 1,
         collective_merge: 1,
       },
-      // Residual (nx/os/qy/ra): known feed sources legend (chase/DR + MO/collective + write seeds).
+      // Residual (nx/os/qy/ra/rk): known feed sources legend (full Write seed matrix).
       known_sources: [
         "investigation_start",
         "session_flywheel",
@@ -117,6 +117,11 @@ const {
         "hosted_html_document",
         "deep_research_session",
         "research_progress_complete",
+        "evidence_pack",
+        "publication_hydrate",
+        "session_flywheel_complete",
+        "context_search",
+        "research_context_pack",
         "antiek_bench.offline_dogfood",
         "engagement",
       ],
@@ -700,6 +705,19 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(legend.textContent).toMatch(/research_progress_complete/);
     expect(legend.textContent).toMatch(/midnight_oil_deposit/);
     expect(legend.textContent).toMatch(/hosted_html_document/);
+    // Residual (rk): full Write seed matrix in known legend.
+    expect(legend.getAttribute("data-has-evidence-pack")).toBe("true");
+    expect(legend.getAttribute("data-has-publication-hydrate")).toBe("true");
+    expect(legend.getAttribute("data-has-session-flywheel-complete")).toBe(
+      "true",
+    );
+    expect(legend.getAttribute("data-has-context-search")).toBe("true");
+    expect(legend.getAttribute("data-has-research-context-pack")).toBe("true");
+    expect(legend.textContent).toMatch(/evidence_pack/);
+    expect(legend.textContent).toMatch(/publication_hydrate/);
+    expect(legend.textContent).toMatch(/session_flywheel_complete/);
+    expect(legend.textContent).toMatch(/context_search/);
+    expect(legend.textContent).toMatch(/research_context_pack/);
     // Residual (nx): by_source list includes chase open sources when present.
     const sources = screen.getByTestId("antiek-bench-usage-sources");
     expect(sources.textContent).toMatch(/twin_chase/);
