@@ -4084,3 +4084,7 @@ Pivot aru+.
 marketplaceFreeHostReadiness: host_ready from visible free count · never PDF ·
 no receipt · no live payment. Parity L5 receipt pure helper (ars). vitest 47 green.
 P0 PR #465. Pivot arv+ outside thrash.
+
+## Residual arv · 2026-07-10 — SESSION-ARC arq–aru twin + marketplace readiness
+Multi-agent handoff for twin substrate readiness · L5 receipt · free-host pure
+helpers. P0 PR #465. Pivot arw+ outside thrash.
