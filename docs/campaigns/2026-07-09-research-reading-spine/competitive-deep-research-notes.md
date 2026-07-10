@@ -3935,3 +3935,8 @@ P0 PR #465. Pivot aqs+ outside thrash.
 Hydrate L1/L2 panel stamps HTML-first · never-enables-live + honesty nav to
 decision-tree · prompt-cost. Hard pivot into dual-gate knowledge-dense prep.
 vitest Settings hydrate green. P0 PR #465. Pivot aqt+ outside thrash.
+
+## Residual aqt · 2026-07-10 — twin-seed-live L3 dual-gate honesty + product deep-links
+Twin seed L3 panel stamps HTML-first · never-enables-live + honesty nav to
+decision-tree · prompt-cost (parity aqs hydrate). Recursive note-taker dual-gate
+prep is offline-honest by default. vitest Settings 37 green. P0 PR #465. Pivot aqu+.

@@ -604,6 +604,24 @@ describe("Settings SPR-01 + decision-tree install", () => {
     const panel = screen.getByTestId("twin-seed-live-status-panel");
     expect(panel.getAttribute("data-offline-honest")).toBe("true");
     expect(panel.getAttribute("data-injector-installed")).toBe("false");
+    // Residual (aqt): HTML-first · never-enables-live honesty on twin-seed panel.
+    expect(panel.getAttribute("data-view-format")).toBe("html");
+    expect(panel.getAttribute("data-html-first")).toBe("true");
+    expect(panel.getAttribute("data-never-enables-live")).toBe("true");
+    const honesty = screen.getByTestId("twin-seed-live-honesty-nav");
+    expect(honesty.getAttribute("data-never-enables-live")).toBe("true");
+    expect(honesty.getAttribute("data-dual-gate")).toBe("L3");
+    expect(
+      screen
+        .getByTestId("twin-seed-live-decision-tree-link")
+        .getAttribute("href"),
+    ).toBe("#decision-tree-panel");
+    expect(
+      screen.getByTestId("twin-seed-live-prompt-cost-link").getAttribute("href"),
+    ).toBe("#prompt-cost-projection");
+    expect(
+      screen.getByTestId("twin-seed-live-never-enables-hint").textContent,
+    ).toMatch(/offline-honest|never enables live/i);
     // Residual (aec): offline default is not L3 live ready.
     expect(panel.getAttribute("data-l3-live-ready")).toBe("false");
     const metrics = screen.getByTestId("twin-seed-live-status-metrics");

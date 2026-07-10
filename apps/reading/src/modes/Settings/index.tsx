@@ -1749,6 +1749,8 @@ export default function Settings() {
             id="twin-seed-live-status"
             data-testid="twin-seed-live-status-panel"
             data-view-format="html"
+            data-html-first="true"
+            data-never-enables-live="true"
             data-offline-honest={
               twinSeedLive ? String(twinSeedLive.offline_honest) : undefined
             }
@@ -1770,9 +1772,44 @@ export default function Settings() {
             }
           >
             <p className="text-sm text-ink dark:text-bright">
-              Recursive note-taker UI always force_offline seeds. Live
-              note_taker requires dual env gate + boot install — never silent
-              LLM from this panel.
+              Recursive note-taker UI always force_offline seeds (identity
+              only). Live note_taker requires dual env gate + boot install —
+              never silent LLM from this panel. Dual-gate L3 · never enables
+              live from this panel.
+            </p>
+            {/* Residual (aqt): twin-seed dual-gate honesty + product deep-links (parity aqs hydrate). */}
+            <p
+              className="text-[11px] font-mono flex flex-wrap gap-x-3 gap-y-1 opacity-90"
+              data-testid="twin-seed-live-honesty-nav"
+              data-view-format="html"
+              data-html-first="true"
+              data-never-enables-live="true"
+              data-dual-gate="L3"
+              role="navigation"
+              aria-label="Twin seed dual-gate honesty navigation"
+            >
+              <a
+                href="#decision-tree-panel"
+                data-testid="twin-seed-live-decision-tree-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Decision-tree driver used when twin seed feeds recursive note-taker prompts"
+              >
+                Decision-tree driver
+              </a>
+              <a
+                href="#prompt-cost-projection"
+                data-testid="twin-seed-live-prompt-cost-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Prompt-cost projection when twin seed enters research prompts"
+              >
+                Prompt-cost projection
+              </a>
+              <span
+                className="opacity-70"
+                data-testid="twin-seed-live-never-enables-hint"
+              >
+                offline-honest default · never enables live · L3 dual-gate
+              </span>
             </p>
             {/* Residual (aec): in-panel L3 checklist deep-link (parity TwinNotes xa). */}
             <div
