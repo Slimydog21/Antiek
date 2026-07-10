@@ -36,7 +36,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (agw): v22 learns seamless spawn merge + multi-spawn collective merge paths.
 # Residual (ahd): v23 learns knowledge-dense publication quick-call matrix (agx–ahc).
 # Residual (ahn): v24 learns budget foresight with pubs + purchase seamless port.
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v24"
+# Residual (ahs): v25 learns domain-aware twin intelligent search (ahr).
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v25"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -494,6 +495,26 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "receipt",
                 "html",
                 "payment",
+            ),
+        ),
+        # Residual (ahs/ahr): domain-aware twin intelligent search default.
+        SuiteItem(
+            item_id="dogfood-wrestle-domain-aware-twin-search",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with domain-aware twin intelligent search: when ResearchContextPanel "
+                "prefills query via domainAwareSearchDefault from asset subjects (heat / "
+                "signal_processing for Fourier free STEM, foundations for Gödel, electricity, "
+                "information_theory, computing) and marketplace host openWindow passes catalog "
+                "subjects into HostedHtml domainSubjects, how should Antiek-bench learn models "
+                "that ground recursive note-taker search without inventing domains or live L3 seed?"
+            ),
+            expected_keywords=(
+                "domain",
+                "twin",
+                "search",
+                "subjects",
+                "heat",
             ),
         ),
         # Residual (aeu): seamless Write path honesty across reading/research surfaces.

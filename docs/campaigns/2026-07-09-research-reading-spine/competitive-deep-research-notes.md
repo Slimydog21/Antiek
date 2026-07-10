@@ -2763,3 +2763,8 @@ signal_processing for Fourier free STEM). Marketplace host openWindow passes
 catalog subjects into HostedHtml twin context. Completes twin completeness gap
 #3 from ahq. vitest ResearchContext 14 · Marketplace 41 · HostedHtml 23 green.
 P0 operator merge PR #465. Pivot ahs+.
+
+## Residual ahs · 2026-07-10 — dogfood v25 domain-aware twin intelligent search
+Suite suite-competitive-dogfood-v25 adds wrestle fixture for domain-aware twin
+search (ahr). item_count 39 · wrestle=26. Settings spine v25.
+pytest dogfood 5 · Settings 36 green. P0 operator merge PR #465. Pivot aht+.
