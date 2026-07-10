@@ -2512,15 +2512,15 @@ export default function Settings() {
               Invariant: propose ≠ auto-promote · auto_promoted=
               {String(suiteProposal?.auto_promoted ?? false)}
             </p>
-            {/* Residual (nt): dual-gate prep + L7 NotDiamond never-router reminder. */}
+            {/* Residual (nt/yj): dual-gate L7 Never-router checklist + ND panel. */}
             <p className="text-[11px] font-mono space-x-3">
               <a
-                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l7-notdiamond"
                 data-testid="antiek-bench-dual-gate-checklist-link"
                 className="underline opacity-80 hover:opacity-100"
-                title="Dual-gate L1–L4 checklist (prep only; L7 NotDiamond never router)"
+                title="Dual-gate L7 NotDiamond never-router checklist (advisory only forever)"
               >
-                Dual-gate L1–L4 checklist
+                Dual-gate L7 ND checklist
               </a>
               {/* Residual (ro): deep-link suite L7 banner → ND advisory panel. */}
               <a

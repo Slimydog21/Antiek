@@ -1150,7 +1150,9 @@ describe("Settings SPR-01 + decision-tree install", () => {
       ).toBeTruthy();
     });
     const dual = screen.getByTestId("antiek-bench-dual-gate-checklist-link");
-    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4/);
+    // Residual (yj): Antiek-bench dual-gate → L7 ND never-router section.
+    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l7-notdiamond/);
+    expect(dual.textContent).toMatch(/L7 ND checklist/i);
     const nd = screen.getByTestId("antiek-bench-notdiamond-advisory-only");
     expect(nd.getAttribute("data-notdiamond-authority")).toBe("advisory_only");
     expect(nd.textContent).toMatch(/advisory only/i);

@@ -1646,3 +1646,8 @@ is machine-auditable on Settings.
 FUTURE-AGENT-SPEC tip re-anchored after 62 residual ships (budget foresight ·
 dual-gate L1–L7 · free STEM · dogfood v12 task-class counts). Competitive
 delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
+
+## Residual yj · 2026-07-10 — Antiek-bench dual-gate #l7-notdiamond
+Suite proposal dual-gate checklist jumps to #l7-notdiamond. Competitive delta:
+recursive rewrite surface navigates ND never-router policy (parity ND panel
+advisory-only link).
