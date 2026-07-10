@@ -2935,3 +2935,8 @@ Highlight→DR→merge path navigates Settings competitive DR scorecard + FUTURE
 (offline spawn merge shipped · L6 live deferred). Scorecard navigation matrix
 includes spawn merge (aix). vitest SpawnMerge 8 green. P0 operator merge PR #465.
 Pivot aiy+ outside thrash.
+
+## Residual aiy · 2026-07-10 — domain-aware twin search biology/method/physics/math
+domainAwareSearchDefault expands free STEM subject defaults beyond Fourier/Gödel
+electricity spine for Origin/Hooke/Novum/Principia/Euclid twin intelligent search.
+vitest ResearchContext 14 green. P0 operator merge PR #465. Pivot aiz+ outside thrash.

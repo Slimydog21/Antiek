@@ -57,13 +57,30 @@ describe("ResearchContextPanel", () => {
     openWindow.mockClear();
   });
 
-  it("domainAwareSearchDefault maps free STEM subjects (ahr)", () => {
+  it("domainAwareSearchDefault maps free STEM subjects (ahr/aiy)", () => {
     expect(domainAwareSearchDefault(["heat", "signal_processing"])).toMatch(
       /heat signal processing/i,
     );
     expect(domainAwareSearchDefault(["foundations", "logic"])).toMatch(
       /foundations incompleteness/i,
     );
+    // Residual (aiy): biology / method / physics / mathematics free STEM.
+    expect(domainAwareSearchDefault(["biology", "science"])).toMatch(
+      /biology instruments micrographia/i,
+    );
+    expect(domainAwareSearchDefault(["method", "philosophy"])).toMatch(
+      /method observation novum organum/i,
+    );
+    expect(domainAwareSearchDefault(["physics", "science"])).toMatch(
+      /physics motion forces principia/i,
+    );
+    expect(domainAwareSearchDefault(["mathematics"])).toMatch(
+      /mathematics geometry elements/i,
+    );
+    // Electricity still wins over bare physics when both present.
+    expect(
+      domainAwareSearchDefault(["physics", "electricity"]),
+    ).toMatch(/electricity electromagnetism/i);
     expect(domainAwareSearchDefault([])).toBe("");
     expect(domainAwareSearchDefault(null)).toBe("");
   });

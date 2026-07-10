@@ -1,0 +1,18 @@
+# inventory-aiy · domain-aware twin search defaults (biology/method/physics/math)
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aiy
+date: 2026-07-10
+parent_tip: 41885f9d (aix)
+
+## Closed
+- domainAwareSearchDefault expands free STEM subjects:
+  - biology / instruments → micrographia natural history
+  - method / observation → novum organum
+  - physics (sans electricity) → principia motion forces
+  - mathematics (pure) → geometry elements axioms
+- Electricity still precedence over bare physics
+- FUTURE twin matrix gap #3 updated · vitest ResearchContext 14 green
+
+## Next
+aiz+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

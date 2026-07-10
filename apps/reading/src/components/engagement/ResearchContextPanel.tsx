@@ -80,9 +80,10 @@ export function twinNoteMetrics(
 }
 
 /**
- * Residual (ahr): domain-aware intelligent-search default from asset subjects
+ * Residual (ahr/aiy): domain-aware intelligent-search default from asset subjects
  * (e.g. free STEM Fourier heat/signal_processing → grounded twin search query).
  * Never invents subjects; empty when no domain match.
+ * Residual (aiy): biology / method / physics / mathematics free STEM pairs.
  */
 export function domainAwareSearchDefault(
   subjects?: readonly string[] | null,
@@ -104,6 +105,22 @@ export function domainAwareSearchDefault(
   }
   if (set.has("computing") || set.has("history")) {
     return "computing analytical engine twin insights";
+  }
+  // Residual (aiy): free biology STEM (Origin + Hooke Micrographia).
+  if (set.has("biology") || set.has("instruments")) {
+    return "biology instruments micrographia natural history twin insights";
+  }
+  // Residual (aiy): method / Baconian Novum Organum + instrumented observation.
+  if (set.has("method") || set.has("observation")) {
+    return "method observation novum organum twin insights";
+  }
+  // Residual (aiy): physics STEM (Principia / Faraday physics tags).
+  if (set.has("physics") && !set.has("electricity") && !set.has("electromagnetism")) {
+    return "physics motion forces principia twin insights";
+  }
+  // Residual (aiy): pure mathematics STEM (Euclid Elements).
+  if (set.has("mathematics") && !set.has("physics") && !set.has("computing")) {
+    return "mathematics geometry elements axioms twin insights";
   }
   return "";
 }
