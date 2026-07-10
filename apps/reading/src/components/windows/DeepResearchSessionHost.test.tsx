@@ -566,6 +566,16 @@ describe("DeepResearchSessionHost", () => {
     expect(screen.getByTestId("load-research-context")).toBeTruthy();
   });
 
+  it("passes session research_tier into ResearchContext host prefill (aml)", () => {
+    render(
+      <DeepResearchSessionHost {...FIXTURE} research_tier="wrestle" />,
+    );
+    const prefill = screen.getByTestId("research-context-host-tier-prefill");
+    expect(prefill.getAttribute("data-host-tier")).toBe("wrestle");
+    expect(prefill.textContent).toMatch(/Host depth prefill/i);
+    expect(prefill.textContent).toMatch(/wrestle/i);
+  });
+
   it("omits ResearchContextPanel when parent_asset_id is missing", () => {
     const { parent_asset_id: _drop, ...noParent } = FIXTURE;
     render(<DeepResearchSessionHost {...noParent} />);

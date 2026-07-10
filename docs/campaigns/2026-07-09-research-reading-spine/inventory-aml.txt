@@ -1,0 +1,15 @@
+# inventory-aml · DeepResearchSessionHost ResearchContext researchTier prefill
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aml
+date: 2026-07-10
+parent_tip: 214ba0ad (amk)
+
+## Closed
+- DeepResearchSessionHost ResearchContext researchTier={researchTier}
+- Session depth posture on intelligent context during floating/full DR
+- vitest DeepResearchSessionHost 31 green
+- proof: SCRATCH residual-aml-vitest.log
+
+## Next
+amm+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

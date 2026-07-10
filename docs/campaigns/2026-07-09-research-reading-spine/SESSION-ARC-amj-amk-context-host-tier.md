@@ -14,3 +14,4 @@ host land and hosted HTML reading windows (pack tier still wins when present).
 
 ## P0
 Operator merge PR **#465**. Infinite continues.
+| **aml** | DeepResearchSessionHost | researchTier → ResearchContext prefill |

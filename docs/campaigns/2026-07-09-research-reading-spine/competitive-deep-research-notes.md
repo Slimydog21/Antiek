@@ -3383,3 +3383,8 @@ P0 operator merge PR #465. Pivot amk+ outside thrash.
 HostedHtml passes researchTier into ResearchContext; payload research_tier wins
 over Settings depth prefill. vitest HostedHtml 26 green.
 P0 operator merge PR #465. Pivot aml+ outside thrash.
+
+## Residual aml · 2026-07-10 — DeepResearchSessionHost ResearchContext researchTier prefill
+Floating/full DR session ResearchContext inherits session researchTier depth
+prefill (parity marketplace amj · HostedHtml amk). vitest DeepResearch 31 green.
+P0 operator merge PR #465. Pivot amm+ outside thrash.

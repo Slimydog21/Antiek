@@ -397,11 +397,13 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
             data-testid="deep-research-context-refresh"
             data-refresh-key={String(contextRefreshKey)}
           >
+            {/* Residual (aml): session researchTier prefill for context depth. */}
             <ResearchContextPanel
               key={`ctx-${props.parent_asset_id.trim()}-${contextRefreshKey}`}
               assetId={props.parent_asset_id.trim()}
               spawnId={props.spawn_id?.trim() || null}
               autoLoad
+              researchTier={researchTier}
             />
           </div>
         </section>
