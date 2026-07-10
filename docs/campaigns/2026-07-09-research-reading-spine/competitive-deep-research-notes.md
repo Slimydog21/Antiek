@@ -1446,3 +1446,8 @@ electricity · computing · information theory · computability.
 ## Residual wr · 2026-07-10 — FUTURE-AGENT tip re-anchor through wq
 FUTURE-AGENT-SPEC tip → 24a54cf7. Competitive delta: swarm handoff tip-true
 after Shannon/Turing STEM domain chips + dual-gate honesty wave.
+
+## Residual ws · 2026-07-10 — catalog route by_subject Shannon+Turing
+Marketplace catalog API by_subject stamps information_theory + computability
+with Shannon/Turing entries. Competitive delta: domain chips are server-honest
+not client-invented.
