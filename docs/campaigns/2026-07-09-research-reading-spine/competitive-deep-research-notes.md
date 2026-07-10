@@ -3201,3 +3201,8 @@ Shared model-driver chokepoint navigates FUTURE competitive DR quality brief and
 Settings prompt-cost projection (budget-before-fire + competitive map at every
 driver badge mount). vitest DecisionTreeDriverBadge 14 green.
 P0 operator merge PR #465. Pivot aky+ outside thrash.
+
+## Residual aky · 2026-07-10 — TwinNotes FUTURE competitive DR + prompt-cost deep-links
+Recursive note-taker panel navigates competitive FUTURE DR quality brief and
+Settings prompt-cost projection (parity driver badge akx · progress akt).
+vitest TwinNotes 30 green. P0 operator merge PR #465. Pivot akz+ outside thrash.

@@ -238,6 +238,24 @@ describe("TwinNotesPanel", () => {
         .getByTestId("twin-notes-competitive-scorecard-link")
         .getAttribute("href"),
     ).toBe("/settings#settings-competitive-dr-scorecard");
+    // Residual (aky): competitive FUTURE + prompt-cost on recursive note-taker.
+    expect(
+      screen
+        .getByTestId("twin-notes-competitive-dr-future-agent-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    expect(
+      screen.getByTestId("twin-notes-competitive-dr-future-agent-link")
+        .textContent,
+    ).toMatch(/competitive DR quality/i);
+    expect(
+      screen
+        .getByTestId("twin-notes-prompt-cost-projection-link")
+        .getAttribute("href"),
+    ).toBe("/settings#prompt-cost-projection");
+    expect(
+      screen.getByTestId("twin-notes-prompt-cost-projection-link").textContent,
+    ).toMatch(/prompt-cost projection/i);
   });
 
   it("surfaces researchTier chrome when provided (kr)", async () => {

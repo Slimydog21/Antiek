@@ -1034,6 +1034,21 @@ export function TwinNotesPanel({
           >
             Competitive DR scorecard
           </a>
+          {/* Residual (aky): competitive FUTURE + prompt-cost on recursive note-taker. */}
+          <a
+            href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+            data-testid="twin-notes-competitive-dr-future-agent-link"
+            title="FUTURE-AGENT competitive deep-research quality brief (recursive twin substrate · reading ≡ research)"
+          >
+            FUTURE · competitive DR quality
+          </a>
+          <a
+            href="/settings#prompt-cost-projection"
+            data-testid="twin-notes-prompt-cost-projection-link"
+            title="Settings prompt-cost projection: estimate how twin seed/promote/chase spend hits remaining daily budget"
+          >
+            Settings · prompt-cost projection
+          </a>
         </p>
         {/* Residual (kr): depth posture when host passes researchTier. */}
         {normalizedResearchTier ? (

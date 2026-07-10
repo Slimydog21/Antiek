@@ -1,0 +1,17 @@
+# inventory-aky · TwinNotes FUTURE competitive DR + prompt-cost deep-links
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aky
+date: 2026-07-10
+parent_tip: a79d99b8 (akx)
+
+## Closed
+- twin-notes-competitive-dr-future-agent-link
+  → FUTURE-AGENT-SPEC-competitive-deep-research-quality.md
+- twin-notes-prompt-cost-projection-link → /settings#prompt-cost-projection
+- Recursive note-taker nav: twin matrix · scorecard · competitive FUTURE · prompt-cost · L3 dual-gate
+- vitest TwinNotes 30 green
+- proof: SCRATCH residual-aky-vitest.log
+
+## Next
+akz+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)
