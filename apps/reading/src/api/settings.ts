@@ -239,6 +239,13 @@ export type AntiekBenchUsageSummaryResponse = {
   write_seed_source_count?: number;
   write_seed_event_count?: number;
   write_seed_known_count?: number;
+  /**
+   * Residual (act/acu): Write twin_seed body honesty aggregates for recursive
+   * suite rewrite (title-only → failed outcome on substrate).
+   */
+  write_seed_with_body_count?: number;
+  write_seed_title_only_count?: number;
+  write_seed_body_unknown_count?: number;
   view_format: "html" | string;
   settings_panel: string;
   source: string;

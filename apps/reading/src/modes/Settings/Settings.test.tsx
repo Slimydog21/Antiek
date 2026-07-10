@@ -92,6 +92,10 @@ const {
     write_seed_event_count: 0,
     // Residual (aaj): includes marketplace_catalog (18 write-seed sources).
     write_seed_known_count: 18,
+    // Residual (act/acu): body honesty aggregates for recursive rewrite.
+    write_seed_with_body_count: 0,
+    write_seed_title_only_count: 0,
+    write_seed_body_unknown_count: 0,
     view_format: "html" as const,
     settings_panel: "antiek_bench_usage_weekly",
     source: "antiek_bench.usage_events",
@@ -1216,6 +1220,10 @@ describe("Settings SPR-01 + decision-tree install", () => {
       write_seed_source_count: 1,
       write_seed_event_count: 9,
       write_seed_known_count: 1,
+      // Residual (acu): body honesty week.
+      write_seed_with_body_count: 7,
+      write_seed_title_only_count: 1,
+      write_seed_body_unknown_count: 1,
       view_format: "html",
       settings_panel: "antiek_bench_usage_weekly",
       source: "antiek_bench.usage_events",
@@ -1266,6 +1274,13 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(metrics.getAttribute("data-write-seed-event-count")).toBe("9");
     expect(metrics.getAttribute("data-write-seed-source-count")).toBe("1");
     expect(metrics.getAttribute("data-write-seed-known-count")).toBe("1");
+    // Residual (acu): body honesty chrome for recursive rewrite quality.
+    expect(metrics.getAttribute("data-write-seed-with-body-count")).toBe("7");
+    expect(metrics.getAttribute("data-write-seed-title-only-count")).toBe("1");
+    expect(metrics.getAttribute("data-write-seed-body-unknown-count")).toBe("1");
+    expect(metrics.textContent).toMatch(/with_body=7/);
+    expect(metrics.textContent).toMatch(/title_only=1/);
+    expect(metrics.textContent).toMatch(/unknown=1/);
   });
 
   it("surfaces suite rewrite rationale + feed source count (pe)", async () => {

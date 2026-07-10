@@ -2338,6 +2338,16 @@ export default function Settings() {
                     data-write-seed-known-count={String(
                       usage.write_seed_known_count ?? writeSeedKnownCount,
                     )}
+                    // Residual (acu): body honesty from substrate act aggregates.
+                    data-write-seed-with-body-count={String(
+                      usage.write_seed_with_body_count ?? 0,
+                    )}
+                    data-write-seed-title-only-count={String(
+                      usage.write_seed_title_only_count ?? 0,
+                    )}
+                    data-write-seed-body-unknown-count={String(
+                      usage.write_seed_body_unknown_count ?? 0,
+                    )}
                     data-propose-not-promote="true"
                     role="status"
                   >
@@ -2346,6 +2356,13 @@ export default function Settings() {
                     {usage.write_seed_source_count ?? 0} · known_catalog=
                     {usage.write_seed_known_count ?? writeSeedKnownCount}{" "}
                     (recursive note-taker → Write · not auto-promoted)
+                    {" · body honesty: with_body="}
+                    {usage.write_seed_with_body_count ?? 0}
+                    {" · title_only="}
+                    {usage.write_seed_title_only_count ?? 0}
+                    {" · unknown="}
+                    {usage.write_seed_body_unknown_count ?? 0}
+                    {" (title-only → failed for suite rewrite)"}
                     {" · "}
                     {/* Residual (sr): jump to suite proposal (propose≠promote). */}
                     <a
