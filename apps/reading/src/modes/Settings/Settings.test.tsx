@@ -117,6 +117,7 @@ const {
         "hosted_html_document",
         "deep_research_session",
         "research_progress_complete",
+        "research_progress_draft",
         "evidence_pack",
         "publication_hydrate",
         "session_flywheel_complete",
@@ -761,11 +762,18 @@ describe("Settings SPR-01 + decision-tree install", () => {
     );
     expect(legend.getAttribute("data-has-context-search")).toBe("true");
     expect(legend.getAttribute("data-has-research-context-pack")).toBe("true");
+    // Residual (rq): mid-flight + terminal progress Write seeds in known legend.
+    expect(legend.getAttribute("data-has-research-progress-draft")).toBe("true");
+    expect(legend.getAttribute("data-has-research-progress-complete")).toBe(
+      "true",
+    );
     expect(legend.textContent).toMatch(/evidence_pack/);
     expect(legend.textContent).toMatch(/publication_hydrate/);
     expect(legend.textContent).toMatch(/session_flywheel_complete/);
     expect(legend.textContent).toMatch(/context_search/);
     expect(legend.textContent).toMatch(/research_context_pack/);
+    expect(legend.textContent).toMatch(/research_progress_draft/);
+    expect(legend.textContent).toMatch(/research_progress_complete/);
     // Residual (nx): by_source list includes chase open sources when present.
     const sources = screen.getByTestId("antiek-bench-usage-sources");
     expect(sources.textContent).toMatch(/twin_chase/);

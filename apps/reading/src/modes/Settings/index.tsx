@@ -1808,6 +1808,16 @@ export default function Settings() {
                         "research_context_pack",
                       ),
                     )}
+                    data-has-research-progress-draft={String(
+                      (usage.known_sources || []).includes(
+                        "research_progress_draft",
+                      ),
+                    )}
+                    data-has-research-progress-complete={String(
+                      (usage.known_sources || []).includes(
+                        "research_progress_complete",
+                      ),
+                    )}
                     role="status"
                   >
                     Known feed sources: {(usage.known_sources || []).join(", ")}
