@@ -786,6 +786,9 @@ describe("Settings SPR-01 + decision-tree install", () => {
     const nd = screen.getByTestId("antiek-bench-notdiamond-advisory-only");
     expect(nd.getAttribute("data-notdiamond-authority")).toBe("advisory_only");
     expect(nd.textContent).toMatch(/advisory only/i);
+    // Residual (ro): suite L7 banner deep-links to ND advisory panel.
+    expect(nd.getAttribute("href")).toBe("#notdiamond-advisory");
+    expect(nd.tagName.toLowerCase()).toBe("a");
   });
 
   it("shows suite proposal feed sources from usage by_source (hf/nz/os)", async () => {

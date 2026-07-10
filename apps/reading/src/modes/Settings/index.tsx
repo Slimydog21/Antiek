@@ -1868,13 +1868,16 @@ export default function Settings() {
               >
                 Dual-gate L1–L4 checklist
               </a>
-              <span
+              {/* Residual (ro): deep-link suite L7 banner → ND advisory panel. */}
+              <a
+                href="#notdiamond-advisory"
                 data-testid="antiek-bench-notdiamond-advisory-only"
                 data-notdiamond-authority="advisory_only"
-                role="status"
+                className="underline opacity-80 hover:opacity-100"
+                title="Jump to NotDiamond weekly advisory vs installed driver (advisory only)"
               >
                 NotDiamond: advisory only (L7 · never dispatch authority)
-              </span>
+              </a>
             </p>
             {/* Residual (ht/pe/qa): recursive rewrite metrics + primary feed. */}
             {suiteProposal ? (
