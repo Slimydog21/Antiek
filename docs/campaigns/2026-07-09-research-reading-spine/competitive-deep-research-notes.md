@@ -1972,3 +1972,8 @@ Catalog adds Hooke Micrographia free PD HTML (biology · technology · physics �
 method) beside Origin of Species. Competitive delta: free biology filter is a
 non-trivial tech-researcher STEM pair (instruments + natural history).
 
+## Residual abd · 2026-07-10 — free method subject Novum + Hooke
+Free method subject set includes Novum Organum + Hooke Micrographia (len ≥2 free
+PD HTML). Competitive delta: research-methodology filter is a non-trivial free
+pair for tech researchers (Baconian method + instrumented observation).
+

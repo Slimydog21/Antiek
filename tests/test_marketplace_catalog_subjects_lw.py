@@ -333,6 +333,24 @@ def test_free_biology_includes_origin_and_hooke() -> None:
     assert all(e.is_free for e in free_bio)
 
 
+def test_free_method_includes_novum_and_hooke() -> None:
+    """Residual (abd): free method subject for research methodology spine.
+
+    Novum Organum + Hooke Micrographia — free PD HTML (Baconian method + instruments).
+    """
+    cat = default_demo_catalog()
+    free_method = [
+        e
+        for e in cat.filter_by_subject("method")
+        if e.is_free and e.license_class == "public_domain"
+    ]
+    ids = {e.book_id for e in free_method}
+    assert ids >= {"pd-novum", "pd-hooke-micrographia"}
+    assert all(e.source_format == "html" for e in free_method)
+    assert len(free_method) >= 2
+    assert all(e.is_free for e in free_method)
+
+
 def test_turing_computability_subjects_and_free_pd() -> None:
     """Residual (wl): Turing tagged computing+computability, free PD."""
     cat = default_demo_catalog()
