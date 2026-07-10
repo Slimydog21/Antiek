@@ -55,7 +55,10 @@
  * remembered for collective multi-select without leaving MO or after navigate).
  * Residual (anu): knowledge-dense pub quick-call presets on create (parity
  * ResearchThis ahc · marketplace ahb · HostedHtml aha · offline-honest insert).
+ * Residual (any): deposit land HTML-first honesty stamps + deposit-local
+ * competitive DR scorecard/FUTURE deep-links (MO deposit polish · never invent L4 live).
  * Residual (oy): optional arxiv/substack/URL pub refs on create — hydrate then
+
  * append as grounded goals so offline swarm inherits knowledge-dense sources
  * (parity Write/ResearchThis; offline-honest hydrate default).
  * Residual (pa): budget projection promptText includes pub refs so soft-gate
@@ -1631,9 +1634,12 @@ export default function MidnightOil() {
               className="space-y-2 border rounded p-3"
               data-testid="moil-deposit-result"
               data-view-format="html"
+              data-html-first="true"
+              data-seamless-moil-deposit="true"
+              data-l4-live-step="deferred"
             >
               <h3 className="font-medium">Deposit result</h3>
-              {/* Residual (hx): machine-readable deposit land metrics. */}
+              {/* Residual (hx/any): machine-readable deposit land metrics + HTML-first. */}
               <div
                 data-testid="moil-deposit-metrics"
                 data-document-id={deposit.document_id ?? ""}
@@ -1645,13 +1651,59 @@ export default function MidnightOil() {
                   (deposit.spawn_ids || []).filter(Boolean).length,
                 )}
                 data-view-format="html"
+                data-html-first="true"
+                data-seamless-moil-deposit="true"
+                data-deposit-html-present={String(
+                  Boolean(String(deposit.html || "").trim()),
+                )}
+                data-research-tier={(
+                  job.research_tier ||
+                  researchTier ||
+                  "deep"
+                )
+                  .toString()
+                  .toLowerCase()}
+                data-l4-live-step="deferred"
                 role="status"
               >
                 Midnight Oil deposit · document={deposit.document_id} · twins=
                 {deposit.twin_count ?? 0} · usage=
                 {String(Boolean(deposit.usage_recorded))} · progress_seeded=
                 {String(Boolean(deposit.progress_seeded))}
+                {" · HTML-first · L4 live deferred"}
               </div>
+              {/* Residual (any): deposit-local competitive DR honesty (parity progress aim). */}
+              <p
+                className="text-[11px] font-mono space-x-2"
+                data-testid="moil-deposit-competitive-links"
+                data-view-format="html"
+                data-l4-live-step="deferred"
+              >
+                <a
+                  href="/settings#settings-competitive-dr-scorecard"
+                  data-testid="moil-deposit-competitive-scorecard-link"
+                  className="underline opacity-80 hover:opacity-100"
+                  title="Settings competitive deep-research scorecard (MO deposit offline land · L4 live deferred)"
+                >
+                  Settings · competitive DR scorecard
+                </a>
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+                  data-testid="moil-deposit-competitive-dr-future-agent-link"
+                  className="underline opacity-80 hover:opacity-100"
+                  title="FUTURE-AGENT competitive deep-research quality brief (L4 MO live dual-gate)"
+                >
+                  FUTURE · competitive DR brief
+                </a>
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l4-moil"
+                  data-testid="moil-deposit-dual-gate-l4-link"
+                  className="underline opacity-80 hover:opacity-100"
+                  title="Dual-gate L4 Midnight Oil live-step checklist (prep only · deposit is offline HTML land)"
+                >
+                  Dual-gate L4 MO checklist
+                </a>
+              </p>
               <p className="font-mono text-sm">
                 document=<code>{deposit.document_id}</code> · twins=
                 {deposit.twin_count} · usage=

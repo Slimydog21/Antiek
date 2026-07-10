@@ -1214,6 +1214,43 @@ describe("MidnightOil mode", () => {
     expect(depositMetrics.getAttribute("data-progress-seeded")).toBe("true");
     expect(depositMetrics.getAttribute("data-view-format")).toBe("html");
     expect(depositMetrics.textContent).toMatch(/Midnight Oil deposit/);
+    // Residual (any): deposit land HTML-first honesty + competitive deep-links.
+    const depositResult = screen.getByTestId("moil-deposit-result");
+    expect(depositResult.getAttribute("data-html-first")).toBe("true");
+    expect(depositResult.getAttribute("data-seamless-moil-deposit")).toBe(
+      "true",
+    );
+    expect(depositResult.getAttribute("data-l4-live-step")).toBe("deferred");
+    expect(depositMetrics.getAttribute("data-html-first")).toBe("true");
+    expect(depositMetrics.getAttribute("data-seamless-moil-deposit")).toBe(
+      "true",
+    );
+    expect(depositMetrics.getAttribute("data-deposit-html-present")).toBe(
+      "true",
+    );
+    expect(depositMetrics.getAttribute("data-l4-live-step")).toBe("deferred");
+    expect(depositMetrics.getAttribute("data-research-tier")).toMatch(
+      /deep|fast|wrestle/,
+    );
+    expect(depositMetrics.textContent).toMatch(/HTML-first/i);
+    expect(depositMetrics.textContent).toMatch(/L4 live deferred/i);
+    const competitive = screen.getByTestId("moil-deposit-competitive-links");
+    expect(competitive.getAttribute("data-l4-live-step")).toBe("deferred");
+    expect(
+      screen
+        .getByTestId("moil-deposit-competitive-scorecard-link")
+        .getAttribute("href"),
+    ).toBe("/settings#settings-competitive-dr-scorecard");
+    expect(
+      screen
+        .getByTestId("moil-deposit-competitive-dr-future-agent-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    expect(
+      screen
+        .getByTestId("moil-deposit-dual-gate-l4-link")
+        .getAttribute("href") || "",
+    ).toMatch(/DUAL-GATE-L1-L4.*#l4-moil/);
   });
 
   it("includes pub refs in budget projection promptText (pa)", () => {

@@ -3585,3 +3585,9 @@ Write open-piece pub refs mount Settings hydrate readiness + L1 arxiv + L2 Subst
 deep-links (offline-honest prep only · never enable injectors). Completes hydrate
 prep matrix on writing path (parity ResearchThis uk · MO pb).
 vitest WriteHome anx green. P0 operator merge PR #465. Pivot any+ outside thrash.
+
+## Residual any · 2026-07-10 — MO deposit land HTML-first + competitive DR links
+Midnight Oil deposit result stamps HTML-first · seamless land · deposit-html-present ·
+research_tier · L4 live deferred, plus deposit-local competitive scorecard / FUTURE brief /
+L4 checklist (never invent live swarm). vitest MidnightOil 27 green.
+P0 operator merge PR #465. Pivot anz+ outside thrash.
