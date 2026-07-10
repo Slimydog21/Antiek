@@ -1008,3 +1008,8 @@ weekly dogfood without auto-promoting suites.
 Subject filter electricity (and technology) surfaces free PD Faraday and
 Maxwell hosts. Competitive delta: tech researchers filter knowledge-dense
 electricity spine without leaving free HTML catalog.
+
+## Residual tk · 2026-07-10 — UI electricity chip → Faraday/Maxwell
+MarketplaceHost electricity subject chip filters free PD Faraday and Maxwell
+with filtered free honesty. Competitive delta: tech researchers click
+electricity domain and host knowledge-dense free HTML books immediately.

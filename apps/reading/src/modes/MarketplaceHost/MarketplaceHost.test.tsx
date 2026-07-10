@@ -1212,4 +1212,79 @@ describe("MarketplaceHost mode", () => {
         .getAttribute("data-filtered-free-count"),
     ).toBe("2");
   });
+
+  it("filters catalog by electricity subject chip for Faraday/Maxwell (tk)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-faraday-electricity",
+          title: "Experimental Researches in Electricity",
+          author: "Michael Faraday",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: ["physics", "science", "technology", "electricity"],
+        },
+        {
+          book_id: "pd-maxwell-em",
+          title: "A Treatise on Electricity and Magnetism",
+          author: "James Clerk Maxwell",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+          subjects: [
+            "physics",
+            "mathematics",
+            "science",
+            "technology",
+            "electricity",
+          ],
+        },
+        {
+          book_id: "pd-pride",
+          title: "Pride and Prejudice",
+          author: "Jane Austen",
+          license_class: "public_domain",
+          is_free: true,
+          source: "standard_ebooks",
+          subjects: ["literature"],
+        },
+      ],
+      count: 3,
+      view_format: "html",
+      by_source: { project_gutenberg: 2, standard_ebooks: 1 },
+      by_subject: {
+        electricity: 2,
+        physics: 2,
+        technology: 2,
+        literature: 1,
+        science: 2,
+        mathematics: 1,
+      },
+      free_count: 3,
+      public_domain_count: 3,
+      purchased_count: 0,
+      payment_rails: "manual_receipt_only",
+    });
+    render(<MarketplaceHost ownerId="tech-researcher" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("catalog-subject-electricity")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("catalog-subject-electricity"));
+    expect(screen.getByTestId("catalog-entry-pd-faraday-electricity")).toBeTruthy();
+    expect(screen.getByTestId("catalog-entry-pd-maxwell-em")).toBeTruthy();
+    expect(screen.queryByTestId("catalog-entry-pd-pride")).toBeNull();
+    const metrics = screen.getByTestId("marketplace-catalog-metrics");
+    expect(metrics.getAttribute("data-subject-filter")).toBe("electricity");
+    expect(metrics.getAttribute("data-filtered-free-count")).toBe("2");
+    expect(metrics.getAttribute("data-free-count")).toBe("3");
+    expect(
+      screen.getByTestId("marketplace-catalog-filtered-free-honesty").textContent,
+    ).toMatch(/visible_free=2/);
+    expect(
+      screen
+        .getByTestId("catalog-entry-pd-faraday-electricity")
+        .getAttribute("data-is-free"),
+    ).toBe("true");
+  });
 });
