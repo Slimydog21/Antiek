@@ -437,6 +437,13 @@ describe("ResearchContextPanel", () => {
     expect(screen.getByTestId("evidence-research-tier").textContent).toMatch(
       /long-horizon/i,
     );
+    // Residual (rb): Open Write twin_seed from evidence pack.
+    const write = screen.getByTestId("evidence-pack-open-write");
+    const href = write.getAttribute("href") || "";
+    expect(href).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
+    expect(href).not.toMatch(/html_draft=/);
+    expect(write.getAttribute("data-has-twin-seed")).toBe("1");
+    expect(write.getAttribute("data-ref-count")).toBe("1");
   });
 
   it("flags ungrounded evidence when ref_count is zero (dm)", async () => {

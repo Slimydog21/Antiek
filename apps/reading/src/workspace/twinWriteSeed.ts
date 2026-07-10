@@ -17,7 +17,8 @@ export type TwinWriteSeedSource =
   | "spawn_merge"
   | "hosted_html_document"
   | "deep_research_session"
-  | "research_progress_complete";
+  | "research_progress_complete"
+  | "evidence_pack";
 
 export type TwinWriteSeedPayload = {
   plain_text: string;
@@ -59,6 +60,7 @@ export function storeTwinWriteSeed(input: {
     "hosted_html_document",
     "deep_research_session",
     "research_progress_complete",
+    "evidence_pack",
   ];
   const source: TwinWriteSeedSource = allowed.includes(
     input.source as TwinWriteSeedSource,
@@ -102,6 +104,7 @@ export function loadTwinWriteSeed(key: string): TwinWriteSeedPayload | null {
       "hosted_html_document",
       "deep_research_session",
       "research_progress_complete",
+      "evidence_pack",
     ];
     const source: TwinWriteSeedSource = allowedLoad.includes(
       srcRaw as TwinWriteSeedSource,
@@ -384,6 +387,88 @@ export function buildResearchProgressWriteHref(opts: {
     asset_id: asset,
     note_ids: [],
     source: "research_progress_complete",
+  });
+  if (!seedKey) return null;
+  return buildTwinWriteHref(seedKey);
+}
+
+/**
+ * Residual (rb): Write handoff from evidence pack (insights + questions + refs).
+ * twin_seed only — HTML-first competitive citation substrate into Write.
+ */
+export function buildEvidencePackWriteHref(opts: {
+  assetId: string;
+  spawnId?: string | null;
+  insights?: ReadonlyArray<string | null | undefined>;
+  questions?: ReadonlyArray<string | null | undefined>;
+  sourceReferences?: ReadonlyArray<{
+    title?: string | null;
+    title_hint?: string | null;
+    url?: string | null;
+    canonical_url?: string | null;
+    raw?: string | null;
+    kind?: string | null;
+    source?: string | null;
+  } | null | undefined>;
+  html?: string | null;
+  researchTier?: string | null;
+}): string | null {
+  const asset = String(opts.assetId || "").trim();
+  if (!asset) return null;
+  const insights = (opts.insights || [])
+    .map((x) => String(x || "").trim())
+    .filter(Boolean);
+  const questions = (opts.questions || [])
+    .map((x) => String(x || "").trim())
+    .filter(Boolean);
+  const refs = (opts.sourceReferences || [])
+    .map((r) => {
+      if (!r) return "";
+      const title = String(r.title || r.title_hint || r.raw || "").trim();
+      const url = String(r.url || r.canonical_url || "").trim();
+      const src = String(r.source || r.kind || "").trim();
+      if (!title && !url) return "";
+      return [title, url, src ? `(${src})` : ""].filter(Boolean).join(" ");
+    })
+    .filter(Boolean);
+  const plainParts = [
+    ...insights.map((i) => `[insight] ${i}`),
+    ...questions.map((q) => `[question] ${q}`),
+    ...refs.map((r) => `[ref] ${r}`),
+  ];
+  const plainFromHtml = plainTextFromHtml(opts.html || "");
+  const plain =
+    plainParts.join("\n") + (plainFromHtml ? `\n\n${plainFromHtml}` : "");
+  if (!plain.trim()) return null;
+  const escape = (s: string) =>
+    String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  const spawn = String(opts.spawnId || "").trim();
+  const tier = String(opts.researchTier || "").trim();
+  const bodyHtml =
+    String(opts.html || "").trim() ||
+    `<ul class="insights">${insights.map((i) => `<li>${escape(i)}</li>`).join("")}</ul>` +
+      `<ul class="questions">${questions.map((q) => `<li>${escape(q)}</li>`).join("")}</ul>` +
+      (refs.length
+        ? `<ul class="refs">${refs.map((r) => `<li>${escape(r)}</li>`).join("")}</ul>`
+        : "");
+  const html =
+    `<article data-view-format="html" data-source="evidence_pack" data-asset-id="${escape(asset)}"` +
+    (spawn ? ` data-spawn-id="${escape(spawn)}"` : "") +
+    ` data-ref-count="${refs.length}">` +
+    `<h1>Evidence pack · ${escape(asset)}</h1>` +
+    (tier ? `<p class="tier"><strong>Tier:</strong> ${escape(tier)}</p>` : "") +
+    bodyHtml +
+    `</article>`;
+  const seedKey = storeTwinWriteSeed({
+    plain_text: plain,
+    html,
+    title: `Evidence pack · ${asset}`,
+    asset_id: asset,
+    note_ids: [],
+    source: "evidence_pack",
   });
   if (!seedKey) return null;
   return buildTwinWriteHref(seedKey);

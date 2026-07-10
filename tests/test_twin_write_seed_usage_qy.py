@@ -22,6 +22,7 @@ def test_known_sources_include_dr_write_seeds() -> None:
         "spawn_merge",
         "collective_doc_merge",
         "hosted_html_document",
+        "evidence_pack",
     ):
         assert src in KNOWN_USAGE_FEED_SOURCES
         assert src in TWIN_WRITE_SEED_USAGE_SOURCES

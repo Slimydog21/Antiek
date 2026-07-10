@@ -1,0 +1,13 @@
+# inventory-rb · Evidence pack → Open Write twin_seed
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: rb
+date: 2026-07-10
+
+## Closed
+- TwinWriteSeedSource evidence_pack
+- buildEvidencePackWriteHref (insights + questions + source refs + html)
+- ResearchContextPanel Open Write (evidence pack) after pack load
+- KNOWN_USAGE_FEED_SOURCES + TWIN_WRITE_SEED_USAGE_SOURCES += evidence_pack
+- vitest twinWriteSeed 16 + ResearchContextPanel 12 = 28 passed
+- pytest twin write seed usage 2 passed
+  (SCRATCH residual-tests-rb*.log)

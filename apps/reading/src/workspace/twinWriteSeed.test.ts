@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   TWIN_WRITE_SEED_KEY_PREFIX,
   buildDeepResearchWriteHref,
+  buildEvidencePackWriteHref,
   buildResearchProgressWriteHref,
   buildTwinWriteHref,
   buildHostedHtmlWriteHref,
@@ -166,6 +167,49 @@ describe("twinWriteSeed (pp)", () => {
       (href!.match(/twin_seed=([^&]+)/) || [])[1] || "",
     );
     expect(loadTwinWriteSeed(key)?.asset_id).toBe("deep_research:spn_orphan");
+  });
+
+  it("builds evidence pack Write twin_seed (rb)", () => {
+    const href = buildEvidencePackWriteHref({
+      assetId: "paper-1",
+      spawnId: "spn_1",
+      insights: ["Attention is routing."],
+      questions: ["Why multi-head?"],
+      sourceReferences: [
+        {
+          title_hint: "Attention Is All You Need",
+          canonical_url: "https://arxiv.org/abs/1706.03762",
+          kind: "arxiv",
+          raw: "1706.03762",
+        },
+      ],
+      researchTier: "wrestle",
+      html: "<p>Evidence pack body</p>",
+    });
+    expect(href).toBeTruthy();
+    expect(href!).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
+    expect(href!).not.toMatch(/html_draft=/);
+    const key = decodeURIComponent(
+      (href!.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    const seed = loadTwinWriteSeed(key);
+    expect(seed?.source).toBe("evidence_pack");
+    expect(seed?.asset_id).toBe("paper-1");
+    expect(seed?.plain_text).toMatch(/\[insight\] Attention is routing/);
+    expect(seed?.plain_text).toMatch(/\[question\] Why multi-head/);
+    expect(seed?.plain_text).toMatch(/\[ref\]/);
+    expect(seed?.html).toMatch(/data-source="evidence_pack"/);
+  });
+
+  it("returns null for empty evidence pack (rb)", () => {
+    expect(
+      buildEvidencePackWriteHref({
+        assetId: "paper",
+        insights: [],
+        questions: [],
+        sourceReferences: [],
+      }),
+    ).toBeNull();
   });
 
   it("formats freeform provenance with source (qx)", () => {

@@ -717,3 +717,8 @@ float DR→Write paths, not only investigation_start / midnight_oil / chase.
 midnight_oil_deposit, marketplace_host, spawn_merge, collective_doc_merge,
 hosted_html_document join TWIN_WRITE_SEED_USAGE_SOURCES so Write create from
 any dual-handoff surface feeds weekly recursive suite rewrite by_source.
+
+## Residual rb · 2026-07-10 — Evidence pack → Write
+Evidence packs (insights + questions + arxiv/substack refs) hand off into Write
+as twin_seed source=evidence_pack. Competitive delta: citation-trust packs stay
+HTML-first and feed the recursive note-taker writing path + Antiek-bench.
