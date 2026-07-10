@@ -3818,3 +3818,8 @@ world-class DR map chrome. vitest Talk 13 · Meta 16 green. P0 PR #465. Pivot ap
 competitiveDrWorldClassReadiness combines multi-stage coverage (ape) with optional
 hop coverage (api); null hops = unknown on progress (never invent). Progress UI stamps
 world-class bar. vitest ResearchProgress 13 green. P0 PR #465. Pivot apv+.
+
+## Residual apv · 2026-07-10 — evidence hop pipeline world-class readiness stamps
+Evidence pack hop pipeline wires competitiveDrWorldClassReadiness (apu) with known
+hop coverage · stages unknown on evidence (parity progress stages known · hops unknown).
+vitest ResearchContextPanel 21 green. P0 PR #465. Pivot apw+ outside thrash.

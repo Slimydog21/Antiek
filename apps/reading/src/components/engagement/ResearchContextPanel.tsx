@@ -27,6 +27,8 @@
  * into HostedHtmlDocumentHost honesty chrome.
  * Residual (api): competitive citation hop pipeline completeness
  * (insights → questions → sources · never invents hops).
+ * Residual (apv): evidence hop pipeline stamps world-class readiness (apu)
+ * using hop coverage_ratio · stage unknown here (never invent stages).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -53,6 +55,7 @@ import {
 } from "../../workspace/twinWriteSeed";
 import { openWindow } from "../windows/openWindow";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
+import { competitiveDrWorldClassReadiness } from "./ResearchProgressPanel";
 
 /** Pure twin-kind metrics for recursive note-taker substrate (residual ff). */
 export function twinNoteMetrics(
@@ -920,6 +923,12 @@ export function ResearchContextPanel({
               ref_count: evidence.ref_count,
               chain_complete: evidence.chain_complete,
             });
+            // Residual (apv): world-class bar from hop coverage; stage unknown on evidence.
+            const wc = competitiveDrWorldClassReadiness({
+              stage_coverage_ratio: null,
+              hop_coverage_ratio: hopPipe.coverage_ratio,
+              stage_is_terminal: null,
+            });
             return (
               <div
                 className="font-mono text-[11px] space-y-0.5 border border-ink/10 rounded p-2 my-1 dark:border-bright/10"
@@ -932,6 +941,12 @@ export function ResearchContextPanel({
                 data-present={hopPipe.present.join(",") || ""}
                 data-missing={hopPipe.missing.join(",") || ""}
                 data-chain-complete={String(hopPipe.chain_complete)}
+                data-world-class-bar={wc.world_class_bar}
+                data-citation-hops-ready={
+                  wc.citation_hops_ready == null
+                    ? "unknown"
+                    : String(wc.citation_hops_ready)
+                }
                 data-view-format="html"
                 role="status"
               >
@@ -965,6 +980,28 @@ export function ResearchContextPanel({
                     );
                   })}
                 </ol>
+                <p
+                  data-testid="evidence-world-class-readiness"
+                  data-world-class-bar={wc.world_class_bar}
+                  data-citation-hops-ready={
+                    wc.citation_hops_ready == null
+                      ? "unknown"
+                      : String(wc.citation_hops_ready)
+                  }
+                  data-hop-coverage-ratio={String(
+                    Math.round(hopPipe.coverage_ratio * 1000) / 1000,
+                  )}
+                  data-multi-stage-ready="unknown"
+                  role="status"
+                >
+                  World-class DR bar · hops=
+                  {wc.citation_hops_ready
+                    ? "ready"
+                    : wc.citation_hops_ready === false
+                      ? "incomplete"
+                      : "unknown"}
+                  {" · stages unknown on evidence (progress panel)"}
+                </p>
               </div>
             );
           })()}

@@ -922,6 +922,15 @@ describe("ResearchContextPanel", () => {
         .getAttribute("data-present"),
     ).toBe("false");
     expect(hopPipe.textContent).toMatch(/Competitive citation hops/i);
+    // Residual (apv): world-class readiness from hop coverage (stages unknown here).
+    expect(hopPipe.getAttribute("data-citation-hops-ready")).toBe("true");
+    const wcEv = screen.getByTestId("evidence-world-class-readiness");
+    expect(wcEv.getAttribute("data-citation-hops-ready")).toBe("true");
+    expect(wcEv.getAttribute("data-multi-stage-ready")).toBe("unknown");
+    expect(wcEv.getAttribute("data-hop-coverage-ratio")).toBe("0.667");
+    expect(wcEv.textContent).toMatch(/World-class DR bar/i);
+    expect(wcEv.textContent).toMatch(/hops=ready/i);
+    expect(wcEv.textContent).toMatch(/stages unknown/i);
     // Residual (air): multi-hop hop list with stable anchors (claim→source nav).
     const hops = screen.getByTestId("evidence-citation-chain-hops");
     expect(hops.getAttribute("data-chain-complete")).toBe("true");
