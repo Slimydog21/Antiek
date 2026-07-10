@@ -29,6 +29,7 @@ import { registerModelReadiness } from "../../workspace/registerModelReadiness";
 import { clearDecisionTreeReadiness } from "../../workspace/clearDecisionTreeReadiness";
 import { suiteProposalApproveReadiness } from "../../workspace/suiteProposalApproveReadiness";
 import { offlineBenchRunReadiness } from "../../workspace/offlineBenchRunReadiness";
+import { depthTierApplyReadiness } from "../../workspace/depthTierApplyReadiness";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import {
@@ -108,6 +109,8 @@ import {
  * (week required · offline only · never auto-promote).
  * Residual (avb): same pure week gate drives Refresh leaderboard CTA
  * (hard-to-vary reuse · no second pure for identical week contract).
+ * Residual (avc): pure depthTierApplyReadiness drives depth-tier Apply CTAs
+ * (tier required · optional driver install · never auto-route).
  */
 export default function Settings() {
   const tier = useViewportTier();
@@ -786,14 +789,24 @@ export default function Settings() {
   }
 
   async function onApplyDepthTier(tier: string) {
+    // Residual (avc): pure gate — depth_tier required · never auto-route.
+    const gate = depthTierApplyReadiness({
+      depth_tier: tier,
+      model_id: selectedModel,
+      provider_id: selectedProvider,
+    });
+    if (!gate.apply_ready) {
+      setDepthError(gate.apply_title);
+      return;
+    }
     setDepthBusy(true);
     setDepthError(null);
     try {
       const d = await applyDepthTier({
-        depth_tier: tier,
-        model_id: selectedModel || null,
-        provider_id: selectedProvider || null,
-        install_driver: Boolean(selectedModel.trim()),
+        depth_tier: gate.depth_tier,
+        model_id: gate.model_id || null,
+        provider_id: gate.provider_id || null,
+        install_driver: gate.will_install_driver,
         includeHtml: true,
       });
       if (d.view_format !== "html") {
@@ -1449,19 +1462,36 @@ export default function Settings() {
                     { depth_tier: "pro", label: "Pro" },
                     { depth_tier: "wrestle", label: "Wrestle" },
                   ]
-              ).map((p) => (
-                <button
-                  key={p.depth_tier}
-                  type="button"
-                  data-testid={`depth-tier-${p.depth_tier}`}
-                  disabled={depthBusy}
-                  onClick={() => void onApplyDepthTier(p.depth_tier)}
-                  className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
-                >
-                  {p.label || p.depth_tier}
-                  {depth?.active_depth_tier === p.depth_tier ? " ✓" : ""}
-                </button>
-              ))}
+              ).map((p) => {
+                // Residual (avc): pure apply readiness per tier button.
+                const tierGate = depthTierApplyReadiness({
+                  depth_tier: p.depth_tier,
+                  model_id: selectedModel,
+                  provider_id: selectedProvider,
+                });
+                return (
+                  <button
+                    key={p.depth_tier}
+                    type="button"
+                    data-testid={`depth-tier-${p.depth_tier}`}
+                    data-apply-ready={String(tierGate.apply_ready)}
+                    data-block-reason={tierGate.block_reason}
+                    data-depth-tier={tierGate.depth_tier}
+                    data-will-install-driver={String(
+                      tierGate.will_install_driver,
+                    )}
+                    data-never-auto-route={String(tierGate.never_auto_route)}
+                    data-html-first={String(tierGate.html_first)}
+                    disabled={depthBusy || !tierGate.apply_ready}
+                    title={tierGate.apply_title}
+                    onClick={() => void onApplyDepthTier(p.depth_tier)}
+                    className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+                  >
+                    {p.label || p.depth_tier}
+                    {depth?.active_depth_tier === p.depth_tier ? " ✓" : ""}
+                  </button>
+                );
+              })}
             </div>
             {depth && (
               <div
