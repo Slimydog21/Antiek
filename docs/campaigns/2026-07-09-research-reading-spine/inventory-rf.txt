@@ -1,0 +1,12 @@
+# inventory-rf · Context search → Open Write twin_seed
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: rf
+date: 2026-07-10
+
+## Closed
+- TwinWriteSeedSource context_search
+- buildContextSearchWriteHref (query + hits + html)
+- ResearchContextPanel Open Write (search hits)
+- KNOWN_USAGE_FEED_SOURCES + TWIN_WRITE_SEED_USAGE_SOURCES += context_search
+- vitest twinWriteSeed 19 + ResearchContextPanel 12 = 31 passed
+  (SCRATCH residual-tests-rf.log)

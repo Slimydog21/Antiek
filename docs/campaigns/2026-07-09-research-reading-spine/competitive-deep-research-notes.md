@@ -732,3 +732,8 @@ dead-end in a sidebar — they seed the recursive note-taker writing path.
 After complete_session flywheel, operators Open Write with output + prompt
 block as twin_seed (source=session_flywheel_complete). Competitive delta:
 float research session never dead-ends — it becomes writing substrate.
+
+## Residual rf · 2026-07-10 — Intelligent search → Write
+Context search hits hand off into Write as twin_seed source=context_search.
+Competitive delta: intelligent search over the recursive note-taker substrate
+becomes writing fuel, not a dead-end results list.

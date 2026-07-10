@@ -1,6 +1,6 @@
 # SESSION-ARC · qv–rc · Write twin_seed matrix (recursive note-taker)
 
-**Tip residual:** rc · **PR #465** · HTML-first · offline-honest · soft budget
+**Tip residual:** rf · **PR #465** · HTML-first · offline-honest · soft budget
 
 ## Write twin_seed handoff matrix
 
@@ -16,6 +16,8 @@
 | Research progress terminal | qw | research_progress_complete | twin_seed only |
 | Evidence pack | rb | evidence_pack | twin_seed only |
 | Publication hydrate | rc | publication_hydrate | twin_seed only |
+| Session flywheel complete | re | session_flywheel_complete | twin_seed only |
+| Context search hits | rf | context_search | twin_seed only |
 
 ## Provenance + bench
 

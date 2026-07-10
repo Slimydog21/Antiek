@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   TWIN_WRITE_SEED_KEY_PREFIX,
+  buildContextSearchWriteHref,
   buildDeepResearchWriteHref,
   buildEvidencePackWriteHref,
   buildPublicationHydrateWriteHref,
@@ -169,6 +170,24 @@ describe("twinWriteSeed (pp)", () => {
       (href!.match(/twin_seed=([^&]+)/) || [])[1] || "",
     );
     expect(loadTwinWriteSeed(key)?.asset_id).toBe("deep_research:spn_orphan");
+  });
+
+  it("builds context search Write twin_seed (rf)", () => {
+    const href = buildContextSearchWriteHref({
+      assetId: "paper-1",
+      query: "attention",
+      hits: [{ kind: "insight", id: "i1", text: "Attention is routing." }],
+      researchTier: "deep",
+    });
+    expect(href).toBeTruthy();
+    expect(href!).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
+    const key = decodeURIComponent(
+      (href!.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    const seed = loadTwinWriteSeed(key);
+    expect(seed?.source).toBe("context_search");
+    expect(seed?.plain_text).toMatch(/Query: attention/);
+    expect(seed?.html).toMatch(/data-source="context_search"/);
   });
 
   it("builds session flywheel Write twin_seed (re)", () => {

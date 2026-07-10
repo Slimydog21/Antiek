@@ -13,6 +13,7 @@
  * Residual (qq): DecisionTreeDriverBadge + promptText from prompt_block / query
  *     so recursive context pack cost foresight sits next to the substrate.
  * Residual (rb): Open Write twin_seed from evidence pack (insights/questions/refs).
+ * Residual (rf): Open Write twin_seed from intelligent context search hits.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -30,7 +31,10 @@ import {
   type TwinPromoteContextResponse,
 } from "../../api/engagement";
 import { detectSourceKindClient } from "../../workspace/researchContextPack";
-import { buildEvidencePackWriteHref } from "../../workspace/twinWriteSeed";
+import {
+  buildContextSearchWriteHref,
+  buildEvidencePackWriteHref,
+} from "../../workspace/twinWriteSeed";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 
 /** Pure twin-kind metrics for recursive note-taker substrate (residual ff). */
@@ -651,6 +655,31 @@ export function ResearchContextPanel({
               </li>
             ))}
           </ul>
+          {/* Residual (rf): search hits → Write twin_seed. */}
+          {(() => {
+            const href = buildContextSearchWriteHref({
+              assetId: searchHits.asset_id || assetId,
+              query: searchHits.query,
+              hits: searchHits.hits,
+              html: searchHits.html,
+              researchTier: searchHits.research_tier,
+            });
+            return href ? (
+              <p className="meta font-mono text-[11px]">
+                <a
+                  href={href}
+                  data-testid="context-search-open-write"
+                  data-view-format="html"
+                  data-has-twin-seed="1"
+                  data-hit-count={String(searchHits.hit_count ?? 0)}
+                  className="underline opacity-90 hover:opacity-100"
+                  title="Open Write with context search hits as twin_seed (no invented document_id)"
+                >
+                  Open Write (search hits)
+                </a>
+              </p>
+            ) : null;
+          })()}
           {searchHits.html ? (
             <div
               data-testid="context-search-html"

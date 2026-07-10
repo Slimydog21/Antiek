@@ -20,7 +20,8 @@ export type TwinWriteSeedSource =
   | "research_progress_complete"
   | "evidence_pack"
   | "publication_hydrate"
-  | "session_flywheel_complete";
+  | "session_flywheel_complete"
+  | "context_search";
 
 export type TwinWriteSeedPayload = {
   plain_text: string;
@@ -65,6 +66,7 @@ export function storeTwinWriteSeed(input: {
     "evidence_pack",
     "publication_hydrate",
     "session_flywheel_complete",
+    "context_search",
   ];
   const source: TwinWriteSeedSource = allowed.includes(
     input.source as TwinWriteSeedSource,
@@ -111,6 +113,7 @@ export function loadTwinWriteSeed(key: string): TwinWriteSeedPayload | null {
       "evidence_pack",
       "publication_hydrate",
       "session_flywheel_complete",
+      "context_search",
     ];
     const source: TwinWriteSeedSource = allowedLoad.includes(
       srcRaw as TwinWriteSeedSource,
@@ -617,6 +620,72 @@ export function buildSessionFlywheelWriteHref(opts: {
     asset_id: spawn ? `deep_research:${spawn}` : `session:${session}`,
     note_ids: [],
     source: "session_flywheel_complete",
+  });
+  if (!seedKey) return null;
+  return buildTwinWriteHref(seedKey);
+}
+
+/**
+ * Residual (rf): Write handoff from intelligent context search hits.
+ * twin_seed only — search substrate seeds writing without inventing docs.
+ */
+export function buildContextSearchWriteHref(opts: {
+  assetId: string;
+  query?: string | null;
+  hits?: ReadonlyArray<{
+    kind?: string | null;
+    id?: string | null;
+    text?: string | null;
+  } | null | undefined>;
+  html?: string | null;
+  researchTier?: string | null;
+}): string | null {
+  const asset = String(opts.assetId || "").trim();
+  if (!asset) return null;
+  const query = String(opts.query || "").trim();
+  const hits = (opts.hits || [])
+    .map((h) => {
+      if (!h) return "";
+      const kind = String(h.kind || "").trim();
+      const text = String(h.text || "").trim();
+      if (!text) return "";
+      return kind ? `[${kind}] ${text}` : text;
+    })
+    .filter(Boolean);
+  const plainFromHtml = plainTextFromHtml(opts.html || "");
+  const plain = [
+    query ? `Query: ${query}` : "",
+    ...hits,
+    plainFromHtml,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  if (!plain.trim()) return null;
+  const escape = (s: string) =>
+    String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  const tier = String(opts.researchTier || "").trim();
+  const bodyHtml =
+    String(opts.html || "").trim() ||
+    `<ul class="hits">${hits.map((h) => `<li>${escape(h)}</li>`).join("")}</ul>`;
+  const html =
+    `<article data-view-format="html" data-source="context_search" data-asset-id="${escape(asset)}"` +
+    (query ? ` data-query="${escape(query)}"` : "") +
+    ` data-hit-count="${hits.length}">` +
+    `<h1>Context search · ${escape(asset)}</h1>` +
+    (query ? `<p class="query"><strong>Query:</strong> ${escape(query)}</p>` : "") +
+    (tier ? `<p class="tier"><strong>Tier:</strong> ${escape(tier)}</p>` : "") +
+    bodyHtml +
+    `</article>`;
+  const seedKey = storeTwinWriteSeed({
+    plain_text: plain,
+    html,
+    title: query ? `Search · ${query}` : `Context search · ${asset}`,
+    asset_id: asset,
+    note_ids: [],
+    source: "context_search",
   });
   if (!seedKey) return null;
   return buildTwinWriteHref(seedKey);

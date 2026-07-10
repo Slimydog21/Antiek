@@ -360,6 +360,13 @@ describe("ResearchContextPanel", () => {
     expect(screen.getByTestId("context-search-research-tier").textContent).toBe(
       "wrestle",
     );
+    // Residual (rf): Open Write twin_seed from search hits.
+    const write = screen.getByTestId("context-search-open-write");
+    const href = write.getAttribute("href") || "";
+    expect(href).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
+    expect(href).not.toMatch(/html_draft=/);
+    expect(write.getAttribute("data-has-twin-seed")).toBe("1");
+    expect(write.getAttribute("data-hit-count")).toBe("1");
     expect(searchEngagementContext).toHaveBeenCalledWith({
       query: "attention",
       asset_id: "paper",
