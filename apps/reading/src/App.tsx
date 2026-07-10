@@ -49,6 +49,7 @@ import Stats from "./modes/Stats";
 import TrustCenter from "./modes/TrustCenter";
 import WriteHome from "./modes/Write/WriteHome";
 import WrestleApp from "./modes/WrestleApp";
+import { LegacyWrestleRedirect } from "./routes/documentRoutes";
 
 /**
  * Top-level route registry.
@@ -111,8 +112,8 @@ function AuthenticatedRoutes() {
             (the Research-entry cascade navigates here after launch). */}
         <Route path="/deep-research" element={<DeepResearchWorkspace />} />
         <Route path="/deep-research/:sessionId" element={<DeepResearchWorkspace />} />
-        <Route path="/wrestle" element={<WrestleApp />} />
-        <Route path="/wrestle/:documentId" element={<WrestleApp />} />
+        <Route path="/wrestle" element={<LegacyWrestleRedirect />} />
+        <Route path="/wrestle/:documentId" element={<LegacyWrestleRedirect />} />
         <Route path="/sources" element={<Sources />} />
         {/* Write SPR-07 door re-home: the Write door opens on WriteHome — the
             real blocks → outline → generate → edit loop — not the legacy
@@ -138,6 +139,7 @@ function AuthenticatedRoutes() {
         <Route path="/notebook/auto" element={<AutoNotebook />} />
         <Route path="/notebook/:notebookId" element={<Notebook />} />
         <Route path="/documents" element={<DocumentsIndex />} />
+        <Route path="/documents/:documentId" element={<WrestleApp />} />
         <Route path="/library" element={<Library />} />
         {/* SPR-09 M2 — the paginated browse view over the new /library catalog
             endpoint (Unit A). ADDITIVE: a static segment declared before any

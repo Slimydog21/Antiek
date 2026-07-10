@@ -5,6 +5,7 @@ import HtmlReader, { type HtmlReaderSelection } from "../../components/HtmlReade
 import { useEventStream } from "../../hooks/useEventStream";
 import { postTypedEvent } from "../../lib/api";
 import { PanelHost, type StarterPanel } from "../../workspace/PanelHost";
+import { canonicalAnchor } from "../../routes/documentRoutes";
 
 type LoadState = { kind: "loading" } | { kind: "ready"; projection: HtmlProjection } | { kind: "error"; message: string };
 
@@ -20,7 +21,7 @@ function loadMessage(error: unknown): string {
 
 export default function WrestleApp() {
   const { documentId } = useParams<{ documentId?: string }>();
-  const anchor = new URLSearchParams(window.location.search).get("anchor") || undefined;
+  const anchor = canonicalAnchor(window.location.search);
   const [investigationId] = useState(() => {
     const stored = sessionStorage.getItem("antiek.investigation_id");
     if (stored) return stored;

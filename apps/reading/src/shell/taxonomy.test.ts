@@ -163,7 +163,7 @@ describe("workflowTaxonomy built-flag + shared-bucket integrity", () => {
  * future nav change can't silently revert them (rigor #5, defensibility).
  */
 describe("Read door re-home + operator-surface eviction (Read SPR-06)", () => {
-  it("the Read door opens on the Library, not the PDF wrestler", () => {
+  it("the Read door opens on the Library, not the document workspace", () => {
     // The load-bearing claim: clicking the Read rail door (NavRail navigates
     // WORKFLOWS.read.defaultRoute) lands on the Library shelf — never /wrestle.
     expect(WORKFLOWS.read.defaultRoute).toBe("/library");
@@ -178,12 +178,19 @@ describe("Read door re-home + operator-surface eviction (Read SPR-06)", () => {
     expect(landing?.route).toBe("/library");
   });
 
-  it("the PDF wrestler stays reachable (a demoted Read power surface), just not the door", () => {
+  it("pins the HTML document reader taxonomy and canonical route", () => {
     const wrestle = modeById("WrestleApp");
-    expect(wrestle?.workflow).toBe("read"); // still Read — it IS reading
+    expect(wrestle?.workflow).toBe("read");
     expect(wrestle?.built).toBe(true);
-    expect(wrestle?.route).toBe("/wrestle");
-    expect(WORKFLOWS.read.defaultRoute).not.toBe(wrestle?.route); // not the door
+    expect(wrestle?.label).toBe("HTML document reader");
+    expect(wrestle?.route).toBe("/documents/:documentId");
+    expect(workflowForPath("/documents/doc-1")).toBe("read");
+  });
+
+  it("does not advertise the retired wrestler or PDF-rendering contract", () => {
+    const activeCopy = MODE_TAXONOMY.map((m) => `${m.label} ${m.blurb}`).join("\n");
+    expect(activeCopy).not.toMatch(/wrestl/i);
+    expect(activeCopy).not.toMatch(/PDF (reading|reader|rendering)/i);
   });
 
   it("DocumentsIndex + Sources are evicted out of the Read door into shared/More", () => {

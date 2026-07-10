@@ -186,6 +186,7 @@ describe("Library", () => {
     // It is the Read door's honest "nothing to read in full yet" state — not
     // an upload prompt as the home (the wrestler is a demoted side affordance).
     expect(screen.queryByText(/Load a PDF to wrestle/)).toBeNull();
+    expect(screen.getByText(/convert and render as HTML/)).toBeTruthy();
   });
 
   it("ranks the servable shelf to active research themes and SAYS so (M1 theme ordering)", async () => {

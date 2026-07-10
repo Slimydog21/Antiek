@@ -36,7 +36,7 @@ function routeKey(pathname: string): string {
   // override specific ids.
   return pathname
     .replace(/\/inv\/[^/]+/, "/inv/:id")
-    .replace(/\/wrestle\/[^/]+/, "/wrestle/:id")
+    .replace(/\/documents\/[^/]+/, "/documents/:id")
     .replace(/\/notebook\/[^/]+/, "/notebook/:id")
     .replace(/\/backtest\/[^/]+/, "/backtest/:id")
     .replace(/\/outcomes\/[^/]+/, "/outcomes/:id")

@@ -68,7 +68,7 @@ const routeForNode = (n: TreeNode): string => {
     case "investigation":
       return `/inv/${n.id}`;
     case "document":
-      return `/wrestle/${n.id}`;
+      return `/documents/${encodeURIComponent(n.id)}`;
     case "notebook":
       return `/notebook/${n.id}`;
   }

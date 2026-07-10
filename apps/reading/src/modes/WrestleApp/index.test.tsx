@@ -16,7 +16,7 @@ const projection = { identity: { source_document_id: "doc-1" }, projection_id: "
 let resolveLoad: ((value: typeof projection) => void) | undefined;
 
 beforeEach(() => {
-  sessionStorage.clear(); history.replaceState({}, "", "/wrestle/doc-1");
+  sessionStorage.clear(); history.replaceState({}, "", "/documents/doc-1");
   mocks.documentId = "doc-1"; mocks.get.mockReset(); mocks.post.mockReset().mockResolvedValue({}); mocks.abortSignals.length = 0; mocks.starters = [];
   mocks.get.mockResolvedValue(projection);
   vi.stubGlobal("crypto", { randomUUID: () => "12345678-1234-1234-1234-123456789abc" });
@@ -54,8 +54,14 @@ describe("WrestleApp HTML integration", () => {
   });
 
   it("uses canonical ?anchor= and ignores ?page=", async () => {
-    history.replaceState({}, "", "/wrestle/doc-1?anchor=antiek-anchor-z&page=9"); render(<WrestleApp />);
-    expect((await screen.findByLabelText("HTML document reader")).getAttribute("data-anchor")).toBe("antiek-anchor-z");
+    const anchor = `antiek-anchor-${"a".repeat(64)}`;
+    history.replaceState({}, "", `/documents/doc-1?anchor=${anchor}&page=9`); render(<WrestleApp />);
+    expect((await screen.findByLabelText("HTML document reader")).getAttribute("data-anchor")).toBe(anchor);
+  });
+
+  it("does not pass a malformed anchor into the HTML reader", async () => {
+    history.replaceState({}, "", "/documents/doc-1?anchor=antiek-anchor-z"); render(<WrestleApp />);
+    expect((await screen.findByLabelText("HTML document reader")).getAttribute("data-anchor")).toBeNull();
   });
 
   it("posts selection lineage exactly once and surfaces post errors", async () => {

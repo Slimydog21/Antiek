@@ -26,8 +26,8 @@ import type { FeedOrdering } from "./documentsByTheme";
  * Opening a book routes to /read/:documentId (SPR-03), which renders only
  * what the serve gate permits.
  *
- * Read SPR-06: this is the Read workflow's defaultRoute (the door). The PDF
- * wrestler is demoted from the door to a "bring your own PDF" affordance
+ * Read SPR-06: this is the Read workflow's defaultRoute (the door). The HTML
+ * research workspace remains available for documents outside the book flow.
  * here — still reachable for the power case, no longer the home. An empty
  * shelf shows an honest "what's available to read" state, NOT an uploader.
  */
@@ -196,16 +196,15 @@ export default function Library() {
                 >
                   browse all →
                 </button>
-                {/* Read SPR-06: the PDF wrestler, demoted from the Read door to a
-                    bring-your-own affordance. Reachable for the power case (read a
-                    PDF you brought), no longer the home — the shelf is. */}
+                {/* Source acquisition accepts PDFs, then converts and renders them
+                    as HTML in the research document workspace. */}
                 <button
                   type="button"
-                  onClick={() => navigate("/wrestle")}
+                  onClick={() => navigate("/documents")}
                   className="text-xs font-mono text-shadow-1 dark:text-moonlight underline decoration-dotted underline-offset-2 hover:text-ink dark:hover:text-bright"
-                  title="Read a PDF you bring yourself"
+                  title="Add a PDF source and convert it to an HTML document"
                 >
-                  bring your own PDF →
+                  add a PDF → HTML document →
                 </button>
               </div>
             </div>
@@ -318,7 +317,7 @@ export default function Library() {
               {curatedOrder !== null
                 ? "No servable books matched that prompt. Try different words, or clear to see the whole shelf."
                 : status === "servable"
-                  ? "Nothing is readable in full on the shelf yet — the library only shows what can be legally aggregated. Check the Preview tab for titles you can sample, or bring your own PDF to read it here."
+                  ? "Nothing is readable in full on the shelf yet — the library only shows what can be legally aggregated. Check the Preview tab, or add a PDF source to convert and render as HTML in the research workspace."
                   : "Nothing here."}
             </p>
           )}

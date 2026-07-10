@@ -9,9 +9,8 @@ import { apiFetch } from "../../lib/api";
  * Documents listing UI (master-spec §4.1).
  *
  * Operator-facing list of substrate-attached documents with
- * source-tier + investigation filters. Each row links to
- * /wrestle/:documentId where the existing PDF + region-selection
- * surface lives.
+ * source-tier + investigation filters. Each row opens the canonical
+ * HTML research reader at /documents/:documentId.
  */
 
 interface DocumentRow {
@@ -27,6 +26,9 @@ interface DocumentRow {
 
 const TIER_FILTERS = ["all", 1, 2, 3, 4, 5] as const;
 type TierFilter = (typeof TIER_FILTERS)[number];
+
+export const documentReaderPath = (documentId: string): string =>
+  `/documents/${encodeURIComponent(documentId)}`;
 
 export default function DocumentsIndex() {
   const navigate = useNavigate();
@@ -84,8 +86,8 @@ export default function DocumentsIndex() {
               Documents
             </h1>
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-              Substrate-attached documents (PDFs + web sources +
-              transcripts). Tier reflects source quality per master-
+              Research documents rendered as HTML from accepted source formats,
+              including PDFs, web sources, and transcripts. Tier reflects source quality per master-
               spec §9.5: Tier 1 peer-reviewed primary, Tier 5
               anonymous.
             </p>
@@ -155,7 +157,7 @@ export default function DocumentsIndex() {
               rows={rows}
               rowKey={(r) => r.document_id}
               onRowClick={(r) =>
-                navigate(`/wrestle/${encodeURIComponent(r.document_id)}`)
+                navigate(documentReaderPath(r.document_id))
               }
               columns={[
                 {

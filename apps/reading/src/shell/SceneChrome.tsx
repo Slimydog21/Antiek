@@ -84,7 +84,7 @@ const SCENES: Record<Exclude<Workflow, "shared">, SceneDef> = {
       { id: "new-notebook", label: "New notebook", to: "/notebooks" },
     ],
     tabs: [
-      { id: "wrestle", label: "Library", to: "/wrestle" },
+      { id: "library", label: "Library", to: "/library" },
       { id: "documents", label: "Documents", to: "/documents" },
       { id: "notebooks", label: "Notebooks", to: "/notebooks" },
     ],

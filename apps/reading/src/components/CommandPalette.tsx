@@ -30,7 +30,7 @@ import { toast } from "./lemon/LemonToast";
  *
  * Cmd/Ctrl+K opens; ESC closes. Single fuzzy-search surface across:
  *   - Routes (workstation, brainstorm, notebooks, sources, privacy,
- *     pricing, operator dashboard, wrestler)
+ *     pricing, operator dashboard, HTML document reader)
  *   - Investigations (GET /investigations)
  *   - Documents (GET /documents)
  *   - Notebooks (GET /notebooks)
@@ -109,7 +109,7 @@ export type PaletteEntry =
   | PaletteParkedQuestion
   | PaletteAction;
 
-const ROUTE_INDEX: PaletteRoute[] = [
+export const ROUTE_INDEX: PaletteRoute[] = [
   {
     kind: "route",
     id: "route:research",
@@ -119,10 +119,10 @@ const ROUTE_INDEX: PaletteRoute[] = [
   },
   {
     kind: "route",
-    id: "route:wrestle",
-    title: "Document wrestler",
-    subtitle: "Mode B — PDF reading + region selection (/wrestle)",
-    path: "/wrestle",
+    id: "route:documents",
+    title: "Research documents",
+    subtitle: "HTML document reader and research workspace (/documents)",
+    path: "/documents",
   },
   {
     kind: "route",
@@ -245,13 +245,6 @@ const ROUTE_INDEX: PaletteRoute[] = [
   },
   {
     kind: "route",
-    id: "route:documents-index",
-    title: "Documents",
-    subtitle: "Substrate-attached sources by tier (/documents)",
-    path: "/documents",
-  },
-  {
-    kind: "route",
     id: "route:billing",
     title: "Billing",
     subtitle: "Free-tier usage + margin breakdown (/billing)",
@@ -323,6 +316,10 @@ export function rankEntries(
   return facetRankEntries(entries, query);
 }
 
+export function documentPalettePath(documentId: string): string {
+  return `/documents/${encodeURIComponent(documentId)}`;
+}
+
 export default function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -387,7 +384,7 @@ export default function CommandPalette() {
             id: `doc:${doc.document_id}`,
             title: doc.title ?? doc.document_id,
             subtitle: `Document · ${doc.document_id.slice(0, 8)}`,
-            path: `/wrestle/${doc.document_id}`,
+            path: documentPalettePath(doc.document_id),
           }),
         );
         setDocuments(items);

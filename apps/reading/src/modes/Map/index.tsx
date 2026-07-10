@@ -21,11 +21,10 @@ const GROUPS: { title: string; routes: RouteEntry[] }[] = [
     title: "Workstation",
     routes: [
       { path: "/", title: "Research workstation", description: "Mode A — chat-first investigation surface" },
-      { path: "/wrestle", title: "Document wrestler", description: "Mode B — PDF reading + region selection" },
+      { path: "/documents", title: "Research documents", description: "HTML document reader and research workspace" },
       { path: "/create", title: "Creation studio", description: "Mode C — lego-block writing" },
       { path: "/brainstorm", title: "Brainstorm station", description: "Mode E — watch-for-later + thought partner" },
       { path: "/investigations", title: "Investigations index", description: "List + create investigations" },
-      { path: "/documents", title: "Documents", description: "Substrate-attached sources by tier" },
       { path: "/notebooks", title: "Notebooks", description: "Wedge 2 literate-analysis surface" },
       { path: "/sources", title: "Sources", description: "Acquisition adapters" },
       { path: "/interviews", title: "Interviews", description: "Loop 4 informant projects + invites" },

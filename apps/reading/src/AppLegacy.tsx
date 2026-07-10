@@ -1,9 +1,11 @@
-import { Route, Routes, Navigate } from "react-router-dom";
+import { Route, Routes } from "react-router-dom";
 
 import HeaderBar from "./modes/shared/HeaderBar";
 import ResearchWorkstation from "./modes/ResearchWorkstation";
 import WrestleApp from "./modes/WrestleApp";
 import Login from "./modes/Login";
+import DocumentsIndex from "./modes/DocumentsIndex";
+import { LegacyWrestleRedirect } from "./routes/documentRoutes";
 
 /**
  * AppLegacy — the v1 / pre-S4 chrome.
@@ -47,8 +49,10 @@ export default function AppLegacy() {
             path="/inv/:investigationId"
             element={<ResearchWorkstation />}
           />
-          <Route path="/wrestle" element={<WrestleApp />} />
-          <Route path="/wrestle/:documentId" element={<WrestleApp />} />
+          <Route path="/wrestle" element={<LegacyWrestleRedirect />} />
+          <Route path="/wrestle/:documentId" element={<LegacyWrestleRedirect />} />
+          <Route path="/documents" element={<DocumentsIndex />} />
+          <Route path="/documents/:documentId" element={<WrestleApp />} />
           <Route path="*" element={<LegacyMissingRoute />} />
         </Routes>
       </main>
@@ -75,7 +79,3 @@ function LegacyMissingRoute() {
     </div>
   );
 }
-
-// Suppress unused-import warning while keeping Navigate available for
-// future legacy redirect wiring.
-void Navigate;

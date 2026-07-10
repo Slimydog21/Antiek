@@ -114,7 +114,7 @@ describe("ProjectTree", () => {
       "doc-live-seeded",
     );
     fireEvent.click(row);
-    expect(navigateMock).toHaveBeenCalledWith("/wrestle/doc-live-seeded");
+    expect(navigateMock).toHaveBeenCalledWith("/documents/doc-live-seeded");
     expectNoFabricatedIds(container);
   });
 

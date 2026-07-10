@@ -226,20 +226,16 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
   },
 
   // ── READ ──────────────────────────────────────────────────────────
-  // Document-wrestling, the library/document index, sources, and the
+  // The HTML research reader, library/document index, sources, and the
   // notebook surface are all "bring sources into the substrate and think
   // about them" — the Read workflow.
   {
     id: "WrestleApp",
     workflow: "read",
-    // Read SPR-06: demoted from "the Read home" to a bring-your-own-PDF
-    // power surface. It STAYS in the Read workflow (it is reading), but it
-    // is no longer the door — the Library is (see read.defaultRoute). It is
-    // reachable from the Library's "bring your own PDF" affordance + ⌘K.
-    label: "Document wrestler",
-    blurb: "Bring your own PDF — read it, select regions, extract claims (power surface; not the Read door).",
+    label: "HTML document reader",
+    blurb: "Research workspace for reading HTML documents, selecting regions, and extracting claims.",
     built: true,
-    route: "/wrestle",
+    route: "/documents/:documentId",
   },
   // Read SPR-06 operator-surface eviction (mirrors Wave E U-03 "operator
   // behind More"): the tier-filtered Documents index and the bulk-ingest
@@ -251,8 +247,8 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
   {
     id: "DocumentsIndex",
     workflow: "shared",
-    label: "Documents",
-    blurb: "Substrate-attached sources by tier (acquisition/governance).",
+    label: "Research documents",
+    blurb: "Research document index with source-tier and investigation filters.",
     built: true,
     route: "/documents",
     sharedReason:
@@ -687,14 +683,18 @@ export function workflowForPath(pathname: string): Workflow {
       workflow: m.workflow,
       // Convert "/speak/:projectId" → "/speak" prefix.
       prefix: m.route!.replace(/\/:.*/, ""),
+      parameterized: m.route!.includes("/:"),
     })),
-    ...READ_SUBSURFACE_ROUTES,
+    ...READ_SUBSURFACE_ROUTES.map((route) => ({ ...route, parameterized: false })),
   ];
   // Sort by prefix length desc so "/speak/invite" beats "/speak".
   candidates.sort((a, b) => b.prefix.length - a.prefix.length);
   for (const c of candidates) {
     if (c.prefix === "/" ) continue; // handle root last
-    if (pathname === c.prefix || pathname.startsWith(c.prefix + "/")) {
+    if (
+      (!c.parameterized && pathname === c.prefix) ||
+      pathname.startsWith(c.prefix + "/")
+    ) {
       return c.workflow;
     }
   }
