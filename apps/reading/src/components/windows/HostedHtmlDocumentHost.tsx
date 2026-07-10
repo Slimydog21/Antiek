@@ -324,7 +324,11 @@ export default function HostedHtmlDocumentHost(
               ? `Session flywheel · ${title}`
               : isCollectiveUnitPrompt
                 ? `Collective cohesive unit · ${title}`
-                : title;
+                : isTwinCrossAssetMerge
+                  ? `Twin cross-asset merge · ${title}`
+                  : isTwinDraftSelected
+                    ? `Twin multi-select draft · ${title}`
+                    : title;
   const twinSeedBody = html
     ? html.replace(/<[^>]+>/g, " ").slice(0, 500)
     : twinSeedTitle;

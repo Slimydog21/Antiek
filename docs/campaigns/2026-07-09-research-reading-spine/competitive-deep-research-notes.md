@@ -1264,3 +1264,8 @@ delta: recursive note-taker float → Open Write path is provenance-complete.
 FUTURE-AGENT-SPEC tip → 447182e2 with closed arcs tt–vg (40 residual ships).
 Competitive delta: swarm handoff tip-true; operator merge PR #465 remains
 highest leverage.
+
+## Residual vi · 2026-07-10 — twin float host twinSeedTitle cross-asset merge
+HostedHtmlDocumentHost seeds TwinNotesPanel with Twin cross-asset merge /
+Twin multi-select draft titles. Competitive delta: recursive note-taker twin
+floats self-seed honestly when re-opened as reading windows.

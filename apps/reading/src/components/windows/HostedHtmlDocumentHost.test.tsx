@@ -270,6 +270,11 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(
       screen.getByTestId("hosted-html-open-write").getAttribute("title") || "",
     ).toMatch(/cross-asset merge/i);
+    // Residual (vi): twin notes offline-seed title for cross-asset merge floats.
+    expect(
+      screen.getByTestId("twin-notes-panel-stub").getAttribute("data-seed-title") ||
+        "",
+    ).toMatch(/Twin cross-asset merge/i);
   });
 
   it("stamps collective_unit_prompt honesty (ts)", () => {
