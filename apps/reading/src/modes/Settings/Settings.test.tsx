@@ -27,6 +27,7 @@ const {
   fetchNotDiamondAdvisory,
   fetchHydrateLiveStatus,
   fetchTwinSeedLiveStatus,
+  fetchMidnightOilLiveStepStatus,
   defaultUsageSummary,
 } = vi.hoisted(() => {
   const models = {
@@ -446,6 +447,20 @@ const {
       ],
       html: "<p>offline_honest=true</p>",
     })),
+    // Residual (sz): offline-honest MO live-step status default.
+    fetchMidnightOilLiveStepStatus: vi.fn(async () => ({
+      view_format: "html",
+      product_panel: "midnight_oil_live_step_status",
+      source: "midnight_oil.live_step_wiring",
+      offline_honest: true,
+      live_env: false,
+      injector_installed: false,
+      live_env_flag: "ANTIEK_MIDNIGHT_OIL_LIVE_STEP",
+      notes: [
+        "Midnight Oil default: offline-honest stub steps (live dual-gate off).",
+      ],
+      html: "<p>offline_honest=true</p>",
+    })),
   };
 });
 
@@ -472,6 +487,10 @@ vi.mock("../../api/settings", () => ({
 vi.mock("../../api/engagement", () => ({
   fetchHydrateLiveStatus,
   fetchTwinSeedLiveStatus,
+}));
+
+vi.mock("../../api/midnightOil", () => ({
+  fetchMidnightOilLiveStepStatus,
 }));
 
 describe("Settings SPR-01 + decision-tree install", () => {
@@ -501,6 +520,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
     fetchNotDiamondAdvisory.mockClear();
     fetchHydrateLiveStatus.mockClear();
     fetchTwinSeedLiveStatus.mockClear();
+    fetchMidnightOilLiveStepStatus.mockClear();
     // Default: no installed decision-tree driver (residual rl delta baseline).
     fetchDecisionTreeSelection.mockResolvedValue({
       model_id: null,
@@ -693,12 +713,33 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("settings-dual-gate-l3-link").getAttribute("href")).toBe(
       "#twin-seed-live-status",
     );
+    expect(screen.getByTestId("settings-dual-gate-l4-link").getAttribute("href")).toBe(
+      "#moil-live-step-status",
+    );
     expect(
       screen.getByTestId("settings-dual-gate-l4-checklist-link").getAttribute("href"),
     ).toMatch(/DUAL-GATE-L1-L4/);
     expect(screen.getByTestId("settings-dual-gate-l7-link").getAttribute("href")).toBe(
       "#notdiamond-advisory",
     );
+  });
+
+  it("surfaces offline-honest Midnight Oil live-step status (sz)", async () => {
+    render(<Settings />);
+    await waitFor(() => {
+      expect(fetchMidnightOilLiveStepStatus).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("moil-live-step-status-panel")).toBeTruthy();
+    });
+    const panel = screen.getByTestId("moil-live-step-status-panel");
+    expect(panel.id).toBe("moil-live-step-status");
+    expect(panel.getAttribute("data-offline-honest")).toBe("true");
+    expect(panel.getAttribute("data-injector-installed")).toBe("false");
+    const metrics = screen.getByTestId("moil-live-step-status-metrics");
+    expect(metrics.getAttribute("data-offline-honest")).toBe("true");
+    expect(metrics.getAttribute("data-live-env")).toBe("false");
+    expect(metrics.textContent).toMatch(/offline-honest stub steps/i);
   });
 
   it("loads Antiek-bench weekly usage summary in Settings", async () => {

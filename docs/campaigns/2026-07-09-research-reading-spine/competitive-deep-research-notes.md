@@ -953,3 +953,9 @@ Pytest asserts apps/reading WRITE_SEED_FEED_SOURCES equals substrate
 TWIN_WRITE_SEED_USAGE_SOURCES. Competitive delta: recursive note-taker →
 Write feed honesty cannot silently diverge between Settings UI and weekly
 rewrite aggregation.
+
+## Residual sz · 2026-07-10 — Settings MO live-step readiness (L4)
+Settings mounts Midnight Oil live-step readiness panel (parity hydrate L1–L2
+and twin seed L3). Offline-honest by default; dual-gate L4 link targets the
+panel. Competitive delta: autonomous research mode readiness is visible in
+the same Settings surface as model driver choice — without silent live enable.

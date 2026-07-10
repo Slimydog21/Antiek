@@ -1,0 +1,15 @@
+# inventory-sz · Settings Midnight Oil L4 live-step readiness panel
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: sz
+date: 2026-07-10
+
+## Closed
+- Settings panel id=moil-live-step-status · data-testid=moil-live-step-status-panel
+- fetchMidnightOilLiveStepStatus on load + refresh
+- Dual-gate L4 link → #moil-live-step-status (plus checklist)
+- offline-honest default · never enables live worker
+- vitest Settings 32 · SCRATCH residual-tests-sz.log
+
+## Not in scope
+- Enabling ANTIEK_MIDNIGHT_OIL_LIVE_STEP (operator dual-gate only)
+- Operator merge PR #465 (gated)

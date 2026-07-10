@@ -52,6 +52,10 @@ import {
   type HydrateLiveStatusResponse,
   type TwinSeedLiveStatusResponse,
 } from "../../api/engagement";
+import {
+  fetchMidnightOilLiveStepStatus,
+  type MidnightOilLiveStepStatusResponse,
+} from "../../api/midnightOil";
 
 /**
  * Residual (rl): NotDiamond advisory vs installed decision-tree driver delta
@@ -125,6 +129,11 @@ export default function Settings() {
     null,
   );
   const [twinSeedLiveBusy, setTwinSeedLiveBusy] = useState(false);
+  /** Residual (sz): Midnight Oil L4 live-step readiness (offline-honest). */
+  const [moilLive, setMoilLive] =
+    useState<MidnightOilLiveStepStatusResponse | null>(null);
+  const [moilLiveError, setMoilLiveError] = useState<string | null>(null);
+  const [moilLiveBusy, setMoilLiveBusy] = useState(false);
   const [depth, setDepth] = useState<DepthTierResponse | null>(null);
   const [depthError, setDepthError] = useState<string | null>(null);
   const [depthBusy, setDepthBusy] = useState(false);
@@ -296,6 +305,19 @@ export default function Settings() {
       } catch (e) {
         if (!cancelled)
           setTwinSeedLiveError(e instanceof Error ? e.message : String(e));
+      }
+      try {
+        // Residual (sz): MO live-step readiness (never enables live worker).
+        const mo = await fetchMidnightOilLiveStepStatus();
+        if (!cancelled) {
+          if (mo.view_format !== "html") {
+            throw new Error("moil live-step status view_format must be html");
+          }
+          setMoilLive(mo);
+        }
+      } catch (e) {
+        if (!cancelled)
+          setMoilLiveError(e instanceof Error ? e.message : String(e));
       }
       try {
         const n = await fetchNotDiamondAdvisory({
@@ -523,6 +545,23 @@ export default function Settings() {
       setTwinSeedLiveError(e instanceof Error ? e.message : String(e));
     } finally {
       setTwinSeedLiveBusy(false);
+    }
+  }
+
+  /** Residual (sz): refresh MO live-step readiness (never enables live worker). */
+  async function onRefreshMoilLiveStepStatus() {
+    setMoilLiveBusy(true);
+    setMoilLiveError(null);
+    try {
+      const mo = await fetchMidnightOilLiveStepStatus();
+      if (mo.view_format !== "html") {
+        throw new Error("moil live-step status view_format must be html");
+      }
+      setMoilLive(mo);
+    } catch (e) {
+      setMoilLiveError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMoilLiveBusy(false);
     }
   }
 
@@ -1115,12 +1154,20 @@ export default function Settings() {
                   L3 twin seed
                 </a>
                 <a
+                  href="#moil-live-step-status"
+                  className="underline opacity-80 hover:opacity-100"
+                  data-testid="settings-dual-gate-l4-link"
+                  title="L4 Midnight Oil live-step readiness (offline default)"
+                >
+                  L4 MO live-step
+                </a>
+                <a
                   href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
                   className="underline opacity-80 hover:opacity-100"
                   data-testid="settings-dual-gate-l4-checklist-link"
                   title="L4 Midnight Oil live-step checklist (prep only)"
                 >
-                  L4 MO checklist
+                  L4 checklist
                 </a>
                 <a
                   href="#notdiamond-advisory"
@@ -1424,6 +1471,75 @@ export default function Settings() {
                   {String(twinSeedLive.injector_installed)}
                 </p>
                 {twinSeedLive.notes.map((n) => (
+                  <p key={n} className="opacity-80">
+                    {n}
+                  </p>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </LemonCard>
+
+        {/* Residual (sz): Midnight Oil L4 live-step readiness (offline-honest). */}
+        <LemonCard
+          title="Midnight Oil live-step (L4 dual-gate)"
+          elevation="z1"
+          colour="parchment"
+        >
+          <div
+            id="moil-live-step-status"
+            className="p-4 space-y-3"
+            data-testid="moil-live-step-status-panel"
+            data-view-format="html"
+            data-offline-honest={
+              moilLive ? String(moilLive.offline_honest) : undefined
+            }
+            data-injector-installed={
+              moilLive ? String(moilLive.injector_installed) : undefined
+            }
+          >
+            <p className="text-sm text-ink dark:text-bright">
+              Autonomous Midnight Oil worker steps default offline. Live step
+              requires dual env gate + injector — this panel never enables the
+              live worker.
+            </p>
+            <button
+              type="button"
+              data-testid="moil-live-step-status-refresh"
+              disabled={moilLiveBusy}
+              onClick={() => void onRefreshMoilLiveStepStatus()}
+              className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+            >
+              {moilLiveBusy ? "Refreshing…" : "Refresh MO live-step status"}
+            </button>
+            {moilLiveError ? (
+              <p className="text-sm text-emperor" role="alert">
+                {moilLiveError}
+              </p>
+            ) : null}
+            {moilLive ? (
+              <div
+                className="space-y-1 font-mono text-[11px]"
+                data-testid="moil-live-step-status-metrics"
+                data-offline-honest={String(moilLive.offline_honest)}
+                data-live-env={String(moilLive.live_env)}
+                data-injector-installed={String(moilLive.injector_installed)}
+                role="status"
+              >
+                <p>
+                  Mode:{" "}
+                  <strong>
+                    {moilLive.offline_honest
+                      ? "offline-honest stub steps"
+                      : "live step dual-gate ready"}
+                  </strong>
+                </p>
+                <p>
+                  env <code>{moilLive.live_env_flag}</code>=
+                  {String(moilLive.live_env)} · injector=
+                  {String(moilLive.injector_installed)}
+                </p>
+                {moilLive.notes.map((n) => (
                   <p key={n} className="opacity-80">
                     {n}
                   </p>
