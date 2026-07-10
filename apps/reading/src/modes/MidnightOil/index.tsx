@@ -2312,16 +2312,41 @@ export default function MidnightOil() {
                   dangerouslySetInnerHTML={{ __html: deposit.progress.html }}
                 />
               ) : null}
-              {/* Residual (db/ew): open deposit as hosted HTML reading window. */}
-              <div className="flex flex-wrap items-center gap-2">
+              {/* Residual (db/ew/ata): open deposit as hosted HTML reading window
+                  with HTML-first deliverable honesty stamps (never invent open when
+                  view_format≠html / empty body / missing document_id). */}
+              {(() => {
+                const depositHtmlReady =
+                  deposit.view_format === "html" &&
+                  Boolean(String(deposit.html || "").trim()) &&
+                  Boolean(String(deposit.document_id || "").trim());
+                const depositOpenTitle = depositHtmlReady
+                  ? "Open Midnight Oil deposit as HTML reading window (autonomous swarm deliverable · twin seed path · never PDF)"
+                  : deposit.view_format !== "html"
+                    ? "Deposit view_format must be html (never PDF open)"
+                    : !String(deposit.html || "").trim()
+                      ? "Deposit HTML body empty — cannot open reading window"
+                      : "Deposit document_id missing — cannot open reading window";
+                return (
+              <div
+                className="flex flex-wrap items-center gap-2"
+                data-testid="moil-deposit-open-actions"
+                data-deposit-html-ready={String(depositHtmlReady)}
+                data-view-format={deposit.view_format || ""}
+                data-html-first="true"
+                data-l4-live-step="deferred"
+              >
                 <button
                   type="button"
                   data-testid="moil-open-deposit-window"
-                  disabled={
-                    deposit.view_format !== "html" ||
-                    !deposit.html ||
-                    !deposit.document_id
-                  }
+                  data-view-format="html"
+                  data-html-first="true"
+                  data-window-mode="floating"
+                  data-deposit-html-ready={String(depositHtmlReady)}
+                  data-document-id={deposit.document_id ?? ""}
+                  data-l4-live-step="deferred"
+                  disabled={!depositHtmlReady}
+                  title={depositOpenTitle}
                   onClick={() => {
                     const winId = openMidnightOilDepositWindow(
                       deposit,
@@ -2339,11 +2364,14 @@ export default function MidnightOil() {
                 <button
                   type="button"
                   data-testid="moil-open-deposit-full"
-                  disabled={
-                    deposit.view_format !== "html" ||
-                    !deposit.html ||
-                    !deposit.document_id
-                  }
+                  data-view-format="html"
+                  data-html-first="true"
+                  data-window-mode="full"
+                  data-deposit-html-ready={String(depositHtmlReady)}
+                  data-document-id={deposit.document_id ?? ""}
+                  data-l4-live-step="deferred"
+                  disabled={!depositHtmlReady}
+                  title={depositOpenTitle}
                   onClick={() => {
                     const winId = openMidnightOilDepositWindow(deposit, "full");
                     if (!winId) {
@@ -2361,6 +2389,8 @@ export default function MidnightOil() {
                     href={depositWriteHref}
                     data-testid="moil-open-write"
                     data-view-format="html"
+                    data-html-first="true"
+                    data-deposit-html-ready={String(depositHtmlReady)}
                     data-has-twin-seed={
                       depositWriteHref.includes("twin_seed=") ? "1" : "0"
                     }
@@ -2403,6 +2433,8 @@ export default function MidnightOil() {
                   </span>
                 ) : null}
               </div>
+                );
+              })()}
             </div>
           ) : null}
 

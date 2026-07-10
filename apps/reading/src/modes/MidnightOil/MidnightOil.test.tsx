@@ -1245,8 +1245,21 @@ describe("MidnightOil mode", () => {
         /win:moil-deposit/,
       );
     });
-    // Residual (ew): full working-region open remains available.
-    fireEvent.click(screen.getByTestId("moil-open-deposit-full"));
+    // Residual (ew/ata): full working-region open + HTML-first deposit open stamps.
+    const openActions = screen.getByTestId("moil-deposit-open-actions");
+    expect(openActions.getAttribute("data-deposit-html-ready")).toBe("true");
+    expect(openActions.getAttribute("data-html-first")).toBe("true");
+    expect(openActions.getAttribute("data-l4-live-step")).toBe("deferred");
+    const openFull = screen.getByTestId("moil-open-deposit-full");
+    expect(openFull.getAttribute("data-deposit-html-ready")).toBe("true");
+    expect(openFull.getAttribute("data-html-first")).toBe("true");
+    expect(openFull.getAttribute("data-window-mode")).toBe("full");
+    expect(openFull.getAttribute("data-document-id")).toBe(
+      "draft_moil_asset_dep_abc",
+    );
+    expect(openFull.getAttribute("title") || "").toMatch(/HTML reading window/i);
+    expect((openFull as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(openFull);
     expect(openWindow).toHaveBeenCalledWith(
       "hosted_html_document",
       expect.objectContaining({
@@ -1258,12 +1271,14 @@ describe("MidnightOil mode", () => {
         mode: "full",
       }),
     );
-    // Residual (fo/pz/ack/aep): Write dual handoff + seamless MO deposit path.
+    // Residual (fo/pz/ack/aep/ata): Write dual handoff + seamless MO deposit path.
     const write = screen.getByTestId("moil-open-write");
     const href = write.getAttribute("href") || "";
     expect(href).toMatch(/html_draft=draft_moil_asset_dep_abc/);
     expect(href).toMatch(/twin_seed=antiek\.twin_write_seed\./);
     expect(write.getAttribute("data-view-format")).toBe("html");
+    expect(write.getAttribute("data-html-first")).toBe("true");
+    expect(write.getAttribute("data-deposit-html-ready")).toBe("true");
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
     expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
     expect(write.getAttribute("data-document-id")).toBe(

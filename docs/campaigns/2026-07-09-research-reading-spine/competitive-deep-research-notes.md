@@ -4253,3 +4253,9 @@ Progress complete/draft float hosts stamp multi-stage honesty chrome + twin
 seed Port path (plan→cite · long-horizon · never invent hops). Scorecard +
 FUTURE competitive DR deep-links. Completes asx open CTA → HTML host land.
 vitest HostedHtml 38 green. P0 PR #465. Pivot ata+.
+
+## Residual ata · 2026-07-10 — MO deposit open CTAs HTML-first deliverable stamps
+moil-open-deposit float|full + open-actions group stamp deposit-html-ready ·
+html-first · L4 deferred · title honesty. Open Write inherits stamps.
+Competitive delta: autonomous swarm HTML deliverable open path never invents
+PDF or empty-body open. vitest MidnightOil 30 green. P0 PR #465. Pivot atb+.
