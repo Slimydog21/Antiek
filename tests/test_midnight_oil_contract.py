@@ -36,6 +36,7 @@ from substrate.midnight_oil import (
     MidnightOilRunnerDispatchWorkerBootstrapPlanRequest,
     MidnightOilRunnerReadinessRequest,
     MidnightOilSchedulerLeaseRetryPlanRequest,
+    MidnightOilSynthesisBundleAssemblyPlanRequest,
     MidnightOilWorkerCancellationAbandonPlanRequest,
     MidnightOilWorkerCompletionFinalizationPlanRequest,
     MidnightOilWorkerDispatchLeaseHeartbeatPlanRequest,
@@ -71,6 +72,7 @@ from substrate.midnight_oil import (
     runner_dispatch_worker_bootstrap_plan_midnight_oil,
     runner_readiness_midnight_oil,
     scheduler_lease_retry_plan_midnight_oil,
+    synthesis_bundle_assembly_plan_midnight_oil,
     worker_cancellation_abandon_plan_midnight_oil,
     worker_completion_finalization_plan_midnight_oil,
     worker_dispatch_lease_heartbeat_plan_midnight_oil,
@@ -7635,6 +7637,236 @@ def test_midnight_oil_worker_output_aggregation_plan_api_contract() -> None:
     assert body["worker_output_aggregated"] is False
     assert body["worker_output_index_created"] is False
     assert body["worker_output_manifest_created"] is False
+    assert body["worker_output_summary_created"] is False
+
+
+def _synthesis_bundle_assembly_request_kwargs(
+    chain: dict[str, object],
+    output_aggregation_plan: object,
+    synthesis_handoff_plan: object,
+) -> dict[str, object]:
+    return {
+        **_worker_synthesis_handoff_request_kwargs(chain, output_aggregation_plan),
+        "worker_synthesis_handoff_plan_receipt": synthesis_handoff_plan,
+    }
+
+
+def test_synthesis_bundle_assembly_plan_records_disabled_requirements() -> None:
+    chain = _accepted_midnight_oil_worker_output_aggregation_plan_chain(
+        goal="Plan synthesis bundle assembly requirements after handoff planning.",
+        source_policy=["arxiv", "web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = worker_synthesis_handoff_plan_midnight_oil(
+        MidnightOilWorkerSynthesisHandoffPlanRequest(
+            **_worker_synthesis_handoff_request_kwargs(chain, output_plan)
+        )
+    )
+
+    assembly_plan = synthesis_bundle_assembly_plan_midnight_oil(
+        MidnightOilSynthesisBundleAssemblyPlanRequest(
+            **_synthesis_bundle_assembly_request_kwargs(
+                chain, output_plan, handoff_plan
+            )
+        )
+    )
+
+    assert assembly_plan.receipt_id == (
+        f"{preflight.run_id}-synthesis-bundle-assembly-plan"
+    )
+    assert assembly_plan.worker_synthesis_handoff_plan_receipt_id == (
+        handoff_plan.receipt_id
+    )
+    assert assembly_plan.worker_output_aggregation_plan_receipt_id == (
+        output_plan.receipt_id
+    )
+    assert assembly_plan.status == "blocked_synthesis_bundle_assembly_unimplemented"
+    assert assembly_plan.adapter_key == "synthesis_bundle_assembly"
+    assert assembly_plan.planned_synthesis_bundle_assembly_receipt_id == (
+        f"{preflight.run_id}-synthesis-bundle-assembly-receipt"
+    )
+    assert assembly_plan.planned_synthesis_bundle_id == (
+        f"{preflight.run_id}-synthesis-bundle"
+    )
+    assert assembly_plan.planned_synthesis_source_packet_id == (
+        f"{preflight.run_id}-synthesis-source-packet"
+    )
+    assert assembly_plan.planned_synthesis_evidence_map_id == (
+        f"{preflight.run_id}-synthesis-evidence-map"
+    )
+    assert assembly_plan.planned_synthesis_composition_plan_id == (
+        f"{preflight.run_id}-synthesis-composition-plan"
+    )
+    assert assembly_plan.planned_synthesis_quality_gate_id == (
+        f"{preflight.run_id}-synthesis-quality-gate"
+    )
+    assert assembly_plan.planned_synthesis_input_bundle_id == (
+        handoff_plan.planned_synthesis_input_bundle_id
+    )
+    assert assembly_plan.planned_synthesis_context_manifest_id == (
+        handoff_plan.planned_synthesis_context_manifest_id
+    )
+    assert assembly_plan.planned_synthesis_outline_id == (
+        handoff_plan.planned_synthesis_outline_id
+    )
+    assert "synthesis bundle assembly receipt writer" in (
+        assembly_plan.synthesis_bundle_assembly_blockers
+    )
+    assert "synthesis_bundle_id" in (
+        assembly_plan.required_synthesis_bundle_assembly_receipt_fields
+    )
+    assert "synthesis bundle assembly planner must require worker synthesis" in (
+        assembly_plan.required_synthesis_bundle_assembly_invariants[0]
+    )
+    assert assembly_plan.blocker_reason == "synthesis_bundle_assembly_unimplemented"
+    assert assembly_plan.synthesis_bundle_assembly_allowed is False
+    assert assembly_plan.synthesis_bundle_assembled is False
+    assert assembly_plan.synthesis_source_packet_created is False
+    assert assembly_plan.synthesis_evidence_map_created is False
+    assert assembly_plan.synthesis_composition_plan_created is False
+    assert assembly_plan.synthesis_quality_gate_created is False
+    assert assembly_plan.worker_synthesis_handoff_created is False
+    assert assembly_plan.synthesis_input_bundle_created is False
+    assert assembly_plan.synthesis_context_manifest_created is False
+    assert assembly_plan.synthesis_outline_created is False
+    assert assembly_plan.worker_output_aggregated is False
+    assert assembly_plan.worker_started is False
+    assert assembly_plan.dispatch_performed is False
+    assert assembly_plan.budget_reserved is False
+    assert assembly_plan.provider_calls_made is False
+    assert assembly_plan.retrieval_performed is False
+    assert assembly_plan.source_receipts_created is False
+    assert assembly_plan.graph_mutated is False
+    assert assembly_plan.final_artifact_created is False
+    assert "no synthesis bundle" in assembly_plan.adapter_plan_notes[0]
+
+
+def test_synthesis_bundle_assembly_plan_rejects_created_handoff() -> None:
+    chain = _accepted_midnight_oil_worker_output_aggregation_plan_chain(
+        goal="Reject created synthesis handoff before bundle assembly planning.",
+        source_policy=["web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = worker_synthesis_handoff_plan_midnight_oil(
+        MidnightOilWorkerSynthesisHandoffPlanRequest(
+            **_worker_synthesis_handoff_request_kwargs(chain, output_plan)
+        )
+    )
+    bad_handoff_plan = handoff_plan.model_copy(
+        update={"synthesis_input_bundle_created": True}
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match="worker_synthesis_handoff_plan_receipt must not create synthesis handoff state",
+    ):
+        MidnightOilSynthesisBundleAssemblyPlanRequest(
+            **_synthesis_bundle_assembly_request_kwargs(
+                chain, output_plan, bad_handoff_plan
+            )
+        )
+
+
+def test_midnight_oil_synthesis_bundle_assembly_plan_api_contract() -> None:
+    from interfaces.research.api.app import create_app
+
+    chain = _accepted_midnight_oil_worker_output_aggregation_plan_chain(
+        goal="Expose synthesis bundle assembly planning over the API.",
+        source_policy=["arxiv", "substack"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = worker_synthesis_handoff_plan_midnight_oil(
+        MidnightOilWorkerSynthesisHandoffPlanRequest(
+            **_worker_synthesis_handoff_request_kwargs(chain, output_plan)
+        )
+    )
+
+    request_json = {
+        key: value.model_dump(mode="json")
+        for key, value in _synthesis_bundle_assembly_request_kwargs(
+            chain, output_plan, handoff_plan
+        ).items()
+    }
+
+    with TestClient(create_app()) as client:
+        r = client.post(
+            "/research/midnight-oil/synthesis-bundle-assembly-plan",
+            json=request_json,
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["receipt_id"] == f"{preflight.run_id}-synthesis-bundle-assembly-plan"
+    assert body["worker_synthesis_handoff_plan_receipt_id"] == handoff_plan.receipt_id
+    assert body["worker_output_aggregation_plan_receipt_id"] == output_plan.receipt_id
+    assert body["status"] == "blocked_synthesis_bundle_assembly_unimplemented"
+    assert body["adapter_key"] == "synthesis_bundle_assembly"
+    assert body["planned_synthesis_bundle_assembly_receipt_id"] == (
+        f"{preflight.run_id}-synthesis-bundle-assembly-receipt"
+    )
+    assert body["planned_synthesis_bundle_id"] == (
+        f"{preflight.run_id}-synthesis-bundle"
+    )
+    assert body["planned_synthesis_source_packet_id"] == (
+        f"{preflight.run_id}-synthesis-source-packet"
+    )
+    assert body["planned_synthesis_evidence_map_id"] == (
+        f"{preflight.run_id}-synthesis-evidence-map"
+    )
+    assert body["planned_synthesis_composition_plan_id"] == (
+        f"{preflight.run_id}-synthesis-composition-plan"
+    )
+    assert body["planned_synthesis_quality_gate_id"] == (
+        f"{preflight.run_id}-synthesis-quality-gate"
+    )
+    assert "synthesis bundle assembly receipt writer" in body[
+        "synthesis_bundle_assembly_blockers"
+    ]
+    assert "synthesis_evidence_map_id" in (
+        body["required_synthesis_bundle_assembly_receipt_fields"]
+    )
+    assert body["blocker_reason"] == "synthesis_bundle_assembly_unimplemented"
+    assert body["synthesis_bundle_assembly_allowed"] is False
+    assert body["synthesis_bundle_assembled"] is False
+    assert body["synthesis_source_packet_created"] is False
+    assert body["synthesis_evidence_map_created"] is False
+    assert body["synthesis_composition_plan_created"] is False
+    assert body["synthesis_quality_gate_created"] is False
+    assert body["worker_synthesis_handoff_created"] is False
+    assert body["synthesis_input_bundle_created"] is False
+    assert body["synthesis_context_manifest_created"] is False
+    assert body["synthesis_outline_created"] is False
+    assert body["worker_output_aggregated"] is False
+    assert body["provider_calls_made"] is False
+    assert body["retrieval_performed"] is False
+    assert body["graph_mutated"] is False
+    assert body["final_artifact_created"] is False
     assert body["worker_output_summary_created"] is False
     assert body["worker_completed"] is False
     assert body["worker_finalized"] is False

@@ -68,6 +68,8 @@ from substrate.midnight_oil import (
     MidnightOilRunnerReadinessRequest,
     MidnightOilSchedulerLeaseRetryPlanReceipt,
     MidnightOilSchedulerLeaseRetryPlanRequest,
+    MidnightOilSynthesisBundleAssemblyPlanReceipt,
+    MidnightOilSynthesisBundleAssemblyPlanRequest,
     MidnightOilWorkerCancellationAbandonPlanReceipt,
     MidnightOilWorkerCancellationAbandonPlanRequest,
     MidnightOilWorkerCompletionFinalizationPlanReceipt,
@@ -109,6 +111,7 @@ from substrate.midnight_oil import (
     runner_dispatch_worker_bootstrap_plan_midnight_oil,
     runner_readiness_midnight_oil,
     scheduler_lease_retry_plan_midnight_oil,
+    synthesis_bundle_assembly_plan_midnight_oil,
     worker_cancellation_abandon_plan_midnight_oil,
     worker_completion_finalization_plan_midnight_oil,
     worker_dispatch_lease_heartbeat_plan_midnight_oil,
@@ -431,6 +434,16 @@ def post_midnight_oil_worker_synthesis_handoff_plan(
     return worker_synthesis_handoff_plan_midnight_oil(req)
 
 
+@midnight_oil_router.post(
+    "/synthesis-bundle-assembly-plan",
+    response_model=MidnightOilSynthesisBundleAssemblyPlanReceipt,
+)
+def post_midnight_oil_synthesis_bundle_assembly_plan(
+    req: MidnightOilSynthesisBundleAssemblyPlanRequest,
+) -> MidnightOilSynthesisBundleAssemblyPlanReceipt:
+    return synthesis_bundle_assembly_plan_midnight_oil(req)
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
@@ -466,6 +479,7 @@ __all__ = [
     "post_midnight_oil_runner_dispatch_worker_bootstrap_plan",
     "post_midnight_oil_runner_readiness",
     "post_midnight_oil_scheduler_lease_retry_plan",
+    "post_midnight_oil_synthesis_bundle_assembly_plan",
     "post_midnight_oil_worker_cancellation_abandon_plan",
     "post_midnight_oil_worker_completion_finalization_plan",
     "post_midnight_oil_worker_dispatch_lease_heartbeat_plan",
