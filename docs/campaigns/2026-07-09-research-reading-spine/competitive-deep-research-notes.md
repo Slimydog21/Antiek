@@ -686,3 +686,10 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (qt, 2026-07-10) **SESSION-ARC qp–qs driver foresight matrix** (badge ≡ budget)
 
 - Closed (qu, 2026-07-10) **HostedHtml Write dual handoff** html_draft+twin_seed (source=hosted_html_document)
+
+## Residual qv · 2026-07-10 — Deep research → Write twin seed
+Live deep_research_session host can hand selection+goal into Write as twin_seed
+without inventing a server document_id (offline-honest unfinished sessions).
+Competitive delta: Perplexity/Elicit/Consensus dump to chat or export PDF;
+Antiek keeps the recursive note-taker path HTML-first and session-seeded so
+highlight → float DR → Write brainstorm stays one continuous substrate.

@@ -15,7 +15,8 @@ export type TwinWriteSeedSource =
   | "collective_doc_merge"
   | "marketplace_host"
   | "spawn_merge"
-  | "hosted_html_document";
+  | "hosted_html_document"
+  | "deep_research_session";
 
 export type TwinWriteSeedPayload = {
   plain_text: string;
@@ -55,6 +56,7 @@ export function storeTwinWriteSeed(input: {
     "marketplace_host",
     "spawn_merge",
     "hosted_html_document",
+    "deep_research_session",
   ];
   const source: TwinWriteSeedSource = allowed.includes(
     input.source as TwinWriteSeedSource,
@@ -96,6 +98,7 @@ export function loadTwinWriteSeed(key: string): TwinWriteSeedPayload | null {
       "marketplace_host",
       "spawn_merge",
       "hosted_html_document",
+      "deep_research_session",
     ];
     const source: TwinWriteSeedSource = allowedLoad.includes(
       srcRaw as TwinWriteSeedSource,
@@ -241,4 +244,46 @@ export function buildHostedHtmlWriteHref(opts: {
     documentId: doc,
     twinSeedKey: seedKey,
   });
+}
+
+/**
+ * Residual (qv): Write handoff from deep_research_session (selection + goal).
+ * twin_seed only — does not invent a server document_id for unfinished sessions.
+ */
+export function buildDeepResearchWriteHref(opts: {
+  selectionText?: string | null;
+  goal?: string | null;
+  spawnId?: string | null;
+  parentAssetId?: string | null;
+}): string | null {
+  const selection = String(opts.selectionText || "").trim();
+  const goal = String(opts.goal || "").trim();
+  const plain = [selection, goal].filter(Boolean).join("\n\n");
+  if (!plain) return null;
+  const spawn = String(opts.spawnId || "").trim() || "spawn";
+  const asset =
+    String(opts.parentAssetId || "").trim() || `deep_research:${spawn}`;
+  const escape = (s: string) =>
+    String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  const html =
+    `<article data-view-format="html" data-source="deep_research_session" data-spawn-id="${escape(spawn)}">` +
+    `<h1>Deep research seed · ${escape(spawn)}</h1>` +
+    (goal ? `<p class="goal"><strong>Goal:</strong> ${escape(goal)}</p>` : "") +
+    (selection
+      ? `<section class="selection"><h2>Selection</h2><pre>${escape(selection)}</pre></section>`
+      : "") +
+    `</article>`;
+  const seedKey = storeTwinWriteSeed({
+    plain_text: plain,
+    html,
+    title: `Deep research · ${spawn}`,
+    asset_id: asset,
+    note_ids: [],
+    source: "deep_research_session",
+  });
+  if (!seedKey) return null;
+  return buildTwinWriteHref(seedKey);
 }

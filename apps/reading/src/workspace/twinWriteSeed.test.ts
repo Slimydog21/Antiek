@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   TWIN_WRITE_SEED_KEY_PREFIX,
+  buildDeepResearchWriteHref,
   buildTwinWriteHref,
   buildHostedHtmlWriteHref,
   buildMarketplaceWriteHref,
@@ -118,6 +119,51 @@ describe("twinWriteSeed (pp)", () => {
     });
     expect(href).toMatch(/html_draft=doc_abc/);
     expect(href).toMatch(/twin_seed=antiek\.twin_write_seed\./);
+  });
+
+  it("builds deep research twin_seed Write href without inventing document_id (qv)", () => {
+    const href = buildDeepResearchWriteHref({
+      selectionText: "Attention is routing.",
+      goal: "Deep-research the highlight",
+      spawnId: "spn_qv_1",
+      parentAssetId: "book-1",
+    });
+    expect(href).toBeTruthy();
+    expect(href!).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
+    expect(href!).not.toMatch(/html_draft=/);
+    const key = decodeURIComponent(
+      (href!.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    const seed = loadTwinWriteSeed(key);
+    expect(seed?.source).toBe("deep_research_session");
+    expect(seed?.view_format).toBe("html");
+    expect(seed?.asset_id).toBe("book-1");
+    expect(seed?.plain_text).toMatch(/Attention is routing/);
+    expect(seed?.plain_text).toMatch(/Deep-research the highlight/);
+    expect(seed?.html).toMatch(/data-source="deep_research_session"/);
+    expect(seed?.html).toMatch(/data-spawn-id="spn_qv_1"/);
+  });
+
+  it("returns null for empty deep research selection+goal (qv)", () => {
+    expect(
+      buildDeepResearchWriteHref({
+        selectionText: "  ",
+        goal: "",
+        spawnId: "spn_empty",
+      }),
+    ).toBeNull();
+  });
+
+  it("falls back asset_id to deep_research:spawn when parent missing (qv)", () => {
+    const href = buildDeepResearchWriteHref({
+      selectionText: "Only selection",
+      spawnId: "spn_orphan",
+    });
+    expect(href).toBeTruthy();
+    const key = decodeURIComponent(
+      (href!.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    expect(loadTwinWriteSeed(key)?.asset_id).toBe("deep_research:spn_orphan");
   });
 
 });

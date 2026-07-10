@@ -41,6 +41,8 @@
  * Residual (jo): ResearchProgressPanel poll interval scales by research_tier
  * (fast 2s · deep 4s · wrestle 8s) for multi-minute competitive depth honesty.
  * Residual (ju): poll ms via mapResearchTierToProgressPollMs (shared closed map).
+ * Residual (qv): Open Write twin_seed handoff from selection+goal (no invented
+ * document_id; parity twin draft path; recursive note-taker seed).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -65,6 +67,7 @@ import { TwinNotesPanel } from "../engagement/TwinNotesPanel";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
 import { syncDeepResearchWindowMode } from "../../workspace/deepResearchWindow";
 import { listRecentDeepResearchSpawnIds } from "../../workspace/recentDeepResearchSpawns";
+import { buildDeepResearchWriteHref } from "../../workspace/twinWriteSeed";
 import { useWindows } from "../../workspace/windowsStore";
 import { useInWindow } from "./windowHostContext";
 
@@ -188,6 +191,23 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
   const hostWindow = windowId ? windows[windowId] : undefined;
   const isFull = hostWindow?.mode === "full";
 
+  /** Residual (qv): twin_seed-only Write handoff (selection+goal; no invent doc). */
+  const writeHref = useMemo(
+    () =>
+      buildDeepResearchWriteHref({
+        selectionText: props.selection_text,
+        goal: props.goal,
+        spawnId: props.spawn_id,
+        parentAssetId: props.parent_asset_id,
+      }),
+    [
+      props.selection_text,
+      props.goal,
+      props.spawn_id,
+      props.parent_asset_id,
+    ],
+  );
+
   return (
     <div
       className="flex h-full flex-col gap-4 bg-transparent p-6"
@@ -218,34 +238,49 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
               }
             />
           </div>
-          {/* Residual (ce): floating ⇄ full without leaving the host. */}
-          {rawSessionId ? (
-            <div
-              className="flex flex-wrap gap-2"
-              data-testid="deep-research-mode-controls"
-            >
-              <button
-                type="button"
-                data-testid="deep-research-expand-full"
-                disabled={isFull}
-                onClick={() => syncDeepResearchWindowMode(rawSessionId, "full")}
-                className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono hover:bg-ink/5 disabled:opacity-40 dark:border-bright/30"
+          <div className="flex flex-col items-end gap-1">
+            {/* Residual (ce): floating ⇄ full without leaving the host. */}
+            {rawSessionId ? (
+              <div
+                className="flex flex-wrap gap-2"
+                data-testid="deep-research-mode-controls"
               >
-                Expand full
-              </button>
-              <button
-                type="button"
-                data-testid="deep-research-restore-floating"
-                disabled={!isFull}
-                onClick={() =>
-                  syncDeepResearchWindowMode(rawSessionId, "floating")
-                }
-                className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono hover:bg-ink/5 disabled:opacity-40 dark:border-bright/30"
+                <button
+                  type="button"
+                  data-testid="deep-research-expand-full"
+                  disabled={isFull}
+                  onClick={() => syncDeepResearchWindowMode(rawSessionId, "full")}
+                  className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono hover:bg-ink/5 disabled:opacity-40 dark:border-bright/30"
+                >
+                  Expand full
+                </button>
+                <button
+                  type="button"
+                  data-testid="deep-research-restore-floating"
+                  disabled={!isFull}
+                  onClick={() =>
+                    syncDeepResearchWindowMode(rawSessionId, "floating")
+                  }
+                  className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono hover:bg-ink/5 disabled:opacity-40 dark:border-bright/30"
+                >
+                  Restore floating
+                </button>
+              </div>
+            ) : null}
+            {/* Residual (qv): Open Write twin seed from selection+goal. */}
+            {writeHref ? (
+              <a
+                href={writeHref}
+                data-testid="deep-research-open-write"
+                data-view-format="html"
+                data-has-twin-seed="1"
+                className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
+                title="Open Write with deep research selection+goal as twin_seed (sessionStorage; no invented document_id)"
               >
-                Restore floating
-              </button>
-            </div>
-          ) : null}
+                Open Write (twin seed)
+              </a>
+            ) : null}
+          </div>
         </div>
       </header>
 

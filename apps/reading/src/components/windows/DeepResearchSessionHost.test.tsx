@@ -225,6 +225,31 @@ describe("DeepResearchSessionHost", () => {
     ).toBe("html");
   });
 
+  it("links Open Write twin_seed handoff for selection+goal (qv)", () => {
+    render(<DeepResearchSessionHost {...FIXTURE} />);
+    const write = screen.getByTestId("deep-research-open-write");
+    const href = write.getAttribute("href") || "";
+    expect(href).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
+    expect(href).not.toMatch(/html_draft=/);
+    expect(write.getAttribute("data-has-twin-seed")).toBe("1");
+    expect(write.getAttribute("data-view-format")).toBe("html");
+    expect(write.textContent).toMatch(/Open Write \(twin seed\)/i);
+  });
+
+  it("hides Open Write when selection and goal are empty (qv)", () => {
+    render(
+      <DeepResearchSessionHost
+        session_id="fsess_empty"
+        spawn_id="spn_empty"
+        parent_asset_id="book-1"
+        selection_text="  "
+        goal=""
+        view_format="html"
+      />,
+    );
+    expect(screen.queryByTestId("deep-research-open-write")).toBeNull();
+  });
+
   it("prefills research tier from Settings wrestle (je)", async () => {
     fetchDepthTiers.mockResolvedValue({
       active_depth_tier: "wrestle",
