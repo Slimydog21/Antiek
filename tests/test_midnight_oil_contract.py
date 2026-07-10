@@ -26,6 +26,7 @@ from substrate.midnight_oil import (
     MidnightOilOperatorDispatchAdapterPlanRequest,
     MidnightOilProviderExecutorAdapterPlanRequest,
     MidnightOilProviderRouteRequest,
+    MidnightOilRepositoryCommitRollbackPlanRequest,
     MidnightOilRepositoryTransactionPlanRequest,
     MidnightOilRequest,
     MidnightOilRetrievalAdapterPlanRequest,
@@ -56,6 +57,7 @@ from substrate.midnight_oil import (
     preflight_midnight_oil,
     provider_executor_adapter_plan_midnight_oil,
     provider_route_midnight_oil,
+    repository_commit_rollback_plan_midnight_oil,
     repository_transaction_plan_midnight_oil,
     retrieval_adapter_plan_midnight_oil,
     retrieval_midnight_oil,
@@ -769,6 +771,62 @@ def _accepted_midnight_oil_worker_queue_claim_plan_chain(
     return {
         **chain,
         "worker_queue_claim_plan": worker_queue_claim_plan,
+    }
+
+
+def _accepted_midnight_oil_repository_transaction_plan_chain(
+    *,
+    goal: str,
+    source_policy: list[str],
+    requested_control_scope: list[str],
+) -> dict[str, object]:
+    chain = _accepted_midnight_oil_worker_queue_claim_plan_chain(
+        goal=goal,
+        source_policy=source_policy,
+        requested_control_scope=requested_control_scope,
+    )
+    preflight = chain["preflight"]
+    repository_transaction_plan = repository_transaction_plan_midnight_oil(
+        MidnightOilRepositoryTransactionPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=chain["control_plan"],
+            budget_provider_adapter_plan_receipt=chain["budget_adapter_plan"],
+            provider_executor_adapter_plan_receipt=chain["provider_adapter_plan"],
+            retrieval_adapter_plan_receipt=chain["retrieval_adapter_plan"],
+            graph_adapter_plan_receipt=chain["graph_adapter_plan"],
+            final_artifact_adapter_plan_receipt=chain["final_artifact_adapter_plan"],
+            operator_dispatch_adapter_plan_receipt=chain["operator_adapter_plan"],
+            control_ledger_adapter_plan_receipt=chain["control_ledger_plan"],
+            control_ledger_persistence_plan_receipt=chain[
+                "control_ledger_persistence_plan"
+            ],
+            control_ledger_persistence_apply_plan_receipt=chain[
+                "control_ledger_persistence_apply_plan"
+            ],
+            operator_dispatch_activation_readiness_plan_receipt=chain[
+                "operator_dispatch_activation_readiness_plan"
+            ],
+            live_dispatch_final_enablement_plan_receipt=chain[
+                "live_dispatch_final_enablement_plan"
+            ],
+            live_dispatch_final_enablement_apply_plan_receipt=chain[
+                "live_dispatch_final_enablement_apply_plan"
+            ],
+            runner_dispatch_scheduler_plan_receipt=chain[
+                "runner_dispatch_scheduler_plan"
+            ],
+            runner_dispatch_worker_bootstrap_plan_receipt=chain[
+                "runner_dispatch_worker_bootstrap_plan"
+            ],
+            scheduler_lease_retry_plan_receipt=chain["scheduler_lease_retry_plan"],
+            worker_queue_claim_plan_receipt=chain["worker_queue_claim_plan"],
+        )
+    )
+    return {
+        **chain,
+        "repository_transaction_plan": repository_transaction_plan,
     }
 
 
@@ -5794,6 +5852,299 @@ def test_midnight_oil_repository_transaction_plan_api_contract() -> None:
     assert body["transaction_opened"] is False
     assert body["transaction_committed"] is False
     assert body["rollback_receipt_created"] is False
+    assert body["dispatch_performed"] is False
+    assert body["budget_reserved"] is False
+    assert body["provider_calls_made"] is False
+    assert body["retrieval_performed"] is False
+    assert body["source_receipts_created"] is False
+    assert body["graph_mutated"] is False
+    assert body["final_artifact_created"] is False
+
+
+def test_repository_commit_rollback_plan_records_disabled_requirements() -> None:
+    chain = _accepted_midnight_oil_repository_transaction_plan_chain(
+        goal="Plan commit and rollback receipts after repository transaction planning.",
+        source_policy=["arxiv", "web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    transaction_plan = chain["repository_transaction_plan"]
+
+    commit_rollback_plan = repository_commit_rollback_plan_midnight_oil(
+        MidnightOilRepositoryCommitRollbackPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=chain["control_plan"],
+            budget_provider_adapter_plan_receipt=chain["budget_adapter_plan"],
+            provider_executor_adapter_plan_receipt=chain["provider_adapter_plan"],
+            retrieval_adapter_plan_receipt=chain["retrieval_adapter_plan"],
+            graph_adapter_plan_receipt=chain["graph_adapter_plan"],
+            final_artifact_adapter_plan_receipt=chain["final_artifact_adapter_plan"],
+            operator_dispatch_adapter_plan_receipt=chain["operator_adapter_plan"],
+            control_ledger_adapter_plan_receipt=chain["control_ledger_plan"],
+            control_ledger_persistence_plan_receipt=chain["control_ledger_persistence_plan"],
+            control_ledger_persistence_apply_plan_receipt=chain[
+                "control_ledger_persistence_apply_plan"
+            ],
+            operator_dispatch_activation_readiness_plan_receipt=chain[
+                "operator_dispatch_activation_readiness_plan"
+            ],
+            live_dispatch_final_enablement_plan_receipt=chain[
+                "live_dispatch_final_enablement_plan"
+            ],
+            live_dispatch_final_enablement_apply_plan_receipt=chain[
+                "live_dispatch_final_enablement_apply_plan"
+            ],
+            runner_dispatch_scheduler_plan_receipt=chain[
+                "runner_dispatch_scheduler_plan"
+            ],
+            runner_dispatch_worker_bootstrap_plan_receipt=chain[
+                "runner_dispatch_worker_bootstrap_plan"
+            ],
+            scheduler_lease_retry_plan_receipt=chain["scheduler_lease_retry_plan"],
+            worker_queue_claim_plan_receipt=chain["worker_queue_claim_plan"],
+            repository_transaction_plan_receipt=transaction_plan,
+        )
+    )
+
+    assert commit_rollback_plan.receipt_id == (
+        f"{preflight.run_id}-repository-commit-rollback-plan"
+    )
+    assert commit_rollback_plan.repository_transaction_plan_receipt_id == (
+        transaction_plan.receipt_id
+    )
+    assert commit_rollback_plan.status == "blocked_repository_commit_rollback_unimplemented"
+    assert commit_rollback_plan.adapter_key == "repository_commit_rollback"
+    assert commit_rollback_plan.planned_repository_transaction_id == (
+        transaction_plan.planned_repository_transaction_id
+    )
+    assert commit_rollback_plan.planned_write_set_id == transaction_plan.planned_write_set_id
+    assert commit_rollback_plan.planned_lock_id == transaction_plan.planned_lock_id
+    assert commit_rollback_plan.planned_commit_receipt_id == (
+        transaction_plan.planned_commit_receipt_id
+    )
+    assert commit_rollback_plan.planned_rollback_receipt_id == (
+        transaction_plan.planned_rollback_receipt_id
+    )
+    assert commit_rollback_plan.planned_commit_ledger_entry_id == (
+        f"{preflight.run_id}-repository-commit-ledger-entry"
+    )
+    assert commit_rollback_plan.planned_rollback_ledger_entry_id == (
+        f"{preflight.run_id}-repository-rollback-ledger-entry"
+    )
+    assert "commit receipt durable writer" in (
+        commit_rollback_plan.repository_commit_rollback_blockers
+    )
+    assert "commit_ledger_entry_id" in (
+        commit_rollback_plan.required_repository_commit_rollback_receipt_fields
+    )
+    assert "repository commit rollback planner must require repository transaction planning" in (
+        commit_rollback_plan.required_repository_commit_rollback_invariants[0]
+    )
+    assert commit_rollback_plan.blocker_reason == "repository_commit_rollback_unimplemented"
+    assert commit_rollback_plan.repository_commit_allowed is False
+    assert commit_rollback_plan.repository_rollback_allowed is False
+    assert commit_rollback_plan.commit_receipt_created is False
+    assert commit_rollback_plan.rollback_receipt_created is False
+    assert commit_rollback_plan.repository_transaction_committed is False
+    assert commit_rollback_plan.queue_claim_created is False
+    assert commit_rollback_plan.claim_transaction_committed is False
+    assert commit_rollback_plan.transaction_opened is False
+    assert commit_rollback_plan.transaction_committed is False
+    assert commit_rollback_plan.control_ledger_written is False
+    assert commit_rollback_plan.audit_log_written is False
+    assert commit_rollback_plan.dispatch_performed is False
+    assert commit_rollback_plan.budget_reserved is False
+    assert commit_rollback_plan.provider_calls_made is False
+    assert commit_rollback_plan.retrieval_performed is False
+    assert commit_rollback_plan.source_receipts_created is False
+    assert commit_rollback_plan.graph_mutated is False
+    assert commit_rollback_plan.final_artifact_created is False
+    assert "no repository transaction" in commit_rollback_plan.adapter_plan_notes[0]
+
+
+def test_repository_commit_rollback_plan_rejects_opened_transaction() -> None:
+    chain = _accepted_midnight_oil_repository_transaction_plan_chain(
+        goal="Reject opened repository transactions before commit rollback planning.",
+        source_policy=["web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    bad_transaction_plan = chain["repository_transaction_plan"].model_copy(
+        update={"repository_transaction_opened": True}
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match="repository_transaction_plan_receipt must not open or commit repository transaction",
+    ):
+        MidnightOilRepositoryCommitRollbackPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=chain["control_plan"],
+            budget_provider_adapter_plan_receipt=chain["budget_adapter_plan"],
+            provider_executor_adapter_plan_receipt=chain["provider_adapter_plan"],
+            retrieval_adapter_plan_receipt=chain["retrieval_adapter_plan"],
+            graph_adapter_plan_receipt=chain["graph_adapter_plan"],
+            final_artifact_adapter_plan_receipt=chain["final_artifact_adapter_plan"],
+            operator_dispatch_adapter_plan_receipt=chain["operator_adapter_plan"],
+            control_ledger_adapter_plan_receipt=chain["control_ledger_plan"],
+            control_ledger_persistence_plan_receipt=chain["control_ledger_persistence_plan"],
+            control_ledger_persistence_apply_plan_receipt=chain[
+                "control_ledger_persistence_apply_plan"
+            ],
+            operator_dispatch_activation_readiness_plan_receipt=chain[
+                "operator_dispatch_activation_readiness_plan"
+            ],
+            live_dispatch_final_enablement_plan_receipt=chain[
+                "live_dispatch_final_enablement_plan"
+            ],
+            live_dispatch_final_enablement_apply_plan_receipt=chain[
+                "live_dispatch_final_enablement_apply_plan"
+            ],
+            runner_dispatch_scheduler_plan_receipt=chain[
+                "runner_dispatch_scheduler_plan"
+            ],
+            runner_dispatch_worker_bootstrap_plan_receipt=chain[
+                "runner_dispatch_worker_bootstrap_plan"
+            ],
+            scheduler_lease_retry_plan_receipt=chain["scheduler_lease_retry_plan"],
+            worker_queue_claim_plan_receipt=chain["worker_queue_claim_plan"],
+            repository_transaction_plan_receipt=bad_transaction_plan,
+        )
+
+
+def test_midnight_oil_repository_commit_rollback_plan_api_contract() -> None:
+    from interfaces.research.api.app import create_app
+
+    chain = _accepted_midnight_oil_repository_transaction_plan_chain(
+        goal="Expose repository commit rollback planning over the API.",
+        source_policy=["arxiv", "substack"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    transaction_plan = chain["repository_transaction_plan"]
+
+    with TestClient(create_app()) as client:
+        r = client.post(
+            "/research/midnight-oil/repository-commit-rollback-plan",
+            json={
+                "launch_packet": preflight.launch_packet.model_dump(mode="json"),
+                "approval_receipt": preflight.approval_receipt.model_dump(mode="json"),
+                "runner_handoff": preflight.runner_handoff.model_dump(mode="json"),
+                "runner_control_plan_receipt": chain["control_plan"].model_dump(mode="json"),
+                "budget_provider_adapter_plan_receipt": chain[
+                    "budget_adapter_plan"
+                ].model_dump(mode="json"),
+                "provider_executor_adapter_plan_receipt": chain[
+                    "provider_adapter_plan"
+                ].model_dump(mode="json"),
+                "retrieval_adapter_plan_receipt": chain[
+                    "retrieval_adapter_plan"
+                ].model_dump(mode="json"),
+                "graph_adapter_plan_receipt": chain["graph_adapter_plan"].model_dump(
+                    mode="json"
+                ),
+                "final_artifact_adapter_plan_receipt": chain[
+                    "final_artifact_adapter_plan"
+                ].model_dump(mode="json"),
+                "operator_dispatch_adapter_plan_receipt": chain[
+                    "operator_adapter_plan"
+                ].model_dump(mode="json"),
+                "control_ledger_adapter_plan_receipt": chain[
+                    "control_ledger_plan"
+                ].model_dump(mode="json"),
+                "control_ledger_persistence_plan_receipt": chain[
+                    "control_ledger_persistence_plan"
+                ].model_dump(mode="json"),
+                "control_ledger_persistence_apply_plan_receipt": chain[
+                    "control_ledger_persistence_apply_plan"
+                ].model_dump(mode="json"),
+                "operator_dispatch_activation_readiness_plan_receipt": chain[
+                    "operator_dispatch_activation_readiness_plan"
+                ].model_dump(mode="json"),
+                "live_dispatch_final_enablement_plan_receipt": chain[
+                    "live_dispatch_final_enablement_plan"
+                ].model_dump(mode="json"),
+                "live_dispatch_final_enablement_apply_plan_receipt": chain[
+                    "live_dispatch_final_enablement_apply_plan"
+                ].model_dump(mode="json"),
+                "runner_dispatch_scheduler_plan_receipt": chain[
+                    "runner_dispatch_scheduler_plan"
+                ].model_dump(mode="json"),
+                "runner_dispatch_worker_bootstrap_plan_receipt": chain[
+                    "runner_dispatch_worker_bootstrap_plan"
+                ].model_dump(mode="json"),
+                "scheduler_lease_retry_plan_receipt": chain[
+                    "scheduler_lease_retry_plan"
+                ].model_dump(mode="json"),
+                "worker_queue_claim_plan_receipt": chain[
+                    "worker_queue_claim_plan"
+                ].model_dump(mode="json"),
+                "repository_transaction_plan_receipt": transaction_plan.model_dump(
+                    mode="json"
+                ),
+            },
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["receipt_id"] == f"{preflight.run_id}-repository-commit-rollback-plan"
+    assert body["repository_transaction_plan_receipt_id"] == transaction_plan.receipt_id
+    assert body["status"] == "blocked_repository_commit_rollback_unimplemented"
+    assert body["adapter_key"] == "repository_commit_rollback"
+    assert body["planned_repository_transaction_id"] == (
+        transaction_plan.planned_repository_transaction_id
+    )
+    assert body["planned_commit_receipt_id"] == transaction_plan.planned_commit_receipt_id
+    assert body["planned_rollback_receipt_id"] == (
+        transaction_plan.planned_rollback_receipt_id
+    )
+    assert body["planned_commit_ledger_entry_id"] == (
+        f"{preflight.run_id}-repository-commit-ledger-entry"
+    )
+    assert body["planned_rollback_ledger_entry_id"] == (
+        f"{preflight.run_id}-repository-rollback-ledger-entry"
+    )
+    assert "commit receipt durable writer" in body["repository_commit_rollback_blockers"]
+    assert "commit_ledger_entry_id" in (
+        body["required_repository_commit_rollback_receipt_fields"]
+    )
+    assert body["blocker_reason"] == "repository_commit_rollback_unimplemented"
+    assert body["repository_commit_allowed"] is False
+    assert body["repository_rollback_allowed"] is False
+    assert body["commit_receipt_created"] is False
+    assert body["rollback_receipt_created"] is False
+    assert body["repository_transaction_committed"] is False
+    assert body["queue_claim_created"] is False
+    assert body["claim_transaction_committed"] is False
+    assert body["transaction_opened"] is False
+    assert body["transaction_committed"] is False
+    assert body["control_ledger_written"] is False
+    assert body["audit_log_written"] is False
     assert body["dispatch_performed"] is False
     assert body["budget_reserved"] is False
     assert body["provider_calls_made"] is False

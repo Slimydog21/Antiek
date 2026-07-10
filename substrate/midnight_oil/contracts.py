@@ -4784,6 +4784,243 @@ class MidnightOilRepositoryTransactionPlanReceipt(BaseModel):
     adapter_plan_notes: list[str] = Field(default_factory=list)
 
 
+class MidnightOilRepositoryCommitRollbackPlanRequest(BaseModel):
+    launch_packet: MidnightOilLaunchPacket
+    approval_receipt: MidnightOilApprovalReceipt
+    runner_handoff: MidnightOilRunnerHandoff
+    runner_control_plan_receipt: MidnightOilRunnerControlPlanReceipt
+    budget_provider_adapter_plan_receipt: MidnightOilBudgetProviderAdapterPlanReceipt
+    provider_executor_adapter_plan_receipt: MidnightOilProviderExecutorAdapterPlanReceipt
+    retrieval_adapter_plan_receipt: MidnightOilRetrievalAdapterPlanReceipt
+    graph_adapter_plan_receipt: MidnightOilGraphAdapterPlanReceipt
+    final_artifact_adapter_plan_receipt: MidnightOilFinalArtifactAdapterPlanReceipt
+    operator_dispatch_adapter_plan_receipt: MidnightOilOperatorDispatchAdapterPlanReceipt
+    control_ledger_adapter_plan_receipt: MidnightOilControlLedgerAdapterPlanReceipt
+    control_ledger_persistence_plan_receipt: MidnightOilControlLedgerPersistencePlanReceipt
+    control_ledger_persistence_apply_plan_receipt: (
+        MidnightOilControlLedgerPersistenceApplyPlanReceipt
+    )
+    operator_dispatch_activation_readiness_plan_receipt: (
+        MidnightOilOperatorDispatchActivationReadinessPlanReceipt
+    )
+    live_dispatch_final_enablement_plan_receipt: (
+        MidnightOilLiveDispatchFinalEnablementPlanReceipt
+    )
+    live_dispatch_final_enablement_apply_plan_receipt: (
+        MidnightOilLiveDispatchFinalEnablementApplyPlanReceipt
+    )
+    runner_dispatch_scheduler_plan_receipt: MidnightOilRunnerDispatchSchedulerPlanReceipt
+    runner_dispatch_worker_bootstrap_plan_receipt: (
+        MidnightOilRunnerDispatchWorkerBootstrapPlanReceipt
+    )
+    scheduler_lease_retry_plan_receipt: MidnightOilSchedulerLeaseRetryPlanReceipt
+    worker_queue_claim_plan_receipt: MidnightOilWorkerQueueClaimPlanReceipt
+    repository_transaction_plan_receipt: MidnightOilRepositoryTransactionPlanReceipt
+
+    @model_validator(mode="after")
+    def _receipt_chain_matches(self) -> MidnightOilRepositoryCommitRollbackPlanRequest:
+        MidnightOilRepositoryTransactionPlanRequest(
+            launch_packet=self.launch_packet,
+            approval_receipt=self.approval_receipt,
+            runner_handoff=self.runner_handoff,
+            runner_control_plan_receipt=self.runner_control_plan_receipt,
+            budget_provider_adapter_plan_receipt=self.budget_provider_adapter_plan_receipt,
+            provider_executor_adapter_plan_receipt=self.provider_executor_adapter_plan_receipt,
+            retrieval_adapter_plan_receipt=self.retrieval_adapter_plan_receipt,
+            graph_adapter_plan_receipt=self.graph_adapter_plan_receipt,
+            final_artifact_adapter_plan_receipt=self.final_artifact_adapter_plan_receipt,
+            operator_dispatch_adapter_plan_receipt=self.operator_dispatch_adapter_plan_receipt,
+            control_ledger_adapter_plan_receipt=self.control_ledger_adapter_plan_receipt,
+            control_ledger_persistence_plan_receipt=(
+                self.control_ledger_persistence_plan_receipt
+            ),
+            control_ledger_persistence_apply_plan_receipt=(
+                self.control_ledger_persistence_apply_plan_receipt
+            ),
+            operator_dispatch_activation_readiness_plan_receipt=(
+                self.operator_dispatch_activation_readiness_plan_receipt
+            ),
+            live_dispatch_final_enablement_plan_receipt=(
+                self.live_dispatch_final_enablement_plan_receipt
+            ),
+            live_dispatch_final_enablement_apply_plan_receipt=(
+                self.live_dispatch_final_enablement_apply_plan_receipt
+            ),
+            runner_dispatch_scheduler_plan_receipt=self.runner_dispatch_scheduler_plan_receipt,
+            runner_dispatch_worker_bootstrap_plan_receipt=(
+                self.runner_dispatch_worker_bootstrap_plan_receipt
+            ),
+            scheduler_lease_retry_plan_receipt=self.scheduler_lease_retry_plan_receipt,
+            worker_queue_claim_plan_receipt=self.worker_queue_claim_plan_receipt,
+        )
+        transaction_plan = self.repository_transaction_plan_receipt
+        if (
+            transaction_plan.worker_queue_claim_plan_receipt_id
+            != self.worker_queue_claim_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "repository_transaction_plan_receipt must reference worker_queue_claim_plan_receipt"
+            )
+        if (
+            transaction_plan.scheduler_lease_retry_plan_receipt_id
+            != self.scheduler_lease_retry_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "repository_transaction_plan_receipt must reference scheduler_lease_retry_plan_receipt"
+            )
+        if transaction_plan.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError("repository_transaction_plan_receipt must reference runner_handoff")
+        if transaction_plan.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError("repository_transaction_plan_receipt must reference approval_receipt")
+        if transaction_plan.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("repository_transaction_plan_receipt must reference launch_packet")
+        if transaction_plan.run_id != self.launch_packet.run_id:
+            raise ValueError("repository_transaction_plan_receipt must reference launch run")
+        if transaction_plan.status != "blocked_repository_transaction_unimplemented":
+            raise ValueError(
+                "repository_transaction_plan_receipt must be blocked_repository_transaction_unimplemented"
+            )
+        if (
+            transaction_plan.repository_transaction_allowed
+            or transaction_plan.repository_transaction_opened
+            or transaction_plan.repository_transaction_committed
+        ):
+            raise ValueError(
+                "repository_transaction_plan_receipt must not open or commit repository transaction"
+            )
+        if (
+            transaction_plan.queue_claim_allowed
+            or transaction_plan.queue_claim_created
+            or transaction_plan.claim_transaction_opened
+            or transaction_plan.claim_transaction_committed
+        ):
+            raise ValueError(
+                "repository_transaction_plan_receipt must not create queue claim or claim transaction"
+            )
+        if transaction_plan.transaction_opened or transaction_plan.transaction_committed:
+            raise ValueError(
+                "repository_transaction_plan_receipt must not open or commit transaction"
+            )
+        if transaction_plan.control_ledger_written or transaction_plan.audit_log_written:
+            raise ValueError(
+                "repository_transaction_plan_receipt must not write ledger or audit log"
+            )
+        if transaction_plan.rollback_receipt_created:
+            raise ValueError(
+                "repository_transaction_plan_receipt must not create rollback receipt"
+            )
+        if transaction_plan.dispatch_allowed or transaction_plan.dispatch_performed:
+            raise ValueError("repository_transaction_plan_receipt must not dispatch")
+        if transaction_plan.budget_reservation_allowed or transaction_plan.budget_reserved:
+            raise ValueError("repository_transaction_plan_receipt must not reserve budget")
+        if transaction_plan.provider_execution_allowed or transaction_plan.provider_calls_made:
+            raise ValueError("repository_transaction_plan_receipt must not include provider calls")
+        if transaction_plan.retrieval_allowed or transaction_plan.retrieval_performed:
+            raise ValueError("repository_transaction_plan_receipt must not perform retrieval")
+        if transaction_plan.source_receipts_created:
+            raise ValueError("repository_transaction_plan_receipt must not create source receipts")
+        if transaction_plan.graph_mutation_allowed or transaction_plan.graph_mutated:
+            raise ValueError("repository_transaction_plan_receipt must not mutate graph")
+        if transaction_plan.final_artifact_allowed or transaction_plan.final_artifact_created:
+            raise ValueError("repository_transaction_plan_receipt must not create final artifact")
+        return self
+
+
+class MidnightOilRepositoryCommitRollbackPlanReceipt(BaseModel):
+    receipt_id: str
+    repository_transaction_plan_receipt_id: str
+    worker_queue_claim_plan_receipt_id: str
+    scheduler_lease_retry_plan_receipt_id: str
+    runner_dispatch_worker_bootstrap_plan_receipt_id: str
+    runner_dispatch_scheduler_plan_receipt_id: str
+    live_dispatch_final_enablement_apply_plan_receipt_id: str
+    runner_control_plan_receipt_id: str
+    runner_readiness_receipt_id: str
+    runner_handoff_id: str
+    approval_receipt_id: str
+    launch_packet_id: str
+    run_id: str
+    status: Literal["blocked_repository_commit_rollback_unimplemented"] = (
+        "blocked_repository_commit_rollback_unimplemented"
+    )
+    adapter_key: Literal["repository_commit_rollback"] = "repository_commit_rollback"
+    planned_repository_transaction_id: str
+    planned_transaction_scope: Literal["worker_queue_claim_commit"] = (
+        "worker_queue_claim_commit"
+    )
+    planned_write_set_id: str
+    planned_lock_id: str
+    planned_commit_receipt_id: str
+    planned_rollback_receipt_id: str
+    planned_commit_ledger_entry_id: str
+    planned_rollback_ledger_entry_id: str
+    planned_queue_claim_id: str
+    planned_claim_transaction_id: str
+    planned_claim_lease_token_id: str
+    planned_claim_cursor_id: str
+    planned_queue_id: str
+    planned_worker_id: str
+    planned_worker_lease_id: str
+    planned_runner_dispatch_id: str
+    planned_live_dispatch_receipt_id: str
+    planned_idempotency_key: str
+    repository_commit_rollback_blockers: list[str]
+    required_repository_commit_rollback_invariants: list[str]
+    required_repository_commit_rollback_receipt_fields: list[str]
+    blocker_reason: Literal["repository_commit_rollback_unimplemented"] = (
+        "repository_commit_rollback_unimplemented"
+    )
+    repository_commit_allowed: bool = False
+    repository_rollback_allowed: bool = False
+    commit_receipt_created: bool = False
+    rollback_receipt_created: bool = False
+    repository_transaction_allowed: bool = False
+    repository_transaction_opened: bool = False
+    repository_transaction_committed: bool = False
+    queue_claim_allowed: bool = False
+    queue_claim_created: bool = False
+    claim_transaction_opened: bool = False
+    claim_transaction_committed: bool = False
+    lease_retry_allowed: bool = False
+    lease_policy_created: bool = False
+    retry_policy_created: bool = False
+    dead_letter_queue_created: bool = False
+    worker_bootstrap_allowed: bool = False
+    worker_bootstrap_created: bool = False
+    worker_started: bool = False
+    scheduler_allowed: bool = False
+    scheduler_job_created: bool = False
+    runner_dispatch_enqueued: bool = False
+    final_enablement_apply_allowed: bool = False
+    final_enablement_allowed: bool = False
+    live_dispatch_enabled: bool = False
+    live_dispatch_ready: bool = False
+    activation_readiness_allowed: bool = False
+    activation_ready: bool = False
+    transaction_opened: bool = False
+    transaction_committed: bool = False
+    setting_persisted: bool = False
+    control_ledger_written: bool = False
+    audit_log_written: bool = False
+    operator_dispatch_allowed: bool = False
+    operator_live_dispatch_enabled: bool = False
+    live_run_allowed: bool = False
+    dispatch_allowed: bool = False
+    dispatch_performed: bool = False
+    budget_reservation_allowed: bool = False
+    budget_reserved: bool = False
+    provider_execution_allowed: bool = False
+    provider_calls_made: bool = False
+    retrieval_allowed: bool = False
+    retrieval_performed: bool = False
+    source_receipts_created: bool = False
+    graph_mutation_allowed: bool = False
+    graph_mutated: bool = False
+    final_artifact_allowed: bool = False
+    final_artifact_created: bool = False
+    adapter_plan_notes: list[str] = Field(default_factory=list)
+
+
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
     price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
@@ -6851,6 +7088,148 @@ def repository_transaction_plan_midnight_oil(
         adapter_plan_notes=[
             "repository transaction plan only: no repository transaction, queue claim, worker runtime, scheduler job, or runner dispatch is created",
             "this receipt documents transaction manager, write-set, lock, commit receipt, and rollback receipt requirements after worker queue claim planning",
+            "no activation readiness, live dispatch, scheduler job, worker runtime, transaction execution, budget reservation, provider call, retrieval, source receipt, graph mutation, or artifact write is performed",
+        ],
+    )
+
+
+def repository_commit_rollback_plan_midnight_oil(
+    req: MidnightOilRepositoryCommitRollbackPlanRequest,
+) -> MidnightOilRepositoryCommitRollbackPlanReceipt:
+    run_id = req.launch_packet.run_id
+    transaction_plan = req.repository_transaction_plan_receipt
+    return MidnightOilRepositoryCommitRollbackPlanReceipt(
+        receipt_id=f"{run_id}-repository-commit-rollback-plan",
+        repository_transaction_plan_receipt_id=transaction_plan.receipt_id,
+        worker_queue_claim_plan_receipt_id=(
+            transaction_plan.worker_queue_claim_plan_receipt_id
+        ),
+        scheduler_lease_retry_plan_receipt_id=(
+            transaction_plan.scheduler_lease_retry_plan_receipt_id
+        ),
+        runner_dispatch_worker_bootstrap_plan_receipt_id=(
+            transaction_plan.runner_dispatch_worker_bootstrap_plan_receipt_id
+        ),
+        runner_dispatch_scheduler_plan_receipt_id=(
+            transaction_plan.runner_dispatch_scheduler_plan_receipt_id
+        ),
+        live_dispatch_final_enablement_apply_plan_receipt_id=(
+            transaction_plan.live_dispatch_final_enablement_apply_plan_receipt_id
+        ),
+        runner_control_plan_receipt_id=transaction_plan.runner_control_plan_receipt_id,
+        runner_readiness_receipt_id=transaction_plan.runner_readiness_receipt_id,
+        runner_handoff_id=req.runner_handoff.handoff_id,
+        approval_receipt_id=req.approval_receipt.receipt_id,
+        launch_packet_id=req.launch_packet.packet_id,
+        run_id=run_id,
+        planned_repository_transaction_id=(
+            transaction_plan.planned_repository_transaction_id
+        ),
+        planned_transaction_scope=transaction_plan.planned_transaction_scope,
+        planned_write_set_id=transaction_plan.planned_write_set_id,
+        planned_lock_id=transaction_plan.planned_lock_id,
+        planned_commit_receipt_id=transaction_plan.planned_commit_receipt_id,
+        planned_rollback_receipt_id=transaction_plan.planned_rollback_receipt_id,
+        planned_commit_ledger_entry_id=f"{run_id}-repository-commit-ledger-entry",
+        planned_rollback_ledger_entry_id=f"{run_id}-repository-rollback-ledger-entry",
+        planned_queue_claim_id=transaction_plan.planned_queue_claim_id,
+        planned_claim_transaction_id=transaction_plan.planned_claim_transaction_id,
+        planned_claim_lease_token_id=transaction_plan.planned_claim_lease_token_id,
+        planned_claim_cursor_id=transaction_plan.planned_claim_cursor_id,
+        planned_queue_id=transaction_plan.planned_queue_id,
+        planned_worker_id=transaction_plan.planned_worker_id,
+        planned_worker_lease_id=transaction_plan.planned_worker_lease_id,
+        planned_runner_dispatch_id=transaction_plan.planned_runner_dispatch_id,
+        planned_live_dispatch_receipt_id=(
+            transaction_plan.planned_live_dispatch_receipt_id
+        ),
+        planned_idempotency_key=transaction_plan.planned_idempotency_key,
+        repository_commit_rollback_blockers=[
+            *transaction_plan.repository_transaction_blockers,
+            "commit receipt durable writer",
+            "rollback receipt durable writer",
+            "commit ledger append transaction",
+            "rollback ledger append transaction",
+            "idempotent commit/rollback replay protection",
+        ],
+        required_repository_commit_rollback_invariants=[
+            "repository commit rollback planner must require repository transaction planning before any commit or rollback receipt can be created",
+            "repository commit rollback planner must keep commit and rollback receipts paired to the same transaction id, write set id, lock id, and idempotency key",
+            "repository commit rollback planner must make rollback ledger append semantics explicit before transaction commit can be enabled",
+            "repository commit rollback planner must not create queue claims, commit transactions, dispatch runners, call providers, perform retrieval, mutate graph, or write final HTML artifacts",
+        ],
+        required_repository_commit_rollback_receipt_fields=[
+            "repository_commit_rollback_plan_receipt_id",
+            "repository_transaction_plan_receipt_id",
+            "repository_transaction_id",
+            "transaction_scope",
+            "write_set_id",
+            "lock_id",
+            "commit_receipt_id",
+            "rollback_receipt_id",
+            "commit_ledger_entry_id",
+            "rollback_ledger_entry_id",
+            "queue_claim_id",
+            "claim_transaction_id",
+            "runner_dispatch_id",
+            "idempotency_key",
+            "commit_receipt_created",
+            "rollback_receipt_created",
+            "repository_transaction_committed",
+            "created_at",
+        ],
+        blocker_reason="repository_commit_rollback_unimplemented",
+        repository_commit_allowed=False,
+        repository_rollback_allowed=False,
+        commit_receipt_created=False,
+        rollback_receipt_created=False,
+        repository_transaction_allowed=False,
+        repository_transaction_opened=False,
+        repository_transaction_committed=False,
+        queue_claim_allowed=False,
+        queue_claim_created=False,
+        claim_transaction_opened=False,
+        claim_transaction_committed=False,
+        lease_retry_allowed=False,
+        lease_policy_created=False,
+        retry_policy_created=False,
+        dead_letter_queue_created=False,
+        worker_bootstrap_allowed=False,
+        worker_bootstrap_created=False,
+        worker_started=False,
+        scheduler_allowed=False,
+        scheduler_job_created=False,
+        runner_dispatch_enqueued=False,
+        final_enablement_apply_allowed=False,
+        final_enablement_allowed=False,
+        live_dispatch_enabled=False,
+        live_dispatch_ready=False,
+        activation_readiness_allowed=False,
+        activation_ready=False,
+        transaction_opened=False,
+        transaction_committed=False,
+        setting_persisted=False,
+        control_ledger_written=False,
+        audit_log_written=False,
+        operator_dispatch_allowed=False,
+        operator_live_dispatch_enabled=False,
+        live_run_allowed=False,
+        dispatch_allowed=False,
+        dispatch_performed=False,
+        budget_reservation_allowed=False,
+        budget_reserved=False,
+        provider_execution_allowed=False,
+        provider_calls_made=False,
+        retrieval_allowed=False,
+        retrieval_performed=False,
+        source_receipts_created=False,
+        graph_mutation_allowed=False,
+        graph_mutated=False,
+        final_artifact_allowed=False,
+        final_artifact_created=False,
+        adapter_plan_notes=[
+            "repository commit rollback plan only: no repository transaction, commit receipt, rollback receipt, queue claim, worker runtime, scheduler job, or runner dispatch is created",
+            "this receipt documents paired commit and rollback receipt requirements after repository transaction planning",
             "no activation readiness, live dispatch, scheduler job, worker runtime, transaction execution, budget reservation, provider call, retrieval, source receipt, graph mutation, or artifact write is performed",
         ],
     )

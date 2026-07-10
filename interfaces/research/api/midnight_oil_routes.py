@@ -49,6 +49,8 @@ from substrate.midnight_oil import (
     MidnightOilProviderExecutorAdapterPlanRequest,
     MidnightOilProviderRouteReceipt,
     MidnightOilProviderRouteRequest,
+    MidnightOilRepositoryCommitRollbackPlanReceipt,
+    MidnightOilRepositoryCommitRollbackPlanRequest,
     MidnightOilRepositoryTransactionPlanReceipt,
     MidnightOilRepositoryTransactionPlanRequest,
     MidnightOilRequest,
@@ -88,6 +90,7 @@ from substrate.midnight_oil import (
     preflight_midnight_oil,
     provider_executor_adapter_plan_midnight_oil,
     provider_route_midnight_oil,
+    repository_commit_rollback_plan_midnight_oil,
     repository_transaction_plan_midnight_oil,
     retrieval_adapter_plan_midnight_oil,
     retrieval_midnight_oil,
@@ -353,6 +356,16 @@ def post_midnight_oil_repository_transaction_plan(
     return repository_transaction_plan_midnight_oil(req)
 
 
+@midnight_oil_router.post(
+    "/repository-commit-rollback-plan",
+    response_model=MidnightOilRepositoryCommitRollbackPlanReceipt,
+)
+def post_midnight_oil_repository_commit_rollback_plan(
+    req: MidnightOilRepositoryCommitRollbackPlanRequest,
+) -> MidnightOilRepositoryCommitRollbackPlanReceipt:
+    return repository_commit_rollback_plan_midnight_oil(req)
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
@@ -379,6 +392,7 @@ __all__ = [
     "post_midnight_oil_preflight",
     "post_midnight_oil_provider_executor_adapter_plan",
     "post_midnight_oil_provider_route",
+    "post_midnight_oil_repository_commit_rollback_plan",
     "post_midnight_oil_repository_transaction_plan",
     "post_midnight_oil_retrieval",
     "post_midnight_oil_retrieval_adapter_plan",
