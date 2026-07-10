@@ -1,0 +1,15 @@
+# inventory-arn · ResearchThis offline surface catalog honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: arn
+date: 2026-07-10
+parent_tip: 451bd7b7d (arm)
+
+## Closed
+- research-this-competitive-links stamps offline-surface-count · live deferred · ND never router
+- scorecard link title from competitiveDrOfflineSurfaceCatalog().summary
+- reading ≡ research competitive path honesty (parity Settings arm)
+- vitest ResearchThis 13 green
+- evidence: {SCRATCH}/arn-researchthis-vitest.txt
+
+## Next
+aro+ outside thrash · Operator merge PR #465

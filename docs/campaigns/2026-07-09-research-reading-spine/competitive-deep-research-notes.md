@@ -4043,3 +4043,8 @@ Pivot arm+ outside thrash.
 COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES + scorecard chrome. Honest map of 12
 offline surfaces · live deferred · ND never router. vitest 42 green. P0 PR #465.
 Pivot arn+.
+
+## Residual arn · 2026-07-10 — ResearchThis offline surface catalog honesty
+Highlight DR competitive links stamp offline product surface catalog (parity
+Settings arm). ND never router · live deferred. vitest 13 green. P0 PR #465.
+Pivot aro+.

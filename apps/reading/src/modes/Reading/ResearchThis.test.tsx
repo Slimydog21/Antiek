@@ -443,11 +443,24 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
     expect(competitive.getAttribute("data-html-first")).toBe("true");
     expect(competitive.getAttribute("data-hop-pipeline")).toBe("api");
     expect(competitive.getAttribute("data-stage-pipeline")).toBe("ape");
+    // Residual (arn): offline product surface catalog honesty (parity arm).
+    expect(competitive.getAttribute("data-live-injectors-deferred")).toBe(
+      "true",
+    );
+    expect(competitive.getAttribute("data-notdiamond-is-router")).toBe("false");
+    expect(
+      Number(competitive.getAttribute("data-offline-surface-count") || 0),
+    ).toBeGreaterThanOrEqual(10);
     expect(
       screen
         .getByTestId("research-this-competitive-scorecard-link")
         .getAttribute("href"),
     ).toBe("/settings#settings-competitive-dr-scorecard");
+    expect(
+      screen
+        .getByTestId("research-this-competitive-scorecard-link")
+        .getAttribute("data-notdiamond-is-router"),
+    ).toBe("false");
     expect(
       screen
         .getByTestId("research-this-competitive-dr-future-agent-link")

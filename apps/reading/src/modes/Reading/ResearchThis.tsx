@@ -21,6 +21,7 @@ import {
   parsePublicationRefs,
 } from "../ResearchWorkstation/publicationRefs";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
+import { competitiveDrOfflineSurfaceCatalog } from "../../workspace/competitiveDrQuality";
 import { listRecentDeepResearchSpawnIds } from "../../workspace/recentDeepResearchSpawns";
 import type { WindowMode } from "../../workspace/windowsStore";
 import { useWindows } from "../../workspace/windowsStore";
@@ -253,14 +254,23 @@ export default function ResearchThis({
         data-html-first="true"
         data-hop-pipeline="api"
         data-stage-pipeline="ape"
+        data-offline-surface-count={String(
+          competitiveDrOfflineSurfaceCatalog().count,
+        )}
+        data-live-injectors-deferred="true"
+        data-notdiamond-is-router="false"
         role="navigation"
         aria-label="Competitive deep-research scorecard navigation"
       >
         <a
           href="/settings#settings-competitive-dr-scorecard"
           data-testid="research-this-competitive-scorecard-link"
+          data-offline-surface-count={String(
+            competitiveDrOfflineSurfaceCatalog().count,
+          )}
+          data-notdiamond-is-router="false"
           className="underline opacity-80 hover:opacity-100"
-          title="Settings competitive deep-research scorecard (highlight DR · hop pipeline · multi-stage · reading ≡ research)"
+          title={competitiveDrOfflineSurfaceCatalog().summary}
         >
           Settings · competitive DR
         </a>
