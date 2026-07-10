@@ -253,6 +253,8 @@ KNOWN_USAGE_FEED_SOURCES: tuple[str, ...] = (
     # Residual (aaj): catalog HTML projection Write seed.
     "marketplace_catalog",
     "floating_deep_research",
+    # Residual (asu): highlight-passage session open (asq HTML reading path).
+    "highlight_dr_launch",
     "twin_chase",
     "collective_merge",
     "collective_doc_merge",

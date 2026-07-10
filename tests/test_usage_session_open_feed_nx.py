@@ -12,6 +12,24 @@ from substrate.antiek_bench import (
 )
 
 
+def test_weekly_usage_summary_includes_highlight_dr_launch() -> None:
+    """Residual (asu): highlight_dr_launch is a known feed + by_source key."""
+    store = InMemoryBenchStore()
+    record_usage_event(
+        UsageEvent(
+            task_class="synthesize",
+            outcome="worked",
+            source="highlight_dr_launch",
+            prompt_hint="Deep-research the highlighted passage from reading",
+        ),
+        store=store,
+    )
+    summary = weekly_usage_summary(store=store)
+    assert summary["by_source"].get("highlight_dr_launch") == 1
+    assert "highlight_dr_launch" in KNOWN_USAGE_FEED_SOURCES
+    assert "highlight_dr_launch" in summary["known_sources"]
+
+
 def test_weekly_usage_summary_includes_twin_chase_and_floating_dr() -> None:
     store = InMemoryBenchStore()
     record_usage_event(

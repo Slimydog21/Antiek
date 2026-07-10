@@ -177,6 +177,26 @@ def test_session_open_twin_chase_usage_source(client):
     assert "Twin chase" in (body["usage_event"].get("prompt_hint") or "")
 
 
+def test_session_open_highlight_dr_launch_usage_source(client):
+    """Residual (asu): highlighted passage goal_hint → usage source=highlight_dr_launch."""
+    r = client.post(
+        "/engagement/sessions/open",
+        json={
+            "asset_id": "doc-read",
+            "selection_text": "Attention is content-addressable memory.",
+            "goal_hint": "Deep-research the highlighted passage from reading",
+            "view_mode": "floating",
+            "research_tier": "deep",
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["usage_event"]["source"] == "highlight_dr_launch"
+    assert body["usage_event"]["task_class"] == "synthesize"
+    assert body["usage_event"]["outcome"] == "worked"
+    assert "highlighted passage" in (body["usage_event"].get("prompt_hint") or "").lower()
+
+
 def test_attach_unknown_spawn_404(client):
     r = client.post(
         "/engagement/attach-refs",

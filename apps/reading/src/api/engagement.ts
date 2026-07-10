@@ -56,8 +56,8 @@ export type SessionOpenResponse = {
   research_tier?: "fast" | "deep" | "wrestle" | string | null;
   view_format: "html";
   /**
-   * Residual (nw): Antiek-bench usage event recorded on open
-   * (floating_deep_research | twin_chase) for recursive suite rewrite.
+   * Residual (nw/asu): Antiek-bench usage event recorded on open
+   * (floating_deep_research | twin_chase | highlight_dr_launch) for recursive suite rewrite.
    */
   usage_event?: {
     task_class: string;

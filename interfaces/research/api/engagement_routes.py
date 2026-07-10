@@ -841,14 +841,19 @@ def post_context_search(body: ContextSearchBody) -> dict[str, Any]:
 
 
 def _session_open_usage_source(goal_hint: str | None) -> str:
-    """Residual (nw): classify open source for Antiek-bench recursive rewrite.
+    """Residual (nw/asu): classify open source for Antiek-bench recursive rewrite.
 
     Twin chase launches stamp goal_hint with ``Twin chase on …`` (buildTwinChasePayload).
-    All other highlight → floating DR opens use floating_deep_research.
+    Highlight-passage launches (ResearchThis / HostedHtml / Reading index) stamp
+    goal_hint with ``highlighted passage`` → highlight_dr_launch (asq path).
+    All other session opens use floating_deep_research.
     """
     g = (goal_hint or "").strip().lower()
     if g.startswith("twin chase"):
         return "twin_chase"
+    # Residual (asu): HTML reading highlight → float|full DR launch feed.
+    if "highlighted passage" in g:
+        return "highlight_dr_launch"
     return "floating_deep_research"
 
 

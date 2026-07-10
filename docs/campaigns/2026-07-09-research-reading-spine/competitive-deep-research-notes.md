@@ -4218,3 +4218,9 @@ P0 PR #465. Pivot ast+ outside thrash.
 VISION_USAGE_FEED_SOURCES += highlight_dr_launch · synthesize task map.
 Competitive delta: recursive rewrite tracks HTML reading launch path.
 vitest 9 green. P0 PR #465. Pivot asu+ outside thrash.
+
+## Residual asu · 2026-07-10 — session open usage source highlight_dr_launch
+_session_open_usage_source classifies goal_hint with "highlighted passage" as
+highlight_dr_launch (ResearchThis/HostedHtml). KNOWN_USAGE_FEED_SOURCES updated.
+Competitive delta: live usage events feed recursive rewrite for HTML highlight path.
+asu-unit.log green. P0 PR #465. Pivot asv+ outside thrash.
