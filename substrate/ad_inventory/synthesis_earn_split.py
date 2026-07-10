@@ -134,6 +134,20 @@ def earn_split_for_synthesis(
             )
         claims = gated_claims
 
+    # §9.10 PARTIAL-GATING SEMANTICS — a money decision, made explicit (not emergent).
+    # ``algo`` renormalizes over the SURVIVING documents, so when SOME (not all) sources
+    # are personal_reading, the gated source's would-be share REDISTRIBUTES to the
+    # co-earners rather than routing to the house. This is the conventional royalty default
+    # (an ineligible party's share splits among the eligible), and it makes the partial and
+    # full gating paths discontinuous: all-personal → empty split → caller house-routes,
+    # but 99%-personal + 1%-public → the public source receives 100% of the cents. Under
+    # single-operator (owner ≈ house) this is inert; at multi-user + live escrow it would
+    # let an external holder accrue for value the owner's private reading drove.
+    # The alternative (house-route the personal-attributable fraction) is defensible too;
+    # which is canonical §9.10 is an OPERATOR/spec-owner call, escalated on PR #705 and NOT
+    # decided here. Pinned by ``test_personal_reading_fraction_redistributes_to_cosources``
+    # so the choice is visible and a change trips a named test — RATIFY before M3-wire
+    # (live escrow) lands. (Surfaced by the GPW-lane adversarial review, 2026-07-10.)
     shares = algo(claims)  # document_id → share in [0, 1], summing to ~1.0 (or empty)
     if not shares or total_cents == 0:
         return []

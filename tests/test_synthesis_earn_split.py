@@ -79,6 +79,41 @@ def test_all_sources_personal_yields_empty_split() -> None:
     assert lines == []
 
 
+def test_personal_reading_fraction_redistributes_to_cosources() -> None:
+    """§9.10 PARTIAL-GATING semantics, pinned explicitly: redistribution, NOT house-route.
+
+    When only SOME sources are personal_reading, the gated source's would-be share
+    REDISTRIBUTES to the surviving earners (the conventional royalty default — an ineligible
+    party's share splits among the eligible), rather than the personal fraction routing to
+    the house. This makes the partial- and full-gating paths discontinuous: all-personal →
+    empty split → caller house-routes (see the test above), but one-public-of-many → that
+    sole public source receives ALL the cents. Whether redistribution or house-route is the
+    canonical §9.10 semantics is an OPERATOR/spec-owner decision (escalated on PR #705); this
+    test locks the CURRENT behavior so the choice is visible and any change is deliberate.
+    Surfaced by the GPW-lane adversarial review, 2026-07-10."""
+    # One public source + two personal, each grounding one of three equal claims.
+    c2d = {"cA": "D_public", "cB": "D_personal1", "cC": "D_personal2"}
+    tiers = {"D_public": 1, "D_personal1": 1, "D_personal2": 1}
+    content = {"D_public": PUBLIC, "D_personal1": PERSONAL, "D_personal2": PERSONAL}
+    holders = {"D_public": "h_pub", "D_personal1": "h_p1", "D_personal2": "h_p2"}
+    claims = [
+        _claim(0, "cA", c2d, tiers),
+        _claim(1, "cB", c2d, tiers),
+        _claim(2, "cC", c2d, tiers),
+    ]
+    lines = earn_split_for_synthesis(
+        claims=claims, doc_to_content_class=content, doc_to_ip_holder=holders,
+        total_cents=300, algorithm="A",
+    )
+    by_doc = _lines_by_doc(lines)
+
+    # The two personal thirds redistribute to the sole public survivor: it receives ALL 300
+    # (not its raw 1/3 of 100 with 200 house-routed). This is the discontinuity to ratify.
+    assert set(by_doc) == {"D_public"}
+    assert by_doc["D_public"].cents == 300
+    assert sum(ln.cents for ln in lines) == 300
+
+
 # --------------------------------------------------------------------------- #
 # Invariant 2 — conservation to the cent
 # --------------------------------------------------------------------------- #
