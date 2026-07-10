@@ -26,3 +26,4 @@ one residual/cycle · campaign push only · operator merges PR #465.
 | **apv** | evidence hop pipeline world-class readiness stamps | hops known on evidence · stages unknown |
 | **apw** | competitiveDrQuality workspace extract | hard-to-vary pure helpers · re-exports |
 | **apx** | Write home competitive DR hop/stage deep-links | writing surface · reading ≡ research ≡ writing |
+| **apy** | SessionFlywheel hop/stage pipeline hint | flywheel land competitive map |

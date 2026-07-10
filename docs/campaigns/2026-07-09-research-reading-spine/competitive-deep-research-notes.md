@@ -3832,3 +3832,7 @@ coupling. vitest 38 green (workspace 4 + Progress 13 + Context 21). P0 PR #465. 
 ## Residual apx · 2026-07-10 — Write home competitive DR hop/stage deep-links
 Write home stamps competitive scorecard + FUTURE + pipeline hint
 (reading ≡ research ≡ writing). vitest WriteHome 31 green. P0 PR #465. Pivot apy+.
+
+## Residual apy · 2026-07-10 — SessionFlywheel hop/stage pipeline hint
+Session land competitive nav names hops insights→questions→sources · stages plan→terminal
+(parity aps/apx). vitest SessionFlywheel 8 green. P0 PR #465. Pivot apz+ outside thrash.

@@ -293,6 +293,13 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
         .getByTestId("session-flywheel-competitive-dr-future-agent-link")
         .getAttribute("href") || "",
     ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    // Residual (apy): hop/stage pipeline honesty on session land.
+    const pipeHint = screen.getByTestId(
+      "session-flywheel-competitive-pipeline-hint",
+    );
+    expect(pipeHint.getAttribute("data-hop-pipeline")).toBe("api");
+    expect(pipeHint.getAttribute("data-stage-pipeline")).toBe("ape");
+    expect(pipeHint.textContent).toMatch(/insights.*questions.*sources/i);
   });
 
   it("links Settings prompt-cost projection for budget-before-fire (ako)", () => {

@@ -248,6 +248,15 @@ export function SessionFlywheelPanel({
           >
             FUTURE · competitive DR brief
           </a>
+          {/* Residual (apy): hop/stage pipeline honesty (parity aps/apx). */}
+          <span
+            className="opacity-70"
+            data-testid="session-flywheel-competitive-pipeline-hint"
+            data-hop-pipeline="api"
+            data-stage-pipeline="ape"
+          >
+            hops insights→questions→sources · stages plan→terminal
+          </span>
           {/* Residual (ako): session land budget-before-fire → Settings prompt-cost (akk–akn). */}
           <a
             href="/settings#prompt-cost-projection"
