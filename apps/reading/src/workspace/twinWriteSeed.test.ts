@@ -127,6 +127,27 @@ describe("twinWriteSeed (pp)", () => {
     });
     expect(href).toMatch(/html_draft=doc_abc/);
     expect(href).toMatch(/twin_seed=antiek\.twin_write_seed\./);
+    const key = decodeURIComponent(
+      (href.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    expect(loadTwinWriteSeed(key)?.source).toBe("hosted_html_document");
+  });
+
+  it("builds evidence_pack hosted Write seed source (si)", () => {
+    const href = buildHostedHtmlWriteHref({
+      documentId: "evidence:paper:abc",
+      title: "Evidence pack (citation trust)",
+      html: "<p>Insight: routing.</p>",
+      source: "evidence_pack",
+    });
+    expect(href).toMatch(/html_draft=evidence%3Apaper%3Aabc|html_draft=evidence:paper:abc/);
+    expect(href).toMatch(/twin_seed=antiek\.twin_write_seed\./);
+    const key = decodeURIComponent(
+      (href.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    const seed = loadTwinWriteSeed(key);
+    expect(seed?.source).toBe("evidence_pack");
+    expect(seed?.title).toMatch(/Evidence pack/);
   });
 
   it("builds deep research twin_seed Write href without inventing document_id (qv)", () => {

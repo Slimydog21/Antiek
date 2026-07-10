@@ -298,12 +298,21 @@ export default function HostedHtmlDocumentHost(
                   documentId: assetId,
                   title: props.title,
                   html,
+                  // Residual (si): evidence_pack Write seeds record citation-trust source.
+                  source: payloadSource || null,
                 })}
                 data-testid="hosted-html-open-write"
                 data-view-format="html"
                 data-has-twin-seed="1"
+                data-write-seed-source={
+                  isEvidencePack ? "evidence_pack" : "hosted_html_document"
+                }
                 className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
-                title="Open Write with hosted HTML + twin_seed (seeds note-taker when empty)"
+                title={
+                  isEvidencePack
+                    ? "Open Write with evidence pack HTML + twin_seed (citation trust · seeds note-taker)"
+                    : "Open Write with hosted HTML + twin_seed (seeds note-taker when empty)"
+                }
               >
                 Open Write (HTML draft handoff)
               </a>

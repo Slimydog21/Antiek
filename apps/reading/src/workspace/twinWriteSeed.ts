@@ -264,6 +264,12 @@ export function buildHostedHtmlWriteHref(opts: {
   documentId: string;
   title?: string | null;
   html?: string | null;
+  /**
+   * Residual (si): when floating evidence packs Open Write, pass
+   * source=evidence_pack so Antiek-bench records citation-trust Write seeds
+   * (default remains hosted_html_document).
+   */
+  source?: string | null;
 }): string {
   const doc = String(opts.documentId || "").trim();
   if (!doc) return "/write";
@@ -271,13 +277,20 @@ export function buildHostedHtmlWriteHref(opts: {
     plainTextFromHtml(opts.html || "") ||
     String(opts.title || "").trim() ||
     doc;
+  const srcRaw = String(opts.source || "").trim();
+  const source =
+    srcRaw === "evidence_pack" ? "evidence_pack" : "hosted_html_document";
+  const titleDefault =
+    source === "evidence_pack"
+      ? `Evidence pack · ${doc}`
+      : `Hosted HTML · ${doc}`;
   const seedKey = storeTwinWriteSeed({
     plain_text: plain,
     html: String(opts.html || ""),
-    title: String(opts.title || "").trim() || `Hosted HTML · ${doc}`,
+    title: String(opts.title || "").trim() || titleDefault,
     asset_id: doc,
     note_ids: [],
-    source: "hosted_html_document",
+    source,
   });
   return buildWriteHtmlDraftHref({
     documentId: doc,

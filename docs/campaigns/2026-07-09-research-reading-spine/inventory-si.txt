@@ -1,0 +1,13 @@
+# inventory-si · Evidence pack Open Write seed source
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: si
+date: 2026-07-10
+
+## Closed
+- buildHostedHtmlWriteHref accepts source=evidence_pack
+- HostedHtmlDocumentHost passes payload source; data-write-seed-source
+- vitest twinWriteSeed 23 + HostedHtml 13 = 36 · SCRATCH residual-tests-si.log
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live L1–L4 dual-gate (operator-only)

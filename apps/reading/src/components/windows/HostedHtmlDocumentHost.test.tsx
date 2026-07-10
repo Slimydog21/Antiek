@@ -231,7 +231,7 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
   });
 
-  it("stamps evidence_pack source and twin seed title (sh)", () => {
+  it("stamps evidence_pack source and twin seed title (sh/si)", () => {
     render(
       <HostedHtmlDocumentHost
         document_id="evidence:paper:abc"
@@ -252,6 +252,11 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(twins.getAttribute("data-seed-title") || "").toMatch(
       /Evidence pack \(citation trust\)/,
     );
+    // Residual (si): Open Write dual handoff stamps evidence_pack seed source.
+    const write = screen.getByTestId("hosted-html-open-write");
+    expect(write.getAttribute("data-write-seed-source")).toBe("evidence_pack");
+    const href = write.getAttribute("href") || "";
+    expect(href).toMatch(/twin_seed=antiek\.twin_write_seed\./);
   });
 
   it("prefills research tier from Settings wrestle (jd)", async () => {

@@ -859,3 +859,9 @@ Floated evidence packs (source=evidence_pack) stamp host data-evidence-pack
 and seed TwinNotes with "Evidence pack (citation trust)" title so recursive
 note-taker substrate knows citation-trust provenance. Competitive delta:
 evidence windows are not orphaned HTML — they join the twin note-taker path.
+
+## Residual si · 2026-07-10 — Evidence pack Open Write seed source
+Hosted evidence windows Open Write with twin_seed source=evidence_pack so
+Antiek-bench weekly rewrite learns from citation-trust → Write paths.
+Competitive delta: evidence is not a dead-end float — it seeds writing and
+bench substrate with honest provenance.
