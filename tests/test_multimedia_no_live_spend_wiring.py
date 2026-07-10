@@ -40,28 +40,28 @@ ADAPTER_NAME = "KreaProviderAdapter"
 AUTHORIZED_TRANSPORT_CALLSITES: frozenset[str] = frozenset()
 
 
-def _is_test_module(path: Path) -> bool:
-    return path.name.startswith("test_") or path.name.endswith("_test.py")
+def _is_test_source(path: Path) -> bool:
+    return (
+        "tests" in path.relative_to(REPO_ROOT).parts
+        or path.name.startswith("test_")
+        or path.name.endswith("_test.py")
+    )
 
 
 def _shipped_multimedia_files() -> list[Path]:
-    """Shipped multimedia production surface: substrate/multimedia/** plus any
-    interfaces/**/multimedia*.py (routes land in a later PR — guard them forward).
-    Excludes test files. The adapter definition itself is safe to scan because
+    """Every shipped Python file that references the adapter symbol.
+
+    Text-prefilter before parsing so unrelated files using newer Python syntax
+    cannot break this architecture guard. Test trees and conventional test
+    modules are excluded; the adapter definition itself is safe to scan because
     this guard matches constructor calls, not function definitions.
     """
-    files: list[Path] = []
-    mm_root = REPO_ROOT / "substrate" / "multimedia"
-    if mm_root.exists():
-        files.extend(mm_root.rglob("*.py"))
-    api_dir = REPO_ROOT / "interfaces" / "research" / "api"
-    if api_dir.exists():
-        files.extend(api_dir.glob("multimedia*.py"))
-
-    def _keep(p: Path) -> bool:
-        return not _is_test_module(p)
-
-    return sorted({p for p in files if _keep(p)})
+    candidates = (path for path in REPO_ROOT.rglob("*.py") if not _is_test_source(path))
+    return sorted(
+        path
+        for path in candidates
+        if ADAPTER_NAME in path.read_text(encoding="utf-8")
+    )
 
 
 def _transport_wired_callsites(source: str, rel_name: str) -> list[str]:
@@ -138,6 +138,7 @@ def test_guard_ignores_dry_run_construction_without_transport() -> None:
 
 
 def test_shipped_filename_containing_test_is_not_misclassified() -> None:
-    assert not _is_test_module(Path("latest_renderer.py"))
-    assert _is_test_module(Path("test_provider.py"))
-    assert _is_test_module(Path("provider_test.py"))
+    assert not _is_test_source(REPO_ROOT / "substrate" / "latest_renderer.py")
+    assert _is_test_source(REPO_ROOT / "substrate" / "test_provider.py")
+    assert _is_test_source(REPO_ROOT / "substrate" / "provider_test.py")
+    assert _is_test_source(REPO_ROOT / "tests" / "provider_fixture.py")
