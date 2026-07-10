@@ -2990,3 +2990,7 @@ P0 operator merge PR #465. Pivot aji+ outside thrash.
 buildEvidencePackWriteHref stamps chain_complete · hop strip · stable anchors into
 twin_seed plain/HTML so recursive note-taker Write preserves multi-hop honesty.
 vitest twinWriteSeed 35 green. P0 operator merge PR #465. Pivot ajj+ outside thrash.
+
+## Residual ajj · 2026-07-10 — SESSION-ARC air–aji multi-hop write path
+Wave handoff: substrate hops → UI → dogfood → public API → Write twin_seed.
+P0 operator merge PR #465. Pivot ajk+ outside thrash.
