@@ -258,6 +258,17 @@ describe("MarketplaceHost mode", () => {
     // Residual (ye): marketplace dual-gate → L5 payment section.
     expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l5-payment/);
     expect(dual.textContent).toMatch(/L5 payment checklist/i);
+    // Residual (ajl): free STEM marketplace → competitive DR honesty map.
+    expect(
+      screen
+        .getByTestId("marketplace-competitive-scorecard-link")
+        .getAttribute("href"),
+    ).toBe("/settings#settings-competitive-dr-scorecard");
+    expect(
+      screen
+        .getByTestId("marketplace-competitive-dr-future-agent-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
     await waitFor(() => {
       expect(screen.getByText("Pride and Prejudice")).toBeTruthy();
     });

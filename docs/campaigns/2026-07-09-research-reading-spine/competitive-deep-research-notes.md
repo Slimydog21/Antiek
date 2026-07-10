@@ -2999,3 +2999,8 @@ P0 operator merge PR #465. Pivot ajk+ outside thrash.
 Suite suite-competitive-dogfood-v31 learns evidence pack → Write twin_seed multi-hop
 hop honesty (aji). item_count 47 · wrestle=34. pytest dogfood 5 · Settings 36 green.
 P0 operator merge PR #465. Pivot ajl+ outside thrash.
+
+## Residual ajl · 2026-07-10 — MarketplaceHost competitive DR scorecard deep-links
+Free STEM HTML marketplace navigates Settings competitive DR scorecard + FUTURE brief
+(HTML-first free STEM shipped · L5 payment deferred). vitest MarketplaceHost 41 green.
+P0 operator merge PR #465. Pivot ajm+ outside thrash.

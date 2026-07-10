@@ -988,6 +988,23 @@ export default function MarketplaceHost({
               >
                 Dual-gate L5 payment checklist
               </a>
+              {/* Residual (ajl): free STEM / HTML marketplace → competitive DR honesty map. */}
+              <a
+                href="/settings#settings-competitive-dr-scorecard"
+                data-testid="marketplace-competitive-scorecard-link"
+                className="underline opacity-80 hover:opacity-100"
+                title="Settings competitive deep-research scorecard (HTML-first free STEM shipped · L5 payment deferred)"
+              >
+                Settings · competitive DR scorecard
+              </a>
+              <a
+                href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+                data-testid="marketplace-competitive-dr-future-agent-link"
+                className="underline opacity-80 hover:opacity-100"
+                title="FUTURE-AGENT competitive deep-research quality brief"
+              >
+                FUTURE · competitive DR brief
+              </a>
             </p>
           </div>
         </div>
