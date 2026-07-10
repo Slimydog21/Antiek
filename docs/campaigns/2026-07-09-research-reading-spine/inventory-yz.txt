@@ -1,0 +1,19 @@
+# inventory-yz · dogfood summary data-settings-panel honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: yz
+date: 2026-07-10
+tip_before: b52d99ad (yy)
+
+## Problem
+Antiek-bench dogfood summary lacked data-settings-panel machine stamp for
+Settings panel identity honesty.
+
+## Fix
+- data-settings-panel on antiek-bench-dogfood-summary
+- Test locks antiek_bench_dogfood_fixtures
+
+## Verified
+npm test Settings.test.tsx → 34 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

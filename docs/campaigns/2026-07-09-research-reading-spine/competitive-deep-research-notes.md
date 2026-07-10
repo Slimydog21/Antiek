@@ -1716,3 +1716,7 @@ Competitive delta: suite identity is machine-auditable on Settings.
 ## Residual yy · 2026-07-10 — FUTURE-AGENT tip re-anchor through yx
 FUTURE-AGENT-SPEC tip re-anchored after 78 residual ships this continuation.
 Competitive delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
+
+## Residual yz · 2026-07-10 — dogfood summary data-settings-panel honesty
+antiek-bench-dogfood-summary stamps data-settings-panel=antiek_bench_dogfood_fixtures.
+Competitive delta: Settings panel identity is machine-auditable on dogfood chokepoint.

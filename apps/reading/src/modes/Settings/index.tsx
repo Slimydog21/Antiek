@@ -2083,6 +2083,7 @@ export default function Settings() {
                 data-auto-promoted={String(dogfood.auto_promoted === true)}
                 data-view-format={dogfood.view_format || "html"}
                 data-source={dogfood.source || ""}
+                data-settings-panel={dogfood.settings_panel || ""}
                 data-book-qa-count={String(
                   (dogfood.by_task_class || {}).book_qa ?? 0,
                 )}
