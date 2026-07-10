@@ -1,0 +1,16 @@
+# inventory-aiv · CollectiveResearchPanel competitive DR scorecard deep-links
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aiv
+date: 2026-07-10
+parent_tip: 324901a7 (aiu)
+
+## Closed
+- CollectiveResearchPanel header nav:
+  - collective-competitive-scorecard-link → Settings competitive DR scorecard
+  - collective-competitive-dr-future-agent-link → FUTURE-AGENT competitive DR brief
+- Offline multi-agent merge unit honesty map parity (MO aiu · evidence ait)
+- vitest CollectiveResearch 28 green
+
+## Next
+aiw+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

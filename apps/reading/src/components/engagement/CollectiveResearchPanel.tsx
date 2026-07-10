@@ -793,7 +793,7 @@ export function CollectiveResearchPanel({
               : " · select spawns to merge"}
           </p>
         ) : null}
-        {/* Residual (ig/nl): Settings + dual-gate checklist (L6 collective prep). */}
+        {/* Residual (ig/nl/aiv): Settings + dual-gate + competitive DR scorecard (L6 prep). */}
         <p className="meta font-mono text-[11px] space-x-3">
           <a
             href="/settings#decision-tree-panel"
@@ -809,6 +809,21 @@ export function CollectiveResearchPanel({
           >
             {/* Residual (aat): label matches #l6-collective href (was L1–L4). */}
             Dual-gate L6 collective checklist
+          </a>
+          {/* Residual (aiv): multi-agent merge unit → competitive DR honesty map (parity aiu). */}
+          <a
+            href="/settings#settings-competitive-dr-scorecard"
+            data-testid="collective-competitive-scorecard-link"
+            title="Settings competitive deep-research scorecard (offline multi-agent merge shipped · L6 live deferred)"
+          >
+            Settings · competitive DR scorecard
+          </a>
+          <a
+            href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+            data-testid="collective-competitive-dr-future-agent-link"
+            title="FUTURE-AGENT competitive deep-research quality brief (L6 live dual-gate)"
+          >
+            FUTURE · competitive DR brief
           </a>
         </p>
         {/* Residual (lg): model driver + budget + depth co-display (parity ku). */}

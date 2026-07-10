@@ -2919,3 +2919,8 @@ Pivot aiu+ outside thrash.
 Autonomous swarm mode navigates Settings competitive DR scorecard + FUTURE brief
 so operators see offline MO shipped vs L4 live deferred honesty before goals+ceiling.
 vitest MidnightOil 25 green. P0 operator merge PR #465. Pivot aiv+ outside thrash.
+
+## Residual aiv · 2026-07-10 — CollectiveResearchPanel competitive DR scorecard deep-links
+Multi-agent merge unit navigates Settings competitive DR scorecard + FUTURE brief
+(offline merge shipped · L6 live deferred). SESSION-ARC ait–aiv scorecard navigation
+matrix complete. vitest Collective 28 green. P0 operator merge PR #465. Pivot aiw+.

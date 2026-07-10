@@ -179,6 +179,24 @@ describe("CollectiveResearchPanel", () => {
     ).toBe("deep");
   });
 
+  it("links competitive DR scorecard and FUTURE brief (aiv)", () => {
+    render(
+      <CollectiveResearchPanel availableSpawnIds={["spn_1", "spn_2"]} />,
+    );
+    const scorecard = screen.getByTestId("collective-competitive-scorecard-link");
+    expect(scorecard.getAttribute("href")).toBe(
+      "/settings#settings-competitive-dr-scorecard",
+    );
+    expect(scorecard.textContent).toMatch(/competitive DR scorecard/i);
+    const future = screen.getByTestId(
+      "collective-competitive-dr-future-agent-link",
+    );
+    expect(future.getAttribute("href") || "").toMatch(
+      /FUTURE-AGENT-SPEC-competitive-deep-research-quality/,
+    );
+    expect(future.textContent).toMatch(/competitive DR brief/i);
+  });
+
   it("merges selected spawns into collective prompt", async () => {
     fetchCollectiveResearch.mockResolvedValue({
       collective_id: "col_abc",
