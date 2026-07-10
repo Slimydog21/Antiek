@@ -3788,3 +3788,8 @@ evidence_pack float honesty stamps data-has-hop-pipeline + names insights→ques
 (api) with soft questions-missing signal · never invent hops. Completes float path for
 citation hop pipeline after apn progress cross-link. vitest HostedHtml 34 green.
 P0 PR #465. Pivot app+ outside thrash.
+
+## Residual app · 2026-07-10 — spawn_merge + collective written analysis twin seed honesty
+HostedHtml floats for multi-agent written analysis (≥2 · L6 deferred) and single-spawn
+merge get Port path + honesty chrome. Completes merge/analysis float twin matrix after
+marketplace/MO paths (apk–apm · apj). vitest HostedHtml 36 green. P0 PR #465. Pivot apq+.

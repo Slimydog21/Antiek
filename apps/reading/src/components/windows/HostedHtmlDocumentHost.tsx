@@ -52,6 +52,8 @@
  * honesty (not a hosted book · HTML projection · never invent entitlement).
  * Residual (apo): evidence_pack float honesty names citation hop pipeline
  * completeness (api) when hop strip present (parity ResearchContext chrome).
+ * Residual (app): spawn_merge + collective_written_analysis float twin seed
+ * path honesty (multi-agent analysis / single-spawn merge · L6 deferred).
  *
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
  */
@@ -524,7 +526,30 @@ export default function HostedHtmlDocumentHost(
               .filter(Boolean)
               .join("\n")
               .slice(0, 900)
-          : twinSeedBodyBase;
+          : isCollectiveWrittenAnalysis
+            ? [
+                twinSeedBodyBase,
+                "",
+                "Port path: Collective multi-agent written analysis float (requires ≥2 spawns · offline merge unit · L6 live multi-agent council deferred · never invent live council).",
+                collectiveId ? `collective_id=${collectiveId}` : "",
+                spawnCount != null ? `spawn_count=${spawnCount}` : "",
+                "source=collective_written_analysis · HTML-first · twin auto-seed if empty · recursive note-taker.",
+              ]
+                .filter(Boolean)
+                .join("\n")
+                .slice(0, 900)
+            : isSpawnMerge
+              ? [
+                  twinSeedBodyBase,
+                  "",
+                  "Port path: Spawn merge float (single-spawn draft_combined or into_parent · offline · HTML deliverable · never invent parent overwrite without mode).",
+                  assetId ? `document_id=${assetId}` : "",
+                  "source=spawn_merge · HTML-first · twin auto-seed if empty · recursive note-taker.",
+                ]
+                  .filter(Boolean)
+                  .join("\n")
+                  .slice(0, 900)
+              : twinSeedBodyBase;
 
   return (
     <div
@@ -564,6 +589,8 @@ export default function HostedHtmlDocumentHost(
           ? String(marketplaceIsFree)
           : ""
       }
+      data-collective-written-analysis={String(isCollectiveWrittenAnalysis)}
+      data-spawn-merge={String(isSpawnMerge)}
       data-research-progress={String(isResearchProgress)}
       data-session-flywheel={String(isSessionFlywheel)}
     >
@@ -836,6 +863,75 @@ export default function HostedHtmlDocumentHost(
                     title="FUTURE-AGENT L5 digital book seamless port brief"
                   >
                     FUTURE · L5 seamless port
+                  </a>
+                </p>
+              </div>
+            ) : null}
+            {/* Residual (app): multi-agent written analysis float twin seed honesty. */}
+            {isCollectiveWrittenAnalysis ? (
+              <div
+                className="text-[11px] font-mono opacity-80 mt-1 space-y-1"
+                data-testid="hosted-html-collective-analysis-honesty"
+                data-twin-seed-path="collective_written_analysis"
+                data-auto-seed-if-empty="true"
+                data-l6-live-council="deferred"
+                data-html-first="true"
+                data-view-format="html"
+                data-spawn-count={
+                  spawnCount != null ? String(spawnCount) : ""
+                }
+                role="status"
+              >
+                <p>
+                  Collective written analysis · multi-agent (≥2 spawns) ·
+                  offline merge unit · twin auto-seed if empty (recursive
+                  note-taker) · L6 live council deferred · never invent live
+                  council · HTML · not PDF
+                </p>
+                <p className="space-x-3">
+                  <a
+                    href="/settings#settings-competitive-dr-scorecard"
+                    data-testid="hosted-html-collective-analysis-scorecard-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="Settings competitive DR scorecard (multi-agent written analysis)"
+                  >
+                    Settings · competitive DR scorecard
+                  </a>
+                  <a
+                    href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-l6-live-multiagent-collective.md"
+                    data-testid="hosted-html-collective-analysis-l6-future-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="FUTURE-AGENT L6 live multi-agent collective brief"
+                  >
+                    FUTURE · L6 multi-agent
+                  </a>
+                </p>
+              </div>
+            ) : null}
+            {/* Residual (app): spawn merge float twin seed honesty. */}
+            {isSpawnMerge ? (
+              <div
+                className="text-[11px] font-mono opacity-80 mt-1 space-y-1"
+                data-testid="hosted-html-spawn-merge-honesty"
+                data-twin-seed-path="spawn_merge"
+                data-auto-seed-if-empty="true"
+                data-html-first="true"
+                data-view-format="html"
+                role="status"
+              >
+                <p>
+                  Spawn merge · single-spawn draft or into-parent · offline ·
+                  twin auto-seed if empty (recursive note-taker) · never invent
+                  parent overwrite without mode · HTML · not PDF
+                </p>
+                <p className="space-x-3">
+                  <a
+                    href="/settings#settings-competitive-dr-scorecard"
+                    data-testid="hosted-html-spawn-merge-scorecard-link"
+                    className="underline opacity-90 hover:opacity-100"
+                    title="Settings competitive DR scorecard (spawn merge)"
+                  >
+                    Settings · competitive DR scorecard
                   </a>
                 </p>
               </div>
@@ -1259,6 +1355,8 @@ export default function HostedHtmlDocumentHost(
           data-marketplace-host={String(isMarketplaceHost)}
           data-marketplace-catalog={String(isMarketplaceCatalog)}
           data-marketplace-path-kind={isMarketplaceHost ? marketplacePathKind : ""}
+          data-collective-written-analysis={String(isCollectiveWrittenAnalysis)}
+          data-spawn-merge={String(isSpawnMerge)}
           data-auto-seed-if-empty="true"
         >
           {/* Residual (ez): remount twins with context refresh key. */}
@@ -1267,6 +1365,7 @@ export default function HostedHtmlDocumentHost(
           {/* Residual (apj): midnight_oil_deposit twin seed path honesty. */}
           {/* Residual (apk): marketplace_host free/purchased twin seed path honesty. */}
           {/* Residual (apm): marketplace_catalog listing twin seed path honesty. */}
+          {/* Residual (app): spawn_merge + collective_written_analysis twin seed path honesty. */}
           <div
             data-testid="hosted-html-twins-refresh"
             data-refresh-key={String(contextRefreshKey)}
@@ -1274,6 +1373,10 @@ export default function HostedHtmlDocumentHost(
             data-midnight-oil-deposit={String(isMidnightOilDeposit)}
             data-marketplace-host={String(isMarketplaceHost)}
             data-marketplace-catalog={String(isMarketplaceCatalog)}
+            data-collective-written-analysis={String(
+              isCollectiveWrittenAnalysis,
+            )}
+            data-spawn-merge={String(isSpawnMerge)}
             data-marketplace-path-kind={
               isMarketplaceHost ? marketplacePathKind : ""
             }

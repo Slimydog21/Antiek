@@ -17,3 +17,4 @@ one residual/cycle · campaign push only · operator merges PR #465.
 
 | **apn** | ResearchProgress stage pipeline × citation hop competitive nav | ape × api world-class DR bar |
 | **apo** | HostedHtml evidence hop pipeline completeness honesty | float path for api hop pipeline |
+| **app** | spawn_merge + collective written analysis twin seed honesty | multi-agent analysis float path |

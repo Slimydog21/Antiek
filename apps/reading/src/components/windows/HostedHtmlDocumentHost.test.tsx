@@ -963,6 +963,76 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
   });
 
+  it("stamps collective_written_analysis twin seed path honesty (app)", () => {
+    render(
+      <HostedHtmlDocumentHost
+        document_id="draft_analysis_app"
+        title="Written analysis"
+        view_format="html"
+        source="collective_written_analysis"
+        collective_id="col_app"
+        spawn_count={3}
+        html="<article><h1>Analysis</h1><p>Multi-agent synthesis.</p></article>"
+      />,
+    );
+    const host = screen.getByTestId("hosted-html-document-host");
+    expect(host.getAttribute("data-source")).toBe(
+      "collective_written_analysis",
+    );
+    expect(host.getAttribute("data-collective-written-analysis")).toBe("true");
+    const honesty = screen.getByTestId(
+      "hosted-html-collective-analysis-honesty",
+    );
+    expect(honesty.getAttribute("data-twin-seed-path")).toBe(
+      "collective_written_analysis",
+    );
+    expect(honesty.getAttribute("data-l6-live-council")).toBe("deferred");
+    expect(honesty.textContent).toMatch(/multi-agent/i);
+    expect(honesty.textContent).toMatch(/L6 live council deferred/i);
+    expect(
+      screen
+        .getByTestId("hosted-html-collective-analysis-l6-future-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-l6-live-multiagent-collective/);
+    const twins = screen.getByTestId("twin-notes-panel-stub");
+    expect(twins.getAttribute("data-seed-title") || "").toMatch(
+      /Collective written analysis/,
+    );
+    expect(twins.getAttribute("data-seed-body") || "").toMatch(
+      /Port path: Collective multi-agent written analysis/i,
+    );
+    expect(twins.getAttribute("data-seed-body") || "").toMatch(
+      /spawn_count=3/,
+    );
+    expect(twins.getAttribute("data-seed-body") || "").toMatch(
+      /source=collective_written_analysis/,
+    );
+  });
+
+  it("stamps spawn_merge twin seed path honesty (app)", () => {
+    render(
+      <HostedHtmlDocumentHost
+        document_id="draft_spawn_merge_app"
+        title="Spawn merge"
+        view_format="html"
+        source="spawn_merge"
+        html="<article><h1>Merged spawn</h1></article>"
+      />,
+    );
+    const host = screen.getByTestId("hosted-html-document-host");
+    expect(host.getAttribute("data-spawn-merge")).toBe("true");
+    const honesty = screen.getByTestId("hosted-html-spawn-merge-honesty");
+    expect(honesty.getAttribute("data-twin-seed-path")).toBe("spawn_merge");
+    expect(honesty.textContent).toMatch(/single-spawn/i);
+    const twins = screen.getByTestId("twin-notes-panel-stub");
+    expect(twins.getAttribute("data-seed-body") || "").toMatch(
+      /Port path: Spawn merge float/i,
+    );
+    expect(twins.getAttribute("data-seed-body") || "").toMatch(
+      /source=spawn_merge/,
+    );
+  });
+
   it("stamps evidence hop pipeline completeness from Competitive citation hops HTML (apo)", () => {
     render(
       <HostedHtmlDocumentHost
