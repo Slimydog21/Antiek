@@ -177,14 +177,14 @@ export function PublicationAttachPanel({
         >
           Settings · hydrate readiness
         </a>
-        {/* Residual (mj): dual-gate checklist — prep only, never enables L1–L4. */}
+        {/* Residual (mj/xc): dual-gate L1 arxiv checklist section — prep only. */}
         <a
-          href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+          href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
           data-testid="publication-attach-dual-gate-checklist-link"
           className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
-          title="Dual-gate L1–L4 operator checklist (env+injector prep; offline default)"
+          title="Dual-gate L1 arxiv hydrate checklist (prep only · offline default)"
         >
-          Dual-gate L1–L4 checklist
+          Dual-gate L1–L2 hydrate checklist
         </a>
       </div>
       {error ? (
@@ -274,11 +274,12 @@ export function PublicationAttachPanel({
               >
                 Settings · hydrate readiness
               </a>
+              {/* Residual (xc): L1 arxiv checklist section deep-link. */}
               <a
-                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
                 data-testid="publication-attach-hydrate-dual-gate-link"
                 className="underline hover:opacity-100"
-                title="Dual-gate L1–L4 checklist (arxiv/substack hydrate prep; offline default)"
+                title="Dual-gate L1 arxiv hydrate checklist (prep only · offline default)"
               >
                 Dual-gate L1–L2 hydrate checklist
               </a>

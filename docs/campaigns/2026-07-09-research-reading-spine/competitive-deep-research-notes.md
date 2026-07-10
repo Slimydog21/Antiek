@@ -1493,3 +1493,8 @@ injectors (parity MO L4 · Settings L5–L7).
 ## Residual xb · 2026-07-10 — Settings dual-gate L3 checklist #l3-twin
 Settings L3 checklist deep-links #l3-twin (parity TwinNotes xa). Competitive
 delta: decision-tree dual-gate prep navigates twin live-seed policy section.
+
+## Residual xc · 2026-07-10 — PublicationAttach L1 checklist #l1-arxiv
+Publication attach dual-gate checklist jumps to #l1-arxiv (L2 anchor also
+landed). Competitive delta: arxiv/substack attach surface navigates hydrate
+deferred policy without inventing live body.

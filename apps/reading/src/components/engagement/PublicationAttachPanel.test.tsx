@@ -94,8 +94,9 @@ describe("PublicationAttachPanel residual ck/ed", () => {
     expect(settings.textContent).toMatch(/hydrate readiness/i);
     // Residual (mj): dual-gate checklist link (prep only; never enables injectors).
     const dual = screen.getByTestId("publication-attach-dual-gate-checklist-link");
-    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4/);
-    expect(dual.textContent).toMatch(/dual-gate/i);
+    // Residual (xc): L1 arxiv checklist section deep-link.
+    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    expect(dual.textContent).toMatch(/L1–L2 hydrate checklist/i);
     // Residual (ed): parent notified so research context can remount.
     await waitFor(() => {
       expect(onAttached).toHaveBeenCalled();

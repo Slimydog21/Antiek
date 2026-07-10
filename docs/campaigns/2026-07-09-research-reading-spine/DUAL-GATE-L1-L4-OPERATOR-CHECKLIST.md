@@ -18,7 +18,7 @@ without silent network, ToS violations, or inventing LLM note-taker content.
 
 ---
 
-## L1 — Live arXiv body hydrate
+## L1 — Live arXiv body hydrate {#l1-arxiv}
 
 | Item | Value |
 |---|---|
@@ -33,7 +33,7 @@ without silent network, ToS violations, or inventing LLM note-taker content.
 
 ---
 
-## L2 — Live Substack body hydrate
+## L2 — Live Substack body hydrate {#l2-substack}
 
 | Item | Value |
 |---|---|
