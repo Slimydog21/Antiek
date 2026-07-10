@@ -58,6 +58,9 @@ export type AnalyticsEvents = {
   // Account + commerce funnel
   login_requested: EmptyProps;
   login_link_sent: EmptyProps;
+  passkey_login_started: EmptyProps;
+  passkey_login_succeeded: EmptyProps;
+  passkey_registered: EmptyProps;
   pricing_viewed: EmptyProps;
   billing_viewed: EmptyProps;
 };

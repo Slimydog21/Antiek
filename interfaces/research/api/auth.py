@@ -41,10 +41,17 @@ from substrate.auth import (
     EmailDeliveryFailure,
     InvalidToken,
     OutboundEmail,
+    PasskeyError,
     TokenExpired,
+    authentication_options,
+    complete_authentication,
+    complete_registration,
+    delete_credential,
     get_email_provider,
+    list_credentials,
     mint_magic_link_token,
     mint_session_cookie,
+    registration_options,
     verify_magic_link_token,
 )
 
@@ -91,6 +98,20 @@ class AuthMeResponse(BaseModel):
     user_id: str
     email: str | None
     auth_method: str
+
+
+class PasskeyCeremonyPayload(BaseModel):
+    ceremony_id: str = Field(..., min_length=16, max_length=200)
+    credential: dict[str, Any]
+
+
+class PasskeyRegistrationPayload(PasskeyCeremonyPayload):
+    label: str = Field(default="My passkey", max_length=80)
+
+
+class PasskeyStatusResponse(BaseModel):
+    available: bool
+    count: int | None = None
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -321,6 +342,14 @@ def register_auth_routes(
             user_id="__operator__",
             email=email,
         )
+        # The first successful email proof is also the passkey bootstrap.
+        # Keep the original destination, but pause on Login long enough to
+        # create the device credential that makes future email unnecessary.
+        if not list_credentials():
+            safe_next = next if _is_safe_relative(next) else "/"
+            redirect_url = _resolve_redirect(
+                f"/login?{urlencode({'setup': 'passkey', 'next': safe_next})}"
+            )
         response = RedirectResponse(url=redirect_url, status_code=302)
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
@@ -329,6 +358,107 @@ def register_auth_routes(
             **_cookie_kwargs(),
         )
         return response
+
+    @app.get(
+        "/auth/passkey/status",
+        response_model=PasskeyStatusResponse,
+        tags=["auth"],
+    )
+    async def auth_passkey_status(request: Request) -> PasskeyStatusResponse:
+        credentials = list_credentials()
+        # A logged-out browser only needs the branch bit to choose its primary
+        # action.  Credential counts are account metadata, so return them only
+        # to an established session.
+        authenticated = bool(getattr(request.state, "user_id", None))
+        return PasskeyStatusResponse(
+            available=bool(credentials),
+            count=len(credentials) if authenticated else None,
+        )
+
+    @app.post("/auth/passkey/login/options", tags=["auth"])
+    async def auth_passkey_login_options() -> dict[str, Any]:
+        if not list_credentials():
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "passkey_not_configured", "message": "No passkey is set up yet."},
+            )
+        return authentication_options()
+
+    @app.post("/auth/passkey/login/verify", tags=["auth"])
+    async def auth_passkey_login_verify(payload: PasskeyCeremonyPayload) -> Response:
+        try:
+            complete_authentication(
+                ceremony_id=payload.ceremony_id,
+                credential=payload.credential,
+            )
+        except PasskeyError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "passkey_verification_failed", "message": str(exc)},
+            ) from exc
+        allow = sorted(_resolve_allowlist())
+        if not allow:
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "operator_email_missing", "message": "Operator email is not configured."},
+            )
+        cookie = mint_session_cookie(user_id="__operator__", email=allow[0])
+        response = Response(status_code=204)
+        response.set_cookie(
+            key=SESSION_COOKIE_NAME,
+            value=cookie,
+            max_age=60 * 60 * 24 * 30,
+            **_cookie_kwargs(),
+        )
+        return response
+
+    @app.post("/auth/passkey/register/options", tags=["auth"])
+    async def auth_passkey_register_options(request: Request) -> dict[str, Any]:
+        email = getattr(request.state, "user_email", None)
+        if not email:
+            allow = sorted(_resolve_allowlist())
+            email = allow[0] if allow else "operator@antiek.ai"
+        return registration_options(email=email)
+
+    @app.post("/auth/passkey/register/verify", tags=["auth"])
+    async def auth_passkey_register_verify(payload: PasskeyRegistrationPayload) -> dict[str, Any]:
+        try:
+            credential = complete_registration(
+                ceremony_id=payload.ceremony_id,
+                credential=payload.credential,
+                label=payload.label,
+            )
+        except PasskeyError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "passkey_registration_failed", "message": str(exc)},
+            ) from exc
+        return {
+            "registered": True,
+            "label": credential.label,
+            "backed_up": credential.backed_up,
+        }
+
+    @app.get("/auth/passkeys", tags=["auth"])
+    async def auth_passkeys() -> dict[str, Any]:
+        return {
+            "passkeys": [
+                {
+                    "id": item.credential_id,
+                    "label": item.label,
+                    "backed_up": item.backed_up,
+                    "created_at": item.created_at,
+                    "last_used_at": item.last_used_at,
+                }
+                for item in list_credentials()
+            ]
+        }
+
+    @app.delete("/auth/passkeys/{credential_id}", status_code=204, tags=["auth"])
+    async def auth_passkey_delete(credential_id: str) -> Response:
+        if not delete_credential(credential_id):
+            raise HTTPException(status_code=404, detail="Passkey not found")
+        return Response(status_code=204)
 
     @app.get("/auth/dev-login", tags=["auth"])
     async def auth_dev_login(token: str = "", next: str = "/") -> Response:

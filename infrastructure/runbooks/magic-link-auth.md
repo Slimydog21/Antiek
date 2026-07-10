@@ -1,10 +1,11 @@
-# Magic-link auth — owned login surface
+# Passkey-first auth — owned login surface
 
 **Status: ready to cut over as of 2026-05-21.** Replaces Cloudflare
-Access at the auth layer with an Antiek-issued session cookie minted
-by `/auth/callback` after the operator clicks an email-delivered
-magic link. Cloudflare Tunnel + DNS + TLS stay; only the auth layer
-moves into the application.
+Access at the auth layer with an Antiek-issued session cookie. Email proves
+the operator identity once (and remains the recovery path); the callback then
+enrolls a discoverable WebAuthn passkey so ordinary login is Face ID, Touch ID,
+the device PIN, or Apple's nearby-device QR flow. Cloudflare Tunnel + DNS +
+TLS stay; only the auth layer moves into the application.
 
 This is the H6 cut-over. Cloudflare Access can be decommissioned at
 the operator's pace — the substrate accepts both paths during the
@@ -28,11 +29,10 @@ Three properties we want, beyond what Cloudflare Access gave us:
    "__operator__"`) issues a cookie for any future user with a
    real `user_id`. Sprint 22's multi-user pivot is the auth-
    provider side of the seam; the cookie + middleware shape stays.
-3. **Zero hosted-provider dependency.** The auth substrate is
-   stdlib-only (`hmac` + `hashlib` + `base64` + `json` + `time`).
-   Email delivery is pluggable — `MockEmailProvider` for tests and
-   local dev, `ResendEmailProvider` for production. Switching
-   providers is one env var.
+3. **The daily path has no hosted-provider dependency.** Passkey login is a
+   local public-key ceremony; AgentMail is needed only for bootstrap and
+   recovery. The server stores public credential material only. Email
+   delivery remains pluggable behind `ANTIEK_EMAIL_PROVIDER`.
 
 The two-path middleware (substrate-side, see
 `interfaces/research/api/app.py`) accepts ANY of:
@@ -86,6 +86,10 @@ ANTIEK_OPERATOR_EMAIL=the@faisalnazer.com,ftn208@nyu.edu
 ANTIEK_EMAIL_PROVIDER=resend
 RESEND_API_KEY=<your Resend API key>
 ANTIEK_PUBLIC_BASE_URL=https://antiek.ai
+# Defaults shown explicitly for operational legibility:
+ANTIEK_WEBAUTHN_RP_ID=antiek.ai
+ANTIEK_WEBAUTHN_ORIGINS=https://antiek.ai
+ANTIEK_PASSKEY_STORE=/home/antiek/.antiek/auth/passkeys.json
 ```
 
 Keep `ANTIEK_OPERATOR_TOKEN` set too — that's the machine path for
@@ -141,8 +145,11 @@ curl -sX POST https://api.antiek.ai/auth/request \
 # Expect: {"sent": true}; check inbox for the link
 ```
 
-Click the link from the inbox — should land on `https://antiek.ai/`
-with `ANTIEK_SESSION` cookie set. Confirm in the browser devtools.
+Click the link from the inbox. On the first successful proof, Antiek pauses at
+`/login?setup=passkey`, asks the device to save a passkey, then resumes the
+original destination. Confirm the next logged-out visit offers **Unlock with
+passkey** as the primary action. The passkey store lives under
+`/home/antiek/.antiek/`, so the existing application-state backup includes it.
 
 ### 5. Cloudflare Pages — no changes needed
 
@@ -189,6 +196,8 @@ To exercise the flow locally:
 export ANTIEK_AUTH_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')
 export ANTIEK_OPERATOR_EMAIL=the@faisalnazer.com,ftn208@nyu.edu
 export ANTIEK_COOKIE_INSECURE=1  # so cookies work over http://
+export ANTIEK_WEBAUTHN_RP_ID=localhost
+export ANTIEK_WEBAUTHN_ORIGINS=http://localhost:5173
 uvicorn interfaces.research.api.app:app --workers 1
 ```
 
@@ -232,6 +241,10 @@ knows which sender is in play.
   Does NOT invalidate other browsers — those still hold valid
   cookies until they expire. For all-session logout, rotate the
   secret.
+- **Passkey loss or replacement:** email recovery remains available from the
+  collapsed recovery control on Login. After email proof, remove or archive
+  `/home/antiek/.antiek/auth/passkeys.json` and register the replacement.
+  Never copy a credential record between RP IDs or edit its public key.
 - **TTLs**: magic-link tokens expire after 15 min;
   session cookies after 30 days. Both are checked at every
   verification; expiry can be tightened without a code change by
@@ -241,13 +254,14 @@ knows which sender is in play.
 
 ## Tests
 
-The full flow is covered by `tests/test_magic_link_auth.py` —
-substrate primitives, API endpoints, middleware integration, and
-backward-compat with the bearer + Cloudflare-Access paths. 19
-tests; runs in under a second.
+The server flow is covered by `tests/test_magic_link_auth.py` and
+`tests/test_passkey_auth.py`: one-shot challenges, public-key-only atomic
+persistence, protected registration, logged-out authentication, session
+issuance, middleware integration, and backward compatibility. The browser
+branch and recovery states are covered by `apps/reading/e2e/login-magic-link.spec.ts`.
 
 ```
-./.venv/bin/python -m pytest tests/test_magic_link_auth.py -v
+./.venv/bin/python -m pytest tests/test_magic_link_auth.py tests/test_passkey_auth.py -v
 ```
 
 ---

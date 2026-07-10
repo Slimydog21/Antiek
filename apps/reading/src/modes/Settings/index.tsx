@@ -1,6 +1,15 @@
+import { startRegistration } from "@simplewebauthn/browser";
 import { useEffect, useMemo, useState } from "react";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
+import { LemonButton } from "../../components/lemon";
+import {
+  beginPasskeyRegistration,
+  finishPasskeyRegistration,
+  listPasskeys,
+  removePasskey,
+  type SavedPasskey,
+} from "../../lib/auth";
 import {
   estimatePromptCost,
   fetchSettingsBudget,
@@ -121,6 +130,8 @@ export default function Settings() {
             />
           </div>
         </LemonCard>
+
+        <PasskeySettings />
 
         <LemonCard title="Models & providers" elevation="z1">
           <div className="p-4 space-y-3">
@@ -360,6 +371,96 @@ export default function Settings() {
         </LemonCard>
       </div>
     </div>
+  );
+}
+
+function PasskeySettings() {
+  const [passkeys, setPasskeys] = useState<SavedPasskey[] | null>(null);
+  const [working, setWorking] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function refreshPasskeys() {
+    try {
+      setPasskeys(await listPasskeys());
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Couldn't load passkeys.");
+    }
+  }
+
+  useEffect(() => {
+    void refreshPasskeys();
+  }, []);
+
+  async function addPasskey() {
+    setWorking(true);
+    setMessage(null);
+    try {
+      const { ceremony_id, ...optionsJSON } = await beginPasskeyRegistration();
+      const credential = await startRegistration({ optionsJSON });
+      await finishPasskeyRegistration(ceremony_id, credential, "Personal passkey");
+      setMessage("Passkey added. Your next unlock can use this device.");
+      await refreshPasskeys();
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "NotAllowedError")) {
+        setMessage(error instanceof Error ? error.message : "Couldn't add that passkey.");
+      }
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function forgetPasskey(passkey: SavedPasskey) {
+    if (!window.confirm(`Forget “${passkey.label}”? Email recovery will still work.`)) return;
+    setWorking(true);
+    setMessage(null);
+    try {
+      await removePasskey(passkey.id);
+      setMessage("Passkey forgotten.");
+      await refreshPasskeys();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Couldn't remove that passkey.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  return (
+    <LemonCard title="Unlock & recovery" elevation="z1" colour="glacial">
+      <div className="p-4 space-y-4">
+        <div>
+          <p className="text-sm text-ink dark:text-bright font-semibold">Passkeys</p>
+          <p className="text-xs text-ink-soft dark:text-starlight mt-1">
+            Face ID, Touch ID, or your device PIN unlocks Antiek. Email stays available for recovery.
+          </p>
+        </div>
+        {passkeys === null ? (
+          <p className="text-xs text-ink-soft dark:text-starlight">Reading your devices…</p>
+        ) : passkeys.length ? (
+          <ul className="space-y-2">
+            {passkeys.map((passkey) => (
+              <li key={passkey.id} className="flex items-center justify-between gap-3 rounded-hog border border-rule dark:border-slate-2 bg-ice-0 dark:bg-charcoal-2 px-3 py-2">
+                <span>
+                  <strong className="block text-sm text-ink dark:text-bright">{passkey.label}</strong>
+                  <small className="text-[11px] text-ink-soft dark:text-starlight">
+                    {passkey.backed_up ? "Synced passkey" : "This-device passkey"}
+                    {passkey.last_used_at ? ` · used ${new Date(passkey.last_used_at * 1000).toLocaleDateString()}` : ""}
+                  </small>
+                </span>
+                <button type="button" disabled={working} onClick={() => void forgetPasskey(passkey)} className="text-xs font-semibold text-emperor underline underline-offset-4 disabled:opacity-50">
+                  Forget
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs text-ink-soft dark:text-starlight">No passkey saved yet.</p>
+        )}
+        <LemonButton type="button" variant="secondary" size="md" disabled={working} onClick={() => void addPasskey()}>
+          {working ? "Waiting for your device…" : "Add another passkey"}
+        </LemonButton>
+        {message && <p className="text-xs text-ink-soft dark:text-starlight" role="status">{message}</p>}
+      </div>
+    </LemonCard>
   );
 }
 

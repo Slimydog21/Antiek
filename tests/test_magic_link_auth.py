@@ -110,7 +110,23 @@ def _client(monkeypatch):
     monkeypatch.setenv("ANTIEK_COOKIE_INSECURE", "1")
     monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
     monkeypatch.delenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", raising=False)
+    # Existing magic-link contract tests model a device that has already
+    # completed passkey onboarding. First-run redirection has its own test.
+    monkeypatch.setattr("interfaces.research.api.auth.list_credentials", lambda: [object()])
     return TestClient(create_app(register_wrestling=False, register_providers=False))
+
+
+def test_first_magic_link_bootstraps_passkey_before_original_destination(monkeypatch):
+    client = _client(monkeypatch)
+    monkeypatch.setattr("interfaces.research.api.auth.list_credentials", lambda: [])
+    tok = mint_magic_link_token(_OPERATOR)
+    r = client.get(f"/auth/callback?token={tok}&next=/notebooks", follow_redirects=False)
+    assert r.status_code == 302
+    location = r.headers["location"]
+    assert location.startswith("/login?")
+    query = parse_qs(urlparse(location).query)
+    assert query == {"setup": ["passkey"], "next": ["/notebooks"]}
+    assert SESSION_COOKIE_NAME in r.cookies
 
 
 def test_auth_request_non_allowlisted_silent(monkeypatch):
