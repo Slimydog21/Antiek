@@ -1,0 +1,13 @@
+# inventory-adg · SESSION-ARC tip through adf MO+ND model quality
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: adg
+date: 2026-07-10
+tip_sha: a7e72690
+
+## Closed
+- SESSION-ARC-ada-adf-moil-nd-model-quality.md
+- FUTURE tip re-anchor · 191 residual ships this continuation
+- Highest leverage: operator merge PR #465 OPEN
+
+## Not in scope
+- Operator merge PR #465 (gated)
