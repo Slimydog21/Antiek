@@ -61,6 +61,8 @@ from .contracts import (
     MidnightOilRunnerReadinessRequest,
     MidnightOilSchedulerLeaseRetryPlanReceipt,
     MidnightOilSchedulerLeaseRetryPlanRequest,
+    MidnightOilWorkerQueueClaimPlanReceipt,
+    MidnightOilWorkerQueueClaimPlanRequest,
     activation_checklist_midnight_oil,
     budget_provider_adapter_plan_midnight_oil,
     budget_reservation_midnight_oil,
@@ -88,6 +90,7 @@ from .contracts import (
     runner_dispatch_worker_bootstrap_plan_midnight_oil,
     runner_readiness_midnight_oil,
     scheduler_lease_retry_plan_midnight_oil,
+    worker_queue_claim_plan_midnight_oil,
 )
 
 __all__ = [
@@ -151,6 +154,8 @@ __all__ = [
     "MidnightOilRunnerReadinessRequest",
     "MidnightOilSchedulerLeaseRetryPlanReceipt",
     "MidnightOilSchedulerLeaseRetryPlanRequest",
+    "MidnightOilWorkerQueueClaimPlanReceipt",
+    "MidnightOilWorkerQueueClaimPlanRequest",
     "activation_checklist_midnight_oil",
     "budget_provider_adapter_plan_midnight_oil",
     "budget_reservation_midnight_oil",
@@ -178,4 +183,5 @@ __all__ = [
     "runner_dispatch_worker_bootstrap_plan_midnight_oil",
     "runner_readiness_midnight_oil",
     "scheduler_lease_retry_plan_midnight_oil",
+    "worker_queue_claim_plan_midnight_oil",
 ]
