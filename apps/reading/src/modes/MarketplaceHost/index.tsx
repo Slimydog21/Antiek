@@ -66,6 +66,8 @@
  * Residual (tc): host-land free/PD honesty stamp (public_domain free host path).
  * Residual (ahe): paid purchase+host seamless port honesty (manual receipt ·
  * L5 deferred · HTML host into account · never invent live checkout).
+ * Residual (apd): purchase receipt readiness chrome for L5 offline CTA
+ * (demo-default honesty · paid-visible count · never invent live charge).
  * Residual (ahm): host-land DR budget foresight includes pub-ref count (parity ahl).
  * Residual (aif): operator-visible pub-ref foresight chrome (parity aic–aie).
  * Residual (aho): twin seed body includes free/purchased path honesty for
@@ -306,6 +308,23 @@ export default function MarketplaceHost({
     return filteredEntries.filter((e) => e.license_class === "public_domain")
       .length;
   }, [filteredEntries]);
+
+  /**
+   * Residual (apd): paid rows in the filtered catalog (require receipt token).
+   * Free / public_domain use Host into account — never invent paid path.
+   */
+  const filteredPaidCount = useMemo(() => {
+    return filteredEntries.filter(
+      (e) =>
+        !e.is_free &&
+        e.license_class !== "public_domain",
+    ).length;
+  }, [filteredEntries]);
+
+  /** Residual (apd): L5 offline receipt readiness for purchase+host CTA. */
+  const receiptReady = Boolean(receiptRef.trim());
+  const receiptIsDemoDefault =
+    receiptRef.trim() === "manual-order-token-demo";
 
   const catalogFiltersActive = useMemo(() => {
     return (
@@ -1198,7 +1217,29 @@ export default function MarketplaceHost({
             onChange={(e) => setReceiptRef(e.target.value)}
             className="border rounded px-2 py-1 min-w-[16rem]"
             disabled={busy}
+            data-receipt-ready={String(receiptReady)}
+            data-receipt-demo-default={String(receiptIsDemoDefault)}
+            aria-label="Purchase receipt ref for L5 offline purchase+host"
           />
+          {/* Residual (apd): L5 offline receipt readiness for purchase CTA. */}
+          <span
+            className="text-[10px] opacity-80 max-w-[22rem]"
+            data-testid="marketplace-receipt-readiness"
+            data-receipt-ready={String(receiptReady)}
+            data-receipt-demo-default={String(receiptIsDemoDefault)}
+            data-paid-catalog-visible={String(filteredPaidCount)}
+            data-l5-payment-rails="deferred"
+            data-live-payment="false"
+            data-payment-rails="manual_receipt_only"
+            data-view-format="html"
+            role="status"
+          >
+            {receiptReady
+              ? receiptIsDemoDefault
+                ? `Receipt ready (demo default) · ${filteredPaidCount} paid book(s) can purchase+host · replace token for real orders · L5 live deferred · never invent charge`
+                : `Receipt ready · ${filteredPaidCount} paid book(s) can purchase+host · L5 live deferred · never invent charge`
+              : `Enter receipt token to enable Purchase + host · ${filteredPaidCount} paid book(s) visible · L5 live checkout deferred`}
+          </span>
         </label>
         <label
           className="flex items-center gap-2 text-sm font-mono"
@@ -1425,9 +1466,17 @@ export default function MarketplaceHost({
                   data-view-format="html"
                   data-payment-rails="manual_receipt_only"
                   data-receipt-required="true"
-                  disabled={busy || !receiptRef.trim()}
+                  data-receipt-ready={String(receiptReady)}
+                  data-receipt-demo-default={String(receiptIsDemoDefault)}
+                  disabled={busy || !receiptReady}
                   onClick={() => void onPurchaseAndHost(e)}
-                  title="Purchase + host with manual receipt token (L5 live rails deferred · HTML account port)"
+                  title={
+                    receiptReady
+                      ? receiptIsDemoDefault
+                        ? "Purchase + host with demo receipt token (replace for real orders · L5 live deferred · HTML account port)"
+                        : "Purchase + host with manual receipt token (L5 live rails deferred · HTML account port)"
+                      : "Enter receipt token to enable Purchase + host (L5 live checkout deferred)"
+                  }
                 >
                   Purchase + host
                 </button>

@@ -1087,6 +1087,39 @@ describe("MarketplaceHost mode", () => {
     );
     expect(purchaseBtn.getAttribute("data-receipt-required")).toBe("true");
     expect(screen.getByTestId("purchase-receipt-ref")).toBeTruthy();
+    // Residual (apd): L5 offline receipt readiness chrome (demo default).
+    const readiness = screen.getByTestId("marketplace-receipt-readiness");
+    expect(readiness.getAttribute("data-receipt-ready")).toBe("true");
+    expect(readiness.getAttribute("data-receipt-demo-default")).toBe("true");
+    expect(readiness.getAttribute("data-l5-payment-rails")).toBe("deferred");
+    expect(readiness.getAttribute("data-live-payment")).toBe("false");
+    expect(Number(readiness.getAttribute("data-paid-catalog-visible") || 0)).toBeGreaterThan(
+      0,
+    );
+    expect(readiness.textContent).toMatch(/demo default/i);
+    expect(readiness.textContent).toMatch(/L5 live deferred/i);
+    expect(purchaseBtn.getAttribute("data-receipt-ready")).toBe("true");
+    expect(purchaseBtn.getAttribute("data-receipt-demo-default")).toBe("true");
+    // Clear receipt → not ready (purchase disabled).
+    fireEvent.change(screen.getByTestId("purchase-receipt-ref"), {
+      target: { value: "" },
+    });
+    expect(
+      screen.getByTestId("marketplace-receipt-readiness").getAttribute(
+        "data-receipt-ready",
+      ),
+    ).toBe("false");
+    expect(
+      (screen.getByTestId("purchase-host-buy-modern") as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      screen.getByTestId("marketplace-receipt-readiness").textContent,
+    ).toMatch(/Enter receipt token/i);
+    // Restore demo token for purchase path below.
+    fireEvent.change(screen.getByTestId("purchase-receipt-ref"), {
+      target: { value: "manual-order-token-demo" },
+    });
     // Residual (ala): L5 Sprint 3 offline live-checkout CTA stays deferred/disabled.
     const liveCta = screen.getByTestId("live-checkout-deferred-buy-modern");
     expect(liveCta.getAttribute("data-l5-payment-rails")).toBe("deferred");

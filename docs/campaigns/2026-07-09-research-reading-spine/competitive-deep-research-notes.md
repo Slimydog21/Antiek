@@ -3725,3 +3725,8 @@ P0 PR #465. Pivot apc+ outside thrash.
 taskTrainingFeedCoverage pure helper; Settings lists wrestle/synthesize/distill/book_qa
 training feed coverage this week. vitest suiteProposalTasks 9 · Settings qa path green.
 P0 PR #465. Pivot apd+ outside thrash.
+
+## Residual apd · 2026-07-10 — marketplace L5 receipt readiness chrome
+marketplace-receipt-readiness: receipt ready/demo-default · paid-visible count ·
+L5 live deferred · purchase button stamps. vitest MarketplaceHost 43 green.
+P0 PR #465. Pivot ape+ outside thrash.
