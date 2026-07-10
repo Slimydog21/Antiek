@@ -502,12 +502,35 @@ describe("CollectiveResearchPanel", () => {
     expect(screen.getByTestId("collective-parent-asset").textContent).toMatch(
       /book-1/,
     );
+    const panel = screen.getByTestId("collective-research-panel");
+    expect(panel.getAttribute("data-auto-open-draft")).toBe("true");
+    // Residual (agv): seamless multi-spawn merge path when parent bound.
+    expect(panel.getAttribute("data-seamless-collective-merge")).toBe("true");
+    expect(panel.getAttribute("data-seamless-multi-spawn-merge")).toBe("true");
+    expect(panel.getAttribute("data-parent-asset-id")).toBe("book-1");
+    expect(panel.getAttribute("data-seamless-collective-merge-ready")).toBe(
+      "false",
+    );
+    expect(panel.textContent).toMatch(/seamless multi-spawn merge path/i);
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
     expect(
       screen
         .getByTestId("collective-research-panel")
-        .getAttribute("data-auto-open-draft"),
+        .getAttribute("data-seamless-collective-merge-ready"),
     ).toBe("true");
-    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    expect(
+      screen.getByTestId("collective-merge-draft").getAttribute("data-seamless-merge-draft"),
+    ).toBe("true");
+    expect(
+      screen
+        .getByTestId("collective-written-analysis")
+        .getAttribute("data-seamless-written-analysis"),
+    ).toBe("true");
+    expect(
+      screen
+        .getByTestId("collective-parent-asset")
+        .textContent,
+    ).toMatch(/1 spawn\(s\) ready to merge/);
     fireEvent.click(screen.getByTestId("collective-merge-draft"));
 
     await waitFor(() => {

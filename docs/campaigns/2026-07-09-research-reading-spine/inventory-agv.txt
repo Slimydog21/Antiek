@@ -1,0 +1,19 @@
+# inventory-agv · seamless multi-spawn collective merge path honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: agv
+date: 2026-07-10
+parent_tip: d781e8b2 (agu)
+
+## Closed
+- CollectiveResearchPanel stamps:
+  - data-seamless-collective-merge · data-seamless-multi-spawn-merge
+  - data-seamless-collective-merge-ready (parent + ≥1 selected)
+  - data-parent-asset-id · data-selected-count
+  - action stamps: merge-draft · merge-parent · written-analysis · merge-prompt
+  - copy: seamless multi-spawn merge path (parent bound)
+- Parity single-spawn agu for multi-select subagent merge flywheel
+- vitest CollectiveResearchPanel 27 green
+
+## Next
+agw+ outside merge-path thrash · product residual
+Operator merge PR #465 remains highest leverage (gated)

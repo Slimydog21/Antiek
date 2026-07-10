@@ -68,6 +68,9 @@
  *     after continue-as-unit re-entry (intersection with available).
  * 28. Residual (tr): float|full cohesive unit prompt_block as HTML reading window
  *     without inventing a server document_id (parity research context pack sl).
+ * Residual (agv): seamless multi-spawn collective merge path honesty when
+ * parent reading asset is bound and ≥1 spawn selected (draft / into_parent /
+ * written analysis · parity single-spawn agu highlight→DR→merge).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -725,6 +728,12 @@ export function CollectiveResearchPanel({
     ],
   );
 
+  const parentBound = Boolean(String(parentAssetId || "").trim());
+  // Residual (agv): multi-spawn doc merge / written analysis path when parent bound.
+  const seamlessCollectiveMerge = parentBound;
+  const seamlessCollectiveMergeReady =
+    parentBound && selected.length >= 1;
+
   return (
     <section
       className="collective-research-panel"
@@ -733,6 +742,11 @@ export function CollectiveResearchPanel({
       data-auto-open-draft={autoOpenDraft ? "true" : "false"}
       data-l6-live-multiagent="deferred"
       data-offline-merge-unit="true"
+      data-parent-asset-id={String(parentAssetId || "").trim() || ""}
+      data-selected-count={String(selected.length)}
+      data-seamless-collective-merge={String(seamlessCollectiveMerge)}
+      data-seamless-collective-merge-ready={String(seamlessCollectiveMergeReady)}
+      data-seamless-multi-spawn-merge={String(seamlessCollectiveMerge)}
       aria-label="Collective deep research"
     >
       <header>
@@ -762,10 +776,21 @@ export function CollectiveResearchPanel({
           {autoOpenDraft
             ? " · draft auto-opens HTML window"
             : " · draft open is manual"}
+          {seamlessCollectiveMerge
+            ? " · seamless multi-spawn merge path (parent bound)"
+            : " · bind parent asset for draft/parent/analysis merge"}
         </p>
         {parentAssetId ? (
-          <p className="meta" data-testid="collective-parent-asset">
+          <p
+            className="meta"
+            data-testid="collective-parent-asset"
+            data-parent-asset-id={String(parentAssetId).trim()}
+            data-seamless-collective-merge="true"
+          >
             Parent asset: <code>{parentAssetId}</code>
+            {seamlessCollectiveMergeReady
+              ? ` · ${selected.length} spawn(s) ready to merge`
+              : " · select spawns to merge"}
           </p>
         ) : null}
         {/* Residual (ig/nl): Settings + dual-gate checklist (L6 collective prep). */}
@@ -1044,10 +1069,20 @@ export function CollectiveResearchPanel({
         ) : null}
       </div>
 
-      <div className="collective-actions" style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+      <div
+        className="collective-actions"
+        style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}
+        data-testid="collective-merge-actions"
+        data-seamless-collective-merge={String(seamlessCollectiveMerge)}
+        data-seamless-collective-merge-ready={String(
+          seamlessCollectiveMergeReady,
+        )}
+        data-selected-count={String(selected.length)}
+      >
         <button
           type="button"
           data-testid="collective-merge-prompt"
+          data-seamless-merge-prompt={String(selected.length >= 1)}
           onClick={() => void mergeCollective()}
           disabled={busy || selected.length < 1}
         >
@@ -1056,11 +1091,13 @@ export function CollectiveResearchPanel({
         <button
           type="button"
           data-testid="collective-merge-draft"
+          data-seamless-merge-draft={String(seamlessCollectiveMergeReady)}
+          data-mode="draft_combined"
           onClick={() => void mergeDocument("draft_combined")}
           disabled={busy || selected.length < 1 || !parentAssetId}
           title={
             parentAssetId
-              ? "Create draft-combined document; parent unchanged"
+              ? "Create draft-combined document; parent unchanged · seamless multi-spawn path"
               : "Requires parentAssetId"
           }
         >
@@ -1069,11 +1106,13 @@ export function CollectiveResearchPanel({
         <button
           type="button"
           data-testid="collective-merge-parent"
+          data-seamless-merge-parent={String(seamlessCollectiveMergeReady)}
+          data-mode="into_parent"
           onClick={() => void mergeDocument("into_parent")}
           disabled={busy || selected.length < 1 || !parentAssetId}
           title={
             parentAssetId
-              ? "Merge into parent asset in-place"
+              ? "Merge into parent reading asset in-place · seamless multi-spawn path"
               : "Requires parentAssetId"
           }
         >
@@ -1082,11 +1121,12 @@ export function CollectiveResearchPanel({
         <button
           type="button"
           data-testid="collective-written-analysis"
+          data-seamless-written-analysis={String(seamlessCollectiveMergeReady)}
           onClick={() => void createWrittenAnalysis()}
           disabled={busy || selected.length < 1 || !parentAssetId}
           title={
             parentAssetId
-              ? "Collective prompt unit + draft-combined HTML analysis"
+              ? "Collective prompt unit + draft-combined HTML analysis · seamless multi-spawn path"
               : "Requires parentAssetId"
           }
         >

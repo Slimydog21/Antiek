@@ -2619,3 +2619,10 @@ data-seamless-highlight-dr-merge when spawn+parent reading asset bound. Draft vs
 into_parent action stamps. Completes offline path honesty for highlight float DR
 → merge into reading asset / draft-combined. vitest SpawnMerge 8 · DR host 30 green.
 P0 operator merge PR #465. Pivot agv+ outside thrash.
+
+## Residual agv · 2026-07-10 — seamless multi-spawn collective merge path honesty
+CollectiveResearchPanel stamps data-seamless-collective-merge · multi-spawn-merge ·
+merge-ready when parent reading asset bound (+ ≥1 selected for ready). Draft /
+into_parent / written-analysis action stamps. Parity single-spawn agu for
+multi-select subagent merge flywheel (vision: merge various deep researches).
+vitest Collective 27 green. P0 operator merge PR #465. Pivot agw+ outside thrash.
