@@ -603,11 +603,32 @@ describe("Settings SPR-01 + decision-tree install", () => {
     const panel = screen.getByTestId("hydrate-live-status-panel");
     expect(panel.getAttribute("data-offline-honest")).toBe("true");
     expect(panel.getAttribute("data-any-live-injector")).toBe("false");
+    // Residual (aee): offline default — neither L1 nor L2 live ready.
+    expect(panel.getAttribute("data-l1-arxiv-live-ready")).toBe("false");
+    expect(panel.getAttribute("data-l2-substack-live-ready")).toBe("false");
     const metrics = screen.getByTestId("hydrate-live-status-metrics");
     expect(metrics.getAttribute("data-offline-honest")).toBe("true");
     expect(metrics.getAttribute("data-arxiv-injector")).toBe("false");
     expect(metrics.getAttribute("data-substack-injector")).toBe("false");
+    expect(metrics.getAttribute("data-l1-arxiv-live-ready")).toBe("false");
+    expect(metrics.getAttribute("data-l2-substack-live-ready")).toBe("false");
     expect(metrics.textContent).toMatch(/offline-honest identity/);
+    // Residual (aee): in-panel L1/L2 checklist + gate matrix.
+    expect(screen.getByTestId("hydrate-live-l1-l2-prep")).toBeTruthy();
+    expect(
+      screen.getByTestId("hydrate-live-l1-checklist-link").getAttribute("href"),
+    ).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    expect(
+      screen.getByTestId("hydrate-live-l2-checklist-link").getAttribute("href"),
+    ).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
+    const gateMatrix = screen.getByTestId("hydrate-live-l1-l2-gate-matrix");
+    expect(gateMatrix.getAttribute("data-l1-arxiv-live-ready")).toBe("false");
+    expect(gateMatrix.getAttribute("data-l2-substack-live-ready")).toBe(
+      "false",
+    );
+    expect(gateMatrix.textContent).toMatch(/L1\/L2 gate matrix/i);
+    expect(gateMatrix.textContent).toMatch(/arxiv_live=false/);
+    expect(gateMatrix.textContent).toMatch(/substack_live=false/);
   });
 
   it("renders registered providers and budget bar", async () => {

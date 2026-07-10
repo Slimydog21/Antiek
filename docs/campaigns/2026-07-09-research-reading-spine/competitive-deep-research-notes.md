@@ -2255,3 +2255,9 @@ itself (parity TwinNotes xa · never enables live). vitest Settings 35 green.
 moil-live-step-status panel stamps data-l4-live-ready + per-gate attrs and Dual-gate
 L4 MO checklist (#l4-moil). Competitive delta: L4 prep parity with twin L3 aec on
 Settings readiness panels (never enables live worker). vitest Settings 35 green.
+
+## Residual aee · 2026-07-10 — hydrate L1/L2 arxiv+substack gate matrix
+Publication hydrate readiness panel stamps L1 arxiv + L2 Substack live_ready
+composites and Dual-gate L1/L2 checklist deep-links. Competitive delta: knowledge-dense
+pub dual-gate prep is complete on Settings (parity L3/L4 aec–aed · never enables live).
+vitest Settings 35 green.

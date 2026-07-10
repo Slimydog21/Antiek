@@ -1860,12 +1860,63 @@ export default function Settings() {
             data-any-live-injector={
               hydrateLive ? String(hydrateLive.any_live_injector) : undefined
             }
+            // Residual (aee): L1 arxiv live ready / L2 substack live ready composites.
+            data-l1-arxiv-live-ready={
+              hydrateLive
+                ? String(
+                    hydrateLive.arxiv.env_enabled === true &&
+                      hydrateLive.arxiv.injector_installed === true,
+                  )
+                : undefined
+            }
+            data-l2-substack-live-ready={
+              hydrateLive
+                ? String(
+                    hydrateLive.substack.env_enabled === true &&
+                      hydrateLive.substack.injector_installed === true,
+                  )
+                : undefined
+            }
           >
             <p className="text-sm text-ink dark:text-bright">
               Knowledge-dense refs hydrate offline-honest by default (identity
               only). Live arXiv/Substack injectors are env-gated process
               installs — never silent network from this UI.
             </p>
+            {/* Residual (aee): in-panel L1/L2 checklist deep-links (parity aec/aed). */}
+            <div
+              className="flex flex-wrap items-center gap-2 text-[11px]"
+              data-testid="hydrate-live-l1-l2-prep"
+              data-dual-gate="L1-L2"
+              role="navigation"
+              aria-label="L1 arxiv and L2 Substack hydrate dual-gate prep"
+            >
+              <a
+                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
+                className="underline opacity-80 hover:opacity-100"
+                data-testid="hydrate-live-l1-checklist-link"
+                title="Dual-gate L1 arxiv hydrate checklist (prep only · offline identity default)"
+              >
+                Dual-gate L1 arxiv checklist
+              </a>
+              <span className="opacity-40" aria-hidden>
+                ·
+              </span>
+              <a
+                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l2-substack"
+                className="underline opacity-80 hover:opacity-100"
+                data-testid="hydrate-live-l2-checklist-link"
+                title="Dual-gate L2 Substack hydrate checklist (prep only · ToS factory)"
+              >
+                Dual-gate L2 Substack checklist
+              </a>
+              <span className="opacity-40" aria-hidden>
+                ·
+              </span>
+              <span className="font-mono opacity-70">
+                prep only · never enables live hydrate from this panel
+              </span>
+            </div>
             <button
               type="button"
               data-testid="hydrate-live-status-refresh"
@@ -1893,6 +1944,15 @@ export default function Settings() {
                 data-substack-injector={String(
                   hydrateLive.substack.injector_installed,
                 )}
+                // Residual (aee): per-source live ready composites.
+                data-l1-arxiv-live-ready={String(
+                  hydrateLive.arxiv.env_enabled === true &&
+                    hydrateLive.arxiv.injector_installed === true,
+                )}
+                data-l2-substack-live-ready={String(
+                  hydrateLive.substack.env_enabled === true &&
+                    hydrateLive.substack.injector_installed === true,
+                )}
                 role="status"
               >
                 <p>
@@ -1914,6 +1974,29 @@ export default function Settings() {
                   <code>{hydrateLive.substack.env_flag}</code>=
                   {String(hydrateLive.substack.env_enabled)} · injector=
                   {String(hydrateLive.substack.injector_installed)}
+                </p>
+                <p
+                  data-testid="hydrate-live-l1-l2-gate-matrix"
+                  data-l1-arxiv-live-ready={String(
+                    hydrateLive.arxiv.env_enabled === true &&
+                      hydrateLive.arxiv.injector_installed === true,
+                  )}
+                  data-l2-substack-live-ready={String(
+                    hydrateLive.substack.env_enabled === true &&
+                      hydrateLive.substack.injector_installed === true,
+                  )}
+                >
+                  L1/L2 gate matrix: arxiv_live=
+                  {hydrateLive.arxiv.env_enabled === true &&
+                  hydrateLive.arxiv.injector_installed === true
+                    ? "true"
+                    : "false"}{" "}
+                  · substack_live=
+                  {hydrateLive.substack.env_enabled === true &&
+                  hydrateLive.substack.injector_installed === true
+                    ? "true"
+                    : "false"}{" "}
+                  (env + injector per source · offline identity default)
                 </p>
                 {hydrateLive.notes.map((n) => (
                   <p key={n} className="opacity-80">
