@@ -1538,3 +1538,8 @@ tech researchers domain-filter computing history on free STEM path.
 Hosted Lovelace free PD launches float DR with computing+history domains in
 goal_hint (parity Turing/Shannon). Competitive delta: reading≡research on
 computing-history STEM is mechanically proven.
+
+## Residual xl · 2026-07-10 — free-PD + history compose for Lovelace
+Catalog free-PD-only composed with history chip isolates Lovelace (parity
+Turing/Shannon free-PD domain compose). Competitive delta: free STEM history
+path never mixes paid entitlement.

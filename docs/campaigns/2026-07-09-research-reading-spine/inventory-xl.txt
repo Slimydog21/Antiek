@@ -1,0 +1,18 @@
+# inventory-xl · free-PD-only + history chip compose for Lovelace
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: xl
+date: 2026-07-10
+tip_before: 5e8646b5 (xk)
+
+## Problem
+Parity wv/ww: free-PD-only + history must isolate Lovelace free PD and exclude
+paid stubs tagged history.
+
+## Fix
+- MarketplaceHost test compose free-PD + history → Lovelace only
+
+## Verified
+npm test MarketplaceHost.test.tsx → 36 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

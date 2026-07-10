@@ -7,7 +7,7 @@
 
 ## Do not rebuild
 
-Prefer **SESSION-ARC-vz-wt-budget-stem-dualgate.md** + inventories **vz–xe** + competitive notes.
+Prefer **SESSION-ARC-vz-wt-budget-stem-dualgate.md** + inventories **vz–xl** + competitive notes.
 
 ### Closed product (high signal · this continuation)
 
@@ -15,7 +15,7 @@ Prefer **SESSION-ARC-vz-wt-budget-stem-dualgate.md** + inventories **vz–xe** +
 |---|---|
 | Budget foresight | Launch + Settings remaining-after (wa · wb) |
 | Dual-gate section map | L1–L7 anchors + deep-links across Settings · MO · Twins · Pubs · Reading hosts · Context |
-| Free STEM | Shannon · Turing · **Lovelace** · domain chips · free-PD compose · dogfood **v12** |
+| Free STEM | Shannon · Turing · Lovelace · domain chips · free-PD compose · DR goal_hints · dogfood **v12** |
 | Deferred honesty | Deferred map + ND panel · no stale Coming later |
 
 ### P0 — Operator merge PR #465
@@ -24,7 +24,7 @@ Prefer **SESSION-ARC-vz-wt-budget-stem-dualgate.md** + inventories **vz–xe** +
 ### P2 — Dual-gate live injectors (operator-only)
 L1–L4 offline default · L5 payment deferred · L6 live multi-agent · L7 ND **never** router
 
-### P1 next offline (residual **xj+**)
+### P1 next offline (residual **xm+**)
 Outside dual-gate deep-link thrash unless regression. Prefer real product bugs,
 midnight oil / collective / twin polish offline, operator-facing load-bearing work.
 
