@@ -25,26 +25,32 @@ import {
 import type { ChunkResponse } from "../../lib/api";
 import type { ParsedSynthesis } from "../../lib/synthesisParser";
 
-const { getChunkMock, apiFetchMock } = vi.hoisted(() => ({
+const { getChunkMock, apiFetchMock, getProjectionMock, openReaderMock } = vi.hoisted(() => ({
   getChunkMock: vi.fn(),
   apiFetchMock: vi.fn(),
+  getProjectionMock: vi.fn(),
+  openReaderMock: vi.fn(),
 }));
 
 vi.mock("../../lib/api", async (orig) => {
   const actual = await orig<typeof import("../../lib/api")>();
   return { ...actual, getChunk: getChunkMock, apiFetch: apiFetchMock };
 });
+vi.mock("../../api/htmlProjections", () => ({
+  getHtmlProjectionByDocument: getProjectionMock,
+}));
 // Workspace actions + toast are side-effectful; stub them so the render is
 // pure. We assert on what the reader SEES, not on panel side effects.
 vi.mock("../../workspace/actions", () => ({
   openNotebook: vi.fn(),
-  openPdfPanel: vi.fn(),
+  openReader: openReaderMock,
 }));
 vi.mock("../../components/lemon/LemonToast", () => ({
   toast: { ok: vi.fn(), err: vi.fn() },
 }));
 
 import MasterMdViewer, { ClaimBlock, reviewDueDecorationsFor } from "./MasterMdViewer";
+import { toast } from "../../components/lemon/LemonToast";
 import { REVIEW_DUE_CLASS } from "../../reading-physics/augmentations/review-due";
 import { anchorKey } from "../../reading-physics/facets/decorations";
 import type { ClaimId } from "../../reading-physics/types";
@@ -70,12 +76,61 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   getChunkMock.mockReset();
+  getProjectionMock.mockReset();
+  openReaderMock.mockReset();
+  vi.mocked(toast.err).mockReset();
   if (PRIOR_RESIZE_OBSERVER === undefined) {
     delete (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
   } else {
     (globalThis as { ResizeObserver?: unknown }).ResizeObserver =
       PRIOR_RESIZE_OBSERVER;
   }
+});
+
+describe("MasterMdViewer — canonical source open", () => {
+  const canonical = `antiek-anchor-${"b".repeat(64)}`;
+  it("meta-click resolves a servable page to its canonical anchor", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1", section_path: "Page 12" }));
+    getProjectionMock.mockResolvedValue({ anchor_mappings: [{
+      source_locator: { kind: "pdf_page_bbox", page: 12 }, state: "resolved",
+      html_anchor_id: canonical, candidates: [],
+    }] });
+    render(<MasterMdViewer synthesis={synth()} />);
+    fireEvent.click(await screen.findByRole("button", { name: /from On Growth and Form/i }), { metaKey: true });
+    await waitFor(() => expect(openReaderMock).toHaveBeenCalledWith({
+      documentId: "doc-1", anchorId: canonical, title: "On Growth and Form · Page 12",
+    }));
+    expect(getProjectionMock.mock.calls[0][1]).toBeInstanceOf(AbortSignal);
+  });
+
+  it("meta-click opens the document root when there is no strict page locator", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1", section_path: "Section 12" }));
+    render(<MasterMdViewer synthesis={synth()} />);
+    fireEvent.click(await screen.findByRole("button", { name: /from On Growth and Form/i }), { ctrlKey: true });
+    await waitFor(() => expect(openReaderMock).toHaveBeenCalledWith({ documentId: "doc-1", title: "On Growth and Form" }));
+    expect(getProjectionMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["unresolved", () => Promise.resolve({ anchor_mappings: [] })],
+    ["API failure", () => Promise.reject(new Error("offline"))],
+  ])("does not open on %s", async (_case, projectionResult) => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1", section_path: "Page 12" }));
+    getProjectionMock.mockImplementation(projectionResult);
+    render(<MasterMdViewer synthesis={synth()} />);
+    fireEvent.click(await screen.findByRole("button", { name: /from On Growth and Form/i }), { metaKey: true });
+    await waitFor(() => expect(toast.err).toHaveBeenCalled());
+    expect(openReaderMock).not.toHaveBeenCalled();
+  });
+
+  it("never projects or opens a restricted source", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1", servable: false, servability: "restricted", text: "" }));
+    render(<MasterMdViewer synthesis={synth()} />);
+    await screen.findByText(/not available to open/i);
+    expect(screen.queryByRole("button", { name: /from On Growth and Form/i })).toBeNull();
+    expect(getProjectionMock).not.toHaveBeenCalled();
+    expect(openReaderMock).not.toHaveBeenCalled();
+  });
 });
 
 function chunk(over: Partial<ChunkResponse>): ChunkResponse {

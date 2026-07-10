@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { ArtifactExport } from "../../components/ArtifactExport";
+import { getHtmlProjectionByDocument } from "../../api/htmlProjections";
+import { parseLegacyPageLocator, resolveLegacyPageAnchor } from "../../components/reader/legacyPageAnchor";
 import { toast } from "../../components/lemon/LemonToast";
 import { getChunk } from "../../lib/api";
 import type { ChunkResponse } from "../../lib/api";
@@ -39,7 +41,7 @@ import {
 } from "../../reading-physics/minimap";
 import { collectAnchoredWidgets, collectDecorations } from "../../reading-physics/registry";
 import type { ClaimId, ChunkId, LayoutMap, ReadingContext, RenderContext } from "../../reading-physics/types";
-import { openPdfPanel } from "../../workspace/actions";
+import { openReader } from "../../workspace/actions";
 import ChunkModal from "./ChunkModal";
 import { buildLayoutMap } from "./readingGeometryPass";
 
@@ -728,6 +730,8 @@ function SourceCitation({
    *  restricted branch so an un-annotated source never silently opens). */
   decoration: ResolvedDecoration | undefined;
 }) {
+  const requestRef = useRef<AbortController | null>(null);
+  useEffect(() => () => requestRef.current?.abort(), [source.representativeChunkId]);
   const label = source.title ?? "an untitled source";
   const locator = source.locator ? `, ${source.locator}` : "";
   // SPR-10 M1 — "whose work grounds this": the IP-holder name is now declared
@@ -776,27 +780,41 @@ function SourceCitation({
         // previews the chunk inline first (the modal path).
         if (e.metaKey || e.ctrlKey) {
           e.preventDefault();
+          const controller = new AbortController();
+          requestRef.current?.abort();
+          requestRef.current = controller;
           void (async () => {
             try {
               const chunk = await getChunk(source.representativeChunkId);
+              if (controller.signal.aborted) return;
               if (!chunk.servable) {
                 toast.err(`${label} isn’t available to open.`);
                 return;
               }
-              const page = source.locator
-                ? parseInt(source.locator.replace(/\D/g, ""), 10)
-                : undefined;
-              openPdfPanel({
-                documentId: chunk.document_id,
-                page,
-                title: `${label}${source.locator ? ` · ${source.locator}` : ""}`,
-              });
+              const page = parseLegacyPageLocator(chunk.section_path);
+              if (page === null) {
+                openReader({ documentId: chunk.document_id, title: label });
+                return;
+              }
+              const projection = await getHtmlProjectionByDocument(chunk.document_id, controller.signal);
+              if (controller.signal.aborted) return;
+              const result = resolveLegacyPageAnchor(projection.anchor_mappings, page);
+              if (result.kind !== "resolved") {
+                toast.err(result.kind === "ambiguous"
+                  ? `Could not open ${label}: page ${page} maps to multiple locations.`
+                  : `Could not open ${label}: page ${page} has no canonical location.`);
+                return;
+              }
+              openReader({ documentId: chunk.document_id, anchorId: result.anchorId, title: `${label} · Page ${page}` });
             } catch (err) {
+              if (controller.signal.aborted) return;
               toast.err(
                 `Could not open ${label}: ${
                   err instanceof Error ? err.message : String(err)
                 }`,
               );
+            } finally {
+              if (requestRef.current === controller) requestRef.current = null;
             }
           })();
           return;
@@ -1114,4 +1132,3 @@ function ReusedInsightLink({ insight }: { insight: ReusedInsight }) {
   }
   return <span className="text-ink-soft dark:text-starlight">{label}</span>;
 }
-

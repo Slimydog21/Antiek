@@ -1,15 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import { getHtmlProjectionByDocument } from "../../api/htmlProjections";
+import { parseLegacyPageLocator, resolveLegacyPageAnchor } from "../../components/reader/legacyPageAnchor";
 import { getChunk } from "../../lib/api";
 import type { ChunkResponse } from "../../lib/api";
+import { openReader } from "../../workspace/actions";
 
 /**
  * Modal showing the actual text of a chunk cited by a claim.
  *
  * Fetches /chunks/{id} on open. Shows chunk text + source document
  * title + section_path + tier badge. "Open in document viewer" button
- * deep-links into /wrestle/<doc>?page=N when section_path encodes a
- * page number (PDF source).
+ * opens the canonical HTML reader, resolving legacy page locators through the
+ * guarded ready projection when necessary.
  */
 export default function ChunkModal({
   chunkId,
@@ -159,29 +162,60 @@ function TierChip({ tier }: { tier: number }) {
 }
 
 function OpenInDocumentButton({ chunk }: { chunk: ChunkResponse }) {
-  // Parse "Page N" out of section_path. Section path examples that
-  // encode a page:
-  //   "Page 17"
-  //   "Page 17 · Section 3.2"
-  // When the substrate is extended to YouTube/podcast sources, the
-  // section_path uses a different shape (Timestamp: ...) and we
-  // disable the cross-mode link.
-  let page: number | null = null;
-  if (chunk.section_path) {
-    const m = chunk.section_path.match(/Page\s+(\d+)/i);
-    if (m) page = parseInt(m[1], 10);
-  }
-  const href =
-    page !== null
-      ? `/wrestle/${encodeURIComponent(chunk.document_id)}?page=${page}`
-      : `/wrestle/${encodeURIComponent(chunk.document_id)}`;
+  const page = parseLegacyPageLocator(chunk.section_path);
+  const [resolving, setResolving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const requestRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    setResolving(false);
+    setError(null);
+    return () => requestRef.current?.abort();
+  }, [chunk.chunk_id]);
+
+  const open = () => {
+    setError(null);
+    if (page === null) {
+      openReader({ documentId: chunk.document_id, title: chunk.document_title ?? undefined });
+      return;
+    }
+    const controller = new AbortController();
+    requestRef.current?.abort();
+    requestRef.current = controller;
+    setResolving(true);
+    void getHtmlProjectionByDocument(chunk.document_id, controller.signal).then(
+      (projection) => {
+        if (controller.signal.aborted) return;
+        const result = resolveLegacyPageAnchor(projection.anchor_mappings, page);
+        if (result.kind !== "resolved") {
+          setError(result.kind === "ambiguous"
+            ? `Page ${page} maps to multiple locations and cannot be opened.`
+            : `Page ${page} has no canonical location and cannot be opened.`);
+          return;
+        }
+        openReader({ documentId: chunk.document_id, anchorId: result.anchorId, title: chunk.document_title ?? undefined });
+      },
+      (reason: unknown) => {
+        if (controller.signal.aborted) return;
+        const detail = reason instanceof Error && reason.message ? `: ${reason.message}` : "";
+        setError(`Could not resolve Page ${page}${detail}`);
+      },
+    ).finally(() => {
+      if (!controller.signal.aborted && requestRef.current === controller) setResolving(false);
+    });
+  };
   const label = page !== null ? `Open at page ${page}` : "Open in document viewer";
   return (
-    <a
-      href={href}
-      className="text-xs font-mono text-ink dark:text-bright hover:text-ink dark:text-bright px-2 py-1 bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 dark:bg-charcoal-1 rounded transition-colors"
-    >
-      {label} →
-    </a>
+    <div className="flex flex-col items-end gap-1">
+      <button
+        type="button"
+        onClick={open}
+        disabled={resolving}
+        className="text-xs font-mono text-ink dark:text-bright hover:text-ink dark:text-bright px-2 py-1 bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 dark:bg-charcoal-1 rounded transition-colors disabled:opacity-50"
+      >
+        {resolving ? "Resolving…" : `${label} →`}
+      </button>
+      {error && <span role="alert" className="text-[10px] font-mono text-emperor">{error}</span>}
+    </div>
   );
 }
