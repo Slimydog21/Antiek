@@ -1,0 +1,12 @@
+# inventory-aae · FUTURE tip re-anchor through aad
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aae
+date: 2026-07-10
+tip_sha: 16e468d4
+
+## Closed
+- FUTURE-AGENT tip → 16e468d4 · 111 residual ships this continuation
+- Highest leverage: operator merge PR #465 OPEN
+
+## Not in scope
+- Operator merge PR #465 (gated)
