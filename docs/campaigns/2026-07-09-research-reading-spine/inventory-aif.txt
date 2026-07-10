@@ -1,0 +1,15 @@
+# inventory-aif · HostedHtml + MarketplaceHost pub-ref foresight chrome
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aif
+date: 2026-07-10
+parent_tip: b411b29b (aie)
+
+## Closed
+- HostedHtml DR mount: hosted-html-pub-ref-foresight-chrome (N refs · chars · soft budget)
+- MarketplaceHost DR mount: marketplace-host-pub-ref-foresight-chrome
+- Completes foresight chrome matrix: launch · chase · highlight · hosted · marketplace
+- vitest HostedHtml 23 · MarketplaceHost 41 green
+
+## Next
+aig+ product residual · leave foresight thrash after this tip
+Operator merge PR #465 remains highest leverage (gated)

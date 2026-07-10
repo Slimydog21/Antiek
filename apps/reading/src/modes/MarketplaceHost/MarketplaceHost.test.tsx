@@ -3309,13 +3309,16 @@ describe("MarketplaceHost mode", () => {
       (screen.getByTestId("marketplace-host-refs-input") as HTMLTextAreaElement)
         .value,
     ).toMatch(/arxiv:1706\.03762/);
-    // Residual (ahm): marketplace host DR budget foresight includes pub refs.
+    // Residual (ahm/aif): marketplace host DR budget foresight includes pub refs + chrome.
     const budgetMount = screen.getByTestId("marketplace-host-dr-budget-mount");
     expect(budgetMount.getAttribute("data-pub-ref-count")).toBe("1");
     expect(budgetMount.getAttribute("data-has-pub-refs")).toBe("true");
     expect(
       Number(budgetMount.getAttribute("data-prompt-chars") || 0),
     ).toBeGreaterThan(10);
+    expect(
+      screen.getByTestId("marketplace-host-pub-ref-foresight-chrome").textContent,
+    ).toMatch(/1 ref/i);
     fireEvent.click(screen.getByTestId("marketplace-host-deep-research"));
     await waitFor(() => {
       expect(hydratePublicationRefs).toHaveBeenCalledWith(["arxiv:1706.03762"]);

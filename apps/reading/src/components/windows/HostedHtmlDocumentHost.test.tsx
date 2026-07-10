@@ -970,13 +970,16 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
       (screen.getByTestId("hosted-html-refs-input") as HTMLTextAreaElement)
         .value,
     ).toMatch(/arxiv:1706\.03762/);
-    // Residual (ahl): hosted book DR budget foresight pub-ref count.
+    // Residual (ahl/aif): hosted book DR budget foresight pub-ref count + chrome.
     const depthMount = screen.getByTestId("hosted-html-dr-depth-mount");
     expect(depthMount.getAttribute("data-pub-ref-count")).toBe("1");
     expect(depthMount.getAttribute("data-has-pub-refs")).toBe("true");
     expect(
       Number(depthMount.getAttribute("data-prompt-chars") || 0),
     ).toBeGreaterThan(10);
+    expect(
+      screen.getByTestId("hosted-html-pub-ref-foresight-chrome").textContent,
+    ).toMatch(/1 ref/i);
     fireEvent.click(screen.getByTestId("hosted-html-deep-research"));
     await waitFor(() => {
       expect(hydratePublicationRefs).toHaveBeenCalledWith(["arxiv:1706.03762"]);

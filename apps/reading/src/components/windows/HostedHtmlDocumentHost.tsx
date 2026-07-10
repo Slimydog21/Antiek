@@ -11,6 +11,7 @@
  * Residual (pj): DecisionTreeDriverBadge promptText = selection + pub refs
  * Residual (qs): budget panel shares composeDriverPromptText (badge ≡ budget).
  * Residual (ahl): budget foresight pub-ref count on hosted book DR (parity ahi).
+ * Residual (aif): operator-visible pub-ref foresight chrome (parity aic–aie).
  * Residual (qu): Open Write dual handoff html_draft + twin_seed (parity marketplace/MO).
  * (parity ResearchThis pi / Write ph / MO pg).
  * Residual (dg): soft-gate deep research when budget would exceed.
@@ -752,6 +753,21 @@ export default function HostedHtmlDocumentHost(
               composeDriverPromptText(researchSelection, pubRefs).length,
             )}
           >
+            {/* Residual (aif): operator-visible pub-ref foresight chrome (parity aic–aie). */}
+            {countPublicationRefs(pubRefs) > 0 ? (
+              <p
+                className="text-[10px] font-mono opacity-80 mb-1"
+                data-testid="hosted-html-pub-ref-foresight-chrome"
+                data-pub-ref-count={String(countPublicationRefs(pubRefs))}
+                role="status"
+              >
+                Knowledge-dense pubs in projection:{" "}
+                <strong>{countPublicationRefs(pubRefs)}</strong> ref
+                {countPublicationRefs(pubRefs) === 1 ? "" : "s"} · chars=
+                {composeDriverPromptText(researchSelection, pubRefs).length} ·
+                soft budget below
+              </p>
+            ) : null}
             <p
               className="text-[10px] font-mono text-ink-mute dark:text-moonlight mb-1"
               data-testid="hosted-html-dr-depth-prefill"

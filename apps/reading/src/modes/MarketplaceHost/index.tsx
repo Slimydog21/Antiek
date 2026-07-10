@@ -67,6 +67,7 @@
  * Residual (ahe): paid purchase+host seamless port honesty (manual receipt ·
  * L5 deferred · HTML host into account · never invent live checkout).
  * Residual (ahm): host-land DR budget foresight includes pub-ref count (parity ahl).
+ * Residual (aif): operator-visible pub-ref foresight chrome (parity aic–aie).
  * Residual (aho): twin seed body includes free/purchased path honesty for
  * recursive note-taker substrate after host/purchase.
  */
@@ -1557,6 +1558,24 @@ export default function MarketplaceHost({
               ).length,
             )}
           >
+            {/* Residual (aif): operator-visible pub-ref foresight chrome (parity aic–aie). */}
+            {countPublicationRefs(hostDrPubRefs) > 0 ? (
+              <p
+                className="text-[10px] font-mono opacity-80 mb-1"
+                data-testid="marketplace-host-pub-ref-foresight-chrome"
+                data-pub-ref-count={String(countPublicationRefs(hostDrPubRefs))}
+                role="status"
+              >
+                Knowledge-dense pubs in projection:{" "}
+                <strong>{countPublicationRefs(hostDrPubRefs)}</strong> ref
+                {countPublicationRefs(hostDrPubRefs) === 1 ? "" : "s"} · chars=
+                {composeDriverPromptText(
+                  hostDrPromptPreview || hosted.title || "hosted book",
+                  hostDrPubRefs,
+                ).length}{" "}
+                · soft budget below
+              </p>
+            ) : null}
             <p
               className="text-[11px] font-mono opacity-80"
               data-testid="marketplace-host-dr-depth-prefill"
