@@ -3644,3 +3644,7 @@ vitest CollectiveResearchPanel 31 green. P0 PR #465. Pivot aoj+ outside thrash.
 ## Residual aoj · 2026-07-10 — product surface MO multi-goal blurb honesty
 productModeRoutes + workflowTaxonomy Midnight Oil blurb stamps multi-goal ·
 templates · fan-out · HTML. vitest productModeRoutes 8 green. P0 PR #465. Pivot aok+.
+
+## Residual aok · 2026-07-10 — competitive scorecard multi-goal MO + domain chase + ≥2 analysis
+Scorecard rows for Midnight Oil multi-goal swarm · domain-aware chase · written
+analysis ≥2 spawns honesty. vitest Settings deferred map green. P0 PR #465. Pivot aol+.

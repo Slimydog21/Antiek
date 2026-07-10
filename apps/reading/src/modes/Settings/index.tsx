@@ -4181,7 +4181,20 @@ export default function Settings() {
             >
               <li data-status="shipped" data-testid="competitive-dr-multiagent-merge">
                 Multi-agent merge unit — <strong>shipped offline</strong>{" "}
-                (collective · continue-as-unit · written analysis)
+                (collective · continue-as-unit · written analysis requires ≥2
+                spawns · single-spawn uses Merge draft)
+              </li>
+              <li data-status="shipped" data-testid="competitive-dr-midnight-oil-multigoal">
+                Midnight Oil multi-goal autonomous swarm —{" "}
+                <strong>shipped offline</strong> (goals one-per-line · research
+                templates · fan-out coverage soft-hint · job receipt plan ·
+                recommended ceiling → approve · HTML deliverable · L4 live step
+                dual-gate)
+              </li>
+              <li data-status="shipped" data-testid="competitive-dr-domain-aware-chase">
+                Domain-aware twin chase + hosted float DR —{" "}
+                <strong>shipped offline</strong> (research_domains= goal_hint ·
+                DR session rehydrates domainSubjects for twin/context)
               </li>
               <li data-status="shipped" data-testid="competitive-dr-citation-trust">
                 Citation-trust / evidence pack / citation chain (aij) · multi-hop

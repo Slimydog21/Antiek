@@ -922,6 +922,27 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(
       screen.getByTestId("competitive-dr-budget-before-fire").getAttribute("data-status"),
     ).toBe("shipped");
+    // Residual (aok): multi-goal MO + domain-aware chase + ≥2 written analysis honesty.
+    expect(
+      screen
+        .getByTestId("competitive-dr-multiagent-merge")
+        .textContent,
+    ).toMatch(/≥2|>=2/i);
+    expect(
+      screen
+        .getByTestId("competitive-dr-midnight-oil-multigoal")
+        .getAttribute("data-status"),
+    ).toBe("shipped");
+    expect(
+      screen
+        .getByTestId("competitive-dr-midnight-oil-multigoal")
+        .textContent,
+    ).toMatch(/multi-goal|templates|fan-out/i);
+    expect(
+      screen
+        .getByTestId("competitive-dr-domain-aware-chase")
+        .getAttribute("data-status"),
+    ).toBe("shipped");
     expect(
       screen.getByTestId("competitive-dr-live-hydrate").getAttribute("data-status"),
     ).toBe("deferred");
