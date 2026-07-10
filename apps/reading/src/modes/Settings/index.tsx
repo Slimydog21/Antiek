@@ -1818,6 +1818,11 @@ export default function Settings() {
                         "research_progress_complete",
                       ),
                     )}
+                    data-has-twin-promote-context={String(
+                      (usage.known_sources || []).includes(
+                        "twin_promote_context",
+                      ),
+                    )}
                     role="status"
                   >
                     Known feed sources: {(usage.known_sources || []).join(", ")}

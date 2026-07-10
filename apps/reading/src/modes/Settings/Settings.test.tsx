@@ -123,6 +123,7 @@ const {
         "session_flywheel_complete",
         "context_search",
         "research_context_pack",
+        "twin_promote_context",
         "antiek_bench.offline_dogfood",
         "engagement",
       ],
@@ -774,6 +775,9 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(legend.textContent).toMatch(/research_context_pack/);
     expect(legend.textContent).toMatch(/research_progress_draft/);
     expect(legend.textContent).toMatch(/research_progress_complete/);
+    // Residual (rs): twin promote Write seed in known legend.
+    expect(legend.getAttribute("data-has-twin-promote-context")).toBe("true");
+    expect(legend.textContent).toMatch(/twin_promote_context/);
     // Residual (nx): by_source list includes chase open sources when present.
     const sources = screen.getByTestId("antiek-bench-usage-sources");
     expect(sources.textContent).toMatch(/twin_chase/);
