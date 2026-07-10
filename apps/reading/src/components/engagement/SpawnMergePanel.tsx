@@ -13,6 +13,8 @@
  * Residual (ev): manual re-open as full working-region window after merge.
  * Residual (fn): Open Write handoff link for merged HTML document_id (fl/fm).
  * Residual (qd): dual handoff html_draft + twin_seed (parity marketplace/MO).
+ * Residual (aem): Open Write stamps merge mode + parent/spawn path honesty
+ * (draft_combined vs into_parent · seamless merge→Write when parent bound).
  * Residual (ho): spawn-merge-metrics machine attrs for draft/parent merge audit.
  * Residual (ih): Settings deep-link for driver + budget.
  * Residual (kn): surface recommended_research_tier + research_tiers from merge.
@@ -387,7 +389,7 @@ export function SpawnMergePanel({
                 >
                   Open merged HTML full
                 </button>
-                {/* Residual (fn): handoff merged HTML draft into Write mode. */}
+                {/* Residual (fn/aem): handoff merged HTML into Write + path honesty. */}
                 <a
                   href={buildMergedDocWriteHref({
                     documentId: result.document_id,
@@ -405,8 +407,28 @@ export function SpawnMergePanel({
                         plainTextFromHtml(result.html || "").trim(),
                     ),
                   )}
+                  // Residual (aem): draft_combined vs into_parent + parent reading path.
+                  data-mode={result.mode}
+                  data-draft-leaves-parent={String(
+                    Boolean(result.draft_leaves_parent),
+                  )}
+                  data-parent-asset-id={
+                    String(parentAssetId || result.parent_asset_id || "").trim() ||
+                    ""
+                  }
+                  data-spawn-id={String(spawnId || "").trim() || ""}
+                  data-document-id={result.document_id ?? ""}
+                  data-seamless-merge-write={String(
+                    Boolean(
+                      String(parentAssetId || result.parent_asset_id || "").trim(),
+                    ),
+                  )}
                   className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono underline hover:bg-ink/5 dark:border-bright/30"
-                  title="Open Write with merged HTML + twin_seed (seeds note-taker when empty)"
+                  title={
+                    result.mode === "into_parent"
+                      ? "Open Write with into_parent merged HTML + twin_seed (merged into reading asset · seeds note-taker)"
+                      : "Open Write with draft_combined HTML + twin_seed (draft leaves parent · seeds note-taker)"
+                  }
                 >
                   Open Write (HTML draft)
                 </a>

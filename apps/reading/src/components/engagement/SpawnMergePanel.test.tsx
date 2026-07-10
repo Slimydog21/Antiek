@@ -246,6 +246,51 @@ describe("SpawnMergePanel residual ci", () => {
     expect(link.getAttribute("data-view-format")).toBe("html");
     // Residual (acl): twin_seed body honesty (parity marketplace acf / MO ack).
     expect(link.getAttribute("data-write-seed-has-body")).toBe("true");
+    // Residual (aem): draft_combined path honesty on Open Write (not only metrics).
+    expect(link.getAttribute("data-mode")).toBe("draft_combined");
+    expect(link.getAttribute("data-draft-leaves-parent")).toBe("true");
+    expect(link.getAttribute("data-parent-asset-id")).toBe("book-1");
+    expect(link.getAttribute("data-spawn-id")).toBe("spn_1");
+    expect(link.getAttribute("data-document-id")).toBe("draft_for_write");
+    expect(link.getAttribute("data-seamless-merge-write")).toBe("true");
+    expect(link.getAttribute("title") || "").toMatch(/draft_combined/i);
+  });
+
+  it("stamps into_parent Open Write path honesty (aem)", async () => {
+    mergeSpawnOutputs.mockResolvedValue({
+      mode: "into_parent",
+      parent_asset_id: "book-1",
+      document_id: "book-1",
+      source_spawn_ids: ["spn_1"],
+      sections_merged: 1,
+      draft_leaves_parent: false,
+      parent_document_id: "book-1",
+      view_format: "html",
+      product_panel: "engagement_merge",
+      source: "engagement_spine.merge_spawn_outputs",
+      notes: ["Merged into parent"],
+      html: "<p>Parent merge Write</p>",
+    });
+    render(
+      <SpawnMergePanel
+        spawnId="spn_1"
+        parentAssetId="book-1"
+        autoOpenDraft={false}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("spawn-merge-parent"));
+    await waitFor(() => {
+      expect(screen.getByTestId("spawn-merge-open-write")).toBeTruthy();
+    });
+    const link = screen.getByTestId("spawn-merge-open-write");
+    expect(link.getAttribute("data-mode")).toBe("into_parent");
+    expect(link.getAttribute("data-draft-leaves-parent")).toBe("false");
+    expect(link.getAttribute("data-parent-asset-id")).toBe("book-1");
+    expect(link.getAttribute("data-spawn-id")).toBe("spn_1");
+    expect(link.getAttribute("data-document-id")).toBe("book-1");
+    expect(link.getAttribute("data-seamless-merge-write")).toBe("true");
+    expect(link.getAttribute("data-write-seed-has-body")).toBe("true");
+    expect(link.getAttribute("title") || "").toMatch(/into_parent/i);
   });
 
   it("opens merged HTML in full working-region window (ev)", async () => {

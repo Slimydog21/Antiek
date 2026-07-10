@@ -2300,3 +2300,10 @@ Competitive delta: multi-agent infinite continues outside thrash; operator merge
 Deep research Open Write stamps data-parent-asset-id · data-seamless-reading-research-write
 · data-spawn-id for highlight→float DR→Write path honesty. Competitive delta: operator
 can machine-read when DR session is bound to a reading parent asset. vitest DR host 30 green.
+
+## Residual aem · 2026-07-10 — spawn-merge Open Write draft vs into_parent path
+SpawnMerge Open Write stamps data-mode · data-draft-leaves-parent · data-parent-asset-id
+· data-spawn-id · data-document-id · data-seamless-merge-write so draft_combined vs
+into_parent is machine-readable on the Write handoff (not only metrics). Competitive
+delta: merge→Write note-taker path honesty parity with ael reading→DR→Write. vitest
+SpawnMergePanel 8 green.
