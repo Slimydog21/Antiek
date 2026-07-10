@@ -468,24 +468,42 @@ describe("MarketplaceHost mode", () => {
     expect(ctxStub.getAttribute("data-asset-id")).toBe("hdoc_abc");
     expect(ctxStub.getAttribute("data-domain-subjects")).toMatch(/literature/);
     expect(ctxStub.getAttribute("data-auto-load")).toBe("true");
-    // Residual (alz): remount twins + context after promote (parity HostedHtml).
+    // Residual (alz/ama): remount after seed then promote (parity HostedHtml).
     expect(twinsStub.getAttribute("data-auto-promote")).toBe("true");
-    const twinsRefresh = screen.getByTestId("marketplace-host-twins-refresh");
-    expect(twinsRefresh.getAttribute("data-refresh-key")).toBe("0");
-    expect(ctxMount.getAttribute("data-refresh-key")).toBe("0");
+    // Residual (ama): offline twin seed completion bumps refresh key.
+    await waitFor(() => {
+      expect(seedTwinNotes).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      const key = Number(
+        screen
+          .getByTestId("marketplace-host-twins-refresh")
+          .getAttribute("data-refresh-key") || "0",
+      );
+      expect(key).toBeGreaterThanOrEqual(1);
+    });
+    const keyAfterSeed = Number(
+      screen
+        .getByTestId("marketplace-host-twins-refresh")
+        .getAttribute("data-refresh-key") || "0",
+    );
     fireEvent.click(screen.getByTestId("twin-notes-promote-notify"));
     await waitFor(() => {
       expect(
-        screen
-          .getByTestId("marketplace-host-twins-refresh")
-          .getAttribute("data-refresh-key"),
-      ).toBe("1");
+        Number(
+          screen
+            .getByTestId("marketplace-host-twins-refresh")
+            .getAttribute("data-refresh-key") || "0",
+        ),
+      ).toBe(keyAfterSeed + 1);
     });
     expect(
-      screen
-        .getByTestId("marketplace-host-context-mount")
-        .getAttribute("data-refresh-key"),
-    ).toBe("1");
+      Number(
+        screen
+          .getByTestId("marketplace-host-context-mount")
+          .getAttribute("data-refresh-key") || "0",
+      ),
+    ).toBe(keyAfterSeed + 1);
     // Residual (tc): free/PD host path honesty.
     expect(hostMetrics.getAttribute("data-license-class")).toBe("public_domain");
     expect(hostMetrics.getAttribute("data-is-public-domain")).toBe("true");

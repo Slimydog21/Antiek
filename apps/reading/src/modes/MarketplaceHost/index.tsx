@@ -77,6 +77,7 @@
  * Residual (aly): ResearchContextPanel on host land with domainSubjects
  * (intelligent search + evidence over twin substrate · parity HostedHtml).
  * Residual (alz): remount twins + context after promote (parity HostedHtml ez/ec).
+ * Residual (ama): remount twins + context after offline twin seed completes.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -866,6 +867,8 @@ export default function MarketplaceHost({
             : `Seed mode: live note_taker injector landed for ${result.document_id}`,
         );
       }
+      // Residual (ama): remount host-land twins + context after offline seed lands.
+      setHostTwinsRefreshKey((k) => k + 1);
     } catch (e) {
       setTwinSeedHonesty(null);
       setTwinSeedStatus(

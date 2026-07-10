@@ -18,3 +18,4 @@ Operator merge PR **#465**. Infinite continues.
 
 ## Extended alz · promote remount
 | **alz** | promote remount | hostTwinsRefreshKey · twins + context remount after promote |
+| **ama** | seed remount | hostTwinsRefreshKey after offline twin seed |

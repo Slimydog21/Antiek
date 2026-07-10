@@ -3332,3 +3332,8 @@ Host land twins + ResearchContext remount after twin promote (parity HostedHtml
 ez/ec). Marketplace host substrate complete offline: seed · twins · context ·
 promote remount. vitest MarketplaceHost 41 green.
 P0 operator merge PR #465. Pivot ama+ outside thrash.
+
+## Residual ama · 2026-07-10 — MarketplaceHost remount twins+context after offline twin seed
+Offline twin seed completion remounts host-land twins + ResearchContext so
+seeded notes appear without manual refresh. vitest MarketplaceHost 41 green.
+P0 operator merge PR #465. Pivot amb+ outside thrash.
