@@ -698,6 +698,34 @@ describe("Settings SPR-01 + decision-tree install", () => {
     const user = userEvent.setup();
     const { container } = render(<Settings />);
     await waitFor(() => expect(screen.getAllByText(/zai/).length).toBeGreaterThan(0));
+    // Residual (aqk): decision-tree panel HTML-first + never-auto-route honesty.
+    const treePanel = screen.getByTestId("decision-tree-panel");
+    expect(treePanel.getAttribute("data-view-format")).toBe("html");
+    expect(treePanel.getAttribute("data-html-first")).toBe("true");
+    expect(treePanel.getAttribute("data-never-auto-route")).toBe("true");
+    expect(treePanel.getAttribute("data-notdiamond-authority")).toBe(
+      "advisory_only",
+    );
+    expect(treePanel.getAttribute("data-propose-not-promote")).toBe("true");
+    const honesty = screen.getByTestId("decision-tree-honesty-nav");
+    expect(honesty.getAttribute("data-never-auto-route")).toBe("true");
+    expect(
+      screen.getByTestId("decision-tree-add-model-link").getAttribute("href"),
+    ).toBe("#add-model-panel");
+    expect(
+      screen
+        .getByTestId("decision-tree-notdiamond-advisory-link")
+        .getAttribute("href"),
+    ).toBe("#notdiamond-advisory");
+    expect(
+      screen.getByTestId("decision-tree-antiek-bench-link").getAttribute("href"),
+    ).toBe("#antiek-bench-leaderboard-panel");
+    expect(
+      screen.getByTestId("decision-tree-prompt-cost-link").getAttribute("href"),
+    ).toBe("#prompt-cost-projection");
+    expect(
+      screen.getByTestId("decision-tree-never-router-hint").textContent,
+    ).toMatch(/never auto-route/i);
     const installBtn = container.querySelector(
       '[data-testid="decision-tree-install"]',
     ) as HTMLButtonElement | null;

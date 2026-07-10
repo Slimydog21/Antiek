@@ -3891,3 +3891,8 @@ P0 PR #465. Pivot aqj+ HARD off hop/stage/world-class thrash.
 Add-model stamps HTML-first · never-auto-route · ND advisory_only + deep-links to
 decision-tree · ND · Antiek-bench · prompt-cost. Hard pivot off hop/stage thrash into
 model-choice product surface. vitest Settings add-model green. P0 PR #465. Pivot aqk+.
+
+## Residual aqk · 2026-07-10 — decision-tree panel never-auto-route honesty + deep-links
+Decision-tree stamps HTML-first · never-auto-route · ND advisory · propose≠promote
++ honesty nav to add-model · ND · Antiek-bench · prompt-cost (parity aqj).
+vitest Settings decision-tree green. P0 PR #465. Pivot aql+ outside thrash.

@@ -38,3 +38,4 @@ one residual/cycle · campaign push only · operator merges PR #465.
 | **aqh** | wire substrate world_class_readiness into ResearchProgress UI | progress loop closed |
 | **aqi** | wire substrate world_class_readiness into ResearchContext UI | evidence loop closed · world-class spine complete |
 | **aqj** | Add-model never-auto-route honesty + deep-links | model-choice product surface |
+| **aqk** | decision-tree never-auto-route honesty + deep-links | primary model-choice surface |

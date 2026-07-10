@@ -1238,12 +1238,68 @@ export default function Settings() {
             id="decision-tree-panel"
             className="p-4 space-y-3"
             data-testid="decision-tree-panel"
+            data-view-format="html"
+            data-html-first="true"
+            data-never-auto-route="true"
+            data-notdiamond-authority="advisory_only"
+            data-propose-not-promote="true"
           >
             <p className="text-sm text-ink dark:text-bright">
               Select the model driver for this process. Install writes the
               choice into the decision-tree registry so research dispatch can
               apply provider+model overrides. Cost projection still uses the
-              #440 settings estimate API (never invents $0).
+              #440 settings estimate API (never invents $0). Explicit operator
+              install only · never auto-route (NotDiamond advisory only · L7 ·
+              Antiek-bench propose≠promote).
+            </p>
+            {/* Residual (aqk): decision-tree path honesty strip (parity add-model aqj). */}
+            <p
+              className="text-[11px] font-mono flex flex-wrap gap-x-3 gap-y-1 opacity-90"
+              data-testid="decision-tree-honesty-nav"
+              data-view-format="html"
+              data-never-auto-route="true"
+              data-notdiamond-authority="advisory_only"
+              role="navigation"
+              aria-label="Decision-tree driver honesty navigation"
+            >
+              <a
+                href="#add-model-panel"
+                data-testid="decision-tree-add-model-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Register a model into the process-local registry"
+              >
+                Add model
+              </a>
+              <a
+                href="#notdiamond-advisory"
+                data-testid="decision-tree-notdiamond-advisory-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="NotDiamond weekly advisory (advisory only · never dispatch authority)"
+              >
+                ND advisory
+              </a>
+              <a
+                href="#antiek-bench-leaderboard-panel"
+                data-testid="decision-tree-antiek-bench-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Antiek-bench weekly leaderboard (propose≠promote)"
+              >
+                Antiek-bench
+              </a>
+              <a
+                href="#prompt-cost-projection"
+                data-testid="decision-tree-prompt-cost-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Prompt-cost projection vs remaining daily budget"
+              >
+                Prompt-cost projection
+              </a>
+              <span
+                className="opacity-70"
+                data-testid="decision-tree-never-router-hint"
+              >
+                never auto-route · ND advisory only · L7 · propose≠promote
+              </span>
             </p>
             {/* Residual (sw): dual-gate L1–L4 prep strip — offline-honest. */}
             <div
