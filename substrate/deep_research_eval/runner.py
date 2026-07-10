@@ -129,7 +129,7 @@ class EvalRun:
         makes same-version datasets with different bytes non-comparable even
         when loaded through an unpinned path."""
         return (
-            f"{self.dataset_id}@{self.dataset_version}+{self.dataset_content_digest[:12]}",
+            f"{self.dataset_id}@{self.dataset_version}+{self.dataset_content_digest}",
             self.rubric_version,
             self.judge_model_id,
         )

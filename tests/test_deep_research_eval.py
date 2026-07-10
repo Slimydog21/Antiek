@@ -98,7 +98,7 @@ def test_dataset_loads_20_frozen_unique(dataset: QueryDataset, tmp_path: Path) -
     assert dataset.dataset_id == "deep_research_eval_v1"
     assert all(q.expected_coverage for q in dataset.queries)
     assert dataset.content_digest == QUERIES_V1_SHA256
-    assert dataset.dataset_key == f"deep_research_eval_v1@1.0.0+{QUERIES_V1_SHA256[:12]}"
+    assert dataset.dataset_key == f"deep_research_eval_v1@1.0.0+{QUERIES_V1_SHA256}"
 
     # Structural validation fails closed on a mutated copy (frozen file itself
     # untouched; digest pin bypassed with the test-only sentinel so the
@@ -123,7 +123,7 @@ def test_deterministic_run(dataset: QueryDataset, healthy_run: EvalRun) -> None:
     assert healthy_run.complete is True
     assert healthy_run.mean_coverage_hit_rate == 1.0
     assert healthy_run.comparability_key == (
-        f"deep_research_eval_v1@1.0.0+{QUERIES_V1_SHA256[:12]}",
+        f"deep_research_eval_v1@1.0.0+{QUERIES_V1_SHA256}",
         RUBRIC_VERSION,
         JUDGE_MODEL_ID,
     )
@@ -199,7 +199,7 @@ def test_bench_bridge_record_shape(dataset: QueryDataset, healthy_run: EvalRun) 
     assert record["run_id"] == healthy_run.run_id
     assert record["week_id"] == WEEK_BASELINE
     assert record["suite_version"] == healthy_run.comparability_key[0]
-    assert record["suite_version"].endswith(f"+{QUERIES_V1_SHA256[:12]}")
+    assert record["suite_version"].endswith(f"+{QUERIES_V1_SHA256}")
     assert record["mean_score"] == healthy_run.mean_judge_score
     assert record["comparability_key"] == list(healthy_run.comparability_key)
     assert set(record["by_axis"]) == set(AXES)

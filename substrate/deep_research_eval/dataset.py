@@ -59,7 +59,7 @@ class QueryDataset:
         Carrying the content digest means two same-version files with
         different bytes can never share a comparability key, regardless of
         which load path produced them (fail closed by construction)."""
-        return f"{self.dataset_id}@{self.version}+{self.content_digest[:12]}"
+        return f"{self.dataset_id}@{self.version}+{self.content_digest}"
 
 
 def default_dataset_path() -> Path:
