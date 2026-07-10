@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { composeDriverPromptText } from "./driverPromptText";
+import {
+  composeDriverPromptText,
+  countPublicationRefs,
+} from "./driverPromptText";
 
 describe("composeDriverPromptText (qr)", () => {
   it("joins body and publication refs", () => {
@@ -18,5 +21,16 @@ describe("composeDriverPromptText (qr)", () => {
       "Publication refs:\narxiv:1",
     );
     expect(composeDriverPromptText("  ", null)).toBe("");
+  });
+});
+
+describe("countPublicationRefs (ahg/ahp)", () => {
+  it("counts non-empty lines only", () => {
+    expect(countPublicationRefs("")).toBe(0);
+    expect(countPublicationRefs(null)).toBe(0);
+    expect(countPublicationRefs("arxiv:1706.03762")).toBe(1);
+    expect(
+      countPublicationRefs("arxiv:1706.03762\n\narxiv:1810.04805\n  \n"),
+    ).toBe(2);
   });
 });

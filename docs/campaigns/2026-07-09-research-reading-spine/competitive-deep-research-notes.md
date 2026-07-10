@@ -2746,3 +2746,8 @@ P0 operator merge PR #465. Pivot aho+ outside thrash.
 Marketplace seedHostedTwins body prefixes free PD vs purchased manual-receipt
 port honesty so recursive note-taker substrate records path without inventing
 L5 rails. vitest MarketplaceHost 41 green. P0 operator merge PR #465. Pivot ahp+.
+
+## Residual ahp · 2026-07-10 — countPublicationRefs unit tests
+driverPromptText.test.ts covers countPublicationRefs non-empty line counting
+used by budget foresight (ahg–ahm). vitest driverPromptText green.
+P0 operator merge PR #465. Pivot ahq+.
