@@ -888,6 +888,12 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("settings-dual-gate-l1-l2-link").getAttribute("href")).toBe(
       "#hydrate-live-status",
     );
+    // Residual (xh): L1 checklist section #l1-arxiv (parity reading hydrate).
+    expect(
+      screen
+        .getByTestId("settings-dual-gate-l1-checklist-link")
+        .getAttribute("href"),
+    ).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
     expect(screen.getByTestId("settings-dual-gate-l3-link").getAttribute("href")).toBe(
       "#twin-seed-live-status",
     );

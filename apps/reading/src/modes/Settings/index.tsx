@@ -1150,6 +1150,15 @@ export default function Settings() {
                 >
                   L1–L2 hydrate
                 </a>
+                {/* Residual (xh): L1 checklist section deep-link (parity pubs/reading). */}
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
+                  className="underline opacity-80 hover:opacity-100"
+                  data-testid="settings-dual-gate-l1-checklist-link"
+                  title="L1 arxiv hydrate checklist section (prep only)"
+                >
+                  L1 checklist
+                </a>
                 <a
                   href="#twin-seed-live-status"
                   className="underline opacity-80 hover:opacity-100"

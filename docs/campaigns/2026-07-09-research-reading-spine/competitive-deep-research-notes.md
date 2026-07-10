@@ -1518,3 +1518,8 @@ highest leverage.
 Collective dual-gate checklist prep link jumps to #l6-collective (parity L6
 honesty strip wi). Competitive delta: multi-select collective dual-gate prep
 and honesty strip share the same deferred live-council policy section.
+
+## Residual xh · 2026-07-10 — Settings dual-gate L1 checklist #l1-arxiv
+Settings L1 checklist deep-links #l1-arxiv (parity L3/L4 checklist links).
+Competitive delta: decision-tree dual-gate prep strip is complete L1–L7
+section navigation.
