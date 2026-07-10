@@ -87,7 +87,11 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
     expect(VISION_USAGE_FEED_SOURCES).toContain("twin_promote_context");
     // Residual (ari): knowledge-dense publication hydrate feed.
     expect(VISION_USAGE_FEED_SOURCES).toContain("publication_hydrate");
-    expect(VISION_USAGE_FEED_SOURCES.length).toBeGreaterThanOrEqual(12);
+    // Residual (asj): attach · free-host · decision-tree install vision feeds.
+    expect(VISION_USAGE_FEED_SOURCES).toContain("publication_attach");
+    expect(VISION_USAGE_FEED_SOURCES).toContain("marketplace_free_host");
+    expect(VISION_USAGE_FEED_SOURCES).toContain("decision_tree_install");
+    expect(VISION_USAGE_FEED_SOURCES.length).toBeGreaterThanOrEqual(15);
   });
 
   it("reports covered vs uncovered vision surfaces without inventing events", () => {
@@ -116,7 +120,7 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
     );
   });
 
-  it("maps bench task_class to vision feed surfaces (apa)", () => {
+  it("maps bench task_class to vision feed surfaces (apa/asj)", () => {
     expect(benchTaskClassToVisionFeeds("wrestle")).toEqual([
       "twin_chase",
       "midnight_oil",
@@ -124,6 +128,8 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
       "research_context_pack",
       "twin_promote_context",
       "publication_hydrate",
+      "publication_attach",
+      "decision_tree_install",
     ]);
     expect(benchTaskClassToVisionFeeds("synthesize")).toContain(
       "floating_deep_research",
@@ -137,13 +143,17 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
     expect(benchTaskClassToVisionFeeds("distill")).toContain(
       "publication_hydrate",
     );
+    expect(benchTaskClassToVisionFeeds("distill")).toContain("publication_attach");
     expect(benchTaskClassToVisionFeeds("book_qa")).toContain("book_qa");
     expect(benchTaskClassToVisionFeeds("book_qa")).toContain("marketplace_host");
+    expect(benchTaskClassToVisionFeeds("book_qa")).toContain(
+      "marketplace_free_host",
+    );
     expect(benchTaskClassToVisionFeeds(null)).toEqual([]);
     expect(benchTaskClassToVisionFeeds("unknown")).toEqual([]);
   });
 
-  it("computes task training feed coverage from by_source (apc)", () => {
+  it("computes task training feed coverage from by_source (apc/asj)", () => {
     const cov = taskTrainingFeedCoverage("wrestle", {
       twin_chase: 3,
       midnight_oil: 1,
@@ -155,10 +165,12 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
       "research_context_pack",
       "twin_promote_context",
       "publication_hydrate",
+      "publication_attach",
+      "decision_tree_install",
     ]);
     expect(cov.covered_count).toBe(2);
-    expect(cov.total).toBe(6);
-    expect(cov.coverage_ratio).toBeCloseTo(2 / 6);
+    expect(cov.total).toBe(8);
+    expect(cov.coverage_ratio).toBeCloseTo(2 / 8);
     expect(taskTrainingFeedCoverage("", null).total).toBe(0);
   });
 });

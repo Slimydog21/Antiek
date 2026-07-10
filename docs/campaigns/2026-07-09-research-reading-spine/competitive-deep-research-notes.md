@@ -4163,3 +4163,9 @@ Scorecard inherits. vitest 5 green. P0 PR #465. Pivot asi+ outside thrash.
 ## Residual asi · 2026-07-10 — SESSION-ARC arw–ash readiness→CTA complete
 Full wave map + CTA matrix handoff · hard pivot asj+ off readiness→CTA thrash.
 P0 PR #465.
+
+## Residual asj · 2026-07-10 — Antiek-bench vision feeds attach · free-host · DT
+VISION_USAGE_FEED_SOURCES += publication_attach · marketplace_free_host ·
+decision_tree_install · task_class maps updated. Competitive delta: recursive
+bench rewrite tracks readiness→CTA product surfaces. vitest 9 green. P0 PR #465.
+Pivot ask+ outside thrash.

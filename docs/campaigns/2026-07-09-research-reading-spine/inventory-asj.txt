@@ -1,0 +1,20 @@
+# inventory-asj · Antiek-bench vision feeds for attach · free-host · DT install
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: asj
+date: 2026-07-10
+parent_tip: 3c9f50a2a (asi)
+
+## Closed
+- VISION_USAGE_FEED_SOURCES += publication_attach · marketplace_free_host · decision_tree_install
+- benchTaskClassToVisionFeeds: wrestle/distill/book_qa map new feeds
+- suiteProposalTasks.test: 9 green
+- Hard pivot off readiness→CTA (asi) into Antiek-bench recursive rewrite substance
+
+## Doctrine
+propose≠promote · vision feed coverage honesty · never invents events or auto-promotes
+Recursive rewrite learns from product surfaces that now have readiness→CTA contracts
+
+## Next
+ask+ offline product residual outside thrash
+Avoid: vision-feed thrash after aqv/ari/asj · readiness→CTA · offline catalog thrash
+Operator merge PR #465 remains P0 (gated)

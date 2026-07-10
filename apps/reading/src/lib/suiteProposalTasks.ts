@@ -107,6 +107,12 @@ export const VISION_USAGE_FEED_SOURCES = [
   "twin_promote_context",
   // Residual (ari): knowledge-dense arxiv/substack hydrate path (offline-honest).
   "publication_hydrate",
+  // Residual (asj): knowledge-dense attach path (asb readiness · never auto-hydrate).
+  "publication_attach",
+  // Residual (asj): free HTML host-into-account (arw free-host CTA path).
+  "marketplace_free_host",
+  // Residual (asj): operator decision-tree model install (asd · never auto-route).
+  "decision_tree_install",
 ] as const;
 
 export type VisionUsageFeedSource = (typeof VISION_USAGE_FEED_SOURCES)[number];
@@ -137,7 +143,7 @@ export function benchTaskClassToVisionFeeds(
     .trim()
     .toLowerCase();
   if (t === "wrestle") {
-    // Residual (aqv/ari): research_context_pack + twin_promote + hydrate train wrestle.
+    // Residual (aqv/ari/asj): research_context_pack + twin_promote + hydrate/attach train wrestle.
     return [
       "twin_chase",
       "midnight_oil",
@@ -145,6 +151,8 @@ export function benchTaskClassToVisionFeeds(
       "research_context_pack",
       "twin_promote_context",
       "publication_hydrate",
+      "publication_attach",
+      "decision_tree_install",
     ];
   }
   if (t === "synthesize") {
@@ -158,12 +166,23 @@ export function benchTaskClassToVisionFeeds(
     ];
   }
   if (t === "distill") {
-    // Residual (ari): knowledge-dense hydrate also trains distill.
-    return ["floating_deep_research", "book_qa", "spawn_merge", "publication_hydrate"];
+    // Residual (ari/asj): knowledge-dense hydrate + attach also train distill.
+    return [
+      "floating_deep_research",
+      "book_qa",
+      "spawn_merge",
+      "publication_hydrate",
+      "publication_attach",
+    ];
   }
   if (t === "book_qa") {
-    // Residual (aqv): marketplace HTML host trains book_qa.
-    return ["book_qa", "midnight_oil_deposit", "marketplace_host"];
+    // Residual (aqv/asj): marketplace HTML host + free-host train book_qa.
+    return [
+      "book_qa",
+      "midnight_oil_deposit",
+      "marketplace_host",
+      "marketplace_free_host",
+    ];
   }
   return [];
 }
