@@ -1454,6 +1454,11 @@ describe("Settings SPR-01 + decision-tree install", () => {
     await waitFor(() => {
       expect(screen.getByTestId("antiek-bench-dogfood-panel")).toBeTruthy();
     });
+    // Residual (zf): panel-level propose≠promote honesty.
+    const panel = screen.getByTestId("antiek-bench-dogfood-panel");
+    expect(panel.getAttribute("data-view-format")).toBe("html");
+    expect(panel.getAttribute("data-propose-not-promote")).toBe("true");
+    expect(panel.getAttribute("data-auto-promoted")).toBe("false");
     expect(fetchAntiekBenchDogfoodFixtures).toHaveBeenCalled();
     await waitFor(() => {
       expect(

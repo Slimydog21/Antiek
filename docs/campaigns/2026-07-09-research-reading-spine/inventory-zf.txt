@@ -1,0 +1,19 @@
+# inventory-zf · dogfood panel propose≠promote honesty stamps
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: zf
+date: 2026-07-10
+tip_before: 54c412c0 (ze)
+
+## Problem
+Dogfood panel had data-view-format but not panel-level propose≠promote /
+auto_promoted=false stamps (parity suite proposal panel).
+
+## Fix
+- data-propose-not-promote=true · data-auto-promoted=false on dogfood panel
+- Test locks attrs
+
+## Verified
+npm test Settings.test.tsx → 34 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

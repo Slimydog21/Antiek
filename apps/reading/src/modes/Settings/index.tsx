@@ -2053,6 +2053,8 @@ export default function Settings() {
             className="p-4 space-y-3"
             data-testid="antiek-bench-dogfood-panel"
             data-view-format="html"
+            data-propose-not-promote="true"
+            data-auto-promoted="false"
           >
             <p className="text-sm text-ink dark:text-bright">
               Offline multi-task-class fixtures (distill / synthesize / wrestle
