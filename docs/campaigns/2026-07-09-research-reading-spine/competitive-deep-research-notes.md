@@ -3368,3 +3368,7 @@ P0 operator merge PR #465. Pivot amh+ outside thrash (prefer code product).
 Hop stage sections get aria-label + data-hop-stage-nav so strip deep-links land
 on accessible landmarks. vitest ResearchContext 17 green.
 P0 operator merge PR #465. Pivot ami+ outside thrash.
+
+## Residual ami · 2026-07-10 — SESSION-ARC amc–amh citation hop nav complete
+Wave handoff: multi-hop citation strip→stage deep-links + accessibility landmarks.
+P0 operator merge PR #465. Pivot amj+ outside thrash.
