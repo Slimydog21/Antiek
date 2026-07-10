@@ -1,0 +1,15 @@
+# inventory-aha · HostedHtml knowledge-dense pub quick-call (book DR path)
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aha
+date: 2026-07-10
+parent_tip: 83d82b8f (agz)
+
+## Closed
+- HostedHtmlDocumentHost book DR ground-with-pubs mounts quick-call presets
+- Reading ≡ research: free STEM / hosted books can one-click call arxiv refs
+- Completes quick-call matrix: launch · chase · mid-session · hosted book DR
+- vitest HostedHtmlDocumentHost 23 green
+
+## Next
+ahb+ outside thrash · marketplace host DR quick-call optional once · then leave matrix
+Operator merge PR #465 remains highest leverage (gated)

@@ -59,6 +59,7 @@ import type { WindowMode } from "../../workspace/windowsStore";
 import { useWindows } from "../../workspace/windowsStore";
 import { CollectiveResearchPanel } from "../engagement/CollectiveResearchPanel";
 import { DecisionTreeDriverBadge } from "../engagement/DecisionTreeDriverBadge";
+import { KNOWLEDGE_DENSE_PUBLICATION_PRESETS } from "../engagement/PublicationAttachPanel";
 import { ResearchContextPanel } from "../engagement/ResearchContextPanel";
 import {
   ResearchLaunchBudgetPanel,
@@ -619,13 +620,17 @@ export default function HostedHtmlDocumentHost(
               </p>
             )}
           </div>
-          {/* Residual (er/uj): ground float DR with arxiv/substack/URL refs. */}
+          {/* Residual (er/uj/aha): ground float DR with arxiv/substack/URL refs. */}
           <div
             className="space-y-1"
             data-testid="hosted-html-pub-refs"
             data-view-format="html"
             data-offline-default="true"
             data-l1-l2-hydrate-prep="true"
+            data-seamless-pub-quick-call="true"
+            data-knowledge-dense-presets={String(
+              KNOWLEDGE_DENSE_PUBLICATION_PRESETS.length,
+            )}
           >
             <label
               className="text-[10px] font-mono uppercase tracking-wider text-ink-mute dark:text-moonlight"
@@ -633,6 +638,53 @@ export default function HostedHtmlDocumentHost(
             >
               Ground with pubs (optional · arxiv / substack / URL)
             </label>
+            {/* Residual (aha): hosted book DR quick-call (parity launch/chase/attach). */}
+            <div
+              className="flex flex-wrap gap-1 items-center"
+              data-testid="hosted-html-publication-quick-call"
+              data-preset-count={String(
+                KNOWLEDGE_DENSE_PUBLICATION_PRESETS.length,
+              )}
+              data-seamless-pub-quick-call="true"
+              data-auto-hydrate="false"
+              role="group"
+              aria-label="Knowledge-dense publication quick-call presets"
+            >
+              <span className="text-[10px] font-mono opacity-70 mr-1">
+                Quick-call:
+              </span>
+              {KNOWLEDGE_DENSE_PUBLICATION_PRESETS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  data-testid={`hosted-html-preset-${p.id}`}
+                  data-preset-id={p.id}
+                  data-kind={p.kind}
+                  data-reference={p.reference}
+                  data-auto-hydrate="false"
+                  disabled={busy}
+                  onClick={() => {
+                    const ref = p.reference.trim();
+                    if (!ref) return;
+                    setPubRefs((prev) => {
+                      const existing = new Set(
+                        prev
+                          .split(/\r?\n/)
+                          .map((l) => l.trim())
+                          .filter(Boolean),
+                      );
+                      if (existing.has(ref)) return prev;
+                      const base = prev.trim();
+                      return base ? `${base}\n${ref}` : ref;
+                    });
+                  }}
+                  className="text-[10px] font-mono border rounded px-1.5 py-0.5 opacity-80 hover:opacity-100 disabled:opacity-50 border-ink/20 dark:border-bright/20"
+                  title={`Insert ${p.reference} (hydrates offline-honest on DR launch · never auto-live)`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
             <textarea
               id="hosted-html-refs-input"
               data-testid="hosted-html-refs-input"

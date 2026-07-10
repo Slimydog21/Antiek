@@ -2658,3 +2658,9 @@ Docked chat chase follow-ups mount shared KNOWLEDGE_DENSE_PUBLICATION_PRESETS
 (parity StartResearch agy · PublicationAttach agx). Completes launch + mid-session
 + chase quick-call matrix for knowledge-dense arxiv/URL refs. Insert-only · offline
 hydrate. vitest ChatInputArea.refs 4 green. P0 operator merge PR #465. Pivot aha+.
+
+## Residual aha · 2026-07-10 — HostedHtml knowledge-dense pub quick-call
+Hosted book deep-research ground-with-pubs mounts shared quick-call presets
+(parity launch/chase/attach). Reading ≡ research: Fourier free STEM HTML books
+can one-click ground float DR with arxiv handles. Insert-only · offline hydrate.
+vitest HostedHtml 23 green. P0 operator merge PR #465. Pivot ahb+ outside thrash.

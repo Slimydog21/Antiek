@@ -938,6 +938,16 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     // Residual (uj): L1/L2 hydrate prep honesty + deep-links.
     expect(pubRefs.getAttribute("data-offline-default")).toBe("true");
     expect(pubRefs.getAttribute("data-l1-l2-hydrate-prep")).toBe("true");
+    // Residual (aha): knowledge-dense quick-call on hosted book DR path.
+    expect(pubRefs.getAttribute("data-seamless-pub-quick-call")).toBe("true");
+    expect(
+      Number(pubRefs.getAttribute("data-knowledge-dense-presets") || 0),
+    ).toBeGreaterThanOrEqual(4);
+    expect(
+      screen
+        .getByTestId("hosted-html-publication-quick-call")
+        .getAttribute("data-auto-hydrate"),
+    ).toBe("false");
     expect(
       screen.getByTestId("hosted-html-hydrate-settings-link").getAttribute("href"),
     ).toBe("/settings#hydrate-live-status");
@@ -953,9 +963,13 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
         .getByTestId("hosted-html-hydrate-dual-gate-l2-link")
         .getAttribute("href") || "",
     ).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
-    fireEvent.change(screen.getByTestId("hosted-html-refs-input"), {
-      target: { value: "arxiv:1706.03762" },
-    });
+    fireEvent.click(
+      screen.getByTestId("hosted-html-preset-attention-is-all-you-need"),
+    );
+    expect(
+      (screen.getByTestId("hosted-html-refs-input") as HTMLTextAreaElement)
+        .value,
+    ).toMatch(/arxiv:1706\.03762/);
     fireEvent.click(screen.getByTestId("hosted-html-deep-research"));
     await waitFor(() => {
       expect(hydratePublicationRefs).toHaveBeenCalledWith(["arxiv:1706.03762"]);
