@@ -79,3 +79,64 @@ export function rankedFeedSourcesFromBySource(
     .filter((x) => x.source && x.count > 0)
     .sort((a, b) => b.count - a.count || a.source.localeCompare(b.source));
 }
+
+/**
+ * Residual (aoy): north-star product surfaces that should feed Antiek-bench
+ * recursive weekly rewrite. Listing/coverage honesty only — never invents
+ * events or auto-promotes suite items.
+ */
+export const VISION_USAGE_FEED_SOURCES = [
+  "twin_chase",
+  "floating_deep_research",
+  "midnight_oil",
+  "midnight_oil_deposit",
+  "collective_merge",
+  "book_qa",
+] as const;
+
+export type VisionUsageFeedSource = (typeof VISION_USAGE_FEED_SOURCES)[number];
+
+export type VisionFeedCoverage = {
+  covered: VisionUsageFeedSource[];
+  uncovered: VisionUsageFeedSource[];
+  covered_count: number;
+  uncovered_count: number;
+  total: number;
+  coverage_ratio: number;
+  /** Event totals for covered vision sources only. */
+  covered_event_count: number;
+};
+
+/**
+ * Residual (aoy): which vision product surfaces appear in this week's
+ * by_source map (positive counts only). Empty/unknown map → all uncovered.
+ */
+export function visionFeedCoverageFromBySource(
+  bySource: Record<string, number> | null | undefined,
+): VisionFeedCoverage {
+  const total = VISION_USAGE_FEED_SOURCES.length;
+  const covered: VisionUsageFeedSource[] = [];
+  const uncovered: VisionUsageFeedSource[] = [];
+  let covered_event_count = 0;
+  for (const src of VISION_USAGE_FEED_SOURCES) {
+    const n = bySource?.[src];
+    const count = typeof n === "number" && Number.isFinite(n) ? n : 0;
+    if (count > 0) {
+      covered.push(src);
+      covered_event_count += count;
+    } else {
+      uncovered.push(src);
+    }
+  }
+  const covered_count = covered.length;
+  const uncovered_count = uncovered.length;
+  return {
+    covered,
+    uncovered,
+    covered_count,
+    uncovered_count,
+    total,
+    coverage_ratio: total > 0 ? covered_count / total : 0,
+    covered_event_count,
+  };
+}

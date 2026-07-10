@@ -1703,6 +1703,19 @@ describe("Settings SPR-01 + decision-tree install", () => {
       "twin_chase",
     );
     expect(rationale.textContent).toMatch(/primary feed twin_chase=3/);
+    // Residual (aoy): vision north-star feed coverage chrome.
+    const vision = screen.getByTestId("antiek-bench-vision-feed-coverage");
+    expect(vision.getAttribute("data-propose-not-promote")).toBe("true");
+    expect(vision.getAttribute("data-view-format")).toBe("html");
+    expect(Number(vision.getAttribute("data-total") || 0)).toBeGreaterThanOrEqual(
+      6,
+    );
+    expect(vision.getAttribute("data-covered") || "").toMatch(/twin_chase/);
+    expect(Number(vision.getAttribute("data-covered-count") || 0)).toBeGreaterThan(
+      0,
+    );
+    expect(vision.textContent).toMatch(/Vision feed coverage/i);
+    expect(vision.textContent).toMatch(/propose≠promote|propose=not promote|never invents/i);
   });
 
   it("groups proposed suite tasks by task class (hg)", async () => {

@@ -9,6 +9,7 @@ import {
   groupProposedTasksByClass,
   primaryFeedSourceFromBySource,
   rankedFeedSourcesFromBySource,
+  visionFeedCoverageFromBySource,
 } from "../../lib/suiteProposalTasks";
 import {
   countWriteSeedKnownSources,
@@ -188,6 +189,11 @@ export default function Settings() {
   /** Residual (qa): primary by_source that drove this week's suite rewrite. */
   const primaryRewriteFeed = useMemo(
     () => primaryFeedSourceFromBySource(usage?.by_source),
+    [usage?.by_source],
+  );
+  /** Residual (aoy): north-star vision surface coverage of weekly rewrite feed. */
+  const visionFeedCoverage = useMemo(
+    () => visionFeedCoverageFromBySource(usage?.by_source),
     [usage?.by_source],
   );
   const rankedRewriteFeeds = useMemo(
@@ -3679,6 +3685,50 @@ export default function Settings() {
                       </span>
                     );
                   })}
+                </p>
+                {/* Residual (aoy): north-star vision surface coverage of rewrite feed. */}
+                <p
+                  className="text-[11px] font-mono text-ink-soft dark:text-starlight border border-ink/10 rounded p-2 dark:border-bright/10"
+                  data-testid="antiek-bench-vision-feed-coverage"
+                  data-covered-count={String(visionFeedCoverage.covered_count)}
+                  data-uncovered-count={String(
+                    visionFeedCoverage.uncovered_count,
+                  )}
+                  data-total={String(visionFeedCoverage.total)}
+                  data-coverage-ratio={String(
+                    Math.round(visionFeedCoverage.coverage_ratio * 1000) / 1000,
+                  )}
+                  data-covered-event-count={String(
+                    visionFeedCoverage.covered_event_count,
+                  )}
+                  data-covered={visionFeedCoverage.covered.join(",") || ""}
+                  data-uncovered={visionFeedCoverage.uncovered.join(",") || ""}
+                  data-propose-not-promote="true"
+                  data-view-format="html"
+                  role="status"
+                >
+                  Vision feed coverage (north-star surfaces → recursive rewrite):{" "}
+                  <strong>
+                    {visionFeedCoverage.covered_count}/
+                    {visionFeedCoverage.total}
+                  </strong>{" "}
+                  · events=
+                  {visionFeedCoverage.covered_event_count}
+                  {visionFeedCoverage.covered_count > 0 ? (
+                    <>
+                      {" "}
+                      · covered=
+                      {visionFeedCoverage.covered.join(", ")}
+                    </>
+                  ) : null}
+                  {visionFeedCoverage.uncovered_count > 0 ? (
+                    <>
+                      {" "}
+                      · uncovered=
+                      {visionFeedCoverage.uncovered.join(", ")}
+                    </>
+                  ) : null}{" "}
+                  · listing only · never invents events · propose≠promote
                 </p>
               </>
             ) : (

@@ -3699,3 +3699,9 @@ Extract Match fan-out target into moilGoals (cap 12 · never invent). P0 PR #465
 ## Residual aox · 2026-07-10 — goalsExceedFanout pure helper
 Pure predicate for multi-goal coverage gap (empty goals never exceed).
 P0 PR #465. Pivot aoy+ product residual outside thrash.
+
+## Residual aoy · 2026-07-10 — Antiek-bench vision feed coverage
+VISION_USAGE_FEED_SOURCES + visionFeedCoverageFromBySource pure helpers; Settings
+suite proposal chrome antiek-bench-vision-feed-coverage (covered/uncovered north-star
+surfaces · propose≠promote · never invents). vitest suiteProposalTasks 7 · Settings 37 green.
+P0 PR #465. Pivot aoz+ outside thrash.

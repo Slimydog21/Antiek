@@ -1,6 +1,6 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** residual **aor** (wave aoc–aor · tip after aor ship) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
+**Campaign tip at write:** residual **aoy** (wave aoc–aoy · tip after aoy ship) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **URL:** https://github.com/Slimydog21/Antiek/pull/465  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
@@ -54,7 +54,7 @@ See **FUTURE-AGENT-SPEC-notdiamond-advisory-only.md** — advisor yes · router 
 ### Competitive DR quality
 See **FUTURE-AGENT-SPEC-competitive-deep-research-quality.md** — world-class DR map · budget-before-fire merge soft-gates closed **ank–anl**.
 
-### P1 next offline (residual **aos+**)
+### P1 next offline (residual **aoz+**)
 Outside thrash: competitive DR product depth · Antiek-bench recursive rewrite polish · model decision-tree install UX · marketplace L5 offline CTA.  
 **Avoid thrash:** remount · host-tier · collective-mount · budget-soft-gate · dogfood · free-PD catalog · open-spawn honesty · HTML stamps · competitive-link · dual-gate · write-seed · pub-quick-call · domain stamps/titles · MO goals/fanout · written-analysis min-spawns · scorecard rows · product blurbs.
 
