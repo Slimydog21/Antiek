@@ -15,7 +15,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 
 # Residual (st): v2 adds write-seed / float HTML / budget foresight postures.
 # Residual (tf): v3 adds book_qa electricity STEM (Faraday/Maxwell free PD).
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v3"
+# Residual (tv): v4 adds multi-spawn collective unit → Write twin_seed posture.
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v4"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -128,6 +129,25 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "induction",
                 "electricity",
                 "public",
+                "html",
+            ),
+        ),
+        # Residual (tv): multi-spawn cohesive unit prompt → Write twin_seed.
+        SuiteItem(
+            item_id="dogfood-wrestle-collective-unit-write-seed",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with multi-select deep-research spawns: after merging into a "
+                "cohesive unit prompt (source=collective_unit_prompt HTML float), why "
+                "must Open Write preserve twin_seed source for Antiek-bench weekly rewrite "
+                "instead of collapsing to twin_draft_selected, and never invent a server "
+                "document_id for the prompt body alone?"
+            ),
+            expected_keywords=(
+                "collective",
+                "twin_seed",
+                "write",
+                "unit",
                 "html",
             ),
         ),

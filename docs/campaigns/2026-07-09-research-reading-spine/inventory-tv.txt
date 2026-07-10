@@ -1,0 +1,20 @@
+# inventory-tv · competitive dogfood v4 collective unit write-seed
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: tv
+date: 2026-07-10
+
+## Closed
+- COMPETITIVE_DOGFOOD_VERSION → suite-competitive-dogfood-v4
+- SuiteItem dogfood-wrestle-collective-unit-write-seed (wrestle)
+- Settings data-has-collective-unit-write-seed-posture + v4 posture copy
+- pytest dogfood 4 green · vitest Settings 32 green
+  · /tmp/residual-tests-tv-py.log · /tmp/residual-tests-tv-vitest.log
+
+## Product why
+Antiek-bench recursive rewrite needs a stable offline posture for multi-spawn
+cohesive unit → Write twin_seed (tt/tu product path). propose≠promote listing
+only; never auto-activate.
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live multi-provider dogfood runs

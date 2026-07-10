@@ -1065,3 +1065,9 @@ store/load TwinWriteSeedSource allowlists accept collective_unit_prompt so Open
 Write from cohesive unit HTML does not collapse provenance to twin_draft_selected.
 Host Open Write title names multi-spawn unit. Competitive delta: catalog (tt)
 matches runtime seed path — usage honesty is load-bearing, not decorative.
+
+## Residual tv · 2026-07-10 — dogfood v4 collective unit write-seed
+suite-competitive-dogfood-v4 adds dogfood-wrestle-collective-unit-write-seed.
+Settings honesty data-has-collective-unit-write-seed-posture. Competitive delta:
+Antiek-bench recursive rewrite learns multi-spawn unit → Write twin_seed as a
+first-class offline posture (propose≠promote · never auto-activate).

@@ -2024,6 +2024,13 @@ export default function Settings() {
                     (it) => it.item_id === "dogfood-book-faraday-induction",
                   ),
                 )}
+                data-has-collective-unit-write-seed-posture={String(
+                  (dogfood.items || []).some(
+                    (it) =>
+                      it.item_id ===
+                      "dogfood-wrestle-collective-unit-write-seed",
+                  ),
+                )}
                 data-propose-not-promote="true"
               >
                 <Row label="Suite" value={dogfood.suite_version} />
@@ -2034,13 +2041,14 @@ export default function Settings() {
                   value={String(dogfood.auto_promoted)}
                 />
                 <Row label="View" value={dogfood.view_format} />
-                {/* Residual (su): v2 posture honesty for recursive rewrite. */}
+                {/* Residual (su/tv): posture honesty for recursive rewrite. */}
                 {(dogfood.items || []).some((it) =>
                   [
                     "dogfood-wrestle-write-seed",
                     "dogfood-synth-float-evidence",
                     "dogfood-distill-budget-foresight",
                     "dogfood-book-faraday-induction",
+                    "dogfood-wrestle-collective-unit-write-seed",
                   ].includes(it.item_id),
                 ) ? (
                   <p
@@ -2048,9 +2056,9 @@ export default function Settings() {
                     data-testid="antiek-bench-dogfood-v2-postures"
                     role="status"
                   >
-                    Spine postures (v3): write-seed · float evidence · budget
-                    foresight · Faraday book_qa (listing only · not
-                    auto-promoted)
+                    Spine postures (v4): write-seed · float evidence · budget
+                    foresight · Faraday book_qa · collective unit write-seed
+                    (listing only · not auto-promoted)
                   </p>
                 ) : null}
                 <ul data-testid="antiek-bench-dogfood-classes" className="space-y-1">
