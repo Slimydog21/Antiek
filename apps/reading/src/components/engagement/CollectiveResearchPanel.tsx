@@ -59,6 +59,8 @@
  * research_tier for offline cohesive unit honesty (parity panel L6 chrome).
  * Residual (adk): continue-as-unit buttons stamp L6 deferred (offline unit
  * re-entry only — not live multi-agent council).
+ * Residual (afh): continue-as-unit stamps collective_id · parent_asset_id ·
+ * spawn-count · seamless-unit-continue (unit re-entry → DR path honesty).
  *     after continue-as-unit re-entry (intersection with available).
  * 28. Residual (tr): float|full cohesive unit prompt_block as HTML reading window
  *     without inventing a server document_id (parity research context pack sl).
@@ -1264,6 +1266,25 @@ export function CollectiveResearchPanel({
                 data-research-tier={
                   unit.recommended_research_tier || researchTier || ""
                 }
+                // Residual (afh): unit re-entry → DR path honesty.
+                data-collective-id={unit.collective_id ?? ""}
+                data-parent-asset-id={
+                  String(parentAssetId || unit.asset_ids?.[0] || "").trim() ||
+                  ""
+                }
+                data-spawn-count={String(
+                  unit.spawn_count ??
+                    (unit.spawn_ids || []).filter(Boolean).length ||
+                    selected.length,
+                )}
+                data-seamless-unit-continue={String(
+                  Boolean(
+                    unit.collective_id &&
+                      String(
+                        parentAssetId || unit.asset_ids?.[0] || "",
+                      ).trim(),
+                  ),
+                )}
                 title="Open a new floating deep research session seeded with this collective prompt (offline unit · L6 live multi-agent deferred)"
               >
                 {busy ? "Opening…" : "Continue as cohesive unit (window)"}
@@ -1284,6 +1305,25 @@ export function CollectiveResearchPanel({
                 data-research-tier={
                   unit.recommended_research_tier || researchTier || ""
                 }
+                // Residual (afh): unit re-entry → DR path honesty (full).
+                data-collective-id={unit.collective_id ?? ""}
+                data-parent-asset-id={
+                  String(parentAssetId || unit.asset_ids?.[0] || "").trim() ||
+                  ""
+                }
+                data-spawn-count={String(
+                  unit.spawn_count ??
+                    (unit.spawn_ids || []).filter(Boolean).length ||
+                    selected.length,
+                )}
+                data-seamless-unit-continue={String(
+                  Boolean(
+                    unit.collective_id &&
+                      String(
+                        parentAssetId || unit.asset_ids?.[0] || "",
+                      ).trim(),
+                  ),
+                )}
                 title="Open collective unit deep research expanded to full working region (offline unit · L6 live multi-agent deferred)"
               >
                 {busy ? "Opening…" : "Continue as unit (full)"}

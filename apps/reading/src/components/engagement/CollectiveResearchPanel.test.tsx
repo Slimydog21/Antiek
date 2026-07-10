@@ -408,16 +408,19 @@ describe("CollectiveResearchPanel", () => {
     expect(contFloat.getAttribute("data-l6-live-multiagent")).toBe("deferred");
     expect(contFloat.getAttribute("data-window-mode")).toBe("floating");
     expect(contFloat.getAttribute("data-view-format")).toBe("html");
-    expect(
-      screen
-        .getByTestId("collective-continue-as-unit-full")
-        .getAttribute("data-l6-live-multiagent"),
-    ).toBe("deferred");
-    expect(
-      screen
-        .getByTestId("collective-continue-as-unit-full")
-        .getAttribute("data-window-mode"),
-    ).toBe("full");
+    // Residual (afh): unit re-entry → DR path honesty stamps.
+    expect(contFloat.getAttribute("data-collective-id")).toBe("col_dc");
+    expect(contFloat.getAttribute("data-parent-asset-id")).toBe("book-1");
+    expect(contFloat.getAttribute("data-seamless-unit-continue")).toBe("true");
+    expect(Number(contFloat.getAttribute("data-spawn-count") || "0")).toBeGreaterThanOrEqual(
+      1,
+    );
+    const contFull = screen.getByTestId("collective-continue-as-unit-full");
+    expect(contFull.getAttribute("data-l6-live-multiagent")).toBe("deferred");
+    expect(contFull.getAttribute("data-window-mode")).toBe("full");
+    expect(contFull.getAttribute("data-collective-id")).toBe("col_dc");
+    expect(contFull.getAttribute("data-parent-asset-id")).toBe("book-1");
+    expect(contFull.getAttribute("data-seamless-unit-continue")).toBe("true");
     expect(screen.getByTestId("collective-continue-budget-mount")).toBeTruthy();
     expect(screen.getByTestId("research-launch-budget-panel-stub")).toBeTruthy();
     fireEvent.click(screen.getByTestId("collective-continue-as-unit"));

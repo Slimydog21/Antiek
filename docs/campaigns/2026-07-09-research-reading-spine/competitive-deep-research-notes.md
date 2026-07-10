@@ -2409,3 +2409,9 @@ Create written analysis Open Write now stamps twin_seed source=
 collective_written_analysis (was incorrectly collective_doc_merge). Competitive
 multi-spawn analysis → Write note-taker feed is honest. vitest Collective 25 +
 twinWriteSeed 35 green.
+
+## Residual afh · 2026-07-10 — continue-as-unit path honesty
+Continue cohesive unit (float|full) stamps data-collective-id · parent_asset_id ·
+spawn-count · seamless-unit-continue so multi-select unit re-entry → DR is
+machine-readable (parity ael DR parent path). L6 live multi-agent still deferred.
+vitest CollectiveResearchPanel 25 green.
