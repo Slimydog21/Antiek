@@ -3326,3 +3326,9 @@ vitest MarketplaceHost 41 green. P0 operator merge PR #465. Pivot aly+ outside t
 Host land mounts ResearchContextPanel with free PD domainSubjects (parity
 HostedHtml). Substrate: TwinNotes (alx) + ResearchContext (aly) without window.
 vitest MarketplaceHost 41 green. P0 operator merge PR #465. Pivot alz+ outside thrash.
+
+## Residual alz · 2026-07-10 — MarketplaceHost remount twins+context after promote
+Host land twins + ResearchContext remount after twin promote (parity HostedHtml
+ez/ec). Marketplace host substrate complete offline: seed · twins · context ·
+promote remount. vitest MarketplaceHost 41 green.
+P0 operator merge PR #465. Pivot ama+ outside thrash.

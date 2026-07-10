@@ -93,6 +93,8 @@ vi.mock("../../components/engagement/TwinNotesPanel", () => ({
     domainSubjects?: readonly string[] | null;
     autoLoad?: boolean;
     autoSeedIfEmpty?: boolean;
+    autoPromoteAfterLoad?: boolean;
+    onPromoted?: (result: unknown) => void;
   }) => (
     <div
       data-testid="twin-notes-panel-stub"
@@ -101,8 +103,23 @@ vi.mock("../../components/engagement/TwinNotesPanel", () => ({
       data-domain-subjects={(props.domainSubjects || []).join(",") || ""}
       data-auto-load={String(Boolean(props.autoLoad))}
       data-auto-seed={String(Boolean(props.autoSeedIfEmpty))}
+      data-auto-promote={String(Boolean(props.autoPromoteAfterLoad))}
     >
       twins={props.assetId}
+      {props.onPromoted ? (
+        <button
+          type="button"
+          data-testid="twin-notes-promote-notify"
+          onClick={() =>
+            props.onPromoted?.({
+              unit_count: 1,
+              view_format: "html",
+            })
+          }
+        >
+          notify promote
+        </button>
+      ) : null}
     </div>
   ),
 }));
@@ -451,6 +468,24 @@ describe("MarketplaceHost mode", () => {
     expect(ctxStub.getAttribute("data-asset-id")).toBe("hdoc_abc");
     expect(ctxStub.getAttribute("data-domain-subjects")).toMatch(/literature/);
     expect(ctxStub.getAttribute("data-auto-load")).toBe("true");
+    // Residual (alz): remount twins + context after promote (parity HostedHtml).
+    expect(twinsStub.getAttribute("data-auto-promote")).toBe("true");
+    const twinsRefresh = screen.getByTestId("marketplace-host-twins-refresh");
+    expect(twinsRefresh.getAttribute("data-refresh-key")).toBe("0");
+    expect(ctxMount.getAttribute("data-refresh-key")).toBe("0");
+    fireEvent.click(screen.getByTestId("twin-notes-promote-notify"));
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId("marketplace-host-twins-refresh")
+          .getAttribute("data-refresh-key"),
+      ).toBe("1");
+    });
+    expect(
+      screen
+        .getByTestId("marketplace-host-context-mount")
+        .getAttribute("data-refresh-key"),
+    ).toBe("1");
     // Residual (tc): free/PD host path honesty.
     expect(hostMetrics.getAttribute("data-license-class")).toBe("public_domain");
     expect(hostMetrics.getAttribute("data-is-public-domain")).toBe("true");

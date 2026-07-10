@@ -76,6 +76,7 @@
  * (reading ≡ research recursive note-taker without requiring open window).
  * Residual (aly): ResearchContextPanel on host land with domainSubjects
  * (intelligent search + evidence over twin substrate · parity HostedHtml).
+ * Residual (alz): remount twins + context after promote (parity HostedHtml ez/ec).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -387,6 +388,8 @@ export default function MarketplaceHost({
     seedSkipped: string | null;
     assetId: string;
   } | null>(null);
+  /** Residual (alz): remount twins + research context after promote/seed. */
+  const [hostTwinsRefreshKey, setHostTwinsRefreshKey] = useState(0);
   /** Residual (iu): floating DR launch status after host. */
   const [hostDrStatus, setHostDrStatus] = useState<string | null>(null);
   const [hostDrBusy, setHostDrBusy] = useState(false);
@@ -1704,7 +1707,8 @@ export default function MarketplaceHost({
             >
               <div
                 data-testid="marketplace-host-twins-refresh"
-                data-refresh-key={
+                data-refresh-key={String(hostTwinsRefreshKey)}
+                data-seed-phase={
                   twinSeedStatus
                     ? twinSeedHonesty?.seeded === false
                       ? "skipped"
@@ -1713,16 +1717,12 @@ export default function MarketplaceHost({
                 }
               >
                 <TwinNotesPanel
-                  key={`mkt-twins-${hosted.document_id.trim()}-${
-                    twinSeedStatus
-                      ? twinSeedHonesty?.seeded === false
-                        ? "skipped"
-                        : "seeded"
-                      : "pending"
-                  }`}
+                  key={`mkt-twins-${hosted.document_id.trim()}-${hostTwinsRefreshKey}`}
                   assetId={hosted.document_id.trim()}
                   autoLoad
                   autoSeedIfEmpty
+                  autoPromoteAfterLoad
+                  onPromoted={() => setHostTwinsRefreshKey((k) => k + 1)}
                   seedTitle={
                     hosted.title?.trim() ||
                     hosted.book_id ||
@@ -1738,6 +1738,7 @@ export default function MarketplaceHost({
                 />
               </div>
               {/* Residual (aly): research context + intelligent search over twins. */}
+              {/* Residual (alz): remount context with twins refresh key after promote. */}
               <div
                 className="mt-2"
                 data-testid="marketplace-host-context-mount"
@@ -1750,15 +1751,10 @@ export default function MarketplaceHost({
                   Boolean(hostedDomainCoverage?.has_default),
                 )}
                 data-seamless-marketplace-context="true"
+                data-refresh-key={String(hostTwinsRefreshKey)}
               >
                 <ResearchContextPanel
-                  key={`mkt-ctx-${hosted.document_id.trim()}-${
-                    twinSeedStatus
-                      ? twinSeedHonesty?.seeded === false
-                        ? "skipped"
-                        : "seeded"
-                      : "pending"
-                  }`}
+                  key={`mkt-ctx-${hosted.document_id.trim()}-${hostTwinsRefreshKey}`}
                   assetId={hosted.document_id.trim()}
                   autoLoad
                   domainSubjects={catalogSubjectsForBook(hosted.book_id)}

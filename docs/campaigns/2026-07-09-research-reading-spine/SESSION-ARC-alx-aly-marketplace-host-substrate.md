@@ -15,3 +15,6 @@ with domain-aware defaults.
 
 ## P0
 Operator merge PR **#465**. Infinite continues.
+
+## Extended alz · promote remount
+| **alz** | promote remount | hostTwinsRefreshKey · twins + context remount after promote |
