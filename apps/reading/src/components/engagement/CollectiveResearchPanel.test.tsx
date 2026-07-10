@@ -1237,6 +1237,52 @@ describe("CollectiveResearchPanel", () => {
     ).toBe(false);
   });
 
+  it("stamps Select open path honesty after multi-select assembly (afn)", () => {
+    render(
+      <CollectiveResearchPanel
+        availableSpawnIds={["spn_open_a", "spn_open_b", "spn_closed_recent"]}
+        openSpawnIds={["spn_open_a", "spn_open_b"]}
+        recentSpawnIds={["spn_closed_recent"]}
+        autoSelectNewestRecent={false}
+        parentAssetId="asset_afn_parent"
+      />,
+    );
+    const openBtn = screen.getByTestId("collective-select-open");
+    expect(openBtn.getAttribute("data-seamless-select-open")).toBe("true");
+    expect(openBtn.getAttribute("data-view-format")).toBe("html");
+    expect(openBtn.getAttribute("data-open-in-available")).toBe("2");
+    expect(openBtn.getAttribute("data-l6-live-multiagent")).toBe("deferred");
+    expect(
+      screen
+        .getByTestId("collective-select-controls")
+        .getAttribute("data-seamless-select-open"),
+    ).toBe("false");
+    expect(screen.queryByTestId("collective-select-open-path-status")).toBeNull();
+
+    fireEvent.click(openBtn);
+
+    const controls = screen.getByTestId("collective-select-controls");
+    expect(controls.getAttribute("data-last-select-mode")).toBe("open");
+    expect(controls.getAttribute("data-seamless-select-open")).toBe("true");
+    const count = screen.getByTestId("collective-selection-count");
+    expect(count.getAttribute("data-last-select-mode")).toBe("open");
+    expect(count.getAttribute("data-seamless-select-open")).toBe("true");
+    expect(count.getAttribute("data-selected-count")).toBe("2");
+    expect(count.textContent).toMatch(/seamless select open/);
+
+    const pathStatus = screen.getByTestId("collective-select-open-path-status");
+    expect(pathStatus.getAttribute("data-last-select-mode")).toBe("open");
+    expect(pathStatus.getAttribute("data-seamless-select-open")).toBe("true");
+    expect(pathStatus.getAttribute("data-selected-count")).toBe("2");
+    expect(pathStatus.getAttribute("data-open-in-available")).toBe("2");
+    expect(pathStatus.getAttribute("data-view-format")).toBe("html");
+    expect(pathStatus.getAttribute("data-l6-live-multiagent")).toBe("deferred");
+    expect(pathStatus.getAttribute("data-parent-asset-id")).toBe(
+      "asset_afn_parent",
+    );
+    expect(pathStatus.textContent).toMatch(/seamless select open/);
+  });
+
   it("hides select-open control when openSpawnIds omitted (ue)", () => {
     render(
       <CollectiveResearchPanel

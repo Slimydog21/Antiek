@@ -2439,3 +2439,10 @@ continue-as-unit (afh/afk). vitest Collective 25 green.
 Full multi-select unit loop: written analysis Open Write source · continue-as-unit
 · window audit · restore membership · dogfood v15. P0 operator merge PR #465.
 Pivot afn+ outside thrash.
+
+## Residual afn · 2026-07-10 — Select open path honesty
+Select open control stamps data-seamless-select-open · view_format=html ·
+open-in-available · L6 deferred. After click: last-select-mode=open on controls
++ selection count + path status (parent_asset_id · seamless select open copy).
+Multi-spawn assembly open-window path is machine-readable (parity afl restore).
+vitest CollectiveResearchPanel 26 green.

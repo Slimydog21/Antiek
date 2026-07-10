@@ -1,0 +1,21 @@
+# inventory-afn · Select open only path honesty stamps
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: afn
+date: 2026-07-10
+parent_tip: 71efe1fe (afm)
+
+## Closed
+- collective-select-open: data-seamless-select-open · view_format=html ·
+  open-in-available · L6 deferred
+- selectOpenOnly → lastSelectMode=open
+- controls + selection-count: data-last-select-mode · data-seamless-select-open
+- collective-select-open-path-status after open select (parent · counts · L6)
+- vitest CollectiveResearchPanel · 26 passed
+
+## Why this residual
+User multi-select assembly: Select open (ue) had behavior only; path honesty
+stamps make open-window multi-select machine-readable (parity restore/continue).
+
+## Not in scope
+- Select recent path stamps (afo candidate)
+- L6 live multi-agent
