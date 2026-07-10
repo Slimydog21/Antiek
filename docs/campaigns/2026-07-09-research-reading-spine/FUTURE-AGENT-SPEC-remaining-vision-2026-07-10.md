@@ -1,6 +1,6 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** residual **ahb** (pub quick-call matrix complete) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
+**Campaign tip at write:** residual **ahj** (SESSION-ARC ags–ahi · tip ahi `84da8ce0`) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **URL:** https://github.com/Slimydog21/Antiek/pull/465  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
@@ -25,7 +25,9 @@ This continuation: **270+ residual ships** from vy tip `8e280766` · wave **afn�
 | Reading twins matrix | TalkToBook **agm** · MetaReading **agn** · ResearchThis **agq** · dogfood v20 **agp** |
 | Free STEM HTML PD | Faraday…Gödel **agh** · Fourier heat **ags** (free_pd ≥19) · metrics **agt** |
 | Highlight→DR→merge | seamless path **agu** · multi-spawn **agv** · dogfood v22 **agw** |
-| Pub quick-call matrix | launch **agy** · chase **agz** · attach **agx** · hosted **aha** · marketplace **ahb** |
+| Pub quick-call matrix | launch **agy** · chase **agz** · attach **agx** · hosted **aha** · marketplace **ahb** · ResearchThis **ahc** · dogfood v23 **ahd** |
+| Paid book port honesty | **ahe** · L5 FUTURE **ahf** |
+| Budget foresight with pubs | launch **ahg** · chase **ahh** · highlight **ahi** |
 
 ### P0 — Operator merge PR #465
 **Highest leverage remaining.** Agents never merge main/prod.
@@ -33,8 +35,8 @@ This continuation: **270+ residual ships** from vy tip `8e280766` · wave **afn�
 ### L5 digital book port (when unlocked)
 See **FUTURE-AGENT-SPEC-l5-digital-book-seamless-port.md** · offline purchase honesty **ahe**.
 
-### P1 next offline (residual **ahc+**)
-Outside thrash: competitive depth · paid L5 design · MO multi-provider (other agents own live MO stack — avoid collision). Leave free-STEM · merge-path · dogfood · pub quick-call thrash.
+### P1 next offline (residual **ahk+**)
+Outside thrash: competitive depth · twin flywheel · MO only if non-colliding offline. Leave free-STEM · merge · pub matrix · foresight stamp thrash. See **SESSION-ARC-ags-ahi-fourier-merge-pub-budget.md**.
 
 ## Doctrine
 One residual letter/cycle · inventory-first · green tests · campaign push only · complete work never complete goal · Infinite until STOP.

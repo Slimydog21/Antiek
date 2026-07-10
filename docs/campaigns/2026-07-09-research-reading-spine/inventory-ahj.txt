@@ -1,0 +1,14 @@
+# inventory-ahj · SESSION-ARC ags–ahi wave handoff
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ahj
+date: 2026-07-10
+parent_tip: 84da8ce0 (ahi)
+
+## Closed
+- SESSION-ARC-ags-ahi-fourier-merge-pub-budget.md
+- Wave handoff for 17 residuals (ags–ahi)
+- FUTURE re-anchor ahk+
+
+## Next
+ahk+ outside thrash · inventory-first product residual
+Operator merge PR #465 remains highest leverage (gated)
