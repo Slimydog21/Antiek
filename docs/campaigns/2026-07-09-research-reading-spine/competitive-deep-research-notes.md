@@ -3147,3 +3147,9 @@ P0 operator merge PR #465. Pivot ako+ outside thrash.
 Session land / Antiek-bench flywheel navigates Settings prompt-cost projection.
 Budget-before-fire matrix now includes flywheel (akk–ako). vitest SessionFlywheel 7 green.
 P0 operator merge PR #465. Pivot akp+ outside thrash.
+
+## Residual akp · 2026-07-10 — ResearchLaunchBudget prompt-cost projection deep-link
+Launch budget foresight panel navigates full Settings prompt-cost projection.
+Budget-before-fire matrix complete across launch · MO · progress · collective ·
+spawn · flywheel (akk–akp). vitest ResearchLaunchBudget 12 green.
+P0 operator merge PR #465. Pivot akq+ outside thrash.

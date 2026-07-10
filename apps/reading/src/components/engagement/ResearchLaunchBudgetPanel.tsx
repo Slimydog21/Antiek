@@ -351,6 +351,15 @@ export function ResearchLaunchBudgetPanel({
           >
             FUTURE · competitive DR brief
           </a>
+          {/* Residual (akp): launch foresight → full Settings prompt-cost projection (ake). */}
+          <a
+            href="/settings#prompt-cost-projection"
+            data-testid="research-launch-budget-prompt-cost-projection-link"
+            className="text-[10px] font-mono underline opacity-80 hover:opacity-100"
+            title="Settings full prompt-cost projection panel (input chars · expected tokens · remaining-after)"
+          >
+            Settings · prompt-cost projection
+          </a>
           {busy ? (
             <span className="text-[10px] font-mono text-ink-mute">projecting…</span>
           ) : null}

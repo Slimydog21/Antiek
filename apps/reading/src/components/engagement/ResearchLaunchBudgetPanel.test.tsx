@@ -146,6 +146,16 @@ describe("ResearchLaunchBudgetPanel", () => {
         .getByTestId("research-launch-budget-competitive-dr-future-agent-link")
         .getAttribute("href") || "",
     ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    // Residual (akp): launch foresight → full Settings prompt-cost projection panel.
+    expect(
+      screen
+        .getByTestId("research-launch-budget-prompt-cost-projection-link")
+        .getAttribute("href"),
+    ).toBe("/settings#prompt-cost-projection");
+    expect(
+      screen.getByTestId("research-launch-budget-prompt-cost-projection-link")
+        .textContent,
+    ).toMatch(/prompt-cost projection/i);
     // Residual (afb): deep→synthesize best-by-task advisory (never auto-route).
     await waitFor(() => {
       expect(fetchAntiekBenchLeaderboard).toHaveBeenCalled();

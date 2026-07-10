@@ -1,0 +1,16 @@
+# inventory-akp · ResearchLaunchBudget Settings prompt-cost projection deep-link
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: akp
+date: 2026-07-10
+parent_tip: 6cbc181b (ako)
+
+## Closed
+- research-launch-budget-prompt-cost-projection-link → /settings#prompt-cost-projection
+- Launch foresight surface navigates full Settings projection panel
+- Completes prompt-cost matrix including launch (akk–akp)
+- vitest ResearchLaunchBudget 12 green
+- proof: SCRATCH residual-akp-vitest.log
+
+## Next
+akq+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

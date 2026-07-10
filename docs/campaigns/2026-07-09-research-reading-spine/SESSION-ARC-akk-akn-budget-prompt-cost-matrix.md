@@ -1,4 +1,4 @@
-# SESSION-ARC akk–ako · budget-before-fire prompt-cost matrix · 2026-07-10
+# SESSION-ARC akk–akp · budget-before-fire prompt-cost matrix · 2026-07-10
 
 **Branch:** `campaign/research-reading-spine-2026-07-09-main` · PR **#465**  
 **Close tip:** (akn this ship)
@@ -12,6 +12,7 @@
 | **akn** | SpawnMerge highlight→DR→merge | → `#prompt-cost-projection` |
 | **ako** | SessionFlywheel land | → `#prompt-cost-projection` |
 | **ajm** | ResearchLaunchBudget | competitive scorecard (launch foresight) |
+| **akp** | ResearchLaunchBudget | → `#prompt-cost-projection` (full panel) |
 
 ## Product delta
 Operators can jump to Settings prompt-cost projection from every major
