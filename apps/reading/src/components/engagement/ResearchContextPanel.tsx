@@ -1279,17 +1279,24 @@ export function ResearchContextPanel({
               </p>
             </div>
           )}
-          {/* Residual (sf/sg): evidence pack → float|full HTML reading windows. */}
+          {/* Residual (sf/sg/atu): evidence pack → float|full HTML reading windows
+              with html-first · evidence-open-ready · citation-trust stamps. */}
           {evidence.html?.trim() ? (
             <p className="meta font-mono text-[11px] space-x-3">
               <button
                 type="button"
                 data-testid="evidence-pack-open-float"
                 data-view-format="html"
+                data-html-first="true"
                 data-window-mode="floating"
                 data-ref-count={String(evidence.ref_count ?? 0)}
+                data-evidence-open-ready="true"
+                data-source="evidence_pack"
+                data-citation-trust={
+                  (evidence.ref_count ?? 0) > 0 ? "grounded" : "ungrounded"
+                }
                 className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
-                title="Open evidence pack as floating HTML window (citation trust · never PDF)"
+                title="Open evidence pack as floating HTML window (citation trust · multi-hop · never PDF)"
                 onClick={() => {
                   const stem = String(evidence.asset_id || assetId).trim() || "asset";
                   const id = `evidence:${stem}:${Date.now().toString(36)}`;
@@ -1317,10 +1324,16 @@ export function ResearchContextPanel({
                 type="button"
                 data-testid="evidence-pack-open-full"
                 data-view-format="html"
+                data-html-first="true"
                 data-window-mode="full"
                 data-ref-count={String(evidence.ref_count ?? 0)}
+                data-evidence-open-ready="true"
+                data-source="evidence_pack"
+                data-citation-trust={
+                  (evidence.ref_count ?? 0) > 0 ? "grounded" : "ungrounded"
+                }
                 className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
-                title="Open evidence pack as full working-region HTML window (citation trust · never PDF)"
+                title="Open evidence pack as full working-region HTML window (citation trust · multi-hop · never PDF)"
                 onClick={() => {
                   const stem = String(evidence.asset_id || assetId).trim() || "asset";
                   const id = `evidence:${stem}:full:${Date.now().toString(36)}`;
@@ -1378,9 +1391,12 @@ export function ResearchContextPanel({
                   href={href}
                   data-testid="evidence-pack-open-write"
                   data-view-format="html"
+                  data-html-first="true"
                   data-has-twin-seed="1"
                   data-ref-count={String(evidence.ref_count ?? 0)}
                   data-write-seed-has-body={String(hasBody)}
+                  data-evidence-open-ready={String(hasBody)}
+                  data-source="evidence_pack"
                   // Residual (aet): citation-trust evidence → Write path honesty.
                   data-asset-id={evAsset}
                   data-spawn-id={evSpawn}
@@ -1392,8 +1408,8 @@ export function ResearchContextPanel({
                   className="underline opacity-90 hover:opacity-100"
                   title={
                     citationTrust === "grounded"
-                      ? "Open Write with grounded evidence pack as twin_seed (citation trust · no invented document_id)"
-                      : "Open Write with ungrounded evidence pack as twin_seed (citation trust honest · no invented document_id)"
+                      ? "Open Write with grounded evidence pack as twin_seed (citation trust · HTML-first · no invented document_id · never PDF)"
+                      : "Open Write with ungrounded evidence pack as twin_seed (citation trust honest · HTML-first · no invented document_id · never PDF)"
                   }
                 >
                   Open Write (evidence pack)

@@ -4363,3 +4363,8 @@ P0 PR #465. Pivot att+.
 Context pack float|full|Write stamp html-first · context-pack-open-ready ·
 source=research_context_pack. Recursive note-taker substrate open path.
 vitest ResearchContext 21 green. P0 PR #465. Pivot atu+.
+
+## Residual atu · 2026-07-10 — evidence pack open HTML-first readiness
+Evidence float|full|Write stamp html-first · evidence-open-ready ·
+citation-trust · source=evidence_pack. Multi-hop citation open path.
+vitest ResearchContext 21 green. P0 PR #465. Pivot atv+.

@@ -1098,7 +1098,7 @@ describe("ResearchContextPanel", () => {
     expect(screen.getByTestId("evidence-research-tier").textContent).toMatch(
       /long-horizon/i,
     );
-    // Residual (rb/aet): Open Write twin_seed from evidence pack + path honesty.
+    // Residual (rb/aet/atu): Open Write twin_seed from evidence pack + path honesty.
     const write = screen.getByTestId("evidence-pack-open-write");
     const href = write.getAttribute("href") || "";
     expect(href).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
@@ -1107,16 +1107,25 @@ describe("ResearchContextPanel", () => {
     expect(write.getAttribute("data-ref-count")).toBe("1");
     // Residual (acr): insights/questions/html body → has-body true.
     expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
+    // Residual (atu): evidence open HTML-first readiness.
+    expect(write.getAttribute("data-html-first")).toBe("true");
+    expect(write.getAttribute("data-evidence-open-ready")).toBe("true");
+    expect(write.getAttribute("data-source")).toBe("evidence_pack");
     // Residual (aet): citation-trust evidence → Write path honesty.
     expect(write.getAttribute("data-citation-trust")).toBe("grounded");
     expect(write.getAttribute("data-research-tier")).toBe("wrestle");
     expect(write.getAttribute("data-seamless-context-write")).toBe("true");
     expect(write.getAttribute("title") || "").toMatch(/grounded/i);
-    // Residual (sf): float evidence pack as HTML reading window.
+    // Residual (sf/atu): float evidence pack as HTML reading window.
     const floatBtn = screen.getByTestId("evidence-pack-open-float");
     expect(floatBtn.getAttribute("data-view-format")).toBe("html");
+    expect(floatBtn.getAttribute("data-html-first")).toBe("true");
     expect(floatBtn.getAttribute("data-window-mode")).toBe("floating");
     expect(floatBtn.getAttribute("data-ref-count")).toBe("1");
+    expect(floatBtn.getAttribute("data-evidence-open-ready")).toBe("true");
+    expect(floatBtn.getAttribute("data-source")).toBe("evidence_pack");
+    expect(floatBtn.getAttribute("data-citation-trust")).toBe("grounded");
+    expect(floatBtn.getAttribute("title") || "").toMatch(/never PDF/i);
     fireEvent.click(floatBtn);
     expect(openWindow).toHaveBeenCalled();
     const [kind, payload, winOpts] = openWindow.mock.calls.at(-1) as [
@@ -1130,9 +1139,11 @@ describe("ResearchContextPanel", () => {
     expect(payload.html).toMatch(/Attention is routing/);
     expect(payload.title).toMatch(/Evidence pack/i);
     expect(winOpts.mode).toBe("floating");
-    // Residual (sg): full working-region evidence window (float|full parity).
+    // Residual (sg/atu): full working-region evidence window (float|full parity).
     const fullBtn = screen.getByTestId("evidence-pack-open-full");
     expect(fullBtn.getAttribute("data-window-mode")).toBe("full");
+    expect(fullBtn.getAttribute("data-html-first")).toBe("true");
+    expect(fullBtn.getAttribute("data-evidence-open-ready")).toBe("true");
     fireEvent.click(fullBtn);
     const fullCall = openWindow.mock.calls.at(-1) as [
       string,
