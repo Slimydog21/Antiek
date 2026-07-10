@@ -46,6 +46,8 @@
  * (note_count / note_ids / window_id) for recursive note-taker audit.
  * Residual (pp): twin multi-select → Write handoff via sessionStorage twin_seed
  * (brainstorm seed + HTML preview; no invented server document_id).
+ * Residual (acq): data-write-seed-has-body on twin draft + promote Open Write
+ * (true when note/unit body text non-empty; parity ResearchProgress acp).
  * Residual (ps): twin HTML draft full working-region window (parity chase full).
  * Residual (pt): twin-draft-metrics echo note_ids provenance (parity ni chase).
  * Residual (pw): mergeTwinChaseNotes pure helper — dedupe by note_id, questions
@@ -71,6 +73,7 @@ import { launchFloatingDeepResearch } from "../../modes/Reading/launchFloatingDe
 import {
   buildTwinPromoteWriteHref,
   buildTwinWriteHref,
+  plainTextFromHtml,
   storeTwinWriteSeed,
 } from "../../workspace/twinWriteSeed";
 import { openWindow } from "../windows/openWindow";
@@ -252,7 +255,7 @@ export function TwinNotesPanel({
   const [promoteStatus, setPromoteStatus] = useState<string | null>(null);
   /** Residual (mz): chase-selected deep research status chrome. */
   const [chaseStatus, setChaseStatus] = useState<string | null>(null);
-  /** Residual (po/pp/px): last twin HTML draft open + Write handoff metrics. */
+  /** Residual (po/pp/px/acq): last twin HTML draft open + Write handoff metrics. */
   const [draftMetrics, setDraftMetrics] = useState<{
     note_count: number;
     note_ids: string[];
@@ -260,6 +263,8 @@ export function TwinNotesPanel({
     title: string;
     write_href: string | null;
     write_seed_key: string | null;
+    /** Residual (acq): twin_seed body honesty (note text / HTML body non-empty). */
+    write_seed_has_body?: boolean;
     /** Residual (px): cross-asset merge provenance when draft used second asset. */
     merge_asset_ids?: string[] | null;
     merge_source?: string | null;
@@ -853,6 +858,11 @@ export function TwinNotesPanel({
           | "twin_cross_asset_merge",
       });
       const writeHref = seedKey ? buildTwinWriteHref(seedKey) : null;
+      // Residual (acq): body honesty — note selection text or stripped HTML body.
+      const hasBody = Boolean(
+        String(chase.selection_text || "").trim() ||
+          plainTextFromHtml(html || "").trim(),
+      );
       setDraftMetrics({
         note_count: selected.length,
         note_ids: draft.note_ids,
@@ -860,6 +870,7 @@ export function TwinNotesPanel({
         title: draft.title,
         write_href: writeHref,
         write_seed_key: seedKey,
+        write_seed_has_body: hasBody,
         merge_asset_ids: mergeIds,
         merge_source: crossAsset ? source : null,
       });
@@ -1408,6 +1419,10 @@ export function TwinNotesPanel({
                 href={draftMetrics.write_href}
                 data-testid="twin-draft-open-write"
                 data-view-format="html"
+                // Residual (acq): body honesty on twin draft twin_seed (parity acp).
+                data-write-seed-has-body={String(
+                  Boolean(draftMetrics.write_seed_has_body),
+                )}
                 className="underline opacity-90 hover:opacity-100"
                 title="Open Write with twin draft as brainstorm seed (sessionStorage; no server invent)"
               >
@@ -1670,7 +1685,7 @@ export function TwinNotesPanel({
               </li>
             ))}
           </ul>
-          {/* Residual (rr): promote → Write twin_seed. */}
+          {/* Residual (rr/acq): promote → Write twin_seed + body honesty. */}
           {(() => {
             const href = buildTwinPromoteWriteHref({
               assetId: promoted.asset_id || assetId,
@@ -1680,6 +1695,12 @@ export function TwinNotesPanel({
               html: promoted.html,
               promotedCount: promoted.promoted_count,
             });
+            const unitBody = (promoted.context_units || []).some((u) =>
+              Boolean(String(u?.text || "").trim()),
+            );
+            const hasBody = Boolean(
+              unitBody || plainTextFromHtml(promoted.html || "").trim(),
+            );
             return href ? (
               <p className="meta font-mono text-[11px]">
                 <a
@@ -1688,6 +1709,8 @@ export function TwinNotesPanel({
                   data-view-format="html"
                   data-has-twin-seed="1"
                   data-promoted-count={String(promoted.promoted_count ?? 0)}
+                  // Residual (acq): body honesty when units or HTML body non-empty.
+                  data-write-seed-has-body={String(hasBody)}
                   className="underline opacity-90 hover:opacity-100"
                   title="Open Write with promoted twin context units as twin_seed (sessionStorage; no invented document_id)"
                 >

@@ -37,13 +37,19 @@ vi.mock("../windows/openWindow", () => ({
   openWindow: (...args: unknown[]) => openWindow(...args),
 }));
 
-vi.mock("../../workspace/twinWriteSeed", () => ({
-  storeTwinWriteSeed: (...args: unknown[]) => storeTwinWriteSeed(...args),
-  buildTwinWriteHref: (...args: unknown[]) =>
-    buildTwinWriteHref(...(args as [string])),
-  buildTwinPromoteWriteHref: (...args: unknown[]) =>
-    buildTwinPromoteWriteHref(...args),
-}));
+vi.mock("../../workspace/twinWriteSeed", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("../../workspace/twinWriteSeed")
+  >();
+  return {
+    ...actual,
+    storeTwinWriteSeed: (...args: unknown[]) => storeTwinWriteSeed(...args),
+    buildTwinWriteHref: (...args: unknown[]) =>
+      buildTwinWriteHref(...(args as [string])),
+    buildTwinPromoteWriteHref: (...args: unknown[]) =>
+      buildTwinPromoteWriteHref(...args),
+  };
+});
 
 vi.mock("./DecisionTreeDriverBadge", () => ({
   DecisionTreeDriverBadge: (props: {
@@ -660,6 +666,8 @@ describe("TwinNotesPanel", () => {
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
     expect(write.getAttribute("data-promoted-count")).toBe("1");
     expect(write.textContent).toMatch(/Open Write \(promoted twins\)/i);
+    // Residual (acq): context unit body → has-body true.
+    expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
   });
 
   it("promotes visible list filter in one click (ms)", async () => {
@@ -1283,6 +1291,8 @@ describe("TwinNotesPanel", () => {
       "/write?twin_seed=antiek.twin_write_seed.testkey",
     );
     expect(write.getAttribute("data-view-format")).toBe("html");
+    // Residual (acq): selected note body → has-body true.
+    expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
   });
 
   it("opens twin HTML draft in full working-region window (ps)", async () => {
