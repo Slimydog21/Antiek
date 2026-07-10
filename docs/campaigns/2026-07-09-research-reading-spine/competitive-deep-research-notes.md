@@ -2469,3 +2469,8 @@ PR #465. Pivot afr+ outside thrash.
 recent deep_research_session spawns exist (openSpawnIds · recent_ring · parent=
 investigationId). Reading ≡ research workstation multi-select assembly.
 vitest ResearchWorkstation collective 3 + feel 3 green.
+
+## Residual afs · 2026-07-10 — ResearchWorkstation twin note-taker
+/inv/:id InvestigationCenter always mounts TwinNotesPanel (autoLoad ·
+autoSeedIfEmpty · seed from investigation.question). Recursive note-taker
+substrate on research workstation (parity DR/hosted). vitest RW 8 green.

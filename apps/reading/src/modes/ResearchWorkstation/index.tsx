@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { CollectiveResearchPanel } from "../../components/engagement/CollectiveResearchPanel";
+import { TwinNotesPanel } from "../../components/engagement/TwinNotesPanel";
 import { useInvestigation } from "../../hooks/useInvestigation";
 import type { InvestigationState } from "../../hooks/useInvestigation";
 import { parseSynthesis } from "../../lib/synthesisParser";
@@ -69,6 +70,8 @@ import ThinkingStream from "./ThinkingStream";
  * Residual (afr): CollectiveResearchPanel on /inv/:id when open or recent
  * deep_research_session spawns exist — multi-select assembly parity with
  * reading ResearchThis · Write · MO (reading ≡ research workstation).
+ * Residual (afs): TwinNotesPanel on /inv/:id for recursive note-taker twin
+ * (parity DR/hosted hosts · every investigation asset has twin substrate).
  */
 export default function ResearchWorkstation() {
   const params = useParams<{ investigationId?: string }>();
@@ -212,6 +215,24 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
       className="h-full overflow-y-auto relative"
     >
       <CenterContent investigation={investigation} onChaseQuestion={onChaseQuestion} />
+      {/* Residual (afs): recursive note-taker twin for this investigation asset. */}
+      <section
+        className="border-t border-rule px-4 py-4 dark:border-charcoal-1"
+        data-testid="research-workstation-twins-mount"
+        data-view-format="html"
+        data-investigation-id={investigationId}
+        data-seamless-workstation-twins="true"
+      >
+        <TwinNotesPanel
+          assetId={investigationId}
+          autoLoad
+          autoSeedIfEmpty
+          seedTitle={
+            (investigation.question || "").trim() || investigationId
+          }
+          seedBodyText={(investigation.question || "").trim() || ""}
+        />
+      </section>
       {/* Residual (afr): multi-select open + recent DR spawns → this investigation. */}
       {availableSpawnIds.length > 0 ? (
         <section

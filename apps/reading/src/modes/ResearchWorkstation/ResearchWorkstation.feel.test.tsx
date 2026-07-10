@@ -36,4 +36,16 @@ describe("ResearchWorkstation — dense IDE exempt from floating stack chrome", 
     expect(src).toMatch(/openSpawnIds/);
     expect(src).toMatch(/data-seamless-workstation-collective/);
   });
+
+  // Residual (afs): investigation centre wires recursive note-taker twins.
+  it("InvestigationCenter mounts TwinNotesPanel recursive note-taker (afs)", () => {
+    const src = readFileSync(
+      resolve(import.meta.dirname, "index.tsx"),
+      "utf8",
+    );
+    expect(src).toMatch(/TwinNotesPanel/);
+    expect(src).toMatch(/research-workstation-twins-mount/);
+    expect(src).toMatch(/autoSeedIfEmpty/);
+    expect(src).toMatch(/data-seamless-workstation-twins/);
+  });
 });

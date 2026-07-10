@@ -1,0 +1,18 @@
+# inventory-afs · ResearchWorkstation TwinNotes recursive note-taker
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: afs
+date: 2026-07-10
+parent_tip: 29468817 (afr)
+
+## Closed
+- TwinNotesPanel on InvestigationCenter (always, not spawn-gated)
+- research-workstation-twins-mount · seamless-workstation-twins
+- autoLoad · autoSeedIfEmpty · seedTitle/body from question
+- vitest collective 4 · feel 4
+
+## Why this residual
+User vision: every information asset has twin insights/questions. Workstation
+/inv lacked twin panel while DR/hosted reading had it. Reading ≡ research.
+
+## Not in scope
+- Live L3 twin seed dual-gate · autoPromoteAfterLoad (optional later)

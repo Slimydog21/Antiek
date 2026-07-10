@@ -78,6 +78,25 @@ vi.mock("../../components/engagement/CollectiveResearchPanel", () => ({
   ),
 }));
 
+vi.mock("../../components/engagement/TwinNotesPanel", () => ({
+  TwinNotesPanel: (props: {
+    assetId: string;
+    autoLoad?: boolean;
+    autoSeedIfEmpty?: boolean;
+    seedTitle?: string;
+  }) => (
+    <div
+      data-testid="twin-notes-panel-stub"
+      data-asset-id={props.assetId}
+      data-auto-load={String(Boolean(props.autoLoad))}
+      data-auto-seed={String(Boolean(props.autoSeedIfEmpty))}
+      data-seed-title={props.seedTitle ?? ""}
+    >
+      twins={props.assetId}
+    </div>
+  ),
+}));
+
 vi.mock("./HighlightToolbar", () => ({
   default: () => <div data-testid="highlight-toolbar-stub" />,
 }));
@@ -148,6 +167,33 @@ describe("ResearchWorkstation collective multi-select (afr)", () => {
     expect(panel.textContent).toMatch(/parent=inv_afr:spawns=spn_a,spn_b/);
   });
 
+  it("always mounts TwinNotesPanel recursive note-taker (afs)", () => {
+    useInvestigationMock.mockReturnValue({
+      id: "inv_afs",
+      status: "in_progress",
+      question: "What is attention?",
+      events: [],
+      terminalPayload: null,
+      costTotal: 0,
+      completedAt: null,
+      streamStatus: "open",
+      reconnects: 0,
+    });
+    collectDeepResearchSpawnIdsMock.mockReturnValue([]);
+
+    mountInv("inv_afs");
+
+    const mount = screen.getByTestId("research-workstation-twins-mount");
+    expect(mount.getAttribute("data-view-format")).toBe("html");
+    expect(mount.getAttribute("data-investigation-id")).toBe("inv_afs");
+    expect(mount.getAttribute("data-seamless-workstation-twins")).toBe("true");
+    const twins = screen.getByTestId("twin-notes-panel-stub");
+    expect(twins.getAttribute("data-asset-id")).toBe("inv_afs");
+    expect(twins.getAttribute("data-auto-load")).toBe("true");
+    expect(twins.getAttribute("data-auto-seed")).toBe("true");
+    expect(twins.getAttribute("data-seed-title")).toBe("What is attention?");
+  });
+
   it("omits collective mount when no spawn ids available", () => {
     useInvestigationMock.mockReturnValue({
       id: "inv_empty",
@@ -170,6 +216,8 @@ describe("ResearchWorkstation collective multi-select (afr)", () => {
     expect(
       screen.queryByTestId("collective-research-panel-stub"),
     ).toBeNull();
+    // Residual (afs): twins still present without DR spawns.
+    expect(screen.getByTestId("research-workstation-twins-mount")).toBeTruthy();
   });
 
   it("wires open + recent into collectDeepResearchSpawnIds (afr)", () => {

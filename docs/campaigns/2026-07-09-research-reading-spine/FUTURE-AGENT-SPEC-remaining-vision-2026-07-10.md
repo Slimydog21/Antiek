@@ -1,13 +1,13 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** residual **afr** (ResearchWorkstation collective multi-select) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
+**Campaign tip at write:** residual **afs** (ResearchWorkstation TwinNotes recursive note-taker) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **URL:** https://github.com/Slimydog21/Antiek/pull/465  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
 
 ## Do not rebuild
 
-Prefer **inventory-afr** + **SESSION-ARC-afn-afp-multi-select-assembly-path.md** + **SESSION-ARC-afg-afl-collective-multi-spawn-complete.md**.  
+Prefer **inventory-afs** + **inventory-afr** + **SESSION-ARC-afn-afp-multi-select-assembly-path.md**.  
 This continuation: **250 residual ships** from vy tip `8e280766`.
 
 ### Closed product (high signal)
@@ -21,12 +21,13 @@ This continuation: **250 residual ships** from vy tip `8e280766`.
 | Dual-gate L1–L4 + L7 ND | **aec–aee** · **aez** |
 | NotDiamond | Advisory only · never router |
 | ResearchWorkstation collective | **afr** /inv/:id multi-select |
+| ResearchWorkstation twins | **afs** TwinNotes recursive note-taker |
 
 ### P0 — Operator merge PR #465
 **Highest leverage remaining.** Agents never merge main/prod.
 
-### P1 next offline (residual **afs+**)
-Outside thrash: MO live multi-provider · paid L5 · competitive depth. RW collective closed (afr). Leave thrash.
+### P1 next offline (residual **aft+**)
+Outside thrash: MO live multi-provider · paid L5 · competitive depth. RW collective+twins closed (afr/afs). Leave thrash.
 
 ## Doctrine
 One residual letter/cycle · inventory-first · green tests · campaign push only · complete work never complete goal · Infinite until STOP.
