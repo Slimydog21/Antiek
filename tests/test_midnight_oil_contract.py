@@ -16,6 +16,7 @@ from substrate.midnight_oil import (
     MidnightOilDispatchRequest,
     MidnightOilDryRunRequest,
     MidnightOilFinalArtifactAdapterPlanRequest,
+    MidnightOilFinalArtifactCompletionFinalizationPlanRequest,
     MidnightOilFinalArtifactGraphCommitPlanRequest,
     MidnightOilFinalArtifactPersistencePlanRequest,
     MidnightOilFinalArtifactPublishPlanRequest,
@@ -57,6 +58,7 @@ from substrate.midnight_oil import (
     dispatch_midnight_oil,
     dry_run_midnight_oil,
     final_artifact_adapter_plan_midnight_oil,
+    final_artifact_completion_finalization_plan_midnight_oil,
     final_artifact_graph_commit_plan_midnight_oil,
     final_artifact_midnight_oil,
     final_artifact_persistence_plan_midnight_oil,
@@ -9155,6 +9157,289 @@ def test_midnight_oil_final_artifact_publish_plan_api_contract() -> None:
     assert body["private_read_url_created"] is False
     assert body["operator_notification_created"] is False
     assert body["graph_commit_created"] is False
+    assert body["graph_mutated"] is False
+    assert body["provider_calls_made"] is False
+    assert body["retrieval_performed"] is False
+    assert body["final_artifact_created"] is False
+
+
+def _final_artifact_completion_finalization_request_kwargs(
+    chain: dict[str, object],
+    output_aggregation_plan: object,
+    synthesis_handoff_plan: object,
+    synthesis_bundle_assembly_plan: object,
+    final_synthesis_draft_plan: object,
+    final_html_artifact_assembly_plan: object,
+    final_artifact_persistence_plan: object,
+    final_artifact_graph_commit_plan: object,
+    final_artifact_publish_plan: object,
+) -> dict[str, object]:
+    return {
+        **_final_artifact_publish_request_kwargs(
+            chain,
+            output_aggregation_plan,
+            synthesis_handoff_plan,
+            synthesis_bundle_assembly_plan,
+            final_synthesis_draft_plan,
+            final_html_artifact_assembly_plan,
+            final_artifact_persistence_plan,
+            final_artifact_graph_commit_plan,
+        ),
+        "final_artifact_publish_plan_receipt": final_artifact_publish_plan,
+    }
+
+
+def _accepted_midnight_oil_final_artifact_publish_plan_chain(
+    *,
+    goal: str,
+    source_policy: list[str],
+    requested_control_scope: list[str],
+) -> dict[str, object]:
+    chain = _accepted_midnight_oil_final_artifact_graph_commit_plan_chain(
+        goal=goal,
+        source_policy=source_policy,
+        requested_control_scope=requested_control_scope,
+    )
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+    draft_plan = chain["final_synthesis_draft_plan"]
+    html_plan = chain["final_html_artifact_assembly_plan"]
+    persistence_plan = chain["final_artifact_persistence_plan"]
+    graph_commit_plan = chain["final_artifact_graph_commit_plan"]
+    publish_plan = final_artifact_publish_plan_midnight_oil(
+        MidnightOilFinalArtifactPublishPlanRequest(
+            **_final_artifact_publish_request_kwargs(
+                chain,
+                output_plan,
+                handoff_plan,
+                assembly_plan,
+                draft_plan,
+                html_plan,
+                persistence_plan,
+                graph_commit_plan,
+            )
+        )
+    )
+    return {
+        **chain,
+        "final_artifact_publish_plan": publish_plan,
+    }
+
+
+def test_final_artifact_completion_finalization_plan_records_disabled_requirements() -> None:
+    chain = _accepted_midnight_oil_final_artifact_publish_plan_chain(
+        goal="Plan final artifact completion after publish planning.",
+        source_policy=["arxiv", "web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+    draft_plan = chain["final_synthesis_draft_plan"]
+    html_plan = chain["final_html_artifact_assembly_plan"]
+    persistence_plan = chain["final_artifact_persistence_plan"]
+    graph_commit_plan = chain["final_artifact_graph_commit_plan"]
+    publish_plan = chain["final_artifact_publish_plan"]
+
+    completion_plan = final_artifact_completion_finalization_plan_midnight_oil(
+        MidnightOilFinalArtifactCompletionFinalizationPlanRequest(
+            **_final_artifact_completion_finalization_request_kwargs(
+                chain,
+                output_plan,
+                handoff_plan,
+                assembly_plan,
+                draft_plan,
+                html_plan,
+                persistence_plan,
+                graph_commit_plan,
+                publish_plan,
+            )
+        )
+    )
+
+    assert completion_plan.receipt_id == (
+        f"{preflight.run_id}-final-artifact-completion-finalization-plan"
+    )
+    assert completion_plan.final_artifact_publish_plan_receipt_id == (
+        publish_plan.receipt_id
+    )
+    assert completion_plan.status == (
+        "blocked_final_artifact_completion_finalization_unimplemented"
+    )
+    assert completion_plan.adapter_key == "final_artifact_completion_finalization"
+    assert completion_plan.planned_final_artifact_completion_receipt_id == (
+        f"{preflight.run_id}-final-artifact-completion-receipt"
+    )
+    assert completion_plan.planned_completion_record_id == (
+        f"{preflight.run_id}-final-artifact-completion-record"
+    )
+    assert completion_plan.planned_finalization_transaction_id == (
+        f"{preflight.run_id}-final-artifact-finalization-transaction"
+    )
+    assert completion_plan.planned_artifact_archive_manifest_id == (
+        f"{preflight.run_id}-final-artifact-archive-manifest"
+    )
+    assert completion_plan.planned_account_visible_asset_id == (
+        publish_plan.planned_account_visible_asset_id
+    )
+    assert "delivery status finalizer" in (
+        completion_plan.final_artifact_completion_finalization_blockers
+    )
+    assert "completion_record_id" in (
+        completion_plan.required_final_artifact_completion_finalization_receipt_fields
+    )
+    assert "must require final artifact publish planning" in (
+        completion_plan.required_final_artifact_completion_finalization_invariants[0]
+    )
+    assert completion_plan.blocker_reason == (
+        "final_artifact_completion_finalization_unimplemented"
+    )
+    assert completion_plan.final_artifact_completion_finalization_allowed is False
+    assert completion_plan.completion_record_created is False
+    assert completion_plan.finalization_transaction_created is False
+    assert completion_plan.artifact_archive_manifest_created is False
+    assert completion_plan.operator_handoff_summary_created is False
+    assert completion_plan.delivery_status_marked_complete is False
+    assert completion_plan.quality_attestation_created is False
+    assert completion_plan.completion_audit_entry_created is False
+    assert completion_plan.publish_transaction_created is False
+    assert completion_plan.account_visible_asset_created is False
+    assert completion_plan.private_read_url_created is False
+    assert completion_plan.graph_mutated is False
+    assert completion_plan.final_artifact_created is False
+    assert "no completion record" in completion_plan.adapter_plan_notes[0]
+
+
+def test_final_artifact_completion_finalization_plan_rejects_publish_state() -> None:
+    chain = _accepted_midnight_oil_final_artifact_publish_plan_chain(
+        goal="Reject publish state before completion finalization planning.",
+        source_policy=["web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+    draft_plan = chain["final_synthesis_draft_plan"]
+    html_plan = chain["final_html_artifact_assembly_plan"]
+    persistence_plan = chain["final_artifact_persistence_plan"]
+    graph_commit_plan = chain["final_artifact_graph_commit_plan"]
+    bad_publish_plan = chain["final_artifact_publish_plan"].model_copy(
+        update={"information_asset_published": True}
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match="final_artifact_publish_plan_receipt must not create publish state",
+    ):
+        MidnightOilFinalArtifactCompletionFinalizationPlanRequest(
+            **_final_artifact_completion_finalization_request_kwargs(
+                chain,
+                output_plan,
+                handoff_plan,
+                assembly_plan,
+                draft_plan,
+                html_plan,
+                persistence_plan,
+                graph_commit_plan,
+                bad_publish_plan,
+            )
+        )
+
+
+def test_midnight_oil_final_artifact_completion_finalization_plan_api_contract() -> None:
+    from interfaces.research.api.app import create_app
+
+    chain = _accepted_midnight_oil_final_artifact_publish_plan_chain(
+        goal="Expose final artifact completion finalization planning over the API.",
+        source_policy=["arxiv", "substack"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+    draft_plan = chain["final_synthesis_draft_plan"]
+    html_plan = chain["final_html_artifact_assembly_plan"]
+    persistence_plan = chain["final_artifact_persistence_plan"]
+    graph_commit_plan = chain["final_artifact_graph_commit_plan"]
+    publish_plan = chain["final_artifact_publish_plan"]
+    request_json = {
+        key: value.model_dump(mode="json")
+        for key, value in _final_artifact_completion_finalization_request_kwargs(
+            chain,
+            output_plan,
+            handoff_plan,
+            assembly_plan,
+            draft_plan,
+            html_plan,
+            persistence_plan,
+            graph_commit_plan,
+            publish_plan,
+        ).items()
+    }
+
+    with TestClient(create_app()) as client:
+        r = client.post(
+            "/research/midnight-oil/final-artifact-completion-finalization-plan",
+            json=request_json,
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["receipt_id"] == (
+        f"{preflight.run_id}-final-artifact-completion-finalization-plan"
+    )
+    assert body["final_artifact_publish_plan_receipt_id"] == publish_plan.receipt_id
+    assert body["status"] == (
+        "blocked_final_artifact_completion_finalization_unimplemented"
+    )
+    assert body["adapter_key"] == "final_artifact_completion_finalization"
+    assert body["planned_final_artifact_completion_receipt_id"] == (
+        f"{preflight.run_id}-final-artifact-completion-receipt"
+    )
+    assert body["planned_artifact_archive_manifest_id"] == (
+        f"{preflight.run_id}-final-artifact-archive-manifest"
+    )
+    assert "quality attestation writer" in body[
+        "final_artifact_completion_finalization_blockers"
+    ]
+    assert "delivery_status_id" in (
+        body["required_final_artifact_completion_finalization_receipt_fields"]
+    )
+    assert body["blocker_reason"] == (
+        "final_artifact_completion_finalization_unimplemented"
+    )
+    assert body["final_artifact_completion_finalization_allowed"] is False
+    assert body["completion_record_created"] is False
+    assert body["finalization_transaction_created"] is False
+    assert body["artifact_archive_manifest_created"] is False
+    assert body["operator_handoff_summary_created"] is False
+    assert body["delivery_status_marked_complete"] is False
+    assert body["completion_audit_entry_created"] is False
+    assert body["publish_transaction_created"] is False
     assert body["graph_mutated"] is False
     assert body["provider_calls_made"] is False
     assert body["retrieval_performed"] is False

@@ -2789,6 +2789,78 @@ export interface MidnightOilFinalArtifactPublishPlanReceipt {
   adapter_plan_notes: string[];
 }
 
+export interface MidnightOilFinalArtifactCompletionFinalizationPlanRequest
+  extends MidnightOilFinalArtifactPublishPlanRequest {
+  final_artifact_publish_plan_receipt: MidnightOilFinalArtifactPublishPlanReceipt;
+}
+
+export interface MidnightOilFinalArtifactCompletionFinalizationPlanReceipt {
+  receipt_id: string;
+  final_artifact_publish_plan_receipt_id: string;
+  final_artifact_graph_commit_plan_receipt_id: string;
+  final_artifact_persistence_plan_receipt_id: string;
+  final_html_artifact_assembly_plan_receipt_id: string;
+  final_synthesis_draft_plan_receipt_id: string;
+  synthesis_bundle_assembly_plan_receipt_id: string;
+  worker_synthesis_handoff_plan_receipt_id: string;
+  worker_output_aggregation_plan_receipt_id: string;
+  launch_packet_id: string;
+  approval_receipt_id: string;
+  runner_handoff_id: string;
+  run_id: string;
+  status: "blocked_final_artifact_completion_finalization_unimplemented";
+  adapter_key: "final_artifact_completion_finalization";
+  planned_final_artifact_completion_receipt_id: string;
+  planned_final_artifact_finalization_receipt_id: string;
+  planned_completion_record_id: string;
+  planned_finalization_transaction_id: string;
+  planned_artifact_archive_manifest_id: string;
+  planned_operator_handoff_summary_id: string;
+  planned_delivery_status_id: string;
+  planned_quality_attestation_id: string;
+  planned_completion_audit_entry_id: string;
+  planned_publish_transaction_id: string;
+  planned_account_visible_asset_id: string;
+  planned_reading_workspace_entry_id: string;
+  planned_search_index_entry_id: string;
+  planned_private_read_url_id: string;
+  planned_graph_commit_id: string;
+  planned_graph_snapshot_id: string;
+  planned_information_asset_id: string;
+  planned_hosted_html_asset_id: string;
+  planned_runner_dispatch_id: string;
+  planned_idempotency_key: string;
+  final_artifact_completion_finalization_blockers: string[];
+  required_final_artifact_completion_finalization_invariants: string[];
+  required_final_artifact_completion_finalization_receipt_fields: string[];
+  blocker_reason: "final_artifact_completion_finalization_unimplemented";
+  final_artifact_completion_finalization_allowed: boolean;
+  completion_record_created: boolean;
+  finalization_transaction_created: boolean;
+  artifact_archive_manifest_created: boolean;
+  operator_handoff_summary_created: boolean;
+  delivery_status_marked_complete: boolean;
+  quality_attestation_created: boolean;
+  completion_audit_entry_created: boolean;
+  final_artifact_publish_allowed: boolean;
+  publish_transaction_created: boolean;
+  information_asset_published: boolean;
+  account_visible_asset_created: boolean;
+  reading_workspace_entry_created: boolean;
+  search_index_entry_created: boolean;
+  private_read_url_created: boolean;
+  operator_notification_created: boolean;
+  graph_commit_created: boolean;
+  graph_mutated: boolean;
+  final_artifact_created: boolean;
+  dispatch_performed: boolean;
+  budget_reserved: boolean;
+  provider_calls_made: boolean;
+  retrieval_performed: boolean;
+  source_receipts_created: boolean;
+  adapter_plan_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -3513,4 +3585,24 @@ export async function finalArtifactPublishPlanMidnightOil(
     );
   }
   return (await resp.json()) as MidnightOilFinalArtifactPublishPlanReceipt;
+}
+
+export async function finalArtifactCompletionFinalizationPlanMidnightOil(
+  request: MidnightOilFinalArtifactCompletionFinalizationPlanRequest,
+): Promise<MidnightOilFinalArtifactCompletionFinalizationPlanReceipt> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/midnight-oil/final-artifact-completion-finalization-plan`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+  );
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(
+      `POST /research/midnight-oil/final-artifact-completion-finalization-plan: HTTP ${resp.status}: ${body}`,
+    );
+  }
+  return (await resp.json()) as MidnightOilFinalArtifactCompletionFinalizationPlanReceipt;
 }
