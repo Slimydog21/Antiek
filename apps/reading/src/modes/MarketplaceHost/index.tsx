@@ -64,6 +64,8 @@
  * rows vs full-catalog free_count when free-only/subject/source/text filters on.
  * Residual (tb): library free/PD honesty under text filter (parity catalog ta).
  * Residual (tc): host-land free/PD honesty stamp (public_domain free host path).
+ * Residual (ahe): paid purchase+host seamless port honesty (manual receipt ·
+ * L5 deferred · HTML host into account · never invent live checkout).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -1293,8 +1295,16 @@ export default function MarketplaceHost({
               <button
                 type="button"
                 data-testid={`purchase-host-${e.book_id}`}
+                data-book-id={e.book_id}
+                data-seamless-purchase-port="true"
+                data-l5-payment-rails="deferred"
+                data-live-payment="false"
+                data-view-format="html"
+                data-payment-rails="manual_receipt_only"
+                data-receipt-required="true"
                 disabled={busy || !receiptRef.trim()}
                 onClick={() => void onPurchaseAndHost(e)}
+                title="Purchase + host with manual receipt token (L5 live rails deferred · HTML account port)"
               >
                 Purchase + host
               </button>
@@ -1355,6 +1365,23 @@ export default function MarketplaceHost({
             // Residual (adh): L5 payment deferred honesty + HTML-first host land.
             data-l5-payment-rails="deferred"
             data-html-first="true"
+            // Residual (ahe): purchased (non-free) path honesty after manual receipt host.
+            data-purchased-path={String(
+              Boolean(
+                hosted.license_class &&
+                  hosted.license_class !== "public_domain" &&
+                  !entries.find((e) => e.book_id === hosted.book_id)?.is_free,
+              ),
+            )}
+            data-seamless-purchase-port={String(
+              Boolean(
+                hosted.license_class &&
+                  hosted.license_class !== "public_domain" &&
+                  (hosted.view_format || "html") === "html" &&
+                  Boolean(hosted.document_id),
+              ),
+            )}
+            data-live-payment="false"
             // Residual (aea): seamless port audit — catalog → account library → HTML host → twins.
             data-seamless-port={String(
               (hosted.view_format || "html") === "html" &&

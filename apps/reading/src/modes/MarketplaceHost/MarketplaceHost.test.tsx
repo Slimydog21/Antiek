@@ -787,6 +787,16 @@ describe("MarketplaceHost mode", () => {
       // Catalog purchase button (library may also list "Modern Systems" after mount).
       expect(screen.getByTestId("purchase-host-buy-modern")).toBeTruthy();
     });
+    // Residual (ahe): paid purchase+host seamless port honesty (L5 deferred).
+    const purchaseBtn = screen.getByTestId("purchase-host-buy-modern");
+    expect(purchaseBtn.getAttribute("data-seamless-purchase-port")).toBe("true");
+    expect(purchaseBtn.getAttribute("data-l5-payment-rails")).toBe("deferred");
+    expect(purchaseBtn.getAttribute("data-live-payment")).toBe("false");
+    expect(purchaseBtn.getAttribute("data-view-format")).toBe("html");
+    expect(purchaseBtn.getAttribute("data-payment-rails")).toBe(
+      "manual_receipt_only",
+    );
+    expect(purchaseBtn.getAttribute("data-receipt-required")).toBe("true");
     expect(screen.getByTestId("purchase-receipt-ref")).toBeTruthy();
     fireEvent.click(screen.getByTestId("purchase-host-buy-modern"));
     await waitFor(() => {
@@ -817,6 +827,11 @@ describe("MarketplaceHost mode", () => {
     expect(hostMetrics.getAttribute("data-payment-rails")).toBe(
       "manual_receipt_only",
     );
+    // Residual (ahe): purchased path seamless port after manual receipt host.
+    expect(hostMetrics.getAttribute("data-purchased-path")).toBe("true");
+    expect(hostMetrics.getAttribute("data-seamless-purchase-port")).toBe("true");
+    expect(hostMetrics.getAttribute("data-live-payment")).toBe("false");
+    expect(hostMetrics.getAttribute("data-l5-payment-rails")).toBe("deferred");
     // Residual (aea): seamless port catalog → account library → HTML host.
     expect(hostMetrics.getAttribute("data-seamless-port")).toBe("true");
     expect(hostMetrics.getAttribute("data-library-landed")).toBe("true");

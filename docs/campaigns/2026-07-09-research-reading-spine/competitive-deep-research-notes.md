@@ -2684,3 +2684,11 @@ knowledge-dense publication quick-call matrix (agx–ahc). Settings spine v23.
 item_count 36 · wrestle=23. Recursive Antiek-bench rewrite feed.
 pytest dogfood 5 · Settings 36 green. P0 operator merge PR #465.
 Pivot ahe+ outside thrash.
+
+## Residual ahe · 2026-07-10 — marketplace paid purchase+host seamless port honesty
+Purchase + host buttons stamp data-seamless-purchase-port · L5 deferred ·
+live_payment=false · HTML view · manual_receipt_only · receipt-required.
+Host land metrics stamp purchased-path for non-PD books. Competitive delta:
+digital book buy → seamless Antiek HTML account port without inventing live
+checkout rails. vitest MarketplaceHost 41 green. P0 operator merge PR #465.
+Pivot ahf+ outside thrash.
