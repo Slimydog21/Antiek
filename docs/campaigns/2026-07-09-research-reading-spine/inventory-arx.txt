@@ -1,0 +1,24 @@
+# inventory-arx · twin promote CTAs gated by hydrated substrate kind readiness
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: arx
+date: 2026-07-10
+parent_tip: c8c1c5cb9 (arw)
+
+## Closed
+- twin-promote-context: disabled when hydrated empty / wrong kind leg
+  - twins==null (not hydrated) → allow (server may hold notes)
+  - all → !empty · insight → has_insights · question → has_questions
+- twin-promote-visible: disabled when hydrated && visibleNotes.length===0
+- CTA stamps: data-promote-ready · data-substrate-* · data-promote-kinds · data-twins-hydrated
+- Title honesty for empty / missing insight / missing question
+- TwinNotesPanel.test: gates promote CTAs by hydrated substrate (arx)
+- vitest TwinNotesPanel: 35 green
+
+## Doctrine
+twin promote substance · pure readiness (arq) drives CTA enablement · never invent notes
+Parity free-host (arw) + receipt (ars) readiness→CTA pattern
+
+## Next
+ary+ offline product residual outside thrash
+Avoid: free-host thrash aru–arw · twin promote gate thrash after arx · twin-substrate stamp-only thrash
+Operator merge PR #465 remains P0 (gated)

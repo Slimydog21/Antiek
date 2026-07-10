@@ -1006,6 +1006,89 @@ describe("TwinNotesPanel", () => {
     ).toBe("question");
   });
 
+  it("gates promote CTAs by hydrated substrate kind readiness (arx)", async () => {
+    fetchTwinNotes.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 0,
+      insight_count: 0,
+      question_count: 0,
+      notes: [],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+      html: "",
+    });
+    render(<TwinNotesPanel assetId="paper" autoLoad />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("twin-promote-context").getAttribute("data-twins-hydrated"),
+      ).toBe("true");
+    });
+    const promoteAll = screen.getByTestId(
+      "twin-promote-context",
+    ) as HTMLButtonElement;
+    expect(promoteAll.getAttribute("data-promote-ready")).toBe("false");
+    expect(promoteAll.getAttribute("data-substrate-empty")).toBe("true");
+    expect(promoteAll.disabled).toBe(true);
+    expect(promoteAll.getAttribute("title") || "").toMatch(/Empty twin substrate/i);
+    const promoteVisible = screen.getByTestId(
+      "twin-promote-visible",
+    ) as HTMLButtonElement;
+    expect(promoteVisible.getAttribute("data-promote-ready")).toBe("false");
+    expect(promoteVisible.disabled).toBe(true);
+
+    // Insights only → promote all ready; promote questions kind not ready.
+    fetchTwinNotes.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 1,
+      insight_count: 1,
+      question_count: 0,
+      notes: [
+        {
+          note_id: "twin_i",
+          asset_id: "paper",
+          kind: "insight",
+          text: "Insight only",
+        },
+      ],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+      html: "<p>i</p>",
+    });
+    fireEvent.click(screen.getByTestId("twin-refresh"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("twin-promote-context").getAttribute("data-promote-ready"),
+      ).toBe("true");
+    });
+    expect(
+      (screen.getByTestId("twin-promote-context") as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(
+      screen.getByTestId("twin-promote-context").getAttribute("data-has-insights"),
+    ).toBe("true");
+    expect(
+      screen.getByTestId("twin-promote-context").getAttribute("data-has-questions"),
+    ).toBe("false");
+    fireEvent.change(screen.getByTestId("twin-promote-kinds"), {
+      target: { value: "question" },
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("twin-promote-context").getAttribute("data-promote-ready"),
+      ).toBe("false");
+    });
+    expect(
+      (screen.getByTestId("twin-promote-context") as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      screen.getByTestId("twin-promote-context").getAttribute("title") || "",
+    ).toMatch(/No question twins/i);
+  });
+
   it("multi-selects note_ids and promotes selected only (mx)", async () => {
     fetchTwinNotes.mockResolvedValue({
       asset_id: "paper",

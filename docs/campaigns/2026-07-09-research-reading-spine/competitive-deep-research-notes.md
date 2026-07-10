@@ -4095,3 +4095,10 @@ data-receipt-required=false · data-never-pdf-view · title honesty.
 Parity purchase-host receipt gate. Competitive delta: free HTML host path is
 hard-to-vary pure contract end-to-end (readiness → CTA), never invent free.
 vitest 47 green. P0 PR #465. Pivot arx+ outside thrash.
+
+## Residual arx · 2026-07-10 — twin promote CTAs gated by substrate kind
+twin-promote-context / twin-promote-visible honor twinSubstrateReadiness after
+hydrate: empty → disabled · kind leg missing → disabled · not-yet-hydrated →
+allow (server may hold notes). Competitive delta: recursive note-taker promote
+path is hard-to-vary pure contract (readiness → CTA), never invent notes.
+vitest TwinNotes 35 green. P0 PR #465. Pivot ary+ outside thrash.

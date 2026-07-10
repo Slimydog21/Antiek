@@ -394,6 +394,17 @@ export function TwinNotesPanel({
       }),
     [twins],
   );
+  /**
+   * Residual (arx): promote CTA readiness from hydrated substrate + selected kind.
+   * twins === null → not yet hydrated (unknown; server may hold notes) → allow CTA.
+   * After hydrate: gate by kind so empty / wrong-leg promote is disabled honestly.
+   */
+  const promoteContextReady = useMemo(() => {
+    if (twins == null) return true;
+    if (promoteKinds === "all") return !substrate.empty;
+    if (promoteKinds === "insight") return substrate.has_insights;
+    return substrate.has_questions;
+  }, [twins, promoteKinds, substrate.empty, substrate.has_insights, substrate.has_questions]);
   // Residual (aot): single normalize for chase titles/stamps (aoc/aoo).
   const chaseDomains = useMemo(
     () => normalizeDomainSubjects(domainSubjects),
@@ -1220,18 +1231,41 @@ export function TwinNotesPanel({
           type="button"
           data-testid="twin-promote-context"
           onClick={() => void promote()}
-          disabled={busy}
-          title="Promote twins into research context units (selective kinds)"
+          data-promote-ready={String(promoteContextReady)}
+          data-substrate-ready={String(substrate.substrate_ready)}
+          data-substrate-empty={String(twins == null ? false : substrate.empty)}
+          data-has-insights={String(substrate.has_insights)}
+          data-has-questions={String(substrate.has_questions)}
+          data-promote-kinds={promoteKinds}
+          data-twins-hydrated={String(twins != null)}
+          disabled={busy || !promoteContextReady}
+          title={
+            promoteContextReady
+              ? "Promote twins into research context units (selective kinds)"
+              : promoteKinds === "all"
+                ? "Empty twin substrate · seed or record notes before promote"
+                : promoteKinds === "insight"
+                  ? "No insight twins to promote · record insights or switch kind"
+                  : "No question twins to promote · record questions or switch kind"
+          }
         >
           Promote to context
         </button>
-        {/* Residual (ms): one-click promote of currently visible kind filter. */}
+        {/* Residual (ms/arx): one-click promote of currently visible kind filter · gated by visible notes. */}
         <button
           type="button"
           data-testid="twin-promote-visible"
           onClick={() => promoteVisible()}
-          disabled={busy}
-          title="Promote only the twin kinds currently shown in the list filter"
+          data-promote-ready={String(twins == null || visibleNotes.length > 0)}
+          data-visible-count={String(visibleNotes.length)}
+          data-list-filter={listFilter}
+          data-twins-hydrated={String(twins != null)}
+          disabled={busy || (twins != null && visibleNotes.length === 0)}
+          title={
+            twins != null && visibleNotes.length === 0
+              ? "No visible twin notes under current filter · nothing to promote"
+              : "Promote only the twin kinds currently shown in the list filter"
+          }
         >
           Promote visible
           {listFilter !== "all" ? ` (${listFilter})` : ""}
