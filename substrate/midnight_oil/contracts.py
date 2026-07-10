@@ -13241,6 +13241,166 @@ class MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseo
     )
 
 
+class MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseoutResultReconciliationPlanRequest(
+    MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseoutPlanRequest
+):
+    operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_receipt: (
+        MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseoutPlanReceipt
+    )
+
+    @model_validator(mode="after")
+    def _operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_plan_matches(
+        self,
+    ) -> MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseoutResultReconciliationPlanRequest:
+        delivery_closeout_plan = (
+            self.operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_receipt
+        )
+        closeout_plan = (
+            self.operator_archive_package_delivery_report_final_closeout_acknowledgement_plan_receipt
+        )
+        if (
+            delivery_closeout_plan.operator_archive_package_delivery_report_final_closeout_acknowledgement_plan_receipt_id
+            != closeout_plan.receipt_id
+        ):
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_receipt must reference operator_archive_package_delivery_report_final_closeout_acknowledgement_plan_receipt"
+            )
+        if (
+            delivery_closeout_plan.operator_archive_package_delivery_report_acknowledgement_result_reconciliation_plan_receipt_id
+            != self.operator_archive_package_delivery_report_acknowledgement_result_reconciliation_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_receipt must reference operator_archive_package_delivery_report_acknowledgement_result_reconciliation_plan_receipt"
+            )
+        if (
+            delivery_closeout_plan.operator_archive_package_delivery_report_final_operator_acknowledgement_plan_receipt_id
+            != self.operator_archive_package_delivery_report_final_operator_acknowledgement_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_receipt must reference operator_archive_package_delivery_report_final_operator_acknowledgement_plan_receipt"
+            )
+        if (
+            delivery_closeout_plan.operator_archive_package_delivery_report_delivery_confirmation_result_reconciliation_plan_receipt_id
+            != self.operator_archive_package_delivery_report_delivery_confirmation_result_reconciliation_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_receipt must reference operator_archive_package_delivery_report_delivery_confirmation_result_reconciliation_plan_receipt"
+            )
+        if delivery_closeout_plan.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_receipt must reference runner_handoff"
+            )
+        if delivery_closeout_plan.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_receipt must reference approval_receipt"
+            )
+        if delivery_closeout_plan.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_receipt must reference launch_packet"
+            )
+        if delivery_closeout_plan.run_id != self.launch_packet.run_id:
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_receipt must reference launch run"
+            )
+        if (
+            delivery_closeout_plan.status
+            != "blocked_operator_archive_package_delivery_report_final_operator_delivery_closeout_unimplemented"
+        ):
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_receipt must be blocked_operator_archive_package_delivery_report_final_operator_delivery_closeout_unimplemented"
+            )
+        if (
+            delivery_closeout_plan.operator_archive_package_delivery_report_final_operator_delivery_closeout_allowed
+            or delivery_closeout_plan.operator_archive_package_delivery_report_final_operator_delivery_closeout_entry_created
+            or delivery_closeout_plan.operator_archive_package_delivery_report_final_operator_delivery_closeout_status_entry_created
+            or delivery_closeout_plan.operator_archive_package_delivery_report_final_operator_delivery_closeout_audit_entry_created
+        ):
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_receipt must not create operator archive delivery report final operator delivery closeout state"
+            )
+        if (
+            delivery_closeout_plan.operator_archive_package_delivery_report_final_closeout_acknowledgement_allowed
+            or delivery_closeout_plan.operator_archive_package_delivery_report_final_closeout_acknowledgement_entry_created
+            or delivery_closeout_plan.operator_archive_package_delivery_report_final_closeout_acknowledgement_status_entry_created
+            or delivery_closeout_plan.operator_archive_package_delivery_report_final_closeout_acknowledgement_audit_entry_created
+        ):
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_receipt must not create operator archive delivery report final closeout acknowledgement state"
+            )
+        if (
+            delivery_closeout_plan.final_artifact_publish_allowed
+            or delivery_closeout_plan.publish_transaction_created
+            or delivery_closeout_plan.information_asset_published
+            or delivery_closeout_plan.account_visible_asset_created
+            or delivery_closeout_plan.reading_workspace_entry_created
+            or delivery_closeout_plan.search_index_entry_created
+            or delivery_closeout_plan.private_read_url_created
+            or delivery_closeout_plan.operator_notification_created
+            or delivery_closeout_plan.graph_commit_created
+            or delivery_closeout_plan.graph_mutated
+            or delivery_closeout_plan.dispatch_performed
+            or delivery_closeout_plan.budget_reserved
+            or delivery_closeout_plan.provider_calls_made
+            or delivery_closeout_plan.retrieval_performed
+            or delivery_closeout_plan.source_receipts_created
+            or delivery_closeout_plan.final_artifact_created
+        ):
+            raise ValueError(
+                "operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_receipt must not publish, notify, dispatch, spend, call providers, retrieve, mutate graph, or create final artifacts"
+            )
+        return self
+
+
+class MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseoutResultReconciliationPlanReceipt(
+    MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseoutPlanReceipt
+):
+    operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_receipt_id: (
+        str
+    )
+    status: Literal[
+        "blocked_operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_unimplemented"
+    ] = "blocked_operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_unimplemented"
+    adapter_key: Literal[
+        "operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation"
+    ] = "operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation"
+    planned_operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_receipt_id: (
+        str
+    )
+    planned_operator_archive_package_delivery_report_final_operator_delivery_closeout_result_entry_id: (
+        str
+    )
+    planned_operator_archive_package_delivery_report_final_operator_delivery_closeout_status_result_entry_id: (
+        str
+    )
+    planned_operator_archive_package_delivery_report_final_operator_delivery_closeout_audit_result_entry_id: (
+        str
+    )
+    operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_blockers: list[
+        str
+    ]
+    required_operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_invariants: list[
+        str
+    ]
+    required_operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_receipt_fields: list[
+        str
+    ]
+    blocker_reason: Literal[
+        "operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_unimplemented"
+    ] = "operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_unimplemented"
+    operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_allowed: bool = (
+        False
+    )
+    operator_archive_package_delivery_report_final_operator_delivery_closeout_result_entry_created: bool = (
+        False
+    )
+    operator_archive_package_delivery_report_final_operator_delivery_closeout_status_result_entry_created: bool = (
+        False
+    )
+    operator_archive_package_delivery_report_final_operator_delivery_closeout_audit_result_entry_created: bool = (
+        False
+    )
+
+
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
     price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
@@ -20215,6 +20375,101 @@ def operator_archive_package_delivery_report_final_operator_delivery_closeout_pl
             "this receipt documents operator archive package delivery report final operator delivery closeout requirements after final closeout acknowledgement planning",
             "no activation readiness, live dispatch, scheduler job, worker runtime, budget reservation, provider call, retrieval, source receipt, graph mutation, publish, notification, URL activation, run closeout, archive write, package write, package result write, delivery audit write, delivery audit result write, delivery report write, delivery report result write, delivery confirmation write, delivery confirmation result write, final operator acknowledgement write, acknowledgement result write, final closeout acknowledgement write, final operator delivery closeout write, retention write, billing write, usage write, source archive write, or artifact write is performed",
             f"operator archive package delivery report final closeout acknowledgement lineage remains planned-only at {closeout_plan.receipt_id}",
+        ],
+    )
+
+
+def operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_plan_midnight_oil(
+    req: MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseoutResultReconciliationPlanRequest,
+) -> MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseoutResultReconciliationPlanReceipt:
+    run_id = req.launch_packet.run_id
+    delivery_closeout_plan = (
+        req.operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_receipt
+    )
+    delivery_closeout_kwargs = delivery_closeout_plan.model_dump(
+        exclude={
+            "receipt_id",
+            "status",
+            "adapter_key",
+            "blocker_reason",
+            "adapter_plan_notes",
+        }
+    )
+    return MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseoutResultReconciliationPlanReceipt(
+        **delivery_closeout_kwargs,
+        receipt_id=(
+            f"{run_id}-operator-archive-package-delivery-report-final-operator-delivery-closeout-result-reconciliation-plan"
+        ),
+        operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_receipt_id=(
+            delivery_closeout_plan.receipt_id
+        ),
+        planned_operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_receipt_id=(
+            f"{run_id}-operator-archive-package-delivery-report-final-operator-delivery-closeout-result-reconciliation-receipt"
+        ),
+        planned_operator_archive_package_delivery_report_final_operator_delivery_closeout_result_entry_id=(
+            f"{run_id}-operator-archive-package-delivery-report-final-operator-delivery-closeout-result-entry"
+        ),
+        planned_operator_archive_package_delivery_report_final_operator_delivery_closeout_status_result_entry_id=(
+            f"{run_id}-operator-archive-package-delivery-report-final-operator-delivery-closeout-status-result-entry"
+        ),
+        planned_operator_archive_package_delivery_report_final_operator_delivery_closeout_audit_result_entry_id=(
+            f"{run_id}-operator-archive-package-delivery-report-final-operator-delivery-closeout-audit-result-entry"
+        ),
+        operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_blockers=[
+            *delivery_closeout_plan.operator_archive_package_delivery_report_final_operator_delivery_closeout_blockers,
+            "operator archive package delivery report final operator delivery closeout result reconciliation receipt writer",
+            "operator archive package delivery report final operator delivery closeout result entry writer",
+            "operator archive package delivery report final operator delivery closeout status result entry writer",
+            "operator archive package delivery report final operator delivery closeout audit result entry writer",
+            "operator archive package delivery report final operator delivery closeout result replay guard",
+        ],
+        required_operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_invariants=[
+            "operator archive package delivery report final operator delivery closeout result reconciliation planner must require final operator delivery closeout planning before final operator delivery closeout result rows can be planned",
+            "operator archive package delivery report final operator delivery closeout result reconciliation planner must bind final operator delivery closeout result receipt, final operator delivery closeout result entry, final operator delivery closeout status result entry, final operator delivery closeout audit result entry, final operator delivery closeout receipt, final closeout acknowledgement receipt, acknowledgement result receipt, final acknowledgement receipt, confirmation result receipt, confirmation receipt, notification result receipt, report result receipt, private read URL, hosted HTML asset, and idempotency key to the same planned closed run",
+            "operator archive package delivery report final operator delivery closeout result reconciliation planner must keep final operator delivery closeout result rows uncreated until real final operator delivery closeout rows exist",
+            "operator archive package delivery report final operator delivery closeout result reconciliation planner must preserve final operator delivery closeout lineage without sending notifications, publishing assets, activating URLs, mutating graph state, billing accounts, dispatching providers, or closing the run during planning",
+            "operator archive package delivery report final operator delivery closeout result reconciliation planner must not dispatch providers, perform retrieval, mutate graph, publish assets, notify operators, activate URLs, close runs, write final operator delivery closeout result rows, write final operator delivery closeout rows, write final closeout acknowledgement rows, write acknowledgement result rows, write acknowledgement rows, write confirmation result rows, write confirmation rows, write notification rows, write archive rows, write package rows, write delivery report rows, write retention rows, write billing rows, write usage rollups, write source archives, or write final artifacts while planning final operator delivery closeout result reconciliation",
+        ],
+        required_operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_receipt_fields=[
+            "operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_plan_receipt_id",
+            "operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_receipt_id",
+            "operator_archive_package_delivery_report_final_closeout_acknowledgement_plan_receipt_id",
+            "operator_archive_package_delivery_report_acknowledgement_result_reconciliation_plan_receipt_id",
+            "operator_archive_package_delivery_report_final_operator_acknowledgement_plan_receipt_id",
+            "operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_receipt_id",
+            "operator_archive_package_delivery_report_final_operator_delivery_closeout_result_entry_id",
+            "operator_archive_package_delivery_report_final_operator_delivery_closeout_status_result_entry_id",
+            "operator_archive_package_delivery_report_final_operator_delivery_closeout_audit_result_entry_id",
+            "operator_archive_package_delivery_report_final_operator_delivery_closeout_receipt_id",
+            "operator_archive_package_delivery_report_final_operator_delivery_closeout_entry_id",
+            "operator_archive_package_delivery_report_final_operator_delivery_closeout_status_entry_id",
+            "operator_archive_package_delivery_report_final_operator_delivery_closeout_audit_entry_id",
+            "operator_archive_package_delivery_report_final_closeout_acknowledgement_receipt_id",
+            "operator_archive_package_delivery_report_final_closeout_acknowledgement_entry_id",
+            "operator_archive_package_delivery_report_acknowledgement_result_reconciliation_receipt_id",
+            "operator_archive_package_delivery_report_acknowledgement_result_entry_id",
+            "operator_archive_package_delivery_report_final_operator_acknowledgement_receipt_id",
+            "operator_archive_package_delivery_report_delivery_confirmation_result_reconciliation_receipt_id",
+            "operator_archive_package_delivery_report_delivery_confirmation_receipt_id",
+            "operator_archive_package_delivery_report_notification_result_reconciliation_receipt_id",
+            "operator_archive_package_delivery_report_result_reconciliation_receipt_id",
+            "private_read_url_id",
+            "hosted_html_asset_id",
+            "idempotency_key",
+            "created_at",
+        ],
+        blocker_reason=(
+            "operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_unimplemented"
+        ),
+        operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_allowed=False,
+        operator_archive_package_delivery_report_final_operator_delivery_closeout_result_entry_created=False,
+        operator_archive_package_delivery_report_final_operator_delivery_closeout_status_result_entry_created=False,
+        operator_archive_package_delivery_report_final_operator_delivery_closeout_audit_result_entry_created=False,
+        adapter_plan_notes=[
+            "operator archive package delivery report final operator delivery closeout result reconciliation plan only: no final operator delivery closeout result receipt, final operator delivery closeout result entry, final operator delivery closeout status result entry, final operator delivery closeout audit result entry, dispatch, URL activation, or final artifact is created",
+            "this receipt documents operator archive package delivery report final operator delivery closeout result reconciliation requirements after final operator delivery closeout planning",
+            "no activation readiness, live dispatch, scheduler job, worker runtime, budget reservation, provider call, retrieval, source receipt, graph mutation, publish, notification, URL activation, run closeout, archive write, package write, package result write, delivery audit write, delivery audit result write, delivery report write, delivery report result write, delivery confirmation write, delivery confirmation result write, final operator acknowledgement write, acknowledgement result write, final closeout acknowledgement write, final operator delivery closeout write, final operator delivery closeout result write, retention write, billing write, usage write, source archive write, or artifact write is performed",
+            f"operator archive package delivery report final operator delivery closeout lineage remains planned-only at {delivery_closeout_plan.receipt_id}",
         ],
     )
 
