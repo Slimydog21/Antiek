@@ -37,12 +37,14 @@ from __future__ import annotations
 
 import pytest
 
-from substrate.attribution.algorithms import (
-    AttributionClaim,
-    attribution_option_a as claim_option_a,
-)
 from substrate.ad_inventory.attribution import (
     compute_attribution_option_a as chunk_option_a,
+)
+from substrate.attribution.algorithms import (
+    AttributionClaim,
+)
+from substrate.attribution.algorithms import (
+    attribution_option_a as claim_option_a,
 )
 
 # tier is irrelevant to Option A (equal-split); a constant map keeps the fixture honest.
