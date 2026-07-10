@@ -38,6 +38,7 @@ import {
   operatorArchivePackageDeliveryReportFinalDeliveryAuditEnvelopePlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalDeliveryAuditEnvelopeResultReconciliationPlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalDispatchAttestationPlanMidnightOil,
+  operatorArchivePackageDeliveryReportFinalDispatchAttestationResultReconciliationPlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalCloseoutAcknowledgementPlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseoutPlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseoutResultReconciliationPlanMidnightOil,
@@ -6245,6 +6246,74 @@ vi.mock("../../api/midnightOil", () => ({
         "operator archive package delivery report final dispatch attestation plan only: no final dispatch attestation receipt, entry, status entry, audit entry, dispatch, URL activation, or final artifact is created",
       ],
     })),
+  operatorArchivePackageDeliveryReportFinalDispatchAttestationResultReconciliationPlanMidnightOil:
+    vi.fn(async () => ({
+      receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-dispatch-attestation-result-reconciliation-plan",
+      operator_archive_package_delivery_report_final_dispatch_attestation_plan_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-dispatch-attestation-plan",
+      operator_archive_package_delivery_report_final_delivery_audit_envelope_result_reconciliation_plan_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-audit-envelope-result-reconciliation-plan",
+      operator_archive_package_delivery_report_final_delivery_audit_envelope_plan_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-audit-envelope-plan",
+      status:
+        "blocked_operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_unimplemented",
+      adapter_key:
+        "operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation",
+      planned_operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_receipt_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-dispatch-attestation-result-reconciliation-receipt",
+      planned_operator_archive_package_delivery_report_final_dispatch_attestation_result_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-dispatch-attestation-result-entry",
+      planned_operator_archive_package_delivery_report_final_dispatch_attestation_status_result_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-dispatch-attestation-status-result-entry",
+      planned_operator_archive_package_delivery_report_final_dispatch_attestation_audit_result_entry_id:
+        "midnight-oil-test-operator-archive-package-delivery-report-final-dispatch-attestation-audit-result-entry",
+      operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_blockers:
+        [
+          "operator archive package delivery report final dispatch attestation result reconciliation receipt writer",
+          "operator archive package delivery report final dispatch attestation result entry writer",
+          "operator archive package delivery report final dispatch attestation status result entry writer",
+          "operator archive package delivery report final dispatch attestation audit result entry writer",
+        ],
+      required_operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_invariants:
+        [
+          "operator archive package delivery report final dispatch attestation result reconciliation planner must require final dispatch attestation planning before final dispatch attestation result rows can be planned",
+        ],
+      required_operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_receipt_fields:
+        [
+          "operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_receipt_id",
+          "operator_archive_package_delivery_report_final_dispatch_attestation_result_entry_id",
+          "operator_archive_package_delivery_report_final_dispatch_attestation_status_result_entry_id",
+          "operator_archive_package_delivery_report_final_dispatch_attestation_audit_result_entry_id",
+        ],
+      blocker_reason:
+        "operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_unimplemented",
+      operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_allowed:
+        false,
+      operator_archive_package_delivery_report_final_dispatch_attestation_result_entry_created:
+        false,
+      operator_archive_package_delivery_report_final_dispatch_attestation_status_result_entry_created:
+        false,
+      operator_archive_package_delivery_report_final_dispatch_attestation_audit_result_entry_created:
+        false,
+      operator_archive_package_delivery_report_final_dispatch_attestation_allowed:
+        false,
+      operator_archive_package_delivery_report_final_dispatch_attestation_entry_created:
+        false,
+      operator_archive_package_delivery_report_final_dispatch_attestation_status_entry_created:
+        false,
+      operator_archive_package_delivery_report_final_dispatch_attestation_audit_entry_created:
+        false,
+      operator_notification_created: false,
+      private_read_url_created: false,
+      graph_mutated: false,
+      provider_calls_made: false,
+      retrieval_performed: false,
+      final_artifact_created: false,
+      adapter_plan_notes: [
+        "operator archive package delivery report final dispatch attestation result reconciliation plan only: no final dispatch attestation result receipt, entry, status result entry, audit result entry, dispatch, URL activation, or final artifact is created",
+      ],
+    })),
 }));
 
 describe("MidnightOil", () => {
@@ -11273,6 +11342,104 @@ describe("MidnightOil", () => {
     expect(
       screen.getAllByText(
         /operator_archive_package_delivery_report_final_dispatch_attestation_audit_entry_id/,
+      ).length,
+    ).toBeGreaterThan(0);
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Operator archive package delivery report final dispatch attestation result reconciliation plan",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(
+        operatorArchivePackageDeliveryReportFinalDispatchAttestationResultReconciliationPlanMidnightOil,
+      ).toHaveBeenCalled(),
+    );
+    expect(
+      operatorArchivePackageDeliveryReportFinalDispatchAttestationResultReconciliationPlanMidnightOil,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operator_archive_package_delivery_report_final_dispatch_attestation_plan_receipt:
+          expect.objectContaining({
+            receipt_id:
+              "midnight-oil-test-operator-archive-package-delivery-report-final-dispatch-attestation-plan",
+          }),
+        operator_archive_package_delivery_report_final_delivery_audit_envelope_result_reconciliation_plan_receipt:
+          expect.objectContaining({
+            receipt_id:
+              "midnight-oil-test-operator-archive-package-delivery-report-final-delivery-audit-envelope-result-reconciliation-plan",
+          }),
+      }),
+    );
+    expect(
+      screen.getByText(
+        "Operator archive package delivery report final dispatch attestation result reconciliation receipt",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-final-dispatch-attestation-result-reconciliation-plan",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "blocked operator archive package delivery report final dispatch attestation result reconciliation unimplemented",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-final-dispatch-attestation-result-reconciliation-receipt",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-final-dispatch-attestation-result-entry",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-final-dispatch-attestation-status-result-entry",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-archive-package-delivery-report-final-dispatch-attestation-audit-result-entry",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "operator archive package delivery report final dispatch attestation result reconciliation planner must require final dispatch attestation planning before final dispatch attestation result rows can be planned",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Operator archive package delivery report final dispatch attestation result reconciliation blockers:/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /operator archive package delivery report final dispatch attestation result reconciliation receipt writer/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Operator archive package delivery report final dispatch attestation result reconciliation receipt fields:/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getAllByText(
+        /operator_archive_package_delivery_report_final_dispatch_attestation_result_entry_id/,
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(
+        /operator_archive_package_delivery_report_final_dispatch_attestation_status_result_entry_id/,
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(
+        /operator_archive_package_delivery_report_final_dispatch_attestation_audit_result_entry_id/,
       ).length,
     ).toBeGreaterThan(0);
   }, 25000);
