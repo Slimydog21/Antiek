@@ -4116,3 +4116,8 @@ remaining without force · invalid custom amount gated · stamps approve-ready.
 Competitive delta: Midnight Oil price-ceiling path is hard-to-vary pure contract
 (goals→ceiling→approve CTA soft-gate · never invent block when remaining unknown).
 vitest MidnightOil 30 green. P0 PR #465. Pivot asa+ outside thrash.
+
+## Residual asa · 2026-07-10 — SESSION-ARC arw–arz readiness→CTA
+Multi-agent handoff for readiness pure helpers driving product CTAs
+(free-host · twin promote · SpawnMerge path · MO approve). P0 PR #465.
+Pivot asb+ outside thrash.
