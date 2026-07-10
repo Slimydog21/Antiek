@@ -2494,6 +2494,78 @@ export interface MidnightOilFinalSynthesisDraftPlanReceipt {
   adapter_plan_notes: string[];
 }
 
+export interface MidnightOilFinalHtmlArtifactAssemblyPlanRequest
+  extends MidnightOilFinalSynthesisDraftPlanRequest {
+  final_synthesis_draft_plan_receipt: MidnightOilFinalSynthesisDraftPlanReceipt;
+}
+
+export interface MidnightOilFinalHtmlArtifactAssemblyPlanReceipt {
+  receipt_id: string;
+  final_synthesis_draft_plan_receipt_id: string;
+  synthesis_bundle_assembly_plan_receipt_id: string;
+  worker_synthesis_handoff_plan_receipt_id: string;
+  worker_output_aggregation_plan_receipt_id: string;
+  launch_packet_id: string;
+  approval_receipt_id: string;
+  runner_handoff_id: string;
+  run_id: string;
+  status: "blocked_final_html_artifact_assembly_unimplemented";
+  adapter_key: "final_html_artifact_assembly";
+  planned_final_html_artifact_assembly_receipt_id: string;
+  planned_final_html_artifact_id: string;
+  planned_final_html_asset_id: string;
+  planned_final_html_document_id: string;
+  planned_final_html_twin_notes_document_id: string;
+  planned_final_html_citation_index_id: string;
+  planned_final_html_export_manifest_id: string;
+  planned_final_synthesis_draft_receipt_id: string;
+  planned_final_synthesis_draft_id: string;
+  planned_final_synthesis_outline_id: string;
+  planned_final_synthesis_claim_map_id: string;
+  planned_final_synthesis_citation_map_id: string;
+  planned_final_synthesis_gap_list_id: string;
+  planned_final_synthesis_quality_report_id: string;
+  planned_synthesis_bundle_id: string;
+  planned_synthesis_source_packet_id: string;
+  planned_synthesis_evidence_map_id: string;
+  planned_synthesis_composition_plan_id: string;
+  planned_synthesis_quality_gate_id: string;
+  planned_worker_id: string;
+  planned_worker_lease_id: string;
+  planned_runner_dispatch_id: string;
+  planned_idempotency_key: string;
+  final_html_artifact_assembly_blockers: string[];
+  required_final_html_artifact_assembly_invariants: string[];
+  required_final_html_artifact_assembly_receipt_fields: string[];
+  blocker_reason: "final_html_artifact_assembly_unimplemented";
+  final_html_artifact_assembly_allowed: boolean;
+  final_html_artifact_assembled: boolean;
+  final_html_asset_created: boolean;
+  final_html_document_created: boolean;
+  final_html_twin_notes_document_created: boolean;
+  final_html_citation_index_created: boolean;
+  final_html_export_manifest_created: boolean;
+  final_synthesis_draft_created: boolean;
+  final_synthesis_outline_created: boolean;
+  final_synthesis_claim_map_created: boolean;
+  final_synthesis_citation_map_created: boolean;
+  final_synthesis_gap_list_created: boolean;
+  final_synthesis_quality_report_created: boolean;
+  synthesis_bundle_assembled: boolean;
+  worker_output_aggregated: boolean;
+  worker_started: boolean;
+  scheduler_job_created: boolean;
+  runner_dispatch_enqueued: boolean;
+  dispatch_performed: boolean;
+  budget_reserved: boolean;
+  provider_calls_made: boolean;
+  retrieval_performed: boolean;
+  source_receipts_created: boolean;
+  graph_mutated: boolean;
+  final_artifact_created: boolean;
+  adapter_plan_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -3138,4 +3210,24 @@ export async function finalSynthesisDraftPlanMidnightOil(
     );
   }
   return (await resp.json()) as MidnightOilFinalSynthesisDraftPlanReceipt;
+}
+
+export async function finalHtmlArtifactAssemblyPlanMidnightOil(
+  request: MidnightOilFinalHtmlArtifactAssemblyPlanRequest,
+): Promise<MidnightOilFinalHtmlArtifactAssemblyPlanReceipt> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/midnight-oil/final-html-artifact-assembly-plan`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+  );
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(
+      `POST /research/midnight-oil/final-html-artifact-assembly-plan: HTTP ${resp.status}: ${body}`,
+    );
+  }
+  return (await resp.json()) as MidnightOilFinalHtmlArtifactAssemblyPlanReceipt;
 }

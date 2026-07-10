@@ -17,6 +17,7 @@ from substrate.midnight_oil import (
     MidnightOilDryRunRequest,
     MidnightOilFinalArtifactAdapterPlanRequest,
     MidnightOilFinalArtifactRequest,
+    MidnightOilFinalHtmlArtifactAssemblyPlanRequest,
     MidnightOilFinalSynthesisDraftPlanRequest,
     MidnightOilGraphAdapterPlanRequest,
     MidnightOilGraphMutationRequest,
@@ -54,6 +55,7 @@ from substrate.midnight_oil import (
     dry_run_midnight_oil,
     final_artifact_adapter_plan_midnight_oil,
     final_artifact_midnight_oil,
+    final_html_artifact_assembly_plan_midnight_oil,
     final_synthesis_draft_plan_midnight_oil,
     graph_adapter_plan_midnight_oil,
     graph_mutation_midnight_oil,
@@ -8102,6 +8104,237 @@ def test_midnight_oil_final_synthesis_draft_plan_api_contract() -> None:
     assert body["final_synthesis_citation_map_created"] is False
     assert body["final_synthesis_quality_report_created"] is False
     assert body["synthesis_bundle_assembled"] is False
+    assert body["provider_calls_made"] is False
+    assert body["retrieval_performed"] is False
+    assert body["source_receipts_created"] is False
+    assert body["graph_mutated"] is False
+    assert body["final_artifact_created"] is False
+
+
+def _final_html_artifact_assembly_request_kwargs(
+    chain: dict[str, object],
+    output_aggregation_plan: object,
+    synthesis_handoff_plan: object,
+    synthesis_bundle_assembly_plan: object,
+    final_synthesis_draft_plan: object,
+) -> dict[str, object]:
+    return {
+        **_final_synthesis_draft_request_kwargs(
+            chain,
+            output_aggregation_plan,
+            synthesis_handoff_plan,
+            synthesis_bundle_assembly_plan,
+        ),
+        "final_synthesis_draft_plan_receipt": final_synthesis_draft_plan,
+    }
+
+
+def _accepted_midnight_oil_final_synthesis_draft_plan_chain(
+    *,
+    goal: str,
+    source_policy: list[str],
+    requested_control_scope: list[str],
+) -> dict[str, object]:
+    chain = _accepted_midnight_oil_synthesis_bundle_assembly_plan_chain(
+        goal=goal,
+        source_policy=source_policy,
+        requested_control_scope=requested_control_scope,
+    )
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+    draft_plan = final_synthesis_draft_plan_midnight_oil(
+        MidnightOilFinalSynthesisDraftPlanRequest(
+            **_final_synthesis_draft_request_kwargs(
+                chain, output_plan, handoff_plan, assembly_plan
+            )
+        )
+    )
+    return {
+        **chain,
+        "final_synthesis_draft_plan": draft_plan,
+    }
+
+
+def test_final_html_artifact_assembly_plan_records_disabled_requirements() -> None:
+    chain = _accepted_midnight_oil_final_synthesis_draft_plan_chain(
+        goal="Plan final HTML artifact assembly after final synthesis draft planning.",
+        source_policy=["arxiv", "web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+    draft_plan = chain["final_synthesis_draft_plan"]
+
+    html_plan = final_html_artifact_assembly_plan_midnight_oil(
+        MidnightOilFinalHtmlArtifactAssemblyPlanRequest(
+            **_final_html_artifact_assembly_request_kwargs(
+                chain, output_plan, handoff_plan, assembly_plan, draft_plan
+            )
+        )
+    )
+
+    assert html_plan.receipt_id == (
+        f"{preflight.run_id}-final-html-artifact-assembly-plan"
+    )
+    assert html_plan.final_synthesis_draft_plan_receipt_id == draft_plan.receipt_id
+    assert html_plan.synthesis_bundle_assembly_plan_receipt_id == (
+        assembly_plan.receipt_id
+    )
+    assert html_plan.status == "blocked_final_html_artifact_assembly_unimplemented"
+    assert html_plan.adapter_key == "final_html_artifact_assembly"
+    assert html_plan.planned_final_html_artifact_assembly_receipt_id == (
+        f"{preflight.run_id}-final-html-artifact-assembly-receipt"
+    )
+    assert html_plan.planned_final_html_artifact_id == (
+        f"{preflight.run_id}-final-html-artifact"
+    )
+    assert html_plan.planned_final_html_asset_id == (
+        f"{preflight.run_id}-final-html-asset"
+    )
+    assert html_plan.planned_final_html_document_id == (
+        f"{preflight.run_id}-final-html-document"
+    )
+    assert html_plan.planned_final_html_twin_notes_document_id == (
+        f"{preflight.run_id}-final-html-twin-notes-document"
+    )
+    assert html_plan.planned_final_html_citation_index_id == (
+        f"{preflight.run_id}-final-html-citation-index"
+    )
+    assert html_plan.planned_final_synthesis_draft_id == (
+        draft_plan.planned_final_synthesis_draft_id
+    )
+    assert "final HTML artifact assembly receipt writer" in (
+        html_plan.final_html_artifact_assembly_blockers
+    )
+    assert "final_html_document_id" in (
+        html_plan.required_final_html_artifact_assembly_receipt_fields
+    )
+    assert "final HTML artifact assembly planner must require final synthesis" in (
+        html_plan.required_final_html_artifact_assembly_invariants[0]
+    )
+    assert html_plan.blocker_reason == "final_html_artifact_assembly_unimplemented"
+    assert html_plan.final_html_artifact_assembly_allowed is False
+    assert html_plan.final_html_artifact_assembled is False
+    assert html_plan.final_html_asset_created is False
+    assert html_plan.final_html_document_created is False
+    assert html_plan.final_html_twin_notes_document_created is False
+    assert html_plan.final_html_citation_index_created is False
+    assert html_plan.final_synthesis_draft_created is False
+    assert html_plan.provider_calls_made is False
+    assert html_plan.retrieval_performed is False
+    assert html_plan.source_receipts_created is False
+    assert html_plan.graph_mutated is False
+    assert html_plan.final_artifact_created is False
+    assert "no HTML asset" in html_plan.adapter_plan_notes[0]
+
+
+def test_final_html_artifact_assembly_plan_rejects_created_draft() -> None:
+    chain = _accepted_midnight_oil_final_synthesis_draft_plan_chain(
+        goal="Reject created final draft before final HTML artifact assembly planning.",
+        source_policy=["web"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+    bad_draft_plan = chain["final_synthesis_draft_plan"].model_copy(
+        update={"final_synthesis_draft_created": True}
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match="final_synthesis_draft_plan_receipt must not create final synthesis draft state",
+    ):
+        MidnightOilFinalHtmlArtifactAssemblyPlanRequest(
+            **_final_html_artifact_assembly_request_kwargs(
+                chain, output_plan, handoff_plan, assembly_plan, bad_draft_plan
+            )
+        )
+
+
+def test_midnight_oil_final_html_artifact_assembly_plan_api_contract() -> None:
+    from interfaces.research.api.app import create_app
+
+    chain = _accepted_midnight_oil_final_synthesis_draft_plan_chain(
+        goal="Expose final HTML artifact assembly planning over the API.",
+        source_policy=["arxiv", "substack"],
+        requested_control_scope=[
+            "budget_reservation_provider",
+            "model_provider_route_executor",
+            "retrieval_executor_source_receipts",
+            "graph_mutation_writer",
+            "final_html_artifact_writer",
+            "operator_live_dispatch_enablement",
+        ],
+    )
+    preflight = chain["preflight"]
+    output_plan = chain["worker_output_aggregation_plan"]
+    handoff_plan = chain["worker_synthesis_handoff_plan"]
+    assembly_plan = chain["synthesis_bundle_assembly_plan"]
+    draft_plan = chain["final_synthesis_draft_plan"]
+    request_json = {
+        key: value.model_dump(mode="json")
+        for key, value in _final_html_artifact_assembly_request_kwargs(
+            chain, output_plan, handoff_plan, assembly_plan, draft_plan
+        ).items()
+    }
+
+    with TestClient(create_app()) as client:
+        r = client.post(
+            "/research/midnight-oil/final-html-artifact-assembly-plan",
+            json=request_json,
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["receipt_id"] == (
+        f"{preflight.run_id}-final-html-artifact-assembly-plan"
+    )
+    assert body["final_synthesis_draft_plan_receipt_id"] == draft_plan.receipt_id
+    assert body["synthesis_bundle_assembly_plan_receipt_id"] == assembly_plan.receipt_id
+    assert body["status"] == "blocked_final_html_artifact_assembly_unimplemented"
+    assert body["adapter_key"] == "final_html_artifact_assembly"
+    assert body["planned_final_html_artifact_assembly_receipt_id"] == (
+        f"{preflight.run_id}-final-html-artifact-assembly-receipt"
+    )
+    assert body["planned_final_html_artifact_id"] == (
+        f"{preflight.run_id}-final-html-artifact"
+    )
+    assert body["planned_final_html_document_id"] == (
+        f"{preflight.run_id}-final-html-document"
+    )
+    assert body["planned_final_html_twin_notes_document_id"] == (
+        f"{preflight.run_id}-final-html-twin-notes-document"
+    )
+    assert "final HTML artifact assembly receipt writer" in body[
+        "final_html_artifact_assembly_blockers"
+    ]
+    assert "final_html_citation_index_id" in (
+        body["required_final_html_artifact_assembly_receipt_fields"]
+    )
+    assert body["blocker_reason"] == "final_html_artifact_assembly_unimplemented"
+    assert body["final_html_artifact_assembly_allowed"] is False
+    assert body["final_html_artifact_assembled"] is False
+    assert body["final_html_document_created"] is False
+    assert body["final_html_twin_notes_document_created"] is False
+    assert body["final_synthesis_draft_created"] is False
     assert body["provider_calls_made"] is False
     assert body["retrieval_performed"] is False
     assert body["source_receipts_created"] is False
