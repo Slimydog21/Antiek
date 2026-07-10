@@ -1218,3 +1218,8 @@ waves stay auditable for parallel agents after compaction.
 Catalog stamps L5 deferred · manual_receipt_only · live_payment=false with
 dual-gate checklist link. Competitive delta: marketplace never pretends live
 checkout exists — purchase+host is operator receipt only.
+
+## Residual uz · 2026-07-10 — FUTURE-AGENT tip re-anchor through uy
+FUTURE-AGENT-SPEC tip → 63101044 with closed arcs tt–uy (32 residual ships).
+Competitive delta: swarm handoff tip-true; highest leverage is operator merge
+PR #465.
