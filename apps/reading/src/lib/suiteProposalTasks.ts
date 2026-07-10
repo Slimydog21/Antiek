@@ -111,6 +111,31 @@ export type VisionFeedCoverage = {
  * Residual (aoy): which vision product surfaces appear in this week's
  * by_source map (positive counts only). Empty/unknown map → all uncovered.
  */
+/**
+ * Residual (apa): which vision usage surfaces most inform a given Antiek-bench
+ * task_class (decision-tree best-for-task honesty · never auto-route).
+ */
+export function benchTaskClassToVisionFeeds(
+  taskClass: string | null | undefined,
+): VisionUsageFeedSource[] {
+  const t = String(taskClass || "")
+    .trim()
+    .toLowerCase();
+  if (t === "wrestle") {
+    return ["twin_chase", "midnight_oil", "collective_merge"];
+  }
+  if (t === "synthesize") {
+    return ["floating_deep_research", "twin_chase", "midnight_oil_deposit"];
+  }
+  if (t === "distill") {
+    return ["floating_deep_research", "book_qa"];
+  }
+  if (t === "book_qa") {
+    return ["book_qa", "midnight_oil_deposit"];
+  }
+  return [];
+}
+
 export function visionFeedCoverageFromBySource(
   bySource: Record<string, number> | null | undefined,
 ): VisionFeedCoverage {

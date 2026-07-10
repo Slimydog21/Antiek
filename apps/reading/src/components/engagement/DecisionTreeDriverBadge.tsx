@@ -25,6 +25,8 @@
  * installed driver (operator click only · never auto-route).
  * Residual (aoz): install status records previous driver; already-best chrome
  * when installed matches weekly best; never-router honesty on install path.
+ * Residual (apa): bench task_class → vision feed surfaces (which product paths
+ * train that weekly best · advisory only).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -39,6 +41,7 @@ import {
   type DecisionTreeSelectionResponse,
   type PromptCostEstimateResponse,
 } from "../../api/settings";
+import { benchTaskClassToVisionFeeds } from "../../lib/suiteProposalTasks";
 import {
   bestModelForTaskClass,
   researchTierToBenchTaskClass,
@@ -111,6 +114,11 @@ export function DecisionTreeDriverBadge({
   const bestDiffers = Boolean(
     bestByTask?.model_id &&
       (!tree?.model_id || bestByTask.model_id !== tree.model_id),
+  );
+  // Residual (apa): vision product surfaces that train this bench task_class.
+  const visionFeedsForTask = useMemo(
+    () => benchTaskClassToVisionFeeds(benchTaskClass),
+    [benchTaskClass],
   );
 
   const onInstallBestForTask = useCallback(async () => {
@@ -333,6 +341,8 @@ export function DecisionTreeDriverBadge({
             ),
           )}
           data-install-available={String(bestDiffers)}
+          data-vision-feeds={visionFeedsForTask.join(",") || ""}
+          data-vision-feed-count={String(visionFeedsForTask.length)}
           role="status"
         >
           <p>
@@ -361,6 +371,28 @@ export function DecisionTreeDriverBadge({
               leaderboard
             </a>
           </p>
+          {/* Residual (apa): which vision feeds train this bench task_class. */}
+          {visionFeedsForTask.length > 0 ? (
+            <p
+              className="text-[10px] font-mono opacity-80"
+              data-testid="decision-tree-bench-vision-feeds"
+              data-task-class={benchTaskClass}
+              data-vision-feeds={visionFeedsForTask.join(",")}
+              data-vision-feed-count={String(visionFeedsForTask.length)}
+              data-advisory-only="true"
+              role="status"
+            >
+              Trains from: {visionFeedsForTask.join(", ")} ·{" "}
+              <a
+                href="/settings#antiek-bench-suite-proposal"
+                className="underline opacity-80 hover:opacity-100"
+                data-testid="decision-tree-vision-feed-coverage-link"
+                title="Vision feed coverage of recursive suite rewrite (propose≠promote)"
+              >
+                vision feed coverage
+              </a>
+            </p>
+          ) : null}
           {bestDiffers ? (
             <button
               type="button"

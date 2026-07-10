@@ -141,6 +141,22 @@ describe("DecisionTreeDriverBadge residual cw/eq", () => {
     expect(
       screen.getByTestId("decision-tree-bench-leaderboard-link").getAttribute("href"),
     ).toBe("/settings#antiek-bench-leaderboard");
+    // Residual (apa): wrestle → vision feed surfaces that train that task.
+    const visionFeeds = screen.getByTestId("decision-tree-bench-vision-feeds");
+    expect(visionFeeds.getAttribute("data-task-class")).toBe("wrestle");
+    expect(visionFeeds.getAttribute("data-vision-feeds") || "").toMatch(
+      /twin_chase/,
+    );
+    expect(visionFeeds.getAttribute("data-vision-feeds") || "").toMatch(
+      /midnight_oil/,
+    );
+    expect(visionFeeds.getAttribute("data-advisory-only")).toBe("true");
+    expect(
+      screen
+        .getByTestId("decision-tree-vision-feed-coverage-link")
+        .getAttribute("href"),
+    ).toBe("/settings#antiek-bench-suite-proposal");
+    expect(bench.getAttribute("data-vision-feeds") || "").toMatch(/twin_chase/);
     // Residual (afe): explicit install when best differs from installed.
     expect(bench.getAttribute("data-install-available")).toBe("true");
     const installBtn = screen.getByTestId("decision-tree-install-best-for-task");

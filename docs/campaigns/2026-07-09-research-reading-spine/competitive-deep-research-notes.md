@@ -3710,3 +3710,8 @@ P0 PR #465. Pivot aoz+ outside thrash.
 Previous-driver stamp on install · already-best chrome when matches weekly best ·
 never-auto-route honesty · suite rewrite deep-link. vitest DecisionTreeDriverBadge 15 green.
 P0 PR #465. Pivot apa+ outside thrash.
+
+## Residual apa · 2026-07-10 — bench task_class → vision feed map
+benchTaskClassToVisionFeeds pure helper; DecisionTreeDriverBadge trains-from chrome
++ vision feed coverage deep-link. vitest suiteProposalTasks 8 · badge 15 green.
+P0 PR #465. Pivot apb+ outside thrash.

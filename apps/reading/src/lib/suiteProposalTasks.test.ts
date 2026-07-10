@@ -6,6 +6,7 @@ import {
   rankedFeedSourcesFromBySource,
   taskClassFromProposedItemId,
   VISION_USAGE_FEED_SOURCES,
+  benchTaskClassToVisionFeeds,
   visionFeedCoverageFromBySource,
 } from "./suiteProposalTasks";
 
@@ -102,5 +103,20 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
     expect(visionFeedCoverageFromBySource({}).uncovered_count).toBe(
       VISION_USAGE_FEED_SOURCES.length,
     );
+  });
+
+  it("maps bench task_class to vision feed surfaces (apa)", () => {
+    expect(benchTaskClassToVisionFeeds("wrestle")).toEqual([
+      "twin_chase",
+      "midnight_oil",
+      "collective_merge",
+    ]);
+    expect(benchTaskClassToVisionFeeds("synthesize")).toContain(
+      "floating_deep_research",
+    );
+    expect(benchTaskClassToVisionFeeds("distill")).toContain("book_qa");
+    expect(benchTaskClassToVisionFeeds("book_qa")).toContain("book_qa");
+    expect(benchTaskClassToVisionFeeds(null)).toEqual([]);
+    expect(benchTaskClassToVisionFeeds("unknown")).toEqual([]);
   });
 });
