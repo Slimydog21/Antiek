@@ -83,6 +83,7 @@ vi.mock("../../components/engagement/TwinNotesPanel", () => ({
     assetId: string;
     autoLoad?: boolean;
     autoSeedIfEmpty?: boolean;
+    autoPromoteAfterLoad?: boolean;
     seedTitle?: string;
   }) => (
     <div
@@ -90,9 +91,25 @@ vi.mock("../../components/engagement/TwinNotesPanel", () => ({
       data-asset-id={props.assetId}
       data-auto-load={String(Boolean(props.autoLoad))}
       data-auto-seed={String(Boolean(props.autoSeedIfEmpty))}
+      data-auto-promote={String(Boolean(props.autoPromoteAfterLoad))}
       data-seed-title={props.seedTitle ?? ""}
     >
       twins={props.assetId}
+    </div>
+  ),
+}));
+
+vi.mock("../../components/engagement/ResearchContextPanel", () => ({
+  ResearchContextPanel: (props: {
+    assetId: string;
+    autoLoad?: boolean;
+  }) => (
+    <div
+      data-testid="research-context-panel-stub"
+      data-asset-id={props.assetId}
+      data-auto-load={String(Boolean(props.autoLoad))}
+    >
+      context={props.assetId}
     </div>
   ),
 }));
@@ -192,6 +209,41 @@ describe("ResearchWorkstation collective multi-select (afr)", () => {
     expect(twins.getAttribute("data-auto-load")).toBe("true");
     expect(twins.getAttribute("data-auto-seed")).toBe("true");
     expect(twins.getAttribute("data-seed-title")).toBe("What is attention?");
+    // Residual (aft): auto-promote into research context after load.
+    expect(twins.getAttribute("data-auto-promote")).toBe("true");
+  });
+
+  it("mounts ResearchContextPanel with remount key (aft)", () => {
+    useInvestigationMock.mockReturnValue({
+      id: "inv_aft",
+      status: "in_progress",
+      question: "Context pack?",
+      events: [],
+      terminalPayload: null,
+      costTotal: 0,
+      completedAt: null,
+      streamStatus: "open",
+      reconnects: 0,
+    });
+    collectDeepResearchSpawnIdsMock.mockReturnValue([]);
+
+    mountInv("inv_aft");
+
+    const mount = screen.getByTestId("research-workstation-context-mount");
+    expect(mount.getAttribute("data-view-format")).toBe("html");
+    expect(mount.getAttribute("data-investigation-id")).toBe("inv_aft");
+    expect(mount.getAttribute("data-seamless-workstation-context")).toBe(
+      "true",
+    );
+    const refresh = screen.getByTestId("research-workstation-context-refresh");
+    expect(refresh.getAttribute("data-refresh-key")).toBe("0");
+    const ctx = screen.getByTestId("research-context-panel-stub");
+    expect(ctx.getAttribute("data-asset-id")).toBe("inv_aft");
+    expect(ctx.getAttribute("data-auto-load")).toBe("true");
+    const twinsRefresh = screen.getByTestId(
+      "research-workstation-twins-refresh",
+    );
+    expect(twinsRefresh.getAttribute("data-refresh-key")).toBe("0");
   });
 
   it("omits collective mount when no spawn ids available", () => {

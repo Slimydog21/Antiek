@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { CollectiveResearchPanel } from "../../components/engagement/CollectiveResearchPanel";
+import { ResearchContextPanel } from "../../components/engagement/ResearchContextPanel";
 import { TwinNotesPanel } from "../../components/engagement/TwinNotesPanel";
 import { useInvestigation } from "../../hooks/useInvestigation";
 import type { InvestigationState } from "../../hooks/useInvestigation";
@@ -72,6 +73,8 @@ import ThinkingStream from "./ThinkingStream";
  * reading ResearchThis · Write · MO (reading ≡ research workstation).
  * Residual (afs): TwinNotesPanel on /inv/:id for recursive note-taker twin
  * (parity DR/hosted hosts · every investigation asset has twin substrate).
+ * Residual (aft): ResearchContextPanel + twins autoPromoteAfterLoad with
+ * remount-on-promote (parity DR host ea/ec · intelligent search over twins).
  */
 export default function ResearchWorkstation() {
   const params = useParams<{ investigationId?: string }>();
@@ -117,6 +120,11 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
   // Residual (afr): open + recent DR session spawns → multi-select on /inv/:id.
   const windows = useWindows((s) => s.windows);
   const [recentTick, setRecentTick] = useState(0);
+  /** Residual (aft): remount context (+ twins) after twin promote into pack. */
+  const [contextRefreshKey, setContextRefreshKey] = useState(0);
+  const onContextNeedsRefresh = useCallback(() => {
+    setContextRefreshKey((k) => k + 1);
+  }, []);
   const recentSpawnIds = useMemo(
     () => listRecentDeepResearchSpawnIds(),
     [windows, recentTick],
@@ -215,7 +223,27 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
       className="h-full overflow-y-auto relative"
     >
       <CenterContent investigation={investigation} onChaseQuestion={onChaseQuestion} />
-      {/* Residual (afs): recursive note-taker twin for this investigation asset. */}
+      {/* Residual (aft): research context pack over investigation twin substrate. */}
+      <section
+        className="border-t border-rule px-4 py-4 dark:border-charcoal-1"
+        data-testid="research-workstation-context-mount"
+        data-view-format="html"
+        data-investigation-id={investigationId}
+        data-seamless-workstation-context="true"
+      >
+        <div
+          data-testid="research-workstation-context-refresh"
+          data-refresh-key={String(contextRefreshKey)}
+        >
+          <ResearchContextPanel
+            key={`ctx-${investigationId}-${contextRefreshKey}`}
+            assetId={investigationId}
+            spawnId={null}
+            autoLoad
+          />
+        </div>
+      </section>
+      {/* Residual (afs/aft): recursive note-taker twin + auto-promote into context. */}
       <section
         className="border-t border-rule px-4 py-4 dark:border-charcoal-1"
         data-testid="research-workstation-twins-mount"
@@ -223,15 +251,23 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
         data-investigation-id={investigationId}
         data-seamless-workstation-twins="true"
       >
-        <TwinNotesPanel
-          assetId={investigationId}
-          autoLoad
-          autoSeedIfEmpty
-          seedTitle={
-            (investigation.question || "").trim() || investigationId
-          }
-          seedBodyText={(investigation.question || "").trim() || ""}
-        />
+        <div
+          data-testid="research-workstation-twins-refresh"
+          data-refresh-key={String(contextRefreshKey)}
+        >
+          <TwinNotesPanel
+            key={`twins-${investigationId}-${contextRefreshKey}`}
+            assetId={investigationId}
+            autoLoad
+            autoSeedIfEmpty
+            autoPromoteAfterLoad
+            onPromoted={onContextNeedsRefresh}
+            seedTitle={
+              (investigation.question || "").trim() || investigationId
+            }
+            seedBodyText={(investigation.question || "").trim() || ""}
+          />
+        </div>
       </section>
       {/* Residual (afr): multi-select open + recent DR spawns → this investigation. */}
       {availableSpawnIds.length > 0 ? (

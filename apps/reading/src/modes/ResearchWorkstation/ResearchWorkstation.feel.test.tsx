@@ -48,4 +48,17 @@ describe("ResearchWorkstation — dense IDE exempt from floating stack chrome", 
     expect(src).toMatch(/autoSeedIfEmpty/);
     expect(src).toMatch(/data-seamless-workstation-twins/);
   });
+
+  // Residual (aft): context pack + auto-promote remount chokepoint.
+  it("InvestigationCenter mounts ResearchContextPanel + autoPromote (aft)", () => {
+    const src = readFileSync(
+      resolve(import.meta.dirname, "index.tsx"),
+      "utf8",
+    );
+    expect(src).toMatch(/ResearchContextPanel/);
+    expect(src).toMatch(/research-workstation-context-mount/);
+    expect(src).toMatch(/autoPromoteAfterLoad/);
+    expect(src).toMatch(/onContextNeedsRefresh/);
+    expect(src).toMatch(/data-seamless-workstation-context/);
+  });
 });

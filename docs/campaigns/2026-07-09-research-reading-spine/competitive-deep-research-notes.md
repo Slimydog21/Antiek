@@ -2474,3 +2474,8 @@ vitest ResearchWorkstation collective 3 + feel 3 green.
 /inv/:id InvestigationCenter always mounts TwinNotesPanel (autoLoad ·
 autoSeedIfEmpty · seed from investigation.question). Recursive note-taker
 substrate on research workstation (parity DR/hosted). vitest RW 8 green.
+
+## Residual aft · 2026-07-10 — RW ResearchContext + twin auto-promote
+/inv/:id mounts ResearchContextPanel (autoLoad) and TwinNotes autoPromoteAfterLoad
+with shared contextRefreshKey remount (parity DR ea/ec). Intelligent search over
+twin substrate on research workstation. vitest RW 10 green.
