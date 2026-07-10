@@ -224,7 +224,8 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
   it("links dual-gate L1–L4 checklist (np)", () => {
     render(<SessionFlywheelPanel sessionId="fsess_1" />);
     const dual = screen.getByTestId("session-flywheel-dual-gate-checklist-link");
-    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4/);
+    // Residual (yc): session land → bench feed prep → L1 hydrate checklist section.
+    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
     expect(dual.textContent).toMatch(/Dual-gate/i);
   });
 });

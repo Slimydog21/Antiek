@@ -178,7 +178,7 @@ export function SessionFlywheelPanel({
             Settings · driver & budget
           </a>
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
             data-testid="session-flywheel-dual-gate-checklist-link"
             className="underline opacity-80 hover:opacity-100"
             title="Dual-gate L1–L4 checklist (prep only; offline default)"
