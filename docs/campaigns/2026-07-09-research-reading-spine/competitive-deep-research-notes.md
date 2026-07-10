@@ -4184,3 +4184,7 @@ and knowledge-dense attach. Frontend↔substrate parity. P0 PR #465. Pivot asm+.
 suite-competitive-dogfood-v36 · 56 items · readiness CTA matrix · RAG/Constitutional
 presets · free-host HTML port book_qa. Competitive delta: recursive rewrite learns
 product honesty from arw–ask wave. propose≠promote. P0 PR #465. Pivot asn+.
+
+## Residual asn · 2026-07-10 — SESSION-ARC asj–asm Antiek-bench flywheel
+Vision → write-seed → dogfood v36 handoff after readiness→CTA. P0 PR #465.
+Pivot aso+ outside thrash.
