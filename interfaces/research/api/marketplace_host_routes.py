@@ -84,7 +84,9 @@ def catalog_honesty_payload(entries: list[dict[str, Any]]) -> dict[str, Any]:
         lic = str(e.get("license_class") or "unknown").strip() or "unknown"
         by_source[src] = by_source.get(src, 0) + 1
         by_license[lic] = by_license.get(lic, 0) + 1
-        if e.get("is_free") is True or lic == "public_domain":
+        # Residual (abn): free_count is is_free only (not OR public_domain).
+        # public_domain_count remains by_license; never invent free when paid PD.
+        if e.get("is_free") is True:
             free_count += 1
         # Residual (lw): multi-label subjects (entry may appear in many domains).
         raw_subjects = e.get("subjects") or []

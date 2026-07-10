@@ -2021,3 +2021,8 @@ SESSION-ARC-abc-abl documents Hooke free STEM + catalog HTML free_count honesty 
 FUTURE tip re-anchored after 146 residual ships. Competitive delta: compaction-safe
 multi-agent handoff; operator merge PR #465 highest leverage.
 
+## Residual abn · 2026-07-10 — free_count is_free only (not OR public_domain)
+catalog_honesty_payload free_count counts is_free=True only — never OR
+public_domain. Competitive delta: free inventory cannot invent free when a
+public_domain entry is not free; public_domain_count stays separate honesty.
+

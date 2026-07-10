@@ -51,6 +51,39 @@ def test_catalog_honesty_payload_pure() -> None:
     assert p["free_count"] == 2
 
 
+def test_catalog_honesty_free_count_is_free_only_not_pd_or() -> None:
+    """Residual (abn): free_count counts is_free only — never OR public_domain.
+
+    A public_domain entry with is_free=False must not invent free inventory
+    (paid-PD / restricted free path). public_domain_count stays separate.
+    """
+    rows = [
+        {
+            "book_id": "pd-free",
+            "source": "project_gutenberg",
+            "license_class": "public_domain",
+            "is_free": True,
+        },
+        {
+            "book_id": "pd-restricted",
+            "source": "project_gutenberg",
+            "license_class": "public_domain",
+            "is_free": False,
+        },
+        {
+            "book_id": "buy",
+            "source": "marketplace_stub",
+            "license_class": "purchased",
+            "is_free": False,
+        },
+    ]
+    p = catalog_honesty_payload(rows)
+    assert p["public_domain_count"] == 2
+    assert p["purchased_count"] == 1
+    # Residual (abn): free_count is is_free only (was OR public_domain → free_count=2).
+    assert p["free_count"] == 1
+
+
 @pytest.fixture
 def client():
     reset_marketplace_host_store()
