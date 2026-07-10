@@ -2538,6 +2538,33 @@ describe("Settings SPR-01 + decision-tree install", () => {
       expect(screen.getByTestId("add-model-panel")).toBeTruthy();
     });
     expect(fetchRegisteredModels).toHaveBeenCalled();
+    // Residual (aqj): HTML-first + never-auto-route honesty on add-model path.
+    const addPanel = screen.getByTestId("add-model-panel");
+    expect(addPanel.getAttribute("data-view-format")).toBe("html");
+    expect(addPanel.getAttribute("data-html-first")).toBe("true");
+    expect(addPanel.getAttribute("data-never-auto-route")).toBe("true");
+    expect(addPanel.getAttribute("data-notdiamond-authority")).toBe(
+      "advisory_only",
+    );
+    const honesty = screen.getByTestId("add-model-honesty-nav");
+    expect(honesty.getAttribute("data-never-auto-route")).toBe("true");
+    expect(
+      screen.getByTestId("add-model-decision-tree-link").getAttribute("href"),
+    ).toBe("#decision-tree-panel");
+    expect(
+      screen
+        .getByTestId("add-model-notdiamond-advisory-link")
+        .getAttribute("href"),
+    ).toBe("#notdiamond-advisory");
+    expect(
+      screen.getByTestId("add-model-antiek-bench-link").getAttribute("href"),
+    ).toBe("#antiek-bench-leaderboard-panel");
+    expect(
+      screen.getByTestId("add-model-prompt-cost-link").getAttribute("href"),
+    ).toBe("#prompt-cost-projection");
+    expect(
+      screen.getByTestId("add-model-never-router-hint").textContent,
+    ).toMatch(/never auto-route/i);
     await user.type(screen.getByTestId("add-model-provider"), "zai");
     await user.type(screen.getByTestId("add-model-id"), "glm-5.2");
     await user.click(screen.getByTestId("add-model-submit"));
@@ -2556,8 +2583,5 @@ describe("Settings SPR-01 + decision-tree install", () => {
         /glm-5\.2/,
       );
     });
-    expect(
-      screen.getByTestId("add-model-panel").getAttribute("data-view-format"),
-    ).toBe("html");
   });
 });

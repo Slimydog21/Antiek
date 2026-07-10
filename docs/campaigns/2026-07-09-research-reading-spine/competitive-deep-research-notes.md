@@ -3886,3 +3886,8 @@ Evidence UI prefers substrate world_class_readiness when present
 (data-world-class-source=substrate). Closes evidence frontend↔substrate loop (aqg).
 World-class DR bar offline spine complete api–aqi. vitest ResearchContext 21 green.
 P0 PR #465. Pivot aqj+ HARD off hop/stage/world-class thrash.
+
+## Residual aqj · 2026-07-10 — Add-model panel never-auto-route honesty + deep-links
+Add-model stamps HTML-first · never-auto-route · ND advisory_only + deep-links to
+decision-tree · ND · Antiek-bench · prompt-cost. Hard pivot off hop/stage thrash into
+model-choice product surface. vitest Settings add-model green. P0 PR #465. Pivot aqk+.

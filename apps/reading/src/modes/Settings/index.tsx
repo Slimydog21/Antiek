@@ -1011,11 +1011,65 @@ export default function Settings() {
             className="p-4 space-y-3"
             data-testid="add-model-panel"
             data-view-format="html"
+            data-html-first="true"
+            data-never-auto-route="true"
+            data-notdiamond-authority="advisory_only"
+            id="add-model-panel"
           >
             <p className="text-sm text-ink dark:text-bright">
               Register a model id into the process-local decision-tree registry.
               API keys remain operator-gated — this only records identity for
-              driver selection.
+              driver selection. Explicit install only · never auto-route
+              (NotDiamond advisory only · L7).
+            </p>
+            {/* Residual (aqj): model-add path honesty + decision-tree / ND / bench deep-links. */}
+            <p
+              className="text-[11px] font-mono flex flex-wrap gap-x-3 gap-y-1 opacity-90"
+              data-testid="add-model-honesty-nav"
+              data-view-format="html"
+              data-html-first="true"
+              data-never-auto-route="true"
+              role="navigation"
+              aria-label="Add model decision-tree and advisory navigation"
+            >
+              <a
+                href="#decision-tree-panel"
+                data-testid="add-model-decision-tree-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Jump to decision-tree driver install (manual model choice)"
+              >
+                Decision-tree driver
+              </a>
+              <a
+                href="#notdiamond-advisory"
+                data-testid="add-model-notdiamond-advisory-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="NotDiamond weekly advisory (advisory only · never dispatch authority)"
+              >
+                ND advisory
+              </a>
+              <a
+                href="#antiek-bench-leaderboard-panel"
+                data-testid="add-model-antiek-bench-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Antiek-bench weekly leaderboard (propose≠promote)"
+              >
+                Antiek-bench
+              </a>
+              <a
+                href="#prompt-cost-projection"
+                data-testid="add-model-prompt-cost-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Prompt-cost projection vs remaining daily budget"
+              >
+                Prompt-cost projection
+              </a>
+              <span
+                className="opacity-70"
+                data-testid="add-model-never-router-hint"
+              >
+                never auto-route · ND advisory only · L7
+              </span>
             </p>
             {registeredError && (
               <p className="text-sm text-red-700 dark:text-red-300 font-mono">
