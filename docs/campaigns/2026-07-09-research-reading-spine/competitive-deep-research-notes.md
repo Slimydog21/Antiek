@@ -2794,3 +2794,8 @@ P0 operator merge PR #465. Pivot ahx+.
 31 residual wave: Fourier STEM · merge paths · pub quick-call · budget foresight ·
 purchase port · twin completeness · NotDiamond advisory-only. P0 operator merge
 PR #465. Pivot ahy+ outside thrash.
+
+## Residual ahy · 2026-07-10 — Settings L7 FUTURE-AGENT ND advisory-only deep-link
+NotDiamond L7 prep nav links FUTURE-AGENT-SPEC-notdiamond-advisory-only.md so
+operators reach advisory-only / never-router verdict from Settings. vitest
+Settings 36 green. P0 operator merge PR #465. Pivot ahz+.

@@ -2085,6 +2085,18 @@ export default function Settings() {
               >
                 Weekly leaderboard
               </a>
+              <span className="opacity-40" aria-hidden>
+                ·
+              </span>
+              {/* Residual (ahy): FUTURE-AGENT advisory-only verdict deep-link (ahw). */}
+              <a
+                href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-notdiamond-advisory-only.md"
+                className="underline opacity-80 hover:opacity-100"
+                data-testid="notdiamond-future-agent-advisory-spec-link"
+                title="Future-agent brief: NotDiamond useful as advisor, never as router"
+              >
+                FUTURE-AGENT ND advisory-only
+              </a>
             </div>
             {/* Residual (he): weekly advisory refresh tied to leaderboard week. */}
             <div className="flex flex-wrap items-center gap-2">

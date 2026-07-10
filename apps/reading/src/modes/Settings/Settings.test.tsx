@@ -1131,6 +1131,12 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(
       screen.getByTestId("notdiamond-live-l7-checklist-link").getAttribute("href") || "",
     ).toMatch(/#l7-notdiamond/);
+    // Residual (ahy): FUTURE-AGENT advisory-only brief deep-link.
+    expect(
+      screen
+        .getByTestId("notdiamond-future-agent-advisory-spec-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-notdiamond-advisory-only/);
     const l7 = screen.getByTestId("notdiamond-live-l7-gate-matrix");
     expect(l7.getAttribute("data-l7-advisory-only")).toBe("true");
     expect(l7.getAttribute("data-l7-is-dispatch-authority")).toBe("false");
