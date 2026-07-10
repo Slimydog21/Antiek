@@ -865,3 +865,9 @@ Hosted evidence windows Open Write with twin_seed source=evidence_pack so
 Antiek-bench weekly rewrite learns from citation-trust → Write paths.
 Competitive delta: evidence is not a dead-end float — it seeds writing and
 bench substrate with honest provenance.
+
+## Residual sj · 2026-07-10 — Context search float|full HTML
+Intelligent context search hits open as float|full hosted HTML windows
+(source=context_search) with twin-seed Open Write provenance. Competitive
+delta: search over the recursive note-taker substrate becomes reading fuel
+in the window flywheel — not only a Write seed or dead-end hit list.

@@ -255,9 +255,13 @@ export default function HostedHtmlDocumentHost(
 
   const payloadSource = (props.source || "").trim();
   const isEvidencePack = payloadSource === "evidence_pack";
+  // Residual (sj): intelligent search HTML windows join note-taker path.
+  const isContextSearch = payloadSource === "context_search";
   const twinSeedTitle = isEvidencePack
     ? `Evidence pack (citation trust) · ${title}`
-    : title;
+    : isContextSearch
+      ? `Context search · ${title}`
+      : title;
   const twinSeedBody = html
     ? html.replace(/<[^>]+>/g, " ").slice(0, 500)
     : twinSeedTitle;
@@ -270,6 +274,7 @@ export default function HostedHtmlDocumentHost(
       data-document-id={props.document_id ?? ""}
       data-source={payloadSource}
       data-evidence-pack={String(isEvidencePack)}
+      data-context-search={String(isContextSearch)}
     >
       <header className="space-y-1 border-b border-black/10 pb-3 dark:border-white/10">
         <div className="flex flex-wrap items-start justify-between gap-2">
@@ -305,13 +310,19 @@ export default function HostedHtmlDocumentHost(
                 data-view-format="html"
                 data-has-twin-seed="1"
                 data-write-seed-source={
-                  isEvidencePack ? "evidence_pack" : "hosted_html_document"
+                  isEvidencePack
+                    ? "evidence_pack"
+                    : isContextSearch
+                      ? "context_search"
+                      : "hosted_html_document"
                 }
                 className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
                 title={
                   isEvidencePack
                     ? "Open Write with evidence pack HTML + twin_seed (citation trust · seeds note-taker)"
-                    : "Open Write with hosted HTML + twin_seed (seeds note-taker when empty)"
+                    : isContextSearch
+                      ? "Open Write with context search HTML + twin_seed (intelligent search · seeds note-taker)"
+                      : "Open Write with hosted HTML + twin_seed (seeds note-taker when empty)"
                 }
               >
                 Open Write (HTML draft handoff)
@@ -515,6 +526,7 @@ export default function HostedHtmlDocumentHost(
           data-view-format="html"
           data-source={payloadSource}
           data-evidence-pack={String(isEvidencePack)}
+          data-context-search={String(isContextSearch)}
           data-auto-seed-if-empty="true"
         >
           {/* Residual (ez): remount twins with context refresh key. */}

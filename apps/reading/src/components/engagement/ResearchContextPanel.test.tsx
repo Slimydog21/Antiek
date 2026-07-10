@@ -385,6 +385,29 @@ describe("ResearchContextPanel", () => {
     expect(href).not.toMatch(/html_draft=/);
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
     expect(write.getAttribute("data-hit-count")).toBe("1");
+    // Residual (sj): float|full HTML reading windows for search hits.
+    const floatBtn = screen.getByTestId("context-search-open-float");
+    expect(floatBtn.getAttribute("data-window-mode")).toBe("floating");
+    fireEvent.click(floatBtn);
+    expect(openWindow).toHaveBeenCalled();
+    const floatCall = openWindow.mock.calls.at(-1) as [
+      string,
+      { source?: string; view_format?: string; html?: string },
+      { mode?: string },
+    ];
+    expect(floatCall[0]).toBe("hosted_html_document");
+    expect(floatCall[1].source).toBe("context_search");
+    expect(floatCall[1].view_format).toBe("html");
+    expect(floatCall[1].html).toMatch(/Query: attention/);
+    expect(floatCall[2].mode).toBe("floating");
+    fireEvent.click(screen.getByTestId("context-search-open-full"));
+    const fullCall = openWindow.mock.calls.at(-1) as [
+      string,
+      { source?: string },
+      { mode?: string },
+    ];
+    expect(fullCall[1].source).toBe("context_search");
+    expect(fullCall[2].mode).toBe("full");
     expect(searchEngagementContext).toHaveBeenCalledWith({
       query: "attention",
       asset_id: "paper",

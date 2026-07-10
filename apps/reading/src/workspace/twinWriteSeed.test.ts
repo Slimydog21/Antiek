@@ -150,6 +150,20 @@ describe("twinWriteSeed (pp)", () => {
     expect(seed?.title).toMatch(/Evidence pack/);
   });
 
+  it("builds context_search hosted Write seed source (sj)", () => {
+    const href = buildHostedHtmlWriteHref({
+      documentId: "context_search:paper:abc",
+      title: "Context search · attention",
+      html: "<p>Query: attention · hits=1</p>",
+      source: "context_search",
+    });
+    expect(href).toMatch(/twin_seed=antiek\.twin_write_seed\./);
+    const key = decodeURIComponent(
+      (href.match(/twin_seed=([^&]+)/) || [])[1] || "",
+    );
+    expect(loadTwinWriteSeed(key)?.source).toBe("context_search");
+  });
+
   it("builds deep research twin_seed Write href without inventing document_id (qv)", () => {
     const href = buildDeepResearchWriteHref({
       selectionText: "Attention is routing.",

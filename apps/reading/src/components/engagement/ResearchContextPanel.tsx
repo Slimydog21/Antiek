@@ -18,6 +18,7 @@
  * Residual (ri): Open Write twin_seed from research context prompt_block.
  * Residual (sf): float evidence pack as hosted HTML reading window (citation trust).
  * Residual (sg): open evidence pack as full working-region window (float|full parity).
+ * Residual (sj): float|full intelligent context search hits as HTML reading windows.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -777,6 +778,75 @@ export function ResearchContextPanel({
               </li>
             ))}
           </ul>
+          {/* Residual (sj): context search → float|full HTML reading windows. */}
+          {searchHits.html?.trim() ? (
+            <p className="meta font-mono text-[11px] space-x-3">
+              <button
+                type="button"
+                data-testid="context-search-open-float"
+                data-view-format="html"
+                data-window-mode="floating"
+                data-hit-count={String(searchHits.hit_count ?? 0)}
+                className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
+                title="Open search hits as floating HTML window (intelligent search · never PDF)"
+                onClick={() => {
+                  const stem =
+                    String(searchHits.asset_id || assetId).trim() || "asset";
+                  const id = `context_search:${stem}:${Date.now().toString(36)}`;
+                  openWindow(
+                    "hosted_html_document",
+                    {
+                      document_id: id,
+                      title: `Context search · ${searchHits.query || "hits"}`,
+                      html: searchHits.html,
+                      view_format: "html",
+                      source: "context_search",
+                      research_tier: searchHits.research_tier || null,
+                    },
+                    {
+                      id: `win:context_search:${id}`,
+                      title: "Context search",
+                      mode: "floating",
+                    },
+                  );
+                }}
+              >
+                Open float (search HTML)
+              </button>
+              <button
+                type="button"
+                data-testid="context-search-open-full"
+                data-view-format="html"
+                data-window-mode="full"
+                data-hit-count={String(searchHits.hit_count ?? 0)}
+                className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
+                title="Open search hits as full working-region HTML window (never PDF)"
+                onClick={() => {
+                  const stem =
+                    String(searchHits.asset_id || assetId).trim() || "asset";
+                  const id = `context_search:${stem}:full:${Date.now().toString(36)}`;
+                  openWindow(
+                    "hosted_html_document",
+                    {
+                      document_id: id,
+                      title: `Context search · ${searchHits.query || "hits"} (full)`,
+                      html: searchHits.html,
+                      view_format: "html",
+                      source: "context_search",
+                      research_tier: searchHits.research_tier || null,
+                    },
+                    {
+                      id: `win:context_search:${id}:full`,
+                      title: "Context search (full)",
+                      mode: "full",
+                    },
+                  );
+                }}
+              >
+                Open full (search HTML)
+              </button>
+            </p>
+          ) : null}
           {/* Residual (rf): search hits → Write twin_seed. */}
           {(() => {
             const href = buildContextSearchWriteHref({
