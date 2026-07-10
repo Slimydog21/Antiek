@@ -1461,3 +1461,8 @@ substrate-true (propose≠promote).
 SESSION-ARC-vz-wt + FUTURE tip → 741abb13 (21 residual ships this continuation).
 Competitive delta: compaction-safe multi-agent handoff; operator merge PR #465
 remains highest leverage.
+
+## Residual wv · 2026-07-10 — free-PD + computability compose for Turing
+Catalog free-PD-only composed with computability chip isolates Turing free PD
+and excludes paid stubs. Competitive delta: free STEM path never mixes paid
+entitlement into domain chips.
