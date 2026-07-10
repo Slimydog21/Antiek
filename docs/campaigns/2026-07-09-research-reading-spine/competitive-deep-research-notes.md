@@ -684,3 +684,5 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (qs, 2026-07-10) **badge ≡ budget** on Write/MO/Hosted via composeDriverPromptText
 
 - Closed (qt, 2026-07-10) **SESSION-ARC qp–qs driver foresight matrix** (badge ≡ budget)
+
+- Closed (qu, 2026-07-10) **HostedHtml Write dual handoff** html_draft+twin_seed (source=hosted_html_document)

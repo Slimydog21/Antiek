@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   TWIN_WRITE_SEED_KEY_PREFIX,
   buildTwinWriteHref,
+  buildHostedHtmlWriteHref,
   buildMarketplaceWriteHref,
   buildMergedDocWriteHref,
   buildWriteHtmlDraftHref,
@@ -108,4 +109,15 @@ describe("twinWriteSeed (pp)", () => {
     });
     expect(loadTwinWriteSeed(key!)?.source).toBe("midnight_oil_deposit");
   });
+
+  it("builds hosted HTML dual Write href with twin_seed (qu)", () => {
+    const href = buildHostedHtmlWriteHref({
+      documentId: "doc_abc",
+      title: "Attention",
+      html: "<article><p>Transformers.</p></article>",
+    });
+    expect(href).toMatch(/html_draft=doc_abc/);
+    expect(href).toMatch(/twin_seed=antiek\.twin_write_seed\./);
+  });
+
 });

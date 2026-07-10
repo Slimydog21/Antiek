@@ -1,0 +1,10 @@
+# inventory-qu · HostedHtml Write dual handoff
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: qu
+date: 2026-07-10
+
+## Closed
+- buildHostedHtmlWriteHref (html_draft + twin_seed, source=hosted_html_document)
+- HostedHtmlDocumentHost Open Write dual handoff
+- Write dual-handoff matrix complete: twin · MO · marketplace · spawn-merge · collective · hosted
+- vitest twinWriteSeed 9 + HostedHtml 12 = 21 passed (SCRATCH residual-tests-qu.log)

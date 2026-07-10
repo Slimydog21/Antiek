@@ -9,6 +9,7 @@
 | Marketplace host/library | qc | marketplace_host |
 | Spawn merge | qd | spawn_merge |
 | Collective merge/analysis | qe | collective_doc_merge |
+| Hosted HTML document | qu | hosted_html_document |
 
 Write create seeds twins via fz/pq when `html_draft` and/or `twin_seed` present.
 

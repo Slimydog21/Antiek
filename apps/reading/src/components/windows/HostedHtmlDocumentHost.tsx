@@ -10,6 +10,7 @@
  * float launch from the hosted book (reading ≡ research).
  * Residual (pj): DecisionTreeDriverBadge promptText = selection + pub refs
  * Residual (qs): budget panel shares composeDriverPromptText (badge ≡ budget).
+ * Residual (qu): Open Write dual handoff html_draft + twin_seed (parity marketplace/MO).
  * (parity ResearchThis pi / Write ph / MO pg).
  * Residual (dg): soft-gate deep research when budget would exceed.
  * Residual (ec): remount ResearchContextPanel after twin promote.
@@ -55,6 +56,7 @@ import {
 import { TwinNotesPanel } from "../engagement/TwinNotesPanel";
 import { useInWindow } from "./windowHostContext";
 import { composeDriverPromptText } from "../../lib/driverPromptText";
+import { buildHostedHtmlWriteHref } from "../../workspace/twinWriteSeed";
 
 export type HostedHtmlDocumentHostProps = {
   document_id?: string;
@@ -279,11 +281,16 @@ export default function HostedHtmlDocumentHost(
             {/* Residual (fl): handoff draft HTML into Write mode (import lands later). */}
             {assetId && isHtml ? (
               <a
-                href={`/write?html_draft=${encodeURIComponent(assetId)}`}
+                href={buildHostedHtmlWriteHref({
+                  documentId: assetId,
+                  title: props.title,
+                  html,
+                })}
                 data-testid="hosted-html-open-write"
                 data-view-format="html"
+                data-has-twin-seed="1"
                 className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
-                title="Open Write with this HTML document as draft handoff (full import residual fl+)"
+                title="Open Write with hosted HTML + twin_seed (seeds note-taker when empty)"
               >
                 Open Write (HTML draft handoff)
               </a>

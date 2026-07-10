@@ -14,7 +14,8 @@ export type TwinWriteSeedSource =
   | "midnight_oil_deposit"
   | "collective_doc_merge"
   | "marketplace_host"
-  | "spawn_merge";
+  | "spawn_merge"
+  | "hosted_html_document";
 
 export type TwinWriteSeedPayload = {
   plain_text: string;
@@ -53,6 +54,7 @@ export function storeTwinWriteSeed(input: {
     "collective_doc_merge",
     "marketplace_host",
     "spawn_merge",
+    "hosted_html_document",
   ];
   const source: TwinWriteSeedSource = allowed.includes(
     input.source as TwinWriteSeedSource,
@@ -93,6 +95,7 @@ export function loadTwinWriteSeed(key: string): TwinWriteSeedPayload | null {
       "collective_doc_merge",
       "marketplace_host",
       "spawn_merge",
+      "hosted_html_document",
     ];
     const source: TwinWriteSeedSource = allowedLoad.includes(
       srcRaw as TwinWriteSeedSource,
@@ -204,6 +207,35 @@ export function buildMergedDocWriteHref(opts: {
     asset_id: doc,
     note_ids: [],
     source: src,
+  });
+  return buildWriteHtmlDraftHref({
+    documentId: doc,
+    twinSeedKey: seedKey,
+  });
+}
+
+/**
+ * Residual (qu): dual Write handoff for hosted HTML reading assets
+ * (html_draft + twin_seed; parity marketplace qc / MO pz).
+ */
+export function buildHostedHtmlWriteHref(opts: {
+  documentId: string;
+  title?: string | null;
+  html?: string | null;
+}): string {
+  const doc = String(opts.documentId || "").trim();
+  if (!doc) return "/write";
+  const plain =
+    plainTextFromHtml(opts.html || "") ||
+    String(opts.title || "").trim() ||
+    doc;
+  const seedKey = storeTwinWriteSeed({
+    plain_text: plain,
+    html: String(opts.html || ""),
+    title: String(opts.title || "").trim() || `Hosted HTML · ${doc}`,
+    asset_id: doc,
+    note_ids: [],
+    source: "hosted_html_document",
   });
   return buildWriteHtmlDraftHref({
     documentId: doc,

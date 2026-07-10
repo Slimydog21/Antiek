@@ -219,9 +219,12 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(screen.getByTestId("hosted-html-document-host").textContent).toMatch(
       /not PDF/,
     );
-    // Residual (fl): Write handoff for HTML draft.
+    // Residual (fl/qu): Write dual handoff html_draft + twin_seed.
     const write = screen.getByTestId("hosted-html-open-write");
-    expect(write.getAttribute("href")).toBe("/write?html_draft=doc_abc");
+    const href = write.getAttribute("href") || "";
+    expect(href).toMatch(/html_draft=doc_abc/);
+    expect(href).toMatch(/twin_seed=antiek\.twin_write_seed\./);
+    expect(write.getAttribute("data-has-twin-seed")).toBe("1");
   });
 
   it("prefills research tier from Settings wrestle (jd)", async () => {
