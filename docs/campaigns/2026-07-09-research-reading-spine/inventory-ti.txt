@@ -1,0 +1,13 @@
+# inventory-ti · Settings dogfood v3 Faraday posture honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ti
+date: 2026-07-10
+
+## Closed
+- data-has-faraday-book-qa-posture on dogfood summary
+- Spine postures label → v3 + Faraday book_qa
+- Settings mock suite-competitive-dogfood-v3 · item_count=9
+- vitest Settings 32 · SCRATCH residual-tests-ti.log
+
+## Not in scope
+- Operator merge PR #465 (gated)

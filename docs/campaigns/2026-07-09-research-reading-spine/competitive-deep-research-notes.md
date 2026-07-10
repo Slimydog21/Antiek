@@ -998,3 +998,8 @@ marketplace free STEM electricity spine alongside write-seed/float/budget.
 Purchase + host of paid catalog titles stamps free_host=false / not
 public_domain with manual_receipt_only rails. Competitive delta: free research
 spine honesty has a hard negative case — paid hosts never look free.
+
+## Residual ti · 2026-07-10 — Settings dogfood v3 Faraday posture
+Settings dogfood summary stamps Faraday book_qa posture for v3 fixtures.
+Competitive delta: operators see free STEM electricity spine coverage in
+weekly dogfood without auto-promoting suites.

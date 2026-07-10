@@ -25,7 +25,8 @@ Engagement spine on this branch includes everything below. Prefer **inventory-ss
 | Driver budget foresight | **sa–se, sp–sw** | Decision-tree budget bar + mini projection · deep-links · hash scroll · leaderboard + suite + dogfood + dual-gate prep |
 | HTML reading flywheel | **sf–so** | Evidence / context search / hydrate / context pack / progress / flywheel → float\|full HTML + host twin-seed honesty |
 | Competitive dogfood v2 | **st–su** | write-seed / float-evidence / budget-foresight postures + Settings honesty |
-| Dual-gate prep strip | **sw** | L1–L4 offline-honest links · L7 ND advisory only |
+| Dual-gate prep strip | **sw–sz** | L1–L4 offline-honest links · MO L4 panel · L7 ND advisory only |
+| Marketplace free honesty | **ta–tg** | filtered free · library free · host free/PD · Faraday/Maxwell STEM · dogfood Faraday · purchase negative |
 
 Key modules:
 - `apps/reading/src/lib/writeSeedFeedSources.ts`

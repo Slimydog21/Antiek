@@ -2019,6 +2019,11 @@ export default function Settings() {
                     (it) => it.item_id === "dogfood-distill-budget-foresight",
                   ),
                 )}
+                data-has-faraday-book-qa-posture={String(
+                  (dogfood.items || []).some(
+                    (it) => it.item_id === "dogfood-book-faraday-induction",
+                  ),
+                )}
                 data-propose-not-promote="true"
               >
                 <Row label="Suite" value={dogfood.suite_version} />
@@ -2035,6 +2040,7 @@ export default function Settings() {
                     "dogfood-wrestle-write-seed",
                     "dogfood-synth-float-evidence",
                     "dogfood-distill-budget-foresight",
+                    "dogfood-book-faraday-induction",
                   ].includes(it.item_id),
                 ) ? (
                   <p
@@ -2042,8 +2048,9 @@ export default function Settings() {
                     data-testid="antiek-bench-dogfood-v2-postures"
                     role="status"
                   >
-                    Spine postures (v2): write-seed · float evidence · budget
-                    foresight (listing only · not auto-promoted)
+                    Spine postures (v3): write-seed · float evidence · budget
+                    foresight · Faraday book_qa (listing only · not
+                    auto-promoted)
                   </p>
                 ) : null}
                 <ul data-testid="antiek-bench-dogfood-classes" className="space-y-1">
