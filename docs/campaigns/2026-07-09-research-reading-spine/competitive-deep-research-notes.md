@@ -2328,3 +2328,8 @@ Collective multi-spawn Open Write stamps data-mode · data-draft-leaves-parent �
 data-parent-asset-id · data-spawn-count · data-seamless-merge-write (parity aem
 spawn merge). Competitive delta: multi-select merge→Write note-taker path honesty.
 vitest CollectiveResearchPanel 25 green.
+
+## Residual aer · 2026-07-10 — SESSION-ARC ael–aeq seamless Write path
+Handoff matrix: DR · spawn merge · HostedHtml · marketplace · MO deposit ·
+collective Open Write all stamp path honesty. Do not thrash ael–aeq stamps.
+Next: aes+ outside this thrash. PR #465 operator merge remains P0.
