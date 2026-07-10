@@ -1,0 +1,4 @@
+# inventory-qm · ResearchProgress driver badge promptText
+residual: qm · 2026-07-10
+- DecisionTreeDriverBadge promptText: spawn + tier + latest_stage
+- vitest ResearchProgressPanel 8 passed

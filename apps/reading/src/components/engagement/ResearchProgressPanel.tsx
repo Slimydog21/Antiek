@@ -10,6 +10,7 @@
  * Residual (jq): optional researchTier for long-horizon wrestle posture chrome.
  * Residual (ka): prefer prop researchTier; fall back to progress API research_tier.
  * Residual (lr): DecisionTreeDriverBadge with resolved tier during multi-minute jobs.
+ * Residual (qm): DecisionTreeDriverBadge promptText for progress posture foresight.
  * Residual (mw): competitive duration band + poll cadence honesty by tier
  * (fast/deep/wrestle) for long-horizon Deep Research posture.
  * HTML-first; never PDF.
@@ -245,7 +246,16 @@ export function ResearchProgressPanel({
             data-view-format="html"
             data-research-tier={tierKnown}
           >
-            <DecisionTreeDriverBadge researchTier={tierKnown} />
+            <DecisionTreeDriverBadge
+              researchTier={tierKnown}
+              promptText={
+                `research progress · spawn=${spawnId.trim()}` +
+                (tierKnown ? ` · tier=${tierKnown}` : "") +
+                (progress?.latest_stage
+                  ? ` · stage=${progress.latest_stage}`
+                  : "")
+              }
+            />
           </div>
         ) : null}
       </header>
