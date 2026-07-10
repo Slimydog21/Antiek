@@ -1,0 +1,28 @@
+# inventory-auv · pure registerModelReadiness
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: auv
+date: 2026-07-10
+parent_tip: d729a1593 (auu)
+
+## Closed
+- pure `registerModelReadiness` (workspace)
+  - gates: model_id + provider_id both required
+  - select_as_driver honesty (explicit · never auto-route)
+  - block_reason: ok | no_model | no_provider | missing_both
+- Settings Add model Register CTA driven by pure readiness
+  - data-register-ready · data-block-reason · data-select-as-driver
+  - onRegisterModel early-returns via pure gate
+- 5 pure unit tests + Settings add-model path green
+
+## Doctrine
+Add models in settings · install-as-driver only when operator checks ·
+never auto-route · soft budget foresight stays on auc bar
+
+## Next
+auw+ offline product residual outside thrash
+Avoid: register/ND/leaderboard install pure thrash · catalog · twin/merge ·
+presets · MO · scorecard · vision · dogfood · readiness→CTA · pure-open ·
+HostedHtml honesty
+Prefer: clear-driver pure · dual-gate honesty · marketplace HTML ·
+competitive non-catalog · SESSION-ARC aut–auv wave · MO non-thrash product
+Operator merge PR #465 remains P0 (gated)

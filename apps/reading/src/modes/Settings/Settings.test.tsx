@@ -2791,7 +2791,12 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(budgetBar.textContent).toMatch(/Budget before register/i);
     await user.type(screen.getByTestId("add-model-provider"), "zai");
     await user.type(screen.getByTestId("add-model-id"), "glm-5.2");
-    await user.click(screen.getByTestId("add-model-submit"));
+    // Residual (auv): pure register readiness stamps after form fill.
+    const submitBtn = screen.getByTestId("add-model-submit");
+    expect(submitBtn.getAttribute("data-register-ready")).toBe("true");
+    expect(submitBtn.getAttribute("data-block-reason")).toBe("ok");
+    expect(submitBtn.getAttribute("data-never-auto-route")).toBe("true");
+    await user.click(submitBtn);
     await waitFor(() => {
       expect(registerSettingsModel).toHaveBeenCalled();
     });

@@ -25,6 +25,7 @@ import {
   leaderboardDriverInstallReadiness,
   resolveLeaderboardInstallProvider,
 } from "../../workspace/leaderboardDriverInstallReadiness";
+import { registerModelReadiness } from "../../workspace/registerModelReadiness";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import {
@@ -94,6 +95,8 @@ import {
  * advisory pick CTA (decision-tree only · L7 never dispatch authority).
  * Residual (auu): pure leaderboardDriverInstallReadiness drives Antiek-bench
  * install recommended / best-by-task CTAs (advisory · never auto-route).
+ * Residual (auv): pure registerModelReadiness drives Add model Register CTA
+ * (model+provider required · select-as-driver never auto-routes).
  */
 export default function Settings() {
   const tier = useViewportTier();
@@ -431,25 +434,31 @@ export default function Settings() {
   }, [leaderboardWeek]);
 
   async function onRegisterModel() {
-    if (!addModelId.trim() || !addProviderId.trim()) {
-      setRegisteredError("model_id and provider_id are required");
+    // Residual (auv): pure gate — model + provider required · never auto-route.
+    const gate = registerModelReadiness({
+      model_id: addModelId,
+      provider_id: addProviderId,
+      select_as_driver: addSelectDriver,
+    });
+    if (!gate.register_ready) {
+      setRegisteredError(gate.register_title);
       return;
     }
     setRegisteredBusy(true);
     setRegisteredError(null);
     try {
       const rm = await registerSettingsModel({
-        model_id: addModelId.trim(),
-        provider_id: addProviderId.trim(),
-        select: addSelectDriver,
+        model_id: gate.model_id,
+        provider_id: gate.provider_id,
+        select: gate.select_as_driver,
       });
       if (rm.view_format !== "html") {
         throw new Error("registered models view_format must be html");
       }
       setRegistered(rm);
-      if (addSelectDriver) {
-        setSelectedModel(addModelId.trim());
-        setSelectedProvider(addProviderId.trim());
+      if (gate.select_as_driver) {
+        setSelectedModel(gate.model_id);
+        setSelectedProvider(gate.provider_id);
       }
     } catch (e) {
       setRegisteredError(e instanceof Error ? e.message : String(e));
@@ -904,6 +913,20 @@ export default function Settings() {
     });
   }, [leaderboard?.recommended_model_id, selectedProvider, models]);
 
+  /**
+   * Residual (auv): pure Add model Register CTA readiness.
+   * model_id + provider_id required · select_as_driver never auto-routes.
+   */
+  const addModelRegisterReady = useMemo(
+    () =>
+      registerModelReadiness({
+        model_id: addModelId,
+        provider_id: addProviderId,
+        select_as_driver: addSelectDriver,
+      }),
+    [addModelId, addProviderId, addSelectDriver],
+  );
+
   const spendPct = useMemo(() => {
     if (
       !budget ||
@@ -1260,10 +1283,23 @@ export default function Settings() {
             <button
               type="button"
               data-testid="add-model-submit"
+              // Residual (auv): pure register readiness stamps.
+              data-register-ready={String(addModelRegisterReady.register_ready)}
+              data-block-reason={addModelRegisterReady.block_reason}
+              data-never-auto-route={String(
+                addModelRegisterReady.never_auto_route,
+              )}
+              data-select-as-driver={String(
+                addModelRegisterReady.select_as_driver,
+              )}
+              data-install-is-decision-tree-only={String(
+                addModelRegisterReady.install_is_decision_tree_only,
+              )}
               onClick={() => void onRegisterModel()}
               disabled={
-                registeredBusy || !addModelId.trim() || !addProviderId.trim()
+                registeredBusy || !addModelRegisterReady.register_ready
               }
+              title={addModelRegisterReady.register_title}
               className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
             >
               {registeredBusy ? "Registering…" : "Register model"}
