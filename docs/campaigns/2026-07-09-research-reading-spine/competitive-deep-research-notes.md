@@ -2593,3 +2593,8 @@ Settings 36 green. propose≠promote.
 ResearchThis mounts TwinNotesPanel for documentId while spinning deep research
 (autoLoad · autoSeedIfEmpty · seed from selection). Book DR launch surface gets
 twin substrate (parity TalkToBook/MetaReading). vitest ResearchThis 13 green.
+
+## Residual agr · 2026-07-10 — SESSION-ARC agm–agq reading twins matrix
+Handoff: TalkToBook · MetaReading · ResearchThis TwinNotes + dogfood v20.
+Reading twins matrix complete offline. P0 operator merge PR #465.
+Pivot ags+ outside thrash.
