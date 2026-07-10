@@ -1328,3 +1328,8 @@ Competitive delta: deferred marketplace rails are visible on Settings chokepoint
 ## Residual vu · 2026-07-10 — SESSION-ARC + FUTURE-AGENT tip through vt
 SESSION-ARC-tt-vt + FUTURE-AGENT tip 8d924665 (53 residual ships). Competitive
 delta: compaction-safe handoff; operator merge PR #465 remains highest leverage.
+
+## Residual vv · 2026-07-10 — marketplace/MO hosted Open Write honesty tests
+HostedHtmlDocumentHost tests lock marketplace_host and midnight_oil_deposit
+Open Write sources. Competitive delta: book host and MO deposit Write paths are
+mechanically proven (parity vn).

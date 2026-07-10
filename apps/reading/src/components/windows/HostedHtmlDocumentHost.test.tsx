@@ -252,6 +252,45 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     ).toBe("research_progress_complete");
   });
 
+  it("stamps marketplace_host and midnight_oil_deposit Open Write sources (vv)", () => {
+    const { unmount } = render(
+      <HostedHtmlDocumentHost
+        document_id="hdoc_mkt"
+        title="Hosted book"
+        view_format="html"
+        source="marketplace_host"
+        html="<p>Marketplace body</p>"
+      />,
+    );
+    expect(
+      screen.getByTestId("hosted-html-open-write").getAttribute(
+        "data-write-seed-source",
+      ),
+    ).toBe("marketplace_host");
+    expect(
+      screen.getByTestId("hosted-html-open-write").getAttribute("title") || "",
+    ).toMatch(/marketplace/i);
+    unmount();
+
+    render(
+      <HostedHtmlDocumentHost
+        document_id="draft_moil_1"
+        title="MO deposit"
+        view_format="html"
+        source="midnight_oil_deposit"
+        html="<p>Deposit body</p>"
+      />,
+    );
+    expect(
+      screen.getByTestId("hosted-html-open-write").getAttribute(
+        "data-write-seed-source",
+      ),
+    ).toBe("midnight_oil_deposit");
+    expect(
+      screen.getByTestId("hosted-html-open-write").getAttribute("title") || "",
+    ).toMatch(/Midnight Oil deposit/i);
+  });
+
   it("stamps collective_written_analysis Open Write source (vn)", () => {
     render(
       <HostedHtmlDocumentHost
