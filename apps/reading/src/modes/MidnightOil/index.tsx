@@ -79,6 +79,7 @@ import {
 import { fetchDecisionTreeSelection, fetchDepthTiers } from "../../api/settings";
 import type { ResearchTier } from "../../lib/api";
 import {
+  estimateMoilRecommendedCeilingUsd,
   formatResearchTierCeilingFactor,
   formatResearchTierDurationBand,
   mapDepthTierToResearchTier,
@@ -927,6 +928,71 @@ export default function MidnightOil() {
             </label>
           ) : null}
         </div>
+        {/* Residual (adx): live recommended ceiling preview before create. */}
+        {(() => {
+          const previewUsd = estimateMoilRecommendedCeilingUsd({
+            durationMinutes,
+            fanoutDepth,
+            researchTier,
+          });
+          if (previewUsd == null) return null;
+          let fit: "fits" | "may_exceed" | "unknown" = "unknown";
+          let remainingAfter: number | null = null;
+          if (budgetRemainingUsd != null && Number.isFinite(budgetRemainingUsd)) {
+            fit =
+              previewUsd <= budgetRemainingUsd + 1e-9 ? "fits" : "may_exceed";
+            remainingAfter = budgetRemainingUsd - previewUsd;
+          }
+          return (
+            <div
+              className="font-mono text-[11px] space-y-0.5 border border-ink/15 rounded p-2 dark:border-bright/15"
+              data-testid="moil-ceiling-preview"
+              data-preview-only="true"
+              data-pricing-source="default-offline"
+              data-duration-minutes={String(durationMinutes)}
+              data-fanout-depth={String(
+                Number.isFinite(fanoutDepth) && fanoutDepth > 0
+                  ? Math.floor(fanoutDepth)
+                  : MOIL_CEILING_DEFAULT_FANOUT_DEPTH,
+              )}
+              data-research-tier={researchTier}
+              data-recommended-usd={String(previewUsd)}
+              data-budget-fit={fit}
+              data-remaining-after-usd={
+                remainingAfter != null ? String(remainingAfter) : ""
+              }
+              data-tokens-per-minute={String(MOIL_CEILING_TOKENS_PER_MINUTE)}
+              data-safety-factor={String(MOIL_CEILING_SAFETY_FACTOR)}
+              data-tier-multiplier={String(
+                mapResearchTierToCeilingMultiplier(researchTier),
+              )}
+              role="status"
+            >
+              <p>
+                Preview recommended ceiling ≈{" "}
+                <strong data-testid="moil-ceiling-preview-usd">
+                  ${previewUsd.toFixed(2)}
+                </strong>{" "}
+                · duration={durationMinutes}m · fanout=
+                {Number.isFinite(fanoutDepth) && fanoutDepth > 0
+                  ? Math.floor(fanoutDepth)
+                  : MOIL_CEILING_DEFAULT_FANOUT_DEPTH}{" "}
+                · tier={formatResearchTierCeilingFactor(researchTier)}
+              </p>
+              <p className="opacity-80">
+                {fit === "fits"
+                  ? "Fits remaining daily budget (preview)"
+                  : fit === "may_exceed"
+                    ? "May exceed remaining daily budget (preview · soft gate on create)"
+                    : "Remaining budget unknown — cannot assert fit"}
+                {remainingAfter != null
+                  ? ` · remaining after≈$${remainingAfter.toFixed(2)}`
+                  : ""}{" "}
+                · create job remains authoritative · default offline rates
+              </p>
+            </div>
+          );
+        })()}
         <button
           type="submit"
           disabled={busy || !goalsText.trim() || (budgetWarn && !forceOverBudget)}

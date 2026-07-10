@@ -139,6 +139,43 @@ export function formatResearchTierCeilingFactor(
 }
 
 /**
+ * Residual (adx): client preview of Midnight Oil recommended price ceiling.
+ * Mirrors substrate/midnight_oil/ceiling.py recommend_price_ceiling with
+ * default rates (input 1 + output 3 USD/1M) when model rates unknown.
+ * Preview only — create job remains authoritative server recommendation.
+ */
+export function estimateMoilRecommendedCeilingUsd(opts: {
+  durationMinutes: number;
+  fanoutDepth?: number;
+  researchTier?: ResearchTier | string | null;
+  /** Combined input+output USD per 1M tokens; default 4.0 (substrate default). */
+  combinedUsdPer1m?: number;
+}): number | null {
+  const duration = Math.floor(Number(opts.durationMinutes));
+  if (!Number.isFinite(duration) || duration <= 0) return null;
+  const fanoutRaw = Number(opts.fanoutDepth);
+  const fanout =
+    Number.isFinite(fanoutRaw) && fanoutRaw > 0
+      ? Math.floor(fanoutRaw)
+      : MOIL_CEILING_DEFAULT_FANOUT_DEPTH;
+  const combined =
+    typeof opts.combinedUsdPer1m === "number" &&
+    Number.isFinite(opts.combinedUsdPer1m) &&
+    opts.combinedUsdPer1m > 0
+      ? opts.combinedUsdPer1m
+      : 4.0; // substrate DEFAULT_PRICING default: 1.0 + 3.0
+  const mult = mapResearchTierToCeilingMultiplier(opts.researchTier);
+  const raw =
+    duration *
+    MOIL_CEILING_TOKENS_PER_MINUTE *
+    (combined / 1_000_000) *
+    fanout *
+    MOIL_CEILING_SAFETY_FACTOR *
+    mult;
+  return Math.round(raw * 100) / 100;
+}
+
+/**
  * Residual (ng): competitive duration recommendation for Midnight Oil
  * autonomous runs (parity ResearchProgressPanel mw bands).
  * Honest estimate midpoints — not a live ETA; operator can override.

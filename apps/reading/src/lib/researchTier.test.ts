@@ -96,6 +96,30 @@ describe("researchTier residual (ada) MO ceiling formula constants", () => {
   });
 });
 
+describe("researchTier residual (adx) MO ceiling preview estimate", () => {
+  it("matches substrate default pricing for 60m · fanout 3 · deep", async () => {
+    const { estimateMoilRecommendedCeilingUsd } = await import("./researchTier");
+    // 60 * 4000 * 4/1e6 * 3 * 1.25 * 1.0 = 3.6
+    expect(
+      estimateMoilRecommendedCeilingUsd({
+        durationMinutes: 60,
+        fanoutDepth: 3,
+        researchTier: "deep",
+      }),
+    ).toBe(3.6);
+    expect(
+      estimateMoilRecommendedCeilingUsd({
+        durationMinutes: 60,
+        fanoutDepth: 3,
+        researchTier: "wrestle",
+      }),
+    ).toBe(7.2);
+    expect(
+      estimateMoilRecommendedCeilingUsd({ durationMinutes: 0 }),
+    ).toBeNull();
+  });
+});
+
 describe("researchTier map residual (ng) MO recommended duration", () => {
   it("maps closed tiers to competitive duration midpoints (parity mw)", () => {
     expect(mapResearchTierToRecommendedDurationMinutes("fast")).toBe(

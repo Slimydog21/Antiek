@@ -414,6 +414,22 @@ describe("MidnightOil mode", () => {
     expect(l4.textContent).toMatch(/L4 MO live-step/i);
   });
 
+  it("previews recommended ceiling before create (adx)", () => {
+    render(<MidnightOil />);
+    const preview = screen.getByTestId("moil-ceiling-preview");
+    expect(preview.getAttribute("data-preview-only")).toBe("true");
+    expect(preview.getAttribute("data-pricing-source")).toBe("default-offline");
+    // Default form: 60m · fanout 3 · deep → $3.60 (substrate parity).
+    expect(preview.getAttribute("data-recommended-usd")).toBe("3.6");
+    expect(preview.getAttribute("data-duration-minutes")).toBe("60");
+    expect(preview.getAttribute("data-fanout-depth")).toBe("3");
+    expect(preview.getAttribute("data-research-tier")).toBe("deep");
+    expect(screen.getByTestId("moil-ceiling-preview-usd").textContent).toMatch(
+      /\$3\.60/,
+    );
+    expect(preview.textContent).toMatch(/create job remains authoritative/i);
+  });
+
   it("mounts budget projection panel before create (cs)", () => {
     render(<MidnightOil />);
     expect(screen.getByTestId("moil-budget-mount")).toBeTruthy();

@@ -2214,3 +2214,9 @@ adq gap on engagement store call sites). vitest TwinNotesPanel 30 green.
 Dogfood has-body posture chrome deep-links to suite proposal and usage body matrix
 (hash targets). Competitive delta: operator path fixture → recursive rewrite learning
 is one-click navigable (parity decision-tree dogfood/leaderboard links). vitest Settings 35 green.
+
+## Residual adx · 2026-07-10 — Midnight Oil live ceiling preview before create
+estimateMoilRecommendedCeilingUsd (substrate parity default rates) surfaces
+moil-ceiling-preview on create form (duration · fanout · tier · $preview · budget fit).
+Competitive delta: operator sees recommended price ceiling before autonomous swarm
+create — create job remains authoritative. vitest researchTier+MO 32 green.
