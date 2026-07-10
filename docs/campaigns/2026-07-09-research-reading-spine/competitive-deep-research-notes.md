@@ -1003,3 +1003,8 @@ spine honesty has a hard negative case — paid hosts never look free.
 Settings dogfood summary stamps Faraday book_qa posture for v3 fixtures.
 Competitive delta: operators see free STEM electricity spine coverage in
 weekly dogfood without auto-promoting suites.
+
+## Residual tj · 2026-07-10 — Electricity domain chip → Faraday/Maxwell
+Subject filter electricity (and technology) surfaces free PD Faraday and
+Maxwell hosts. Competitive delta: tech researchers filter knowledge-dense
+electricity spine without leaving free HTML catalog.

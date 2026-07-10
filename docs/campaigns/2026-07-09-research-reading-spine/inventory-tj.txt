@@ -1,0 +1,13 @@
+# inventory-tj · Electricity domain chip → Faraday/Maxwell free PD
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: tj
+date: 2026-07-10
+
+## Closed
+- filter_by_subject("electricity") includes pd-faraday-electricity + pd-maxwell-em
+- all free public_domain
+- technology chip also reaches both
+- pytest 1 · SCRATCH residual-tests-tj.log
+
+## Not in scope
+- Operator merge PR #465 (gated)

@@ -206,3 +206,18 @@ def test_catalog_route_subjects_and_by_subject(client) -> None:
     assert "physics" in by_id["pd-principia"]["subjects"]
     assert "pd-novum" in by_id
     assert "method" in by_id["pd-novum"]["subjects"]
+
+
+def test_electricity_chip_filter_includes_faraday_maxwell() -> None:
+    """Residual (tj): electricity domain chip surfaces Faraday/Maxwell free PD."""
+    cat = default_demo_catalog()
+    elec = cat.filter_by_subject("electricity")
+    ids = {e.book_id for e in elec}
+    assert "pd-faraday-electricity" in ids
+    assert "pd-maxwell-em" in ids
+    assert all(e.is_free and e.license_class == "public_domain" for e in elec)
+    # technology chip also reaches them (tech researcher path).
+    tech = cat.filter_by_subject("technology")
+    tech_ids = {e.book_id for e in tech}
+    assert "pd-faraday-electricity" in tech_ids
+    assert "pd-maxwell-em" in tech_ids
