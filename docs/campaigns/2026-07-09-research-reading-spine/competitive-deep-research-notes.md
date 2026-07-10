@@ -976,3 +976,10 @@ Host land stamps data-is-public-domain / data-is-free-host and a free/PD
 honesty strip (manual_receipt_only rails). Competitive delta: free research
 spine host path is auditably distinct from purchase+host without inventing
 live payment rails.
+
+## Residual td · 2026-07-10 — STEM PD electricity spine
+Demo catalog gains Faraday Experimental Researches and Maxwell Treatise on
+Electricity and Magnetism as free HTML public-domain hosts (physics +
+technology + electricity subjects). Competitive delta: free research spine
+for tech researchers expands beyond Euclid/Newton/Bacon without inventing
+live bookstore connectors.

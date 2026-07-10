@@ -458,6 +458,41 @@ def default_demo_catalog() -> Catalog:
                 source_format="html",
                 subjects=("philosophy", "science", "method"),
             ),
+            # Residual (td): knowledge-dense electricity STEM PD for tech researchers.
+            CatalogEntry(
+                book_id="pd-faraday-electricity",
+                title="Experimental Researches in Electricity",
+                author="Michael Faraday",
+                source="project_gutenberg",
+                license_class="public_domain",
+                is_free=True,
+                body_text=(
+                    "The power which electricity of tension possesses of causing an "
+                    "opposite electrical state in its vicinity has been expressed by "
+                    "the general term Induction.\n\n"
+                    "When an electric current is passed through a wire, the wire itself "
+                    "acquires the power of affecting a magnet in its vicinity."
+                ),
+                source_format="html",
+                subjects=("physics", "science", "technology", "electricity"),
+            ),
+            CatalogEntry(
+                book_id="pd-maxwell-em",
+                title="A Treatise on Electricity and Magnetism",
+                author="James Clerk Maxwell",
+                source="project_gutenberg",
+                license_class="public_domain",
+                is_free=True,
+                body_text=(
+                    "The whole theory of electricity and magnetism is reduced to a "
+                    "dynamical theory, and the equations of the field express the "
+                    "relations between the electric and magnetic quantities.\n\n"
+                    "Light itself is an electromagnetic disturbance in the form of "
+                    "waves propagated through the electromagnetic field."
+                ),
+                source_format="html",
+                subjects=("physics", "mathematics", "science", "technology", "electricity"),
+            ),
             CatalogEntry(
                 book_id="buy-modern",
                 title="Modern Systems Research",

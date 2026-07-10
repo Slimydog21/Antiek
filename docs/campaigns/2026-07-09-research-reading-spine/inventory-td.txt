@@ -1,0 +1,21 @@
+# inventory-td · STEM PD electricity spine (Faraday / Maxwell)
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: td
+date: 2026-07-10
+
+## Closed
+- default_demo_catalog entries:
+  - pd-faraday-electricity (Experimental Researches in Electricity)
+  - pd-maxwell-em (A Treatise on Electricity and Magnetism)
+- subjects: physics, science, technology, electricity (+ mathematics for Maxwell)
+- free public_domain · project_gutenberg · HTML source_format
+- pytest marketplace catalog 17 · SCRATCH residual-tests-td.log
+
+## Product why
+Technology researchers need knowledge-dense free PD beyond Euclid/Newton/Bacon.
+Electricity/electromagnetism spine expands free research catalog without
+payment rails.
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live external catalog connectors

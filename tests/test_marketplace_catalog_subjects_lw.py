@@ -73,13 +73,45 @@ def test_stem_pd_spine_in_demo_catalog() -> None:
     assert "pd-elements" in ids
     assert "pd-principia" in ids
     assert "pd-novum" in ids
-    assert len(ids) >= 10
+    # Residual (td): Faraday / Maxwell knowledge-dense electricity STEM.
+    assert "pd-faraday-electricity" in ids
+    assert "pd-maxwell-em" in ids
+    assert len(ids) >= 12
     elements = cat.get("pd-elements")
     assert elements is not None
     assert elements.license_class == "public_domain"
     assert elements.is_free is True
-    assert "mathematics" in elements.subjects
-    assert elements.source_format == "html"
+
+
+def test_stem_electricity_subjects_and_free_pd() -> None:
+    """Residual (td): Faraday/Maxwell tagged physics+technology, free PD."""
+    cat = default_demo_catalog()
+    faraday = cat.get("pd-faraday-electricity")
+    maxwell = cat.get("pd-maxwell-em")
+    assert faraday is not None and maxwell is not None
+    for e in (faraday, maxwell):
+        assert e.license_class == "public_domain"
+        assert e.is_free is True
+        assert e.source == "project_gutenberg"
+        assert "physics" in e.subjects
+        assert "technology" in e.subjects
+        assert "electricity" in e.subjects
+    tech = cat.filter_by_subject("electricity")
+    assert {e.book_id for e in tech} >= {
+        "pd-faraday-electricity",
+        "pd-maxwell-em",
+    }
+    free_pd = [
+        e
+        for e in cat.search("")
+        if e.license_class == "public_domain" and e.is_free
+    ]
+    assert len(free_pd) >= 11
+    physics = cat.filter_by_subject("physics")
+    assert any(e.book_id == "pd-faraday-electricity" for e in physics)
+    assert any(e.book_id == "pd-maxwell-em" for e in physics)
+    assert faraday.source_format == "html"
+    assert maxwell.source_format == "html"
 
 
 def test_host_stem_pd_html_first() -> None:
