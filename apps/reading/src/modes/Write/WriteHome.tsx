@@ -833,7 +833,13 @@ export default function WriteHome() {
       // the scrim keeps the heading + the start-a-piece card legible. The card
       // below is glassed too (was an opaque bg-ice-0 dark:bg-charcoal-2 sheet)
       // so the scene reads behind it instead of an ice wall.
-      <GlassSurface className="mx-auto h-full max-w-3xl overflow-y-auto px-6 py-8">
+      <GlassSurface
+        className="mx-auto h-full max-w-3xl overflow-y-auto px-6 py-8"
+        data-testid="write-home-mode"
+        data-view-format="html"
+        data-html-first="true"
+        data-product-panel="write_home"
+      >
         <header className="mb-6">
           <h1 className="font-serif text-2xl font-semibold text-ink dark:text-bright">
             Write a piece
@@ -841,6 +847,7 @@ export default function WriteHome() {
           <p className="mt-1 text-sm text-ink-soft dark:text-moonlight">
             Pull your research notes into an outline, generate a first draft
             from them, then edit. Or dump a raw idea and let the blocks fall out.
+            HTML-first deliverables only (never PDF view).
           </p>
         </header>
 
@@ -933,7 +940,15 @@ export default function WriteHome() {
   // erode contrast. Transparency here would risk the body text M3 protects;
   // the honest choice is solid, exactly like the /inv/:id research IDE.
   return (
-    <GlassSurface variant="solid" className="flex h-full min-h-0">
+    <GlassSurface
+      variant="solid"
+      className="flex h-full min-h-0"
+      data-testid="write-piece-mode"
+      data-view-format="html"
+      data-html-first="true"
+      data-product-panel="write_piece"
+      data-deliverable-id={deliverableId || ""}
+    >
       <main className="flex min-w-0 flex-1 flex-col px-6 py-5">
         <header className="mb-4 flex items-baseline justify-between gap-3">
           <div className="min-w-0">

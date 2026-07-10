@@ -330,6 +330,34 @@ function mountAt(path: string) {
 }
 
 describe("WriteHome — the re-homed door", () => {
+  it("stamps HTML-first honesty on Write home and open piece (apf)", async () => {
+    mountAt("/write");
+    await waitFor(() => {
+      expect(screen.getByTestId("write-home-mode")).toBeTruthy();
+    });
+    const home = screen.getByTestId("write-home-mode");
+    expect(home.getAttribute("data-view-format")).toBe("html");
+    expect(home.getAttribute("data-html-first")).toBe("true");
+    expect(home.getAttribute("data-product-panel")).toBe("write_home");
+    expect(home.textContent).toMatch(/HTML-first/i);
+
+    getDeliverableMock.mockResolvedValue({
+      deliverable_id: "del_html",
+      title: "HTML piece",
+      investigation_root_id: "inv_1",
+      sections: [],
+    });
+    mountAt("/write/del_html");
+    await waitFor(() => {
+      expect(screen.getByTestId("write-piece-mode")).toBeTruthy();
+    });
+    const piece = screen.getByTestId("write-piece-mode");
+    expect(piece.getAttribute("data-view-format")).toBe("html");
+    expect(piece.getAttribute("data-html-first")).toBe("true");
+    expect(piece.getAttribute("data-product-panel")).toBe("write_piece");
+    expect(piece.getAttribute("data-deliverable-id")).toBe("del_html");
+  });
+
   it("the no-piece Write home is LANDING-GLASS (SPR-03 M2 occlusion contract)", async () => {
     // Audit §3 item 5: the Write home (no piece) is a landing surface, rendered
     // through GlassSurface variant="glass" so the scene shows through the margins.

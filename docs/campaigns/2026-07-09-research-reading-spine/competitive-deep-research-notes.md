@@ -3735,3 +3735,8 @@ P0 PR #465. Pivot ape+ outside thrash.
 plan→gather→synthesize→cite→terminal pure helpers + ResearchProgressPanel chrome.
 World-class multi-stage DR honesty · never invents stages. vitest ResearchProgress 12 green.
 P0 PR #465. Pivot apf+ outside thrash.
+
+## Residual apf · 2026-07-10 — Write home/piece HTML-first mode stamps
+write-home-mode + write-piece-mode data-html-first · view-format · product-panel.
+HTML vision honesty on writing surface. vitest WriteHome apf path green.
+P0 PR #465. Pivot apg+ outside thrash.
