@@ -171,6 +171,12 @@ describe("ResearchProgressPanel", () => {
     expect(write.getAttribute("data-view-format")).toBe("html");
     // Residual (acp): Final synthesis HTML body → has-body true.
     expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
+    // Residual (aex): plan→cite progress → Write path honesty.
+    expect(write.getAttribute("data-spawn-id")).toBe("spn_done");
+    expect(write.getAttribute("data-progress-source")).toBe(
+      "research_progress_complete",
+    );
+    expect(write.getAttribute("data-seamless-progress-write")).toBe("true");
     // Residual (sm): float|full progress HTML reading windows.
     fireEvent.click(screen.getByTestId("research-progress-open-float"));
     const floatCall = openWindow.mock.calls.at(-1) as [

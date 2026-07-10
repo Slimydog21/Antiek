@@ -2358,3 +2358,8 @@ Do not thrash ael–aeu stamps/version pins. P0 remains operator merge PR #465.
 TwinNotes draft and promote Open Write stamp data-seamless-twin-write · asset ·
 note-count/promoted · research_tier so recursive note-taker → Write is
 machine-readable. vitest TwinNotesPanel 30 green.
+
+## Residual aex · 2026-07-10 — research progress + session flywheel Open Write path
+Progress Open Write stamps spawn · progress-source · seamless-progress-write.
+Flywheel Open Write stamps session/spawn · seamless-flywheel-write. Plan→cite
+and session complete → Write note-taker path honesty. vitest 15 green.

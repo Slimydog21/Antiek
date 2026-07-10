@@ -146,7 +146,7 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
     expect(
       (openWindow.mock.calls.at(-1) as [{}, {}, { mode?: string }])[2].mode,
     ).toBe("full");
-    // Residual (re): Open Write twin_seed after flywheel complete.
+    // Residual (re/aex): Open Write twin_seed after flywheel complete + path.
     const write = screen.getByTestId("session-flywheel-open-write");
     const href = write.getAttribute("href") || "";
     expect(href).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
@@ -155,6 +155,12 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
     expect(write.getAttribute("data-status")).toBe("complete");
     // Residual (acs): output/prompt_block body → has-body true.
     expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
+    // Residual (aex): session flywheel → Write path honesty.
+    expect(write.getAttribute("data-seamless-flywheel-write")).toBe("true");
+    expect(
+      write.getAttribute("data-session-id") ||
+        write.getAttribute("data-spawn-id"),
+    ).toBeTruthy();
     // Residual (lt): post-complete badge adopts session/pack effective tier.
     expect(
       screen

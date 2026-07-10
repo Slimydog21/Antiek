@@ -426,7 +426,7 @@ export function ResearchProgressPanel({
               </button>
             </p>
           ) : null}
-          {/* Residual (qw/rp/acp): terminal or mid-flight → Open Write twin seed + body honesty. */}
+          {/* Residual (qw/rp/acp/aex): terminal or mid-flight → Open Write + path. */}
           {writeHref ? (
             <p className="meta font-mono text-[11px]">
               <a
@@ -439,11 +439,31 @@ export function ResearchProgressPanel({
                 data-write-seed-has-body={String(
                   Boolean(plainTextFromHtml(progress.html || "").trim()),
                 )}
+                // Residual (aex): plan→cite progress → Write path honesty.
+                data-spawn-id={String(spawnId || "").trim()}
+                data-research-tier={
+                  (
+                    progress.research_tier ||
+                    researchTier ||
+                    ""
+                  )
+                    .toString()
+                    .trim()
+                    .toLowerCase() || ""
+                }
+                data-progress-source={
+                  progress.is_terminal
+                    ? "research_progress_complete"
+                    : "research_progress_draft"
+                }
+                data-seamless-progress-write={String(
+                  Boolean(String(spawnId || "").trim()),
+                )}
                 className="underline opacity-90 hover:opacity-100"
                 title={
                   progress.is_terminal
-                    ? "Open Write with terminal research progress as twin_seed (sessionStorage; no invented document_id)"
-                    : "Open Write with in-progress plan→cite draft as twin_seed (sessionStorage; no invented document_id)"
+                    ? "Open Write with terminal research progress as twin_seed (plan→cite complete · no invented document_id)"
+                    : "Open Write with in-progress plan→cite draft as twin_seed (mid-flight · no invented document_id)"
                 }
               >
                 {progress.is_terminal

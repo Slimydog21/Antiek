@@ -411,7 +411,7 @@ export function SessionFlywheelPanel({
               </button>
             </p>
           ) : null}
-          {/* Residual (re/acs): flywheel complete → Write twin_seed + body honesty. */}
+          {/* Residual (re/acs/aex): flywheel complete → Write twin_seed + path. */}
           {(() => {
             const href = buildSessionFlywheelWriteHref({
               sessionId: result.session_id || sessionId,
@@ -425,6 +425,11 @@ export function SessionFlywheelPanel({
               String(output || "").trim() ||
                 String(result.prompt_block || "").trim(),
             );
+            const fwSession = String(
+              result.session_id || sessionId || "",
+            ).trim();
+            const fwSpawn = String(result.spawn_id || "").trim();
+            const fwTier = flywheelResearchTier(result).effective;
             return href ? (
               <p>
                 <a
@@ -434,8 +439,17 @@ export function SessionFlywheelPanel({
                   data-has-twin-seed="1"
                   data-status={result.status ?? ""}
                   data-write-seed-has-body={String(hasBody)}
+                  // Residual (aex): session flywheel → Write path honesty.
+                  data-session-id={fwSession}
+                  data-spawn-id={fwSpawn}
+                  data-research-tier={
+                    (fwTier || "").toString().trim().toLowerCase() || ""
+                  }
+                  data-seamless-flywheel-write={String(
+                    Boolean(fwSession || fwSpawn),
+                  )}
                   className="underline opacity-90 hover:opacity-100"
-                  title="Open Write with session flywheel output as twin_seed (no invented document_id)"
+                  title="Open Write with session flywheel output as twin_seed (session complete · no invented document_id)"
                 >
                   Open Write (session complete)
                 </a>
