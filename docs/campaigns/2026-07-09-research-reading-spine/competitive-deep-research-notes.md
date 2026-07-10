@@ -3102,3 +3102,8 @@ vitest Settings 37 green. P0 operator merge PR #465. Pivot akf+ outside thrash.
 Competitive DR scorecard payment deferred row deep-links FUTURE-AGENT L5 digital
 book seamless port (parity marketplace host akb). vitest Settings 37 green.
 P0 operator merge PR #465. Pivot akg+ outside thrash.
+
+## Residual akg · 2026-07-10 — SESSION-ARC aka–akf ND budget L5 honesty
+Wave handoff: ND decision-tree provenance · marketplace L5 host · FUTURE brief ·
+prompt-cost scorecard · scorecard L5 FUTURE link. P0 operator merge PR #465.
+Pivot akh+ outside thrash.
