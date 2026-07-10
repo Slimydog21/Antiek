@@ -381,6 +381,12 @@ export const COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES = [
   "moil_competitive_duration_band",
   // Residual (aug): pure moilCeilingBudgetFit soft foresight (auf).
   "moil_ceiling_budget_fit",
+  // Residual (auo): collective continue-as-unit pure readiness (aul).
+  "collective_continue_unit_readiness",
+  // Residual (auo): twin promote→context pure readiness (aum).
+  "twin_promote_context_readiness",
+  // Residual (auo): decision-tree Install driver pure readiness (aun).
+  "decision_tree_install_readiness",
 ] as const;
 
 export type CompetitiveDrOfflineProductSurface =

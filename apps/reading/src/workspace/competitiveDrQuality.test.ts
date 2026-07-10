@@ -149,6 +149,16 @@ describe("competitiveDrQuality workspace pure helpers (apw)", () => {
     expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
       "moil_ceiling_budget_fit",
     );
+    // Residual (auo): aul/aum/aun pure readiness surfaces.
+    expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
+      "collective_continue_unit_readiness",
+    );
+    expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
+      "twin_promote_context_readiness",
+    );
+    expect(COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES).toContain(
+      "decision_tree_install_readiness",
+    );
     const cat = competitiveDrOfflineSurfaceCatalog();
     expect(cat.live_injectors_deferred).toBe(true);
     expect(cat.notdiamond_is_router).toBe(false);

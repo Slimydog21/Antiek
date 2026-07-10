@@ -1,0 +1,23 @@
+# inventory-auo · SESSION-ARC aul–aun + offline catalog pure gates
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: auo
+date: 2026-07-10
+parent_tip: 243fd7f91 (aun)
+
+## Closed
+- SESSION-ARC-aul-aun-pure-gates.md wave handoff
+- COMPETITIVE_DR_OFFLINE_PRODUCT_SURFACES +=
+  collective_continue_unit_readiness · twin_promote_context_readiness ·
+  decision_tree_install_readiness
+- competitiveDrQuality.test tracks aul/aum/aun surfaces
+
+## Doctrine
+Wave handoff · catalog never invents live · ND never router
+
+## Next
+aup+ offline product residual outside thrash
+HARD AVOID: pure-gate thrash (aul/aum/aun) · catalog after auo · pure-open ·
+presets · MO · scorecard · vision · dogfood
+Prefer: competitive product residual · knowledge connector non-preset ·
+spawn-merge depth
+Operator merge PR #465 remains P0 (gated)
