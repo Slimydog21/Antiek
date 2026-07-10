@@ -398,6 +398,13 @@ export function SpawnMergePanel({
                   data-testid="spawn-merge-open-write"
                   data-view-format="html"
                   data-has-twin-seed="1"
+                  // Residual (acl): body honesty on twin_seed (parity marketplace acf / MO ack).
+                  data-write-seed-has-body={String(
+                    Boolean(
+                      result.view_format === "html" &&
+                        plainTextFromHtml(result.html || "").trim(),
+                    ),
+                  )}
                   className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono underline hover:bg-ink/5 dark:border-bright/30"
                   title="Open Write with merged HTML + twin_seed (seeds note-taker when empty)"
                 >

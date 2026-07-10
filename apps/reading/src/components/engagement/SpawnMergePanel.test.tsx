@@ -244,6 +244,8 @@ describe("SpawnMergePanel residual ci", () => {
     expect(link.getAttribute("href") || "").toMatch(/twin_seed=antiek\.twin_write_seed\./);
     expect(link.getAttribute("data-has-twin-seed")).toBe("1");
     expect(link.getAttribute("data-view-format")).toBe("html");
+    // Residual (acl): twin_seed body honesty (parity marketplace acf / MO ack).
+    expect(link.getAttribute("data-write-seed-has-body")).toBe("true");
   });
 
   it("opens merged HTML in full working-region window (ev)", async () => {

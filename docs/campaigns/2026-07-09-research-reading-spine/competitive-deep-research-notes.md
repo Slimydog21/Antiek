@@ -2137,3 +2137,8 @@ Midnight Oil deposit Open Write stamps data-write-seed-has-body (parity marketpl
 acf library path). Competitive delta: autonomous MO deposit → Write recursive
 note-taker body honesty is machine-readable.
 
+## Residual acl · 2026-07-10 — spawn merge Open Write twin_seed has-body honesty
+Spawn merge Open Write stamps data-write-seed-has-body (parity marketplace acf /
+MO ack). Competitive delta: highlight → float DR → merge → Write body honesty
+is machine-readable end-to-end.
+

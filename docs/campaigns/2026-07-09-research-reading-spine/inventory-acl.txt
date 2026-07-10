@@ -1,0 +1,20 @@
+# inventory-acl · spawn merge Open Write twin_seed has-body honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: acl
+date: 2026-07-10
+tip_before: 59e23eda (ack)
+
+## Problem
+Spawn merge Open Write dual handoff lacked data-write-seed-has-body (parity
+marketplace acf / MO ack).
+
+## Fix
+- spawn-merge-open-write data-write-seed-has-body from result HTML plain text
+- SpawnMergePanel Open Write test locks has-body true
+
+## Verified
+vitest SpawnMerge Open Write → passed
+scratch: residual-acl-tests.log
+
+## Not in scope
+- Operator merge PR #465 (gated)
