@@ -2784,3 +2784,8 @@ Pivot ahv+.
 Twin matrix gaps closed offline: MO deposit honesty (ahu) · collective unit twin
 seed (aht) · domain-aware twin search (ahr/ahs). P0 operator merge PR #465.
 Pivot ahw+ outside thrash.
+
+## Residual ahw · 2026-07-10 — FUTURE-AGENT NotDiamond advisory-only verdict
+Executable reaffirmation: NotDiamond useful as advisor, never as router (L7).
+Operator decision-tree + budget foresight remain product control surfaces.
+P0 operator merge PR #465. Pivot ahx+.

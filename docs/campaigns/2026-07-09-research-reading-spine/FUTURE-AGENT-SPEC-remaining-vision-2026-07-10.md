@@ -41,6 +41,9 @@ See **FUTURE-AGENT-SPEC-l6-live-multiagent-collective.md** · offline merge unit
 ### Twin note-taker completeness
 See **FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md** · free/purchased seed honesty **aho**.
 
+### NotDiamond
+See **FUTURE-AGENT-SPEC-notdiamond-advisory-only.md** — advisor yes · router never (L7).
+
 ### P1 next offline (residual **ahk+**)
 Outside thrash: competitive depth · twin flywheel · MO only if non-colliding offline. Leave free-STEM · merge · pub matrix · foresight stamp thrash. See **SESSION-ARC-ags-ahi-fourier-merge-pub-budget.md**.
 
