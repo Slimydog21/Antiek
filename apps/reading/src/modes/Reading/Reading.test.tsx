@@ -719,7 +719,7 @@ describe("BookReader", () => {
     expect(screen.queryByText("The opening of the book.")).toBeNull();
   });
 
-  it("a gated book: a highlight on the bounded snippet refuses outbound Search — the withheld body never leaves the client (§9.0 no-leak)", async () => {
+  it("a gated book: a highlight never reaches search or engagement APIs (§9.0 no-leak)", async () => {
     // The §9.0 safety rests on TWO layers: (1) the reader renders only the gate-
     // served body (a gated book serves a bounded snippet, full_text withheld);
     // (2) the FloatMenu's outboundText chokepoint refuses Search/Deep-research
@@ -728,6 +728,7 @@ describe("BookReader", () => {
     // on screen, AND an outbound Search over it is refused (searchBlocks never
     // called — the body never leaves the client).
     searchBlocksMock.mockClear();
+    apiFetchMock.mockClear();
     getBookMock.mockResolvedValue(
       makeDetail({ servability: "gated_metadata_only", servable_full_text: false }),
     );
@@ -746,13 +747,11 @@ describe("BookReader", () => {
     selectTextIn(para, "A short gate-served preview.");
 
     const menu = await screen.findByRole("menu", { name: /Highlight actions/ });
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "Search" }));
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Deep-research" }));
 
-    // The chokepoint refuses: the withheld reason shows, and searchBlocks was
-    // NEVER called — the snippet body never left the client.
-    await waitFor(() =>
-      expect(screen.getByText(/includes a restricted source/)).toBeTruthy(),
-    );
+    // Let any accidentally scheduled outbound promise reach the API mock.
+    await waitFor(() => expect(apiFetchMock).not.toHaveBeenCalled());
     expect(searchBlocksMock).not.toHaveBeenCalled();
+    expect(apiFetchMock).not.toHaveBeenCalled();
   });
 });

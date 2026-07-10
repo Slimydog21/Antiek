@@ -96,6 +96,14 @@ export const WINDOW_PAGES: Record<string, { title: string; renderer: WindowPageR
     title: "Sub-actions",
     renderer: lazy(() => import("./SubActionList")),
   },
+  deep_research_session: {
+    title: "Deep research",
+    renderer: lazy(() => import("./DeepResearchSessionHost")),
+  },
+  hosted_html_document: {
+    title: "Merged research",
+    renderer: lazy(() => import("./HostedHtmlDocumentHost")),
+  },
 };
 
 export type WindowEligibleKind = keyof typeof WINDOW_PAGES;

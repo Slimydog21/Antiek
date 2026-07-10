@@ -1676,6 +1676,8 @@ def create_app(
     # cost projection (honest nulls when pricing/spend unknown).
     from .settings_budget import register_settings_budget_routes
     register_settings_budget_routes(app)
+    from .engagement_routes import register_engagement_routes
+    register_engagement_routes(app)
     # Read SPR-09 — library catalog (paginated/filtered/searched view over the
     # SAME servable-corpus read path; §9.0 keeps gated bodies out of payloads).
     from .library import register_library_routes
