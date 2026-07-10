@@ -2815,3 +2815,9 @@ Suite suite-competitive-dogfood-v26 adds wrestle fixtures for collective unit
 HTML twin seed (aht) and MO deposit twin honesty (ahu). item_count 41 · wrestle=28.
 Settings spine v26. pytest dogfood 5 · Settings 36 green. P0 operator merge PR #465.
 Pivot aic+ outside thrash.
+
+## Residual aic · 2026-07-10 — StartResearch pub-ref foresight chrome
+Operator-visible chrome when knowledge-dense pubs are in the budget projection
+(N refs · chars · soft budget below). Competitive budget-before-fire UX for
+multi-source grounding. vitest StartResearch green. P0 operator merge PR #465.
+Pivot aid+.

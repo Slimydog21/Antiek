@@ -737,6 +737,21 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             data-view-format="html"
             data-research-tier={tier}
           >
+            {/* Residual (aic): operator-visible pub-ref foresight chrome (budget-before-fire). */}
+            {countPublicationRefs(pubRefs) > 0 ? (
+              <p
+                className="text-[10px] font-mono opacity-80 mb-1"
+                data-testid="start-research-pub-ref-foresight-chrome"
+                data-pub-ref-count={String(countPublicationRefs(pubRefs))}
+                role="status"
+              >
+                Knowledge-dense pubs in projection:{" "}
+                <strong>{countPublicationRefs(pubRefs)}</strong> ref
+                {countPublicationRefs(pubRefs) === 1 ? "" : "s"} · chars=
+                {composeDriverPromptText(question, pubRefs).length} · soft budget
+                below
+              </p>
+            ) : null}
             <ResearchLaunchBudgetPanel
               promptText={composeDriverPromptText(question, pubRefs)}
               researchTier={tier}

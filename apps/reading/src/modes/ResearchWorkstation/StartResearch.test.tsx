@@ -315,6 +315,10 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
         .getByTestId("start-research-driver-badge-mount")
         .getAttribute("data-pub-ref-count"),
     ).toBe("2");
+    // Residual (aic): operator-visible pub-ref foresight chrome.
+    expect(
+      screen.getByTestId("start-research-pub-ref-foresight-chrome").textContent,
+    ).toMatch(/2 refs/i);
   });
 
   it("renders a real composer: input + Ask button + example pills", () => {
