@@ -28,10 +28,13 @@
 - Spawn / twin / merge / collective / written analysis  
 - Floating + full DR · highlight paths · FloatMenu  
 - Marketplace free STEM HTML + purchase manual receipt · host L5 FUTURE deep-links (akb)  
+- **L5 payment offline-complete Sprint 1–3** (akr adapter · aku purchase path · ala deferred CTA · alb wave)  
 - Knowledge-dense quick-call · pub-ref foresight chrome matrix  
 - Multi-hop citation chain · evidence Write hop honesty · dogfood v29–v33  
 - Twin promote depth-graph path (UI · substrate · Write · dogfood v32–v33)  
+- Domain-aware twin search free PD full spine (aiy STEM · akq econ/politics/philosophy/eng · akw literature/tech · alf bare science)  
 - Competitive DR scorecard navigation matrix (progress · MO · collective · attach · marketplace · badge · budget · ND)  
+- Budget-before-fire prompt-cost matrix: akk–akp spend + akx driver · aky twin · alc evidence · ald attach  
 - NotDiamond advisory-only install path (ajy–aka) · never router  
 - Antiek-bench dogfood recursive rewrite through **v33** (propose≠promote)  
 - FUTURE-AGENT L5/L6/twin/ND briefs  
@@ -40,11 +43,12 @@
 
 1. **Citation chain UI** — **Shipped offline** (aij · air · ais · aji · ajk).  
 2. **Long-horizon wrestle progress** — offline progress HTML ships · live step dual-gate L4.  
-3. **Twin intelligent search defaults** — **Shipped expanded** (ahr · aiy · ajb) · grow domains with free STEM.  
+3. **Twin intelligent search defaults** — **Shipped full free PD spine** (ahr · aiy · akq · akw · alf). Prefer new catalog subjects only.  
 4. **Competitive DR quality scorecard** — **Shipped** (aii · navigation matrix aim–ajz). Prefer non-scorecard residuals next.  
 5. **Write-land from DR analysis** — keep has-body matrix; never invent outline when HTML is title-only.  
-6. **Marketplace L5** — offline manual receipt + FUTURE L5 host deep-links (akb) · live rails dual-gate only.  
+6. **Marketplace L5** — **Offline Sprint 1–3 complete** (akr–ala) · live rails dual-gate only.  
 7. **Twin promote depth-graph** — **Shipped end-to-end** (ajn–ajw).  
+8. **Budget-before-fire matrix** — **Shipped** spend + driver + twin + evidence + attach (akk–akp · akx–ald). Prefer non-deep-link product next.
 
 ## Live injectors (operator dual-gate only)
 
