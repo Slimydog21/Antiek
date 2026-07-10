@@ -36,6 +36,7 @@ from substrate.book_import import (
     EpubLimits,
     ExternalEntityBlockedError,
     MalformedEpubError,
+    MissingPublishedChunksError,
     NotAnEpubError,
     NoTextContentError,
     PublishedBookImport,
@@ -552,6 +553,24 @@ def test_publish_is_idempotent_on_same_content(db: str) -> None:
     assert after.license_basis == before.license_basis
     assert after.provenance == before.provenance
     assert after.toc == before.toc
+
+
+def test_republish_refuses_when_published_chunks_are_incomplete(db: str) -> None:
+    converted = convert_epub_to_antiek_html(_build_epub())
+    first = _publish(db, converted, content_class="public_domain")
+    assert first.chunk_count > 0
+
+    con = connect_write(db, purpose="book-import-delete-chunks-red-proof")
+    try:
+        con.execute(
+            "DELETE FROM chunks WHERE document_id = ? AND chunk_index = 0",
+            [first.document_id],
+        )
+    finally:
+        con.close()
+
+    with pytest.raises(MissingPublishedChunksError, match="complete chunk set"):
+        _publish(db, converted, content_class="public_domain")
 
 
 def test_publish_retrieval_gate_parity(db: str) -> None:

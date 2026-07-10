@@ -45,6 +45,7 @@ from substrate.graph.ops import insert_chunk, insert_document
 
 from .convert import ConvertedBook
 from .errors import (
+    MissingPublishedChunksError,
     NoTextContentError,
     RepublishRightsChangeError,
     StoredBodyMismatchError,
@@ -141,6 +142,31 @@ def _rights_changes_requested(
     return changes
 
 
+def _verify_published_chunks(
+    con: Any, document_id: str, converted: ConvertedBook
+) -> None:
+    expected = len(chunk_markdown(converted.markdown))
+    row = con.execute(
+        "SELECT COUNT(*), COUNT(DISTINCT chunk_index), "
+        "MIN(chunk_index), MAX(chunk_index) FROM chunks WHERE document_id = ?",
+        [document_id],
+    ).fetchone()
+    count, distinct_indexes, first_index, last_index = row or (0, 0, None, None)
+    if (
+        expected <= 0
+        or count != expected
+        or distinct_indexes != expected
+        or first_index != 0
+        or last_index != expected - 1
+    ):
+        raise MissingPublishedChunksError(
+            f"document {document_id!r} has no complete chunk set: expected "
+            f"{expected} contiguous chunks, found {count} rows across "
+            f"{distinct_indexes} indexes ({first_index!r}..{last_index!r}); "
+            "refusing idempotent republish"
+        )
+
+
 def publish_converted_book(
     con: LockedConnection,
     converted: ConvertedBook,
@@ -206,6 +232,7 @@ def publish_converted_book(
                 "byte-equal to the body being published — id shadow "
                 "(collision or tampering); refusing to touch it"
             )
+        _verify_published_chunks(con, document_id, converted)
         existing_asset = get_book_asset(con, document_id)
         if existing_asset is not None:
             changes = _rights_changes_requested(
