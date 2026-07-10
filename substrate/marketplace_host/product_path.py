@@ -222,11 +222,8 @@ def project_catalog_html(
         f"{k}={v}" for k, v in sorted(by_subject.items())
     ) or "(none)"
     # Residual (abi): free / PD counts on filtered projection (parity API free_count).
-    free_count = sum(
-        1
-        for e in filtered
-        if e.license_class == "public_domain" and e.is_free
-    )
+    # Residual (abo): free_count is is_free only (parity abn API honesty — not AND/OR PD).
+    free_count = sum(1 for e in filtered if e.is_free)
     public_domain_count = sum(
         1 for e in filtered if e.license_class == "public_domain"
     )

@@ -127,6 +127,52 @@ def test_project_catalog_html_free_only_method_free_count() -> None:
     assert "free_only=True" in html
 
 
+def test_project_catalog_html_free_count_is_free_only() -> None:
+    """Residual (abo): HTML free_count matches is_free only (parity abn API).
+
+    Catalog.add enforces PD⇒is_free; this locks free_count uses is_free (not
+    license_class alone) so purchased never invents free.
+    """
+    import re
+
+    from substrate.marketplace_host.catalog import Catalog, CatalogEntry
+
+    cat = Catalog()
+    cat.add(
+        CatalogEntry(
+            book_id="pd-free",
+            title="Free PD",
+            author="A",
+            source="project_gutenberg",
+            license_class="public_domain",
+            is_free=True,
+            body_text="free",
+            source_format="html",
+            subjects=("science",),
+        )
+    )
+    cat.add(
+        CatalogEntry(
+            book_id="buy",
+            title="Paid",
+            author="C",
+            source="marketplace_stub",
+            license_class="purchased",
+            is_free=False,
+            body_text="",
+            source_format="pdf",
+            subjects=("technology",),
+        )
+    )
+    html = project_catalog_html(cat)
+    free_m = re.search(r"free_count=(\d+)", html)
+    pd_m = re.search(r"public_domain_count=(\d+)", html)
+    assert free_m is not None and pd_m is not None
+    assert int(free_m.group(1)) == 1
+    assert int(pd_m.group(1)) == 1
+    assert "Paid" in html or "buy" in html
+
+
 @pytest.fixture
 def client():
     reset_marketplace_host_store()

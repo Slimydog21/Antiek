@@ -2026,3 +2026,7 @@ catalog_honesty_payload free_count counts is_free=True only — never OR
 public_domain. Competitive delta: free inventory cannot invent free when a
 public_domain entry is not free; public_domain_count stays separate honesty.
 
+## Residual abo · 2026-07-10 — catalog HTML free_count is_free only
+project_catalog_html free_count counts is_free only (parity abn API). Competitive
+delta: HTML catalog free inventory identity matches API free_count doctrine end-to-end.
+

@@ -1,0 +1,21 @@
+# inventory-abo · catalog HTML free_count is_free only (parity abn)
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: abo
+date: 2026-07-10
+tip_before: 6332ed36 (abn)
+
+## Problem
+project_catalog_html free_count used is_free AND public_domain; after abn API
+uses is_free only. Align HTML projection free_count to is_free only so paid
+never invents free (parity API).
+
+## Fix
+- free_count = sum(e.is_free for e in filtered)
+- public_domain_count remains license_class
+- test_project_catalog_html_free_count_is_free_only
+
+## Verified
+pytest test_marketplace_catalog_html_ly → 9 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)
