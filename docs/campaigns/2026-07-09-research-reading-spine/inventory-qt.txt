@@ -1,0 +1,4 @@
+# inventory-qt · SESSION-ARC qp–qs driver foresight matrix
+residual: qt · 2026-07-10
+- SESSION-ARC-qp-qs-driver-foresight-matrix.md
+- Docs-only handoff after product matrix saturation on badge≡budget
