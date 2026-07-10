@@ -1465,9 +1465,12 @@ describe("Settings SPR-01 + decision-tree install", () => {
         screen.getByTestId("antiek-bench-dogfood-summary").textContent,
       ).toMatch(/suite-competitive-dogfood-v12/);
     });
-    // Residual (zh): panel suite version + item count after load.
+    // Residual (zh/zm): panel suite version + label + item count after load.
     expect(panel.getAttribute("data-suite-version")).toBe(
       "suite-competitive-dogfood-v12",
+    );
+    expect(panel.getAttribute("data-label")).toBe(
+      "antiek-bench-competitive-dogfood",
     );
     expect(panel.getAttribute("data-item-count")).toBe("18");
     const summary = screen.getByTestId("antiek-bench-dogfood-summary");

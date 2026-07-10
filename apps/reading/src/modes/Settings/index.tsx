@@ -2056,6 +2056,7 @@ export default function Settings() {
             data-propose-not-promote="true"
             data-auto-promoted="false"
             data-suite-version={dogfood?.suite_version || ""}
+            data-label={dogfood?.label || ""}
             data-item-count={
               dogfood ? String(dogfood.item_count ?? 0) : ""
             }

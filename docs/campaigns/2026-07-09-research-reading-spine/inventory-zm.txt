@@ -1,0 +1,19 @@
+# inventory-zm · dogfood panel data-label after load
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: zm
+date: 2026-07-10
+tip_before: 80efa4a4 (zl)
+
+## Problem
+Dogfood panel stamped suite version + item count (zh) but not label after load
+(parity summary yx).
+
+## Fix
+- data-label on antiek-bench-dogfood-panel from dogfood
+- Test locks antiek-bench-competitive-dogfood
+
+## Verified
+npm test Settings.test.tsx → 34 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

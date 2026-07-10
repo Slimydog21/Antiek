@@ -1771,3 +1771,7 @@ Competitive delta: swarm handoff tip-true; operator merge PR #465 highest levera
 ## Residual zl · 2026-07-10 — SESSION-ARC handoff through zk
 SESSION-ARC-vz-zk documents 91 residual ships this continuation. Competitive
 delta: compaction-safe multi-agent handoff; operator merge PR #465 highest leverage.
+
+## Residual zm · 2026-07-10 — dogfood panel data-label after load
+antiek-bench-dogfood-panel stamps data-label after fixtures load. Competitive
+delta: panel shell suite identity complete (version · label · count).
