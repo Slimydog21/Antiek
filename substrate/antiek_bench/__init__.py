@@ -29,12 +29,15 @@ from .product_path import (
     run_offline_dogfood_product,
 )
 from .rewrite import (
+    MAX_USAGE_ITEMS_PER_TASK,
+    USAGE_SEED_POLICY_VERSION,
     ProposalIntegrityError,
     ProposalMigrationRequiredError,
     ProposalStateError,
     StaleSuiteProposalError,
     SuiteProposal,
     approve_and_promote,
+    migrate_legacy_proposal,
     propose_suite_delta,
 )
 from .run import BenchRunResult, TaskScore, run_suite
@@ -90,6 +93,7 @@ __all__ = [
     "InMemoryBenchStore",
     "LeaderboardSnapshot",
     "ModelLeaderboardRow",
+    "MAX_USAGE_ITEMS_PER_TASK",
     "ProposalIntegrityError",
     "ProposalMigrationRequiredError",
     "ProposalStateError",
@@ -98,6 +102,7 @@ __all__ = [
     "SuiteProposal",
     "SuiteRegistry",
     "StaleSuiteProposalError",
+    "USAGE_SEED_POLICY_VERSION",
     "TaskClass",
     "TaskScore",
     "KNOWN_USAGE_FEED_SOURCES",
@@ -105,6 +110,7 @@ __all__ = [
     "UsageEvent",
     "active_suite",
     "approve_and_promote",
+    "migrate_legacy_proposal",
     "build_leaderboard",
     "classify_engagement_task",
     "competitive_dogfood_suite",

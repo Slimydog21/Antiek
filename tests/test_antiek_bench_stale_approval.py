@@ -17,6 +17,7 @@ from substrate.antiek_bench import (
     active_suite,
     approve_and_promote,
     default_core_suite,
+    migrate_legacy_proposal,
     propose_suite_delta,
     register_suite,
     settings_approve_suite_proposal_payload,
@@ -36,6 +37,8 @@ def _proposal(store: InMemoryBenchStore, registry: SuiteRegistry, marker: str):
                 "task_class": "distill",
                 "outcome": "failed",
                 "prompt_hint": f"Distill stale approval case {marker}",
+                "benchmark_seed": f"Evaluate synthetic stale approval case {marker}.",
+                "benchmark_seed_reviewed": True,
             }
         ],
         store=store,
@@ -143,6 +146,20 @@ def test_tampered_persisted_suite_fails_before_registry_mutation() -> None:
     assert (active_suite(registry=registry), registry.suites) == before
 
 
+@pytest.mark.parametrize("field", ["rationale", "reviewed_seed_count", "dropped_event_count"])
+def test_tampered_audit_metadata_is_sealed(field: str) -> None:
+    store = InMemoryBenchStore()
+    registry = _registry()
+    proposal = _proposal(store, registry, "audit")
+    row = store.get_proposal(proposal.proposal_id)
+    assert row is not None
+    row[field] = "tampered" if field == "rationale" else int(row.get(field) or 0) + 1
+    store.put_proposal(proposal.proposal_id, row)
+
+    with pytest.raises(ProposalIntegrityError, match="immutable digest"):
+        approve_and_promote(proposal.proposal_id, store=store, registry=registry)
+
+
 def test_legacy_unsealed_proposal_requires_explicit_migration() -> None:
     store = InMemoryBenchStore()
     registry = _registry()
@@ -156,6 +173,18 @@ def test_legacy_unsealed_proposal_requires_explicit_migration() -> None:
         approve_and_promote(proposal.proposal_id, store=store, registry=registry)
 
     assert active_suite(registry=registry).suite_version == proposal.base_suite_version
+    with pytest.raises(ValueError, match="explicit operator review"):
+        migrate_legacy_proposal(
+            proposal.proposal_id, store=store, operator_reviewed=False
+        )
+    migrated = migrate_legacy_proposal(
+        proposal.proposal_id, store=store, operator_reviewed=True
+    )
+    assert migrated["seed_policy_version"] == "legacy-operator-reviewed-v1"
+    promoted = approve_and_promote(
+        proposal.proposal_id, store=store, registry=registry
+    )
+    assert promoted.suite_version == proposal.proposed_suite_version
 
 
 def test_final_store_failure_recovers_from_approving_state() -> None:

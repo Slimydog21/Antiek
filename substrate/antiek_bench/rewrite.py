@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from threading import RLock
 from typing import Any, Literal
@@ -13,6 +14,18 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, TaskClass, active_
 
 ProposalStatus = Literal["proposed", "approving", "approved", "rejected", "stale"]
 _APPROVAL_LOCK = RLock()
+USAGE_SEED_POLICY_VERSION = "usage-seed-v1"
+MAX_USAGE_ITEMS_PER_TASK = 2
+_UNSAFE_SEED = re.compile(
+    r"(?i)([a-z][a-z0-9+.-]*://|mailto:|www\.|[\w.+-]+@[\w.-]+\.[a-z]{2,}|"
+    r"\+?\d[\d ()-]{7,}\d|api[_ -]?key|client[_ -]?secret|password|bearer\s+|"
+    r"sk-[a-z0-9]|AKIA[0-9A-Z]{16}|gh[pousr]_[a-z0-9]{20,}|xox[baprs]-|"
+    r"eyJ[a-z0-9_-]{10,}\.|-----BEGIN|[a-f0-9]{32,}|"
+    r"\b(?:\d{1,3}\.){3}\d{1,3}\b|\b(?:[a-z0-9-]+\.)+[a-z]{2,63}\b|"
+    r"(access|refresh|private|auth)[_ -]?token|credentials?|token\s*[:= ]\s*\S+|"
+    r"(ignore|disregard|forget|override).{0,24}(previous|prior|above|instructions?|directions?)|"
+    r"(system|developer)\s+(message|prompt|instructions?)|<script|BEGIN [A-Z ]+>)"
+)
 
 
 class ProposalIntegrityError(ValueError):
@@ -41,6 +54,11 @@ class SuiteProposal:
     status: ProposalStatus
     suite: SuiteDefinition
     proposal_digest: str
+    seed_policy_version: str = USAGE_SEED_POLICY_VERSION
+    reviewed_seed_count: int = 0
+    generic_seed_count: int = 0
+    redacted_event_count: int = 0
+    dropped_event_count: int = 0
     # Residual (acy): structured count of title-only Write seed failures
     # (has_body=false → failed) for Settings / recursive rewrite audit.
     title_only_write_seed_count: int = 0
@@ -57,6 +75,11 @@ class SuiteProposal:
             "added_item_ids": list(self.added_item_ids),
             "status": self.status,
             "proposal_digest": self.proposal_digest,
+            "seed_policy_version": self.seed_policy_version,
+            "reviewed_seed_count": self.reviewed_seed_count,
+            "generic_seed_count": self.generic_seed_count,
+            "redacted_event_count": self.redacted_event_count,
+            "dropped_event_count": self.dropped_event_count,
             # Residual (acy): body honesty aggregate (parity rationale acx).
             "title_only_write_seed_count": int(self.title_only_write_seed_count),
             # Residual (adp): with_body + unknown for full rewrite audit matrix.
@@ -91,12 +114,24 @@ def _proposal_digest(
     base_suite_version: str,
     proposed_suite_version: str,
     suite: SuiteDefinition,
+    seed_policy_version: str,
+    rationale: str,
+    reviewed_seed_count: int,
+    generic_seed_count: int,
+    redacted_event_count: int,
+    dropped_event_count: int,
 ) -> str:
     material = json.dumps(
         {
             "proposal_id": proposal_id,
             "base_suite_version": base_suite_version,
             "proposed_suite_version": proposed_suite_version,
+            "seed_policy_version": seed_policy_version,
+            "rationale": rationale,
+            "reviewed_seed_count": reviewed_seed_count,
+            "generic_seed_count": generic_seed_count,
+            "redacted_event_count": redacted_event_count,
+            "dropped_event_count": dropped_event_count,
             "suite": {
                 "suite_version": suite.suite_version,
                 "label": suite.label,
@@ -118,12 +153,110 @@ def _proposal_digest(
 
 
 def _fingerprint_usage(events: list[dict[str, Any]]) -> str:
-    parts = []
-    for e in events:
-        parts.append(
-            f"{e.get('task_class', '')}:{e.get('outcome', '')}:{e.get('prompt_hint', '')}"
+    parts = [
+        json.dumps(
+            {"task_class": task, "seed": seed, "policy": USAGE_SEED_POLICY_VERSION},
+            sort_keys=True,
+            separators=(",", ":"),
         )
+        for task, seed, _ in _selected_usage_cases(events)
+    ]
     return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
+
+
+def _fingerprint_proposal(events: list[dict[str, Any]], suite_fingerprint: str) -> str:
+    failed = [
+        event
+        for event in events
+        if str(event.get("outcome") or "").lower() == "failed"
+    ]
+    audit = {
+        "suite_fingerprint": suite_fingerprint,
+        "failed_event_count": len(failed),
+        "reviewed_seed_count": sum(_reviewed_seed(event) is not None for event in failed),
+        "generic_seed_count": sum(_reviewed_seed(event) is None for event in failed),
+        "redacted_event_count": sum(
+            _reviewed_seed(event) is None
+            and bool(event.get("prompt_hint") or event.get("benchmark_seed"))
+            for event in failed
+        ),
+        "policy": USAGE_SEED_POLICY_VERSION,
+    }
+    material = json.dumps(audit, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(material.encode()).hexdigest()[:16]
+
+
+def _reviewed_seed(event: dict[str, Any]) -> str | None:
+    if event.get("benchmark_seed_reviewed") is not True:
+        return None
+    seed = str(event.get("benchmark_seed") or "").strip()
+    forbidden_delimiters = {"@", "=", ":", "/", "\\", "`", "<", ">", "{", "}"}
+    token_like = re.search(r"\b[a-zA-Z0-9_+=/-]{25,}\b", seed)
+    if (
+        not seed
+        or len(seed) > 240
+        or any(character in seed for character in forbidden_delimiters)
+        or any(ord(character) < 32 for character in seed)
+        or token_like
+        or _UNSAFE_SEED.search(seed)
+    ):
+        return None
+    return seed
+
+
+def _body_state(event: dict[str, Any]) -> str:
+    if event.get("has_body") is True:
+        return "with-body"
+    if event.get("has_body") is False:
+        return "title-only"
+    return "body-unknown"
+
+
+def _safe_event_projection(event: dict[str, Any]) -> dict[str, str]:
+    task = str(event.get("task_class") or "distill")
+    if task not in ("distill", "synthesize", "wrestle", "book_qa"):
+        task = "distill"
+    reviewed = _reviewed_seed(event)
+    return {
+        "task_class": task,
+        "outcome": str(event.get("outcome") or "").lower(),
+        "body_state": _body_state(event),
+        "seed": reviewed or "generic",
+        "policy": USAGE_SEED_POLICY_VERSION,
+    }
+
+
+def _generic_seed(task_class: TaskClass, event: dict[str, Any]) -> str:
+    return (
+        f"Evaluate a failed {task_class} workflow using a synthetic "
+        f"{_body_state(event)} information asset."
+    )
+
+
+def _usage_case(event: dict[str, Any]) -> tuple[TaskClass, str] | None:
+    if str(event.get("outcome") or "").lower() != "failed":
+        return None
+    projection = _safe_event_projection(event)
+    task: TaskClass = projection["task_class"]  # type: ignore[assignment]
+    return task, _reviewed_seed(event) or _generic_seed(task, event)
+
+
+def _selected_usage_cases(
+    events: list[dict[str, Any]],
+) -> tuple[tuple[TaskClass, str, dict[str, Any]], ...]:
+    unique: dict[tuple[TaskClass, str], dict[str, Any]] = {}
+    for event in events:
+        case = _usage_case(event)
+        if case is not None:
+            unique.setdefault(case, event)
+    selected: list[tuple[TaskClass, str, dict[str, Any]]] = []
+    counts: dict[TaskClass, int] = {}
+    for (task, seed), event in sorted(unique.items(), key=lambda row: row[0]):
+        if counts.get(task, 0) >= MAX_USAGE_ITEMS_PER_TASK:
+            continue
+        selected.append((task, seed, event))
+        counts[task] = counts.get(task, 0) + 1
+    return tuple(selected)
 
 
 def propose_suite_delta(
@@ -145,22 +278,32 @@ def propose_suite_delta(
         raise ValueError("usage_events must be non-empty")
 
     base = base_suite if base_suite is not None else active_suite(registry=registry)
-    fp = _fingerprint_usage(events)
+    suite_fp = _fingerprint_usage(events)
+    fp = _fingerprint_proposal(events, suite_fp)
     # Build additive items from failed outcomes with prompt hints
     new_items: list[SuiteItem] = list(base.items)
     added: list[str] = []
-    for i, ev in enumerate(events):
-        outcome = str(ev.get("outcome") or "").lower()
-        if outcome != "failed":
-            continue
-        tc_raw = str(ev.get("task_class") or "distill")
-        if tc_raw not in ("distill", "synthesize", "wrestle", "book_qa"):
-            tc_raw = "distill"
-        tc: TaskClass = tc_raw  # type: ignore[assignment]
-        hint = str(ev.get("prompt_hint") or "").strip()
-        if not hint:
-            hint = f"Regress failed {tc} case from usage week pattern {i}"
-        item_id = f"usage-{tc}-{fp[:6]}-{i}"
+    reviewed_seed_count = 0
+    generic_seed_count = 0
+    redacted_event_count = 0
+    dropped_event_count = 0
+    failed_events = [
+        event
+        for event in events
+        if str(event.get("outcome") or "").lower() == "failed"
+    ]
+    for ev in failed_events:
+        reviewed = _reviewed_seed(ev)
+        if reviewed is not None:
+            reviewed_seed_count += 1
+        else:
+            generic_seed_count += 1
+            if ev.get("prompt_hint") or ev.get("benchmark_seed"):
+                redacted_event_count += 1
+    selected_cases = _selected_usage_cases(events)
+    dropped_event_count = len(failed_events) - len(selected_cases)
+    for i, (tc, hint, _event) in enumerate(selected_cases):
+        item_id = f"usage-{tc}-{suite_fp[:6]}-{i}"
         if any(x.item_id == item_id for x in new_items):
             continue
         keywords = tuple(
@@ -209,8 +352,13 @@ def propose_suite_delta(
             f"{rationale} · body honesty matrix: with_body={with_body_n} · "
             f"title_only={title_only_failed} · unknown={body_unknown_n}"
         )
+    rationale = (
+        f"{rationale} · usage seed policy {USAGE_SEED_POLICY_VERSION}: "
+        f"reviewed={reviewed_seed_count} · generic={generic_seed_count} · "
+        f"redacted={redacted_event_count} · dropped={dropped_event_count}"
+    )
 
-    proposed_version = f"{base.suite_version}+usage-{fp[:8]}"
+    proposed_version = f"{base.suite_version}+usage-{suite_fp[:8]}"
     suite = SuiteDefinition(
         suite_version=proposed_version,
         label=base.label,
@@ -230,7 +378,17 @@ def propose_suite_delta(
             base_suite_version=base.suite_version,
             proposed_suite_version=proposed_version,
             suite=suite,
+            seed_policy_version=USAGE_SEED_POLICY_VERSION,
+            rationale=rationale,
+            reviewed_seed_count=reviewed_seed_count,
+            generic_seed_count=generic_seed_count,
+            redacted_event_count=redacted_event_count,
+            dropped_event_count=dropped_event_count,
         ),
+        reviewed_seed_count=reviewed_seed_count,
+        generic_seed_count=generic_seed_count,
+        redacted_event_count=redacted_event_count,
+        dropped_event_count=dropped_event_count,
         title_only_write_seed_count=int(title_only_failed),
         with_body_write_seed_count=int(with_body_n),
         body_unknown_write_seed_count=int(body_unknown_n),
@@ -261,6 +419,63 @@ def approve_and_promote(
         )
 
 
+def migrate_legacy_proposal(
+    proposal_id: str,
+    *,
+    store: BenchStore,
+    operator_reviewed: bool,
+) -> dict[str, Any]:
+    if not operator_reviewed:
+        raise ValueError("legacy proposal migration requires explicit operator review")
+    row = store.get_proposal(proposal_id)
+    if row is None:
+        raise KeyError(f"unknown proposal_id: {proposal_id}")
+    if row.get("status") != "proposed" or row.get("proposal_digest"):
+        raise ProposalStateError("only unsealed proposed rows can be migrated")
+    suite = _suite_from_row(row)
+    migrated = dict(row)
+    migrated["seed_policy_version"] = "legacy-operator-reviewed-v1"
+    for field in (
+        "reviewed_seed_count",
+        "generic_seed_count",
+        "redacted_event_count",
+        "dropped_event_count",
+    ):
+        migrated[field] = int(migrated.get(field) or 0)
+    migrated["proposal_digest"] = _proposal_digest(
+        proposal_id=proposal_id,
+        base_suite_version=str(migrated.get("base_suite_version") or ""),
+        proposed_suite_version=str(migrated.get("proposed_suite_version") or ""),
+        suite=suite,
+        seed_policy_version=str(migrated["seed_policy_version"]),
+        rationale=str(migrated.get("rationale") or ""),
+        reviewed_seed_count=int(migrated["reviewed_seed_count"]),
+        generic_seed_count=int(migrated["generic_seed_count"]),
+        redacted_event_count=int(migrated["redacted_event_count"]),
+        dropped_event_count=int(migrated["dropped_event_count"]),
+    )
+    store.put_proposal(proposal_id, migrated)
+    return migrated
+
+
+def _suite_from_row(row: dict[str, Any]) -> SuiteDefinition:
+    suite_data = row.get("suite") or {}
+    items = [
+        SuiteItem(
+            item_id=str(item["item_id"]),
+            task_class=item["task_class"],
+            prompt=str(item["prompt"]),
+            expected_keywords=tuple(item.get("expected_keywords") or ()),
+        )
+        for item in suite_data.get("items") or []
+    ]
+    return SuiteDefinition(
+        suite_version=str(suite_data.get("suite_version") or row["proposed_suite_version"]),
+        label=str(suite_data.get("label") or "antiek-bench-core"),
+        items=tuple(items),
+    )
+
+
 def _approve_locked(
     proposal_id: str,
     *,
@@ -289,29 +504,20 @@ def _approve_locked(
         store.put_proposal(proposal_id, row)
         return reg.active()
 
-    suite_data = row.get("suite") or {}
-    items = []
-    for it in suite_data.get("items") or []:
-        items.append(
-            SuiteItem(
-                item_id=str(it["item_id"]),
-                task_class=it["task_class"],
-                prompt=str(it["prompt"]),
-                expected_keywords=tuple(it.get("expected_keywords") or ()),
-            )
-        )
-    suite = SuiteDefinition(
-        suite_version=str(suite_data.get("suite_version") or row["proposed_suite_version"]),
-        label=str(suite_data.get("label") or "antiek-bench-core"),
-        items=tuple(items),
-    )
+    suite = _suite_from_row(row)
     expected_digest = _proposal_digest(
         proposal_id=proposal_id,
         base_suite_version=str(row.get("base_suite_version") or ""),
         proposed_suite_version=str(row.get("proposed_suite_version") or ""),
         suite=suite,
+        seed_policy_version=str(row.get("seed_policy_version") or ""),
+        rationale=str(row.get("rationale") or ""),
+        reviewed_seed_count=int(row.get("reviewed_seed_count") or 0),
+        generic_seed_count=int(row.get("generic_seed_count") or 0),
+        redacted_event_count=int(row.get("redacted_event_count") or 0),
+        dropped_event_count=int(row.get("dropped_event_count") or 0),
     )
-    if not row.get("proposal_digest"):
+    if not row.get("proposal_digest") or not row.get("seed_policy_version"):
         raise ProposalMigrationRequiredError(
             "legacy proposal requires explicit digest migration before approval"
         )

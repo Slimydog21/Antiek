@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><title>Antiek-bench SPR-05</title>
+<style>body{font-family:system-ui;max-width:52rem;margin:2rem auto;line-height:1.5;padding:0 1rem}code{background:#f5f5f4;padding:0 .3em}</style>
+</head><body>
+<h1>SPR-05 — Privacy-safe usage seeds</h1><p><a href="index.html">← master</a></p>
+<p>Usage outcomes may shape benchmark coverage without copying private workstation text into evaluation truth.</p>
+<h2>Contract</h2><ol>
+<li><code>prompt_hint</code> is private usage context and never becomes a suite prompt.</li>
+<li>Only <code>benchmark_seed</code> with <code>benchmark_seed_reviewed=true</code> may enter a proposal verbatim.</li>
+<li>Unreviewed events produce deterministic generic prompts from closed task/source/body-state fields.</li>
+<li>Reject reviewed seeds containing credentials, contact identifiers, control instructions, URLs, or oversized text.</li>
+<li>Deduplicate equivalent generic cases and cap additions per task class so usage volume cannot redefine the suite.</li>
+<li>Proposal/Settings payloads expose policy version and reviewed/generic/redacted/dropped counts, never rejected text.</li>
+<li>Proposal digests seal the policy, rationale, suite, and audit counts; legacy rows require explicit operator-reviewed migration.</li>
+</ol>
+<h2>Acceptance</h2><ul>
+<li>Secrets, email addresses, phone numbers, URLs, and prompt injection in <code>prompt_hint</code> never appear in suite JSON or HTML.</li>
+<li>Explicit safe reviewed seeds round-trip; unsafe reviewed seeds fail closed to generic cases and increment redaction counts.</li>
+<li>One thousand duplicate failures cannot add more than the versioned per-task cap.</li>
+<li>Proposal identity is derived from privacy-safe event projections, not raw text.</li>
+</ul>
+<h2>Non-goals</h2><p>No LLM redactor, no automatic approval, no private-text export, and no routing change.</p>
+</body></html>

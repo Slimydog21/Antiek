@@ -314,6 +314,11 @@ def settings_suite_proposal_payload(
             or getattr(proposal, "added_item_ids", ())
             or []
         ),
+        "seed_policy_version": str(prop_dict.get("seed_policy_version") or ""),
+        "reviewed_seed_count": int(prop_dict.get("reviewed_seed_count") or 0),
+        "generic_seed_count": int(prop_dict.get("generic_seed_count") or 0),
+        "redacted_event_count": int(prop_dict.get("redacted_event_count") or 0),
+        "dropped_event_count": int(prop_dict.get("dropped_event_count") or 0),
         # Residual (acy/adp): body honesty matrix for recursive rewrite Settings chrome.
         "title_only_write_seed_count": int(
             prop_dict.get("title_only_write_seed_count")
@@ -532,6 +537,7 @@ def project_suite_proposal_html(payload: dict[str, Any]) -> str:
             ("Base suite", "base_suite_version"),
             ("Proposed suite", "proposed_suite_version"),
             ("Active suite", "active_suite_version"),
+            ("Usage seed policy", "seed_policy_version"),
             ("Rationale", "rationale"),
         ):
             val = payload.get(key)
@@ -570,6 +576,24 @@ def project_suite_proposal_html(payload: dict[str, Any]) -> str:
                     ],
                 }
             )
+        reviewed_n = int(payload.get("reviewed_seed_count") or 0)
+        generic_n = int(payload.get("generic_seed_count") or 0)
+        redacted_n = int(payload.get("redacted_event_count") or 0)
+        dropped_n = int(payload.get("dropped_event_count") or 0)
+        blocks.append(
+            {
+                "type": "paragraph",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            f"Usage seeds: reviewed={reviewed_n} · generic={generic_n} · "
+                            f"redacted={redacted_n} · dropped={dropped_n}"
+                        ),
+                    }
+                ],
+            }
+        )
         added = payload.get("added_item_ids") or []
         if added:
             blocks.append(
