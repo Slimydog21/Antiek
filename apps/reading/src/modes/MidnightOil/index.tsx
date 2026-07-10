@@ -1792,7 +1792,7 @@ export default function MidnightOil() {
                 >
                   Open deposit full
                 </button>
-                {/* Residual (fo/pz): Write dual handoff html_draft + twin_seed. */}
+                {/* Residual (fo/pz/aep): Write dual handoff + seamless MO deposit path. */}
                 {depositWriteHref ? (
                   <a
                     href={depositWriteHref}
@@ -1808,8 +1808,24 @@ export default function MidnightOil() {
                           plainTextFromHtml(deposit.html || "").trim(),
                       ),
                     )}
+                    // Residual (aep): autonomous MO deposit → Write note-taker path.
+                    data-document-id={deposit.document_id ?? ""}
+                    data-asset-id={deposit.asset_id ?? ""}
+                    data-job-id={deposit.job_id ?? ""}
+                    data-seamless-moil-write={String(
+                      Boolean(
+                        deposit.view_format === "html" &&
+                          Boolean(deposit.document_id),
+                      ),
+                    )}
+                    data-seamless-host-write={String(
+                      Boolean(
+                        deposit.view_format === "html" &&
+                          Boolean(deposit.document_id),
+                      ),
+                    )}
                     className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono underline hover:bg-ink/5 dark:border-bright/30"
-                    title="Open Write with Midnight Oil deposit as HTML draft + twin_seed (seeds note-taker when empty)"
+                    title="Open Write with Midnight Oil deposit as HTML draft + twin_seed (seamless MO deposit · seeds note-taker when empty)"
                   >
                     Open Write (HTML draft)
                   </a>

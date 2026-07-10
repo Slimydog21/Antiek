@@ -2317,3 +2317,8 @@ vitest HostedHtmlDocumentHost 23 green.
 Host + library Open Write stamp data-seamless-port · data-library-landed ·
 data-seamless-host-write · has_body so catalog→account→Write path is
 machine-readable on the handoff (not only host metrics aea). vitest MarketplaceHost 39 green.
+
+## Residual aep · 2026-07-10 — Midnight Oil deposit Open Write seamless path
+moil-open-write stamps data-document-id · data-job-id · data-seamless-moil-write
+· data-seamless-host-write so autonomous deposit → Write note-taker is
+machine-readable (parity ael–aeo Write path wave). vitest MidnightOil 24 green.

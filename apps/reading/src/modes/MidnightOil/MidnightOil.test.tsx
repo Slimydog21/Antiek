@@ -1030,7 +1030,7 @@ describe("MidnightOil mode", () => {
         mode: "full",
       }),
     );
-    // Residual (fo/pz/ack): Write dual handoff html_draft + twin_seed with body honesty.
+    // Residual (fo/pz/ack/aep): Write dual handoff + seamless MO deposit path.
     const write = screen.getByTestId("moil-open-write");
     const href = write.getAttribute("href") || "";
     expect(href).toMatch(/html_draft=draft_moil_asset_dep_abc/);
@@ -1038,6 +1038,12 @@ describe("MidnightOil mode", () => {
     expect(write.getAttribute("data-view-format")).toBe("html");
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
     expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
+    expect(write.getAttribute("data-document-id")).toBe(
+      "draft_moil_asset_dep_abc",
+    );
+    expect(write.getAttribute("data-seamless-moil-write")).toBe("true");
+    expect(write.getAttribute("data-seamless-host-write")).toBe("true");
+    expect(write.getAttribute("data-job-id") || "").toBeTruthy();
   });
 
   it("runs offline worker after approve with auto-deposit", async () => {
