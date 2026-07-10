@@ -113,6 +113,8 @@ export const VISION_USAGE_FEED_SOURCES = [
   "marketplace_free_host",
   // Residual (asj): operator decision-tree model install (asd · never auto-route).
   "decision_tree_install",
+  // Residual (ast): highlight → float|full DR launch path (asq pure helper).
+  "highlight_dr_launch",
 ] as const;
 
 export type VisionUsageFeedSource = (typeof VISION_USAGE_FEED_SOURCES)[number];
@@ -156,13 +158,14 @@ export function benchTaskClassToVisionFeeds(
     ];
   }
   if (t === "synthesize") {
-    // Residual (aqv): multi-agent analysis + spawn merge train synthesize.
+    // Residual (aqv/ast): multi-agent analysis + spawn merge + highlight DR train synthesize.
     return [
       "floating_deep_research",
       "twin_chase",
       "midnight_oil_deposit",
       "collective_written_analysis",
       "spawn_merge",
+      "highlight_dr_launch",
     ];
   }
   if (t === "distill") {

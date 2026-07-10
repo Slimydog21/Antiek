@@ -91,7 +91,9 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
     expect(VISION_USAGE_FEED_SOURCES).toContain("publication_attach");
     expect(VISION_USAGE_FEED_SOURCES).toContain("marketplace_free_host");
     expect(VISION_USAGE_FEED_SOURCES).toContain("decision_tree_install");
-    expect(VISION_USAGE_FEED_SOURCES.length).toBeGreaterThanOrEqual(15);
+    // Residual (ast): highlight→DR launch vision feed (asq product).
+    expect(VISION_USAGE_FEED_SOURCES).toContain("highlight_dr_launch");
+    expect(VISION_USAGE_FEED_SOURCES.length).toBeGreaterThanOrEqual(16);
   });
 
   it("reports covered vs uncovered vision surfaces without inventing events", () => {
@@ -138,6 +140,9 @@ describe("suiteProposalTasks residual (aoy) vision feed coverage", () => {
       "collective_written_analysis",
     );
     expect(benchTaskClassToVisionFeeds("synthesize")).toContain("spawn_merge");
+    expect(benchTaskClassToVisionFeeds("synthesize")).toContain(
+      "highlight_dr_launch",
+    );
     expect(benchTaskClassToVisionFeeds("distill")).toContain("book_qa");
     expect(benchTaskClassToVisionFeeds("distill")).toContain("spawn_merge");
     expect(benchTaskClassToVisionFeeds("distill")).toContain(
