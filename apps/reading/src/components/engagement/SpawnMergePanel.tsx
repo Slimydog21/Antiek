@@ -40,6 +40,7 @@ import {
   plainTextFromHtml,
 } from "../../workspace/twinWriteSeed";
 import { researchPathChoicesReadiness } from "../../workspace/researchPathChoices";
+import { spawnMergeHtmlOpenReadiness } from "../../workspace/spawnMergeHtmlOpenReadiness";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 import {
   ResearchLaunchBudgetPanel,
@@ -66,7 +67,14 @@ export function openMergedResearchWindow(
   result: Pick<MergeProductResponse, "document_id" | "mode" | "html" | "view_format">,
   opts: OpenMergedResearchWindowOpts = {},
 ): string | null {
-  if (result.view_format !== "html" || !result.html?.trim()) {
+  // Residual (aup): pure spawnMergeHtmlOpenReadiness gate (never invent open).
+  const openReady = spawnMergeHtmlOpenReadiness({
+    view_format: result.view_format,
+    html: result.html,
+    document_id: result.document_id,
+    mode: result.mode,
+  });
+  if (!openReady.open_ready) {
     return null;
   }
   const stem = (opts.titleStem || "Merged research").trim() || "Merged research";
@@ -553,12 +561,25 @@ export function SpawnMergePanel({
               {n}
             </p>
           ))}
-          {result.html && result.view_format === "html" ? (
+          {(() => {
+            // Residual (aup): pure open readiness for post-merge float|full CTAs.
+            const mergeOpen = spawnMergeHtmlOpenReadiness({
+              view_format: result.view_format,
+              html: result.html,
+              document_id: result.document_id,
+              mode: result.mode,
+            });
+            return mergeOpen.open_ready ? (
             <>
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   data-testid="spawn-merge-open-window"
+                  data-html-first={String(mergeOpen.html_first)}
+                  data-merge-open-ready={String(mergeOpen.open_ready)}
+                  data-source={mergeOpen.source}
+                  data-merge-mode={mergeOpen.merge_mode}
+                  title={mergeOpen.open_title}
                   onClick={() => {
                     openMergedResearchWindow(result);
                   }}
@@ -569,6 +590,11 @@ export function SpawnMergePanel({
                 <button
                   type="button"
                   data-testid="spawn-merge-open-full"
+                  data-html-first={String(mergeOpen.html_first)}
+                  data-merge-open-ready={String(mergeOpen.open_ready)}
+                  data-source={mergeOpen.source}
+                  data-merge-mode={mergeOpen.merge_mode}
+                  title={mergeOpen.open_title}
                   onClick={() => {
                     openMergedResearchWindow(result, { windowMode: "full" });
                   }}
@@ -626,7 +652,8 @@ export function SpawnMergePanel({
                 dangerouslySetInnerHTML={{ __html: result.html }}
               />
             </>
-          ) : null}
+            ) : null;
+          })()}
         </div>
       ) : null}
     </section>

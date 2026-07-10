@@ -1,0 +1,24 @@
+# inventory-aup · pure spawnMergeHtmlOpenReadiness (highlight→DR→merge open)
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aup
+date: 2026-07-10
+parent_tip: 6dc1147ba (auo)
+
+## Closed
+- workspace/spawnMergeHtmlOpenReadiness.ts pure helper
+  open_ready · html_first · never_pdf · source=spawn_merge · merge_mode
+- openMergedResearchWindow gated by pure helper
+- SpawnMergePanel open float|full CTAs stamp merge-open-ready · source · mode
+- Highlight→floating DR→merge HTML open never invents body/PDF
+- vitest 12 green (2 pure + 10 panel) · aup-vitest.log in SCRATCH
+
+## Doctrine
+Merged research HTML open hard to vary · write-seed spawn_merge provenance ·
+HTML-first reading ≡ research flywheel
+
+## Next
+auq+ offline product residual outside thrash
+Avoid: spawn-merge open thrash after aup · pure-gate aul–aun · catalog ·
+presets · MO · scorecard · vision · dogfood · readiness→CTA
+Prefer: competitive non-merge residual · twin chase · model non-install
+Operator merge PR #465 remains P0 (gated)
