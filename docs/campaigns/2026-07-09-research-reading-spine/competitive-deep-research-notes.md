@@ -918,3 +918,8 @@ granting auto-route authority (propose≠promote · ND advisory only).
 Weekly Write-seed metrics deep-link to the suite rewrite proposal panel
 (propose≠promote). Competitive delta: recursive note-taker → Write volume
 and suite rewrite review sit one click apart without auto-promoting.
+
+## Residual ss · 2026-07-10 — Future-agent brief refresh
+FUTURE-AGENT-SPEC re-anchored to tip after write-seed SSOT (rt–rz), driver
+foresight (sa–sr), and HTML reading flywheel (sf–so). Competitive delta:
+next swarm starts from accurate inventory — no rebuild thrash on closed arcs.
