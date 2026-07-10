@@ -81,6 +81,9 @@ import {
   formatResearchTierDurationBand,
   mapDepthTierToResearchTier,
   mapResearchTierToCeilingMultiplier,
+  MOIL_CEILING_DEFAULT_FANOUT_DEPTH,
+  MOIL_CEILING_SAFETY_FACTOR,
+  MOIL_CEILING_TOKENS_PER_MINUTE,
   mapResearchTierToProgressPollMs,
   mapResearchTierToRecommendedDurationMinutes,
 } from "../../lib/researchTier";
@@ -1048,9 +1051,29 @@ export default function MidnightOil() {
           <p
             className="text-[11px] font-mono opacity-70"
             data-testid="moil-ceiling-formula-note"
+            // Residual (ada): machine-readable formula constants (parity substrate ceiling.py).
+            data-tokens-per-minute={String(MOIL_CEILING_TOKENS_PER_MINUTE)}
+            data-safety-factor={String(MOIL_CEILING_SAFETY_FACTOR)}
+            data-fanout-depth={String(
+              typeof job.fanout_depth === "number" && job.fanout_depth > 0
+                ? job.fanout_depth
+                : MOIL_CEILING_DEFAULT_FANOUT_DEPTH,
+            )}
+            data-research-tier={job.research_tier || researchTier || "deep"}
+            data-tier-multiplier={String(
+              mapResearchTierToCeilingMultiplier(
+                job.research_tier || researchTier,
+              ),
+            )}
+            data-view-format="html"
           >
-            Formula: duration × tokens/min × model rates × fanout × 1.25 safety
-            × tier multiplier (fast 0.5 · deep 1.0 · wrestle 2.0)
+            Formula: duration × tokens/min ({MOIL_CEILING_TOKENS_PER_MINUTE}) ×
+            model rates × fanout (
+            {typeof job.fanout_depth === "number" && job.fanout_depth > 0
+              ? job.fanout_depth
+              : MOIL_CEILING_DEFAULT_FANOUT_DEPTH}
+            ) × {MOIL_CEILING_SAFETY_FACTOR} safety × tier multiplier (fast 0.5 ·
+            deep 1.0 · wrestle 2.0)
             (recommendation only — explicit approve required before swarm work)
           </p>
           <p

@@ -83,6 +83,19 @@ describe("researchTier map residual (jv) MO ceiling multiplier", () => {
   });
 });
 
+describe("researchTier residual (ada) MO ceiling formula constants", () => {
+  it("mirrors substrate midnight_oil.ceiling TOKENS/SAFETY/FANOUT", async () => {
+    const {
+      MOIL_CEILING_DEFAULT_FANOUT_DEPTH,
+      MOIL_CEILING_SAFETY_FACTOR,
+      MOIL_CEILING_TOKENS_PER_MINUTE,
+    } = await import("./researchTier");
+    expect(MOIL_CEILING_TOKENS_PER_MINUTE).toBe(4000);
+    expect(MOIL_CEILING_SAFETY_FACTOR).toBe(1.25);
+    expect(MOIL_CEILING_DEFAULT_FANOUT_DEPTH).toBe(3);
+  });
+});
+
 describe("researchTier map residual (ng) MO recommended duration", () => {
   it("maps closed tiers to competitive duration midpoints (parity mw)", () => {
     expect(mapResearchTierToRecommendedDurationMinutes("fast")).toBe(

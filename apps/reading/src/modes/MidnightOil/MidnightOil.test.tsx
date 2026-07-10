@@ -562,9 +562,17 @@ describe("MidnightOil mode", () => {
     expect(metrics.getAttribute("data-research-tier")).toBe("deep");
     expect(metrics.getAttribute("data-view-format")).toBe("html");
     expect(metrics.textContent).toMatch(/Ceiling audit/);
-    expect(
-      screen.getByTestId("moil-ceiling-formula-note").textContent,
-    ).toMatch(/1\.25 safety/);
+    const formula = screen.getByTestId("moil-ceiling-formula-note");
+    expect(formula.textContent).toMatch(/1\.25 safety/);
+    // Residual (ada): machine-readable ceiling formula constants.
+    expect(formula.getAttribute("data-tokens-per-minute")).toBe("4000");
+    expect(formula.getAttribute("data-safety-factor")).toBe("1.25");
+    expect(formula.getAttribute("data-fanout-depth")).toBe("3");
+    expect(formula.getAttribute("data-tier-multiplier")).toBe("1");
+    expect(formula.getAttribute("data-research-tier")).toBe("deep");
+    expect(formula.getAttribute("data-view-format")).toBe("html");
+    expect(formula.textContent).toMatch(/tokens\/min \(4000\)/);
+    expect(formula.textContent).toMatch(/fanout \(\s*3\s*\)/);
     expect(
       screen
         .getByTestId("recommended-ceiling")

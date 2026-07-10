@@ -99,6 +99,15 @@ export const RESEARCH_TIER_CEILING_MULTIPLIER = {
   wrestle: 2.0,
 } as const;
 
+/**
+ * Residual (ada): Midnight Oil ceiling formula constants (parity substrate
+ * midnight_oil.ceiling — TOKENS_PER_MINUTE / SAFETY_FACTOR / DEFAULT_FANOUT).
+ * Machine-readable on MO formula chrome; never invent live rates here.
+ */
+export const MOIL_CEILING_TOKENS_PER_MINUTE = 4000;
+export const MOIL_CEILING_SAFETY_FACTOR = 1.25;
+export const MOIL_CEILING_DEFAULT_FANOUT_DEPTH = 3;
+
 export function mapResearchTierToCeilingMultiplier(
   researchTier: ResearchTier | string | null | undefined,
 ): number {

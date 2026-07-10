@@ -13,6 +13,8 @@ export type MidnightOilJobResponse = {
   model_id?: string | null;
   /** Residual (gs): curated fast|deep|wrestle for autonomous depth. */
   research_tier?: "fast" | "deep" | "wrestle" | string | null;
+  /** Residual (ada): fan-out depth used in ceiling formula (default 3). */
+  fanout_depth?: number | null;
   status: string;
   recommended_price_ceiling_usd: number;
   approved_ceiling_usd?: number | null;
