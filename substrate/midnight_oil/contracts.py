@@ -3294,6 +3294,252 @@ class MidnightOilLiveDispatchFinalEnablementPlanReceipt(BaseModel):
     adapter_plan_notes: list[str] = Field(default_factory=list)
 
 
+class MidnightOilLiveDispatchFinalEnablementApplyPlanRequest(BaseModel):
+    launch_packet: MidnightOilLaunchPacket
+    approval_receipt: MidnightOilApprovalReceipt
+    runner_handoff: MidnightOilRunnerHandoff
+    runner_control_plan_receipt: MidnightOilRunnerControlPlanReceipt
+    budget_provider_adapter_plan_receipt: MidnightOilBudgetProviderAdapterPlanReceipt
+    provider_executor_adapter_plan_receipt: MidnightOilProviderExecutorAdapterPlanReceipt
+    retrieval_adapter_plan_receipt: MidnightOilRetrievalAdapterPlanReceipt
+    graph_adapter_plan_receipt: MidnightOilGraphAdapterPlanReceipt
+    final_artifact_adapter_plan_receipt: MidnightOilFinalArtifactAdapterPlanReceipt
+    operator_dispatch_adapter_plan_receipt: MidnightOilOperatorDispatchAdapterPlanReceipt
+    control_ledger_adapter_plan_receipt: MidnightOilControlLedgerAdapterPlanReceipt
+    control_ledger_persistence_plan_receipt: MidnightOilControlLedgerPersistencePlanReceipt
+    control_ledger_persistence_apply_plan_receipt: (
+        MidnightOilControlLedgerPersistenceApplyPlanReceipt
+    )
+    operator_dispatch_activation_readiness_plan_receipt: (
+        MidnightOilOperatorDispatchActivationReadinessPlanReceipt
+    )
+    live_dispatch_final_enablement_plan_receipt: (
+        MidnightOilLiveDispatchFinalEnablementPlanReceipt
+    )
+
+    @model_validator(mode="after")
+    def _receipt_chain_matches(
+        self,
+    ) -> MidnightOilLiveDispatchFinalEnablementApplyPlanRequest:
+        MidnightOilLiveDispatchFinalEnablementPlanRequest(
+            launch_packet=self.launch_packet,
+            approval_receipt=self.approval_receipt,
+            runner_handoff=self.runner_handoff,
+            runner_control_plan_receipt=self.runner_control_plan_receipt,
+            budget_provider_adapter_plan_receipt=self.budget_provider_adapter_plan_receipt,
+            provider_executor_adapter_plan_receipt=self.provider_executor_adapter_plan_receipt,
+            retrieval_adapter_plan_receipt=self.retrieval_adapter_plan_receipt,
+            graph_adapter_plan_receipt=self.graph_adapter_plan_receipt,
+            final_artifact_adapter_plan_receipt=self.final_artifact_adapter_plan_receipt,
+            operator_dispatch_adapter_plan_receipt=self.operator_dispatch_adapter_plan_receipt,
+            control_ledger_adapter_plan_receipt=self.control_ledger_adapter_plan_receipt,
+            control_ledger_persistence_plan_receipt=(
+                self.control_ledger_persistence_plan_receipt
+            ),
+            control_ledger_persistence_apply_plan_receipt=(
+                self.control_ledger_persistence_apply_plan_receipt
+            ),
+            operator_dispatch_activation_readiness_plan_receipt=(
+                self.operator_dispatch_activation_readiness_plan_receipt
+            ),
+        )
+        final_plan = self.live_dispatch_final_enablement_plan_receipt
+        if (
+            final_plan.operator_dispatch_activation_readiness_plan_receipt_id
+            != self.operator_dispatch_activation_readiness_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must reference operator_dispatch_activation_readiness_plan_receipt"
+            )
+        if (
+            final_plan.control_ledger_persistence_apply_plan_receipt_id
+            != self.control_ledger_persistence_apply_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must reference control_ledger_persistence_apply_plan_receipt"
+            )
+        if (
+            final_plan.control_ledger_persistence_plan_receipt_id
+            != self.control_ledger_persistence_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must reference control_ledger_persistence_plan_receipt"
+            )
+        if (
+            final_plan.control_ledger_adapter_plan_receipt_id
+            != self.control_ledger_adapter_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must reference control_ledger_adapter_plan_receipt"
+            )
+        if (
+            final_plan.operator_dispatch_adapter_plan_receipt_id
+            != self.operator_dispatch_adapter_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must reference operator_dispatch_adapter_plan_receipt"
+            )
+        if final_plan.runner_control_plan_receipt_id != self.runner_control_plan_receipt.receipt_id:
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must reference runner_control_plan_receipt"
+            )
+        if (
+            final_plan.runner_readiness_receipt_id
+            != self.runner_control_plan_receipt.runner_readiness_receipt_id
+        ):
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must reference runner readiness"
+            )
+        if final_plan.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must reference runner_handoff"
+            )
+        if final_plan.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must reference approval_receipt"
+            )
+        if final_plan.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must reference launch_packet"
+            )
+        if final_plan.run_id != self.launch_packet.run_id:
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must reference launch run"
+            )
+        if final_plan.status != "blocked_live_dispatch_final_enablement_unimplemented":
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must be blocked_live_dispatch_final_enablement_unimplemented"
+            )
+        if final_plan.final_enablement_allowed:
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must not allow final enablement"
+            )
+        if final_plan.live_dispatch_enabled or final_plan.live_dispatch_ready:
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must not enable live dispatch"
+            )
+        if final_plan.activation_readiness_allowed or final_plan.activation_ready:
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must not allow activation readiness"
+            )
+        if final_plan.transaction_opened or final_plan.transaction_committed:
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must not open or commit transaction"
+            )
+        if final_plan.setting_persisted:
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must not persist setting"
+            )
+        if final_plan.control_ledger_written:
+            raise ValueError("live_dispatch_final_enablement_plan_receipt must not write ledger")
+        if final_plan.audit_log_written:
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must not write audit log"
+            )
+        if final_plan.rollback_receipt_created:
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must not create rollback receipt"
+            )
+        if final_plan.operator_dispatch_allowed or final_plan.operator_live_dispatch_enabled:
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must not allow operator dispatch"
+            )
+        if final_plan.live_run_allowed:
+            raise ValueError("live_dispatch_final_enablement_plan_receipt must not allow live run")
+        if final_plan.dispatch_allowed or final_plan.dispatch_performed:
+            raise ValueError("live_dispatch_final_enablement_plan_receipt must not dispatch")
+        if final_plan.budget_reservation_allowed or final_plan.budget_reserved:
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must not reserve budget"
+            )
+        if final_plan.provider_execution_allowed or final_plan.provider_calls_made:
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must not include provider calls"
+            )
+        if final_plan.retrieval_allowed or final_plan.retrieval_performed:
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must not perform retrieval"
+            )
+        if final_plan.source_receipts_created:
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must not create source receipts"
+            )
+        if final_plan.graph_mutation_allowed or final_plan.graph_mutated:
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must not mutate graph"
+            )
+        if final_plan.final_artifact_allowed or final_plan.final_artifact_created:
+            raise ValueError(
+                "live_dispatch_final_enablement_plan_receipt must not create final artifact"
+            )
+        return self
+
+
+class MidnightOilLiveDispatchFinalEnablementApplyPlanReceipt(BaseModel):
+    receipt_id: str
+    live_dispatch_final_enablement_plan_receipt_id: str
+    operator_dispatch_activation_readiness_plan_receipt_id: str
+    control_ledger_persistence_apply_plan_receipt_id: str
+    control_ledger_persistence_plan_receipt_id: str
+    control_ledger_adapter_plan_receipt_id: str
+    operator_dispatch_adapter_plan_receipt_id: str
+    runner_control_plan_receipt_id: str
+    runner_readiness_receipt_id: str
+    runner_handoff_id: str
+    approval_receipt_id: str
+    launch_packet_id: str
+    run_id: str
+    status: Literal["blocked_live_dispatch_final_enablement_apply_unimplemented"] = (
+        "blocked_live_dispatch_final_enablement_apply_unimplemented"
+    )
+    adapter_key: Literal["live_dispatch_final_enablement_apply"] = (
+        "live_dispatch_final_enablement_apply"
+    )
+    planned_activation_readiness_receipt_id: str
+    planned_dispatch_enablement_id: str
+    planned_live_dispatch_receipt_id: str
+    planned_runner_dispatch_id: str
+    planned_apply_receipt_id: str
+    planned_idempotency_key: str
+    planned_repository_id: str
+    planned_transaction_id: str
+    apply_blockers: list[str]
+    required_apply_invariants: list[str]
+    required_apply_receipt_fields: list[str]
+    blocker_reason: Literal["live_dispatch_final_enablement_apply_unimplemented"] = (
+        "live_dispatch_final_enablement_apply_unimplemented"
+    )
+    final_enablement_apply_allowed: bool = False
+    final_enablement_allowed: bool = False
+    live_dispatch_enabled: bool = False
+    live_dispatch_ready: bool = False
+    activation_readiness_allowed: bool = False
+    activation_ready: bool = False
+    transaction_opened: bool = False
+    transaction_committed: bool = False
+    setting_persisted: bool = False
+    control_ledger_written: bool = False
+    audit_log_written: bool = False
+    rollback_receipt_created: bool = False
+    operator_dispatch_allowed: bool = False
+    operator_live_dispatch_enabled: bool = False
+    live_run_allowed: bool = False
+    dispatch_allowed: bool = False
+    dispatch_performed: bool = False
+    budget_reservation_allowed: bool = False
+    budget_reserved: bool = False
+    provider_execution_allowed: bool = False
+    provider_calls_made: bool = False
+    retrieval_allowed: bool = False
+    retrieval_performed: bool = False
+    source_receipts_created: bool = False
+    graph_mutation_allowed: bool = False
+    graph_mutated: bool = False
+    final_artifact_allowed: bool = False
+    final_artifact_created: bool = False
+    adapter_plan_notes: list[str] = Field(default_factory=list)
+
+
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
     price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
@@ -4654,6 +4900,116 @@ def live_dispatch_final_enablement_plan_midnight_oil(
         adapter_plan_notes=[
             "live dispatch final enablement plan only: no enablement is granted and no runner dispatch is created",
             "this receipt documents the final live dispatch receipt requirements after activation readiness planning",
+            "no activation readiness, repository transaction, persistence write, live dispatch, budget reservation, provider call, retrieval, source receipt, graph mutation, or artifact write is performed",
+        ],
+    )
+
+
+def live_dispatch_final_enablement_apply_plan_midnight_oil(
+    req: MidnightOilLiveDispatchFinalEnablementApplyPlanRequest,
+) -> MidnightOilLiveDispatchFinalEnablementApplyPlanReceipt:
+    run_id = req.launch_packet.run_id
+    final_plan = req.live_dispatch_final_enablement_plan_receipt
+    apply_plan = req.control_ledger_persistence_apply_plan_receipt
+    return MidnightOilLiveDispatchFinalEnablementApplyPlanReceipt(
+        receipt_id=f"{run_id}-live-dispatch-final-enablement-apply-plan",
+        live_dispatch_final_enablement_plan_receipt_id=final_plan.receipt_id,
+        operator_dispatch_activation_readiness_plan_receipt_id=(
+            req.operator_dispatch_activation_readiness_plan_receipt.receipt_id
+        ),
+        control_ledger_persistence_apply_plan_receipt_id=apply_plan.receipt_id,
+        control_ledger_persistence_plan_receipt_id=(
+            req.control_ledger_persistence_plan_receipt.receipt_id
+        ),
+        control_ledger_adapter_plan_receipt_id=(
+            req.control_ledger_adapter_plan_receipt.receipt_id
+        ),
+        operator_dispatch_adapter_plan_receipt_id=(
+            req.operator_dispatch_adapter_plan_receipt.receipt_id
+        ),
+        runner_control_plan_receipt_id=req.runner_control_plan_receipt.receipt_id,
+        runner_readiness_receipt_id=(
+            req.runner_control_plan_receipt.runner_readiness_receipt_id
+        ),
+        runner_handoff_id=req.runner_handoff.handoff_id,
+        approval_receipt_id=req.approval_receipt.receipt_id,
+        launch_packet_id=req.launch_packet.packet_id,
+        run_id=run_id,
+        planned_activation_readiness_receipt_id=(
+            final_plan.planned_activation_readiness_receipt_id
+        ),
+        planned_dispatch_enablement_id=final_plan.planned_dispatch_enablement_id,
+        planned_live_dispatch_receipt_id=final_plan.planned_live_dispatch_receipt_id,
+        planned_runner_dispatch_id=final_plan.planned_runner_dispatch_id,
+        planned_apply_receipt_id=f"{run_id}-live-dispatch-final-enable-apply-receipt",
+        planned_idempotency_key=f"{run_id}-live-dispatch-final-enable-idempotency-key",
+        planned_repository_id=apply_plan.planned_repository_id,
+        planned_transaction_id=f"{run_id}-live-dispatch-final-enable-transaction",
+        apply_blockers=[
+            *final_plan.readiness_blockers,
+            "activation-ready receipt implementation",
+            "final enablement apply receipt writer",
+            "dispatch idempotency repository",
+            "runner dispatch scheduler",
+        ],
+        required_apply_invariants=[
+            "apply planner must require an activation-ready receipt before any final enablement transaction is opened",
+            "apply planner must use an idempotency key before creating a live dispatch receipt or runner dispatch id",
+            "apply planner must keep the repository transaction closed until a real final enablement adapter exists",
+            "apply planner must write the live dispatch receipt before the runner scheduler can consume the runner dispatch id",
+            "apply planner must remain replay-safe for the launch packet, approval receipt, final enablement plan receipt, and idempotency key",
+        ],
+        required_apply_receipt_fields=[
+            "apply_receipt_id",
+            "live_dispatch_receipt_id",
+            "runner_dispatch_id",
+            "repository_id",
+            "transaction_id",
+            "idempotency_key",
+            "run_id",
+            "launch_packet_id",
+            "approval_receipt_id",
+            "final_enablement_plan_receipt_id",
+            "activation_readiness_receipt_id",
+            "dispatch_enablement_id",
+            "transaction_opened",
+            "transaction_committed",
+            "live_dispatch_enabled",
+            "dispatch_performed",
+            "created_at",
+        ],
+        blocker_reason="live_dispatch_final_enablement_apply_unimplemented",
+        final_enablement_apply_allowed=False,
+        final_enablement_allowed=False,
+        live_dispatch_enabled=False,
+        live_dispatch_ready=False,
+        activation_readiness_allowed=False,
+        activation_ready=False,
+        transaction_opened=False,
+        transaction_committed=False,
+        setting_persisted=False,
+        control_ledger_written=False,
+        audit_log_written=False,
+        rollback_receipt_created=False,
+        operator_dispatch_allowed=False,
+        operator_live_dispatch_enabled=False,
+        live_run_allowed=False,
+        dispatch_allowed=False,
+        dispatch_performed=False,
+        budget_reservation_allowed=False,
+        budget_reserved=False,
+        provider_execution_allowed=False,
+        provider_calls_made=False,
+        retrieval_allowed=False,
+        retrieval_performed=False,
+        source_receipts_created=False,
+        graph_mutation_allowed=False,
+        graph_mutated=False,
+        final_artifact_allowed=False,
+        final_artifact_created=False,
+        adapter_plan_notes=[
+            "live dispatch final enablement apply plan only: no transaction is opened and no dispatch id is consumed",
+            "this receipt documents apply receipt, idempotency, repository transaction, and runner dispatch requirements after final enablement planning",
             "no activation readiness, repository transaction, persistence write, live dispatch, budget reservation, provider call, retrieval, source receipt, graph mutation, or artifact write is performed",
         ],
     )
