@@ -44,6 +44,9 @@ See **FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md** · free/purchas
 ### NotDiamond
 See **FUTURE-AGENT-SPEC-notdiamond-advisory-only.md** — advisor yes · router never (L7).
 
+### Competitive DR quality
+See **FUTURE-AGENT-SPEC-competitive-deep-research-quality.md** — world-class DR map · next offline residuals.
+
 ### P1 next offline (residual **ahk+**)
 Outside thrash: competitive depth · twin flywheel · MO only if non-colliding offline. Leave free-STEM · merge · pub matrix · foresight stamp thrash. See **SESSION-ARC-ags-ahi-fourier-merge-pub-budget.md**.
 

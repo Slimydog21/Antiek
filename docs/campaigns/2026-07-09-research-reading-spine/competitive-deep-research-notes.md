@@ -2843,3 +2843,8 @@ Suite suite-competitive-dogfood-v27 adds wrestle fixture for operator-visible
 pub-ref foresight chrome matrix (aic–aif). item_count 42 · wrestle=29.
 Settings spine v27. pytest dogfood 5 · Settings 36 green. P0 operator merge PR #465.
 Pivot aih+ outside thrash.
+
+## Residual aih · 2026-07-10 — FUTURE-AGENT competitive deep-research quality brief
+Executable brief mapping competitor DR patterns to Antiek spine, naming offline
+next residuals (citation chain UI · wrestle progress · quality scorecard) and
+dual-gate live table. P0 operator merge PR #465. Pivot aii+ offline competitive product.
