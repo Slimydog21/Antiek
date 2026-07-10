@@ -16,6 +16,9 @@
  * live-injector dogfood prep (never enables injectors).
  * Residual (rc): Open Write twin_seed from hydrated publications.
  * Residual (acs): data-write-seed-has-body when any pub body_text/HTML non-empty.
+ * Residual (agx): knowledge-dense publication quick-call presets (arxiv / substack
+ * / seminal STEM) — one-click insert into the attach input; hydrate still offline-
+ * honest until Attach + hydrate (never invents live body).
  * HTML-first; offline hydrate by default.
  */
 
@@ -33,6 +36,54 @@ import {
   plainTextFromHtml,
 } from "../../workspace/twinWriteSeed";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
+
+/**
+ * Residual (agx): curated knowledge-dense publication handles for deep research.
+ * Presets only insert refs into the textarea — never auto-hydrate or claim live body.
+ */
+export const KNOWLEDGE_DENSE_PUBLICATION_PRESETS: readonly {
+  id: string;
+  label: string;
+  reference: string;
+  kind: "arxiv" | "substack" | "url";
+}[] = [
+  {
+    id: "attention-is-all-you-need",
+    label: "Attention (arXiv)",
+    reference: "arxiv:1706.03762",
+    kind: "arxiv",
+  },
+  {
+    id: "bert",
+    label: "BERT (arXiv)",
+    reference: "arxiv:1810.04805",
+    kind: "arxiv",
+  },
+  {
+    id: "gpt-3",
+    label: "GPT-3 (arXiv)",
+    reference: "arxiv:2005.14165",
+    kind: "arxiv",
+  },
+  {
+    id: "scaling-laws",
+    label: "Scaling laws (arXiv)",
+    reference: "arxiv:2001.08361",
+    kind: "arxiv",
+  },
+  {
+    id: "lilian-weng-attention",
+    label: "Lilian Weng · Attention",
+    reference: "https://lilianweng.github.io/posts/2018-06-24-attention/",
+    kind: "url",
+  },
+  {
+    id: "substack-example",
+    label: "Substack (example URL)",
+    reference: "https://www.lesswrong.com/posts/7MCqRnZzvszsxgtJi/mysteries-of-mode-collapse",
+    kind: "substack",
+  },
+] as const;
 
 export type PublicationAttachResult = {
   spawnId: string;
@@ -122,12 +173,34 @@ export function PublicationAttachPanel({
     }
   }, [spawnId, raw, onAttached]);
 
+  /** Residual (agx): insert preset ref (dedupe) without auto-hydrate. */
+  const insertPreset = useCallback((reference: string) => {
+    const ref = reference.trim();
+    if (!ref) return;
+    setRaw((prev) => {
+      const existing = new Set(
+        prev
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean),
+      );
+      if (existing.has(ref)) return prev;
+      const base = prev.trim();
+      return base ? `${base}\n${ref}` : ref;
+    });
+    setError(null);
+  }, []);
+
   return (
     <section
       className="space-y-2"
       data-testid="publication-attach-panel"
       data-view-format="html"
       data-research-tier={researchTier || ""}
+      data-knowledge-dense-presets={String(
+        KNOWLEDGE_DENSE_PUBLICATION_PRESETS.length,
+      )}
+      data-seamless-pub-quick-call="true"
       aria-label="Attach publication references"
     >
       <header className="space-y-1">
@@ -135,7 +208,8 @@ export function PublicationAttachPanel({
           Attach publications
         </h2>
         <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
-          arxiv / substack / URL → attach to spawn + hydrate HTML assets
+          arxiv / substack / URL → attach to spawn + hydrate HTML assets ·
+          quick-call presets insert only (offline hydrate until Attach)
         </p>
         {/* Residual (lz): model driver + budget + depth co-display at attach. */}
         <div
@@ -153,6 +227,35 @@ export function PublicationAttachPanel({
           />
         </div>
       </header>
+      {/* Residual (agx): knowledge-dense quick-call chips (insert only · never auto-hydrate). */}
+      <div
+        className="flex flex-wrap gap-1 items-center"
+        data-testid="publication-quick-call-presets"
+        data-preset-count={String(KNOWLEDGE_DENSE_PUBLICATION_PRESETS.length)}
+        data-seamless-pub-quick-call="true"
+        data-auto-hydrate="false"
+        role="group"
+        aria-label="Knowledge-dense publication quick-call presets"
+      >
+        <span className="text-[10px] font-mono opacity-70 mr-1">Quick-call:</span>
+        {KNOWLEDGE_DENSE_PUBLICATION_PRESETS.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            data-testid={`publication-preset-${p.id}`}
+            data-preset-id={p.id}
+            data-kind={p.kind}
+            data-reference={p.reference}
+            data-auto-hydrate="false"
+            disabled={busy}
+            onClick={() => insertPreset(p.reference)}
+            className="text-[10px] font-mono border rounded px-1.5 py-0.5 opacity-80 hover:opacity-100 disabled:opacity-50"
+            title={`Insert ${p.reference} (does not hydrate until Attach + hydrate)`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
       <textarea
         data-testid="publication-attach-input"
         value={raw}

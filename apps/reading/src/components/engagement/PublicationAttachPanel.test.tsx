@@ -56,9 +56,28 @@ describe("PublicationAttachPanel residual ck/ed", () => {
     render(
       <PublicationAttachPanel spawnId="spn_1" onAttached={onAttached} />,
     );
-    fireEvent.change(screen.getByTestId("publication-attach-input"), {
-      target: { value: "arxiv:1706.03762" },
-    });
+    // Residual (agx): knowledge-dense quick-call presets insert without hydrate.
+    const panel = screen.getByTestId("publication-attach-panel");
+    expect(panel.getAttribute("data-seamless-pub-quick-call")).toBe("true");
+    expect(Number(panel.getAttribute("data-knowledge-dense-presets"))).toBeGreaterThanOrEqual(
+      4,
+    );
+    const presets = screen.getByTestId("publication-quick-call-presets");
+    expect(presets.getAttribute("data-auto-hydrate")).toBe("false");
+    expect(presets.getAttribute("data-seamless-pub-quick-call")).toBe("true");
+    expect(
+      screen.getByTestId("publication-preset-attention-is-all-you-need"),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByTestId("publication-preset-attention-is-all-you-need"),
+    );
+    expect(
+      (screen.getByTestId("publication-attach-input") as HTMLTextAreaElement)
+        .value,
+    ).toMatch(/arxiv:1706\.03762/);
+    // Preset click must not auto-hydrate.
+    expect(attachSourceRefs).not.toHaveBeenCalled();
+    expect(hydratePublicationRef).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("publication-attach-submit"));
 
     await waitFor(() => {

@@ -1,0 +1,19 @@
+# inventory-agx · knowledge-dense publication quick-call presets
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: agx
+date: 2026-07-10
+parent_tip: d4e117c3 (agw)
+
+## Closed
+- PublicationAttachPanel knowledge-dense quick-call presets:
+  - Attention / BERT / GPT-3 / Scaling laws (arXiv handles)
+  - Lilian Weng attention essay URL
+  - LessWrong/Substack-class example URL
+- Insert-only · data-auto-hydrate=false · never invents live body
+- Panel stamps: data-seamless-pub-quick-call · data-knowledge-dense-presets
+- Competitive delta: one-click call arxiv/knowledge-dense pubs into deep research
+- vitest PublicationAttachPanel 6 green
+
+## Next
+agy+ outside thrash · product residual
+Operator merge PR #465 remains highest leverage (gated)

@@ -2633,3 +2633,11 @@ highlight→DR→merge (agu) and multi-spawn collective merge (agv). Settings sp
 postures v22. item_count 35 · wrestle=22 · book_qa=9. Recursive Antiek-bench
 rewrite feed (propose≠promote). pytest dogfood 5 · Settings 36 green.
 P0 operator merge PR #465. Pivot agx+ outside thrash.
+
+## Residual agx · 2026-07-10 — knowledge-dense publication quick-call presets
+PublicationAttachPanel adds curated arxiv/URL quick-call chips (Attention, BERT,
+GPT-3, Scaling laws, Lilian Weng, LessWrong example). Insert-only · never
+auto-hydrate · data-auto-hydrate=false · offline-honest until Attach + hydrate.
+Competitive delta: one-click call knowledge-dense pubs into deep research
+(parity competitor source connectors UX without inventing live bodies).
+vitest PublicationAttach 6 green. P0 operator merge PR #465. Pivot agy+ outside thrash.
