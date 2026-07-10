@@ -3185,3 +3185,7 @@ record_purchase_and_host accepts checkout_session_id: deferred dual-gate raises
 LivePaymentDeferredError with zero host; manual opaque path unchanged; live host
 only when adapter confirms charged live_payment. FUTURE L5 Sprint 2 offline-safe.
 pytest 9 green. P0 operator merge PR #465. Pivot akv+ outside thrash.
+
+## Residual akv · 2026-07-10 — SESSION-ARC akr–aku L5 payment path
+Wave handoff: payment adapter Sprint 1 · MarketplaceHost honesty · progress FUTURE
+· purchase path Sprint 2 offline-safe. P0 operator merge PR #465. Pivot akw+ outside thrash.
