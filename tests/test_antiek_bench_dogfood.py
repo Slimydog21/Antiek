@@ -110,10 +110,15 @@ def test_payload_and_api_html():
     payload = dogfood_fixture_payload(include_html=True)
     assert payload["auto_promoted"] is False
     assert payload["view_format"] == "html"
-    assert payload["item_count"] >= 15
+    # Residual (zj): v12 full STEM dogfood honesty.
+    assert payload["suite_version"] == COMPETITIVE_DOGFOOD_VERSION
+    assert payload["suite_version"] == "suite-competitive-dogfood-v12"
+    assert payload["item_count"] >= 18
+    assert payload["settings_panel"] == "antiek_bench_dogfood_fixtures"
+    assert payload["source"] == "antiek_bench.dogfood_fixtures"
     assert payload["html"]
     assert "application/pdf" not in payload["html"].lower()
-    # Residual (st/tf/tv/tz/ud/us/ve/vl): v9 fixtures visible in HTML listing.
+    # Residual (st/tf/tv/tz/ud/us/ve/vl/wd/wl/xi): fixtures visible in HTML listing.
     assert "dogfood-wrestle-write-seed" in payload["html"]
     assert "twin_seed" in payload["html"]
     assert "dogfood-book-faraday-induction" in payload["html"]
@@ -130,6 +135,12 @@ def test_payload_and_api_html():
     assert "twin_cross_asset_merge" in payload["html"]
     assert "dogfood-wrestle-collective-written-analysis-write-seed" in payload["html"]
     assert "collective_written_analysis" in payload["html"]
+    assert "dogfood-book-shannon-communication" in payload["html"]
+    assert "shannon" in payload["html"].lower()
+    assert "dogfood-book-turing-computable-numbers" in payload["html"]
+    assert "turing" in payload["html"].lower()
+    assert "dogfood-book-lovelace-analytical-engine" in payload["html"]
+    assert "lovelace" in payload["html"].lower()
 
     app = FastAPI()
     register_settings_budget_routes(app)
@@ -138,4 +149,8 @@ def test_payload_and_api_html():
     r2 = client.get("/settings/antiek-bench/dogfood-fixtures?include_html=true")
     assert r1.status_code == 200 and r2.status_code == 200
     assert r1.json()["suite_version"] == r2.json()["suite_version"]
+    assert r1.json()["suite_version"] == "suite-competitive-dogfood-v12"
     assert r1.json()["item_count"] == r2.json()["item_count"]
+    assert r1.json()["item_count"] >= 18
+    assert r1.json()["by_task_class"]["book_qa"] == 7
+    assert r1.json()["by_task_class"]["wrestle"] == 7

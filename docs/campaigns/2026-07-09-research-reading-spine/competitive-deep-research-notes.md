@@ -1758,3 +1758,8 @@ opening summary metrics only.
 ## Residual zi · 2026-07-10 — FUTURE-AGENT tip re-anchor through zh
 FUTURE-AGENT-SPEC tip re-anchored after 88 residual ships this continuation.
 Competitive delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
+
+## Residual zj · 2026-07-10 — dogfood payload + API v12 STEM honesty
+dogfood_fixture_payload and /settings/antiek-bench/dogfood-fixtures lock v12
+with Shannon/Turing/Lovelace HTML + book_qa=7. Competitive delta: Settings
+API and substrate dogfood are identity-honest end-to-end.
