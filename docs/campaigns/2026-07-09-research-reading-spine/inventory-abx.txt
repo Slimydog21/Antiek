@@ -1,0 +1,19 @@
+# inventory-abx · library HTML free_count honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: abx
+date: 2026-07-10
+tip_before: d5541a33 (abw)
+
+## Problem
+list_account_library_html listed [license] only — no free inventory free_count
+or free/paid mark (parity catalog HTML free honesty).
+
+## Fix
+- free_count strip + [license/free|paid] per row
+- test_library_html_lists_hosted locks free_count=1
+
+## Verified
+pytest test_marketplace_host_product_path → 4 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

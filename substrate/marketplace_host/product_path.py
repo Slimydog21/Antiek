@@ -155,20 +155,43 @@ def list_account_library_html(
                 "content": [{"type": "text", "text": "(empty library)"}],
             }
         )
+    free_count = 0
     for doc_id in lib.document_ids:
         doc = store.get_document(doc_id) or {}
         title = str(doc.get("title") or doc_id)
         lic = str(doc.get("license_class") or "?")
+        # Residual (abx): free inventory mark (parity library is_free abu).
+        is_free = lic == "public_domain"
+        if is_free:
+            free_count += 1
+        free_mark = "free" if is_free else "paid"
         blocks.append(
             {
                 "type": "paragraph",
                 "content": [
                     {
                         "type": "text",
-                        "text": f"[{lic}] {title} ({doc_id})",
+                        "text": f"[{lic}/{free_mark}] {title} ({doc_id})",
                     }
                 ],
             }
+        )
+    # Residual (abx): free_count honesty strip on library HTML projection.
+    if lib.document_ids:
+        blocks.insert(
+            1,
+            {
+                "type": "paragraph",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            f"docs={len(lib.document_ids)} · free_count={free_count} · "
+                            "view=HTML · payment=manual_receipt_only"
+                        ),
+                    }
+                ],
+            },
         )
     return project_to_html(
         {"type": "doc", "content": blocks},

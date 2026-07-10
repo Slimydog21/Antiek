@@ -92,6 +92,9 @@ def test_library_html_lists_hosted(store, catalog):
     html = list_account_library_html("user-lib", store=store)
     assert "Library" in html or "pd-pride" in html or "Pride" in html
     assert "application/pdf" not in html.lower()
+    # Residual (abx): free inventory honesty on library HTML projection.
+    assert "free_count=1" in html
+    assert "public_domain/free" in html or "/free]" in html
 
 
 def test_double_run_launch_stable(store, catalog):

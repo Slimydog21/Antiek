@@ -2067,3 +2067,8 @@ PR #465 highest leverage.
 Purchase-and-host library row stamps is_free=false (parity free inventory doctrine).
 Competitive delta: paid books never invent free inventory after seamless host port.
 
+## Residual abx · 2026-07-10 — library HTML free_count honesty
+list_account_library_html stamps free_count + [license/free|paid] (parity free
+inventory doctrine). Competitive delta: library HTML projection is free-inventory
+honest for account-hosted books (HTML-first, never PDF).
+
