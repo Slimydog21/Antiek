@@ -4742,6 +4742,36 @@ export default function Settings() {
                 panel (ajm) · Settings prompt-cost (ake) —{" "}
                 <strong>shipped offline</strong> (aic–aif · dogfood v27)
               </li>
+              {/* Residual (atp): pure-helper product rows for ate/atj/atm scorecard honesty. */}
+              <li
+                data-status="shipped"
+                data-testid="competitive-dr-duration-band-foresight"
+                data-offline-surface="competitive_duration_band_foresight"
+              >
+                Competitive multi-minute duration band foresight (atj) on
+                DecisionTree + launch projection —{" "}
+                <strong>shipped offline</strong> (wrestle 10–30+ · deep 3–10 ·
+                fast 1–3 · soft foresight · never invent live ETA)
+              </li>
+              <li
+                data-status="shipped"
+                data-testid="competitive-dr-moil-deposit-html-open"
+                data-offline-surface="moil_deposit_html_readiness"
+              >
+                Midnight Oil deposit HTML open readiness (ate) —{" "}
+                <strong>shipped offline</strong> (view_format=html ∧ body ∧
+                document_id · never invent PDF open · L4 live step dual-gate)
+              </li>
+              <li
+                data-status="shipped"
+                data-testid="competitive-dr-marketplace-hosted-open"
+                data-offline-surface="marketplace_hosted_open_readiness"
+              >
+                Marketplace hosted HTML open readiness (atm) —{" "}
+                <strong>shipped offline</strong> (seamless account port · HTML
+                reading window · never invent PDF/empty-body open · L5 live
+                payment dual-gate)
+              </li>
               <li data-status="shipped" data-testid="competitive-dr-html-first">
                 HTML deliverable · free STEM marketplace —{" "}
                 <strong>shipped offline</strong>

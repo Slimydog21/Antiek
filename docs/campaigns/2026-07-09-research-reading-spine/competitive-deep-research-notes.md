@@ -4337,3 +4337,9 @@ Scorecard honesty tracks pure contracts. vitest 6 green. P0 PR #465. Pivot ato+.
 Multi-agent collab map of 17 residuals (long-horizon · agentic pubs · twin ·
 marketplace open · pure helpers · offline catalog). Thrash list explicit.
 P0 PR #465. Pivot atp+ outside thrash.
+
+## Residual atp · 2026-07-10 — Settings scorecard rows ate/atj/atm
+Scorecard adds duration-band foresight · MO deposit HTML open · marketplace
+hosted open rows with data-offline-surface stamps (parity atn catalog).
+Settings wrestle vision feed total 11 (atd). vitest Settings 37 green.
+P0 PR #465. Pivot atq+.

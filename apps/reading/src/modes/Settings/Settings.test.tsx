@@ -1039,6 +1039,27 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(
       screen.getByTestId("competitive-dr-budget-before-fire").getAttribute("data-status"),
     ).toBe("shipped");
+    // Residual (atp): ate/atj/atm pure-helper scorecard rows.
+    const durationBand = screen.getByTestId(
+      "competitive-dr-duration-band-foresight",
+    );
+    expect(durationBand.getAttribute("data-status")).toBe("shipped");
+    expect(durationBand.getAttribute("data-offline-surface")).toBe(
+      "competitive_duration_band_foresight",
+    );
+    expect(durationBand.textContent).toMatch(/duration band foresight/i);
+    const moilOpen = screen.getByTestId("competitive-dr-moil-deposit-html-open");
+    expect(moilOpen.getAttribute("data-offline-surface")).toBe(
+      "moil_deposit_html_readiness",
+    );
+    expect(moilOpen.textContent).toMatch(/deposit HTML open/i);
+    const marketOpen = screen.getByTestId(
+      "competitive-dr-marketplace-hosted-open",
+    );
+    expect(marketOpen.getAttribute("data-offline-surface")).toBe(
+      "marketplace_hosted_open_readiness",
+    );
+    expect(marketOpen.textContent).toMatch(/Marketplace hosted HTML open/i);
     // Residual (aok): multi-goal MO + domain-aware chase + ≥2 written analysis honesty.
     expect(
       screen
@@ -1885,8 +1906,8 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(train.getAttribute("data-propose-not-promote")).toBe("true");
     const wrestleTrain = screen.getByTestId("antiek-bench-task-training-wrestle");
     expect(wrestleTrain.getAttribute("data-task-class")).toBe("wrestle");
-    // Residual (aqv/ari/asj): wrestle trains on 8 vision feeds (+ attach · DT install).
-    expect(Number(wrestleTrain.getAttribute("data-total") || 0)).toBe(8);
+    // Residual (aqv/ari/asj/atd): wrestle trains on 11 vision feeds (+ progress · flywheel · twin-cross).
+    expect(Number(wrestleTrain.getAttribute("data-total") || 0)).toBe(11);
     expect(wrestleTrain.getAttribute("data-covered") || "").toMatch(/twin_chase/);
     expect(wrestleTrain.getAttribute("data-covered") || "").toMatch(
       /midnight_oil/,
