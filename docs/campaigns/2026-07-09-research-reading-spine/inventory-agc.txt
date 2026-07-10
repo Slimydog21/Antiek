@@ -1,0 +1,12 @@
+# inventory-agc · SESSION-ARC afw–agb FloatMenu highlight path complete
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: agc
+date: 2026-07-10
+parent_tip: b89ba407 (agb)
+
+## Closed
+- SESSION-ARC-afw-agb-floatmenu-highlight-path.md
+- FUTURE + NEXT-WAVE re-anchor agd+
+
+## Next
+Outside FloatMenu thrash · inventory-first product residual

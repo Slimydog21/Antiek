@@ -2519,3 +2519,8 @@ search path machine-readable (parity highlight→DR afw). vitest FloatMenu 26 gr
 FloatMenu Note and Dialogue stamp data-seamless-highlight-note|dialogue ·
 view_format=html. Completes highlight float-menu action path matrix
 (Note · Dialogue · Search · Deep-research float|full). vitest FloatMenu 27 green.
+
+## Residual agc · 2026-07-10 — SESSION-ARC afw–agb FloatMenu highlight path
+Handoff: Deep-research path + dogfood v18 + Search + Note + Dialogue. Full
+highlight FloatMenu path honesty matrix. P0 operator merge PR #465.
+Pivot agd+ outside thrash.
