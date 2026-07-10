@@ -279,13 +279,17 @@ export function buildHostedHtmlWriteHref(opts: {
     doc;
   const srcRaw = String(opts.source || "").trim();
   // Residual (si/sj): preserve known Write-seed sources from float hosts.
-  const source =
-    srcRaw === "evidence_pack" ||
-    srcRaw === "context_search" ||
-    srcRaw === "publication_hydrate" ||
-    srcRaw === "research_context_pack"
-      ? srcRaw
-      : "hosted_html_document";
+  const KNOWN_HOST_WRITE_SOURCES = new Set([
+    "evidence_pack",
+    "context_search",
+    "publication_hydrate",
+    "research_context_pack",
+    "research_progress_complete",
+    "research_progress_draft",
+  ]);
+  const source = KNOWN_HOST_WRITE_SOURCES.has(srcRaw)
+    ? srcRaw
+    : "hosted_html_document";
   const titleDefault =
     source === "evidence_pack"
       ? `Evidence pack · ${doc}`
@@ -295,7 +299,10 @@ export function buildHostedHtmlWriteHref(opts: {
           ? `Hydrated publication · ${doc}`
           : source === "research_context_pack"
             ? `Research context pack · ${doc}`
-            : `Hosted HTML · ${doc}`;
+            : source === "research_progress_complete" ||
+                source === "research_progress_draft"
+              ? `Research progress · ${doc}`
+              : `Hosted HTML · ${doc}`;
   const seedKey = storeTwinWriteSeed({
     plain_text: plain,
     html: String(opts.html || ""),

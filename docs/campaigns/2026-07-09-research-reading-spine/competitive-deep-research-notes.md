@@ -883,3 +883,9 @@ The recursive context pack (prompt_block + twin/ref substrate) opens as
 float|full HTML (source=research_context_pack). Competitive delta: the same
 substrate that drives deep-research turns is first-class reading material —
 operators pin context full-screen while wrestling the source document.
+
+## Residual sm · 2026-07-10 — Research progress float|full HTML
+Multi-minute plan→cite progress HTML opens as float|full hosted documents
+(source=research_progress_complete|draft). Competitive delta: long-horizon
+Deep Research jobs leave readable HTML artifacts in the window flywheel —
+not only chat timeline or Write seed.

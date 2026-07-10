@@ -16,6 +16,7 @@
  * Residual (qw): Open Write twin_seed when progress is terminal (progress
  * events/HTML seed recursive note-taker; no invented document_id).
  * Residual (rp): mid-flight Open Write (progress draft) while non-terminal.
+ * Residual (sm): float|full progress HTML reading windows (plan→cite substrate).
  * HTML-first; never PDF.
  */
 
@@ -30,6 +31,7 @@ import {
   RESEARCH_TIER_PROGRESS_POLL_MS,
 } from "../../lib/researchTier";
 import { buildResearchProgressWriteHref } from "../../workspace/twinWriteSeed";
+import { openWindow } from "../windows/openWindow";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 
 /**
@@ -343,6 +345,81 @@ export function ResearchProgressPanel({
             latest=<strong>{progress.latest_stage ?? "(none)"}</strong> · events=
             {progress.event_count} · terminal={String(progress.is_terminal)}
           </p>
+          {/* Residual (sm): progress HTML → float|full reading windows. */}
+          {progress.html?.trim() ? (
+            <p className="meta font-mono text-[11px] space-x-3">
+              <button
+                type="button"
+                data-testid="research-progress-open-float"
+                data-view-format="html"
+                data-window-mode="floating"
+                data-is-terminal={String(Boolean(progress.is_terminal))}
+                className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
+                title="Open plan→cite progress as floating HTML window (never PDF)"
+                onClick={() => {
+                  const id = `research_progress:${spawnId}:${Date.now().toString(36)}`;
+                  const source = progress.is_terminal
+                    ? "research_progress_complete"
+                    : "research_progress_draft";
+                  openWindow(
+                    "hosted_html_document",
+                    {
+                      document_id: id,
+                      title: progress.is_terminal
+                        ? `Research progress · complete · ${spawnId}`
+                        : `Research progress · draft · ${spawnId}`,
+                      html: progress.html,
+                      view_format: "html",
+                      source,
+                      research_tier: progress.research_tier || researchTier || null,
+                    },
+                    {
+                      id: `win:progress:${id}`,
+                      title: "Research progress",
+                      mode: "floating",
+                    },
+                  );
+                }}
+              >
+                Open float (progress HTML)
+              </button>
+              <button
+                type="button"
+                data-testid="research-progress-open-full"
+                data-view-format="html"
+                data-window-mode="full"
+                data-is-terminal={String(Boolean(progress.is_terminal))}
+                className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
+                title="Open plan→cite progress as full working-region HTML window (never PDF)"
+                onClick={() => {
+                  const id = `research_progress:${spawnId}:full:${Date.now().toString(36)}`;
+                  const source = progress.is_terminal
+                    ? "research_progress_complete"
+                    : "research_progress_draft";
+                  openWindow(
+                    "hosted_html_document",
+                    {
+                      document_id: id,
+                      title: progress.is_terminal
+                        ? `Research progress · complete · ${spawnId} (full)`
+                        : `Research progress · draft · ${spawnId} (full)`,
+                      html: progress.html,
+                      view_format: "html",
+                      source,
+                      research_tier: progress.research_tier || researchTier || null,
+                    },
+                    {
+                      id: `win:progress:${id}:full`,
+                      title: "Research progress (full)",
+                      mode: "full",
+                    },
+                  );
+                }}
+              >
+                Open full (progress HTML)
+              </button>
+            </p>
+          ) : null}
           {/* Residual (qw/rp): terminal or mid-flight → Open Write twin seed. */}
           {writeHref ? (
             <p className="meta font-mono text-[11px]">

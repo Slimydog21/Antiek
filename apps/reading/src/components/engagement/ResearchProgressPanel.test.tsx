@@ -4,6 +4,11 @@ import { ResearchProgressPanel } from "./ResearchProgressPanel";
 
 const fetchResearchProgress = vi.fn();
 const seedResearchProgress = vi.fn();
+const openWindow = vi.fn(() => "win:progress:test");
+
+vi.mock("../windows/openWindow", () => ({
+  openWindow: (...args: unknown[]) => openWindow(...args),
+}));
 
 vi.mock("../../api/engagement", () => ({
   fetchResearchProgress: (...args: unknown[]) => fetchResearchProgress(...args),
@@ -28,6 +33,7 @@ describe("ResearchProgressPanel", () => {
   beforeEach(() => {
     fetchResearchProgress.mockReset();
     seedResearchProgress.mockReset();
+    openWindow.mockClear();
   });
 
   it("links to Settings for driver & budget (ij)", () => {
@@ -159,6 +165,26 @@ describe("ResearchProgressPanel", () => {
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
     expect(write.getAttribute("data-is-terminal")).toBe("true");
     expect(write.getAttribute("data-view-format")).toBe("html");
+    // Residual (sm): float|full progress HTML reading windows.
+    fireEvent.click(screen.getByTestId("research-progress-open-float"));
+    const floatCall = openWindow.mock.calls.at(-1) as [
+      string,
+      { source?: string; html?: string; view_format?: string },
+      { mode?: string },
+    ];
+    expect(floatCall[0]).toBe("hosted_html_document");
+    expect(floatCall[1].source).toBe("research_progress_complete");
+    expect(floatCall[1].view_format).toBe("html");
+    expect(floatCall[1].html).toMatch(/Final synthesis/);
+    expect(floatCall[2].mode).toBe("floating");
+    fireEvent.click(screen.getByTestId("research-progress-open-full"));
+    const fullCall = openWindow.mock.calls.at(-1) as [
+      string,
+      { source?: string },
+      { mode?: string },
+    ];
+    expect(fullCall[1].source).toBe("research_progress_complete");
+    expect(fullCall[2].mode).toBe("full");
   });
 
   it("auto-loads progress on mount (cp)", async () => {

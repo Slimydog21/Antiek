@@ -1,0 +1,14 @@
+# inventory-sm · Research progress float|full HTML
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: sm
+date: 2026-07-10
+
+## Closed
+- research-progress-open-float / open-full
+- source=research_progress_complete|draft by is_terminal
+- buildHostedHtmlWriteHref preserves progress sources
+- vitest ResearchProgressPanel 9 · SCRATCH residual-tests-sm.log
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live L1–L4 dual-gate (operator-only)
