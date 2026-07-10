@@ -3378,3 +3378,8 @@ ResearchContext accepts host researchTier prefill (pack wins when present);
 MarketplaceHost host-land context passes hostDrTier depth posture.
 vitest ResearchContext 18 · MarketplaceHost 41 green.
 P0 operator merge PR #465. Pivot amk+ outside thrash.
+
+## Residual amk · 2026-07-10 — HostedHtml ResearchContext researchTier prefill from payload
+HostedHtml passes researchTier into ResearchContext; payload research_tier wins
+over Settings depth prefill. vitest HostedHtml 26 green.
+P0 operator merge PR #465. Pivot aml+ outside thrash.

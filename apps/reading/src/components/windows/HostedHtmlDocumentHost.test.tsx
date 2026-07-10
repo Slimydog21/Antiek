@@ -104,11 +104,13 @@ vi.mock("../engagement/ResearchContextPanel", () => ({
     assetId: string;
     autoLoad?: boolean;
     domainSubjects?: readonly string[] | null;
+    researchTier?: string | null;
   }) => (
     <div
       data-testid="research-context-panel-stub"
       data-domain-subjects={(props.domainSubjects || []).join(",") || ""}
       data-auto-load={String(Boolean(props.autoLoad))}
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
     >
       {props.assetId}:auto={String(Boolean(props.autoLoad))}
     </div>
@@ -634,6 +636,23 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
       "heat,signal_processing,engineering",
     );
     expect(ctx.getAttribute("data-auto-load")).toBe("true");
+  });
+
+  it("passes host researchTier into ResearchContext prefill (amk)", () => {
+    render(
+      <HostedHtmlDocumentHost
+        document_id="marketplace:pd-fourier-heat"
+        title="Fourier Heat"
+        view_format="html"
+        source="marketplace_host"
+        subjects={["heat"]}
+        research_tier="wrestle"
+        html="<p>Analytical Theory of Heat</p>"
+      />,
+    );
+    const ctx = screen.getByTestId("research-context-panel-stub");
+    expect(ctx.getAttribute("data-research-tier")).toBe("wrestle");
+    expect(ctx.getAttribute("data-domain-subjects")).toMatch(/heat/);
   });
 
   it("surfaces multi-hop hop honesty and scorecard links for evidence_pack (aiw)", () => {

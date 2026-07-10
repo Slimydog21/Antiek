@@ -173,13 +173,35 @@ export default function HostedHtmlDocumentHost(
   const [forceOverBudget, setForceOverBudget] = useState(false);
   const [contextRefreshKey, setContextRefreshKey] = useState(0);
   /** Residual (jd): Settings depth-tier prefill for hosted book DR. */
-  const [researchTier, setResearchTier] = useState<ResearchLaunchTier>("deep");
+  const [researchTier, setResearchTier] = useState<ResearchLaunchTier>(() => {
+    // Residual (amk): payload research_tier wins as initial host depth when present.
+    const fromProps = (props.research_tier || "").trim().toLowerCase();
+    if (
+      fromProps === "fast" ||
+      fromProps === "deep" ||
+      fromProps === "wrestle"
+    ) {
+      return fromProps;
+    }
+    return "deep";
+  });
   const [depthPrefill, setDepthPrefill] = useState<
     "pending" | "installed" | "none" | "error"
   >("pending");
 
   // Residual (jd): prefill depth from Settings (parity marketplace jc / Midnight Oil gt).
+  // Residual (amk): do not overwrite closed-set payload research_tier when present.
   useEffect(() => {
+    const fromProps = (props.research_tier || "").trim().toLowerCase();
+    if (
+      fromProps === "fast" ||
+      fromProps === "deep" ||
+      fromProps === "wrestle"
+    ) {
+      setResearchTier(fromProps as ResearchLaunchTier);
+      setDepthPrefill("installed");
+      return;
+    }
     let cancelled = false;
     void fetchDepthTiers()
       .then((resp) => {
@@ -198,7 +220,7 @@ export default function HostedHtmlDocumentHost(
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [props.research_tier]);
 
   // Residual (en): selection identity for float DR + budget.
   const { selection_text: researchSelection, from_highlight: fromHighlight } =
@@ -1024,6 +1046,7 @@ export default function HostedHtmlDocumentHost(
               spawnId={null}
               autoLoad
               domainSubjects={props.subjects || null}
+              researchTier={researchTier}
             />
           </div>
         </section>
