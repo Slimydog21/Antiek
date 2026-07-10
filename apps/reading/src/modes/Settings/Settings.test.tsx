@@ -603,6 +603,27 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("prompt-cost-projection-panel")).toBeTruthy();
   });
 
+  it("projects sample cost from decision-tree mini panel (sb)", async () => {
+    const user = userEvent.setup();
+    render(<Settings />);
+    await waitFor(() => {
+      expect(screen.getByTestId("decision-tree-project-cost")).toBeTruthy();
+    });
+    await user.click(screen.getByTestId("decision-tree-project-cost"));
+    await waitFor(() => {
+      expect(estimatePromptCost).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("decision-tree-mini-estimate")).toBeTruthy();
+    });
+    const mini = screen.getByTestId("decision-tree-mini-estimate");
+    // Default estimate mock: pricing_known false → would_exceed unknown
+    expect(mini.getAttribute("data-pricing-known")).toBe("false");
+    expect(mini.getAttribute("data-would-exceed")).toBe("unknown");
+    expect(mini.textContent).toMatch(/Sample projection/i);
+    expect(mini.textContent).toMatch(/never invents \$0/i);
+  });
+
   it("loads Antiek-bench weekly usage summary in Settings", async () => {
     render(<Settings />);
     await waitFor(() => {

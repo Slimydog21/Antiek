@@ -817,3 +817,9 @@ Model driver install panel shows daily cap / spent / remaining + usage
 progressbar (soft gate, never invents $0) with deep-link to prompt cost
 projection. Competitive delta: operators choose the research driver with
 budget posture visible at the decision-tree — not only a separate Budget card.
+
+## Residual sb · 2026-07-10 — Decision-tree mini prompt projection
+At model driver install, operators project a sample prompt cost against
+remaining budget (pricing known / would_exceed / high≈) without leaving the
+decision-tree panel. Soft gate never invents $0. Competitive delta: budget
+foresight sits with model choice — research drivers are not selected blind.

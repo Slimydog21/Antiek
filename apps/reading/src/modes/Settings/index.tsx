@@ -1200,16 +1200,61 @@ export default function Settings() {
               </div>
               <p className="text-[11px] text-ink-soft dark:text-starlight">
                 {spendPct == null
-                  ? "Usage bar empty when spend is unknown or cap is unset. Project prompts below before install."
-                  : `${Math.round(spendPct)}% of daily cap used · project any prompt cost before dispatch burns remaining.`}{" "}
+                  ? "Usage bar empty when spend is unknown or cap is unset. Project prompts before install."
+                  : `${Math.round(spendPct)}% of daily cap used · project any prompt cost before dispatch burns remaining.`}
+              </p>
+              {/* Residual (sb): mini prompt projection at decision-tree driver. */}
+              <div
+                className="flex flex-wrap items-center gap-2"
+                data-testid="decision-tree-mini-projection"
+              >
+                <button
+                  type="button"
+                  data-testid="decision-tree-project-cost"
+                  onClick={() => void onEstimate()}
+                  disabled={estimating}
+                  className="px-2 py-1 rounded border border-ink/40 dark:border-bright/40 text-[11px] font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+                  title="Project sample prompt cost for selected provider/model vs remaining budget"
+                >
+                  {estimating ? "Estimating…" : "Project sample cost"}
+                </button>
                 <a
                   href="#prompt-cost-projection"
-                  className="underline opacity-80 hover:opacity-100"
+                  className="text-[11px] underline opacity-80 hover:opacity-100"
                   data-testid="decision-tree-budget-project-link"
                 >
-                  Project prompt cost
+                  Full projection
                 </a>
-              </p>
+              </div>
+              {estimate ? (
+                <p
+                  className="text-[11px] font-mono text-ink-soft dark:text-starlight"
+                  data-testid="decision-tree-mini-estimate"
+                  data-pricing-known={String(estimate.pricing_known === true)}
+                  data-would-exceed={
+                    estimate.would_exceed_budget == null
+                      ? "unknown"
+                      : estimate.would_exceed_budget
+                        ? "yes"
+                        : "no"
+                  }
+                  data-provider={estimate.provider ?? selectedProvider ?? ""}
+                  data-model={estimate.model ?? selectedModel ?? ""}
+                  role="status"
+                >
+                  Sample projection · pricing=
+                  {estimate.pricing_known ? "known" : "unknown"} · would_exceed=
+                  {estimate.would_exceed_budget == null
+                    ? "unknown"
+                    : estimate.would_exceed_budget
+                      ? "yes"
+                      : "no"}
+                  {estimate.estimated_usd_high != null
+                    ? ` · high≈$${estimate.estimated_usd_high.toFixed(4)}`
+                    : " · high=—"}{" "}
+                  (soft gate · never invents $0)
+                </p>
+              ) : null}
             </div>
           </div>
         </LemonCard>

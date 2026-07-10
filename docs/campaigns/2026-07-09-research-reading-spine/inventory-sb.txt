@@ -1,0 +1,14 @@
+# inventory-sb · Decision-tree mini prompt projection
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: sb
+date: 2026-07-10
+
+## Closed
+- decision-tree-project-cost button → estimatePromptCost for selected driver
+- decision-tree-mini-estimate: pricing_known / would_exceed / high≈ (soft gate)
+- Full projection deep-link retained
+- vitest Settings 27 · SCRATCH residual-tests-sb.log
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live L1–L4 dual-gate (operator-only)
