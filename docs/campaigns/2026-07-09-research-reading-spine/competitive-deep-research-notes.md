@@ -3534,3 +3534,9 @@ merge PR #465. Pivot ano+ outside thrash (prefer non-catalog count floors).
 Suite suite-competitive-dogfood-v35 learns free PD Nicomachean Ethics philosophy
 book_qa (anm catalog). item_count 53 · book_qa=10 · Settings spine postures v35.
 propose≠promote. P0 operator merge PR #465. Pivot anp+ outside thrash.
+
+## Residual anp · 2026-07-10 — DR session spawn-merge inherits researchTier
+DeepResearchSessionHost wires session/Settings researchTier into SpawnMergePanel
+so single-spawn merge budget soft-gate (anl) projects at host depth (parity host
+DR tier path). vitest DeepResearchSessionHost anp green.
+P0 operator merge PR #465. Pivot anq+ outside thrash.

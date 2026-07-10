@@ -16,6 +16,8 @@
  * Residual (bx): mounts ResearchLaunchBudgetPanel for goal/selection projection.
  * Residual (ce): expand full / restore floating mode controls.
  * Residual (ci): SpawnMergePanel — this spawn → draft/parent reading asset.
+ * Residual (anp): SpawnMergePanel inherits session researchTier for budget
+ * foresight + soft-gate depth (parity host DR tier · budget-before-fire anl).
  * Residual (ck): PublicationAttachPanel — arxiv/substack attach + hydrate.
  * Residual (cl): SessionFlywheelPanel — complete flywheel + twins/usage.
  * Residual (cp): ResearchProgressPanel autoLoad + autoSeedIfEmpty.
@@ -508,11 +510,14 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
           data-parent-asset-id={props.parent_asset_id.trim()}
           data-seamless-spawn-merge="true"
           data-seamless-highlight-dr-merge="true"
+          data-research-tier={researchTier}
+          data-depth-prefill={depthPrefill}
         >
           <SpawnMergePanel
             spawnId={props.spawn_id.trim()}
             parentAssetId={props.parent_asset_id.trim()}
             onMerged={onContextNeedsRefresh}
+            researchTier={researchTier}
           />
         </section>
       ) : null}

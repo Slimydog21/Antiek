@@ -1,0 +1,15 @@
+# inventory-anp · DR session spawn-merge inherits researchTier
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: anp
+date: 2026-07-10
+parent_tip: 74533395 (ano)
+
+## Closed
+- DeepResearchSessionHost passes researchTier into SpawnMergePanel
+- spawn-merge mount stamps data-research-tier + data-depth-prefill
+- merge budget soft-gate (anl) uses session/Settings depth (parity host DR)
+- vitest DeepResearchSessionHost anp green
+
+## Next
+anq+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

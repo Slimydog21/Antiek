@@ -64,9 +64,13 @@ vi.mock("../engagement/SpawnMergePanel", () => ({
   SpawnMergePanel: (props: {
     spawnId: string;
     parentAssetId: string;
+    researchTier?: string | null;
     onMerged?: (r: { document_id: string }) => void;
   }) => (
-    <div data-testid="spawn-merge-panel-stub">
+    <div
+      data-testid="spawn-merge-panel-stub"
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+    >
       {props.spawnId}→{props.parentAssetId}
       {props.onMerged ? (
         <button
@@ -361,6 +365,20 @@ describe("DeepResearchSessionHost", () => {
     expect(screen.getByTestId("spawn-merge-panel-stub").textContent).toMatch(
       /spn_launch_1→launch-asset/,
     );
+  });
+
+  it("passes session researchTier into SpawnMergePanel budget soft-gate (anp)", () => {
+    render(
+      <DeepResearchSessionHost {...FIXTURE} research_tier="wrestle" />,
+    );
+    const mount = screen.getByTestId("deep-research-spawn-merge-mount");
+    expect(mount.getAttribute("data-research-tier")).toBe("wrestle");
+    expect(mount.getAttribute("data-depth-prefill")).toBe("session");
+    expect(
+      screen
+        .getByTestId("spawn-merge-panel-stub")
+        .getAttribute("data-research-tier"),
+    ).toBe("wrestle");
   });
 
   it("mounts PublicationAttachPanel when spawn present (ck)", () => {
