@@ -98,6 +98,17 @@ describe("SpawnMergePanel residual ci", () => {
     expect(dual.textContent).toMatch(/L6 collective checklist/i);
     expect(settings.getAttribute("href")).toBe("/settings#decision-tree-panel");
     expect(settings.textContent).toMatch(/driver & budget/i);
+    // Residual (aix): highlight→DR→merge → competitive DR honesty map.
+    const scorecard = screen.getByTestId("spawn-merge-competitive-scorecard-link");
+    expect(scorecard.getAttribute("href")).toBe(
+      "/settings#settings-competitive-dr-scorecard",
+    );
+    expect(scorecard.textContent).toMatch(/competitive DR scorecard/i);
+    expect(
+      screen
+        .getByTestId("spawn-merge-competitive-dr-future-agent-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
     // Residual (lj): driver badge defaults deep pre-merge.
     expect(
       screen

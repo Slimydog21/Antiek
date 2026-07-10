@@ -10,11 +10,13 @@
 | **ait** | ResearchContext evidence pack + hop strip | scorecard + FUTURE competitive DR |
 | **aiu** | Midnight Oil autonomous swarm | scorecard + FUTURE competitive DR |
 | **aiv** | CollectiveResearchPanel multi-agent merge | scorecard + FUTURE competitive DR |
+| **aiw** | HostedHtml evidence pack float/full | hop honesty + scorecard + FUTURE |
+| **aix** | SpawnMergePanel highlight→DR→merge | scorecard + FUTURE competitive DR |
 
 ## Closed wave outcome
 Every major research workstation surface can navigate the honest competitive DR
 map (shipped offline vs deferred live vs ND never router) without inventing
-live injectors.
+live injectors. Highlight→DR→merge and evidence float paths included (aix/aiw).
 
 ## P0
 Operator merge PR #465 · infinite continues until STOP

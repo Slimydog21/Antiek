@@ -2929,3 +2929,9 @@ matrix complete. vitest Collective 28 green. P0 operator merge PR #465. Pivot ai
 Float/full evidence pack windows stamp chain_complete + hop-strip honesty from
 HTML projection and deep-link competitive DR scorecard (air reading surface).
 vitest HostedHtml 24 green. P0 operator merge PR #465. Pivot aix+ outside thrash.
+
+## Residual aix · 2026-07-10 — SpawnMergePanel competitive DR scorecard deep-links
+Highlight→DR→merge path navigates Settings competitive DR scorecard + FUTURE brief
+(offline spawn merge shipped · L6 live deferred). Scorecard navigation matrix
+includes spawn merge (aix). vitest SpawnMerge 8 green. P0 operator merge PR #465.
+Pivot aiy+ outside thrash.

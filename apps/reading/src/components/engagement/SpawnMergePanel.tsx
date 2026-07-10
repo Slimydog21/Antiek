@@ -229,7 +229,7 @@ export function SpawnMergePanel({
             ? " · seamless highlight→DR→merge path"
             : " · bind spawn + parent for seamless merge"}
         </p>
-        {/* Residual (ih/nn): Settings + dual-gate checklist (merge path prep). */}
+        {/* Residual (ih/nn/aix): Settings + dual-gate + competitive DR scorecard. */}
         <p className="text-[11px] font-mono space-x-3">
           <a
             href="/settings#decision-tree-panel"
@@ -247,6 +247,23 @@ export function SpawnMergePanel({
           >
             {/* Residual (aat): label matches #l6-collective href (was L1–L4). */}
             Dual-gate L6 collective checklist
+          </a>
+          {/* Residual (aix): highlight→DR→merge path → competitive DR honesty map. */}
+          <a
+            href="/settings#settings-competitive-dr-scorecard"
+            data-testid="spawn-merge-competitive-scorecard-link"
+            className="underline opacity-80 hover:opacity-100"
+            title="Settings competitive deep-research scorecard (offline spawn merge shipped · L6 live deferred)"
+          >
+            Settings · competitive DR scorecard
+          </a>
+          <a
+            href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+            data-testid="spawn-merge-competitive-dr-future-agent-link"
+            className="underline opacity-80 hover:opacity-100"
+            title="FUTURE-AGENT competitive deep-research quality brief"
+          >
+            FUTURE · competitive DR brief
           </a>
         </p>
         {/* Residual (lj): model driver + budget + depth (parity collective lg). */}
