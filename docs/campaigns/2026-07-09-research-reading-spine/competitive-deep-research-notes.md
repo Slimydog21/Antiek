@@ -2484,3 +2484,8 @@ twin substrate on research workstation. vitest RW 10 green.
 Handoff: collective multi-select · TwinNotes · ResearchContext+autoPromote on
 /inv/:id. Reading ≡ research workstation offline spine complete. P0 operator
 merge PR #465. Pivot afv+ outside thrash.
+
+## Residual afv · 2026-07-10 — dogfood v17 select-recent + RW spine
+Suite suite-competitive-dogfood-v17 adds wrestle fixtures for Select recent
+path (afp) and ResearchWorkstation spine (afr–aft). Settings spine postures
+v17. pytest dogfood 5 · Settings 36 green. propose≠promote.

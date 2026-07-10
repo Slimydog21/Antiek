@@ -28,7 +28,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (aeu): v14 learns seamless Write path + intelligent search/evidence.
 # Residual (afi): v15 learns written analysis Open Write source + unit continue path.
 # Residual (afo): v16 learns Select open multi-select assembly + unit restore path.
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v16"
+# Residual (afv): v17 learns Select recent path + ResearchWorkstation spine.
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v17"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -444,6 +445,44 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "seamless",
                 "membership",
                 "deferred",
+            ),
+        ),
+        # Residual (afv/afp): Select recent multi-select assembly path honesty.
+        SuiteItem(
+            item_id="dogfood-wrestle-select-recent-path",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with Select recent multi-select assembly path honesty: when "
+                "Select recent stamps data-seamless-select-recent · data-last-select-mode="
+                "recent · data-recent-in-available for closed chase/float twin-chase batch, "
+                "how should Antiek-bench weekly rewrite learn models that keep recent_ring "
+                "cohesive unit prep machine-readable without inventing L6 live council?"
+            ),
+            expected_keywords=(
+                "select",
+                "recent",
+                "seamless",
+                "multi-select",
+                "deferred",
+            ),
+        ),
+        # Residual (afv/afr–aft): ResearchWorkstation reading≡research spine.
+        SuiteItem(
+            item_id="dogfood-wrestle-research-workstation-spine",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with ResearchWorkstation /inv/:id reading≡research spine: when "
+                "InvestigationCenter mounts TwinNotes (autoLoad · autoSeed · autoPromote), "
+                "ResearchContext pack, and CollectiveResearchPanel for open/recent DR "
+                "spawns, how should Antiek-bench learn models that keep recursive note-taker "
+                "substrate and multi-select assembly honest on the research workstation?"
+            ),
+            expected_keywords=(
+                "workstation",
+                "twin",
+                "context",
+                "collective",
+                "promote",
             ),
         ),
     )

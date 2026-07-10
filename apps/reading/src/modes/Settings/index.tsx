@@ -2837,6 +2837,19 @@ export default function Settings() {
                     (it) => it.item_id === "dogfood-wrestle-unit-restore-path",
                   ),
                 )}
+                data-has-select-recent-path-posture={String(
+                  (dogfood.items || []).some(
+                    (it) =>
+                      it.item_id === "dogfood-wrestle-select-recent-path",
+                  ),
+                )}
+                data-has-research-workstation-spine-posture={String(
+                  (dogfood.items || []).some(
+                    (it) =>
+                      it.item_id ===
+                      "dogfood-wrestle-research-workstation-spine",
+                  ),
+                )}
                 data-propose-not-promote="true"
               >
                 <Row label="Suite" value={dogfood.suite_version} />
@@ -2870,6 +2883,8 @@ export default function Settings() {
                     "dogfood-wrestle-continue-as-unit-path",
                     "dogfood-wrestle-select-open-path",
                     "dogfood-wrestle-unit-restore-path",
+                    "dogfood-wrestle-select-recent-path",
+                    "dogfood-wrestle-research-workstation-spine",
                   ].includes(it.item_id),
                 ) ? (
                   <p
@@ -2877,7 +2892,7 @@ export default function Settings() {
                     data-testid="antiek-bench-dogfood-v2-postures"
                     role="status"
                   >
-                    Spine postures (v16): write-seed · float evidence · budget
+                    Spine postures (v17): write-seed · float evidence · budget
                     foresight · Faraday book_qa · collective unit write-seed ·
                     Boole book_qa · Heaviside book_qa · Shannon book_qa ·
                     Turing book_qa · Lovelace book_qa · citation-trust
@@ -2886,7 +2901,8 @@ export default function Settings() {
                     has-body · seamless Write path · intelligent search
                     context Write · written analysis Open Write source ·
                     continue-as-unit path · Select open path · unit restore
-                    path (listing only · not auto-promoted)
+                    path · Select recent path · ResearchWorkstation spine
+                    (listing only · not auto-promoted)
                   </p>
                 ) : null}
                 {/* Residual (adw): has-body posture → rewrite + usage deep-links. */}
