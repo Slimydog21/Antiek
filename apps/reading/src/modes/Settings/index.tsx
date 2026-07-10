@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  notDiamondBenchDelta,
+  notDiamondBenchDeltaLabel,
   notDiamondDriverDelta,
   notDiamondDriverDeltaLabel,
 } from "../../lib/notDiamondDriverDelta";
@@ -200,6 +202,19 @@ export default function Settings() {
         installedModelId: tree?.model_id,
       }),
     [nd?.suggested_model_id, tree?.model_id],
+  );
+
+  /**
+   * Residual (ade): NotDiamond weekly pick vs Antiek-bench weekly recommended
+   * (both advisory only — never auto-route dispatch).
+   */
+  const ndBenchDelta = useMemo(
+    () =>
+      notDiamondBenchDelta({
+        ndSuggestedModelId: nd?.suggested_model_id,
+        benchRecommendedModelId: leaderboard?.recommended_model_id,
+      }),
+    [nd?.suggested_model_id, leaderboard?.recommended_model_id],
   );
 
   /**
@@ -1827,6 +1842,44 @@ export default function Settings() {
                   >
                     {notDiamondDriverDeltaLabel(ndDriverDelta)}
                   </p>
+                </div>
+                {/* Residual (ade): ND advisory vs Antiek-bench weekly rank (both advisory). */}
+                <div
+                  className="rounded border border-ink/15 p-2 space-y-1 dark:border-bright/15"
+                  data-testid="notdiamond-bench-delta"
+                  data-delta-status={ndBenchDelta.status}
+                  data-nd-suggested={ndBenchDelta.nd_suggested}
+                  data-bench-recommended={ndBenchDelta.bench_recommended}
+                  data-advisory-only="true"
+                  data-is-dispatch-authority="false"
+                  role="status"
+                >
+                  <p className="text-[11px] font-mono opacity-90">
+                    Antiek-bench weekly:{" "}
+                    <code data-testid="notdiamond-bench-recommended">
+                      {ndBenchDelta.bench_recommended || "(unset)"}
+                    </code>
+                  </p>
+                  <p className="text-[11px] font-mono opacity-90">
+                    NotDiamond advisory:{" "}
+                    <code data-testid="notdiamond-bench-nd-suggested">
+                      {ndBenchDelta.nd_suggested || "(none)"}
+                    </code>
+                  </p>
+                  <p
+                    className="text-[11px] font-mono"
+                    data-testid="notdiamond-bench-delta-label"
+                  >
+                    {notDiamondBenchDeltaLabel(ndBenchDelta)}
+                  </p>
+                  <a
+                    href="#antiek-bench-leaderboard"
+                    className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
+                    data-testid="notdiamond-bench-leaderboard-link"
+                    title="Jump to Antiek-bench weekly leaderboard (advisory · never auto-routes)"
+                  >
+                    Open weekly leaderboard
+                  </a>
                 </div>
                 <Row label="View" value={nd.view_format} />
                 {nd.suggested_model_id && nd.installable !== false ? (

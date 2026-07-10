@@ -1007,6 +1007,28 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("notdiamond-suggested-driver").textContent).toMatch(
       /stub-strong/,
     );
+    // Residual (ade): ND advisory vs Antiek-bench weekly recommended (both advisory).
+    await waitFor(() => {
+      expect(screen.getByTestId("notdiamond-bench-delta")).toBeTruthy();
+    });
+    const benchDelta = screen.getByTestId("notdiamond-bench-delta");
+    expect(benchDelta.getAttribute("data-advisory-only")).toBe("true");
+    expect(benchDelta.getAttribute("data-is-dispatch-authority")).toBe("false");
+    expect(benchDelta.getAttribute("data-delta-status")).toBe("diverge");
+    expect(benchDelta.getAttribute("data-nd-suggested")).toBe("stub-strong");
+    expect(benchDelta.getAttribute("data-bench-recommended")).toBe("strong-model");
+    expect(screen.getByTestId("notdiamond-bench-recommended").textContent).toMatch(
+      /strong-model/,
+    );
+    expect(screen.getByTestId("notdiamond-bench-nd-suggested").textContent).toMatch(
+      /stub-strong/,
+    );
+    expect(screen.getByTestId("notdiamond-bench-delta-label").textContent).toMatch(
+      /diverge/i,
+    );
+    expect(
+      screen.getByTestId("notdiamond-bench-leaderboard-link").getAttribute("href"),
+    ).toBe("#antiek-bench-leaderboard");
   });
 
   it("shows NotDiamond driver delta when installed differs from advisory (rl)", async () => {
