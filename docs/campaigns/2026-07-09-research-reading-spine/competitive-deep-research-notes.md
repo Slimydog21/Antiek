@@ -1899,3 +1899,8 @@ MO create-form pub-refs prep deep-links #l2-substack (parity aal/aam). Competiti
 delta: autonomous midnight-oil swarm grounding surfaces Substack hydrate prep
 beside arxiv before goals+duration approve (offline-default dual-gate).
 
+## Residual aao · 2026-07-10 — ResearchThis L2 Substack dual-gate deep-link
+Reading-mode Research This pub-refs prep deep-links #l2-substack (parity aal–aan).
+Competitive delta: highlight → deep research on reading surface surfaces Substack
+hydrate prep beside arxiv (offline-default dual-gate).
+

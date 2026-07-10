@@ -1,0 +1,20 @@
+# inventory-aao · ResearchThis L2 Substack dual-gate deep-link
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aao
+date: 2026-07-10
+tip_before: 9ae6b656 (aan)
+
+## Problem
+Reading-mode ResearchThis pub-refs labeled L1–L2 but only linked #l1-arxiv
+(parity aal–aan).
+
+## Fix
+- research-this-hydrate-dual-gate-l2-link → #l2-substack
+- L1 copy honesty
+- ResearchThis.test locks both anchors
+
+## Verified
+npm test ResearchThis.test.tsx → 12 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

@@ -367,6 +367,12 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
         .getByTestId("research-this-hydrate-dual-gate-link")
         .getAttribute("href") || "",
     ).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    // Residual (aao): L2 Substack checklist (parity aal–aan).
+    expect(
+      screen
+        .getByTestId("research-this-hydrate-dual-gate-l2-link")
+        .getAttribute("href") || "",
+    ).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
     fireEvent.change(screen.getByTestId("research-this-refs-input"), {
       target: { value: "arxiv:1706.03762" },
     });
