@@ -1,0 +1,16 @@
+# inventory-ajw · dogfood v33 twin promote Write depth-graph honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ajw
+date: 2026-07-10
+parent_tip: efe9d1ef (ajv)
+
+## Closed
+- suite-competitive-dogfood-v33:
+  - dogfood-wrestle-twin-promote-write-depth-graph
+  - item_count 49 · wrestle=36
+- Settings spine postures v33 + data-has-twin-promote-write-depth-graph-posture
+- pytest dogfood 5 · vitest Settings 36 green
+
+## Next
+ajx+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

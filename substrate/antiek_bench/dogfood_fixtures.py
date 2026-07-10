@@ -44,7 +44,8 @@ from .suite import SuiteDefinition, SuiteItem, SuiteRegistry, register_suite
 # Residual (ajb): v30 learns expanded domain-aware twin search (aiy biology/method/physics/math).
 # Residual (ajk): v31 learns evidence pack Write seed multi-hop hop honesty (aji).
 # Residual (ajq): v32 learns twin promote depth-graph unit≡node honesty (ajn/ajo).
-COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v32"
+# Residual (ajw): v33 learns twin promote Write seed depth-graph honesty (ajv).
+COMPETITIVE_DOGFOOD_VERSION = "suite-competitive-dogfood-v33"
 
 
 def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
@@ -678,6 +679,26 @@ def competitive_dogfood_items() -> tuple[SuiteItem, ...]:
                 "graph_node",
                 "promote",
                 "twin",
+            ),
+        ),
+        # Residual (ajw/ajv): twin promote Write twin_seed depth-graph honesty.
+        SuiteItem(
+            item_id="dogfood-wrestle-twin-promote-write-depth-graph",
+            task_class="wrestle",
+            prompt=(
+                "Wrestle with twin promote → Write twin_seed depth-graph honesty: when "
+                "buildTwinPromoteWriteHref stamps [depth_graph] unique_nodes, "
+                "content_addressed_alignment, data-unique-graph-node-count, and unit_id "
+                "anchors in plain/HTML without inventing graph edges, how should Antiek-bench "
+                "learn models that preserve recursive note-taker promote→Write depth-graph "
+                "identity into writing?"
+            ),
+            expected_keywords=(
+                "depth-graph",
+                "twin_seed",
+                "write",
+                "content_addressed",
+                "promote",
             ),
         ),
         # Residual (ail/aii): Settings competitive DR quality scorecard honesty.

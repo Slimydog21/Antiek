@@ -3053,3 +3053,8 @@ Pivot ajv+ outside thrash.
 buildTwinPromoteWriteHref stamps depth-graph unique_nodes + unit≡node alignment
 into twin_seed for recursive note-taker Write (parity aji multi-hop Write).
 vitest twinWriteSeed 35 · TwinNotes 30 green. P0 operator merge PR #465. Pivot ajw+.
+
+## Residual ajw · 2026-07-10 — dogfood v33 twin promote Write depth-graph honesty
+Suite suite-competitive-dogfood-v33 learns promote→Write twin_seed depth-graph
+honesty (ajv). item_count 49 · wrestle=36. pytest dogfood 5 · Settings 36 green.
+P0 operator merge PR #465. Pivot ajx+ outside thrash.
