@@ -2097,3 +2097,8 @@ Client library free honesty prefers server free_count aggregate (acb) after load
 and host/purchase refresh. Competitive delta: library free inventory identity is
 server-authoritative when present (parity catalog free_count).
 
+## Residual acd · 2026-07-10 — FUTURE tip free inventory through acc
+Free inventory is_free-only doctrine complete including library free_count API+client
+(abn–acc). Tip 1516889d · 163 ships. Competitive delta: swarm handoff tip-true;
+operator merge PR #465 highest leverage; next leave free-inventory thrash.
+

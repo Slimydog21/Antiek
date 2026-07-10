@@ -1,6 +1,6 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** `2ff4fe73` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
+**Campaign tip at write:** `1516889d` · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **URL:** https://github.com/Slimydog21/Antiek/pull/465  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
@@ -8,7 +8,7 @@
 ## Do not rebuild
 
 Prefer **SESSION-ARC-aah-aaq-write-seed-l2.md** + **SESSION-ARC-aat-aba-dualgate-stem.md** + **SESSION-ARC-abc-abl-hooke-free-stem.md** + **SESSION-ARC-abn-abq-free-inventory-doctrine.md** + inventories **aah–abz**.  
-This continuation: **160 residual ships** from vy tip `8e280766`.
+This continuation: **163 residual ships** from vy tip `8e280766`.
 
 ### Closed product (high signal)
 
@@ -27,7 +27,7 @@ This continuation: **160 residual ships** from vy tip `8e280766`.
 ### P2 — Dual-gate live injectors (operator-only)
 L1–L4 offline default · L5 payment deferred · L6 live multi-agent · L7 ND **never** router
 
-### P1 next offline (residual **acb+**)
+### P1 next offline (residual **ace+**)
 Outside catalog count thrash and dogfood thrash unless regression. Prefer real
 product bugs, recursive twin / collective / MO offline polish, operator craft.
 

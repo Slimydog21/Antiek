@@ -1,0 +1,14 @@
+# inventory-acd · FUTURE tip free inventory through acc
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: acd
+date: 2026-07-10
+tip_sha: 1516889d
+
+## Closed
+- Free inventory doctrine complete through library client free_count (abn–acc)
+- FUTURE tip → 1516889d · 163 residual ships this continuation
+- Highest leverage: operator merge PR #465 OPEN
+- Next: ace+ product residuals outside free-inventory thrash
+
+## Not in scope
+- Operator merge PR #465 (gated)
