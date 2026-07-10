@@ -35,6 +35,7 @@ import {
   workerDispatchLeaseHeartbeatPlanMidnightOil,
   workerOutputAggregationPlanMidnightOil,
   workerQueueClaimPlanMidnightOil,
+  workerSynthesisHandoffPlanMidnightOil,
   type MidnightOilActivationChecklistReceipt,
   type MidnightOilAppliedRunReceipt,
   type MidnightOilBudgetProviderAdapterPlanReceipt,
@@ -71,6 +72,7 @@ import {
   type MidnightOilWorkerDispatchLeaseHeartbeatPlanReceipt,
   type MidnightOilWorkerOutputAggregationPlanReceipt,
   type MidnightOilWorkerQueueClaimPlanReceipt,
+  type MidnightOilWorkerSynthesisHandoffPlanReceipt,
 } from "../../api/midnightOil";
 import LemonCard from "../../components/lemon/LemonCard";
 
@@ -169,6 +171,8 @@ export default function MidnightOil() {
     useState<MidnightOilWorkerCompletionFinalizationPlanReceipt | null>(null);
   const [workerOutputAggregationPlanReceipt, setWorkerOutputAggregationPlanReceipt] =
     useState<MidnightOilWorkerOutputAggregationPlanReceipt | null>(null);
+  const [workerSynthesisHandoffPlanReceipt, setWorkerSynthesisHandoffPlanReceipt] =
+    useState<MidnightOilWorkerSynthesisHandoffPlanReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -215,6 +219,7 @@ export default function MidnightOil() {
   const [workerCompletionFinalizationPlanBusy, setWorkerCompletionFinalizationPlanBusy] =
     useState(false);
   const [workerOutputAggregationPlanBusy, setWorkerOutputAggregationPlanBusy] = useState(false);
+  const [workerSynthesisHandoffPlanBusy, setWorkerSynthesisHandoffPlanBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
   const [liveSettingsError, setLiveSettingsError] = useState<string | null>(null);
@@ -274,10 +279,14 @@ export default function MidnightOil() {
     useState<string | null>(null);
   const [workerOutputAggregationPlanError, setWorkerOutputAggregationPlanError] =
     useState<string | null>(null);
+  const [workerSynthesisHandoffPlanError, setWorkerSynthesisHandoffPlanError] =
+    useState<string | null>(null);
 
   function clearWorkerOutputAggregationPlan() {
     setWorkerOutputAggregationPlanError(null);
     setWorkerOutputAggregationPlanReceipt(null);
+    setWorkerSynthesisHandoffPlanError(null);
+    setWorkerSynthesisHandoffPlanReceipt(null);
   }
 
   function clearWorkerCompletionFinalizationPlan() {
@@ -446,6 +455,7 @@ export default function MidnightOil() {
     setWorkerCancellationAbandonPlanError(null);
     setWorkerCompletionFinalizationPlanError(null);
     setWorkerOutputAggregationPlanError(null);
+    setWorkerSynthesisHandoffPlanError(null);
     setPreflight(null);
     setDryRunReceipt(null);
     setLiveSettingsReceipt(null);
@@ -481,6 +491,7 @@ export default function MidnightOil() {
     setWorkerCancellationAbandonPlanReceipt(null);
     setWorkerCompletionFinalizationPlanReceipt(null);
     setWorkerOutputAggregationPlanReceipt(null);
+    setWorkerSynthesisHandoffPlanReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -2164,6 +2175,83 @@ export default function MidnightOil() {
       setWorkerOutputAggregationPlanError(e instanceof Error ? e.message : String(e));
     } finally {
       setWorkerOutputAggregationPlanBusy(false);
+    }
+  }
+
+  async function onWorkerSynthesisHandoffPlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerControlPlanReceipt ||
+      !budgetProviderAdapterPlanReceipt ||
+      !providerExecutorAdapterPlanReceipt ||
+      !retrievalAdapterPlanReceipt ||
+      !graphAdapterPlanReceipt ||
+      !finalArtifactAdapterPlanReceipt ||
+      !operatorDispatchAdapterPlanReceipt ||
+      !controlLedgerAdapterPlanReceipt ||
+      !controlLedgerPersistencePlanReceipt ||
+      !controlLedgerPersistenceApplyPlanReceipt ||
+      !operatorDispatchActivationReadinessPlanReceipt ||
+      !liveDispatchFinalEnablementPlanReceipt ||
+      !liveDispatchFinalEnablementApplyPlanReceipt ||
+      !runnerDispatchSchedulerPlanReceipt ||
+      !runnerDispatchWorkerBootstrapPlanReceipt ||
+      !schedulerLeaseRetryPlanReceipt ||
+      !workerQueueClaimPlanReceipt ||
+      !repositoryTransactionPlanReceipt ||
+      !repositoryCommitRollbackPlanReceipt ||
+      !workerDispatchLeaseHeartbeatPlanReceipt ||
+      !workerCancellationAbandonPlanReceipt ||
+      !workerCompletionFinalizationPlanReceipt ||
+      !workerOutputAggregationPlanReceipt
+    ) {
+      setWorkerSynthesisHandoffPlanError(
+        "Worker synthesis handoff plan requires launch packet, approval receipt, runner handoff, runner control plan receipt, budget provider adapter plan receipt, provider executor adapter plan receipt, retrieval adapter plan receipt, graph adapter plan receipt, final artifact adapter plan receipt, operator dispatch adapter plan receipt, control ledger adapter plan receipt, control ledger persistence plan receipt, control ledger persistence apply plan receipt, operator dispatch activation readiness plan receipt, live dispatch final enablement plan receipt, live dispatch final enablement apply plan receipt, runner dispatch scheduler plan receipt, runner dispatch worker bootstrap plan receipt, scheduler lease retry plan receipt, worker queue claim plan receipt, repository transaction plan receipt, repository commit rollback plan receipt, worker lease heartbeat plan receipt, worker cancellation abandon plan receipt, worker completion finalization plan receipt, and worker output aggregation plan receipt.",
+      );
+      return;
+    }
+
+    setWorkerSynthesisHandoffPlanBusy(true);
+    setWorkerSynthesisHandoffPlanError(null);
+    setWorkerSynthesisHandoffPlanReceipt(null);
+    try {
+      const result = await workerSynthesisHandoffPlanMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        runner_control_plan_receipt: runnerControlPlanReceipt,
+        budget_provider_adapter_plan_receipt: budgetProviderAdapterPlanReceipt,
+        provider_executor_adapter_plan_receipt: providerExecutorAdapterPlanReceipt,
+        retrieval_adapter_plan_receipt: retrievalAdapterPlanReceipt,
+        graph_adapter_plan_receipt: graphAdapterPlanReceipt,
+        final_artifact_adapter_plan_receipt: finalArtifactAdapterPlanReceipt,
+        operator_dispatch_adapter_plan_receipt: operatorDispatchAdapterPlanReceipt,
+        control_ledger_adapter_plan_receipt: controlLedgerAdapterPlanReceipt,
+        control_ledger_persistence_plan_receipt: controlLedgerPersistencePlanReceipt,
+        control_ledger_persistence_apply_plan_receipt: controlLedgerPersistenceApplyPlanReceipt,
+        operator_dispatch_activation_readiness_plan_receipt:
+          operatorDispatchActivationReadinessPlanReceipt,
+        live_dispatch_final_enablement_plan_receipt: liveDispatchFinalEnablementPlanReceipt,
+        live_dispatch_final_enablement_apply_plan_receipt:
+          liveDispatchFinalEnablementApplyPlanReceipt,
+        runner_dispatch_scheduler_plan_receipt: runnerDispatchSchedulerPlanReceipt,
+        runner_dispatch_worker_bootstrap_plan_receipt: runnerDispatchWorkerBootstrapPlanReceipt,
+        scheduler_lease_retry_plan_receipt: schedulerLeaseRetryPlanReceipt,
+        worker_queue_claim_plan_receipt: workerQueueClaimPlanReceipt,
+        repository_transaction_plan_receipt: repositoryTransactionPlanReceipt,
+        repository_commit_rollback_plan_receipt: repositoryCommitRollbackPlanReceipt,
+        worker_dispatch_lease_heartbeat_plan_receipt: workerDispatchLeaseHeartbeatPlanReceipt,
+        worker_cancellation_abandon_plan_receipt: workerCancellationAbandonPlanReceipt,
+        worker_completion_finalization_plan_receipt: workerCompletionFinalizationPlanReceipt,
+        worker_output_aggregation_plan_receipt: workerOutputAggregationPlanReceipt,
+      });
+      setWorkerSynthesisHandoffPlanReceipt(result);
+    } catch (e) {
+      setWorkerSynthesisHandoffPlanError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setWorkerSynthesisHandoffPlanBusy(false);
     }
   }
 
@@ -6427,6 +6515,267 @@ export default function MidnightOil() {
                   <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
                     Worker output aggregation receipt fields:{" "}
                     {workerOutputAggregationPlanReceipt.required_worker_output_aggregation_receipt_fields.join(
+                      ", ",
+                    )}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Worker synthesis handoff plan
+                </p>
+                <button
+                  type="button"
+                  onClick={onWorkerSynthesisHandoffPlanGate}
+                  disabled={
+                    workerSynthesisHandoffPlanBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !runnerControlPlanReceipt ||
+                    !budgetProviderAdapterPlanReceipt ||
+                    !providerExecutorAdapterPlanReceipt ||
+                    !retrievalAdapterPlanReceipt ||
+                    !graphAdapterPlanReceipt ||
+                    !finalArtifactAdapterPlanReceipt ||
+                    !operatorDispatchAdapterPlanReceipt ||
+                    !controlLedgerAdapterPlanReceipt ||
+                    !controlLedgerPersistencePlanReceipt ||
+                    !controlLedgerPersistenceApplyPlanReceipt ||
+                    !operatorDispatchActivationReadinessPlanReceipt ||
+                    !liveDispatchFinalEnablementPlanReceipt ||
+                    !liveDispatchFinalEnablementApplyPlanReceipt ||
+                    !runnerDispatchSchedulerPlanReceipt ||
+                    !runnerDispatchWorkerBootstrapPlanReceipt ||
+                    !schedulerLeaseRetryPlanReceipt ||
+                    !workerQueueClaimPlanReceipt ||
+                    !repositoryTransactionPlanReceipt ||
+                    !repositoryCommitRollbackPlanReceipt ||
+                    !workerDispatchLeaseHeartbeatPlanReceipt ||
+                    !workerCancellationAbandonPlanReceipt ||
+                    !workerCompletionFinalizationPlanReceipt ||
+                    !workerOutputAggregationPlanReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {workerSynthesisHandoffPlanBusy
+                    ? "Planning handoff..."
+                    : "Worker synthesis handoff plan"}
+                </button>
+              </div>
+
+              {workerSynthesisHandoffPlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {workerSynthesisHandoffPlanError}
+                </p>
+              )}
+
+              {workerSynthesisHandoffPlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Worker synthesis handoff receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {workerSynthesisHandoffPlanReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={workerSynthesisHandoffPlanReceipt.status.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Handoff"
+                      value={
+                        workerSynthesisHandoffPlanReceipt.worker_synthesis_handoff_allowed
+                          ? "allowed"
+                          : "blocked"
+                      }
+                    />
+                    <Metric
+                      label="Handoff receipt"
+                      value={
+                        workerSynthesisHandoffPlanReceipt.worker_synthesis_handoff_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Input bundle"
+                      value={
+                        workerSynthesisHandoffPlanReceipt.synthesis_input_bundle_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Context manifest"
+                      value={
+                        workerSynthesisHandoffPlanReceipt.synthesis_context_manifest_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Outline"
+                      value={
+                        workerSynthesisHandoffPlanReceipt.synthesis_outline_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Output aggregation plan"
+                      value={
+                        workerSynthesisHandoffPlanReceipt.worker_output_aggregation_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Completion finalization plan"
+                      value={
+                        workerSynthesisHandoffPlanReceipt.worker_completion_finalization_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Cancellation abandon plan"
+                      value={
+                        workerSynthesisHandoffPlanReceipt.worker_cancellation_abandon_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Heartbeat plan"
+                      value={
+                        workerSynthesisHandoffPlanReceipt.worker_dispatch_lease_heartbeat_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Commit rollback plan"
+                      value={
+                        workerSynthesisHandoffPlanReceipt.repository_commit_rollback_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Transaction plan"
+                      value={
+                        workerSynthesisHandoffPlanReceipt.repository_transaction_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Queue claim plan"
+                      value={workerSynthesisHandoffPlanReceipt.worker_queue_claim_plan_receipt_id}
+                    />
+                    <Metric
+                      label="Synthesis handoff"
+                      value={
+                        workerSynthesisHandoffPlanReceipt.planned_synthesis_handoff_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Input bundle"
+                      value={workerSynthesisHandoffPlanReceipt.planned_synthesis_input_bundle_id}
+                    />
+                    <Metric
+                      label="Context manifest"
+                      value={
+                        workerSynthesisHandoffPlanReceipt.planned_synthesis_context_manifest_id
+                      }
+                    />
+                    <Metric
+                      label="Outline"
+                      value={workerSynthesisHandoffPlanReceipt.planned_synthesis_outline_id}
+                    />
+                    <Metric
+                      label="Handoff ledger"
+                      value={
+                        workerSynthesisHandoffPlanReceipt.planned_synthesis_handoff_ledger_entry_id
+                      }
+                    />
+                    <Metric
+                      label="Aggregation receipt"
+                      value={
+                        workerSynthesisHandoffPlanReceipt.planned_worker_output_aggregation_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Output index"
+                      value={workerSynthesisHandoffPlanReceipt.planned_worker_output_index_id}
+                    />
+                    <Metric
+                      label="Output manifest"
+                      value={workerSynthesisHandoffPlanReceipt.planned_worker_output_manifest_id}
+                    />
+                    <Metric
+                      label="Output summary"
+                      value={workerSynthesisHandoffPlanReceipt.planned_worker_output_summary_id}
+                    />
+                    <Metric
+                      label="Worker result manifest"
+                      value={workerSynthesisHandoffPlanReceipt.planned_worker_result_manifest_id}
+                    />
+                    <Metric
+                      label="Worker output bundle"
+                      value={workerSynthesisHandoffPlanReceipt.planned_worker_output_bundle_id}
+                    />
+                    <Metric
+                      label="Queue claim"
+                      value={workerSynthesisHandoffPlanReceipt.planned_queue_claim_id}
+                    />
+                    <Metric
+                      label="Claim lease token"
+                      value={workerSynthesisHandoffPlanReceipt.planned_claim_lease_token_id}
+                    />
+                    <Metric
+                      label="Queue"
+                      value={workerSynthesisHandoffPlanReceipt.planned_queue_id}
+                    />
+                    <Metric
+                      label="Worker"
+                      value={workerSynthesisHandoffPlanReceipt.planned_worker_id}
+                    />
+                    <Metric
+                      label="Worker lease"
+                      value={workerSynthesisHandoffPlanReceipt.planned_worker_lease_id}
+                    />
+                    <Metric
+                      label="Runner dispatch"
+                      value={workerSynthesisHandoffPlanReceipt.planned_runner_dispatch_id}
+                    />
+                    <Metric
+                      label="Idempotency key"
+                      value={workerSynthesisHandoffPlanReceipt.planned_idempotency_key}
+                    />
+                    <Metric
+                      label="Adapter"
+                      value={workerSynthesisHandoffPlanReceipt.adapter_key.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Blocker"
+                      value={workerSynthesisHandoffPlanReceipt.blocker_reason.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                  </div>
+                  <ul className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {workerSynthesisHandoffPlanReceipt.required_worker_synthesis_handoff_invariants
+                      .slice(0, 5)
+                      .map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                  </ul>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Worker synthesis handoff blockers:{" "}
+                    {workerSynthesisHandoffPlanReceipt.worker_synthesis_handoff_blockers.join(
+                      ", ",
+                    )}
+                  </p>
+                  <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Worker synthesis handoff receipt fields:{" "}
+                    {workerSynthesisHandoffPlanReceipt.required_worker_synthesis_handoff_receipt_fields.join(
                       ", ",
                     )}
                   </p>
