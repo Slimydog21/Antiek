@@ -3080,6 +3080,16 @@ export default function Settings() {
                   className="underline opacity-90 hover:opacity-100"
                 >
                   L7 checklist
+                </a>{" "}
+                ·{" "}
+                {/* Residual (wo): in-app ND advisory panel (never-router honesty). */}
+                <a
+                  href="#notdiamond-advisory"
+                  data-testid="settings-deferred-l7-panel-link"
+                  className="underline opacity-90 hover:opacity-100"
+                  title="NotDiamond advisory panel — never dispatch authority"
+                >
+                  ND advisory panel
                 </a>
               </li>
               <li data-deferred="secret-vault" data-testid="settings-deferred-vault">

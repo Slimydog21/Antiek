@@ -1,0 +1,20 @@
+# inventory-wo · Deferred L7 → ND advisory panel deep-link
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: wo
+date: 2026-07-10
+tip_before: 01cf6937 (wn)
+
+## Problem
+Settings Deferred L7 linked checklist only; operator still needed dual-gate
+strip L7 to reach in-app #notdiamond-advisory panel (never-router surface).
+
+## Fix
+- settings-deferred-l7-panel-link → #notdiamond-advisory
+- Test locks href + label
+
+## Verified
+npm test Settings.test.tsx → 34 passed
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- NotDiamond as router (never)

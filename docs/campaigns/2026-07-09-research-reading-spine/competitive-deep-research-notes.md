@@ -1427,3 +1427,8 @@ computability STEM is mechanically proven.
 FUTURE-AGENT-SPEC tip → d545fac5 with closed arcs vz–wm (14 residual ships).
 Competitive delta: swarm handoff tip-true; operator merge PR #465 remains
 highest leverage.
+
+## Residual wo · 2026-07-10 — Deferred L7 ND advisory panel deep-link
+Settings Deferred (honest) L7 links #notdiamond-advisory in-app panel
+alongside checklist. Competitive delta: never-router honesty is one click from
+deferred map without leaving Settings.

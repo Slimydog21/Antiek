@@ -840,6 +840,15 @@ describe("Settings SPR-01 + decision-tree install", () => {
         .getByTestId("settings-deferred-l7-checklist-link")
         .getAttribute("href"),
     ).toMatch(/#l7-notdiamond/);
+    // Residual (wo): Deferred L7 → in-app ND advisory panel (never-router).
+    expect(
+      screen
+        .getByTestId("settings-deferred-l7-panel-link")
+        .getAttribute("href"),
+    ).toBe("#notdiamond-advisory");
+    expect(
+      screen.getByTestId("settings-deferred-l7-panel-link").textContent,
+    ).toMatch(/ND advisory panel/i);
   });
 
   it("surfaces dual-gate L1–L4 prep strip on decision-tree (sw)", async () => {
