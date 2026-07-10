@@ -14,6 +14,7 @@ import {
   dryRunMidnightOil,
   finalArtifactAdapterPlanMidnightOil,
   finalArtifactMidnightOil,
+  finalArtifactPersistencePlanMidnightOil,
   finalHtmlArtifactAssemblyPlanMidnightOil,
   finalSynthesisDraftPlanMidnightOil,
   graphAdapterPlanMidnightOil,
@@ -2821,6 +2822,114 @@ vi.mock("../../api/midnightOil", () => ({
       "final HTML artifact assembly plan only: no HTML asset, document, twin notes document, citation index, export manifest, graph mutation, or final artifact is created",
     ],
   })),
+  finalArtifactPersistencePlanMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-final-artifact-persistence-plan",
+    final_html_artifact_assembly_plan_receipt_id:
+      "midnight-oil-test-final-html-artifact-assembly-plan",
+    final_synthesis_draft_plan_receipt_id:
+      "midnight-oil-test-final-synthesis-draft-plan",
+    synthesis_bundle_assembly_plan_receipt_id:
+      "midnight-oil-test-synthesis-bundle-assembly-plan",
+    worker_synthesis_handoff_plan_receipt_id:
+      "midnight-oil-test-worker-synthesis-handoff-plan",
+    worker_output_aggregation_plan_receipt_id:
+      "midnight-oil-test-worker-output-aggregation-plan",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    run_id: "midnight-oil-test",
+    status: "blocked_final_artifact_persistence_unimplemented",
+    adapter_key: "final_artifact_persistence",
+    planned_final_artifact_persistence_receipt_id:
+      "midnight-oil-test-final-artifact-persistence-receipt",
+    planned_persisted_final_artifact_id: "midnight-oil-test-persisted-final-artifact",
+    planned_information_asset_id: "midnight-oil-test-information-asset",
+    planned_hosted_html_asset_id: "midnight-oil-test-hosted-html-asset",
+    planned_account_asset_binding_id: "midnight-oil-test-account-asset-binding",
+    planned_twin_notes_binding_id: "midnight-oil-test-twin-notes-binding",
+    planned_citation_index_binding_id: "midnight-oil-test-citation-index-binding",
+    planned_graph_node_id: "midnight-oil-test-final-artifact-graph-node",
+    planned_graph_edge_set_id: "midnight-oil-test-final-artifact-graph-edge-set",
+    planned_artifact_ledger_entry_id: "midnight-oil-test-final-artifact-ledger-entry",
+    planned_final_html_artifact_id: "midnight-oil-test-final-html-artifact",
+    planned_final_html_asset_id: "midnight-oil-test-final-html-asset",
+    planned_final_html_document_id: "midnight-oil-test-final-html-document",
+    planned_final_html_twin_notes_document_id:
+      "midnight-oil-test-final-html-twin-notes-document",
+    planned_final_html_citation_index_id:
+      "midnight-oil-test-final-html-citation-index",
+    planned_final_html_export_manifest_id:
+      "midnight-oil-test-final-html-export-manifest",
+    planned_final_synthesis_draft_id: "midnight-oil-test-final-synthesis-draft",
+    planned_synthesis_bundle_id: "midnight-oil-test-synthesis-bundle",
+    planned_synthesis_source_packet_id: "midnight-oil-test-synthesis-source-packet",
+    planned_synthesis_evidence_map_id: "midnight-oil-test-synthesis-evidence-map",
+    planned_worker_id: "midnight-oil-test-runner-dispatch-worker",
+    planned_runner_dispatch_id: "midnight-oil-test-midnight-oil-runner-dispatch",
+    planned_idempotency_key: "midnight-oil-test-live-dispatch-final-enable-idempotency-key",
+    final_artifact_persistence_blockers: [
+      "final artifact persistence receipt writer",
+      "information asset durable writer",
+      "hosted HTML asset storage adapter",
+      "account asset binding writer",
+      "twin notes binding writer",
+      "citation index binding writer",
+      "artifact graph node writer",
+      "artifact graph edge set writer",
+      "artifact ledger entry writer",
+      "idempotent final artifact persistence replay protection",
+    ],
+    required_final_artifact_persistence_invariants: [
+      "final artifact persistence planner must require final HTML artifact assembly planning before any hosted information asset can be persisted",
+      "final artifact persistence planner must preserve source/evidence/citation lineage through hosted HTML asset, graph node, and twin notes bindings",
+    ],
+    required_final_artifact_persistence_receipt_fields: [
+      "final_artifact_persistence_plan_receipt_id",
+      "final_html_artifact_assembly_plan_receipt_id",
+      "persisted_final_artifact_id",
+      "information_asset_id",
+      "hosted_html_asset_id",
+      "account_asset_binding_id",
+      "twin_notes_binding_id",
+      "citation_index_binding_id",
+      "graph_node_id",
+      "graph_edge_set_id",
+      "artifact_ledger_entry_id",
+      "final_artifact_persisted",
+      "idempotency_key",
+    ],
+    blocker_reason: "final_artifact_persistence_unimplemented",
+    final_artifact_persistence_allowed: false,
+    final_artifact_persisted: false,
+    information_asset_created: false,
+    hosted_html_asset_created: false,
+    account_asset_binding_created: false,
+    twin_notes_binding_created: false,
+    citation_index_binding_created: false,
+    artifact_ledger_entry_created: false,
+    graph_node_created: false,
+    graph_edge_set_created: false,
+    final_html_artifact_assembled: false,
+    final_html_document_created: false,
+    final_html_twin_notes_document_created: false,
+    final_html_citation_index_created: false,
+    final_synthesis_draft_created: false,
+    synthesis_bundle_assembled: false,
+    worker_output_aggregated: false,
+    worker_started: false,
+    scheduler_job_created: false,
+    runner_dispatch_enqueued: false,
+    dispatch_performed: false,
+    budget_reserved: false,
+    provider_calls_made: false,
+    retrieval_performed: false,
+    source_receipts_created: false,
+    graph_mutated: false,
+    final_artifact_created: false,
+    adapter_plan_notes: [
+      "final artifact persistence plan only: no hosted HTML asset, information asset, account binding, graph node, ledger entry, or final artifact is created",
+    ],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -5176,5 +5285,127 @@ describe("MidnightOil", () => {
     expect(screen.getByText(/final_html_document_id/)).toBeTruthy();
     expect(screen.getByText(/final_html_citation_index_id/)).toBeTruthy();
     expect(screen.getByText(/final_html_export_manifest_id/)).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Final artifact persistence plan" }));
+
+    await waitFor(() => expect(finalArtifactPersistencePlanMidnightOil).toHaveBeenCalled());
+    expect(finalArtifactPersistencePlanMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      runner_control_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-control-plan",
+      }),
+      budget_provider_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-budget-provider-adapter-plan",
+      }),
+      provider_executor_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-provider-executor-adapter-plan",
+      }),
+      retrieval_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-retrieval-adapter-plan",
+      }),
+      graph_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-graph-adapter-plan",
+      }),
+      final_artifact_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-final-artifact-adapter-plan",
+      }),
+      operator_dispatch_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-operator-dispatch-adapter-plan",
+      }),
+      control_ledger_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-adapter-plan",
+      }),
+      control_ledger_persistence_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-persistence-plan",
+      }),
+      control_ledger_persistence_apply_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-persistence-apply-plan",
+      }),
+      operator_dispatch_activation_readiness_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-operator-dispatch-activation-readiness-plan",
+      }),
+      live_dispatch_final_enablement_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-live-dispatch-final-enablement-plan",
+      }),
+      live_dispatch_final_enablement_apply_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-live-dispatch-final-enablement-apply-plan",
+      }),
+      runner_dispatch_scheduler_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-dispatch-scheduler-plan",
+      }),
+      runner_dispatch_worker_bootstrap_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-dispatch-worker-bootstrap-plan",
+      }),
+      scheduler_lease_retry_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-scheduler-lease-retry-plan",
+      }),
+      worker_queue_claim_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-worker-queue-claim-plan",
+      }),
+      repository_transaction_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-repository-transaction-plan",
+      }),
+      repository_commit_rollback_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-repository-commit-rollback-plan",
+      }),
+      worker_dispatch_lease_heartbeat_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-worker-dispatch-lease-heartbeat-plan",
+      }),
+      worker_cancellation_abandon_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-worker-cancellation-abandon-plan",
+      }),
+      worker_completion_finalization_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-worker-completion-finalization-plan",
+      }),
+      worker_output_aggregation_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-worker-output-aggregation-plan",
+      }),
+      worker_synthesis_handoff_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-worker-synthesis-handoff-plan",
+      }),
+      synthesis_bundle_assembly_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-synthesis-bundle-assembly-plan",
+      }),
+      final_synthesis_draft_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-final-synthesis-draft-plan",
+      }),
+      final_html_artifact_assembly_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-final-html-artifact-assembly-plan",
+      }),
+    });
+    expect(screen.getByText("Final artifact persistence receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-artifact-persistence-plan")).toBeTruthy();
+    expect(screen.getByText("blocked final artifact persistence unimplemented")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-artifact-persistence-receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-persisted-final-artifact")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-information-asset")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-hosted-html-asset")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-account-asset-binding")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-twin-notes-binding")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-citation-index-binding")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-artifact-graph-node")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-artifact-graph-edge-set")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-artifact-ledger-entry")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "final artifact persistence planner must require final HTML artifact assembly planning before any hosted information asset can be persisted",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Final artifact persistence blockers:/)).toBeTruthy();
+    expect(screen.getByText(/information asset durable writer/)).toBeTruthy();
+    expect(screen.getByText(/hosted HTML asset storage adapter/)).toBeTruthy();
+    expect(screen.getByText(/artifact graph node writer/)).toBeTruthy();
+    expect(screen.getByText(/Final artifact persistence receipt fields:/)).toBeTruthy();
+    expect(screen.getByText(/hosted_html_asset_id/)).toBeTruthy();
+    expect(screen.getByText(/graph_node_id/)).toBeTruthy();
+    expect(screen.getByText(/artifact_ledger_entry_id/)).toBeTruthy();
   });
 });
