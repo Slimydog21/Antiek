@@ -951,6 +951,10 @@ describe("CollectiveResearchPanel", () => {
     expect(stored.getAttribute("data-action")).toBe("stored");
     expect(stored.getAttribute("data-collective-id")).toBe("col_mem");
     expect(stored.getAttribute("data-spawn-count")).toBe("2");
+    // Residual (adj): L6 live multi-agent deferred + HTML + depth on membership.
+    expect(stored.getAttribute("data-l6-live-multiagent")).toBe("deferred");
+    expect(stored.getAttribute("data-view-format")).toBe("html");
+    expect(stored.textContent).toMatch(/L6 live multi-agent deferred/i);
 
     // Clear selection then restore last unit.
     fireEvent.click(screen.getByTestId("collective-clear-selection"));

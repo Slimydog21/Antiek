@@ -51,6 +51,8 @@
  * 27. Residual (ql): auto-restore last unit multi-select on mount when empty
  *     (preferredSpawnId wins; ≥2 restored ids for multi-select honesty).
  *     (spawn_ids by collective_id) in sessionStorage; restore last multi-select
+ * Residual (adj): membership status stamps L6 live multi-agent deferred +
+ * research_tier for offline cohesive unit honesty (parity panel L6 chrome).
  *     after continue-as-unit re-entry (intersection with available).
  * 28. Residual (tr): float|full cohesive unit prompt_block as HTML reading window
  *     without inventing a server document_id (parity research context pack sl).
@@ -913,6 +915,9 @@ export function CollectiveResearchPanel({
             data-restored-count={String(membershipStatus.restored_count)}
             data-document-id={membershipStatus.document_id ?? ""}
             data-view-format="html"
+            // Residual (adj): offline cohesive unit only — L6 live multi-agent deferred.
+            data-l6-live-multiagent="deferred"
+            data-research-tier={researchTier || ""}
             role="status"
           >
             Unit membership · {membershipStatus.action} · id=
@@ -921,9 +926,11 @@ export function CollectiveResearchPanel({
             {membershipStatus.action === "restored"
               ? ` · restored=${membershipStatus.restored_count}`
               : ""}
+            {researchTier ? ` · tier=${researchTier}` : ""}
             {membershipStatus.document_id
               ? ` · doc=${membershipStatus.document_id}`
-              : ""}
+              : ""}{" "}
+            · L6 live multi-agent deferred
           </span>
         ) : null}
       </div>

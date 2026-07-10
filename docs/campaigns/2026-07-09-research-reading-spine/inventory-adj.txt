@@ -1,0 +1,14 @@
+# inventory-adj · collective membership L6 deferred + research_tier
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: adj
+date: 2026-07-10
+parent_tip: 36bc7eb9 (adi)
+
+## Closed
+- collective-unit-membership-status: data-l6-live-multiagent=deferred
+- data-research-tier from continue-as-unit depth posture
+- Human copy L6 live multi-agent deferred
+- vitest CollectiveResearchPanel · 25 passed
+
+## Not in scope
+- Live multi-agent council (L6 operator-gated)
