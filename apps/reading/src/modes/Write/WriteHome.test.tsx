@@ -364,11 +364,22 @@ describe("WriteHome — the re-homed door", () => {
     expect(writeComp.getAttribute("data-html-first")).toBe("true");
     expect(writeComp.getAttribute("data-hop-pipeline")).toBe("api");
     expect(writeComp.getAttribute("data-stage-pipeline")).toBe("ape");
+    // Residual (aro): offline product surface catalog honesty (parity arm/arn).
+    expect(writeComp.getAttribute("data-live-injectors-deferred")).toBe("true");
+    expect(writeComp.getAttribute("data-notdiamond-is-router")).toBe("false");
+    expect(
+      Number(writeComp.getAttribute("data-offline-surface-count") || 0),
+    ).toBeGreaterThanOrEqual(10);
     expect(
       screen
         .getByTestId("write-home-competitive-scorecard-link")
         .getAttribute("href"),
     ).toBe("/settings#settings-competitive-dr-scorecard");
+    expect(
+      screen
+        .getByTestId("write-home-competitive-scorecard-link")
+        .getAttribute("data-notdiamond-is-router"),
+    ).toBe("false");
     expect(
       screen
         .getByTestId("write-home-competitive-dr-future-agent-link")

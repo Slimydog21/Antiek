@@ -1,0 +1,14 @@
+# inventory-aro · WriteHome offline surface catalog honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aro
+date: 2026-07-10
+parent_tip: 448a880ff (arn)
+
+## Closed
+- write-home-competitive-links stamps offline surface catalog (parity arm/arn)
+- reading ≡ research ≡ writing competitive honesty matrix
+- vitest WriteHome 31 green
+- evidence: {SCRATCH}/aro-writehome-vitest.txt
+
+## Next
+arp+ outside thrash · Operator merge PR #465

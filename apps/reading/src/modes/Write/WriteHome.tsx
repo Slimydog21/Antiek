@@ -27,6 +27,7 @@ import { fetchDepthTiers } from "../../api/settings";
 import { mapDepthTierToResearchTier } from "../../lib/researchTier";
 import GlassSurface from "../../shell/GlassSurface";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
+import { competitiveDrOfflineSurfaceCatalog } from "../../workspace/competitiveDrQuality";
 import { listRecentDeepResearchSpawnIds } from "../../workspace/recentDeepResearchSpawns";
 import {
   formatTwinWriteSeedFreeform,
@@ -861,14 +862,23 @@ export default function WriteHome() {
             data-html-first="true"
             data-hop-pipeline="api"
             data-stage-pipeline="ape"
+            data-offline-surface-count={String(
+              competitiveDrOfflineSurfaceCatalog().count,
+            )}
+            data-live-injectors-deferred="true"
+            data-notdiamond-is-router="false"
             role="navigation"
             aria-label="Competitive deep-research scorecard navigation"
           >
             <a
               href="/settings#settings-competitive-dr-scorecard"
               data-testid="write-home-competitive-scorecard-link"
+              data-offline-surface-count={String(
+                competitiveDrOfflineSurfaceCatalog().count,
+              )}
+              data-notdiamond-is-router="false"
               className="underline opacity-80 hover:opacity-100"
-              title="Settings competitive deep-research scorecard (Write · hop/stage pipelines · reading ≡ research ≡ writing)"
+              title={competitiveDrOfflineSurfaceCatalog().summary}
             >
               Settings · competitive DR
             </a>
