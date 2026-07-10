@@ -1462,8 +1462,18 @@ export default function MarketplaceHost({
             {e.license_class === "public_domain" || e.is_free ? (
               <button
                 type="button"
+                data-testid={`free-host-${e.book_id}`}
+                data-book-id={e.book_id}
+                data-html-first="true"
+                data-view-format="html"
+                data-free-host="true"
+                data-is-free={String(Boolean(e.is_free))}
+                data-license-class={e.license_class || ""}
+                data-live-payment="false"
+                data-seamless-port="true"
                 disabled={busy}
                 onClick={() => void onHost(e.book_id)}
+                title="Host free HTML book into account (never PDF · no receipt · seamless port)"
               >
                 Host into account
               </button>

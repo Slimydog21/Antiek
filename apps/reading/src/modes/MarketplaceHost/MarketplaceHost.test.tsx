@@ -406,6 +406,15 @@ describe("MarketplaceHost mode", () => {
     await waitFor(() => {
       expect(screen.getByText("Pride and Prejudice")).toBeTruthy();
     });
+    // Residual (aph): free Host into account stamps HTML-first seamless port.
+    const freeHost = screen.getByTestId("free-host-pd-pride");
+    expect(freeHost.getAttribute("data-html-first")).toBe("true");
+    expect(freeHost.getAttribute("data-view-format")).toBe("html");
+    expect(freeHost.getAttribute("data-free-host")).toBe("true");
+    expect(freeHost.getAttribute("data-is-free")).toBe("true");
+    expect(freeHost.getAttribute("data-seamless-port")).toBe("true");
+    expect(freeHost.getAttribute("data-live-payment")).toBe("false");
+    expect(freeHost.getAttribute("title") || "").toMatch(/never PDF/i);
     // Residual (il/io): HTML-first catalog honesty + by_source.
     const catMetrics = screen.getByTestId("marketplace-catalog-metrics");
     expect(catMetrics.getAttribute("data-view-format")).toBe("html");

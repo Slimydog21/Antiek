@@ -3745,3 +3745,7 @@ P0 PR #465. Pivot apg+ outside thrash.
 marketplace-free-host-readiness: free count under filters · HTML-first · never PDF.
 Completes apd L5 paid path with free host path honesty. vitest MarketplaceHost 43 green.
 P0 PR #465. Pivot aph+ outside thrash.
+
+## Residual aph · 2026-07-10 — free Host into account HTML-first stamps
+free-host-{book_id} buttons: data-html-first · free-host · seamless-port · never PDF title.
+vitest MarketplaceHost free host path green. P0 PR #465. Pivot api+ outside thrash.
