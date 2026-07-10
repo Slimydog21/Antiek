@@ -41,7 +41,7 @@ def test_live_step_default_off():
     os.environ.pop(ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV, None)
     clear_midnight_oil_live_step()
     assert live_step_enabled() is False
-    _fn, used = resolve_worker_step_fn()
+    _fn, _proj, used = resolve_worker_step_fn()
     assert used is False
 
 
@@ -50,7 +50,7 @@ def test_env_alone_does_not_go_live_without_injector():
     clear_midnight_oil_live_step()
     try:
         assert live_step_enabled() is True
-        _fn, used = resolve_worker_step_fn()
+        _fn, _proj, used = resolve_worker_step_fn()
         assert used is False  # no injector → stay offline
     finally:
         os.environ.pop(ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV, None)
@@ -74,7 +74,7 @@ def test_live_injector_requires_env_and_fn():
         )
 
     os.environ[ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV] = "1"
-    configure_midnight_oil_live_step(live_fn)
+    configure_midnight_oil_live_step(live_fn, lambda _j: 0.02)
     try:
         out = run_job_offline(job_id, store=store)
         assert out["offline"] is False
@@ -95,7 +95,7 @@ def test_force_offline_ignores_live_config():
         raise AssertionError("must not be called when force_offline")
 
     os.environ[ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV] = "1"
-    configure_midnight_oil_live_step(live_fn)
+    configure_midnight_oil_live_step(live_fn, lambda _j: 0.01)
     try:
         out = run_job_offline(job_id, store=store, force_offline=True)
         assert out["offline"] is True
@@ -116,7 +116,7 @@ def test_injector_without_env_stays_offline():
         return WorkerStepResult(spent_usd=0.01, done=True)
 
     os.environ.pop(ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV, None)
-    configure_midnight_oil_live_step(live_fn)
+    configure_midnight_oil_live_step(live_fn, lambda _j: 0.01)
     try:
         out = run_job_offline(job_id, store=store)
         assert out["offline"] is True
@@ -124,3 +124,28 @@ def test_injector_without_env_stays_offline():
         assert calls == []
     finally:
         clear_midnight_oil_live_step()
+
+
+def test_configure_live_step_requires_project_fn():
+    import pytest
+
+    def live_fn(job):
+        return WorkerStepResult(spent_usd=0.01, done=True)
+
+    with pytest.raises(ValueError, match="project_fn"):
+        configure_midnight_oil_live_step(live_fn)
+
+
+def test_explicit_live_step_fn_requires_project_fn():
+    import pytest
+
+    def live_fn(job):
+        return WorkerStepResult(spent_usd=0.01, done=True)
+
+    os.environ[ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV] = "1"
+    clear_midnight_oil_live_step()
+    try:
+        with pytest.raises(ValueError, match="project_fn"):
+            resolve_worker_step_fn(step_fn=live_fn)
+    finally:
+        os.environ.pop(ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV, None)
