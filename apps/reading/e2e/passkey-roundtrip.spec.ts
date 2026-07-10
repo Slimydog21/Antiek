@@ -40,7 +40,7 @@ test("email bootstrap becomes a real passkey-only second unlock", async ({
   await expect(page).toHaveURL("http://localhost:5173/trust");
 
   // A new browser session has no Antiek cookie, but the authenticator still
-  // holds its discoverable credential — exactly the operator's next visit.
+  // holds its discoverable credential, exactly like the operator's next visit.
   await context.clearCookies();
   const statusRequest = page.waitForResponse((response) =>
     response.url().endsWith("/auth/passkey/status"),

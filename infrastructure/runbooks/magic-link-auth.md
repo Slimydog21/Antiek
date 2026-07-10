@@ -1,4 +1,4 @@
-# Passkey-first auth — owned login surface
+# Passkey-first auth: owned login surface
 
 **Status: ready to cut over as of 2026-05-21.** Replaces Cloudflare
 Access at the auth layer with an Antiek-issued session cookie. Email proves
