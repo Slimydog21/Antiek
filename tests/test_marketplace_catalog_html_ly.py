@@ -127,6 +127,51 @@ def test_project_catalog_html_free_only_method_free_count() -> None:
     assert "free_only=True" in html
 
 
+def test_project_catalog_html_free_only_filter_is_free() -> None:
+    """Residual (abp): free_only filter uses is_free inventory only."""
+    import re
+
+    from substrate.marketplace_host.catalog import Catalog, CatalogEntry
+
+    cat = Catalog()
+    cat.add(
+        CatalogEntry(
+            book_id="pd-free",
+            title="Free PD",
+            author="A",
+            source="project_gutenberg",
+            license_class="public_domain",
+            is_free=True,
+            body_text="free",
+            source_format="html",
+            subjects=("science",),
+        )
+    )
+    cat.add(
+        CatalogEntry(
+            book_id="buy",
+            title="Paid Book",
+            author="C",
+            source="marketplace_stub",
+            license_class="purchased",
+            is_free=False,
+            body_text="",
+            source_format="pdf",
+            subjects=("technology",),
+        )
+    )
+    html = project_catalog_html(cat, free_only=True)
+    assert "Free PD" in html or "pd-free" in html
+    assert "Paid Book" not in html
+    assert "buy" not in html
+    m = re.search(r"free_count=(\d+)", html)
+    assert m is not None
+    assert int(m.group(1)) == 1
+    entries_m = re.search(r"Entries=(\d+) of", html)
+    assert entries_m is not None
+    assert int(entries_m.group(1)) == 1
+
+
 def test_project_catalog_html_free_count_is_free_only() -> None:
     """Residual (abo): HTML free_count matches is_free only (parity abn API).
 

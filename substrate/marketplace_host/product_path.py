@@ -197,9 +197,8 @@ def project_catalog_html(
     src_token = (source or "").strip().lower()
     filtered: list[CatalogEntry] = []
     for e in entries:
-        if free_only and not (
-            e.license_class == "public_domain" and e.is_free
-        ):
+        # Residual (abp): free_only is is_free inventory (parity free_count abn/abo).
+        if free_only and not e.is_free:
             continue
         if subj_token and subj_token not in e.subjects:
             continue

@@ -2030,3 +2030,7 @@ public_domain entry is not free; public_domain_count stays separate honesty.
 project_catalog_html free_count counts is_free only (parity abn API). Competitive
 delta: HTML catalog free inventory identity matches API free_count doctrine end-to-end.
 
+## Residual abp · 2026-07-10 — free_only filter is is_free inventory
+project_catalog_html free_only filter uses is_free only (parity free_count abn/abo).
+Competitive delta: free-PD chip filter and free_count share one free-inventory doctrine.
+
