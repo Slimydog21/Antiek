@@ -649,7 +649,7 @@ export function SpawnMergePanel({
               <div
                 className="prose max-h-40 overflow-auto text-sm"
                 data-testid="spawn-merge-html"
-                dangerouslySetInnerHTML={{ __html: result.html }}
+                dangerouslySetInnerHTML={{ __html: result.html ?? "" }}
               />
             </>
             ) : null;

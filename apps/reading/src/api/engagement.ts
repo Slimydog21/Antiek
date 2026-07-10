@@ -610,6 +610,8 @@ export type TwinPromoteContextResponse = {
     graph_node_id?: string;
   }>;
   query?: string | null;
+  /** Reserved spawn depth posture, when promotion is scoped to a spawn. */
+  research_tier?: "fast" | "deep" | "wrestle" | string | null;
   /** Residual (mq): kinds filter echoed from promote request. */
   kinds?: Array<"insight" | "question"> | string[] | null;
   /** Residual (mx/my): multi-select note_ids echoed for audit honesty. */

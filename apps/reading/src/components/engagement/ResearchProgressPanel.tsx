@@ -124,8 +124,14 @@ export function ResearchProgressPanel({
               "synthesize",
               "cite",
               "terminal",
-            ]) as readonly string[],
-        completed: server.completed as string[],
+            ]) as readonly ("plan" | "gather" | "synthesize" | "cite" | "terminal")[],
+        completed: server.completed as (
+          | "plan"
+          | "gather"
+          | "synthesize"
+          | "cite"
+          | "terminal"
+        )[],
         current: (server.current ?? null) as string | null,
         completed_count: server.completed_count,
         total: server.total,

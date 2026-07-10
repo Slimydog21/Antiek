@@ -399,7 +399,11 @@ jobs:
 
       - name: Type-check
         working-directory: apps/reading
-        run: npx tsc --noEmit
+        # The root tsconfig contains only project references. Plain `tsc`
+        # checks zero source files; build mode is required to traverse them.
+        # Test behaviour is gated by Vitest below, while tsconfig.app excludes
+        # test modules from the production compilation boundary.
+        run: npm run typecheck
 
       - name: Token lint (pattern not tone — no new hardcoded hex)
         # frontend-design SPR-01 (harvested from PR #4). Fails the PR on any

@@ -30,6 +30,8 @@ export type AnalyticsEvents = {
     question_length: number;
     has_parent: boolean;
     has_spawn_context: boolean;
+    publication_ref_count?: number;
+    research_tier?: string;
   };
   deep_research_cascade_created: { problem_length: number };
   deep_research_plan_approved: EmptyProps;
@@ -42,6 +44,11 @@ export type AnalyticsEvents = {
     document_id: string;
     page_index: number;
     has_passage: boolean;
+    mode?: "floating_window" | "full_window" | "full_workstation";
+    session_id?: string;
+    publication_ref_count?: number;
+    model_id?: string | null;
+    research_tier?: string | null;
   };
 
   // Write — notebook
