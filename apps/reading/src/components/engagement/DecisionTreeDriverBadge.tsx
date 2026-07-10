@@ -23,6 +23,8 @@
  * best-by-task for mapped task_class (parity launch budget afb · never auto-route).
  * Residual (afe): explicit Install best-for-task button when best differs from
  * installed driver (operator click only · never auto-route).
+ * Residual (aoz): install status records previous driver; already-best chrome
+ * when installed matches weekly best; never-router honesty on install path.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -116,6 +118,8 @@ export function DecisionTreeDriverBadge({
     setInstallBusy(true);
     setInstallStatus(null);
     setError(null);
+    // Residual (aoz): capture previous driver for install audit trail.
+    const previousModel = (tree?.model_id || "").trim() || "none";
     try {
       const result = await installDecisionTreeSelection({
         model_id: bestByTask.model_id,
@@ -123,7 +127,8 @@ export function DecisionTreeDriverBadge({
       });
       setTree(result);
       setInstallStatus(
-        `Installed ${bestByTask.model_id} for ${benchTaskClass} (advisory · explicit)`,
+        `Installed ${bestByTask.model_id} for ${benchTaskClass}` +
+          ` (was ${previousModel} · advisory · explicit · never auto-route)`,
       );
       setRefreshTick((n) => n + 1);
     } catch (e) {
@@ -131,7 +136,7 @@ export function DecisionTreeDriverBadge({
     } finally {
       setInstallBusy(false);
     }
-  }, [bestByTask?.model_id, benchTaskClass, tree?.provider_id]);
+  }, [bestByTask?.model_id, benchTaskClass, tree?.model_id, tree?.provider_id]);
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -362,21 +367,49 @@ export function DecisionTreeDriverBadge({
               data-testid="decision-tree-install-best-for-task"
               data-install-model-id={bestByTask?.model_id ?? ""}
               data-install-task-class={benchTaskClass}
+              data-previous-model-id={tree?.model_id ?? "none"}
               data-advisory-only="true"
+              data-never-auto-route="true"
               disabled={installBusy || refreshing}
               onClick={() => void onInstallBestForTask()}
               className="underline opacity-80 hover:opacity-100 disabled:opacity-50"
-              title={`Install ${bestByTask?.model_id} (best ${benchTaskClass}) as decision-tree driver — explicit operator action · never auto-route`}
+              title={`Install ${bestByTask?.model_id} (best ${benchTaskClass}) as decision-tree driver — was ${tree?.model_id || "none"} · explicit operator action · never auto-route`}
             >
               {installBusy
                 ? "Installing…"
                 : `Install best for ${benchTaskClass}`}
             </button>
+          ) : bestByTask?.model_id ? (
+            // Residual (aoz): already-best honesty when installed matches weekly best.
+            <p
+              className="text-[10px] font-mono opacity-80"
+              data-testid="decision-tree-already-best-for-task"
+              data-already-best="true"
+              data-task-class={benchTaskClass}
+              data-model-id={bestByTask.model_id}
+              data-advisory-only="true"
+              data-never-auto-route="true"
+              role="status"
+            >
+              Already best for {benchTaskClass}:{" "}
+              <code>{bestByTask.model_id}</code> · advisory only · never
+              auto-route ·{" "}
+              <a
+                href="/settings#antiek-bench-suite-proposal"
+                className="underline opacity-80 hover:opacity-100"
+                data-testid="decision-tree-suite-proposal-link"
+                title="Antiek-bench recursive suite rewrite proposal (propose≠promote)"
+              >
+                suite rewrite
+              </a>
+            </p>
           ) : null}
           {installStatus ? (
             <p
               className="text-[10px] font-mono opacity-80"
               data-testid="decision-tree-install-best-status"
+              data-never-auto-route="true"
+              data-advisory-only="true"
               role="status"
             >
               {installStatus}

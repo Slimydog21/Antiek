@@ -147,6 +147,9 @@ describe("DecisionTreeDriverBadge residual cw/eq", () => {
     expect(installBtn.getAttribute("data-install-model-id")).toBe("strong-model");
     expect(installBtn.getAttribute("data-install-task-class")).toBe("wrestle");
     expect(installBtn.getAttribute("data-advisory-only")).toBe("true");
+    // Residual (aoz): previous driver stamped before fire (pre-install audit).
+    expect(installBtn.getAttribute("data-previous-model-id")).toBe("glm-5.2");
+    expect(installBtn.getAttribute("data-never-auto-route")).toBe("true");
     installDecisionTreeSelection.mockResolvedValue({
       model_id: "strong-model",
       provider_id: "zai",
@@ -166,6 +169,47 @@ describe("DecisionTreeDriverBadge residual cw/eq", () => {
         screen.getByTestId("decision-tree-install-best-status").textContent,
       ).toMatch(/Installed strong-model for wrestle/i);
     });
+    // Residual (aoz): status audit trail keeps previous driver + never-auto-route.
+    expect(
+      screen.getByTestId("decision-tree-install-best-status").textContent,
+    ).toMatch(/was glm-5\.2/i);
+    expect(
+      screen.getByTestId("decision-tree-install-best-status").textContent,
+    ).toMatch(/never auto-route/i);
+    expect(
+      screen
+        .getByTestId("decision-tree-install-best-status")
+        .getAttribute("data-never-auto-route"),
+    ).toBe("true");
+  });
+
+  it("surfaces already-best chrome when installed matches weekly best (aoz)", async () => {
+    fetchDecisionTreeSelection.mockResolvedValue({
+      model_id: "strong-model",
+      provider_id: "zai",
+      installed: true,
+      notes: [],
+      source: "test",
+    });
+    render(<DecisionTreeDriverBadge researchTier="wrestle" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("decision-tree-bench-best-by-task")).toBeTruthy();
+    });
+    const bench = screen.getByTestId("decision-tree-bench-best-by-task");
+    expect(bench.getAttribute("data-matches-installed")).toBe("true");
+    expect(bench.getAttribute("data-install-available")).toBe("false");
+    expect(screen.queryByTestId("decision-tree-install-best-for-task")).toBeNull();
+    const already = screen.getByTestId("decision-tree-already-best-for-task");
+    expect(already.getAttribute("data-already-best")).toBe("true");
+    expect(already.getAttribute("data-task-class")).toBe("wrestle");
+    expect(already.getAttribute("data-model-id")).toBe("strong-model");
+    expect(already.getAttribute("data-never-auto-route")).toBe("true");
+    expect(already.textContent).toMatch(/Already best for wrestle/i);
+    expect(
+      screen
+        .getByTestId("decision-tree-suite-proposal-link")
+        .getAttribute("href"),
+    ).toBe("/settings#antiek-bench-suite-proposal");
   });
 
   it("shows none when not installed", async () => {

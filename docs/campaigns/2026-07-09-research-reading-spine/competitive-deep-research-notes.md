@@ -3705,3 +3705,8 @@ VISION_USAGE_FEED_SOURCES + visionFeedCoverageFromBySource pure helpers; Setting
 suite proposal chrome antiek-bench-vision-feed-coverage (covered/uncovered north-star
 surfaces · propose≠promote · never invents). vitest suiteProposalTasks 7 · Settings 37 green.
 P0 PR #465. Pivot aoz+ outside thrash.
+
+## Residual aoz · 2026-07-10 — decision-tree install best-for-task UX polish
+Previous-driver stamp on install · already-best chrome when matches weekly best ·
+never-auto-route honesty · suite rewrite deep-link. vitest DecisionTreeDriverBadge 15 green.
+P0 PR #465. Pivot apa+ outside thrash.
