@@ -106,6 +106,7 @@ import {
   type ResearchLaunchTier,
 } from "./ResearchLaunchBudgetPanel";
 import { researchPathChoicesReadiness } from "../../workspace/researchPathChoices";
+import { collectiveContinueUnitReadiness } from "../../workspace/collectiveContinueUnitReadiness";
 import { openMergedResearchWindow } from "./SpawnMergePanel";
 import {
   buildMergedDocWriteHref,
@@ -1596,24 +1597,36 @@ export function CollectiveResearchPanel({
               </label>
             ) : null}
             <div className="flex flex-wrap items-center gap-2">
+              {(() => {
+                // Residual (aul): pure collectiveContinueUnitReadiness drives stamps.
+                const cont = collectiveContinueUnitReadiness({
+                  prompt_block: unit.prompt_block,
+                  collective_id: unit.collective_id,
+                  parent_asset_id:
+                    String(parentAssetId || unit.asset_ids?.[0] || "").trim() ||
+                    "",
+                  spawn_count: unit.spawn_count,
+                  spawn_ids: unit.spawn_ids,
+                  selected_count: selected.length,
+                });
+                return (
+                  <>
               <button
                 type="button"
                 data-testid="collective-continue-as-unit"
                 onClick={() => void continueAsCohesiveUnit("floating")}
                 disabled={
                   busy ||
-                  !unit.prompt_block?.trim() ||
+                  !cont.unit_continue_ready ||
                   (budgetWarn && !forceOverBudget)
                 }
                 // Residual (adk): offline cohesive unit re-entry — not live L6 council.
-                data-l6-live-multiagent="deferred"
+                data-l6-live-multiagent={cont.l6_live_multiagent}
                 data-view-format="html"
-                data-html-first="true"
+                data-html-first={String(cont.html_first)}
                 data-window-mode="floating"
-                // Residual (atr): unit continue readiness honesty (prompt_block present).
-                data-unit-continue-ready={String(
-                  Boolean(unit.prompt_block?.trim()),
-                )}
+                // Residual (atr/aul): unit continue readiness via pure helper.
+                data-unit-continue-ready={String(cont.unit_continue_ready)}
                 data-research-tier={
                   unit.recommended_research_tier || researchTier || ""
                 }
@@ -1623,24 +1636,11 @@ export function CollectiveResearchPanel({
                   String(parentAssetId || unit.asset_ids?.[0] || "").trim() ||
                   ""
                 }
-                data-spawn-count={String(
-                  unit.spawn_count ??
-                    (unit.spawn_ids || []).filter(Boolean).length ||
-                    selected.length,
-                )}
+                data-spawn-count={String(cont.spawn_count)}
                 data-seamless-unit-continue={String(
-                  Boolean(
-                    unit.collective_id &&
-                      String(
-                        parentAssetId || unit.asset_ids?.[0] || "",
-                      ).trim(),
-                  ),
+                  cont.seamless_unit_continue,
                 )}
-                title={
-                  unit.prompt_block?.trim()
-                    ? "Open a new floating deep research session seeded with this collective prompt (offline unit · HTML-first · L6 live multi-agent deferred · never PDF)"
-                    : "Cohesive unit prompt empty — continue not ready"
-                }
+                title={cont.open_title_float}
               >
                 {busy ? "Opening…" : "Continue as cohesive unit (window)"}
               </button>
@@ -1650,18 +1650,16 @@ export function CollectiveResearchPanel({
                 onClick={() => void continueAsCohesiveUnit("full")}
                 disabled={
                   busy ||
-                  !unit.prompt_block?.trim() ||
+                  !cont.unit_continue_ready ||
                   (budgetWarn && !forceOverBudget)
                 }
                 // Residual (adk): offline cohesive unit re-entry — not live L6 council.
-                data-l6-live-multiagent="deferred"
+                data-l6-live-multiagent={cont.l6_live_multiagent}
                 data-view-format="html"
-                data-html-first="true"
+                data-html-first={String(cont.html_first)}
                 data-window-mode="full"
-                // Residual (atr): unit continue readiness honesty (prompt_block present).
-                data-unit-continue-ready={String(
-                  Boolean(unit.prompt_block?.trim()),
-                )}
+                // Residual (atr/aul): unit continue readiness via pure helper.
+                data-unit-continue-ready={String(cont.unit_continue_ready)}
                 data-research-tier={
                   unit.recommended_research_tier || researchTier || ""
                 }
@@ -1671,27 +1669,17 @@ export function CollectiveResearchPanel({
                   String(parentAssetId || unit.asset_ids?.[0] || "").trim() ||
                   ""
                 }
-                data-spawn-count={String(
-                  unit.spawn_count ??
-                    (unit.spawn_ids || []).filter(Boolean).length ||
-                    selected.length,
-                )}
+                data-spawn-count={String(cont.spawn_count)}
                 data-seamless-unit-continue={String(
-                  Boolean(
-                    unit.collective_id &&
-                      String(
-                        parentAssetId || unit.asset_ids?.[0] || "",
-                      ).trim(),
-                  ),
+                  cont.seamless_unit_continue,
                 )}
-                title={
-                  unit.prompt_block?.trim()
-                    ? "Open collective unit deep research expanded to full working region (offline unit · HTML-first · L6 live multi-agent deferred · never PDF)"
-                    : "Cohesive unit prompt empty — continue not ready"
-                }
+                title={cont.open_title_full}
               >
                 {busy ? "Opening…" : "Continue as unit (full)"}
               </button>
+                  </>
+                );
+              })()}
               {continueWindowId ? (
                 <span
                   className="meta"
