@@ -60,7 +60,8 @@ def test_builds_fallback_free_candidate_config_and_conservative_reservation() ->
     assert tier.provider == "provider-a"
     assert tier.model == "a"
     assert tier.fallback is None
-    assert cfg.maximum_cost(cfg.candidates[0], "x" * 400) == Decimal("0.0034")
+    # 400 input bytes × $1/1M × 1.25 reservation buffer + 1000 output tokens × $3/1M
+    assert cfg.maximum_cost(cfg.candidates[0], "x" * 400) == Decimal("0.0035")
 
 
 def test_live_suite_requires_all_four_classes_and_scoring_expectations() -> None:

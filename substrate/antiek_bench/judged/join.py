@@ -7,8 +7,14 @@ import hmac
 import json
 import re
 from dataclasses import asdict, dataclass, replace
+from typing import TYPE_CHECKING
 
-from ..live.journal import LiveCallRecord
+if TYPE_CHECKING:
+    # Annotation-only: importing ..live at runtime recreates the
+    # judged/__init__ → join → live/__init__ → weekly_verdict → judged.join
+    # circular import this guard exists to break.
+    from ..live.journal import LiveCallRecord
+
 from .blinding import PrivateJoin
 from .journal import EvidenceRecord
 from .runner import JUDGE_POLICY_VERSION
