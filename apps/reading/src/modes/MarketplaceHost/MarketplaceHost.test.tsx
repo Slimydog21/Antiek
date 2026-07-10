@@ -2574,11 +2574,12 @@ describe("MarketplaceHost mode", () => {
         .getByTestId("marketplace-host-hydrate-settings-link")
         .getAttribute("href"),
     ).toBe("/settings#hydrate-live-status");
+    // Residual (xd): L1 arxiv checklist section deep-link.
     expect(
       screen
         .getByTestId("marketplace-host-hydrate-dual-gate-link")
         .getAttribute("href") || "",
-    ).toMatch(/DUAL-GATE-L1-L4/);
+    ).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
     fireEvent.change(screen.getByTestId("marketplace-host-refs-input"), {
       target: { value: "arxiv:1706.03762" },
     });

@@ -822,11 +822,12 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     expect(
       screen.getByTestId("hosted-html-hydrate-settings-link").getAttribute("href"),
     ).toBe("/settings#hydrate-live-status");
+    // Residual (xd): L1 arxiv checklist section deep-link.
     expect(
       screen
         .getByTestId("hosted-html-hydrate-dual-gate-link")
         .getAttribute("href") || "",
-    ).toMatch(/DUAL-GATE-L1-L4/);
+    ).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
     fireEvent.change(screen.getByTestId("hosted-html-refs-input"), {
       target: { value: "arxiv:1706.03762" },
     });

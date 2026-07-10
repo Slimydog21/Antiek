@@ -1434,11 +1434,12 @@ export default function MarketplaceHost({
                 >
                   Settings · hydrate readiness
                 </a>
+                {/* Residual (xd): L1 arxiv checklist section deep-link (parity pubs xc). */}
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
                   data-testid="marketplace-host-hydrate-dual-gate-link"
                   className="underline hover:opacity-100"
-                  title="Dual-gate L1–L4 checklist (arxiv/substack hydrate prep; offline default)"
+                  title="Dual-gate L1 arxiv hydrate checklist (prep only · offline default)"
                 >
                   Dual-gate L1–L2 hydrate checklist
                 </a>

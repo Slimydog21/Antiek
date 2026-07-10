@@ -1498,3 +1498,8 @@ delta: decision-tree dual-gate prep navigates twin live-seed policy section.
 Publication attach dual-gate checklist jumps to #l1-arxiv (L2 anchor also
 landed). Competitive delta: arxiv/substack attach surface navigates hydrate
 deferred policy without inventing live body.
+
+## Residual xd · 2026-07-10 — reading/hosted/marketplace hydrate #l1-arxiv
+ResearchThis · HostedHtml · MarketplaceHost hydrate dual-gate links jump to
+#l1-arxiv (parity PublicationAttach xc). Competitive delta: full reading≡research
+hydrate prep matrix navigates deferred L1 policy.
