@@ -603,6 +603,12 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("antiek-bench-usage-sources").textContent).toMatch(
       /session_flywheel/,
     );
+    // Residual (rw): default mock by_source has no Write seed sources.
+    const usageSources = screen.getByTestId("antiek-bench-usage-sources");
+    expect(usageSources.getAttribute("data-write-seed-source-count")).toBe("0");
+    for (const row of screen.getAllByTestId("antiek-bench-usage-source-row")) {
+      expect(row.getAttribute("data-write-seed-feed")).toBe("false");
+    }
   });
 
   it("loads NotDiamond advisory posture — authority rejected", async () => {
@@ -899,6 +905,18 @@ describe("Settings SPR-01 + decision-tree install", () => {
       .getAllByTestId("antiek-bench-ranked-feed-row")
       .find((el) => el.getAttribute("data-feed-source") === "twin_chase");
     expect(chaseRow?.getAttribute("data-write-seed-feed")).toBe("false");
+    // Residual (rw): usage weekly by_source list also stamps write-seed rows.
+    const usageSources = screen.getByTestId("antiek-bench-usage-sources");
+    expect(usageSources.getAttribute("data-write-seed-source-count")).toBe("1");
+    const usagePromote = screen
+      .getAllByTestId("antiek-bench-usage-source-row")
+      .find((el) => el.getAttribute("data-source") === "twin_promote_context");
+    expect(usagePromote?.getAttribute("data-write-seed-feed")).toBe("true");
+    expect(usagePromote?.textContent).toMatch(/\[write seed\]/);
+    const usageChase = screen
+      .getAllByTestId("antiek-bench-usage-source-row")
+      .find((el) => el.getAttribute("data-source") === "twin_chase");
+    expect(usageChase?.getAttribute("data-write-seed-feed")).toBe("false");
   });
 
   it("surfaces suite rewrite rationale + feed source count (pe)", async () => {

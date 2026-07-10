@@ -788,3 +788,9 @@ Suite proposal ranked by_source list renders per-source rows with
 data-write-seed-feed and "[write seed]" when the source is a recursive
 note-taker → Write twin_seed path. Competitive delta: weekly rewrite
 operators see substrate composition at row level, not only primary feed.
+
+## Residual rw · 2026-07-10 — Usage by_source Write-seed stamps
+Weekly usage by_source list stamps data-write-seed-feed / [write seed] per
+source (parity suite ranked feeds). Competitive delta: both Antiek-bench
+Settings panels (usage + suite proposal) show recursive note-taker → Write
+substrate composition for weekly rewrite honesty.
