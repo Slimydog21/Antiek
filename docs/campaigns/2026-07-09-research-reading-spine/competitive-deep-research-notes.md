@@ -935,3 +935,9 @@ Settings dogfood summary stamps suite version, item count, and write-seed /
 float-evidence / budget-foresight postures for v2 fixtures. Competitive
 delta: operators see which recursive-spine postures weekly dogfood covers
 without auto-promoting suites.
+
+## Residual sv · 2026-07-10 — Decision-tree → dogfood deep-link
+Decision-tree budget panel deep-links to competitive dogfood fixtures so
+operators inspect recursive-spine postures (write-seed / float / budget)
+when choosing a model driver. Competitive delta: model choice sits next to
+the offline dogfood that defines Antiek-bench task classes.

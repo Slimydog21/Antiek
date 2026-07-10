@@ -667,6 +667,18 @@ describe("Settings SPR-01 + decision-tree install", () => {
     );
   });
 
+  it("deep-links decision-tree to dogfood fixtures (sv)", async () => {
+    render(<Settings />);
+    await waitFor(() => {
+      expect(screen.getByTestId("decision-tree-dogfood-link")).toBeTruthy();
+    });
+    const link = screen.getByTestId("decision-tree-dogfood-link");
+    expect(link.getAttribute("href")).toBe("#antiek-bench-dogfood");
+    expect(screen.getByTestId("antiek-bench-dogfood-panel").id).toBe(
+      "antiek-bench-dogfood",
+    );
+  });
+
   it("loads Antiek-bench weekly usage summary in Settings", async () => {
     render(<Settings />);
     await waitFor(() => {

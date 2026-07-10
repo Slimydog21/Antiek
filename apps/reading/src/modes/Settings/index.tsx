@@ -1267,6 +1267,15 @@ export default function Settings() {
                 >
                   Weekly leaderboard
                 </a>
+                {/* Residual (sv): jump to competitive dogfood fixtures (v2 postures). */}
+                <a
+                  href="#antiek-bench-dogfood"
+                  className="text-[11px] underline opacity-80 hover:opacity-100"
+                  data-testid="decision-tree-dogfood-link"
+                  title="Competitive dogfood fixtures (offline · never auto-promotes)"
+                >
+                  Dogfood fixtures
+                </a>
               </div>
               {estimate ? (
                 <p
@@ -1801,6 +1810,7 @@ export default function Settings() {
           colour="glacial"
         >
           <div
+            id="antiek-bench-dogfood"
             className="p-4 space-y-3"
             data-testid="antiek-bench-dogfood-panel"
             data-view-format="html"
