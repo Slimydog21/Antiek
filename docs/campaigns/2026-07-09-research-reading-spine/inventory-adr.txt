@@ -1,0 +1,20 @@
+# inventory-adr · weekly leaderboard by_task_class model quality honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: adr
+date: 2026-07-10
+parent_tip: 2b228a4f (adq)
+
+## Closed
+- Settings leaderboard model rows stamp data-by-task-class + per-task scores
+- Best model by task class strip (advisory only · never auto-route)
+- data-testid antiek-bench-leaderboard-by-task + task-winners
+- vitest Settings · 34 passed
+
+## Why this residual
+User vision: weekly knowledge of which models are best at which tasks
+(wrestle / book_qa / distill / synthesize). Substrate already ranked by
+task class; Settings UI only showed mean_score — task quality invisible.
+
+## Not in scope
+- Auto-routing decision-tree from task winners
+- Live multi-provider weekly cron (LaunchAgent is operator)

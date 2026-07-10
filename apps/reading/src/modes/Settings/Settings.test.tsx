@@ -316,11 +316,25 @@ const {
     fetchAntiekBenchLeaderboard: vi.fn(async () => ({
       week_id: "2026-W28",
       models: [
-        { model_id: "strong-model", mean_score: 0.95 },
-        { model_id: "weak-model", mean_score: 0.2 },
+        {
+          model_id: "strong-model",
+          mean_score: 0.95,
+          // Residual (adr): per-task scores for weekly model quality honesty.
+          by_task_class: { distill: 0.99, wrestle: 0.92, synthesize: 0.9 },
+        },
+        {
+          model_id: "weak-model",
+          mean_score: 0.2,
+          by_task_class: { distill: 0.15, wrestle: 0.1, synthesize: 0.25 },
+        },
+        {
+          model_id: "book-specialist",
+          mean_score: 0.7,
+          by_task_class: { book_qa: 0.98, distill: 0.5 },
+        },
       ],
-      task_classes: ["distill", "synthesize"],
-      run_count: 2,
+      task_classes: ["book_qa", "distill", "synthesize", "wrestle"],
+      run_count: 3,
       suite_versions: ["suite-v1"],
       recommended_model_id: "strong-model",
       recommended_mean_score: 0.95,
@@ -1723,6 +1737,32 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("antiek-bench-leaderboard-html").innerHTML).toMatch(
       /Leaderboard|strong-model/i,
     );
+    // Residual (adr): per-task best models + by_task_class on model rows.
+    const byTask = screen.getByTestId("antiek-bench-leaderboard-by-task");
+    expect(byTask.getAttribute("data-advisory-only")).toBe("true");
+    expect(byTask.getAttribute("data-is-dispatch-authority")).toBe("false");
+    expect(byTask.getAttribute("data-task-class-count")).toBe("4");
+    const winners = screen.getByTestId("antiek-bench-leaderboard-task-winners");
+    expect(
+      winners.querySelector('[data-task-class="book_qa"]')?.getAttribute(
+        "data-best-model-id",
+      ),
+    ).toBe("book-specialist");
+    expect(
+      winners.querySelector('[data-task-class="wrestle"]')?.getAttribute(
+        "data-best-model-id",
+      ),
+    ).toBe("strong-model");
+    expect(
+      winners.querySelector('[data-task-class="distill"]')?.getAttribute(
+        "data-best-model-id",
+      ),
+    ).toBe("strong-model");
+    const models = screen.getByTestId("antiek-bench-leaderboard-models");
+    const strong = models.querySelector('[data-model-id="strong-model"]');
+    expect(strong?.getAttribute("data-by-task-class")).toMatch(/wrestle=0\.92/);
+    expect(strong?.textContent).toMatch(/wrestle=0\.92/);
+    expect(strong?.textContent).toMatch(/distill=0\.99/);
   });
 
   it("runs offline dogfood suite and shows result panel", async () => {

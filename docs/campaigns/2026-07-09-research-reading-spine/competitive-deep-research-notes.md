@@ -2177,3 +2177,10 @@ stamps false; Write create seedTwinNotes passes has_body so title-only body_text
 mis-inferred true for Antiek-bench usage. Competitive delta: recursive rewrite learning
 from Open Write is honest end-to-end (Open Write stamp → session seed → create seed →
 suite proposal matrix adp). vitest twinWriteSeed+WriteHome 61 green.
+
+## Residual adr · 2026-07-10 — weekly leaderboard by_task_class model quality
+Settings Antiek-bench leaderboard shows per-model by_task_class scores and best
+model per task class (book_qa/wrestle/distill/synthesize) as advisory only.
+Competitive delta: operator can weekly know which models win which tasks without
+opening raw HTML or auto-routing dispatch (parity NotDiamond advisory doctrine).
+vitest Settings 34 green.

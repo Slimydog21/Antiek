@@ -2105,14 +2105,115 @@ export default function Settings() {
                     No offline runs for this week yet.
                   </p>
                 ) : (
-                  <ul data-testid="antiek-bench-leaderboard-models" className="space-y-1">
-                    {leaderboard.models.map((m) => (
-                      <li key={m.model_id}>
-                        <strong>{m.model_id}</strong>: mean=
-                        {m.mean_score ?? "—"}
-                      </li>
-                    ))}
-                  </ul>
+                  <>
+                    {/* Residual (adr): per-task weekly best (advisory · never auto-route). */}
+                    {(() => {
+                      const taskClasses =
+                        (leaderboard.task_classes || []).length > 0
+                          ? leaderboard.task_classes
+                          : Array.from(
+                              new Set(
+                                (leaderboard.models || []).flatMap((m) =>
+                                  Object.keys(m.by_task_class || {}),
+                                ),
+                              ),
+                            ).sort();
+                      if (taskClasses.length === 0) return null;
+                      const bestByTask: Array<{
+                        task_class: string;
+                        model_id: string;
+                        score: number;
+                      }> = [];
+                      for (const tc of taskClasses) {
+                        let bestId = "";
+                        let bestScore = -Infinity;
+                        for (const m of leaderboard.models || []) {
+                          const sc = (m.by_task_class || {})[tc];
+                          if (typeof sc === "number" && sc > bestScore) {
+                            bestScore = sc;
+                            bestId = m.model_id;
+                          }
+                        }
+                        if (bestId) {
+                          bestByTask.push({
+                            task_class: tc,
+                            model_id: bestId,
+                            score: bestScore,
+                          });
+                        }
+                      }
+                      if (bestByTask.length === 0) return null;
+                      return (
+                        <div
+                          className="font-mono text-[11px] space-y-1 border border-ink/10 rounded p-2 dark:border-bright/10"
+                          data-testid="antiek-bench-leaderboard-by-task"
+                          data-task-class-count={String(bestByTask.length)}
+                          data-advisory-only="true"
+                          data-is-dispatch-authority="false"
+                          role="status"
+                        >
+                          <p className="opacity-90">
+                            Best model by task class (advisory · never
+                            auto-routes):
+                          </p>
+                          <ul data-testid="antiek-bench-leaderboard-task-winners">
+                            {bestByTask.map((row) => (
+                              <li
+                                key={row.task_class}
+                                data-task-class={row.task_class}
+                                data-best-model-id={row.model_id}
+                                data-best-score={String(row.score)}
+                              >
+                                <strong>{row.task_class}</strong>:{" "}
+                                {row.model_id} (
+                                {Number.isFinite(row.score)
+                                  ? row.score.toFixed(2)
+                                  : "—"}
+                                )
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      );
+                    })()}
+                    <ul
+                      data-testid="antiek-bench-leaderboard-models"
+                      className="space-y-1"
+                    >
+                      {leaderboard.models.map((m) => {
+                        const btc = m.by_task_class || {};
+                        const taskParts = Object.entries(btc)
+                          .sort(([a], [b]) => a.localeCompare(b))
+                          .map(([tc, sc]) =>
+                            typeof sc === "number"
+                              ? `${tc}=${sc.toFixed(2)}`
+                              : `${tc}=—`,
+                          );
+                        return (
+                          <li
+                            key={m.model_id}
+                            data-model-id={m.model_id}
+                            data-mean-score={
+                              m.mean_score != null ? String(m.mean_score) : ""
+                            }
+                            data-task-class-count={String(taskParts.length)}
+                            data-by-task-class={
+                              taskParts.length > 0 ? taskParts.join("·") : ""
+                            }
+                          >
+                            <strong>{m.model_id}</strong>: mean=
+                            {m.mean_score ?? "—"}
+                            {taskParts.length > 0 ? (
+                              <span className="opacity-80">
+                                {" "}
+                                · {taskParts.join(" · ")}
+                              </span>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
                 )}
                 {leaderboard.notes?.map((n) => (
                   <p
