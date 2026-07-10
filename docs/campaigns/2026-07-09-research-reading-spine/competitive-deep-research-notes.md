@@ -1688,3 +1688,7 @@ Competitive delta: swarm handoff tip-true; operator merge PR #465 highest levera
 Marketplace catalog API by_subject technology ≥4 for free STEM span.
 Competitive delta: technology domain chip is server-honest for tech-researcher
 default path (parity frontend compose yo · substrate yp).
+
+## Residual ys · 2026-07-10 — FUTURE-AGENT tip re-anchor through yr
+FUTURE-AGENT-SPEC tip re-anchored after 72 residual ships this continuation.
+Competitive delta: swarm handoff tip-true; operator merge PR #465 highest leverage.
