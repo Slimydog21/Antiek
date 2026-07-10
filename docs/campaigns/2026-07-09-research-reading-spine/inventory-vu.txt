@@ -1,0 +1,12 @@
+# inventory-vu · SESSION-ARC + FUTURE-AGENT tip through vt
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: vu
+date: 2026-07-10
+tip_sha: 8d924665
+
+## Closed
+- SESSION-ARC-tt-vt-infinite-wave.md (53 residual ships)
+- FUTURE-AGENT tip → 8d924665
+
+## Not in scope
+- Operator merge PR #465 (gated)

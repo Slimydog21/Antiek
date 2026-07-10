@@ -1324,3 +1324,7 @@ highest leverage.
 Settings dual-gate prep strip stamps L5 payment deferred / live_payment=false.
 Competitive delta: deferred marketplace rails are visible on Settings chokepoint
 (parity marketplace uy L5 honesty).
+
+## Residual vu · 2026-07-10 — SESSION-ARC + FUTURE-AGENT tip through vt
+SESSION-ARC-tt-vt + FUTURE-AGENT tip 8d924665 (53 residual ships). Competitive
+delta: compaction-safe handoff; operator merge PR #465 remains highest leverage.
