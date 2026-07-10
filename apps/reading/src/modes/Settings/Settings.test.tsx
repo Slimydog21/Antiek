@@ -853,6 +853,13 @@ describe("Settings SPR-01 + decision-tree install", () => {
     const panel = screen.getByTestId("prompt-cost-projection-panel");
     expect(panel.getAttribute("data-soft-budget")).toBe("true");
     expect(panel.getAttribute("data-budget-before-fire")).toBe("true");
+    // Residual (aql): HTML-first + never-invent-price honesty on budget foresight.
+    expect(panel.getAttribute("data-view-format")).toBe("html");
+    expect(panel.getAttribute("data-html-first")).toBe("true");
+    expect(panel.getAttribute("data-never-invent-price")).toBe("true");
+    const nav = screen.getByTestId("prompt-cost-competitive-nav");
+    expect(nav.getAttribute("data-never-invent-price")).toBe("true");
+    expect(nav.getAttribute("data-soft-budget")).toBe("true");
     expect(
       screen
         .getByTestId("prompt-cost-competitive-scorecard-link")
@@ -866,6 +873,15 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(
       screen.getByTestId("prompt-cost-decision-tree-link").getAttribute("href"),
     ).toBe("#decision-tree-panel");
+    expect(
+      screen.getByTestId("prompt-cost-add-model-link").getAttribute("href"),
+    ).toBe("#add-model-panel");
+    expect(
+      screen.getByTestId("prompt-cost-soft-budget-hint").textContent,
+    ).toMatch(/soft budget/i);
+    expect(
+      screen.getByTestId("prompt-cost-soft-budget-hint").textContent,
+    ).toMatch(/never invent/i);
   });
 
   it("surfaces remaining-after on mini + full projection when high known (wb)", async () => {

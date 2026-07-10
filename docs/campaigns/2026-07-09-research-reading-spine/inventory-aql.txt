@@ -1,0 +1,16 @@
+# inventory-aql · prompt-cost panel soft-budget honesty + model-choice deep-links
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aql
+date: 2026-07-10
+parent_tip: c25fcfdf (aqk)
+
+## Closed
+- prompt-cost-projection-panel data-html-first · never-invent-price · soft-budget
+- honesty nav adds add-model link + soft-budget hint
+- Completes model/budget Settings matrix (aqj add-model · aqk decision-tree · aql prompt-cost)
+- vitest Settings prompt-cost path green
+- evidence: {SCRATCH}/aql-settings-vitest.txt
+
+## Next
+aqm+ product residual outside thrash
+Operator merge PR #465 remains highest leverage (gated)

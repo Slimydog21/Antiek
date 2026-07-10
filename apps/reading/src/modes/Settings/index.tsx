@@ -4222,20 +4222,26 @@ export default function Settings() {
             className="p-4 space-y-3"
             data-testid="prompt-cost-projection-panel"
             data-view-format="html"
+            data-html-first="true"
             data-soft-budget="true"
             data-budget-before-fire="true"
+            data-never-invent-price="true"
           >
             <p className="text-sm text-ink dark:text-bright">
               Estimate how a proposed pro-tier prompt would hit today&apos;s
               remaining budget. Projection uses dispatch config rates —
               placeholder 0.0 rates yield an honest null, not a fake price.
+              Soft foresight only · never invents $0 when rates unknown.
             </p>
             {/* Residual (ake): Settings budget-before-fire → competitive DR honesty map. */}
+            {/* Residual (aql): budget foresight honesty + model-choice deep-links (parity aqj/aqk). */}
             <p
-              className="text-[11px] font-mono space-x-3"
+              className="text-[11px] font-mono flex flex-wrap gap-x-3 gap-y-1"
               data-testid="prompt-cost-competitive-nav"
               data-soft-budget="true"
               data-budget-before-fire="true"
+              data-html-first="true"
+              data-never-invent-price="true"
               role="navigation"
               aria-label="Prompt cost projection competitive DR navigation"
             >
@@ -4263,6 +4269,20 @@ export default function Settings() {
               >
                 Decision-tree · driver
               </a>
+              <a
+                href="#add-model-panel"
+                data-testid="prompt-cost-add-model-link"
+                className="underline opacity-90 hover:opacity-100"
+                title="Register a model into the process-local registry"
+              >
+                Add model
+              </a>
+              <span
+                className="opacity-70"
+                data-testid="prompt-cost-soft-budget-hint"
+              >
+                soft budget · never invent $0 · budget-before-fire
+              </span>
             </p>
             <div className="grid grid-cols-2 gap-3 font-mono text-[13px]">
               <label className="flex flex-col gap-1">

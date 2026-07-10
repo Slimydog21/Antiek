@@ -3896,3 +3896,8 @@ model-choice product surface. vitest Settings add-model green. P0 PR #465. Pivot
 Decision-tree stamps HTML-first · never-auto-route · ND advisory · propose≠promote
 + honesty nav to add-model · ND · Antiek-bench · prompt-cost (parity aqj).
 vitest Settings decision-tree green. P0 PR #465. Pivot aql+ outside thrash.
+
+## Residual aql · 2026-07-10 — prompt-cost soft-budget honesty + model-choice deep-links
+Prompt-cost panel stamps HTML-first · never-invent-price · soft-budget + add-model link.
+Closes model/budget Settings matrix with aqj/aqk. vitest Settings prompt-cost green.
+P0 PR #465. Pivot aqm+ outside thrash.
