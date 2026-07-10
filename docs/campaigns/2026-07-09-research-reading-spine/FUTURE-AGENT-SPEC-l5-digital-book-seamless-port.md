@@ -53,7 +53,10 @@
 
 ### Sprint 3 — UI
 
-- MarketplaceHost: when live rails ready, show checkout CTA; else keep manual receipt (ahe honesty).
+- **Shipped offline stub (ala):** MarketplaceHost paid rows show disabled
+  `Live checkout (L5 deferred)` CTA + honesty note (manual receipt only · dual-gate
+  env · never invent charge). Manual `Purchase + host` remains the active path.
+- **Still deferred:** enable live checkout CTA only when dual-gate + real upstream green.
 - Budget/settings: never claim free inventory for purchased titles.
 - Dual-gate checklist deep-link remains until live green.
 

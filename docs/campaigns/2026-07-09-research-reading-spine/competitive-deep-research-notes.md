@@ -3210,3 +3210,9 @@ vitest TwinNotes 30 green. P0 operator merge PR #465. Pivot akz+ outside thrash.
 ## Residual akz · 2026-07-10 — SESSION-ARC akq–aky domain L5 driver twin wave
 Wave handoff: domain twin search free PD · L5 payment Sprint 1–2 · progress FUTURE ·
 driver + twin FUTURE/prompt-cost. P0 operator merge PR #465. Pivot ala+ outside thrash.
+
+## Residual ala · 2026-07-10 — MarketplaceHost L5 Sprint 3 live-checkout deferred CTA honesty
+Paid catalog rows show disabled Live checkout (L5 deferred) CTA + honesty note;
+manual Purchase + host remains the only active paid path. Never invents charge.
+FUTURE L5 Sprint 3 offline stub. vitest MarketplaceHost 41 green.
+P0 operator merge PR #465. Pivot alb+ outside thrash.

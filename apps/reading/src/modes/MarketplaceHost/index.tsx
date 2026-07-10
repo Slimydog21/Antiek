@@ -1354,22 +1354,58 @@ export default function MarketplaceHost({
                 Host into account
               </button>
             ) : (
-              <button
-                type="button"
-                data-testid={`purchase-host-${e.book_id}`}
-                data-book-id={e.book_id}
-                data-seamless-purchase-port="true"
+              <div
+                className="flex flex-col items-end gap-1"
+                data-testid={`purchase-actions-${e.book_id}`}
                 data-l5-payment-rails="deferred"
                 data-live-payment="false"
-                data-view-format="html"
-                data-payment-rails="manual_receipt_only"
-                data-receipt-required="true"
-                disabled={busy || !receiptRef.trim()}
-                onClick={() => void onPurchaseAndHost(e)}
-                title="Purchase + host with manual receipt token (L5 live rails deferred · HTML account port)"
               >
-                Purchase + host
-              </button>
+                <button
+                  type="button"
+                  data-testid={`purchase-host-${e.book_id}`}
+                  data-book-id={e.book_id}
+                  data-seamless-purchase-port="true"
+                  data-l5-payment-rails="deferred"
+                  data-live-payment="false"
+                  data-view-format="html"
+                  data-payment-rails="manual_receipt_only"
+                  data-receipt-required="true"
+                  disabled={busy || !receiptRef.trim()}
+                  onClick={() => void onPurchaseAndHost(e)}
+                  title="Purchase + host with manual receipt token (L5 live rails deferred · HTML account port)"
+                >
+                  Purchase + host
+                </button>
+                {/* Residual (ala / L5 Sprint 3 offline): live checkout CTA stays
+                    disabled until dual-gate live rails — never invent charge. */}
+                <button
+                  type="button"
+                  data-testid={`live-checkout-deferred-${e.book_id}`}
+                  data-book-id={e.book_id}
+                  data-l5-payment-rails="deferred"
+                  data-live-payment="false"
+                  data-payment-rails="manual_receipt_only"
+                  data-payment-adapter-sprint="1"
+                  data-payment-adapter-boundary="shipped_offline"
+                  data-checkout-cta="deferred"
+                  data-live-checkout-available="false"
+                  disabled
+                  title="Live checkout deferred (L5 dual-gate ANTIEK_MARKETPLACE_LIVE_PAYMENT · Sprint 1–2 offline · never invent charge)"
+                  aria-disabled="true"
+                >
+                  Live checkout (L5 deferred)
+                </button>
+                <span
+                  className="text-[10px] font-mono opacity-70 max-w-[14rem] text-right"
+                  data-testid={`live-checkout-deferred-note-${e.book_id}`}
+                  data-l5-payment-rails="deferred"
+                  data-live-payment="false"
+                  data-checkout-cta="deferred"
+                >
+                  Use manual receipt token · live rails dual-gate only · zero
+                  upstream until operator enables payment
+                </span>
+              </div>
             )}
           </li>
         ))}

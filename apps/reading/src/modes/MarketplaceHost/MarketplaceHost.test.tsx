@@ -866,6 +866,21 @@ describe("MarketplaceHost mode", () => {
     );
     expect(purchaseBtn.getAttribute("data-receipt-required")).toBe("true");
     expect(screen.getByTestId("purchase-receipt-ref")).toBeTruthy();
+    // Residual (ala): L5 Sprint 3 offline live-checkout CTA stays deferred/disabled.
+    const liveCta = screen.getByTestId("live-checkout-deferred-buy-modern");
+    expect(liveCta.getAttribute("data-l5-payment-rails")).toBe("deferred");
+    expect(liveCta.getAttribute("data-live-payment")).toBe("false");
+    expect(liveCta.getAttribute("data-checkout-cta")).toBe("deferred");
+    expect(liveCta.getAttribute("data-live-checkout-available")).toBe("false");
+    expect(liveCta.getAttribute("data-payment-adapter-boundary")).toBe(
+      "shipped_offline",
+    );
+    expect((liveCta as HTMLButtonElement).disabled).toBe(true);
+    expect(liveCta.textContent).toMatch(/Live checkout \(L5 deferred\)/i);
+    const liveNote = screen.getByTestId("live-checkout-deferred-note-buy-modern");
+    expect(liveNote.getAttribute("data-checkout-cta")).toBe("deferred");
+    expect(liveNote.textContent).toMatch(/manual receipt token/i);
+    expect(liveNote.textContent).toMatch(/dual-gate/i);
     fireEvent.click(screen.getByTestId("purchase-host-buy-modern"));
     await waitFor(() => {
       expect(purchaseAndHost).toHaveBeenCalled();
