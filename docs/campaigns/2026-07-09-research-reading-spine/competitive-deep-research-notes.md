@@ -1294,3 +1294,8 @@ highest leverage.
 HostedHtmlDocumentHost stamps Open Write source + twinSeedTitle for
 collective_written_analysis. Competitive delta: multi-spawn analysis host path
 is mechanically proven (parity twin_cross_asset_merge vg).
+
+## Residual vo · 2026-07-10 — SESSION-ARC tt–vn infinite wave
+SESSION-ARC-tt-vn documents 47 residual ships for multi-agent swarm handoff.
+Competitive delta: compaction-safe wave map; operator merge PR #465 remains
+highest leverage.
