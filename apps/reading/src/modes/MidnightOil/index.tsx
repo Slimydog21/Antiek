@@ -15,6 +15,7 @@ import {
   finalArtifactMidnightOil,
   finalArtifactPersistencePlanMidnightOil,
   finalArtifactPublishPlanMidnightOil,
+  finalRunClosurePlanMidnightOil,
   finalHtmlArtifactAssemblyPlanMidnightOil,
   finalSynthesisDraftPlanMidnightOil,
   graphAdapterPlanMidnightOil,
@@ -57,6 +58,7 @@ import {
   type MidnightOilFinalArtifactReceipt,
   type MidnightOilFinalArtifactPersistencePlanReceipt,
   type MidnightOilFinalArtifactPublishPlanReceipt,
+  type MidnightOilFinalRunClosurePlanReceipt,
   type MidnightOilFinalHtmlArtifactAssemblyPlanReceipt,
   type MidnightOilFinalSynthesisDraftPlanReceipt,
   type MidnightOilGraphAdapterPlanReceipt,
@@ -203,6 +205,8 @@ export default function MidnightOil() {
     finalArtifactCompletionFinalizationPlanReceipt,
     setFinalArtifactCompletionFinalizationPlanReceipt,
   ] = useState<MidnightOilFinalArtifactCompletionFinalizationPlanReceipt | null>(null);
+  const [finalRunClosurePlanReceipt, setFinalRunClosurePlanReceipt] =
+    useState<MidnightOilFinalRunClosurePlanReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -263,6 +267,7 @@ export default function MidnightOil() {
     finalArtifactCompletionFinalizationPlanBusy,
     setFinalArtifactCompletionFinalizationPlanBusy,
   ] = useState(false);
+  const [finalRunClosurePlanBusy, setFinalRunClosurePlanBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
   const [liveSettingsError, setLiveSettingsError] = useState<string | null>(null);
@@ -340,10 +345,17 @@ export default function MidnightOil() {
     finalArtifactCompletionFinalizationPlanError,
     setFinalArtifactCompletionFinalizationPlanError,
   ] = useState<string | null>(null);
+  const [finalRunClosurePlanError, setFinalRunClosurePlanError] = useState<string | null>(null);
+
+  function clearFinalRunClosurePlan() {
+    setFinalRunClosurePlanError(null);
+    setFinalRunClosurePlanReceipt(null);
+  }
 
   function clearFinalArtifactCompletionFinalizationPlan() {
     setFinalArtifactCompletionFinalizationPlanError(null);
     setFinalArtifactCompletionFinalizationPlanReceipt(null);
+    clearFinalRunClosurePlan();
   }
 
   function clearFinalArtifactPublishPlan() {
@@ -2923,6 +2935,7 @@ export default function MidnightOil() {
     setFinalArtifactCompletionFinalizationPlanBusy(true);
     setFinalArtifactCompletionFinalizationPlanError(null);
     setFinalArtifactCompletionFinalizationPlanReceipt(null);
+    clearFinalRunClosurePlan();
     try {
       const result = await finalArtifactCompletionFinalizationPlanMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -2966,6 +2979,100 @@ export default function MidnightOil() {
       setFinalArtifactCompletionFinalizationPlanError(e instanceof Error ? e.message : String(e));
     } finally {
       setFinalArtifactCompletionFinalizationPlanBusy(false);
+    }
+  }
+
+  async function onFinalRunClosurePlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerControlPlanReceipt ||
+      !budgetProviderAdapterPlanReceipt ||
+      !providerExecutorAdapterPlanReceipt ||
+      !retrievalAdapterPlanReceipt ||
+      !graphAdapterPlanReceipt ||
+      !finalArtifactAdapterPlanReceipt ||
+      !operatorDispatchAdapterPlanReceipt ||
+      !controlLedgerAdapterPlanReceipt ||
+      !controlLedgerPersistencePlanReceipt ||
+      !controlLedgerPersistenceApplyPlanReceipt ||
+      !operatorDispatchActivationReadinessPlanReceipt ||
+      !liveDispatchFinalEnablementPlanReceipt ||
+      !liveDispatchFinalEnablementApplyPlanReceipt ||
+      !runnerDispatchSchedulerPlanReceipt ||
+      !runnerDispatchWorkerBootstrapPlanReceipt ||
+      !schedulerLeaseRetryPlanReceipt ||
+      !workerQueueClaimPlanReceipt ||
+      !repositoryTransactionPlanReceipt ||
+      !repositoryCommitRollbackPlanReceipt ||
+      !workerDispatchLeaseHeartbeatPlanReceipt ||
+      !workerCancellationAbandonPlanReceipt ||
+      !workerCompletionFinalizationPlanReceipt ||
+      !workerOutputAggregationPlanReceipt ||
+      !workerSynthesisHandoffPlanReceipt ||
+      !synthesisBundleAssemblyPlanReceipt ||
+      !finalSynthesisDraftPlanReceipt ||
+      !finalHtmlArtifactAssemblyPlanReceipt ||
+      !finalArtifactPersistencePlanReceipt ||
+      !finalArtifactGraphCommitPlanReceipt ||
+      !finalArtifactPublishPlanReceipt ||
+      !finalArtifactCompletionFinalizationPlanReceipt
+    ) {
+      setFinalRunClosurePlanError(
+        "Final run closure plan requires launch packet, approval receipt, runner handoff, runner control plan receipt, budget provider adapter plan receipt, provider executor adapter plan receipt, retrieval adapter plan receipt, graph adapter plan receipt, final artifact adapter plan receipt, operator dispatch adapter plan receipt, control ledger adapter plan receipt, control ledger persistence plan receipt, control ledger persistence apply plan receipt, operator dispatch activation readiness plan receipt, live dispatch final enablement plan receipt, live dispatch final enablement apply plan receipt, runner dispatch scheduler plan receipt, runner dispatch worker bootstrap plan receipt, scheduler lease retry plan receipt, worker queue claim plan receipt, repository transaction plan receipt, repository commit rollback plan receipt, worker lease heartbeat plan receipt, worker cancellation abandon plan receipt, worker completion finalization plan receipt, worker output aggregation plan receipt, worker synthesis handoff plan receipt, synthesis bundle assembly plan receipt, final synthesis draft plan receipt, final HTML artifact assembly plan receipt, final artifact persistence plan receipt, final artifact graph commit plan receipt, final artifact publish plan receipt, and final artifact completion finalization plan receipt.",
+      );
+      return;
+    }
+
+    setFinalRunClosurePlanBusy(true);
+    setFinalRunClosurePlanError(null);
+    setFinalRunClosurePlanReceipt(null);
+    try {
+      const result = await finalRunClosurePlanMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        runner_control_plan_receipt: runnerControlPlanReceipt,
+        budget_provider_adapter_plan_receipt: budgetProviderAdapterPlanReceipt,
+        provider_executor_adapter_plan_receipt: providerExecutorAdapterPlanReceipt,
+        retrieval_adapter_plan_receipt: retrievalAdapterPlanReceipt,
+        graph_adapter_plan_receipt: graphAdapterPlanReceipt,
+        final_artifact_adapter_plan_receipt: finalArtifactAdapterPlanReceipt,
+        operator_dispatch_adapter_plan_receipt: operatorDispatchAdapterPlanReceipt,
+        control_ledger_adapter_plan_receipt: controlLedgerAdapterPlanReceipt,
+        control_ledger_persistence_plan_receipt: controlLedgerPersistencePlanReceipt,
+        control_ledger_persistence_apply_plan_receipt: controlLedgerPersistenceApplyPlanReceipt,
+        operator_dispatch_activation_readiness_plan_receipt:
+          operatorDispatchActivationReadinessPlanReceipt,
+        live_dispatch_final_enablement_plan_receipt: liveDispatchFinalEnablementPlanReceipt,
+        live_dispatch_final_enablement_apply_plan_receipt:
+          liveDispatchFinalEnablementApplyPlanReceipt,
+        runner_dispatch_scheduler_plan_receipt: runnerDispatchSchedulerPlanReceipt,
+        runner_dispatch_worker_bootstrap_plan_receipt: runnerDispatchWorkerBootstrapPlanReceipt,
+        scheduler_lease_retry_plan_receipt: schedulerLeaseRetryPlanReceipt,
+        worker_queue_claim_plan_receipt: workerQueueClaimPlanReceipt,
+        repository_transaction_plan_receipt: repositoryTransactionPlanReceipt,
+        repository_commit_rollback_plan_receipt: repositoryCommitRollbackPlanReceipt,
+        worker_dispatch_lease_heartbeat_plan_receipt: workerDispatchLeaseHeartbeatPlanReceipt,
+        worker_cancellation_abandon_plan_receipt: workerCancellationAbandonPlanReceipt,
+        worker_completion_finalization_plan_receipt: workerCompletionFinalizationPlanReceipt,
+        worker_output_aggregation_plan_receipt: workerOutputAggregationPlanReceipt,
+        worker_synthesis_handoff_plan_receipt: workerSynthesisHandoffPlanReceipt,
+        synthesis_bundle_assembly_plan_receipt: synthesisBundleAssemblyPlanReceipt,
+        final_synthesis_draft_plan_receipt: finalSynthesisDraftPlanReceipt,
+        final_html_artifact_assembly_plan_receipt: finalHtmlArtifactAssemblyPlanReceipt,
+        final_artifact_persistence_plan_receipt: finalArtifactPersistencePlanReceipt,
+        final_artifact_graph_commit_plan_receipt: finalArtifactGraphCommitPlanReceipt,
+        final_artifact_publish_plan_receipt: finalArtifactPublishPlanReceipt,
+        final_artifact_completion_finalization_plan_receipt:
+          finalArtifactCompletionFinalizationPlanReceipt,
+      });
+      setFinalRunClosurePlanReceipt(result);
+    } catch (e) {
+      setFinalRunClosurePlanError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFinalRunClosurePlanBusy(false);
     }
   }
 
@@ -9417,6 +9524,260 @@ export default function MidnightOil() {
                   <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
                     Final artifact completion finalization receipt fields:{" "}
                     {finalArtifactCompletionFinalizationPlanReceipt.required_final_artifact_completion_finalization_receipt_fields.join(
+                      ", ",
+                    )}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Final run closure plan
+                </p>
+                <button
+                  type="button"
+                  onClick={onFinalRunClosurePlanGate}
+                  disabled={
+                    finalRunClosurePlanBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !runnerControlPlanReceipt ||
+                    !budgetProviderAdapterPlanReceipt ||
+                    !providerExecutorAdapterPlanReceipt ||
+                    !retrievalAdapterPlanReceipt ||
+                    !graphAdapterPlanReceipt ||
+                    !finalArtifactAdapterPlanReceipt ||
+                    !operatorDispatchAdapterPlanReceipt ||
+                    !controlLedgerAdapterPlanReceipt ||
+                    !controlLedgerPersistencePlanReceipt ||
+                    !controlLedgerPersistenceApplyPlanReceipt ||
+                    !operatorDispatchActivationReadinessPlanReceipt ||
+                    !liveDispatchFinalEnablementPlanReceipt ||
+                    !liveDispatchFinalEnablementApplyPlanReceipt ||
+                    !runnerDispatchSchedulerPlanReceipt ||
+                    !runnerDispatchWorkerBootstrapPlanReceipt ||
+                    !schedulerLeaseRetryPlanReceipt ||
+                    !workerQueueClaimPlanReceipt ||
+                    !repositoryTransactionPlanReceipt ||
+                    !repositoryCommitRollbackPlanReceipt ||
+                    !workerDispatchLeaseHeartbeatPlanReceipt ||
+                    !workerCancellationAbandonPlanReceipt ||
+                    !workerCompletionFinalizationPlanReceipt ||
+                    !workerOutputAggregationPlanReceipt ||
+                    !workerSynthesisHandoffPlanReceipt ||
+                    !synthesisBundleAssemblyPlanReceipt ||
+                    !finalSynthesisDraftPlanReceipt ||
+                    !finalHtmlArtifactAssemblyPlanReceipt ||
+                    !finalArtifactPersistencePlanReceipt ||
+                    !finalArtifactGraphCommitPlanReceipt ||
+                    !finalArtifactPublishPlanReceipt ||
+                    !finalArtifactCompletionFinalizationPlanReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {finalRunClosurePlanBusy ? "Planning closure..." : "Final run closure plan"}
+                </button>
+              </div>
+
+              {finalRunClosurePlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {finalRunClosurePlanError}
+                </p>
+              )}
+
+              {finalRunClosurePlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Final run closure receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {finalRunClosurePlanReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={finalRunClosurePlanReceipt.status.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Closure"
+                      value={
+                        finalRunClosurePlanReceipt.final_run_closure_allowed
+                          ? "allowed"
+                          : "blocked"
+                      }
+                    />
+                    <Metric
+                      label="Closeout"
+                      value={
+                        finalRunClosurePlanReceipt.run_closeout_record_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Delivery ledger"
+                      value={
+                        finalRunClosurePlanReceipt.operator_delivery_ledger_entry_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Notification"
+                      value={
+                        finalRunClosurePlanReceipt.delivery_notification_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Workspace card"
+                      value={
+                        finalRunClosurePlanReceipt.workspace_delivery_card_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Retention"
+                      value={
+                        finalRunClosurePlanReceipt.run_retention_manifest_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Billing"
+                      value={
+                        finalRunClosurePlanReceipt.billing_reconciliation_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Usage rollup"
+                      value={
+                        finalRunClosurePlanReceipt.model_usage_rollup_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Completion finalization plan"
+                      value={
+                        finalRunClosurePlanReceipt.final_artifact_completion_finalization_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Publish plan"
+                      value={finalRunClosurePlanReceipt.final_artifact_publish_plan_receipt_id}
+                    />
+                    <Metric
+                      label="Closure receipt"
+                      value={finalRunClosurePlanReceipt.planned_final_run_closure_receipt_id}
+                    />
+                    <Metric
+                      label="Closeout record"
+                      value={finalRunClosurePlanReceipt.planned_run_closeout_record_id}
+                    />
+                    <Metric
+                      label="Delivery ledger"
+                      value={
+                        finalRunClosurePlanReceipt.planned_operator_delivery_ledger_entry_id
+                      }
+                    />
+                    <Metric
+                      label="Delivery notification"
+                      value={finalRunClosurePlanReceipt.planned_delivery_notification_id}
+                    />
+                    <Metric
+                      label="Workspace card"
+                      value={finalRunClosurePlanReceipt.planned_workspace_delivery_card_id}
+                    />
+                    <Metric
+                      label="Retention manifest"
+                      value={finalRunClosurePlanReceipt.planned_run_retention_manifest_id}
+                    />
+                    <Metric
+                      label="Billing reconciliation"
+                      value={finalRunClosurePlanReceipt.planned_billing_reconciliation_id}
+                    />
+                    <Metric
+                      label="Model usage rollup"
+                      value={finalRunClosurePlanReceipt.planned_model_usage_rollup_id}
+                    />
+                    <Metric
+                      label="Source lineage archive"
+                      value={finalRunClosurePlanReceipt.planned_source_lineage_archive_id}
+                    />
+                    <Metric
+                      label="Completion record"
+                      value={finalRunClosurePlanReceipt.planned_completion_record_id}
+                    />
+                    <Metric
+                      label="Quality attestation"
+                      value={finalRunClosurePlanReceipt.planned_quality_attestation_id}
+                    />
+                    <Metric
+                      label="Completion audit"
+                      value={finalRunClosurePlanReceipt.planned_completion_audit_entry_id}
+                    />
+                    <Metric
+                      label="Account-visible asset"
+                      value={finalRunClosurePlanReceipt.planned_account_visible_asset_id}
+                    />
+                    <Metric
+                      label="Reading workspace entry"
+                      value={finalRunClosurePlanReceipt.planned_reading_workspace_entry_id}
+                    />
+                    <Metric
+                      label="Search index entry"
+                      value={finalRunClosurePlanReceipt.planned_search_index_entry_id}
+                    />
+                    <Metric
+                      label="Private read URL"
+                      value={finalRunClosurePlanReceipt.planned_private_read_url_id}
+                    />
+                    <Metric
+                      label="Hosted HTML asset"
+                      value={finalRunClosurePlanReceipt.planned_hosted_html_asset_id}
+                    />
+                    <Metric
+                      label="Runner dispatch"
+                      value={finalRunClosurePlanReceipt.planned_runner_dispatch_id}
+                    />
+                    <Metric
+                      label="Idempotency key"
+                      value={finalRunClosurePlanReceipt.planned_idempotency_key}
+                    />
+                    <Metric
+                      label="Adapter"
+                      value={finalRunClosurePlanReceipt.adapter_key.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Blocker"
+                      value={finalRunClosurePlanReceipt.blocker_reason.replaceAll("_", " ")}
+                    />
+                  </div>
+                  <ul className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {finalRunClosurePlanReceipt.required_final_run_closure_invariants
+                      .slice(0, 5)
+                      .map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                  </ul>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Final run closure blockers:{" "}
+                    {finalRunClosurePlanReceipt.final_run_closure_blockers.join(", ")}
+                  </p>
+                  <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Final run closure receipt fields:{" "}
+                    {finalRunClosurePlanReceipt.required_final_run_closure_receipt_fields.join(
                       ", ",
                     )}
                   </p>
