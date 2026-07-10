@@ -20,6 +20,16 @@ _VALID_STAGES = frozenset(
     {"plan", "gather", "synthesize", "cite", "complete", "failed"}
 )
 
+# Residual (aqc): closed competitive multi-stage pipeline (parity frontend
+# COMPETITIVE_DR_PIPELINE_STAGES · ape · complete/failed → terminal).
+COMPETITIVE_DR_PIPELINE_STAGES: tuple[str, ...] = (
+    "plan",
+    "gather",
+    "synthesize",
+    "cite",
+    "terminal",
+)
+
 
 @dataclass(frozen=True)
 class ProgressEvent:
@@ -107,6 +117,73 @@ def list_progress(spawn_id: str, *, store: EngagementStore) -> list[ProgressEven
     return out
 
 
+def competitive_stage_pipeline_progress(
+    *,
+    events: Sequence[dict[str, Any] | ProgressEvent] | None = None,
+    latest_stage: str | None = None,
+    is_terminal: bool | None = None,
+) -> dict[str, Any]:
+    """Residual (aqc): multi-stage pipeline completeness (never invent stages).
+
+    Parity frontend ``competitiveDrStageProgress`` / COMPETITIVE_DR_PIPELINE_STAGES.
+    Maps complete/failed → terminal.
+    """
+    seen: set[str] = set()
+
+    def _norm(stage: str | None) -> str | None:
+        s = str(stage or "").strip().lower()
+        if not s:
+            return None
+        if s in ("complete", "failed", "terminal", "done"):
+            return "terminal"
+        if s in COMPETITIVE_DR_PIPELINE_STAGES:
+            return s
+        if "plan" in s:
+            return "plan"
+        if "gather" in s or "search" in s:
+            return "gather"
+        if "synth" in s or "draft" in s:
+            return "synthesize"
+        if "cite" in s or "citation" in s:
+            return "cite"
+        return None
+
+    for e in events or ():
+        if isinstance(e, ProgressEvent):
+            n = _norm(e.stage)
+        elif isinstance(e, dict):
+            n = _norm(str(e.get("stage") or ""))
+        else:
+            n = None
+        if n:
+            seen.add(n)
+    latest_n = _norm(latest_stage)
+    if latest_n:
+        seen.add(latest_n)
+    if is_terminal:
+        seen.add("terminal")
+    completed = [s for s in COMPETITIVE_DR_PIPELINE_STAGES if s in seen]
+    total = len(COMPETITIVE_DR_PIPELINE_STAGES)
+    completed_count = len(completed)
+    if is_terminal or "terminal" in seen:
+        current: str | None = "terminal"
+    elif latest_n and latest_n != "terminal":
+        current = latest_n
+    elif completed:
+        current = completed[-1]
+    else:
+        current = None
+    return {
+        "stages": list(COMPETITIVE_DR_PIPELINE_STAGES),
+        "completed": completed,
+        "current": current,
+        "completed_count": completed_count,
+        "total": total,
+        "coverage_ratio": (completed_count / total) if total else 0.0,
+        "is_terminal": bool(is_terminal) or "terminal" in seen,
+    }
+
+
 def progress_payload(
     spawn_id: str,
     *,
@@ -117,20 +194,29 @@ def progress_payload(
 
     Residual (jz): include spawn ``research_tier`` when reserved (default deep)
     so multi-minute progress UI can stay aligned without a second fetch.
+    Residual (aqc): include ``stage_pipeline`` completeness summary (ape parity).
     """
     from substrate.dispatch.research_tier import normalize_research_tier
 
     events = list_progress(spawn_id, store=store)
     stages = [e.stage for e in events]
     latest = stages[-1] if stages else None
+    is_terminal = latest in ("complete", "failed") if latest else False
     spawn_row = store.get_spawn(spawn_id) or {}
     tier = normalize_research_tier(spawn_row.get("research_tier"))
+    event_dicts = [e.to_dict() for e in events]
+    stage_pipeline = competitive_stage_pipeline_progress(
+        events=event_dicts,
+        latest_stage=latest,
+        is_terminal=is_terminal,
+    )
     payload: dict[str, Any] = {
         "spawn_id": spawn_id,
         "event_count": len(events),
-        "events": [e.to_dict() for e in events],
+        "events": event_dicts,
         "latest_stage": latest,
-        "is_terminal": latest in ("complete", "failed") if latest else False,
+        "is_terminal": is_terminal,
+        "stage_pipeline": stage_pipeline,
         "research_tier": tier,
         "view_format": "html",
         "product_panel": "research_progress",
@@ -175,6 +261,33 @@ def project_progress_html(payload: dict[str, Any]) -> str:
             ],
         },
     ]
+    # Residual (aqc): competitive multi-stage pipeline completeness line.
+    stage_pipe = payload.get("stage_pipeline")
+    if not isinstance(stage_pipe, dict):
+        stage_pipe = competitive_stage_pipeline_progress(
+            events=payload.get("events") or [],
+            latest_stage=str(latest) if latest != "(none)" else None,
+            is_terminal=bool(payload.get("is_terminal")),
+        )
+    completed_n = int(stage_pipe.get("completed_count") or 0)
+    total_n = int(stage_pipe.get("total") or len(COMPETITIVE_DR_PIPELINE_STAGES))
+    current = stage_pipe.get("current") or ""
+    terminal_s = " · terminal" if stage_pipe.get("is_terminal") else ""
+    current_s = f" · current={current}" if current else ""
+    blocks.append(
+        {
+            "type": "paragraph",
+            "content": [
+                {
+                    "type": "text",
+                    "text": (
+                        f"Competitive pipeline · {completed_n}/{total_n} stages"
+                        f"{current_s}{terminal_s}"
+                    ),
+                }
+            ],
+        }
+    )
     events = payload.get("events") or []
     if not events:
         blocks.append(

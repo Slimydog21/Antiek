@@ -3852,3 +3852,8 @@ P0 PR #465. Pivot aqb+ outside thrash.
 project_evidence_html emits "Competitive citation hops · N/3 … never invent sources"
 from citation_hop_pipeline (apz) so float HostedHtml apo detection works on real packs.
 pytest test_engagement_evidence 5 green. P0 PR #465. Pivot aqc+ outside thrash.
+
+## Residual aqc · 2026-07-10 — substrate multi-stage progress pipeline summary
+competitive_stage_pipeline_progress + progress_payload.stage_pipeline + HTML
+Competitive pipeline line (parity frontend ape). Maps complete/failed→terminal.
+pytest test_engagement_progress 4 green. P0 PR #465. Pivot aqd+ outside thrash.

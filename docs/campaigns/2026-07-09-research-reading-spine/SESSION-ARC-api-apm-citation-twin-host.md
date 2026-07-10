@@ -30,3 +30,4 @@ one residual/cycle · campaign push only · operator merges PR #465.
 | **apz** | substrate citation hop pipeline on evidence pack | data-layer parity frontend api |
 | **aqa** | wire substrate citation_hop_pipeline into ResearchContext UI | frontend↔substrate hop loop closed |
 | **aqb** | evidence HTML competitive hop pipeline line | substrate HTML for float apo detection |
+| **aqc** | substrate multi-stage progress pipeline summary | data-layer parity frontend ape |

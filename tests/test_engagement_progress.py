@@ -25,6 +25,10 @@ from substrate.engagement_spine import (  # noqa: E402
     seed_default_pipeline,
     spawn_from_highlight,
 )
+from substrate.engagement_spine.progress import (  # noqa: E402
+    COMPETITIVE_DR_PIPELINE_STAGES,
+    competitive_stage_pipeline_progress,
+)
 
 
 @pytest.fixture
@@ -53,10 +57,42 @@ def test_record_progress_pipeline():
     assert "application/pdf" not in payload["html"].lower()
     # Residual (jz): default research_tier deep on progress snapshot.
     assert payload["research_tier"] == "deep"
+    # Residual (aqc): multi-stage pipeline completeness on payload + HTML.
+    stage_pipe = payload["stage_pipeline"]
+    assert stage_pipe["completed"] == ["plan", "gather", "synthesize", "cite"]
+    assert stage_pipe["completed_count"] == 4
+    assert stage_pipe["total"] == 5
+    assert stage_pipe["current"] == "cite"
+    assert stage_pipe["is_terminal"] is False
+    assert abs(stage_pipe["coverage_ratio"] - 0.8) < 1e-9
+    assert "Competitive pipeline" in payload["html"]
+    assert "4/5" in payload["html"]
     record_progress(spawn.spawn_id, "complete", "done", store=store)
     payload2 = progress_payload(spawn.spawn_id, store=store)
     assert payload2["latest_stage"] == "complete"
     assert payload2["is_terminal"] is True
+    assert payload2["stage_pipeline"]["is_terminal"] is True
+    assert "terminal" in payload2["stage_pipeline"]["completed"]
+
+
+def test_competitive_stage_pipeline_progress_never_invents():
+    """Residual (aqc): pure helper never invents unreported stages."""
+    assert list(COMPETITIVE_DR_PIPELINE_STAGES) == [
+        "plan",
+        "gather",
+        "synthesize",
+        "cite",
+        "terminal",
+    ]
+    empty = competitive_stage_pipeline_progress()
+    assert empty["completed"] == []
+    assert empty["current"] is None
+    mid = competitive_stage_pipeline_progress(
+        events=[{"stage": "plan"}, {"stage": "gather"}],
+        latest_stage="gather",
+    )
+    assert mid["completed"] == ["plan", "gather"]
+    assert mid["current"] == "gather"
 
 
 def test_progress_payload_surfaces_spawn_research_tier_wrestle():

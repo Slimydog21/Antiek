@@ -107,6 +107,8 @@ from .hydrate_live_wiring import (
 from .context_search import search_engagement_context, project_context_search_html
 from .progress import (
     ProgressEvent,
+    COMPETITIVE_DR_PIPELINE_STAGES,
+    competitive_stage_pipeline_progress,
     list_progress,
     progress_payload,
     project_progress_html,
@@ -168,6 +170,8 @@ __all__ = [
     "hydrate_reference",
     "hydrate_with_arxiv_adapter",
     "hydrate_with_publication_adapters",
+    "COMPETITIVE_DR_PIPELINE_STAGES",
+    "competitive_stage_pipeline_progress",
     "list_progress",
     "live_fetch_publication_from_env",
     "substack_post_fetch_publication",

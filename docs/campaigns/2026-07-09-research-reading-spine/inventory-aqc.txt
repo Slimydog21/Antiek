@@ -1,0 +1,14 @@
+# inventory-aqc · substrate multi-stage progress pipeline summary
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: aqc
+date: 2026-07-10
+parent_tip: 04e70d46 (aqb)
+
+## Closed
+- competitive_stage_pipeline_progress pure helper (complete/failed → terminal)
+- progress_payload.stage_pipeline + HTML Competitive pipeline line
+- pytest test_engagement_progress 4 green
+
+## Next
+aqd+ product residual outside thrash
+Operator merge PR #465 remains highest leverage (gated)
