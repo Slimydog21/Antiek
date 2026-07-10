@@ -1576,3 +1576,8 @@ highest leverage.
 default_demo_catalog filter_by_subject(computing) free PD includes Boole ·
 Shannon · Turing · Lovelace as HTML. Competitive delta: free computing STEM
 spine is substrate-true (parity frontend compose xp).
+
+## Residual xu · 2026-07-10 — ResearchProgress dual-gate #l4-moil
+ResearchProgress dual-gate checklist jumps to #l4-moil (parity MO wx).
+Competitive delta: multi-minute progress surface navigates live-step deferred
+policy without inventing injectors.

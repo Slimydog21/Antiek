@@ -271,7 +271,7 @@ export function ResearchProgressPanel({
             Settings · driver & budget
           </a>
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l4-moil"
             data-testid="research-progress-dual-gate-checklist-link"
             title="Dual-gate L1–L4 checklist (prep only)"
           >

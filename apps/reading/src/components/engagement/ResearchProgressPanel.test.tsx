@@ -54,7 +54,8 @@ describe("ResearchProgressPanel", () => {
     expect(band.textContent).toMatch(/long-horizon/i);
     expect(band.textContent).toMatch(/offline-honest estimate/i);
     const dual = screen.getByTestId("research-progress-dual-gate-checklist-link");
-    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4/);
+    // Residual (xu): multi-minute job prep → L4 MO live-step checklist section.
+    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l4-moil/);
   });
 
   it("seeds and shows plan→cite pipeline", async () => {
