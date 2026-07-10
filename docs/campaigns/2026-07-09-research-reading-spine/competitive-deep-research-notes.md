@@ -2077,3 +2077,8 @@ Free inventory is_free-only doctrine closed API·HTML·UI·host·library JSON·l
 (abn–abx). Tip 08ef962c · 158 ships. Competitive delta: swarm handoff tip-true;
 operator merge PR #465 highest leverage.
 
+## Residual abz · 2026-07-10 — free inventory chip copy honesty
+Marketplace free chip label/strip say free inventory only / free-only=on (parity
+is_free doctrine abn–abx). Competitive delta: operator-facing free filter copy
+matches free inventory identity end-to-end.
+

@@ -942,7 +942,7 @@ export default function MarketplaceHost({
             aria-label="Filter catalog"
           />
         </label>
-        {/* Residual (is): free public_domain quick filter for research spine. */}
+        {/* Residual (is/abz): free inventory quick filter (is_free only · parity free doctrine). */}
         <label className="flex items-center gap-2 text-sm font-mono pb-1">
           <input
             type="checkbox"
@@ -951,7 +951,7 @@ export default function MarketplaceHost({
             onChange={(e) => setFreePdOnly(e.target.checked)}
             disabled={busy}
           />
-          Free public-domain only
+          Free inventory only
         </label>
         {/* Residual (lw): research-domain subject chips (STEM / philosophy / …). */}
         <div
@@ -1165,7 +1165,7 @@ export default function MarketplaceHost({
             Filtered free honesty: visible_free={filteredFreeCount} ·
             catalog_free={catalogFreeCount} · visible_pd=
             {filteredPublicDomainCount}
-            {freePdOnly ? " · free-PD-only=on" : ""}
+            {freePdOnly ? " · free-only=on" : ""}
             {subjectFilter ? ` · subject=${subjectFilter}` : ""}
             {sourceFilter ? ` · source=${sourceFilter}` : ""}
             {" · HTML host path only (no live payment rails)"}
@@ -1243,7 +1243,7 @@ export default function MarketplaceHost({
           {filterQuery.trim() ? ` for “${filterQuery.trim()}”` : ""}
           {subjectFilter ? ` in domain “${subjectFilter}”` : ""}
           {sourceFilter ? ` from source “${sourceFilter}”` : ""}
-          {freePdOnly ? " (free public-domain only)" : ""}.
+          {freePdOnly ? " (free inventory only)" : ""}.
         </p>
       ) : null}
 

@@ -1,0 +1,21 @@
+# inventory-abz · free inventory chip copy honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: abz
+date: 2026-07-10
+tip_before: e60d5298 (aby)
+
+## Problem
+Free chip UI still said free public-domain / free-PD-only while filter is is_free
+inventory (abq–abu doctrine).
+
+## Fix
+- Label: Free inventory only
+- Honesty strip: free-only=on
+- Empty state: free inventory only
+- MarketplaceHost free filter test locks free-only=on
+
+## Verified
+vitest MarketplaceHost filters free → passed
+
+## Not in scope
+- Operator merge PR #465 (gated)

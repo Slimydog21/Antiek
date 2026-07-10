@@ -966,7 +966,8 @@ describe("MarketplaceHost mode", () => {
     expect(honesty.getAttribute("data-free-pd-only")).toBe("true");
     expect(honesty.textContent).toMatch(/visible_free=1/);
     expect(honesty.textContent).toMatch(/catalog_free=1/);
-    expect(honesty.textContent).toMatch(/free-PD-only=on/);
+    // Residual (abz): free inventory chip copy is free-only (is_free doctrine).
+    expect(honesty.textContent).toMatch(/free-only=on/);
   });
 
   it("groups catalog entries by research subject (lw)", () => {
