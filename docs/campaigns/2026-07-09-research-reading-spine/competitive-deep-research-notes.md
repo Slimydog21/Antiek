@@ -1660,3 +1660,8 @@ swarm handoff tip-true; operator merge PR #465 highest leverage.
 DecisionTreeDriverBadge dual-gate entry stamps offline-default and L7 ND
 advisory-only. Competitive delta: shared driver+budget chokepoint never
 implies silent live injectors or ND dispatch authority.
+
+## Residual ym · 2026-07-10 — launch budget dual-gate offline + L7 ND stamps
+ResearchLaunchBudget dual-gate entry stamps offline-default and L7 ND
+advisory-only (parity DecisionTree yl). Competitive delta: shared launch
+budget chokepoint never implies silent live injectors or ND dispatch authority.

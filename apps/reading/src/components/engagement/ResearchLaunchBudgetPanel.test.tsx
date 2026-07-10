@@ -85,6 +85,9 @@ describe("ResearchLaunchBudgetPanel", () => {
       "research-launch-budget-dual-gate-checklist-link",
     );
     expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4/);
+    // Residual (ym): launch budget dual-gate honesty stamps (parity DecisionTree yl).
+    expect(dual.getAttribute("data-offline-default")).toBe("true");
+    expect(dual.getAttribute("data-l7-notdiamond")).toBe("advisory_only");
     // Residual (sc): deep-link to decision-tree panel (driver + budget foresight).
     expect(settings.getAttribute("href")).toBe("/settings#decision-tree-panel");
     expect(settings.textContent).toMatch(/driver/i);

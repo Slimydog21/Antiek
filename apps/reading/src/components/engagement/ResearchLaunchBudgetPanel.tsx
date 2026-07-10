@@ -241,12 +241,14 @@ export function ResearchLaunchBudgetPanel({
           >
             Settings · driver
           </a>
-          {/* Residual (nu): dual-gate prep on shared launch budget chokepoint. */}
+          {/* Residual (nu/ym): dual-gate prep on shared launch budget chokepoint. */}
           <a
             href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
             data-testid="research-launch-budget-dual-gate-checklist-link"
+            data-offline-default="true"
+            data-l7-notdiamond="advisory_only"
             className="text-[10px] font-mono underline opacity-80 hover:opacity-100"
-            title="Dual-gate L1–L4 checklist (prep only; offline default)"
+            title="Dual-gate L1–L7 checklist entry (offline default · ND advisory only · never silent live)"
           >
             Dual-gate
           </a>
