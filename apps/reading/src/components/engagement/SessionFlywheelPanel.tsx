@@ -18,6 +18,8 @@
  * Residual (re): Open Write twin_seed after flywheel complete.
  * Residual (acs): data-write-seed-has-body when output or prompt_block non-empty.
  * Residual (sn): float|full session complete HTML (output + prompt_block).
+ * Residual (ats): open float|full|Write stamp html-first · session-complete ·
+ * flywheel-open-ready · source=session_flywheel_complete (parity atr unit continue).
  * Residual (ant): budget soft-gate on Complete flywheel (budget-before-fire ·
  * parity merge ank/anl · continue-as-unit di · session land foresight).
  * Composes shipped completeSessionFlywheel. HTML-first context pack.
@@ -447,17 +449,24 @@ export function SessionFlywheelPanel({
               {result.prompt_block}
             </pre>
           ) : null}
-          {/* Residual (sn): flywheel complete → float|full HTML reading windows. */}
+          {/* Residual (sn/ats): flywheel complete → float|full HTML reading windows
+              with html-first · session-complete · open-ready honesty stamps. */}
           {(output.trim() || (result.prompt_block || "").trim()) ? (
             <p className="space-x-3">
               <button
                 type="button"
                 data-testid="session-flywheel-open-float"
                 data-view-format="html"
+                data-html-first="true"
                 data-window-mode="floating"
                 data-status={result.status ?? ""}
+                data-session-complete={String(
+                  String(result.status || "").toLowerCase() === "complete",
+                )}
+                data-flywheel-open-ready="true"
+                data-source="session_flywheel_complete"
                 className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
-                title="Open session flywheel complete as floating HTML window (never PDF)"
+                title="Open session flywheel complete as floating HTML window (session→prompt substrate · never PDF)"
                 onClick={() => {
                   const sid = result.session_id || sessionId;
                   const id = `session_flywheel:${sid}:${Date.now().toString(36)}`;
@@ -493,10 +502,16 @@ export function SessionFlywheelPanel({
                 type="button"
                 data-testid="session-flywheel-open-full"
                 data-view-format="html"
+                data-html-first="true"
                 data-window-mode="full"
                 data-status={result.status ?? ""}
+                data-session-complete={String(
+                  String(result.status || "").toLowerCase() === "complete",
+                )}
+                data-flywheel-open-ready="true"
+                data-source="session_flywheel_complete"
                 className="underline opacity-90 hover:opacity-100 bg-transparent border-0 p-0 cursor-pointer font-mono text-[11px]"
-                title="Open session flywheel complete as full working-region HTML window (never PDF)"
+                title="Open session flywheel complete as full working-region HTML window (session→prompt substrate · never PDF)"
                 onClick={() => {
                   const sid = result.session_id || sessionId;
                   const id = `session_flywheel:${sid}:full:${Date.now().toString(36)}`;
@@ -530,7 +545,7 @@ export function SessionFlywheelPanel({
               </button>
             </p>
           ) : null}
-          {/* Residual (re/acs/aex): flywheel complete → Write twin_seed + path. */}
+          {/* Residual (re/acs/aex/ats): flywheel complete → Write twin_seed + path. */}
           {(() => {
             const href = buildSessionFlywheelWriteHref({
               sessionId: result.session_id || sessionId,
@@ -555,8 +570,14 @@ export function SessionFlywheelPanel({
                   href={href}
                   data-testid="session-flywheel-open-write"
                   data-view-format="html"
+                  data-html-first="true"
                   data-has-twin-seed="1"
                   data-status={result.status ?? ""}
+                  data-session-complete={String(
+                    String(result.status || "").toLowerCase() === "complete",
+                  )}
+                  data-flywheel-open-ready={String(hasBody)}
+                  data-source="session_flywheel_complete"
                   data-write-seed-has-body={String(hasBody)}
                   // Residual (aex): session flywheel → Write path honesty.
                   data-session-id={fwSession}
@@ -568,7 +589,7 @@ export function SessionFlywheelPanel({
                     Boolean(fwSession || fwSpawn),
                   )}
                   className="underline opacity-90 hover:opacity-100"
-                  title="Open Write with session flywheel output as twin_seed (session complete · no invented document_id)"
+                  title="Open Write with session flywheel output as twin_seed (session complete · HTML-first · never invent document_id · never PDF)"
                 >
                   Open Write (session complete)
                 </a>

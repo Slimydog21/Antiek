@@ -169,8 +169,16 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
     expect(
       screen.getByTestId("session-flywheel-context-research-tier").textContent,
     ).toMatch(/wrestle/);
-    // Residual (sn): float|full session complete HTML.
-    fireEvent.click(screen.getByTestId("session-flywheel-open-float"));
+    // Residual (sn/ats): float|full session complete HTML + open-ready stamps.
+    const openFloat = screen.getByTestId("session-flywheel-open-float");
+    expect(openFloat.getAttribute("data-html-first")).toBe("true");
+    expect(openFloat.getAttribute("data-session-complete")).toBe("true");
+    expect(openFloat.getAttribute("data-flywheel-open-ready")).toBe("true");
+    expect(openFloat.getAttribute("data-source")).toBe(
+      "session_flywheel_complete",
+    );
+    expect(openFloat.getAttribute("title") || "").toMatch(/never PDF/i);
+    fireEvent.click(openFloat);
     const floatCall = openWindow.mock.calls.at(-1) as [
       string,
       { source?: string; html?: string; view_format?: string },
@@ -182,17 +190,24 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
     expect(floatCall[1].html).toMatch(/Session flywheel complete/);
     expect(floatCall[1].html).toMatch(/Attention is content-addressable/);
     expect(floatCall[2].mode).toBe("floating");
-    fireEvent.click(screen.getByTestId("session-flywheel-open-full"));
+    const openFull = screen.getByTestId("session-flywheel-open-full");
+    expect(openFull.getAttribute("data-html-first")).toBe("true");
+    expect(openFull.getAttribute("data-flywheel-open-ready")).toBe("true");
+    fireEvent.click(openFull);
     expect(
       (openWindow.mock.calls.at(-1) as [{}, {}, { mode?: string }])[2].mode,
     ).toBe("full");
-    // Residual (re/aex): Open Write twin_seed after flywheel complete + path.
+    // Residual (re/aex/ats): Open Write twin_seed after flywheel complete + path.
     const write = screen.getByTestId("session-flywheel-open-write");
     const href = write.getAttribute("href") || "";
     expect(href).toMatch(/^\/write\?twin_seed=antiek\.twin_write_seed\./);
     expect(href).not.toMatch(/html_draft=/);
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
     expect(write.getAttribute("data-status")).toBe("complete");
+    expect(write.getAttribute("data-html-first")).toBe("true");
+    expect(write.getAttribute("data-session-complete")).toBe("true");
+    expect(write.getAttribute("data-flywheel-open-ready")).toBe("true");
+    expect(write.getAttribute("data-source")).toBe("session_flywheel_complete");
     // Residual (acs): output/prompt_block body → has-body true.
     expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
     // Residual (aex): session flywheel → Write path honesty.
