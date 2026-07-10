@@ -112,7 +112,12 @@ from .progress import (
     record_progress,
     seed_default_pipeline,
 )
-from .evidence import evidence_pack_payload, project_evidence_html
+from .evidence import (
+    build_citation_chain_hops,
+    citation_chain_complete,
+    evidence_pack_payload,
+    project_evidence_html,
+)
 
 __all__ = [
     "CollectiveResearchUnit",
@@ -150,6 +155,8 @@ __all__ = [
     "compose_fetch_publication",
     "configure_engagement_hydrate_injectors",
     "env_flag",
+    "build_citation_chain_hops",
+    "citation_chain_complete",
     "evidence_pack_payload",
     "get_spawn",
     "hydrate_reference",

@@ -2980,3 +2980,8 @@ vitest HostedHtml 25 green. P0 operator merge PR #465. Pivot ajg+ outside thrash
 Wave handoff: dogfood v30 · attach/flywheel/badge scorecard · free STEM domainSubjects.
 Scorecard matrix dense — next residuals prefer non-scorecard product. P0 merge #465.
 Pivot ajh+ outside thrash.
+
+## Residual ajh · 2026-07-10 — public export multi-hop citation chain builders
+engagement_spine exports build_citation_chain_hops + citation_chain_complete
+for agent-readable multi-hop claim→source API (air). pytest evidence 4 green.
+P0 operator merge PR #465. Pivot aji+ outside thrash.

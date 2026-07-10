@@ -1,0 +1,16 @@
+# inventory-ajh · public export multi-hop citation chain builders
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ajh
+date: 2026-07-10
+parent_tip: e4dc0ef0 (ajg)
+
+## Closed
+- substrate.engagement_spine public API:
+  - build_citation_chain_hops
+  - citation_chain_complete
+- Agents/tests import multi-hop builders without private .evidence path
+- pytest evidence 4 green
+
+## Next
+aji+ product residual outside thrash · infinite continues
+Operator merge PR #465 remains highest leverage (gated)

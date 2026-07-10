@@ -21,14 +21,12 @@ from interfaces.research.api import engagement_routes as eng_mod  # noqa: E402
 from substrate.engagement_spine import (  # noqa: E402
     HighlightSelection,
     attach_source_references,
+    build_citation_chain_hops,
+    citation_chain_complete,
     evidence_pack_payload,
     record_twin_insight,
     record_twin_question,
     spawn_from_highlight,
-)
-from substrate.engagement_spine.evidence import (  # noqa: E402
-    build_citation_chain_hops,
-    citation_chain_complete,
 )
 
 
