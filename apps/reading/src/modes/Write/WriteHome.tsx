@@ -839,6 +839,9 @@ export default function WriteHome() {
         data-view-format="html"
         data-html-first="true"
         data-product-panel="write_home"
+        data-soft-budget="true"
+        data-budget-before-fire="true"
+        data-never-auto-route="true"
       >
         <header className="mb-6 space-y-2">
           <h1 className="font-serif text-2xl font-semibold text-ink dark:text-bright">
@@ -847,7 +850,8 @@ export default function WriteHome() {
           <p className="mt-1 text-sm text-ink-soft dark:text-moonlight">
             Pull your research notes into an outline, generate a first draft
             from them, then edit. Or dump a raw idea and let the blocks fall out.
-            HTML-first deliverables only (never PDF view).
+            HTML-first deliverables only (never PDF view). Soft budget foresight
+            on driver prompts · never auto-route model choice.
           </p>
           {/* Residual (apx): competitive DR map on Write home (reading ≡ research ≡ writing). */}
           <p
@@ -881,6 +885,40 @@ export default function WriteHome() {
               data-testid="write-home-competitive-pipeline-hint"
             >
               hops insights→questions→sources · stages plan→terminal
+            </span>
+          </p>
+          {/* Residual (aqr): soft-budget honesty nav on Write home (parity ResearchThis aqq). */}
+          <p
+            className="text-[10px] font-mono flex flex-wrap gap-x-3 gap-y-1 opacity-90"
+            data-testid="write-home-honesty-nav"
+            data-view-format="html"
+            data-soft-budget="true"
+            data-budget-before-fire="true"
+            data-never-auto-route="true"
+            role="navigation"
+            aria-label="Write home budget and model honesty navigation"
+          >
+            <a
+              href="/settings#prompt-cost-projection"
+              data-testid="write-home-prompt-cost-honesty-link"
+              className="underline opacity-90 hover:opacity-100"
+              title="Settings prompt-cost projection (soft budget foresight)"
+            >
+              Prompt-cost projection
+            </a>
+            <a
+              href="/settings#decision-tree-panel"
+              data-testid="write-home-decision-tree-honesty-link"
+              className="underline opacity-90 hover:opacity-100"
+              title="Settings decision-tree driver (manual model choice · never auto-route)"
+            >
+              Decision-tree driver
+            </a>
+            <span
+              className="opacity-70"
+              data-testid="write-home-soft-budget-hint"
+            >
+              soft budget · budget-before-fire · never auto-route
             </span>
           </p>
         </header>

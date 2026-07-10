@@ -45,3 +45,4 @@ one residual/cycle · campaign push only · operator merges PR #465.
 | **aqo** | NotDiamond advisory honesty + model deep-links | model-quality matrix closed aqj–aqo |
 | **aqp** | MarketplaceHost soft-budget honesty + model deep-links | book host ↔ Settings matrix |
 | **aqq** | ResearchThis soft-budget honesty + model deep-links | highlight DR ↔ Settings matrix |
+| **aqr** | WriteHome soft-budget honesty + model deep-links | writing surface matrix closed |

@@ -340,6 +340,25 @@ describe("WriteHome — the re-homed door", () => {
     expect(home.getAttribute("data-html-first")).toBe("true");
     expect(home.getAttribute("data-product-panel")).toBe("write_home");
     expect(home.textContent).toMatch(/HTML-first/i);
+    // Residual (aqr): soft budget · budget-before-fire · never auto-route.
+    expect(home.getAttribute("data-soft-budget")).toBe("true");
+    expect(home.getAttribute("data-budget-before-fire")).toBe("true");
+    expect(home.getAttribute("data-never-auto-route")).toBe("true");
+    const honesty = screen.getByTestId("write-home-honesty-nav");
+    expect(honesty.getAttribute("data-soft-budget")).toBe("true");
+    expect(
+      screen
+        .getByTestId("write-home-prompt-cost-honesty-link")
+        .getAttribute("href"),
+    ).toBe("/settings#prompt-cost-projection");
+    expect(
+      screen
+        .getByTestId("write-home-decision-tree-honesty-link")
+        .getAttribute("href"),
+    ).toBe("/settings#decision-tree-panel");
+    expect(
+      screen.getByTestId("write-home-soft-budget-hint").textContent,
+    ).toMatch(/soft budget/i);
     // Residual (apx): competitive DR hop/stage honesty on Write home.
     const writeComp = screen.getByTestId("write-home-competitive-links");
     expect(writeComp.getAttribute("data-html-first")).toBe("true");

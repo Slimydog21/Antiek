@@ -3925,3 +3925,8 @@ Marketplace host stamps HTML-first · soft-budget · L5 deferred · never-auto-r
 ## Residual aqq · 2026-07-10 — ResearchThis soft-budget honesty + model deep-links
 Highlight DR stamps soft-budget · budget-before-fire · never-auto-route + honesty nav
 to prompt-cost · decision-tree. vitest ResearchThis 13 green. P0 PR #465. Pivot aqr+.
+
+## Residual aqr · 2026-07-10 — WriteHome soft-budget honesty + model deep-links
+Write home stamps soft-budget · budget-before-fire · never-auto-route + honesty nav.
+Completes reading ≡ research ≡ writing soft-budget matrix. vitest WriteHome green.
+P0 PR #465. Pivot aqs+ outside thrash.

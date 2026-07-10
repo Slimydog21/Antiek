@@ -1,6 +1,6 @@
 # Future-agent execution brief — remaining Antiek vision gaps
 
-**Campaign tip at write:** residual **aqq** (wave api–aqq · tip after aqq ship) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
+**Campaign tip at write:** residual **aqr** (wave api–aqr · tip after aqr ship) · branch `campaign/research-reading-spine-2026-07-09-main` · PR **#465** (OPEN)  
 **URL:** https://github.com/Slimydog21/Antiek/pull/465  
 **Bar:** James Hawkins craftsmanship · five values · HTML-first · propose≠promote · NotDiamond advisory only  
 **STOP:** operator only (`.infinite/STOP` or explicit message)
@@ -54,7 +54,7 @@ See **FUTURE-AGENT-SPEC-notdiamond-advisory-only.md** — advisor yes · router 
 ### Competitive DR quality
 See **FUTURE-AGENT-SPEC-competitive-deep-research-quality.md** — world-class DR map · budget-before-fire merge soft-gates closed **ank–anl**.
 
-### P1 next offline (residual **aqr+**)
+### P1 next offline (residual **aqs+**)
 Outside thrash: substantive product residual (not HostedHtml twin-seed / competitive-link / hop-hint thrash). Prefer dual-gate-ready product depth, L5 offline only when unlocked, Antiek-bench rewrite flywheel only when non-thrash.  
 **Avoid thrash:** remount · host-tier · collective-mount · budget-soft-gate · dogfood · free-PD catalog · open-spawn honesty · HTML stamps · competitive-link · dual-gate · write-seed · pub-quick-call · domain · MO goals/fanout · scorecard · HostedHtml twin-seed · hop/stage pipeline chrome thrash after api–apu.
 
