@@ -1465,6 +1465,9 @@ describe("Settings SPR-01 + decision-tree install", () => {
     );
     expect(summary.getAttribute("data-item-count")).toBe("18");
     expect(summary.getAttribute("data-auto-promoted")).toBe("false");
+    // Residual (yg): task-class counts on dogfood summary (STEM book_qa honesty).
+    expect(summary.getAttribute("data-book-qa-count")).toBe("7");
+    expect(summary.getAttribute("data-wrestle-count")).toBe("7");
     expect(summary.getAttribute("data-has-write-seed-posture")).toBe("true");
     expect(summary.getAttribute("data-has-float-evidence-posture")).toBe(
       "true",

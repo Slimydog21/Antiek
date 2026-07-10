@@ -1631,3 +1631,8 @@ payment honesty share deferred rails policy section.
 ## Residual yf · 2026-07-10 — FUTURE-AGENT tip re-anchor through ye
 FUTURE-AGENT-SPEC tip re-anchored after 59 residual ships. Competitive delta:
 swarm handoff tip-true; operator merge PR #465 highest leverage.
+
+## Residual yg · 2026-07-10 — dogfood summary book_qa/wrestle counts
+antiek-bench-dogfood-summary stamps data-book-qa-count and data-wrestle-count
+(v12: 7/7). Competitive delta: STEM book_qa expansion is machine-auditable on
+Settings dogfood chokepoint.

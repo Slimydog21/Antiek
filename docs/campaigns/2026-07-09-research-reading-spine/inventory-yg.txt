@@ -1,0 +1,21 @@
+# inventory-yg · dogfood summary book_qa + wrestle count honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: yg
+date: 2026-07-10
+tip_before: f1d0911a (yf)
+
+## Problem
+Antiek-bench dogfood summary stamped item_count and postures but not
+by_task_class machine counts for book_qa/wrestle — STEM book_qa expansion
+not auditable on summary attrs.
+
+## Fix
+- data-book-qa-count · data-wrestle-count on antiek-bench-dogfood-summary
+- Test locks book_qa=7 · wrestle=7 (v12)
+
+## Verified
+npm test Settings.test.tsx → 34 passed
+substrate counts: book_qa=7 wrestle=7
+
+## Not in scope
+- Operator merge PR #465 (gated)

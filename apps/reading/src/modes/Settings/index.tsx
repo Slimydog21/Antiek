@@ -2080,6 +2080,12 @@ export default function Settings() {
                 data-suite-version={dogfood.suite_version || ""}
                 data-item-count={String(dogfood.item_count ?? 0)}
                 data-auto-promoted={String(dogfood.auto_promoted === true)}
+                data-book-qa-count={String(
+                  (dogfood.by_task_class || {}).book_qa ?? 0,
+                )}
+                data-wrestle-count={String(
+                  (dogfood.by_task_class || {}).wrestle ?? 0,
+                )}
                 data-has-write-seed-posture={String(
                   (dogfood.items || []).some(
                     (it) => it.item_id === "dogfood-wrestle-write-seed",
