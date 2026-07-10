@@ -34,6 +34,7 @@ import {
   operatorArchivePackageDeliveryReportDeliveryConfirmationResultReconciliationPlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalDeliveryAuditEnvelopePlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalDeliveryAuditEnvelopeResultReconciliationPlanMidnightOil,
+  operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealPlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalDispatchAttestationPlanMidnightOil,
   operatorArchivePackageDeliveryReportFinalDispatchAttestationResultReconciliationPlanMidnightOil,
@@ -106,6 +107,7 @@ import {
   type MidnightOilOperatorArchivePackageDeliveryReportDeliveryConfirmationResultReconciliationPlanReceipt,
   type MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryAuditEnvelopePlanReceipt,
   type MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryAuditEnvelopeResultReconciliationPlanReceipt,
+  type MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt,
   type MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealPlanReceipt,
   type MidnightOilOperatorArchivePackageDeliveryReportFinalDispatchAttestationPlanReceipt,
   type MidnightOilOperatorArchivePackageDeliveryReportFinalDispatchAttestationResultReconciliationPlanReceipt,
@@ -439,6 +441,13 @@ export default function MidnightOil() {
     useState<MidnightOilOperatorArchivePackageDeliveryReportFinalOperatorArchiveSealAcknowledgementPlanReceipt | null>(
       null,
     );
+  const [
+    operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt,
+    setOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt,
+  ] =
+    useState<MidnightOilOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt | null>(
+      null,
+    );
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -615,6 +624,10 @@ export default function MidnightOil() {
   const [
     operatorArchivePackageDeliveryReportFinalOperatorArchiveSealAcknowledgementPlanBusy,
     setOperatorArchivePackageDeliveryReportFinalOperatorArchiveSealAcknowledgementPlanBusy,
+  ] = useState(false);
+  const [
+    operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanBusy,
+    setOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanBusy,
   ] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
@@ -810,6 +823,19 @@ export default function MidnightOil() {
     operatorArchivePackageDeliveryReportFinalOperatorArchiveSealAcknowledgementPlanError,
     setOperatorArchivePackageDeliveryReportFinalOperatorArchiveSealAcknowledgementPlanError,
   ] = useState<string | null>(null);
+  const [
+    operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanError,
+    setOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanError,
+  ] = useState<string | null>(null);
+
+  function clearOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlan() {
+    setOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanError(
+      null,
+    );
+    setOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt(
+      null,
+    );
+  }
 
   function clearOperatorArchivePackageDeliveryReportFinalOperatorArchiveSealAcknowledgementPlan() {
     setOperatorArchivePackageDeliveryReportFinalOperatorArchiveSealAcknowledgementPlanError(
@@ -818,6 +844,7 @@ export default function MidnightOil() {
     setOperatorArchivePackageDeliveryReportFinalOperatorArchiveSealAcknowledgementPlanReceipt(
       null,
     );
+    clearOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlan();
   }
 
   function clearOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealPlan() {
@@ -8138,6 +8165,210 @@ export default function MidnightOil() {
       );
     } finally {
       setOperatorArchivePackageDeliveryReportFinalOperatorArchiveSealAcknowledgementPlanBusy(
+        false,
+      );
+    }
+  }
+
+  async function onOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerControlPlanReceipt ||
+      !budgetProviderAdapterPlanReceipt ||
+      !providerExecutorAdapterPlanReceipt ||
+      !retrievalAdapterPlanReceipt ||
+      !graphAdapterPlanReceipt ||
+      !finalArtifactAdapterPlanReceipt ||
+      !operatorDispatchAdapterPlanReceipt ||
+      !controlLedgerAdapterPlanReceipt ||
+      !controlLedgerPersistencePlanReceipt ||
+      !controlLedgerPersistenceApplyPlanReceipt ||
+      !operatorDispatchActivationReadinessPlanReceipt ||
+      !liveDispatchFinalEnablementPlanReceipt ||
+      !liveDispatchFinalEnablementApplyPlanReceipt ||
+      !runnerDispatchSchedulerPlanReceipt ||
+      !runnerDispatchWorkerBootstrapPlanReceipt ||
+      !schedulerLeaseRetryPlanReceipt ||
+      !workerQueueClaimPlanReceipt ||
+      !repositoryTransactionPlanReceipt ||
+      !repositoryCommitRollbackPlanReceipt ||
+      !workerDispatchLeaseHeartbeatPlanReceipt ||
+      !workerCancellationAbandonPlanReceipt ||
+      !workerCompletionFinalizationPlanReceipt ||
+      !workerOutputAggregationPlanReceipt ||
+      !workerSynthesisHandoffPlanReceipt ||
+      !synthesisBundleAssemblyPlanReceipt ||
+      !finalSynthesisDraftPlanReceipt ||
+      !finalHtmlArtifactAssemblyPlanReceipt ||
+      !finalArtifactPersistencePlanReceipt ||
+      !finalArtifactGraphCommitPlanReceipt ||
+      !finalArtifactPublishPlanReceipt ||
+      !finalArtifactCompletionFinalizationPlanReceipt ||
+      !finalRunClosurePlanReceipt ||
+      !operatorNotificationDeliveryReadinessPlanReceipt ||
+      !operatorNotificationDeliveryApplyPlanReceipt ||
+      !operatorNotificationDeliveryResultReconciliationPlanReceipt ||
+      !operatorDeliveryLedgerReconciliationPlanReceipt ||
+      !workspaceDeliveryCardReconciliationPlanReceipt ||
+      !deliveryNotificationReconciliationPlanReceipt ||
+      !retentionBillingReconciliationPlanReceipt ||
+      !finalCloseoutArchiveReconciliationPlanReceipt ||
+      !operatorArchiveHandoffPackagePlanReceipt ||
+      !operatorArchiveHandoffPackageResultReconciliationPlanReceipt ||
+      !operatorArchiveHandoffPackageDeliveryAuditPlanReceipt ||
+      !operatorArchiveHandoffPackageDeliveryAuditResultReconciliationPlanReceipt ||
+      !operatorArchivePackageDeliveryReportPlanReceipt ||
+      !operatorArchivePackageDeliveryReportResultReconciliationPlanReceipt ||
+      !operatorArchivePackageDeliveryReportNotificationReadinessPlanReceipt ||
+      !operatorArchivePackageDeliveryReportNotificationResultReconciliationPlanReceipt ||
+      !operatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt ||
+      !operatorArchivePackageDeliveryReportDeliveryConfirmationResultReconciliationPlanReceipt ||
+      !operatorArchivePackageDeliveryReportFinalOperatorAcknowledgementPlanReceipt ||
+      !operatorArchivePackageDeliveryReportAcknowledgementResultReconciliationPlanReceipt ||
+      !operatorArchivePackageDeliveryReportFinalCloseoutAcknowledgementPlanReceipt ||
+      !operatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseoutPlanReceipt ||
+      !operatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseoutResultReconciliationPlanReceipt ||
+      !operatorArchivePackageDeliveryReportFinalDeliveryAuditEnvelopePlanReceipt ||
+      !operatorArchivePackageDeliveryReportFinalDeliveryAuditEnvelopeResultReconciliationPlanReceipt ||
+      !operatorArchivePackageDeliveryReportFinalDispatchAttestationPlanReceipt ||
+      !operatorArchivePackageDeliveryReportFinalDispatchAttestationResultReconciliationPlanReceipt ||
+      !operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealPlanReceipt ||
+      !operatorArchivePackageDeliveryReportFinalOperatorArchiveSealAcknowledgementPlanReceipt
+    ) {
+      setOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanError(
+        "Operator archive package delivery report final delivery evidence seal attestation plan requires launch packet, approval receipt, runner handoff, the complete no-spend delivery chain, and operator archive package delivery report final operator archive seal acknowledgement plan receipt.",
+      );
+      return;
+    }
+
+    setOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanBusy(
+      true,
+    );
+    setOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanError(
+      null,
+    );
+    setOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt(
+      null,
+    );
+    try {
+      const result =
+        await operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanMidnightOil(
+          {
+            launch_packet: preflight.launch_packet,
+            approval_receipt: preflight.approval_receipt,
+            runner_handoff: preflight.runner_handoff,
+            runner_control_plan_receipt: runnerControlPlanReceipt,
+            budget_provider_adapter_plan_receipt: budgetProviderAdapterPlanReceipt,
+            provider_executor_adapter_plan_receipt: providerExecutorAdapterPlanReceipt,
+            retrieval_adapter_plan_receipt: retrievalAdapterPlanReceipt,
+            graph_adapter_plan_receipt: graphAdapterPlanReceipt,
+            final_artifact_adapter_plan_receipt: finalArtifactAdapterPlanReceipt,
+            operator_dispatch_adapter_plan_receipt: operatorDispatchAdapterPlanReceipt,
+            control_ledger_adapter_plan_receipt: controlLedgerAdapterPlanReceipt,
+            control_ledger_persistence_plan_receipt: controlLedgerPersistencePlanReceipt,
+            control_ledger_persistence_apply_plan_receipt:
+              controlLedgerPersistenceApplyPlanReceipt,
+            operator_dispatch_activation_readiness_plan_receipt:
+              operatorDispatchActivationReadinessPlanReceipt,
+            live_dispatch_final_enablement_plan_receipt:
+              liveDispatchFinalEnablementPlanReceipt,
+            live_dispatch_final_enablement_apply_plan_receipt:
+              liveDispatchFinalEnablementApplyPlanReceipt,
+            runner_dispatch_scheduler_plan_receipt: runnerDispatchSchedulerPlanReceipt,
+            runner_dispatch_worker_bootstrap_plan_receipt:
+              runnerDispatchWorkerBootstrapPlanReceipt,
+            scheduler_lease_retry_plan_receipt: schedulerLeaseRetryPlanReceipt,
+            worker_queue_claim_plan_receipt: workerQueueClaimPlanReceipt,
+            repository_transaction_plan_receipt: repositoryTransactionPlanReceipt,
+            repository_commit_rollback_plan_receipt: repositoryCommitRollbackPlanReceipt,
+            worker_dispatch_lease_heartbeat_plan_receipt:
+              workerDispatchLeaseHeartbeatPlanReceipt,
+            worker_cancellation_abandon_plan_receipt: workerCancellationAbandonPlanReceipt,
+            worker_completion_finalization_plan_receipt:
+              workerCompletionFinalizationPlanReceipt,
+            worker_output_aggregation_plan_receipt: workerOutputAggregationPlanReceipt,
+            worker_synthesis_handoff_plan_receipt: workerSynthesisHandoffPlanReceipt,
+            synthesis_bundle_assembly_plan_receipt: synthesisBundleAssemblyPlanReceipt,
+            final_synthesis_draft_plan_receipt: finalSynthesisDraftPlanReceipt,
+            final_html_artifact_assembly_plan_receipt:
+              finalHtmlArtifactAssemblyPlanReceipt,
+            final_artifact_persistence_plan_receipt: finalArtifactPersistencePlanReceipt,
+            final_artifact_graph_commit_plan_receipt: finalArtifactGraphCommitPlanReceipt,
+            final_artifact_publish_plan_receipt: finalArtifactPublishPlanReceipt,
+            final_artifact_completion_finalization_plan_receipt:
+              finalArtifactCompletionFinalizationPlanReceipt,
+            final_run_closure_plan_receipt: finalRunClosurePlanReceipt,
+            operator_notification_delivery_readiness_plan_receipt:
+              operatorNotificationDeliveryReadinessPlanReceipt,
+            operator_notification_delivery_apply_plan_receipt:
+              operatorNotificationDeliveryApplyPlanReceipt,
+            operator_notification_delivery_result_reconciliation_plan_receipt:
+              operatorNotificationDeliveryResultReconciliationPlanReceipt,
+            operator_delivery_ledger_reconciliation_plan_receipt:
+              operatorDeliveryLedgerReconciliationPlanReceipt,
+            workspace_delivery_card_reconciliation_plan_receipt:
+              workspaceDeliveryCardReconciliationPlanReceipt,
+            delivery_notification_reconciliation_plan_receipt:
+              deliveryNotificationReconciliationPlanReceipt,
+            retention_billing_reconciliation_plan_receipt:
+              retentionBillingReconciliationPlanReceipt,
+            final_closeout_archive_reconciliation_plan_receipt:
+              finalCloseoutArchiveReconciliationPlanReceipt,
+            operator_archive_handoff_package_plan_receipt:
+              operatorArchiveHandoffPackagePlanReceipt,
+            operator_archive_handoff_package_result_reconciliation_plan_receipt:
+              operatorArchiveHandoffPackageResultReconciliationPlanReceipt,
+            operator_archive_handoff_package_delivery_audit_plan_receipt:
+              operatorArchiveHandoffPackageDeliveryAuditPlanReceipt,
+            operator_archive_handoff_package_delivery_audit_result_reconciliation_plan_receipt:
+              operatorArchiveHandoffPackageDeliveryAuditResultReconciliationPlanReceipt,
+            operator_archive_package_delivery_report_plan_receipt:
+              operatorArchivePackageDeliveryReportPlanReceipt,
+            operator_archive_package_delivery_report_result_reconciliation_plan_receipt:
+              operatorArchivePackageDeliveryReportResultReconciliationPlanReceipt,
+            operator_archive_package_delivery_report_notification_readiness_plan_receipt:
+              operatorArchivePackageDeliveryReportNotificationReadinessPlanReceipt,
+            operator_archive_package_delivery_report_notification_result_reconciliation_plan_receipt:
+              operatorArchivePackageDeliveryReportNotificationResultReconciliationPlanReceipt,
+            operator_archive_package_delivery_report_delivery_confirmation_plan_receipt:
+              operatorArchivePackageDeliveryReportDeliveryConfirmationPlanReceipt,
+            operator_archive_package_delivery_report_delivery_confirmation_result_reconciliation_plan_receipt:
+              operatorArchivePackageDeliveryReportDeliveryConfirmationResultReconciliationPlanReceipt,
+            operator_archive_package_delivery_report_final_operator_acknowledgement_plan_receipt:
+              operatorArchivePackageDeliveryReportFinalOperatorAcknowledgementPlanReceipt,
+            operator_archive_package_delivery_report_acknowledgement_result_reconciliation_plan_receipt:
+              operatorArchivePackageDeliveryReportAcknowledgementResultReconciliationPlanReceipt,
+            operator_archive_package_delivery_report_final_closeout_acknowledgement_plan_receipt:
+              operatorArchivePackageDeliveryReportFinalCloseoutAcknowledgementPlanReceipt,
+            operator_archive_package_delivery_report_final_operator_delivery_closeout_plan_receipt:
+              operatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseoutPlanReceipt,
+            operator_archive_package_delivery_report_final_operator_delivery_closeout_result_reconciliation_plan_receipt:
+              operatorArchivePackageDeliveryReportFinalOperatorDeliveryCloseoutResultReconciliationPlanReceipt,
+            operator_archive_package_delivery_report_final_delivery_audit_envelope_plan_receipt:
+              operatorArchivePackageDeliveryReportFinalDeliveryAuditEnvelopePlanReceipt,
+            operator_archive_package_delivery_report_final_delivery_audit_envelope_result_reconciliation_plan_receipt:
+              operatorArchivePackageDeliveryReportFinalDeliveryAuditEnvelopeResultReconciliationPlanReceipt,
+            operator_archive_package_delivery_report_final_dispatch_attestation_plan_receipt:
+              operatorArchivePackageDeliveryReportFinalDispatchAttestationPlanReceipt,
+            operator_archive_package_delivery_report_final_dispatch_attestation_result_reconciliation_plan_receipt:
+              operatorArchivePackageDeliveryReportFinalDispatchAttestationResultReconciliationPlanReceipt,
+            operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_receipt:
+              operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealPlanReceipt,
+            operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_plan_receipt:
+              operatorArchivePackageDeliveryReportFinalOperatorArchiveSealAcknowledgementPlanReceipt,
+          },
+        );
+      setOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt(
+        result,
+      );
+    } catch (e) {
+      setOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanError(
+        e instanceof Error ? e.message : String(e),
+      );
+    } finally {
+      setOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanBusy(
         false,
       );
     }
@@ -20898,6 +21129,174 @@ export default function MidnightOil() {
                     Operator archive package delivery report final operator
                     archive seal acknowledgement receipt fields:{" "}
                     {operatorArchivePackageDeliveryReportFinalOperatorArchiveSealAcknowledgementPlanReceipt.required_operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_receipt_fields.join(
+                      ", ",
+                    )}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Operator archive package delivery report final delivery
+                  evidence seal attestation plan
+                </p>
+                <button
+                  type="button"
+                  onClick={
+                    onOperatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanGate
+                  }
+                  disabled={
+                    operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanBusy ||
+                    !operatorArchivePackageDeliveryReportFinalOperatorArchiveSealAcknowledgementPlanReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanBusy
+                    ? "Planning evidence seal attestation..."
+                    : "Operator archive package delivery report final delivery evidence seal attestation plan"}
+                </button>
+              </div>
+
+              {operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {
+                    operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanError
+                  }
+                </p>
+              )}
+
+              {operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Operator archive package delivery report final delivery
+                      evidence seal attestation receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {
+                        operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt.receipt_id
+                      }
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt.status.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                    <Metric
+                      label="Evidence seal attestation"
+                      value={
+                        operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt.operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_allowed
+                          ? "allowed"
+                          : "blocked"
+                      }
+                    />
+                    <Metric
+                      label="Attestation entry"
+                      value={
+                        operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt.operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_entry_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Status entry"
+                      value={
+                        operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt.operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_status_entry_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Audit entry"
+                      value={
+                        operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt.operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_audit_entry_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                    <Metric
+                      label="Archive seal acknowledgement"
+                      value={
+                        operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt.operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_allowed
+                          ? "allowed"
+                          : "blocked"
+                      }
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Archive seal acknowledgement plan"
+                      value={
+                        operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt.operator_archive_package_delivery_report_final_operator_archive_seal_acknowledgement_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Evidence seal plan"
+                      value={
+                        operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt.operator_archive_package_delivery_report_final_delivery_evidence_seal_plan_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Evidence seal attestation receipt"
+                      value={
+                        operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt.planned_operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_receipt_id
+                      }
+                    />
+                    <Metric
+                      label="Evidence seal attestation entry id"
+                      value={
+                        operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt.planned_operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_entry_id
+                      }
+                    />
+                    <Metric
+                      label="Status entry id"
+                      value={
+                        operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt.planned_operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_status_entry_id
+                      }
+                    />
+                    <Metric
+                      label="Audit entry id"
+                      value={
+                        operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt.planned_operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_audit_entry_id
+                      }
+                    />
+                    <Metric
+                      label="Adapter"
+                      value={operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt.adapter_key.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                    <Metric
+                      label="Blocker"
+                      value={operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt.blocker_reason.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                  </div>
+                  <ul className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt.required_operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_invariants
+                      .slice(0, 5)
+                      .map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                  </ul>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Operator archive package delivery report final delivery
+                    evidence seal attestation blockers:{" "}
+                    {operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt.operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_blockers.join(
+                      ", ",
+                    )}
+                  </p>
+                  <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Operator archive package delivery report final delivery
+                    evidence seal attestation receipt fields:{" "}
+                    {operatorArchivePackageDeliveryReportFinalDeliveryEvidenceSealAttestationPlanReceipt.required_operator_archive_package_delivery_report_final_delivery_evidence_seal_attestation_receipt_fields.join(
                       ", ",
                     )}
                   </p>
