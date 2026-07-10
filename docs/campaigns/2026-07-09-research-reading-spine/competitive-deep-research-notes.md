@@ -3038,3 +3038,8 @@ P0 operator merge PR #465. Pivot ajs+ outside thrash.
 ## Residual ajs · 2026-07-10 — SESSION-ARC ajn–ajr twin depth-graph path
 Wave handoff: UI metrics · substrate payload · dogfood v32 · API-first field prefer.
 P0 operator merge PR #465. Pivot ajt+ outside thrash.
+
+## Residual ajt · 2026-07-10 — pure depth_graph_honesty_fields helper
+Extract content-addressed unit≡node honesty into pure helper used by promote
+payload (ajo). pytest twin promote product 8 green. P0 operator merge PR #465.
+Pivot aju+ outside thrash.

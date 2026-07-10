@@ -83,6 +83,28 @@ def test_promote_context_idempotent_double_run():
     assert any("unique_nodes=1" in n for n in (p1.get("notes") or []))
 
 
+def test_depth_graph_honesty_fields_pure():
+    """Residual (ajt): pure helper — alignment and empty cases without I/O."""
+    from substrate.engagement_spine.twin_promote import depth_graph_honesty_fields
+
+    ok = depth_graph_honesty_fields(
+        [{"graph_node_id": "n1"}, {"graph_node_id": "n1"}],  # dedupe
+        [{"unit_id": "n1"}],
+    )
+    assert ok["graph_node_ids"] == ["n1"]
+    assert ok["unique_graph_node_count"] == 1
+    assert ok["unique_unit_id_count"] == 1
+    assert ok["content_addressed_alignment"] is True
+    mis = depth_graph_honesty_fields(
+        [{"graph_node_id": "n1"}],
+        [{"unit_id": "n2"}],
+    )
+    assert mis["content_addressed_alignment"] is False
+    empty = depth_graph_honesty_fields([], [])
+    assert empty["unique_graph_node_count"] == 0
+    assert empty["content_addressed_alignment"] is False
+
+
 def test_api_promote_context_double_run():
     reset_engagement_stores()
     app = FastAPI()

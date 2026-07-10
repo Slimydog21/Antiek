@@ -370,6 +370,42 @@ def promote_and_context_for_asset(
     )
 
 
+def depth_graph_honesty_fields(
+    promoted: Sequence[dict[str, Any]] | Sequence[Any],
+    context_units: Sequence[dict[str, Any]] | Sequence[Any],
+) -> dict[str, Any]:
+    """Compute content-addressed depth-graph honesty fields (residual ajt/ajo).
+
+    Pure: no I/O. ``unit_id`` is expected to equal ``graph_node_id`` for
+    recursive note-taker promote→context identity. Never invents edges.
+    """
+    graph_node_ids: list[str] = []
+    for p in promoted or ():
+        if not isinstance(p, dict):
+            continue
+        gid = str(p.get("graph_node_id") or "").strip()
+        if gid:
+            graph_node_ids.append(gid)
+    unique_graph = list(dict.fromkeys(graph_node_ids))
+    unit_ids: list[str] = []
+    for u in context_units or ():
+        if not isinstance(u, dict):
+            continue
+        uid = str(u.get("unit_id") or "").strip()
+        if uid:
+            unit_ids.append(uid)
+    unique_units = list(dict.fromkeys(unit_ids))
+    content_addressed_alignment = bool(unique_graph) and set(unique_graph) == set(
+        unique_units
+    )
+    return {
+        "graph_node_ids": unique_graph,
+        "unique_graph_node_count": len(unique_graph),
+        "unique_unit_id_count": len(unique_units),
+        "content_addressed_alignment": content_addressed_alignment,
+    }
+
+
 def twin_promote_context_payload(
     asset_id: str,
     *,
@@ -428,22 +464,10 @@ def twin_promote_context_payload(
         note_ids=note_ids_norm,
     )
     raw = result.to_dict()
-    # Residual (ajo): content-addressed depth-graph honesty for agent-readable audit.
-    graph_node_ids = [
-        str(p.get("graph_node_id") or "").strip()
-        for p in raw["promoted"]
-        if isinstance(p, dict) and str(p.get("graph_node_id") or "").strip()
-    ]
-    unique_graph = list(dict.fromkeys(graph_node_ids))
-    unit_ids = [
-        str(u.get("unit_id") or "").strip()
-        for u in raw["context_units"]
-        if isinstance(u, dict) and str(u.get("unit_id") or "").strip()
-    ]
-    unique_units = list(dict.fromkeys(unit_ids))
-    content_addressed_alignment = bool(unique_graph) and set(unique_graph) == set(
-        unique_units
-    )
+    # Residual (ajo/ajt): content-addressed depth-graph honesty (pure helper).
+    depth = depth_graph_honesty_fields(raw["promoted"], raw["context_units"])
+    unique_graph = depth["graph_node_ids"]
+    content_addressed_alignment = depth["content_addressed_alignment"]
     payload: dict[str, Any] = {
         "asset_id": asset_id.strip(),
         "promoted_count": len(result.promoted),
@@ -454,8 +478,8 @@ def twin_promote_context_payload(
         "kinds": list(kinds_norm) if kinds_norm is not None else ["insight", "question"],
         "note_ids": list(note_ids_norm) if note_ids_norm is not None else [],
         "graph_node_ids": unique_graph,
-        "unique_graph_node_count": len(unique_graph),
-        "unique_unit_id_count": len(unique_units),
+        "unique_graph_node_count": depth["unique_graph_node_count"],
+        "unique_unit_id_count": depth["unique_unit_id_count"],
         "content_addressed_alignment": content_addressed_alignment,
         "view_format": "html",
         "product_panel": "twin_promote_context",
