@@ -17,6 +17,8 @@
  * events/HTML seed recursive note-taker; no invented document_id).
  * Residual (rp): mid-flight Open Write (progress draft) while non-terminal.
  * Residual (sm): float|full progress HTML reading windows (plan→cite substrate).
+ * Residual (acp): data-write-seed-has-body on Open Write — true only when
+ * progress.html yields non-empty plain text (parity marketplace/MO/spawn).
  * HTML-first; never PDF.
  */
 
@@ -30,7 +32,10 @@ import {
   mapResearchTierToProgressPollMs,
   RESEARCH_TIER_PROGRESS_POLL_MS,
 } from "../../lib/researchTier";
-import { buildResearchProgressWriteHref } from "../../workspace/twinWriteSeed";
+import {
+  buildResearchProgressWriteHref,
+  plainTextFromHtml,
+} from "../../workspace/twinWriteSeed";
 import { openWindow } from "../windows/openWindow";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 
@@ -421,7 +426,7 @@ export function ResearchProgressPanel({
               </button>
             </p>
           ) : null}
-          {/* Residual (qw/rp): terminal or mid-flight → Open Write twin seed. */}
+          {/* Residual (qw/rp/acp): terminal or mid-flight → Open Write twin seed + body honesty. */}
           {writeHref ? (
             <p className="meta font-mono text-[11px]">
               <a
@@ -430,6 +435,10 @@ export function ResearchProgressPanel({
                 data-view-format="html"
                 data-has-twin-seed="1"
                 data-is-terminal={String(Boolean(progress.is_terminal))}
+                // Residual (acp): body honesty on twin_seed (parity marketplace acf / MO ack / HostedHtml acn).
+                data-write-seed-has-body={String(
+                  Boolean(plainTextFromHtml(progress.html || "").trim()),
+                )}
                 className="underline opacity-90 hover:opacity-100"
                 title={
                   progress.is_terminal

@@ -117,6 +117,8 @@ describe("ResearchProgressPanel", () => {
     expect(draftWrite.getAttribute("href") || "").toMatch(
       /^\/write\?twin_seed=antiek\.twin_write_seed\./,
     );
+    // Residual (acp): progress.html body → has-body true (parity marketplace/MO).
+    expect(draftWrite.getAttribute("data-write-seed-has-body")).toBe("true");
   });
 
   it("links Open Write twin_seed when progress is terminal (qw)", async () => {
@@ -167,6 +169,8 @@ describe("ResearchProgressPanel", () => {
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
     expect(write.getAttribute("data-is-terminal")).toBe("true");
     expect(write.getAttribute("data-view-format")).toBe("html");
+    // Residual (acp): Final synthesis HTML body → has-body true.
+    expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
     // Residual (sm): float|full progress HTML reading windows.
     fireEvent.click(screen.getByTestId("research-progress-open-float"));
     const floatCall = openWindow.mock.calls.at(-1) as [
@@ -187,6 +191,45 @@ describe("ResearchProgressPanel", () => {
     ];
     expect(fullCall[1].source).toBe("research_progress_complete");
     expect(fullCall[2].mode).toBe("full");
+  });
+
+  it("Open Write has-body false when progress has no HTML body (acp)", async () => {
+    fetchResearchProgress.mockResolvedValue({
+      spawn_id: "spn_meta",
+      event_count: 1,
+      events: [
+        {
+          spawn_id: "spn_meta",
+          stage: "plan",
+          message: "planned only",
+          ts: 1,
+          sequence: 1,
+        },
+      ],
+      latest_stage: "plan",
+      is_terminal: false,
+      view_format: "html",
+      product_panel: "research_progress",
+      source: "engagement_spine.progress",
+      notes: [],
+      html: "",
+    });
+    render(
+      <ResearchProgressPanel
+        spawnId="spn_meta"
+        autoLoad
+        goal="Events-only seed"
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("research-progress-open-write")).toBeTruthy();
+    });
+    const write = screen.getByTestId("research-progress-open-write");
+    // Twin seed still lands from goal/events meta; body honesty is false without HTML.
+    expect(write.getAttribute("href") || "").toMatch(
+      /^\/write\?twin_seed=antiek\.twin_write_seed\./,
+    );
+    expect(write.getAttribute("data-write-seed-has-body")).toBe("false");
   });
 
   it("auto-loads progress on mount (cp)", async () => {
