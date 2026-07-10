@@ -8,6 +8,7 @@ import {
   budgetProviderAdapterPlanMidnightOil,
   budgetReservationMidnightOil,
   controlLedgerAdapterPlanMidnightOil,
+  controlLedgerPersistenceApplyPlanMidnightOil,
   controlLedgerPersistencePlanMidnightOil,
   dispatchMidnightOil,
   dryRunMidnightOil,
@@ -995,6 +996,75 @@ vi.mock("../../api/midnightOil", () => ({
       "control ledger persistence plan only: no repository transaction is opened",
     ],
   })),
+  controlLedgerPersistenceApplyPlanMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-control-ledger-persistence-apply-plan",
+    control_ledger_persistence_plan_receipt_id:
+      "midnight-oil-test-control-ledger-persistence-plan",
+    control_ledger_adapter_plan_receipt_id: "midnight-oil-test-control-ledger-adapter-plan",
+    operator_dispatch_adapter_plan_receipt_id:
+      "midnight-oil-test-operator-dispatch-adapter-plan",
+    runner_control_plan_receipt_id: "midnight-oil-test-runner-control-plan",
+    runner_readiness_receipt_id: "midnight-oil-test-runner-readiness",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    run_id: "midnight-oil-test",
+    status: "blocked_control_ledger_persistence_apply_unimplemented",
+    adapter_key: "operator_dispatch_control_ledger_persistence_apply",
+    planned_repository_id: "midnight-oil-test-operator-dispatch-control-repository",
+    planned_transaction_id: "midnight-oil-test-operator-dispatch-control-transaction",
+    planned_commit_receipt_id: "midnight-oil-test-operator-dispatch-control-commit-receipt",
+    planned_content_digest:
+      "midnight-oil-test-operator-dispatch-control-persistence-content-digest",
+    planned_setting_id: "midnight-oil-test-operator-live-dispatch-setting",
+    planned_control_ledger_id: "midnight-oil-test-operator-dispatch-control-ledger",
+    planned_audit_log_id: "midnight-oil-test-operator-dispatch-audit-log",
+    planned_rollback_receipt_id: "midnight-oil-test-operator-dispatch-rollback-receipt",
+    required_commit_invariants: [
+      "apply planner must require the persistence implementation plan before any transaction is opened",
+      "apply planner must keep the transaction closed until a real repository adapter exists",
+      "apply planner must require a commit receipt before operator live dispatch can be enabled",
+    ],
+    required_commit_receipt_fields: [
+      "commit_receipt_id",
+      "repository_id",
+      "transaction_id",
+      "operator_dispatch_setting_id",
+      "control_ledger_id",
+      "audit_log_id",
+      "rollback_receipt_id",
+      "content_digest",
+      "transaction_opened",
+      "transaction_committed",
+    ],
+    blocker_reason: "control_ledger_persistence_apply_unimplemented",
+    transaction_opened: false,
+    transaction_committed: false,
+    setting_persisted: false,
+    control_ledger_persistence_allowed: false,
+    control_ledger_written: false,
+    audit_log_written: false,
+    rollback_receipt_created: false,
+    operator_dispatch_allowed: false,
+    operator_live_dispatch_enabled: false,
+    live_run_allowed: false,
+    dispatch_allowed: false,
+    dispatch_performed: false,
+    budget_reservation_allowed: false,
+    budget_reserved: false,
+    provider_execution_allowed: false,
+    provider_calls_made: false,
+    retrieval_allowed: false,
+    retrieval_performed: false,
+    source_receipts_created: false,
+    graph_mutation_allowed: false,
+    graph_mutated: false,
+    final_artifact_allowed: false,
+    final_artifact_created: false,
+    adapter_plan_notes: [
+      "control ledger persistence apply plan only: no repository transaction is opened or committed",
+    ],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -1717,5 +1787,65 @@ describe("MidnightOil", () => {
     ).toBeTruthy();
     expect(screen.getByText(/Storage tables:/)).toBeTruthy();
     expect(screen.getByText(/Apply fields:/)).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Control ledger persistence apply" }));
+
+    await waitFor(() => expect(controlLedgerPersistenceApplyPlanMidnightOil).toHaveBeenCalled());
+    expect(controlLedgerPersistenceApplyPlanMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      runner_control_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-control-plan",
+      }),
+      budget_provider_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-budget-provider-adapter-plan",
+      }),
+      provider_executor_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-provider-executor-adapter-plan",
+      }),
+      retrieval_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-retrieval-adapter-plan",
+      }),
+      graph_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-graph-adapter-plan",
+      }),
+      final_artifact_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-final-artifact-adapter-plan",
+      }),
+      operator_dispatch_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-operator-dispatch-adapter-plan",
+      }),
+      control_ledger_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-adapter-plan",
+      }),
+      control_ledger_persistence_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-control-ledger-persistence-plan",
+      }),
+    });
+    expect(screen.getByText("Control ledger persistence apply receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-control-ledger-persistence-apply-plan")).toBeTruthy();
+    expect(screen.getByText("blocked control ledger persistence apply unimplemented")).toBeTruthy();
+    expect(
+      screen.getByText("midnight-oil-test-operator-dispatch-control-commit-receipt"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "midnight-oil-test-operator-dispatch-control-persistence-content-digest",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("operator dispatch control ledger persistence apply")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "apply planner must require the persistence implementation plan before any transaction is opened",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Commit receipt fields:/)).toBeTruthy();
   });
 });

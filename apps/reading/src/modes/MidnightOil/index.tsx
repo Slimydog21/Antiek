@@ -5,6 +5,7 @@ import {
   budgetProviderAdapterPlanMidnightOil,
   budgetReservationMidnightOil,
   controlLedgerAdapterPlanMidnightOil,
+  controlLedgerPersistenceApplyPlanMidnightOil,
   controlLedgerPersistencePlanMidnightOil,
   dispatchMidnightOil,
   dryRunMidnightOil,
@@ -26,6 +27,7 @@ import {
   type MidnightOilBudgetProviderAdapterPlanReceipt,
   type MidnightOilBudgetReservationReceipt,
   type MidnightOilControlLedgerAdapterPlanReceipt,
+  type MidnightOilControlLedgerPersistenceApplyPlanReceipt,
   type MidnightOilControlLedgerPersistencePlanReceipt,
   type MidnightOilDispatchReceipt,
   type MidnightOilFinalArtifactAdapterPlanReceipt,
@@ -107,6 +109,8 @@ export default function MidnightOil() {
     useState<MidnightOilControlLedgerAdapterPlanReceipt | null>(null);
   const [controlLedgerPersistencePlanReceipt, setControlLedgerPersistencePlanReceipt] =
     useState<MidnightOilControlLedgerPersistencePlanReceipt | null>(null);
+  const [controlLedgerPersistenceApplyPlanReceipt, setControlLedgerPersistenceApplyPlanReceipt] =
+    useState<MidnightOilControlLedgerPersistenceApplyPlanReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -127,6 +131,8 @@ export default function MidnightOil() {
   const [operatorDispatchAdapterPlanBusy, setOperatorDispatchAdapterPlanBusy] = useState(false);
   const [controlLedgerAdapterPlanBusy, setControlLedgerAdapterPlanBusy] = useState(false);
   const [controlLedgerPersistencePlanBusy, setControlLedgerPersistencePlanBusy] = useState(false);
+  const [controlLedgerPersistenceApplyPlanBusy, setControlLedgerPersistenceApplyPlanBusy] =
+    useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
   const [liveSettingsError, setLiveSettingsError] = useState<string | null>(null);
@@ -153,10 +159,18 @@ export default function MidnightOil() {
     useState<string | null>(null);
   const [controlLedgerPersistencePlanError, setControlLedgerPersistencePlanError] =
     useState<string | null>(null);
+  const [controlLedgerPersistenceApplyPlanError, setControlLedgerPersistenceApplyPlanError] =
+    useState<string | null>(null);
+
+  function clearControlLedgerPersistenceApplyPlan() {
+    setControlLedgerPersistenceApplyPlanError(null);
+    setControlLedgerPersistenceApplyPlanReceipt(null);
+  }
 
   function clearControlLedgerPersistencePlan() {
     setControlLedgerPersistencePlanError(null);
     setControlLedgerPersistencePlanReceipt(null);
+    clearControlLedgerPersistenceApplyPlan();
   }
 
   function clearControlLedgerAdapterPlan() {
@@ -229,6 +243,7 @@ export default function MidnightOil() {
     setOperatorDispatchAdapterPlanError(null);
     setControlLedgerAdapterPlanError(null);
     setControlLedgerPersistencePlanError(null);
+    setControlLedgerPersistenceApplyPlanError(null);
     setPreflight(null);
     setDryRunReceipt(null);
     setLiveSettingsReceipt(null);
@@ -250,6 +265,7 @@ export default function MidnightOil() {
     setOperatorDispatchAdapterPlanReceipt(null);
     setControlLedgerAdapterPlanReceipt(null);
     setControlLedgerPersistencePlanReceipt(null);
+    setControlLedgerPersistenceApplyPlanReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -1036,6 +1052,7 @@ export default function MidnightOil() {
     setControlLedgerPersistencePlanBusy(true);
     setControlLedgerPersistencePlanError(null);
     setControlLedgerPersistencePlanReceipt(null);
+    clearControlLedgerPersistenceApplyPlan();
     try {
       const result = await controlLedgerPersistencePlanMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -1055,6 +1072,53 @@ export default function MidnightOil() {
       setControlLedgerPersistencePlanError(e instanceof Error ? e.message : String(e));
     } finally {
       setControlLedgerPersistencePlanBusy(false);
+    }
+  }
+
+  async function onControlLedgerPersistenceApplyPlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerControlPlanReceipt ||
+      !budgetProviderAdapterPlanReceipt ||
+      !providerExecutorAdapterPlanReceipt ||
+      !retrievalAdapterPlanReceipt ||
+      !graphAdapterPlanReceipt ||
+      !finalArtifactAdapterPlanReceipt ||
+      !operatorDispatchAdapterPlanReceipt ||
+      !controlLedgerAdapterPlanReceipt ||
+      !controlLedgerPersistencePlanReceipt
+    ) {
+      setControlLedgerPersistenceApplyPlanError(
+        "Control ledger persistence apply requires launch packet, approval receipt, runner handoff, runner control plan receipt, budget provider adapter plan receipt, provider executor adapter plan receipt, retrieval adapter plan receipt, graph adapter plan receipt, final artifact adapter plan receipt, operator dispatch adapter plan receipt, control ledger adapter plan receipt, and control ledger persistence plan receipt.",
+      );
+      return;
+    }
+
+    setControlLedgerPersistenceApplyPlanBusy(true);
+    setControlLedgerPersistenceApplyPlanError(null);
+    setControlLedgerPersistenceApplyPlanReceipt(null);
+    try {
+      const result = await controlLedgerPersistenceApplyPlanMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        runner_control_plan_receipt: runnerControlPlanReceipt,
+        budget_provider_adapter_plan_receipt: budgetProviderAdapterPlanReceipt,
+        provider_executor_adapter_plan_receipt: providerExecutorAdapterPlanReceipt,
+        retrieval_adapter_plan_receipt: retrievalAdapterPlanReceipt,
+        graph_adapter_plan_receipt: graphAdapterPlanReceipt,
+        final_artifact_adapter_plan_receipt: finalArtifactAdapterPlanReceipt,
+        operator_dispatch_adapter_plan_receipt: operatorDispatchAdapterPlanReceipt,
+        control_ledger_adapter_plan_receipt: controlLedgerAdapterPlanReceipt,
+        control_ledger_persistence_plan_receipt: controlLedgerPersistencePlanReceipt,
+      });
+      setControlLedgerPersistenceApplyPlanReceipt(result);
+    } catch (e) {
+      setControlLedgerPersistenceApplyPlanError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setControlLedgerPersistenceApplyPlanBusy(false);
     }
   }
 
@@ -2844,6 +2908,138 @@ export default function MidnightOil() {
                   <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
                     Apply fields:{" "}
                     {controlLedgerPersistencePlanReceipt.required_apply_fields.join(", ")}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Control ledger persistence apply
+                </p>
+                <button
+                  type="button"
+                  onClick={onControlLedgerPersistenceApplyPlanGate}
+                  disabled={
+                    controlLedgerPersistenceApplyPlanBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !runnerControlPlanReceipt ||
+                    !budgetProviderAdapterPlanReceipt ||
+                    !providerExecutorAdapterPlanReceipt ||
+                    !retrievalAdapterPlanReceipt ||
+                    !graphAdapterPlanReceipt ||
+                    !finalArtifactAdapterPlanReceipt ||
+                    !operatorDispatchAdapterPlanReceipt ||
+                    !controlLedgerAdapterPlanReceipt ||
+                    !controlLedgerPersistencePlanReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {controlLedgerPersistenceApplyPlanBusy
+                    ? "Planning commit..."
+                    : "Control ledger persistence apply"}
+                </button>
+              </div>
+
+              {controlLedgerPersistenceApplyPlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {controlLedgerPersistenceApplyPlanError}
+                </p>
+              )}
+
+              {controlLedgerPersistenceApplyPlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Control ledger persistence apply receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {controlLedgerPersistenceApplyPlanReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={controlLedgerPersistenceApplyPlanReceipt.status.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Opened"
+                      value={
+                        controlLedgerPersistenceApplyPlanReceipt.transaction_opened
+                          ? "opened"
+                          : "not opened"
+                      }
+                    />
+                    <Metric
+                      label="Committed"
+                      value={
+                        controlLedgerPersistenceApplyPlanReceipt.transaction_committed
+                          ? "committed"
+                          : "not committed"
+                      }
+                    />
+                    <Metric
+                      label="Setting"
+                      value={
+                        controlLedgerPersistenceApplyPlanReceipt.setting_persisted
+                          ? "persisted"
+                          : "not persisted"
+                      }
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Repository"
+                      value={controlLedgerPersistenceApplyPlanReceipt.planned_repository_id}
+                    />
+                    <Metric
+                      label="Transaction"
+                      value={controlLedgerPersistenceApplyPlanReceipt.planned_transaction_id}
+                    />
+                    <Metric
+                      label="Commit receipt"
+                      value={controlLedgerPersistenceApplyPlanReceipt.planned_commit_receipt_id}
+                    />
+                    <Metric
+                      label="Content digest"
+                      value={controlLedgerPersistenceApplyPlanReceipt.planned_content_digest}
+                    />
+                    <Metric
+                      label="Control ledger"
+                      value={controlLedgerPersistenceApplyPlanReceipt.planned_control_ledger_id}
+                    />
+                    <Metric
+                      label="Rollback receipt"
+                      value={controlLedgerPersistenceApplyPlanReceipt.planned_rollback_receipt_id}
+                    />
+                    <Metric
+                      label="Adapter"
+                      value={controlLedgerPersistenceApplyPlanReceipt.adapter_key.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                    <Metric
+                      label="Blocker"
+                      value={controlLedgerPersistenceApplyPlanReceipt.blocker_reason.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                  </div>
+                  <ul className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {controlLedgerPersistenceApplyPlanReceipt.required_commit_invariants
+                      .slice(0, 5)
+                      .map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                  </ul>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Commit receipt fields:{" "}
+                    {controlLedgerPersistenceApplyPlanReceipt.required_commit_receipt_fields.join(
+                      ", ",
+                    )}
                   </p>
                 </div>
               )}
