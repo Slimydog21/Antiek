@@ -1284,3 +1284,8 @@ parity twin_cross_asset_merge and collective_unit_prompt.
 suite-competitive-dogfood-v9 adds dogfood-wrestle-collective-written-analysis-write-seed.
 Settings posture honesty. Competitive delta: Antiek-bench recursive rewrite
 learns multi-spawn written analysis Write seed as first-class wrestle task.
+
+## Residual vm · 2026-07-10 — FUTURE-AGENT tip re-anchor through vl
+FUTURE-AGENT-SPEC tip → d2fd555e with closed arcs tt–vl (45 residual ships).
+Competitive delta: swarm handoff tip-true; operator merge PR #465 remains
+highest leverage.
