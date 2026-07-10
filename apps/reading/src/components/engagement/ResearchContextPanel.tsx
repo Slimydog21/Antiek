@@ -693,14 +693,37 @@ export function ResearchContextPanel({
               </p>
             </div>
           ) : (
-            <p
-              className="meta font-mono text-[11px]"
+            <div
+              className="meta font-mono text-[11px] space-y-1"
               data-testid="evidence-citation-trust"
               data-citation-trust="grounded"
+              data-ref-count={String(evidence.ref_count ?? 0)}
+              data-offline-hydrate-default="true"
               role="status"
             >
-              Citation trust: grounded · {evidence.ref_count} source ref(s)
-            </p>
+              <p>
+                Citation trust: grounded · {evidence.ref_count} source ref(s)
+              </p>
+              {/* Residual (va): grounded packs still surface L1/L2 maintain-prep. */}
+              <p className="space-x-2 opacity-90">
+                <a
+                  href="/settings#hydrate-live-status"
+                  data-testid="evidence-citation-trust-hydrate-settings-link"
+                  className="underline hover:opacity-100"
+                  title="Settings publication hydrate readiness (maintain L1/L2 · offline default)"
+                >
+                  Settings · hydrate readiness
+                </a>
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+                  data-testid="evidence-citation-trust-dual-gate-link"
+                  className="underline hover:opacity-100"
+                  title="Dual-gate L1–L4 checklist (maintain hydrate prep; offline default)"
+                >
+                  Dual-gate L1–L2 hydrate checklist
+                </a>
+              </p>
+            </div>
           )}
           {/* Residual (sf/sg): evidence pack → float|full HTML reading windows. */}
           {evidence.html?.trim() ? (

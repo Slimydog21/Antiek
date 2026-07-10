@@ -519,9 +519,21 @@ describe("ResearchContextPanel", () => {
     expect(
       screen.getByTestId("evidence-pack-result").getAttribute("data-citation-trust"),
     ).toBe("grounded");
-    expect(screen.getByTestId("evidence-citation-trust").textContent).toMatch(
-      /grounded/i,
-    );
+    const grounded = screen.getByTestId("evidence-citation-trust");
+    expect(grounded.textContent).toMatch(/grounded/i);
+    // Residual (va): grounded packs still deep-link hydrate maintain-prep.
+    expect(grounded.getAttribute("data-citation-trust")).toBe("grounded");
+    expect(grounded.getAttribute("data-ref-count")).toBe("1");
+    expect(
+      screen
+        .getByTestId("evidence-citation-trust-hydrate-settings-link")
+        .getAttribute("href"),
+    ).toBe("/settings#hydrate-live-status");
+    expect(
+      screen
+        .getByTestId("evidence-citation-trust-dual-gate-link")
+        .getAttribute("href") || "",
+    ).toMatch(/DUAL-GATE-L1-L4/);
     // Residual (hu): machine-readable evidence pack metrics.
     const metrics = screen.getByTestId("evidence-pack-metrics");
     expect(metrics.getAttribute("data-insight-count")).toBe("1");

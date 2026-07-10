@@ -1223,3 +1223,8 @@ checkout exists — purchase+host is operator receipt only.
 FUTURE-AGENT-SPEC tip → 63101044 with closed arcs tt–uy (32 residual ships).
 Competitive delta: swarm handoff tip-true; highest leverage is operator merge
 PR #465.
+
+## Residual va · 2026-07-10 — grounded evidence hydrate maintain-prep
+Grounded evidence packs deep-link Settings hydrate readiness + dual-gate L1–L2
+(parity ungrounded up). Competitive delta: citation trust success still exposes
+prep for live injectors — never silent capability.
