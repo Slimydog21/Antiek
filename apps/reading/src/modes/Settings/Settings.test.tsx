@@ -679,6 +679,28 @@ describe("Settings SPR-01 + decision-tree install", () => {
     );
   });
 
+  it("surfaces dual-gate L1–L4 prep strip on decision-tree (sw)", async () => {
+    render(<Settings />);
+    await waitFor(() => {
+      expect(screen.getByTestId("settings-dual-gate-prep")).toBeTruthy();
+    });
+    const prep = screen.getByTestId("settings-dual-gate-prep");
+    expect(prep.getAttribute("data-offline-default")).toBe("true");
+    expect(prep.getAttribute("data-l7-notdiamond")).toBe("advisory_only");
+    expect(screen.getByTestId("settings-dual-gate-l1-l2-link").getAttribute("href")).toBe(
+      "#hydrate-live-status",
+    );
+    expect(screen.getByTestId("settings-dual-gate-l3-link").getAttribute("href")).toBe(
+      "#twin-seed-live-status",
+    );
+    expect(
+      screen.getByTestId("settings-dual-gate-l4-checklist-link").getAttribute("href"),
+    ).toMatch(/DUAL-GATE-L1-L4/);
+    expect(screen.getByTestId("settings-dual-gate-l7-link").getAttribute("href")).toBe(
+      "#notdiamond-advisory",
+    );
+  });
+
   it("loads Antiek-bench weekly usage summary in Settings", async () => {
     render(<Settings />);
     await waitFor(() => {

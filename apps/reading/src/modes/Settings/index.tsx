@@ -1085,6 +1085,53 @@ export default function Settings() {
               apply provider+model overrides. Cost projection still uses the
               #440 settings estimate API (never invents $0).
             </p>
+            {/* Residual (sw): dual-gate L1–L4 prep strip — offline-honest. */}
+            <div
+              className="border border-ink/10 rounded p-2 space-y-1 dark:border-bright/10"
+              data-testid="settings-dual-gate-prep"
+              data-l7-notdiamond="advisory_only"
+              data-offline-default="true"
+              role="status"
+            >
+              <p className="text-[11px] font-mono text-ink-soft dark:text-starlight">
+                Dual-gate prep (L1–L4) · offline default · never silent live
+                injectors
+              </p>
+              <p className="text-[11px] font-mono space-x-2">
+                <a
+                  href="#hydrate-live-status"
+                  className="underline opacity-80 hover:opacity-100"
+                  data-testid="settings-dual-gate-l1-l2-link"
+                  title="L1 arxiv / L2 substack hydrate readiness"
+                >
+                  L1–L2 hydrate
+                </a>
+                <a
+                  href="#twin-seed-live-status"
+                  className="underline opacity-80 hover:opacity-100"
+                  data-testid="settings-dual-gate-l3-link"
+                  title="L3 twin seed live readiness"
+                >
+                  L3 twin seed
+                </a>
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+                  className="underline opacity-80 hover:opacity-100"
+                  data-testid="settings-dual-gate-l4-checklist-link"
+                  title="L4 Midnight Oil live-step checklist (prep only)"
+                >
+                  L4 MO checklist
+                </a>
+                <a
+                  href="#notdiamond-advisory"
+                  className="underline opacity-80 hover:opacity-100"
+                  data-testid="settings-dual-gate-l7-link"
+                  title="L7 NotDiamond advisory only — never dispatch authority"
+                >
+                  L7 ND advisory
+                </a>
+              </p>
+            </div>
             {treeError && (
               <p className="text-sm text-red-700 dark:text-red-300 font-mono">
                 {treeError}

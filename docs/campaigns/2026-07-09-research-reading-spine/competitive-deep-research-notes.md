@@ -941,3 +941,9 @@ Decision-tree budget panel deep-links to competitive dogfood fixtures so
 operators inspect recursive-spine postures (write-seed / float / budget)
 when choosing a model driver. Competitive delta: model choice sits next to
 the offline dogfood that defines Antiek-bench task classes.
+
+## Residual sw · 2026-07-10 — Dual-gate prep strip on Settings
+Decision-tree panel mounts offline-honest L1–L4 dual-gate prep links
+(hydrate / twin seed / MO checklist / ND advisory). Competitive delta:
+operators see live-injector readiness without silent enable — dual-gate
+remains operator-owned.
