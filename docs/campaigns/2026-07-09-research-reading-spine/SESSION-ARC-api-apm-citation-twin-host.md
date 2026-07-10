@@ -41,3 +41,4 @@ one residual/cycle · campaign push only · operator merges PR #465.
 | **aqk** | decision-tree never-auto-route honesty + deep-links | primary model-choice surface |
 | **aql** | prompt-cost soft-budget honesty + model-choice deep-links | budget foresight matrix closed |
 | **aqm** | Antiek-bench leaderboard honesty + deep-links | model-quality matrix closed aqj–aqm |
+| **aqn** | Midnight Oil soft-budget honesty + model deep-links | swarm surface ↔ Settings matrix |

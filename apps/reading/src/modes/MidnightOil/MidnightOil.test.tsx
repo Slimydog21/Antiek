@@ -1136,21 +1136,39 @@ describe("MidnightOil mode", () => {
       screen.getByTestId("midnight-oil-mode").getAttribute("data-view-format"),
     ).toBe("html");
     // Residual (aor): multi-goal swarm intro + HTML-first mode stamps.
+    const moilMode = screen.getByTestId("midnight-oil-mode");
+    expect(moilMode.getAttribute("data-html-first")).toBe("true");
+    expect(moilMode.getAttribute("data-multi-goal-swarm")).toBe("true");
+    // Residual (aqn): soft budget · budget-before-fire · L4 deferred · never auto-route.
+    expect(moilMode.getAttribute("data-soft-budget")).toBe("true");
+    expect(moilMode.getAttribute("data-budget-before-fire")).toBe("true");
+    expect(moilMode.getAttribute("data-l4-live-step")).toBe("deferred");
+    expect(moilMode.getAttribute("data-never-auto-route")).toBe("true");
     expect(
-      screen.getByTestId("midnight-oil-mode").getAttribute("data-html-first"),
-    ).toBe("true");
-    expect(
-      screen
-        .getByTestId("midnight-oil-mode")
-        .getAttribute("data-multi-goal-swarm"),
-    ).toBe("true");
-    expect(
-      Number(
-        screen.getByTestId("midnight-oil-mode").getAttribute("data-goal-templates"),
-      ),
+      Number(moilMode.getAttribute("data-goal-templates")),
     ).toBeGreaterThanOrEqual(3);
     expect(screen.getByTestId("moil-mode-intro").textContent).toMatch(
       /multi-goal|templates|fan-out/i,
+    );
+    expect(screen.getByTestId("moil-mode-intro").textContent).toMatch(
+      /budget|ceiling|L4/i,
+    );
+    const honesty = screen.getByTestId("moil-honesty-nav");
+    expect(honesty.getAttribute("data-soft-budget")).toBe("true");
+    expect(honesty.getAttribute("data-never-auto-route")).toBe("true");
+    expect(
+      screen.getByTestId("moil-prompt-cost-honesty-link").getAttribute("href"),
+    ).toBe("/settings#prompt-cost-projection");
+    expect(
+      screen
+        .getByTestId("moil-decision-tree-honesty-link")
+        .getAttribute("href"),
+    ).toBe("/settings#decision-tree-panel");
+    expect(
+      screen.getByTestId("moil-notdiamond-honesty-link").getAttribute("href"),
+    ).toBe("/settings#notdiamond-advisory");
+    expect(screen.getByTestId("moil-soft-budget-hint").textContent).toMatch(
+      /soft budget/i,
     );
 
     // Residual (ex): auto-open floating hosted HTML after deposit.

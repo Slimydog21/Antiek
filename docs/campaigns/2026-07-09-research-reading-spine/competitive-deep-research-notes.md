@@ -3906,3 +3906,8 @@ P0 PR #465. Pivot aqm+ outside thrash.
 Leaderboard stamps HTML-first · never-auto-route · propose≠promote · ND advisory
 + honesty nav to decision-tree · add-model · ND · prompt-cost. Closes Settings
 model-quality matrix aqj–aqm. vitest Settings leaderboard green. P0 PR #465. Pivot aqn+.
+
+## Residual aqn · 2026-07-10 — Midnight Oil soft-budget honesty + model-choice deep-links
+MO mode stamps soft-budget · budget-before-fire · L4 deferred · never-auto-route
++ honesty nav to prompt-cost · decision-tree · ND. Connects swarm surface to Settings
+model/budget matrix. vitest MidnightOil green. P0 PR #465. Pivot aqo+ outside thrash.

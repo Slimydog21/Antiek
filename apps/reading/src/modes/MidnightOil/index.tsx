@@ -668,6 +668,10 @@ export default function MidnightOil() {
       data-testid="midnight-oil-mode"
       data-multi-goal-swarm="true"
       data-goal-templates={String(MOIL_GOAL_TEMPLATES.length)}
+      data-soft-budget="true"
+      data-budget-before-fire="true"
+      data-l4-live-step="deferred"
+      data-never-auto-route="true"
     >
       <header className="mb-6 space-y-1">
         <h1 className="text-2xl font-semibold">Midnight Oil</h1>
@@ -676,12 +680,58 @@ export default function MidnightOil() {
           data-testid="moil-mode-intro"
           data-multi-goal-swarm="true"
           data-html-first="true"
+          data-soft-budget="true"
+          data-budget-before-fire="true"
         >
           Autonomous multi-goal deep research without a live workstation session.
           Set goals (one per line · research templates · fan-out coverage) and
           duration; review the recommended price ceiling; approve before the
-          swarm may run. Deliverable: HTML research asset (never PDF). L4 live
-          multi-provider step remains dual-gate.
+          swarm may run. Deliverable: HTML research asset (never PDF). Soft
+          budget ceiling · budget-before-fire · L4 live multi-provider step
+          dual-gate · never auto-route model choice.
+        </p>
+        {/* Residual (aqn): MO budget/model honesty nav (parity Settings aqj–aqm). */}
+        <p
+          className="text-[11px] font-mono flex flex-wrap gap-x-3 gap-y-1 opacity-90"
+          data-testid="moil-honesty-nav"
+          data-view-format="html"
+          data-soft-budget="true"
+          data-budget-before-fire="true"
+          data-never-auto-route="true"
+          data-l4-live-step="deferred"
+          role="navigation"
+          aria-label="Midnight Oil budget and model honesty navigation"
+        >
+          <a
+            href="/settings#prompt-cost-projection"
+            data-testid="moil-prompt-cost-honesty-link"
+            className="underline opacity-90 hover:opacity-100"
+            title="Settings prompt-cost projection (soft budget foresight)"
+          >
+            Prompt-cost projection
+          </a>
+          <a
+            href="/settings#decision-tree-panel"
+            data-testid="moil-decision-tree-honesty-link"
+            className="underline opacity-90 hover:opacity-100"
+            title="Settings decision-tree driver (manual model choice · never auto-route)"
+          >
+            Decision-tree driver
+          </a>
+          <a
+            href="/settings#notdiamond-advisory"
+            data-testid="moil-notdiamond-honesty-link"
+            className="underline opacity-90 hover:opacity-100"
+            title="NotDiamond advisory only · never dispatch authority"
+          >
+            ND advisory
+          </a>
+          <span
+            className="opacity-70"
+            data-testid="moil-soft-budget-hint"
+          >
+            soft budget · budget-before-fire · L4 deferred · never auto-route
+          </span>
         </p>
       </header>
 
