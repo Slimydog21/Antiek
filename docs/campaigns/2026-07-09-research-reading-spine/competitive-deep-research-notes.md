@@ -806,3 +806,8 @@ weekly_usage_summary exposes write_seed_by_source / counts so Settings and
 HTML clients share one substrate source of truth (TWIN_WRITE_SEED_USAGE_SOURCES).
 Competitive delta: recursive note-taker → Write feed composition is machine-
 readable for weekly rewrite without client-side source lists drifting.
+
+## Residual rz · 2026-07-10 — Usage Write-seed weekly metrics
+Settings usage panel surfaces write_seed_event_count / source_count /
+known_catalog from substrate SSOT. Competitive delta: operators see weekly
+recursive note-taker → Write volume at a glance (propose≠promote).

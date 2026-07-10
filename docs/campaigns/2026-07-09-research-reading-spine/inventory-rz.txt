@@ -1,0 +1,13 @@
+# inventory-rz · Usage panel Write-seed weekly metrics (SSOT chrome)
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: rz
+date: 2026-07-10
+
+## Closed
+- antiek-bench-usage-write-seed-metrics: events/sources/known_catalog from substrate
+- usage sources list prefers write_seed_source_count SSOT
+- vitest Settings 25 · SCRATCH residual-tests-rz.log
+
+## Not in scope
+- Operator merge PR #465 (gated)
+- Live L1–L4 dual-gate (operator-only)

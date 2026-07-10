@@ -614,6 +614,13 @@ describe("Settings SPR-01 + decision-tree install", () => {
     for (const row of screen.getAllByTestId("antiek-bench-usage-source-row")) {
       expect(row.getAttribute("data-write-seed-feed")).toBe("false");
     }
+    // Residual (rz): weekly Write-seed metrics from substrate SSOT.
+    const metrics = screen.getByTestId("antiek-bench-usage-write-seed-metrics");
+    expect(metrics.getAttribute("data-write-seed-event-count")).toBe("0");
+    expect(metrics.getAttribute("data-write-seed-source-count")).toBe("0");
+    expect(metrics.getAttribute("data-write-seed-known-count")).toBe("14");
+    expect(metrics.textContent).toMatch(/Write seed this week/i);
+    expect(metrics.textContent).toMatch(/not auto-promoted/i);
   });
 
   it("loads NotDiamond advisory posture — authority rejected", async () => {
@@ -926,6 +933,11 @@ describe("Settings SPR-01 + decision-tree install", () => {
       .getAllByTestId("antiek-bench-usage-source-row")
       .find((el) => el.getAttribute("data-source") === "twin_chase");
     expect(usageChase?.getAttribute("data-write-seed-feed")).toBe("false");
+    // Residual (rz): SSOT metrics reflect write-seed override week.
+    const metrics = screen.getByTestId("antiek-bench-usage-write-seed-metrics");
+    expect(metrics.getAttribute("data-write-seed-event-count")).toBe("9");
+    expect(metrics.getAttribute("data-write-seed-source-count")).toBe("1");
+    expect(metrics.getAttribute("data-write-seed-known-count")).toBe("1");
   });
 
   it("surfaces suite rewrite rationale + feed source count (pe)", async () => {

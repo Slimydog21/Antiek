@@ -1736,6 +1736,31 @@ export default function Settings() {
               <div className="font-mono text-[13px] space-y-2" data-testid="antiek-bench-usage-summary">
                 <Row label="Events" value={String(usage.event_count)} />
                 <Row label="View" value={usage.view_format} />
+                {/* Residual (rz): Write-seed weekly metrics from substrate SSOT (ry). */}
+                {(usage.write_seed_event_count != null ||
+                  usage.write_seed_source_count != null) && (
+                  <p
+                    className="text-[11px] text-ink-soft dark:text-starlight border border-ink/10 rounded p-2 dark:border-bright/10"
+                    data-testid="antiek-bench-usage-write-seed-metrics"
+                    data-write-seed-event-count={String(
+                      usage.write_seed_event_count ?? 0,
+                    )}
+                    data-write-seed-source-count={String(
+                      usage.write_seed_source_count ?? 0,
+                    )}
+                    data-write-seed-known-count={String(
+                      usage.write_seed_known_count ?? writeSeedKnownCount,
+                    )}
+                    data-propose-not-promote="true"
+                    role="status"
+                  >
+                    Write seed this week: events=
+                    {usage.write_seed_event_count ?? 0} · sources=
+                    {usage.write_seed_source_count ?? 0} · known_catalog=
+                    {usage.write_seed_known_count ?? writeSeedKnownCount}{" "}
+                    (recursive note-taker → Write · not auto-promoted)
+                  </p>
+                )}
                 {Object.keys(usage.by_task_class || {}).length === 0 ? (
                   <p className="text-[11px] text-ink-soft dark:text-starlight">
                     No usage events yet.
@@ -1756,9 +1781,11 @@ export default function Settings() {
                     className="space-y-1"
                     data-testid="antiek-bench-usage-sources"
                     data-write-seed-source-count={String(
-                      Object.keys(usage.by_source || {}).filter((s) =>
-                        isWriteSeedFeedSource(s),
-                      ).length,
+                      usage.write_seed_source_count != null
+                        ? usage.write_seed_source_count
+                        : Object.keys(usage.by_source || {}).filter((s) =>
+                            isWriteSeedFeedSource(s),
+                          ).length,
                     )}
                   >
                     {Object.entries(usage.by_source || {}).map(([src, n]) => {
