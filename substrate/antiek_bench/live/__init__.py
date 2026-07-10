@@ -23,6 +23,7 @@ from .journal import (
     Status,
     deterministic_call_id,
 )
+from .wedge_config import BENCH_ROLE, LiveWedgeConfig, validate_live_suite
 
 __all__ = [
     "HardBudget",
@@ -33,5 +34,8 @@ __all__ = [
     "ProviderResult",
     "Status",
     "TimeoutRunner",
+    "BENCH_ROLE",
+    "LiveWedgeConfig",
     "deterministic_call_id",
+    "validate_live_suite",
 ]
