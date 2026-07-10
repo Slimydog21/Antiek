@@ -1,0 +1,17 @@
+# inventory-agi · highlight Note panel save path honesty
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: agi
+date: 2026-07-10
+parent_tip: a3804928 (agh)
+
+## Closed
+- floatmenu-note-panel: seamless-highlight-note · note-saved=false
+- floatmenu-note-saved: seamless-highlight-note · note-saved=true · source-kind=user
+- vitest FloatMenu · 27 passed
+
+## Why this residual
+User recursive note-taker from highlights: menu stamp (agb) was insufficient
+without panel+saved path honesty for user-sourced marginalia.
+
+## Not in scope
+- Dialogue panel saved path (agj candidate)

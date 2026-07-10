@@ -418,13 +418,31 @@ function NotePanel({
 
   if (saved) {
     return (
-      <Panel title="Noted" onClose={onClose}>
-        <p className="text-aurora">Saved — user-sourced, anchored to your selection.</p>
-      </Panel>
+      <div
+        data-testid="floatmenu-note-saved"
+        // Residual (agi): highlight → note saved path honesty.
+        data-seamless-highlight-note="true"
+        data-note-saved="true"
+        data-view-format="html"
+        data-source-kind="user"
+      >
+        <Panel title="Noted" onClose={onClose}>
+          <p className="text-aurora">
+            Saved — user-sourced, anchored to your selection · seamless
+            highlight note
+          </p>
+        </Panel>
+      </div>
     );
   }
 
   return (
+    <div
+      data-testid="floatmenu-note-panel"
+      data-seamless-highlight-note="true"
+      data-view-format="html"
+      data-note-saved="false"
+    >
     <Panel title="Note" onClose={onClose}>
       <textarea
         value={text}
@@ -470,6 +488,7 @@ function NotePanel({
         </LemonButton>
       </div>
     </Panel>
+    </div>
   );
 }
 

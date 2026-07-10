@@ -2548,3 +2548,8 @@ mock in refs tests. vitest ChatInputArea.refs 3 green.
 Marketplace free HTML PD catalog adds pd-godel-incompleteness (foundations ·
 logic · computability). Antiek-bench dogfood v19 book_qa for Gödel. free_pd
 floor ≥18 · free computing ≥5. pytest marketplace+dogfood · Settings 36 green.
+
+## Residual agi · 2026-07-10 — highlight Note panel save path honesty
+FloatMenu Note panel stamps data-seamless-highlight-note · data-note-saved before
+and after save; saved chrome stamps data-source-kind=user. Completes highlight
+→ recursive note-taker path for human marginalia. vitest FloatMenu 27 green.

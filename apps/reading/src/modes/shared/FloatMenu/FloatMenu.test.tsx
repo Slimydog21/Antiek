@@ -356,6 +356,9 @@ describe("NOTE persists with a user-sourced label + provenance (M2)", () => {
     render(<Host provenance={{ documentId: "doc-1", chunkId: "c-1", servable: true }} />);
     selectTextIn(screen.getByTestId("scope"), "notable text");
     fireEvent.click(screen.getByRole("menuitem", { name: "Note" }));
+    const panel = screen.getByTestId("floatmenu-note-panel");
+    expect(panel.getAttribute("data-seamless-highlight-note")).toBe("true");
+    expect(panel.getAttribute("data-note-saved")).toBe("false");
     const textarea = screen.getByPlaceholderText("Type a note, or speak it…");
     fireEvent.change(textarea, { target: { value: "interesting" } });
     await act(async () => {
@@ -364,6 +367,13 @@ describe("NOTE persists with a user-sourced label + provenance (M2)", () => {
     expect(postTypedEventMock).toHaveBeenCalledTimes(1);
     const payload = (postTypedEventMock.mock.calls[0][0] as { payload: { source_kind: string } }).payload;
     expect(payload.source_kind).toBe("user");
+    // Residual (agi): saved note path honesty.
+    const saved = screen.getByTestId("floatmenu-note-saved");
+    expect(saved.getAttribute("data-seamless-highlight-note")).toBe("true");
+    expect(saved.getAttribute("data-note-saved")).toBe("true");
+    expect(saved.getAttribute("data-source-kind")).toBe("user");
+    expect(saved.getAttribute("data-view-format")).toBe("html");
+    expect(saved.textContent).toMatch(/seamless highlight note/i);
   });
 });
 
