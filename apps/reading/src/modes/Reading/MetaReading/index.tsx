@@ -46,6 +46,8 @@ import { buildMetaReadingWriteHref } from "../../../workspace/twinWriteSeed";
  *   (reading ≡ research · parity TalkToBook ang · ResearchThis fc/ou).
  * Residual (anw): Open Write twin_seed from HTML synthesis deliverable so
  *   owned-corpus report enters writing flywheel (reading ≡ research ≡ writing).
+ * Residual (anz): deliverable HTML-first report stamps + competitive DR
+ *   scorecard/FUTURE deep-links (HTML engagement · competitive depth · parity MO any).
  *
  * PROPOSED BOUNDARY (operator decision 2, sign-off pending): the surface
  * carries the "proposed (sign-off pending)" banner. Reversible to a soft corpus
@@ -310,7 +312,15 @@ export default function MetaReading() {
           )}
 
           {deliverable && !deliverable.empty && (
-            <section className="space-y-4" data-testid="meta-reading-deliverable">
+            <section
+              className="space-y-4"
+              data-testid="meta-reading-deliverable"
+              data-view-format="html"
+              data-html-first="true"
+              data-seamless-meta-deliverable="true"
+              data-research-tier={researchTier}
+              data-asset-id={deliverable.asset_id?.trim() || ""}
+            >
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-lg font-serif text-ink dark:text-bright">Your reading</h2>
                 {/* TTS via the SPR-14 shared service — narrate the report. The
@@ -330,8 +340,50 @@ export default function MetaReading() {
                 </p>
               )}
 
+              {/* Residual (anz): deliverable-local competitive DR honesty. */}
+              <p
+                className="text-[11px] font-mono space-x-2"
+                data-testid="meta-reading-competitive-links"
+                data-view-format="html"
+                data-html-first="true"
+              >
+                <a
+                  href="/settings#settings-competitive-dr-scorecard"
+                  data-testid="meta-reading-competitive-scorecard-link"
+                  className="underline opacity-80 hover:opacity-100"
+                  title="Settings competitive deep-research scorecard (owned-corpus meta-reading · HTML-first)"
+                >
+                  Settings · competitive DR scorecard
+                </a>
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+                  data-testid="meta-reading-competitive-dr-future-agent-link"
+                  className="underline opacity-80 hover:opacity-100"
+                  title="FUTURE-AGENT competitive deep-research quality brief (meta-reading synthesis · HTML-first)"
+                >
+                  FUTURE · competitive DR brief
+                </a>
+                <a
+                  href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md"
+                  data-testid="meta-reading-twin-completeness-future-agent-link"
+                  className="underline opacity-80 hover:opacity-100"
+                  title="FUTURE-AGENT twin note-taker completeness matrix (meta-reading twin substrate)"
+                >
+                  FUTURE · twin completeness matrix
+                </a>
+              </p>
+
               {/* READ-ONLY report (not an editable document — operator decision). */}
-              <article className="font-serif text-[15px] leading-[1.7] text-ink dark:text-bright whitespace-pre-wrap rounded-md border border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 px-4 py-3">
+              {/* Residual (anz): HTML-first report surface stamps (never PDF view). */}
+              <article
+                className="font-serif text-[15px] leading-[1.7] text-ink dark:text-bright whitespace-pre-wrap rounded-md border border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 px-4 py-3"
+                data-testid="meta-reading-report"
+                data-view-format="html"
+                data-html-first="true"
+                data-asset-id={deliverable.asset_id?.trim() || ""}
+                data-research-tier={researchTier}
+                data-corpus-scope={deliverable.corpus_scope || ""}
+              >
                 {deliverable.report}
               </article>
               {/* Residual (anw): Open Write twin_seed from HTML synthesis. */}
@@ -356,6 +408,7 @@ export default function MetaReading() {
                     className="text-[12px] font-mono"
                     data-testid="meta-reading-open-write-mount"
                     data-view-format="html"
+                    data-html-first="true"
                     data-asset-id={deliverable.asset_id.trim()}
                     data-seamless-meta-write="true"
                   >
@@ -363,6 +416,7 @@ export default function MetaReading() {
                       href={writeHref}
                       data-testid="meta-reading-open-write"
                       data-view-format="html"
+                      data-html-first="true"
                       data-has-twin-seed="1"
                       data-write-seed-has-body={String(hasBody)}
                       data-write-seed-source="meta_reading_deliverable"

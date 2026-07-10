@@ -1,0 +1,15 @@
+# inventory-anz · MetaReading HTML-first deliverable + competitive links
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: anz
+date: 2026-07-10
+parent_tip: 504d09bd (any)
+
+## Closed
+- MetaReading deliverable: data-html-first · seamless-meta-deliverable · research_tier · asset_id
+- Report article: data-testid meta-reading-report · HTML-first stamps · corpus_scope
+- Competitive scorecard + FUTURE DR quality + twin completeness matrix deep-links
+- vitest MetaReading 16 green (proof residual-anz-vitest.log)
+
+## Next
+aoa+ product residual outside thrash · prefer non-meta-reading-stamp thrash
+Operator merge PR #465 remains highest leverage (gated)

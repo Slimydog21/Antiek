@@ -3591,3 +3591,9 @@ Midnight Oil deposit result stamps HTML-first · seamless land · deposit-html-p
 research_tier · L4 live deferred, plus deposit-local competitive scorecard / FUTURE brief /
 L4 checklist (never invent live swarm). vitest MidnightOil 27 green.
 P0 operator merge PR #465. Pivot anz+ outside thrash.
+
+## Residual anz · 2026-07-10 — MetaReading HTML-first deliverable + competitive links
+Meta-reading deliverable/report stamp HTML-first · seamless deliverable · research_tier;
+competitive scorecard + FUTURE DR quality + twin completeness matrix deep-links on
+owned-corpus synthesis. vitest MetaReading 16 green.
+P0 operator merge PR #465. Pivot aoa+ outside thrash.

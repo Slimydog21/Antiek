@@ -296,6 +296,34 @@ describe("MetaReading (M4)", () => {
     );
     expect(write.getAttribute("data-write-seed-has-body")).toBe("true");
     expect(write.getAttribute("data-has-twin-seed")).toBe("1");
+    // Residual (anz): HTML-first report + competitive DR deep-links on deliverable.
+    const deliverable = screen.getByTestId("meta-reading-deliverable");
+    expect(deliverable.getAttribute("data-view-format")).toBe("html");
+    expect(deliverable.getAttribute("data-html-first")).toBe("true");
+    expect(deliverable.getAttribute("data-seamless-meta-deliverable")).toBe(
+      "true",
+    );
+    expect(deliverable.getAttribute("data-asset-id")).toBe("mr-abc123");
+    const report = screen.getByTestId("meta-reading-report");
+    expect(report.getAttribute("data-view-format")).toBe("html");
+    expect(report.getAttribute("data-html-first")).toBe("true");
+    expect(report.getAttribute("data-asset-id")).toBe("mr-abc123");
+    expect(report.textContent).toMatch(/synthesis of your books/i);
+    expect(
+      screen
+        .getByTestId("meta-reading-competitive-scorecard-link")
+        .getAttribute("href"),
+    ).toBe("/settings#settings-competitive-dr-scorecard");
+    expect(
+      screen
+        .getByTestId("meta-reading-competitive-dr-future-agent-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    expect(
+      screen
+        .getByTestId("meta-reading-twin-completeness-future-agent-link")
+        .getAttribute("href") || "",
+    ).toMatch(/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix/);
     const twins = screen.getByTestId("twin-notes-panel-stub");
     expect(twins.getAttribute("data-asset-id")).toBe("mr-abc123");
     expect(twins.getAttribute("data-auto-load")).toBe("true");
