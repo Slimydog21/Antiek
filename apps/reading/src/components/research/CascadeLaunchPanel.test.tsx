@@ -91,6 +91,30 @@ describe("CascadeLaunchPanel", () => {
     expect(screen.queryByTestId("cascade-launch-result")).toBeNull();
   });
 
+  it("rejects injectable false-echo of require flag without receipt", async () => {
+    const launchFn = vi.fn(async () => ({
+      raw: { launched: true },
+      source_policy: ["web"] as const,
+      require_source_preflight: false,
+      source_preflight: null,
+    }));
+    render(
+      <CascadeLaunchPanel
+        launchFn={launchFn as never}
+        initialRootId="root-1"
+        initialPolicies={["web"]}
+        initialRequirePreflight={true}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("cascade-launch-run"));
+    await waitFor(() => {
+      expect(screen.getByTestId("cascade-launch-error").textContent).toMatch(
+        /source_preflight receipt required/i,
+      );
+    });
+    expect(screen.queryByTestId("cascade-launch-result")).toBeNull();
+  });
+
   it("clears result when source toggles change", async () => {
     const launchFn = vi.fn(async () => ({
       raw: { launched: true },

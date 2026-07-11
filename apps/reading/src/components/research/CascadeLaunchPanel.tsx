@@ -61,9 +61,9 @@ export default function CascadeLaunchPanel({
         require_source_preflight: requirePreflight,
         per_research_budget_usd: budget,
       });
-      // Panel fail-closed: never render success when preflight was required
-      // but the resolved result lacks a receipt (covers injectable stubs).
-      if (body.require_source_preflight) {
+      // Panel fail-closed against the *submitted* requirePreflight flag
+      // (not the response echo), so injectable stubs cannot lie.
+      if (requirePreflight) {
         const pf = body.source_preflight;
         const policy =
           pf && typeof pf === "object"
