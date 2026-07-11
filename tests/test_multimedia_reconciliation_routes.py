@@ -305,9 +305,9 @@ def test_parent_run_projects_blocked_children_without_cross_owner_disclosure(
         evidence_verification_key=EVIDENCE_KEY,
         authorization_resolver=lambda execution_id: next(iter(authorizations.values())),
         recovery_evidence_resolver=lambda execution_id: (_ for _ in ()).throw(LookupError()),
-        asset_revision_resolver=lambda asset_id: (
+        asset_revision_resolver=lambda asset_id, operator_id: (
             prepared.revision_id
-            if asset_id == prepared.asset_id
+            if asset_id == prepared.asset_id and operator_id == "operator-1"
             else (_ for _ in ()).throw(LookupError())
         ),
         clock=lambda: RUN_NOW + timedelta(minutes=10),
@@ -343,9 +343,7 @@ def test_parent_run_projects_blocked_children_without_cross_owner_disclosure(
         f"/multimedia/assets/{prepared.asset_id}/reconciliation-links",
         headers=_headers("other"),
     )
-    assert other.status_code == 200
-    assert other.json()["executions"] == []
-    assert other.json()["narration_runs"] == []
+    assert other.status_code == 404
 
     with FlockWriteCoordinator(db_path).acquire_write_context("test.link_bounds") as connection:
         execution_row = list(

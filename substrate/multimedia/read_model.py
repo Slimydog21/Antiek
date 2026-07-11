@@ -8,9 +8,16 @@ JSON-backed records.
 
 from __future__ import annotations
 
+import fcntl
+import hashlib
 import os
+import re
+import stat
 import tempfile
+import threading
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Literal
 
@@ -46,6 +53,11 @@ from substrate.multimedia.video import (
 PlanMode = Literal["video", "audio", "hybrid"]
 JobKind = Literal["render", "steering", "hardening", "provider_execution"]
 JobStatus = Literal["queued", "running", "succeeded", "failed", "canceled", "partial"]
+_DEFAULT_OWNER_ID = "__operator__"
+_OWNER_DIGEST = re.compile(r"^[0-9a-f]{64}$")
+_ASSET_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+_MAX_RECORD_BYTES = 32 * 1024 * 1024
+_MAX_ACCOUNT_ASSETS = 1_000
 
 
 class _ReadModelBase(BaseModel):
@@ -157,18 +169,19 @@ class MultimediaJobList(_ReadModelBase):
     count: int
 
 
+class _AccountAssetEnvelope(_ReadModelBase):
+    schema_version: Literal["antiek.multimedia-account-asset.v1"]
+    owner_identity_digest: str = Field(pattern=_OWNER_DIGEST.pattern)
+    record: MultimediaAssetRecord
+
+
 class MultimediaAssetStore:
     """JSON-backed asset record store.
 
-    This is not a provider execution store and not a multi-user database. It is
-    a deterministic local read model for the single-operator workstation and
-    API tests. Files are written atomically so a process crash cannot leave a
-    half-written JSON record.
-
-    Single-writer assumption: every mutator does get -> model_copy -> save
-    without a cross-request lock. The single-operator workstation has no
-    realistic concurrent writers; a store-wide lock for async workers is
-    deferred to the live-provider sprint (see SPR-11 handoff packet).
+    Account identity is represented on disk only by SHA-256. Every record is
+    wrapped in an owner-bound envelope and all read/modify/write operations use
+    one cross-thread/process lock. Root-level legacy JSON is never claimed by a
+    caller; only ``migrate_legacy_assets`` can assign it to an explicit owner.
     """
 
     def __init__(self, root: str | os.PathLike[str] | None = None) -> None:
@@ -177,9 +190,25 @@ class MultimediaAssetStore:
             self.root = Path(root)
         else:
             self.root = Path(os.environ.get("ANTIEK_MULTIMEDIA_STORE", str(default_root)))
-        self.root.mkdir(parents=True, exist_ok=True)
+        if self.root.is_symlink():
+            raise ValueError("multimedia asset root cannot be a symlink")
+        self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        os.chmod(self.root, 0o700)
+        self._accounts = self.root / "accounts"
+        if self._accounts.is_symlink():
+            raise ValueError("multimedia account root cannot be a symlink")
+        self._accounts.mkdir(mode=0o700, exist_ok=True)
+        os.chmod(self._accounts, 0o700)
+        self._thread_lock = threading.RLock()
+        self._lock_path = self.root / ".store.lock"
 
-    def create_draft(self, request: CreateMultimediaDraftRequest) -> MultimediaAssetRecord:
+    def create_draft(
+        self,
+        request: CreateMultimediaDraftRequest,
+        *,
+        owner_id: str = _DEFAULT_OWNER_ID,
+    ) -> MultimediaAssetRecord:
+        owner_digest = _owner_digest(owner_id)
         asset_id = f"mm-{uuid.uuid4().hex[:12]}"
         revision_id = "rev-1"
         plan_request = MultimediaPlanRequest(
@@ -206,102 +235,123 @@ class MultimediaAssetStore:
             manifest=plan.to_manifest(asset_id=asset_id, revision_id=revision_id),
         )
         record = MultimediaAssetRecord(asset=asset, plan=plan, mode=request.mode, style=request.style)
-        self.save(record)
+        with self._locked(exclusive=True):
+            if self._path(owner_digest, asset_id).exists():
+                raise RuntimeError("multimedia asset identity collision")
+            self._save_unlocked(record, owner_digest)
         return record
 
-    def list_assets(self) -> MultimediaAssetList:
-        records = sorted(
-            (self.load(path.stem) for path in self.root.glob("*.json")),
-            key=lambda record: record.asset.asset_id,
-        )
+    def list_assets(self, *, owner_id: str = _DEFAULT_OWNER_ID) -> MultimediaAssetList:
+        owner_digest = _owner_digest(owner_id)
+        with self._locked(exclusive=False):
+            account = self._account_dir(owner_digest, create=False)
+            paths = [] if account is None else sorted(account.glob("*.json"))
+            if len(paths) > _MAX_ACCOUNT_ASSETS:
+                raise ValueError("multimedia account asset count exceeds its bound")
+            records = sorted(
+                (self._load_unlocked(path.stem, owner_digest) for path in paths),
+                key=lambda record: record.asset.asset_id,
+            )
         summaries = tuple(record.summary() for record in records)
         return MultimediaAssetList(assets=summaries, count=len(summaries))
 
-    def get(self, asset_id: str) -> MultimediaAssetRecord:
-        path = self._path(asset_id)
-        if not path.exists():
-            raise KeyError(asset_id)
-        return self.load(asset_id)
+    def get(
+        self, asset_id: str, *, owner_id: str = _DEFAULT_OWNER_ID
+    ) -> MultimediaAssetRecord:
+        owner_digest = _owner_digest(owner_id)
+        with self._locked(exclusive=False):
+            return self._load_unlocked(asset_id, owner_digest)
 
-    def approve_dry_run(self, asset_id: str) -> MultimediaAssetRecord:
-        record = self.get(asset_id)
-        asset = record.asset
-        if record.mode == "audio":
-            audio = assemble_audio_experience(record.plan, FakeTTSProvider(), asset_id=asset.asset_id, revision_id=asset.revision_id)
-            manifest = audio.manifest
-        else:
-            audio = assemble_audio_experience(record.plan, FakeTTSProvider(), asset_id=asset.asset_id, revision_id=f"{asset.revision_id}-audio")
-            video = assemble_video_documentary(record.plan, audio, asset_id=asset.asset_id, revision_id=asset.revision_id)
-            manifest = video.manifest.model_copy(
-                update={
-                    # video.manifest already inherits audio's provider_calls +
-                    # cost_rows (assemble_video_documentary seeds from
-                    # audio.manifest), so we only add the audio *files* here —
-                    # re-merging the rows would double-count TTS cost.
-                    "files": video.manifest.files + audio.manifest.files,
-                    "transcript_file_id": audio.manifest.transcript_file_id,
-                }
+    def approve_dry_run(
+        self, asset_id: str, *, owner_id: str = _DEFAULT_OWNER_ID
+    ) -> MultimediaAssetRecord:
+        owner_digest = _owner_digest(owner_id)
+        with self._locked(exclusive=True):
+            record = self._load_unlocked(asset_id, owner_digest)
+            asset = record.asset
+            if record.mode == "audio":
+                audio = assemble_audio_experience(record.plan, FakeTTSProvider(), asset_id=asset.asset_id, revision_id=asset.revision_id)
+                manifest = audio.manifest
+            else:
+                audio = assemble_audio_experience(record.plan, FakeTTSProvider(), asset_id=asset.asset_id, revision_id=f"{asset.revision_id}-audio")
+                video = assemble_video_documentary(record.plan, audio, asset_id=asset.asset_id, revision_id=asset.revision_id)
+                manifest = video.manifest.model_copy(
+                    update={
+                        # The video manifest already contains audio cost rows.
+                        "files": video.manifest.files + audio.manifest.files,
+                        "transcript_file_id": audio.manifest.transcript_file_id,
+                    }
+                )
+            approved = asset.model_copy(update={"status": MultimediaStatus.READY, "manifest": manifest})
+            updated = self._with_job(
+                record.model_copy(update={"asset": approved}),
+                kind="render",
+                status="succeeded",
+                progress_percent=100,
+                message="Dry-run render manifest assembled without live provider spend.",
             )
-        approved = asset.model_copy(update={"status": MultimediaStatus.READY, "manifest": manifest})
-        updated = self._with_job(
-            record.model_copy(update={"asset": approved}),
-            kind="render",
-            status="succeeded",
-            progress_percent=100,
-            message="Dry-run render manifest assembled without live provider spend.",
-        )
-        self.save(updated)
-        return updated
+            self._save_unlocked(updated, owner_digest)
+            return updated
 
-    def apply_steering(self, asset_id: str, request: SteeringRequest) -> MultimediaAssetRecord:
-        record = self.get(asset_id)
-        transcript = None
-        if request.raw_voice_transcript:
-            transcript = SteeringTranscript(
-                transcript_id=f"voice-{uuid.uuid4().hex[:8]}",
-                raw_text=request.raw_voice_transcript,
-                corrected_text=request.corrected_voice_transcript,
+    def apply_steering(
+        self,
+        asset_id: str,
+        request: SteeringRequest,
+        *,
+        owner_id: str = _DEFAULT_OWNER_ID,
+    ) -> MultimediaAssetRecord:
+        owner_digest = _owner_digest(owner_id)
+        with self._locked(exclusive=True):
+            record = self._load_unlocked(asset_id, owner_digest)
+            transcript = None
+            if request.raw_voice_transcript:
+                transcript = SteeringTranscript(
+                    transcript_id=f"voice-{uuid.uuid4().hex[:8]}",
+                    raw_text=request.raw_voice_transcript,
+                    corrected_text=request.corrected_voice_transcript,
+                )
+            intent = parse_steering_prompt(request.prompt, record.asset.manifest, transcript=transcript)
+            revision = plan_revision(record.asset, intent)
+            child = build_revision_asset(record.asset, revision)
+            updated = self._with_job(
+                record.model_copy(
+                    update={"asset": child, "latest_steering_intent": intent, "hardening_report": None}
+                ),
+                kind="steering",
+                status="succeeded",
+                progress_percent=100,
+                message="Steering prompt planned as a child revision.",
             )
-        intent = parse_steering_prompt(request.prompt, record.asset.manifest, transcript=transcript)
-        revision = plan_revision(record.asset, intent)
-        child = build_revision_asset(record.asset, revision)
-        updated = self._with_job(
-            record.model_copy(
-                update={
-                    "asset": child,
-                    "latest_steering_intent": intent,
-                    "hardening_report": None,
-                }
-            ),
-            kind="steering",
-            status="succeeded",
-            progress_percent=100,
-            message="Steering prompt planned as a child revision.",
-        )
-        self.save(updated)
-        return updated
+            self._save_unlocked(updated, owner_digest)
+            return updated
 
-    def run_hardening(self, asset_id: str) -> MultimediaAssetRecord:
-        record = self.get(asset_id)
-        scenes: tuple[object, ...] = ()
-        if record.mode != "audio":
-            audio = assemble_audio_experience(record.plan, FakeTTSProvider(), asset_id=record.asset.asset_id, revision_id=f"{record.asset.revision_id}-audio")
-            scenes = build_video_scenes(record.plan, audio)
-        report = evaluate_multimedia_asset(record.asset, scenes=scenes)
-        updated = self._with_job(
-            record.model_copy(update={"hardening_report": report}),
-            kind="hardening",
-            status="succeeded",
-            progress_percent=100,
-            message=f"Hardening completed with ship status {report.ship_status}.",
-        )
-        self.save(updated)
-        return updated
+    def run_hardening(
+        self, asset_id: str, *, owner_id: str = _DEFAULT_OWNER_ID
+    ) -> MultimediaAssetRecord:
+        owner_digest = _owner_digest(owner_id)
+        with self._locked(exclusive=True):
+            record = self._load_unlocked(asset_id, owner_digest)
+            scenes: tuple[object, ...] = ()
+            if record.mode != "audio":
+                audio = assemble_audio_experience(record.plan, FakeTTSProvider(), asset_id=record.asset.asset_id, revision_id=f"{record.asset.revision_id}-audio")
+                scenes = build_video_scenes(record.plan, audio)
+            report = evaluate_multimedia_asset(record.asset, scenes=scenes)
+            updated = self._with_job(
+                record.model_copy(update={"hardening_report": report}),
+                kind="hardening",
+                status="succeeded",
+                progress_percent=100,
+                message=f"Hardening completed with ship status {report.ship_status}.",
+            )
+            self._save_unlocked(updated, owner_digest)
+            return updated
 
     def prepare_live_execution(
         self,
         asset_id: str,
         request: LiveProviderExecutionRequest,
+        *,
+        owner_id: str = _DEFAULT_OWNER_ID,
     ) -> MultimediaAssetRecord:
         """Gate a dry-run asset toward live provider execution.
 
@@ -312,10 +362,24 @@ class MultimediaAssetStore:
         acknowledgement is checked before budget/readiness so an unack'd
         request never reaches a provider-ready state.
         """
-        record = self.get(asset_id)
+        owner_digest = _owner_digest(owner_id)
+        with self._locked(exclusive=True):
+            record = self._load_unlocked(asset_id, owner_digest)
+            return self._prepare_live_execution_unlocked(
+                record, request, owner_digest=owner_digest
+            )
+
+    def _prepare_live_execution_unlocked(
+        self,
+        record: MultimediaAssetRecord,
+        request: LiveProviderExecutionRequest,
+        *,
+        owner_digest: str,
+    ) -> MultimediaAssetRecord:
         if request.dry_run_revision_id and request.dry_run_revision_id != record.asset.revision_id:
-            return self.record_job(
-                asset_id,
+            return self._record_job_unlocked(
+                record,
+                owner_digest=owner_digest,
                 kind="provider_execution",
                 status="failed",
                 progress_percent=0,
@@ -323,9 +387,43 @@ class MultimediaAssetStore:
                 error_code="revision_mismatch",
                 retryable=False,
             )
+        if str(record.asset.status) != "ready":
+            return self._record_job_unlocked(
+                record,
+                owner_digest=owner_digest,
+                kind="provider_execution",
+                status="failed",
+                progress_percent=0,
+                message="Live provider execution requires an approved ready asset.",
+                error_code="asset_not_ready",
+                retryable=False,
+            )
+        if request.route_policy != record.asset.route_policy:
+            return self._record_job_unlocked(
+                record,
+                owner_digest=owner_digest,
+                kind="provider_execution",
+                status="failed",
+                progress_percent=0,
+                message="Requested route policy does not match the approved asset revision.",
+                error_code="route_policy_mismatch",
+                retryable=False,
+            )
+        if request.route_policy == "cheapest":
+            return self._record_job_unlocked(
+                record,
+                owner_digest=owner_digest,
+                kind="provider_execution",
+                status="failed",
+                progress_percent=0,
+                message="The cheapest route is dry-run only and cannot authorize paid execution.",
+                error_code="route_policy_not_live",
+                retryable=False,
+            )
         if not request.operator_acknowledged_spend:
-            return self.record_job(
-                asset_id,
+            return self._record_job_unlocked(
+                record,
+                owner_digest=owner_digest,
                 kind="provider_execution",
                 status="failed",
                 progress_percent=0,
@@ -335,8 +433,9 @@ class MultimediaAssetStore:
             )
         estimated = _estimated_live_budget_floor(record)
         if request.max_budget_usd < estimated:
-            return self.record_job(
-                asset_id,
+            return self._record_job_unlocked(
+                record,
+                owner_digest=owner_digest,
                 kind="provider_execution",
                 status="failed",
                 progress_percent=0,
@@ -346,8 +445,9 @@ class MultimediaAssetStore:
             )
         missing = _missing_provider_families(request.provider_families)
         if missing:
-            return self.record_job(
-                asset_id,
+            return self._record_job_unlocked(
+                record,
+                owner_digest=owner_digest,
                 kind="provider_execution",
                 status="failed",
                 progress_percent=0,
@@ -356,8 +456,9 @@ class MultimediaAssetStore:
                 retryable=False,
             )
         families = ", ".join(request.provider_families or ("none",))
-        return self.record_job(
-            asset_id,
+        return self._record_job_unlocked(
+            record,
+            owner_digest=owner_digest,
             kind="provider_execution",
             status="queued",
             progress_percent=0,
@@ -378,6 +479,7 @@ class MultimediaAssetStore:
         message: str,
         error_code: str | None = None,
         retryable: bool | None = None,
+        owner_id: str = _DEFAULT_OWNER_ID,
     ) -> MultimediaAssetRecord:
         """Append an arbitrary job row (failed/partial provider jobs, retries).
 
@@ -385,7 +487,32 @@ class MultimediaAssetStore:
         downgrade-to-cheapest stays a route-policy operation, never a magic
         mutation hidden inside render status.
         """
-        record = self.get(asset_id)
+        owner_digest = _owner_digest(owner_id)
+        with self._locked(exclusive=True):
+            record = self._load_unlocked(asset_id, owner_digest)
+            return self._record_job_unlocked(
+                record,
+                owner_digest=owner_digest,
+                kind=kind,
+                status=status,
+                progress_percent=progress_percent,
+                message=message,
+                error_code=error_code,
+                retryable=retryable,
+            )
+
+    def _record_job_unlocked(
+        self,
+        record: MultimediaAssetRecord,
+        *,
+        owner_digest: str,
+        kind: JobKind,
+        status: JobStatus,
+        progress_percent: int,
+        message: str,
+        error_code: str | None = None,
+        retryable: bool | None = None,
+    ) -> MultimediaAssetRecord:
         updated = self._with_job(
             record,
             kind=kind,
@@ -395,11 +522,13 @@ class MultimediaAssetStore:
             error_code=error_code,
             retryable=retryable,
         )
-        self.save(updated)
+        self._save_unlocked(updated, owner_digest)
         return updated
 
-    def list_jobs(self, asset_id: str) -> MultimediaJobList:
-        record = self.get(asset_id)
+    def list_jobs(
+        self, asset_id: str, *, owner_id: str = _DEFAULT_OWNER_ID
+    ) -> MultimediaJobList:
+        record = self.get(asset_id, owner_id=owner_id)
         jobs = tuple(sorted(record.jobs, key=lambda job: job.sequence))
         return MultimediaJobList(jobs=jobs, count=len(jobs))
 
@@ -429,19 +558,233 @@ class MultimediaAssetStore:
         )
         return record.model_copy(update={"jobs": record.jobs + (job,)})
 
-    def save(self, record: MultimediaAssetRecord) -> None:
-        path = self._path(record.asset.asset_id)
-        tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(record.model_dump_json(indent=2, exclude_computed_fields=True) + "\n")
-        tmp.replace(path)
+    def save(
+        self, record: MultimediaAssetRecord, *, owner_id: str = _DEFAULT_OWNER_ID
+    ) -> None:
+        owner_digest = _owner_digest(owner_id)
+        with self._locked(exclusive=True):
+            self._save_unlocked(record, owner_digest)
 
-    def load(self, asset_id: str) -> MultimediaAssetRecord:
-        return MultimediaAssetRecord.model_validate_json(self._path(asset_id).read_text())
+    def load(
+        self, asset_id: str, *, owner_id: str = _DEFAULT_OWNER_ID
+    ) -> MultimediaAssetRecord:
+        return self.get(asset_id, owner_id=owner_id)
 
-    def _path(self, asset_id: str) -> Path:
-        if "/" in asset_id or "\\" in asset_id:
+    def migrate_legacy_assets(self, *, owner_id: str) -> int:
+        """Assign root-level v0 records only to an explicitly configured owner."""
+        owner_digest = _owner_digest(owner_id)
+        migrated = 0
+        with self._locked(exclusive=True):
+            legacy_paths = sorted(self.root.glob("*.json"))
+            if len(legacy_paths) > _MAX_ACCOUNT_ASSETS:
+                raise ValueError("legacy multimedia asset count exceeds its bound")
+            for legacy in legacy_paths:
+                record = self._read_legacy_unlocked(legacy)
+                if record.asset.asset_id != legacy.stem:
+                    raise ValueError("legacy multimedia asset identity conflicts")
+                destination = self._path(owner_digest, record.asset.asset_id)
+                if destination.exists():
+                    existing = self._load_unlocked(record.asset.asset_id, owner_digest)
+                    if existing != record:
+                        raise ValueError("legacy multimedia asset migration conflicts")
+                else:
+                    self._save_unlocked(record, owner_digest)
+                legacy.unlink()
+                _fsync_directory(self.root)
+                migrated += 1
+        return migrated
+
+    def _save_unlocked(self, record: MultimediaAssetRecord, owner_digest: str) -> None:
+        path = self._path(owner_digest, record.asset.asset_id)
+        account = self._account_dir(owner_digest, create=True)
+        assert account is not None
+        if path.is_symlink():
+            raise ValueError("multimedia asset path cannot be a symlink")
+        if path.exists():
+            _require_private_regular(path)
+        envelope = _AccountAssetEnvelope(
+            schema_version="antiek.multimedia-account-asset.v1",
+            owner_identity_digest=owner_digest,
+            record=record,
+        )
+        payload = (
+            envelope.model_dump_json(indent=2, exclude_computed_fields=True).encode("utf-8")
+            + b"\n"
+        )
+        if len(payload) > _MAX_RECORD_BYTES:
+            raise ValueError("multimedia asset record exceeds its byte bound")
+        temporary = account / f".{record.asset.asset_id}.{uuid.uuid4().hex}.tmp"
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        try:
+            with os.fdopen(descriptor, "wb", closefd=False) as stream:
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+            os.chmod(path, 0o600)
+            _fsync_directory(account)
+        finally:
+            os.close(descriptor)
+            with suppress(FileNotFoundError):
+                temporary.unlink()
+
+    def _load_unlocked(self, asset_id: str, owner_digest: str) -> MultimediaAssetRecord:
+        path = self._path(owner_digest, asset_id)
+        if not path.exists():
             raise KeyError(asset_id)
-        return self.root / f"{asset_id}.json"
+        raw = _read_bounded_private(path)
+        try:
+            envelope = _AccountAssetEnvelope.model_validate_json(raw)
+        except Exception:
+            raise ValueError("multimedia asset envelope is invalid") from None
+        if (
+            envelope.owner_identity_digest != owner_digest
+            or envelope.record.asset.asset_id != asset_id
+        ):
+            raise ValueError("multimedia asset envelope identity conflicts")
+        return envelope.record
+
+    def _read_legacy_unlocked(self, path: Path) -> MultimediaAssetRecord:
+        raw = _read_bounded_legacy(path)
+        try:
+            return MultimediaAssetRecord.model_validate_json(raw)
+        except Exception:
+            raise ValueError("legacy multimedia asset record is invalid") from None
+
+    def _path(self, owner_digest: str, asset_id: str) -> Path:
+        if not _OWNER_DIGEST.fullmatch(owner_digest) or not _ASSET_ID.fullmatch(asset_id):
+            raise KeyError(asset_id)
+        return self._accounts / owner_digest / f"{asset_id}.json"
+
+    def _account_dir(self, owner_digest: str, *, create: bool) -> Path | None:
+        if not _OWNER_DIGEST.fullmatch(owner_digest):
+            raise ValueError("multimedia owner identity is invalid")
+        path = self._accounts / owner_digest
+        if path.is_symlink():
+            raise ValueError("multimedia account path cannot be a symlink")
+        if not path.exists():
+            if not create:
+                return None
+            path.mkdir(mode=0o700)
+            _fsync_directory(self._accounts)
+        if not path.is_dir():
+            raise ValueError("multimedia account path is invalid")
+        os.chmod(path, 0o700)
+        return path
+
+    @contextmanager
+    def _locked(self, *, exclusive: bool) -> Iterator[None]:
+        with self._thread_lock:
+            descriptor = os.open(
+                self._lock_path,
+                os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+                0o600,
+            )
+            try:
+                os.chmod(self._lock_path, 0o600)
+                fcntl.flock(descriptor, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+                yield
+            finally:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+                os.close(descriptor)
+
+
+def _owner_digest(owner_id: str) -> str:
+    if not isinstance(owner_id, str):
+        raise ValueError("multimedia owner identity is invalid")
+    encoded = owner_id.strip().encode("utf-8")
+    if not encoded or len(encoded) > 512 or any(byte < 32 or byte == 127 for byte in encoded):
+        raise ValueError("multimedia owner identity is invalid")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _require_private_regular(path: Path) -> os.stat_result:
+    if path.is_symlink():
+        raise ValueError("multimedia asset path cannot be a symlink")
+    metadata = path.stat()
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_nlink != 1
+        or stat.S_IMODE(metadata.st_mode) & 0o077
+    ):
+        raise ValueError("multimedia asset path is unsafe")
+    return metadata
+
+
+def _read_bounded_private(path: Path) -> bytes:
+    metadata = _require_private_regular(path)
+    if not 0 < metadata.st_size <= _MAX_RECORD_BYTES:
+        raise ValueError("multimedia asset record is invalid")
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        opened = os.fstat(descriptor)
+        if (opened.st_dev, opened.st_ino, opened.st_size) != (
+            metadata.st_dev,
+            metadata.st_ino,
+            metadata.st_size,
+        ):
+            raise ValueError("multimedia asset changed during read")
+        chunks: list[bytes] = []
+        remaining = _MAX_RECORD_BYTES + 1
+        while remaining:
+            chunk = os.read(descriptor, min(1024 * 1024, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        raw = b"".join(chunks)
+        if not raw or len(raw) > _MAX_RECORD_BYTES or os.read(descriptor, 1):
+            raise ValueError("multimedia asset record is invalid")
+        return raw
+    finally:
+        os.close(descriptor)
+
+
+def _read_bounded_legacy(path: Path) -> bytes:
+    if path.is_symlink():
+        raise ValueError("legacy multimedia asset path is unsafe")
+    metadata = path.stat()
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_nlink != 1
+        or not 0 < metadata.st_size <= _MAX_RECORD_BYTES
+    ):
+        raise ValueError("legacy multimedia asset path is unsafe")
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        opened = os.fstat(descriptor)
+        if (opened.st_dev, opened.st_ino, opened.st_size) != (
+            metadata.st_dev,
+            metadata.st_ino,
+            metadata.st_size,
+        ):
+            raise ValueError("legacy multimedia asset changed during read")
+        chunks: list[bytes] = []
+        remaining = metadata.st_size
+        while remaining:
+            chunk = os.read(descriptor, min(1024 * 1024, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        raw = b"".join(chunks)
+        if len(raw) != metadata.st_size or os.read(descriptor, 1):
+            raise ValueError("legacy multimedia asset changed during read")
+        return raw
+    finally:
+        os.close(descriptor)
+
+
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def _evidence_from_request(request: CreateMultimediaDraftRequest) -> tuple[EvidenceChunk, ...]:

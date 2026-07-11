@@ -92,7 +92,7 @@ def create_multimedia_execution_router(
     ) -> ExecutionAuthorizationResponse:
         operator_id = _operator_id(request)
         try:
-            record = store.get(asset_id)
+            record = store.get(asset_id, owner_id=operator_id)
         except KeyError as exc:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

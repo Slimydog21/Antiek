@@ -73,8 +73,10 @@ class MultimediaReconciliationRuntime:
     evidence_verification_key: bytes
     authorization_resolver: Callable[[str], MultimediaExecutionAuthorizationV2]
     recovery_evidence_resolver: Callable[[str], RecoveredChapterAudio]
-    asset_revision_resolver: Callable[[str], str] = lambda asset_id: (_ for _ in ()).throw(
-        LookupError("multimedia asset is unavailable")
+    asset_revision_resolver: Callable[[str, str], str] = (
+        lambda asset_id, operator_id: (_ for _ in ()).throw(
+            LookupError("multimedia asset is unavailable")
+        )
     )
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
     stale_after: timedelta = timedelta(minutes=5)
@@ -249,7 +251,7 @@ def get_asset_reconciliation_links(
     runtime: MultimediaReconciliationRuntime = Depends(get_multimedia_reconciliation_runtime),
 ) -> AssetReconciliationLinksResponse:
     try:
-        revision_id = runtime.asset_revision_resolver(asset_id)
+        revision_id = runtime.asset_revision_resolver(asset_id, operator_id)
         return _asset_links(runtime, asset_id, revision_id, operator_id)
     except (LookupError, MultimediaExecutionUnavailable, ProviderExecutionIntegrityError, NarrationRunError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="multimedia asset unavailable") from exc

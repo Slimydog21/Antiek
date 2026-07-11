@@ -29,7 +29,13 @@ KEY = b"multimedia-execution-route-signing-key"
 NOW = datetime(2026, 7, 11, 2, 0, tzinfo=UTC)
 
 
-def _asset(root: Path, *, approved: bool = True, route_policy: str = "balanced"):
+def _asset(
+    root: Path,
+    *,
+    approved: bool = True,
+    route_policy: str = "balanced",
+    owner_id: str = "operator",
+):
     store = MultimediaAssetStore(root)
     record = store.create_draft(
         CreateMultimediaDraftRequest(
@@ -38,9 +44,14 @@ def _asset(root: Path, *, approved: bool = True, route_policy: str = "balanced")
             mode="hybrid",
             route_policy=route_policy,
             sources=("High bypass ratios improved propulsive efficiency.",),
-        )
+        ),
+        owner_id=owner_id,
     )
-    return store.approve_dry_run(record.asset.asset_id) if approved else record
+    return (
+        store.approve_dry_run(record.asset.asset_id, owner_id=owner_id)
+        if approved
+        else record
+    )
 
 
 def _client(tmp_path: Path, *, now: datetime = NOW) -> TestClient:
@@ -101,6 +112,15 @@ def test_authenticated_issue_is_durable_and_exactly_idempotent(tmp_path: Path) -
     replay = _post(restarted, record.asset.asset_id, _body(record))
     assert replay.status_code == 201
     assert replay.json() == receipt
+
+    foreign = _post(
+        restarted,
+        record.asset.asset_id,
+        _body(record, request_id="foreign-request"),
+        user="other-operator",
+    )
+    assert foreign.status_code == 404
+    assert "operator" not in foreign.text
 
 
 def test_conflicting_idempotency_replay_fails_closed(tmp_path: Path) -> None:
@@ -212,10 +232,11 @@ def test_issuer_serializes_identical_and_conflicting_concurrent_requests(tmp_pat
 
 
 def test_idempotency_is_operator_scoped(tmp_path: Path) -> None:
-    record = _asset(tmp_path / "assets")
+    alice_record = _asset(tmp_path / "assets", owner_id="alice")
+    bob_record = _asset(tmp_path / "assets", owner_id="bob")
     client = _client(tmp_path)
-    first = _post(client, record.asset.asset_id, _body(record), user="alice")
-    second = _post(client, record.asset.asset_id, _body(record), user="bob")
+    first = _post(client, alice_record.asset.asset_id, _body(alice_record), user="alice")
+    second = _post(client, bob_record.asset.asset_id, _body(bob_record), user="bob")
     assert first.status_code == second.status_code == 201
     assert first.json()["operator_id"] == "alice"
     assert second.json()["operator_id"] == "bob"
