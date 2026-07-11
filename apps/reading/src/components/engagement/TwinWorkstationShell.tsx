@@ -1,5 +1,5 @@
 /**
- * TwinWorkstationShell — composition surface for the recursive twin stack.
+ * TwinWorkstationShell - composition surface for the recursive twin stack.
  *
  * Free-file: does not own Reading/index, App.tsx, or rrv-712 floating hosts.
  * Slots are injectable React nodes so stacked twin panels (#842–#859) can be
@@ -110,7 +110,7 @@ export default function TwinWorkstationShell({
       <LemonCard title="Twin workstation" className="twin-workstation-shell">
         <p className="text-sm opacity-80" data-testid="twin-workstation-blurb">
           Recursive note-taker workstation for parent asset context. Slots are
-          composed injectably — this shell does not invent twin content or
+          composed injectably - this shell does not invent twin content or
           dispatch models.
         </p>
         <div className="mt-2 text-sm" data-testid="twin-workstation-parent">
@@ -144,7 +144,7 @@ export default function TwinWorkstationShell({
                   className="text-xs opacity-70"
                   data-testid={`twin-workstation-slot-empty-${id}`}
                 >
-                  Slot empty — mount panel when available (no invent).
+                  Slot empty - mount panel when available (no invent).
                 </div>
               )}
             </section>
