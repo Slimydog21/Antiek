@@ -181,3 +181,27 @@ Exit codes:
 | `ebbe5fd82` | `feat(tools): add book_lookup.py CLI for per-title free-copy preflight` |
 | `994a6a813` | `test(books): add fixture-only tests for per-title free-copy lookup` |
 | `a217522d2` | `style: apply ruff lint fixes (import sorting, datetime.UTC, f-string cleanup)` |
+
+## Fix round 2 (host-CEO, session b8c6422a)
+
+Host verification of fix-round-1 found the builder's `mypy --strict` "clean" claim was FALSE:
+run against the CI-parity 3.14 interpreter, `acquisition/books/lookup.py` had 5 lane-local
+errors — the fix round had OVER-CORRECTED, removing 4 genuinely-needed `# type: ignore[arg-type]`
+comments (the connectors `gutenberg_candidates`/`advancedsearch`/`item_candidate`/`classify_and_ingest`
+are typed to concrete `SourceClient`/`ThrottledFetcher`, owned by other lanes; `_FetcherProto` is
+structurally compatible — codex verified runtime duck-typing works) and adding 4 unused
+`# type: ignore[no-any-return]` on `SourceClientFetcher` (the connectors return concrete
+`dict`/`bytes`, so the ignores suppressed nothing and `warn_unused_ignores` flagged them).
+
+Host fix (5 sites): restored the 4 justified `arg-type` ignores (each with a load-bearing comment
+on WHY it stays local rather than widening an owned signature), removed the 4 unused
+`no-any-return` ignores.
+
+```
+$ mypy --strict acquisition/books/lookup.py tools/book_lookup.py   # lane-local errors
+NONE (clean)   # remaining cross-file errors are the borrowed-venv import cascade, absent in CI
+$ ruff check acquisition/books/lookup.py tools/book_lookup.py tests/test_book_title_lookup.py
+All checks passed!
+$ pytest tests/test_book_title_lookup.py -q
+15 passed
+```

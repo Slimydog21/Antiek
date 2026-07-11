@@ -192,8 +192,14 @@ def _search_gutenberg(
 
     query = f"{title} {author}" if author else title
     try:
+        # gutenberg_candidates is typed to concrete SourceClient (owned by
+        # another lane); _FetcherProto is structurally compatible — the
+        # connector calls only .get_json, which SourceClientFetcher provides —
+        # so the narrow ignore stays here rather than widening their signature.
         candidates = gutenberg_candidates(
-            fetcher, search=query, limit=5
+            fetcher,  # type: ignore[arg-type]
+            search=query,
+            limit=5,
         )
     except Exception as exc:
         raise FetchError(f"gutendex search failed: {exc}") from exc
@@ -229,13 +235,15 @@ def _search_ia(
 
     query = f"title:({title})" if not author else f"title:({title}) creator:({author})"
     try:
-        identifiers = ia.advancedsearch(fetcher, query=query, limit=5)
+        # advancedsearch is typed to concrete ThrottledFetcher (owned lane);
+        # _FetcherProto is structurally compatible (get_json only).
+        identifiers = ia.advancedsearch(fetcher, query=query, limit=5)  # type: ignore[arg-type]
     except Exception as exc:
         raise FetchError(f"IA advancedsearch failed: {exc}") from exc
 
     for ident in identifiers:
         try:
-            cand = ia.item_candidate(fetcher, ident)
+            cand = ia.item_candidate(fetcher, ident)  # type: ignore[arg-type]  # concrete ThrottledFetcher param; _FetcherProto is structurally compatible
         except Exception:
             continue
         if cand is not None and (cand.license_uri is not None or cand.pd_signal is not None):
@@ -285,7 +293,12 @@ def ingest_found_copy(
         )
     return classify_and_ingest(
         candidate,
-        fetcher,
+        # classify_and_ingest is typed to the concrete ThrottledFetcher; the
+        # _FetcherProto is structurally compatible (SourceClientFetcher wraps a
+        # real ThrottledFetcher for the IA path) and pd_connector_base is owned
+        # by another lane, so the narrow ignore stays here rather than widening
+        # their signature.
+        fetcher,  # type: ignore[arg-type]
         investigation_id=investigation_id,
         db_path=db_path,
         embedder=embedder,
@@ -316,10 +329,10 @@ class SourceClientFetcher:
 
     def get_json(self, url: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
         if "gutendex.com" in url:
-            return self._gutenberg.get_json(url, params=params)  # type: ignore[no-any-return]  # SourceClient returns Any; connector owned by others
-        return self._ia.get_json(url, params=params)  # type: ignore[no-any-return]  # ThrottledFetcher returns Any; connector owned by others
+            return self._gutenberg.get_json(url, params=params)
+        return self._ia.get_json(url, params=params)
 
     def get_bytes(self, url: str, *, params: dict[str, Any] | None = None) -> bytes:
         if "gutendex.com" in url:
-            return self._gutenberg.get_bytes(url)  # type: ignore[no-any-return]  # SourceClient returns Any; connector owned by others
-        return self._ia.get_bytes(url, params=params)  # type: ignore[no-any-return]  # ThrottledFetcher returns Any; connector owned by others
+            return self._gutenberg.get_bytes(url)
+        return self._ia.get_bytes(url, params=params)
