@@ -95,3 +95,61 @@ def test_invalid_page_params() -> None:
         build_library_page([], page_size=0)
     with pytest.raises(ValueError, match="page_size"):
         build_library_page([], page_size=201)
+
+
+def test_builder_handles_more_than_default_asset_limit() -> None:
+    """Catalog honesty: totals must reflect full filtered set, not a 200 cap."""
+    rows = [
+        _sum(f"s{i}", title=f"Book {i}", servable=True) for i in range(250)
+    ] + [
+        _sum(f"g{i}", title=f"Gated {i}", servable=False) for i in range(30)
+    ]
+    page = build_library_page(rows, filt="gated", page=1, page_size=10)
+    assert page.total == 30
+    assert len(page.works) == 10
+    all_page = build_library_page(rows, filt="all", page=1, page_size=50)
+    assert all_page.total == 280
+
+def test_register_library_passes_high_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Route must not use list_book_assets default limit=200."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import interfaces.research.api.library as lib
+
+    calls: list[dict] = []
+
+    class _Asset:
+        document_id = "d1"
+        title = "T"
+        author = "A"
+        servability = type("S", (), {"value": "servable"})()
+        servable_full_text = True
+        page_count = 1
+        cover_uri = None
+        ip_holder_id = None
+        taken_down = False
+
+    def fake_list(con, *, servable_only=False, include_taken_down=False, limit=200):
+        calls.append({"servable_only": servable_only, "limit": limit})
+        return [_Asset()]
+
+    class _Con:
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(lib, "list_book_assets", fake_list)
+    monkeypatch.setattr(lib, "_resolve_db_path", lambda: ":memory:")
+    monkeypatch.setattr(
+        "runtime.db_lock.connect_read",
+        lambda db: _Con(),
+    )
+
+    app = FastAPI()
+    lib.register_library_routes(app)
+    client = TestClient(app)
+    r = client.get("/library", params={"filter": "all"})
+    assert r.status_code == 200, r.text
+    assert calls, "list_book_assets not called"
+    assert calls[0]["limit"] > 200
+    assert calls[0]["limit"] == lib._CATALOG_LOAD_LIMIT

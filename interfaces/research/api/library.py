@@ -16,6 +16,10 @@ from substrate.books.model import list_book_assets
 from .books import BookSummary, _resolve_db_path
 from .library_catalog import LibraryPage, build_library_page
 
+# list_book_assets defaults to limit=200 which would silently cap catalog
+# totals and hide older gated works. Catalog load must exceed that default.
+_CATALOG_LOAD_LIMIT = 50_000
+
 __all__ = ["LibraryPage", "build_library_page", "register_library_routes"]
 
 
@@ -35,9 +39,13 @@ def register_library_routes(app: FastAPI) -> None:
         con = connect_read(db)
         try:
             if filter == "servable":
-                assets = list_book_assets(con, servable_only=True)
+                assets = list_book_assets(
+                    con, servable_only=True, limit=_CATALOG_LOAD_LIMIT
+                )
             else:
-                assets = list_book_assets(con, servable_only=False)
+                assets = list_book_assets(
+                    con, servable_only=False, limit=_CATALOG_LOAD_LIMIT
+                )
         finally:
             con.close()
 
