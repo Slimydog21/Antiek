@@ -82,7 +82,10 @@ describe("projectPromptAgainstBar", () => {
   });
 
   it("rejects after-high overflow", () => {
-    const bar = computeUsageBar({ daily_cap_usd: 1, spent_usd: 0 });
+    const bar = computeUsageBar({
+      daily_cap_usd: Number.MAX_VALUE,
+      spent_usd: 0,
+    });
     expect(() =>
       projectPromptAgainstBar(bar, {
         projected_cost_usd_low: 0,
