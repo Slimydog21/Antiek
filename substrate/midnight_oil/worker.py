@@ -140,8 +140,37 @@ def run_worker_iteration(
         actual_cents = _usd_to_cents(float(result.spent_usd), ceiling=False, field="step spent_usd")
         return result, actual_cents
 
+    def checkpoint_before_settle(result: WorkerStepResult, actual_cents: int) -> None:
+        # Persist a terminal checkpoint while the ledger hold is still open.
+        # A failed write becomes an unknown hold; a hard death leaves the open
+        # hold. Either state blocks provider redispatch on restart.
+        checkpoint_spawn_ids = job.spawn_ids
+        if (
+            actual_cents <= projected_cents
+            and result.spawn_id
+            and result.spawn_id not in checkpoint_spawn_ids
+        ):
+            checkpoint_spawn_ids += (result.spawn_id,)
+        checkpoint = replace(
+            job,
+            status="failed",
+            spent_usd=job.spent_usd + actual_cents / 100,
+            spawn_ids=checkpoint_spawn_ids,
+            notes=(
+                (job.notes + " | " if job.notes else "")
+                + "paid_step_checkpoint_pending_ledger_settlement"
+            ),
+        )
+        put_job_state(checkpoint, store=store)
+
     try:
-        result, balance = ledger.guarded_call(job.job_id, _WORKER_ROLE, projected_cents, dispatch)
+        result, balance = ledger.guarded_call(
+            job.job_id,
+            _WORKER_ROLE,
+            projected_cents,
+            dispatch,
+            before_settle=checkpoint_before_settle,
+        )
     except BudgetCeilingExceeded as exc:
         halted = replace(
             _sync_spend(job, ledger),
@@ -202,25 +231,34 @@ def run_worker_iteration(
             job = replace(job, status="complete")
         elif job.elapsed_ms >= _duration_ms(job):
             job = replace(job, status="timed_out")
-        # Spend has already settled. Persist the spawn/status checkpoint before
-        # invoking any fallible projection callback so a crash cannot make the
-        # paid provider step look undispatched on restart.
-        job = put_job_state(job, store=store)
-        if on_spawn is not None:
-            try:
-                on_spawn(job, result)
-            except BaseException:
-                failed = replace(
-                    job,
-                    status="failed",
-                    notes=(
-                        (job.notes + " | " if job.notes else "")
-                        + "on_spawn_failed_after_durable_checkpoint"
-                    ),
-                )
-                put_job_state(failed, store=store)
-                raise
-        return job
+        if on_spawn is None:
+            return put_job_state(job, store=store)
+
+        # Spend has already settled. Persist a terminal fail-closed checkpoint
+        # before invoking the projection callback. A process death anywhere in
+        # the callback window therefore cannot make the paid step eligible for
+        # automatic redispatch. Only callback success publishes the intended
+        # running/complete state.
+        intended_job = job
+        callback_pending = replace(
+            intended_job,
+            status="failed",
+            notes=(
+                (intended_job.notes + " | " if intended_job.notes else "")
+                + "on_spawn_pending_after_paid_checkpoint"
+            ),
+        )
+        put_job_state(callback_pending, store=store)
+        try:
+            on_spawn(intended_job, result)
+        except BaseException:
+            failed = replace(
+                callback_pending,
+                notes=(callback_pending.notes + " | on_spawn_failed_after_durable_checkpoint"),
+            )
+            put_job_state(failed, store=store)
+            raise
+        return put_job_state(intended_job, store=store)
     return put_job_state(job, store=store)
 
 

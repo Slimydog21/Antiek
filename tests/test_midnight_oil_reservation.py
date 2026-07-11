@@ -170,6 +170,8 @@ def test_spawn_callback_failure_cannot_redispatch_paid_step():
         assert row is not None
         assert row["spawn_ids"] == ["spawn-paid"]
         assert row["spent_usd"] == 0.25
+        assert row["status"] == "failed"
+        assert "on_spawn_pending_after_paid_checkpoint" in row["notes"]
         raise RuntimeError("projection sink unavailable")
 
     with pytest.raises(RuntimeError, match="projection sink unavailable"):
@@ -196,6 +198,54 @@ def test_spawn_callback_failure_cannot_redispatch_paid_step():
         clock=FakeClock(),
     )
     assert terminal.status == "failed"
+    assert provider_calls == 1
+
+
+def test_checkpoint_failure_keeps_hold_and_cannot_redispatch_paid_step():
+    class CheckpointFailingStore(InMemoryJobStore):
+        fail_checkpoint = True
+
+        def put_job(self, row):
+            if self.fail_checkpoint and "paid_step_checkpoint_pending" in str(
+                row.get("notes") or ""
+            ):
+                raise OSError("job checkpoint unavailable")
+            super().put_job(row)
+
+    store = CheckpointFailingStore()
+    job = _approved(store)
+    provider_calls = 0
+
+    def step(_job):
+        nonlocal provider_calls
+        provider_calls += 1
+        return WorkerStepResult(spent_usd=0.25, spawn_id="spawn-paid")
+
+    with pytest.raises(UnknownCallOutcome) as caught:
+        run_worker_iteration(
+            job.job_id,
+            store=store,
+            step_fn=step,
+            project_fn=lambda _job: 0.25,
+            clock=FakeClock(),
+        )
+    assert isinstance(caught.value.provider_error, OSError)
+    assert _balance(store, job.job_id).spent_cents == 0
+    assert _balance(store, job.job_id).held_cents == 25
+    old_row = store.get_job(job.job_id)
+    assert old_row is not None
+    assert old_row["spawn_ids"] == []
+
+    store.fail_checkpoint = False
+    terminal = run_worker_iteration(
+        job.job_id,
+        store=store,
+        step_fn=step,
+        project_fn=lambda _job: 0.25,
+        clock=FakeClock(),
+    )
+    assert terminal.status == "failed"
+    assert "open hold 25 cents retained" in terminal.notes
     assert provider_calls == 1
 
 
