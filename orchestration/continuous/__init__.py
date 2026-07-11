@@ -36,6 +36,7 @@ from .daemon import (
     no_op_spawn,
     run_one_iteration,
 )
+from .loop_one_spawn import make_loop_one_spawn_fn, resolve_daemon_spawn_fn
 from .research_topic import ResearchTopic, topic_id_for
 from .scoring import (
     GapEntry,
@@ -75,10 +76,12 @@ __all__ = [
     "build_suggestions",
     "daemon_config_from_env",
     "install_spawn_cost_hooks",
+    "make_loop_one_spawn_fn",
     "no_op_spawn",
     "normalize_gap_description",
     "policy_is_daemon",
     "report_actual_cost",
+    "resolve_daemon_spawn_fn",
     "run_one_iteration",
     "run_one_iteration_settled",
     "score_gap",

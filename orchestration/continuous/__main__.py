@@ -12,6 +12,8 @@ Config (env-only — systemd unit reads /etc/antiek/secrets.env):
   used for budget gating (default 0.50).
 - ``ANTIEK_DAEMON_BUDGET_USD_PER_DAY`` — §16 hard cap on total
   spawn spend per UTC day (default 5.0).
+- ``ANTIEK_DAEMON_SPAWN_MODE`` — ``no_op`` (default) or ``loop_one``
+  to emit Loop One start events (Sprint-14 attach).
 """
 
 from __future__ import annotations
@@ -45,19 +47,25 @@ def main() -> int:
     from orchestration.continuous.budget import DaemonBudget
     from orchestration.continuous.daemon import (
         DaemonState,
-        no_op_spawn,
         run_forever,
     )
+    from orchestration.continuous.loop_one_spawn import resolve_daemon_spawn_fn
     from orchestration.continuous.spawn_cost import (
         daemon_config_from_env,
         run_one_iteration_settled,
-        wrap_spawn_fn,
     )
 
     # Same env-built config as daemon.main() — must not use bare DaemonConfig()
     # defaults (would ignore ANTIEK_DAEMON_SLEEP_SECONDS / EXPECTED_COST_USD).
     cfg = daemon_config_from_env()
     bdg = DaemonBudget.from_env()
+    # Sprint-14: ANTIEK_DAEMON_SPAWN_MODE=loop_one emits start events;
+    # default remains no_op. Settled-cost wrap applied inside resolve when
+    # loop_one is selected.
+    spawn_fn = resolve_daemon_spawn_fn(
+        events_dir=cfg.events_dir,
+        budget=bdg,
+    )
 
     if args.once:
         # Production one-shot path always installs settled-cost hooks
@@ -66,15 +74,14 @@ def main() -> int:
             state=DaemonState(),
             config=cfg,
             budget=bdg,
-            spawn_fn=no_op_spawn,
+            spawn_fn=spawn_fn,
         )
         return 0
-    # Forever path: wrap default spawn so hooks are installed without
-    # editing daemon.py; config is env-built (parity with daemon.main).
+    # Forever path: env-built config + resolved spawn (no_op or loop_one).
     run_forever(
         config=cfg,
         budget=bdg,
-        spawn_fn=wrap_spawn_fn(no_op_spawn, bdg),
+        spawn_fn=spawn_fn,
     )
     return 0
 
