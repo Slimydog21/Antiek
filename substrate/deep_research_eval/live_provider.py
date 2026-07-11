@@ -179,6 +179,15 @@ _MOCK_LOOP_FACTORIES: tuple[str, ...] = ("make_demo_loop", "make_contract_gather
 # token is module-private, unexported, and never leaves this file.
 _REAL_PROVENANCE_TOKEN: object = object()
 _PROVENANCE_ATTR = "__antiek_real_provenance__"
+# The stamp is (token, role), not the bare token: a shared role-less token
+# proves only "built by this module", which would let a REAL callable be
+# composed into the WRONG seam field (e.g. replace(live, synthesize=
+# live.gather)). Role-tagging makes provenance mean "the real implementation
+# OF THIS ROLE". Role strings for the two closure seams equal their
+# _SEAM_FIELDS names so __post_init__ can check them uniformly.
+_ROLE_LOOP = "loop"
+_ROLE_GATHER = "gather"
+_ROLE_SYNTHESIZE = "synthesize"
 
 # A deep research run (discover + promote + synthesis constraint loop) is
 # minutes-long; the default cap only exists so a wedged live run fails closed
@@ -279,19 +288,31 @@ def _refuse_mock_loop(loop_fn: object) -> None:
             )
 
 
-def _has_real_provenance(fn_like: object) -> bool:
-    """Object-identity provenance: True only for a callable this module's own
-    real builders stamped with the private token (after bounded unwrap)."""
+def _stamped_role(fn_like: object) -> str | None:
+    """The role this module's own real builders stamped onto the callable
+    (after bounded unwrap), or None. Object identity on the private token —
+    a shared role-less token would prove only "built by this module" and let
+    a REAL callable be composed into the WRONG seam field (e.g.
+    ``replace(live, synthesize=live.gather)``)."""
     fn = _unwrap_loop_fn(fn_like)
-    return getattr(fn, _PROVENANCE_ATTR, None) is _REAL_PROVENANCE_TOKEN
+    tag = getattr(fn, _PROVENANCE_ATTR, None)
+    if (
+        isinstance(tag, tuple)
+        and len(tag) == 2
+        and tag[0] is _REAL_PROVENANCE_TOKEN
+        and isinstance(tag[1], str)
+    ):
+        return tag[1]
+    return None
 
 
 def _is_real_exa_loop(loop_fn: object) -> bool:
     """True only for the loop minted by ``_build_real_exa_loop`` (which stamps
-    the private token onto the real ``make_exa_gather_loop`` product). A
-    naturally same-named loop from a foreign ``host_local`` module carries no
-    token and fails."""
-    return _has_real_provenance(loop_fn)
+    the private ``(token, "loop")`` pair onto the real ``make_exa_gather_loop``
+    product). A naturally same-named loop from a foreign ``host_local`` module
+    carries no token; a real non-loop component misplaced here carries the
+    wrong role. Both fail."""
+    return _stamped_role(loop_fn) == _ROLE_LOOP
 
 
 def _missing_live_env() -> list[str]:
@@ -310,16 +331,30 @@ _SEAM_FIELDS: tuple[str, ...] = (
 )
 
 
-def _is_real_seam(seam: object) -> bool:
-    """Object-identity seam provenance. The two module-level real seams are
-    matched by direct ``is`` identity; the two factory-built closures carry
-    the private token their builders stamped at creation. A naturally
-    same-named callable from a foreign module named ``live_provider`` passes
-    neither — there is no name check to mimic."""
+def _is_real_seam(seam: object, role: str) -> bool:
+    """Object-identity seam provenance, ROLE-SPECIFIC. The two module-level
+    real seams are matched by direct ``is`` identity against the function of
+    that exact role; the two factory-built closures carry the private
+    ``(token, role)`` pair their builders stamped at creation. A naturally
+    same-named callable from a foreign module passes neither (no name check
+    to mimic), and a REAL callable of a DIFFERENT role fails the role match —
+    so ``replace(live, synthesize=live.gather)`` refuses."""
+    fn = _unwrap_loop_fn(seam)
+    if role == "usage_reader":
+        return fn is _read_dispatch_usage
+    if role == "source_url_lookup":
+        return fn is _lookup_document_source_uri
+    return _stamped_role(fn) == role
+
+
+def _is_real_machinery(seam: object) -> bool:
+    """Role-BLIND check for the offline direction: an offline-flagged provider
+    must not carry real machinery in ANY field (even the wrong one) — a real
+    gather sitting in the synthesize slot could still spend money."""
     fn = _unwrap_loop_fn(seam)
     if fn is _read_dispatch_usage or fn is _lookup_document_source_uri:
         return True
-    return getattr(fn, _PROVENANCE_ATTR, None) is _REAL_PROVENANCE_TOKEN
+    return _stamped_role(fn) is not None
 
 
 @dataclass(frozen=True)
@@ -353,9 +388,6 @@ class LiveResearchProvider:
     def __post_init__(self) -> None:
         if self.loop_fn is not None:
             _refuse_mock_loop(self.loop_fn)
-        seam_provenance = [
-            (name, _is_real_seam(getattr(self, name))) for name in _SEAM_FIELDS
-        ]
         if self.allow_live:
             if self.loop_fn is None or not _is_real_exa_loop(self.loop_fn):
                 raise ValueError(
@@ -372,17 +404,25 @@ class LiveResearchProvider:
                     "The live eval path needs EXA_API_KEY (gather discovery) and "
                     "ANTHROPIC_API_KEY (dispatch-backed synthesis) at construction."
                 )
-            non_real = [name for name, is_real in seam_provenance if not is_real]
+            non_real = [
+                name
+                for name in _SEAM_FIELDS
+                if not _is_real_seam(getattr(self, name), name)
+            ]
             if non_real:
                 raise ValueError(
-                    f"allow_live=True requires the REAL pipeline seams; these are "
-                    f"not this module's real implementations: {non_real}. A "
-                    "live-flagged provider composed from injected parts could "
+                    f"allow_live=True requires the REAL pipeline seams, each in "
+                    f"its OWN role; these are not this module's real "
+                    f"implementations for their field: {non_real}. A live-flagged "
+                    "provider composed from injected or role-swapped parts could "
                     "measure anything (dataclasses.replace re-runs this check, "
-                    "so flipping the flag on an offline instance is refused too)."
+                    "so flipping the flag or swapping seams on an instance is "
+                    "refused too)."
                 )
         else:
-            real = [name for name, is_real in seam_provenance if is_real]
+            real = [
+                name for name in _SEAM_FIELDS if _is_real_machinery(getattr(self, name))
+            ]
             if real:
                 raise ValueError(
                     f"allow_live=False must not carry real-machinery seams: {real}. "
@@ -696,7 +736,7 @@ def _build_real_exa_loop(*, top_k: int = 3) -> object:
     from runtime.research_runner import make_exa_gather_loop
 
     loop: Any = make_exa_gather_loop(top_k=top_k)
-    loop.__antiek_real_provenance__ = _REAL_PROVENANCE_TOKEN
+    loop.__antiek_real_provenance__ = (_REAL_PROVENANCE_TOKEN, _ROLE_LOOP)
     return loop
 
 
@@ -817,7 +857,10 @@ def _build_real_gather(
     # Stamp the private provenance token: object identity, not name, is what
     # the allow_live seam check accepts (function attribute assignment is
     # legal at runtime; mypy just doesn't model ad-hoc function attrs).
-    _gather.__antiek_real_provenance__ = _REAL_PROVENANCE_TOKEN  # type: ignore[attr-defined]
+    _gather.__antiek_real_provenance__ = (  # type: ignore[attr-defined]
+        _REAL_PROVENANCE_TOKEN,
+        _ROLE_GATHER,
+    )
     return _gather
 
 
@@ -869,7 +912,10 @@ def _build_real_synthesize() -> SynthesizeFn:
         return text
 
     # Same object-identity stamp as _build_real_gather's closure.
-    _synthesize.__antiek_real_provenance__ = _REAL_PROVENANCE_TOKEN  # type: ignore[attr-defined]
+    _synthesize.__antiek_real_provenance__ = (  # type: ignore[attr-defined]
+        _REAL_PROVENANCE_TOKEN,
+        _ROLE_SYNTHESIZE,
+    )
     return _synthesize
 
 

@@ -361,6 +361,41 @@ def test_dataclasses_replace_cannot_break_flag_seam_invariant(
     assert tuned_live.per_query_timeout_s == 60.0 and tuned_live.allow_live is True
 
 
+# 4a-role. Provenance is ROLE-SPECIFIC: a shared role-less token would prove
+#     only "built by this module", letting a REAL callable be composed into
+#     the WRONG seam field. Every cross-role composition must refuse.
+def test_cross_role_real_seam_composition_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import dataclasses
+
+    monkeypatch.setenv("EXA_API_KEY", "test-key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    live = build_live_provider(allow_live=True, discovery_top_k=1)
+
+    # A real gather in the synthesize slot: real machinery, wrong role.
+    with pytest.raises(ValueError, match="not this module's real implementations"):
+        dataclasses.replace(live, synthesize=live.gather)
+    # And the mirror image.
+    with pytest.raises(ValueError, match="not this module's real implementations"):
+        dataclasses.replace(live, gather=live.synthesize)
+    # The module-level pair swapped between their two slots.
+    with pytest.raises(ValueError, match="not this module's real implementations"):
+        dataclasses.replace(live, usage_reader=live.source_url_lookup)
+    with pytest.raises(ValueError, match="not this module's real implementations"):
+        dataclasses.replace(live, source_url_lookup=live.usage_reader)
+    # A real seam in the LOOP slot fails the loop's role check.
+    with pytest.raises(ValueError, match="requires the REAL Exa gather loop"):
+        dataclasses.replace(live, loop_fn=live.gather)
+    # Offline direction stays role-BLIND: real machinery in ANY field (even a
+    # wrong one) must refuse — it could still spend money from inside a test.
+    fakes = FakePipeline()
+    with pytest.raises(ValueError, match="must not carry real-machinery seams"):
+        dataclasses.replace(
+            fakes.build(), synthesize=live.gather  # real gather, wrong slot, offline
+        )
+
+
 # 4b. allow_live gating: missing env keys refuse construction — through the
 #     factory AND through direct dataclass construction.
 def test_allow_live_refused_without_env_keys(monkeypatch: pytest.MonkeyPatch) -> None:
