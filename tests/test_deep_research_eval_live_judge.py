@@ -289,3 +289,20 @@ def test_hostile_exception_repr_does_not_crash() -> None:
     assert run.scores[0].status == "NOT_MEASURED"
     assert run.scores[0].judge_scores is None
     assert run.complete is False
+
+
+def test_hostile_str_raising_base_exception_does_not_escape() -> None:
+    # A hostile __str__ may raise ANY BaseException (e.g. KeyboardInterrupt),
+    # not just Exception. Formatting an already-caught provider error must never
+    # let that second exception escape the JudgeFn (which must always return str).
+    class BaseHostileError(Exception):
+        def __str__(self) -> str:
+            raise KeyboardInterrupt("escape via __str__")
+
+    provider = StubProvider(raises=BaseHostileError())
+    judge = build_live_judge(provider)
+    raw = judge(build_judge_prompt(_query(), _report()))  # must not raise
+    assert isinstance(raw, str)
+    assert raw.startswith(LIVE_JUDGE_ERROR_SENTINEL)
+    assert "BaseHostileError" in raw
+    assert parse_judge_response(raw) is None

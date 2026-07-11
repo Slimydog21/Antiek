@@ -123,7 +123,9 @@ def _describe_exception(exc: BaseException) -> str:
     name = type(exc).__name__
     try:
         detail = str(exc)
-    except Exception:  # a hostile __str__ must not crash the eval run
+    except BaseException:  # noqa: BLE001 — a hostile __str__ may raise ANY
+        # BaseException (e.g. KeyboardInterrupt); formatting an already-caught
+        # provider error must never let a second exception escape the JudgeFn.
         return f"provider call failed: {name}: <undisplayable exception detail>"
     return f"provider call failed: {name}: {detail}"
 
