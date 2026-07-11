@@ -255,9 +255,58 @@ Also re-run: both Settings vitest suites (2 files / 5 tests passed),
 (test_settings_budget_api + test_byok_store + test_dispatch_bootstrap,
 provider-key env unset) 24/24 passed.
 
+### Fix round 2 (codex QA round — 1 residual on finding 1's base_url)
+
+Round 2 confirmed findings 2–5 converged; one residual on the base_url
+validator. Scope was the `base_url` block of `_parse_create` ONLY.
+
+What changed:
+
+- **Malformed authority → clean 422, not 500 (FIXED).** `urlsplit` raises
+  `ValueError` on an unclosed IPv6 bracket (`https://[::1/v1`), and
+  `.port` raises `ValueError` on a non-numeric port — both previously
+  surfaced as an uncaught HTTP 500. The parse + `.hostname` + `.port`
+  access is now wrapped in one `try/except ValueError → _reject(...)`
+  (value-free message).
+- **Empty hostname rejected (FIXED).** `https://:443/v1` has a truthy
+  `netloc` but an empty `hostname`; the check now requires `parts.hostname`
+  truthy, not just `netloc`.
+- **Port validated (FIXED, same mechanism).** `parts.port` is accessed
+  inside the same try/except, so a present-but-invalid port is a value-free
+  422, not a 500.
+
+Deliberately UNCHANGED (codex flagged, but not defects): mixed-case scheme
+(`urlsplit` lowercases it — valid) and well-formed bracketed IPv6
+(`https://[::1]:8000/v1` — legitimate local endpoint; brief only required
+rejecting userinfo/query/fragment). A new test asserts the well-formed IPv6
+still returns 201 so the try/except cannot silently over-reject it.
+
+New regression tests: `test_malformed_base_url_is_clean_422_not_500`
+(parametrized: unclosed-bracket / non-numeric-port / empty-hostname — 3
+cases, each value-free) and `test_well_formed_ipv6_base_url_accepted`
+(201 + provider registered with the IPv6 base_url). Test count: **23 → 27**.
+
+Round-2 acceptance (verbatim, trimmed):
+
+```
+$ .venv/bin/python -m pytest tests/test_settings_models_admin.py -q
+27 passed, 1 warning in 1.06s
+
+$ .venv/bin/ruff check interfaces/research/api/settings_models_admin.py tests/test_settings_models_admin.py
+All checks passed!  (exit 0)
+
+$ .venv/bin/mypy --strict interfaces/research/api/settings_models_admin.py
+Success: no issues found in 1 source file  (exit 0)
+
+$ npx vitest run src/modes/Settings/   # unaffected
+ Test Files  2 passed (2)  /  Tests  5 passed (5)
+```
+
 ## Commits
 
 - `ab365c920` feat(settings): user-added model providers with byok-encrypted keys
 - `bb5ac16d7` feat(reading): AddModelPanel — BYOK add-model UI in Settings
 - `c8579a456` docs(settings): builder report
-- HEAD (this commit) — fix round 1 (SHA cannot self-embed; see `git log -1`)
+- `fa17dee38` fix(settings): close adversarial-refute findings 1-3, 5; document 4
+- HEAD (this commit) — fix round 2: base_url malformed-authority hardening
+  (SHA cannot self-embed; see `git log -1`)

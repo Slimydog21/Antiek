@@ -394,9 +394,20 @@ def _parse_create(payload: object) -> _ValidatedCreate:
                 "base_url must be an http(s) URL of at most 2048 characters "
                 "without whitespace"
             )
-        parts = urlsplit(base_url)
-        if parts.scheme not in ("http", "https") or not parts.netloc:
-            raise _reject("base_url must be an http(s) URL")
+        # urlsplit raises ValueError on a malformed authority (unclosed IPv6
+        # bracket), and .port raises ValueError on a non-numeric port —
+        # accessing both inside one try/except turns every malformed URL into
+        # a clean value-free 422, never an uncaught 500.
+        try:
+            parts = urlsplit(base_url)
+            host = parts.hostname
+            _ = parts.port  # access validates a present port is numeric
+        except ValueError as exc:
+            raise _reject("base_url is not a well-formed URL") from exc
+        # Require a real host: ``https://:443/v1`` has a truthy netloc but an
+        # empty hostname, so netloc alone is not enough.
+        if parts.scheme not in ("http", "https") or not host:
+            raise _reject("base_url must be an http(s) URL with a host")
         # Structural credential exclusion: keys travel ONLY in api_key. A
         # userinfo / query / fragment-bearing URL could smuggle a credential
         # into the PLAINTEXT registry and into every response that echoes
