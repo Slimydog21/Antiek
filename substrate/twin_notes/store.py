@@ -59,10 +59,18 @@ def _default_root() -> Path:
 
 
 def _safe_filename(parent_asset_id: str) -> str:
-    cleaned = _SAFE_ID.sub("_", parent_asset_id.strip())[:180]
+    """Collision-resistant filename for a parent id.
+
+    Sanitization alone maps distinct parents onto the same path (e.g. ``../a``
+    and ``.. ?a`` → ``.._a.json``), which would clobber twins. Always append a
+    full-id hash so the mapping is injective.
+    """
+    raw = parent_asset_id.strip()
+    cleaned = _SAFE_ID.sub("_", raw)[:80]
     if not cleaned:
         cleaned = "unknown"
-    return f"{cleaned}.json"
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+    return f"{cleaned}__{digest}.json"
 
 
 def _norm_text(text: str) -> str:
