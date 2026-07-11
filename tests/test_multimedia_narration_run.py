@@ -12,6 +12,7 @@ import pytest
 import substrate.multimedia.narration_run as narration_run_module
 from substrate.contracts.multimedia import ScriptLine
 from substrate.multimedia.chapter_tts_production import (
+    ChapterTTSProductionError,
     ChapterTTSSynthesisResult,
     PreparedChapterTTSRequest,
     produce_chapter_narration,
@@ -148,7 +149,10 @@ def test_three_chapter_run_executes_once_and_replays(tmp_path: Path) -> None:
     }
     first = produce_narration_run(**values)
     second = produce_narration_run(**values)
+    expired_values = {**values, "now": NOW + timedelta(hours=2)}
+    expired_replay = produce_narration_run(**expired_values)
     assert first == second
+    assert expired_replay == first
     assert calls == ["chapter-0", "chapter-1", "chapter-2"]
     assert first.manifest.duration_seconds == 3.0
     assert tuple(row.chapter_id for row in first.manifest.sources) == (
@@ -179,6 +183,20 @@ def test_authorization_set_substitution_fails_before_provider(tmp_path: Path) ->
                 sample_rate_hz=8_000,
             ),
             changed,
+        )
+
+
+def test_parent_identifiers_cannot_escape_aggregate_root() -> None:
+    with pytest.raises(ValueError, match="revision_id"):
+        prepare_narration_run(
+            _plan(),
+            asset_id="asset-747",
+            revision_id="../escape",
+            routes={
+                f"chapter-{index}": ("openai", "gpt-4o-mini-tts")
+                for index in range(3)
+            },
+            sample_rate_hz=8_000,
         )
 
 
@@ -279,3 +297,9 @@ def test_concurrent_parent_callers_do_not_duplicate_children(tmp_path: Path) -> 
     assert final.manifest.duration_seconds == 3.0
     assert sorted(calls) == ["chapter-0", "chapter-1", "chapter-2"]
     assert any(not isinstance(result, Exception) for result in results)
+    errors = tuple(result for result in results if isinstance(result, Exception))
+    assert all(
+        isinstance(error, (ChapterTTSProductionError, NarrationRunError))
+        and ("in flight" in str(error) or "retry is forbidden" in str(error))
+        for error in errors
+    ), [repr(error) for error in errors]

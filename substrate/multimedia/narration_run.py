@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -31,6 +32,7 @@ from .provider_execution import (
 )
 
 _MAX_CHAPTERS = 64
+_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 _RUN_DDL = """
 CREATE TABLE IF NOT EXISTS multimedia_narration_runs (
@@ -38,6 +40,7 @@ CREATE TABLE IF NOT EXISTS multimedia_narration_runs (
     asset_id TEXT NOT NULL,
     revision_id TEXT NOT NULL,
     authorization_set_digest TEXT NOT NULL,
+    chapter_bindings_json TEXT NOT NULL,
     status TEXT NOT NULL,
     artifact_json TEXT,
     run_mac TEXT NOT NULL
@@ -71,6 +74,7 @@ class NarrationRunReceipt:
     asset_id: str
     revision_id: str
     authorization_set_digest: str
+    chapter_bindings_json: str
     status: str
     artifact_json: str | None
     run_mac: str
@@ -88,6 +92,8 @@ def prepare_narration_run(
     channels: Literal[1, 2] = 1,
 ) -> PreparedNarrationRun:
     """Bind every spoken chapter to one deterministic child authorization."""
+    asset_id = _identifier("asset_id", asset_id)
+    revision_id = _identifier("revision_id", revision_id)
     chapter_ids = tuple(
         chapter.chapter_id
         for chapter in plan.chapters
@@ -197,36 +203,47 @@ def produce_narration_run(
     expected = authorize_narration_run(expected_requests, authorizations)
     if expected != prepared:
         raise ValueError("prepared narration run conflicts with plan or authorizations")
-    for request in prepared.chapters:
-        authorization = authorizations[request.chapter_id]
-        verify_chapter_tts_authorization(
-            authorization,
-            request,
-            signing_key=signing_key,
-            operator_id=operator_id,
-            catalog_version=authorization.catalog_version,
-            catalog_digest=authorization.catalog_digest,
-            quote_id=authorization.quote_id,
-            recovery_authority_id=authorization.recovery_authority_id,
-            recovery_verification_key_digest=authorization.recovery_verification_key_digest,
-            approved_ceiling_microdollars=authorization.approved_ceiling_microdollars,
-            now=now,
-        )
     receipt = _get_run(db_path, prepared.run_id, signing_key)
     if receipt is None:
+        for request in prepared.chapters:
+            authorization = authorizations[request.chapter_id]
+            verify_chapter_tts_authorization(
+                authorization,
+                request,
+                signing_key=signing_key,
+                operator_id=operator_id,
+                catalog_version=authorization.catalog_version,
+                catalog_digest=authorization.catalog_digest,
+                quote_id=authorization.quote_id,
+                recovery_authority_id=authorization.recovery_authority_id,
+                recovery_verification_key_digest=(
+                    authorization.recovery_verification_key_digest
+                ),
+                approved_ceiling_microdollars=(
+                    authorization.approved_ceiling_microdollars
+                ),
+                now=now,
+            )
         ordered_authorizations = tuple(
             authorizations[row.chapter_id] for row in prepared.chapters
         )
-        begin_reserved_provider_submission_set(
-            db_path=db_path,
-            authorizations=ordered_authorizations,
-            signing_key=signing_key,
-            now=now,
-            mutation=lambda ctx, rows: _admit_run(
-                ctx, rows, prepared=prepared, signing_key=signing_key
-            ),
-        )
-        receipt = _require_run(db_path, prepared.run_id, signing_key)
+        try:
+            begin_reserved_provider_submission_set(
+                db_path=db_path,
+                authorizations=ordered_authorizations,
+                signing_key=signing_key,
+                now=now,
+                mutation=lambda ctx, rows: _admit_run(
+                    ctx, rows, prepared=prepared, signing_key=signing_key
+                ),
+            )
+        except RuntimeError:
+            raced = _get_run(db_path, prepared.run_id, signing_key)
+            if raced is None:
+                raise
+            receipt = raced
+        else:
+            receipt = _require_run(db_path, prepared.run_id, signing_key)
     _verify_run(receipt, prepared)
     if receipt.status == "sealed":
         return _reopen_run(receipt, prepared, integrity_key)
@@ -412,11 +429,12 @@ def _admit_run(
         prepared.asset_id,
         prepared.revision_id,
         prepared.authorization_set_digest,
+        _chapter_bindings(prepared),
         "admitted",
         None,
     ]
     ctx.execute(
-        "INSERT INTO multimedia_narration_runs VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO multimedia_narration_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         [*values, _run_mac(values, signing_key)],
     )
 
@@ -440,7 +458,7 @@ def _seal_run(
             if current.artifact_json != payload:
                 raise NarrationRunError("sealed narration run conflicts")
             return
-        values: list[object] = [*row[:4], "sealed", payload]
+        values: list[object] = [*row[:5], "sealed", payload]
         ctx.execute(
             "UPDATE multimedia_narration_runs SET status='sealed', artifact_json=?, run_mac=? "
             "WHERE run_id=? AND status='admitted'",
@@ -472,20 +490,21 @@ def _require_run(
 
 
 def _receipt(row: tuple[object, ...], signing_key: bytes) -> NarrationRunReceipt:
-    if len(row) != 7 or not isinstance(row[6], str):
+    if len(row) != 8 or not isinstance(row[7], str):
         raise NarrationRunError("narration run shape is invalid")
-    if not hmac.compare_digest(row[6], _run_mac(list(row[:6]), signing_key)):
+    if not hmac.compare_digest(row[7], _run_mac(list(row[:7]), signing_key)):
         raise NarrationRunError("narration run MAC is invalid")
-    if row[4] not in {"admitted", "sealed"}:
+    if row[5] not in {"admitted", "sealed"}:
         raise NarrationRunError("narration run status is invalid")
     return NarrationRunReceipt(
         run_id=str(row[0]),
         asset_id=str(row[1]),
         revision_id=str(row[2]),
         authorization_set_digest=str(row[3]),
-        status=str(row[4]),
-        artifact_json=str(row[5]) if row[5] is not None else None,
-        run_mac=row[6],
+        chapter_bindings_json=str(row[4]),
+        status=str(row[5]),
+        artifact_json=str(row[6]) if row[6] is not None else None,
+        run_mac=row[7],
     )
 
 
@@ -495,6 +514,7 @@ def _verify_run(receipt: NarrationRunReceipt, prepared: AuthorizedNarrationRun) 
         or receipt.asset_id != prepared.asset_id
         or receipt.revision_id != prepared.revision_id
         or receipt.authorization_set_digest != prepared.authorization_set_digest
+        or receipt.chapter_bindings_json != _chapter_bindings(prepared)
     ):
         raise NarrationRunError("narration run receipt conflicts")
 
@@ -523,6 +543,28 @@ def _child_revision(parent_revision: str, chapter_id: str, sequence: int) -> str
         json.dumps([parent_revision, chapter_id, sequence], separators=(",", ":")).encode()
     ).hexdigest()[:32]
     return f"tts-{digest}"
+
+
+def _chapter_bindings(prepared: AuthorizedNarrationRun) -> str:
+    return json.dumps(
+        [
+            [
+                row.chapter_id,
+                list(row.script_line_ids),
+                list(row.source_chunk_ids),
+                list(row.paragraph_ids),
+            ]
+            for row in prepared.chapters
+        ],
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
+
+
+def _identifier(field: str, value: str) -> str:
+    if not isinstance(value, str) or not _ID.fullmatch(value):
+        raise ValueError(f"{field} is not a bounded identifier")
+    return value
 
 
 def _run_mac(values: list[object], signing_key: bytes) -> str:
