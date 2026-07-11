@@ -62,14 +62,10 @@ def resolve_synthesis_export(
     the rights FILTER is applied downstream in the adapter (single source of
     truth), so this resolver never decides embed-vs-cite-only.
 
-    NOTE (rigor #1): the per-claim chunk-level structure of
-    ``syntheses.evidence`` is NOT yet validated against a real archived
-    synthesis (the local graph had zero rows at build time). This resolver
-    reads what is reliably present and renders the thesis as one claim grounded
-    in the manifest documents; it **degrades** to that rather than fabricating a
-    claim structure it cannot verify. When a real synthesis exists, extend this
-    to parse the validated evidence shape into per-claim chunk sources — the
-    adapter already handles arbitrarily many claims + sources.
+    Claim-level citations come from the archived, typed synthesizer payload.
+    Graph chunk ids resolve through graph documents; federated ``span_*`` ids
+    resolve through the validated archived Phase-2 registry. Malformed or
+    missing provenance stays visibly unsourced.
     """
     from runtime.db_lock import connect_read
 
@@ -78,7 +74,7 @@ def resolve_synthesis_export(
     try:
         row = con.execute(
             "SELECT synthesis_id, target_question, thesis_text, "
-            "implicit_recommendation, model_versions, parameters "
+            "implicit_recommendation, model_versions, parameters, thesis, substrate "
             "FROM syntheses WHERE synthesis_id = ?",
             [synthesis_id],
         ).fetchone()
@@ -91,8 +87,51 @@ def resolve_synthesis_export(
             "WHERE m.synthesis_id = ? AND m.entity_kind = 'document'",
             [synthesis_id],
         ).fetchall()
+
+        thesis = _loadjson(row[6])
+        components = thesis.get("thesis_components")
+        cited_ids: set[str] = set()
+        if type(components) is list:
+            for component in components:
+                if type(component) is not dict:
+                    continue
+                component_ids = component.get("supporting_chunk_ids")
+                if type(component_ids) is list:
+                    cited_ids.update(
+                        chunk_id
+                        for chunk_id in component_ids
+                        if type(chunk_id) is str
+                    )
+        graph_chunk_rows: list[tuple[Any, ...]] = []
+        if cited_ids:
+            placeholders = ",".join("?" for _ in cited_ids)
+            graph_chunk_rows = con.execute(
+                "SELECT c.chunk_id, d.document_id, d.title, d.content_class, "
+                "d.ip_holder_id FROM chunks c JOIN documents d "
+                "ON d.document_id = c.document_id "
+                f"WHERE c.chunk_id IN ({placeholders})",
+                sorted(cited_ids),
+            ).fetchall()
     finally:
         con.close()
+
+    from orchestration.loop_one.federated_span_registry import registry_from_archive
+
+    try:
+        span_registry = registry_from_archive(_loadjson(row[7]))
+    except ValueError:
+        span_registry = {}
+    graph_by_chunk = {
+        r[0]: SourceRef(
+            document_id=r[1],
+            document_title=r[2],
+            content_class=r[3],
+            ip_holder_id=r[4],
+            locator=f"/read/{r[1]}",
+            chunk_text=None,
+        )
+        for r in graph_chunk_rows
+    }
 
     sources = [
         SourceRef(
@@ -105,7 +144,41 @@ def resolve_synthesis_export(
         )
         for r in doc_rows
     ]
-    claims = [Claim(statement=row[2], sources=sources)] if row[2] else []
+    claims: list[Claim] = []
+    if type(components) is list:
+        for component in components:
+            if type(component) is not dict or type(component.get("claim")) is not str:
+                continue
+            component_sources: list[SourceRef] = []
+            chunk_ids = component.get("supporting_chunk_ids")
+            if type(chunk_ids) is list:
+                for chunk_id in chunk_ids:
+                    if type(chunk_id) is not str:
+                        continue
+                    graph_source = graph_by_chunk.get(chunk_id)
+                    if graph_source is not None:
+                        component_sources.append(graph_source)
+                        continue
+                    span = span_registry.get(chunk_id)
+                    if span is not None:
+                        component_sources.append(
+                            SourceRef(
+                                document_id=None,
+                                document_title=span.origin_ref,
+                                content_class=None,
+                                ip_holder_id=None,
+                                external_source_id=span.corpus_id,
+                                source_kind=span.source_kind,
+                                rights_class=span.license_class,
+                                retrieved_at=span.retrieved_at,
+                                source_tier=span.source_tier,
+                                locator=None,
+                                chunk_text=span.text,
+                            )
+                        )
+            claims.append(Claim(statement=component["claim"], sources=component_sources))
+    if not claims and row[2]:
+        claims = [Claim(statement=row[2], sources=sources)]
 
     return SynthesisExport(
         synthesis_id=row[0],

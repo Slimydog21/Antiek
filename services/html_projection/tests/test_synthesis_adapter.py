@@ -119,3 +119,25 @@ def test_rendered_html_also_hides_restricted_text():
     # Belt-and-braces: the visible HTML, not only the doc-model, omits it.
     dm = adapt_synthesis(_export(claims=[Claim("Claim A", [PERSONAL])]))
     assert "SECRET THIRD PARTY TEXT" not in render(dm, RenderContext())
+
+
+def test_external_federated_source_is_resolved_but_cite_only() -> None:
+    src = SourceRef(
+        document_id=None,
+        document_title="work-1",
+        content_class=None,
+        ip_holder_id=None,
+        external_source_id="core:work-1",
+        source_kind="core",
+        rights_class="source_terms_governed_metadata",
+        retrieved_at="2026-01-01T00:00:00+00:00",
+        source_tier=5,
+        chunk_text="WITHHELD SOURCE TEXT",
+    )
+    dm = adapt_synthesis(_export(claims=[Claim("Claim", [src])]))
+    encoded = json.dumps(dm)
+    assert dm["metadata"]["provenance"]["complete"] is True
+    assert "core:work-1" in encoded
+    assert "source_terms_governed_metadata" in encoded
+    assert "WITHHELD SOURCE TEXT" not in encoded
+    assert "cite-only" in encoded

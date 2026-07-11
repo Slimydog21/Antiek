@@ -60,6 +60,11 @@ class SourceRef:
     document_title: str | None
     content_class: str | None
     ip_holder_id: str | None
+    external_source_id: str | None = None
+    source_kind: str | None = None
+    rights_class: str | None = None
+    retrieved_at: str | None = None
+    source_tier: int | None = None
     locator: str | None = None
     chunk_text: str | None = None
 
@@ -71,7 +76,7 @@ class SourceRef:
     @property
     def resolved(self) -> bool:
         # Ties to a real document → counts toward provenance completeness.
-        return bool(self.document_id)
+        return bool(self.document_id or self.external_source_id)
 
 
 @dataclass(frozen=True)
@@ -148,9 +153,24 @@ def _recommendation_tone(rec: str) -> str:
 def _source_label(src: SourceRef) -> str:
     """A citation label built ONLY from non-text provenance — title, owner,
     locator. NEVER the chunk text (that would defeat cite-only)."""
-    parts = [src.document_title or src.document_id or "unknown source"]
+    parts = [
+        src.document_title
+        or src.document_id
+        or src.external_source_id
+        or "unknown source"
+    ]
+    if src.external_source_id and src.external_source_id != parts[0]:
+        parts.append(src.external_source_id)
+    if src.source_kind:
+        parts.append(src.source_kind)
     if src.ip_holder_id:
         parts.append(src.ip_holder_id)
+    if src.rights_class:
+        parts.append(src.rights_class)
+    if src.source_tier is not None:
+        parts.append(f"tier {src.source_tier}")
+    if src.retrieved_at:
+        parts.append(f"retrieved {src.retrieved_at}")
     if src.locator:
         parts.append(src.locator)
     return " · ".join(parts)

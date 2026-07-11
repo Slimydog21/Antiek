@@ -16,11 +16,14 @@ if _REPO not in sys.path:
 
 from acquisition.core_cache import CoreSnapshotError  # noqa: E402
 from acquisition.openalex_cache import OpenAlexSnapshotError  # noqa: E402
+from acquisition.research_corpus_mounts import (  # noqa: E402
+    MountConfigurationError,
+    load_research_corpus_mounts,
+)
 from acquisition.s2_cache import S2SnapshotError  # noqa: E402
 from substrate.corpus_contract import CorpusContractError  # noqa: E402
 from substrate.corpus_evidence import render_chunks_block, select_evidence_spans  # noqa: E402
 from substrate.corpus_federation import FederatedCorpus  # noqa: E402
-from tools.research_corpus import MountConfigurationError, _mounts  # noqa: E402
 
 EXIT_OK, EXIT_CONFIGURATION, EXIT_CACHE = 0, 3, 5
 _CACHE_ERRORS = (
@@ -67,7 +70,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_CONFIGURATION
     try:
         try:
-            corpus = FederatedCorpus(_mounts(args.mount))
+            corpus = FederatedCorpus(load_research_corpus_mounts(args.mount))
         except MountConfigurationError:
             _emit(sys.stderr, {"error": "invalid_mount_configuration"})
             return EXIT_CONFIGURATION

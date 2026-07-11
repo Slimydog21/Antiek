@@ -244,6 +244,16 @@ def _render_chunks_block_for_sub_question(
     documents are visible to their own research — a fair-use owner-read that
     never serves/attributes that content publicly.
     """
+    from orchestration.loop_one.federated_evidence import (
+        render_configured_federated_evidence,
+    )
+
+    federated = render_configured_federated_evidence(
+        sub_question,
+        top_k=top_k,
+    )
+    if federated is not None:
+        return federated
     try:
         import duckdb
 
@@ -930,6 +940,10 @@ def _score_phase_6_synthesis(ctx: InvestigationContext) -> GroundednessResult | 
 
     # --- PRIMARY truth-axis: groundedness (claim-entailment) ---------------
     try:
+        from orchestration.loop_one.federated_span_registry import (
+            composite_span_text_resolver,
+            span_registry_from_trajectory,
+        )
         from substrate.eval.groundedness import (
             duckdb_chunk_text_resolver,
             resolve_synthesis_claims,
@@ -945,11 +959,15 @@ def _score_phase_6_synthesis(ctx: InvestigationContext) -> GroundednessResult | 
         # resolver yields no text and the claims score as ungrounded —
         # honest, never a parallel store.
         try:
-            resolver = duckdb_chunk_text_resolver(
+            graph_resolver = duckdb_chunk_text_resolver(
                 default_db_path(), chunk_ids=cited_ids
             )
         except Exception:  # noqa: BLE001 — DB-absent path stays honest
-            resolver = lambda _cid: None  # noqa: E731
+            graph_resolver = lambda _cid: None  # noqa: E731
+        span_registry = span_registry_from_trajectory(ctx.investigation_id)
+
+        resolver = composite_span_text_resolver(graph_resolver, span_registry)
+
         claim_chunks = resolve_synthesis_claims(ctx.synthesis, resolver)
         backend, backend_name, scorer_id = _phase_6_groundedness_backend()
         live_groundedness_scorer_id = scorer_id
@@ -1819,6 +1837,13 @@ def _deposit_synthesis_to_substrate(ctx: InvestigationContext) -> str | None:
     chunk_ids = list(dict.fromkeys(chunk_ids))
     edge_ids = list(dict.fromkeys(edge_ids))
 
+    from orchestration.loop_one.federated_span_registry import (
+        registry_archive_payload,
+        span_registry_from_trajectory,
+    )
+
+    span_registry = span_registry_from_trajectory(ctx.investigation_id)
+
     def _dump(obj: object) -> object:
         if hasattr(obj, "model_dump"):
             return obj.model_dump(mode="json")
@@ -1834,6 +1859,7 @@ def _deposit_synthesis_to_substrate(ctx: InvestigationContext) -> str | None:
         evidence=[_dump(e) for e in ctx.evidence],
         decomposition=_dump(ctx.decomposition) if ctx.decomposition is not None else None,
         parameters=_dump(ctx.parameters) if ctx.parameters is not None else None,
+        substrate=registry_archive_payload(span_registry) if span_registry else None,
         chunk_ids=tuple(chunk_ids),
         edge_ids=tuple(edge_ids),
     )
