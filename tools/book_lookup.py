@@ -30,7 +30,6 @@ if _REPO not in sys.path:
 
 from acquisition.books.lookup import (  # noqa: E402
     FreeCopyFound,
-    NotFreelyAvailable,
     SourceOutcome,
     ingest_found_copy,
     search_free_copy,
@@ -85,7 +84,14 @@ def main(argv: list[str] | None = None) -> int:
         logging.basicConfig(level=level, format="%(levelname)s: %(message)s")
 
     sources = tuple(args.source) if args.source else ("gutenberg", "internet_archive")
-    result = search_free_copy(args.title, args.author, sources=sources)
+    try:
+        result = search_free_copy(args.title, args.author, sources=sources)
+    except Exception as exc:
+        if args.json:
+            print(json.dumps({"status": "error", "error": str(exc)}))
+        else:
+            print(f"Error: {exc}", file=sys.stderr)
+        return 2
 
     if isinstance(result, FreeCopyFound):
         if args.json:
@@ -96,7 +102,7 @@ def main(argv: list[str] | None = None) -> int:
                 "retrieved_at": result.retrieved_at,
             }, indent=2))
         else:
-            print(f"Free copy found!")
+            print("Free copy found!")
             print(f"  Source:  {result.source}")
             print(f"  Title:   {result.candidate_ref.title}")
             author = result.candidate_ref.author
@@ -153,10 +159,10 @@ def main(argv: list[str] | None = None) -> int:
         if result.author:
             print(f"Author: {result.author}")
         print(f"Sources searched: {', '.join(o.source for o in result.outcomes)}")
-        print(f"Per-source outcomes:")
+        print("Per-source outcomes:")
         for o in result.outcomes:
             print(_format_source(o))
-        print(f"\nRecommendation: purchase or request through library.")
+        print("\nRecommendation: purchase or request through library.")
     return 3
 
 

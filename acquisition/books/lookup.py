@@ -40,7 +40,6 @@ from typing import Any, Protocol
 from .pd_connector_base import BookCandidate, FetchError, classify_and_ingest
 from .pd_connector_base import IngestOutcome as PdIngestOutcome
 
-
 # ---------------------------------------------------------------------------
 # Result types
 # ---------------------------------------------------------------------------
@@ -137,7 +136,7 @@ def search_free_copy(
     if fetcher is None:
         fetcher = SourceClientFetcher()
 
-    now = _dt.datetime.now(_dt.timezone.utc).isoformat()
+    now = _dt.datetime.now(_dt.UTC).isoformat()
     outcomes: list[SourceOutcome] = []
 
     for source in sources:
@@ -150,7 +149,7 @@ def search_free_copy(
                 outcomes.append(SourceOutcome(
                     source=source, found=False,
                     query=f"(unsupported source {source!r})",
-                    timestamp=_dt.datetime.now(_dt.timezone.utc).isoformat(),
+                    timestamp=_dt.datetime.now(_dt.UTC).isoformat(),
                 ))
                 continue
 
@@ -161,7 +160,7 @@ def search_free_copy(
             outcomes.append(SourceOutcome(
                 source=source, found=False,
                 query=title,
-                timestamp=_dt.datetime.now(_dt.timezone.utc).isoformat(),
+                timestamp=_dt.datetime.now(_dt.UTC).isoformat(),
                 error=str(exc),
             ))
 
@@ -205,13 +204,13 @@ def _search_gutenberg(
                 source="gutenberg",
                 candidate_ref=c,
                 rights_basis=c.pd_basis,
-                retrieved_at=_dt.datetime.now(_dt.timezone.utc).isoformat(),
+                retrieved_at=_dt.datetime.now(_dt.UTC).isoformat(),
             )
     return SourceOutcome(
         source="gutenberg",
         found=False,
         query=query,
-        timestamp=_dt.datetime.now(_dt.timezone.utc).isoformat(),
+        timestamp=_dt.datetime.now(_dt.UTC).isoformat(),
     )
 
 
@@ -244,14 +243,14 @@ def _search_ia(
                 source="internet_archive",
                 candidate_ref=cand,
                 rights_basis=cand.pd_signal or cand.license_uri or "",
-                retrieved_at=_dt.datetime.now(_dt.timezone.utc).isoformat(),
+                retrieved_at=_dt.datetime.now(_dt.UTC).isoformat(),
             )
 
     return SourceOutcome(
         source="internet_archive",
         found=False,
         query=query,
-        timestamp=_dt.datetime.now(_dt.timezone.utc).isoformat(),
+        timestamp=_dt.datetime.now(_dt.UTC).isoformat(),
     )
 
 
