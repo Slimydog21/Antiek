@@ -311,6 +311,20 @@ def test_stale_local_seal_releases_without_provider_retry(
         db_path=str(values["db_path"]), execution_id=execution_id, signing_key=KEY
     )
     assert attempt.status == "sealing"
+    assert attempt.raw_path is not None
+    Path(attempt.raw_path).write_bytes(b"corrupt")
+    Path(attempt.raw_path).chmod(0o600)
+    with pytest.raises(Exception, match="valid durable"):
+        release_stale_seal(
+            authority=_recovery(execution_id, "release_seal", NOW + timedelta(minutes=1)),
+            recovery_key=RECOVERY_KEY,
+            operator_id="operator-1",
+            signing_key=KEY,
+            db_path=str(values["db_path"]),
+            now=NOW + timedelta(minutes=1),
+        )
+    Path(attempt.raw_path).write_bytes(_wav())
+    Path(attempt.raw_path).chmod(0o600)
 
     reset = release_stale_seal(
         authority=_recovery(execution_id, "release_seal", NOW + timedelta(minutes=1)),
@@ -395,3 +409,89 @@ def test_forged_provider_evidence_cannot_recover_unknown(tmp_path: Path) -> None
             external_signature="0" * 64,
             recorded_at=recovered_at,
         )
+    assert not (
+        Path(str(values["output_dir"]))
+        / ".chapter-tts-receipts"
+        / f"{execution_id}.audio"
+    ).exists()
+
+
+def test_crash_after_received_receipt_resumes_provider_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    values, prepared, authorization = _produce_values(tmp_path)
+    execution_id = _execution_id(authorization)
+    with pytest.raises(ProcessCrash):
+        produce_chapter_narration(
+            **values,
+            synthesize=lambda request: (_ for _ in ()).throw(ProcessCrash()),
+        )  # type: ignore[arg-type]
+    recovered_at = NOW + timedelta(minutes=10)
+    quarantine_stale_send(
+        authority=_recovery(execution_id, "quarantine_send", recovered_at),
+        recovery_key=RECOVERY_KEY,
+        operator_id="operator-1",
+        authorization=authorization,
+        signing_key=KEY,
+        db_path=str(values["db_path"]),
+        now=recovered_at,
+    )
+    audio = _wav()
+    provider_request_id = "provider-observation-crash"
+    signature = sign_provider_recovery_evidence(
+        evidence_key=EVIDENCE_KEY,
+        execution_id=execution_id,
+        provider_request_id=provider_request_id,
+        evidence_source="recovery-1",
+        audio_bytes=audio,
+        recorded_at=recovered_at,
+    )
+    original_observation = chapter_module.record_provider_observation
+    monkeypatch.setattr(
+        chapter_module,
+        "record_provider_observation",
+        lambda **kwargs: (_ for _ in ()).throw(ProcessCrash()),
+    )
+    with pytest.raises(ProcessCrash):
+        recover_unknown_send(
+            authority=_recovery(execution_id, "recover_unknown", recovered_at),
+            recovery_key=RECOVERY_KEY,
+            operator_id="operator-1",
+            signing_key=KEY,
+            db_path=str(values["db_path"]),
+            output_dir=str(values["output_dir"]),
+            provider_request_id=provider_request_id,
+            audio_bytes=audio,
+            evidence_source="recovery-1",
+            evidence_verification_key=EVIDENCE_KEY,
+            external_signature=signature,
+            recorded_at=recovered_at,
+        )
+    attempt = get_chapter_tts_attempt(
+        db_path=str(values["db_path"]), execution_id=execution_id, signing_key=KEY
+    )
+    execution = get_provider_execution(
+        db_path=str(values["db_path"]), execution_id=execution_id, signing_key=KEY
+    )
+    assert attempt.status == "received"
+    assert execution.status is ProviderExecutionStatus.SUBMITTED
+    monkeypatch.setattr(chapter_module, "record_provider_observation", original_observation)
+    resumed = recover_unknown_send(
+        authority=_recovery(execution_id, "recover_unknown", recovered_at),
+        recovery_key=RECOVERY_KEY,
+        operator_id="operator-1",
+        signing_key=KEY,
+        db_path=str(values["db_path"]),
+        output_dir=str(values["output_dir"]),
+        provider_request_id=provider_request_id,
+        audio_bytes=audio,
+        evidence_source="recovery-1",
+        evidence_verification_key=EVIDENCE_KEY,
+        external_signature=signature,
+        recorded_at=recovered_at,
+    )
+    assert resumed.status == "received"
+    execution = get_provider_execution(
+        db_path=str(values["db_path"]), execution_id=execution_id, signing_key=KEY
+    )
+    assert execution.status is ProviderExecutionStatus.SUCCEEDED

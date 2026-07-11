@@ -41,6 +41,7 @@ from .provider_execution import (
     begin_reserved_provider_submission,
     bind_provider_job_with_mutation,
     charge_and_mark_submission_unknown,
+    get_provider_execution,
     record_external_recovery_evidence,
     record_provider_observation,
 )
@@ -543,6 +544,21 @@ def recover_unknown_chapter_tts_audio(
             or _hash_private_file(Path(attempt.raw_path)) != expected_digest
         ):
             raise ChapterTTSProductionError("recovered chapter TTS receipt conflicts")
+        execution = get_provider_execution(
+            db_path=db_path, execution_id=execution_id, signing_key=signing_key
+        )
+        if execution.status is ProviderExecutionStatus.SUBMITTED:
+            record_provider_observation(
+                db_path=db_path,
+                execution_id=execution_id,
+                provider_job_id=provider_request_id,
+                status=ProviderExecutionStatus.SUCCEEDED,
+                evidence_digest=expected_digest,
+                signing_key=signing_key,
+                observed_at=recorded_at,
+            )
+        elif execution.status is not ProviderExecutionStatus.SUCCEEDED:
+            raise ChapterTTSProductionError("recovered provider execution state conflicts")
         return attempt
     if attempt.status != "outcome_unknown":
         raise ChapterTTSProductionError("chapter TTS recovery requires outcome_unknown")
@@ -552,9 +568,6 @@ def recover_unknown_chapter_tts_audio(
     if not 0 < len(result.audio_bytes) <= _MAX_AUDIO_BYTES:
         raise ValueError("recovered TTS bytes are empty or exceed the byte ceiling")
     evidence_digest = hashlib.sha256(audio_bytes).hexdigest()
-    raw_path, raw_sha = _persist_raw(
-        _private_directory(output_dir), execution_id, audio_bytes
-    )
     record_external_recovery_evidence(
         db_path=db_path,
         execution_id=execution_id,
@@ -565,6 +578,9 @@ def recover_unknown_chapter_tts_audio(
         evidence_verification_key=evidence_verification_key,
         external_signature=external_signature,
         recorded_at=recorded_at,
+    )
+    raw_path, raw_sha = _persist_raw(
+        _private_directory(output_dir), execution_id, audio_bytes
     )
     bind_provider_job_with_mutation(
         db_path=db_path,
@@ -599,6 +615,16 @@ def release_stale_chapter_tts_seal(
     *, db_path: str, execution_id: str, signing_key: bytes
 ) -> ChapterTTSAttempt:
     """Reset a local-only sealing claim to received; never touches provider spend."""
+    attempt = get_chapter_tts_attempt(
+        db_path=db_path, execution_id=execution_id, signing_key=signing_key
+    )
+    if (
+        attempt.status != "sealing"
+        or attempt.raw_path is None
+        or attempt.raw_sha256 is None
+        or _hash_private_file(Path(attempt.raw_path)) != attempt.raw_sha256
+    ):
+        raise ChapterTTSProductionError("stale seal has no valid durable received bytes")
     _release_seal(db_path, execution_id, signing_key)
     return get_chapter_tts_attempt(
         db_path=db_path, execution_id=execution_id, signing_key=signing_key
