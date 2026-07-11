@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Federated research corpus CLI</title></head>
+<body><main>
+<h1>One offline research corpus over durable scholarly sources</h1>
+<p>The operator explicitly mounts one or more reviewed S2, OpenAlex, and CORE authorities. Search queries every mount and returns collision-safe <code>mount:opaque-id</code> identifiers. Fetch delegates to the exact source and preserves its provenance and rights.</p>
+<h2>Ranking</h2>
+<p>Provider-local scores are not assumed comparable. Results use deterministic reciprocal-rank fusion with <code>k=60</code>, then source-qualified ID for ties. A failing source aborts rather than silently shrinking the evidence universe.</p>
+<h2>Runtime contract</h2>
+<ul>
+<li><code>--mount KIND=PATH</code> is explicit and repeatable; kinds are unique and limited to <code>s2</code>, <code>openalex</code>, and <code>core</code>.</li>
+<li>Every authority must already exist and pass its own schema, digest, integrity, path, and record validation.</li>
+<li><code>search</code> is bounded to 1–300 results. <code>fetch</code> requires a qualified identifier and preserves the underlying document provenance.</li>
+<li>No command performs a provider call, sync, graph write, event, or app mutation.</li>
+</ul>
+<h2>Acceptance</h2>
+<pre>uv run --with pytest --with mypy python -m pytest tests/test_corpus_contract.py tests/test_acquisition_corpus_bridge.py tests/test_s2_corpus_cli.py tests/test_openalex_corpus_cli.py tests/test_core_corpus_cli.py tests/test_research_corpus_cli.py -q
+uv run --with mypy --with pytest mypy --strict --explicit-package-bases substrate/corpus_federation tools/research_corpus.py tests/test_research_corpus_cli.py
+uv run --with ruff ruff check substrate/corpus_federation tools/research_corpus.py tests/test_research_corpus_cli.py
+uv run --python 3.12 python -m compileall -q substrate/corpus_federation tools/research_corpus.py
+uv run --python 3.12 python tools/research_corpus.py --help
+git diff --check</pre>
+<h2>Non-goals</h2><p>No live calls, sync, automatic source omission, raw-score calibration claim, shared adapter mutation, app/frontend/index/event/graph wiring, merge, deploy, or spend.</p>
+</main></body></html>
