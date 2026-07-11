@@ -78,6 +78,25 @@ def test_bench_scores_override_static_affinity() -> None:
     assert "antiek-bench" in r.ranked[0].rationale
 
 
+def test_partial_bench_coverage_prefers_measured_over_static_prior() -> None:
+    """Codex critic: measured 0.99 must beat unmeasured static 1.0.
+
+    Incomplete bench maps must not mix incompatible score systems in one sort.
+    """
+    r = rank_models_for_task(
+        "deep_research",
+        [
+            ModelCandidate("unmeasured", tier="reasoning"),  # static prior 1.0
+            ModelCandidate("measured", tier="flash"),  # would lose on static
+        ],
+        bench_scores={"deep_research": {"measured": 0.99}},
+    )
+    assert r.recommended_model_id == "measured"
+    assert r.ranked[0].model_id == "measured"
+    assert r.ranked[1].model_id == "unmeasured"
+    assert any("measured models rank ahead" in n for n in r.notes)
+
+
 def test_would_exceed_null_when_remaining_unknown() -> None:
     r = rank_models_for_task(
         "general",

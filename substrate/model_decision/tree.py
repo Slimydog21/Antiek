@@ -137,13 +137,29 @@ def _project_cost(
     return round(low, 6), round(high, 6)
 
 
-def _affinity_score(task: str, tier: str, model_id: str, bench: Mapping[str, Mapping[str, float]] | None) -> tuple[float, str]:
+def _affinity_score(
+    task: str,
+    tier: str,
+    model_id: str,
+    bench: Mapping[str, Mapping[str, float]] | None,
+) -> tuple[float, bool, str]:
+    """Return (score, measured, rationale).
+
+    ``measured`` is True only when this model has a bench score for ``task``.
+    Incomplete bench coverage must not mix measured scores with static priors
+    in one comparable scalar — callers rank measured candidates strictly ahead
+    of unmeasured when any measured score exists for the task among candidates.
+    """
     if bench and task in bench and model_id in bench[task]:
         raw = float(bench[task][model_id])
-        return raw, f"antiek-bench score for task={task!r}: {raw:.4f}"
+        return raw, True, f"antiek-bench score for task={task!r}: {raw:.4f}"
     table = _TASK_TIER_AFFINITY[task]
     prior = table.get(_norm_tier(tier), table["unknown"])
-    return prior, f"static tier affinity task={task!r} tier={_norm_tier(tier)!r}: {prior:.2f}"
+    return (
+        prior,
+        False,
+        f"static tier affinity task={task!r} tier={_norm_tier(tier)!r}: {prior:.2f}",
+    )
 
 
 def rank_models_for_task(
@@ -169,14 +185,17 @@ def rank_models_for_task(
         notes.append("prompt_chars unknown — cost projection null where rate known only as rate")
 
     prompt_tokens = _estimate_tokens(prompt_chars)
-    ranked: list[RankedModel] = []
+    # (RankedModel, measured_flag) for sort policy on incomplete bench coverage.
+    working: list[tuple[RankedModel, bool]] = []
 
     for m in models:
         if not m.enabled:
             continue
         if not m.model_id.strip():
             continue
-        score, why = _affinity_score(task_n, m.tier, m.model_id, bench_scores)
+        score, measured, why = _affinity_score(
+            task_n, m.tier, m.model_id, bench_scores
+        )
         low, high = _project_cost(usd_per_1k=m.usd_per_1k_tokens, prompt_tokens=prompt_tokens)
         would: bool | None = (
             None
@@ -192,21 +211,34 @@ def rank_models_for_task(
             rationale += (
                 f"; projection high ${high:.4f} within remaining ${float(remaining_usd):.4f}"
             )
-        ranked.append(
-            RankedModel(
-                model_id=m.model_id,
-                provider=m.provider,
-                tier=_norm_tier(m.tier),
-                score=score,
-                rationale=rationale,
-                projected_cost_usd_low=low,
-                projected_cost_usd_high=high,
-                would_exceed=would,
+        working.append(
+            (
+                RankedModel(
+                    model_id=m.model_id,
+                    provider=m.provider,
+                    tier=_norm_tier(m.tier),
+                    score=score,
+                    rationale=rationale,
+                    projected_cost_usd_low=low,
+                    projected_cost_usd_high=high,
+                    would_exceed=would,
+                ),
+                measured,
             )
         )
 
-    # Higher score first; stable tie-break by model_id.
-    ranked.sort(key=lambda r: (-r.score, r.model_id))
+    any_measured = any(m for _, m in working)
+    if any_measured:
+        notes.append(
+            "partial or full antiek-bench coverage for this task: "
+            "measured models rank ahead of unmeasured (incompatible score systems not mixed)"
+        )
+        # Measured first, then by score desc, then model_id.
+        working.sort(key=lambda pair: (0 if pair[1] else 1, -pair[0].score, pair[0].model_id))
+    else:
+        working.sort(key=lambda pair: (-pair[0].score, pair[0].model_id))
+
+    ranked = [row for row, _ in working]
     recommended = ranked[0].model_id if ranked else None
     if not ranked:
         notes.append("no enabled models in inventory — nothing to recommend")
