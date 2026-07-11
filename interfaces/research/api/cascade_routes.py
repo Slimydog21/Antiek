@@ -313,6 +313,13 @@ class ApproveRequest(BaseModel):
 class LaunchRequest(BaseModel):
     per_research_budget_usd: float = Field(default=0.50, gt=0)
     aggregate_budget_usd: float | None = None
+    # Optional source pack for pre-launch readiness (arxiv / substack / web /
+    # operator_corpus). When present, offline preflight runs before session
+    # launch and fails closed on unavailable adapters. Empty/omitted preserves
+    # legacy launch. require_source_preflight (or env
+    # ANTIEK_DRW_REQUIRE_SOURCE_PREFLIGHT) refuses launch with no pack.
+    source_policy: list[str] | None = None
+    require_source_preflight: bool = False
 
 
 class SteerRequest(BaseModel):
@@ -501,9 +508,18 @@ async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
     """Launch an approved plan as N parallel researches. Refuses an
     unapproved plan (SPR-05 gate). Returns the session id + the researches.
 
+    When ``source_policy`` is supplied (or required via flag/env), offline
+    source-policy preflight runs **before** session construction and fails
+    closed on unavailable adapters — no spend, no network from the gate.
+
     Background completion runs gather (per leaf) then the Loop 1 synthesis
     tail (phases 6–9 on ``session_id``) when a synthesis runner is wired —
     see ``set_synthesis_tail_runner``."""
+    from substrate.research_sources.cascade_gate import (
+        SourcePolicyLaunchBlocked,
+        evaluate_source_policy_for_launch,
+    )
+
     with _translate():
         if not is_plan_launchable(root_id, db_path=_db()):
             raise PlanNotApproved(
@@ -511,6 +527,27 @@ async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
         tree = load_tree(root_id, db_path=_db())
         if tree is None:
             raise HTTPException(status_code=404, detail=f"no plan {root_id!r}")
+
+    # Source-policy gate sits outside _translate so ValueError from preflight
+    # empty-list does not become a false 404; map domain blocks to 422.
+    try:
+        source_preflight = evaluate_source_policy_for_launch(
+            req.source_policy,
+            root_id=root_id,
+            require_policy=req.require_source_preflight or None,
+        )
+    except SourcePolicyLaunchBlocked as e:
+        raise HTTPException(status_code=422, detail=e.http_detail()) from e
+    except ValueError as e:
+        # e.g. empty source_policy list passed explicitly
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "source_policy_invalid",
+                "message": str(e),
+                "retryable": False,
+            },
+        ) from e
 
     session_id = f"session-{root_id}"
     leaves = [
@@ -547,7 +584,7 @@ async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
     # Drive the fan-out to completion (join + funnel drain + merge) in the
     # background so the session progresses without a connected stream client.
     _SESSION_TASKS[session_id] = asyncio.create_task(_run_to_completion(session))
-    return {
+    out: dict[str, Any] = {
         "session_id": session_id,
         "researches": [
             {"investigation_id": leaf.investigation_id, "sub_question": leaf.sub_question,
@@ -556,6 +593,9 @@ async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
         ],
         "aggregate_cap_usd": budget.aggregate_cap_usd,
     }
+    if source_preflight is not None:
+        out["source_preflight"] = source_preflight.model_dump()
+    return out
 
 
 async def _run_to_completion(session: CascadeSession) -> None:
