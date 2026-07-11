@@ -12,9 +12,11 @@ gpt-4o-mini, and the GPT-4-vision-preview family.
 from __future__ import annotations
 
 import os
+import time
 
 import httpx
 
+from ._safe_diagnostics import correlation_digest
 from .vision_anthropic import (
     VisionDispatchResult,
     VisionProviderError,
@@ -102,6 +104,7 @@ class OpenAIVisionProvider:
             "Authorization": f"Bearer {self._resolve_api_key()}",
             "content-type": "application/json",
         }
+        t_start = time.monotonic()
         try:
             response = client.post(
                 f"{self.base_url}/v1/chat/completions",
@@ -110,47 +113,75 @@ class OpenAIVisionProvider:
             )
         except httpx.HTTPError as exc:
             raise VisionProviderError(
-                f"openai_vision: HTTP transport failure: {exc!r}",
-            ) from exc
+                f"openai_vision: HTTP transport failure ({type(exc).__name__})",
+                provider=self.name,
+                latency_ms=int((time.monotonic() - t_start) * 1000),
+                retryable=True,
+            ) from None
 
+        latency_ms = int((time.monotonic() - t_start) * 1000)
         if response.status_code != 200:
             raise VisionProviderError(
                 f"openai_vision: HTTP {response.status_code} from "
-                f"OpenAI: {response.text[:500]}"
+                "OpenAI",
+                provider=self.name,
+                status_code=response.status_code,
+                latency_ms=latency_ms,
+                retryable=response.status_code in {429, 500, 502, 503, 504},
+                request_id=correlation_digest(response.headers.get("x-request-id")),
             )
 
         try:
             data = response.json()
-        except ValueError as exc:
+        except ValueError:
             raise VisionProviderError(
-                f"openai_vision: non-JSON response: {exc!r}",
-            ) from exc
+                "openai_vision: non-JSON response",
+                provider=self.name,
+                latency_ms=latency_ms,
+            ) from None
 
-        # Extract the assistant message text.
-        choices = data.get("choices") or []
-        if not choices:
-            raise VisionProviderError(
-                "openai_vision: response had no choices",
-            )
-        message = choices[0].get("message") or {}
-        raw_text = message.get("content") or ""
-        if not isinstance(raw_text, str):
-            # gpt-4o sometimes returns content as a list of parts.
-            text_parts: list[str] = []
-            if isinstance(raw_text, list):
+        try:
+            if not isinstance(data, dict):
+                raise TypeError("expected response object")
+            choices = data["choices"]
+            if not isinstance(choices, list) or not choices:
+                raise TypeError("expected non-empty choices list")
+            choice = choices[0]
+            if not isinstance(choice, dict):
+                raise TypeError("expected choice object")
+            message = choice["message"]
+            if not isinstance(message, dict):
+                raise TypeError("expected message object")
+            raw_text = message.get("content") or ""
+            if not isinstance(raw_text, str):
+                if not isinstance(raw_text, list):
+                    raise TypeError("expected text or content parts")
+                text_parts: list[str] = []
                 for part in raw_text:
                     if isinstance(part, dict) and part.get("type") == "text":
-                        t = part.get("text", "")
-                        if isinstance(t, str):
-                            text_parts.append(t)
-            raw_text = "".join(text_parts)
+                        text = part.get("text", "")
+                        if isinstance(text, str):
+                            text_parts.append(text)
+                raw_text = "".join(text_parts)
+            if not raw_text:
+                raise TypeError("expected non-empty text content")
+            usage = data.get("usage") or {}
+            if not isinstance(usage, dict):
+                raise TypeError("expected usage object")
+            input_tokens = int(usage.get("prompt_tokens", 0) or 0)
+            output_tokens = int(usage.get("completion_tokens", 0) or 0)
+        except (KeyError, OverflowError, TypeError, ValueError):
+            raise VisionProviderError(
+                "openai_vision: unexpected response shape",
+                provider=self.name,
+                latency_ms=latency_ms,
+            ) from None
 
-        usage = data.get("usage") or {}
         return VisionDispatchResult(
             raw_text=raw_text,
-            input_tokens=int(usage.get("prompt_tokens", 0) or 0),
-            output_tokens=int(usage.get("completion_tokens", 0) or 0),
-            model=str(data.get("model", model)),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            model=model,
         )
 
 

@@ -34,10 +34,13 @@ Tests inject ``MockVisionProvider`` (also in this module).
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass
 from typing import Protocol
 
 import httpx
+
+from ._safe_diagnostics import correlation_digest
 
 
 class VisionProviderError(Exception):
@@ -45,6 +48,23 @@ class VisionProviderError(Exception):
     The visual bridge handler maps this to a
     ``VISUAL_ROLE_FAILED`` event with ``failure_kind="dispatch_error"``
     or ``"provider_unavailable"``."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        provider: str | None = None,
+        status_code: int | None = None,
+        latency_ms: int = 0,
+        retryable: bool = False,
+        request_id: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.provider = provider
+        self.status_code = status_code
+        self.latency_ms = latency_ms
+        self.retryable = retryable
+        self.request_id = request_id
 
 
 @dataclass(frozen=True)
@@ -196,6 +216,7 @@ class AnthropicVisionProvider:
             "anthropic-version": self._anthropic_version,
             "content-type": "application/json",
         }
+        t_start = time.monotonic()
         try:
             response = client.post(
                 f"{self.base_url}/v1/messages",
@@ -204,38 +225,68 @@ class AnthropicVisionProvider:
             )
         except httpx.HTTPError as exc:
             raise VisionProviderError(
-                f"anthropic_vision: HTTP transport failure: {exc!r}",
-            ) from exc
+                f"anthropic_vision: HTTP transport failure ({type(exc).__name__})",
+                provider=self.name,
+                latency_ms=int((time.monotonic() - t_start) * 1000),
+                retryable=True,
+            ) from None
 
+        latency_ms = int((time.monotonic() - t_start) * 1000)
         if response.status_code != 200:
             raise VisionProviderError(
                 f"anthropic_vision: HTTP {response.status_code} from "
-                f"Anthropic Messages API: {response.text[:500]}"
+                "Anthropic Messages API",
+                provider=self.name,
+                status_code=response.status_code,
+                latency_ms=latency_ms,
+                retryable=response.status_code in {429, 500, 502, 503, 504, 529},
+                request_id=correlation_digest(
+                    response.headers.get("request-id")
+                    or response.headers.get("x-request-id")
+                ),
             )
 
         try:
             data = response.json()
-        except ValueError as exc:
+        except ValueError:
             raise VisionProviderError(
-                f"anthropic_vision: non-JSON response: {exc!r}",
-            ) from exc
+                "anthropic_vision: non-JSON response",
+                provider=self.name,
+                latency_ms=latency_ms,
+            ) from None
 
-        # Extract text from the content blocks array.
-        content = data.get("content") or []
-        text_parts: list[str] = []
-        for block in content:
-            if isinstance(block, dict) and block.get("type") == "text":
-                t = block.get("text", "")
-                if isinstance(t, str):
-                    text_parts.append(t)
-        raw_text = "".join(text_parts)
+        try:
+            if not isinstance(data, dict) or data.get("type") == "error":
+                raise TypeError("expected success object")
+            content = data["content"]
+            if not isinstance(content, list) or not content:
+                raise TypeError("expected non-empty content list")
+            text_parts: list[str] = []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    text = block.get("text", "")
+                    if isinstance(text, str):
+                        text_parts.append(text)
+            if not text_parts or not any(text_parts):
+                raise TypeError("expected text content")
+            raw_text = "".join(text_parts)
+            usage = data.get("usage") or {}
+            if not isinstance(usage, dict):
+                raise TypeError("expected usage object")
+            input_tokens = int(usage.get("input_tokens", 0) or 0)
+            output_tokens = int(usage.get("output_tokens", 0) or 0)
+        except (KeyError, OverflowError, TypeError, ValueError):
+            raise VisionProviderError(
+                "anthropic_vision: unexpected response shape",
+                provider=self.name,
+                latency_ms=latency_ms,
+            ) from None
 
-        usage = data.get("usage") or {}
         return VisionDispatchResult(
             raw_text=raw_text,
-            input_tokens=int(usage.get("input_tokens", 0) or 0),
-            output_tokens=int(usage.get("output_tokens", 0) or 0),
-            model=str(data.get("model", model)),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            model=model,
         )
 
 

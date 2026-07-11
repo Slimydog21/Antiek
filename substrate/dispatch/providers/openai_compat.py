@@ -39,23 +39,8 @@ from typing import Any
 
 import httpx
 
-# Package-relative imports with direct-script fallback.
-try:
-    from ..base import (
-        NormalizedUsage,
-        ProviderError,
-        RawProviderResponse,
-    )
-except ImportError:  # pragma: no cover
-    import sys
-    _here = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from dispatch.base import (  # type: ignore[no-redef]
-        NormalizedUsage,
-        ProviderError,
-        RawProviderResponse,
-    )
-
+from ..base import NormalizedUsage, ProviderError, RawProviderResponse
+from ._safe_diagnostics import correlation_digest
 
 # HTTP status → retryability. 429 (rate limit) and 5xx are retryable;
 # 4xx other than 429 are configuration / quota / malformed-request
@@ -191,31 +176,31 @@ class OpenAICompatProvider:
         t_start = time.monotonic()
         try:
             resp = client.post(url, json=body, headers=headers)
-        except httpx.TimeoutException as e:
+        except httpx.TimeoutException:
             raise ProviderError(
-                f"{self.name}: request timeout after {self._timeout_s}s — {e}",
+                f"{self.name}: request timeout after {self._timeout_s}s",
                 provider=self.name, model=model,
                 latency_ms=int((time.monotonic() - t_start) * 1000),
                 retryable=True,
-            ) from e
+            ) from None
         except httpx.RequestError as e:
             raise ProviderError(
-                f"{self.name}: network error — {e}",
+                f"{self.name}: network error ({type(e).__name__})",
                 provider=self.name, model=model,
                 latency_ms=int((time.monotonic() - t_start) * 1000),
                 retryable=True,
-            ) from e
+            ) from None
         latency_ms = int((time.monotonic() - t_start) * 1000)
 
         if resp.status_code != 200:
-            # Try to surface the provider's error body for diagnosis.
-            body_preview = resp.text[:400]
+            # Upstream text is untrusted and may reflect Authorization.
+            # Preserve structural diagnostics and the correlation ID only.
             raise ProviderError(
-                f"{self.name}: HTTP {resp.status_code} — {body_preview}",
+                f"{self.name}: HTTP {resp.status_code}",
                 provider=self.name, model=model,
                 latency_ms=latency_ms,
                 retryable=resp.status_code in _RETRYABLE_STATUS,
-                request_id=resp.headers.get("x-request-id"),
+                request_id=correlation_digest(resp.headers.get("x-request-id")),
             )
 
         try:
@@ -224,25 +209,40 @@ class OpenAICompatProvider:
             raise ProviderError(
                 f"{self.name}: response body not JSON — {e}",
                 provider=self.name, model=model, latency_ms=latency_ms,
-            ) from e
+            ) from None
 
         try:
+            if not isinstance(data, dict):
+                raise TypeError("expected response object")
             choice = data["choices"][0]
+            if not isinstance(choice, dict):
+                raise TypeError("expected choice object")
             text = choice["message"]["content"] or ""
+            if not isinstance(text, str) or not text:
+                raise TypeError("expected non-empty text content")
             finish_reason = choice.get("finish_reason")
-        except (KeyError, IndexError, TypeError) as e:
+            if finish_reason is not None and not isinstance(finish_reason, str):
+                raise TypeError("expected finish reason string")
+            usage = data.get("usage") or {}
+            if not isinstance(usage, dict):
+                raise TypeError("expected usage object")
+            self.normalize_usage(usage)
+            response_id = resp.headers.get("x-request-id") or data.get("id")
+            if response_id is not None and not isinstance(response_id, str):
+                raise TypeError("expected response id string")
+        except (AttributeError, KeyError, IndexError, OverflowError, TypeError, ValueError) as e:
             raise ProviderError(
-                f"{self.name}: unexpected response shape — {e} — body: {str(data)[:400]}",
+                f"{self.name}: unexpected response shape — {e}",
                 provider=self.name, model=model, latency_ms=latency_ms,
-            ) from e
+            ) from None
 
         return RawProviderResponse(
             text=text,
-            raw_usage=data.get("usage") or {},
+            raw_usage=usage,
             finish_reason=finish_reason,
             latency_ms=latency_ms,
-            request_id=resp.headers.get("x-request-id") or data.get("id"),
-            extra={"object": data.get("object")},
+            request_id=correlation_digest(response_id),
+            extra={},
         )
 
     def normalize_usage(self, raw_usage: dict[str, Any]) -> NormalizedUsage:
