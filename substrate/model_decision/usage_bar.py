@@ -16,8 +16,19 @@ lanes or offline fixtures).
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any
+
+
+def _finite_money(value: float | None, *, name: str) -> float | None:
+    """Return value if finite; reject NaN/Inf. None stays None (honest unknown)."""
+    if value is None:
+        return None
+    v = float(value)
+    if not math.isfinite(v):
+        raise ValueError(f"{name} must be finite (got non-finite)")
+    return v
 
 
 @dataclass(frozen=True)
@@ -52,22 +63,28 @@ def compute_usage_bar(
     spent_usd: float | None,
     spend_basis: str = "reserved_estimate",
 ) -> UsageBar:
-    """Build an honest usage bar from optional cap and spent figures."""
+    """Build an honest usage bar from optional cap and spent figures.
+
+    Raises ``ValueError`` on non-finite numbers (NaN/Inf must not become null
+    remaining with a concrete would_exceed boolean).
+    """
+    cap = _finite_money(daily_cap_usd, name="daily_cap_usd")
+    spent = _finite_money(spent_usd, name="spent_usd")
     notes: list[str] = []
-    if daily_cap_usd is None:
+    if cap is None:
         notes.append("daily_cap_usd unknown — remaining and fraction_used are null")
-    if spent_usd is None:
+    if spent is None:
         notes.append("spent_usd unknown — remaining and fraction_used are null")
 
     remaining: float | None = None
     over: bool | None = None
     fraction: float | None = None
 
-    if daily_cap_usd is not None and spent_usd is not None:
-        remaining = float(daily_cap_usd) - float(spent_usd)
+    if cap is not None and spent is not None:
+        remaining = cap - spent
         over = remaining < 0.0
-        if float(daily_cap_usd) > 0.0:
-            fraction = float(spent_usd) / float(daily_cap_usd)
+        if cap > 0.0:
+            fraction = spent / cap
         else:
             notes.append("daily_cap_usd is zero — fraction_used null (not 0-faked)")
             fraction = None
@@ -82,8 +99,8 @@ def compute_usage_bar(
         fraction = None
 
     return UsageBar(
-        daily_cap_usd=daily_cap_usd,
-        spent_usd=spent_usd,
+        daily_cap_usd=cap,
+        spent_usd=spent,
         remaining_usd=remaining,
         over_budget=over,
         fraction_used=fraction,
@@ -99,29 +116,31 @@ def project_prompt_against_bar(
     projected_cost_usd_high: float | None,
 ) -> PromptProjection:
     """Project how a proposed prompt would affect remaining budget."""
+    low = _finite_money(projected_cost_usd_low, name="projected_cost_usd_low")
+    high = _finite_money(projected_cost_usd_high, name="projected_cost_usd_high")
     notes: list[str] = list(bar.notes)
     remaining = bar.remaining_usd
     after: float | None = None
     would: bool | None = None
 
-    if projected_cost_usd_high is None:
+    if high is None:
         notes.append("projected_cost_usd_high unknown — would_exceed is null")
         would = None
     elif remaining is None:
         notes.append("remaining_usd unknown — would_exceed is null (not zero-faked)")
         would = None
     else:
-        after = float(remaining) - float(projected_cost_usd_high)
-        would = float(projected_cost_usd_high) > float(remaining)
+        after = float(remaining) - float(high)
+        would = float(high) > float(remaining)
         if would:
             notes.append(
-                f"projection high ${float(projected_cost_usd_high):.4f} exceeds "
+                f"projection high ${float(high):.4f} exceeds "
                 f"remaining ${float(remaining):.4f}"
             )
 
     return PromptProjection(
-        projected_cost_usd_low=projected_cost_usd_low,
-        projected_cost_usd_high=projected_cost_usd_high,
+        projected_cost_usd_low=low,
+        projected_cost_usd_high=high,
         remaining_before_usd=remaining,
         remaining_after_high_usd=after,
         would_exceed=would,

@@ -94,3 +94,21 @@ def test_http_project_route() -> None:
     assert r2.status_code == 200
     assert r2.json()["usage_bar"]["remaining_usd"] is None
     assert r2.json()["prompt_projection"]["would_exceed"] is None
+
+
+def test_http_rejects_nan_and_inf() -> None:
+    app = FastAPI()
+    register_model_usage_bar_routes(app)
+    client = TestClient(app)
+    for payload in (
+        {"daily_cap_usd": "NaN", "spent_usd": 2.0, "projected_cost_usd_high": 1.0},
+        {"daily_cap_usd": 10.0, "spent_usd": "Infinity"},
+        {"daily_cap_usd": 10.0, "spent_usd": 1.0, "projected_cost_usd_high": "NaN"},
+    ):
+        r = client.post("/settings/usage-bar/project", json=payload)
+        assert r.status_code == 422, (payload, r.text)
+
+
+def test_pure_rejects_nan() -> None:
+    with pytest.raises(ValueError, match="finite"):
+        compute_usage_bar(daily_cap_usd=float("nan"), spent_usd=1.0)
