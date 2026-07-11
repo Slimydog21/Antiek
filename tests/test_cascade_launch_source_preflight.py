@@ -264,7 +264,7 @@ def test_http_launch_unavailable_via_injectable_preflight(
 
     def wrapped(source_policy: list[str] | None, **kwargs: Any) -> Any:
         kwargs = dict(kwargs)
-        kwargs["preflight_fn"] = lambda *a: fake
+        kwargs["preflight_fn"] = lambda *a, **k: fake
         return real(source_policy, **kwargs)
 
     monkeypatch.setattr(gate, "evaluate_source_policy_for_launch", wrapped)
