@@ -32,6 +32,16 @@ KEY = b"k" * 32
 
 
 def _client(tmp_path: Path) -> tuple[TestClient, MidnightOilDependencies]:
+    identifier_calls = {20: 0, 28: 0}
+
+    def random_token(size: int) -> str:
+        if size in identifier_calls:
+            identifier_calls[size] += 1
+            stem = "job-owned" if size == 20 else "asset-owned"
+            suffix = "" if identifier_calls[size] == 1 else f"-{identifier_calls[size]}"
+            return f"{stem}{suffix}"
+        return "operation-csprng" if size == 24 else "nonce-csprng-value"
+
     deps = MidnightOilDependencies(
         owner_jobs=MemoryOwnerStore(),
         jobs=InMemoryJobStore(),
@@ -40,7 +50,8 @@ def _client(tmp_path: Path) -> tuple[TestClient, MidnightOilDependencies]:
         signing_key=KEY,
         verification_keys={"test-key": KEY},
         clock_ms=lambda: 1_000_000,
-        random_token=lambda size: "operation-csprng" if size == 24 else "nonce-csprng",
+        random_token=random_token,
+        test_mode=True,
     )
     app = FastAPI()
 
@@ -63,7 +74,6 @@ def _create(client: TestClient, owner: str = "alice") -> dict[str, object]:
             "goals": ["research carefully"],
             "duration_minutes": 30,
             "model_id": "offline-stub",
-            "job_id": "job-owned",
         },
     )
     assert response.status_code == 200, response.text
@@ -88,6 +98,34 @@ def test_registration_and_auth_fail_closed(tmp_path: Path) -> None:
         ).status_code
         == 401
     )
+
+
+def test_dependency_bundle_rejects_test_stores_and_noncanonical_keys(tmp_path: Path) -> None:
+    kwargs = {
+        "owner_jobs": MemoryOwnerStore(),
+        "jobs": InMemoryJobStore(),
+        "consents": SpendConsentStore(tmp_path / "dependency-consents.sqlite3"),
+        "signing_key": KEY,
+        "verification_keys": {"test-key": KEY},
+    }
+    with pytest.raises(ValueError, match="durable stores"):
+        MidnightOilDependencies(active_key_id="test-key", **kwargs)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="canonical"):
+        MidnightOilDependencies(
+            active_key_id=" test-key ",
+            test_mode=True,
+            **kwargs,  # type: ignore[arg-type]
+        )
+    with pytest.raises(ValueError, match="256-bit"):
+        MidnightOilDependencies(
+            active_key_id="test-key",
+            verification_keys={"test-key": b"short"},
+            signing_key=b"short",
+            owner_jobs=MemoryOwnerStore(),
+            jobs=InMemoryJobStore(),
+            consents=SpendConsentStore(tmp_path / "weak-consents.sqlite3"),
+            test_mode=True,
+        )
 
 
 def test_live_app_enablement_refuses_missing_or_invalid_dependencies() -> None:
@@ -166,7 +204,7 @@ def test_every_job_route_rejects_missing_identity(
     assert response.status_code == 401
 
 
-def test_create_collision_cannot_overwrite_another_owner(tmp_path: Path) -> None:
+def test_create_rejects_caller_controlled_identifiers(tmp_path: Path) -> None:
     client, _ = _client(tmp_path)
     original = _create(client)
     collision = client.post(
@@ -174,10 +212,8 @@ def test_create_collision_cannot_overwrite_another_owner(tmp_path: Path) -> None
         headers={"x-test-user": "mallory"},
         json={"goals": ["replace it"], "duration_minutes": 1, "job_id": "job-owned"},
     )
-    assert collision.status_code == 400
-    fetched = client.get(
-        "/midnight-oil/jobs/job-owned", headers={"x-test-user": "alice"}
-    ).json()
+    assert collision.status_code == 422
+    fetched = client.get("/midnight-oil/jobs/job-owned", headers={"x-test-user": "alice"}).json()
     assert fetched["goals"] == original["goals"]
 
 
@@ -189,8 +225,12 @@ def test_failed_legacy_persistence_cannot_mint_spend_authority(tmp_path: Path) -
         raise RuntimeError("legacy persistence unavailable")
 
     deps.jobs.put_job = fail_put  # type: ignore[method-assign]
-    with pytest.raises(RuntimeError, match="legacy persistence unavailable"):
-        _create(client)
+    failed = client.post(
+        "/midnight-oil/create",
+        headers={"x-test-user": "alice"},
+        json={"goals": ["research carefully"], "duration_minutes": 30},
+    )
+    assert failed.status_code == 503
     response = client.post(
         "/midnight-oil/jobs/job-owned/spend-consent",
         headers={"x-test-user": "alice"},
@@ -200,12 +240,47 @@ def test_failed_legacy_persistence_cannot_mint_spend_authority(tmp_path: Path) -
     assert "token" not in response.text.lower()
 
 
+def test_ambiguous_legacy_commit_never_deletes_owner_authority(tmp_path: Path) -> None:
+    client, deps = _client(tmp_path)
+    original_put = deps.jobs.put_job
+
+    def commit_then_raise(job: dict[str, object]) -> None:
+        original_put(job)
+        raise RuntimeError("connection failed after commit")
+
+    deps.jobs.put_job = commit_then_raise  # type: ignore[method-assign]
+    response = client.post(
+        "/midnight-oil/create",
+        headers={"x-test-user": "alice"},
+        json={"goals": ["research carefully"], "duration_minutes": 30},
+    )
+    assert response.status_code == 503
+    assert deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned") is not None
+    assert deps.jobs.get_job("job-owned") is not None
+
+
+def test_legacy_config_drift_cannot_mint_spend_authority(tmp_path: Path) -> None:
+    client, deps = _client(tmp_path)
+    _create(client)
+    legacy = deps.jobs.get_job("job-owned")
+    assert legacy is not None
+    legacy["goals"] = ["different execution"]
+    legacy["asset_id"] = "victim-asset"
+    deps.jobs.put_job(legacy)
+    response = client.post(
+        "/midnight-oil/jobs/job-owned/spend-consent",
+        headers={"x-test-user": "alice"},
+        json={"use_recommended": True},
+    )
+    assert response.status_code == 409
+    assert "reconciliation" in response.text
+    assert "token" not in response.text.lower()
+
+
 def test_openapi_has_no_owner_or_float_approval_authority(tmp_path: Path) -> None:
     client, _ = _client(tmp_path)
     schema = client.get("/openapi.json").json()
-    consent_schema = repr(
-        schema["paths"]["/midnight-oil/jobs/{job_id}/spend-consent"]["post"]
-    )
+    consent_schema = repr(schema["paths"]["/midnight-oil/jobs/{job_id}/spend-consent"]["post"])
     approve_schema = repr(schema["paths"]["/midnight-oil/approve"]["post"])
     assert "owner" not in consent_schema.lower()
     assert "ceiling_usd" not in approve_schema
@@ -346,13 +421,21 @@ def test_malformed_persisted_config_and_error_surfaces_do_not_leak(
     client, deps = _client(tmp_path)
     deps.owner_jobs.put_job(
         OwnerJob(
-            owner_user_id="alice", job_id="broken", state_version=0,
-            approved_ceiling_cents=None, consent_receipt_id=None,
-            consent_config_hash=None, consent_issued_at_ms=None,
-            consent_expires_at_ms=None, consent_claimed_at_ms=None,
-            operation_id=None, operation_state=OperationState.NONE,
-            dispatch_started_at_ms=None, dispatched_at_ms=None,
-            completed_at_ms=None, payload={"goals": ["g"]},
+            owner_user_id="alice",
+            job_id="broken",
+            state_version=0,
+            approved_ceiling_cents=None,
+            consent_receipt_id=None,
+            consent_config_hash=None,
+            consent_issued_at_ms=None,
+            consent_expires_at_ms=None,
+            consent_claimed_at_ms=None,
+            operation_id=None,
+            operation_state=OperationState.NONE,
+            dispatch_started_at_ms=None,
+            dispatched_at_ms=None,
+            completed_at_ms=None,
+            payload={"goals": ["g"]},
         )
     )
     response = client.post(
@@ -380,4 +463,5 @@ def test_cas_failure_returns_no_token_and_only_orphan_receipt(tmp_path: Path) ->
         json={"use_recommended": True},
     )
     assert response.status_code == 409
+    assert response.headers["cache-control"] == "no-store"
     assert "token" not in response.text.lower()

@@ -89,4 +89,4 @@ def test_create_rejects_empty_goals(client):
         headers={"x-test-user": "alice"},
         json={"goals": ["  "], "duration_minutes": 10},
     )
-    assert r.status_code == 400
+    assert r.status_code == 422

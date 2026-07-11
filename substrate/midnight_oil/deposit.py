@@ -129,6 +129,7 @@ def deposit_job_results(
     *,
     job_store: JobStore,
     engagement_store: EngagementStore,
+    job_snapshot: MidnightOilJob | None = None,
     step_outputs: list[WorkerStepResult] | tuple[WorkerStepResult, ...] = (),
     draft_combined: bool = True,
     parent_title: str | None = None,
@@ -145,10 +146,15 @@ def deposit_job_results(
     Antiek-bench usage event so suite rewrite can learn from autonomous runs.
     Optionally seeds progress plan→cite→complete on the first spawn.
     """
-    row = job_store.get_job(job_id)
-    if row is None:
-        raise KeyError(f"unknown job_id: {job_id}")
-    job = _job_from_row(row)
+    if job_snapshot is None:
+        row = job_store.get_job(job_id)
+        if row is None:
+            raise KeyError(f"unknown job_id: {job_id}")
+        job = _job_from_row(row)
+    else:
+        if job_snapshot.job_id != job_id:
+            raise ValueError("job snapshot does not match requested job")
+        job = job_snapshot
     asset_id = job.asset_id or f"moil_asset_{job.job_id}"
 
     spawn_ids: list[str] = []

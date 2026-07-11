@@ -15,7 +15,7 @@ from decimal import ROUND_FLOOR, Decimal
 from typing import Any
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, field_validator
 
 from substrate.midnight_oil import (
     create_with_recommended_ceiling,
@@ -24,7 +24,7 @@ from substrate.midnight_oil import (
     job_summary_html,
     product_result_html,
 )
-from substrate.midnight_oil.job import InMemoryJobStore, JobStore, _job_from_row, put_job_state
+from substrate.midnight_oil.job import InMemoryJobStore, JobStore, MidnightOilJob
 from substrate.midnight_oil.job_store import OperationState, OwnerJob, OwnerJobStore
 from substrate.midnight_oil.spend_consent import (
     MAX_CEILING_CENTS,
@@ -49,14 +49,33 @@ class MidnightOilDependencies:
     verification_keys: Mapping[str, bytes]
     clock_ms: Callable[[], int] = lambda: time.time_ns() // 1_000_000
     random_token: Callable[[int], str] = secrets.token_urlsafe
+    test_mode: bool = False
 
     def __post_init__(self) -> None:
-        if not self.active_key_id.strip():
-            raise ValueError("an active consent key id is required")
-        if len(self.signing_key) < 32:
+        if (
+            not self.active_key_id
+            or self.active_key_id != self.active_key_id.strip()
+            or len(self.active_key_id) > 128
+        ):
+            raise ValueError("the active consent key id must be canonical")
+        if type(self.signing_key) is not bytes or len(self.signing_key) < 32:
             raise ValueError("a 256-bit consent signing key is required")
+        for key_id, key in self.verification_keys.items():
+            if (
+                type(key_id) is not str
+                or not key_id
+                or key_id != key_id.strip()
+                or len(key_id) > 128
+            ):
+                raise ValueError("verification key ids must be canonical")
+            if type(key) is not bytes or len(key) < 32:
+                raise ValueError("verification keys must be at least 256 bits")
         if self.verification_keys.get(self.active_key_id) != self.signing_key:
             raise ValueError("the active signing key must be in the verification keyring")
+        if not self.test_mode and (
+            getattr(self.owner_jobs, "_test_only", False) or isinstance(self.jobs, InMemoryJobStore)
+        ):
+            raise ValueError("production Midnight Oil requires durable stores")
 
 
 def reset_midnight_oil_store(store: JobStore | None = None) -> None:
@@ -93,13 +112,20 @@ def _owned(request: Request, job_id: str) -> tuple[MidnightOilDependencies, Owne
 
 class CreateJobBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    goals: list[str] = Field(min_length=1)
-    duration_minutes: int = Field(gt=0)
-    model_id: str | None = None
-    fanout_depth: int = 3
-    asset_id: str | None = None
-    job_id: str | None = None
-    research_tier: str | None = None
+    goals: list[StrictStr] = Field(min_length=1, max_length=64)
+    duration_minutes: StrictInt = Field(ge=1, le=10_080)
+    model_id: StrictStr | None = Field(default=None, max_length=256)
+    fanout_depth: StrictInt = Field(default=3, ge=1, le=64)
+    research_tier: StrictStr | None = Field(default=None, max_length=64)
+
+    @field_validator("goals")
+    @classmethod
+    def validate_goals(cls, goals: list[str]) -> list[str]:
+        if any(not goal.strip() or len(goal) > 4096 for goal in goals):
+            raise ValueError("goals must be non-empty and at most 4096 characters")
+        if sum(len(goal) for goal in goals) > 65_536:
+            raise ValueError("combined goals are too large")
+        return goals
 
 
 class ConsentBody(BaseModel):
@@ -136,6 +162,11 @@ class RunBody(BaseModel):
 
 
 def _owner_payload(job: Any) -> dict[str, object]:
+    recommended_cents = int(
+        (Decimal(str(job.recommended_price_ceiling_usd)) * 100).to_integral_value(
+            rounding=ROUND_FLOOR
+        )
+    )
     return {
         "goals": list(job.goals),
         "duration_minutes": job.duration_minutes,
@@ -144,6 +175,7 @@ def _owner_payload(job: Any) -> dict[str, object]:
         "fanout_depth": int(job.fanout_depth),
         "asset_id": job.asset_id,
         "force_below_recommended": False,
+        "recommended_ceiling_cents": recommended_cents,
         "display_usd": job.recommended_price_ceiling_usd,
     }
 
@@ -153,6 +185,16 @@ def post_create(request: Request, body: CreateJobBody) -> dict[str, Any]:
     deps = _deps(request)
     owner = _owner(request)
     try:
+        job_id = deps.random_token(20)
+        asset_id = deps.random_token(28)
+        if (
+            type(job_id) is not str
+            or not 8 <= len(job_id) <= 512
+            or type(asset_id) is not str
+            or not 8 <= len(asset_id) <= 512
+            or job_id == asset_id
+        ):
+            raise RuntimeError("invalid identifier source")
         staging = InMemoryJobStore()
         result = create_with_recommended_ceiling(
             body.goals,
@@ -160,8 +202,8 @@ def post_create(request: Request, body: CreateJobBody) -> dict[str, Any]:
             store=staging,
             model_id=body.model_id,
             fanout_depth=body.fanout_depth,
-            job_id=body.job_id,
-            asset_id=body.asset_id,
+            job_id=job_id,
+            asset_id=asset_id,
             research_tier=body.research_tier,
         )
         deps.owner_jobs.put_job(
@@ -186,9 +228,26 @@ def post_create(request: Request, body: CreateJobBody) -> dict[str, Any]:
         legacy_row = staging.get_job(result.job.job_id)
         if legacy_row is None:
             raise RuntimeError("staged Midnight Oil job disappeared")
-        deps.jobs.put_job(legacy_row)
+        try:
+            deps.jobs.put_job(legacy_row)
+        except Exception:
+            # A write may commit and still raise. Delete authority only after a
+            # successful read proves the detail row was not persisted.
+            try:
+                persisted = deps.jobs.get_job(result.job.job_id)
+                read_confirmed = True
+            except Exception:
+                persisted = None
+                read_confirmed = False
+            if read_confirmed and persisted is None:
+                deps.owner_jobs.delete_uninitialized_job(
+                    owner_user_id=owner, job_id=result.job.job_id
+                )
+            raise HTTPException(status_code=503, detail="job persistence unavailable") from None
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail="job creation unavailable") from None
     out = result.to_dict()
     out["html"] = product_result_html(result)
     return out
@@ -199,24 +258,58 @@ def _config(row: OwnerJob) -> JobConsentConfig:
     goals = payload["goals"]
     duration = payload["duration_minutes"]
     fanout = payload["fanout_depth"]
-    if not isinstance(goals, list) or any(not isinstance(goal, str) for goal in goals):
+    if (
+        not isinstance(goals, list)
+        or not 1 <= len(goals) <= 64
+        or any(type(goal) is not str or not goal.strip() or len(goal) > 4096 for goal in goals)
+        or sum(len(goal) for goal in goals) > 65_536
+    ):
         raise ValueError("stored goals are invalid")
-    if type(duration) is not int or type(fanout) is not int:
+    if (
+        type(duration) is not int
+        or not 1 <= duration <= 10_080
+        or type(fanout) is not int
+        or not 1 <= fanout <= 64
+    ):
         raise ValueError("stored numeric configuration is invalid")
+    model_id = payload.get("model_id")
+    tier = payload.get("research_tier")
+    asset_id = payload.get("asset_id")
+    if model_id is not None and (type(model_id) is not str or len(model_id) > 256):
+        raise ValueError("stored model is invalid")
+    if type(tier) is not str or not tier or len(tier) > 64:
+        raise ValueError("stored research tier is invalid")
+    if type(asset_id) is not str or not asset_id or len(asset_id) > 256:
+        raise ValueError("stored asset is invalid")
     return JobConsentConfig(
         job_id=row.job_id,
         goals=tuple(goals),
         duration_minutes=duration,
-        model_id=None if payload.get("model_id") is None else str(payload["model_id"]),
-        research_tier=str(payload["research_tier"]),
+        model_id=model_id,
+        research_tier=tier,
         fanout_depth=fanout,
-        asset_id=None if payload.get("asset_id") is None else str(payload["asset_id"]),
+        asset_id=asset_id,
     )
 
 
 def _recommended_cents(row: OwnerJob) -> int:
-    value = row.payload.get("display_usd")
-    return int((Decimal(str(value)) * 100).to_integral_value(rounding=ROUND_FLOOR))
+    value = row.payload.get("recommended_ceiling_cents")
+    if type(value) is not int or not 1 <= value <= MAX_CEILING_CENTS:
+        raise ValueError("stored recommended ceiling is invalid")
+    return value
+
+
+def _legacy_matches_authority(legacy: MidnightOilJob, config: JobConsentConfig) -> bool:
+    """Require the ownerless detail projection to match signed authority exactly."""
+    return (
+        legacy.job_id == config.job_id
+        and legacy.goals == config.goals
+        and legacy.duration_minutes == config.duration_minutes
+        and legacy.model_id == config.model_id
+        and legacy.research_tier == config.research_tier
+        and legacy.fanout_depth == config.fanout_depth
+        and legacy.asset_id == config.asset_id
+    )
 
 
 @midnight_oil_router.post("/jobs/{job_id}/spend-consent")
@@ -235,6 +328,8 @@ def post_spend_consent(
     legacy_job = get_job(job_id, store=deps.jobs)
     if legacy_job is None:
         raise HTTPException(status_code=404, detail="job not found")
+    if not _legacy_matches_authority(legacy_job, config):
+        raise HTTPException(status_code=409, detail="job configuration requires reconciliation")
     if body.use_recommended:
         if body.ceiling_cents is not None:
             raise HTTPException(status_code=400, detail="choose ceiling_cents or use_recommended")
@@ -248,34 +343,55 @@ def post_spend_consent(
     if not 1 <= ceiling <= MAX_CEILING_CENTS:
         raise HTTPException(status_code=400, detail="ceiling_cents is outside authority bounds")
 
-    now = deps.clock_ms()
-    operation_id = deps.random_token(24)
-    nonce = deps.random_token(32)
-    token = deps.consents.issue(
-        operator_id=owner,
-        config=config,
-        operation_id=operation_id,
-        ceiling_cents=ceiling,
-        issued_at_ms=now,
-        expires_at_ms=now + CONSENT_TTL_MS,
-        nonce=nonce,
-        key_id=deps.active_key_id,
-        signing_key=deps.signing_key,
-    )
-    receipt: ConsentReceipt = decode_and_verify(token, verification_keys=deps.verification_keys)
-    published = deps.owner_jobs.publish_consent(
-        owner_user_id=owner,
-        job_id=job_id,
-        expected_version=row.state_version,
-        operation_id=operation_id,
-        approved_ceiling_cents=ceiling,
-        consent_receipt_id=receipt.receipt_id,
-        consent_config_hash=receipt.config_hash,
-        consent_issued_at_ms=receipt.issued_at_ms,
-        consent_expires_at_ms=receipt.expires_at_ms,
-    )
+    try:
+        now = deps.clock_ms()
+        operation_id = deps.random_token(24)
+        nonce = deps.random_token(32)
+        if type(now) is not int or now < 0:
+            raise ValueError("invalid clock")
+        if (
+            type(operation_id) is not str
+            or not 16 <= len(operation_id) <= 512
+            or type(nonce) is not str
+            or not 16 <= len(nonce) <= 512
+            or operation_id == nonce
+        ):
+            raise ValueError("invalid entropy source")
+        token = deps.consents.issue(
+            operator_id=owner,
+            config=config,
+            operation_id=operation_id,
+            ceiling_cents=ceiling,
+            issued_at_ms=now,
+            expires_at_ms=now + CONSENT_TTL_MS,
+            nonce=nonce,
+            key_id=deps.active_key_id,
+            signing_key=deps.signing_key,
+        )
+        receipt: ConsentReceipt = decode_and_verify(token, verification_keys=deps.verification_keys)
+        published = deps.owner_jobs.publish_consent(
+            owner_user_id=owner,
+            job_id=job_id,
+            expected_version=row.state_version,
+            operation_id=operation_id,
+            approved_ceiling_cents=ceiling,
+            consent_receipt_id=receipt.receipt_id,
+            consent_config_hash=receipt.config_hash,
+            consent_issued_at_ms=receipt.issued_at_ms,
+            consent_expires_at_ms=receipt.expires_at_ms,
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="spend consent could not be issued",
+            headers={"Cache-Control": "no-store"},
+        ) from None
     if not published.applied:
-        raise HTTPException(status_code=409, detail="job changed while consent was issued")
+        raise HTTPException(
+            status_code=409,
+            detail="job changed while consent was issued",
+            headers={"Cache-Control": "no-store"},
+        )
     response.headers["Cache-Control"] = "no-store"
     return {
         "token": token,
@@ -329,19 +445,34 @@ def post_deposit(request: Request, body: DepositBody) -> dict[str, Any]:
     from interfaces.research.api.engagement_routes import _eng, get_bench_usage_store
     from substrate.engagement_spine import progress_payload
 
-    deps, _ = _owned(request, body.job_id)
+    deps, authority = _owned(request, body.job_id)
+    terminal = {
+        OperationState.COMPLETE,
+        OperationState.FAILED,
+        OperationState.BUDGET_HALTED,
+        OperationState.TIMED_OUT,
+        OperationState.FAILED_RECONCILE,
+    }
+    if authority.operation_state not in terminal:
+        raise HTTPException(
+            status_code=409,
+            detail="deposit is disabled until durable execution reaches a terminal state",
+        )
     job = get_job(body.job_id, store=deps.jobs)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
-    if body.mark_complete and job.status in ("approved", "running"):
-        row = dict(deps.jobs.get_job(body.job_id) or {})
-        row["status"] = "complete"
-        put_job_state(_job_from_row(row), store=deps.jobs)
+    try:
+        config = _config(authority)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail="stored job configuration is invalid") from exc
+    if not _legacy_matches_authority(job, config):
+        raise HTTPException(status_code=409, detail="job configuration requires reconciliation")
     try:
         deposit = deposit_job_results(
             body.job_id,
             job_store=deps.jobs,
             engagement_store=_eng(),
+            job_snapshot=job,
             draft_combined=body.draft_combined,
             bench_usage_store=get_bench_usage_store(create_if_missing=True),
             record_progress=body.record_progress,

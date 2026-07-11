@@ -75,6 +75,8 @@ class CompareAndSetResult:
 class OwnerJobStore(Protocol):
     def put_job(self, job: OwnerJob) -> None: ...
 
+    def delete_uninitialized_job(self, *, owner_user_id: str, job_id: str) -> bool: ...
+
     def get_job(self, *, owner_user_id: str, job_id: str) -> OwnerJob | None: ...
 
     def publish_consent(
@@ -276,6 +278,7 @@ _PAYLOAD_FIELDS: Final = frozenset(
         "fanout_depth",
         "asset_id",
         "force_below_recommended",
+        "recommended_ceiling_cents",
         "display_usd",
     }
 )
@@ -302,7 +305,9 @@ def _validate_state_coherence(job: OwnerJob) -> None:
         job.consent_expires_at_ms,
     )
     if job.operation_state is OperationState.NONE:
-        if any(value is not None for value in (*consent, job.operation_id, job.consent_claimed_at_ms)):
+        if any(
+            value is not None for value in (*consent, job.operation_id, job.consent_claimed_at_ms)
+        ):
             raise ValueError("none state must not carry consent or operation authority")
     elif any(value is None for value in (*consent, job.operation_id)):
         raise ValueError("active operation state requires complete consent authority")
@@ -349,11 +354,7 @@ def _validate_state_coherence(job: OwnerJob) -> None:
         job.consent_claimed_at_ms is not None
         and job.consent_issued_at_ms is not None
         and job.consent_expires_at_ms is not None
-        and not (
-            job.consent_issued_at_ms
-            <= job.consent_claimed_at_ms
-            < job.consent_expires_at_ms
-        )
+        and not (job.consent_issued_at_ms <= job.consent_claimed_at_ms < job.consent_expires_at_ms)
     ):
         raise ValueError("consent claim must fall within its validity interval")
 
@@ -627,6 +628,19 @@ class DurableOwnerJobStore:
             connection.close()
         return None if row is None else _decode(tuple(row))
 
+    def delete_uninitialized_job(self, *, owner_user_id: str, job_id: str) -> bool:
+        """Compensate a failed detail-store create, but never erase authority."""
+        owner = _text(owner_user_id, "owner_user_id")
+        jid = _text(job_id, "job_id")
+        with self._coordinator.acquire_write_context("midnight_oil.job_store") as connection:
+            changed = connection.execute(
+                "DELETE FROM midnight_oil_jobs WHERE owner_user_id = ? AND job_id = ? "
+                "AND state_version = 0 AND operation_state = ? AND operation_id IS NULL "
+                "AND consent_receipt_id IS NULL RETURNING job_id",
+                [owner, jid, OperationState.NONE.value],
+            ).fetchone()
+            return changed is not None
+
     def publish_consent(
         self,
         *,
@@ -664,7 +678,10 @@ class DurableOwnerJobStore:
                     connection.execute("COMMIT")
                     return CompareAndSetResult(applied=False, job=None)
                 decoded = _decode(tuple(current))
-                if decoded.state_version != expected_version or decoded.operation_state is not OperationState.NONE:
+                if (
+                    decoded.state_version != expected_version
+                    or decoded.operation_state is not OperationState.NONE
+                ):
                     connection.execute("COMMIT")
                     return CompareAndSetResult(applied=False, job=decoded)
                 changed = connection.execute(
@@ -674,9 +691,20 @@ class DurableOwnerJobStore:
                     "operation_id = ?, operation_state = ? "
                     "WHERE owner_user_id = ? AND job_id = ? AND state_version = ? "
                     "AND operation_state = ? RETURNING state_version",
-                    [expected_version + 1, ceiling, receipt, config_hash, issued, expiry, operation,
-                     OperationState.CONSENT_ISSUED.value, owner, jid, expected_version,
-                     OperationState.NONE.value],
+                    [
+                        expected_version + 1,
+                        ceiling,
+                        receipt,
+                        config_hash,
+                        issued,
+                        expiry,
+                        operation,
+                        OperationState.CONSENT_ISSUED.value,
+                        owner,
+                        jid,
+                        expected_version,
+                        OperationState.NONE.value,
+                    ],
                 ).fetchone()
                 if changed is None:
                     connection.execute("ROLLBACK")
@@ -811,6 +839,22 @@ class TestOnlyInMemoryOwnerJobStore:
             job = self._jobs.get(key)
             return None if job is None else replace_payload(job)
 
+    def delete_uninitialized_job(self, *, owner_user_id: str, job_id: str) -> bool:
+        key = (_text(owner_user_id, "owner_user_id"), _text(job_id, "job_id"))
+        with self._lock:
+            job = self._jobs.get(key)
+            if job is None:
+                return False
+            if (
+                job.state_version != 0
+                or job.operation_state is not OperationState.NONE
+                or job.operation_id is not None
+                or job.consent_receipt_id is not None
+            ):
+                return False
+            del self._jobs[key]
+            return True
+
     def publish_consent(
         self,
         *,
@@ -831,7 +875,10 @@ class TestOnlyInMemoryOwnerJobStore:
             current = self._jobs.get(key)
             if current is None:
                 return CompareAndSetResult(applied=False, job=None)
-            if current.state_version != expected_version or current.operation_state is not OperationState.NONE:
+            if (
+                current.state_version != expected_version
+                or current.operation_state is not OperationState.NONE
+            ):
                 return CompareAndSetResult(applied=False, job=replace_payload(current))
             updated = OwnerJob(
                 **{
