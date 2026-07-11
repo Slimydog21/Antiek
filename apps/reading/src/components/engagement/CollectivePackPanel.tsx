@@ -12,12 +12,20 @@ import { LemonButton, LemonCard, LemonInput } from "../lemon";
 import {
   formatPackPreview,
   formatParentIds,
+  parseCollectivePackResult,
   postCollectivePack,
   type CollectivePackResult,
 } from "../../api/twinCollective";
 
 export interface CollectivePackPanelProps {
-  packFn?: typeof postCollectivePack;
+  /**
+   * Injectable pack builder. Return value is re-validated with
+   * parseCollectivePackResult so empty pack_text cannot surface as success
+   * even when the injector bypasses postCollectivePack.
+   */
+  packFn?: (
+    req: Parameters<typeof postCollectivePack>[0],
+  ) => Promise<CollectivePackResult | unknown>;
   initialTwinIds?: string;
   initialInstruction?: string;
 }
@@ -46,10 +54,12 @@ export default function CollectivePackPanel({
     setBusy(true);
     setError(null);
     try {
-      const body = await packFn({
+      const raw = await packFn({
         twin_ids: twinIds,
         instruction,
       });
+      // Fail closed at panel boundary (covers injectable stubs).
+      const body = parseCollectivePackResult(raw);
       setResult(body);
     } catch (e) {
       setResult(null);

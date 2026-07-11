@@ -78,4 +78,19 @@ describe("CollectivePackPanel", () => {
     });
     expect(screen.queryByTestId("collective-pack-result")).toBeNull();
   });
+
+  it("rejects injectable resolving empty pack_text without rendering success", async () => {
+    const packFn = vi.fn(async () => ({
+      ...sample,
+      pack_text: "   ",
+    }));
+    render(<CollectivePackPanel packFn={packFn} initialTwinIds="t1" />);
+    fireEvent.click(screen.getByTestId("collective-pack-build"));
+    await waitFor(() => {
+      expect(screen.getByTestId("collective-pack-error").textContent).toMatch(
+        /pack_text/,
+      );
+    });
+    expect(screen.queryByTestId("collective-pack-result")).toBeNull();
+  });
 });
