@@ -28,8 +28,14 @@ from .contracts import (
     validate_receipt_chain,
 )
 from .deposit import DepositResult, deposit_job_results
+from .graph_projection import (
+    GraphProjectionNotReady,
+    GraphProjectionResult,
+    project_terminal_job_to_graph,
+)
 from .job import (
     JobStatus,
+    MidnightOilGraphEffectReceipt,
     MidnightOilJob,
     MidnightOilStepEvidence,
     approve_job,
@@ -46,6 +52,7 @@ from .live import (
     build_router_live_plan,
     consume_authorized_live_operation,
     resume_terminal_deposit,
+    resume_terminal_projection,
     run_authorized_live_iteration,
 )
 from .operation_queue import provider_idempotency_key
@@ -118,9 +125,12 @@ __all__ = [
     "GateReceipt",
     "FinalHtmlArtifactWriter",
     "GraphMutationWriter",
+    "GraphProjectionNotReady",
+    "GraphProjectionResult",
     "LedgerEvent",
     "JobStatus",
     "MidnightOilJob",
+    "MidnightOilGraphEffectReceipt",
     "MidnightOilStepEvidence",
     "MidnightOilSeams",
     "MidnightOilProductResult",
@@ -178,11 +188,13 @@ __all__ = [
     "product_result_html",
     "provider_idempotency_key",
     "preflight_midnight_oil",
+    "project_terminal_job_to_graph",
     "offline_goal_project_fn",
     "offline_goal_step_fn",
     "recommend_price_ceiling",
     "resolve_worker_step_fn",
     "resume_terminal_deposit",
+    "resume_terminal_projection",
     "run_job_offline",
     "run_authorized_live_iteration",
     "run_worker_iteration",

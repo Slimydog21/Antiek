@@ -38,6 +38,10 @@ from .budget_ledger import (
     UnknownOutcomePersistenceError,
 )
 from .deposit import DepositResult, deposit_job_results
+from .graph_projection import (
+    GraphProjectionResult,
+    project_terminal_job_to_graph,
+)
 from .job import JobStore, MidnightOilJob, get_job
 from .job_store import OperationState, OwnerJobStore
 from .operation_queue import OperationQueue
@@ -607,6 +611,7 @@ def run_authorized_live_iteration(
 class LiveExecutionOutcome:
     job: MidnightOilJob
     deposit: DepositResult
+    graph: GraphProjectionResult
 
 
 def consume_authorized_live_operation(
@@ -616,14 +621,16 @@ def consume_authorized_live_operation(
     owner_jobs: OwnerJobStore,
     store: JobStore,
     engagement_store: EngagementStore,
+    graph_db_path: str | Path,
     retrieval: RetrievalSubstrate,
     dispatch: IdempotentDispatch,
     clock: Clock,
+    graph_events_dir: str | None = None,
 ) -> LiveExecutionOutcome:
     """Production consumer: fenced step followed by idempotent HTML/twin deposit."""
 
     try:
-        job = run_authorized_live_iteration(
+        run_authorized_live_iteration(
             lease,
             operation_queue=operation_queue,
             owner_jobs=owner_jobs,
@@ -650,7 +657,19 @@ def consume_authorized_live_operation(
         )
     except Exception:
         raise LiveExecutionFailed() from None
-    return LiveExecutionOutcome(job=job, deposit=deposit)
+    try:
+        graph = resume_terminal_projection(
+            lease.job_id,
+            owner_user_id=lease.owner_user_id,
+            owner_jobs=owner_jobs,
+            store=store,
+            engagement_store=engagement_store,
+            graph_db_path=graph_db_path,
+            events_dir=graph_events_dir,
+        )
+    except Exception:
+        raise LiveExecutionFailed() from None
+    return LiveExecutionOutcome(job=graph.job, deposit=deposit, graph=graph)
 
 
 def resume_terminal_deposit(
@@ -671,4 +690,27 @@ def resume_terminal_deposit(
         job_store=store,
         engagement_store=engagement_store,
         job_snapshot=job,
+    )
+
+
+def resume_terminal_projection(
+    job_id: str,
+    *,
+    owner_user_id: str,
+    owner_jobs: OwnerJobStore,
+    store: JobStore,
+    engagement_store: EngagementStore,
+    graph_db_path: str | Path,
+    events_dir: str | None = None,
+) -> GraphProjectionResult:
+    """Retry only deposit-derived graph effects; never dispatch a provider."""
+
+    return project_terminal_job_to_graph(
+        job_id,
+        owner_user_id=owner_user_id,
+        owner_jobs=owner_jobs,
+        store=store,
+        engagement_store=engagement_store,
+        graph_db_path=graph_db_path,
+        events_dir=events_dir,
     )

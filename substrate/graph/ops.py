@@ -378,6 +378,7 @@ def insert_node(
     node_id: str | None = None,
     parent_event_id: str | None = None,
     on_conflict: OnConflict = "error",
+    events_dir: str | None = None,
 ) -> str:
     """Insert one node row AND emit GRAPH_NODE_INSERTED. Returns the
     node_id.
@@ -414,6 +415,7 @@ def insert_node(
         ),
         parent_event_id=parent_event_id,
         role="connector",
+        events_dir=events_dir,
     )
     return nid
 
@@ -440,6 +442,7 @@ def insert_edge(
     edge_id: str | None = None,
     parent_event_id: str | None = None,
     on_conflict: OnConflict = "error",
+    events_dir: str | None = None,
 ) -> str:
     """Insert one edge row AND emit GRAPH_EDGE_INSERTED. Returns the
     edge_id.
@@ -484,6 +487,7 @@ def insert_edge(
         ),
         parent_event_id=parent_event_id,
         role="connector",
+        events_dir=events_dir,
     )
     return eid
 

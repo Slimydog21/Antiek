@@ -28,6 +28,7 @@ from substrate.midnight_oil.live import (
     build_router_live_plan,
     consume_authorized_live_operation,
     resume_terminal_deposit,
+    resume_terminal_projection,
     run_authorized_live_iteration,
 )
 from substrate.midnight_oil.operation_queue import DurableOperationQueue
@@ -225,12 +226,15 @@ def test_authorized_live_step_is_fenced_budgeted_and_durably_evidenced(
     dispatch.plan_hash = plan.plan_hash  # type: ignore[attr-defined]
 
     engagement_root = tmp_path / "engagement"
+    graph_path = tmp_path / "live-graph.duckdb"
+    engagement_store = FileEngagementStore(engagement_root)
     outcome = consume_authorized_live_operation(
         lease,
         operation_queue=queue,
         owner_jobs=deps.owner_jobs,
         store=deps.jobs,
-        engagement_store=FileEngagementStore(engagement_root),
+        engagement_store=engagement_store,
+        graph_db_path=graph_path,
         retrieval=retrieval,
         dispatch=dispatch,
         clock=FakeClock(1_000_002),
@@ -244,6 +248,28 @@ def test_authorized_live_step_is_fenced_budgeted_and_durably_evidenced(
     assert retrieval.calls[0]["policy_tag"] == "private_research"
     assert "secret-value-never-forward" not in captured_prompts[0]
     assert "[REDACTED]" in captured_prompts[0]
+    assert outcome.graph.receipt.deliverable_id.startswith("dlv-")
+
+    # Losing the graph after the paid call is a projection-only recovery. The
+    # durable evidence/deposit can rebuild it without accepting a dispatch fn.
+    graph_path.unlink()
+    # Simulate the new process after loss; the schema module intentionally
+    # memoizes initialized paths for one process because production never
+    # deletes a live DB underneath it.
+    from substrate.graph import schema as graph_schema
+
+    graph_schema._INITIALIZED_PATHS.discard(str(graph_path))
+    recovered_graph = resume_terminal_projection(
+        lease.job_id,
+        owner_user_id=lease.owner_user_id,
+        owner_jobs=deps.owner_jobs,
+        store=deps.jobs,
+        engagement_store=engagement_store,
+        graph_db_path=graph_path,
+        events_dir=str(tmp_path / "recovered-events"),
+    )
+    assert recovered_graph.receipt == outcome.graph.receipt
+    assert dispatch_keys == [lease.idempotency_key(lease.step_index)]
 
     persisted = deps.jobs.get_job("job-owned")
     assert persisted is not None
@@ -510,6 +536,7 @@ def test_deposit_crash_retries_from_evidence_without_provider_replay(
             owner_jobs=deps.owner_jobs,
             store=deps.jobs,
             engagement_store=CrashOnceStore(root),
+            graph_db_path=tmp_path / "crash-graph.duckdb",
             retrieval=retrieval,
             dispatch=dispatch,
             clock=FakeClock(1_000_002),
@@ -574,6 +601,7 @@ def test_overlong_retrieval_is_hard_capped_before_provider(tmp_path: Path) -> No
         owner_jobs=deps.owner_jobs,
         store=deps.jobs,
         engagement_store=FileEngagementStore(tmp_path / "bounded-engagement"),
+        graph_db_path=tmp_path / "bounded-graph.duckdb",
         retrieval=retrieval,
         dispatch=dispatch,
         clock=FakeClock(1_000_002),

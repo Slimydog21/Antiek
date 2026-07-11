@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -41,6 +42,21 @@ class MidnightOilStepEvidence:
 
 
 @dataclass(frozen=True)
+class MidnightOilGraphEffectReceipt:
+    """Secret-free proof that a terminal job was projected into DuckDB."""
+
+    schema_version: int
+    owner_user_id: str
+    deliverable_id: str
+    section_ids: tuple[str, ...]
+    node_ids: tuple[str, ...]
+    edge_ids: tuple[str, ...]
+    html_sha256: str
+    evidence_sha256: str
+    deep_links: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class MidnightOilJob:
     job_id: str
     goals: tuple[str, ...]
@@ -65,6 +81,8 @@ class MidnightOilJob:
     step_evidence: tuple[MidnightOilStepEvidence, ...] = ()
     deposit_state: Literal["pending", "complete"] = "pending"
     deposit_document_id: str | None = None
+    graph_projection_state: Literal["pending", "complete"] = "pending"
+    graph_effect_receipt: MidnightOilGraphEffectReceipt | None = None
 
 
 @runtime_checkable
@@ -127,6 +145,22 @@ def _job_to_row(job: MidnightOilJob) -> dict[str, Any]:
         ],
         "deposit_state": job.deposit_state,
         "deposit_document_id": job.deposit_document_id,
+        "graph_projection_state": job.graph_projection_state,
+        "graph_effect_receipt": (
+            None
+            if job.graph_effect_receipt is None
+            else {
+                "schema_version": job.graph_effect_receipt.schema_version,
+                "owner_user_id": job.graph_effect_receipt.owner_user_id,
+                "deliverable_id": job.graph_effect_receipt.deliverable_id,
+                "section_ids": list(job.graph_effect_receipt.section_ids),
+                "node_ids": list(job.graph_effect_receipt.node_ids),
+                "edge_ids": list(job.graph_effect_receipt.edge_ids),
+                "html_sha256": job.graph_effect_receipt.html_sha256,
+                "evidence_sha256": job.graph_effect_receipt.evidence_sha256,
+                "deep_links": list(job.graph_effect_receipt.deep_links),
+            }
+        ),
     }
 
 
@@ -134,6 +168,73 @@ def _job_from_row(row: dict[str, Any]) -> MidnightOilJob:
     fanout = int(row.get("fanout_depth") or 3)
     if fanout <= 0:
         fanout = 3
+    raw_graph_receipt = row.get("graph_effect_receipt")
+    graph_receipt: MidnightOilGraphEffectReceipt | None = None
+    if isinstance(raw_graph_receipt, dict):
+        html_hash = raw_graph_receipt.get("html_sha256")
+        evidence_hash = raw_graph_receipt.get("evidence_sha256")
+        owner = raw_graph_receipt.get("owner_user_id")
+        deliverable = raw_graph_receipt.get("deliverable_id")
+        section_values = raw_graph_receipt.get("section_ids")
+        node_values = raw_graph_receipt.get("node_ids")
+        edge_values = raw_graph_receipt.get("edge_ids")
+        link_values = raw_graph_receipt.get("deep_links")
+
+        def checked_ids(value: object, prefix: str, limit: int) -> tuple[str, ...] | None:
+            if not isinstance(value, list) or len(value) > limit:
+                return None
+            if any(
+                not isinstance(item, str)
+                or re.fullmatch(rf"{prefix}-[0-9a-f]{{16}}", item) is None
+                for item in value
+            ):
+                return None
+            result = tuple(value)
+            return result if len(result) == len(set(result)) else None
+
+        sections = checked_ids(section_values, "sec", 1024)
+        nodes = checked_ids(node_values, "node", 4096)
+        edges = checked_ids(edge_values, "edge", 8192)
+        if (
+            raw_graph_receipt.get("schema_version") == 1
+            and isinstance(owner, str)
+            and owner == owner.strip()
+            and 0 < len(owner) <= 256
+            and isinstance(deliverable, str)
+            and re.fullmatch(r"dlv-[0-9a-f]{16}", deliverable) is not None
+            and sections is not None
+            and bool(sections)
+            and nodes is not None
+            and bool(nodes)
+            and edges is not None
+            and isinstance(html_hash, str)
+            and re.fullmatch(r"[0-9a-f]{64}", html_hash) is not None
+            and isinstance(evidence_hash, str)
+            and re.fullmatch(r"[0-9a-f]{64}", evidence_hash) is not None
+            and isinstance(link_values, list)
+        ):
+            expected_links = (
+                f"antiek://deliverable/{deliverable}",
+                *(f"antiek://node/{node_id}" for node_id in nodes),
+            )
+            if tuple(link_values) == expected_links:
+                graph_receipt = MidnightOilGraphEffectReceipt(
+                    schema_version=1,
+                    owner_user_id=owner,
+                    deliverable_id=deliverable,
+                    section_ids=sections,
+                    node_ids=nodes,
+                    edge_ids=edges,
+                    html_sha256=html_hash,
+                    evidence_sha256=evidence_hash,
+                    deep_links=expected_links,
+                )
+    graph_complete = (
+        row.get("graph_projection_state") == "complete"
+        and graph_receipt is not None
+        and bool(graph_receipt.owner_user_id)
+        and bool(graph_receipt.deliverable_id)
+    )
     return MidnightOilJob(
         job_id=row["job_id"],
         goals=tuple(row.get("goals") or ()),
@@ -188,6 +289,8 @@ def _job_from_row(row: dict[str, Any]) -> MidnightOilJob:
             if row.get("deposit_document_id") is None
             else str(row["deposit_document_id"])
         ),
+        graph_projection_state="complete" if graph_complete else "pending",
+        graph_effect_receipt=graph_receipt if graph_complete else None,
     )
 
 
