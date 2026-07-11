@@ -8,7 +8,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-SCHEMA_VERSION: Literal[1] = 1
+SCHEMA_VERSION: Literal[2] = 2
+MAX_ARTIFACT_CLAIMS = 100
+MAX_CITATIONS_PER_CLAIM = 100
 
 
 class ArtifactInsight(BaseModel):
@@ -25,16 +27,38 @@ class ArtifactQuestion(BaseModel):
     reserved_child_investigation_id: str | None = None
 
 
+class ArtifactCitation(BaseModel):
+    citation_id: str = Field(min_length=1, max_length=512)
+    resolution: Literal["graph", "federated", "unresolved"]
+    document_id: str | None = Field(default=None, max_length=512)
+    external_source_id: str | None = Field(default=None, max_length=512)
+    title: str | None = Field(default=None, max_length=4096)
+    source_kind: str | None = Field(default=None, max_length=128)
+    rights_class: str | None = Field(default=None, max_length=256)
+    retrieved_at: str | None = Field(default=None, max_length=64)
+    source_tier: int | None = Field(default=None, ge=1, le=5)
+    locator: str | None = Field(default=None, max_length=2048)
+
+
+class ArtifactClaim(BaseModel):
+    statement: str = Field(min_length=1, max_length=20_000)
+    cited_ids: list[str] = Field(default_factory=list, max_length=MAX_CITATIONS_PER_CLAIM)
+    citations: list[ArtifactCitation] = Field(
+        default_factory=list, max_length=MAX_CITATIONS_PER_CLAIM
+    )
+
+
 class ResearchArtifactBody(BaseModel):
     """Machine channel for Profile B transport (ANT-AHT)."""
 
-    schema_version: Literal[1] = SCHEMA_VERSION
+    schema_version: Literal[2] = SCHEMA_VERSION
     investigation_id: str
     problem_question: str
     insights: list[ArtifactInsight] = Field(default_factory=list)
     open_questions: list[ArtifactQuestion] = Field(default_factory=list)
     synthesis_excerpt: str | None = None
     synthesis_withheld: bool = False
+    claims: list[ArtifactClaim] = Field(default_factory=list, max_length=MAX_ARTIFACT_CLAIMS)
     source_event_ids: list[str] = Field(default_factory=list)
     # Append-only agent transport (import via import_agent_notes; never graph insights).
     agent_notes: list[str] = Field(default_factory=list)

@@ -68,6 +68,30 @@ def render_html(body: ResearchArtifactBody) -> str:
     else:
         synth_block = '<p class="empty">No synthesis yet.</p>'
 
+    claims_html = ""
+    if body.claims:
+        for claim in body.claims:
+            citations = ""
+            for citation in claim.citations:
+                label_parts = [
+                    citation.title or citation.document_id or citation.external_source_id or citation.citation_id,
+                    citation.source_kind,
+                    citation.rights_class,
+                    f"tier {citation.source_tier}" if citation.source_tier is not None else None,
+                    f"retrieved {citation.retrieved_at}" if citation.retrieved_at else None,
+                    citation.resolution,
+                ]
+                label = " · ".join(part for part in label_parts if part)
+                citations += f'<li data-citation-id="{_esc(citation.citation_id)}">{_esc(label)}</li>'
+            if not citations:
+                citations = '<li class="empty">(no chunk citations)</li>'
+            claims_html += (
+                '<div class="card" data-kind="claim">'
+                f'<p>{_esc(claim.statement)}</p><ul>{citations}</ul></div>'
+            )
+    else:
+        claims_html = '<p class="empty">No claim-level provenance yet.</p>'
+
     json_blob = json.dumps(body.model_dump(mode="json"), indent=2).replace("<", "\\u003c")
     ch = body.content_hash()
 
@@ -86,6 +110,7 @@ def render_html(body: ResearchArtifactBody) -> str:
 <section id="findings"><h2>Findings</h2>{insights_html}</section>
 <section id="gaps"><h2>Open gaps</h2>{questions_html}</section>
 <section id="synthesis"><h2>Synthesis excerpt</h2>{synth_block}</section>
+<section id="claims"><h2>Claims and sources</h2>{claims_html}</section>
 <section id="agent-notes"><h2>Agent notes</h2>
 <ul id="agent-notes-list">{"".join(f'<li>{_esc(n)}</li>' for n in body.agent_notes if (n or "").strip()) or '<li class="empty">(none yet)</li>'}</ul>
 <label for="note-input">Add cross-window note (Thariq two-way)</label>

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from roles.note_taker.distill_query import distillation_for
 
-from .context import problem_question_from_events, synthesis_from_events
+from .context import claims_from_events, problem_question_from_events, synthesis_from_events
 from .import_notes import load_persisted_agent_notes
 from .schema import ArtifactInsight, ArtifactQuestion, ResearchArtifactBody
 
@@ -49,6 +49,9 @@ def build_body(
         open_questions=questions,
         synthesis_excerpt=excerpt if not withheld else None,
         synthesis_withheld=withheld,
+        claims=claims_from_events(
+            investigation_id, db_path=db_path, events_dir=events_dir
+        ),
         source_event_ids=event_ids,
         agent_notes=agent_notes,
     )

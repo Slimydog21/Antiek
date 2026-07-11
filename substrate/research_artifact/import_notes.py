@@ -33,6 +33,10 @@ def parse_body_from_html(html_text: str) -> ResearchArtifactBody:
     if not m:
         raise ValueError("missing #antiek-artifact-v1 JSON block")
     data = json.loads(m.group(1).strip())
+    if type(data) is not dict:
+        raise ValueError("#antiek-artifact-v1 must contain a JSON object")
+    if data.get("schema_version") == 1:
+        data = {**data, "schema_version": SCHEMA_VERSION, "claims": []}
     return ResearchArtifactBody.model_validate(data)
 
 
