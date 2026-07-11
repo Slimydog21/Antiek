@@ -155,6 +155,44 @@ def deposit_job_results(
         if job_snapshot.job_id != job_id:
             raise ValueError("job snapshot does not match requested job")
         job = job_snapshot
+    if not step_outputs and job.step_evidence:
+        recovered: list[WorkerStepResult] = []
+        for evidence in job.step_evidence:
+            evidence_lines: list[str] = []
+            if evidence.route_receipt:
+                provider = evidence.route_receipt.get("provider", "unknown")
+                model = evidence.route_receipt.get("model", "unknown")
+                event_id = evidence.route_receipt.get("event_id", "unavailable")
+                evidence_lines.append(
+                    f"Route receipt: provider={provider}; model={model}; event={event_id}."
+                )
+            for source in evidence.source_receipts:
+                evidence_lines.append(
+                    "Source receipt: "
+                    f"{source.get('source_url', 'antiek://source/unavailable')} "
+                    f"(sha256={source.get('content_hash', 'unavailable')}; "
+                    f"scope={source.get('hash_scope', 'unknown')})."
+                )
+            recovered.append(
+                WorkerStepResult(
+                    spent_usd=0.0,
+                    spawn_id=evidence.spawn_id,
+                    output_text="\n\n".join(
+                        part
+                        for part in (
+                            evidence.output_text,
+                            "\n".join(evidence_lines),
+                        )
+                        if part
+                    ),
+                    insights=evidence.insights,
+                    questions=evidence.questions,
+                    route_receipt=evidence.route_receipt,
+                    source_receipts=evidence.source_receipts,
+                    done=False,
+                )
+            )
+        step_outputs = tuple(recovered)
     asset_id = job.asset_id or f"moil_asset_{job.job_id}"
 
     spawn_ids: list[str] = []
@@ -274,6 +312,8 @@ def deposit_job_results(
         asset_id=asset_id,
         spawn_ids=tuple(spawn_ids),
         notes=(job.notes + " | deposited" if job.notes else "deposited"),
+        deposit_state="complete",
+        deposit_document_id=document_id,
     )
     put_job_state(updated, store=job_store)
 

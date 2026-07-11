@@ -280,6 +280,12 @@ _PAYLOAD_FIELDS: Final = frozenset(
         "force_below_recommended",
         "recommended_ceiling_cents",
         "display_usd",
+        "live_plan_hash",
+        "live_allowed_routes",
+        "live_projected_max_cents",
+        "live_source_policy",
+        "live_dispatch_config_hash",
+        "live_max_input_bytes",
     }
 )
 

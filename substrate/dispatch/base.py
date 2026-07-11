@@ -49,6 +49,10 @@ class ProviderError(Exception):
         self.request_id = request_id
 
 
+class ProviderCallNotAttempted(ProviderError):
+    """Failure proven to occur before any provider network request."""
+
+
 # ---------------------------------------------------------------------------
 # Normalized usage
 # ---------------------------------------------------------------------------
@@ -160,3 +164,24 @@ class Provider(Protocol):
         the DispatchCall event regardless of whether usage was available.
         """
         ...
+
+
+@runtime_checkable
+class IdempotentProvider(Protocol):
+    """Optional paid-call contract used by restart-safe autonomous workers.
+
+    Providers lacking this method are valid for interactive dispatch, but the
+    router refuses to call them when an idempotency key is required.
+    """
+
+    name: str
+
+    def call_idempotent(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        max_tokens: int,
+        temperature: float,
+        idempotency_key: str,
+    ) -> RawProviderResponse: ...

@@ -28,6 +28,19 @@ JobStatus = Literal[
 
 
 @dataclass(frozen=True)
+class MidnightOilStepEvidence:
+    """Secret-free durable result of one returned provider step."""
+
+    step_key: str
+    spawn_id: str | None
+    output_text: str
+    insights: tuple[str, ...]
+    questions: tuple[str, ...]
+    route_receipt: dict[str, object] | None = None
+    source_receipts: tuple[dict[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
 class MidnightOilJob:
     job_id: str
     goals: tuple[str, ...]
@@ -49,6 +62,9 @@ class MidnightOilJob:
     fanout_depth: int = 3
     completed_step_keys: tuple[str, ...] = ()
     returned_step_keys: tuple[str, ...] = ()
+    step_evidence: tuple[MidnightOilStepEvidence, ...] = ()
+    deposit_state: Literal["pending", "complete"] = "pending"
+    deposit_document_id: str | None = None
 
 
 @runtime_checkable
@@ -97,6 +113,20 @@ def _job_to_row(job: MidnightOilJob) -> dict[str, Any]:
         "fanout_depth": int(job.fanout_depth),
         "completed_step_keys": list(job.completed_step_keys),
         "returned_step_keys": list(job.returned_step_keys),
+        "step_evidence": [
+            {
+                "step_key": evidence.step_key,
+                "spawn_id": evidence.spawn_id,
+                "output_text": evidence.output_text,
+                "insights": list(evidence.insights),
+                "questions": list(evidence.questions),
+                "route_receipt": evidence.route_receipt,
+                "source_receipts": [dict(item) for item in evidence.source_receipts],
+            }
+            for evidence in job.step_evidence
+        ],
+        "deposit_state": job.deposit_state,
+        "deposit_document_id": job.deposit_document_id,
     }
 
 
@@ -127,6 +157,37 @@ def _job_from_row(row: dict[str, Any]) -> MidnightOilJob:
         fanout_depth=fanout,
         completed_step_keys=tuple(row.get("completed_step_keys") or ()),
         returned_step_keys=tuple(row.get("returned_step_keys") or ()),
+        step_evidence=tuple(
+            MidnightOilStepEvidence(
+                step_key=str(item["step_key"]),
+                spawn_id=(
+                    None if item.get("spawn_id") is None else str(item["spawn_id"])
+                ),
+                output_text=str(item.get("output_text") or ""),
+                insights=tuple(str(value) for value in item.get("insights") or ()),
+                questions=tuple(str(value) for value in item.get("questions") or ()),
+                route_receipt=(
+                    dict(item["route_receipt"])
+                    if isinstance(item.get("route_receipt"), dict)
+                    else None
+                ),
+                source_receipts=tuple(
+                    {str(key): str(value) for key, value in receipt.items()}
+                    for receipt in item.get("source_receipts") or ()
+                    if isinstance(receipt, dict)
+                ),
+            )
+            for item in row.get("step_evidence") or ()
+            if isinstance(item, dict) and item.get("step_key")
+        ),
+        deposit_state=(
+            "complete" if row.get("deposit_state") == "complete" else "pending"
+        ),
+        deposit_document_id=(
+            None
+            if row.get("deposit_document_id") is None
+            else str(row["deposit_document_id"])
+        ),
     )
 
 

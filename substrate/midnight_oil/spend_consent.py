@@ -57,6 +57,7 @@ class JobConsentConfig:
     research_tier: str
     fanout_depth: int
     asset_id: str | None
+    live_execution_plan_hash: str | None = None
 
     def canonical_hash(self) -> str:
         payload = _canonical_json(asdict(self))
@@ -127,6 +128,14 @@ def _validate_config(config: JobConsentConfig) -> None:
         _validate_text(config.model_id, maximum=256)
     if config.asset_id is not None:
         _validate_text(config.asset_id, maximum=256)
+    if config.live_execution_plan_hash is not None:
+        _validate_text(config.live_execution_plan_hash, maximum=64)
+        if len(config.live_execution_plan_hash) != 64:
+            raise ValueError("live execution plan hash must be SHA-256 hex")
+        try:
+            bytes.fromhex(config.live_execution_plan_hash)
+        except ValueError as exc:
+            raise ValueError("live execution plan hash must be SHA-256 hex") from exc
     if type(config.duration_minutes) is not int or not 1 <= config.duration_minutes <= 10_080:
         raise ValueError("duration is outside consent bounds")
     if type(config.fanout_depth) is not int or not 1 <= config.fanout_depth <= 64:

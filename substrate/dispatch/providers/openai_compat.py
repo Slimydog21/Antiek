@@ -39,7 +39,12 @@ from typing import Any
 
 import httpx
 
-from ..base import NormalizedUsage, ProviderError, RawProviderResponse
+from ..base import (
+    NormalizedUsage,
+    ProviderCallNotAttempted,
+    ProviderError,
+    RawProviderResponse,
+)
 from ._safe_diagnostics import correlation_digest
 
 # HTTP status → retryability. 429 (rate limit) and 5xx are retryable;
@@ -97,6 +102,7 @@ class OpenAICompatProvider:
         client: httpx.Client | None = None,
         chat_completions_path: str = "/v1/chat/completions",
         extra_body: dict[str, Any] | None = None,
+        idempotency_guaranteed: bool = False,
     ):
         """
         Args:
@@ -118,6 +124,10 @@ class OpenAICompatProvider:
                 GLM-5.2 reasoning-toggle). Lets a vendor-specific provider
                 pass non-standard params without a subclass. Defaults to
                 none (standard OpenAI body only).
+            idempotency_guaranteed: True only when the operator has verified
+                that this exact endpoint contract deduplicates repeated
+                ``Idempotency-Key`` requests. Header compatibility alone is
+                not a guarantee, so the default is fail-closed False.
         """
         self.name = name
         self.base_url = base_url.rstrip("/")
@@ -129,13 +139,18 @@ class OpenAICompatProvider:
         self._client = client
         self._owns_client = client is None
         self._extra_body = dict(extra_body) if extra_body else {}
+        self._idempotency_guaranteed = bool(idempotency_guaranteed)
+
+    @property
+    def idempotency_guaranteed(self) -> bool:
+        return self._idempotency_guaranteed
 
     def _resolve_api_key(self) -> str:
         if self._api_key:
             return self._api_key
         v = os.environ.get(self._api_key_env)
         if not v:
-            raise ProviderError(
+            raise ProviderCallNotAttempted(
                 f"{self.name}: API key not configured. Set {self._api_key_env} "
                 "in the environment or pass api_key= to the adapter.",
                 provider=self.name, model="<unknown>", latency_ms=0,
@@ -155,12 +170,64 @@ class OpenAICompatProvider:
         max_tokens: int,
         temperature: float,
     ) -> RawProviderResponse:
+        return self._call(
+            model=model,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            idempotency_key=None,
+        )
+
+    def call_idempotent(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        max_tokens: int,
+        temperature: float,
+        idempotency_key: str,
+    ) -> RawProviderResponse:
+        if not self._idempotency_guaranteed:
+            raise ProviderCallNotAttempted(
+                f"{self.name}: provider idempotency has not been verified",
+                provider=self.name,
+                model=model,
+                latency_ms=0,
+                retryable=False,
+            )
+        if (
+            type(idempotency_key) is not str
+            or not idempotency_key.strip()
+            or len(idempotency_key) > 512
+            or "\n" in idempotency_key
+            or "\r" in idempotency_key
+        ):
+            raise ValueError("idempotency_key must be a bounded canonical string")
+        return self._call(
+            model=model,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            idempotency_key=idempotency_key,
+        )
+
+    def _call(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        max_tokens: int,
+        temperature: float,
+        idempotency_key: str | None,
+    ) -> RawProviderResponse:
         api_key = self._resolve_api_key()
         url = self.base_url + self.chat_completions_path
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
+        if idempotency_key is not None:
+            headers["Idempotency-Key"] = idempotency_key
         body = {
             "model": model,
             "max_tokens": max_tokens,

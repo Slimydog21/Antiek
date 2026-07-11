@@ -84,6 +84,85 @@ def test_openai_compat_basic_call_and_headers_and_body():
     assert body["messages"] == [{"role": "user", "content": "hello"}]
 
 
+def test_openai_compat_idempotency_key_crosses_transport_header_only():
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["headers"] = dict(req.headers)
+        captured["body"] = httpx.Request.read(req)
+        return httpx.Response(200, json=_ok_response_payload("idempotent"))
+
+    provider = OpenAICompatProvider(
+        name="deepseek",
+        base_url="https://api.deepseek.com",
+        api_key="test-key",
+        client=_make_client(handler),
+        idempotency_guaranteed=True,
+    )
+    provider.call_idempotent(
+        model="deepseek-v4-pro",
+        prompt="hello",
+        max_tokens=128,
+        temperature=0.2,
+        idempotency_key="operation-step-key",
+    )
+
+    assert captured["headers"]["idempotency-key"] == "operation-step-key"
+    assert b"operation-step-key" not in captured["body"]
+
+
+def test_openai_shape_without_verified_dedupe_refuses_before_network():
+    calls = 0
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, json=_ok_response_payload())
+
+    provider = OpenAICompatProvider(
+        name="unverified-compatible-api",
+        base_url="https://api.example.invalid",
+        api_key="test-key",
+        client=_make_client(handler),
+    )
+    with pytest.raises(ProviderError, match="idempotency has not been verified"):
+        provider.call_idempotent(
+            model="model",
+            prompt="hello",
+            max_tokens=128,
+            temperature=0.2,
+            idempotency_key="operation-step-key",
+        )
+    assert calls == 0
+
+
+@pytest.mark.parametrize("bad", ["", " ", "line\nbreak", "line\rbreak", "x" * 513])
+def test_openai_compat_rejects_invalid_idempotency_key_before_network(bad: str):
+    calls = 0
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, json=_ok_response_payload())
+
+    provider = OpenAICompatProvider(
+        name="deepseek",
+        base_url="https://api.deepseek.com",
+        api_key="test-key",
+        client=_make_client(handler),
+        idempotency_guaranteed=True,
+    )
+    with pytest.raises(ValueError, match="idempotency_key"):
+        provider.call_idempotent(
+            model="deepseek-v4-pro",
+            prompt="hello",
+            max_tokens=128,
+            temperature=0.2,
+            idempotency_key=bad,
+        )
+    assert calls == 0
+
+
 def test_openai_compat_extra_body_merged_into_request():
     """extra_body fields (e.g. z.ai's thinking toggle) merge into the request
     body on top of the core shape — the mechanism that lets the zai provider

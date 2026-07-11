@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal, InvalidOperation
 from typing import Protocol
 
 from .budget_ledger import BudgetCeilingExceeded, BudgetLedger
-from .job import JobStore, MidnightOilJob, _job_from_row, put_job_state
+from .job import (
+    JobStore,
+    MidnightOilJob,
+    MidnightOilStepEvidence,
+    _job_from_row,
+    put_job_state,
+)
 from .job_store import OperationState, OwnerJobStore
 from .operation_queue import OperationQueue, provider_idempotency_key
 
@@ -42,7 +49,61 @@ class WorkerStepResult:
     output_text: str = ""
     insights: tuple[str, ...] = ()
     questions: tuple[str, ...] = ()
+    route_receipt: dict[str, object] | None = None
+    source_receipts: tuple[dict[str, str], ...] = ()
     done: bool = False
+
+
+_SECRET_PATTERNS = (
+    re.compile(r"\bsk-[A-Za-z0-9_-]{8,}\b"),
+    re.compile(r"(?i)\b(?:api[_-]?key|authorization)\s*[:=]\s*[^\s<]+"),
+    re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/-]{8,}=*"),
+)
+
+
+def _redact_evidence_text(value: object, *, limit: int) -> str:
+    text = str(value or "")[:limit]
+    for pattern in _SECRET_PATTERNS:
+        text = pattern.sub("[REDACTED]", text)
+    return text
+
+
+def _step_evidence(
+    result: WorkerStepResult,
+    *,
+    step_key: str,
+) -> MidnightOilStepEvidence:
+    route: dict[str, object] | None = None
+    if result.route_receipt is not None:
+        route = {
+            str(key)[:128]: (
+                _redact_evidence_text(value, limit=2048)
+                if isinstance(value, str)
+                else value
+            )
+            for key, value in result.route_receipt.items()
+            if isinstance(value, (str, int, float, bool)) or value is None
+        }
+    sources = tuple(
+        {
+            str(key)[:128]: _redact_evidence_text(value, limit=2048)
+            for key, value in receipt.items()
+        }
+        for receipt in result.source_receipts[:100]
+    )
+    return MidnightOilStepEvidence(
+        step_key=step_key,
+        spawn_id=(None if result.spawn_id is None else str(result.spawn_id)[:512]),
+        output_text=_redact_evidence_text(result.output_text, limit=200_000),
+        insights=tuple(
+            _redact_evidence_text(value, limit=20_000) for value in result.insights[:100]
+        ),
+        questions=tuple(
+            _redact_evidence_text(value, limit=20_000) for value in result.questions[:100]
+        ),
+        route_receipt=route,
+        source_receipts=sources,
+    )
 
 
 StepFn = Callable[[MidnightOilJob], WorkerStepResult]
@@ -383,7 +444,10 @@ def run_worker_iteration(
         actual_cents = _usd_to_cents(float(result.spent_usd), ceiling=False, field="step spent_usd")
         return result, actual_cents
 
+    returned_evidence: MidnightOilStepEvidence | None = None
+
     def checkpoint_before_settle(result: WorkerStepResult, actual_cents: int) -> None:
+        nonlocal returned_evidence
         guard()
         # Persist a terminal checkpoint while the ledger hold is still open.
         # A failed write becomes an unknown hold; a hard death leaves the open
@@ -395,6 +459,11 @@ def run_worker_iteration(
             and result.spawn_id not in checkpoint_spawn_ids
         ):
             checkpoint_spawn_ids += (result.spawn_id,)
+        evidence_key = step_identity or f"unkeyed-step-{len(job.step_evidence)}"
+        returned_evidence = _step_evidence(result, step_key=evidence_key)
+        checkpoint_evidence = tuple(
+            item for item in job.step_evidence if item.step_key != evidence_key
+        ) + (returned_evidence,)
         checkpoint = replace(
             job,
             status="failed",
@@ -409,6 +478,7 @@ def run_worker_iteration(
                 if step_identity is None or step_identity in job.returned_step_keys
                 else (*job.returned_step_keys, step_identity)
             ),
+            step_evidence=checkpoint_evidence,
         )
         put_job_state(checkpoint, store=store)
 
@@ -458,6 +528,16 @@ def run_worker_iteration(
     job = replace(
         job,
         spent_usd=balance.spent_cents / 100,
+        step_evidence=(
+            job.step_evidence
+            if returned_evidence is None
+            else tuple(
+                item
+                for item in job.step_evidence
+                if item.step_key != returned_evidence.step_key
+            )
+            + (returned_evidence,)
+        ),
         completed_step_keys=(
             job.completed_step_keys
             if step_identity is None or step_identity in job.completed_step_keys

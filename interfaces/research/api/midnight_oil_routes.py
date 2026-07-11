@@ -18,6 +18,7 @@ from fastapi import APIRouter, FastAPI, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, field_validator
 
 from substrate.midnight_oil import (
+    LiveExecutionPlan,
     MidnightOilExecutionReceipt,
     MidnightOilExecutionRequest,
     MidnightOilPreflight,
@@ -86,6 +87,7 @@ class MidnightOilDependencies:
     signing_key: bytes
     verification_keys: Mapping[str, bytes]
     operation_queue: OperationQueue | None = None
+    live_plan_resolver: Callable[[Any], LiveExecutionPlan] | None = None
     clock_ms: Callable[[], int] = _system_clock_ms
     random_token: Callable[[int], str] = secrets.token_urlsafe
     test_mode: bool = False
@@ -164,6 +166,7 @@ class CreateJobBody(BaseModel):
     model_id: StrictStr | None = Field(default=None, max_length=256)
     fanout_depth: StrictInt = Field(default=3, ge=1, le=64)
     research_tier: StrictStr | None = Field(default=None, max_length=64)
+    live: StrictBool = False
 
     @field_validator("goals")
     @classmethod
@@ -208,7 +211,9 @@ class RunBody(BaseModel):
     force_offline: StrictBool = False
 
 
-def _owner_payload(job: Any) -> dict[str, object]:
+def _owner_payload(
+    job: Any, *, live_plan: LiveExecutionPlan | None = None
+) -> dict[str, object]:
     recommended_cents = int(
         (Decimal(str(job.recommended_price_ceiling_usd)) * 100).to_integral_value(
             rounding=ROUND_FLOOR
@@ -224,6 +229,22 @@ def _owner_payload(job: Any) -> dict[str, object]:
         "force_below_recommended": False,
         "recommended_ceiling_cents": recommended_cents,
         "display_usd": job.recommended_price_ceiling_usd,
+        "live_plan_hash": None if live_plan is None else live_plan.plan_hash,
+        "live_allowed_routes": (
+            [] if live_plan is None else list(live_plan.allowed_routes)
+        ),
+        "live_projected_max_cents": (
+            None if live_plan is None else live_plan.projected_max_cents
+        ),
+        "live_source_policy": (
+            [] if live_plan is None else list(live_plan.source_policy)
+        ),
+        "live_dispatch_config_hash": (
+            None if live_plan is None else live_plan.dispatch_config_hash
+        ),
+        "live_max_input_bytes": (
+            None if live_plan is None else live_plan.max_input_bytes
+        ),
     }
 
 
@@ -253,6 +274,14 @@ def post_create(request: Request, body: CreateJobBody) -> dict[str, Any]:
             asset_id=asset_id,
             research_tier=body.research_tier,
         )
+        if body.live:
+            if deps.live_plan_resolver is None:
+                raise RuntimeError("live execution plan resolver is unavailable")
+            live_plan = deps.live_plan_resolver(result.job)
+            if not isinstance(live_plan, LiveExecutionPlan):
+                raise RuntimeError("live execution plan resolver returned invalid data")
+        else:
+            live_plan = None
         deps.owner_jobs.put_job(
             OwnerJob(
                 owner_user_id=owner,
@@ -269,7 +298,7 @@ def post_create(request: Request, body: CreateJobBody) -> dict[str, Any]:
                 dispatch_started_at_ms=None,
                 dispatched_at_ms=None,
                 completed_at_ms=None,
-                payload=_owner_payload(result.job),
+                payload=_owner_payload(result.job, live_plan=live_plan),
             )
         )
         legacy_row = staging.get_job(result.job.job_id)
@@ -328,6 +357,20 @@ def _config(row: OwnerJob) -> JobConsentConfig:
         raise ValueError("stored research tier is invalid")
     if type(asset_id) is not str or not asset_id or len(asset_id) > 256:
         raise ValueError("stored asset is invalid")
+    live_plan_hash = payload.get("live_plan_hash")
+    if live_plan_hash is None:
+        live_plan = None
+    else:
+        live_plan = LiveExecutionPlan.from_payload(
+            {
+                "plan_hash": live_plan_hash,
+                "allowed_routes": payload.get("live_allowed_routes"),
+                "projected_max_cents": payload.get("live_projected_max_cents"),
+                "source_policy": payload.get("live_source_policy"),
+                "dispatch_config_hash": payload.get("live_dispatch_config_hash"),
+                "max_input_bytes": payload.get("live_max_input_bytes"),
+            }
+        )
     return JobConsentConfig(
         job_id=row.job_id,
         goals=tuple(goals),
@@ -336,6 +379,7 @@ def _config(row: OwnerJob) -> JobConsentConfig:
         research_tier=tier,
         fanout_depth=fanout,
         asset_id=asset_id,
+        live_execution_plan_hash=(None if live_plan is None else live_plan.plan_hash),
     )
 
 

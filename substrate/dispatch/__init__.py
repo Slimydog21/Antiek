@@ -10,8 +10,10 @@ normalizes its own usage into ``NormalizedUsage`` (see ``base.py``).
 """
 
 from .base import (
+    IdempotentProvider,
     NormalizedUsage,
     Provider,
+    ProviderCallNotAttempted,
     ProviderError,
     RawProviderResponse,
 )
@@ -38,7 +40,9 @@ from .router import (
 
 __all__ = [
     "Provider",
+    "IdempotentProvider",
     "ProviderError",
+    "ProviderCallNotAttempted",
     "RawProviderResponse",
     "NormalizedUsage",
     "DispatchConfig",

@@ -26,17 +26,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import yaml  # type: ignore[import]
+import yaml
 
 # Package-relative imports with a fall-back for direct-script execution.
 try:
     from ..event_log import emit_typed
     from ..schemas import DispatchCallPayload
     from .base import (
+        IdempotentProvider,
         NormalizedUsage,
         Provider,
+        ProviderCallNotAttempted,
         ProviderError,
-        RawProviderResponse,
     )
     from .breaker import default_breaker
 except ImportError:  # pragma: no cover
@@ -44,8 +45,10 @@ except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(_here))  # substrate/
     from dispatch.base import (  # type: ignore[import-not-found, no-redef]
+        IdempotentProvider,
         NormalizedUsage,
         Provider,
+        ProviderCallNotAttempted,
         ProviderError,
     )
     from dispatch.breaker import default_breaker  # type: ignore[import-not-found, no-redef]
@@ -378,6 +381,8 @@ def dispatch(
     config_path: str | Path | None = None,
     provider_override: str | None = None,
     model_override: str | None = None,
+    idempotency_key: str | None = None,
+    allowed_routes: frozenset[str] | None = None,
 ) -> DispatchResult:
     """Route an LLM call.
 
@@ -415,6 +420,12 @@ def dispatch(
             present (a half-specified override is a caller bug, so we
             refuse to guess the missing half and fall back to config).
         model_override: see ``provider_override``.
+        idempotency_key: Stable paid-operation key. When provided, the router
+            refuses providers without ``IdempotentProvider`` support before
+            network I/O and carries the key only in the transport header.
+        allowed_routes: Optional closed ``provider/model`` set. Autonomous
+            callers use this signed allowlist to block late registry changes
+            before provider I/O.
 
     Returns:
         DispatchResult for the first successful call.
@@ -428,6 +439,26 @@ def dispatch(
         if config_path is None:
             config_path = Path(__file__).parent / "config.yaml"
         config = DispatchConfig.from_yaml(config_path)
+
+    if idempotency_key is not None and (
+        type(idempotency_key) is not str
+        or not idempotency_key.strip()
+        or len(idempotency_key) > 512
+        or "\n" in idempotency_key
+        or "\r" in idempotency_key
+    ):
+        raise ValueError("idempotency_key must be a bounded canonical string")
+    if allowed_routes is not None and (
+        not allowed_routes
+        or any(
+            type(route) is not str
+            or not route.strip()
+            or len(route) > 512
+            or "/" not in route
+            for route in allowed_routes
+        )
+    ):
+        raise ValueError("allowed_routes must be a non-empty canonical route set")
 
     if role not in config.role_tiers:
         raise KeyError(
@@ -545,12 +576,38 @@ def dispatch(
 
         t_start = time.monotonic()
         try:
-            raw = provider.call(
-                model=model_name,
-                prompt=prompt,
-                max_tokens=effective_max_tokens,
-                temperature=current.temperature,
-            )
+            route_key = f"{provider_name}/{model_name}"
+            if allowed_routes is not None and route_key not in allowed_routes:
+                raise ProviderCallNotAttempted(
+                    f"{provider_name}: route is outside the signed allowlist",
+                    provider=provider_name,
+                    model=model_name,
+                    latency_ms=0,
+                    retryable=False,
+                )
+            if idempotency_key is None:
+                raw = provider.call(
+                    model=model_name,
+                    prompt=prompt,
+                    max_tokens=effective_max_tokens,
+                    temperature=current.temperature,
+                )
+            elif isinstance(provider, IdempotentProvider):
+                raw = provider.call_idempotent(
+                    model=model_name,
+                    prompt=prompt,
+                    max_tokens=effective_max_tokens,
+                    temperature=current.temperature,
+                    idempotency_key=idempotency_key,
+                )
+            else:
+                raise ProviderCallNotAttempted(
+                    f"{provider_name}: idempotent dispatch is unavailable",
+                    provider=provider_name,
+                    model=model_name,
+                    latency_ms=0,
+                    retryable=False,
+                )
         except ProviderError as e:
             # Emit a failure event so the error is queryable too. Use the
             # latency the provider reported on the exception if available.
@@ -574,8 +631,17 @@ def dispatch(
             # Count this genuine provider-call failure toward the breaker. Config
             # conditions (unregistered/no-key) never reach here — they fall
             # through at get_provider above — so every failure counted is real.
-            default_breaker.record_failure(provider_name)
+            if not isinstance(e, ProviderCallNotAttempted):
+                default_breaker.record_failure(provider_name)
             last_error = e
+            if idempotency_key is not None and not isinstance(
+                e, ProviderCallNotAttempted
+            ):
+                # A possibly attempted paid request may have reached this
+                # provider. Cross-provider fallback would reuse a key outside
+                # its dedupe domain and can double-bill. Stop immediately; the
+                # caller retains the budget hold for reconciliation.
+                raise
             current = current.fallback
             chain_index += 1
             continue

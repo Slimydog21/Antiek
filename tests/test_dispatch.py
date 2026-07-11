@@ -137,6 +137,17 @@ class _MockOpenAICompatProvider:
             latency_ms=420,
         )
 
+    def call_idempotent(
+        self, *, model, prompt, max_tokens, temperature, idempotency_key
+    ) -> RawProviderResponse:
+        self.calls.append({"idempotency_key": idempotency_key})
+        return self.call(
+            model=model,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+
     def normalize_usage(self, raw_usage: dict[str, Any]) -> NormalizedUsage:
         details = raw_usage.get("prompt_tokens_details") or {}
         return NormalizedUsage(
@@ -447,3 +458,108 @@ def test_config_role_tiers_covers_every_dispatching_role():
     # registration that un-deadens the writing-generate path. Asserting the
     # tier (not just presence) guards against a future empty-string entry.
     assert config.role_tiers["creative_writer"] == "pro"
+
+
+def test_dispatch_propagates_idempotency_key_to_capable_provider(_events_dir):
+    provider = _MockOpenAICompatProvider()
+    register_provider(provider)
+
+    dispatch(
+        "restart-safe work",
+        "decomposer",
+        investigation_id="inv-idempotent",
+        config=_two_tier_config(),
+        idempotency_key="operation-step-key",
+    )
+
+    assert {"idempotency_key": "operation-step-key"} in provider.calls
+
+
+def test_dispatch_refuses_unsupported_provider_before_network(_events_dir):
+    provider = _MockAnthropicProvider()
+    register_provider(provider)
+    tier = TierConfig(
+        name="synthesis",
+        provider=provider.name,
+        model="unsupported",
+        max_tokens=100,
+        temperature=0.0,
+        context_budget_tokens=1000,
+        pricing=TierPricing(),
+        fallback=None,
+    )
+    config = DispatchConfig(
+        role_tiers={"synthesizer": "synthesis"}, tiers={"synthesis": tier}
+    )
+
+    with pytest.raises(ProviderError, match="idempotent dispatch is unavailable"):
+        dispatch(
+            "must not cross network",
+            "synthesizer",
+            investigation_id="inv-unsupported",
+            config=config,
+            idempotency_key="operation-step-key",
+        )
+
+    assert provider.calls == []
+
+
+def test_idempotent_dispatch_never_falls_back_after_ambiguous_attempt(_events_dir):
+    class AmbiguousProvider(_MockOpenAICompatProvider):
+        name = "ambiguous-primary"
+
+        def call_idempotent(
+            self, *, model, prompt, max_tokens, temperature, idempotency_key
+        ) -> RawProviderResponse:
+            self.calls.append({"idempotency_key": idempotency_key})
+            raise ProviderError(
+                "timeout after request may have been accepted",
+                provider=self.name,
+                model=model,
+                latency_ms=1000,
+                retryable=True,
+            )
+
+    class FallbackProvider(_MockOpenAICompatProvider):
+        name = "must-not-run-fallback"
+
+    primary = AmbiguousProvider()
+    fallback_provider = FallbackProvider()
+    register_provider(primary)
+    register_provider(fallback_provider)
+    pricing = TierPricing(input_per_mtok=1, output_per_mtok=1)
+    fallback = TierConfig(
+        name="fallback",
+        provider=fallback_provider.name,
+        model="fallback-model",
+        max_tokens=100,
+        temperature=0,
+        context_budget_tokens=1000,
+        pricing=pricing,
+        fallback=None,
+    )
+    tier = TierConfig(
+        name="synthesis",
+        provider=primary.name,
+        model="primary-model",
+        max_tokens=100,
+        temperature=0,
+        context_budget_tokens=1000,
+        pricing=pricing,
+        fallback=fallback,
+    )
+    config = DispatchConfig(
+        role_tiers={"synthesizer": "synthesis"}, tiers={"synthesis": tier}
+    )
+
+    with pytest.raises(ProviderError, match="timeout after request"):
+        dispatch(
+            "paid work",
+            "synthesizer",
+            investigation_id="inv-ambiguous",
+            config=config,
+            idempotency_key="operation-step-key",
+        )
+
+    assert len(primary.calls) == 1
+    assert fallback_provider.calls == []

@@ -52,7 +52,12 @@ from typing import Any
 
 import httpx
 
-from ..base import NormalizedUsage, ProviderError, RawProviderResponse
+from ..base import (
+    NormalizedUsage,
+    ProviderCallNotAttempted,
+    ProviderError,
+    RawProviderResponse,
+)
 from ._safe_diagnostics import correlation_digest
 
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504, 529})
@@ -114,7 +119,7 @@ class AnthropicProvider:
             return self._api_key
         v = os.environ.get(self._api_key_env)
         if not v:
-            raise ProviderError(
+            raise ProviderCallNotAttempted(
                 f"anthropic: API key not configured. Set {self._api_key_env} "
                 "in the environment or pass api_key= to the adapter.",
                 provider=self.name, model="<unknown>", latency_ms=0,
