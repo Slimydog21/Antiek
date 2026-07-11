@@ -97,9 +97,7 @@ class UnknownCallOutcome(RuntimeError):
     def __init__(self, hold: CallHold, provider_error: Exception) -> None:
         self.hold = hold
         self.provider_error = provider_error
-        super().__init__(
-            f"Unknown outcome for hold {hold.hold_id}: {provider_error}"
-        )
+        super().__init__(f"Unknown outcome for hold {hold.hold_id}: {provider_error}")
 
 
 class UnknownOutcomePersistenceError(RuntimeError):
@@ -311,8 +309,7 @@ class BudgetLedger:
         ) as ctx:
             with self._txn(ctx):
                 existing = ctx.execute(
-                    "SELECT ceiling_cents, status "
-                    "FROM midnight_oil_reservations WHERE run_id = ?",
+                    "SELECT ceiling_cents, status FROM midnight_oil_reservations WHERE run_id = ?",
                     [run_id],
                 ).fetchone()
 
@@ -331,9 +328,7 @@ class BudgetLedger:
                 if role_budgets:
                     for role_name, budget in role_budgets.items():
                         if budget <= 0:
-                            raise ValueError(
-                                f"Role budget for {role_name} must be positive"
-                            )
+                            raise ValueError(f"Role budget for {role_name} must be positive")
 
                 ctx.execute(
                     "INSERT INTO midnight_oil_reservations "
@@ -491,7 +486,10 @@ class BudgetLedger:
         ) as ctx:
             with self._txn(ctx):
                 freed_drawn = self._check_role_budget(
-                    ctx, run_id, role, projected_max_cents,
+                    ctx,
+                    run_id,
+                    role,
+                    projected_max_cents,
                 )
 
                 hit = ctx.execute(
@@ -506,7 +504,9 @@ class BudgetLedger:
                 ).fetchone()
                 if hit is None:
                     self._raise_ceiling_or_missing(
-                        ctx, run_id, projected_max_cents,
+                        ctx,
+                        run_id,
+                        projected_max_cents,
                     )
 
                 # F4: track held per role.
@@ -583,9 +583,7 @@ class BudgetLedger:
 
                 _run_id, _role, _projected, _freed_drawn, _state = hold_row
                 if _state != "open":
-                    raise RuntimeError(
-                        f"Hold {hold.hold_id} already settled or released"
-                    )
+                    raise RuntimeError(f"Hold {hold.hold_id} already settled or released")
 
                 # Transition hold state: open → settled.
                 hit = ctx.execute(
@@ -595,9 +593,7 @@ class BudgetLedger:
                     [hold.hold_id],
                 ).fetchone()
                 if hit is None:
-                    raise RuntimeError(
-                        f"Hold {hold.hold_id} already settled or released"
-                    )
+                    raise RuntimeError(f"Hold {hold.hold_id} already settled or released")
 
                 # Release hold + record spend atomically.
                 hit = ctx.execute(
@@ -628,7 +624,11 @@ class BudgetLedger:
 
                 # H2: freed-pool conservation.
                 self._reconcile_freed(
-                    ctx, _run_id, _projected, _freed_drawn, actual_cents,
+                    ctx,
+                    _run_id,
+                    _projected,
+                    _freed_drawn,
+                    actual_cents,
                 )
 
                 self._maybe_mark_exhausted(ctx, _run_id)
@@ -746,8 +746,7 @@ class BudgetLedger:
         ) as ctx:
             with self._txn(ctx):
                 row = ctx.execute(
-                    "SELECT held_cents, status FROM midnight_oil_reservations "
-                    "WHERE run_id = ?",
+                    "SELECT held_cents, status FROM midnight_oil_reservations WHERE run_id = ?",
                     [run_id],
                 ).fetchone()
                 if row is None:
@@ -757,9 +756,7 @@ class BudgetLedger:
                 if status == "released":
                     return self._load_balance(ctx, run_id)
                 if held > 0:
-                    raise RuntimeError(
-                        f"Cannot release run {run_id}: {held}\u00a2 still held"
-                    )
+                    raise RuntimeError(f"Cannot release run {run_id}: {held}\u00a2 still held")
 
                 ctx.execute(
                     "UPDATE midnight_oil_reservations SET "
@@ -815,13 +812,9 @@ class BudgetLedger:
 
                 _run_id, _role, _projected, _freed_drawn, _state = hold_row
                 if _state == "open":
-                    raise RuntimeError(
-                        f"Hold {hold_id} is still open — use settle()"
-                    )
+                    raise RuntimeError(f"Hold {hold_id} is still open — use settle()")
                 if _state != "unknown":
-                    raise RuntimeError(
-                        f"Hold {hold_id} already { _state}"
-                    )
+                    raise RuntimeError(f"Hold {hold_id} already {_state}")
 
                 # Transition: unknown → settled.
                 hit = ctx.execute(
@@ -831,9 +824,7 @@ class BudgetLedger:
                     [hold_id],
                 ).fetchone()
                 if hit is None:
-                    raise RuntimeError(
-                        f"Hold {hold_id} already resolved"
-                    )
+                    raise RuntimeError(f"Hold {hold_id} already resolved")
 
                 # Release hold + record spend atomically.
                 hit = ctx.execute(
@@ -859,7 +850,11 @@ class BudgetLedger:
 
                 # H2: freed-pool conservation.
                 self._reconcile_freed(
-                    ctx, _run_id, _projected, _freed_drawn, actual_cents,
+                    ctx,
+                    _run_id,
+                    _projected,
+                    _freed_drawn,
+                    actual_cents,
                 )
 
                 self._maybe_mark_exhausted(ctx, _run_id)
@@ -922,6 +917,8 @@ class BudgetLedger:
         role: str,
         projected_max_cents: int,
         call: Callable[[], tuple[T, int]],
+        *,
+        before_settle: Callable[[T, int], None] | None = None,
     ) -> tuple[T, RemainingBalance]:
         """Execute *call* with budget guard.
 
@@ -943,6 +940,8 @@ class BudgetLedger:
         hold = self.reserve_call(run_id, role, projected_max_cents)
         try:
             result, actual_cents = call()
+            if before_settle is not None:
+                before_settle(result, actual_cents)
         except CallNotDispatched:
             # Provably pre-dispatch: safe to release.
             self._release_hold(hold)
@@ -956,10 +955,13 @@ class BudgetLedger:
                 durable_hold = self._mark_hold_unknown(hold)
             except Exception as bookkeeping_error:
                 raise UnknownOutcomePersistenceError(
-                    hold, provider_error, bookkeeping_error,
+                    hold,
+                    provider_error,
+                    bookkeeping_error,
                 ) from bookkeeping_error
             raise UnknownCallOutcome(
-                durable_hold, provider_error,
+                durable_hold,
+                provider_error,
             ) from provider_error
         balance = self.settle(hold, actual_cents)
         return result, balance
@@ -992,9 +994,7 @@ class BudgetLedger:
 
                 _run_id, _role, _projected, _freed_drawn, _state = hold_row
                 if _state != "open":
-                    raise RuntimeError(
-                        f"Hold {hold.hold_id} already {_state}"
-                    )
+                    raise RuntimeError(f"Hold {hold.hold_id} already {_state}")
 
                 hit = ctx.execute(
                     "UPDATE midnight_oil_call_holds SET "
@@ -1003,9 +1003,7 @@ class BudgetLedger:
                     [hold.hold_id],
                 ).fetchone()
                 if hit is None:
-                    raise RuntimeError(
-                        f"Hold {hold.hold_id} already {_state}"
-                    )
+                    raise RuntimeError(f"Hold {hold.hold_id} already {_state}")
 
                 bal = self._load_balance(ctx, _run_id)
                 self._append_ledger(
@@ -1061,14 +1059,14 @@ class BudgetLedger:
                 event="freed_refund",
                 amount_cents=refund,
                 remaining_cents=self._load_balance(
-                    ctx, run_id,
+                    ctx,
+                    run_id,
                 ).remaining_cents,
             )
         elif delta > 0:
             # Best-effort: consume what's available, never raise.
             res_row = ctx.execute(
-                "SELECT freed_cents FROM midnight_oil_reservations "
-                "WHERE run_id = ?",
+                "SELECT freed_cents FROM midnight_oil_reservations WHERE run_id = ?",
                 [run_id],
             ).fetchone()
             freed_available = int(res_row[0]) if res_row else 0
@@ -1124,15 +1122,16 @@ class BudgetLedger:
             ).fetchone()
             if hit is None:
                 res_row = ctx.execute(
-                    "SELECT freed_cents FROM midnight_oil_reservations "
-                    "WHERE run_id = ?",
+                    "SELECT freed_cents FROM midnight_oil_reservations WHERE run_id = ?",
                     [run_id],
                 ).fetchone()
                 if res_row is None:
                     raise ReservationNotFound(run_id)
                 freed = res_row[0]
                 raise BudgetCeilingExceeded(
-                    run_id, amount_cents, available + freed,
+                    run_id,
+                    amount_cents,
+                    available + freed,
                 )
             return excess
         return 0
@@ -1196,9 +1195,7 @@ class BudgetLedger:
 
                 _run_id, _role, _projected, _freed_drawn, _state = hold_row
                 if _state != "open":
-                    raise RuntimeError(
-                        f"Hold {hold.hold_id} already settled or released"
-                    )
+                    raise RuntimeError(f"Hold {hold.hold_id} already settled or released")
 
                 # Transition hold state: open → released.
                 hit = ctx.execute(
@@ -1208,9 +1205,7 @@ class BudgetLedger:
                     [hold.hold_id],
                 ).fetchone()
                 if hit is None:
-                    raise RuntimeError(
-                        f"Hold {hold.hold_id} already settled or released"
-                    )
+                    raise RuntimeError(f"Hold {hold.hold_id} already settled or released")
 
                 hit = ctx.execute(
                     "UPDATE midnight_oil_reservations SET "
