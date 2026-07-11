@@ -29,6 +29,12 @@ from .information_asset import (
     project_multimedia_information_asset,
     register_multimedia_information_asset,
 )
+from .knowledge_registration import (
+    CanonicalMultimediaKnowledgeRegistrar,
+    MultimediaKnowledgeRegistrationError,
+    MultimediaTwinResult,
+    register_multimedia_with_twin,
+)
 from .narration import (
     NarrationParagraph,
     normalize_line,
@@ -176,6 +182,10 @@ __all__ = [
     "MultimediaSourceReference",
     "project_multimedia_information_asset",
     "register_multimedia_information_asset",
+    "CanonicalMultimediaKnowledgeRegistrar",
+    "MultimediaKnowledgeRegistrationError",
+    "MultimediaTwinResult",
+    "register_multimedia_with_twin",
     # SPR-09 API persistence/read-model
     "CreateMultimediaDraftRequest",
     "MultimediaAssetList",
