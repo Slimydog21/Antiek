@@ -27,7 +27,8 @@ class HighlightTwinRequest(BaseModel):
     questions: list[str] = Field(default_factory=list)
     source_label: str = "highlight"
     # Required explicit boolean — never default to False (fail-open for gated bodies).
-    gated: bool
+    # strict=True rejects "false"/0 coercion (fail closed).
+    gated: bool = Field(strict=True)
 
 
 @twin_from_highlight_router.post("/seed")

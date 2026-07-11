@@ -69,3 +69,27 @@ def test_missing_gated_rejected() -> None:
         },
     )
     assert r.status_code == 422
+
+
+def test_coerced_string_gated_rejected() -> None:
+    r = _client().post(
+        "/twins/from-highlight/seed",
+        json={
+            "parent_asset_id": "a",
+            "highlight": "x",
+            "gated": "false",
+        },
+    )
+    assert r.status_code == 422
+
+
+def test_coerced_int_gated_rejected() -> None:
+    r = _client().post(
+        "/twins/from-highlight/seed",
+        json={
+            "parent_asset_id": "a",
+            "highlight": "x",
+            "gated": 0,
+        },
+    )
+    assert r.status_code == 422
