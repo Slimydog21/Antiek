@@ -21,12 +21,19 @@ semantic — so building a parallel store on the raw primitives (option (b))
 would have duplicated artifact/key-file plumbing for zero security gain.
 
 The plaintext key is NEVER in any response, log, repr, or exception
-message. Two load-bearing consequences in the code:
+message. Three load-bearing consequences in the code:
 
 * ``POST /settings/models/user`` parses its body BY HAND. FastAPI's
   ``RequestValidationError`` echoes the offending input back in the 422
   body — and for a missing-field error the echoed input is the WHOLE
   body, api_key included. Manual parsing keeps every 4xx value-free.
+* Keys travel ONLY in ``api_key``. ``base_url`` is structurally prevented
+  from carrying credentials: it must be scheme + host + optional path,
+  and any userinfo (``user:secret@host``), query string (``?key=...``),
+  or fragment is rejected value-free — otherwise a key-bearing URL would
+  land PLAINTEXT in the registry file and echo in every response that
+  carries base_url. Lengths are bounded too (api_key ≤ 512, base_url
+  ≤ 2048) so a paste accident cannot balloon the ciphertext artifact.
 * Registered providers resolve their key AT CALL TIME (decrypt-on-use via
   ``_ByokResolvedKeyMixin``), never holding plaintext in instance state.
   Resolution re-checks the durable registry first, so a DELETE is
@@ -39,7 +46,12 @@ DELETE leaves the SecretBox ciphertext orphaned in the byok artifact:
 another lane (and off-limits per the sprint contract). An orphaned blob is
 ciphertext-only — unreadable without the 0600 master key and unreachable
 without the registry record — so this is stated honestly rather than
-worked around with a second write path into the byok artifact.
+worked around with a second write path into the byok artifact. The same
+applies to delete→re-add: the store is APPEND-ONLY (no replace API), so
+re-adding a model stores a fresh credential and each delete→re-add cycle
+orphans one more ciphertext blob. Accumulation is bounded by operator
+behavior (a manual Settings action), documented in the DELETE response
+notes, and never a plaintext hazard.
 
 PERSISTENCE — non-secret registry
 ─────────────────────────────────
@@ -69,9 +81,10 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from runtime.byok.store import list_credentials, load_credential, store_credential
 from substrate.dispatch.base import Provider, ProviderError
@@ -91,6 +104,12 @@ _PROVIDER_KINDS: tuple[str, ...] = ("openai_compat", "anthropic")
 # Shortest real provider keys are far longer; this catches truncated pastes
 # without rejecting any legitimate key format.
 _MIN_KEY_LEN = 8
+# Longest real provider keys are well under this (OpenAI project keys ~164
+# chars, Anthropic ~108, GCP service tokens in the low hundreds); the cap
+# bounds the SecretBox ciphertext artifact against multi-megabyte paste
+# accidents (a 2MiB "key" would otherwise land as a 4MiB hex ciphertext).
+_MAX_KEY_LEN = 512
+_MAX_BASE_URL_LEN = 2048
 _MAX_DISPLAY_NAME_LEN = 64
 _MAX_MODEL_ID_LEN = 200
 
@@ -250,16 +269,32 @@ def reload_user_providers(app: FastAPI) -> set[str]:
     Mirrors ``register_default_providers``' degraded posture: a record
     without a stored credential (or disabled) is skipped, not an error.
     Returns the set of registered names, same contract as the bootstrap.
+
+    Also RECONCILES the seam set: a ``user-``-prefixed name in
+    ``app.state.registered_providers`` without an enabled registry record
+    (a corrupt/lost registry file is the realistic path here) is stale —
+    its key resolution would refuse anyway — and is discarded so
+    ``GET /settings/models`` cannot report ``ready: true`` for a provider
+    that cannot resolve credentials. Default provider names are never
+    touched (prefix-guarded).
     """
+    registry = _load_registry()
     present = {m.cred_id for m in list_credentials()}
     registered: set[str] = set()
-    for record in _load_registry().values():
+    for record in registry.values():
         if not record.enabled or record.cred_ref not in present:
             continue
         register_provider(_make_provider(record))
         registered.add(record.id)
-    if registered:
-        _seam_names(app).update(registered)
+    seam = _seam_names(app)
+    stale = {
+        name
+        for name in seam
+        if name.startswith(_ID_PREFIX)
+        and not (name in registry and registry[name].enabled)
+    }
+    seam.difference_update(stale)
+    seam.update(registered)
     return registered
 
 
@@ -282,6 +317,10 @@ class UserModelRow(BaseModel):
 class UserModelsResponse(BaseModel):
     models: list[UserModelRow]
     count: int
+    # Surfacing, not hiding: user-* names still in the live registered set
+    # whose registry record is gone (corrupt/lost file while the process is
+    # up). They cannot resolve keys and clear at the next boot reconcile.
+    stale_registered: list[str] = Field(default_factory=list)
     source: str = "settings user-model registry + byok credential store"
 
 
@@ -336,20 +375,38 @@ def _parse_create(payload: object) -> _ValidatedCreate:
     if (
         not isinstance(api_key, str)
         or len(api_key) < _MIN_KEY_LEN
+        or len(api_key) > _MAX_KEY_LEN
         or any(c.isspace() for c in api_key)
     ):
         raise _reject(
-            "api_key must be a string of at least 8 characters with no "
+            "api_key must be a string of 8-512 characters with no "
             "whitespace (value withheld from this error by design)"
         )
 
     base_url = payload.get("base_url")
-    if base_url is not None and (
-        not isinstance(base_url, str)
-        or not base_url.startswith(("http://", "https://"))
-        or any(c.isspace() for c in base_url)
-    ):
-        raise _reject("base_url must be an http(s) URL without whitespace")
+    if base_url is not None:
+        if (
+            not isinstance(base_url, str)
+            or len(base_url) > _MAX_BASE_URL_LEN
+            or any(c.isspace() for c in base_url)
+        ):
+            raise _reject(
+                "base_url must be an http(s) URL of at most 2048 characters "
+                "without whitespace"
+            )
+        parts = urlsplit(base_url)
+        if parts.scheme not in ("http", "https") or not parts.netloc:
+            raise _reject("base_url must be an http(s) URL")
+        # Structural credential exclusion: keys travel ONLY in api_key. A
+        # userinfo / query / fragment-bearing URL could smuggle a credential
+        # into the PLAINTEXT registry and into every response that echoes
+        # base_url — rejected outright, value-free (the URL itself may carry
+        # the secret, so it is never interpolated into the error).
+        if "@" in parts.netloc or parts.query or parts.fragment:
+            raise _reject(
+                "base_url must be scheme + host + optional path only — no "
+                "userinfo, query, or fragment (credentials go in api_key)"
+            )
     if provider_kind == "openai_compat" and base_url is None:
         raise _reject(
             "base_url is required for openai_compat (the provider's full "
@@ -404,7 +461,12 @@ def get_user_models(request: Request) -> UserModelsResponse:
         _row(rec, present=present, seam=seam)
         for rec in sorted(registry.values(), key=lambda r: r.id)
     ]
-    return UserModelsResponse(models=rows, count=len(rows))
+    stale = sorted(
+        name
+        for name in seam
+        if name.startswith(_ID_PREFIX) and name not in registry
+    )
+    return UserModelsResponse(models=rows, count=len(rows), stale_registered=stale)
 
 
 @user_models_router.post("", response_model=UserModelRow, status_code=201)
@@ -469,6 +531,10 @@ def delete_user_model(user_model_id: str, request: Request) -> UserModelDeleteRe
             "at call time); its SecretBox ciphertext stays in the byok "
             "artifact — the store exposes no delete — and is unreadable "
             "without the master key file",
+            "re-adding this model stores a fresh credential (the byok store "
+            "is append-only), so each delete→re-add cycle orphans one more "
+            "ciphertext blob — bounded by operator behavior, never readable "
+            "without the master key",
         ],
     )
 

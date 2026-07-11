@@ -212,6 +212,97 @@ def test_boot_time_reload_of_user_providers(env: Path) -> None:
     reset_provider_registry()
 
 
+def test_credential_bearing_base_url_rejected_value_free(client: TestClient) -> None:
+    # FINDING-1 regression: a credential smuggled into base_url (userinfo /
+    # query / fragment) would land PLAINTEXT in the registry and echo in
+    # every response carrying base_url. Must 422 and NEVER echo the URL.
+    marker = "url-embedded-secret-marker-xyz"
+    for url in (
+        f"https://user:{marker}@api.example.com/v1",
+        f"https://api.example.com/v1?key={marker}",
+        f"https://api.example.com/v1#{marker}",
+    ):
+        r = client.post("/settings/models/user", json={**_ADD_BODY, "base_url": url})
+        assert r.status_code == 422
+        assert marker not in r.text
+        assert _SECRET not in r.text
+    assert client.get("/settings/models/user").json()["count"] == 0
+
+
+def test_over_length_inputs_rejected_value_free(client: TestClient, env: Path) -> None:
+    # FINDING-2 regression: unbounded lengths let a 2MiB "key" balloon the
+    # ciphertext artifact to 4MiB. Caps: api_key<=512, base_url<=2048;
+    # rejections value-free, and nothing reaches the byok artifact.
+    long_key = "k" * 600
+    r = client.post("/settings/models/user", json={**_ADD_BODY, "api_key": long_key})
+    assert r.status_code == 422
+    assert long_key not in r.text
+
+    long_url = "https://api.example.com/" + "a" * 2100
+    r2 = client.post("/settings/models/user", json={**_ADD_BODY, "base_url": long_url})
+    assert r2.status_code == 422
+    assert long_url not in r2.text
+    assert _SECRET not in r2.text
+
+    assert client.get("/settings/models/user").json()["count"] == 0
+    # Validation precedes encryption: no credential artifact was created.
+    assert not (env / "byok" / "credentials.enc").exists()
+
+
+def test_live_registry_corruption_surfaces_stale_registered(
+    client: TestClient, env: Path
+) -> None:
+    # FINDING-3 regression (live half): registry corrupted while the process
+    # is up -> inventory empties (lenient read must not crash) and the
+    # still-registered seam name is SURFACED as stale, not hidden.
+    assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    (env / "settings" / "user_models.json").write_text("{corrupt", encoding="utf-8")
+    inv = client.get("/settings/models/user").json()
+    assert inv["count"] == 0
+    assert inv["stale_registered"] == ["user-my-deepseek"]
+
+
+def test_boot_reconcile_discards_stale_user_names(env: Path) -> None:
+    # FINDING-3 regression (boot half): a user-* seam name with no enabled
+    # registry record is discarded at startup reconcile, so
+    # GET /settings/models cannot claim ready:true for a provider whose key
+    # resolution refuses. Non-user names are never touched (prefix guard).
+    app = _fresh_app()
+    app.state.registered_providers = {"user-ghost", "zai"}
+    with TestClient(app) as c:
+        assert app.state.registered_providers == {"zai"}
+        ids = {m["provider_id"] for m in c.get("/settings/models").json()["models"]}
+        assert "user-ghost" not in ids
+    reset_provider_registry()
+
+
+def test_boot_reload_lands_after_create_app_state_assignment(env: Path) -> None:
+    # FINDING-5: pin the ordering claim against the REAL create_app.
+    # create_app assigns app.state.registered_providers AFTER mounting the
+    # settings routes; the startup reload must land ON that assignment (an
+    # assignment-after-reload ordering would clobber the user name).
+    with TestClient(_fresh_app()) as seeder:
+        assert seeder.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    reset_provider_registry()
+
+    from interfaces.research.api.app import create_app
+
+    app = create_app(register_wrestling=False, register_providers=False)
+    # create_app has already run its assignment (empty set: no provider
+    # keys); the reload is a lifespan-startup handler and has NOT run yet.
+    assert app.state.registered_providers == set()
+    with TestClient(app) as c:
+        # Startup fired: reload landed after the assignment, not clobbered.
+        assert app.state.registered_providers == {"user-my-deepseek"}
+        row = next(
+            m
+            for m in c.get("/settings/models").json()["models"]
+            if m["provider_id"] == "user-my-deepseek"
+        )
+        assert row["ready"] is True
+    reset_provider_registry()
+
+
 def test_disabled_record_is_not_registered_at_boot(env: Path) -> None:
     with TestClient(_fresh_app()) as first:
         assert first.post("/settings/models/user", json=_ADD_BODY).status_code == 201

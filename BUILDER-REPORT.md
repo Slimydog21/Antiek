@@ -183,8 +183,81 @@ $ npx vitest run src/modes/Settings/AddModelPanel.test.tsx   # from apps/reading
   was used instead, per the brief's 3.14 warning.
 - Deploy/prod verification (out of scope: no push, no PR).
 
+## Fix round 1 (codex adversarial refute — 5 CONFIRMED findings)
+
+What changed per finding:
+
+1. **base_url credential smuggling (FIXED).** `_parse_create` now validates
+   via `urllib.parse.urlsplit`: scheme ∈ {http, https}, non-empty host, and
+   NO userinfo / query / fragment — a key-bearing URL
+   (`https://user:secret@host`, `?key=sk-...`, `#...`) is rejected with a
+   value-free 422 (the URL is never interpolated into the error). Module
+   docstring's secret-handling section updated: keys travel ONLY in
+   `api_key`; base_url is structurally prevented from carrying credentials.
+2. **Unbounded lengths (FIXED).** `_MAX_KEY_LEN = 512` (longest real
+   provider keys are in the low hundreds of chars — OpenAI ~164,
+   Anthropic ~108; justified in a comment) and `_MAX_BASE_URL_LEN = 2048`;
+   over-length inputs get value-free 422s and never reach the byok store
+   (test asserts the credential artifact is not even created).
+3. **Stale seam names after registry corruption/loss (FIXED, honestly).**
+   (a) `reload_user_providers` now RECONCILES at boot: `user-`-prefixed seam
+   names without an enabled registry record are discarded (default provider
+   names prefix-guarded, never touched). (b) `GET /settings/models/user`
+   surfaces `stale_registered: list[str]` (user-* seam names lacking a
+   registry record) — surfacing, not hiding; the panel renders an amber
+   note when non-empty. The lenient registry read is UNCHANGED (corrupt
+   file still must not crash boot).
+4. **Delete→re-add credential accumulation (ACCEPTED + DOCUMENTED).** The
+   byok store is append-only (no replace/delete API; `runtime/byok/*`
+   off-limits). Each delete→re-add cycle orphans one more ciphertext blob —
+   bounded by operator behavior, never a plaintext hazard. Documented in
+   the module docstring and in a second DELETE response note. No second
+   write path into the artifact.
+5. **Vacuous boot-ordering test (FIXED — the test, not the code).** New
+   `test_boot_reload_lands_after_create_app_state_assignment` imports the
+   REAL `create_app(register_wrestling=False, register_providers=False)`
+   (offline), asserts `app.state.registered_providers == set()` before the
+   lifespan (assignment done, reload not yet run), then inside the
+   TestClient context asserts the set is exactly `{"user-my-deepseek"}` —
+   the reload landed AFTER the assignment and the seam was not clobbered.
+
+New regression tests for findings 1–3 (`test_credential_bearing_base_url_rejected_value_free`,
+`test_over_length_inputs_rejected_value_free`,
+`test_live_registry_corruption_surfaces_stale_registered`,
+`test_boot_reconcile_discards_stale_user_names`). Test count: **18 → 23**
+(all 18 originals stay green, unmodified).
+
+Frontend delta: `UserModelsResponse.stale_registered` added to
+`settingsModels.ts`; AddModelPanel renders the stale-registrations note;
+test mock updated.
+
+### Fix-round acceptance (verbatim, trimmed)
+
+```
+$ .venv/bin/python -m pytest tests/test_settings_models_admin.py -q
+23 passed, 1 warning in 1.09s
+
+$ .venv/bin/ruff check interfaces/research/api/settings_models_admin.py tests/test_settings_models_admin.py
+All checks passed!
+exit=0
+
+$ .venv/bin/mypy --strict interfaces/research/api/settings_models_admin.py
+Success: no issues found in 1 source file
+exit=0
+
+$ npx vitest run src/modes/Settings/AddModelPanel.test.tsx   # from apps/reading
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+```
+
+Also re-run: both Settings vitest suites (2 files / 5 tests passed),
+`npx tsc --noEmit` clean, neighbor suites
+(test_settings_budget_api + test_byok_store + test_dispatch_bootstrap,
+provider-key env unset) 24/24 passed.
+
 ## Commits
 
 - `ab365c920` feat(settings): user-added model providers with byok-encrypted keys
 - `bb5ac16d7` feat(reading): AddModelPanel — BYOK add-model UI in Settings
-- HEAD (this commit) — docs(settings): builder report (SHA cannot self-embed; see `git log -1`)
+- `c8579a456` docs(settings): builder report
+- HEAD (this commit) — fix round 1 (SHA cannot self-embed; see `git log -1`)
