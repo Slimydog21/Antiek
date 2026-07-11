@@ -72,3 +72,29 @@ def test_bridge_explicit_enabled_overrides_env_off(
     )
     assert twin is not None
     assert twin.insights == ["forced on"]
+
+
+def test_bridge_whitespace_only_notes_noop(tmp_path: Path) -> None:
+    store = TwinNotesStore(tmp_path)
+    twin = record_emerged_notes_as_twin(
+        [_note("   ")],
+        parent_asset_id="p3",
+        store=store,
+        enabled=True,
+    )
+    assert twin is None
+    assert store.list_for_parent("p3") == []
+
+
+def test_bridge_store_failure_is_swallowed(tmp_path: Path) -> None:
+    class BoomStore(TwinNotesStore):
+        def record(self, *a, **k):  # type: ignore[no-untyped-def]
+            raise OSError("disk full")
+
+    twin = record_emerged_notes_as_twin(
+        [_note("still emit path")],
+        parent_asset_id="p4",
+        store=BoomStore(tmp_path),
+        enabled=True,
+    )
+    assert twin is None
