@@ -25,7 +25,8 @@ def test_weighted_overall() -> None:
     assert r.known_count == 3
     assert "source_diversity" in r.missing
     assert r.overall is not None
-    assert r.overall > 0.8
+    # citation 0.8×1.2 + claim 1.0×1.3 + honesty 0.9×1.4 = 3.52 / 3.9
+    assert abs(r.overall - (3.52 / 3.9)) < 1e-9
 
 
 def test_overall_null_when_empty() -> None:
