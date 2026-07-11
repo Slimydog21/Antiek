@@ -1,0 +1,97 @@
+"""Red-proofs: pure library catalog page builder (no DB)."""
+
+from __future__ import annotations
+
+import pytest
+
+from interfaces.research.api.books import BookSummary
+from interfaces.research.api.library_catalog import (
+    apply_servability_filter,
+    build_library_page,
+    matches_search,
+    summary_payload_has_no_body,
+)
+
+
+def _sum(
+    doc_id: str,
+    *,
+    title: str,
+    author: str = "A",
+    servable: bool = True,
+) -> BookSummary:
+    return BookSummary(
+        document_id=doc_id,
+        title=title,
+        author=author,
+        servability="servable" if servable else "gated",
+        servable_full_text=servable,
+        page_count=10,
+        cover_uri=None,
+        ip_holder_id=None,
+        taken_down=False,
+    )
+
+
+def test_matches_search_title_author_only() -> None:
+    s = _sum("d1", title="Scaling Laws", author="Kaplan")
+    assert matches_search(s, "scaling")
+    assert matches_search(s, "kaplan")
+    assert not matches_search(s, "nonexistent")
+    assert matches_search(s, "")
+
+
+def test_servability_filter() -> None:
+    rows = [
+        _sum("s1", title="Open", servable=True),
+        _sum("g1", title="Gated", servable=False),
+    ]
+    assert [x.document_id for x in apply_servability_filter(rows, "servable")] == ["s1"]
+    assert [x.document_id for x in apply_servability_filter(rows, "gated")] == ["g1"]
+    assert len(apply_servability_filter(rows, "all")) == 2
+
+
+def test_build_page_pagination_and_total_after_filter() -> None:
+    rows = [
+        _sum(f"s{i}", title=f"Book {i}", servable=True) for i in range(5)
+    ] + [
+        _sum("g0", title="Secret", servable=False),
+    ]
+    page = build_library_page(rows, filt="servable", search="", page=1, page_size=2)
+    assert page.total == 5
+    assert len(page.works) == 2
+    assert page.page == 1
+    page2 = build_library_page(rows, filt="servable", page=2, page_size=2)
+    assert len(page2.works) == 2
+    page3 = build_library_page(rows, filt="servable", page=3, page_size=2)
+    assert len(page3.works) == 1
+
+
+def test_search_applied_before_total() -> None:
+    rows = [
+        _sum("a", title="Transformers", servable=True),
+        _sum("b", title="Gardening", servable=True),
+        _sum("c", title="Transformer Circuits", servable=False),
+    ]
+    page = build_library_page(rows, filt="all", search="transform", page=1, page_size=10)
+    assert page.total == 2
+    ids = {w.document_id for w in page.works}
+    assert ids == {"a", "c"}
+
+
+def test_summary_has_no_body_fields() -> None:
+    s = _sum("d", title="T")
+    assert summary_payload_has_no_body(s)
+    data = s.model_dump()
+    assert "raw_text" not in data
+    assert "full_text" not in data
+    assert "body" not in data
+
+
+def test_invalid_page_params() -> None:
+    with pytest.raises(ValueError, match="page"):
+        build_library_page([], page=0)
+    with pytest.raises(ValueError, match="page_size"):
+        build_library_page([], page_size=0)
+    with pytest.raises(ValueError, match="page_size"):
+        build_library_page([], page_size=201)
