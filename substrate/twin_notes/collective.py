@@ -39,6 +39,8 @@ def _section(doc: TwinDocument, index: int) -> str:
     ]
     if doc.source_label:
         lines.append(f"source_label: {doc.source_label}")
+    if doc.merged_from:
+        lines.append("merged_from: " + ", ".join(doc.merged_from))
     if doc.insights:
         lines.append("insights:")
         for i in doc.insights:

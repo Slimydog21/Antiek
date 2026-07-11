@@ -53,6 +53,17 @@ def test_multi_twin_pack_includes_provenance(tmp_path: Path) -> None:
     assert any("does not dispatch" in n for n in pack.notes)
 
 
+def test_pack_includes_source_label_and_merged_from(tmp_path: Path) -> None:
+    store = TwinNotesStore(tmp_path)
+    a = store.record("p", insights=["A"], source_label="lane-1")
+    b = store.record("p", insights=["B"], source_label="lane-2")
+    m = store.merge([a.twin_id, b.twin_id], parent_asset_id="p", source_label="merged")
+    pack = build_collective_pack([store.load(m.twin_id)])
+    assert "source_label: merged" in pack.pack_text
+    assert "merged_from:" in pack.pack_text
+    assert a.twin_id in pack.pack_text
+
+
 def test_same_parent_collective_no_cross_parent_note(tmp_path: Path) -> None:
     store = TwinNotesStore(tmp_path)
     a = store.record("one", insights=["A"])
