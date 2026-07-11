@@ -337,6 +337,69 @@ def begin_reserved_provider_submission(
             return record, hold
 
 
+def begin_reserved_provider_submission_set(
+    *,
+    db_path: str,
+    authorizations: tuple[MultimediaExecutionAuthorizationV2, ...],
+    signing_key: bytes,
+    now: datetime,
+    mutation: Callable[
+        [WriteContext, tuple[tuple[ProviderExecutionRecord, CallHold], ...]], None
+    ]
+    | None = None,
+) -> tuple[tuple[ProviderExecutionRecord, CallHold], ...]:
+    """Atomically consume and reserve a complete signed provider-call set.
+
+    This is the admission boundary for multi-call products. Either every exact
+    authorization and full spend band is durable, or the transaction rolls all
+    of them back before any caller can reach provider transport.
+    """
+    if not authorizations:
+        raise ValueError("provider submission set cannot be empty")
+    ids = tuple(row.authorization_id for row in authorizations)
+    if len(set(ids)) != len(ids):
+        raise ValueError("provider submission set authorization ids must be unique")
+    ledger = BudgetLedger(_db_path(db_path))
+    coordinator = FlockWriteCoordinator(_db_path(db_path))
+    with coordinator.acquire_write_context(
+        "multimedia.provider_execution.begin_reserved_set"
+    ) as ctx:
+        _ensure_schema(ctx)
+        ctx.execute("BEGIN TRANSACTION")
+        results: list[tuple[ProviderExecutionRecord, CallHold]] = []
+        try:
+            for authorization in authorizations:
+                record = _begin_in_context(
+                    ctx,
+                    authorization=authorization,
+                    signing_key=signing_key,
+                    now=now,
+                )
+                ceiling_cents = (
+                    authorization.approved_ceiling_microdollars + 9_999
+                ) // 10_000
+                hold_id = "mmhold_" + hashlib.sha256(
+                    f"{authorization.authorization_id}:{authorization.request_body_digest}".encode()
+                ).hexdigest()
+                hold = ledger.initialize_and_hold_in_context(
+                    ctx,
+                    run_id=authorization.authorization_id,
+                    role=f"multimedia:{authorization.provider}",
+                    approved_ceiling_cents=ceiling_cents,
+                    hold_id=hold_id,
+                )
+                results.append((record, hold))
+            frozen = tuple(results)
+            if mutation is not None:
+                mutation(ctx, frozen)
+        except Exception:
+            ctx.execute("ROLLBACK")
+            raise
+        else:
+            ctx.execute("COMMIT")
+            return frozen
+
+
 def _begin_in_context(
     ctx: WriteContext,
     *,
@@ -1203,6 +1266,7 @@ __all__ = [
     "TERMINAL_STATUSES",
     "begin_provider_submission",
     "begin_reserved_provider_submission",
+    "begin_reserved_provider_submission_set",
     "bind_provider_job",
     "bind_provider_job_with_mutation",
     "charge_and_mark_submission_unknown",

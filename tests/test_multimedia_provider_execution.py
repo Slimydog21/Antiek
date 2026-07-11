@@ -32,6 +32,7 @@ from substrate.multimedia.provider_execution import (
     ProviderExecutionIntegrityError,
     ProviderExecutionStatus,
     begin_provider_submission,
+    begin_reserved_provider_submission_set,
     bind_provider_job,
     get_provider_execution,
     mark_submission_outcome_unknown,
@@ -160,6 +161,51 @@ def test_v2_rejects_digest_tamper_expired_quote_and_v1_shape() -> None:
     del legacy_shape["model"]
     with pytest.raises(ExecutionAuthorizationIntegrityError, match="malformed asynchronous"):
         MultimediaExecutionAuthorizationV2.from_dict(legacy_shape)
+
+
+def test_reserved_submission_set_is_all_or_none(tmp_path: Path) -> None:
+    db_path = str(tmp_path / "batch.duckdb")
+    first = _authorization()
+    second = _authorization(
+        request_id="approval-async-2",
+        revision_id="revision-3",
+        quote_id="quote-2",
+        request_body_digest=hashlib.sha256(b"second").hexdigest(),
+    )
+    reserved = begin_reserved_provider_submission_set(
+        db_path=db_path,
+        authorizations=(first, second),
+        signing_key=KEY,
+        now=NOW,
+    )
+    assert tuple(row.authorization_id for row, _ in reserved) == (
+        first.authorization_id,
+        second.authorization_id,
+    )
+    assert all(hold.projected_max_cents == 25 for _, hold in reserved)
+
+    rollback_db = str(tmp_path / "rollback.duckdb")
+    expired = _authorization(
+        request_id="approval-expired",
+        revision_id="revision-expired",
+        quote_id="quote-expired",
+        request_body_digest=hashlib.sha256(b"expired").hexdigest(),
+        quote_expires_at=ISSUED + timedelta(seconds=30),
+    )
+    with pytest.raises(ExecutionAuthorizationIntegrityError, match="quote has expired"):
+        begin_reserved_provider_submission_set(
+            db_path=rollback_db,
+            authorizations=(first, expired),
+            signing_key=KEY,
+            now=NOW,
+        )
+    execution_id = "mmexec_" + hashlib.sha256(
+        f"{first.authorization_id}:{first.request_body_digest}".encode()
+    ).hexdigest()
+    with pytest.raises(ProviderExecutionIntegrityError, match="does not exist"):
+        get_provider_execution(
+            db_path=rollback_db, execution_id=execution_id, signing_key=KEY
+        )
 
 
 def test_transition_table_is_closed_and_terminal_states_are_immutable() -> None:

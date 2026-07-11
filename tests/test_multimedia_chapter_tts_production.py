@@ -172,6 +172,28 @@ def test_multi_chapter_and_invalid_media_shape_rejected_before_execution() -> No
         )
 
 
+def test_parent_can_explicitly_prepare_one_chapter_from_multi_plan() -> None:
+    prepared = prepare_chapter_tts_request(
+        _plan(chapters=2),
+        asset_id="asset",
+        revision_id="revision.chapter-1",
+        provider="openai",
+        model="tts",
+        chapter_id="chapter-1",
+    )
+    assert prepared.chapter_id == "chapter-1"
+    assert prepared.text == "Grounded chapter 1 explains the evidence."
+    with pytest.raises(ValueError, match="chapter_id"):
+        prepare_chapter_tts_request(
+            _plan(chapters=2),
+            asset_id="asset",
+            revision_id="revision",
+            provider="openai",
+            model="tts",
+            chapter_id="missing",
+        )
+
+
 def test_identifiers_and_speed_cannot_escape_canonical_request() -> None:
     with pytest.raises(ValueError, match="asset_id"):
         prepare_chapter_tts_request(

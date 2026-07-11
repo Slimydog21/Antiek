@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Antiek Multi-Chapter Narration Run</title>
+<style>
+body{margin:0;background:#f6f8f7;color:#18221d;font:16px/1.55 system-ui,sans-serif}main{width:min(960px,calc(100% - 32px));margin:40px auto 80px}header{border-bottom:3px solid #18221d;padding-bottom:20px}h1{font-size:clamp(2rem,5vw,3.4rem);line-height:1.05;letter-spacing:0;margin:0 0 10px}h2{font-size:1.35rem;letter-spacing:0;margin-top:34px}table{border-collapse:collapse;width:100%;background:white}th,td{border:1px solid #ccd5cf;padding:10px;text-align:left;vertical-align:top}th{background:#e7ede9}code{background:#e7ede9;padding:1px 4px}.rule{border-left:4px solid #087052;background:white;padding:10px 16px}
+</style></head><body><main>
+<header><p>ANTIEK / MULTIMEDIA / EXECUTABLE SUB-SPEC</p><h1>Multi-Chapter Narration Run</h1>
+<p>Admit an ordered set of signed chapter TTS calls atomically, execute each paid call at most once, resume from durable child receipts, and publish one renderer-ready narration authority.</p></header>
+<section><h2>Authority Phases</h2>
+<table><tr><th>Phase</th><th>Binding</th><th>Failure behavior</th></tr>
+<tr><td>Prepare</td><td>One canonical request per spoken chapter, with deterministic child revision, route, voice, speed, media shape, text, and grounding.</td><td>No database or spend mutation.</td></tr>
+<tr><td>Authorize set</td><td>Ordered request digests, signed authorization IDs, and ceilings form one set digest and run ID.</td><td>Missing, extra, reordered, or substituted authority fails before reservation.</td></tr>
+<tr><td>Admit</td><td>Every one-shot claim and full spend band plus the parent run receipt commit in one DuckDB transaction.</td><td>Any invalid or unaffordable chapter rolls back the complete set.</td></tr>
+<tr><td>Execute</td><td>Each child uses the chapter TTS send marker, received-byte receipt, provider observation, and sealed child narration.</td><td>Known received bytes resume locally; ambiguous sends never retry automatically.</td></tr>
+<tr><td>Aggregate</td><td>Ordered child output hashes, durations, chapter IDs, script lines, and source chunks become one sealed narration.</td><td>Incomplete or conflicting children cannot publish.</td></tr></table></section>
+<section><h2>Invariants</h2>
+<div class="rule"><strong>Atomic admission is not atomic provider execution.</strong> Partial successful provider calls are expected after admission. The run resumes missing chapters from their independent receipts; it never rolls successful calls back or repeats ambiguous calls.</div>
+<ul>
+<li>One through 64 spoken chapters; authorization and route maps exactly cover them.</li>
+<li>Parent revision and chapter order determine bounded child revisions.</li>
+<li>The parent MAC covers run identity, asset, revision, set digest, status, and aggregate artifact.</li>
+<li>Aggregate timing comes from probed child narration bytes, not planner estimates.</li>
+<li>Final publication is idempotent: an existing aggregate must reopen and match the parent authority.</li>
+<li>No built-in provider client, credentials, HTTP route, or automatic reconciliation.</li>
+</ul></section>
+<section><h2>Acceptance</h2>
+<table><tr><th>ID</th><th>Executable proof</th></tr>
+<tr><td>NR-01</td><td>Three valid chapters reserve before the first callback and produce an ordered aggregate.</td></tr>
+<tr><td>NR-02</td><td>One invalid authorization rolls back every claim and hold.</td></tr>
+<tr><td>NR-03</td><td>Replay invokes zero provider callbacks and reopens byte-identical authority.</td></tr>
+<tr><td>NR-04</td><td>Crash between completed chapters resumes only missing chapters.</td></tr>
+<tr><td>NR-05</td><td>Ambiguous child send blocks that run pending reconciliation and cannot duplicate spend.</td></tr>
+<tr><td>NR-06</td><td>Concurrent callers cannot duplicate child callbacks or aggregate publication.</td></tr>
+<tr><td>NR-07</td><td>Parent MAC, authorization set, child output, order, duration, and path tampering fail closed.</td></tr>
+<tr><td>NR-08</td><td>Focused and stacked multimedia tests, Ruff, strict mypy, HTML parse, diff-check, and hardenx pass.</td></tr>
+</table></section>
+<section><h2>Next Nested Sprint</h2><p>Add explicit operator reconciliation for stale <code>sending</code> child attempts and stale local <code>sealing</code> claims, with authenticated provider evidence and no automatic spend refund.</p></section>
+</main></body></html>
+

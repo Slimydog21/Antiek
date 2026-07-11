@@ -151,6 +151,7 @@ def prepare_chapter_tts_request(
     revision_id: str,
     provider: str,
     model: str,
+    chapter_id: str | None = None,
     voice: str = "narrator",
     speed: float = 1.0,
     sample_rate_hz: int = 24_000,
@@ -183,10 +184,16 @@ def prepare_chapter_tts_request(
     for paragraph in paragraphs:
         grouped.setdefault(paragraph.line_id.split("-line-", 1)[0], []).append(paragraph)
     spoken = tuple(chapter for chapter in plan.chapters if grouped.get(chapter.chapter_id))
-    if len(spoken) != 1:
-        raise ValueError("chapter TTS v1 requires exactly one non-empty spoken chapter")
-
-    chapter = spoken[0]
+    if chapter_id is None:
+        if len(spoken) != 1:
+            raise ValueError("chapter TTS v1 requires exactly one non-empty spoken chapter")
+        chapter = spoken[0]
+    else:
+        chapter_id = _identifier("chapter_id", chapter_id)
+        selected = tuple(chapter for chapter in spoken if chapter.chapter_id == chapter_id)
+        if len(selected) != 1:
+            raise ValueError("chapter_id is not exactly one non-empty spoken chapter")
+        chapter = selected[0]
     rows = grouped[chapter.chapter_id]
     text = " ".join(str(row.text) for row in rows)
     if not text or len(text.encode("utf-8")) > _MAX_TEXT_BYTES:
@@ -290,6 +297,7 @@ def produce_chapter_narration(
         revision_id=prepared.revision_id,
         provider=prepared.provider,
         model=prepared.model,
+        chapter_id=prepared.chapter_id,
         voice=prepared.voice,
         speed=prepared.speed,
         sample_rate_hz=prepared.sample_rate_hz,
@@ -454,6 +462,7 @@ def get_chapter_tts_attempt(
 ) -> ChapterTTSAttempt:
     coordinator = FlockWriteCoordinator(db_path)
     with coordinator.acquire_write_context("multimedia.chapter_tts.read") as connection:
+        connection.execute(_ATTEMPT_DDL)
         row = connection.execute(
             "SELECT * FROM multimedia_chapter_tts_attempts WHERE execution_id = ?",
             [execution_id],
