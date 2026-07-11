@@ -110,14 +110,29 @@ export async function postNotDiamondShadow(
   if (!local) {
     throw new Error("local_model_id must be non-empty");
   }
+  const enabled = req.enabled === true;
+  // Shadow-on means "compare local vs *injected* ND recommendation" — never live ND HTTP.
+  // Fail closed: cannot enable without an explicit injected recommendation string.
+  let nd: string | null =
+    req.nd_recommended_model_id === undefined || req.nd_recommended_model_id === null
+      ? null
+      : String(req.nd_recommended_model_id).trim() || null;
+  if (enabled && nd === null) {
+    throw new Error(
+      "enabled=true requires explicit injected nd_recommended_model_id (no live ND fetch)",
+    );
+  }
+  if (!enabled) {
+    nd = null; // never forward ND reco while kill switch off
+  }
   const res = await apiFetch(`${API_BASE}/settings/notdiamond/shadow`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       task: req.task ?? "general",
       local_model_id: local,
-      nd_recommended_model_id: req.nd_recommended_model_id ?? null,
-      enabled: req.enabled ?? false,
+      nd_recommended_model_id: nd,
+      enabled,
       extra_notes: req.extra_notes ?? [],
     }),
   });
