@@ -155,6 +155,50 @@ def test_unknown_provider_outcome_retains_projection_before_typed_reraise():
     assert _balance(store, job.job_id).held_cents == 40
 
 
+def test_spawn_callback_failure_cannot_redispatch_paid_step():
+    store = InMemoryJobStore()
+    job = _approved(store)
+    provider_calls = 0
+
+    def step(_job):
+        nonlocal provider_calls
+        provider_calls += 1
+        return WorkerStepResult(spent_usd=0.25, spawn_id="spawn-paid")
+
+    def fail_after_asserting_checkpoint(_job, _result):
+        row = store.get_job(job.job_id)
+        assert row is not None
+        assert row["spawn_ids"] == ["spawn-paid"]
+        assert row["spent_usd"] == 0.25
+        raise RuntimeError("projection sink unavailable")
+
+    with pytest.raises(RuntimeError, match="projection sink unavailable"):
+        run_worker_iteration(
+            job.job_id,
+            store=store,
+            step_fn=step,
+            project_fn=lambda _job: 0.25,
+            clock=FakeClock(),
+            on_spawn=fail_after_asserting_checkpoint,
+        )
+
+    failed = store.get_job(job.job_id)
+    assert failed is not None
+    assert failed["status"] == "failed"
+    assert failed["spawn_ids"] == ["spawn-paid"]
+    assert _balance(store, job.job_id).spent_cents == 25
+
+    terminal = run_worker_iteration(
+        job.job_id,
+        store=store,
+        step_fn=step,
+        project_fn=lambda _job: 0.25,
+        clock=FakeClock(),
+    )
+    assert terminal.status == "failed"
+    assert provider_calls == 1
+
+
 def test_base_exception_retains_open_hold_without_false_charge_claim():
     store = InMemoryJobStore()
     job = _approved(store)
@@ -237,9 +281,7 @@ def test_overrun_records_true_spend_and_fails_job():
     out = run_worker_iteration(
         job.job_id,
         store=store,
-        step_fn=lambda _job: WorkerStepResult(
-            spent_usd=0.90, spawn_id="spn_rejected_overrun"
-        ),
+        step_fn=lambda _job: WorkerStepResult(spent_usd=0.90, spawn_id="spn_rejected_overrun"),
         project_fn=lambda _job: 0.20,
         clock=FakeClock(),
     )
