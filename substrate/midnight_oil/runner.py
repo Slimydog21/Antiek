@@ -28,6 +28,7 @@ from .contracts import (
     MidnightOilRolePlan,
     MidnightOilRunnerHandoff,
 )
+from .seams import MidnightOilSeams
 
 _ROLES: tuple[MidnightOilRole, ...] = ("planner", "gatherer", "verifier", "synthesizer")
 
@@ -184,7 +185,14 @@ class MidnightOilExecutionReceipt(BaseModel):
         return self
 
 
-def execute_midnight_oil(req: MidnightOilExecutionRequest) -> MidnightOilExecutionReceipt:
+def execute_midnight_oil(
+    req: MidnightOilExecutionRequest,
+    seams: MidnightOilSeams | None = None,
+) -> MidnightOilExecutionReceipt:
+    # Construct the inert bundle so this function has one stable DI seam for
+    # SPR-06. Synthetic mode deliberately never invokes an adapter.
+    if seams is None:
+        seams = MidnightOilSeams()
     run_id = req.launch_packet.run_id
     role_outputs = [
         MidnightOilRoleOutput(
