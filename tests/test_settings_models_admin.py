@@ -229,6 +229,36 @@ def test_credential_bearing_base_url_rejected_value_free(client: TestClient) -> 
     assert client.get("/settings/models/user").json()["count"] == 0
 
 
+@pytest.mark.parametrize(
+    "bad_url",
+    [
+        "https://[::1/v1",  # unclosed IPv6 bracket → urlsplit ValueError
+        "https://host:notaport/v1",  # non-numeric port → .port ValueError
+        "https://:443/v1",  # empty hostname (truthy netloc, no host)
+    ],
+)
+def test_malformed_base_url_is_clean_422_not_500(
+    client: TestClient, bad_url: str
+) -> None:
+    # FINDING-1 round-2 regression: a malformed authority must be a clean,
+    # value-free 422 — never an uncaught ValueError surfacing as HTTP 500.
+    r = client.post("/settings/models/user", json={**_ADD_BODY, "base_url": bad_url})
+    assert r.status_code == 422
+    assert bad_url not in r.text
+    assert _SECRET not in r.text
+    assert client.get("/settings/models/user").json()["count"] == 0
+
+
+def test_well_formed_ipv6_base_url_accepted(client: TestClient) -> None:
+    # FINDING-1 round-2 guard: the try/except must not over-reject a
+    # WELL-FORMED bracketed IPv6 endpoint — a legitimate local provider.
+    body = {**_ADD_BODY, "display_name": "Local V6", "base_url": "https://[::1]:8000/v1"}
+    r = client.post("/settings/models/user", json=body)
+    assert r.status_code == 201
+    assert r.json()["base_url"] == "https://[::1]:8000/v1"
+    assert get_provider("user-local-v6").base_url == "https://[::1]:8000/v1"
+
+
 def test_over_length_inputs_rejected_value_free(client: TestClient, env: Path) -> None:
     # FINDING-2 regression: unbounded lengths let a 2MiB "key" balloon the
     # ciphertext artifact to 4MiB. Caps: api_key<=512, base_url<=2048;
