@@ -41,13 +41,23 @@ class WeeklyBenchView:
 
 
 def _finite_score(raw: Any) -> float | None:
+    """Return a real measured score, or None if unmeasured/invalid.
+
+    Booleans must not coerce to 0.0/1.0 (that invents a measurement).
+    """
     if raw is None:
         return None
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, str):
+        s = raw.strip().lower()
+        if not s or s in {"nan", "inf", "+inf", "-inf", "infinity", "-infinity"}:
+            return None
     try:
         v = float(raw)
     except (TypeError, ValueError):
         return None
-    if v != v:  # NaN
+    if v != v or v in (float("inf"), float("-inf")):  # NaN / Inf
         return None
     return v
 

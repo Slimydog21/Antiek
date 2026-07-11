@@ -16,8 +16,11 @@ import {
 
 export interface AntiekBenchPanelProps {
   fetchFn?: typeof fetchWeeklyBenchView;
-  /** Optional demo records for offline dogfood without a live store. */
-  demoRecords?: Array<{
+  /**
+   * Weekly records from a real store/caller. Defaults to empty so the panel
+   * never fabricates measurements — empty week → incomplete / NOT MEASURED.
+   */
+  records?: Array<{
     task: string;
     model_id: string;
     score: number | null;
@@ -25,16 +28,9 @@ export interface AntiekBenchPanelProps {
   }>;
 }
 
-const DEFAULT_DEMO = [
-  { task: "deep_research", model_id: "thinker", score: 0.88, n_runs: 2 },
-  { task: "deep_research", model_id: "flash", score: 0.55, n_runs: 2 },
-  { task: "note_taker", model_id: "flash", score: 0.91, n_runs: 3 },
-  { task: "note_taker", model_id: "thinker", score: 0.6, n_runs: 3 },
-];
-
 export default function AntiekBenchPanel({
   fetchFn = fetchWeeklyBenchView,
-  demoRecords = DEFAULT_DEMO,
+  records = [],
 }: AntiekBenchPanelProps) {
   const [weekId, setWeekId] = useState("2026-W28");
   const [busy, setBusy] = useState(false);
@@ -47,7 +43,7 @@ export default function AntiekBenchPanel({
     try {
       const body = await fetchFn({
         week_id: weekId,
-        records: demoRecords,
+        records,
       });
       setView(body);
     } catch (e) {
