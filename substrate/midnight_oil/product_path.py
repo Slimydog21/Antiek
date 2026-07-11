@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from .ceiling import ModelPricing, recommend_price_ceiling
 from .job import (
@@ -214,10 +214,13 @@ def job_summary_html(job: MidnightOilJob) -> str:
                 "content": [{"type": "text", "text": line}],
             }
         )
-    return project_to_html(
-        {"type": "doc", "content": blocks},
-        document_id=job.job_id,
-        creator="midnight_oil",
+    return cast(
+        str,
+        project_to_html(
+            {"type": "doc", "content": blocks},
+            document_id=job.job_id,
+            creator="midnight_oil",
+        ),
     )
 
 
