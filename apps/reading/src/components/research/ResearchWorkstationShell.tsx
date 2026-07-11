@@ -54,6 +54,7 @@ export function validateSessionId(sessionId: string): string {
 /**
  * True only when the slot has content React will visibly render.
  * null/undefined/false/true/empty-string are empty (no invent filled).
+ * Arrays are filled only if any element is filled (recursive).
  */
 export function isResearchSlotFilled(content: ReactNode): boolean {
   if (content == null || content === false || content === true) {
@@ -61,6 +62,10 @@ export function isResearchSlotFilled(content: ReactNode): boolean {
   }
   if (typeof content === "string" && !content.trim()) {
     return false;
+  }
+  if (Array.isArray(content)) {
+    if (content.length === 0) return false;
+    return content.some((child) => isResearchSlotFilled(child));
   }
   return true;
 }
