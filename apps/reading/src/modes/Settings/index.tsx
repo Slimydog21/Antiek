@@ -303,7 +303,8 @@ export default function Settings() {
                   role="progressbar"
                   aria-valuemin={0}
                   aria-valuemax={100}
-                  aria-valuenow={spendPct ?? 0}
+                  // Omit aria-valuenow when unknown — 0 would lie to AT.
+                  {...(spendPct != null ? { "aria-valuenow": spendPct } : {})}
                   aria-label={`Budget usage: ${budgetStatus}`}
                 >
                   {spendPct != null ? (
