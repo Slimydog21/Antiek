@@ -10,11 +10,13 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 
 from runtime.db_lock import FlockWriteCoordinator, WriteContext, connect_read
+from substrate.midnight_oil.budget_ledger import BudgetLedger, CallHold
 
 from .execution_authorization import (
     ExecutionAuthorizationConsumed,
@@ -248,104 +250,158 @@ def begin_provider_submission(
     now: datetime,
 ) -> ProviderExecutionRecord:
     """Atomically consume v2 authority and persist a recoverable submit intent."""
-    timestamp = _timestamp(now)
-    execution_id = (
-        "mmexec_"
-        + hashlib.sha256(
-            f"{authorization.authorization_id}:{authorization.request_body_digest}".encode()
-        ).hexdigest()
-    )
     coordinator = FlockWriteCoordinator(_db_path(db_path))
     with coordinator.acquire_write_context("multimedia.provider_execution.begin") as ctx:
         _ensure_schema(ctx)
         ctx.execute("BEGIN TRANSACTION")
         try:
-            existing = ctx.execute(
-                "SELECT * FROM multimedia_provider_executions WHERE authorization_id = ?",
-                [authorization.authorization_id],
-            ).fetchone()
-            if existing is not None:
-                _verify_self(
-                    authorization,
-                    signing_key=signing_key,
-                    now=_authorization_issued_at(authorization),
-                )
-                record = _record(existing, signing_key=signing_key)
-                _verify_record_matches(record, authorization)
-                ctx.execute("COMMIT")
-                return record
-            _verify_self(authorization, signing_key=signing_key, now=now)
-            revoked = ctx.execute(
-                "SELECT operator_id, authorization_signature, revoked_at, revocation_mac "
-                "FROM multimedia_async_execution_authorization_revocations "
-                "WHERE authorization_id = ?",
-                [authorization.authorization_id],
-            ).fetchone()
-            if revoked is not None:
-                verify_async_revocation_record(
-                    authorization,
-                    signing_key=signing_key,
-                    operator_id=revoked[0],
-                    authorization_signature=revoked[1],
-                    revoked_at=revoked[2],
-                    revocation_mac=revoked[3],
-                )
-                raise ExecutionAuthorizationRevoked(
-                    f"authorization {authorization.authorization_id} was revoked"
-                )
-            claimed = ctx.execute(
-                "INSERT INTO multimedia_execution_authorization_claims "
-                "(authorization_id, signature, status, actual_cents, claimed_at, settled_at) "
-                "VALUES (?, ?, 'claimed', NULL, CURRENT_TIMESTAMP, NULL) "
-                "ON CONFLICT DO NOTHING RETURNING authorization_id",
-                [authorization.authorization_id, authorization.signature],
-            ).fetchone()
-            if claimed is None:
-                raise ExecutionAuthorizationConsumed(
-                    f"authorization {authorization.authorization_id} was already consumed"
-                )
-            values = [
-                execution_id,
-                authorization.authorization_id,
-                authorization.signature,
-                authorization.operator_id,
-                authorization.asset_id,
-                authorization.revision_id,
-                authorization.provider,
-                authorization.route_policy,
-                authorization.model,
-                authorization.endpoint_capability,
-                authorization.catalog_version,
-                authorization.catalog_digest,
-                authorization.quote_id,
-                authorization.approved_ceiling_microdollars,
-                authorization.request_body_digest,
-                ProviderExecutionStatus.SUBMITTING.value,
-                None,
-                timestamp,
-                timestamp,
-                authorization.recovery_authority_id,
-                authorization.recovery_verification_key_digest,
-            ]
-            values.append(_record_mac(signing_key, values))
-            ctx.execute(
-                "INSERT INTO multimedia_provider_executions VALUES "
-                "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                values,
+            record = _begin_in_context(
+                ctx,
+                authorization=authorization,
+                signing_key=signing_key,
+                now=now,
             )
-            row = ctx.execute(
-                "SELECT * FROM multimedia_provider_executions WHERE execution_id = ?",
-                [execution_id],
-            ).fetchone()
-            if row is None:
-                raise ProviderExecutionIntegrityError("submission intent disappeared")
-            record = _record(row, signing_key=signing_key)
         except Exception:
             ctx.execute("ROLLBACK")
             raise
         else:
             ctx.execute("COMMIT")
             return record
+
+
+def begin_reserved_provider_submission(
+    *,
+    db_path: str,
+    authorization: MultimediaExecutionAuthorizationV2,
+    signing_key: bytes,
+    now: datetime,
+    mutation: Callable[[WriteContext, ProviderExecutionRecord, CallHold], None] | None = None,
+) -> tuple[ProviderExecutionRecord, CallHold]:
+    """Atomically persist submit intent and reserve its complete spend band."""
+    ceiling_cents = (authorization.approved_ceiling_microdollars + 9_999) // 10_000
+    role = f"multimedia:{authorization.provider}"
+    hold_id = "mmhold_" + hashlib.sha256(
+        f"{authorization.authorization_id}:{authorization.request_body_digest}".encode()
+    ).hexdigest()
+    ledger = BudgetLedger(_db_path(db_path))
+    coordinator = FlockWriteCoordinator(_db_path(db_path))
+    with coordinator.acquire_write_context("multimedia.provider_execution.begin_reserved") as ctx:
+        _ensure_schema(ctx)
+        ctx.execute("BEGIN TRANSACTION")
+        try:
+            record = _begin_in_context(
+                ctx,
+                authorization=authorization,
+                signing_key=signing_key,
+                now=now,
+            )
+            hold = ledger.initialize_and_hold_in_context(
+                ctx,
+                run_id=authorization.authorization_id,
+                role=role,
+                approved_ceiling_cents=ceiling_cents,
+                hold_id=hold_id,
+            )
+            if mutation is not None:
+                mutation(ctx, record, hold)
+        except Exception:
+            ctx.execute("ROLLBACK")
+            raise
+        else:
+            ctx.execute("COMMIT")
+            return record, hold
+
+
+def _begin_in_context(
+    ctx: WriteContext,
+    *,
+    authorization: MultimediaExecutionAuthorizationV2,
+    signing_key: bytes,
+    now: datetime,
+) -> ProviderExecutionRecord:
+    existing = ctx.execute(
+        "SELECT * FROM multimedia_provider_executions WHERE authorization_id = ?",
+        [authorization.authorization_id],
+    ).fetchone()
+    if existing is not None:
+        _verify_self(
+            authorization,
+            signing_key=signing_key,
+            now=_authorization_issued_at(authorization),
+        )
+        record = _record(existing, signing_key=signing_key)
+        _verify_record_matches(record, authorization)
+        return record
+    _verify_self(authorization, signing_key=signing_key, now=now)
+    revoked = ctx.execute(
+        "SELECT operator_id, authorization_signature, revoked_at, revocation_mac "
+        "FROM multimedia_async_execution_authorization_revocations "
+        "WHERE authorization_id = ?",
+        [authorization.authorization_id],
+    ).fetchone()
+    if revoked is not None:
+        verify_async_revocation_record(
+            authorization,
+            signing_key=signing_key,
+            operator_id=revoked[0],
+            authorization_signature=revoked[1],
+            revoked_at=revoked[2],
+            revocation_mac=revoked[3],
+        )
+        raise ExecutionAuthorizationRevoked(
+            f"authorization {authorization.authorization_id} was revoked"
+        )
+    claimed = ctx.execute(
+        "INSERT INTO multimedia_execution_authorization_claims "
+        "(authorization_id, signature, status, actual_cents, claimed_at, settled_at) "
+        "VALUES (?, ?, 'claimed', NULL, CURRENT_TIMESTAMP, NULL) "
+        "ON CONFLICT DO NOTHING RETURNING authorization_id",
+        [authorization.authorization_id, authorization.signature],
+    ).fetchone()
+    if claimed is None:
+        raise ExecutionAuthorizationConsumed(
+            f"authorization {authorization.authorization_id} was already consumed"
+        )
+    timestamp = _timestamp(now)
+    execution_id = "mmexec_" + hashlib.sha256(
+        f"{authorization.authorization_id}:{authorization.request_body_digest}".encode()
+    ).hexdigest()
+    values = [
+        execution_id,
+        authorization.authorization_id,
+        authorization.signature,
+        authorization.operator_id,
+        authorization.asset_id,
+        authorization.revision_id,
+        authorization.provider,
+        authorization.route_policy,
+        authorization.model,
+        authorization.endpoint_capability,
+        authorization.catalog_version,
+        authorization.catalog_digest,
+        authorization.quote_id,
+        authorization.approved_ceiling_microdollars,
+        authorization.request_body_digest,
+        ProviderExecutionStatus.SUBMITTING.value,
+        None,
+        timestamp,
+        timestamp,
+        authorization.recovery_authority_id,
+        authorization.recovery_verification_key_digest,
+    ]
+    values.append(_record_mac(signing_key, values))
+    ctx.execute(
+        "INSERT INTO multimedia_provider_executions VALUES "
+        "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        values,
+    )
+    row = ctx.execute(
+        "SELECT * FROM multimedia_provider_executions WHERE execution_id = ?",
+        [execution_id],
+    ).fetchone()
+    if row is None:
+        raise ProviderExecutionIntegrityError("submission intent disappeared")
+    return _record(row, signing_key=signing_key)
 
 
 def bind_provider_job(
@@ -366,6 +422,80 @@ def bind_provider_job(
         signing_key=signing_key,
         now=now,
     )
+
+
+def bind_provider_job_with_mutation(
+    *,
+    db_path: str,
+    execution_id: str,
+    provider_job_id: str,
+    signing_key: bytes,
+    now: datetime,
+    mutation: Callable[[WriteContext], None],
+) -> ProviderExecutionRecord:
+    """Bind a returned job and caller-owned receipt in one transaction."""
+    execution_id = _identifier("execution_id", execution_id)
+    provider_job_id = _identifier("provider_job_id", provider_job_id)
+    timestamp = _timestamp(now)
+    coordinator = FlockWriteCoordinator(_db_path(db_path))
+    with coordinator.acquire_write_context("multimedia.provider_execution.bind_with_mutation") as ctx:
+        _ensure_schema(ctx)
+        ctx.execute("BEGIN TRANSACTION")
+        try:
+            row = ctx.execute(
+                "SELECT * FROM multimedia_provider_executions WHERE execution_id = ?",
+                [execution_id],
+            ).fetchone()
+            if row is None:
+                raise ProviderExecutionIntegrityError("provider execution does not exist")
+            current = _record(row, signing_key=signing_key)
+            if current.provider_job_id is not None and current.provider_job_id != provider_job_id:
+                raise ProviderExecutionIntegrityError("provider job binding conflicts")
+            if current.status not in {
+                ProviderExecutionStatus.SUBMITTING,
+                ProviderExecutionStatus.SUBMITTED,
+            }:
+                raise ProviderExecutionIntegrityError("provider job binding state is invalid")
+            if current.status is ProviderExecutionStatus.SUBMITTING:
+                if datetime.fromisoformat(timestamp.replace("Z", "+00:00")) < datetime.fromisoformat(
+                    current.updated_at.replace("Z", "+00:00")
+                ):
+                    raise ProviderExecutionIntegrityError(
+                        "provider job binding predates current execution state"
+                    )
+                mutable_values = list(row[:15]) + [
+                    ProviderExecutionStatus.SUBMITTED.value,
+                    provider_job_id,
+                    row[17],
+                    timestamp,
+                    row[19],
+                    row[20],
+                ]
+                ctx.execute(
+                    "UPDATE multimedia_provider_executions SET status = ?, provider_job_id = ?, "
+                    "updated_at = ?, record_mac = ? WHERE execution_id = ?",
+                    [
+                        ProviderExecutionStatus.SUBMITTED.value,
+                        provider_job_id,
+                        timestamp,
+                        _record_mac(signing_key, mutable_values),
+                        execution_id,
+                    ],
+                )
+            mutation(ctx)
+            updated = ctx.execute(
+                "SELECT * FROM multimedia_provider_executions WHERE execution_id = ?",
+                [execution_id],
+            ).fetchone()
+            if updated is None:
+                raise ProviderExecutionIntegrityError("provider execution disappeared")
+            result = _record(updated, signing_key=signing_key)
+        except Exception:
+            ctx.execute("ROLLBACK")
+            raise
+        else:
+            ctx.execute("COMMIT")
+            return result
 
 
 def record_provider_observation(
@@ -523,6 +653,87 @@ def mark_submission_outcome_unknown(
         signing_key=signing_key,
         now=now,
     )
+
+
+def charge_and_mark_submission_unknown(
+    *,
+    db_path: str,
+    execution_id: str,
+    hold: CallHold,
+    signing_key: bytes,
+    now: datetime,
+) -> ProviderExecutionRecord:
+    """Atomically charge the full hold and quarantine an ambiguous submission."""
+    timestamp = _timestamp(now)
+    execution_id = _identifier("execution_id", execution_id)
+    ledger = BudgetLedger(_db_path(db_path))
+    coordinator = FlockWriteCoordinator(_db_path(db_path))
+    with coordinator.acquire_write_context("multimedia.provider_execution.charge_unknown") as ctx:
+        _ensure_schema(ctx)
+        ledger.ensure_schema_in_context(ctx)
+        ctx.execute("BEGIN TRANSACTION")
+        try:
+            row = ctx.execute(
+                "SELECT * FROM multimedia_provider_executions WHERE execution_id = ?",
+                [execution_id],
+            ).fetchone()
+            if row is None:
+                raise ProviderExecutionIntegrityError("provider execution does not exist")
+            current = _record(row, signing_key=signing_key)
+            if current.authorization_id != hold.run_id:
+                raise ProviderExecutionIntegrityError("call hold belongs to another authorization")
+            if current.status not in {
+                ProviderExecutionStatus.SUBMITTING,
+                ProviderExecutionStatus.OUTCOME_UNKNOWN,
+            }:
+                raise ProviderExecutionIntegrityError(
+                    "only an unbound submission can be charged as unknown"
+                )
+            if current.provider_job_id is not None:
+                raise ProviderExecutionIntegrityError(
+                    "job-bound execution cannot use submission-unknown accounting"
+                )
+            ledger.charge_full_hold_in_context(ctx, hold)
+            if current.status is ProviderExecutionStatus.OUTCOME_UNKNOWN:
+                result = current
+            else:
+                if datetime.fromisoformat(timestamp.replace("Z", "+00:00")) < datetime.fromisoformat(
+                    current.updated_at.replace("Z", "+00:00")
+                ):
+                    raise ProviderExecutionIntegrityError(
+                        "unknown outcome predates current execution state"
+                    )
+                mutable_values = list(row[:15]) + [
+                    ProviderExecutionStatus.OUTCOME_UNKNOWN.value,
+                    None,
+                    row[17],
+                    timestamp,
+                    row[19],
+                    row[20],
+                ]
+                ctx.execute(
+                    "UPDATE multimedia_provider_executions SET status = ?, updated_at = ?, "
+                    "record_mac = ? WHERE execution_id = ?",
+                    [
+                        ProviderExecutionStatus.OUTCOME_UNKNOWN.value,
+                        timestamp,
+                        _record_mac(signing_key, mutable_values),
+                        execution_id,
+                    ],
+                )
+                updated = ctx.execute(
+                    "SELECT * FROM multimedia_provider_executions WHERE execution_id = ?",
+                    [execution_id],
+                ).fetchone()
+                if updated is None:
+                    raise ProviderExecutionIntegrityError("provider execution disappeared")
+                result = _record(updated, signing_key=signing_key)
+        except Exception:
+            ctx.execute("ROLLBACK")
+            raise
+        else:
+            ctx.execute("COMMIT")
+            return result
 
 
 def get_provider_execution(
@@ -944,7 +1155,10 @@ __all__ = [
     "ProviderStatusObservation",
     "TERMINAL_STATUSES",
     "begin_provider_submission",
+    "begin_reserved_provider_submission",
     "bind_provider_job",
+    "bind_provider_job_with_mutation",
+    "charge_and_mark_submission_unknown",
     "get_provider_execution",
     "mark_submission_outcome_unknown",
     "record_external_recovery_evidence",

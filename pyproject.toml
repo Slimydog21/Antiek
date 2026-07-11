@@ -159,6 +159,7 @@ packages = [
   "interfaces",
   "compounding",
   "runtime",
+  "integrations",
 ]
 
 [tool.ruff]

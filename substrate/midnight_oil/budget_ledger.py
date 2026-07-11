@@ -180,6 +180,171 @@ class BudgetLedger:
                 if stmt:
                     ctx.execute(stmt)
 
+    def ensure_schema_in_context(self, ctx: Any) -> None:
+        """Create ledger tables inside a caller-owned write transaction."""
+        for stmt in _DDL.strip().split(";"):
+            stmt = stmt.strip()
+            if stmt:
+                ctx.execute(stmt)
+
+    def initialize_and_hold_in_context(
+        self,
+        ctx: Any,
+        *,
+        run_id: str,
+        role: str,
+        approved_ceiling_cents: int,
+        hold_id: str,
+    ) -> CallHold:
+        """Create one reservation and full-band hold in the caller's transaction.
+
+        Exact replay returns the existing hold. Any disagreement with persisted
+        monetary or ownership fields fails closed. The caller owns commit and
+        rollback; all accounting SQL remains inside this ledger authority.
+        """
+        if approved_ceiling_cents <= 0:
+            raise ValueError("approved_ceiling_cents must be positive")
+        if not run_id.strip() or not role.strip() or not hold_id.strip():
+            raise ValueError("run_id, role, and hold_id are required")
+        self.ensure_schema_in_context(ctx)
+        existing_hold = ctx.execute(
+            "SELECT run_id, role, projected_max_cents, state "
+            "FROM midnight_oil_call_holds WHERE hold_id = ?",
+            [hold_id],
+        ).fetchone()
+        if existing_hold is not None:
+            expected = (run_id, role, approved_ceiling_cents)
+            if tuple(existing_hold[:3]) != expected or existing_hold[3] != "open":
+                raise RuntimeError("persisted call hold conflicts with requested hold")
+            reservation = ctx.execute(
+                "SELECT ceiling_cents, spent_cents, held_cents, status "
+                "FROM midnight_oil_reservations WHERE run_id = ?",
+                [run_id],
+            ).fetchone()
+            if reservation != (approved_ceiling_cents, 0, approved_ceiling_cents, "reserved"):
+                raise RuntimeError("persisted reservation conflicts with open call hold")
+            role_budget = ctx.execute(
+                "SELECT budget_cents, spent_cents, held_cents, released "
+                "FROM midnight_oil_role_budgets WHERE run_id = ? AND role = ?",
+                [run_id, role],
+            ).fetchone()
+            if role_budget != (approved_ceiling_cents, 0, approved_ceiling_cents, False):
+                raise RuntimeError("persisted role budget conflicts with open call hold")
+            events = ctx.execute(
+                "SELECT event, role, amount_cents, remaining_cents "
+                "FROM midnight_oil_spend_ledger WHERE run_id = ? ORDER BY event",
+                [run_id],
+            ).fetchall()
+            if events != [
+                ("hold", role, approved_ceiling_cents, 0),
+                ("reserved", None, approved_ceiling_cents, 0),
+            ]:
+                raise RuntimeError("persisted audit ledger conflicts with open call hold")
+            return CallHold(hold_id, run_id, role, approved_ceiling_cents)
+
+        existing_reservation = ctx.execute(
+            "SELECT ceiling_cents, spent_cents, held_cents, status "
+            "FROM midnight_oil_reservations WHERE run_id = ?",
+            [run_id],
+        ).fetchone()
+        if existing_reservation is not None:
+            raise RuntimeError("reservation exists without the deterministic call hold")
+
+        now = _now_utc()
+        ctx.execute(
+            "INSERT INTO midnight_oil_reservations "
+            "(run_id, ceiling_cents, spent_cents, held_cents, freed_cents, status, "
+            "created_at, updated_at) VALUES (?, ?, 0, ?, 0, 'reserved', ?, ?)",
+            [run_id, approved_ceiling_cents, approved_ceiling_cents, now, now],
+        )
+        ctx.execute(
+            "INSERT INTO midnight_oil_role_budgets "
+            "(run_id, role, budget_cents, spent_cents, held_cents, released) "
+            "VALUES (?, ?, ?, 0, ?, FALSE)",
+            [run_id, role, approved_ceiling_cents, approved_ceiling_cents],
+        )
+        ctx.execute(
+            "INSERT INTO midnight_oil_call_holds "
+            "(hold_id, run_id, role, projected_max_cents, state, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, 'open', ?, ?)",
+            [hold_id, run_id, role, approved_ceiling_cents, now, now],
+        )
+        self._append_ledger(
+            ctx,
+            run_id=run_id,
+            role=None,
+            event="reserved",
+            amount_cents=approved_ceiling_cents,
+            remaining_cents=0,
+        )
+        self._append_ledger(
+            ctx,
+            run_id=run_id,
+            role=role,
+            event="hold",
+            amount_cents=approved_ceiling_cents,
+            remaining_cents=0,
+        )
+        return CallHold(hold_id, run_id, role, approved_ceiling_cents)
+
+    def charge_full_hold_in_context(self, ctx: Any, hold: CallHold) -> RemainingBalance:
+        """Charge one open hold at its persisted ceiling in the caller's transaction."""
+        hold_row = ctx.execute(
+            "SELECT run_id, role, projected_max_cents, state "
+            "FROM midnight_oil_call_holds WHERE hold_id = ?",
+            [hold.hold_id],
+        ).fetchone()
+        if hold_row is None:
+            raise ReservationNotFound(hold.hold_id)
+        run_id, role, projected, state = hold_row
+        if (run_id, role, projected) != (
+            hold.run_id,
+            hold.role,
+            hold.projected_max_cents,
+        ):
+            raise RuntimeError("persisted call hold conflicts with supplied hold")
+        if state == "settled":
+            balance = self._load_balance(ctx, run_id)
+            if balance.spent_cents != projected or balance.held_cents != 0:
+                raise RuntimeError("settled full-band hold conflicts with reservation")
+            return balance
+        if state != "open":
+            raise RuntimeError(f"Hold {hold.hold_id} already released")
+
+        updated = ctx.execute(
+            "UPDATE midnight_oil_call_holds SET state = 'settled', "
+            "updated_at = CURRENT_TIMESTAMP WHERE hold_id = ? AND state = 'open' RETURNING 1",
+            [hold.hold_id],
+        ).fetchone()
+        if updated is None:
+            raise RuntimeError(f"Hold {hold.hold_id} already settled or released")
+        reservation = ctx.execute(
+            "UPDATE midnight_oil_reservations SET held_cents = held_cents - ?, "
+            "spent_cents = spent_cents + ?, status = 'exhausted', "
+            "updated_at = CURRENT_TIMESTAMP WHERE run_id = ? AND held_cents >= ? RETURNING 1",
+            [projected, projected, run_id, projected],
+        ).fetchone()
+        if reservation is None:
+            raise ReservationNotFound(run_id)
+        role_update = ctx.execute(
+            "UPDATE midnight_oil_role_budgets SET spent_cents = spent_cents + ?, "
+            "held_cents = held_cents - ? WHERE run_id = ? AND role = ? "
+            "AND held_cents >= ? RETURNING 1",
+            [projected, projected, run_id, role, projected],
+        ).fetchone()
+        if role_update is None:
+            raise RuntimeError("role budget cannot absorb the full-band charge")
+        balance = self._load_balance(ctx, run_id)
+        self._append_ledger(
+            ctx,
+            run_id=run_id,
+            role=role,
+            event="debit",
+            amount_cents=projected,
+            remaining_cents=balance.remaining_cents,
+        )
+        return balance
+
     # --- transactional wrapper -------------------------------------------
 
     @contextlib.contextmanager
