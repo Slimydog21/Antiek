@@ -1,8 +1,68 @@
 {
-  "generated_at": "2026-07-11T07:17:59.252612+00:00",
+  "generated_at": "2026-07-11T10:31:11.860354+00:00",
   "lint": "reachability_gate_py",
   "schema_version": 1,
   "violations": [
+    {
+      "col": 0,
+      "kind": "package:unimported:ad_targeting",
+      "line": 1,
+      "path": "substrate/ad_targeting/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:advertisers",
+      "line": 1,
+      "path": "substrate/advertisers/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:analytics",
+      "line": 1,
+      "path": "substrate/analytics/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:autoresearch",
+      "line": 1,
+      "path": "substrate/autoresearch/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:cross_graph_writer",
+      "line": 1,
+      "path": "substrate/cross_graph_writer/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:deletion_worker",
+      "line": 1,
+      "path": "substrate/deletion_worker/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:edit",
+      "line": 1,
+      "path": "substrate/edit/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:federation",
+      "line": 1,
+      "path": "substrate/federation/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:invariants",
+      "line": 1,
+      "path": "substrate/invariants/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:multi_user.crdt_scaffold",
+      "line": 1,
+      "path": "substrate/multi_user/crdt_scaffold/__init__.py"
+    },
     {
       "col": 0,
       "kind": "export:uncalled:guarded_send_to_author",
@@ -11,9 +71,33 @@
     },
     {
       "col": 0,
+      "kind": "package:unimported:public_graph",
+      "line": 1,
+      "path": "substrate/public_graph/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:public_notes_ingest",
+      "line": 1,
+      "path": "substrate/public_notes_ingest/__init__.py"
+    },
+    {
+      "col": 0,
       "kind": "export:uncalled:guard_servable_body",
       "line": 223,
       "path": "substrate/rights/arxiv_tiers.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:telemetry_preferences",
+      "line": 1,
+      "path": "substrate/telemetry_preferences/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:trust_center",
+      "line": 1,
+      "path": "substrate/trust_center/__init__.py"
     }
   ]
 }

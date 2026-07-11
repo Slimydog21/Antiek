@@ -677,3 +677,205 @@ def test_unconfirmed_reexport_does_not_credit_mount(tmp_path: Path) -> None:
         f"a confirmed module-level re-export must clear the mount, got "
         f"{green.returncode}\n{green.stdout}\n{green.stderr}"
     )
+
+
+# =========================================================================== #
+# CHECK C — unimported substrate packages (the doctrine "wiring is the
+# constraint" backlog, made mechanical). A substrate/** package with a public
+# API that no non-test file OUTSIDE the package imports is built-but-unwired.
+# =========================================================================== #
+
+# A substrate package that exposes a public API (non-empty __all__ + a def).
+# 'build_widget' has no lexicon token, so Check B never touches it — these tests
+# isolate Check C.
+_PUBLIC_PKG_INIT = (
+    '__all__ = ["build_widget"]\n\n\ndef build_widget(x: int) -> int:\n    return x\n'
+)
+
+
+# --------------------------------------------------------------------------- #
+# (k) seed an unimported public-API package -> RED; add a NON-TEST product
+#     importer (from substrate.<pkg> import ...) -> GREEN. This green half is
+#     also the "legitimately imported by a product file -> NOT flagged" case.
+# --------------------------------------------------------------------------- #
+def test_unimported_substrate_package_reds_then_greens(tmp_path: Path) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _build_clean_tree(root)
+
+    # The clean tree has no substrate package dir (only a bare module), so mint
+    # + clean run are green before the seed.
+    assert (
+        _run([sys.executable, str(gate), "--write-baseline"], cwd=root).returncode == 0
+    )
+    assert _run([sys.executable, str(gate)], cwd=root).returncode == 0
+
+    # SEED: a substrate package with a public API that NOTHING imports -> RED.
+    _write(root / "substrate" / "orphan_lib" / "__init__.py", _PUBLIC_PKG_INIT)
+    red = _run([sys.executable, str(gate)], cwd=root)
+    assert red.returncode == 1, (
+        f"expected RED=1 on a NEW unimported substrate package, got "
+        f"{red.returncode}\n{red.stdout}\n{red.stderr}"
+    )
+    combined = red.stdout + red.stderr
+    assert "orphan_lib" in combined, combined
+    assert "substrate/orphan_lib/__init__.py:1" in combined, combined
+
+    # FIX: a non-test PRODUCT module imports it -> GREEN (this is also the
+    # "product import clears the flag" case).
+    _write(
+        root / "interfaces" / "research" / "api" / "uses_orphan.py",
+        "from substrate.orphan_lib import build_widget\n\n\n"
+        "def go(x: int) -> int:\n    return build_widget(x)\n",
+    )
+    green = _run([sys.executable, str(gate)], cwd=root)
+    assert green.returncode == 0, (
+        f"expected GREEN=0 after a product file imports the package, got "
+        f"{green.returncode}\n{green.stdout}\n{green.stderr}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# (l) a package imported ONLY by a test file is STILL flagged — tests do not
+#     count as product wiring (the whole point).
+# --------------------------------------------------------------------------- #
+def test_package_imported_only_by_test_still_flagged(tmp_path: Path) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    _write(root / "substrate" / "testonly_lib" / "__init__.py", _PUBLIC_PKG_INIT)
+    # A test file that imports AND uses it — must NOT rescue it.
+    _write(
+        root / "tests" / "test_uses_lib.py",
+        "from substrate.testonly_lib import build_widget\n\n\n"
+        "def test_it() -> None:\n    assert build_widget(1) == 1\n",
+    )
+    res = _run([sys.executable, str(gate)], cwd=root)  # no baseline -> all NEW
+    assert res.returncode == 1, (
+        f"a package imported only by a test must stay flagged, got "
+        f"{res.returncode}\n{res.stdout}\n{res.stderr}"
+    )
+    assert "testonly_lib" in res.stdout + res.stderr
+
+
+# --------------------------------------------------------------------------- #
+# (m) scope discipline — the PUBLIC-API GATE. A package with an EMPTY __all__
+#     (no public surface) is SKIPPED even when unimported; a sibling with a real
+#     public API IS flagged. Locks "a pure-private helper is not the target".
+# --------------------------------------------------------------------------- #
+def test_no_public_api_package_skipped_public_one_flagged(tmp_path: Path) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    # Empty __all__ + only a private helper -> declares no public surface -> SKIP.
+    _write(
+        root / "substrate" / "private_only" / "__init__.py",
+        "__all__: list[str] = []\n\n\ndef _helper(x: int) -> int:\n    return x\n",
+    )
+    # A genuine public-API package, unimported -> flagged.
+    _write(root / "substrate" / "public_lib" / "__init__.py", _PUBLIC_PKG_INIT)
+
+    res = _run([sys.executable, str(gate)], cwd=root)  # no baseline -> NEW
+    assert res.returncode == 1, f"{res.stdout}\n{res.stderr}"
+    combined = res.stdout + res.stderr
+    assert "public_lib" in combined, f"public-API package must flag:\n{combined}"
+    assert "private_only" not in combined, (
+        f"empty-__all__ package (no public surface) must be SKIPPED:\n{combined}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# (n) PARENT-BARREL DECISION — a child re-exported by the ROOT substrate barrel
+#     (substrate/__init__.py) is NOT thereby credited: the root barrel is
+#     excluded as an importer, so the child stays flagged. Contrast: a DIRECT
+#     relative import BY a sibling package DOES credit it.
+# --------------------------------------------------------------------------- #
+def test_root_barrel_reexport_does_not_credit_sibling_import_does(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    _write(root / "substrate" / "child_lib" / "__init__.py", _PUBLIC_PKG_INIT)
+    # The ROOT barrel re-exports the child — must NOT credit it as wired.
+    _write(root / "substrate" / "__init__.py", "from substrate.child_lib import build_widget\n")
+
+    red = _run([sys.executable, str(gate)], cwd=root)  # no baseline -> NEW
+    assert red.returncode == 1, (
+        f"root-barrel re-export must NOT credit the child, got {red.returncode}\n"
+        f"{red.stdout}\n{red.stderr}"
+    )
+    assert "child_lib" in red.stdout + red.stderr
+
+    # A genuine SIBLING consumer (a module in another package, imported via a
+    # relative import) DOES credit it -> cleared. consumer_pkg has an empty
+    # __init__ (no public surface) so it is itself skipped, isolating the credit.
+    _write(root / "substrate" / "consumer_pkg" / "__init__.py", "")
+    _write(
+        root / "substrate" / "consumer_pkg" / "uses.py",
+        "from ..child_lib import build_widget\n\n\n"
+        "def go() -> int:\n    return build_widget(1)\n",
+    )
+    green = _run([sys.executable, str(gate)], cwd=root)
+    assert green.returncode == 0, (
+        f"a sibling relative import must credit the package, got "
+        f"{green.returncode}\n{green.stdout}\n{green.stderr}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# (o) baseline behavior for Check C: a grandfathered finding -> exit 0; a NEW
+#     one -> exit 1; and shrink-only --write-baseline REFUSES a new Check-C key
+#     without --force-baseline.
+# --------------------------------------------------------------------------- #
+def test_check_c_baseline_grandfather_and_shrink_only(tmp_path: Path) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _build_clean_tree(root)
+
+    # Clean mint (no findings yet).
+    assert (
+        _run([sys.executable, str(gate), "--write-baseline"], cwd=root).returncode == 0
+    )
+
+    # SEED one dormant package.
+    _write(root / "substrate" / "dormant_a" / "__init__.py", _PUBLIC_PKG_INIT)
+
+    # --write-baseline WITHOUT --force must REFUSE (shrink-only): dormant_a is a
+    # NEW key relative to the empty baseline.
+    refuse = _run([sys.executable, str(gate), "--write-baseline"], cwd=root)
+    assert refuse.returncode == 1, (
+        f"shrink-only must refuse a NEW Check-C key, got {refuse.returncode}\n"
+        f"{refuse.stdout}\n{refuse.stderr}"
+    )
+    combined = refuse.stdout + refuse.stderr
+    assert "shrink-only" in combined, combined
+    assert "dormant_a" in combined, combined
+
+    # --force-baseline grandfathers it.
+    assert (
+        _run(
+            [sys.executable, str(gate), "--write-baseline", "--force-baseline"],
+            cwd=root,
+        ).returncode
+        == 0
+    )
+    # Now a plain run is GREEN — the finding is grandfathered.
+    assert _run([sys.executable, str(gate)], cwd=root).returncode == 0
+
+    # SEED a SECOND dormant package -> a NEW finding reds; the grandfathered one
+    # is NOT re-reported.
+    _write(root / "substrate" / "dormant_b" / "__init__.py", _PUBLIC_PKG_INIT)
+    new = _run([sys.executable, str(gate)], cwd=root)
+    assert new.returncode == 1, (
+        f"a NEW unimported package must red past the baseline, got "
+        f"{new.returncode}\n{new.stdout}\n{new.stderr}"
+    )
+    combined = new.stdout + new.stderr
+    assert "dormant_b" in combined, f"the new package must be reported:\n{combined}"
+    assert "dormant_a" not in combined, (
+        f"the grandfathered package must NOT be re-reported:\n{combined}"
+    )

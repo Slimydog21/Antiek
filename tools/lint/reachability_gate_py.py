@@ -20,7 +20,10 @@ that drove the 348-PR runaway:
     so the paid Krea path still fires on api-key-presence alone.
 
 All three are Python/backend — outside the reading-surface gate's scan. This
-gate closes the class with two mechanical, AST-based checks.
+gate closes the class with three mechanical, AST-based checks (A + B target the
+enforcement-export / route-surface holes above; C mechanizes the broader
+doctrine-completeness-audit class — a whole substrate library built and tested
+but wired into no product loop).
 
 Design note (mirrors the TS gate's rigor #1 — one gate, one surface): this is a
 NEW sibling, not an edit to ``reachability_gate.py``. That gate owns the reading
@@ -29,7 +32,7 @@ baseline machinery in ``tools/lints/baseline.py`` VERBATIM (no re-invented
 serialization).
 
 ────────────────────────────────────────────────────────────────────────────
-THE TWO CHECKS
+THE THREE CHECKS
 ────────────────────────────────────────────────────────────────────────────
 
 **Check A — unmounted API routers.** In ``interfaces/**/api/*_routes.py``, a
@@ -92,11 +95,56 @@ a pure-data helper exported for future use is not the target; a claimed
 caller is exactly the money-safety hole. Narrowing to the lexicon keeps the
 gate from flagging every dormant data export in ``substrate/``.
 
-Both checks are GRANDFATHERED through the dated, shrink-only baseline
+**Check C — unimported substrate packages.** Where Check B asks "is this ONE
+exported enforcement symbol called", Check C asks the doctrine-audit's coarser
+question: "does ANY product-loop code import this whole package at all". For
+every package DIRECTORY under ``substrate/`` (any depth) whose ``__init__.py``
+exposes a PUBLIC API — a non-empty literal ``__all__`` OR at least one public
+(non-underscore) top-level ``def`` / ``async def`` / ``class`` defined in the
+``__init__`` itself — the whole non-test product tree is searched for ANY file
+OUTSIDE that package's own directory that imports it: ``from substrate.<pkg>[...]
+import ...``, ``import substrate.<pkg>[...]``, ``from substrate import <pkg>`` (the
+child package named directly), or a RELATIVE import in a sibling package
+(``from ..<pkg> import ...``) that resolves to a module under the package's
+directory. A package that ZERO such non-test importers reach is a
+"built-but-unwired" library: it exists, its own tests pass, yet no product-loop
+code imports it — the platform's #1 gate ("wiring is the constraint") made
+mechanical, and the doctrine-completeness-audit's class distinct from Check B's
+per-export ``export:uncalled:*`` class. Finding kind ``package:unimported:<pkg>``
+(``<pkg>`` the substrate-relative dotted path, e.g. ``multimedia`` or
+``dispatch.providers``) — identity-distinct from Check B so baseline keys never
+collide — anchored at ``substrate/<pkg>/__init__.py:1``.
+
+FAIL-SAFE DESIGN CHOICE (Check C) = FLAG-and-baseline. Unlike Checks A/B (which
+red on a NEW stranding), Check C is a BACKLOG detector: it surfaces EVERY
+unimported public-API package, and the shrink-only dated baseline grandfathers
+today's intentionally-dormant set. The scan does NOT try to guess "intentional"
+— it flags all; the operator baselines the known-dormant ones (each
+grandfathered entry is a wiring debt that pays down as packages get wired and
+their baseline entries shrink). Two scoping rules keep the flag honest:
+
+  * PUBLIC-API GATE (scope discipline) — a package whose ``__init__`` declares an
+    EMPTY ``__all__``, or exposes no ``__all__`` and no public top-level
+    def/class at all (a pure-private helper, or a bare re-export barrel with
+    neither ``__all__`` nor a public def/class), is SKIPPED: only a package that
+    advertises a public surface is a wiring target. ``substrate/__init__.py`` (the
+    root) is never itself a target.
+  * PARENT-BARREL DECISION — an import THROUGH the root barrel does NOT credit a
+    child. ``substrate/__init__.py`` is EXCLUDED from the importer set, so a child
+    it re-exports is not thereby counted as wired; otherwise a single
+    ``from .child import *`` in the root barrel would mask every package and gut
+    the check. A DIRECT relative import BY a sibling package (``substrate/a``
+    doing ``from ..b import x``) DOES count as wiring ``b`` — that is a genuine
+    cross-package consumer, not an aggregation barrel. Whether that consumer is
+    itself reached from the product loop is the transitive/cycle question Check C
+    deliberately does not chase (see CANNOT-catch).
+
+All three checks are GRANDFATHERED through the dated, shrink-only baseline
 ``tools/lints/baselines/reachability_py.json`` so the gate reds ONLY on code
 that becomes unreachable AFTER this lands — never on today's legitimately
 dormant set. Exit 0 = clean (every current finding grandfathered); exit 1 = a
-NEW unmounted router / uncalled enforcement export, printed ``path:line:``.
+NEW unmounted router / uncalled enforcement export / unimported substrate
+package, printed ``path:line:``.
 
 ────────────────────────────────────────────────────────────────────────────
 WHAT THIS GATE CANNOT CATCH (intellectual honesty — mirrors the TS gate's
@@ -166,14 +214,44 @@ CANNOT-catch list; rigor #1). Claims ONLY what its AST scan literally matches.
   - **Exported classes / constants** — Check B flags only ``def`` / ``async def``
     callables (the enforcement-seam shape). A class exported in ``__all__`` and
     never instantiated is not claimed here.
+  - **Dynamic / importlib package load (Check C)** — a package pulled in only via
+    ``importlib.import_module("substrate.x")``, a plugin / entry-point registry,
+    or a settings-driven module string has no literal ``import`` node naming it,
+    so it reads as unimported (an over-flag → grandfathered into the baseline).
+    Out of reach → review-owned.
+  - **CLI / entry-point-only package (Check C)** — a package wired ONLY as a
+    console-script ``[project.scripts]`` target in ``pyproject.toml`` (never
+    imported from any ``.py``) has no in-tree importer the AST scan sees, so it
+    over-flags. Grandfather it into the baseline. Review-owned.
+  - **Transitive parent-barrel re-export (Check C)** — a package reached ONLY
+    because the root ``substrate/__init__.py`` re-exports its symbols and product
+    code imports them ``from substrate`` is deliberately NOT credited: the root
+    barrel is excluded as an importer (the PARENT-BARREL DECISION above), so such
+    a package over-flags and is baselined. Tracing symbol-level re-export chains
+    through the barrel is out of scope — the direct ``from substrate.<pkg>`` /
+    ``from substrate import <pkg>`` forms are what the scan credits.
+  - **Mutually-importing dormant cluster (Check C)** — two (or more) substrate
+    packages that import each other but that NO product code reaches read as
+    WIRED (each imports the other), a false negative. Import-cycle liveness is a
+    call-graph question left to review — the same advisory line Check A draws at
+    "register fn defined but never called".
+  - **Re-export-only package with no ``__all__`` (Check C)** — a package whose
+    ``__init__`` only does ``from .sub import X`` with neither an ``__all__`` nor
+    a public top-level def/class is treated as declaring NO public surface and is
+    SKIPPED (its intended public API is unknowable from the AST). Under-scoped by
+    design (the PUBLIC-API GATE) — not a false-negative claim.
 
 Everything in the FINDING shapes has a concrete literal signature the AST
 matches (a module-level ``APIRouter`` assignment / a factory returning one; an
 ``include_router`` arg whose import resolves — directly or through a bounded
 package-``__init__`` re-export chain — to the defining module; an ``__all__``
 string + a same-named ``def``; a ``Name`` load / attribute reference, or a used
-``as``-alias crediting its original — never a bare unused import). Nothing else
-is mechanically enforced.
+``as``-alias crediting its original — never a bare unused import; a
+``substrate/<pkg>/__init__.py`` with a non-empty ``__all__`` or a public
+top-level def/class, and the absence anywhere in the non-test tree of an
+``import substrate.<pkg>`` / ``from substrate.<pkg>`` / ``from substrate import
+<pkg>`` / resolving relative import that names it). Nothing else is mechanically
+enforced.
 
 ────────────────────────────────────────────────────────────────────────────
 FAIRNESS — why a (future) HARD gate is defensible (fairness #2)
@@ -730,6 +808,166 @@ def find_uncalled_enforcement_exports(
     return findings
 
 
+# ── Check C — unimported substrate packages ─────────────────────────────────
+def _package_has_public_api(tree: ast.Module) -> bool:
+    """True iff this package ``__init__`` advertises a PUBLIC surface — the scope
+    gate for Check C. Two forms count (mirrors the spec's public-API rule):
+
+      * a NON-EMPTY literal ``__all__`` (the declared export list), OR
+      * at least one public (non-underscore) top-level ``def`` / ``async def`` /
+        ``class`` DEFINED in the ``__init__`` itself.
+
+    A package with an EMPTY ``__all__``, or with neither an ``__all__`` nor a
+    public top-level def/class (a pure-private helper, or a bare re-export barrel
+    that only ``from .sub import X`` with no ``__all__``), declares no public
+    surface and is SKIPPED — its intended public API is unknowable from the AST,
+    and a private helper is not the wiring target. Re-export-only names are
+    intentionally NOT treated as a public surface here (documented in the
+    CANNOT-catch list)."""
+    exported = _dunder_all(tree)
+    if exported:  # non-empty list -> declared public surface
+        return True
+    for node in tree.body:
+        if isinstance(
+            node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+        ) and not node.name.startswith("_"):
+            return True
+    return False
+
+
+def _module_dotted(importer: Path, module: str | None, level: int) -> str | None:
+    """The dotted module path a ``from <module> import …`` targets, IF it resolves
+    to an in-repo module under ``substrate/`` — else None. Reuses
+    ``_resolve_from_module`` (which handles both absolute ``level==0`` and
+    relative ``level>=1`` forms) to get the defining file, then converts the
+    repo-relative path back to a dotted module. ``substrate/x/__init__.py`` ->
+    ``substrate.x``; ``substrate/x/sub.py`` -> ``substrate.x.sub``."""
+    rel = _resolve_from_module(importer, module, level)
+    if rel is None:
+        return None
+    if rel == "substrate/__init__.py":
+        return "substrate"
+    if not (rel == "substrate.py" or rel.startswith("substrate/")):
+        return None
+    if rel.endswith("/__init__.py"):
+        rel = rel[: -len("/__init__.py")]
+    elif rel.endswith(".py"):
+        rel = rel[: -len(".py")]
+    return rel.replace("/", ".")
+
+
+def _imported_substrate_modules(importer: Path, tree: ast.Module) -> set[str]:
+    """The set of ``substrate.*`` dotted module paths this file imports — the
+    evidence Check C uses to decide a package is WIRED.
+
+    Covers every import shape that literally names a substrate module:
+
+      * ``import substrate.x`` / ``import substrate.x.sub`` (``ast.Import``) — the
+        alias's dotted name, taken verbatim when it is ``substrate`` or under it.
+      * ``from substrate.x[...] import Y`` (absolute ``ast.ImportFrom``) — the base
+        module resolved to its dotted path.
+      * ``from substrate import x`` — the base is ``substrate`` and the imported
+        NAME ``x`` names the child package directly, so ``substrate.x`` is added
+        (this is the one non-``substrate.<pkg>`` shape that still directly names a
+        child; symbol re-exports off the root barrel are NOT chased — see the
+        parent-barrel decision).
+      * ``from ..x import Y`` (relative ``ast.ImportFrom`` in a sibling package) —
+        resolved through ``_resolve_from_module`` to its dotted substrate path.
+
+    For each ``from`` import the imported NAMES are also appended as
+    ``base + "." + name`` candidates so ``from substrate import x`` and
+    ``from substrate.pkg import subpkg`` credit the named child; a candidate that
+    matches no real package is harmless (the WIRED check only compares against
+    actual package module paths)."""
+    mods: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "substrate" or alias.name.startswith("substrate."):
+                    mods.add(alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            base = _module_dotted(importer, node.module, node.level)
+            if base is None:
+                continue
+            mods.add(base)
+            for alias in node.names:
+                if alias.name != "*":
+                    mods.add(f"{base}.{alias.name}")
+    return mods
+
+
+def _substrate_package_inits() -> list[Path]:
+    """Every ``substrate/**/__init__.py`` (any depth) EXCEPT the root
+    ``substrate/__init__.py``, excluding tests/vendored — the Check C candidate
+    packages before the public-API gate is applied."""
+    if not _SUBSTRATE.exists():
+        return []
+    out: list[Path] = []
+    for p in _SUBSTRATE.rglob("__init__.py"):
+        if _is_excluded(p) or _is_test_path(p):
+            continue
+        if p.relative_to(_REPO).as_posix() == "substrate/__init__.py":
+            continue
+        out.append(p)
+    return sorted(out)
+
+
+def find_unimported_substrate_packages(
+    trees: dict[Path, ast.Module],
+    substrate_imports: dict[str, set[str]],
+) -> list[Finding]:
+    """substrate/** packages that expose a public API yet are imported by ZERO
+    non-test files OUTSIDE the package itself (the built-but-unwired library —
+    the doctrine-completeness-audit class). See ``_package_has_public_api`` for
+    the public-API scope gate and the module docstring for the fail-safe
+    FLAG-and-baseline bias + the parent-barrel decision."""
+    findings: list[Finding] = []
+    for init_path in _substrate_package_inits():
+        tree = trees.get(init_path)
+        if tree is None:
+            continue
+        if not _package_has_public_api(tree):
+            continue
+        pkg_dir_rel = init_path.parent.relative_to(_REPO).as_posix()  # substrate/x
+        pkg_module = pkg_dir_rel.replace("/", ".")  # substrate.x
+        pkg_id = pkg_dir_rel[len("substrate/") :].replace("/", ".")  # x
+        inside_prefix = pkg_dir_rel + "/"
+        wired = False
+        for importer_rel, mods in substrate_imports.items():
+            # Self-exclusion: an importer inside the package's own directory does
+            # not count. Root-barrel exclusion (parent-barrel decision): a child
+            # re-exported by substrate/__init__.py is not thereby wired.
+            if importer_rel == "substrate/__init__.py":
+                continue
+            if importer_rel.startswith(inside_prefix):
+                continue
+            for m in mods:
+                if m == pkg_module or m.startswith(pkg_module + "."):
+                    wired = True
+                    break
+            if wired:
+                break
+        if wired:
+            continue
+        rel = init_path.relative_to(_REPO).as_posix()
+        findings.append(
+            (
+                init_path,
+                1,
+                f"package:unimported:{pkg_id}",
+                f"{rel}:1: reachability — substrate package '{pkg_id}' exposes a "
+                f"public API (__all__ or public top-level def/class) but is "
+                f"imported by ZERO non-test files OUTSIDE the package. A built + "
+                f"tested library that no product-loop code imports is unreachable "
+                f"(the doctrine 'wiring is the constraint' hole). Import it from a "
+                f"product path (from substrate.{pkg_id} import ...) or remove it. "
+                f"Dynamic/importlib/entry-point/parent-barrel wiring is "
+                f"review-owned (see reachability_gate_py.py docstring).",
+            )
+        )
+    return findings
+
+
 # ── Findings → baseline keys ────────────────────────────────────────────────
 #
 # Identity is (path, line, col=0, kind). The kind embeds the product/symbol name
@@ -747,13 +985,14 @@ def _finding_to_key(finding: Finding) -> ViolationKey:
 
 
 def find_all() -> list[Finding]:
-    """All Python-surface reachability findings: unmounted routers + uncalled
-    enforcement exports."""
+    """All Python-surface reachability findings: unmounted routers (A) + uncalled
+    enforcement exports (B) + unimported substrate packages (C)."""
     product_files = _product_py_files()
     trees: dict[Path, ast.Module] = {}
     include_local: dict[str, set[str]] = {}
     import_map: dict[str, dict[str, set[tuple[str, str]]]] = {}
     reexport_map: dict[str, dict[str, set[tuple[str, str]]]] = {}
+    substrate_imports: dict[str, set[str]] = {}
     referenced: set[str] = set()
     for f in product_files:
         tree = _parse(f)
@@ -764,18 +1003,21 @@ def find_all() -> list[Finding]:
         include_local[rel] = _include_router_arg_names(tree)
         import_map[rel] = _import_map(f, tree)
         reexport_map[rel] = _reexport_map(f, tree)
+        substrate_imports[rel] = _imported_substrate_modules(f, tree)
         referenced |= _reachability_reference_names(tree)
     routers = find_unmounted_routers(trees, include_local, import_map, reexport_map)
     exports = find_uncalled_enforcement_exports(trees, referenced)
-    return routers + exports
+    packages = find_unimported_substrate_packages(trees, substrate_imports)
+    return routers + exports + packages
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="reachability_gate_py",
         description=(
-            "Flag stranded backend code: unmounted API routers and uncalled "
-            "enforcement exports. Informational-first; shrink-only baseline."
+            "Flag stranded backend code: unmounted API routers, uncalled "
+            "enforcement exports, and unimported substrate packages. "
+            "Informational-first; shrink-only baseline."
         ),
     )
     parser.add_argument(
