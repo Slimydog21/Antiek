@@ -44,8 +44,9 @@ def draft_merge(req: DraftMergeRequest) -> dict[str, Any]:
     store = _store()
     docs = []
     try:
+        # Load by id only so cross-parent twins surface as 409 (policy), not 404.
         for tid in req.twin_ids:
-            docs.append(store.load(tid, parent_asset_id=req.parent_asset_id))
+            docs.append(store.load(tid))
         result = build_draft_merge(
             parent_asset_id=req.parent_asset_id,
             parent_html=req.parent_html,

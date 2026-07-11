@@ -44,7 +44,7 @@ def _escape(text: str) -> str:
     return html.escape(text or "", quote=True)
 
 
-def _uniq(items: Sequence[str]) -> list[str]:
+def _uniq(items: Iterable[str]) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []
     for raw in items:
