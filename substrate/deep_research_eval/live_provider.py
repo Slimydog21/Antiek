@@ -56,13 +56,18 @@ Live mode = real machinery, full stop (no measurement theater)
     identity-registry provenance, also natural name collisions, deliberate
     name-mimicry, and ``functools.wraps`` wrappers (which copy ``__dict__``
     and ``__wrapped__`` but are still a different OBJECT than the registered
-    real seam). The remaining out-of-scope class is now narrow and pure
-    sabotage: importing this module and calling its private ``_register_real``
-    on a fake, or mutating ``_REAL_BY_ROLE`` by hand. The structural guarantee
-    stands: the constructor of record has no dishonest path, and every public
-    mutation path (direct construction, ``dataclasses.replace``) re-validates
-    the flag/provenance invariant — the adapter guards measurement integrity
-    against mistakes, not against an operator deliberately sabotaging their
+    real seam), equality-spoofing impostors (strict ``is``, not ``__eq__``),
+    and subclass ``__post_init__`` overrides (``__init_subclass__`` blocks
+    subclassing). The remaining out-of-scope class is now the irreducible
+    floor and pure sabotage: ``object.__new__`` + ``object.__setattr__``
+    (which skip EVERY Python validator for ANY object — the same reach as
+    editing this file), or importing this module and calling its private
+    ``_register_real`` / mutating ``_REAL_BY_ROLE`` by hand. The structural
+    guarantee stands: the constructor of record has no dishonest path, and
+    every public mutation path (direct construction, ``dataclasses.replace``)
+    re-validates the flag/provenance invariant — the adapter guards
+    measurement integrity against mistakes, not against an operator
+    deliberately sabotaging their
     own eval with the module's own internals.
 
 Fail closed to ``ProviderFailure`` (the core honesty property)
@@ -154,7 +159,7 @@ import uuid
 import weakref
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, TypeVar
+from typing import Any, TypeVar, final
 
 from .dataset import Query
 from .live_judge import _describe_exception
@@ -379,6 +384,7 @@ def _is_real_machinery(seam: object) -> bool:
     return False
 
 
+@final
 @dataclass(frozen=True)
 class LiveResearchProvider:
     """Callable ``ProviderFn`` running the real product research path per
@@ -394,9 +400,12 @@ class LiveResearchProvider:
     seam, so an offline-flagged provider can never run real machinery or
     spend. Provenance is OBJECT IDENTITY (a module-private token / direct
     ``is`` checks), not names — natural name collisions and deliberate
-    name-mimicry both fail. The only remaining bypass is attaching this
-    module's private token to a fake by hand — pure sabotage, documented
-    out of scope in the module docstring's threat model.
+    name-mimicry both fail. Subclassing is blocked (``__init_subclass__``)
+    so ``__post_init__`` cannot be overridden away. The only remaining
+    bypasses are ``object.__new__``/``object.__setattr__`` (which skip ALL
+    validation for ANY Python object — equivalent to editing this file) and
+    calling this module's private registry by hand — both pure sabotage,
+    documented out of scope in the module docstring's threat model.
     """
 
     gather: GatherFn
@@ -406,6 +415,15 @@ class LiveResearchProvider:
     loop_fn: object | None = None
     allow_live: bool = False
     per_query_timeout_s: float | None = DEFAULT_PER_QUERY_TIMEOUT_S
+
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        # A subclass could override __post_init__ to skip the flag⇔provenance
+        # invariant and mint an allow_live=True provider around fakes. This
+        # class is the sole authority; it is not an extension point.
+        raise TypeError(
+            "LiveResearchProvider is final: subclassing could override the "
+            "provenance invariant. Construct via build_live_provider."
+        )
 
     def __post_init__(self) -> None:
         if self.loop_fn is not None:

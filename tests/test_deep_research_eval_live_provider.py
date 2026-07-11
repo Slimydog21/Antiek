@@ -498,6 +498,18 @@ def test_weakref_proxy_seam_refused_both_directions(
         dataclasses.replace(fakes.build(), synthesize=weakref.proxy(live.synthesize))
 
 
+# 4a-final. A subclass could override __post_init__ to skip the invariant and
+#     mint a live provider around fakes. Subclassing is blocked at runtime.
+def test_subclassing_is_blocked() -> None:
+    from substrate.deep_research_eval.live_provider import LiveResearchProvider
+
+    with pytest.raises(TypeError, match="is final"):
+
+        class _Evil(LiveResearchProvider):  # type: ignore[misc]
+            def __post_init__(self) -> None:  # pragma: no cover - never constructed
+                pass
+
+
 # 4b. allow_live gating: missing env keys refuse construction — through the
 #     factory AND through direct dataclass construction.
 def test_allow_live_refused_without_env_keys(monkeypatch: pytest.MonkeyPatch) -> None:
