@@ -65,9 +65,13 @@ FLOOR_QUALITY_THRESHOLD: float = 0.3
 # Retune when the observed retry distribution changes.
 FLOOR_MAX_REQUERIES: int = 3
 
-# Minimum number of spans required for a result set to pass the floor.
-# Below this, the set is structurally thin regardless of scores.
-FLOOR_MIN_SPANS: int = 2
+# Minimum number of independently identified source documents required for a
+# result set to pass the floor. Multiple spans from one document improve depth,
+# not corroboration; duplicate spans never manufacture source diversity.
+FLOOR_MIN_SOURCES: int = 2
+# Compatibility name for callers that imported the original policy constant.
+# Its semantics are now distinct sources, not raw span cardinality.
+FLOOR_MIN_SPANS: int = FLOOR_MIN_SOURCES
 
 
 # ---------------------------------------------------------------------------
@@ -81,7 +85,7 @@ def result_set_quality(
     """Compute a quality score for a result set of selected spans.
 
     The score is in [0.0, 1.0].  It combines:
-    - span count adequacy (how many spans vs. a minimum);
+    - source diversity (independent document identities vs. a minimum);
     - average retrieval score (how relevant the spans are);
     - token coverage (whether the spans provide enough content).
 
@@ -93,21 +97,22 @@ def result_set_quality(
     if not selected:
         return 0.0
 
-    # Span-count component: ramps from 0 at 0 spans to 1.0 at
-    # FLOOR_MIN_SPANS or above.
-    count_score = min(1.0, len(selected) / FLOOR_MIN_SPANS)
+    # Source-diversity component: multiple spans from one document do not
+    # count as independent corroboration.
+    source_count = len({span.document_id for span in selected})
+    count_score = min(1.0, source_count / FLOOR_MIN_SOURCES)
 
     # Average retrieval score component — clamp to [0, 1].
     raw_avg = sum(s.retrieval_score for s in selected) / len(selected)
     # REJECT fix #8: clamp NaN/inf/negative/>1.
     avg_score = 0.0 if raw_avg != raw_avg else max(0.0, min(1.0, raw_avg))
 
-    # Token-coverage component: total tokens / (FLOOR_MIN_SPANS * 200).
+    # Token-coverage component: total tokens / (FLOOR_MIN_SOURCES * 200).
     # 200 tokens is the minimum useful extractive span size (doctrine I-2).
     # Use char/4 heuristic inline (no counter dependency from select).
     total_chars = sum(len(s.text) for s in selected)
     total_tokens = max(1, (total_chars + 3) // 4) if total_chars > 0 else 0
-    target_tokens = FLOOR_MIN_SPANS * 200
+    target_tokens = FLOOR_MIN_SOURCES * 200
     token_score = min(1.0, total_tokens / target_tokens)
 
     # Geometric mean — all components must be non-zero for a high score.
@@ -169,6 +174,7 @@ class FloorTripTrace:
     quality_score: float
     threshold: float
     span_count: int
+    source_count: int
     total_tokens: int
     outcome_kind: Literal["requery", "insufficient_sources"]
     reason: str
@@ -250,15 +256,23 @@ def check_floor(
 
     quality = result_set_quality(selection.selected)
 
-    if quality >= threshold and len(selection.selected) >= FLOOR_MIN_SPANS:
+    source_count = len({span.document_id for span in selection.selected})
+    if quality >= threshold and source_count >= FLOOR_MIN_SOURCES:
         # Floor passes — return the SelectionResult unchanged.
         # The budget invariant is guaranteed because selection ran first.
         return selection, None
 
     # Floor tripped.
+    failures: list[str] = []
+    if quality < threshold:
+        failures.append(f"quality {quality:.4f} < threshold {threshold:.4f}")
+    if source_count < FLOOR_MIN_SOURCES:
+        failures.append(
+            f"source diversity {source_count} < required {FLOOR_MIN_SOURCES}"
+        )
     reason = (
-        f"quality {quality:.4f} < threshold {threshold:.4f} "
-        f"({len(selection.selected)} spans, attempt {current_attempt})"
+        "; ".join(failures)
+        + f" ({len(selection.selected)} spans, attempt {current_attempt})"
     )
 
     if current_attempt >= FLOOR_MAX_REQUERIES:
@@ -270,6 +284,7 @@ def check_floor(
             quality_score=quality,
             threshold=threshold,
             span_count=len(selection.selected),
+            source_count=source_count,
             total_tokens=selection.total_tokens,
             outcome_kind="insufficient_sources",
             reason=reason,
@@ -287,6 +302,7 @@ def check_floor(
         quality_score=quality,
         threshold=threshold,
         span_count=len(selection.selected),
+        source_count=source_count,
         total_tokens=selection.total_tokens,
         outcome_kind="requery",
         reason=reason,

@@ -85,9 +85,9 @@ with `[chunk_id]` header, source tier, similarity score.
 instances from the chunk text + offsets (the graph search returns
 the full chunk text; the span is the full chunk).  Run
 `extract_select` to extract and budget spans from the parked source.
-Send the `SelectionResult` through `assemble_or_refuse`; do not call
-the lower-level assembler to bypass the retrieval floor or budget
-binding.
+Send the `SelectionResult` through `assemble_or_refuse`. The lower-level
+assembler is private and absent from the package export surface, so a product
+caller cannot bypass the retrieval floor or budget binding by convention.
 
 **Why:** The evidence retriever's input quality directly affects
 synthesis quality.  Span selection + floor gating improves the

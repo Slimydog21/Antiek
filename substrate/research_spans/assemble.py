@@ -487,13 +487,13 @@ def _validate_span(obj: Any, idx: int) -> ExtractiveSpan:
 
     This covers untyped callers that might smuggle in a raw document,
     a dict, a string, or an ``Any``-typed value.  The type signature
-    of ``assemble_from_spans`` already enforces the boundary for typed
+    of ``_assemble_from_spans`` already enforces the boundary for typed
     callers (mypy will reject ``str`` or ``dict``); this guard is the
     safety net for dynamic / reflection-based callers.
     """
     if not isinstance(obj, ExtractiveSpan):
         raise TypeError(
-            f"assemble_from_spans accepts ExtractiveSpan only — "
+            f"_assemble_from_spans accepts ExtractiveSpan only — "
             f"item {idx} is {type(obj).__name__!r}, not an ExtractiveSpan. "
             f"Raw documents, dicts, strings, and Any-typed values cannot "
             f"reach the assembler."
@@ -561,6 +561,19 @@ def _validate_documents(
                 f"Span {i} text does not match stored content[{span.start}:{span.end}]. "
                 f"Expected {stored_slice!r}, got {span.text!r}"
             )
+        expected_span_id = ExtractiveSpan._compute_span_id(
+            span.document_id,
+            span.source_url,
+            span.revision,
+            span.start,
+            span.end,
+            span.text,
+        )
+        if span.span_id != expected_span_id:
+            raise ValueError(
+                f"Span {i} span_id does not match authoritative provenance. "
+                f"Expected {expected_span_id!r}, got {span.span_id!r}"
+            )
         records[span.document_id] = record
     return records
 
@@ -570,7 +583,7 @@ def _validate_documents(
 # ---------------------------------------------------------------------------
 
 
-def assemble_from_spans(
+def _assemble_from_spans(
     spans: Sequence[ExtractiveSpan],
     *,
     counter: TokenCounter | None = None,
@@ -578,7 +591,7 @@ def assemble_from_spans(
     document_store: DocumentStore | None = None,
     floor_trace: FloorTripTrace | None = None,
 ) -> AssembledContext:
-    """Assemble synthesis context from spans ONLY.
+    """Private validated assembler used only after the retrieval floor passes.
 
     Type-level boundary: mypy rejects any call that passes a ``str``,
     ``dict``, ``Document``, or ``Any`` where ``Sequence[ExtractiveSpan]``
@@ -697,7 +710,7 @@ def assemble_or_refuse(
         return FloorAwareResult(outcome=outcome, trace=trace)
 
     # Floor passed — assemble using the bound counter and render function.
-    ctx = assemble_from_spans(
+    ctx = _assemble_from_spans(
         list(outcome.selected),
         counter=bound_counter,
         document_store=document_store,

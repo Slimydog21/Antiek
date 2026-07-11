@@ -42,20 +42,26 @@ from substrate.research_spans.assemble import (
     DocumentRecord,
     FloorAwareResult,
     InMemoryDocumentStore,
-    assemble_from_spans,
     assemble_or_refuse,
     content_addressed_id,
     content_hash,
 )
+from substrate.research_spans.assemble import (
+    _assemble_from_spans as assemble_from_spans,
+)
 from substrate.research_spans.floor import (
     FLOOR_MAX_REQUERIES,
+    FLOOR_MIN_SOURCES,
     FLOOR_QUALITY_THRESHOLD,
     FloorTripTrace,
+    Requery,
     check_floor,
+    result_set_quality,
 )
 from substrate.research_spans.select import (
     DefaultTokenCounter,
     SelectionResult,
+    _select_candidates,
     extract_select,
     render_and_count,
     render_context_text,
@@ -184,6 +190,32 @@ def _make_selected(
         _bound_counter=counter,
         _bound_render_and_count=render_and_count,
     )
+
+
+def _make_corroborated_spans(
+    *, counts: tuple[int, int] = (3, 2), span_length: int = 100,
+    score: float = 0.9,
+) -> tuple[list[ExtractiveSpan], InMemoryDocumentStore]:
+    """Build high-quality spans from two independently identified documents."""
+    sources = ("alpha " * 300, "beta " * 300)
+    urls = ("https://example.com/source-a", "https://example.com/source-b")
+    spans: list[ExtractiveSpan] = []
+    store = InMemoryDocumentStore()
+    for source, url, count in zip(sources, urls, counts, strict=True):
+        store.put(_make_record(source, source_url=url))
+        for index in range(count):
+            start = index * span_length
+            spans.append(
+                _make_span(
+                    source,
+                    start,
+                    start + span_length,
+                    source_url=url,
+                    chunk_id=f"{url.rsplit('-', 1)[-1]}-{index}",
+                    score=score,
+                )
+            )
+    return spans, store
 
 
 class SimpleExtractor:
@@ -609,6 +641,15 @@ class TestC_AssemblerVerification:
         with pytest.raises(ValueError, match="text does not match stored content"):
             assemble_from_spans([span], document_store=store)
 
+    def test_assembler_recomputes_span_id_from_authoritative_provenance(self) -> None:
+        source = "authoritative evidence"
+        span = _make_span(source, 0, len(source))
+        object.__setattr__(span, "span_id", "0" * 64)
+        store = InMemoryDocumentStore()
+        store.put(_make_record(source))
+        with pytest.raises(ValueError, match="span_id does not match"):
+            assemble_from_spans([span], document_store=store)
+
     def test_assembler_rejects_missing_document(self) -> None:
         source = "hello"
         span = _make_span(source, 0, 5)
@@ -879,6 +920,23 @@ class TestF_BudgetAccounting:
         assert result.total_tokens == rendered_tokens
         assert result.total_tokens <= result.budget
 
+    def test_selector_includes_exact_budget_and_drops_one_token_over(self) -> None:
+        source = "budget-bound evidence " * 20
+        span = _make_span(source, 0, 100)
+        counter = DefaultTokenCounter()
+        exact = counter.count(render_context_text((span,)))
+        included = _select_candidates(
+            (span,), budget=exact, query="evidence", counter=counter,
+        )
+        assert included.selected == (span,)
+        assert included.total_tokens == exact
+        dropped = _select_candidates(
+            (span,), budget=exact - 1, query="evidence", counter=counter,
+        )
+        assert dropped.selected == ()
+        assert dropped.total_tokens == 0
+        assert dropped.dropped_count == 1
+
     def test_assembler_cannot_change_counter(self) -> None:
         """Red proof: assemble_or_refuse rejects different counter."""
         source = "word " * 100
@@ -899,14 +957,9 @@ class TestF_BudgetAccounting:
 
     def test_assembler_uses_bound_counter(self) -> None:
         """Red proof: assemble_or_refuse uses the bound counter."""
-        source = "word " * 200
-        spans = [_make_span(source, i * 100, i * 100 + 100, score=0.9) for i in range(5)]
+        spans, store = _make_corroborated_spans()
         counter = DefaultTokenCounter()
         selection = _make_selected(spans, budget=10000, counter=counter)
-
-        store = InMemoryDocumentStore()
-        record = _make_record(source)
-        store.put(record)
 
         # No explicit counter — uses bound counter.
         result = assemble_or_refuse(selection, document_store=store)
@@ -917,14 +970,10 @@ class TestF_BudgetAccounting:
         signature = inspect.signature(assemble_or_refuse)
         assert "separator" not in signature.parameters
 
-        source = "word " * 200
-        spans = [_make_span(source, 0, 100), _make_span(source, 100, 200)]
+        spans, store = _make_corroborated_spans(counts=(1, 1))
         counter = DefaultTokenCounter()
         exact_budget = counter.count(render_context_text(spans))
         selection = _make_selected(spans, budget=exact_budget, counter=counter)
-        store = InMemoryDocumentStore()
-        store.put(_make_record(source))
-
         result = assemble_or_refuse(selection, document_store=store)
         assert isinstance(result.outcome, AssembledContext)
         assert result.outcome.total_tokens == selection.total_tokens
@@ -941,8 +990,8 @@ class TestF_BudgetAccounting:
                 self.calls += 1
                 return 1 if self.calls == 1 else 999
 
-        source = "x" * 200
-        spans = (_make_span(source, 0, 100), _make_span(source, 100, 200))
+        corroborated, store = _make_corroborated_spans(counts=(1, 1))
+        spans = tuple(corroborated)
         counter = StatefulCounter()
         selection = SelectionResult(
             selected=spans,
@@ -952,9 +1001,6 @@ class TestF_BudgetAccounting:
             _bound_counter=counter,
             _bound_render_and_count=render_and_count,
         )
-        store = InMemoryDocumentStore()
-        store.put(_make_record(source))
-
         with pytest.raises(ValueError, match="changed after selection"):
             assemble_or_refuse(selection, threshold=0.0, document_store=store)
 
@@ -1560,11 +1606,47 @@ class TestFloorTracePreservation:
     """Every public floor trip preserves a structured trace."""
 
     def test_floor_pass_returns_none_trace(self) -> None:
-        source = "word " * 100
-        spans = [_make_span(source, i * 50, i * 50 + 50, score=0.9) for i in range(5)]
+        spans, _store = _make_corroborated_spans()
         selection = _make_selected(spans)
         _, trace = check_floor(selection)
         assert trace is None
+
+    def test_single_source_cannot_manufacture_corroboration_with_many_spans(self) -> None:
+        source = "high quality evidence " * 200
+        spans = [
+            _make_span(source, i * 100, i * 100 + 100, score=1.0)
+            for i in range(5)
+        ]
+        outcome, trace = check_floor(_make_selected(spans), threshold=0.01)
+        assert isinstance(outcome, Requery)
+        assert trace is not None
+        assert trace.span_count == 5
+        assert trace.source_count == 1
+        assert FLOOR_MIN_SOURCES == 2
+
+    def test_duplicate_span_cannot_clear_source_diversity_floor(self) -> None:
+        source = "duplicate evidence " * 100
+        span = _make_span(source, 0, 200, score=1.0)
+        outcome, trace = check_floor(_make_selected([span, span]), threshold=0.01)
+        assert isinstance(outcome, Requery)
+        assert trace is not None and trace.source_count == 1
+
+    def test_quality_conjunct_trips_with_two_distinct_low_quality_sources(self) -> None:
+        spans, _store = _make_corroborated_spans(score=0.01)
+        outcome, trace = check_floor(_make_selected(spans))
+        assert isinstance(outcome, Requery)
+        assert trace is not None and trace.source_count == 2
+        assert trace.quality_score < FLOOR_QUALITY_THRESHOLD
+
+    def test_quality_threshold_exact_boundary_passes_but_higher_value_trips(self) -> None:
+        spans, _store = _make_corroborated_spans()
+        selection = _make_selected(spans)
+        quality = result_set_quality(selection.selected)
+        exact, exact_trace = check_floor(selection, threshold=quality)
+        assert exact is selection and exact_trace is None
+        outcome, trace = check_floor(selection, threshold=min(1.0, quality + 1e-9))
+        assert isinstance(outcome, Requery)
+        assert trace is not None
 
     def test_floor_trip_returns_trace(self) -> None:
         source = "x" * 10
@@ -1593,12 +1675,8 @@ class TestFloorTracePreservation:
         assert result.trace is not None
 
     def test_assemble_or_refuse_preserves_trace_on_pass(self) -> None:
-        source = "word " * 200
-        spans = [_make_span(source, i * 100, i * 100 + 100, score=0.9) for i in range(5)]
+        spans, store = _make_corroborated_spans()
         selection = _make_selected(spans)
-        store = InMemoryDocumentStore()
-        record = _make_record(source)
-        store.put(record)
         result = assemble_or_refuse(selection, document_store=store)
         assert isinstance(result, FloorAwareResult)
         assert isinstance(result.outcome, AssembledContext)
@@ -1621,7 +1699,6 @@ class TestPublicApiSurface:
             "extract_select",
             "render_and_count",
             "check_floor",
-            "assemble_from_spans",
             "assemble_or_refuse",
             "AssembledContext",
             "AttributedSpan",
@@ -1647,6 +1724,9 @@ class TestPublicApiSurface:
             "content_hash",
         ):
             assert hasattr(pkg, name), f"{name} not exported from research_spans"
+        assert not hasattr(pkg, "assemble_from_spans"), (
+            "unfloored assembler must remain private; use assemble_or_refuse"
+        )
 
 
 class TestWiringMd:

@@ -29,13 +29,13 @@ from .assemble import (
     DocumentStore,
     FloorAwareResult,
     InMemoryDocumentStore,
-    assemble_from_spans,
     assemble_or_refuse,
     content_addressed_id,
     content_hash,
 )
 from .floor import (
     FLOOR_MAX_REQUERIES,
+    FLOOR_MIN_SOURCES,
     FLOOR_MIN_SPANS,
     FLOOR_QUALITY_THRESHOLD,
     FloorTripTrace,
@@ -82,6 +82,7 @@ __all__ = [
     "span_budget_medium",
     # floor
     "FLOOR_MAX_REQUERIES",
+    "FLOOR_MIN_SOURCES",
     "FLOOR_MIN_SPANS",
     "FLOOR_QUALITY_THRESHOLD",
     "FloorTripTrace",
@@ -96,7 +97,6 @@ __all__ = [
     "DocumentStore",
     "FloorAwareResult",
     "InMemoryDocumentStore",
-    "assemble_from_spans",
     "assemble_or_refuse",
     "content_addressed_id",
     "content_hash",
