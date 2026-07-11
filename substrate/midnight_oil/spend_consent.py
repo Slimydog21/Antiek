@@ -21,6 +21,8 @@ from typing import Final
 
 _DOMAIN: Final = b"antiek.midnight-oil.spend-consent.v1\x00"
 _SCHEMA_VERSION: Final = 1
+MAX_CONSENT_TTL_MS: Final = 86_400_000
+MAX_CEILING_CENTS: Final = 1_000_000_000
 
 
 class ConsentRejection(StrEnum):
@@ -31,6 +33,7 @@ class ConsentRejection(StrEnum):
     NOT_YET_VALID = "not_yet_valid"
     WRONG_OPERATOR = "wrong_operator"
     WRONG_JOB = "wrong_job"
+    WRONG_OPERATION = "wrong_operation"
     CONFIG_DRIFT = "config_drift"
     CEILING_MISMATCH = "ceiling_mismatch"
     UNKNOWN_RECEIPT = "unknown_receipt"
@@ -65,6 +68,7 @@ class ConsentReceipt:
     receipt_id: str
     operator_id: str
     job_id: str
+    operation_id: str
     config_hash: str
     ceiling_cents: int
     issued_at_ms: int
@@ -97,7 +101,9 @@ def _b64decode(value: str) -> bytes:
         raise ConsentRejected(ConsentRejection.MALFORMED) from exc
 
 
-def _validate_text(value: str, *, maximum: int = 256) -> str:
+def _validate_text(value: object, *, maximum: int = 256) -> str:
+    if not isinstance(value, str):
+        raise ValueError("consent text field must be a string")
     cleaned = value.strip()
     if not cleaned or len(cleaned) > maximum or any(ord(char) < 32 for char in cleaned):
         raise ValueError("consent text field is invalid")
@@ -107,9 +113,22 @@ def _validate_text(value: str, *, maximum: int = 256) -> str:
 def _validate_config(config: JobConsentConfig) -> None:
     _validate_text(config.job_id)
     _validate_text(config.research_tier, maximum=32)
-    if not config.goals or any(not goal.strip() for goal in config.goals):
+    if not isinstance(config.goals, tuple) or not 1 <= len(config.goals) <= 64:
+        raise ValueError("goals must be a bounded non-empty tuple")
+    if any(not isinstance(goal, str) or not goal.strip() for goal in config.goals):
         raise ValueError("at least one non-empty goal is required")
-    if config.duration_minutes <= 0 or config.fanout_depth <= 0:
+    if (
+        any(len(goal) > 4_096 for goal in config.goals)
+        or sum(len(goal) for goal in config.goals) > 65_536
+    ):
+        raise ValueError("goal text exceeds consent bounds")
+    if config.model_id is not None:
+        _validate_text(config.model_id, maximum=256)
+    if config.asset_id is not None:
+        _validate_text(config.asset_id, maximum=256)
+    if type(config.duration_minutes) is not int or not 1 <= config.duration_minutes <= 10_080:
+        raise ValueError("duration is outside consent bounds")
+    if type(config.fanout_depth) is not int or not 1 <= config.fanout_depth <= 64:
         raise ValueError("duration and fanout must be positive")
 
 
@@ -133,8 +152,10 @@ def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]
 
 def _validate_receipt(receipt: ConsentReceipt) -> None:
     _validate_text(receipt.receipt_id, maximum=64)
+    _validate_text(receipt.config_hash, maximum=64)
     _validate_text(receipt.operator_id)
     _validate_text(receipt.job_id)
+    _validate_text(receipt.operation_id)
     _validate_text(receipt.nonce)
     _validate_text(receipt.key_id, maximum=64)
     if len(receipt.receipt_id) != 64 or len(receipt.config_hash) != 64:
@@ -145,9 +166,9 @@ def _validate_receipt(receipt: ConsentReceipt) -> None:
     except ValueError as exc:
         raise ValueError("receipt hashes must be SHA-256 hex") from exc
     integers = (receipt.ceiling_cents, receipt.issued_at_ms, receipt.expires_at_ms)
-    if any(isinstance(value, bool) or not isinstance(value, int) for value in integers):
+    if any(type(value) is not int for value in integers):
         raise ValueError("receipt numeric fields must be integers")
-    if receipt.ceiling_cents <= 0 or receipt.issued_at_ms < 0:
+    if not 1 <= receipt.ceiling_cents <= MAX_CEILING_CENTS or receipt.issued_at_ms < 0:
         raise ValueError("receipt numeric fields are invalid")
     if receipt.expires_at_ms <= receipt.issued_at_ms:
         raise ValueError("receipt expiry must follow issuance")
@@ -172,6 +193,7 @@ class SpendConsentStore:
                     receipt_id TEXT PRIMARY KEY,
                     operator_id TEXT NOT NULL,
                     job_id TEXT NOT NULL,
+                    operation_id TEXT NOT NULL,
                     config_hash TEXT NOT NULL,
                     ceiling_cents INTEGER NOT NULL,
                     issued_at_ms INTEGER NOT NULL,
@@ -195,6 +217,7 @@ class SpendConsentStore:
         *,
         operator_id: str,
         config: JobConsentConfig,
+        operation_id: str,
         ceiling_cents: int,
         issued_at_ms: int,
         expires_at_ms: int,
@@ -203,12 +226,18 @@ class SpendConsentStore:
         signing_key: bytes,
     ) -> str:
         operator = _validate_text(operator_id)
+        operation = _validate_text(operation_id)
         nonce_value = _validate_text(nonce)
         kid = _validate_text(key_id, maximum=64)
         _validate_config(config)
-        if ceiling_cents <= 0:
-            raise ValueError("ceiling_cents must be positive")
-        if issued_at_ms < 0 or expires_at_ms <= issued_at_ms:
+        if type(ceiling_cents) is not int or not 1 <= ceiling_cents <= MAX_CEILING_CENTS:
+            raise ValueError("ceiling_cents is outside consent bounds")
+        if type(issued_at_ms) is not int or type(expires_at_ms) is not int:
+            raise ValueError("consent timestamps must be integers")
+        if (
+            issued_at_ms < 0
+            or not issued_at_ms < expires_at_ms <= issued_at_ms + MAX_CONSENT_TTL_MS
+        ):
             raise ValueError("consent expiry must be after issuance")
         receipt_id = hashlib.sha256(
             _DOMAIN
@@ -216,6 +245,7 @@ class SpendConsentStore:
                 {
                     "operator_id": operator,
                     "job_id": config.job_id,
+                    "operation_id": operation,
                     "nonce": nonce_value,
                 }
             )
@@ -224,6 +254,7 @@ class SpendConsentStore:
             receipt_id=receipt_id,
             operator_id=operator,
             job_id=config.job_id,
+            operation_id=operation,
             config_hash=config.canonical_hash(),
             ceiling_cents=ceiling_cents,
             issued_at_ms=issued_at_ms,
@@ -240,12 +271,13 @@ class SpendConsentStore:
             try:
                 connection.execute(
                     """
-                    INSERT INTO spend_consents VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+                    INSERT INTO spend_consents VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
                     """,
                     (
                         receipt.receipt_id,
                         receipt.operator_id,
                         receipt.job_id,
+                        receipt.operation_id,
                         receipt.config_hash,
                         receipt.ceiling_cents,
                         receipt.issued_at_ms,
@@ -267,13 +299,19 @@ class SpendConsentStore:
         *,
         expected_operator_id: str,
         expected_config: JobConsentConfig,
+        expected_operation_id: str,
         expected_ceiling_cents: int,
         now_ms: int,
         verification_keys: Mapping[str, bytes],
     ) -> ClaimResult:
         receipt = decode_and_verify(token, verification_keys=verification_keys)
         operator = _validate_text(expected_operator_id)
+        operation = _validate_text(expected_operation_id)
         _validate_config(expected_config)
+        if type(expected_ceiling_cents) is not int:
+            raise ConsentRejected(ConsentRejection.CEILING_MISMATCH)
+        if type(now_ms) is not int or now_ms < 0:
+            raise ConsentRejected(ConsentRejection.MALFORMED)
         if now_ms < receipt.issued_at_ms:
             raise ConsentRejected(ConsentRejection.NOT_YET_VALID)
         if now_ms >= receipt.expires_at_ms:
@@ -282,6 +320,8 @@ class SpendConsentStore:
             raise ConsentRejected(ConsentRejection.WRONG_OPERATOR)
         if not hmac.compare_digest(receipt.job_id, expected_config.job_id):
             raise ConsentRejected(ConsentRejection.WRONG_JOB)
+        if not hmac.compare_digest(receipt.operation_id, operation):
+            raise ConsentRejected(ConsentRejection.WRONG_OPERATION)
         if not hmac.compare_digest(receipt.config_hash, expected_config.canonical_hash()):
             raise ConsentRejected(ConsentRejection.CONFIG_DRIFT)
         if receipt.ceiling_cents != expected_ceiling_cents:
@@ -324,7 +364,7 @@ def decode_and_verify(token: str, *, verification_keys: Mapping[str, bytes]) -> 
         if not isinstance(raw, dict) or raw.pop("schema_version") != _SCHEMA_VERSION:
             raise ValueError
         receipt = ConsentReceipt(**raw)
-    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+    except (AttributeError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise ConsentRejected(ConsentRejection.MALFORMED) from exc
     try:
         _validate_receipt(receipt)
@@ -347,6 +387,7 @@ __all__ = [
     "ConsentRejected",
     "ConsentRejection",
     "JobConsentConfig",
+    "MAX_CONSENT_TTL_MS",
     "SpendConsentStore",
     "decode_and_verify",
 ]
