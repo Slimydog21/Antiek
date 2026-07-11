@@ -623,3 +623,57 @@ def test_barrel_reexported_mount_not_flagged_sibling_still_flagged(
     assert "sibling_routes.py:" in combined, (
         f"the unmounted sibling router must still be flagged:\n{combined}"
     )
+
+
+# =========================================================================== #
+# (j) FIX #3r — fail-safe bias. An app that imports `router` from a package
+#     whose __init__ does NOT CONFIRM a module-level re-export of it (here: the
+#     re-export is function-scoped, so at runtime `from x.api import router`
+#     would fail) must NOT credit the mount. The defining router stays FLAGGED —
+#     Check A errs toward false-positive, never false-negative.
+# =========================================================================== #
+def test_unconfirmed_reexport_does_not_credit_mount(tmp_path: Path) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+    api = root / "interfaces" / "x" / "api"
+
+    _write(
+        api / "widget_routes.py",
+        'from fastapi import APIRouter\n\nrouter = APIRouter(prefix="/widget")\n',
+    )
+    # Package __init__ does NOT re-export `router` at module level — the import
+    # is buried inside a function, so `from x.api import router` is NOT satisfied
+    # at import time. The gate must NOT trust this as a re-export edge.
+    _write(
+        api / "__init__.py",
+        "def _lazy() -> None:\n    from .widget_routes import router  # noqa: F401\n",
+    )
+    # App mounts via the package import (which would ImportError at runtime).
+    _write(
+        root / "app.py",
+        "from fastapi import FastAPI\n"
+        "from interfaces.x.api import router\n\n\n"
+        "def create_app() -> FastAPI:\n"
+        "    app = FastAPI()\n"
+        "    app.include_router(router)\n"
+        "    return app\n",
+    )
+    res = _run([sys.executable, str(gate)], cwd=root)  # no baseline -> NEW
+    assert res.returncode == 1, (
+        f"unconfirmed (function-scoped) re-export must NOT credit the mount, got "
+        f"{res.returncode}\n{res.stdout}\n{res.stderr}"
+    )
+    combined = res.stdout + res.stderr
+    assert "widget_routes.py:" in combined, (
+        f"router must stay FLAGGED when no confirmed module-level re-export "
+        f"edge exists (fail-safe):\n{combined}"
+    )
+
+    # Contrast: promote the re-export to MODULE LEVEL (a real barrel) -> credited.
+    _write(api / "__init__.py", "from .widget_routes import router\n")
+    green = _run([sys.executable, str(gate)], cwd=root)
+    assert green.returncode == 0, (
+        f"a confirmed module-level re-export must clear the mount, got "
+        f"{green.returncode}\n{green.stdout}\n{green.stderr}"
+    )

@@ -43,10 +43,22 @@ if ``M`` itself ``include_router``\\s the local ``P`` (the same-file
 ``register_*_routes`` pattern), OR some module ``N`` ``include_router``\\s a
 local name whose import resolves to ``P`` in ``M`` — directly (``from .m_routes
 import p_router; include_router(p_router)``, ``as``-alias included) OR through a
-package-``__init__`` re-export barrel (``api/__init__.py`` does ``from .m_routes
-import router`` and the app mounts ``from x.api import router``), followed up to
-``_REEXPORT_MAX_DEPTH`` hops. This closes the collision where one mounted
-``router`` would mask every other file's unmounted ``router``. A product no
+CONFIRMED module-level package-``__init__`` re-export barrel (``api/__init__.py``
+has a top-level ``from .m_routes import router`` and the app mounts
+``from x.api import router``), followed up to ``_REEXPORT_MAX_DEPTH`` hops. This
+closes the collision where one mounted ``router`` would mask every other file's
+unmounted ``router``.
+
+FAIL-SAFE DESIGN CHOICE (Check A): a mount credit is granted ONLY when a real,
+module-level re-export edge is present in the barrel. If resolution cannot
+confirm one — the name is not actually re-exported, the import is
+function-scoped/conditional, it is a star/``__all__``-driven/dynamic re-export,
+or the chain exceeds the depth cap — the credit is NOT granted and the router
+stays FLAGGED. Check A thus errs toward a FALSE POSITIVE (over-flagging an
+actually-mounted router reached by an exotic re-export — the operator grandfathers
+it into the baseline) and NEVER toward a FALSE NEGATIVE (crediting an unmounted
+router, which would silently reopen the very hole this gate exists to catch).
+For an informational-first gate that is the safe bias. A product no
 ``include_router`` ever consumes is a route surface no mounted app exposes.
 Catches #742's ``create_multimedia_execution_router`` and the #712
 completion-route absence class.
@@ -113,17 +125,20 @@ CANNOT-catch list; rigor #1). Claims ONLY what its AST scan literally matches.
     (the same advisory line the TS gate draws at "imported only by its own test").
   - **Module-object mount form (Check A)** — ``import m_routes; m_routes.router``
     passed to ``include_router`` mounts via a module OBJECT, not a name imported
-    FROM the defining module, so the module-aware resolver does not tie it to the
-    product and MAY read it as unmounted. The dominant patterns (``from .m_routes
-    import router``, same-file mount, and package-``__init__`` re-export barrels)
-    resolve correctly; the module-object form is the honest residual →
-    review-owned.
-  - **Deep / non-``from`` re-export chains (Check A)** — the barrel resolver
-    follows ``from .sub import P`` re-exports up to ``_REEXPORT_MAX_DEPTH`` hops.
-    A chain deeper than that, or a re-export the import map does not carry —
-    ``from .sub import *`` (star), an ``__all__``-driven re-export, or a
-    conditional/dynamic ``__init__`` — is not resolved and MAY read as unmounted.
-    Out of reach → review-owned.
+    FROM the defining module, so the resolver does not tie it to the product and
+    reads it as unmounted (an over-flag, not a false negative). The dominant
+    patterns (``from .m_routes import router``, same-file mount, and confirmed
+    module-level ``__init__`` re-export barrels) resolve correctly.
+  - **Only module-level unconditional re-exports are trusted (Check A)** — the
+    barrel resolver follows ONLY a top-level, unconditional ``from .sub import P``
+    in an ``__init__``, up to ``_REEXPORT_MAX_DEPTH`` hops. A re-export that is
+    function-scoped, nested in an ``if``/``try`` (conditional), a
+    ``from .sub import *`` star, or ``__all__``-driven/dynamic is NOT trusted as a
+    re-export edge, so it does NOT credit a mount — the router stays FLAGGED
+    (fail-safe over-flag). A genuinely-mounted router reached only through such an
+    exotic re-export is thus over-flagged and grandfathered into the baseline,
+    never silently credited. This is the deliberate false-positive-over-
+    false-negative bias stated in the Check A description above.
   - **Registry-stored / string-dispatched callable (Check B)** — a name stored in
     a dict/registry and later dispatched by string (``TABLE["exec"] = the_fn`` …
     ``TABLE[key]()``) counts as REFERENCED via the bare-name load at store time
@@ -394,18 +409,14 @@ def _resolve_from_module(importer: Path, module: str | None, level: int) -> str 
     return None
 
 
-def _import_map(importer: Path, tree: ast.Module) -> dict[str, set[tuple[str, str]]]:
-    """local-name → {(defining-module-relpath, original-name)} for every
-    ``from … import …`` in this module (walked, so function-local imports — the
-    shape ``create_app`` uses — are included). This is how a mounted local name
-    is tied back to the module that actually defines the router, closing the
-    global bare-name collision (an unrelated ``router`` in another file cannot
-    mount THIS module's ``router``). The ``import mod; mod.router`` module-object
-    form is a documented residual (see CANNOT-catch)."""
+def _importfrom_edges(
+    importer: Path, nodes: list[ast.ImportFrom]
+) -> dict[str, set[tuple[str, str]]]:
+    """local-name → {(defining-module-relpath, original-name)} for the given
+    ``from … import …`` nodes. Shared by ``_import_map`` (all scopes) and
+    ``_reexport_map`` (module scope only)."""
     out: dict[str, set[tuple[str, str]]] = {}
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ImportFrom):
-            continue
+    for node in nodes:
         target = _resolve_from_module(importer, node.module, node.level)
         if target is None:
             continue
@@ -415,6 +426,34 @@ def _import_map(importer: Path, tree: ast.Module) -> dict[str, set[tuple[str, st
             local = alias.asname or alias.name
             out.setdefault(local, set()).add((target, alias.name))
     return out
+
+
+def _import_map(importer: Path, tree: ast.Module) -> dict[str, set[tuple[str, str]]]:
+    """local-name → {(defining-module-relpath, original-name)} for EVERY
+    ``from … import …`` in this module (walked — so the function-local imports
+    ``create_app`` uses at the MOUNT SITE are included). This ties a mounted
+    local name back to the module it was imported from, closing the global
+    bare-name collision. It is used only for the mount-SITE binding; the trusted
+    re-export CHAIN uses ``_reexport_map`` (module-level only) so a
+    function-scoped or conditional import cannot fabricate a re-export edge."""
+    return _importfrom_edges(
+        importer, [n for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)]
+    )
+
+
+def _reexport_map(importer: Path, tree: ast.Module) -> dict[str, set[tuple[str, str]]]:
+    """local-name → {(defining-module-relpath, original-name)} for ONLY the
+    MODULE-LEVEL, UNCONDITIONAL ``from … import …`` statements in this module —
+    the re-export edges that a ``from package import P`` would actually observe
+    at import time. A ``from .sub import P`` nested inside a function, an
+    ``if``/``try``, a ``from .sub import *`` star, or an ``__all__``-driven
+    dynamic re-export is NOT here (only ``tree.body``-level ImportFrom nodes are
+    scanned), so an unconfirmed re-export cannot credit a mount — the router
+    stays flagged (fail-safe). This is what biases Check A toward over-flagging,
+    never toward crediting a mount that may not exist at runtime."""
+    return _importfrom_edges(
+        importer, [n for n in tree.body if isinstance(n, ast.ImportFrom)]
+    )
 
 
 # ── Check A — unmounted API routers ─────────────────────────────────────────
@@ -493,30 +532,37 @@ def _resolves_to(
     origin_name: str,
     defining_rel: str,
     product: str,
-    import_map: dict[str, dict[str, set[tuple[str, str]]]],
+    reexport_map: dict[str, dict[str, set[tuple[str, str]]]],
     depth: int = _REEXPORT_MAX_DEPTH,
     seen: frozenset[tuple[str, str]] = frozenset(),
 ) -> bool:
-    """True iff the import ``(origin_rel, origin_name)`` resolves — directly or
-    THROUGH one-or-more package re-export hops — to the router ``product`` defined
-    in ``defining_rel``.
+    """True iff the mount-site binding ``(origin_rel, origin_name)`` resolves —
+    directly, or THROUGH one-or-more CONFIRMED module-level package re-export
+    edges — to the router ``product`` defined in ``defining_rel``.
 
-    The common FastAPI barrel: ``interfaces/x/api/__init__.py`` does
+    The common FastAPI barrel: ``interfaces/x/api/__init__.py`` has a MODULE-LEVEL
     ``from .widget_routes import router`` and the app mounts
     ``from interfaces.x.api import router`` — the app's import resolves to the
-    package ``__init__``, so this follows the ``__init__``'s own re-export of
-    ``router`` down to ``widget_routes.py``. Bounded to ``_REEXPORT_MAX_DEPTH``
-    hops with a visited set (cycle-safe); a chain deeper than that, or a star /
-    ``__all__``-driven re-export the import map does not carry, is the documented
-    residual (see CANNOT-catch)."""
+    package ``__init__``, so this follows the ``__init__``'s CONFIRMED re-export
+    of ``router`` (present in ``reexport_map``) down to ``widget_routes.py``.
+
+    FAIL-SAFE BIAS: the chain hops read ONLY from ``reexport_map`` (module-level,
+    unconditional re-exports). If the barrel does NOT actually re-export the name
+    at module scope — the name is not re-exported, the import is
+    function-scoped/conditional, it is a star/``__all__``-driven re-export, or the
+    chain exceeds ``_REEXPORT_MAX_DEPTH`` — no edge is found, the credit is NOT
+    granted, and the router stays FLAGGED. Check A therefore errs toward a false
+    POSITIVE (over-flag an actually-mounted router reached by an exotic
+    re-export, which the operator baselines) rather than a false NEGATIVE
+    (crediting an unmounted router, which silently reopens the hole)."""
     if origin_rel == defining_rel and origin_name == product:
         return True
     if depth <= 0 or (origin_rel, origin_name) in seen:
         return False
     seen = seen | {(origin_rel, origin_name)}
-    for next_rel, next_name in import_map.get(origin_rel, {}).get(origin_name, ()):
+    for next_rel, next_name in reexport_map.get(origin_rel, {}).get(origin_name, ()):
         if _resolves_to(
-            next_rel, next_name, defining_rel, product, import_map, depth - 1, seen
+            next_rel, next_name, defining_rel, product, reexport_map, depth - 1, seen
         ):
             return True
     return False
@@ -527,6 +573,7 @@ def _is_mounted(
     product: str,
     include_local: dict[str, set[str]],
     import_map: dict[str, dict[str, set[tuple[str, str]]]],
+    reexport_map: dict[str, dict[str, set[tuple[str, str]]]],
 ) -> bool:
     """True iff router ``product`` defined in module ``defining_rel`` is mounted,
     resolved MODULE-AWARELY (not by global bare-name collision):
@@ -535,15 +582,17 @@ def _is_mounted(
         name ``product`` (the common ``register_*_routes`` pattern where the
         router is defined and mounted in one file), OR
       * cross-module — some module N ``include_router``\\s a local name L whose
-        import resolves (directly or through a package-``__init__`` re-export
-        chain) to ``product`` in ``defining_rel`` — covering both
+        mount-site binding (``import_map``, any scope) resolves — directly, or
+        through a CONFIRMED module-level package re-export chain
+        (``reexport_map``) — to ``product`` in ``defining_rel``. Covers both
         ``from .x_routes import x_router; include_router(x_router)`` and the
-        barrel ``from .x_routes import router`` in ``api/__init__.py`` +
-        ``from x.api import router; include_router(router)`` in the app.
+        barrel ``from .x_routes import router`` (module-level) in
+        ``api/__init__.py`` + ``from x.api import router; include_router(router)``.
 
     A different module defining its own ``router`` and mounting it cannot mount
-    THIS module's ``router``: the cross-module arm requires the import to resolve
-    to ``defining_rel`` specifically."""
+    THIS module's ``router``: the cross-module arm requires the binding to resolve
+    to ``defining_rel`` specifically. An unconfirmed re-export never credits a
+    mount (see ``_resolves_to`` — fail-safe toward flagging)."""
     if product in include_local.get(defining_rel, set()):
         return True
     for n_rel, mounted_locals in include_local.items():
@@ -551,7 +600,7 @@ def _is_mounted(
         for local in mounted_locals:
             for origin_rel, origin_name in imap.get(local, ()):
                 if _resolves_to(
-                    origin_rel, origin_name, defining_rel, product, import_map
+                    origin_rel, origin_name, defining_rel, product, reexport_map
                 ):
                     return True
     return False
@@ -561,6 +610,7 @@ def find_unmounted_routers(
     trees: dict[Path, ast.Module],
     include_local: dict[str, set[str]],
     import_map: dict[str, dict[str, set[tuple[str, str]]]],
+    reexport_map: dict[str, dict[str, set[tuple[str, str]]]],
 ) -> list[Finding]:
     """Router products in ``interfaces/**/api/*_routes.py`` that no module mounts
     (module-aware — see ``_is_mounted``)."""
@@ -571,7 +621,7 @@ def find_unmounted_routers(
             continue
         rel = path.relative_to(_REPO).as_posix()
         for name, line in _router_products(path, tree):
-            if _is_mounted(rel, name, include_local, import_map):
+            if _is_mounted(rel, name, include_local, import_map, reexport_map):
                 continue
             findings.append(
                 (
@@ -703,6 +753,7 @@ def find_all() -> list[Finding]:
     trees: dict[Path, ast.Module] = {}
     include_local: dict[str, set[str]] = {}
     import_map: dict[str, dict[str, set[tuple[str, str]]]] = {}
+    reexport_map: dict[str, dict[str, set[tuple[str, str]]]] = {}
     referenced: set[str] = set()
     for f in product_files:
         tree = _parse(f)
@@ -712,8 +763,9 @@ def find_all() -> list[Finding]:
         trees[f] = tree
         include_local[rel] = _include_router_arg_names(tree)
         import_map[rel] = _import_map(f, tree)
+        reexport_map[rel] = _reexport_map(f, tree)
         referenced |= _reachability_reference_names(tree)
-    routers = find_unmounted_routers(trees, include_local, import_map)
+    routers = find_unmounted_routers(trees, include_local, import_map, reexport_map)
     exports = find_uncalled_enforcement_exports(trees, referenced)
     return routers + exports
 
