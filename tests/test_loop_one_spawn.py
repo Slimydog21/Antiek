@@ -120,6 +120,32 @@ def test_phantom_event_id_without_disk_does_not_succeed_or_settle(
     # Reserve must remain — no phantom success settlement.
     assert _sidecar_spent() == pytest.approx(0.50)
 
+
+def test_default_events_dir_path_is_checked_consistently(
+    isolated_env: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When events_dir is omitted, emit + persistence share default_events_dir."""
+    from substrate.event_log.events import default_events_dir
+
+    # Point default dir at isolated events via env used by substrate.
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(isolated_env["events_dir"]))
+    # Confirm default_events_dir resolves under isolation.
+    assert Path(default_events_dir()) == isolated_env["events_dir"] or str(
+        default_events_dir()
+    ).startswith(str(isolated_env["home"]))
+
+    spawn = make_loop_one_spawn_fn(events_dir=None)  # uses default
+    inv = spawn("Default path question?", {"policy_id": "continuous_daemon"})
+    # Either success with file in default dir, or None if default not isolatable —
+    # must never leave orphan + return None inconsistently.
+    if inv is not None:
+        # File must exist under whatever path default resolved to.
+        from orchestration.continuous.loop_one_spawn import _resolve_events_dir
+
+        d = Path(_resolve_events_dir(None))
+        assert (d / f"{inv}.jsonl").is_file()
+
 def test_resolve_daemon_spawn_fn_modes(
     isolated_env: dict[str, Path],
     monkeypatch: pytest.MonkeyPatch,

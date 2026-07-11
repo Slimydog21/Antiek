@@ -32,12 +32,17 @@ from substrate.schemas.events import InvestigationStartRequestedPayload
 EmitTypedFn = Callable[..., str | None]
 
 
-def _event_persisted(investigation_id: str, events_dir: str | None) -> bool:
+def _resolve_events_dir(events_dir: str | None) -> str:
+    """Canonical events dir for emit + post-write persistence check."""
+    if events_dir:
+        return events_dir
+    from substrate.event_log.events import default_events_dir
+
+    return str(default_events_dir())
+
+
+def _event_persisted(investigation_id: str, events_dir: str) -> bool:
     """True only when a non-empty trajectory jsonl exists for the investigation."""
-    if not events_dir:
-        # Default events dir — emit_typed writes under its own default path;
-        # require an explicit dir for production attach so persistence is checkable.
-        return False
     path = Path(events_dir) / f"{investigation_id}.jsonl"
     try:
         return path.is_file() and path.stat().st_size > 0
@@ -57,7 +62,9 @@ def make_loop_one_spawn_fn(
     Parameters
     ----------
     events_dir:
-        Trajectory directory (same env the continuous daemon scans).
+        Trajectory directory (same env the continuous daemon scans). When
+        omitted, uses ``default_events_dir()`` so emit and persistence check
+        share one path (no orphan events + phantom fail).
     policy_id:
         Default policy on the start event when context omits ``policy_id``.
     emit:
@@ -68,6 +75,7 @@ def make_loop_one_spawn_fn(
         emission only, no provider call).
     """
     _emit = emit or emit_typed
+    resolved_dir = _resolve_events_dir(events_dir)
 
     def spawn_fn(question: str, context: dict[str, Any]) -> str | None:
         q = (question or "").strip()
@@ -96,7 +104,7 @@ def make_loop_one_spawn_fn(
                 payload,
                 role="continuous_daemon",
                 policy_id=policy,
-                events_dir=events_dir,
+                events_dir=resolved_dir,
             )
         except Exception:
             # Malformed/disabled emit: do not claim a spawned investigation.
@@ -108,8 +116,8 @@ def make_loop_one_spawn_fn(
 
         # emit_typed may return an id even when the disk append failed.
         # Only claim success (and settle the reserve) when the trajectory
-        # file is actually present and non-empty.
-        if not _event_persisted(inv_id, events_dir):
+        # file is actually present and non-empty (same resolved_dir as emit).
+        if not _event_persisted(inv_id, resolved_dir):
             return None
 
         # Settle reserved hold when settled-cost hooks are present.
