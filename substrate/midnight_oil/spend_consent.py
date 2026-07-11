@@ -81,6 +81,7 @@ class ConsentReceipt:
 class ClaimResult:
     receipt: ConsentReceipt
     claimed_now: bool
+    claimed_at_ms: int
 
 
 def _canonical_json(value: object) -> bytes:
@@ -303,6 +304,7 @@ class SpendConsentStore:
         expected_ceiling_cents: int,
         now_ms: int,
         verification_keys: Mapping[str, bytes],
+        allow_expired_recovery: bool = False,
     ) -> ClaimResult:
         receipt = decode_and_verify(token, verification_keys=verification_keys)
         operator = _validate_text(expected_operator_id)
@@ -312,10 +314,6 @@ class SpendConsentStore:
             raise ConsentRejected(ConsentRejection.CEILING_MISMATCH)
         if type(now_ms) is not int or now_ms < 0:
             raise ConsentRejected(ConsentRejection.MALFORMED)
-        if now_ms < receipt.issued_at_ms:
-            raise ConsentRejected(ConsentRejection.NOT_YET_VALID)
-        if now_ms >= receipt.expires_at_ms:
-            raise ConsentRejected(ConsentRejection.EXPIRED)
         if not hmac.compare_digest(receipt.operator_id, operator):
             raise ConsentRejected(ConsentRejection.WRONG_OPERATOR)
         if not hmac.compare_digest(receipt.job_id, expected_config.job_id):
@@ -340,14 +338,31 @@ class SpendConsentStore:
                 connection.execute("ROLLBACK")
                 raise ConsentRejected(ConsentRejection.CONFLICTING_REPLAY)
             if row[1] is not None:
+                # An exact consumed receipt may repair claim->CAS or
+                # CAS->enqueue after expiry. All immutable bindings above and
+                # the token hash below still match the original operation.
+                if now_ms < receipt.issued_at_ms:
+                    connection.execute("ROLLBACK")
+                    raise ConsentRejected(ConsentRejection.NOT_YET_VALID)
+                if now_ms >= receipt.expires_at_ms and not allow_expired_recovery:
+                    connection.execute("ROLLBACK")
+                    raise ConsentRejected(ConsentRejection.EXPIRED)
                 connection.execute("COMMIT")
-                return ClaimResult(receipt=receipt, claimed_now=False)
+                return ClaimResult(
+                    receipt=receipt, claimed_now=False, claimed_at_ms=int(row[1])
+                )
+            if now_ms < receipt.issued_at_ms:
+                connection.execute("ROLLBACK")
+                raise ConsentRejected(ConsentRejection.NOT_YET_VALID)
+            if now_ms >= receipt.expires_at_ms:
+                connection.execute("ROLLBACK")
+                raise ConsentRejected(ConsentRejection.EXPIRED)
             connection.execute(
                 "UPDATE spend_consents SET claimed_at_ms = ? WHERE receipt_id = ?",
                 (now_ms, receipt.receipt_id),
             )
             connection.execute("COMMIT")
-        return ClaimResult(receipt=receipt, claimed_now=True)
+        return ClaimResult(receipt=receipt, claimed_now=True, claimed_at_ms=now_ms)
 
 
 def decode_and_verify(token: str, *, verification_keys: Mapping[str, bytes]) -> ConsentReceipt:

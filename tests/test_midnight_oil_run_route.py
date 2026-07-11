@@ -53,7 +53,7 @@ def test_run_rejects_unapproved():
         assert "approved" in str(exc).lower()
 
 
-def test_api_run_is_closed_until_durable_queue(tmp_path):
+def test_api_run_requires_spend_consent_header(tmp_path):
     client, _ = _client(tmp_path)
     headers = {"x-test-user": "alice"}
 
@@ -73,8 +73,8 @@ def test_api_run_is_closed_until_durable_queue(tmp_path):
         headers=headers,
         json={"job_id": job_id, "auto_deposit": True, "spent_per_goal": 0.05},
     )
-    assert r1.status_code == 409
-    assert "durable enqueue" in r1.text
+    assert r1.status_code == 400
+    assert "consent header" in r1.text
 
     # Unapproved run fails
     c2 = client.post(

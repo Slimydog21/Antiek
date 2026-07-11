@@ -21,6 +21,7 @@ from substrate.midnight_oil.job_store import (
 from substrate.midnight_oil.job_store import (
     TestOnlyInMemoryOwnerJobStore as MemoryOwnerStore,
 )
+from substrate.midnight_oil.operation_queue import DurableOperationQueue
 from substrate.midnight_oil.spend_consent import (
     ConsentRejected,
     JobConsentConfig,
@@ -49,6 +50,7 @@ def _client(tmp_path: Path) -> tuple[TestClient, MidnightOilDependencies]:
         active_key_id="test-key",
         signing_key=KEY,
         verification_keys={"test-key": KEY},
+        operation_queue=DurableOperationQueue(tmp_path / "operations.sqlite3"),
         clock_ms=lambda: 1_000_000,
         random_token=random_token,
         test_mode=True,
@@ -175,7 +177,7 @@ def test_owner_matrix_and_legacy_approval_contract(tmp_path: Path) -> None:
     )
     assert (
         client.post("/midnight-oil/run", headers=own, json={"job_id": "job-owned"}).status_code
-        == 409
+        == 400
     )
     assert (
         client.post(

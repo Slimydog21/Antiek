@@ -47,6 +47,8 @@ class MidnightOilJob:
     research_tier: str = DEFAULT_RESEARCH_TIER
     # Residual (adb): fan-out depth used for recommended ceiling (parity formula).
     fanout_depth: int = 3
+    completed_step_keys: tuple[str, ...] = ()
+    returned_step_keys: tuple[str, ...] = ()
 
 
 @runtime_checkable
@@ -93,6 +95,8 @@ def _job_to_row(job: MidnightOilJob) -> dict[str, Any]:
         "notes": job.notes,
         "research_tier": job.research_tier,
         "fanout_depth": int(job.fanout_depth),
+        "completed_step_keys": list(job.completed_step_keys),
+        "returned_step_keys": list(job.returned_step_keys),
     }
 
 
@@ -121,6 +125,8 @@ def _job_from_row(row: dict[str, Any]) -> MidnightOilJob:
         notes=str(row.get("notes") or ""),
         research_tier=normalize_research_tier(row.get("research_tier")),
         fanout_depth=fanout,
+        completed_step_keys=tuple(row.get("completed_step_keys") or ()),
+        returned_step_keys=tuple(row.get("returned_step_keys") or ()),
     )
 
 
