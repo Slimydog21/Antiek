@@ -23,6 +23,10 @@ describe("isLibrarySlotFilled", () => {
     expect(isLibrarySlotFilled([[], [false, ""]])).toBe(false);
     expect(isLibrarySlotFilled(0)).toBe(true);
     expect(isLibrarySlotFilled(<span>x</span>)).toBe(true);
+    expect(isLibrarySlotFilled(<></>)).toBe(false);
+    expect(isLibrarySlotFilled([[[<></>]]])).toBe(false);
+    expect(isLibrarySlotFilled(<span>{""}</span>)).toBe(false);
+    expect(isLibrarySlotFilled(<span>{"ok"}</span>)).toBe(true);
   });
 });
 

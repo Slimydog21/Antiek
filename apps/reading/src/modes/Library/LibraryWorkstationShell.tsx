@@ -58,6 +58,14 @@ export function isLibrarySlotFilled(content: ReactNode): boolean {
     if (content.length === 0) return false;
     return content.some((child) => isLibrarySlotFilled(child));
   }
+  // Empty React fragments (and elements whose only children are empty)
+  // must not invent filled=true.
+  if (typeof content === "object" && content !== null && "props" in content) {
+    const props = (content as { props?: { children?: ReactNode } }).props;
+    if (props && "children" in props) {
+      return isLibrarySlotFilled(props.children as ReactNode);
+    }
+  }
   return true;
 }
 
