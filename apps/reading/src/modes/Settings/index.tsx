@@ -21,6 +21,7 @@ import {
   type ModelRow,
   type PromptCostEstimateResponse,
 } from "../../api/settings";
+import AddModelPanel from "./AddModelPanel";
 
 /**
  * Operator Settings — model inventory + budget + prompt projection (SPR-01).
@@ -246,7 +247,7 @@ export default function Settings() {
               </ul>
             )}
             <p className="text-[11px] text-ink-soft dark:text-starlight font-serif italic">
-              Adding API keys / new models lands in SPR-02. Decision-tree
+              Add your own models with the card below. Decision-tree
               per-prompt override lands in SPR-03.
             </p>
           </div>
@@ -415,9 +416,10 @@ export default function Settings() {
           </div>
         </LemonCard>
 
+        <AddModelPanel />
+
         <LemonCard title="Coming later" elevation="z1">
           <ul className="p-4 space-y-2 text-sm text-ink dark:text-bright list-disc list-inside">
-            <li>Add model + multi-provider secret vault (SPR-02)</li>
             <li>Antiek-bench weekly model quality report</li>
             <li>Midnight oil: time + goals + price-ceiling approve UI</li>
             <li>Keyboard map customisation + layout export</li>
