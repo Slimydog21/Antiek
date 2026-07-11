@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Semantic Scholar corpus CLI</title></head>
+<body><main>
+<h1>Semantic Scholar corpus CLI</h1>
+<p>Status: implemented as an operator-reachable child of durable cache PR #792.</p>
+<h2>Commands</h2>
+<ul>
+<li><code>enrich ID... --yes</code>: one explicitly authorized live request through the governed S2 client; success is printed only after durable publication.</li>
+<li><code>search QUERY</code>: offline ranked JSON hits from the reopened cache.</li>
+<li><code>fetch PAPER_ID</code>: offline JSON content and provenance, or exit 6 for a typed miss.</li>
+</ul>
+<h2>Safety</h2>
+<p>The API key is accepted only as <code>S2_API_KEY</code>, never as a command-line value. Live
+enrichment refuses without <code>--yes</code>, batches are bounded and unique, provider failures
+print no upstream body, and search/fetch construct no HTTP client. Cache and contract failures are
+machine-readable with stable nonzero exits.</p>
+<h2>Acceptance</h2>
+<pre>uv run --with pytest --with mypy python -m pytest tests/test_s2_enrich.py tests/test_corpus_contract.py tests/test_acquisition_corpus_bridge.py tests/test_s2_corpus_cache.py tests/test_s2_corpus_cli.py -q
+uv run --with pytest --with mypy python -m mypy --strict --explicit-package-bases tools/s2_corpus.py tests/test_s2_corpus_cli.py
+uv run --with ruff ruff check tools/s2_corpus.py tests/test_s2_corpus_cli.py
+uv run python tools/s2_corpus.py --help
+git diff --check</pre>
+</main></body></html>
