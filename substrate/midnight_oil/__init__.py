@@ -16,10 +16,14 @@ from .deposit import DepositResult, deposit_job_results
 from .job import (
     JobStatus,
     MidnightOilJob,
+    MidnightOilJobAuthority,
+    OperationState,
+    OwnerScopedJobStore,
     approve_job,
     create_job,
     get_job,
 )
+from .job_store import SqliteDurableJobStore, create_production_job_store
 from .product_path import (
     ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV,
     MidnightOilProductResult,
@@ -51,8 +55,12 @@ __all__ = [
     "DepositResult",
     "JobStatus",
     "MidnightOilJob",
+    "MidnightOilJobAuthority",
     "MidnightOilProductResult",
+    "OperationState",
+    "OwnerScopedJobStore",
     "ProjectFn",
+    "SqliteDurableJobStore",
     "StepFn",
     "WorkerStepResult",
     "approve_job",
@@ -60,6 +68,7 @@ __all__ = [
     "clear_midnight_oil_live_step",
     "configure_midnight_oil_live_step",
     "create_job",
+    "create_production_job_store",
     "create_recommend_and_approve",
     "create_with_recommended_ceiling",
     "deposit_job_results",
