@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Federated corpus evidence spans</title></head>
+<body><main>
+<h1>Bounded evidence spans—not full documents—enter research context</h1>
+<p>The operator mounts reviewed durable corpora, searches the federation, coherently fetches ranked hits, and projects each document into a deterministic character-bounded span. Every span carries its qualified corpus ID, exact offsets, source provenance, acquisition time, rights class, and an honest source tier.</p>
+<h2>Context safety</h2>
+<ul>
+<li>At most 1–50 spans; each is 200–4000 characters. Span IDs bind qualified ID, full-content digest, and exact offsets.</li>
+<li>A search hit that cannot fetch is a contract failure, never silently omitted.</li>
+<li>S2, OpenAlex, and CORE are aggregators and conservatively receive source tier 5.</li>
+<li>Chunks output uses the live <code>### chunk_id: span_…</code> format repaired by PR #839.</li>
+<li>Source text is JSON-string encoded on one physical line, so embedded headings, brackets, controls, or prompt prose cannot mint canonical chunk IDs.</li>
+</ul>
+<h2>Acceptance</h2>
+<pre>uv run --with pytest --with pytest-asyncio --with mypy python -m pytest tests/test_corpus_contract.py tests/test_research_corpus_cli.py tests/test_evidence_retriever_bridge.py tests/test_research_evidence_cli.py -q
+uv run --with mypy --with pytest mypy --strict --explicit-package-bases substrate/corpus_evidence tools/research_evidence.py tests/test_research_evidence_cli.py
+uv run --with ruff ruff check substrate/corpus_evidence tools/research_evidence.py tests/test_research_evidence_cli.py
+uv run --python 3.12 python -m compileall -q substrate/corpus_evidence tools/research_evidence.py
+uv run --python 3.12 python tools/research_evidence.py --help
+git diff --check</pre>
+<h2>Non-goals</h2><p>No Loop One/orchestrator/bridge mutation, dispatch, synthesis, live/provider calls, cache writes, graph/events/app/frontend, optimistic source-tier inference, merge, deploy, or spend.</p>
+</main></body></html>
