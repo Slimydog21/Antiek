@@ -140,10 +140,7 @@ dev = [
 # the matching system libs. Substack export works without the extra.
 
 [project.scripts]
-# Entry point lives at `antiek.cli:main` once we wire it. For now this is
-# a placeholder so `pip install -e .` doesn't fail; the real launcher
-# fires up Hermes with the right profile (see spec, "Compute and runtime").
-antiek = "antiek.cli:main"
+antiek = "substrate.cli.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 # Each top-level directory in the spec is a separate Python package. We

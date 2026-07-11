@@ -19,14 +19,13 @@ def _import_subcommand(name: str) -> Callable[[list[str] | None], int]:
         from substrate.cli.compact import main
     elif name == "queue":
         from substrate.cli.queue import main
+    elif name == "projections":
+        from substrate.cli.projections import main
     elif name == "lint":
         import importlib.util
         from pathlib import Path
 
-        script = (
-            Path(__file__).resolve().parents[2]
-            / "scripts" / "lint_context_injection.py"
-        )
+        script = Path(__file__).resolve().parents[2] / "scripts" / "lint_context_injection.py"
         spec = importlib.util.spec_from_file_location("antiek_lint", script)
         assert spec and spec.loader
         module = importlib.util.module_from_spec(spec)
@@ -37,7 +36,7 @@ def _import_subcommand(name: str) -> Callable[[list[str] | None], int]:
     return main
 
 
-SUBCOMMANDS = ("burn", "branch", "hooks", "harness", "compact", "queue", "lint")
+SUBCOMMANDS = ("burn", "branch", "hooks", "harness", "compact", "queue", "projections", "lint")
 
 
 def _print_usage() -> None:
@@ -51,6 +50,7 @@ def _print_usage() -> None:
         "  harness   Per-project harness fork / apply / diff / status\n"
         "  compact   Manual compaction\n"
         "  queue     Bounded-queue inspection\n"
+        "  projections  Backfill deterministic HTML projections\n"
         "  lint      Context-injection static analysis\n"
         "\n"
         "Run `antiek <subcommand> --help` for subcommand-specific flags.\n"
