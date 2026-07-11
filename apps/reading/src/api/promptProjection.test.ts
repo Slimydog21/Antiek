@@ -40,6 +40,16 @@ describe("computeUsageBar", () => {
       }),
     ).toThrow(/non-finite|overflow/);
   });
+
+  it("rejects overflow fraction_used", () => {
+    // remaining stays finite (MIN_VALUE - MAX_VALUE), but spent/cap → Infinity
+    expect(() =>
+      computeUsageBar({
+        daily_cap_usd: Number.MIN_VALUE,
+        spent_usd: Number.MAX_VALUE,
+      }),
+    ).toThrow(/non-finite|overflow|fraction/);
+  });
 });
 
 describe("projectPromptAgainstBar", () => {
