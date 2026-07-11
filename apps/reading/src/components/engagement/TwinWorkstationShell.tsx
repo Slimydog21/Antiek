@@ -65,6 +65,23 @@ export function validateParentAssetId(parentAssetId: string): string {
   return id;
 }
 
+/**
+ * True only when the slot has content that React will visibly render.
+ * `null`/`undefined`/`false`/`""` are empty (no invent filled).
+ */
+export function isSlotFilled(content: ReactNode): boolean {
+  if (content == null || content === false || content === true) {
+    return false;
+  }
+  if (typeof content === "string" && !content.trim()) {
+    return false;
+  }
+  if (typeof content === "number" && !Number.isFinite(content)) {
+    return false;
+  }
+  return true;
+}
+
 export default function TwinWorkstationShell({
   parentAssetId,
   parentLabel,
@@ -110,16 +127,17 @@ export default function TwinWorkstationShell({
       >
         {slotOrder.map((id) => {
           const content = slots[id];
+          const filled = isSlotFilled(content);
           return (
             <section
               key={id}
               data-testid={`twin-workstation-slot-${id}`}
               data-slot={id}
-              data-filled={content != null ? "true" : "false"}
+              data-filled={filled ? "true" : "false"}
               className="rounded border border-border p-2"
             >
               <h3 className="text-sm font-medium mb-2">{SLOT_TITLES[id]}</h3>
-              {content != null ? (
+              {filled ? (
                 <div data-testid={`twin-workstation-slot-body-${id}`}>
                   {content}
                 </div>

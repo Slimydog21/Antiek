@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import TwinWorkstationShell, {
+  isSlotFilled,
   validateParentAssetId,
 } from "./TwinWorkstationShell";
 
@@ -60,5 +61,31 @@ describe("TwinWorkstationShell", () => {
       /parentAssetId/,
     );
     expect(screen.queryByTestId("twin-workstation-slots")).toBeNull();
+  });
+
+  it("treats false and empty string slots as empty (no invent filled)", () => {
+    expect(isSlotFilled(false)).toBe(false);
+    expect(isSlotFilled("")).toBe(false);
+    expect(isSlotFilled("  ")).toBe(false);
+    expect(isSlotFilled(<span>x</span>)).toBe(true);
+    render(
+      <TwinWorkstationShell
+        parentAssetId="asset-1"
+        slots={{
+          search: false,
+          compose: "",
+        }}
+        slotOrder={["search", "compose"]}
+      />,
+    );
+    expect(
+      screen.getByTestId("twin-workstation-slot-search").getAttribute("data-filled"),
+    ).toBe("false");
+    expect(
+      screen.getByTestId("twin-workstation-slot-empty-search"),
+    ).toBeTruthy();
+    expect(
+      screen.getByTestId("twin-workstation-slot-compose").getAttribute("data-filled"),
+    ).toBe("false");
   });
 });
