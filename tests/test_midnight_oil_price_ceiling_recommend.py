@@ -67,3 +67,28 @@ def test_int_goal_count() -> None:
     rec = recommend_price_ceiling(hours=1, goals=3, usd_per_hour_low=1, usd_per_hour_high=1, usd_per_goal=1, contingency_fraction=0)
     assert rec.goal_count == 3
     assert rec.recommended_ceiling_usd == pytest.approx(4.0)
+
+
+def test_rejects_overflow_to_inf() -> None:
+    with pytest.raises(PriceCeilingError, match="non-finite|finite"):
+        recommend_price_ceiling(hours=1e308, goals=0, usd_per_hour_low=1, usd_per_hour_high=5)
+    with pytest.raises(PriceCeilingError):
+        recommend_price_ceiling(
+            hours=1,
+            goals=0,
+            usd_per_hour_low=1,
+            usd_per_hour_high=1,
+            contingency_fraction=1e308,
+        )
+
+
+def test_direct_construction_rejects_nonfinite() -> None:
+    with pytest.raises(PriceCeilingError):
+        PriceCeilingRecommendation(
+            hours=1,
+            goal_count=0,
+            recommended_ceiling_usd=float("inf"),
+            low_usd=1,
+            high_usd=1,
+            notes=[],
+        )
