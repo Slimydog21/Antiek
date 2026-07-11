@@ -474,6 +474,30 @@ def test_equality_spoofing_impostor_refused(monkeypatch: pytest.MonkeyPatch) -> 
         dataclasses.replace(live, gather=impostor)
 
 
+# 4a-proxy. weakref.proxy of a real seam forwards to real machinery but is not
+#     `is` the real object and cannot be cheaply dereffed. Live positive checks
+#     already refuse it (not the registered object); the offline negative guard
+#     fails closed on ANY proxy — an offline double is never legitimately one.
+def test_weakref_proxy_seam_refused_both_directions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import dataclasses
+    import weakref
+
+    monkeypatch.setenv("EXA_API_KEY", "test-key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    live = build_live_provider(allow_live=True, discovery_top_k=1)
+    fakes = FakePipeline()
+
+    # Live direction: a proxy is not the registered object → not real.
+    with pytest.raises(ValueError, match="not this module's real implementations"):
+        dataclasses.replace(live, gather=weakref.proxy(live.gather))
+    # Offline direction: a proxy (of anything) refuses — fail closed on the
+    # un-dereferenceable case, closing the real-machinery-forwarding hole.
+    with pytest.raises(ValueError, match="must not carry real-machinery seams"):
+        dataclasses.replace(fakes.build(), synthesize=weakref.proxy(live.synthesize))
+
+
 # 4b. allow_live gating: missing env keys refuse construction — through the
 #     factory AND through direct dataclass construction.
 def test_allow_live_refused_without_env_keys(monkeypatch: pytest.MonkeyPatch) -> None:

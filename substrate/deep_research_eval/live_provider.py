@@ -359,7 +359,14 @@ def _is_real_machinery(seam: object) -> bool:
     must not carry real machinery in ANY field (even the wrong one) — a real
     gather sitting in the synthesize slot could still spend money. Unlike the
     positive checks, this one DOES unwrap: hiding real machinery behind a
-    wrapper must still refuse (fail closed = refuse MORE, never less)."""
+    wrapper must still refuse (fail closed = refuse MORE, never less).
+
+    A ``weakref.proxy`` forwards its calls to a referent this code cannot
+    cheaply deref (there is no public deref for a proxy), so it could forward
+    to real machinery invisibly. An offline test double is never legitimately
+    a weakref proxy, so we fail closed on ANY proxy — refuse the unprovable."""
+    if isinstance(seam, weakref.ProxyTypes):
+        return True
     for candidate in (seam, _unwrap_loop_fn(seam)):
         if candidate is _read_dispatch_usage or candidate is _lookup_document_source_uri:
             return True
