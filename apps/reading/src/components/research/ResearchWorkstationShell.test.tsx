@@ -26,6 +26,8 @@ describe("isResearchSlotFilled", () => {
     expect(isResearchSlotFilled([""])).toBe(false);
     expect(isResearchSlotFilled([false])).toBe(false);
     expect(isResearchSlotFilled([false, "x"])).toBe(true);
+    expect(isResearchSlotFilled([[], [false, ""]])).toBe(false);
+    expect(isResearchSlotFilled([[], [false, "ok"]])).toBe(true);
   });
 });
 
