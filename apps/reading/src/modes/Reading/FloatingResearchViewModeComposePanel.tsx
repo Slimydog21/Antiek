@@ -127,28 +127,28 @@ export default function FloatingResearchViewModeComposePanel({
           </label>
           <div className="flex flex-wrap gap-2">
             <LemonButton
-              type="secondary"
+              variant="secondary"
               onClick={() => run("float")}
               data-testid="frvmc-float"
             >
               Float
             </LemonButton>
             <LemonButton
-              type="secondary"
+              variant="secondary"
               onClick={() => run("fullscreen")}
               data-testid="frvmc-fullscreen"
             >
               Fullscreen
             </LemonButton>
             <LemonButton
-              type="secondary"
+              variant="secondary"
               onClick={() => run("propose_draft_merge")}
               data-testid="frvmc-draft"
             >
               Draft merge intent
             </LemonButton>
             <LemonButton
-              type="primary"
+              variant="primary"
               onClick={() => run("propose_full_merge")}
               data-testid="frvmc-full"
             >

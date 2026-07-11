@@ -37,8 +37,8 @@ describe("assessFloatingViewModeCapabilities", () => {
 });
 
 describe("composeFloatingResearchViewMode", () => {
-  it("float → floating and honesty flags false", () => {
-    let inst = baseInstance();
+  it("fullscreen then float round-trip keeps honesty flags false", () => {
+    const inst = baseInstance();
     const c = composeFloatingResearchViewMode({
       instance: inst,
       action: "fullscreen",
