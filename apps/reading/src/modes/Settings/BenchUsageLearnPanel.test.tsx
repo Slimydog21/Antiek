@@ -87,7 +87,12 @@ describe("BenchUsageLearnPanel", () => {
       suggested_new_tasks: [],
       task_weights: [{}],
     }));
-    render(<BenchUsageLearnPanel proposeFn={proposeFn} />);
+    render(
+      <BenchUsageLearnPanel
+        proposeFn={proposeFn}
+        initialEventsJson="[]"
+      />,
+    );
     fireEvent.click(screen.getByTestId("bench-usage-learn-propose"));
     await waitFor(() => {
       expect(screen.getByTestId("bench-usage-learn-error").textContent).toMatch(
@@ -95,6 +100,8 @@ describe("BenchUsageLearnPanel", () => {
       );
     });
     expect(screen.queryByTestId("bench-usage-learn-result")).toBeNull();
-    expect(screen.queryByText(/general/i)).toBeNull();
+    expect(
+      screen.queryByTestId("bench-usage-learn-weight-general"),
+    ).toBeNull();
   });
 });
