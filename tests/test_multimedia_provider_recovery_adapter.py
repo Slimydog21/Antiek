@@ -23,6 +23,7 @@ from substrate.multimedia.tts_reconciliation import sign_provider_recovery_evide
 NOW = datetime(2026, 7, 12, 9, tzinfo=UTC)
 EVIDENCE_KEY = b"provider-recovery-evidence-key-32b"
 ACCOUNT = hashlib.sha256(b"provider-account-1").hexdigest()
+ANTIEK_OWNER = hashlib.sha256(b"operator-1").hexdigest()
 AUDIO = b"RIFF-provider-recovered-audio"
 
 
@@ -83,6 +84,7 @@ def _payload(*matches: dict[str, object]) -> bytes:
 def _adapter(raw: bytes) -> ProviderAccountRecoveryAdapter:
     return ProviderAccountRecoveryAdapter(
         transport=lambda lookup: raw,
+        antiek_owner_identity_digest=ANTIEK_OWNER,
         account_identity_digest=ACCOUNT,
         evidence_key=EVIDENCE_KEY,
     )
@@ -101,6 +103,41 @@ def test_provider_account_recovery_binds_exact_execution_and_signs_normalized_au
         audio_bytes=AUDIO,
         recorded_at=recovered.recorded_at,
     )
+
+
+def test_provider_recovery_owner_binding_denies_before_transport() -> None:
+    calls = 0
+
+    def transport(lookup: ProviderRecoveryLookup) -> bytes:
+        nonlocal calls
+        calls += 1
+        return _payload(_match())
+
+    adapter = ProviderAccountRecoveryAdapter(
+        transport=transport,
+        antiek_owner_identity_digest=ANTIEK_OWNER,
+        account_identity_digest=ACCOUNT,
+        evidence_key=EVIDENCE_KEY,
+    )
+    foreign = _execution().__class__(**{**_execution().__dict__, "operator_id": "operator-2"})
+    with pytest.raises(ProviderRecoveryError, match="unavailable"):
+        adapter.resolve(foreign, verified_at=NOW)
+    assert calls == 0
+
+    recovered = adapter.resolve(_execution(), verified_at=NOW)
+    assert recovered.audio_bytes == AUDIO
+    assert calls == 1
+
+
+@pytest.mark.parametrize("digest", ["", "A" * 64, "a" * 63, "a" * 65])
+def test_provider_recovery_requires_canonical_antiek_owner_digest(digest: str) -> None:
+    with pytest.raises(ValueError, match="owner identity"):
+        ProviderAccountRecoveryAdapter(
+            transport=lambda lookup: _payload(_match()),
+            antiek_owner_identity_digest=digest,
+            account_identity_digest=ACCOUNT,
+            evidence_key=EVIDENCE_KEY,
+        )
 
 
 @pytest.mark.parametrize(

@@ -257,6 +257,19 @@ def test_environment_runtime_is_disabled_or_fails_closed_on_partial_configuratio
         multimedia_reconciliation_runtime_from_environment(
             {**keys, "ANTIEK_MULTIMEDIA_RECOVERY_ENDPOINT": "https://recovery.example/v1"}
         )
+    legacy_unbound = {
+        **keys,
+        "ANTIEK_MULTIMEDIA_RECOVERY_ENDPOINT": "https://recovery.example/v1",
+        "ANTIEK_MULTIMEDIA_RECOVERY_TOKEN": "token",
+        "ANTIEK_MULTIMEDIA_RECOVERY_ACCOUNT_SHA256": "a" * 64,
+        "ANTIEK_MULTIMEDIA_RECOVERY_ALLOWED_HOST": "recovery.example",
+    }
+    with pytest.raises(RuntimeError, match="provider recovery configuration is incomplete"):
+        multimedia_reconciliation_runtime_from_environment(legacy_unbound)
+    with pytest.raises(RuntimeError, match="provider recovery configuration is invalid"):
+        multimedia_reconciliation_runtime_from_environment(
+            {**legacy_unbound, "ANTIEK_MULTIMEDIA_RECOVERY_OPERATOR_SHA256": "not-a-digest"}
+        )
 
 
 def test_registered_multimedia_routes_wire_environment_runtime(

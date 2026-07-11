@@ -181,6 +181,7 @@ def multimedia_reconciliation_runtime_from_environment(
     recovery_values = (
         values.get("ANTIEK_MULTIMEDIA_RECOVERY_ENDPOINT", "").strip(),
         values.get("ANTIEK_MULTIMEDIA_RECOVERY_TOKEN", "").strip(),
+        values.get("ANTIEK_MULTIMEDIA_RECOVERY_OPERATOR_SHA256", "").strip(),
         values.get("ANTIEK_MULTIMEDIA_RECOVERY_ACCOUNT_SHA256", "").strip(),
         values.get("ANTIEK_MULTIMEDIA_RECOVERY_ALLOWED_HOST", "").strip(),
     )
@@ -193,9 +194,10 @@ def multimedia_reconciliation_runtime_from_environment(
                 transport=HttpProviderRecoveryTransport(
                     endpoint=recovery_values[0],
                     bearer_token=recovery_values[1],
-                    allowed_host=recovery_values[3],
+                    allowed_host=recovery_values[4],
                 ),
-                account_identity_digest=recovery_values[2],
+                antiek_owner_identity_digest=recovery_values[2],
+                account_identity_digest=recovery_values[3],
                 evidence_key=evidence_key,
             )
         except ValueError as exc:

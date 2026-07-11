@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Antiek Account-Bound Multimedia Provider Recovery</title>
+  <style>body{max-width:980px;margin:auto;padding:32px;font:15px/1.55 system-ui;color:#18181b;background:#fafafa}section{border-top:1px solid #d4d4d8;padding:18px 0}h1,h2{line-height:1.2}code{background:#e4e4e7;padding:2px 5px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #d4d4d8;padding:8px;text-align:left;vertical-align:top}</style>
+</head>
+<body>
+  <h1>Account-Bound Provider Recovery</h1>
+  <p><strong>TS executable sub-spec.</strong> Stacked on PR #947. A provider-account recovery credential is authority for exactly one Antiek account, never a process-global capability.</p>
+
+  <section>
+    <h2>Five Values</h2>
+    <ol>
+      <li><strong>Explicit owner:</strong> configuration includes the SHA-256 digest of one normalized authenticated Antiek owner.</li>
+      <li><strong>Zero-call denial:</strong> a foreign execution is rejected before gateway transport, token use, or response parsing.</li>
+      <li><strong>Two identities:</strong> Antiek owner identity and external provider-account identity remain separate mandatory digests.</li>
+      <li><strong>Fail closed:</strong> legacy four-field or partial recovery configuration cannot construct a runtime.</li>
+      <li><strong>Honest canary:</strong> deterministic injected transport proves binding and evidence signing without network, credentials, or spend.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Configuration Contract</h2>
+    <table>
+      <tr><th>Variable</th><th>Authority</th></tr>
+      <tr><td><code>ANTIEK_MULTIMEDIA_RECOVERY_OPERATOR_SHA256</code></td><td>Canonical lowercase SHA-256 of the normalized authenticated Antiek owner ID.</td></tr>
+      <tr><td><code>ANTIEK_MULTIMEDIA_RECOVERY_ACCOUNT_SHA256</code></td><td>Independent digest of the external provider account queried by the gateway.</td></tr>
+      <tr><td>Endpoint, allowed host, token</td><td>One fixed HTTPS gateway and credential. All five recovery values are all-or-none.</td></tr>
+    </table>
+    <p>The adapter hashes the persisted execution operator ID using the same stripped UTF-8 normalization as the owner-scoped asset store. A mismatch returns an opaque recovery-unavailable error before invoking transport.</p>
+  </section>
+
+  <section>
+    <h2>Threat And Acceptance Matrix</h2>
+    <table>
+      <tr><th>Case</th><th>Required evidence</th></tr>
+      <tr><td>Owner B execution reaches owner A gateway binding</td><td>Recovery error and transport call count remains zero.</td></tr>
+      <tr><td>Legacy configuration omits owner digest</td><td>Startup runtime construction fails as incomplete.</td></tr>
+      <tr><td>Malformed owner digest</td><td>Startup runtime construction fails as invalid.</td></tr>
+      <tr><td>Bound owner, exact eligible execution, injected response</td><td>One transport call and signed normalized audio evidence.</td></tr>
+      <tr><td>Production gateway canary</td><td><strong>NOT RUN.</strong> Requires operator-provisioned account binding and explicit trigger.</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Non-Goals And Next Seam</h2>
+    <p>No live provider request, credential provisioning, paid spend, refund, model routing, settings UI, merge, or deploy. Multi-account installations may later replace the single environment binding with an encrypted owner-indexed registry; the adapter owner check remains mandatory.</p>
+  </section>
+</body>
+</html>

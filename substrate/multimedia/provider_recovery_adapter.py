@@ -124,14 +124,18 @@ class ProviderAccountRecoveryAdapter:
         self,
         *,
         transport: RecoveryTransport,
+        antiek_owner_identity_digest: str,
         account_identity_digest: str,
         evidence_key: bytes,
     ) -> None:
+        if not _DIGEST.fullmatch(antiek_owner_identity_digest):
+            raise ValueError("Antiek recovery owner identity digest is invalid")
         if not _DIGEST.fullmatch(account_identity_digest):
             raise ValueError("provider account identity digest is invalid")
         if not isinstance(evidence_key, bytes) or len(evidence_key) < 32:
             raise ValueError("provider recovery evidence key is invalid")
         self._transport = transport
+        self._antiek_owner_digest = antiek_owner_identity_digest
         self._account_digest = account_identity_digest
         self._evidence_key = evidence_key
 
@@ -143,10 +147,13 @@ class ProviderAccountRecoveryAdapter:
             or execution.provider_job_id is not None
         ):
             raise ProviderRecoveryError("execution is not eligible for provider recovery")
+        operator_digest = hashlib.sha256(execution.operator_id.strip().encode("utf-8")).hexdigest()
+        if operator_digest != self._antiek_owner_digest:
+            raise ProviderRecoveryError("execution is unavailable for provider recovery")
         lookup = ProviderRecoveryLookup(
             execution_id=execution.execution_id,
             authorization_id=execution.authorization_id,
-            operator_identity_digest=hashlib.sha256(execution.operator_id.encode()).hexdigest(),
+            operator_identity_digest=operator_digest,
             asset_id=execution.asset_id,
             revision_id=execution.revision_id,
             provider=execution.provider,
