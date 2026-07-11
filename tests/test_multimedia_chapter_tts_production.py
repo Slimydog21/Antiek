@@ -1,13 +1,23 @@
 from __future__ import annotations
 
+import hashlib
+import io
+import threading
+import wave
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
+from runtime.db_lock import FlockWriteCoordinator
 from substrate.contracts.multimedia import ScriptLine
 from substrate.multimedia.chapter_tts_production import (
+    ChapterTTSSynthesisResult,
     PreparedChapterTTSRequest,
+    get_chapter_tts_attempt,
     prepare_chapter_tts_request,
+    produce_chapter_narration,
     verify_chapter_tts_authorization,
 )
 from substrate.multimedia.execution_authorization import (
@@ -20,6 +30,7 @@ from substrate.multimedia.planner import (
     MultimediaPlan,
     MultimediaPlanRequest,
 )
+from substrate.multimedia.provider_execution import ProviderExecutionIntegrityError
 
 KEY = b"chapter-tts-authority-key-32-bytes-long"
 NOW = datetime(2026, 7, 11, tzinfo=UTC)
@@ -179,3 +190,170 @@ def test_identifiers_and_speed_cannot_escape_canonical_request() -> None:
             model="tts",
             speed=float("nan"),
         )
+
+
+def _wav_bytes() -> bytes:
+    output = io.BytesIO()
+    with wave.open(output, "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(8_000)
+        audio.writeframes((100).to_bytes(2, "little", signed=True) * 8_000)
+    return output.getvalue()
+
+
+def _produce_args(tmp_path: Path) -> tuple[dict[str, object], PreparedChapterTTSRequest]:
+    output = tmp_path / "output"
+    output.mkdir(mode=0o700)
+    prepared = _prepared()
+    values: dict[str, object] = {
+        "plan": _plan(),
+        "prepared": prepared,
+        "authorization": _authorization(prepared.body_digest),
+        "signing_key": KEY,
+        "integrity_key": b"chapter-tts-narration-integrity-key",
+        "operator_id": "operator-1",
+        "catalog_version": "catalog-1",
+        "catalog_digest": CATALOG_DIGEST,
+        "quote_id": "quote-1",
+        "recovery_authority_id": "recovery-1",
+        "recovery_verification_key_digest": RECOVERY_DIGEST,
+        "approved_ceiling_microdollars": 50_000,
+        "db_path": str(tmp_path / "tts.duckdb"),
+        "output_dir": str(output),
+        "now": NOW,
+    }
+    return values, prepared
+
+
+def test_paid_send_materializes_truthful_audio_and_replays_once(tmp_path: Path) -> None:
+    values, _ = _produce_args(tmp_path)
+    calls: list[int] = []
+
+    def synthesize(request: PreparedChapterTTSRequest) -> ChapterTTSSynthesisResult:
+        calls.append(1)
+        return ChapterTTSSynthesisResult(_wav_bytes(), "provider-request-1", 12_000)
+
+    first = produce_chapter_narration(**values, synthesize=synthesize)  # type: ignore[arg-type]
+    second = produce_chapter_narration(**values, synthesize=synthesize)  # type: ignore[arg-type]
+    assert first == second
+    assert calls == [1]
+    assert first.manifest.asset_id == "asset-747"
+    assert first.manifest.duration_seconds == 1.0
+    assert Path(first.manifest.output_path).is_file()
+
+
+def test_callback_failure_is_quarantined_and_never_retried(tmp_path: Path) -> None:
+    values, prepared = _produce_args(tmp_path)
+    calls: list[int] = []
+
+    def fail(request: PreparedChapterTTSRequest) -> ChapterTTSSynthesisResult:
+        calls.append(1)
+        raise TimeoutError("ambiguous provider timeout")
+
+    with pytest.raises(TimeoutError):
+        produce_chapter_narration(**values, synthesize=fail)  # type: ignore[arg-type]
+    with pytest.raises(Exception, match="in flight|unknown|consumed"):
+        produce_chapter_narration(**values, synthesize=fail)  # type: ignore[arg-type]
+    assert calls == [1]
+    authorization = _authorization(prepared.body_digest)
+    execution_id = "mmexec_" + hashlib.sha256(
+        f"{authorization.authorization_id}:{authorization.request_body_digest}".encode()
+    ).hexdigest()
+    attempt = get_chapter_tts_attempt(
+        db_path=str(values["db_path"]), execution_id=execution_id, signing_key=KEY
+    )
+    assert attempt.status == "outcome_unknown"
+
+
+def test_attempt_mac_tamper_fails_closed(tmp_path: Path) -> None:
+    values, prepared = _produce_args(tmp_path)
+    produce_chapter_narration(
+        **values,  # type: ignore[arg-type]
+        synthesize=lambda request: ChapterTTSSynthesisResult(
+            _wav_bytes(), "provider-request-mac", 10_000
+        ),
+    )
+    authorization = _authorization(prepared.body_digest)
+    execution_id = "mmexec_" + hashlib.sha256(
+        f"{authorization.authorization_id}:{authorization.request_body_digest}".encode()
+    ).hexdigest()
+    coordinator = FlockWriteCoordinator(str(values["db_path"]))
+    with coordinator.acquire_write_context("test.tamper") as connection:
+        connection.execute(
+            "UPDATE multimedia_chapter_tts_attempts SET raw_sha256 = ? WHERE execution_id = ?",
+            ["0" * 64, execution_id],
+        )
+    with pytest.raises(ProviderExecutionIntegrityError, match="MAC"):
+        get_chapter_tts_attempt(
+            db_path=str(values["db_path"]), execution_id=execution_id, signing_key=KEY
+        )
+
+
+def test_persisted_raw_tamper_breaks_received_resume(tmp_path: Path) -> None:
+    values, prepared = _produce_args(tmp_path)
+    authorization = _authorization(prepared.body_digest)
+    calls: list[int] = []
+
+    def synthesize(request: PreparedChapterTTSRequest) -> ChapterTTSSynthesisResult:
+        calls.append(1)
+        return ChapterTTSSynthesisResult(_wav_bytes(), "provider-request-raw", 10_000)
+
+    artifact = produce_chapter_narration(**values, synthesize=synthesize)  # type: ignore[arg-type]
+    execution_id = "mmexec_" + hashlib.sha256(
+        f"{authorization.authorization_id}:{authorization.request_body_digest}".encode()
+    ).hexdigest()
+    attempt = get_chapter_tts_attempt(
+        db_path=str(values["db_path"]), execution_id=execution_id, signing_key=KEY
+    )
+    assert attempt.raw_path is not None
+    Path(attempt.raw_path).write_bytes(b"tampered")
+    Path(attempt.raw_path).chmod(0o600)
+    Path(artifact.manifest.output_path).write_bytes(b"tampered")
+    Path(artifact.manifest.output_path).chmod(0o600)
+    with pytest.raises(Exception, match="digest"):
+        produce_chapter_narration(**values, synthesize=synthesize)  # type: ignore[arg-type]
+    assert calls == [1]
+
+
+def test_invalid_provider_bytes_after_send_are_never_retried(tmp_path: Path) -> None:
+    values, _ = _produce_args(tmp_path)
+    calls: list[int] = []
+
+    def invalid(request: PreparedChapterTTSRequest) -> ChapterTTSSynthesisResult:
+        calls.append(1)
+        return ChapterTTSSynthesisResult(b"", "provider-request-empty", 0)
+
+    with pytest.raises(ValueError, match="empty"):
+        produce_chapter_narration(**values, synthesize=invalid)  # type: ignore[arg-type]
+    with pytest.raises(Exception, match="retry is forbidden"):
+        produce_chapter_narration(**values, synthesize=invalid)  # type: ignore[arg-type]
+    assert calls == [1]
+
+
+def test_twenty_concurrent_callers_invoke_provider_once(tmp_path: Path) -> None:
+    values, _ = _produce_args(tmp_path)
+    calls: list[int] = []
+    lock = threading.Lock()
+
+    def synthesize(request: PreparedChapterTTSRequest) -> ChapterTTSSynthesisResult:
+        with lock:
+            calls.append(1)
+        return ChapterTTSSynthesisResult(_wav_bytes(), "provider-request-race", 10_000)
+
+    def run() -> object:
+        try:
+            return produce_chapter_narration(**values, synthesize=synthesize)  # type: ignore[arg-type]
+        except Exception as exc:
+            return exc
+
+    with ThreadPoolExecutor(max_workers=20) as pool:
+        results = tuple(pool.map(lambda _: run(), range(20)))
+    assert calls == [1]
+    assert any(not isinstance(result, Exception) for result in results)
+    assert all(
+        not isinstance(result, Exception)
+        or "in flight" in str(result)
+        or "retry is forbidden" in str(result)
+        for result in results
+    ), [repr(result) for result in results if isinstance(result, Exception)]

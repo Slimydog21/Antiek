@@ -8,22 +8,86 @@ provider call before any budget claim or network-capable callback is reachable.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import math
+import os
 import re
+import shutil
+import stat
+import subprocess
+import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Literal
 
+from runtime.db_lock import FlockWriteCoordinator, WriteContext
+from substrate.contracts.multimedia import GeneratedFile
+from substrate.midnight_oil.budget_ledger import BudgetLedger, CallHold
+
+from .audio_assembly import ChapterAudio
 from .execution_authorization import (
     MultimediaExecutionAuthorizationV2,
     verify_async_execution_authorization,
 )
 from .narration import NarrationParagraph, normalize_script
+from .narration_production import NarrationProductionArtifact, produce_narration_track
 from .planner import MultimediaPlan
+from .provider_execution import (
+    ProviderExecutionIntegrityError,
+    ProviderExecutionStatus,
+    begin_reserved_provider_submission,
+    bind_provider_job_with_mutation,
+    charge_and_mark_submission_unknown,
+    record_provider_observation,
+)
 
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _MAX_TEXT_BYTES = 256 * 1024
+_MAX_AUDIO_BYTES = 64 * 1024 * 1024
+
+
+class ChapterTTSProductionError(RuntimeError):
+    """A durable TTS attempt cannot safely continue automatically."""
+
+
+@dataclass(frozen=True)
+class ChapterTTSSynthesisResult:
+    audio_bytes: bytes
+    provider_request_id: str
+    actual_microdollars: int
+
+
+@dataclass(frozen=True)
+class ChapterTTSAttempt:
+    execution_id: str
+    hold_id: str
+    request_body_digest: str
+    status: str
+    send_started_at: str | None
+    provider_request_id: str | None
+    raw_path: str | None
+    raw_sha256: str | None
+    artifact_json: str | None
+    attempt_mac: str
+
+
+_ATTEMPT_DDL = """
+CREATE TABLE IF NOT EXISTS multimedia_chapter_tts_attempts (
+    execution_id TEXT PRIMARY KEY,
+    hold_id TEXT NOT NULL UNIQUE,
+    request_body_digest TEXT NOT NULL,
+    status TEXT NOT NULL,
+    send_started_at TEXT,
+    provider_request_id TEXT,
+    raw_path TEXT,
+    raw_sha256 TEXT,
+    artifact_json TEXT,
+    attempt_mac TEXT NOT NULL
+)
+"""
 
 
 @dataclass(frozen=True)
@@ -193,6 +257,630 @@ def verify_chapter_tts_authorization(
     )
 
 
+def produce_chapter_narration(
+    *,
+    plan: MultimediaPlan,
+    prepared: PreparedChapterTTSRequest,
+    authorization: MultimediaExecutionAuthorizationV2,
+    signing_key: bytes,
+    integrity_key: bytes,
+    operator_id: str,
+    catalog_version: str,
+    catalog_digest: str,
+    quote_id: str,
+    recovery_authority_id: str,
+    recovery_verification_key_digest: str,
+    approved_ceiling_microdollars: int,
+    db_path: str,
+    output_dir: str,
+    now: datetime,
+    synthesize: Callable[[PreparedChapterTTSRequest], ChapterTTSSynthesisResult],
+    ffmpeg_path: str = "/opt/homebrew/bin/ffmpeg",
+    ffprobe_path: str = "/opt/homebrew/bin/ffprobe",
+    timeout_seconds: int = 300,
+) -> NarrationProductionArtifact:
+    """Execute one authorized synchronous TTS call and seal its narration.
+
+    The provider callback runs only after a durable send marker. A returned
+    provider request ID and raw bytes are persisted before local rendering, so
+    rendering can resume without repeating paid synthesis.
+    """
+    expected = prepare_chapter_tts_request(
+        plan,
+        asset_id=prepared.asset_id,
+        revision_id=prepared.revision_id,
+        provider=prepared.provider,
+        model=prepared.model,
+        voice=prepared.voice,
+        speed=prepared.speed,
+        sample_rate_hz=prepared.sample_rate_hz,
+        channels=prepared.channels,
+    )
+    if expected != prepared:
+        raise ValueError("prepared chapter TTS request conflicts with plan")
+    verify_chapter_tts_authorization(
+        authorization,
+        prepared,
+        signing_key=signing_key,
+        operator_id=operator_id,
+        catalog_version=catalog_version,
+        catalog_digest=catalog_digest,
+        quote_id=quote_id,
+        recovery_authority_id=recovery_authority_id,
+        recovery_verification_key_digest=recovery_verification_key_digest,
+        approved_ceiling_microdollars=approved_ceiling_microdollars,
+        now=now,
+    )
+    root = _private_directory(output_dir)
+    existing = _attempt_for_authorization(db_path, authorization, signing_key)
+    if existing is not None and existing.status == "sealed":
+        return _reopen_attempt(existing, prepared, integrity_key)
+    if existing is not None and existing.status == "received":
+        return _seal_received(
+            attempt=existing,
+            prepared=prepared,
+            signing_key=signing_key,
+            integrity_key=integrity_key,
+            db_path=db_path,
+            output_dir=str(root),
+            ffmpeg_path=ffmpeg_path,
+            ffprobe_path=ffprobe_path,
+            timeout_seconds=timeout_seconds,
+        )
+    if existing is not None and existing.status in {"sending", "sealing", "outcome_unknown"}:
+        raise ChapterTTSProductionError(
+            f"chapter TTS attempt is {existing.status}; automatic retry is forbidden"
+        )
+
+    try:
+        execution, hold = begin_reserved_provider_submission(
+            db_path=db_path,
+            authorization=authorization,
+            signing_key=signing_key,
+            now=now,
+            mutation=lambda ctx, record, reserved: _ensure_attempt(
+                ctx, record.execution_id, reserved, prepared, signing_key
+            ),
+        )
+    except RuntimeError as exc:
+        raced = _attempt_for_authorization(db_path, authorization, signing_key)
+        if raced is None:
+            raise
+        if raced.status == "sealed":
+            return _reopen_attempt(raced, prepared, integrity_key)
+        if raced.status == "received":
+            return _seal_received(
+                attempt=raced,
+                prepared=prepared,
+                signing_key=signing_key,
+                integrity_key=integrity_key,
+                db_path=db_path,
+                output_dir=str(root),
+                ffmpeg_path=ffmpeg_path,
+                ffprobe_path=ffprobe_path,
+                timeout_seconds=timeout_seconds,
+            )
+        raise ChapterTTSProductionError("chapter TTS send is already in flight") from exc
+    attempt = get_chapter_tts_attempt(
+        db_path=db_path, execution_id=execution.execution_id, signing_key=signing_key
+    )
+    if attempt.status == "sealed":
+        return _reopen_attempt(attempt, prepared, integrity_key)
+    if attempt.status == "received":
+        return _seal_received(
+            attempt=attempt,
+            prepared=prepared,
+            signing_key=signing_key,
+            integrity_key=integrity_key,
+            db_path=db_path,
+            output_dir=str(root),
+            ffmpeg_path=ffmpeg_path,
+            ffprobe_path=ffprobe_path,
+            timeout_seconds=timeout_seconds,
+        )
+    if not _mark_send_started(db_path, execution.execution_id, signing_key, now):
+        raise ChapterTTSProductionError("chapter TTS send is already in flight")
+
+    try:
+        result = synthesize(prepared)
+        _validate_synthesis_result(result, authorization)
+        raw_path, raw_sha = _persist_raw(root, execution.execution_id, result.audio_bytes)
+    except Exception:
+        charge_and_mark_submission_unknown(
+            db_path=db_path,
+            execution_id=execution.execution_id,
+            hold=hold,
+            signing_key=signing_key,
+            now=now,
+        )
+        _mark_unknown(db_path, execution.execution_id, signing_key)
+        raise
+
+    actual_cents = (result.actual_microdollars + 9_999) // 10_000
+    try:
+        bind_provider_job_with_mutation(
+            db_path=db_path,
+            execution_id=execution.execution_id,
+            provider_job_id=result.provider_request_id,
+            signing_key=signing_key,
+            now=now,
+            mutation=lambda ctx: _receive_in_context(
+                ctx,
+                execution_id=execution.execution_id,
+                provider_request_id=result.provider_request_id,
+                raw_path=raw_path,
+                raw_sha256=raw_sha,
+                hold=hold,
+                actual_cents=actual_cents,
+                signing_key=signing_key,
+            ),
+        )
+    except Exception:
+        charge_and_mark_submission_unknown(
+            db_path=db_path,
+            execution_id=execution.execution_id,
+            hold=hold,
+            signing_key=signing_key,
+            now=now,
+        )
+        _mark_unknown(db_path, execution.execution_id, signing_key)
+        raise
+    record_provider_observation(
+        db_path=db_path,
+        execution_id=execution.execution_id,
+        provider_job_id=result.provider_request_id,
+        status=ProviderExecutionStatus.SUCCEEDED,
+        evidence_digest=raw_sha,
+        signing_key=signing_key,
+        observed_at=now,
+    )
+    received = get_chapter_tts_attempt(
+        db_path=db_path, execution_id=execution.execution_id, signing_key=signing_key
+    )
+    return _seal_received(
+        attempt=received,
+        prepared=prepared,
+        signing_key=signing_key,
+        integrity_key=integrity_key,
+        db_path=db_path,
+        output_dir=str(root),
+        ffmpeg_path=ffmpeg_path,
+        ffprobe_path=ffprobe_path,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+def get_chapter_tts_attempt(
+    *, db_path: str, execution_id: str, signing_key: bytes
+) -> ChapterTTSAttempt:
+    coordinator = FlockWriteCoordinator(db_path)
+    with coordinator.acquire_write_context("multimedia.chapter_tts.read") as connection:
+        row = connection.execute(
+            "SELECT * FROM multimedia_chapter_tts_attempts WHERE execution_id = ?",
+            [execution_id],
+        ).fetchone()
+    if row is None:
+        raise ProviderExecutionIntegrityError("chapter TTS attempt does not exist")
+    return _attempt(row, signing_key)
+
+
+def _ensure_attempt(
+    ctx: WriteContext,
+    execution_id: str,
+    hold: CallHold,
+    prepared: PreparedChapterTTSRequest,
+    signing_key: bytes,
+) -> None:
+    ctx.execute(_ATTEMPT_DDL)
+    row = ctx.execute(
+        "SELECT * FROM multimedia_chapter_tts_attempts WHERE execution_id = ?",
+        [execution_id],
+    ).fetchone()
+    if row is not None:
+        current = _attempt(row, signing_key)
+        if current.hold_id != hold.hold_id or current.request_body_digest != prepared.body_digest:
+            raise ProviderExecutionIntegrityError("chapter TTS attempt conflicts")
+        return
+    values: list[object] = [
+        execution_id,
+        hold.hold_id,
+        prepared.body_digest,
+        "intent",
+        None,
+        None,
+        None,
+        None,
+        None,
+    ]
+    ctx.execute(
+        "INSERT INTO multimedia_chapter_tts_attempts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [*values, _attempt_mac(values, signing_key)],
+    )
+
+
+def _mark_send_started(
+    db_path: str, execution_id: str, signing_key: bytes, now: datetime
+) -> bool:
+    timestamp = _timestamp(now)
+    coordinator = FlockWriteCoordinator(db_path)
+    with coordinator.acquire_write_context("multimedia.chapter_tts.send") as ctx:
+        row = ctx.execute(
+            "SELECT * FROM multimedia_chapter_tts_attempts WHERE execution_id = ?",
+            [execution_id],
+        ).fetchone()
+        if row is None:
+            raise ProviderExecutionIntegrityError("chapter TTS attempt disappeared")
+        current = _attempt(row, signing_key)
+        if current.status != "intent" or current.send_started_at is not None:
+            return False
+        values: list[object] = [*row[:3], "sending", timestamp, *row[5:9]]
+        hit = ctx.execute(
+            "UPDATE multimedia_chapter_tts_attempts SET status='sending', send_started_at=?, "
+            "attempt_mac=? WHERE execution_id=? AND status='intent' RETURNING 1",
+            [timestamp, _attempt_mac(values, signing_key), execution_id],
+        ).fetchone()
+        return hit is not None
+
+
+def _receive_in_context(
+    ctx: WriteContext,
+    *,
+    execution_id: str,
+    provider_request_id: str,
+    raw_path: str,
+    raw_sha256: str,
+    hold: CallHold,
+    actual_cents: int,
+    signing_key: bytes,
+) -> None:
+    row = ctx.execute(
+        "SELECT * FROM multimedia_chapter_tts_attempts WHERE execution_id = ?",
+        [execution_id],
+    ).fetchone()
+    if row is None or _attempt(row, signing_key).status != "sending":
+        raise ProviderExecutionIntegrityError("chapter TTS receive state is invalid")
+    BudgetLedger(":memory:").settle_in_context(
+        ctx, hold_id=hold.hold_id, actual_cents=actual_cents
+    )
+    values: list[object] = [
+        *row[:3],
+        "received",
+        row[4],
+        provider_request_id,
+        raw_path,
+        raw_sha256,
+        None,
+    ]
+    ctx.execute(
+        "UPDATE multimedia_chapter_tts_attempts SET status='received', provider_request_id=?, "
+        "raw_path=?, raw_sha256=?, attempt_mac=? WHERE execution_id=?",
+        [provider_request_id, raw_path, raw_sha256, _attempt_mac(values, signing_key), execution_id],
+    )
+
+
+def _mark_unknown(db_path: str, execution_id: str, signing_key: bytes) -> None:
+    coordinator = FlockWriteCoordinator(db_path)
+    with coordinator.acquire_write_context("multimedia.chapter_tts.unknown") as ctx:
+        row = ctx.execute(
+            "SELECT * FROM multimedia_chapter_tts_attempts WHERE execution_id = ?",
+            [execution_id],
+        ).fetchone()
+        if row is None:
+            return
+        _attempt(row, signing_key)
+        values: list[object] = [*row[:3], "outcome_unknown", *row[4:9]]
+        ctx.execute(
+            "UPDATE multimedia_chapter_tts_attempts SET status='outcome_unknown', attempt_mac=? "
+            "WHERE execution_id=?",
+            [_attempt_mac(values, signing_key), execution_id],
+        )
+
+
+def _seal_received(
+    *,
+    attempt: ChapterTTSAttempt,
+    prepared: PreparedChapterTTSRequest,
+    signing_key: bytes,
+    integrity_key: bytes,
+    db_path: str,
+    output_dir: str,
+    ffmpeg_path: str,
+    ffprobe_path: str,
+    timeout_seconds: int,
+) -> NarrationProductionArtifact:
+    if attempt.status != "received" or attempt.raw_path is None or attempt.raw_sha256 is None:
+        raise ChapterTTSProductionError("chapter TTS has no durable received audio")
+    raw = Path(attempt.raw_path)
+    if _hash_private_file(raw) != attempt.raw_sha256:
+        raise ChapterTTSProductionError("chapter TTS raw audio digest is invalid")
+    if not _claim_seal(db_path, attempt.execution_id, signing_key):
+        raise ChapterTTSProductionError("chapter TTS seal is already in flight")
+    staging = Path(tempfile.mkdtemp(prefix=".tts-normalize-", dir=output_dir))
+    try:
+        os.chmod(staging, 0o700)
+        wav = staging / "chapter.wav"
+        _run(
+            [
+                _executable(ffmpeg_path), "-hide_banner", "-loglevel", "error", "-nostdin",
+                "-y", "-i", str(raw), "-ar", str(prepared.sample_rate_hz), "-ac",
+                str(prepared.channels), "-c:a", "pcm_s16le", str(wav),
+            ],
+            timeout_seconds,
+        )
+        os.chmod(wav, 0o600)
+        duration = _probe_duration(_executable(ffprobe_path), wav, timeout_seconds)
+        durable_wav = Path(attempt.raw_path).with_suffix(".wav")
+        os.replace(wav, durable_wav)
+        os.chmod(durable_wav, 0o600)
+        wav = durable_wav
+        audio_id = f"audio-{prepared.chapter_id}"
+        chapter = ChapterAudio(
+            chapter_id=prepared.chapter_id,
+            title=prepared.title,
+            sequence=0,
+            audio_file_id=audio_id,
+            duration_seconds=duration,
+            start_offset_seconds=0.0,
+            script_line_ids=prepared.script_line_ids,
+            source_chunk_ids=prepared.source_chunk_ids,
+            paragraph_ids=prepared.paragraph_ids,
+            recap_prompt="Recall the evidence.",
+        )
+        generated = GeneratedFile(
+            file_id=audio_id,
+            kind="audio",
+            storage_uri=f"antiek-mm://{prepared.asset_id}/{prepared.revision_id}/{audio_id}.wav",
+            sha256=_hash_private_file(wav),
+            mime="audio/wav",
+            provider=prepared.provider,
+            duration_seconds=duration,
+        )
+        artifact = produce_narration_track(
+            asset_id=prepared.asset_id,
+            revision_id=prepared.revision_id,
+            chapters=(chapter,),
+            generated_files=(generated,),
+            chapter_paths={audio_id: str(wav)},
+            output_dir=output_dir,
+            integrity_key=integrity_key,
+            ffmpeg_path=ffmpeg_path,
+            ffprobe_path=ffprobe_path,
+            sample_rate_hz=prepared.sample_rate_hz,
+            channels=prepared.channels,
+            timeout_seconds=timeout_seconds,
+        )
+    except Exception:
+        _release_seal(db_path, attempt.execution_id, signing_key)
+        raise
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    _mark_sealed(db_path, attempt.execution_id, artifact, signing_key)
+    return NarrationProductionArtifact.reopen(artifact.to_json(), integrity_key)
+
+
+def _mark_sealed(
+    db_path: str,
+    execution_id: str,
+    artifact: NarrationProductionArtifact,
+    signing_key: bytes,
+) -> None:
+    payload = artifact.to_json()
+    coordinator = FlockWriteCoordinator(db_path)
+    with coordinator.acquire_write_context("multimedia.chapter_tts.seal") as ctx:
+        row = ctx.execute(
+            "SELECT * FROM multimedia_chapter_tts_attempts WHERE execution_id = ?",
+            [execution_id],
+        ).fetchone()
+        if row is None or _attempt(row, signing_key).status != "sealing":
+            raise ProviderExecutionIntegrityError("chapter TTS seal state is invalid")
+        values: list[object] = [*row[:3], "sealed", *row[4:8], payload]
+        ctx.execute(
+            "UPDATE multimedia_chapter_tts_attempts SET status='sealed', artifact_json=?, "
+            "attempt_mac=? WHERE execution_id=?",
+            [payload, _attempt_mac(values, signing_key), execution_id],
+        )
+
+
+def _claim_seal(db_path: str, execution_id: str, signing_key: bytes) -> bool:
+    coordinator = FlockWriteCoordinator(db_path)
+    with coordinator.acquire_write_context("multimedia.chapter_tts.claim_seal") as ctx:
+        row = ctx.execute(
+            "SELECT * FROM multimedia_chapter_tts_attempts WHERE execution_id = ?",
+            [execution_id],
+        ).fetchone()
+        if row is None:
+            raise ProviderExecutionIntegrityError("chapter TTS attempt disappeared")
+        current = _attempt(row, signing_key)
+        if current.status != "received":
+            return False
+        values: list[object] = [*row[:3], "sealing", *row[4:9]]
+        hit = ctx.execute(
+            "UPDATE multimedia_chapter_tts_attempts SET status='sealing', attempt_mac=? "
+            "WHERE execution_id=? AND status='received' RETURNING 1",
+            [_attempt_mac(values, signing_key), execution_id],
+        ).fetchone()
+        return hit is not None
+
+
+def _release_seal(db_path: str, execution_id: str, signing_key: bytes) -> None:
+    coordinator = FlockWriteCoordinator(db_path)
+    with coordinator.acquire_write_context("multimedia.chapter_tts.release_seal") as ctx:
+        row = ctx.execute(
+            "SELECT * FROM multimedia_chapter_tts_attempts WHERE execution_id = ?",
+            [execution_id],
+        ).fetchone()
+        if row is None:
+            raise ProviderExecutionIntegrityError("chapter TTS attempt disappeared")
+        current = _attempt(row, signing_key)
+        if current.status != "sealing":
+            raise ProviderExecutionIntegrityError("chapter TTS seal release state is invalid")
+        values: list[object] = [*row[:3], "received", *row[4:9]]
+        ctx.execute(
+            "UPDATE multimedia_chapter_tts_attempts SET status='received', attempt_mac=? "
+            "WHERE execution_id=? AND status='sealing'",
+            [_attempt_mac(values, signing_key), execution_id],
+        )
+
+
+def _attempt_for_authorization(
+    db_path: str,
+    authorization: MultimediaExecutionAuthorizationV2,
+    signing_key: bytes,
+) -> ChapterTTSAttempt | None:
+    if not Path(db_path).exists():
+        return None
+    execution_id = "mmexec_" + hashlib.sha256(
+        f"{authorization.authorization_id}:{authorization.request_body_digest}".encode()
+    ).hexdigest()
+    try:
+        return get_chapter_tts_attempt(
+            db_path=db_path, execution_id=execution_id, signing_key=signing_key
+        )
+    except ProviderExecutionIntegrityError as exc:
+        if str(exc) == "chapter TTS attempt does not exist":
+            return None
+        raise
+
+
+def _reopen_attempt(
+    attempt: ChapterTTSAttempt,
+    prepared: PreparedChapterTTSRequest,
+    integrity_key: bytes,
+) -> NarrationProductionArtifact:
+    if attempt.artifact_json is None or attempt.request_body_digest != prepared.body_digest:
+        raise ProviderExecutionIntegrityError("sealed chapter TTS attempt conflicts")
+    artifact = NarrationProductionArtifact.reopen(attempt.artifact_json, integrity_key)
+    if (
+        artifact.manifest.asset_id != prepared.asset_id
+        or artifact.manifest.revision_id != prepared.revision_id
+        or tuple(row.chapter_id for row in artifact.manifest.sources) != (prepared.chapter_id,)
+    ):
+        raise ProviderExecutionIntegrityError("sealed chapter TTS artifact conflicts")
+    return artifact
+
+
+def _validate_synthesis_result(
+    result: ChapterTTSSynthesisResult,
+    authorization: MultimediaExecutionAuthorizationV2,
+) -> None:
+    if not isinstance(result, ChapterTTSSynthesisResult):
+        raise TypeError("synthesize must return ChapterTTSSynthesisResult")
+    if not 0 < len(result.audio_bytes) <= _MAX_AUDIO_BYTES:
+        raise ValueError("TTS response bytes are empty or exceed the byte ceiling")
+    _identifier("provider_request_id", result.provider_request_id)
+    if (
+        isinstance(result.actual_microdollars, bool)
+        or result.actual_microdollars < 0
+        or result.actual_microdollars > authorization.approved_ceiling_microdollars
+    ):
+        raise ValueError("actual TTS spend exceeds signed authority")
+
+
+def _persist_raw(root: Path, execution_id: str, payload: bytes) -> tuple[str, str]:
+    receipt_root = root / ".chapter-tts-receipts"
+    receipt_root.mkdir(mode=0o700, exist_ok=True)
+    info = receipt_root.lstat()
+    if (
+        not stat.S_ISDIR(info.st_mode)
+        or stat.S_ISLNK(info.st_mode)
+        or info.st_uid != os.getuid()
+        or stat.S_IMODE(info.st_mode) != 0o700
+    ):
+        raise ValueError("chapter TTS receipt directory must be private")
+    destination = receipt_root / f"{execution_id}.audio"
+    descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        view = memoryview(payload)
+        while view:
+            view = view[os.write(descriptor, view) :]
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    return str(destination), hashlib.sha256(payload).hexdigest()
+
+
+def _attempt(row: tuple[object, ...], signing_key: bytes) -> ChapterTTSAttempt:
+    if len(row) != 10 or not isinstance(row[9], str):
+        raise ProviderExecutionIntegrityError("chapter TTS attempt shape is invalid")
+    if not hmac.compare_digest(row[9], _attempt_mac(list(row[:9]), signing_key)):
+        raise ProviderExecutionIntegrityError("chapter TTS attempt MAC is invalid")
+    if row[3] not in {"intent", "sending", "received", "sealing", "sealed", "outcome_unknown"}:
+        raise ProviderExecutionIntegrityError("chapter TTS attempt status is invalid")
+    return ChapterTTSAttempt(
+        execution_id=str(row[0]), hold_id=str(row[1]), request_body_digest=str(row[2]),
+        status=str(row[3]), send_started_at=str(row[4]) if row[4] else None,
+        provider_request_id=str(row[5]) if row[5] else None,
+        raw_path=str(row[6]) if row[6] else None,
+        raw_sha256=str(row[7]) if row[7] else None,
+        artifact_json=str(row[8]) if row[8] else None, attempt_mac=row[9],
+    )
+
+
+def _attempt_mac(values: list[object], signing_key: bytes) -> str:
+    payload = json.dumps(values, separators=(",", ":"), ensure_ascii=True).encode("ascii")
+    return hmac.new(signing_key, payload, hashlib.sha256).hexdigest()
+
+
+def _private_directory(value: str) -> Path:
+    root = Path(value)
+    info = root.lstat()
+    if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+        raise ValueError("chapter TTS output directory must be private")
+    return root.resolve()
+
+
+def _executable(value: str) -> str:
+    path = Path(value).resolve(strict=True)
+    if not path.is_file() or not os.access(path, os.X_OK):
+        raise ValueError("chapter TTS media executable is invalid")
+    return str(path)
+
+
+def _run(argv: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(argv, check=True, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        raise ChapterTTSProductionError("chapter TTS media process failed") from None
+
+
+def _probe_duration(ffprobe: str, path: Path, timeout: int) -> float:
+    result = _run(
+        [ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "json", str(path)],
+        timeout,
+    )
+    try:
+        duration = round(float(json.loads(result.stdout)["format"]["duration"]), 3)
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        raise ChapterTTSProductionError("chapter TTS probe is invalid") from None
+    if not math.isfinite(duration) or duration <= 0:
+        raise ChapterTTSProductionError("chapter TTS duration is invalid")
+    return duration
+
+
+def _hash_private_file(path: Path) -> str:
+    info = path.lstat()
+    if (
+        not stat.S_ISREG(info.st_mode)
+        or stat.S_ISLNK(info.st_mode)
+        or info.st_uid != os.getuid()
+        or stat.S_IMODE(info.st_mode) != 0o600
+        or info.st_nlink != 1
+        or not 0 < info.st_size <= _MAX_AUDIO_BYTES
+    ):
+        raise ChapterTTSProductionError("chapter TTS file is not private and bounded")
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        while chunk := source.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _timestamp(value: datetime) -> str:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("timestamp must be timezone-aware")
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
 def _identifier(field: str, value: str) -> str:
     if not isinstance(value, str) or not _ID.fullmatch(value):
         raise ValueError(f"{field} is not a bounded identifier")
@@ -200,7 +888,12 @@ def _identifier(field: str, value: str) -> str:
 
 
 __all__ = [
+    "ChapterTTSAttempt",
+    "ChapterTTSProductionError",
+    "ChapterTTSSynthesisResult",
     "PreparedChapterTTSRequest",
+    "get_chapter_tts_attempt",
     "prepare_chapter_tts_request",
+    "produce_chapter_narration",
     "verify_chapter_tts_authorization",
 ]
