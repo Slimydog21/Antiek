@@ -809,6 +809,7 @@ def _build_judged_task_layer(
 
 def project_weekly_verdict_html(verdict: WeeklyVerdict) -> str:
     payload = verdict.to_dict()
+    acknowledgment = str(verdict.operator_acknowledgment_required).lower()
     rows: list[str] = []
     for task in verdict.task_verdicts:
         judged_status = task.judged.status if task.judged else NOT_MEASURED
@@ -854,5 +855,5 @@ def project_weekly_verdict_html(verdict: WeeklyVerdict) -> str:
 <body><main><h1>Antiek-bench weekly verdict</h1>
 <p>Week {html.escape(verdict.week_id)} · suite {html.escape(verdict.suite_version)} · budget actual/reserved/cap {html.escape(verdict.budget_spent_usd)} / {html.escape(verdict.budget_reserved_usd)} / {html.escape(verdict.budget_cap_usd)} USD</p>
 <table><thead><tr><th>Task</th><th>Model</th><th>Deterministic: keyword proxy quality</th><th>Cost USD</th><th>p50 / p95 ms</th><th>Availability</th><th>OK / fail / timeout</th><th>Samples</th><th>Operator driver</th><th>Bench winner</th><th>ND shadow modal</th><th>ND disagreements</th><th>Qualitative status</th><th>Qualitative axes (no composite)</th><th>Disagreement / calibration suppressions</th></tr></thead><tbody>{"".join(rows)}</tbody></table>
-<footer>Advisory evidence only. auto_promotion=false. operator_acknowledgment_required=true before any future recommendation export. No export authority is provided. The operator controls model and suite changes. Keyword overlap is a proxy, not judged answer quality.</footer>
+<footer>Advisory evidence only. auto_promotion=false. operator_acknowledgment_required={acknowledgment} before any future recommendation export. No export authority is provided. The operator controls model and suite changes. Keyword overlap is a proxy, not judged answer quality.</footer>
 <script type="application/json" id="antiek-bench-verdict">{safe_json}</script></main></body></html>"""

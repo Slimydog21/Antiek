@@ -272,6 +272,7 @@ def test_html_is_self_contained_redacted_and_does_not_mutate_suite(tmp_path: Pat
     assert "private distill" not in rendered
     assert "application/pdf" not in rendered.lower()
     assert "auto_promotion=false" in rendered
+    assert "operator_acknowledgment_required=false" in rendered
     parser = PayloadParser()
     parser.feed(rendered)
     payload = json.loads(parser.payload)
