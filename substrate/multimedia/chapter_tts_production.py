@@ -19,7 +19,7 @@ import subprocess
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
@@ -41,6 +41,7 @@ from .provider_execution import (
     begin_reserved_provider_submission,
     bind_provider_job_with_mutation,
     charge_and_mark_submission_unknown,
+    record_external_recovery_evidence,
     record_provider_observation,
 )
 
@@ -472,6 +473,138 @@ def get_chapter_tts_attempt(
     return _attempt(row, signing_key)
 
 
+def quarantine_stale_chapter_tts_send(
+    *,
+    db_path: str,
+    authorization: MultimediaExecutionAuthorizationV2,
+    signing_key: bytes,
+    now: datetime,
+    stale_after: timedelta = timedelta(minutes=5),
+) -> ChapterTTSAttempt:
+    """Charge and quarantine a stale send marker without provider retry."""
+    if stale_after <= timedelta(0):
+        raise ValueError("stale_after must be positive")
+    execution_id = "mmexec_" + hashlib.sha256(
+        f"{authorization.authorization_id}:{authorization.request_body_digest}".encode()
+    ).hexdigest()
+    attempt = get_chapter_tts_attempt(
+        db_path=db_path, execution_id=execution_id, signing_key=signing_key
+    )
+    if attempt.status == "outcome_unknown":
+        return attempt
+    if attempt.status != "sending" or attempt.send_started_at is None:
+        raise ChapterTTSProductionError("chapter TTS attempt has no stale send to quarantine")
+    started = datetime.fromisoformat(attempt.send_started_at.replace("Z", "+00:00"))
+    if now.astimezone(UTC) - started < stale_after:
+        raise ChapterTTSProductionError("chapter TTS send marker is not stale")
+    ceiling_cents = (authorization.approved_ceiling_microdollars + 9_999) // 10_000
+    hold = CallHold(
+        hold_id=attempt.hold_id,
+        run_id=authorization.authorization_id,
+        role=f"multimedia:{authorization.provider}",
+        projected_max_cents=ceiling_cents,
+    )
+    charge_and_mark_submission_unknown(
+        db_path=db_path,
+        execution_id=execution_id,
+        hold=hold,
+        signing_key=signing_key,
+        now=now,
+    )
+    _mark_unknown(db_path, execution_id, signing_key)
+    return get_chapter_tts_attempt(
+        db_path=db_path, execution_id=execution_id, signing_key=signing_key
+    )
+
+
+def recover_unknown_chapter_tts_audio(
+    *,
+    db_path: str,
+    execution_id: str,
+    signing_key: bytes,
+    output_dir: str,
+    provider_request_id: str,
+    audio_bytes: bytes,
+    evidence_source: str,
+    evidence_verification_key: bytes,
+    external_signature: str,
+    recorded_at: datetime,
+) -> ChapterTTSAttempt:
+    """Bind authenticated provider recovery evidence and returned audio bytes."""
+    attempt = get_chapter_tts_attempt(
+        db_path=db_path, execution_id=execution_id, signing_key=signing_key
+    )
+    if attempt.status == "received":
+        expected_digest = hashlib.sha256(audio_bytes).hexdigest()
+        if (
+            attempt.provider_request_id != provider_request_id
+            or attempt.raw_path is None
+            or attempt.raw_sha256 != expected_digest
+            or _hash_private_file(Path(attempt.raw_path)) != expected_digest
+        ):
+            raise ChapterTTSProductionError("recovered chapter TTS receipt conflicts")
+        return attempt
+    if attempt.status != "outcome_unknown":
+        raise ChapterTTSProductionError("chapter TTS recovery requires outcome_unknown")
+    result = ChapterTTSSynthesisResult(
+        audio_bytes=audio_bytes, provider_request_id=provider_request_id
+    )
+    if not 0 < len(result.audio_bytes) <= _MAX_AUDIO_BYTES:
+        raise ValueError("recovered TTS bytes are empty or exceed the byte ceiling")
+    evidence_digest = hashlib.sha256(audio_bytes).hexdigest()
+    raw_path, raw_sha = _persist_raw(
+        _private_directory(output_dir), execution_id, audio_bytes
+    )
+    record_external_recovery_evidence(
+        db_path=db_path,
+        execution_id=execution_id,
+        provider_job_id=provider_request_id,
+        source=evidence_source,
+        evidence_digest=evidence_digest,
+        signing_key=signing_key,
+        evidence_verification_key=evidence_verification_key,
+        external_signature=external_signature,
+        recorded_at=recorded_at,
+    )
+    bind_provider_job_with_mutation(
+        db_path=db_path,
+        execution_id=execution_id,
+        provider_job_id=provider_request_id,
+        signing_key=signing_key,
+        now=recorded_at,
+        mutation=lambda ctx: _recover_received_in_context(
+            ctx,
+            execution_id=execution_id,
+            provider_request_id=provider_request_id,
+            raw_path=raw_path,
+            raw_sha256=raw_sha,
+            signing_key=signing_key,
+        ),
+    )
+    record_provider_observation(
+        db_path=db_path,
+        execution_id=execution_id,
+        provider_job_id=provider_request_id,
+        status=ProviderExecutionStatus.SUCCEEDED,
+        evidence_digest=raw_sha,
+        signing_key=signing_key,
+        observed_at=recorded_at,
+    )
+    return get_chapter_tts_attempt(
+        db_path=db_path, execution_id=execution_id, signing_key=signing_key
+    )
+
+
+def release_stale_chapter_tts_seal(
+    *, db_path: str, execution_id: str, signing_key: bytes
+) -> ChapterTTSAttempt:
+    """Reset a local-only sealing claim to received; never touches provider spend."""
+    _release_seal(db_path, execution_id, signing_key)
+    return get_chapter_tts_attempt(
+        db_path=db_path, execution_id=execution_id, signing_key=signing_key
+    )
+
+
 def _ensure_attempt(
     ctx: WriteContext,
     execution_id: str,
@@ -550,6 +683,37 @@ def _receive_in_context(
     BudgetLedger(":memory:").settle_in_context(
         ctx, hold_id=hold.hold_id, actual_cents=actual_cents
     )
+    values: list[object] = [
+        *row[:3],
+        "received",
+        row[4],
+        provider_request_id,
+        raw_path,
+        raw_sha256,
+        None,
+    ]
+    ctx.execute(
+        "UPDATE multimedia_chapter_tts_attempts SET status='received', provider_request_id=?, "
+        "raw_path=?, raw_sha256=?, attempt_mac=? WHERE execution_id=?",
+        [provider_request_id, raw_path, raw_sha256, _attempt_mac(values, signing_key), execution_id],
+    )
+
+
+def _recover_received_in_context(
+    ctx: WriteContext,
+    *,
+    execution_id: str,
+    provider_request_id: str,
+    raw_path: str,
+    raw_sha256: str,
+    signing_key: bytes,
+) -> None:
+    row = ctx.execute(
+        "SELECT * FROM multimedia_chapter_tts_attempts WHERE execution_id = ?",
+        [execution_id],
+    ).fetchone()
+    if row is None or _attempt(row, signing_key).status != "outcome_unknown":
+        raise ProviderExecutionIntegrityError("chapter TTS recovered receive state is invalid")
     values: list[object] = [
         *row[:3],
         "received",
@@ -790,6 +954,11 @@ def _persist_raw(root: Path, execution_id: str, payload: bytes) -> tuple[str, st
     ):
         raise ValueError("chapter TTS receipt directory must be private")
     destination = receipt_root / f"{execution_id}.audio"
+    expected = hashlib.sha256(payload).hexdigest()
+    if destination.exists() or destination.is_symlink():
+        if _hash_private_file(destination) != expected:
+            raise ChapterTTSProductionError("persisted TTS response conflicts with recovered bytes")
+        return str(destination), expected
     descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         view = memoryview(payload)
@@ -798,7 +967,7 @@ def _persist_raw(root: Path, execution_id: str, payload: bytes) -> tuple[str, st
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
-    return str(destination), hashlib.sha256(payload).hexdigest()
+    return str(destination), expected
 
 
 def _attempt(row: tuple[object, ...], signing_key: bytes) -> ChapterTTSAttempt:
@@ -897,5 +1066,8 @@ __all__ = [
     "get_chapter_tts_attempt",
     "prepare_chapter_tts_request",
     "produce_chapter_narration",
+    "quarantine_stale_chapter_tts_send",
+    "recover_unknown_chapter_tts_audio",
+    "release_stale_chapter_tts_seal",
     "verify_chapter_tts_authorization",
 ]

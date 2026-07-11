@@ -524,7 +524,11 @@ def bind_provider_job_with_mutation(
     now: datetime,
     mutation: Callable[[WriteContext], None],
 ) -> ProviderExecutionRecord:
-    """Bind a returned job and caller-owned receipt in one transaction."""
+    """Bind a returned/recovered job and caller-owned receipt atomically.
+
+    An ``outcome_unknown`` execution requires previously authenticated external
+    recovery evidence for this exact provider job ID.
+    """
     execution_id = _identifier("execution_id", execution_id)
     provider_job_id = _identifier("provider_job_id", provider_job_id)
     timestamp = _timestamp(now)
@@ -547,9 +551,20 @@ def bind_provider_job_with_mutation(
             if current.status not in {
                 ProviderExecutionStatus.SUBMITTING,
                 ProviderExecutionStatus.SUBMITTED,
+                ProviderExecutionStatus.OUTCOME_UNKNOWN,
             }:
                 raise ProviderExecutionIntegrityError("provider job binding state is invalid")
-            if current.status is ProviderExecutionStatus.SUBMITTING:
+            if current.status is ProviderExecutionStatus.OUTCOME_UNKNOWN:
+                _verify_external_recovery_evidence(
+                    ctx,
+                    execution_id=execution_id,
+                    provider_job_id=provider_job_id,
+                    signing_key=signing_key,
+                )
+            if current.status in {
+                ProviderExecutionStatus.SUBMITTING,
+                ProviderExecutionStatus.OUTCOME_UNKNOWN,
+            }:
                 if datetime.fromisoformat(
                     timestamp.replace("Z", "+00:00")
                 ) < datetime.fromisoformat(current.updated_at.replace("Z", "+00:00")):
