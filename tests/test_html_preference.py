@@ -46,3 +46,12 @@ def test_to_dict_shape() -> None:
     assert payload["mode"] == "html"
     assert payload["preferred"] is True
     assert any("doc-1" in n for n in payload["notes"])
+
+
+def test_rejects_truthy_string_as_ready() -> None:
+    import pytest
+
+    with pytest.raises(TypeError, match="html_ready"):
+        prefer_html_view(html_ready="false")  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="pdf_available"):
+        prefer_html_view(html_ready=False, pdf_available="true")  # type: ignore[arg-type]

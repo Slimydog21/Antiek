@@ -36,6 +36,13 @@ class ViewPreference:
         }
 
 
+def _as_bool(value: object, *, name: str) -> bool:
+    """Strict bool: only True/False accepted (reject truthy strings like 'false')."""
+    if isinstance(value, bool):
+        return value
+    raise TypeError(f"{name} must be bool, got {type(value).__name__}")
+
+
 def prefer_html_view(
     *,
     html_ready: bool,
@@ -51,6 +58,10 @@ def prefer_html_view(
     3. No HTML, PDF available, require_html=True → ``metadata_only`` (refuse PDF body)
     4. Nothing viewable → ``unavailable``
     """
+    html_ready = _as_bool(html_ready, name="html_ready")
+    pdf_available = _as_bool(pdf_available, name="pdf_available")
+    require_html = _as_bool(require_html, name="require_html")
+
     notes: list[str] = []
     if asset_id:
         notes.append(f"asset_id={asset_id}")
