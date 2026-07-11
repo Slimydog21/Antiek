@@ -58,17 +58,24 @@ Live mode = real machinery, full stop (no measurement theater)
     and ``__wrapped__`` but are still a different OBJECT than the registered
     real seam), equality-spoofing impostors (strict ``is``, not ``__eq__``),
     and subclass ``__post_init__`` overrides (``__init_subclass__`` blocks
-    subclassing). The remaining out-of-scope class is now the irreducible
-    floor and pure sabotage: ``object.__new__`` + ``object.__setattr__``
-    (which skip EVERY Python validator for ANY object — the same reach as
-    editing this file), or importing this module and calling its private
-    ``_register_real`` / mutating ``_REAL_BY_ROLE`` by hand. The structural
-    guarantee stands: the constructor of record has no dishonest path, and
-    every public mutation path (direct construction, ``dataclasses.replace``)
-    re-validates the flag/provenance invariant — the adapter guards
-    measurement integrity against mistakes, not against an operator
-    deliberately sabotaging their
-    own eval with the module's own internals.
+    subclassing). The remaining out-of-scope class is the IRREDUCIBLE floor:
+    an in-process caller who deliberately rewrites this module's own guard
+    code — monkeypatching ``LiveResearchProvider.__post_init__`` to a no-op,
+    ``object.__new__`` + ``object.__setattr__`` (which skip EVERY Python
+    validator for ANY object), or calling the private ``_register_real`` /
+    mutating ``_REAL_BY_ROLE`` by hand. These are all equivalent to editing
+    this source file; no in-process code can defend integrity against a
+    same-process caller who wants to disable its own validators (a recognized
+    security truth, not a fixable defect — a metaclass guard merely moves the
+    monkeypatch target up one level). The structural guarantee stands: the
+    constructor of record has no dishonest path, and every public construction
+    or mutation API (``build_live_provider``, ``dataclasses.replace``, copy,
+    ``functools.wraps``/``partial``, ``weakref.proxy``, subclassing) plus every
+    value-level forgery (``__eq__``/``__hash__``/name/attribute) re-validates
+    or fails the strict-``is`` flag/provenance invariant — the adapter guards
+    measurement integrity against mistakes and standard-tool composition, not
+    against an operator deliberately sabotaging their own eval with the
+    module's own internals.
 
 Fail closed to ``ProviderFailure`` (the core honesty property)
     EVERY failure path — missing keys, plan/launch refusal (including the
