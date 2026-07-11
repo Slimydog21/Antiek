@@ -18,9 +18,11 @@ the CLI / ``run_one_iteration(..., spawn_fn=...)`` boundary.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import uuid
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from orchestration.continuous.daemon import SpawnFn
@@ -28,6 +30,19 @@ from substrate.event_log.events import emit_typed
 from substrate.schemas.events import InvestigationStartRequestedPayload
 
 EmitTypedFn = Callable[..., str | None]
+
+
+def _event_persisted(investigation_id: str, events_dir: str | None) -> bool:
+    """True only when a non-empty trajectory jsonl exists for the investigation."""
+    if not events_dir:
+        # Default events dir — emit_typed writes under its own default path;
+        # require an explicit dir for production attach so persistence is checkable.
+        return False
+    path = Path(events_dir) / f"{investigation_id}.jsonl"
+    try:
+        return path.is_file() and path.stat().st_size > 0
+    except OSError:
+        return False
 
 
 def make_loop_one_spawn_fn(
@@ -87,18 +102,22 @@ def make_loop_one_spawn_fn(
             # Malformed/disabled emit: do not claim a spawned investigation.
             return None
 
-        if event_id is None and os.environ.get("ANTIEK_EVENTS_DISABLED"):
-            # Events explicitly disabled — still no investigation substrate.
+        if event_id is None:
+            # Events disabled or emit declined — no spawn.
+            return None
+
+        # emit_typed may return an id even when the disk append failed.
+        # Only claim success (and settle the reserve) when the trajectory
+        # file is actually present and non-empty.
+        if not _event_persisted(inv_id, events_dir):
             return None
 
         # Settle reserved hold when settled-cost hooks are present.
         report = context.get("report_actual_cost")
         if callable(report):
-            try:
+            # Settlement failure must not erase the already-emitted start.
+            with contextlib.suppress(Exception):
                 report(float(settle_emit_cost_usd))
-            except Exception:
-                # Settlement failure must not erase the already-emitted start.
-                pass
 
         context["_antiek_spawned_investigation_id"] = inv_id
         context["_antiek_spawn_event_id"] = event_id

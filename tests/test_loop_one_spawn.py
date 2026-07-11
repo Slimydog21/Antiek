@@ -97,6 +97,29 @@ def test_emit_failure_returns_none(isolated_env: dict[str, Path]) -> None:
     assert spawn("Q?", {"expected_cost_usd": 0.5}) is None
 
 
+def test_phantom_event_id_without_disk_does_not_succeed_or_settle(
+    isolated_env: dict[str, Path],
+) -> None:
+    """emit_typed may return an id even if append fails — do not settle reserve."""
+
+    def fake_emit(*args: object, **kwargs: object) -> str:
+        return "evt-fake"
+
+    budget = DaemonBudget(daily_cap_usd=5.0)
+    budget.reserve(0.50)
+    spawn = wrap_spawn_fn(
+        make_loop_one_spawn_fn(
+            events_dir=str(isolated_env["events_dir"]),
+            emit=fake_emit,
+        ),
+        budget,
+    )
+    inv = spawn("Phantom?", {"expected_cost_usd": 0.50})
+    assert inv is None
+    assert list(isolated_env["events_dir"].iterdir()) == []
+    # Reserve must remain — no phantom success settlement.
+    assert _sidecar_spent() == pytest.approx(0.50)
+
 def test_resolve_daemon_spawn_fn_modes(
     isolated_env: dict[str, Path],
     monkeypatch: pytest.MonkeyPatch,
