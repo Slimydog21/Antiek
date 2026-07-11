@@ -244,6 +244,16 @@ def _render_chunks_block_for_sub_question(
     documents are visible to their own research — a fair-use owner-read that
     never serves/attributes that content publicly.
     """
+    from orchestration.loop_one.federated_evidence import (
+        render_configured_federated_evidence,
+    )
+
+    federated = render_configured_federated_evidence(
+        sub_question,
+        top_k=top_k,
+    )
+    if federated is not None:
+        return federated
     try:
         import duckdb
 
