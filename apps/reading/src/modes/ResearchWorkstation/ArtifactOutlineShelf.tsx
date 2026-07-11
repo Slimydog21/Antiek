@@ -11,6 +11,7 @@ import {
   type PaletteDragPayload,
 } from "../CreationStudio/BlockPalette";
 import LemonButton from "../../components/lemon/LemonButton";
+import { openWindow } from "../../components/windows/openWindow";
 
 /**
  * ANT-AHT SPR-AHT-06 — draggable insight/question blocks sourced from
@@ -61,6 +62,18 @@ export default function ArtifactOutlineShelf({
     try {
       const res = await exportResearchArtifact(investigationId);
       setExportPath(res.path);
+      openWindow(
+        "research_artifact",
+        {
+          investigation_id: res.investigation_id,
+          content_hash: res.content_hash,
+          view_url: res.view_url,
+        },
+        {
+          id: `win:research_artifact:${res.investigation_id}`,
+          title: "Research artifact",
+        },
+      );
       await reload();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));

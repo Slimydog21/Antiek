@@ -1177,6 +1177,44 @@ export interface ResearchArtifactExportResponse {
   content_hash: string;
   size_bytes: number;
   event_id: string | null;
+  view_url: string;
+}
+
+export interface ResearchArtifactAppendNoteResponse {
+  investigation_id: string;
+  notes_persisted: number;
+  notes_skipped_duplicate: number;
+  current_content_hash: string;
+  event_pending: boolean;
+}
+
+/** Canonical, API-origin URL for the private ResearchArtifact HTML view. */
+export function researchArtifactViewUrl(investigationId: string): string {
+  return `${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact/view`;
+}
+
+/** Persist one note from the isolated canonical artifact iframe. */
+export async function appendResearchArtifactNote(
+  investigationId: string,
+  note: string,
+  expectedContentHash: string,
+): Promise<ResearchArtifactAppendNoteResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact/notes`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note, expected_content_hash: expectedContentHash }),
+    },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /research/{id}/artifact/notes failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
 }
 
 /** GET /research/{id}/artifact/blocks — Lego refs for Write outline drops. */
