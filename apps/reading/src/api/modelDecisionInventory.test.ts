@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  inventoryToDecisionModels,
-  preferReadyModels,
-} from "./modelDecisionInventory";
+import { inventoryToDecisionModels } from "./modelDecisionInventory";
 
 describe("inventoryToDecisionModels", () => {
   it("returns empty for null/empty inventory", () => {
@@ -23,7 +20,6 @@ describe("inventoryToDecisionModels", () => {
         ready: true,
         primary_model: "gpt-mini",
         tier_bindings: ["flash"],
-        usd_per_1k_tokens: 0.002,
       },
     ]);
     expect(models).toHaveLength(2);
@@ -32,11 +28,11 @@ describe("inventoryToDecisionModels", () => {
       provider: "anthropic",
       tier: "reasoning",
       enabled: true,
+      usd_per_1k_tokens: null,
     });
     expect(models[1]).toMatchObject({
       model_id: "gpt-mini",
       tier: "flash",
-      usd_per_1k_tokens: 0.002,
       enabled: true,
     });
   });
@@ -58,23 +54,5 @@ describe("inventoryToDecisionModels", () => {
     expect(models).toHaveLength(1);
     expect(models[0].enabled).toBe(false);
     expect(models[0].model_id).toBe("stale");
-  });
-});
-
-describe("preferReadyModels", () => {
-  it("filters to ready when any exist", () => {
-    const out = preferReadyModels([
-      { model_id: "a", enabled: false },
-      { model_id: "b", enabled: true },
-    ]);
-    expect(out.map((m) => m.model_id)).toEqual(["b"]);
-  });
-
-  it("keeps all when none ready", () => {
-    const out = preferReadyModels([
-      { model_id: "a", enabled: false },
-      { model_id: "b", enabled: false },
-    ]);
-    expect(out).toHaveLength(2);
   });
 });

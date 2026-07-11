@@ -14,8 +14,6 @@ export interface InventoryModelRow {
   tier_bindings?: string[] | null;
   primary_model?: string | null;
   notes?: string | null;
-  /** Optional USD/1k if the inventory ever surfaces it. */
-  usd_per_1k_tokens?: number | null;
 }
 
 function inferTier(bindings: string[] | null | undefined): ModelTier {
@@ -44,16 +42,9 @@ export function inventoryToDecisionModels(
       model_id: modelId,
       provider: row.provider_id,
       tier: inferTier(row.tier_bindings),
-      usd_per_1k_tokens:
-        row.usd_per_1k_tokens === undefined ? null : row.usd_per_1k_tokens,
+      usd_per_1k_tokens: null,
       enabled: Boolean(row.ready),
     });
   }
   return out;
-}
-
-/** Prefer ready models; if none ready, return all (caller may still rank disabled). */
-export function preferReadyModels(models: DecisionModelIn[]): DecisionModelIn[] {
-  const ready = models.filter((m) => m.enabled !== false);
-  return ready.length > 0 ? ready : models;
 }
