@@ -93,6 +93,19 @@ def test_weights_sum_exactly_one() -> None:
     assert total == 1.0
 
 
+def test_weights_sum_exactly_one_many_tasks() -> None:
+    """Regression: large N must still sum to binary 1.0 (codex REQUEST-CHANGES)."""
+    for n in (7, 31, 301):
+        events = []
+        for i in range(n):
+            events.extend(
+                {"task": f"t{i:04d}", "success": False} for _ in range(i % 7)
+            )
+            events.append({"task": f"t{i:04d}", "success": True})
+        p = propose_next_week_weights(events, week_id="w", min_weight=0.0)
+        assert sum(t.weight for t in p.task_weights) == 1.0, n
+
+
 def test_prior_with_only_unknown_outcomes_incomplete() -> None:
     p = propose_next_week_weights(
         [{"task": "t", "success": None}],

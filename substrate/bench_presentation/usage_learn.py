@@ -73,20 +73,29 @@ def _as_bool_success(raw: Any) -> bool | None:
 
 
 def _normalize_exact(weights: dict[str, float]) -> dict[str, float]:
-    """Round to 6 dp then adjust the largest residual so sum is exactly 1.0."""
+    """Produce weights that sum to exactly 1.0 in binary float.
+
+    Round all but the last (stable order by task name) to 6 dp, then set the
+    final residual weight as ``1.0 - sum(others)`` so re-summing is exact.
+    """
     if not weights:
         return {}
-    rounded = {t: round(w, 6) for t, w in weights.items()}
-    total = sum(rounded.values())
-    if total <= 0:
-        return rounded
-    # Force exact 1.0 by correcting the max-weight task
-    drift = round(1.0 - total, 6)
-    if drift != 0.0:
-        top = max(rounded.items(), key=lambda kv: (kv[1], kv[0]))[0]
-        rounded[top] = round(rounded[top] + drift, 6)
+    tasks = sorted(weights.keys())
+    if len(tasks) == 1:
+        return {tasks[0]: 1.0}
+    rounded: dict[str, float] = {}
+    for t in tasks[:-1]:
+        rounded[t] = round(float(weights[t]), 6)
+    residual = 1.0 - sum(rounded.values())
+    # Guard against negative residual from pathological rounding
+    if residual < 0:
+        # Fall back: proportional re-scale then residual assignment
+        total = sum(float(weights[t]) for t in tasks) or 1.0
+        scaled = {t: float(weights[t]) / total for t in tasks}
+        rounded = {t: round(scaled[t], 6) for t in tasks[:-1]}
+        residual = 1.0 - sum(rounded.values())
+    rounded[tasks[-1]] = residual
     return rounded
-
 
 def propose_next_week_weights(
     usage_events: Sequence[Mapping[str, Any]] | None,
