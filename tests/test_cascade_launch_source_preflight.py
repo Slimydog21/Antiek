@@ -244,56 +244,14 @@ def test_http_launch_require_without_policy_422(
     assert not cr._SESSIONS
 
 
-def test_http_launch_unavailable_source_422_before_session(
-    cascade_client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    root = _approved_root(cascade_client)
-    blocked = SourcePolicyLaunchBlocked(
-        "blocked",
-        code="source_policy_unavailable",
-        receipt=_receipt(
-            _entry("arxiv", status="unavailable", adapter_importable=False),
-        ),
-        blocked_sources=["arxiv"],
-    )
-
-    def _raise(*a: Any, **k: Any) -> None:
-        raise blocked
-
-    monkeypatch.setattr(
-        "substrate.research_sources.cascade_gate.evaluate_source_policy_for_launch",
-        _raise,
-    )
-    # Also patch the import site used inside launch() — it re-imports the symbol.
-    monkeypatch.setattr(
-        "substrate.research_sources.cascade_gate.evaluate_source_policy_for_launch",
-        _raise,
-    )
-
-    r = cascade_client.post(
-        f"/research/plans/{root}/launch",
-        json={
-            "per_research_budget_usd": 1.0,
-            "source_policy": ["arxiv"],
-        },
-    )
-    assert r.status_code == 422, r.text
-    detail = r.json()["detail"]
-    assert detail["code"] == "source_policy_unavailable"
-    assert detail["blocked_sources"] == ["arxiv"]
-    assert detail["source_preflight"]["source_receipt_id"] == "srcpf-test"
-    assert not cr._SESSIONS
-
-
 def test_http_launch_unavailable_via_injectable_preflight(
     cascade_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Fail closed through the real evaluate_ path with a fake preflight_fn.
 
-    Patches evaluate's default runner by wrapping evaluate to inject a receipt
-    that marks arxiv unavailable — proves HTTP mapping without network.
+    Injects a receipt that marks arxiv unavailable — proves HTTP mapping and
+    no session construction without network.
     """
     root = _approved_root(cascade_client)
     fake = _receipt(
@@ -304,9 +262,9 @@ def test_http_launch_unavailable_via_injectable_preflight(
 
     real = gate.evaluate_source_policy_for_launch
 
-    def wrapped(source_policy, **kwargs):  # type: ignore[no-untyped-def]
+    def wrapped(source_policy: list[str] | None, **kwargs: Any) -> Any:
         kwargs = dict(kwargs)
-        kwargs["preflight_fn"] = lambda *a, **k: fake
+        kwargs["preflight_fn"] = lambda *a: fake
         return real(source_policy, **kwargs)
 
     monkeypatch.setattr(gate, "evaluate_source_policy_for_launch", wrapped)
@@ -321,4 +279,6 @@ def test_http_launch_unavailable_via_injectable_preflight(
     assert r.status_code == 422, r.text
     detail = r.json()["detail"]
     assert detail["code"] == "source_policy_unavailable"
+    assert detail["blocked_sources"] == ["arxiv"]
+    assert detail["source_preflight"]["source_receipt_id"] == "srcpf-test"
     assert not cr._SESSIONS
