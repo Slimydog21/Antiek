@@ -135,9 +135,30 @@ jobs:
           # xdist is already a declared dev dependency. Enable it at the CI
           # callsite, not global addopts, so local one-off debugging remains
           # serial unless the operator asks for parallelism. ``loadscope`` keeps
-          # module/class scopes together for the known order-sensitive probes
-          # while still splitting the ~5k-test blanket suite across workers.
-          python -m pytest tests/ -q -m "not integration" -n auto --dist loadscope
+          # module/class scopes together while splitting the blanket suite.
+          #
+          # These files are process/order sensitive: the orchestration modules
+          # own background asyncio handlers, while the leaderboard module owns
+          # process-local store configuration. Current-campaign replacement CI
+          # proved that running them in workers causes real timeout/state leaks.
+          # Keep one closed list, exclude it from xdist, then run EACH file in a
+          # fresh serial process. Coverage is unchanged and a newly unsafe file
+          # still reds the parallel command instead of being silently skipped.
+          XDIST_UNSAFE=(
+            tests/test_antiek_bench_leaderboard.py
+            tests/test_investigation_endpoints.py
+            tests/test_loop_one_orchestrator.py
+          )
+          XDIST_IGNORES=()
+          for test_file in "${XDIST_UNSAFE[@]}"; do
+            XDIST_IGNORES+=("--ignore=${test_file}")
+          done
+          python -m pytest tests/ -q -m "not integration" \
+            -n auto --dist loadscope "${XDIST_IGNORES[@]}"
+          for test_file in "${XDIST_UNSAFE[@]}"; do
+            python -m pytest "${test_file}" -q -m "not integration" \
+              -p no:xdist
+          done
 
       - name: HTML-projection layer gates (HPRJ SPR-07 M4)
         # The projection / .antiek-format / ingestion layer's gates live under
