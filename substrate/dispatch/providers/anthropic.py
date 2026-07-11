@@ -52,22 +52,8 @@ from typing import Any
 
 import httpx
 
-try:
-    from ..base import (
-        NormalizedUsage,
-        ProviderError,
-        RawProviderResponse,
-    )
-except ImportError:  # pragma: no cover
-    import sys
-    _here = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from dispatch.base import (  # type: ignore[no-redef]
-        NormalizedUsage,
-        ProviderError,
-        RawProviderResponse,
-    )
-
+from ..base import NormalizedUsage, ProviderError, RawProviderResponse
+from ._safe_diagnostics import correlation_digest
 
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504, 529})
 _DEFAULT_TIMEOUT_S = 120.0
@@ -181,30 +167,31 @@ class AnthropicProvider:
         t_start = time.monotonic()
         try:
             resp = client.post(url, json=body, headers=headers)
-        except httpx.TimeoutException as e:
+        except httpx.TimeoutException:
             raise ProviderError(
-                f"anthropic: request timeout after {self._timeout_s}s — {e}",
+                f"anthropic: request timeout after {self._timeout_s}s",
                 provider=self.name, model=model,
                 latency_ms=int((time.monotonic() - t_start) * 1000),
                 retryable=True,
-            ) from e
+            ) from None
         except httpx.RequestError as e:
             raise ProviderError(
-                f"anthropic: network error — {e}",
+                f"anthropic: network error ({type(e).__name__})",
                 provider=self.name, model=model,
                 latency_ms=int((time.monotonic() - t_start) * 1000),
                 retryable=True,
-            ) from e
+            ) from None
         latency_ms = int((time.monotonic() - t_start) * 1000)
 
         if resp.status_code != 200:
-            body_preview = resp.text[:400]
             raise ProviderError(
-                f"anthropic: HTTP {resp.status_code} — {body_preview}",
+                f"anthropic: HTTP {resp.status_code}",
                 provider=self.name, model=model,
                 latency_ms=latency_ms,
                 retryable=resp.status_code in _RETRYABLE_STATUS,
-                request_id=resp.headers.get("request-id") or resp.headers.get("x-request-id"),
+                request_id=correlation_digest(
+                    resp.headers.get("request-id") or resp.headers.get("x-request-id")
+                ),
             )
 
         try:
@@ -213,31 +200,46 @@ class AnthropicProvider:
             raise ProviderError(
                 f"anthropic: response body not JSON — {e}",
                 provider=self.name, model=model, latency_ms=latency_ms,
-            ) from e
+            ) from None
 
         try:
+            if not isinstance(data, dict) or data.get("type") == "error":
+                raise TypeError("expected success object")
             # Anthropic returns content as a list of typed parts. Join the
             # text parts; ignore non-text parts (tool_use etc. handled in
             # a later signature when dispatch supports tools).
-            parts = data.get("content") or []
+            parts = data["content"]
+            if not isinstance(parts, list) or not parts:
+                raise TypeError("expected non-empty content list")
             text = "".join(
                 p["text"] for p in parts
                 if isinstance(p, dict) and p.get("type") == "text" and "text" in p
             )
+            if not text:
+                raise TypeError("expected non-empty text content")
             stop_reason = data.get("stop_reason")
-        except (KeyError, TypeError) as e:
+            if stop_reason is not None and not isinstance(stop_reason, str):
+                raise TypeError("expected stop reason string")
+            usage = data.get("usage") or {}
+            if not isinstance(usage, dict):
+                raise TypeError("expected usage object")
+            self.normalize_usage(usage)
+            response_id = resp.headers.get("request-id") or data.get("id")
+            if response_id is not None and not isinstance(response_id, str):
+                raise TypeError("expected response id string")
+        except (AttributeError, KeyError, OverflowError, TypeError, ValueError) as e:
             raise ProviderError(
-                f"anthropic: unexpected response shape — {e} — body: {str(data)[:400]}",
+                f"anthropic: unexpected response shape — {e}",
                 provider=self.name, model=model, latency_ms=latency_ms,
-            ) from e
+            ) from None
 
         return RawProviderResponse(
             text=text,
-            raw_usage=data.get("usage") or {},
+            raw_usage=usage,
             finish_reason=stop_reason,
             latency_ms=latency_ms,
-            request_id=resp.headers.get("request-id") or data.get("id"),
-            extra={"model": data.get("model")},
+            request_id=correlation_digest(response_id),
+            extra={},
         )
 
     def normalize_usage(self, raw_usage: dict[str, Any]) -> NormalizedUsage:
