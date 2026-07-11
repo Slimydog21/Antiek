@@ -9,6 +9,8 @@ from urllib.parse import urlencode
 
 # OpenAlex rate limits: 100,000 requests/day and 10/second: https://docs.openalex.org/how-to-use-the-api/rate-limits-and-authentication
 REQUESTS_PER_SECOND = 9
+REQUESTS_PER_DAY = 100_000
+SECONDS_PER_DAY = 86_400
 
 
 class RateLimitExceeded(RuntimeError):
@@ -33,14 +35,23 @@ class OpenAlexClient:
         self.get, self.mailto, self.cache_dir, self.now = get, mailto, cache_dir, now
         self._window = int(now())
         self._count = 0
+        self._day = int(now()) // SECONDS_PER_DAY
+        self._day_count = 0
 
     def _permit(self) -> None:
-        window = int(self.now())
+        timestamp = int(self.now())
+        window = timestamp
         if window != self._window:
             self._window, self._count = window, 0
+        day = timestamp // SECONDS_PER_DAY
+        if day != self._day:
+            self._day, self._day_count = day, 0
         if self._count >= REQUESTS_PER_SECOND:
-            raise RateLimitExceeded("OpenAlex local rate ceiling")
+            raise RateLimitExceeded("OpenAlex per-second rate ceiling")
+        if self._day_count >= REQUESTS_PER_DAY:
+            raise RateLimitExceeded("OpenAlex daily rate ceiling")
         self._count += 1
+        self._day_count += 1
 
     def works(self, *, search: str) -> Iterator[dict[str, object]]:
         cursor = "*"
