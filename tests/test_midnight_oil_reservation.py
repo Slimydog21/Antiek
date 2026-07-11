@@ -11,7 +11,10 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from substrate.midnight_oil.budget_ledger import BudgetLedger  # noqa: E402
+from substrate.midnight_oil.budget_ledger import (  # noqa: E402
+    BudgetLedger,
+    UnknownCallOutcome,
+)
 from substrate.midnight_oil.job import (  # noqa: E402
     InMemoryJobStore,
     approve_job,
@@ -128,14 +131,14 @@ def test_restart_with_open_ledger_hold_fails_without_redispatch():
     assert ledger.balance(job.job_id).held_cents == 40
 
 
-def test_unknown_provider_outcome_charges_projection_before_reraise():
+def test_unknown_provider_outcome_retains_projection_before_typed_reraise():
     store = InMemoryJobStore()
     job = _approved(store)
 
     def timeout(_job):
         raise TimeoutError("provider billed, response lost")
 
-    with pytest.raises(TimeoutError):
+    with pytest.raises(UnknownCallOutcome) as caught:
         run_worker_iteration(
             job.job_id,
             store=store,
@@ -143,11 +146,13 @@ def test_unknown_provider_outcome_charges_projection_before_reraise():
             project_fn=lambda _job: 0.40,
             clock=FakeClock(),
         )
+    assert isinstance(caught.value.provider_error, TimeoutError)
     row = store.get_job(job.job_id)
     assert row is not None
     assert row["status"] == "failed"
-    assert row["spent_usd"] == 0.40
-    assert _balance(store, job.job_id).spent_cents == 40
+    assert row["spent_usd"] == 0.0
+    assert _balance(store, job.job_id).spent_cents == 0
+    assert _balance(store, job.job_id).held_cents == 40
 
 
 def test_base_exception_retains_open_hold_without_false_charge_claim():

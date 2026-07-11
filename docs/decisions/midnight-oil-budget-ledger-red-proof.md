@@ -1,7 +1,7 @@
 # RED-PROOF-LOG — Midnight Oil Budget Ledger
 
-**Date:** 2026-07-10  
-**Branch:** mo/budget-ledger-spr05  
+**Date:** 2026-07-10
+**Branch:** mo/budget-ledger-spr05
 **Commit:** working tree (not committed)
 
 ## Purpose
@@ -79,7 +79,7 @@ hit = ctx.execute(
 
 ### 3. `_check_role_budget()` — entire body short-circuited
 
-**Before:** full role budget + freed_cents check.  
+**Before:** full role budget + freed_cents check.
 **Neutered:** early `return` after the docstring.
 
 ---
@@ -105,10 +105,10 @@ tmp_path = PosixPath('.../test_hard_ceiling_under_oversp0')
     def test_hard_ceiling_under_overspend(tmp_path: object) -> None:
         ledger = _ledger(tmp_path)
         ledger.reserve("r1", 300)
-    
+
         ledger.debit("r1", 120)
         ledger.debit("r1", 120)
-    
+
 >       with pytest.raises(BudgetCeilingExceeded) as exc_info:
              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 E       Failed: DID NOT RAISE BudgetCeilingExceeded
@@ -178,7 +178,7 @@ is not theater.
 
 ## F1 red-proof: explicit BEGIN/COMMIT transaction wrapper
 
-**Date:** 2026-07-10 (fix-round-1)  
+**Date:** 2026-07-10 (fix-round-1)
 **What:** prove the `_txn(ctx)` transaction wrapper is load-bearing for settle
 atomicity (F1+F2).
 
