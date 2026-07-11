@@ -20,6 +20,15 @@ from .hardening import (
     ShipStatus,
     evaluate_multimedia_asset,
 )
+from .information_asset import (
+    MultimediaInformationAsset,
+    MultimediaInformationAssetError,
+    MultimediaKnowledgeRegistrar,
+    MultimediaKnowledgeRegistrationReceipt,
+    MultimediaSourceReference,
+    project_multimedia_information_asset,
+    register_multimedia_information_asset,
+)
 from .narration import (
     NarrationParagraph,
     normalize_line,
@@ -159,6 +168,14 @@ __all__ = [
     "MultimediaHardeningReport",
     "ShipStatus",
     "evaluate_multimedia_asset",
+    # HTML knowledge-asset projection
+    "MultimediaInformationAsset",
+    "MultimediaInformationAssetError",
+    "MultimediaKnowledgeRegistrar",
+    "MultimediaKnowledgeRegistrationReceipt",
+    "MultimediaSourceReference",
+    "project_multimedia_information_asset",
+    "register_multimedia_information_asset",
     # SPR-09 API persistence/read-model
     "CreateMultimediaDraftRequest",
     "MultimediaAssetList",

@@ -231,6 +231,7 @@ class MultimediaAssetStore:
             status=MultimediaStatus.PLANNED,
             route_policy=request.route_policy,
             requested_duration_minutes=request.target_minutes,
+            owner_user_id=owner_digest,
             revision_id=revision_id,
             manifest=plan.to_manifest(asset_id=asset_id, revision_id=revision_id),
         )
@@ -582,6 +583,7 @@ class MultimediaAssetStore:
                 record = self._read_legacy_unlocked(legacy)
                 if record.asset.asset_id != legacy.stem:
                     raise ValueError("legacy multimedia asset identity conflicts")
+                record = _bind_record_owner(record, owner_digest)
                 destination = self._path(owner_digest, record.asset.asset_id)
                 if destination.exists():
                     existing = self._load_unlocked(record.asset.asset_id, owner_digest)
@@ -595,6 +597,8 @@ class MultimediaAssetStore:
         return migrated
 
     def _save_unlocked(self, record: MultimediaAssetRecord, owner_digest: str) -> None:
+        if record.asset.owner_user_id != owner_digest:
+            raise ValueError("multimedia asset owner conflicts")
         path = self._path(owner_digest, record.asset.asset_id)
         account = self._account_dir(owner_digest, create=True)
         assert account is not None
@@ -646,6 +650,10 @@ class MultimediaAssetStore:
             or envelope.record.asset.asset_id != asset_id
         ):
             raise ValueError("multimedia asset envelope identity conflicts")
+        if envelope.record.asset.owner_user_id == "__operator__":
+            return _bind_record_owner(envelope.record, owner_digest)
+        if envelope.record.asset.owner_user_id != owner_digest:
+            raise ValueError("multimedia asset envelope owner conflicts")
         return envelope.record
 
     def _read_legacy_unlocked(self, path: Path) -> MultimediaAssetRecord:
@@ -700,6 +708,14 @@ def _owner_digest(owner_id: str) -> str:
     if not encoded or len(encoded) > 512 or any(byte < 32 or byte == 127 for byte in encoded):
         raise ValueError("multimedia owner identity is invalid")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _bind_record_owner(
+    record: MultimediaAssetRecord, owner_digest: str
+) -> MultimediaAssetRecord:
+    return record.model_copy(
+        update={"asset": record.asset.model_copy(update={"owner_user_id": owner_digest})}
+    )
 
 
 def _require_private_regular(path: Path) -> os.stat_result:

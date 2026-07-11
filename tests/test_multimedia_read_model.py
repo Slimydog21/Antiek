@@ -416,6 +416,17 @@ def test_account_store_isolates_envelopes_and_preserves_concurrent_jobs(tmp_path
     )
     first = store.create_draft(request, owner_id="owner-a@example.test")
     second = store.create_draft(request, owner_id="owner-b@example.test")
+    assert first.asset.owner_user_id == hashlib.sha256(b"owner-a@example.test").hexdigest()
+    assert second.asset.owner_user_id == hashlib.sha256(b"owner-b@example.test").hexdigest()
+    with pytest.raises(ValueError, match="owner conflicts"):
+        store.save(
+            first.model_copy(
+                update={
+                    "asset": first.asset.model_copy(update={"owner_user_id": "f" * 64})
+                }
+            ),
+            owner_id="owner-a@example.test",
+        )
     assert [row.asset_id for row in store.list_assets(owner_id="owner-a@example.test").assets] == [
         first.asset.asset_id
     ]
@@ -472,7 +483,8 @@ def test_legacy_assets_require_explicit_crash_idempotent_owner_migration(tmp_pat
     with pytest.raises(KeyError):
         store.get(record.asset.asset_id, owner_id="owner-b")
     assert store.migrate_legacy_assets(owner_id="owner-a") == 1
-    assert store.get(record.asset.asset_id, owner_id="owner-a") == record
+    migrated = store.get(record.asset.asset_id, owner_id="owner-a")
+    assert migrated.asset.owner_user_id == hashlib.sha256(b"owner-a").hexdigest()
     with pytest.raises(KeyError):
         store.get(record.asset.asset_id, owner_id="owner-b")
     assert not legacy.exists()
@@ -481,14 +493,14 @@ def test_legacy_assets_require_explicit_crash_idempotent_owner_migration(tmp_pat
     legacy.write_text(record.model_dump_json(indent=2) + "\n")
     assert store.migrate_legacy_assets(owner_id="owner-a") == 1
     assert not legacy.exists()
-    assert store.get(record.asset.asset_id, owner_id="owner-a") == record
+    assert store.get(record.asset.asset_id, owner_id="owner-a") == migrated
 
     conflict = record.model_copy(update={"style": "conflicting legacy"})
     legacy.write_text(conflict.model_dump_json(indent=2) + "\n")
     with pytest.raises(ValueError, match="migration conflicts"):
         store.migrate_legacy_assets(owner_id="owner-a")
     assert legacy.exists()
-    assert store.get(record.asset.asset_id, owner_id="owner-a") == record
+    assert store.get(record.asset.asset_id, owner_id="owner-a") == migrated
 
 
 def test_legacy_migration_rejects_oversized_and_symlinked_records(tmp_path) -> None:
@@ -566,6 +578,8 @@ def test_route_registration_migrates_legacy_only_to_configured_owner(
     app = FastAPI()
     multimedia_routes.register_multimedia_routes(app)
     assert not legacy.exists()
-    assert multimedia_routes.get_store().get(record.asset.asset_id, owner_id="owner-a") == record
+    migrated = multimedia_routes.get_store().get(record.asset.asset_id, owner_id="owner-a")
+    assert migrated.asset.owner_user_id == hashlib.sha256(b"owner-a").hexdigest()
+    assert migrated.asset.model_copy(update={"owner_user_id": record.asset.owner_user_id}) == record.asset
     with pytest.raises(KeyError):
         multimedia_routes.get_store().get(record.asset.asset_id, owner_id="owner-b")
