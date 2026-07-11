@@ -41,12 +41,15 @@ call anywhere in the non-test product tree. Mount resolution is MODULE-AWARE
 (not a global bare-name match): a product ``P`` in module ``M`` is mounted only
 if ``M`` itself ``include_router``\\s the local ``P`` (the same-file
 ``register_*_routes`` pattern), OR some module ``N`` ``include_router``\\s a
-local name it imported FROM ``M`` (the ``from .m_routes import p_router;
-include_router(p_router)`` pattern, ``as``-alias included). This closes the
-collision where one mounted ``router`` would mask every other file's unmounted
-``router``. A product no ``include_router`` ever consumes is a route surface no
-mounted app exposes. Catches #742's ``create_multimedia_execution_router`` and
-the #712 completion-route absence class.
+local name whose import resolves to ``P`` in ``M`` — directly (``from .m_routes
+import p_router; include_router(p_router)``, ``as``-alias included) OR through a
+package-``__init__`` re-export barrel (``api/__init__.py`` does ``from .m_routes
+import router`` and the app mounts ``from x.api import router``), followed up to
+``_REEXPORT_MAX_DEPTH`` hops. This closes the collision where one mounted
+``router`` would mask every other file's unmounted ``router``. A product no
+``include_router`` ever consumes is a route surface no mounted app exposes.
+Catches #742's ``create_multimedia_execution_router`` and the #712
+completion-route absence class.
 
 **Check B — exported-but-uncalled enforcement symbols.** For every
 ``substrate/**`` module, each name in its ``__all__`` that (i) is a callable
@@ -57,8 +60,12 @@ reference is a CALL (``name(...)``), a callback/dispatch pass (``register(name)`
 — the bare name loaded as a value), or an attribute access (``mod.name``) — it
 is NOT a bare ``import``: importing a symbol without ever invoking it does not
 put it on the production path, so ``from x import execute_authorized_call`` with
-no call still reads as uncalled. A symbol only ever exercised by tests reads as
-uncalled. Catches ``execute_authorized_call`` / ``complete_spawn``.
+no call still reads as uncalled. A USE of an ``as``-alias credits the ORIGINAL
+symbol (``from x import execute_authorized_call as run; run()`` clears
+``execute_authorized_call``), so a genuinely-called-through-an-alias export is
+not falsely flagged; an aliased import that is never used still credits nothing.
+A symbol only ever exercised by tests reads as uncalled. Catches
+``execute_authorized_call`` / ``complete_spawn``.
 
 The enforcement lexicon (tunable — ``_ENFORCEMENT_LEXICON`` below): the symbol
 name and its module path are split into ``[a-z0-9]+`` word tokens, and a
@@ -107,9 +114,16 @@ CANNOT-catch list; rigor #1). Claims ONLY what its AST scan literally matches.
   - **Module-object mount form (Check A)** — ``import m_routes; m_routes.router``
     passed to ``include_router`` mounts via a module OBJECT, not a name imported
     FROM the defining module, so the module-aware resolver does not tie it to the
-    product and MAY read it as unmounted. The dominant patterns
-    (``from .m_routes import router`` and same-file mount) resolve correctly; the
-    module-object form is the honest residual → review-owned.
+    product and MAY read it as unmounted. The dominant patterns (``from .m_routes
+    import router``, same-file mount, and package-``__init__`` re-export barrels)
+    resolve correctly; the module-object form is the honest residual →
+    review-owned.
+  - **Deep / non-``from`` re-export chains (Check A)** — the barrel resolver
+    follows ``from .sub import P`` re-exports up to ``_REEXPORT_MAX_DEPTH`` hops.
+    A chain deeper than that, or a re-export the import map does not carry —
+    ``from .sub import *`` (star), an ``__all__``-driven re-export, or a
+    conditional/dynamic ``__init__`` — is not resolved and MAY read as unmounted.
+    Out of reach → review-owned.
   - **Registry-stored / string-dispatched callable (Check B)** — a name stored in
     a dict/registry and later dispatched by string (``TABLE["exec"] = the_fn`` …
     ``TABLE[key]()``) counts as REFERENCED via the bare-name load at store time
@@ -121,7 +135,9 @@ CANNOT-catch list; rigor #1). Claims ONLY what its AST scan literally matches.
     name is referenced elsewhere in the tree, the scan counts the target as
     referenced and will not flag it (a false negative, never a false positive).
     Distinctive enforcement names (``execute_authorized_call``) don't collide;
-    generic ones (``complete``) can. Under-detection → review-owned.
+    generic ones (``complete``) can. Likewise an ``as``-alias whose local name
+    equals an unrelated used local over-credits the aliased original (also a
+    false negative). Under-detection → review-owned.
   - **Fixed-then-reintroduced at the same ``path:line:kind``** — if a stranding
     is fixed (so the operator could shrink its baseline entry) but the entry is
     NOT shrunk, and later the SAME stranding returns at the identical
@@ -138,9 +154,11 @@ CANNOT-catch list; rigor #1). Claims ONLY what its AST scan literally matches.
 
 Everything in the FINDING shapes has a concrete literal signature the AST
 matches (a module-level ``APIRouter`` assignment / a factory returning one; an
-``include_router`` arg naming it, resolved to its defining module; an ``__all__``
-string + a same-named ``def``; a ``Name`` load / attribute reference — never a
-bare import). Nothing else is mechanically enforced.
+``include_router`` arg whose import resolves — directly or through a bounded
+package-``__init__`` re-export chain — to the defining module; an ``__all__``
+string + a same-named ``def``; a ``Name`` load / attribute reference, or a used
+``as``-alias crediting its original — never a bare unused import). Nothing else
+is mechanically enforced.
 
 ────────────────────────────────────────────────────────────────────────────
 FAIRNESS — why a (future) HARD gate is defensible (fairness #2)
@@ -272,37 +290,48 @@ def _parse(path: Path) -> ast.Module | None:
 
 # ── Per-file precomputed indexes (parse each product file ONCE) ─────────────
 def _reachability_reference_names(tree: ast.Module) -> set[str]:
-    """Every identifier this module uses in a GENUINE REACHABILITY position —
-    i.e. as a value that could actually run the symbol, NOT merely as an
-    import binding.
+    """The symbol names this module reaches in a GENUINE REACHABILITY position —
+    i.e. actually invoked/passed as a value, NOT merely imported.
 
     An ``import``/``from … import`` alone is deliberately NOT counted: importing
     ``execute_authorized_call`` without ever calling it does not put it on the
     production path, and treating the import as a caller is exactly the
-    #739-742 evasion (a green-CI module imported for its side of a test but
-    never invoked). A reference here is therefore a ``Name`` LOAD — which covers
-    a direct call ``execute_authorized_call(...)`` (the callee is a Name load), a
-    callback / dispatch-table pass ``register(execute_authorized_call)`` (the
-    Name is loaded as an argument), and any other read of the bare name — or an
-    ``Attribute`` access ``mod.execute_authorized_call`` (the ``mod.name(...)``
-    call form). A ``def``/``class`` declaration is a name string on the node, not
-    a Name load, so a module that defines-but-never-uses its own export
-    contributes nothing here — which is what makes an only-tests-call-it export
-    read as unreferenced.
+    #739-742 evasion. A reference is a ``Name`` LOAD — a direct call
+    ``execute_authorized_call(...)`` (callee is a Name load), a callback / dispatch
+    pass ``register(execute_authorized_call)`` (Name loaded as an argument), or any
+    other read of the bare name — or an ``Attribute`` access
+    ``mod.execute_authorized_call``. A ``def``/``class`` declaration is a name
+    string on the node, not a Name load, so a module that defines-but-never-uses
+    its own export contributes nothing.
 
-    ImportFrom/Import nodes bind names WITHOUT producing a Name load, so a
-    bare import contributes nothing; only a subsequent USE of the bound name
-    does. See the "import is not a caller" line in the CANNOT-catch list for the
-    residual (a name stored in a dict/registry and dispatched by string counts
-    as referenced via its attribute/name load even though no literal call site
-    exists)."""
-    names: set[str] = set()
+    ALIAS CREDIT: ``from m import execute_authorized_call as run`` binds the local
+    name ``run``; a subsequent USE of ``run`` (``run(payload)``) credits the
+    ORIGINAL symbol ``execute_authorized_call`` — the finding is keyed on the
+    original, so a genuinely-called-through-an-alias export must not read as
+    uncalled. Crucially the credit fires only when the LOCAL alias is USED: an
+    aliased import that is never used still credits nothing (fix #2 preserved).
+    An ``as``-alias whose local name collides with an unrelated used local can
+    over-credit (a false negative, never a false positive) — documented in the
+    CANNOT-catch list."""
+    used: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
-            names.add(node.id)
+            used.add(node.id)
         elif isinstance(node, ast.Attribute):
-            names.add(node.attr)
-    return names
+            used.add(node.attr)
+    # Alias credit: local alias name -> original imported symbol.
+    aliases: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.asname:
+                    aliases[alias.asname] = alias.name
+    credited = set(used)
+    for local in used:
+        original = aliases.get(local)
+        if original is not None:
+            credited.add(original)
+    return credited
 
 
 def _include_router_arg_names(tree: ast.Module) -> set[str]:
@@ -456,6 +485,43 @@ def _router_products(path: Path, tree: ast.Module) -> list[tuple[str, int]]:
     return products
 
 
+_REEXPORT_MAX_DEPTH = 6
+
+
+def _resolves_to(
+    origin_rel: str,
+    origin_name: str,
+    defining_rel: str,
+    product: str,
+    import_map: dict[str, dict[str, set[tuple[str, str]]]],
+    depth: int = _REEXPORT_MAX_DEPTH,
+    seen: frozenset[tuple[str, str]] = frozenset(),
+) -> bool:
+    """True iff the import ``(origin_rel, origin_name)`` resolves — directly or
+    THROUGH one-or-more package re-export hops — to the router ``product`` defined
+    in ``defining_rel``.
+
+    The common FastAPI barrel: ``interfaces/x/api/__init__.py`` does
+    ``from .widget_routes import router`` and the app mounts
+    ``from interfaces.x.api import router`` — the app's import resolves to the
+    package ``__init__``, so this follows the ``__init__``'s own re-export of
+    ``router`` down to ``widget_routes.py``. Bounded to ``_REEXPORT_MAX_DEPTH``
+    hops with a visited set (cycle-safe); a chain deeper than that, or a star /
+    ``__all__``-driven re-export the import map does not carry, is the documented
+    residual (see CANNOT-catch)."""
+    if origin_rel == defining_rel and origin_name == product:
+        return True
+    if depth <= 0 or (origin_rel, origin_name) in seen:
+        return False
+    seen = seen | {(origin_rel, origin_name)}
+    for next_rel, next_name in import_map.get(origin_rel, {}).get(origin_name, ()):
+        if _resolves_to(
+            next_rel, next_name, defining_rel, product, import_map, depth - 1, seen
+        ):
+            return True
+    return False
+
+
 def _is_mounted(
     defining_rel: str,
     product: str,
@@ -468,10 +534,12 @@ def _is_mounted(
       * same-module — ``defining_rel`` itself ``include_router``\\s the local
         name ``product`` (the common ``register_*_routes`` pattern where the
         router is defined and mounted in one file), OR
-      * cross-module — some module N ``include_router``\\s a local name L that N
-        imported FROM ``defining_rel`` whose original name is ``product`` (the
-        ``from .x_routes import x_router; app.include_router(x_router)`` pattern,
-        including an ``as`` alias).
+      * cross-module — some module N ``include_router``\\s a local name L whose
+        import resolves (directly or through a package-``__init__`` re-export
+        chain) to ``product`` in ``defining_rel`` — covering both
+        ``from .x_routes import x_router; include_router(x_router)`` and the
+        barrel ``from .x_routes import router`` in ``api/__init__.py`` +
+        ``from x.api import router; include_router(router)`` in the app.
 
     A different module defining its own ``router`` and mounting it cannot mount
     THIS module's ``router``: the cross-module arm requires the import to resolve
@@ -482,7 +550,9 @@ def _is_mounted(
         imap = import_map.get(n_rel, {})
         for local in mounted_locals:
             for origin_rel, origin_name in imap.get(local, ()):
-                if origin_rel == defining_rel and origin_name == product:
+                if _resolves_to(
+                    origin_rel, origin_name, defining_rel, product, import_map
+                ):
                     return True
     return False
 

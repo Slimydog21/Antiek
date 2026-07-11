@@ -531,3 +531,95 @@ def test_module_aware_mount_no_bare_name_collision(tmp_path: Path) -> None:
         f"cross-module import mount must clear B, got {green.returncode}\n"
         f"{green.stdout}\n{green.stderr}"
     )
+
+
+# =========================================================================== #
+# (h) FIX #2r-1 — Check B aliased-call must CLEAR the original. An
+#     ``import X as run; run()`` credits X (not a false 'uncalled'); an aliased
+#     import that is NEVER used still flags X (fix #2 preserved).
+# =========================================================================== #
+def test_aliased_call_clears_unused_alias_import_still_flags(tmp_path: Path) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    _write(
+        root / "substrate" / "authz" / "execution.py",
+        '__all__ = ["execute_authorized_call"]\n\n\n'
+        "def execute_authorized_call(x: int) -> int:\n    return x\n",
+    )
+    # A non-test product module that IMPORTS it under an alias but NEVER uses it.
+    _write(
+        root / "interfaces" / "research" / "api" / "unused_alias.py",
+        "from substrate.authz.execution import execute_authorized_call as run  "
+        "# noqa: F401\n",
+    )
+    red = _run([sys.executable, str(gate)], cwd=root)  # no baseline -> all NEW
+    assert red.returncode == 1, (
+        f"an UNUSED aliased import must NOT clear the finding, got "
+        f"{red.returncode}\n{red.stdout}\n{red.stderr}"
+    )
+    assert "execute_authorized_call" in red.stdout + red.stderr
+
+    # Now actually CALL it through the alias -> the ORIGINAL is credited -> green.
+    _write(
+        root / "interfaces" / "research" / "api" / "aliased_caller.py",
+        "from substrate.authz.execution import execute_authorized_call as run\n\n\n"
+        "def go(x: int) -> int:\n    return run(x)\n",
+    )
+    green = _run([sys.executable, str(gate)], cwd=root)
+    assert green.returncode == 0, (
+        f"a call through an alias must credit the original symbol, got "
+        f"{green.returncode}\n{green.stdout}\n{green.stderr}"
+    )
+
+
+# =========================================================================== #
+# (i) FIX #2r-2 — Check A package-barrel re-export. A router defined in a
+#     submodule, re-exported through the package ``__init__``, and mounted via
+#     the package import must NOT be flagged; an unmounted sibling still IS.
+# =========================================================================== #
+def test_barrel_reexported_mount_not_flagged_sibling_still_flagged(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+    api = root / "interfaces" / "x" / "api"
+
+    # Router defined in a submodule.
+    _write(
+        api / "widget_routes.py",
+        'from fastapi import APIRouter\n\nrouter = APIRouter(prefix="/widget")\n',
+    )
+    # An unmounted sibling router in another submodule.
+    _write(
+        api / "sibling_routes.py",
+        'from fastapi import APIRouter\n\nrouter = APIRouter(prefix="/sibling")\n',
+    )
+    # Package barrel re-exports the widget router (but NOT the sibling).
+    _write(api / "__init__.py", "from .widget_routes import router\n")
+    # App mounts via the PACKAGE import (the barrel), not the submodule.
+    _write(
+        root / "app.py",
+        "from fastapi import FastAPI\n"
+        "from interfaces.x.api import router\n\n\n"
+        "def create_app() -> FastAPI:\n"
+        "    app = FastAPI()\n"
+        "    app.include_router(router)\n"
+        "    return app\n",
+    )
+    res = _run([sys.executable, str(gate)], cwd=root)  # no baseline -> NEW
+    assert res.returncode == 1, (
+        f"the unmounted sibling must red, got {res.returncode}\n"
+        f"{res.stdout}\n{res.stderr}"
+    )
+    combined = res.stdout + res.stderr
+    # The barrel-mounted widget router must be resolved through __init__ -> NOT flagged.
+    assert "widget_routes.py:" not in combined, (
+        f"barrel-re-exported + mounted router must NOT be flagged:\n{combined}"
+    )
+    # The unmounted sibling must still be flagged.
+    assert "sibling_routes.py:" in combined, (
+        f"the unmounted sibling router must still be flagged:\n{combined}"
+    )
