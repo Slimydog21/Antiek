@@ -76,9 +76,7 @@ export function isSlotFilled(content: ReactNode): boolean {
   if (typeof content === "string" && !content.trim()) {
     return false;
   }
-  if (typeof content === "number" && !Number.isFinite(content)) {
-    return false;
-  }
+  // Numbers (including NaN/±Infinity) are filled — React renders them as text.
   return true;
 }
 
