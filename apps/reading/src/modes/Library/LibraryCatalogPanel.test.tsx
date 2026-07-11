@@ -8,7 +8,11 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const sample: LibraryPage = {
+const SECRET_BODY = "SECRET_BODY_SENTINEL_NEVER_RENDER";
+const SECRET_RAW = "SECRET_RAW_TEXT_SENTINEL_NEVER_RENDER";
+
+/** Injectable page may carry extra runtime keys; panel must not display them. */
+const sample = {
   works: [
     {
       document_id: "doc-1",
@@ -20,12 +24,16 @@ const sample: LibraryPage = {
       cover_uri: null,
       ip_holder_id: null,
       taken_down: false,
+      // adversarial extras (not on BookSummary type)
+      full_text: SECRET_BODY,
+      raw_text: SECRET_RAW,
+      body: SECRET_BODY,
     },
   ],
   total: 1,
   page: 1,
   page_size: 20,
-};
+} as LibraryPage;
 
 describe("LibraryCatalogPanel", () => {
   it("loads catalog via injectable fetchFn and shows metadata only", async () => {
@@ -53,10 +61,9 @@ describe("LibraryCatalogPanel", () => {
     expect(
       screen.getByTestId("library-work-servability-doc-1").textContent,
     ).toMatch(/servable/i);
-    // never render body payload fields (blurb may mention "full text" as policy)
-    expect(document.body.textContent).not.toMatch(
-      /\braw_text\b|\bfull_text\b|\bserved_body\b|\bbody_text\b/,
-    );
+    // adversarial body payloads from injectable fetch must never appear
+    expect(document.body.textContent).not.toContain(SECRET_BODY);
+    expect(document.body.textContent).not.toContain(SECRET_RAW);
     expect(screen.queryByTestId("library-work-body-doc-1")).toBeNull();
   });
 
