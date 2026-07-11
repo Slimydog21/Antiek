@@ -75,29 +75,89 @@ export function parseUsageLearnProposal(body: unknown): UsageLearnProposal {
       "usage-learn response rejected: authority must be advisory",
     );
   }
-  const weightsRaw = Array.isArray(o.task_weights) ? o.task_weights : [];
-  const task_weights: TaskWeightProposal[] = weightsRaw.map((w) => {
-    const row = (w && typeof w === "object" ? w : {}) as Record<string, unknown>;
+  if (!Array.isArray(o.task_weights)) {
+    throw new Error("usage-learn response rejected: task_weights must be an array");
+  }
+  if (typeof o.incomplete !== "boolean") {
+    throw new Error("usage-learn response rejected: incomplete must be boolean");
+  }
+  if (typeof o.week_id !== "string") {
+    throw new Error("usage-learn response rejected: week_id must be a string");
+  }
+  if (!Array.isArray(o.notes)) {
+    throw new Error("usage-learn response rejected: notes must be an array");
+  }
+  if (!Array.isArray(o.suggested_new_tasks)) {
+    throw new Error(
+      "usage-learn response rejected: suggested_new_tasks must be an array",
+    );
+  }
+
+  const task_weights: TaskWeightProposal[] = o.task_weights.map((w, idx) => {
+    if (!w || typeof w !== "object") {
+      throw new Error(
+        `usage-learn response rejected: task_weights[${idx}] must be an object`,
+      );
+    }
+    const row = w as Record<string, unknown>;
+    if (typeof row.task !== "string" || !row.task.trim()) {
+      throw new Error(
+        `usage-learn response rejected: task_weights[${idx}].task required`,
+      );
+    }
+    if (typeof row.weight !== "number" || !Number.isFinite(row.weight)) {
+      throw new Error(
+        `usage-learn response rejected: task_weights[${idx}].weight must be finite number`,
+      );
+    }
+    if (row.weight < 0) {
+      throw new Error(
+        `usage-learn response rejected: task_weights[${idx}].weight must be nonnegative`,
+      );
+    }
+    let prior_weight: number | null;
+    if (row.prior_weight === null || row.prior_weight === undefined) {
+      prior_weight = null;
+    } else if (
+      typeof row.prior_weight === "number" &&
+      Number.isFinite(row.prior_weight)
+    ) {
+      prior_weight = row.prior_weight;
+    } else {
+      throw new Error(
+        `usage-learn response rejected: task_weights[${idx}].prior_weight invalid`,
+      );
+    }
+    if (typeof row.n_success !== "number" || !Number.isFinite(row.n_success)) {
+      throw new Error(
+        `usage-learn response rejected: task_weights[${idx}].n_success must be finite number`,
+      );
+    }
+    if (typeof row.n_failure !== "number" || !Number.isFinite(row.n_failure)) {
+      throw new Error(
+        `usage-learn response rejected: task_weights[${idx}].n_failure must be finite number`,
+      );
+    }
+    if (typeof row.rationale !== "string") {
+      throw new Error(
+        `usage-learn response rejected: task_weights[${idx}].rationale must be string`,
+      );
+    }
     return {
-      task: String(row.task ?? "general"),
-      weight: Number(row.weight ?? 0),
-      prior_weight:
-        row.prior_weight === null || row.prior_weight === undefined
-          ? null
-          : Number(row.prior_weight),
-      n_success: Number(row.n_success ?? 0),
-      n_failure: Number(row.n_failure ?? 0),
-      rationale: String(row.rationale ?? ""),
+      task: row.task,
+      weight: row.weight,
+      prior_weight,
+      n_success: row.n_success,
+      n_failure: row.n_failure,
+      rationale: row.rationale,
     };
   });
   return {
-    week_id: String(o.week_id ?? ""),
+    week_id: o.week_id,
     authority: "advisory",
-    incomplete: Boolean(o.incomplete),
-    notes: Array.isArray(o.notes) ? o.notes.map((n) => String(n)) : [],
-    suggested_new_tasks: Array.isArray(o.suggested_new_tasks)
-      ? o.suggested_new_tasks.map((t) => String(t))
-      : [],
+    incomplete: o.incomplete,
+    notes: o.notes.map((n) => String(n)),
+    suggested_new_tasks: o.suggested_new_tasks.map((t) => String(t)),
     task_weights,
   };
 }

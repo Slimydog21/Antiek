@@ -33,32 +33,56 @@ describe("formatters", () => {
 });
 
 describe("parseUsageLearnProposal", () => {
+  const valid = {
+    week_id: "2026-W28",
+    authority: "advisory",
+    incomplete: false,
+    notes: ["ok"],
+    suggested_new_tasks: [] as string[],
+    task_weights: [
+      {
+        task: "deep_research",
+        weight: 0.7,
+        prior_weight: null as number | null,
+        n_success: 1,
+        n_failure: 1,
+        rationale: "failure-driven",
+      },
+    ],
+  };
+
   it("requires authority=advisory", () => {
     expect(() =>
       parseUsageLearnProposal({
+        ...valid,
         authority: "production",
-        task_weights: [],
       }),
     ).toThrow(/advisory/);
-    const ok = parseUsageLearnProposal({
-      week_id: "2026-W28",
-      authority: "advisory",
-      incomplete: false,
-      notes: ["ok"],
-      suggested_new_tasks: [],
-      task_weights: [
-        {
-          task: "deep_research",
-          weight: 0.7,
-          prior_weight: null,
-          n_success: 1,
-          n_failure: 1,
-          rationale: "failure-driven",
-        },
-      ],
-    });
+    const ok = parseUsageLearnProposal(valid);
     expect(ok.authority).toBe("advisory");
     expect(ok.task_weights[0].task).toBe("deep_research");
+  });
+
+  it("rejects malformed weight rows without inventing defaults", () => {
+    expect(() =>
+      parseUsageLearnProposal({
+        ...valid,
+        task_weights: [{}],
+      }),
+    ).toThrow(/task/);
+    expect(() =>
+      parseUsageLearnProposal({
+        ...valid,
+        task_weights: [{ task: "x", weight: "0.5", n_success: 0, n_failure: 0, rationale: "" }],
+      }),
+    ).toThrow(/weight/);
+    expect(() =>
+      parseUsageLearnProposal({
+        authority: "advisory",
+        // missing incomplete / notes / week_id / arrays
+        task_weights: [],
+      }),
+    ).toThrow();
   });
 });
 

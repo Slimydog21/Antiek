@@ -77,4 +77,24 @@ describe("BenchUsageLearnPanel", () => {
     });
     expect(screen.queryByTestId("bench-usage-learn-result")).toBeNull();
   });
+
+  it("rejects injectable malformed weight row without inventing general/0", async () => {
+    const proposeFn = vi.fn(async () => ({
+      week_id: "w",
+      authority: "advisory",
+      incomplete: false,
+      notes: [],
+      suggested_new_tasks: [],
+      task_weights: [{}],
+    }));
+    render(<BenchUsageLearnPanel proposeFn={proposeFn} />);
+    fireEvent.click(screen.getByTestId("bench-usage-learn-propose"));
+    await waitFor(() => {
+      expect(screen.getByTestId("bench-usage-learn-error").textContent).toMatch(
+        /task/,
+      );
+    });
+    expect(screen.queryByTestId("bench-usage-learn-result")).toBeNull();
+    expect(screen.queryByText(/general/i)).toBeNull();
+  });
 });
