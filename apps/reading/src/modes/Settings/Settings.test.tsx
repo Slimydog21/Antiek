@@ -3,9 +3,14 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { fetchModelDecision, type ModelDecisionResponse } from "../../api/settings";
 import Settings from "./index";
+import type { BudgetResponse } from "../../api/settings";
 
 vi.mock("../../workspace/useViewportTier", () => ({
   useViewportTier: () => "desktop",
+}));
+
+vi.mock("@simplewebauthn/browser", () => ({
+  startRegistration: vi.fn(),
 }));
 
 const models = {
@@ -32,18 +37,26 @@ const models = {
   source: "test",
 };
 
-const budget = {
-  daily_cap_usd: 5,
-  spent_usd: 1,
-  remaining_usd: 4,
-  spent_status: "known" as const,
-  cap_env: null,
-  notes: ["test note"],
-};
+const mockState = vi.hoisted((): { budget: BudgetResponse } => ({
+  budget: {
+    daily_cap_usd: 5,
+    spent_usd: 1,
+    remaining_usd: 4,
+    spent_status: "known",
+    cap_env: null,
+    notes: ["test note"],
+    reserved_estimated_usd: 1,
+    spend_basis: "reserved_estimate",
+    enforcement_cap_usd: 5,
+    enforcement_cap_env: null,
+    caps_aligned: true,
+    over_budget: false,
+  },
+}));
 
 vi.mock("../../api/settings", () => ({
   fetchSettingsModels: vi.fn(async () => models),
-  fetchSettingsBudget: vi.fn(async () => budget),
+  fetchSettingsBudget: vi.fn(async () => mockState.budget),
   fetchModelDecision: vi.fn(async () => ({
     authority: "advisory",
     task: "deep_research",
@@ -85,6 +98,24 @@ vi.mock("../../api/settings", () => ({
 describe("Settings SPR-01", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockState.budget = {
+      daily_cap_usd: 5,
+      spent_usd: 1,
+      remaining_usd: 4,
+      spent_status: "known",
+      cap_env: null,
+      notes: ["test note"],
+      reserved_estimated_usd: 1,
+      spend_basis: "reserved_estimate",
+      enforcement_cap_usd: 5,
+      enforcement_cap_env: null,
+      caps_aligned: true,
+      over_budget: false,
+    };
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 
   afterEach(cleanup);
@@ -98,6 +129,9 @@ describe("Settings SPR-01", () => {
     expect(screen.getAllByText("registered").length).toBeGreaterThan(0);
     expect(screen.getByText("$5.00")).toBeTruthy();
     expect(screen.getByText("$1.0000")).toBeTruthy();
+    // Honesty: reserved label, not "Spent today".
+    expect(screen.getByText("Reserved (est.)")).toBeTruthy();
+    expect(screen.queryByText("Spent today")).toBeNull();
   });
 
   it("projects cost and shows honest unknown pricing", async () => {
@@ -105,7 +139,9 @@ describe("Settings SPR-01", () => {
     render(<Settings />);
     await waitFor(() => expect(screen.getByText("zai")).toBeTruthy());
     const buttons = screen.getAllByRole("button");
-    const project = buttons.find((b) => /project cost/i.test(b.textContent ?? ""));
+    const project = buttons.find((b) =>
+      /project cost/i.test(b.textContent ?? ""),
+    );
     expect(project).toBeTruthy();
     await user.click(project!);
     await waitFor(() => {
@@ -114,7 +150,6 @@ describe("Settings SPR-01", () => {
       ).toBeTruthy();
     });
   });
-
   it("compares server-owned model candidates in the decision tree tab", async () => {
     const user = userEvent.setup();
     render(<Settings />);
@@ -161,5 +196,83 @@ describe("Settings SPR-01", () => {
       candidates: [],
     });
     await waitFor(() => expect(screen.queryByText(/Recommended tier:/)).toBeNull());
+  });
+
+  it("surfaces dual display vs enforcement caps when misaligned", async () => {
+    mockState.budget = {
+      daily_cap_usd: 200,
+      spent_usd: 4,
+      remaining_usd: 196,
+      spent_status: "known",
+      cap_env: "ANTIEK_OPERATOR_BUDGET_USD",
+      notes: [],
+      reserved_estimated_usd: 4,
+      spend_basis: "reserved_estimate",
+      enforcement_cap_usd: 5,
+      enforcement_cap_env: null,
+      caps_aligned: false,
+      over_budget: false,
+    };
+    render(<Settings />);
+    await waitFor(() =>
+      expect(screen.getByTestId("dual-cap-note")).toBeTruthy(),
+    );
+    expect(screen.getByText("Enforcement cap")).toBeTruthy();
+    // Enforcement row value may share the page with other $5 figures — assert via dual-cap note.
+    const dual = screen.getByTestId("dual-cap-note").textContent ?? "";
+    expect(dual).toMatch(/Display cap \$200\.00/);
+    expect(dual).toMatch(/Enforcement cap \$5\.00/);
+    expect(screen.getByTestId("spend-basis-note").textContent).toMatch(
+      /not settled provider cost/i,
+    );
+  });
+
+  it("renders signed remaining when over display cap", async () => {
+    mockState.budget = {
+      daily_cap_usd: 2,
+      spent_usd: 4,
+      remaining_usd: -2,
+      spent_status: "known",
+      cap_env: "ANTIEK_OPERATOR_BUDGET_USD",
+      notes: ["over display budget by $2.0000"],
+      reserved_estimated_usd: 4,
+      spend_basis: "reserved_estimate",
+      enforcement_cap_usd: 5,
+      enforcement_cap_env: null,
+      caps_aligned: false,
+      over_budget: true,
+    };
+    render(<Settings />);
+    await waitFor(() =>
+      expect(screen.getByText(/budget status: cap exceeded/i)).toBeTruthy(),
+    );
+    expect(screen.getByText("$-2.0000 (over display cap)")).toBeTruthy();
+    expect(
+      screen.getByLabelText(/budget usage: cap exceeded/i),
+    ).toBeTruthy();
+  });
+
+  it("keeps unknown spend as unknown — never invents $0", async () => {
+    mockState.budget = {
+      daily_cap_usd: 5,
+      spent_usd: null,
+      remaining_usd: null,
+      spent_status: "unknown",
+      cap_env: null,
+      notes: ["spent ledger unavailable: daemon sidecar missing"],
+      spend_basis: "unknown",
+      reserved_estimated_usd: null,
+      enforcement_cap_usd: 5,
+      caps_aligned: true,
+      over_budget: null,
+    };
+    render(<Settings />);
+    await waitFor(() =>
+      expect(screen.getByText(/budget status: spend unknown/i)).toBeTruthy(),
+    );
+    expect(
+      screen.getByText(/unknown \(ledger not inventing \$0\)/i),
+    ).toBeTruthy();
+    expect(screen.queryByText("$0.0000")).toBeNull();
   });
 });
