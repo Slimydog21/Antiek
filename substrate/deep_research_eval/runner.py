@@ -30,6 +30,29 @@ QueryStatus = Literal["MEASURED", "NOT_MEASURED"]
 STATUS_MEASURED: QueryStatus = "MEASURED"
 STATUS_NOT_MEASURED: QueryStatus = "NOT_MEASURED"
 
+
+class ProviderFailure(Exception):
+    """Typed fail-closed channel for an HONEST research-run failure on ONE query.
+
+    A live ``ProviderFn`` raises this (with a human-readable reason) when the
+    real research run for a query could not produce a truthful report —
+    missing keys, legal-gate refusal, budget exhaustion, empty evidence pack,
+    synthesis failure, timeout. The runner records that query as
+    ``NOT_MEASURED`` (the judge is never consulted — there is nothing to
+    judge) and keeps scoring the remaining queries; the incomplete run then
+    fails the bench bridge (``IncompleteRunError``), so the week is skipped
+    rather than scored on a partial set.
+
+    Deliberately narrow: any OTHER exception type from a provider still
+    propagates and crashes the run. A bug must crash loudly — this channel
+    exists only for honest, expected research-run failures, never as a net
+    that silently shrinks the measured set.
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
 RUN_SCHEMA_VERSION = 1
 
 _SHA256_HEX_RE = re.compile(r"[0-9a-f]{64}\Z")
@@ -325,7 +348,9 @@ def run_eval(
 
     Never hits the network — both callables are injected. A judge response
     that fails the strict parser marks that query ``NOT_MEASURED`` and the
-    aggregate run incomplete (fail closed).
+    aggregate run incomplete (fail closed). A provider that raises
+    ``ProviderFailure`` marks that query ``NOT_MEASURED`` the same way — the
+    judge is never called for it; any other provider exception propagates.
     """
     wid = (week_id or "").strip()
     if not wid:
@@ -336,7 +361,26 @@ def run_eval(
 
     scores: list[QueryScore] = []
     for query in dataset.queries:
-        report = provider(query)
+        try:
+            report = provider(query)
+        except ProviderFailure:
+            # Honest research-run failure for THIS query: fail closed to
+            # NOT_MEASURED without consulting the judge (there is no report to
+            # judge), and keep scoring the remaining queries. The incomplete
+            # run then refuses a bench record (IncompleteRunError) — the
+            # correct fail-closed cascade. Any other exception type still
+            # propagates unchanged: a bug must crash the run, not silently
+            # shrink the measured set.
+            scores.append(
+                QueryScore(
+                    query_id=query.query_id,
+                    status=STATUS_NOT_MEASURED,
+                    judge_scores=None,
+                    coverage_hit_rate=0.0,
+                    hit_anchors=(),
+                )
+            )
+            continue
         if not isinstance(report, ResearchReport):
             raise TypeError("provider must return a ResearchReport")
         coverage_hit_rate, hit_anchors = _coverage(report.answer_text, query.expected_coverage)
