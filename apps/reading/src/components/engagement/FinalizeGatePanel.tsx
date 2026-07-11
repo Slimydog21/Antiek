@@ -44,8 +44,26 @@ export default function FinalizeGatePanel({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<FinalizeAuthorization | null>(null);
 
+  function clearResult() {
+    setResult(null);
+    setError(null);
+  }
+
   function onCheck() {
     setError(null);
+    // Continuous enforcement: never surface AUTHORIZED without local accept.
+    if (!accepted) {
+      setResult({
+        authorized: false,
+        draft_id: draftId.trim() || "(empty)",
+        parent_asset_id: parentId.trim() || "(empty)",
+        reason: "operator_accept_required",
+        notes: [
+          "explicit operator acceptance checkbox required before authorization can display",
+        ],
+      });
+      return;
+    }
     try {
       const body = authorizeFn({
         draft_id: draftId,
@@ -54,6 +72,19 @@ export default function FinalizeGatePanel({
         operator_accepted: accepted,
         twin_ids: twinIdsRaw.trim() ? parseIds(twinIdsRaw) : undefined,
       });
+      // Even if injectable authorizeFn lies, refuse to show authorized without accept.
+      if (body.authorized && !accepted) {
+        setResult({
+          ...body,
+          authorized: false,
+          reason: "operator_accept_required",
+          notes: [
+            ...body.notes,
+            "panel fail-closed: local accept required",
+          ],
+        });
+        return;
+      }
       setResult(body);
     } catch (e) {
       setResult(null);
@@ -74,7 +105,10 @@ export default function FinalizeGatePanel({
             <span>Draft id</span>
             <LemonInput
               value={draftId}
-              onChange={(e) => setDraftId(e.target.value)}
+              onChange={(e) => {
+                setDraftId(e.target.value);
+                clearResult();
+              }}
               data-testid="finalize-gate-draft-id"
               aria-label="Draft id"
             />
@@ -84,7 +118,10 @@ export default function FinalizeGatePanel({
             <span>Parent asset id</span>
             <LemonInput
               value={parentId}
-              onChange={(e) => setParentId(e.target.value)}
+              onChange={(e) => {
+                setParentId(e.target.value);
+                clearResult();
+              }}
               data-testid="finalize-gate-parent-id"
               aria-label="Parent asset id"
             />
@@ -94,7 +131,10 @@ export default function FinalizeGatePanel({
             <span>Twin ids (optional, comma-separated)</span>
             <LemonInput
               value={twinIdsRaw}
-              onChange={(e) => setTwinIdsRaw(e.target.value)}
+              onChange={(e) => {
+                setTwinIdsRaw(e.target.value);
+                clearResult();
+              }}
               data-testid="finalize-gate-twin-ids"
               aria-label="Twin ids"
             />
@@ -104,7 +144,10 @@ export default function FinalizeGatePanel({
             <input
               type="checkbox"
               checked={provisional}
-              onChange={(e) => setProvisional(e.target.checked)}
+              onChange={(e) => {
+                setProvisional(e.target.checked);
+                clearResult();
+              }}
               data-testid="finalize-gate-provisional"
             />
             <span>Draft is provisional</span>
@@ -114,7 +157,10 @@ export default function FinalizeGatePanel({
             <input
               type="checkbox"
               checked={accepted}
-              onChange={(e) => setAccepted(e.target.checked)}
+              onChange={(e) => {
+                setAccepted(e.target.checked);
+                clearResult();
+              }}
               data-testid="finalize-gate-accept"
             />
             <span>I accept this provisional draft for parent merge</span>

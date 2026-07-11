@@ -41,11 +41,11 @@ describe("FinalizeGatePanel", () => {
 
   it("shows denied when operator has not accepted", () => {
     const authorizeFn = vi.fn(() => ({
-      authorized: false,
+      authorized: true,
       draft_id: "d1",
       parent_asset_id: "p1",
-      reason: "operator_accept_required",
-      notes: ["explicit operator_accepted=true required before parent mutation"],
+      reason: "ok",
+      notes: ["should not be trusted without accept"],
     }));
     render(
       <FinalizeGatePanel
@@ -55,9 +55,7 @@ describe("FinalizeGatePanel", () => {
       />,
     );
     fireEvent.click(screen.getByTestId("finalize-gate-check"));
-    expect(authorizeFn).toHaveBeenCalledWith(
-      expect.objectContaining({ operator_accepted: false }),
-    );
+    expect(authorizeFn).not.toHaveBeenCalled();
     const el = screen.getByTestId("finalize-gate-authorized");
     expect(el.getAttribute("data-authorized")).toBe("false");
     expect(el.textContent).toMatch(/DENIED/i);
@@ -70,11 +68,64 @@ describe("FinalizeGatePanel", () => {
     const authorizeFn = vi.fn(() => {
       throw new Error("draft_id must be non-empty");
     });
-    render(<FinalizeGatePanel authorizeFn={authorizeFn} />);
+    render(
+      <FinalizeGatePanel
+        authorizeFn={authorizeFn}
+        initialDraftId="d"
+        initialParentId="p"
+      />,
+    );
+    fireEvent.click(screen.getByTestId("finalize-gate-accept"));
     fireEvent.click(screen.getByTestId("finalize-gate-check"));
     expect(screen.getByTestId("finalize-gate-error").textContent).toMatch(
       /draft_id/,
     );
+    expect(screen.queryByTestId("finalize-gate-result")).toBeNull();
+  });
+
+  it("never shows AUTHORIZED when accept unchecked even if authorizeFn always authorizes", () => {
+    const authorizeFn = vi.fn(() => ({
+      authorized: true,
+      draft_id: "d1",
+      parent_asset_id: "p1",
+      reason: "ok",
+      notes: ["should not surface"],
+    }));
+    render(
+      <FinalizeGatePanel
+        authorizeFn={authorizeFn}
+        initialDraftId="d1"
+        initialParentId="p1"
+      />,
+    );
+    fireEvent.click(screen.getByTestId("finalize-gate-check"));
+    expect(authorizeFn).not.toHaveBeenCalled();
+    const el = screen.getByTestId("finalize-gate-authorized");
+    expect(el.getAttribute("data-authorized")).toBe("false");
+    expect(el.textContent).toMatch(/DENIED/i);
+  });
+
+  it("clears authorized result when accept is unchecked", () => {
+    const authorizeFn = vi.fn(() => ({
+      authorized: true,
+      draft_id: "d1",
+      parent_asset_id: "p1",
+      reason: "ok",
+      notes: ["authorized: provisional draft accepted by operator"],
+    }));
+    render(
+      <FinalizeGatePanel
+        authorizeFn={authorizeFn}
+        initialDraftId="d1"
+        initialParentId="p1"
+      />,
+    );
+    fireEvent.click(screen.getByTestId("finalize-gate-accept"));
+    fireEvent.click(screen.getByTestId("finalize-gate-check"));
+    expect(
+      screen.getByTestId("finalize-gate-authorized").getAttribute("data-authorized"),
+    ).toBe("true");
+    fireEvent.click(screen.getByTestId("finalize-gate-accept"));
     expect(screen.queryByTestId("finalize-gate-result")).toBeNull();
   });
 });
