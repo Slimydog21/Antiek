@@ -17,10 +17,14 @@ replay is proven, not merely possible.
 
 from __future__ import annotations
 
+import datetime
+import math
 from collections.abc import Callable, Sequence
 from typing import Any
 
-from .protocol import CorpusAdapter, CorpusDocument, CorpusMiss, FetchResult
+from .protocol import CorpusAdapter, CorpusDocument, CorpusHit, CorpusMiss, FetchResult, Provenance
+
+AdapterFactory = Callable[["FixtureDoc"], CorpusAdapter]
 
 # ---------------------------------------------------------------------------
 # Fixture document shape — what the kit seeds into the adapter's reader
@@ -39,6 +43,42 @@ class FixtureDoc:
         self.id = id
         self.query_phrase = query_phrase
         self.content = content
+
+
+def assert_corpus_conformance(factory: AdapterFactory) -> None:
+    """Run the mandatory kit against two incompatible seeded corpora.
+
+    The factory receives each fixture and must return an adapter backed by that
+    fixture. Challenging two distinct identities, queries, and full contents
+    prevents a constant prebuilt adapter from satisfying the reusable kit.
+    """
+    fixtures = (
+        FixtureDoc(
+            "conformance-alpha-7f8c",
+            "alpha-evidence-7f8c",
+            "First independently seeded corpus contains alpha-evidence-7f8c.",
+        ),
+        FixtureDoc(
+            "conformance-beta-2a91",
+            "beta-evidence-2a91",
+            "Second incompatible corpus contains beta-evidence-2a91 and differs.",
+        ),
+    )
+    observed: list[CorpusDocument] = []
+    for fixture in fixtures:
+        adapter = factory(fixture)
+        assert_search_retrieval(adapter, fixture)
+        assert_fetch_roundtrip(adapter, fixture)
+        assert_unknown_id_returns_miss(adapter)
+        assert_provenance_completeness(adapter, fixture)
+        assert_read_only(adapter)
+        assert_empty_query_returns_no_hits(adapter)
+        assert_miss_has_id(adapter)
+        assert_fetch_determinism(adapter, fixture)
+        result = adapter.fetch(fixture.id)
+        assert type(result) is CorpusDocument
+        observed.append(result)
+    assert observed[0] != observed[1], "factory ignored incompatible fixture corpora"
 
 
 # ---------------------------------------------------------------------------
@@ -70,22 +110,28 @@ def assert_search_retrieval(
         decoy_ids = frozenset()
 
     hits = adapter.search(fixture.query_phrase)
+    assert type(hits) is tuple, "search result must be an exact tuple"
     assert len(hits) > 0, (
-        f"search({fixture.query_phrase!r}) returned no hits — "
-        f"fixture {fixture.id!r} not found"
+        f"search({fixture.query_phrase!r}) returned no hits — fixture {fixture.id!r} not found"
     )
     top = hits[0]
-    assert top.id == fixture.id, (
-        f"expected fixture {fixture.id!r} to rank first, got {top.id!r}"
-    )
+    ids: list[str] = []
+    for hit in hits:
+        assert type(hit) is CorpusHit
+        assert type(hit.id) is str and hit.id.strip()
+        assert type(hit.score) is float and math.isfinite(hit.score)
+        assert type(hit.snippet) is str and hit.snippet.strip()
+        assert len(hit.snippet) <= 200
+        ids.append(hit.id)
+    assert len(ids) == len(set(ids)), "search ids must be unique"
+    assert list(hits) == sorted(hits, key=lambda hit: (-hit.score, hit.id))
+    assert top.id == fixture.id, f"expected fixture {fixture.id!r} to rank first, got {top.id!r}"
     assert top.score > 0, f"expected score > 0 for fixture hit, got {top.score}"
     assert fixture.query_phrase.lower() in top.snippet.lower(), (
         f"query_phrase {fixture.query_phrase!r} not in snippet {top.snippet!r}"
     )
     # (a) No decoy ranks above the fixture
-    fixture_idx = next(
-        (i for i, h in enumerate(hits) if h.id == fixture.id), None
-    )
+    fixture_idx = next((i for i, h in enumerate(hits) if h.id == fixture.id), None)
     assert fixture_idx is not None
     for hit in hits:
         if hit.id in decoy_ids and hit.id != fixture.id:
@@ -102,25 +148,21 @@ def assert_search_retrieval(
         )
     # (c) A query matching nothing returns zero hits
     no_hits = adapter.search("__conformance_no_match_xyzzy__")
-    assert len(no_hits) == 0, (
-        f"query matching nothing returned {len(no_hits)} hits — "
-        f"expected zero"
-    )
+    assert len(no_hits) == 0, f"query matching nothing returned {len(no_hits)} hits — expected zero"
 
 
 def assert_fetch_roundtrip(adapter: CorpusAdapter, fixture: FixtureDoc) -> None:
     """Fetching a known id returns a CorpusDocument with matching content.
 
-    The content need not be byte-identical (adapters may trim), but the
-    fixture's query_phrase must appear in the fetched content.
+    Content is exact: fetch is the full-document verb and may not trim/coerce.
     """
     result = adapter.fetch(fixture.id)
     assert isinstance(result, CorpusDocument), (
         f"expected CorpusDocument for {fixture.id!r}, got {type(result).__name__}"
     )
-    assert fixture.query_phrase in result.content, (
-        f"query_phrase {fixture.query_phrase!r} not in fetched content"
-    )
+    assert type(result) is CorpusDocument
+    assert type(result.content) is str
+    assert result.content == fixture.content
 
 
 def assert_unknown_id_returns_miss(adapter: CorpusAdapter) -> None:
@@ -145,9 +187,16 @@ def assert_provenance_completeness(adapter: CorpusAdapter, fixture: FixtureDoc) 
         f"expected CorpusDocument, got {type(result).__name__}"
     )
     prov = result.provenance
-    assert prov.source_kind, "provenance.source_kind is empty"
-    assert prov.origin_ref, "provenance.origin_ref is empty"
-    assert prov.retrieved_at is not None, "provenance.retrieved_at is None"
+    assert type(prov) is Provenance, "provenance must be exact Provenance"
+    assert type(prov.source_kind) is str and prov.source_kind.strip(), (
+        "provenance.source_kind is invalid"
+    )
+    assert type(prov.origin_ref) is str and prov.origin_ref.strip(), (
+        "provenance.origin_ref is invalid"
+    )
+    assert type(prov.retrieved_at) is datetime.datetime
+    assert prov.retrieved_at.tzinfo is not None
+    assert prov.retrieved_at.utcoffset() == datetime.timedelta(0)
 
 
 def assert_read_only(adapter: CorpusAdapter) -> None:
@@ -176,6 +225,14 @@ def assert_read_only(adapter: CorpusAdapter) -> None:
       names.  A reader with an unusual API surface might slip through, but
       such a reader would not satisfy the adapter's type annotation either.
     """
+    public_callables = {
+        name
+        for name in dir(adapter)
+        if not name.startswith("_") and callable(getattr(adapter, name))
+    }
+    assert public_callables == {"search", "fetch"}, (
+        f"adapter public callable surface is {sorted(public_callables)!r}"
+    )
     reader_method_names = frozenset({"list_twins", "get_document", "list_membership"})
     for name in dir(adapter):
         if name.startswith("_"):
@@ -259,21 +316,21 @@ class BrokenProvenanceAdapter:
         if not query.strip():
             return ()
         if self._fixture.query_phrase.lower() in query.lower():
-            return (
-                CorpusHit(id=self._fixture.id, score=1.0, snippet=self._fixture.content[:160]),
-            )
+            return (CorpusHit(id=self._fixture.id, score=1.0, snippet=self._fixture.content[:160]),)
         return ()
 
     def fetch(self, id: str) -> FetchResult:
         from .protocol import Provenance
 
         if id == self._fixture.id:
-            return CorpusDocument(
-                content=self._fixture.content,
-                provenance=Provenance(
-                    source_kind="",  # ← broken: empty
-                    origin_ref="",   # ← broken: empty
-                    retrieved_at=self._now_fn(),
-                ),
-            )
+            # Deliberately forge a value around constructor validation so the
+            # reusable kit proves it independently detects hostile adapters.
+            provenance = object.__new__(Provenance)
+            object.__setattr__(provenance, "source_kind", "")
+            object.__setattr__(provenance, "origin_ref", "")
+            object.__setattr__(provenance, "retrieved_at", self._now_fn())
+            document = object.__new__(CorpusDocument)
+            object.__setattr__(document, "content", self._fixture.content)
+            object.__setattr__(document, "provenance", provenance)
+            return document
         return CorpusMiss(id=id)

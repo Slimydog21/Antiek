@@ -1,137 +1,131 @@
-"""Reference adapter: twin notes corpus.
-
-Read-only adapter over the twin-note store shape.  The injectable reader
-mirrors the real store's fields (``note_id``, ``asset_id``, ``kind``,
-``text``, ``source_spawn_id``, ``investigation_id``) — grep
-``substrate.engagement_spine.twin`` for the source of truth.
-
-Search is honest substring matching over note text; no embedding dependency.
-The adapter accepts a ``TwinNoteReader`` (a read-only protocol), never an
-``EngagementStore`` (which has ``put_twin``).  Zero writes are
-interface-proven: there is no write method on the reader, and the adapter
-exposes none.
-"""
+"""Invariant-safe, read-only twin-note corpus adapter."""
 
 from __future__ import annotations
 
 import datetime
+import inspect
 from collections.abc import Callable, Sequence
-from typing import Any, Protocol
+from typing import Any, Protocol, TypedDict, cast
 
-from ..protocol import CorpusDocument, CorpusHit, CorpusMiss, FetchResult, Provenance
+from ..protocol import (
+    CorpusContractError,
+    CorpusDocument,
+    CorpusHit,
+    CorpusMiss,
+    FetchResult,
+    Provenance,
+    validate_utc,
+)
+
+_KEYS = frozenset({"note_id", "asset_id", "kind", "text", "source_spawn_id", "investigation_id"})
+_SNIPPET_MAX = 200
 
 
 class TwinNoteReader(Protocol):
-    """Read-only view of the twin-note store.
-
-    Mirrors ``EngagementStore.list_twins`` but exposes NO write surface.
-    The adapter accepts this, not ``EngagementStore``, so zero writes are
-    structural — not conventional.  Only ``list_twins`` is exposed; write
-    methods like ``purge_all`` or ``commit`` are not part of this protocol.
-    """
-
-    def list_twins(self, asset_id: str) -> list[dict[str, Any]]:
-        """Return twin-note dicts for *asset_id*.
-
-        Each dict has at least ``note_id``, ``asset_id``, ``kind``, ``text``.
-        Optional: ``source_spawn_id``, ``investigation_id``.
-        """
-        ...
+    def list_twins(self, asset_id: str) -> list[dict[str, Any]]: ...
 
 
-def _snippet(text: str, query: str, *, radius: int = 80) -> str:
-    """Extract a snippet around the first occurrence of *query* in *text*.
-
-    Returns a window of *radius* characters on each side of the match,
-    with ellipsis markers when truncated.
-    """
-    idx = text.lower().find(query.lower())
-    if idx < 0:
-        trimmed = text[: radius * 2]
-        return trimmed + ("…" if len(text) > radius * 2 else "")
-    start = max(0, idx - radius)
-    end = min(len(text), idx + len(query) + radius)
-    snippet = text[start:end]
-    prefix = "…" if start > 0 else ""
-    suffix = "…" if end < len(text) else ""
-    return prefix + snippet + suffix
+class TwinRow(TypedDict):
+    note_id: str
+    asset_id: str
+    kind: str
+    text: str
+    source_spawn_id: str | None
+    investigation_id: str | None
 
 
-def _score(text: str, query: str) -> float:
-    """Score relevance of *text* to *query* via substring matching.
+def _reader(reader: object) -> None:
+    public = {
+        name
+        for name in dir(reader)
+        if not name.startswith("_")
+        and callable(inspect.getattr_static(reader, name))
+    }
+    if public != {"list_twins"}:
+        raise CorpusContractError(
+            f"reader callable surface must be exactly list_twins; got {sorted(public)}"
+        )
 
-    Returns 1.0 for an exact (case-insensitive) match of the full query,
-    scaled down by how much of the text the query covers.  Returns 0.0
-    when there is no match.
-    """
-    q = query.lower()
-    t = text.lower()
-    if q not in t:
-        return 0.0
-    # Coverage ratio — longer matches relative to text length score higher.
-    return round(len(q) / max(len(t), 1), 6)
+
+def _text(value: object, field: str) -> str:
+    if type(value) is not str or not value.strip():
+        raise CorpusContractError(f"{field} must be a nonempty exact str")
+    return value
+
+
+def _row(value: object, asset_id: str) -> TwinRow:
+    if type(value) is not dict or frozenset(value) != _KEYS:
+        raise CorpusContractError("twin row must be an exact dict with the frozen fields")
+    row = value
+    _text(row["note_id"], "note_id")
+    _text(row["kind"], "kind")
+    _text(row["text"], "text")
+    if _text(row["asset_id"], "asset_id") != asset_id:
+        raise CorpusContractError("twin row escaped asset scope")
+    for key in ("source_spawn_id", "investigation_id"):
+        if row[key] is not None and (type(row[key]) is not str or not row[key]):
+            raise CorpusContractError(f"{key} must be None or nonempty exact str")
+    return cast(TwinRow, row)
+
+
+def _snippet(text: str, query: str) -> str:
+    at = text.casefold().find(query.casefold())
+    start = max(0, at - 80)
+    end = min(len(text), start + _SNIPPET_MAX)
+    start = max(0, end - _SNIPPET_MAX)
+    return text[start:end]
 
 
 class TwinNotesCorpusAdapter:
-    """CorpusAdapter over twin notes for a single asset.
-
-    ``reader`` is injectable and read-only (``TwinNoteReader`` protocol).
-    ``asset_id`` scopes the corpus to one asset's twin substrate.
-    """
-
     def __init__(
         self,
-        reader: TwinNoteReader,
+        reader: object,
         asset_id: str,
         *,
         now_fn: Callable[[], datetime.datetime] | None = None,
     ) -> None:
-        self.__reader = reader
-        self._asset_id = asset_id.strip()
-        if not self._asset_id:
-            raise ValueError("asset_id is required")
+        _reader(reader)
+        self._asset_id = _text(asset_id, "asset_id")
+        self.__reader = cast(TwinNoteReader, reader)
         self._now_fn = now_fn or (lambda: datetime.datetime.now(datetime.UTC))
 
-    def search(self, query: str) -> Sequence[CorpusHit]:
-        """Lexical substring search over twin-note text.
+    def _rows(self) -> tuple[TwinRow, ...]:
+        raw = self.__reader.list_twins(self._asset_id)
+        if type(raw) is not list:
+            raise CorpusContractError("list_twins must return an exact list")
+        rows = tuple(_row(item, self._asset_id) for item in raw)
+        ids = [str(row["note_id"]) for row in rows]
+        if len(ids) != len(set(ids)):
+            raise CorpusContractError("duplicate twin note_id")
+        return rows
 
-        Returns hits ordered by descending score.  Empty query → no hits.
-        """
-        q = (query or "").strip()
+    def search(self, query: str) -> Sequence[CorpusHit]:
+        if type(query) is not str:
+            raise CorpusContractError("query must be an exact str")
+        q = query.strip()
         if not q:
             return ()
-        notes = self.__reader.list_twins(self._asset_id)
-        hits: list[CorpusHit] = []
-        for note in notes:
-            text = str(note.get("text") or "")
-            s = _score(text, q)
-            if s > 0:
-                hits.append(
-                    CorpusHit(
-                        id=str(note["note_id"]),
-                        score=s,
-                        snippet=_snippet(text, q),
-                    )
-                )
-        hits.sort(key=lambda h: h.score, reverse=True)
-        return tuple(hits)
+        hits = [
+            CorpusHit(
+                id=row["note_id"],
+                score=float(len(q)) / len(row["text"]),
+                snippet=_snippet(row["text"], q),
+            )
+            for row in self._rows()
+            if q.casefold() in row["text"].casefold()
+        ]
+        return tuple(sorted(hits, key=lambda hit: (-hit.score, hit.id)))
 
     def fetch(self, id: str) -> FetchResult:
-        """Fetch a twin note by id, or return a typed miss.
-
-        Scans the asset's notes (the store has no global index by note_id).
-        """
-        notes = self.__reader.list_twins(self._asset_id)
-        for note in notes:
-            if note.get("note_id") == id:
-                text = str(note.get("text") or "")
-                kind = str(note.get("kind") or "unknown")
+        wanted = _text(id, "id")
+        for row in self._rows():
+            if row["note_id"] == wanted:
                 return CorpusDocument(
-                    content=text,
+                    content=row["text"],
                     provenance=Provenance(
-                        source_kind=f"twin_note:{kind}",
-                        origin_ref=str(note.get("asset_id") or self._asset_id),
-                        retrieved_at=self._now_fn(),
+                        source_kind=f"twin_note:{row['kind']}",
+                        origin_ref=self._asset_id,
+                        retrieved_at=validate_utc(self._now_fn(), "clock output"),
                     ),
                 )
-        return CorpusMiss(id=id)
+        return CorpusMiss(id=wanted)

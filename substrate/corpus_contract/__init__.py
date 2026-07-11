@@ -20,8 +20,10 @@ Public API:
 
 from __future__ import annotations
 
+from .conformance import assert_corpus_conformance
 from .protocol import (
     CorpusAdapter,
+    CorpusContractError,
     CorpusDocument,
     CorpusHit,
     CorpusMiss,
@@ -31,9 +33,11 @@ from .protocol import (
 
 __all__ = [
     "CorpusAdapter",
+    "CorpusContractError",
     "CorpusDocument",
     "CorpusHit",
     "CorpusMiss",
+    "assert_corpus_conformance",
     "FetchResult",
     "Provenance",
 ]

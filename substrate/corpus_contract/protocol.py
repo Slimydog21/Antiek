@@ -22,9 +22,28 @@ does not assume a numeric or UUID id shape.
 from __future__ import annotations
 
 import datetime as _dt
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
+
+
+class CorpusContractError(ValueError):
+    """Input, reader, row, or clock violated the corpus trust boundary."""
+
+
+def _nonempty(value: object, field: str) -> str:
+    if type(value) is not str or not value.strip():
+        raise CorpusContractError(f"{field} must be a nonempty exact str")
+    return value
+
+
+def validate_utc(value: object, field: str = "retrieved_at") -> _dt.datetime:
+    if type(value) is not _dt.datetime:
+        raise CorpusContractError(f"{field} must be an exact datetime")
+    if value.tzinfo is None or value.utcoffset() != _dt.timedelta(0):
+        raise CorpusContractError(f"{field} must be UTC-aware")
+    return value
 
 
 @dataclass(frozen=True)
@@ -38,6 +57,12 @@ class CorpusHit:
     id: str
     score: float
     snippet: str
+
+    def __post_init__(self) -> None:
+        _nonempty(self.id, "CorpusHit.id")
+        _nonempty(self.snippet, "CorpusHit.snippet")
+        if type(self.score) is not float or not math.isfinite(self.score):
+            raise CorpusContractError("CorpusHit.score must be a finite exact float")
 
 
 @dataclass(frozen=True)
@@ -56,6 +81,11 @@ class Provenance:
     origin_ref: str
     retrieved_at: _dt.datetime
 
+    def __post_init__(self) -> None:
+        _nonempty(self.source_kind, "Provenance.source_kind")
+        _nonempty(self.origin_ref, "Provenance.origin_ref")
+        validate_utc(self.retrieved_at)
+
 
 @dataclass(frozen=True)
 class CorpusDocument:
@@ -68,6 +98,11 @@ class CorpusDocument:
     content: str
     provenance: Provenance
 
+    def __post_init__(self) -> None:
+        _nonempty(self.content, "CorpusDocument.content")
+        if type(self.provenance) is not Provenance:
+            raise CorpusContractError("CorpusDocument.provenance must be exact Provenance")
+
 
 @dataclass(frozen=True)
 class CorpusMiss:
@@ -78,6 +113,10 @@ class CorpusMiss:
 
     id: str
     reason: str = "not found"
+
+    def __post_init__(self) -> None:
+        _nonempty(self.id, "CorpusMiss.id")
+        _nonempty(self.reason, "CorpusMiss.reason")
 
 
 FetchResult = CorpusDocument | CorpusMiss

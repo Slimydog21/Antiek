@@ -1,140 +1,162 @@
-"""Reference adapter: hosted documents corpus.
-
-Read-only adapter over the hosted-document store shape (the HTML-first
-document model from ``substrate.marketplace_host``).  The injectable reader
-mirrors the real store's fields (``document_id``, ``owner_id``, ``book_id``,
-``content_hash``, ``title``, ``license_class``, ``body_text``,
-``source_format``, ``receipt_id``, ``view_format``) — grep
-``substrate.marketplace_host.host`` for the source of truth.
-
-Search is honest substring matching over document body text; no embedding
-dependency.  The adapter accepts a ``HostedDocReader`` (a read-only
-protocol), never a ``HostStore`` with write capability.  Zero writes are
-interface-proven.
-"""
+"""Invariant-safe, read-only hosted-document corpus adapter."""
 
 from __future__ import annotations
 
 import datetime
+import inspect
 from collections.abc import Callable, Sequence
-from typing import Any, Protocol
+from typing import Any, Protocol, TypedDict, cast
 
-from ..protocol import CorpusDocument, CorpusHit, CorpusMiss, FetchResult, Provenance
+from ..protocol import (
+    CorpusContractError,
+    CorpusDocument,
+    CorpusHit,
+    CorpusMiss,
+    FetchResult,
+    Provenance,
+    validate_utc,
+)
+
+_KEYS = frozenset(
+    {
+        "document_id",
+        "owner_id",
+        "book_id",
+        "content_hash",
+        "title",
+        "license_class",
+        "body_text",
+        "source_format",
+        "receipt_id",
+        "view_format",
+    }
+)
+_OPTIONAL = frozenset({"receipt_id"})
+_MAX = 200
 
 
 class HostedDocReader(Protocol):
-    """Read-only view of the hosted-document store.
-
-    Mirrors the read surface of ``HostStore`` + ``AccountLibrary`` but
-    exposes NO write surface.  The adapter accepts this, not ``HostStore``,
-    so zero writes are structural — not conventional.  Only ``get_document``
-    and ``list_membership`` are exposed; no write methods are part of this
-    protocol.
-    """
-
-    def get_document(self, document_id: str) -> dict[str, Any] | None:
-        """Return a hosted-document dict, or None if not found."""
-        ...
-
-    def list_membership(self, owner_id: str) -> list[str]:
-        """Return document_ids hosted under *owner_id*."""
-        ...
+    def get_document(self, document_id: str) -> dict[str, Any] | None: ...
+    def list_membership(self, owner_id: str) -> list[str]: ...
 
 
-def _snippet(text: str, query: str, *, radius: int = 80) -> str:
-    """Extract a snippet around the first occurrence of *query* in *text*."""
-    idx = text.lower().find(query.lower())
-    if idx < 0:
-        trimmed = text[: radius * 2]
-        return trimmed + ("…" if len(text) > radius * 2 else "")
-    start = max(0, idx - radius)
-    end = min(len(text), idx + len(query) + radius)
-    snippet = text[start:end]
-    prefix = "…" if start > 0 else ""
-    suffix = "…" if end < len(text) else ""
-    return prefix + snippet + suffix
+class HostedRow(TypedDict):
+    document_id: str
+    owner_id: str
+    book_id: str
+    content_hash: str
+    title: str
+    license_class: str
+    body_text: str
+    source_format: str
+    receipt_id: str | None
+    view_format: str
 
 
-def _score(text: str, query: str) -> float:
-    """Score relevance of *text* to *query* via substring matching."""
-    q = query.lower()
-    t = text.lower()
-    if q not in t:
-        return 0.0
-    return round(len(q) / max(len(t), 1), 6)
+def _text(value: object, field: str) -> str:
+    if type(value) is not str or not value.strip():
+        raise CorpusContractError(f"{field} must be a nonempty exact str")
+    return value
+
+
+def _reader(reader: object) -> None:
+    public = {
+        name
+        for name in dir(reader)
+        if not name.startswith("_")
+        and callable(inspect.getattr_static(reader, name))
+    }
+    expected = {"get_document", "list_membership"}
+    if public != expected:
+        raise CorpusContractError(
+            f"reader callable surface must be exactly {sorted(expected)}; got {sorted(public)}"
+        )
+
+
+def _row(value: object, requested: str, owner: str) -> HostedRow:
+    if type(value) is not dict or frozenset(value) != _KEYS:
+        raise CorpusContractError("hosted row must be an exact dict with frozen fields")
+    row = value
+    for key in _KEYS - _OPTIONAL:
+        _text(row[key], key)
+    if row["receipt_id"] is not None and (
+        type(row["receipt_id"]) is not str or not row["receipt_id"]
+    ):
+        raise CorpusContractError("receipt_id must be None or nonempty exact str")
+    if row["document_id"] != requested or row["owner_id"] != owner:
+        raise CorpusContractError("hosted row id/owner escaped requested scope")
+    return cast(HostedRow, row)
+
+
+def _snippet(title: str, body: str, query: str) -> str:
+    source = body if query.casefold() in body.casefold() else title
+    at = source.casefold().find(query.casefold())
+    start = max(0, at - 80)
+    end = min(len(source), start + _MAX)
+    start = max(0, end - _MAX)
+    return source[start:end]
 
 
 class HostedDocsCorpusAdapter:
-    """CorpusAdapter over hosted documents for a single owner.
-
-    ``reader`` is injectable and read-only (``HostedDocReader`` protocol).
-    ``owner_id`` scopes the corpus to one account's library.
-    """
-
     def __init__(
         self,
-        reader: HostedDocReader,
+        reader: object,
         owner_id: str,
         *,
         now_fn: Callable[[], datetime.datetime] | None = None,
     ) -> None:
-        self.__reader = reader
-        self._owner_id = owner_id.strip()
-        if not self._owner_id:
-            raise ValueError("owner_id is required")
+        _reader(reader)
+        self._owner_id = _text(owner_id, "owner_id")
+        self.__reader = cast(HostedDocReader, reader)
         self._now_fn = now_fn or (lambda: datetime.datetime.now(datetime.UTC))
 
-    def search(self, query: str) -> Sequence[CorpusHit]:
-        """Lexical substring search over hosted-document body text.
+    def _membership(self) -> tuple[str, ...]:
+        raw = self.__reader.list_membership(self._owner_id)
+        if type(raw) is not list:
+            raise CorpusContractError("list_membership must return an exact list")
+        ids = tuple(_text(item, "membership document id") for item in raw)
+        if len(ids) != len(set(ids)):
+            raise CorpusContractError("duplicate membership document id")
+        return ids
 
-        Returns hits ordered by descending score.  Empty query → no hits.
-        Searches across all documents in the owner's library.
-        """
-        q = (query or "").strip()
+    def _document(self, id: str) -> HostedRow | None:
+        raw = self.__reader.get_document(id)
+        return None if raw is None else _row(raw, id, self._owner_id)
+
+    def search(self, query: str) -> Sequence[CorpusHit]:
+        if type(query) is not str:
+            raise CorpusContractError("query must be an exact str")
+        q = query.strip()
         if not q:
             return ()
-        doc_ids = self.__reader.list_membership(self._owner_id)
         hits: list[CorpusHit] = []
-        for doc_id in doc_ids:
-            doc = self.__reader.get_document(doc_id)
-            if doc is None:
-                continue
-            body = str(doc.get("body_text") or "")
-            title = str(doc.get("title") or doc_id)
-            # Search body and title
-            combined = f"{title}\n{body}"
-            s = _score(combined, q)
-            if s > 0:
+        for id in self._membership():
+            row = self._document(id)
+            if row is None:
+                raise CorpusContractError("membership references missing document")
+            combined = f"{row['title']}\n{row['body_text']}"
+            if q.casefold() in combined.casefold():
                 hits.append(
                     CorpusHit(
-                        id=doc_id,
-                        score=s,
-                        snippet=_snippet(body, q),
+                        id=id,
+                        score=float(len(q)) / len(combined),
+                        snippet=_snippet(row["title"], row["body_text"], q),
                     )
                 )
-        hits.sort(key=lambda h: h.score, reverse=True)
-        return tuple(hits)
+        return tuple(sorted(hits, key=lambda hit: (-hit.score, hit.id)))
 
     def fetch(self, id: str) -> FetchResult:
-        """Fetch a hosted document by id, or return a typed miss.
-
-        Enforces owner scope: if *id* is not in the adapter's declared
-        owner's membership list, returns ``CorpusMiss`` even if the store
-        has the document under a different owner.
-        """
-        membership = self.__reader.list_membership(self._owner_id)
-        if id not in membership:
-            return CorpusMiss(id=id)
-        doc = self.__reader.get_document(id)
-        if doc is None:
-            return CorpusMiss(id=id)
-        body = str(doc.get("body_text") or "")
-        title = str(doc.get("title") or id)
+        wanted = _text(id, "id")
+        if wanted not in self._membership():
+            return CorpusMiss(id=wanted)
+        row = self._document(wanted)
+        if row is None:
+            raise CorpusContractError("membership references missing document")
         return CorpusDocument(
-            content=body,
+            content=row["body_text"],
             provenance=Provenance(
                 source_kind="hosted_document",
-                origin_ref=f"{id} (title={title})",
-                retrieved_at=self._now_fn(),
+                origin_ref=wanted,
+                retrieved_at=validate_utc(self._now_fn(), "clock output"),
             ),
         )
