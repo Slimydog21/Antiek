@@ -420,6 +420,13 @@ class LiveResearchProvider:
                     "refused too)."
                 )
         else:
+            if self.loop_fn is not None:
+                raise ValueError(
+                    "allow_live=False must carry loop_fn=None: offline fakes "
+                    "never run a browse loop (the factory's own contract), so "
+                    "anything in the loop slot of an offline instance — real "
+                    "machinery included — is a flag/seam mismatch."
+                )
             real = [
                 name for name in _SEAM_FIELDS if _is_real_machinery(getattr(self, name))
             ]

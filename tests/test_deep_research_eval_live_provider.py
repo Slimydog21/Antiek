@@ -344,9 +344,13 @@ def test_dataclasses_replace_cannot_break_flag_seam_invariant(
         dataclasses.replace(offline, allow_live=True, loop_fn=_build_real_exa_loop())
 
     # Repro 2: live → offline while keeping ALL real seams — an "offline"
-    # provider that could actually spend/hit the network is refused.
-    with pytest.raises(ValueError, match="must not carry real-machinery seams"):
+    # provider that could actually spend/hit the network is refused. The
+    # loop-slot guard fires first (offline means loop_fn=None)...
+    with pytest.raises(ValueError, match="must carry loop_fn=None"):
         dataclasses.replace(live, allow_live=False)
+    # ...and with the loop dropped, the seam guard still refuses.
+    with pytest.raises(ValueError, match="must not carry real-machinery seams"):
+        dataclasses.replace(live, allow_live=False, loop_fn=None)
 
     # Repro 3: live with ONE fake seam swapped in.
     with pytest.raises(ValueError, match="not this module's real implementations"):
@@ -394,6 +398,12 @@ def test_cross_role_real_seam_composition_refused(
         dataclasses.replace(
             fakes.build(), synthesize=live.gather  # real gather, wrong slot, offline
         )
+    # ...including the loop slot, which offline execution ignores but the
+    # invariant still governs: offline means loop_fn=None, full stop.
+    with pytest.raises(ValueError, match="must carry loop_fn=None"):
+        dataclasses.replace(fakes.build(), loop_fn=live.gather)
+    with pytest.raises(ValueError, match="must carry loop_fn=None"):
+        dataclasses.replace(fakes.build(), loop_fn=live.loop_fn)
 
 
 # 4b. allow_live gating: missing env keys refuse construction — through the
