@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable, Mapping
 from datetime import datetime
 from typing import Protocol
@@ -35,27 +34,23 @@ class ExtractionHttpClient(Protocol):
 class JinaExtractor:
     """GET a selected URL through Jina's reader-prefix API."""
 
-    __slots__ = ("_api_key", "_clock", "_http", "_reader_prefix", "_timeout")
+    __slots__ = ("_clock", "_http", "_reader_prefix", "_timeout")
+
+    # SPR-08 uses the integration spec's HTTP-adapter timeout; re-read 2026-07-11.
+    _DEFAULT_TIMEOUT_SECONDS = 30.0
 
     def __init__(
         self,
         *,
         http: ExtractionHttpClient,
         clock: Callable[[], datetime],
-        api_key: str | None = None,
-        environ: Mapping[str, str] | None = None,
         reader_prefix: str = "https://r.jina.ai/",
-        timeout: float = 30.0,
+        timeout: float = _DEFAULT_TIMEOUT_SECONDS,
     ) -> None:
-        environment = os.environ if environ is None else environ
-        resolved_key = api_key if api_key is not None else environment.get("JINA_API_KEY")
-        if resolved_key is None or not resolved_key.strip():
-            raise ExtractionConfigurationError("JINA_API_KEY is required")
         if timeout <= 0:
             raise ExtractionConfigurationError("timeout must be positive")
         self._http = http
         self._clock = clock
-        self._api_key = resolved_key
         self._reader_prefix = reader_prefix
         self._timeout = timeout
 
@@ -71,10 +66,7 @@ class JinaExtractor:
         self._validate_source_url(url)
         response = self._http.get(
             f"{self._reader_prefix}{url}",
-            headers={
-                "authorization": f"Bearer {self._api_key}",
-                "accept": "text/markdown",
-            },
+            headers={"accept": "text/markdown"},
             timeout=self._timeout,
         )
         response.raise_for_status()

@@ -7,6 +7,7 @@ from acquisition.web_layer.interfaces import (
     ExtractionAdapter,
     ExtractionResult,
 )
+from acquisition.web_layer.pipeline import FirstHitsSelector, PipelineResult, WebPipeline
 
 __all__ = [
     "CostRecord",
@@ -14,5 +15,8 @@ __all__ = [
     "DiscoveryHit",
     "ExtractionAdapter",
     "ExtractionResult",
+    "FirstHitsSelector",
+    "PipelineResult",
+    "WebPipeline",
     "estimate_cost",
 ]

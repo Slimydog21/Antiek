@@ -19,14 +19,15 @@ class CostRecord:
     usd_estimate: Decimal
 
 
-# Exa search: $7 / 1,000 requests. Source: docs/integration_exa_browserbase.md
-# pricing-verification table, updated 2026-05-23; snapshot re-read 2026-07-11.
+# Exa search: $7 / 1,000 requests. Source: https://exa.ai/pricing
+# and docs/integration_exa_browserbase.md; verified 2026-07-11.
 _EXA_SEARCH_PER_CALL = Decimal("0.007")
 # Exa findSimilar: $1 / 1,000 calls. Same source; explicitly marked there as
 # absent from the public price page. Snapshot re-read 2026-07-11.
 _EXA_SIMILAR_PER_CALL = Decimal("0.001")
-# Jina Reader free tier: $0 per URL in this offline reference cost model.
-# Source: Jina Reader pricing/model assumption in SPR-08, snapshot 2026-07-11.
+# Jina Reader basic no-key use: $0 per URL. Source:
+# https://jina.ai/en-US/reader/ FAQ; verified 2026-07-11. Higher-rate keyed
+# token billing is deliberately outside this reference adapter's cost row.
 _JINA_EXTRACT_PER_URL = Decimal("0.00")
 # Swap stub is an in-process test adapter, not a billed service; 2026-07-11.
 _SWAP_STUB_PER_URL = Decimal("0.00")

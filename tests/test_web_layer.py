@@ -1,5 +1,6 @@
 """Contract and composition proofs for the two-vendor web layer."""
 
+import socket
 from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -14,12 +15,23 @@ from acquisition.web_layer.exa_discovery import (
 )
 from acquisition.web_layer.interfaces import ExtractionAdapter
 from acquisition.web_layer.jina_extract import (
-    ExtractionConfigurationError,
     JinaExtractor,
 )
+from acquisition.web_layer.pipeline import FirstHitsSelector, WebPipeline
 from acquisition.web_layer.stub_extract import SwapStubExtractor
 
 FIXED_NOW = datetime(2026, 7, 11, 9, 30, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def socket_guard(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make accidental real network use fail every test immediately."""
+
+    def deny_socket(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise AssertionError("real sockets are forbidden in web-layer tests")
+
+    monkeypatch.setattr(socket, "socket", deny_socket)
 
 
 class FakeResponse:
@@ -84,7 +96,6 @@ def make_jina_extractor() -> ExtractionAdapter:
     return JinaExtractor(
         http=RecordingExtractionHttp(FULL_TEXT),
         clock=lambda: FIXED_NOW,
-        environ={"JINA_API_KEY": "jina-secret"},
     )
 
 
@@ -203,7 +214,6 @@ def test_jina_fixture_uses_reader_prefix_and_get_only() -> None:
     client = JinaExtractor(
         http=http,
         clock=lambda: FIXED_NOW,
-        environ={"JINA_API_KEY": "jina-secret"},
     )
 
     client.extract(SOURCE_URL)
@@ -211,15 +221,48 @@ def test_jina_fixture_uses_reader_prefix_and_get_only() -> None:
     assert http.calls[0]["url"] == f"https://r.jina.ai/{SOURCE_URL}"
 
 
-def test_jina_missing_key_fails_before_http_and_key_never_renders() -> None:
-    http = RecordingExtractionHttp(FULL_TEXT)
-    with pytest.raises(ExtractionConfigurationError, match="JINA_API_KEY"):
-        JinaExtractor(http=http, clock=lambda: FIXED_NOW, environ={})
-    assert http.calls == []
-
-    secret = "jina-do-not-render"
-    client = JinaExtractor(
-        http=http, clock=lambda: FIXED_NOW, environ={"JINA_API_KEY": secret}
+def test_pipeline_n_discoveries_to_m_extractions_and_exact_cost_sum() -> None:
+    discovery_http = RecordingDiscoveryHttp(
+        [
+            {
+                "results": [
+                    {"url": SOURCE_URL, "title": "First", "score": 0.9},
+                    {"url": "https://source.test/two", "title": "Second"},
+                    {"url": "https://source.test/three", "title": "Third"},
+                ]
+            }
+        ]
     )
-    assert secret not in repr(client)
-    assert secret not in str(client)
+    discovery = ExaDiscovery(
+        http=discovery_http,
+        clock=lambda: FIXED_NOW,
+        environ={"EXA_API_KEY": "exa-secret"},
+    )
+    extraction = SwapStubExtractor(
+        documents={
+            SOURCE_URL: FULL_TEXT,
+            "https://source.test/two": "Second complete document",
+        },
+        clock=lambda: FIXED_NOW,
+    )
+    pipeline = WebPipeline(
+        discovery=discovery,
+        extraction=extraction,
+        selector=FirstHitsSelector(),
+    )
+
+    result = pipeline.search_and_extract(
+        "bounded research", discovery_limit=3, extraction_limit=2
+    )
+
+    assert len(result.discovered) == 3
+    assert len(result.selected) == 2
+    assert len(result.extracted) == 2
+    assert [document.retrieved_at for document in result.extracted] == [
+        FIXED_NOW,
+        FIXED_NOW,
+    ]
+    assert result.total_usd_estimate == sum(
+        (cost.usd_estimate for cost in result.costs), start=Decimal("0")
+    )
+    assert result.total_usd_estimate == Decimal("0.007")

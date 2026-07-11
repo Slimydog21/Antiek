@@ -37,6 +37,11 @@ class ExaDiscovery:
 
     __slots__ = ("_api_key", "_base_url", "_clock", "_http", "_timeout")
 
+    # Exa integration spec §6.4 specifies 30 seconds; re-read 2026-07-11.
+    _DEFAULT_TIMEOUT_SECONDS = 30.0
+    # Exa integration spec §1.1 documents numResults <= 100; re-read 2026-07-11.
+    _MAX_RESULTS = 100
+
     def __init__(
         self,
         *,
@@ -45,7 +50,7 @@ class ExaDiscovery:
         api_key: str | None = None,
         environ: Mapping[str, str] | None = None,
         base_url: str = "https://api.exa.ai",
-        timeout: float = 30.0,
+        timeout: float = _DEFAULT_TIMEOUT_SECONDS,
     ) -> None:
         environment = os.environ if environ is None else environ
         resolved_key = api_key if api_key is not None else environment.get("EXA_API_KEY")
@@ -106,7 +111,7 @@ class ExaDiscovery:
 
     @staticmethod
     def _validate_limit(limit: int) -> int:
-        if not 1 <= limit <= 100:
+        if not 1 <= limit <= ExaDiscovery._MAX_RESULTS:
             raise ValueError("limit must be between 1 and 100")
         return limit
 
