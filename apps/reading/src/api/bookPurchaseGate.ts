@@ -82,15 +82,44 @@ export function parsePurchaseGateDecision(body: unknown): PurchaseGateDecision {
   if (!Array.isArray(o.reasons) || !Array.isArray(o.notes)) {
     throw new Error("purchase gate rejected: reasons/notes must be arrays");
   }
-  // Trust boundary: free hit must not allow intent
-  if (
-    o.free_copy_freely_available === true &&
-    o.purchase_intent_allowed === true
-  ) {
+  const freeAvail =
+    typeof o.free_copy_freely_available === "boolean"
+      ? o.free_copy_freely_available
+      : o.free_copy_freely_available === null
+        ? null
+        : (() => {
+            throw new Error(
+              "purchase gate rejected: free_copy_freely_available must be boolean|null",
+            );
+          })();
+
+  // Trust-boundary decision matrix (never invent free-miss/skip).
+  if (o.purchase_intent_allowed === true) {
+    if (freeAvail === true) {
+      throw new Error(
+        "purchase gate rejected: freely_available=true cannot allow purchase intent",
+      );
+    }
+    if (freeAvail === false) {
+      if (o.path !== "purchase_intent_after_free_miss") {
+        throw new Error(
+          "purchase gate rejected: free miss must use path purchase_intent_after_free_miss",
+        );
+      }
+    } else {
+      // freeAvail === null: only skip_free_copy path may allow intent
+      if (o.path !== "skip_free_copy") {
+        throw new Error(
+          "purchase gate rejected: free_copy null only allows intent via skip_free_copy path",
+        );
+      }
+    }
+  } else if (freeAvail === true && o.path !== "use_free_copy") {
     throw new Error(
-      "purchase gate rejected: freely_available=true cannot allow purchase intent",
+      "purchase gate rejected: freely_available=true must use path use_free_copy when blocked",
     );
   }
+
   return {
     title: o.title.trim(),
     author: typeof o.author === "string" ? o.author : null,
@@ -105,16 +134,7 @@ export function parsePurchaseGateDecision(body: unknown): PurchaseGateDecision {
       if (typeof n !== "string") throw new Error("notes must be strings");
       return n;
     }),
-    free_copy_freely_available:
-      typeof o.free_copy_freely_available === "boolean"
-        ? o.free_copy_freely_available
-        : o.free_copy_freely_available === null
-          ? null
-          : (() => {
-              throw new Error(
-                "purchase gate rejected: free_copy_freely_available must be boolean|null",
-              );
-            })(),
+    free_copy_freely_available: freeAvail,
     authority: "purchase_gate_advisory",
   };
 }

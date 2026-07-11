@@ -49,6 +49,24 @@ describe("parsePurchaseGateDecision", () => {
       }),
     ).toThrow(/freely_available/);
   });
+
+  it("rejects allow with free_copy null unless skip path", () => {
+    expect(() =>
+      parsePurchaseGateDecision({
+        ...sample,
+        free_copy_freely_available: null,
+        purchase_intent_allowed: true,
+        path: "purchase_intent_after_free_miss",
+      }),
+    ).toThrow(/skip_free_copy/);
+    const skipOk = parsePurchaseGateDecision({
+      ...sample,
+      free_copy_freely_available: null,
+      purchase_intent_allowed: true,
+      path: "skip_free_copy",
+    });
+    expect(skipOk.path).toBe("skip_free_copy");
+  });
 });
 
 describe("postPurchaseGate", () => {
