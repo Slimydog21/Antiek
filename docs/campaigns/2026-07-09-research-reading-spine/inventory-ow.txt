@@ -1,9 +1,0 @@
-# inventory-ow · SESSION-ARC om–ov engagement parity
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: ow
-files:
-  docs/campaigns/2026-07-09-research-reading-spine/SESSION-ARC-om-ov-engagement-parity.md
-  docs/campaigns/2026-07-09-research-reading-spine/NEXT-WAVE-after-ow.md
-  docs/campaigns/2026-07-09-research-reading-spine/DEFERRED-GAPS-for-future-agents.md
-proof: docs-only fleet handoff; tip 18425a88
-invariants: HTML-first · offline-honest · operator merge PR #465 highest leverage

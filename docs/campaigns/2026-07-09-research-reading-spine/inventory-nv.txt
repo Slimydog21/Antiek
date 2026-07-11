@@ -1,9 +1,0 @@
-# inventory-nv · SESSION-ARC nt–nu bench + launch budget dual-gate
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: nv
-files:
-  docs/campaigns/2026-07-09-research-reading-spine/SESSION-ARC-nt-nu-bench-budget-dualgate.md
-  docs/campaigns/2026-07-09-research-reading-spine/NEXT-WAVE-after-nv.md
-  docs/campaigns/2026-07-09-research-reading-spine/competitive-deep-research-notes.md
-proof: docs-only; suite-proposal 4_passed on branch
-invariants: zero-context fleet handoff · operator merge gated

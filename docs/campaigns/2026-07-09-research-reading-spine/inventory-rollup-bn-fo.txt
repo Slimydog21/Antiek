@@ -1,3 +1,0 @@
-# Campaign rollup (bn)–(fo) · PR #465
-Midnight Oil→Write handoff (fo); merge→Write (fn); Write HTML draft load (fm).
-Operator merge still gated. Next residual (fp).

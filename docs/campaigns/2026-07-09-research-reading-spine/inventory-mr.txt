@@ -1,8 +1,0 @@
-# inventory-mr · twin list filter by kind
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: mr
-files:
-  apps/reading/src/components/engagement/TwinNotesPanel.tsx
-  apps/reading/src/components/engagement/TwinNotesPanel.test.tsx
-proof: vitest TwinNotesPanel 11 passed
-invariants: HTML-first · list filter independent of promote kinds · recursive note-taker

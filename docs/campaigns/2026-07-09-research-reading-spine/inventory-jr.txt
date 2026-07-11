@@ -1,7 +1,0 @@
-# inventory-jr · DEFERRED-GAPS depth spine note + suite-proposal AC recheck
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: jr
-files:
-  docs/campaigns/2026-07-09-research-reading-spine/DEFERRED-GAPS-for-future-agents.md
-proof: suite-proposal pytest still green (plan AC); docs honesty for jf–jq
-invariants: L1–L4 dual-gate · NotDiamond advisory · operator merge PR #465

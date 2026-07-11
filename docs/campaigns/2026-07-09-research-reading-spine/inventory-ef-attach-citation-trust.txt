@@ -1,8 +1,0 @@
-# residual (ef) citation trust on publication attach result
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(ee) prior | branch_only | campaign inventories
-(ef) attach citation trust | branch_only | PublicationAttachPanel data-citation-trust; 2 vitest
-
-NEXT: (eg) re-derive; operator merge PR #465

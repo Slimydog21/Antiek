@@ -1,3 +1,0 @@
-# Campaign rollup (bn)–(ea) · PR #465
-dz: marketplace driver badge · ea: twin auto-promote to research context after load.
-Operator merge still gated. Next residual (eb).

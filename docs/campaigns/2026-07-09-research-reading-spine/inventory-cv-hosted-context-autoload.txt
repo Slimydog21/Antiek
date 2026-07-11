@@ -1,8 +1,0 @@
-# residual (cv) Hosted book window auto-loads research context + evidence
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(cu) prior | branch_only | campaign inventories
-(cv) hosted context autoLoad | branch_only | HostedHtmlDocumentHost ResearchContextPanel autoLoad; 3 vitest; tip after commit
-
-NEXT: (cw) re-derive; operator merge PR #465

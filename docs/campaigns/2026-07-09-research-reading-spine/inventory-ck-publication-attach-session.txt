@@ -1,8 +1,0 @@
-# residual (ck) Mid-session publication attach on deep research host
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(cj) prior | branch_only | campaign inventories
-(ck) publication attach mid-session | branch_only | PublicationAttachPanel attachSourceRefs + hydrate; DeepResearchSessionHost mount; 15 vitest; tip after commit
-
-NEXT: (cl) re-derive; operator merge PR #465

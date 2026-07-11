@@ -1,2 +1,0 @@
-# Campaign rollup (bn)–(hn) · PR #465
-Midnight Oil ceiling metrics (hn); collective metrics (hm). Next residual (ho).

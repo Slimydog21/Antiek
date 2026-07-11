@@ -1,3 +1,0 @@
-# Campaign rollup (bn)–(fl) · PR #465
-Write HTML draft handoff (fl); twin metrics (fk); Settings link (fj); search metrics (fi); BlockDetail window DR.
-Operator merge still gated. Next residual (fm).

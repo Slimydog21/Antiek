@@ -1,2 +1,0 @@
-# Campaign rollup (bn)–(hx) · PR #465
-MO deposit metrics (hx); MO run metrics (hw). Next residual (hy).

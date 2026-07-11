@@ -1,9 +1,0 @@
-# inventory-lb · TwinNotesPanel API research_tier fallback
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: lb
-files:
-  apps/reading/src/api/engagement.ts
-  apps/reading/src/components/engagement/TwinNotesPanel.tsx
-  apps/reading/src/components/engagement/TwinNotesPanel.test.tsx
-proof: TwinNotesPanel vitest 9_passed (HONEST_OK)
-invariants: HTML · prop wins · seed API fallback (la) · no PDF

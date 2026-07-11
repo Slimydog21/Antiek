@@ -1,8 +1,0 @@
-# inventory-mu · ResearchContext dual-gate checklist deep-link
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: mu
-files:
-  apps/reading/src/components/engagement/ResearchContextPanel.tsx
-  apps/reading/src/components/engagement/ResearchContextPanel.test.tsx
-proof: vitest ResearchContextPanel 11 passed
-invariants: never enables L1/L2 · prep only · offline hydrate default

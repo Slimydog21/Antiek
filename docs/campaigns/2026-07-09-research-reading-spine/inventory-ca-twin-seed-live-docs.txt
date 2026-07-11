@@ -1,8 +1,0 @@
-# residual (ca) Twin seed live docs + boot wiring notes
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(bz) prior | branch_only | campaign inventories
-(ca) TWIN-SEED-LIVE.md | branch_only | docs/campaigns/.../TWIN-SEED-LIVE.md; tip after commit
-
-NEXT: (cb) wire roles.note_taker inject at app boot behind env; operator merge PR #465

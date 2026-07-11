@@ -1,8 +1,0 @@
-# inventory-mm · Marketplace dual-gate checklist deep-link
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: mm
-files:
-  apps/reading/src/modes/MarketplaceHost/index.tsx
-  apps/reading/src/modes/MarketplaceHost/MarketplaceHost.test.tsx
-proof: vitest MarketplaceHost 13 passed
-invariants: never enables L1–L4 · prep link only

@@ -1,3 +1,0 @@
-# Campaign rollup (bn)–(hd) · PR #465
-Context hydrate offline_honest (hd); pub attach honesty (hc).
-Publication hydrate honesty complete on attach + context panels. Next (he).

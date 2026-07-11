@@ -1,8 +1,0 @@
-# residual (au) Midnight Oil deposit → Antiek-bench usage + progress
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(at) prior | branch_only | campaign inventories
-(au) Midnight Oil deposit usage_bridge + progress | branch_only | deposit_job_results bench_usage_store + record_progress; tests/test_midnight_oil_deposit_usage.py; @ a868e9af
-
-NEXT: (av) competitive dogfood fixtures into Antiek-bench; operator merge PR #465

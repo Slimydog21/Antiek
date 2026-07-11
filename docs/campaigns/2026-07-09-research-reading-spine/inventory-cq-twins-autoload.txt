@@ -1,8 +1,0 @@
-# residual (cq) TwinNotesPanel autoLoad on DR + hosted book hosts
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(cp) prior | branch_only | campaign inventories
-(cq) twin notes autoLoad | branch_only | TwinNotesPanel autoLoad; DeepResearchSessionHost + HostedHtmlDocumentHost; 22 vitest; tip after commit
-
-NEXT: (cr) re-derive; operator merge PR #465

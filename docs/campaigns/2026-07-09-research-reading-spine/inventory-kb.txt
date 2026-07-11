@@ -1,7 +1,0 @@
-# inventory-kb · competitive notes jy–ka
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: kb
-files:
-  docs/campaigns/2026-07-09-research-reading-spine/competitive-deep-research-notes.md
-proof: docs honesty inventory
-invariants: operator merge PR #465 · L1–L4 dual-gate

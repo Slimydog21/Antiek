@@ -1,8 +1,0 @@
-# residual (bv) Marketplace host seeds engagement twin notes
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(bu) prior | branch_only | campaign inventories
-(bv) host → twin seed | branch_only | marketplace host/purchase seed_twins; get_engagement_store; 2 pytest; tip after commit
-
-NEXT: (bw) re-derive; operator merge PR #465

@@ -1,8 +1,0 @@
-# residual (by) Midnight Oil run result live_step honesty UI
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(bx) prior | branch_only | campaign inventories
-(by) moil live flags UI | branch_only | run result data-offline/live-step + notes_list; MidnightOil vitest; tip after commit
-
-NEXT: (bz) re-derive; operator merge PR #465

@@ -1,8 +1,0 @@
-# inventory-jw · budget panel intensity factor chrome
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: jw
-files:
-  apps/reading/src/components/engagement/ResearchLaunchBudgetPanel.tsx
-  apps/reading/src/components/engagement/ResearchLaunchBudgetPanel.test.tsx
-proof: ResearchLaunchBudgetPanel vitest 9_passed (HONEST_OK)
-invariants: shared ceiling multiplier map · projection tokens · HTML

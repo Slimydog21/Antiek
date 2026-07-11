@@ -1,4 +1,0 @@
-# Campaign rollup (bn)–(gd) · PR #465
-Write HTML re-import into open piece (gd); driver badge (gc); context (gb); twins (ga).
-Shared importHtmlDraftIntoDeliverable chokepoint for create + re-import.
-Operator merge still gated. Next residual (ge).

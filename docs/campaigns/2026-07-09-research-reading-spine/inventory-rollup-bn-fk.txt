@@ -1,3 +1,0 @@
-# Campaign rollup (bn)–(fk) · PR #465
-Twin notes metrics (fk); Settings link (fj); search metrics (fi); BlockDetail window DR (fh).
-Operator merge still gated. Next residual (fl).

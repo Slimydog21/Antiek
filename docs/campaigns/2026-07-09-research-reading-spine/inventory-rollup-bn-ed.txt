@@ -1,3 +1,0 @@
-# Campaign rollup (bn)–(ed) · PR #465
-ec: remount after twin promote · ed: remount after publication attach.
-Operator merge still gated. Next residual (ee).

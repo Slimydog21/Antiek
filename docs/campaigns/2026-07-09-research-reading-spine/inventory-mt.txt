@@ -1,8 +1,0 @@
-# inventory-mt · TwinNotes dual-gate checklist deep-link
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: mt
-files:
-  apps/reading/src/components/engagement/TwinNotesPanel.tsx
-  apps/reading/src/components/engagement/TwinNotesPanel.test.tsx
-proof: vitest TwinNotesPanel 13 passed
-invariants: never enables L3 · prep only · offline force_offline seed default

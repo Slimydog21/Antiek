@@ -1,3 +1,0 @@
-# Campaign rollup (bn)–(en) · PR #465
-Hosted book highlight → float DR (en); draft auto-open el/em.
-Operator merge still gated. Next residual (eo).

@@ -1,8 +1,0 @@
-# residual (ar) research progress telemetry
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(aq) prior | branch_only | campaign inventories
-(ar) research progress plan/gather/synthesize/cite | branch_only | substrate/engagement_spine/progress.py; POST/GET /engagement/progress*; tests/test_engagement_progress.py; @ e5b57826
-
-NEXT: (as) evidence pack product surface; operator merge PR #465

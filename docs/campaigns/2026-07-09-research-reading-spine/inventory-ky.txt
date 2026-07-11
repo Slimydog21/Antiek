@@ -1,8 +1,0 @@
-# inventory-ky · dual-gate L1–L4 operator checklist
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: ky
-files:
-  docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md
-  docs/campaigns/2026-07-09-research-reading-spine/DEFERRED-GAPS-for-future-agents.md
-proof: docs honesty; env flags verified against hydrate/twin/MO wiring sources
-invariants: offline-default · dual-gate · NotDiamond advisory · operator enable only

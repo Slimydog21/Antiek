@@ -1,8 +1,0 @@
-# inventory-kj · collective HTML recommended_tier projection
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: kj
-files:
-  substrate/engagement_spine/collective.py
-  tests/test_collective_research.py
-proof: test_collective_research 3_passed (HONEST_OK)
-invariants: HTML · recommended_tier · member tiers · no PDF

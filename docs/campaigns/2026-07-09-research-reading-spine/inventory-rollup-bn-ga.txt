@@ -1,3 +1,0 @@
-# Campaign rollup (bn)–(ga) · PR #465
-Write piece TwinNotesPanel (ga); twin seed on import (fz); full Write HTML land path.
-Operator merge still gated. Next residual (gb).

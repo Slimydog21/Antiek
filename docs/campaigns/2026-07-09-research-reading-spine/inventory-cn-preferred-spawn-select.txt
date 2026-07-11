@@ -1,8 +1,0 @@
-# residual (cn) Auto-select current spawn in collective multi-select
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(cm) prior | branch_only | campaign inventories
-(cn) preferredSpawnId auto-select | branch_only | CollectiveResearchPanel preferredSpawnId; DeepResearchSessionHost passes current spawn; vitest; tip after commit
-
-NEXT: (co) re-derive; operator merge PR #465

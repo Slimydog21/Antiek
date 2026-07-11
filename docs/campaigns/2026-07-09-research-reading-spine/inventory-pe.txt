@@ -1,8 +1,0 @@
-# inventory-pe · Antiek-bench suite rewrite rationale chrome (V3)
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: pe
-files:
-  apps/reading/src/modes/Settings/index.tsx
-  apps/reading/src/modes/Settings/Settings.test.tsx
-proof: vitest Settings 22 passed
-invariants: propose≠promote · data-has-rationale · feed_source_count · rewrite rationale audit

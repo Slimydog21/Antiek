@@ -1,3 +1,0 @@
-# Campaign rollup (bn)–(gi) · PR #465
-Marketplace → Write handoff (gi); Write DR selection (gh); twins remount (gg).
-Book host joins write flywheel. Operator merge still gated. Next residual (gj).

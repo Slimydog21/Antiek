@@ -1,3 +1,0 @@
-# Campaign rollup (bn)–(gp) · PR #465
-Wrestle research tier end-to-end (gp); depth pickers (gm–go).
-Closed set {fast,deep,wrestle}. Operator merge gated. Next residual (gq).

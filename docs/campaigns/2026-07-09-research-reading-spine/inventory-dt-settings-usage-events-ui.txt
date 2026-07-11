@@ -1,8 +1,0 @@
-# residual (dt) Settings offline dogfood shows usage events + LaunchAgent note
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(ds) prior | branch_only | campaign inventories
-(dt) settings usage UI | branch_only | offline result: usage_events_recorded, auto_promoted=false, weekly agent note; Settings vitest
-
-NEXT: (du) re-derive; operator merge PR #465

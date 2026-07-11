@@ -1,8 +1,0 @@
-# inventory-nc · DecisionTreeDriverBadge + twin chase metrics
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: nc
-files:
-  apps/reading/src/components/engagement/TwinNotesPanel.tsx
-  apps/reading/src/components/engagement/TwinNotesPanel.test.tsx
-proof: vitest TwinNotesPanel 19 passed
-invariants: HTML-first · model+budget+depth co-display · chase metrics audit

@@ -1,8 +1,0 @@
-# inventory-pt · twin-draft-metrics note_ids provenance
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: pt
-files:
-  apps/reading/src/components/engagement/TwinNotesPanel.tsx
-  apps/reading/src/components/engagement/TwinNotesPanel.test.tsx
-proof: vitest TwinNotesPanel 25 passed
-invariants: note_ids audit · HTML-first · parity ni chase provenance

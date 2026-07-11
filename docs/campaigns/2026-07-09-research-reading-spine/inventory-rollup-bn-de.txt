@@ -1,3 +1,0 @@
-# Campaign rollup (bn)–(de) · PR #465
-dd: twin autoSeedIfEmpty · de: budget onProjectionChange + ResearchThis soft gate.
-hardenx root real=0. Operator merge still gated. Next-wave live injectors deferred.

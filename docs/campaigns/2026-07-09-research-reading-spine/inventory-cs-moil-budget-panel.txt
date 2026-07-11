@@ -1,8 +1,0 @@
-# residual (cs) Budget projection on Midnight Oil create surface
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(cr) prior | branch_only | campaign inventories
-(cs) moil budget panel | branch_only | ResearchLaunchBudgetPanel on MidnightOil goals form; 4 vitest; tip after commit
-
-NEXT: (ct) re-derive; operator merge PR #465

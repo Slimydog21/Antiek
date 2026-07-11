@@ -1,2 +1,0 @@
-# Campaign rollup (bn)–(gw) · PR #465
-TS bench task_class map (gw); Python deposit usage (gv). Next residual (gx).

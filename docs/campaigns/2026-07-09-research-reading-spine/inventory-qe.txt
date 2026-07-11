@@ -1,4 +1,0 @@
-# inventory-qe · collective dual Write handoff
-residual: qe · 2026-07-10
-- CollectiveResearchPanel Open Write: html_draft + twin_seed (collective_doc_merge)
-- vitest CollectiveResearchPanel 19 passed

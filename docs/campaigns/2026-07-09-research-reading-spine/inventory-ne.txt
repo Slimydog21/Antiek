@@ -1,8 +1,0 @@
-# inventory-ne · invert multi-select over visible twins
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: ne
-files:
-  apps/reading/src/components/engagement/TwinNotesPanel.tsx
-  apps/reading/src/components/engagement/TwinNotesPanel.test.tsx
-proof: vitest TwinNotesPanel 21 passed
-invariants: HTML-first · list-filter-aware invert · multi-select path complete

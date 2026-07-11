@@ -1,8 +1,0 @@
-# inventory-mf · catalog HTML by_source/by_subject honesty lines
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: mf
-files:
-  substrate/marketplace_host/product_path.py
-  tests/test_marketplace_catalog_html_ly.py
-proof: pytest project_catalog_html honesty lines green
-invariants: HTML-first · no payment rails · filtered set honesty

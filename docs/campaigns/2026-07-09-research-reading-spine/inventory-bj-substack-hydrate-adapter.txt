@@ -1,8 +1,0 @@
-# residual (bj) Substack hydrate acquisition adapter (injectable)
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(bi) prior | branch_only | campaign inventories
-(bj) substack hydrate adapter | branch_only | substack_post_fetch_publication; hydrate_with_publication_adapters; hydrate_substack_fetch_post injector; tests/test_hydrate_substack_adapter.py; @ adb6f01c
-
-NEXT: (bk) wire live adapters behind env flag in app factory + docs; operator merge PR #465

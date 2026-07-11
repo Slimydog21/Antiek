@@ -1,8 +1,0 @@
-# residual (cw) Decision-tree driver badge on deep research host
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(cv) prior | branch_only | campaign inventories
-(cw) driver badge | branch_only | DecisionTreeDriverBadge on DeepResearchSessionHost; 19 vitest; tip after commit
-
-NEXT: (cx) re-derive; operator merge PR #465

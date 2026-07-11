@@ -1,3 +1,0 @@
-# Campaign rollup (bn)–(cz) · PR #465
-cx: ResearchThis budget · cy: float DR model chokepoint · cz: Midnight Oil decision-tree model prefill.
-Operator merge still gated.

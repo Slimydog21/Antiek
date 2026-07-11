@@ -86,3 +86,9 @@ docs/htmlspec/werner-ice-fishing-cursor/.caffenagent/
 
 # hardenx scratch output (triage layer; never source)
 .harden/
+
+# Agent campaign inventories, session arcs, split dumps, and test transcripts are
+# orchestration scratch. Durable decisions belong in docs/decisions/ and executable
+# specifications in docs/htmlspec/. Keep this broad so a new residual-letter campaign
+# cannot silently add thousands of generated files to a product PR again.
+/docs/campaigns/

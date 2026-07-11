@@ -1,8 +1,0 @@
-# inventory-ox · DeepResearchSessionHost recent_ring data-recent-count + proof
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: ox
-files:
-  apps/reading/src/components/windows/DeepResearchSessionHost.tsx
-  apps/reading/src/components/windows/DeepResearchSessionHost.test.tsx
-proof: vitest DeepResearchSessionHost 27 passed
-invariants: HTML-first · preferred current spawn · recent_ring closed-window multi-select

@@ -1,8 +1,0 @@
-# residual (bk) env-gated live hydrate wiring
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(bj) prior | branch_only | campaign inventories
-(bk) live hydrate env wiring | branch_only | hydrate_live_wiring.py; HYDRATE-LIVE.md; ANTIEK_HYDRATE_LIVE_ARXIV/SUBSTACK; tests/test_hydrate_live_wiring.py; @ f7f7564d
-
-NEXT: (bl) decision-tree recommended model from leaderboard apply button; operator merge PR #465

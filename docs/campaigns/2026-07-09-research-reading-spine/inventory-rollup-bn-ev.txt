@@ -1,3 +1,0 @@
-# Campaign rollup (bn)–(ev) · PR #465
-Merge open full (ev); hosted collective (eu); full/float DR; draft auto-open; twin seed; driver budget.
-Operator merge still gated. Next residual (ew).

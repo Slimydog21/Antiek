@@ -1,3 +1,0 @@
-# Campaign rollup (bn)–(dw) · PR #465
-dv: suite proposal refresh after dogfood · dw: quiet library load + hardenx real=0.
-Operator merge still gated. Next residual (dx).

@@ -1,3 +1,0 @@
-# Campaign rollup (bn)–(el) · PR #465
-Draft-combined merge auto-opens hosted HTML flywheel (el).
-Operator merge still gated. Next residual (em).

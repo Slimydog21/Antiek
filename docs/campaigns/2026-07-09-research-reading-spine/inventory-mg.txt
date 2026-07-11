@@ -1,7 +1,0 @@
-# inventory-mg · SESSION-ARC md–mf Midnight Oil budget + catalog HTML
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: mg
-files:
-  docs/campaigns/2026-07-09-research-reading-spine/SESSION-ARC-md-mf-moil-catalog.md
-proof: docs honesty
-invariants: operator merge PR #465 · fleet handoff

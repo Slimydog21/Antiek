@@ -1,8 +1,0 @@
-# residual (ba) twin notes product path + TwinNotesPanel
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(az) prior | branch_only | campaign inventories
-(ba) twin notes product API + UI | branch_only | twins_product_payload/record_twin_product; GET/POST /engagement/twins; TwinNotesPanel + host mount; tests; @ ab191ed2
-
-NEXT: (bb) twin promote UI trigger / search twin context in panel; operator merge PR #465

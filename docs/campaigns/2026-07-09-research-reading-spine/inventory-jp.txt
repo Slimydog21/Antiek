@@ -1,7 +1,0 @@
-# inventory-jp · competitive notes depth-tier arc jf–jo
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: jp
-files:
-  docs/campaigns/2026-07-09-research-reading-spine/competitive-deep-research-notes.md
-proof: docs-only honesty inventory of closed depth-tier product spine
-invariants: NotDiamond advisory · L1–L4 dual-gate deferred · operator merge PR #465

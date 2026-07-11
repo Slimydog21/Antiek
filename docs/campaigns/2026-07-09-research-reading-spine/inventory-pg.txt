@@ -1,9 +1,0 @@
-# inventory-pg · DecisionTreeDriverBadge prompt projection (V4)
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: pg
-files:
-  apps/reading/src/components/engagement/DecisionTreeDriverBadge.tsx
-  apps/reading/src/components/engagement/DecisionTreeDriverBadge.test.tsx
-  apps/reading/src/modes/MidnightOil/index.tsx
-proof: vitest DecisionTreeDriverBadge 10 + MidnightOil 18 passed
-invariants: advisory only · not hard gate · pricing unknown honesty · MO wires goals+pub refs

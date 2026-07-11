@@ -1,2 +1,0 @@
-# Campaign rollup (bn)–(hu) · PR #465
-Evidence pack metrics (hu); suite rewrite metrics (ht). Next residual (hv).

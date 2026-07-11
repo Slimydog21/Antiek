@@ -1,8 +1,0 @@
-# residual (ch) Twin seed API + seed on written analysis draft
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(cg) prior | branch_only | campaign inventories
-(ch) twins/seed + analysis seed | branch_only | POST /engagement/twins/seed; seedTwinNotes in createWrittenAnalysis; 1 pytest + 4 vitest; tip after commit
-
-NEXT: (ci) re-derive; operator merge PR #465

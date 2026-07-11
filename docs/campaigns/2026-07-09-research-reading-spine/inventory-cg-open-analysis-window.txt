@@ -1,8 +1,0 @@
-# residual (cg) Open written analysis draft in floating HTML window
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(cf) prior | branch_only | campaign inventories
-(cg) open analysis window | branch_only | collective-open-analysis-window → hosted_html_document; 5 vitest; tip after commit
-
-NEXT: (ch) re-derive; operator merge PR #465

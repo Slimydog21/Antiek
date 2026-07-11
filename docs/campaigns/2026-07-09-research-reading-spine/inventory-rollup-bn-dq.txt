@@ -1,3 +1,0 @@
-# Campaign rollup (bn)–(dq) · PR #465
-dp: document HTML metadata · dq: library loads on MarketplaceHost mount.
-Operator merge still gated.

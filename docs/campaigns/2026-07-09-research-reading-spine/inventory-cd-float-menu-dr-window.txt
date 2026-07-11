@@ -1,8 +1,0 @@
-# residual (cd) Float-menu Deep-research → floating window
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(cc) prior | branch_only | campaign inventories
-(cd) float-menu → floating DR | branch_only | Reading index + HighlightToolbar launchFloatingDeepResearch; ChaseThread degraded fallback; Reading.test 28; tip after commit
-
-NEXT: (ce) expand/fullscreen toggle polish; operator merge PR #465

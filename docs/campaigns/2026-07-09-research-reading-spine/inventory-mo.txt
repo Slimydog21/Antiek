@@ -1,8 +1,0 @@
-# inventory-mo · twin seed domain subjects after marketplace host
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: mo
-files:
-  apps/reading/src/modes/MarketplaceHost/index.tsx
-  apps/reading/src/modes/MarketplaceHost/MarketplaceHost.test.tsx
-proof: vitest MarketplaceHost 13 passed
-invariants: offline twin seed · domain subjects in body · recursive note-taker

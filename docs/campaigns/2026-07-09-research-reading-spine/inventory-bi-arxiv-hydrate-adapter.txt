@@ -1,8 +1,0 @@
-# residual (bi) arXiv hydrate acquisition adapter (injectable, no silent network)
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(bh) prior | branch_only | campaign inventories
-(bi) arxiv hydrate adapter | branch_only | hydrate_adapters.py arxiv_metadata_fetch_publication; hydrate_with_arxiv_adapter; engagement hydrate_arxiv_fetch_by_id injector; tests/test_hydrate_arxiv_adapter.py; @ d1a8a85f
-
-NEXT: (bj) substack hydrate adapter mirror; operator merge PR #465

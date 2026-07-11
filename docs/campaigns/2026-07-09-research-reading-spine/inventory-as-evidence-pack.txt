@@ -1,8 +1,0 @@
-# residual (as) evidence pack product surface
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(ar) prior | branch_only | campaign inventories
-(as) evidence pack twins+refs HTML | branch_only | substrate/engagement_spine/evidence.py; POST /engagement/evidence-pack; tests/test_engagement_evidence.py; @ e632fcd1
-
-NEXT: (at) depth-tier presets in decision-tree; operator merge PR #465

@@ -1,8 +1,0 @@
-# residual (av) competitive dogfood fixtures Antiek-bench
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(au) prior | branch_only | campaign inventories
-(av) competitive dogfood fixtures | branch_only | dogfood_fixtures.py; GET /settings/antiek-bench/dogfood-fixtures; tests/test_antiek_bench_dogfood.py; never auto-promote; @ a2fae8a8
-
-NEXT: (aw) evidence pack UI mount / ResearchContextPanel evidence; operator merge PR #465

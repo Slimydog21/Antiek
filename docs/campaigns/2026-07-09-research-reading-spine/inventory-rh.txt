@@ -1,9 +1,0 @@
-# inventory-rh · Hydrate-ref Open Write twin_seed (ResearchContextPanel)
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: rh
-date: 2026-07-10
-
-## Closed
-- ResearchContextPanel hydrate-ref Open Write (publications twin_seed)
-- reuses buildPublicationHydrateWriteHref
-- vitest ResearchContextPanel 12 passed (SCRATCH residual-tests-rh.log)

@@ -1,8 +1,0 @@
-# inventory-ln · ChatInputArea DecisionTreeDriverBadge launchTier
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: ln
-files:
-  apps/reading/src/modes/ResearchWorkstation/ChatInputArea.tsx
-  apps/reading/src/modes/ResearchWorkstation/ChatInputArea.budget.test.tsx
-proof: ChatInputArea.budget vitest 4_passed (HONEST_OK)
-invariants: HTML · workstation chat launch model+depth · NotDiamond advisory

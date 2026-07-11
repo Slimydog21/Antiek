@@ -1,8 +1,0 @@
-# residual (ax) research progress panel in deep research host
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(aw) prior | branch_only | campaign inventories
-(ax) ResearchProgressPanel product mount | branch_only | ResearchProgressPanel.tsx; DeepResearchSessionHost progress mount; tests; @ 67a899bd
-
-NEXT: (ay) hydrate ref UI on ResearchContextPanel; operator merge PR #465

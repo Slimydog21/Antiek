@@ -1,2 +1,0 @@
-# Campaign rollup (bn)–(iv) · PR #465
-Host DR full window (iv); host DR float (iu). Next residual (iw).

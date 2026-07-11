@@ -1,8 +1,0 @@
-# inventory-kq · SessionFlywheel context.research_tier pack fallback
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: kq
-files:
-  apps/reading/src/components/engagement/SessionFlywheelPanel.tsx
-  apps/reading/src/components/engagement/SessionFlywheelPanel.test.tsx
-proof: SessionFlywheelPanel vitest 4_passed (HONEST_OK)
-invariants: HTML · session tier wins · pack context.research_tier fallback · parity kk

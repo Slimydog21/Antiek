@@ -1,7 +1,0 @@
-# inventory-rg · SESSION-ARC qv–rf Write seed complete wave
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: rg
-date: 2026-07-10
-
-## Closed
-- SESSION-ARC-qv-rf-write-seed-complete.md

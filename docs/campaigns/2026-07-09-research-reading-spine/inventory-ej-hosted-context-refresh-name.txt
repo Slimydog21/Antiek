@@ -1,8 +1,0 @@
-# residual (ej) HostedHtmlDocumentHost onContextNeedsRefresh naming parity
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(ei) prior | branch_only | campaign inventories
-(ej) hosted context refresh name | branch_only | HostedHtmlDocumentHost onContextNeedsRefresh; 4 vitest
-
-NEXT: (ek) re-derive; operator merge PR #465

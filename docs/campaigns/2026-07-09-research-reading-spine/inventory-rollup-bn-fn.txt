@@ -1,3 +1,0 @@
-# Campaign rollup (bn)–(fn) · PR #465
-Merge→Write handoff (fn); Write HTML draft load (fm); handoff (fl).
-Operator merge still gated. Next residual (fo).

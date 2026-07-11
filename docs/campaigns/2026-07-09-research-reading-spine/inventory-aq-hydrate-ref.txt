@@ -1,9 +1,0 @@
-# residual (aq) arxiv/substack hydrate HTML asset
-# PR #465 · 2026-07-09
-# Status: on_main | branch_only | missing | spec_only
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(ap) prior residuals | branch_only | PR #465 campaign inventories
-(aq) publication hydrate HTML-first asset | branch_only | substrate/engagement_spine/hydrate.py; POST /engagement/hydrate-ref; hydratePublicationRef TS; tests/test_engagement_hydrate.py; injectable fetch; offline identity-only default; @ f707c6f9
-
-NEXT: (ar) research progress telemetry; operator merge PR #465

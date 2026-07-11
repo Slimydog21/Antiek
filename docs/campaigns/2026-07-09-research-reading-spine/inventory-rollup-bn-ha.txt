@@ -1,2 +1,0 @@
-# Campaign rollup (bn)–(ha) · PR #465
-Usage by_source in Settings (ha); hydrate offline_honest (gz). Next residual (hb).

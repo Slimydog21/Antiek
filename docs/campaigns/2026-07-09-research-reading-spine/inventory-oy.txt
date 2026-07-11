@@ -1,8 +1,0 @@
-# inventory-oy · Midnight Oil create pub refs grounding
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: oy
-files:
-  apps/reading/src/modes/MidnightOil/index.tsx
-  apps/reading/src/modes/MidnightOil/MidnightOil.test.tsx
-proof: vitest MidnightOil 16 passed
-invariants: HTML-first · offline-honest hydrate · Ground publication: handles as goals · never invent abstracts

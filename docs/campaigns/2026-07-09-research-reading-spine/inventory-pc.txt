@@ -1,8 +1,0 @@
-# inventory-pc · MO job receipt grounded publication goals chrome
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: pc
-files:
-  apps/reading/src/modes/MidnightOil/index.tsx
-  apps/reading/src/modes/MidnightOil/MidnightOil.test.tsx
-proof: vitest MidnightOil 18 passed
-invariants: HTML-first · data-grounded-pub-goal-count · audit knowledge-dense swarm grounding

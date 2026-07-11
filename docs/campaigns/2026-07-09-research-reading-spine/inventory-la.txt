@@ -1,8 +1,0 @@
-# inventory-la · twin seed research_tier from source_spawn
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: la
-files:
-  substrate/engagement_spine/twin.py
-  tests/test_seed_twins_hydrate.py
-proof: test_seed_twins_hydrate 5_passed (HONEST_OK)
-invariants: HTML · spawn-scoped tier · offline-default seed · no PDF

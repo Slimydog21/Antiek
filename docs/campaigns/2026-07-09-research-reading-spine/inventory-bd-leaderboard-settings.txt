@@ -1,8 +1,0 @@
-# residual (bd) Settings Antiek-bench weekly leaderboard product panel
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(bc) prior | branch_only | campaign inventories
-(bd) Settings weekly leaderboard panel | branch_only | GET leaderboard include_html + store resolution; fetchAntiekBenchLeaderboard; Settings panel; tests/test_settings_leaderboard_product.py; @ 7dc32ce8
-
-NEXT: (be) depth-tier apply auto-fills decision-tree + cost estimate path polish; operator merge PR #465

@@ -1,8 +1,0 @@
-# residual (ay) hydrate HTML asset UI on ResearchContextPanel
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(ax) prior | branch_only | campaign inventories
-(ay) hydrate publication UI | branch_only | Hydrate HTML asset button; hydratePublicationRef; ResearchContextPanel tests; @ 2b7c2023
-
-NEXT: (az) Settings dogfood fixtures panel; operator merge PR #465

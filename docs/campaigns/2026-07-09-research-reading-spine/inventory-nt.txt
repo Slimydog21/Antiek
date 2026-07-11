@@ -1,9 +1,0 @@
-# inventory-nt · Antiek-bench dual-gate checklist + NotDiamond advisory banner
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: nt
-files:
-  apps/reading/src/modes/Settings/index.tsx
-  apps/reading/src/modes/Settings/Settings.test.tsx
-  docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md
-proof: vitest Settings dual-gate/NotDiamond filter 3 passed
-invariants: propose≠promote · NotDiamond L7 advisory only · prep only

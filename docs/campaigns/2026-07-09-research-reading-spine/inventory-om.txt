@@ -1,9 +1,0 @@
-# inventory-om · WriteHome collective recent_ring wire
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: om
-files:
-  apps/reading/src/modes/Write/WriteHome.tsx
-  apps/reading/src/modes/Write/WriteHome.test.tsx
-proof: vitest WriteHome 21 passed
-invariants: HTML-first · reading≡write parity · recent_ring closed-window multi-select · onRecentSpawnsCleared same-tab refresh
-parity: HostedHtmlDocumentHost · DeepResearchSessionHost · ResearchThis

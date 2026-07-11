@@ -1,8 +1,0 @@
-# residual (aw) evidence pack UI mount ResearchContextPanel
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(av) prior | branch_only | campaign inventories
-(aw) evidence pack UI in ResearchContextPanel | branch_only | fetchEvidencePack + Load evidence pack button; ResearchContextPanel.test.tsx; @ 49ca6fad
-
-NEXT: (ax) progress panel in deep research host; operator merge PR #465

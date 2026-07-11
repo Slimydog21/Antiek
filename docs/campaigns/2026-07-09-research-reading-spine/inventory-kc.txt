@@ -1,8 +1,0 @@
-# inventory-kc · evidence pack research_tier from spawn
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: kc
-files:
-  substrate/engagement_spine/evidence.py
-  tests/test_engagement_evidence.py
-proof: test_engagement_evidence 3_passed (HONEST_OK)
-invariants: HTML · spawn research_tier · default deep · citation-trust panel

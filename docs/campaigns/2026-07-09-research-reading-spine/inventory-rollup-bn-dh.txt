@@ -1,3 +1,0 @@
-# Campaign rollup (bn)–(dh) · PR #465
-dh: next-wave live gates inventory + competitive notes refresh (closed cx–dg).
-Operator merge still gated. Next residual (di) product code.

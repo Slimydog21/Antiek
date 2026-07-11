@@ -1,8 +1,0 @@
-# residual (be) depth-tier apply auto cost projection
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(bd) prior | branch_only | campaign inventories
-(be) depth-tier → #440 cost projection auto-run | branch_only | Settings onApplyDepthTier calls estimatePromptCost with projection_hints; Settings.test.tsx wrestle asserts tier/tokens; @ 3655ab31
-
-NEXT: (bf) add-model Settings form product path; operator merge PR #465

@@ -1,4 +1,0 @@
-# inventory-qg · collective driver badge promptText
-residual: qg · 2026-07-10
-- DecisionTreeDriverBadge promptText from unit.prompt_block or selected spawn ids
-- vitest CollectiveResearchPanel 20 passed

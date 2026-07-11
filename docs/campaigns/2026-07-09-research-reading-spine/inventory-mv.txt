@@ -1,7 +1,0 @@
-# inventory-mv · SESSION-ARC mp–mu twins dual-gate handoff
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: mv
-files:
-  docs/campaigns/2026-07-09-research-reading-spine/SESSION-ARC-mp-mu-twins-dualgate.md
-proof: docs honesty
-invariants: operator merge PR #465 · fleet handoff

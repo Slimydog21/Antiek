@@ -1,3 +1,0 @@
-# Campaign rollup (bn)–(fw) · PR #465
-Outline section preview (fw); nested sections (fv); multi-section import (fu).
-Operator merge still gated. Next residual (fx).

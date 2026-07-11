@@ -1,8 +1,0 @@
-# inventory-kh · context search HTML tier projection
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: kh
-files:
-  substrate/engagement_spine/context_search.py
-  tests/test_engagement_context_search.py
-proof: test_engagement_context_search 2_passed (HONEST_OK)
-invariants: HTML · tier=wrestle in projection · no PDF

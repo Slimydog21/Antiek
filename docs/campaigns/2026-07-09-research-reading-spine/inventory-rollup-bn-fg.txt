@@ -1,3 +1,0 @@
-# Campaign rollup (bn)–(fg) · PR #465
-Suite proposed tasks UI (fg); twin metrics (ff); FloatMenu full (fe); driver refresh; collective reading.
-Operator merge still gated. Next residual (fh).

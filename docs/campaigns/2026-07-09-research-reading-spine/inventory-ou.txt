@@ -1,8 +1,0 @@
-# inventory-ou · ResearchThis recent_ring collective proof + data-recent-count
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: ou
-files:
-  apps/reading/src/modes/Reading/ResearchThis.tsx
-  apps/reading/src/modes/Reading/ResearchThis.test.tsx
-proof: vitest ResearchThis 12 passed
-invariants: HTML-first · reading≡research · recent_ring closed-window multi-select · onRecentSpawnsCleared

@@ -1,9 +1,0 @@
-# inventory-kd · EvidencePack UI research_tier chrome
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: kd
-files:
-  apps/reading/src/api/engagement.ts
-  apps/reading/src/components/engagement/ResearchContextPanel.tsx
-  apps/reading/src/components/engagement/ResearchContextPanel.test.tsx
-proof: ResearchContextPanel vitest 10_passed (HONEST_OK)
-invariants: HTML · citation trust · spawn research_tier · wrestle long-horizon note

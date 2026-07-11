@@ -1,8 +1,0 @@
-# inventory-os · Settings Antiek-bench MO + collective_merge feed chrome
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: os
-files:
-  apps/reading/src/modes/Settings/index.tsx
-  apps/reading/src/modes/Settings/Settings.test.tsx
-proof: vitest Settings 21 passed
-invariants: propose≠promote · known_sources honesty · midnight_oil + collective_merge machine attrs

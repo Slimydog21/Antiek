@@ -1,2 +1,0 @@
-# Campaign rollup (bn)–(ic) · PR #465
-Deferred gaps inventory + MO Settings link (ic). Next residual (id).

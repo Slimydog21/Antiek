@@ -1,9 +1,0 @@
-# inventory-jv · TS ceiling multiplier map parity Python MO
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: jv
-files:
-  apps/reading/src/lib/researchTier.ts
-  apps/reading/src/lib/researchTier.test.ts
-  apps/reading/src/modes/MidnightOil/index.tsx
-proof: vitest researchTier + MidnightOil 16_passed (HONEST_OK)
-invariants: client mirrors substrate TIER_MULTIPLIER · server owns math

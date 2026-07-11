@@ -1,3 +1,0 @@
-# Campaign rollup (bn)–(dx) · PR #465
-Offline dogfood now refreshes leaderboard + suite proposal + usage summary in Settings.
-Operator merge still gated.

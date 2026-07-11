@@ -1,3 +1,0 @@
-# Campaign rollup (bn)–(eh) · PR #465
-Context remount flywheel complete: promote · attach · flywheel · merge.
-Operator merge still gated. Next residual (ei).

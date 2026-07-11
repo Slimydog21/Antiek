@@ -1,8 +1,0 @@
-# inventory-pd · FUTURE-AGENT-SPEC remaining vision
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: pd
-files:
-  docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-remaining-vision-2026-07-10.md
-  docs/campaigns/2026-07-09-research-reading-spine/NEXT-WAVE-after-pd.md
-proof: docs-only precision brief for fleet; tip 87ed0e62 at write
-invariants: HTML-first · offline-honest · NotDiamond advisory · operator merge PR #465

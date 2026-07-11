@@ -1,8 +1,0 @@
-# residual (eb) competitive notes refresh through ea
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(ea) prior | branch_only | campaign inventories
-(eb) notes refresh | branch_only | competitive-deep-research-notes.md closed du–ea
-
-NEXT: (ec) re-derive product residual; operator merge PR #465

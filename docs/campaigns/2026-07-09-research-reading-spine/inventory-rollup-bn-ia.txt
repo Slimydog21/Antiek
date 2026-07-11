@@ -1,2 +1,0 @@
-# Campaign rollup (bn)–(ia) · PR #465
-Pub attach Settings deep-link (ia); attach metrics (hz). Next residual (ib).

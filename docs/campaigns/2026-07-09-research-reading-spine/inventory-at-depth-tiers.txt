@@ -1,8 +1,0 @@
-# residual (at) depth-tier presets flash|pro|wrestle
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(as) prior | branch_only | campaign inventories
-(at) depth-tier presets decision-tree + cost hints | branch_only | substrate/model_registration/depth_tiers.py; GET/POST/DELETE /settings/depth-tier; Settings panel; tests/test_depth_tiers.py; @ 0a5790a0
-
-NEXT: (au) Midnight Oil deposit → twin/usage polish; operator merge PR #465

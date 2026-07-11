@@ -1,8 +1,0 @@
-# inventory-jn · TalkToBook Settings research_tier
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: jn
-files:
-  apps/reading/src/modes/Reading/TalkToBook.tsx
-  apps/reading/src/modes/Reading/TalkToBook.test.tsx
-proof: TalkToBook vitest 8_passed (HONEST_OK)
-invariants: Settings depth prefill · askBook researchTier · HTML · closed set

@@ -1,9 +1,0 @@
-# inventory-oa · DecisionTreeDriverBadge dual-gate checklist
-branch: campaign/research-reading-spine-2026-07-09-main
-residual: oa
-files:
-  apps/reading/src/components/engagement/DecisionTreeDriverBadge.tsx
-  apps/reading/src/components/engagement/DecisionTreeDriverBadge.test.tsx
-  docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md
-proof: vitest DecisionTreeDriverBadge 8 passed
-invariants: prep only · shared driver chokepoint · never enables injectors

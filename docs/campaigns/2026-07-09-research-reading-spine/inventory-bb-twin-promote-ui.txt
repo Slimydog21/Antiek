@@ -1,8 +1,0 @@
-# residual (bb) twin promote → context product path + panel
-# PR #465 · 2026-07-09
-
-CAPABILITY | STATUS | EVIDENCE
-(a)–(ba) prior | branch_only | campaign inventories
-(bb) twin promote to context product | branch_only | twin_promote_context_payload; POST /engagement/twins/promote-context; TwinNotesPanel Promote to context; tests/test_engagement_twin_promote_product.py; @ 6adfc0cf
-
-NEXT: (bc) intelligent search over twin/evidence context in workstation; operator merge PR #465

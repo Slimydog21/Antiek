@@ -1,5 +1,0 @@
-# Campaign rollup (bn)–(cy) · PR #465
-North-star spine: reading float DR, twins, pubs, midnight oil, bench, budget, merge/analysis.
-cx: ResearchThis budget before float open.
-cy: decision-tree model_id chokepoint in launchFloatingDeepResearch (all float paths).
-Operator merge still gated.

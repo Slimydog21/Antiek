@@ -1,3 +1,0 @@
-# Campaign rollup (bn)–(fh) · PR #465
-BlockDetail window DR (fh); suite proposed tasks (fg); twin metrics (ff); FloatMenu full (fe).
-Operator merge still gated. Next residual (fi).
