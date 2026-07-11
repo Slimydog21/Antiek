@@ -18,12 +18,14 @@ the bridge fires correctly without making real network calls.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, field
 from typing import Protocol
 
 import httpx
 
 from .federation import FederatedOutboundCitation
+from .inbound import InboundRejection
 
 # Default timeout — federation calls cross network boundaries; keep
 # the bound moderately generous so transient delays don't fail every
@@ -34,6 +36,7 @@ DEFAULT_TRANSMIT_TIMEOUT_S: float = 30.0
 # because the substrate's interfaces/research/api/federation.py
 # always mounts it at this path; no per-partner override.
 INBOUND_CITATION_PATH: str = "/federation/inbound-citation"
+MAX_PARTNER_RESPONSE_BYTES: int = 64 * 1024
 
 
 class OutboundTransportError(Exception):
@@ -54,7 +57,7 @@ class OutboundTransmitResult:
     status: str
     rejection: str | None
     detail: str
-    partner_response_body: dict | None
+    partner_response_body: dict[str, object] | None
 
 
 class OutboundTransport(Protocol):
@@ -108,27 +111,49 @@ class HttpxOutboundTransport:
         }
         client = self._ensure_client(timeout_s)
         try:
-            response = client.post(url, json=body)
+            with client.stream(
+                "POST",
+                url,
+                json=body,
+                headers={"Accept-Encoding": "identity"},
+            ) as response:
+                if response.status_code != 200:
+                    return OutboundTransmitResult(
+                        status="transport_error",
+                        rejection=None,
+                        detail=f"partner returned HTTP {response.status_code}",
+                        partner_response_body=None,
+                    )
+                content_encoding = response.headers.get("content-encoding")
+                if (
+                    content_encoding is not None
+                    and content_encoding.strip().lower() not in ("", "identity")
+                ):
+                    return OutboundTransmitResult(
+                        status="transport_error",
+                        rejection=None,
+                        detail="partner response used unsupported content encoding",
+                        partner_response_body=None,
+                    )
+                response_body = bytearray()
+                for chunk in response.iter_bytes():
+                    if len(response_body) + len(chunk) > MAX_PARTNER_RESPONSE_BYTES:
+                        return OutboundTransmitResult(
+                            status="transport_error",
+                            rejection=None,
+                            detail="partner response exceeded size limit",
+                            partner_response_body=None,
+                        )
+                    response_body.extend(chunk)
         except httpx.HTTPError as exc:
             return OutboundTransmitResult(
                 status="transport_error",
                 rejection=None,
-                detail=f"HTTP transport failure: {type(exc).__name__}: {exc}",
-                partner_response_body=None,
-            )
-
-        if response.status_code != 200:
-            return OutboundTransmitResult(
-                status="transport_error",
-                rejection=None,
-                detail=(
-                    f"partner returned HTTP {response.status_code}: "
-                    f"{response.text[:200]}"
-                ),
+                detail=f"HTTP transport failure: {type(exc).__name__}",
                 partner_response_body=None,
             )
         try:
-            payload = response.json()
+            payload = json.loads(response_body)
         except ValueError:
             return OutboundTransmitResult(
                 status="transport_error",
@@ -145,20 +170,43 @@ class HttpxOutboundTransport:
                 partner_response_body=None,
             )
 
-        accepted = bool(payload.get("accepted", False))
+        accepted = payload.get("accepted")
+        if not isinstance(accepted, bool):
+            return OutboundTransmitResult(
+                status="transport_error",
+                rejection=None,
+                detail="partner response had invalid accepted field",
+                partner_response_body=None,
+            )
         if accepted:
+            if payload.get("rejection") is not None:
+                return OutboundTransmitResult(
+                    status="transport_error",
+                    rejection=None,
+                    detail="partner response had inconsistent acceptance fields",
+                    partner_response_body=None,
+                )
             return OutboundTransmitResult(
                 status="accepted",
                 rejection=None,
                 detail="",
-                partner_response_body=payload,
+                partner_response_body=None,
             )
-        # Refused — partner returned 200 with accepted=false + typed reason.
+        rejection = payload.get("rejection")
+        try:
+            typed_rejection = InboundRejection(rejection)
+        except (TypeError, ValueError):
+            return OutboundTransmitResult(
+                status="transport_error",
+                rejection=None,
+                detail="partner response had invalid rejection field",
+                partner_response_body=None,
+            )
         return OutboundTransmitResult(
             status="refused",
-            rejection=payload.get("rejection"),
-            detail=str(payload.get("detail") or ""),
-            partner_response_body=payload,
+            rejection=typed_rejection.value,
+            detail=f"partner refused citation: {typed_rejection.value}",
+            partner_response_body=None,
         )
 
 
@@ -176,12 +224,8 @@ class MockOutboundTransport:
     canned_status: str = "accepted"
     canned_rejection: str | None = None
     canned_detail: str = ""
-    canned_response_body: dict | None = None
-    calls: list[dict] = None  # type: ignore[assignment]
-
-    def __post_init__(self) -> None:
-        if self.calls is None:
-            self.calls = []
+    canned_response_body: dict[str, object] | None = None
+    calls: list[dict[str, object]] = field(default_factory=list)
 
     def transmit(
         self,
@@ -208,6 +252,7 @@ __all__ = [
     "DEFAULT_TRANSMIT_TIMEOUT_S",
     "HttpxOutboundTransport",
     "INBOUND_CITATION_PATH",
+    "MAX_PARTNER_RESPONSE_BYTES",
     "MockOutboundTransport",
     "OutboundTransport",
     "OutboundTransportError",
