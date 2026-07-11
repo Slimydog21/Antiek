@@ -9,8 +9,15 @@ from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any, Protocol
 
 from runtime.db_lock import LockedConnection
+
+
+class BookAcquisitionConnection(Protocol):
+    """Minimal query surface shared by locked writers and read-only connections."""
+
+    def execute(self, query: str, *args: Any, **kwargs: Any) -> Any: ...
 
 
 class AcquisitionIntegrityError(RuntimeError):
@@ -212,13 +219,16 @@ def create_purchase_intent(
         [receipt_id, *immutable, "needs_operator_authorization", intent_mac],
     )
     return PurchaseIntent(
-        receipt_id, *immutable[:5], desired_format, intent_hash,
+        receipt_id,
+        *immutable[:5],
+        desired_format,
+        intent_hash,
         "needs_operator_authorization",
     )
 
 
 def _load_verified_intent(
-    con: LockedConnection, intent_receipt_id: str, signing_key: bytes
+    con: BookAcquisitionConnection, intent_receipt_id: str, signing_key: bytes
 ) -> PurchaseIntent:
     receipt_id = _text(intent_receipt_id, "intent_receipt_id")
     row = con.execute(
@@ -259,6 +269,16 @@ def _load_verified_intent(
         computed_hash,
         str(status),
     )
+
+
+def get_purchase_intent(
+    con: BookAcquisitionConnection,
+    *,
+    intent_receipt_id: str,
+    signing_key: bytes,
+) -> PurchaseIntent:
+    """Load and authenticate one persisted purchase intent."""
+    return _load_verified_intent(con, intent_receipt_id, signing_key)
 
 
 def authorize_purchase_intent(
@@ -320,9 +340,7 @@ def authorize_purchase_intent(
             )
     else:
         if intent.status != "needs_operator_authorization":
-            raise AcquisitionIntegrityError(
-                "terminal purchase intent has no authorization receipt"
-            )
+            raise AcquisitionIntegrityError("terminal purchase intent has no authorization receipt")
         terminal_status = decision.value
         try:
             con.execute("BEGIN TRANSACTION")
@@ -358,13 +376,31 @@ def authorize_purchase_intent(
 
 
 def verify_authorization(
-    con: LockedConnection,
+    con: BookAcquisitionConnection,
     *,
     authorization_receipt_id: str,
     expected_operator_id: str,
     signing_key: bytes,
 ) -> PurchaseAuthorization:
-    _require_writer(con)
+    authorization = get_purchase_authorization(
+        con,
+        authorization_receipt_id=authorization_receipt_id,
+        expected_operator_id=expected_operator_id,
+        signing_key=signing_key,
+    )
+    if authorization.decision is not AuthorizationDecision.AUTHORIZED:
+        raise AcquisitionIntegrityError("purchase intent was not authorized")
+    return authorization
+
+
+def get_purchase_authorization(
+    con: BookAcquisitionConnection,
+    *,
+    authorization_receipt_id: str,
+    expected_operator_id: str,
+    signing_key: bytes,
+) -> PurchaseAuthorization:
+    """Load and authenticate an authorized or denied lifecycle receipt."""
     receipt_id = _text(authorization_receipt_id, "authorization_receipt_id")
     expected_operator_id = _text(expected_operator_id, "expected_operator_id")
     row = con.execute(
@@ -401,9 +437,9 @@ def verify_authorization(
         raise AcquisitionIntegrityError("authorization signature is invalid")
     if int(cents) > intent.max_price_usd_cents:
         raise AcquisitionIntegrityError("authorization exceeds purchase intent ceiling")
-    if decision is not AuthorizationDecision.AUTHORIZED:
-        raise AcquisitionIntegrityError("purchase intent was not authorized")
-    if intent.status != AuthorizationDecision.AUTHORIZED.value:
+    if decision is AuthorizationDecision.DENIED and int(cents) != 0:
+        raise AcquisitionIntegrityError("denied authorization has a nonzero ceiling")
+    if intent.status != decision.value:
         raise AcquisitionIntegrityError("purchase intent status does not match authorization")
     return PurchaseAuthorization(
         receipt_id,
