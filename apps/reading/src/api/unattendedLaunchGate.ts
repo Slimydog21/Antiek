@@ -87,26 +87,36 @@ export function parseLaunchGateDecision(body: unknown): LaunchGateDecision {
   if (!Array.isArray(o.reasons) || !Array.isArray(o.notes)) {
     throw new Error("launch gate rejected: reasons/notes must be arrays");
   }
-  // If dispatch_ready with positive ceiling, receipt must be present
   const brief = o.brief as Record<string, unknown>;
   const ceiling = brief.approved_ceiling_cents;
-  if (
-    o.dispatch_ready === true &&
-    typeof ceiling === "number" &&
-    ceiling > 0 &&
-    !(typeof o.consent_receipt_id === "string" && o.consent_receipt_id.trim())
-  ) {
+  if (typeof ceiling !== "number" || !Number.isInteger(ceiling) || ceiling < 0) {
     throw new Error(
-      "launch gate rejected: dispatch_ready with ceiling>0 requires consent_receipt_id",
+      "launch gate rejected: brief.approved_ceiling_cents must be nonnegative integer",
     );
+  }
+  const receipt =
+    typeof o.consent_receipt_id === "string" && o.consent_receipt_id.trim()
+      ? o.consent_receipt_id.trim()
+      : null;
+  // Trust-boundary: re-check full dispatch_ready predicate (never trust server alone).
+  if (o.dispatch_ready === true) {
+    if (o.operator_approved !== true) {
+      throw new Error(
+        "launch gate rejected: dispatch_ready=true requires operator_approved=true",
+      );
+    }
+    if (!(ceiling === 0 || receipt !== null)) {
+      throw new Error(
+        "launch gate rejected: dispatch_ready=true requires ceiling==0 or consent_receipt_id",
+      );
+    }
   }
   return {
     dispatch_ready: o.dispatch_ready,
     live_execution_authorized: false,
     zero_ceiling_dry_run: o.zero_ceiling_dry_run,
     operator_approved: o.operator_approved,
-    consent_receipt_id:
-      typeof o.consent_receipt_id === "string" ? o.consent_receipt_id : null,
+    consent_receipt_id: receipt,
     brief,
     reasons: o.reasons.map((r) => {
       if (typeof r !== "string") throw new Error("reasons must be strings");

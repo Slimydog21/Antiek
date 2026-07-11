@@ -58,7 +58,32 @@ describe("parseLaunchGateDecision", () => {
         consent_receipt_id: null,
         brief: { ...sample.brief, approved_ceiling_cents: 50 },
       }),
-    ).toThrow(/consent_receipt_id/);
+    ).toThrow(/consent_receipt_id|ceiling/);
+  });
+
+  it("rejects dispatch_ready when operator_approved is false", () => {
+    expect(() =>
+      parseLaunchGateDecision({
+        ...sample,
+        operator_approved: false,
+        dispatch_ready: true,
+      }),
+    ).toThrow(/operator_approved/);
+  });
+
+  it("rejects missing/malformed brief ceiling", () => {
+    expect(() =>
+      parseLaunchGateDecision({
+        ...sample,
+        brief: { ...sample.brief, approved_ceiling_cents: undefined },
+      }),
+    ).toThrow(/approved_ceiling_cents/);
+    expect(() =>
+      parseLaunchGateDecision({
+        ...sample,
+        brief: { ...sample.brief, approved_ceiling_cents: 1.5 },
+      }),
+    ).toThrow(/approved_ceiling_cents/);
   });
 });
 
