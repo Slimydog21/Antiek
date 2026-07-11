@@ -280,6 +280,6 @@ export function formatReadingHighlightFloatMergeTraySummary(
     `surface_ready=${c.surface_ready} · action=${c.surface_action} · ` +
     `launch_ready=${c.launch.launch_ready} · ` +
     `tray_ready=${c.tray ? c.tray.tray_ready : "n/a"} · ` +
-    `live_dispatched=false · merge_executed=false`
+    `live_dispatched=false · merge_executed=false · pack_dispatched=false`
   );
 }

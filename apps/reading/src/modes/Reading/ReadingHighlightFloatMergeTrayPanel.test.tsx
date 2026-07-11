@@ -27,4 +27,13 @@ describe("ReadingHighlightFloatMergeTrayPanel", () => {
       expect(screen.getByTestId("rhfmt-live").textContent).toMatch(/false/);
     });
   });
+
+  it("gated rejects with error surface", async () => {
+    render(<ReadingHighlightFloatMergeTrayPanel />);
+    fireEvent.click(screen.getByTestId("rhfmt-gated"));
+    fireEvent.click(screen.getByTestId("rhfmt-compose"));
+    await waitFor(() => {
+      expect(screen.getByTestId("rhfmt-error").textContent).toMatch(/gated/i);
+    });
+  });
 });

@@ -24,6 +24,11 @@ export default function ReadingHighlightFloatMergeTrayPanel({
   const [highlight, setHighlight] = useState("scaling laws under noise");
   const [action, setAction] = useState<ReadingSurfaceAction>("spawn_only");
   const [ack, setAck] = useState(true);
+  const [gated, setGated] = useState(false);
+  /** tri-state budget: "unknown" | "true" | "false" maps to would_exceed */
+  const [wouldExceed, setWouldExceed] = useState<"unknown" | "true" | "false">(
+    "false",
+  );
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] =
     useState<ReadingHighlightFloatMergeTrayCompose | null>(null);
@@ -32,12 +37,18 @@ export default function ReadingHighlightFloatMergeTrayPanel({
     setError(null);
     setResult(null);
     try {
+      const would_exceed: boolean | null =
+        wouldExceed === "unknown"
+          ? null
+          : wouldExceed === "true"
+            ? true
+            : false;
       setResult(
         composeFn({
           parent_asset_id: parent.trim(),
           highlight: highlight.trim(),
-          gated: false,
-          would_exceed: false,
+          gated,
+          would_exceed,
           preferred_view_mode: "floating",
           source_families: ["arxiv", "substack"],
           surface_action: action,
@@ -119,6 +130,30 @@ export default function ReadingHighlightFloatMergeTrayPanel({
               data-testid="rhfmt-ack"
             />
             <span>operator_ack</span>
+          </label>
+          <label className="text-sm flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={gated}
+              onChange={(e) => setGated(e.target.checked)}
+              data-testid="rhfmt-gated"
+            />
+            <span>gated (reject when true)</span>
+          </label>
+          <label className="text-sm flex flex-col gap-1">
+            <span>would_exceed (budget)</span>
+            <select
+              value={wouldExceed}
+              onChange={(e) =>
+                setWouldExceed(e.target.value as "unknown" | "true" | "false")
+              }
+              data-testid="rhfmt-would-exceed"
+              className="border border-border rounded px-2 py-1 text-sm"
+            >
+              <option value="false">false (budget ok)</option>
+              <option value="true">true (would exceed)</option>
+              <option value="unknown">unknown (null)</option>
+            </select>
           </label>
           <LemonButton
             variant="primary"

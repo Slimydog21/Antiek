@@ -108,4 +108,72 @@ describe("composeReadingHighlightFloatMergeTray", () => {
       }),
     ).toThrow(/gated/);
   });
+
+  it("tray_cohesive multi-select intent without dispatch", () => {
+    const c = composeReadingHighlightFloatMergeTray({
+      parent_asset_id: "book-1",
+      highlight: "new highlight",
+      gated: false,
+      would_exceed: false,
+      surface_action: "tray_cohesive",
+      operator_ack: true,
+      existing_members: [
+        {
+          instance_id: "existing-1",
+          parent_asset_id: "book-1",
+          status: "completed",
+          live_dispatched: false,
+          merge_executed: false,
+        },
+      ],
+      selected_instance_ids: ["existing-1"],
+    });
+    expect(c.tray?.action).toBe("cohesive_prompt");
+    expect(c.tray?.selected_count).toBeGreaterThanOrEqual(2);
+    expect(c.pack_dispatched).toBe(false);
+    expect(c.surface_ready).toBe(true);
+  });
+
+  it("operator_ack false keeps surface_ready false", () => {
+    const c = composeReadingHighlightFloatMergeTray({
+      parent_asset_id: "book-1",
+      highlight: "claim",
+      gated: false,
+      would_exceed: false,
+      surface_action: "spawn_only",
+      operator_ack: false,
+    });
+    expect(c.launch.launch_ready).toBe(false);
+    expect(c.surface_ready).toBe(false);
+    expect(c.live_dispatched).toBe(false);
+  });
+
+  it("would_exceed true without override blocks launch", () => {
+    const c = composeReadingHighlightFloatMergeTray({
+      parent_asset_id: "book-1",
+      highlight: "claim",
+      gated: false,
+      would_exceed: true,
+      surface_action: "spawn_only",
+      operator_ack: true,
+    });
+    expect(c.launch.budget_ready).toBe(false);
+    expect(c.surface_ready).toBe(false);
+    expect(c.live_dispatched).toBe(false);
+  });
+
+  it("summary includes all honesty flags", () => {
+    const c = composeReadingHighlightFloatMergeTray({
+      parent_asset_id: "book-1",
+      highlight: "claim",
+      gated: false,
+      would_exceed: false,
+      surface_action: "spawn_only",
+      operator_ack: true,
+    });
+    const s = formatReadingHighlightFloatMergeTraySummary(c);
+    expect(s).toMatch(/live_dispatched=false/);
+    expect(s).toMatch(/merge_executed=false/);
+    expect(s).toMatch(/pack_dispatched=false/);
+  });
 });
