@@ -135,8 +135,14 @@ def install_spawn_cost_hooks(
     def record_actual_cb(delta_usd: float) -> None:
         # Raw delta path remains for refunds (daemon already uses
         # budget.record_actual directly on decline). Spawns should prefer
-        # report_actual_cost for absolute actuals.
-        budget.record_actual(float(delta_usd), now=now)
+        # report_actual_cost for absolute actuals. Reject non-finite deltas
+        # so NaN/inf cannot floor the sidecar to a fabricated $0 spent.
+        delta = float(delta_usd)
+        if not math.isfinite(delta):
+            raise ValueError(
+                f"record_actual_cb delta must be finite, got {delta_usd!r}"
+            )
+        budget.record_actual(delta, now=now)
 
     def report_actual(actual_cost_usd: float) -> float:
         return report_actual_cost(context, actual_cost_usd, now=now)

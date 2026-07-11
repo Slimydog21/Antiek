@@ -219,6 +219,20 @@ def test_non_finite_actual_rejected(isolated_env: dict[str, Path]) -> None:
     assert _sidecar_spent() == pytest.approx(0.50)
 
 
+def test_record_actual_cb_rejects_non_finite_delta(
+    isolated_env: dict[str, Path],
+) -> None:
+    """Public record_actual_cb must not let NaN floor spent to fake $0."""
+    budget = DaemonBudget(daily_cap_usd=5.0)
+    budget.reserve(0.50)
+    ctx: dict = {"expected_cost_usd": 0.50}
+    install_spawn_cost_hooks(ctx, budget)
+    for bad in (float("nan"), float("inf"), float("-inf")):
+        with pytest.raises(ValueError, match="finite"):
+            ctx["record_actual_cb"](bad)
+    assert _sidecar_spent() == pytest.approx(0.50)
+
+
 def test_cli_module_uses_settled_entry() -> None:
     """Production __main__ must call settled/wrap paths, not bare run_one_iteration."""
     src = Path("orchestration/continuous/__main__.py").read_text(encoding="utf-8")
