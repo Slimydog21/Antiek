@@ -19,12 +19,13 @@ from __future__ import annotations
 
 import datetime
 import math
-from collections.abc import Callable, Sequence
+import uuid
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from .protocol import CorpusAdapter, CorpusDocument, CorpusHit, CorpusMiss, FetchResult, Provenance
 
-AdapterFactory = Callable[["FixtureDoc"], CorpusAdapter]
+AdapterFactory = Callable[[tuple["FixtureDoc", ...]], CorpusAdapter]
 
 # ---------------------------------------------------------------------------
 # Fixture document shape — what the kit seeds into the adapter's reader
@@ -46,36 +47,45 @@ class FixtureDoc:
 
 
 def assert_corpus_conformance(factory: AdapterFactory) -> None:
-    """Run the mandatory kit against two incompatible seeded corpora.
-
-    The factory receives each fixture and must return an adapter backed by that
-    fixture. Challenging two distinct identities, queries, and full contents
-    prevents a constant prebuilt adapter from satisfying the reusable kit.
-    """
-    fixtures = (
-        FixtureDoc(
-            "conformance-alpha-7f8c",
-            "alpha-evidence-7f8c",
-            "First independently seeded corpus contains alpha-evidence-7f8c.",
-        ),
-        FixtureDoc(
-            "conformance-beta-2a91",
-            "beta-evidence-2a91",
-            "Second incompatible corpus contains beta-evidence-2a91 and differs.",
-        ),
-    )
+    """Run the mandatory kit against two randomized multi-document corpora."""
     observed: list[CorpusDocument] = []
-    for fixture in fixtures:
-        adapter = factory(fixture)
-        assert_search_retrieval(adapter, fixture)
-        assert_fetch_roundtrip(adapter, fixture)
+    for _ in range(2):
+        nonce = uuid.uuid4().hex
+        phrase = f"evidence-{nonce}"
+        primary = FixtureDoc(
+            f"primary-{nonce}",
+            phrase,
+            ((f"Primary {phrase} {phrase} {phrase}. ") + ("long context " * 40)),
+        )
+        secondary = FixtureDoc(
+            f"secondary-{nonce}",
+            phrase,
+            ((f"Secondary {phrase}. ") + ("different context " * 40)),
+        )
+        decoy = FixtureDoc(
+            f"decoy-{nonce}",
+            f"unrelated-{nonce}",
+            "unrelated material " * 40,
+        )
+        fixtures = (primary, secondary, decoy)
+        adapter = factory(fixtures)
+        by_id = {fixture.id: fixture for fixture in fixtures}
+        assert_search_retrieval(
+            adapter,
+            primary,
+            decoy_ids=frozenset({decoy.id}),
+            expected_ids=(primary.id, secondary.id),
+            expected_documents=by_id,
+        )
+        for fixture in fixtures:
+            assert_fetch_roundtrip(adapter, fixture)
+            assert_provenance_completeness(adapter, fixture)
+            assert_fetch_determinism(adapter, fixture)
         assert_unknown_id_returns_miss(adapter)
-        assert_provenance_completeness(adapter, fixture)
         assert_read_only(adapter)
         assert_empty_query_returns_no_hits(adapter)
         assert_miss_has_id(adapter)
-        assert_fetch_determinism(adapter, fixture)
-        result = adapter.fetch(fixture.id)
+        result = adapter.fetch(primary.id)
         assert type(result) is CorpusDocument
         observed.append(result)
     assert observed[0] != observed[1], "factory ignored incompatible fixture corpora"
@@ -91,6 +101,8 @@ def assert_search_retrieval(
     fixture: FixtureDoc,
     *,
     decoy_ids: frozenset[str] | None = None,
+    expected_ids: tuple[str, ...] | None = None,
+    expected_documents: Mapping[str, FixtureDoc] | None = None,
 ) -> None:
     """A fixture document seeded with ``query_phrase`` must rank first.
 
@@ -124,7 +136,25 @@ def assert_search_retrieval(
         assert len(hit.snippet) <= 200
         ids.append(hit.id)
     assert len(ids) == len(set(ids)), "search ids must be unique"
-    assert list(hits) == sorted(hits, key=lambda hit: (-hit.score, hit.id))
+    assert list(hits) == sorted(hits, key=lambda hit: (-hit.score, hit.id)), (
+        "search results must sort by descending score then ascending id"
+    )
+    assert hits == adapter.search(fixture.query_phrase), (
+        "identical search must replay deterministically"
+    )
+    if expected_ids is not None:
+        assert tuple(hit.id for hit in hits) == expected_ids, (
+            "search did not return the exact seeded matching corpus in rank order"
+        )
+    if expected_documents is not None:
+        for hit in hits:
+            expected = expected_documents.get(hit.id)
+            assert expected is not None, f"search returned phantom id {hit.id!r}"
+            fetched = adapter.fetch(hit.id)
+            assert type(fetched) is CorpusDocument, (
+                f"search hit {hit.id!r} did not fetch coherently"
+            )
+            assert fetched.content == expected.content
     assert top.id == fixture.id, f"expected fixture {fixture.id!r} to rank first, got {top.id!r}"
     assert top.score > 0, f"expected score > 0 for fixture hit, got {top.score}"
     assert fixture.query_phrase.lower() in top.snippet.lower(), (
@@ -180,7 +210,8 @@ def assert_unknown_id_returns_miss(adapter: CorpusAdapter) -> None:
 def assert_provenance_completeness(adapter: CorpusAdapter, fixture: FixtureDoc) -> None:
     """A fetched document has non-empty provenance fields.
 
-    ``source_kind``, ``origin_ref``, and ``retrieved_at`` must all be set.
+    ``source_kind``, ``origin_ref``, ``retrieved_at``, and ``license_class``
+    must all be set. Origin identity is the fetched unit id.
     """
     result = adapter.fetch(fixture.id)
     assert isinstance(result, CorpusDocument), (
@@ -194,15 +225,19 @@ def assert_provenance_completeness(adapter: CorpusAdapter, fixture: FixtureDoc) 
     assert type(prov.origin_ref) is str and prov.origin_ref.strip(), (
         "provenance.origin_ref is invalid"
     )
+    assert prov.origin_ref == fixture.id
+    assert type(prov.license_class) is str and prov.license_class.strip()
     assert type(prov.retrieved_at) is datetime.datetime
     assert prov.retrieved_at.tzinfo is not None
     assert prov.retrieved_at.utcoffset() == datetime.timedelta(0)
 
 
 def assert_read_only(adapter: CorpusAdapter) -> None:
-    """The adapter's public surface exposes no reader handle and no write methods.
+    """The adapter exposes exactly the two read verbs and no public store handle.
 
-    Structural checks (not name-prefix theatre):
+    These are structural/public-surface checks. Behavioral read-only evidence is
+    supplied by deterministic repeated search/fetch in the mandatory kit; Python
+    cannot prove that an opaque private dependency performed no hidden write.
 
     1. Reader protocols expose only read methods (``list_twins`` for twin
        notes, ``get_document`` + ``list_membership`` for hosted docs).
@@ -310,7 +345,7 @@ class BrokenProvenanceAdapter:
 
         self._now_fn = now_fn or (lambda: _dt.datetime.now(_dt.UTC))
 
-    def search(self, query: str) -> Sequence[Any]:
+    def search(self, query: str) -> tuple[CorpusHit, ...]:
         from .protocol import CorpusHit
 
         if not query.strip():
@@ -329,6 +364,7 @@ class BrokenProvenanceAdapter:
             object.__setattr__(provenance, "source_kind", "")
             object.__setattr__(provenance, "origin_ref", "")
             object.__setattr__(provenance, "retrieved_at", self._now_fn())
+            object.__setattr__(provenance, "license_class", "")
             document = object.__new__(CorpusDocument)
             object.__setattr__(document, "content", self._fixture.content)
             object.__setattr__(document, "provenance", provenance)

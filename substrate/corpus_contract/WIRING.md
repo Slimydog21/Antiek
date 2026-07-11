@@ -13,7 +13,8 @@ consumes any corpus through the two-verb protocol:
 from substrate.corpus_contract import CorpusAdapter, CorpusHit, CorpusDocument, FetchResult
 ```
 
-A research iteration calls ``adapter.search(query)`` to get ranked hits
+A research iteration calls ``adapter.search(query)`` to get an immutable
+tuple of ranked hits (descending score, ascending opaque id for ties)
 with snippets (context economy: doctrine I-2), then calls
 ``adapter.fetch(hit.id)`` for each hit it wants to synthesize.  The loop
 never needs a third verb — if it measurably needs link-graph traversal to
@@ -59,6 +60,12 @@ core claim.
 - **I-8:** read-only by construction.  Enforced by ``TwinNoteReader`` and
   ``HostedDocReader`` protocols having no write methods, and
   ``assert_read_only`` in the conformance kit.
+- **Rights/provenance:** every fetch carries the fetched unit's
+  ``origin_ref`` and a non-empty ``license_class``. Hosted documents preserve
+  the stored rights class; operator twin notes are ``operator_private``.
+- **Public surface:** adapters expose exactly ``search`` and ``fetch``. The
+  conformance kit challenges randomized multi-document corpora, coherent hit
+  fetches, deterministic replay, snippet bounds, and exact ranking.
 - **W6 falsification hook:** if the twin-notes adapter reveals recall needs
   graph traversal (follow ``supported_by`` edges), record that as
   doctrine-falsifying evidence.  Noted in the handoff packet.

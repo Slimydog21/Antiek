@@ -14,7 +14,7 @@ Public API:
     ``CorpusHit``      — one search result (id, score, snippet)
     ``CorpusDocument`` — a fetched document (content + provenance)
     ``CorpusMiss``     — typed miss for unknown ids
-    ``Provenance``     — source_kind, origin_ref, retrieved_at
+    ``Provenance``     — source_kind, origin_ref, retrieved_at, license_class
     ``FetchResult``    — ``CorpusDocument | CorpusMiss``
 """
 

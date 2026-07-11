@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import datetime as _dt
 import math
-from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
@@ -80,11 +79,13 @@ class Provenance:
     source_kind: str
     origin_ref: str
     retrieved_at: _dt.datetime
+    license_class: str
 
     def __post_init__(self) -> None:
         _nonempty(self.source_kind, "Provenance.source_kind")
         _nonempty(self.origin_ref, "Provenance.origin_ref")
         validate_utc(self.retrieved_at)
+        _nonempty(self.license_class, "Provenance.license_class")
 
 
 @dataclass(frozen=True)
@@ -134,11 +135,11 @@ class CorpusAdapter(Protocol):
     write capability exposed through the interface.
     """
 
-    def search(self, query: str) -> Sequence[CorpusHit]:
+    def search(self, query: str) -> tuple[CorpusHit, ...]:
         """Return ranked hits for *query*, each with a relevance score and snippet.
 
-        An empty query returns no hits.  Results are ordered by descending
-        ``score``.
+        An empty query returns no hits. Results are an immutable tuple ordered
+        by descending score, then ascending opaque id for deterministic ties.
         """
         ...
 

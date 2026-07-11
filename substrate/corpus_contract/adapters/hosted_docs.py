@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime
 import inspect
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from typing import Any, Protocol, TypedDict, cast
 
 from ..protocol import (
@@ -63,8 +63,7 @@ def _reader(reader: object) -> None:
     public = {
         name
         for name in dir(reader)
-        if not name.startswith("_")
-        and callable(inspect.getattr_static(reader, name))
+        if not name.startswith("_") and callable(inspect.getattr_static(reader, name))
     }
     expected = {"get_document", "list_membership"}
     if public != expected:
@@ -97,6 +96,12 @@ def _snippet(title: str, body: str, query: str) -> str:
     return source[start:end]
 
 
+def _score(source: str, query: str) -> float:
+    folded, needle = source.casefold(), query.casefold()
+    occurrences = folded.count(needle)
+    return float(occurrences) + (float(len(needle)) / max(1, len(folded)))
+
+
 class HostedDocsCorpusAdapter:
     def __init__(
         self,
@@ -123,12 +128,14 @@ class HostedDocsCorpusAdapter:
         raw = self.__reader.get_document(id)
         return None if raw is None else _row(raw, id, self._owner_id)
 
-    def search(self, query: str) -> Sequence[CorpusHit]:
+    def search(self, query: str) -> tuple[CorpusHit, ...]:
         if type(query) is not str:
             raise CorpusContractError("query must be an exact str")
         q = query.strip()
         if not q:
             return ()
+        if "\n" in q or "\r" in q:
+            raise CorpusContractError("query must be a single line")
         hits: list[CorpusHit] = []
         for id in self._membership():
             row = self._document(id)
@@ -139,7 +146,7 @@ class HostedDocsCorpusAdapter:
                 hits.append(
                     CorpusHit(
                         id=id,
-                        score=float(len(q)) / len(combined),
+                        score=_score(combined, q),
                         snippet=_snippet(row["title"], row["body_text"], q),
                     )
                 )
@@ -158,5 +165,6 @@ class HostedDocsCorpusAdapter:
                 source_kind="hosted_document",
                 origin_ref=wanted,
                 retrieved_at=validate_utc(self._now_fn(), "clock output"),
+                license_class=row["license_class"],
             ),
         )

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import datetime
 import pathlib
+import sys
 import tempfile
 from typing import Any
 
@@ -265,9 +266,7 @@ class TestHostedDocsConformance:
         }
         reader = InMemoryHostedDocReader(docs, memberships)
         # Adapter scoped to owner-A — must NOT see owner-B's document.
-        adapter_a = HostedDocsCorpusAdapter(
-            reader, owner_id="owner-A", now_fn=_fixed_now
-        )
+        adapter_a = HostedDocsCorpusAdapter(reader, owner_id="owner-A", now_fn=_fixed_now)
         result = adapter_a.fetch(foreign_doc_id)
         assert isinstance(result, CorpusMiss), (
             f"cross-owner fetch of existing doc should return CorpusMiss, "
@@ -321,7 +320,6 @@ class TestNegativeTypeProof:
         import subprocess
 
         project_root = str(pathlib.Path(__file__).resolve().parent.parent)
-        mypy_bin = str(pathlib.Path(project_root) / ".venv-wt" / "bin" / "mypy")
         env = {**os.environ, "MYPYPATH": project_root}
 
         source = """\
@@ -336,7 +334,9 @@ adapter: CorpusAdapter = Wrong()
             target.write_text(source)
             result = subprocess.run(
                 [
-                    mypy_bin,
+                    sys.executable,
+                    "-m",
+                    "mypy",
                     str(target),
                     "--strict",
                     "--no-error-summary",
@@ -380,9 +380,9 @@ def test_frozen_value_validation(score: object) -> None:
 
 def test_other_forged_values_rejected() -> None:
     with pytest.raises(CorpusContractError):
-        Provenance("kind", "ref", datetime.datetime(2026, 1, 1))
+        Provenance("kind", "ref", datetime.datetime(2026, 1, 1), "private")
     with pytest.raises(CorpusContractError):
-        CorpusDocument("", Provenance("kind", "ref", _fixed_now()))
+        CorpusDocument("", Provenance("kind", "ref", _fixed_now(), "private"))
 
 
 class WriteCapableTwinReader(InMemoryTwinNoteReader):
@@ -394,6 +394,17 @@ def test_write_capable_reader_rejected_before_retention() -> None:
     reader = WriteCapableTwinReader([])
     with pytest.raises(CorpusContractError, match="callable surface"):
         TwinNotesCorpusAdapter(reader, "asset-1")
+
+
+class WriteCapableHostedReader(InMemoryHostedDocReader):
+    def mutate(self) -> None:
+        pass
+
+
+def test_write_capable_hosted_reader_rejected_before_retention() -> None:
+    reader = WriteCapableHostedReader({}, {})
+    with pytest.raises(CorpusContractError, match="callable surface"):
+        HostedDocsCorpusAdapter(reader, "owner-1")
 
 
 def test_twin_cross_scope_and_malformed_rows_fail_closed() -> None:
@@ -469,6 +480,17 @@ def test_title_only_match_has_bounded_matching_snippet() -> None:
     assert len(hits[0].snippet) <= 200
 
 
+def test_provenance_preserves_hosted_rights_and_twin_identity() -> None:
+    hosted = _make_hosted_adapter().fetch(HOSTED_FIXTURE.id)
+    twin = _make_twin_adapter().fetch(TWIN_FIXTURE.id)
+    assert type(hosted) is CorpusDocument
+    assert hosted.provenance.license_class == "public_domain"
+    assert hosted.provenance.origin_ref == HOSTED_FIXTURE.id
+    assert type(twin) is CorpusDocument
+    assert twin.provenance.license_class == "operator_private"
+    assert twin.provenance.origin_ref == TWIN_FIXTURE.id
+
+
 @pytest.mark.parametrize(
     "clock",
     [
@@ -480,14 +502,24 @@ def test_title_only_match_has_bounded_matching_snippet() -> None:
     ],
 )
 def test_unsafe_clocks_fail(clock: Any) -> None:
-    adapter = TwinNotesCorpusAdapter(
-        _make_twin_adapter()._TwinNotesCorpusAdapter__reader, "asset-1", now_fn=clock
+    reader = InMemoryTwinNoteReader(
+        [
+            {
+                "note_id": TWIN_FIXTURE.id,
+                "asset_id": "asset-1",
+                "kind": "insight",
+                "text": TWIN_FIXTURE.content,
+                "source_spawn_id": None,
+                "investigation_id": None,
+            }
+        ]
     )
+    adapter = TwinNotesCorpusAdapter(reader, "asset-1", now_fn=clock)
     with pytest.raises(CorpusContractError, match="clock output"):
         adapter.fetch(TWIN_FIXTURE.id)
 
 
-def _twin_factory(fixture: FixtureDoc) -> TwinNotesCorpusAdapter:
+def _twin_factory(fixtures: tuple[FixtureDoc, ...]) -> TwinNotesCorpusAdapter:
     reader = InMemoryTwinNoteReader(
         [
             {
@@ -498,32 +530,30 @@ def _twin_factory(fixture: FixtureDoc) -> TwinNotesCorpusAdapter:
                 "source_spawn_id": None,
                 "investigation_id": None,
             }
+            for fixture in fixtures
         ]
     )
-    return TwinNotesCorpusAdapter(
-        reader, "factory-asset", now_fn=_fixed_now
-    )
+    return TwinNotesCorpusAdapter(reader, "factory-asset", now_fn=_fixed_now)
 
 
-def _hosted_factory(fixture: FixtureDoc) -> HostedDocsCorpusAdapter:
-    row = {
-        "document_id": fixture.id,
-        "owner_id": "factory-owner",
-        "book_id": f"book-{fixture.id}",
-        "content_hash": f"hash-{fixture.id}",
-        "title": f"Document {fixture.id}",
-        "license_class": "private",
-        "body_text": fixture.content,
-        "source_format": "text",
-        "receipt_id": None,
-        "view_format": "html",
+def _hosted_factory(fixtures: tuple[FixtureDoc, ...]) -> HostedDocsCorpusAdapter:
+    rows = {
+        fixture.id: {
+            "document_id": fixture.id,
+            "owner_id": "factory-owner",
+            "book_id": f"book-{fixture.id}",
+            "content_hash": f"hash-{fixture.id}",
+            "title": f"Document {fixture.id}",
+            "license_class": "private",
+            "body_text": fixture.content,
+            "source_format": "text",
+            "receipt_id": None,
+            "view_format": "html",
+        }
+        for fixture in fixtures
     }
-    reader = InMemoryHostedDocReader(
-        {fixture.id: row}, {"factory-owner": [fixture.id]}
-    )
-    return HostedDocsCorpusAdapter(
-        reader, "factory-owner", now_fn=_fixed_now
-    )
+    reader = InMemoryHostedDocReader(rows, {"factory-owner": [fixture.id for fixture in fixtures]})
+    return HostedDocsCorpusAdapter(reader, "factory-owner", now_fn=_fixed_now)
 
 
 @pytest.mark.parametrize("factory", [_twin_factory, _hosted_factory])
@@ -532,15 +562,50 @@ def test_mandatory_factory_level_conformance(factory: Any) -> None:
 
 
 def test_factory_conformance_rejects_constant_fabricator() -> None:
-    constant = _twin_factory(
-        FixtureDoc("constant-id", "constant-query", "constant-query body")
-    )
+    constant = _twin_factory((FixtureDoc("constant-id", "constant-query", "constant-query body"),))
 
-    def ignores_fixture(_fixture: FixtureDoc) -> TwinNotesCorpusAdapter:
+    def ignores_fixture(_fixtures: tuple[FixtureDoc, ...]) -> TwinNotesCorpusAdapter:
         return constant
 
     with pytest.raises(AssertionError):
         assert_corpus_conformance(ignores_fixture)
+
+
+class SearchOverride:
+    """Exact two-verb adapter used to prove hostile search behavior fails."""
+
+    def __init__(self, delegate: TwinNotesCorpusAdapter, mode: str) -> None:
+        self._delegate = delegate
+        self._mode = mode
+        self._calls = 0
+
+    def search(self, query: str) -> tuple[CorpusHit, ...]:
+        hits = self._delegate.search(query)
+        if not hits:
+            return hits
+        if self._mode == "phantom":
+            return (*hits, CorpusHit("phantom", 0.1, query))
+        if self._mode == "full-snippet":
+            first = hits[0]
+            return (CorpusHit(first.id, first.score, "x" * 201), *hits[1:])
+        if self._mode == "reverse":
+            return tuple(reversed(hits))
+        if self._mode == "mutating":
+            self._calls += 1
+            return hits if self._calls == 1 else hits[:-1]
+        raise AssertionError(f"unknown hostile mode {self._mode}")
+
+    def fetch(self, id: str) -> CorpusDocument | CorpusMiss:
+        return self._delegate.fetch(id)
+
+
+@pytest.mark.parametrize("mode", ["phantom", "full-snippet", "reverse", "mutating"])
+def test_factory_conformance_rejects_hostile_search_adapters(mode: str) -> None:
+    def hostile(fixtures: tuple[FixtureDoc, ...]) -> SearchOverride:
+        return SearchOverride(_twin_factory(fixtures), mode)
+
+    with pytest.raises(AssertionError):
+        assert_corpus_conformance(hostile)
 
 
 def test_reader_introspection_does_not_execute_descriptors() -> None:

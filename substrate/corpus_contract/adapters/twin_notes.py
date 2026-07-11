@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime
 import inspect
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from typing import Any, Protocol, TypedDict, cast
 
 from ..protocol import (
@@ -38,8 +38,7 @@ def _reader(reader: object) -> None:
     public = {
         name
         for name in dir(reader)
-        if not name.startswith("_")
-        and callable(inspect.getattr_static(reader, name))
+        if not name.startswith("_") and callable(inspect.getattr_static(reader, name))
     }
     if public != {"list_twins"}:
         raise CorpusContractError(
@@ -76,6 +75,12 @@ def _snippet(text: str, query: str) -> str:
     return text[start:end]
 
 
+def _score(text: str, query: str) -> float:
+    folded, needle = text.casefold(), query.casefold()
+    occurrences = folded.count(needle)
+    return float(occurrences) + (float(len(needle)) / max(1, len(folded)))
+
+
 class TwinNotesCorpusAdapter:
     def __init__(
         self,
@@ -99,16 +104,18 @@ class TwinNotesCorpusAdapter:
             raise CorpusContractError("duplicate twin note_id")
         return rows
 
-    def search(self, query: str) -> Sequence[CorpusHit]:
+    def search(self, query: str) -> tuple[CorpusHit, ...]:
         if type(query) is not str:
             raise CorpusContractError("query must be an exact str")
         q = query.strip()
         if not q:
             return ()
+        if "\n" in q or "\r" in q:
+            raise CorpusContractError("query must be a single line")
         hits = [
             CorpusHit(
                 id=row["note_id"],
-                score=float(len(q)) / len(row["text"]),
+                score=_score(row["text"], q),
                 snippet=_snippet(row["text"], q),
             )
             for row in self._rows()
@@ -124,8 +131,9 @@ class TwinNotesCorpusAdapter:
                     content=row["text"],
                     provenance=Provenance(
                         source_kind=f"twin_note:{row['kind']}",
-                        origin_ref=self._asset_id,
+                        origin_ref=wanted,
                         retrieved_at=validate_utc(self._now_fn(), "clock output"),
+                        license_class="operator_private",
                     ),
                 )
         return CorpusMiss(id=wanted)
