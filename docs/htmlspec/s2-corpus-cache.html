@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Semantic Scholar durable corpus cache</title></head>
+<body><main>
+<h1>Semantic Scholar durable corpus cache</h1>
+<p>Status: implemented as a stacked extension of acquisition-corpus bridge PR #782.</p>
+<h2>User outcome</h2>
+<p>Semantic Scholar enrichment survives process restart and becomes researchable through the same
+immutable <code>search</code> → <code>fetch</code> boundary as arXiv, OpenAlex, and Substack.</p>
+<h2>Authority and ordering</h2>
+<ol>
+<li>The wrapper calls PR #760's governed <code>S2Client</code> with fixed title and abstract fields.</li>
+<li>It validates a complete one-record-per-request response and stamps the batch once.</li>
+<li>Under a process lock it merges canonical paper IDs into one sorted generation.</li>
+<li>It fsyncs a content-addressed snapshot, then atomically swaps <code>CURRENT</code>.</li>
+<li>Only a digest-verified generation reloaded from disk may construct the corpus adapter.</li>
+<li>After a successful swap it prunes every superseded/orphan generation, bounding steady-state storage to one snapshot.</li>
+</ol>
+<h2>Failure contract</h2>
+<p>A partial generation is never authoritative. Invalid responses, duplicate IDs, hostile clocks,
+tampered files, symlinks, non-private directories, malformed JSON, and failed pointer swaps refuse.
+Persistence failure propagates; it is never returned as enrichment success.</p>
+<h2>Non-goals</h2>
+<p>No live request, API-key handling change, provider routing, PDF fetch, production wiring,
+parent-branch mutation, merge, deployment, or spend.</p>
+<h2>Acceptance</h2>
+<pre>uv run --with pytest --with mypy python -m pytest tests/test_s2_enrich.py tests/test_corpus_contract.py tests/test_acquisition_corpus_bridge.py tests/test_s2_corpus_cache.py -q
+uv run --with pytest --with mypy python -m mypy --strict acquisition/s2_cache acquisition/corpus_bridge tests/test_s2_corpus_cache.py
+uv run --with ruff ruff check acquisition/s2_cache acquisition/corpus_bridge tests/test_s2_corpus_cache.py
+git diff --check</pre>
+</main></body></html>

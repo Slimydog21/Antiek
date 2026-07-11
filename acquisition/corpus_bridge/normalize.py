@@ -174,6 +174,38 @@ def from_openalex(records: tuple[Mapping[str, object], ...]) -> AcquisitionCorpu
     return AcquisitionCorpusAdapter(tuple(entries))
 
 
+def from_semantic_scholar(
+    records: tuple[Mapping[str, object], ...],
+) -> AcquisitionCorpusAdapter:
+    entries: list[_Entry] = []
+    for record in _records(records):
+        _require(
+            record,
+            frozenset({"paperId", "requestedId", "title", "abstract", "fetched_at", "source"}),
+        )
+        if record.get("source") != "semantic_scholar":
+            raise CorpusContractError("Semantic Scholar record source mismatch")
+        id, requested_id, title = (
+            _id(record, "paperId"),
+            _id(record, "requestedId"),
+            _text(record, "title"),
+        )
+        abstract = _optional_text(record, "abstract")
+        content = "\n\n".join(part for part in (title, abstract) if part)
+        search_text = f"{id}\n{requested_id}\n{content}"
+        entries.append(
+            _Entry(
+                id,
+                "semantic_scholar",
+                search_text,
+                content,
+                _time(record),
+                "source_terms_governed_metadata",
+            )
+        )
+    return AcquisitionCorpusAdapter(tuple(entries))
+
+
 def from_substack(records: tuple[Mapping[str, object], ...]) -> AcquisitionCorpusAdapter:
     entries: list[_Entry] = []
     for record in _records(records):
