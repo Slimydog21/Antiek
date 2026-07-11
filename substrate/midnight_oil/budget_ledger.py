@@ -16,6 +16,7 @@ Negative or zero amounts raise ``ValueError`` (fail closed).
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import uuid
 from collections.abc import Callable, Generator, Mapping
 from dataclasses import dataclass
@@ -28,6 +29,7 @@ __all__ = [
     "BudgetCeilingExceeded",
     "BudgetLedger",
     "CallHold",
+    "PaidOperation",
     "RemainingBalance",
     "ReservationNotFound",
 ]
@@ -93,6 +95,30 @@ class CallHold:
     projected_max_cents: int
 
 
+@dataclass(frozen=True)
+class PaidOperation:
+    """Reconstructed canonical paid-call authority (never a transport receipt)."""
+
+    operation_id: str
+    request_hash: str
+    run_id: str
+    role: str
+    provider: str
+    owner_id: str
+    approved_brief_hash: str
+    projected_max_cents: int
+    currency: str
+    catalog_version: str
+    policy_version: str
+    hold_id: str
+    state: str
+    fencing_token: int
+    response_ref: str | None
+    success_ref: str | None
+    actual_cents: int | None
+    zero_charge_evidence_ref: str | None
+
+
 # ---------------------------------------------------------------------------
 # Schema DDL
 # ---------------------------------------------------------------------------
@@ -134,6 +160,19 @@ CREATE TABLE IF NOT EXISTS midnight_oil_spend_ledger (
     amount_cents    BIGINT NOT NULL,
     remaining_cents BIGINT NOT NULL,
     "at"            TIMESTAMP NOT NULL
+);
+CREATE TABLE IF NOT EXISTS paid_dispatch_operations (
+    operation_id TEXT PRIMARY KEY,
+    request_hash TEXT UNIQUE NOT NULL,
+    run_id TEXT NOT NULL, role TEXT NOT NULL, provider TEXT NOT NULL,
+    owner_id TEXT NOT NULL, approved_brief_hash TEXT NOT NULL,
+    projected_max_cents BIGINT NOT NULL, currency TEXT NOT NULL,
+    catalog_version TEXT NOT NULL, policy_version TEXT NOT NULL,
+    hold_id TEXT UNIQUE NOT NULL, state TEXT NOT NULL,
+    fencing_token BIGINT NOT NULL DEFAULT 0,
+    response_ref TEXT, success_ref TEXT, actual_cents BIGINT,
+    zero_charge_evidence_ref TEXT,
+    created_at TIMESTAMP NOT NULL, updated_at TIMESTAMP NOT NULL
 );
 """
 
@@ -344,6 +383,446 @@ class BudgetLedger:
             remaining_cents=balance.remaining_cents,
         )
         return balance
+
+    # --- canonical paid-provider operations ------------------------------
+
+    @staticmethod
+    def paid_operation_hold_id(
+        operation_id: str,
+        projected_max_cents: int,
+        currency: str,
+        catalog_version: str,
+        policy_version: str,
+    ) -> str:
+        """Derive the sole hold identity from all price-authority inputs."""
+        material = "\x1f".join(
+            (
+                "antiek-paid-hold-v1",
+                operation_id,
+                str(projected_max_cents),
+                currency,
+                catalog_version,
+                policy_version,
+            )
+        )
+        return hashlib.sha256(material.encode()).hexdigest()
+
+    def create_authorized_paid_operation(
+        self,
+        *,
+        operation_id: str,
+        request_hash: str,
+        run_id: str,
+        role: str,
+        provider: str,
+        owner_id: str,
+        approved_brief_hash: str,
+        projected_max_cents: int,
+        currency: str,
+        catalog_version: str,
+        policy_version: str,
+    ) -> PaidOperation:
+        """Atomically persist immutable intent, PENDING state, and its hold.
+
+        Exact concurrent/reopen replay converges.  Reuse of either identity with
+        different authority fields fails before any accounting mutation.
+        """
+        values = (
+            operation_id,
+            request_hash,
+            run_id,
+            role,
+            provider,
+            owner_id,
+            approved_brief_hash,
+            currency,
+            catalog_version,
+            policy_version,
+        )
+        if any(not value or len(value) > 512 for value in values):
+            raise ValueError("paid operation identity fields must be 1..512 characters")
+        for name, digest in (
+            ("operation_id", operation_id),
+            ("request_hash", request_hash),
+            ("approved_brief_hash", approved_brief_hash),
+        ):
+            if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+                raise ValueError(f"{name} must be a lowercase SHA-256 hex digest")
+        if projected_max_cents <= 0:
+            raise ValueError("projected_max_cents must be positive")
+        hold_id = self.paid_operation_hold_id(
+            operation_id, projected_max_cents, currency, catalog_version, policy_version
+        )
+        immutable = (*values, projected_max_cents, hold_id)
+        with self._coordinator.acquire_write_context(  # noqa: SIM117
+            "midnight_oil.paid_dispatch"
+        ) as ctx:
+            self.ensure_schema_in_context(ctx)
+            with self._txn(ctx):
+                existing = ctx.execute(
+                    "SELECT operation_id, request_hash, run_id, role, provider, owner_id, "
+                    "approved_brief_hash, currency, catalog_version, policy_version, "
+                    "projected_max_cents, hold_id FROM paid_dispatch_operations "
+                    "WHERE operation_id=? OR request_hash=?",
+                    [operation_id, request_hash],
+                ).fetchone()
+                if existing is not None:
+                    if tuple(existing) != immutable:
+                        raise RuntimeError(
+                            "paid operation identity conflicts with persisted intent"
+                        )
+                    return self._load_paid_operation(ctx, operation_id)
+
+                self._check_role_budget(ctx, run_id, role, projected_max_cents)
+                hit = ctx.execute(
+                    "UPDATE midnight_oil_reservations SET held_cents=held_cents+?, "
+                    "updated_at=CURRENT_TIMESTAMP WHERE run_id=? AND status='reserved' "
+                    "AND ceiling_cents-spent_cents-held_cents>=? RETURNING 1",
+                    [projected_max_cents, run_id, projected_max_cents],
+                ).fetchone()
+                if hit is None:
+                    self._raise_ceiling_or_missing(ctx, run_id, projected_max_cents)
+                role_hit = ctx.execute(
+                    "UPDATE midnight_oil_role_budgets SET held_cents=held_cents+? "
+                    "WHERE run_id=? AND role=? RETURNING 1",
+                    [projected_max_cents, run_id, role],
+                ).fetchone()
+                if role_hit is None:
+                    raise ReservationNotFound(run_id)
+                now = _now_utc()
+                ctx.execute(
+                    "INSERT INTO midnight_oil_call_holds VALUES (?, ?, ?, ?, 'open', ?, ?)",
+                    [hold_id, run_id, role, projected_max_cents, now, now],
+                )
+                ctx.execute(
+                    "INSERT INTO paid_dispatch_operations "
+                    "(operation_id,request_hash,run_id,role,provider,owner_id,"
+                    "approved_brief_hash,projected_max_cents,currency,catalog_version,"
+                    "policy_version,hold_id,state,created_at,updated_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'PENDING',?,?)",
+                    [
+                        operation_id,
+                        request_hash,
+                        run_id,
+                        role,
+                        provider,
+                        owner_id,
+                        approved_brief_hash,
+                        projected_max_cents,
+                        currency,
+                        catalog_version,
+                        policy_version,
+                        hold_id,
+                        now,
+                        now,
+                    ],
+                )
+                bal = self._load_balance(ctx, run_id)
+                self._append_ledger(
+                    ctx,
+                    run_id=run_id,
+                    role=role,
+                    event="paid_hold",
+                    amount_cents=projected_max_cents,
+                    remaining_cents=bal.remaining_cents,
+                )
+                return self._load_paid_operation(ctx, operation_id)
+
+    def paid_operation(self, operation_id: str) -> PaidOperation | None:
+        """Reconstruct an operation; ``None`` is the frozen ABSENT state."""
+        con = connect_read(self._db_path)
+        try:
+            row = con.execute(
+                "SELECT 1 FROM paid_dispatch_operations WHERE operation_id=?", [operation_id]
+            ).fetchone()
+            return None if row is None else self._load_paid_operation(con, operation_id)
+        finally:
+            con.close()
+
+    def quarantine_incomplete_paid_operation(self, operation_id: str) -> PaidOperation:
+        """Reconstruct a crash prefix, quarantining an unresolved send fence.
+
+        ``SENDING`` is never evidence that socket I/O did or did not happen.
+        Recovery therefore moves it monotonically to ``OUTCOME_UNKNOWN`` while
+        retaining the entire hold.  Other states are returned unchanged.
+        """
+        with self._coordinator.acquire_write_context(  # noqa: SIM117
+            "midnight_oil.paid_dispatch"
+        ) as ctx:
+            with self._txn(ctx):
+                operation = self._load_paid_operation(ctx, operation_id)
+                if operation.state == "SENDING":
+                    ctx.execute(
+                        "UPDATE paid_dispatch_operations SET state='OUTCOME_UNKNOWN', "
+                        "updated_at=CURRENT_TIMESTAMP WHERE operation_id=? AND state='SENDING'",
+                        [operation_id],
+                    )
+                    return self._load_paid_operation(ctx, operation_id)
+                return operation
+
+    def transition_paid_operation(
+        self,
+        operation_id: str,
+        *,
+        expected_state: str,
+        next_state: str,
+        fencing_token: int | None = None,
+        response_ref: str | None = None,
+        success_ref: str | None = None,
+        actual_cents: int | None = None,
+    ) -> PaidOperation:
+        """Apply one exact frozen edge, fencing all post-claim mutations."""
+        allowed = {
+            ("PENDING", "CLAIMED"),
+            ("CLAIMED", "SENDING"),
+            ("SENDING", "RESPONSE_RECORDED"),
+            ("RESPONSE_RECORDED", "SUCCEEDED"),
+            ("SUCCEEDED", "PROJECTED"),
+            ("PENDING", "REJECTED_PRE_DISPATCH"),
+            ("CLAIMED", "REJECTED_PRE_DISPATCH"),
+            ("REJECTED_PRE_DISPATCH", "RELEASED"),
+            ("SENDING", "OUTCOME_UNKNOWN"),
+        }
+        if (expected_state, next_state) not in allowed:
+            raise ValueError("unknown, backward, or terminal paid-operation transition")
+        with self._coordinator.acquire_write_context(  # noqa: SIM117
+            "midnight_oil.paid_dispatch"
+        ) as ctx:
+            with self._txn(ctx):
+                op = self._load_paid_operation(ctx, operation_id)
+                if op.state != expected_state:
+                    raise RuntimeError(f"expected {expected_state}, found {op.state}")
+                new_token = op.fencing_token
+                if next_state == "CLAIMED":
+                    new_token += 1
+                    if fencing_token is not None:
+                        raise ValueError("claim allocates its fencing token")
+                elif op.state != "PENDING" and fencing_token != op.fencing_token:
+                    raise RuntimeError("stale or missing paid-operation fencing token")
+                if next_state == "RESPONSE_RECORDED":
+                    self._validate_artifact_ref("response_ref", response_ref)
+                elif response_ref is not None:
+                    raise ValueError("response_ref is valid only when recording a response")
+                if next_state == "SUCCEEDED":
+                    self._validate_artifact_ref("success_ref", success_ref)
+                    if (
+                        actual_cents is None
+                        or actual_cents < 0
+                        or actual_cents > op.projected_max_cents
+                    ):
+                        raise ValueError("actual_cents must be within the durable hold")
+                    self.settle_in_context(ctx, hold_id=op.hold_id, actual_cents=actual_cents)
+                elif success_ref is not None or actual_cents is not None:
+                    raise ValueError("success fields are valid only on SUCCEEDED")
+                if next_state == "RELEASED":
+                    self._release_paid_hold_in_context(ctx, op)
+                ctx.execute(
+                    "UPDATE paid_dispatch_operations SET state=?, fencing_token=?, "
+                    "response_ref=COALESCE(?,response_ref), success_ref=COALESCE(?,success_ref), "
+                    "actual_cents=COALESCE(?,actual_cents), updated_at=CURRENT_TIMESTAMP "
+                    "WHERE operation_id=?",
+                    [next_state, new_token, response_ref, success_ref, actual_cents, operation_id],
+                )
+                return self._load_paid_operation(ctx, operation_id)
+
+    def annotate_paid_operation_zero_charge(
+        self, operation_id: str, *, evidence_ref: str, fencing_token: int
+    ) -> PaidOperation:
+        """Release accounting after authenticated evidence, never redispatchability."""
+        self._validate_accounting_evidence_ref(evidence_ref)
+        with self._coordinator.acquire_write_context(  # noqa: SIM117
+            "midnight_oil.paid_dispatch"
+        ) as ctx:
+            with self._txn(ctx):
+                op = self._load_paid_operation(ctx, operation_id)
+                if op.state not in ("SENDING", "OUTCOME_UNKNOWN"):
+                    raise RuntimeError("zero-charge annotation requires a post-send operation")
+                if op.fencing_token != fencing_token:
+                    raise RuntimeError("stale paid-operation fencing token")
+                if op.zero_charge_evidence_ref is not None:
+                    if op.zero_charge_evidence_ref != evidence_ref:
+                        raise RuntimeError("zero-charge evidence is immutable")
+                    return op
+                self._release_paid_hold_in_context(ctx, op)
+                # Deliberately retain OUTCOME_UNKNOWN even when called from SENDING.
+                ctx.execute(
+                    "UPDATE paid_dispatch_operations SET state='OUTCOME_UNKNOWN', "
+                    "zero_charge_evidence_ref=?, updated_at=CURRENT_TIMESTAMP "
+                    "WHERE operation_id=?",
+                    [evidence_ref, operation_id],
+                )
+                return self._load_paid_operation(ctx, operation_id)
+
+    @staticmethod
+    def _validate_artifact_ref(name: str, value: str | None) -> None:
+        prefix = "artifact:sha256:"
+        if value is None or not value.startswith(prefix):
+            raise ValueError(f"{name} must be a canonical content-addressed artifact ref")
+        digest = value.removeprefix(prefix)
+        if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+            raise ValueError(f"{name} has an invalid SHA-256 digest")
+
+    @staticmethod
+    def _validate_accounting_evidence_ref(value: str) -> None:
+        prefix = "accounting://authenticated/sha256/"
+        if not value.startswith(prefix):
+            raise ValueError("evidence_ref must be an authenticated accounting evidence ref")
+        digest = value.removeprefix(prefix)
+        if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+            raise ValueError("evidence_ref has invalid authenticated evidence identity")
+
+    def _release_paid_hold_in_context(self, ctx: Any, op: PaidOperation) -> None:
+        hold_state = self._paid_hold_state(ctx, op)
+        if hold_state == "released":
+            return
+        if hold_state != "open":
+            raise RuntimeError("settled paid hold cannot be released")
+        reservation = ctx.execute(
+            "UPDATE midnight_oil_reservations SET held_cents=held_cents-?, "
+            "updated_at=CURRENT_TIMESTAMP WHERE run_id=? AND held_cents>=? RETURNING 1",
+            [op.projected_max_cents, op.run_id, op.projected_max_cents],
+        ).fetchone()
+        role = ctx.execute(
+            "UPDATE midnight_oil_role_budgets SET held_cents=held_cents-? "
+            "WHERE run_id=? AND role=? AND held_cents>=? RETURNING 1",
+            [op.projected_max_cents, op.run_id, op.role, op.projected_max_cents],
+        ).fetchone()
+        if reservation is None or role is None:
+            raise RuntimeError("canonical paid hold conflicts with budget balances")
+        ctx.execute(
+            "UPDATE midnight_oil_call_holds SET state='released', "
+            "updated_at=CURRENT_TIMESTAMP WHERE hold_id=?",
+            [op.hold_id],
+        )
+
+    @staticmethod
+    def _load_paid_operation(ctx: Any, operation_id: str) -> PaidOperation:
+        row = ctx.execute(
+            "SELECT operation_id,request_hash,run_id,role,provider,owner_id,"
+            "approved_brief_hash,projected_max_cents,currency,catalog_version,"
+            "policy_version,hold_id,state,fencing_token,response_ref,success_ref,"
+            "actual_cents,zero_charge_evidence_ref FROM paid_dispatch_operations "
+            "WHERE operation_id=?",
+            [operation_id],
+        ).fetchone()
+        if row is None:
+            raise ReservationNotFound(operation_id)
+        operation = PaidOperation(*row)
+        states = {
+            "PENDING",
+            "CLAIMED",
+            "SENDING",
+            "RESPONSE_RECORDED",
+            "SUCCEEDED",
+            "PROJECTED",
+            "REJECTED_PRE_DISPATCH",
+            "RELEASED",
+            "OUTCOME_UNKNOWN",
+        }
+        if operation.state not in states or operation.fencing_token < 0:
+            raise RuntimeError("paid operation has invalid persisted state")
+        if operation.state == "PENDING" and operation.fencing_token != 0:
+            raise RuntimeError("pending paid operation cannot have a fencing token")
+        fenced_states = {
+            "CLAIMED",
+            "SENDING",
+            "RESPONSE_RECORDED",
+            "SUCCEEDED",
+            "PROJECTED",
+            "OUTCOME_UNKNOWN",
+        }
+        if operation.state in fenced_states and operation.fencing_token < 1:
+            raise RuntimeError("post-claim paid operation requires a fencing token")
+        has_response = operation.state in ("RESPONSE_RECORDED", "SUCCEEDED", "PROJECTED")
+        if has_response:
+            BudgetLedger._validate_artifact_ref("response_ref", operation.response_ref)
+        elif operation.response_ref is not None:
+            raise RuntimeError("paid operation response ref precedes its frozen state")
+        has_success = operation.state in ("SUCCEEDED", "PROJECTED")
+        if has_success:
+            BudgetLedger._validate_artifact_ref("success_ref", operation.success_ref)
+            if operation.actual_cents is None or not (
+                0 <= operation.actual_cents <= operation.projected_max_cents
+            ):
+                raise RuntimeError("paid operation has invalid persisted settlement")
+        elif operation.success_ref is not None or operation.actual_cents is not None:
+            raise RuntimeError("paid operation settlement precedes its frozen state")
+        if operation.zero_charge_evidence_ref is not None:
+            BudgetLedger._validate_accounting_evidence_ref(operation.zero_charge_evidence_ref)
+            if operation.state != "OUTCOME_UNKNOWN":
+                raise RuntimeError("zero-charge evidence cannot change operation outcome")
+        hold_state = BudgetLedger._paid_hold_state(ctx, operation)
+        BudgetLedger._validate_open_hold_totals(ctx, operation)
+        if operation.state in ("SUCCEEDED", "PROJECTED") and hold_state != "settled":
+            raise RuntimeError("successful paid operation conflicts with canonical hold")
+        if operation.state == "RELEASED" and hold_state != "released":
+            raise RuntimeError("released paid operation conflicts with canonical hold")
+        if operation.zero_charge_evidence_ref is not None and hold_state != "released":
+            raise RuntimeError("zero-charge annotation conflicts with canonical hold")
+        if (
+            operation.state == "OUTCOME_UNKNOWN"
+            and operation.zero_charge_evidence_ref is None
+            and hold_state != "open"
+        ):
+            raise RuntimeError("unknown paid outcome must retain its canonical hold")
+        if (
+            operation.state
+            in (
+                "PENDING",
+                "CLAIMED",
+                "SENDING",
+                "RESPONSE_RECORDED",
+                "REJECTED_PRE_DISPATCH",
+            )
+            and hold_state != "open"
+        ):
+            raise RuntimeError("dispatchable paid operation conflicts with canonical hold")
+        return operation
+
+    @staticmethod
+    def _paid_hold_state(ctx: Any, operation: PaidOperation) -> str:
+        row = ctx.execute(
+            "SELECT run_id, role, projected_max_cents, state "
+            "FROM midnight_oil_call_holds WHERE hold_id=?",
+            [operation.hold_id],
+        ).fetchone()
+        if row is None:
+            raise RuntimeError("paid operation has no canonical hold")
+        if tuple(row[:3]) != (
+            operation.run_id,
+            operation.role,
+            operation.projected_max_cents,
+        ):
+            raise RuntimeError("paid operation conflicts with canonical hold binding")
+        return str(row[3])
+
+    @staticmethod
+    def _validate_open_hold_totals(ctx: Any, operation: PaidOperation) -> None:
+        """Prove held balances equal their complete open-hold liabilities."""
+        reservation = ctx.execute(
+            "SELECT held_cents FROM midnight_oil_reservations WHERE run_id=?",
+            [operation.run_id],
+        ).fetchone()
+        role = ctx.execute(
+            "SELECT held_cents FROM midnight_oil_role_budgets WHERE run_id=? AND role=?",
+            [operation.run_id, operation.role],
+        ).fetchone()
+        if reservation is None or role is None:
+            raise RuntimeError("paid operation has no canonical budget authority")
+        run_open = ctx.execute(
+            "SELECT COALESCE(SUM(projected_max_cents),0) FROM midnight_oil_call_holds "
+            "WHERE run_id=? AND state='open'",
+            [operation.run_id],
+        ).fetchone()
+        role_open = ctx.execute(
+            "SELECT COALESCE(SUM(projected_max_cents),0) FROM midnight_oil_call_holds "
+            "WHERE run_id=? AND role=? AND state='open'",
+            [operation.run_id, operation.role],
+        ).fetchone()
+        if run_open is None or role_open is None:
+            raise RuntimeError("cannot reconstruct canonical open-hold liabilities")
+        if reservation[0] != run_open[0] or role[0] != role_open[0]:
+            raise RuntimeError("budget held balances conflict with canonical open holds")
 
     # --- transactional wrapper -------------------------------------------
 
