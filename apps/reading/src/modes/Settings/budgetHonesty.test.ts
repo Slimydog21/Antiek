@@ -68,12 +68,24 @@ describe("budgetHonesty helpers", () => {
       spend_basis: "unknown",
       reserved_estimated_usd: null,
     });
+    expect(spendAmountLabel(unknown)).toBe("Reserved / ledger");
+    expect(spendAmountLabel(unknown)).not.toMatch(/spend today/i);
     expect(formatSpendAmount(unknown)).toMatch(/unknown/i);
     // Must not present a numeric $0.0000 spend figure as known.
     expect(formatSpendAmount(unknown)).not.toMatch(/^\$0(\.0+)?$/);
     expect(formatSpendAmount(unknown)).not.toBe("$0.0000");
     expect(budgetStatusText(unknown)).toBe("spend unknown");
     expect(spendPct(unknown)).toBeNull();
+  });
+
+  it("bar percentage uses reserved_estimated_usd when present", () => {
+    const diverged = base({
+      daily_cap_usd: 10,
+      spent_usd: 9,
+      reserved_estimated_usd: 2,
+      remaining_usd: 8,
+    });
+    expect(spendPct(diverged)).toBe(20);
   });
 
   it("back-compat: known spend without spend_basis still treated as reserved", () => {

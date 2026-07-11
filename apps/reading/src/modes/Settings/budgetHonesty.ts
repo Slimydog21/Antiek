@@ -34,11 +34,25 @@ export function resolveSpendBasis(budget: BudgetHonestyFields): SpendBasis {
   return "unknown";
 }
 
-/** Row label for the spend figure — never "Spent today" when reserved-only. */
+/** Prefer reserved estimate when present; never invent a figure. */
+export function resolvedReservedAmount(
+  budget: BudgetHonestyFields,
+): number | null {
+  if (budget.spent_status !== "known") return null;
+  const amount = budget.reserved_estimated_usd ?? budget.spent_usd;
+  if (amount == null || Number.isNaN(amount)) return null;
+  return amount;
+}
+
+/**
+ * Row label for the spend figure.
+ * Never "Spent today" — that implies settled provider cost. Even unknown
+ * ledgers stay reserved/ledger-oriented.
+ */
 export function spendAmountLabel(budget: BudgetHonestyFields): string {
   return resolveSpendBasis(budget) === "reserved_estimate"
     ? "Reserved (est.)"
-    : "Spend today";
+    : "Reserved / ledger";
 }
 
 export function formatUsd(amount: number | null | undefined, digits = 4): string {
@@ -47,12 +61,8 @@ export function formatUsd(amount: number | null | undefined, digits = 4): string
 }
 
 export function formatSpendAmount(budget: BudgetHonestyFields): string {
-  const basis = resolveSpendBasis(budget);
-  const amount =
-    basis === "reserved_estimate"
-      ? (budget.reserved_estimated_usd ?? budget.spent_usd)
-      : budget.spent_usd;
-  if (budget.spent_status !== "known" || amount == null) {
+  const amount = resolvedReservedAmount(budget);
+  if (amount == null) {
     return "unknown (ledger not inventing $0)";
   }
   return formatUsd(amount, 4);
@@ -101,14 +111,15 @@ export function spendBasisNote(budget: BudgetHonestyFields): string | null {
 }
 
 export function spendPct(budget: BudgetHonestyFields): number | null {
+  const reserved = resolvedReservedAmount(budget);
   if (
     budget.daily_cap_usd == null ||
-    budget.spent_usd == null ||
-    budget.daily_cap_usd <= 0 ||
-    budget.spent_status !== "known"
+    reserved == null ||
+    budget.daily_cap_usd <= 0
   ) {
     return null;
   }
   // Cap the visual bar at 100; over-budget is shown via remaining + status text.
-  return Math.min(100, (budget.spent_usd / budget.daily_cap_usd) * 100);
+  // Uses the same resolved reserved amount as the visible figure.
+  return Math.min(100, (reserved / budget.daily_cap_usd) * 100);
 }
