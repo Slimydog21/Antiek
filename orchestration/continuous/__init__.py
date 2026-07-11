@@ -47,6 +47,7 @@ from .spawn_cost import (
     actual_was_reported,
     install_spawn_cost_hooks,
     report_actual_cost,
+    run_one_iteration_settled,
     wrap_spawn_fn,
 )
 from .suggestions import (
@@ -77,6 +78,7 @@ __all__ = [
     "policy_is_daemon",
     "report_actual_cost",
     "run_one_iteration",
+    "run_one_iteration_settled",
     "score_gap",
     "topic_id_for",
     "wrap_spawn_fn",

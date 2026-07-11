@@ -193,6 +193,41 @@ def test_wrap_integrates_with_run_one_iteration_without_daemon_edit(
     assert _sidecar_spent() == pytest.approx(0.03)
 
 
+def test_double_absolute_report_fails_closed(isolated_env: dict[str, Path]) -> None:
+    """Second absolute report must not re-subtract expected (fake $0 spent)."""
+    budget = DaemonBudget(daily_cap_usd=5.0)
+    budget.reserve(0.50)
+    ctx: dict = {"expected_cost_usd": 0.50}
+    install_spawn_cost_hooks(ctx, budget)
+    ctx["report_actual_cost"](0.03)
+    assert _sidecar_spent() == pytest.approx(0.03)
+    with pytest.raises(RuntimeError, match="already reported"):
+        ctx["report_actual_cost"](0.03)
+    # Ledger unchanged after refused second report.
+    assert _sidecar_spent() == pytest.approx(0.03)
+
+
+def test_non_finite_actual_rejected(isolated_env: dict[str, Path]) -> None:
+    budget = DaemonBudget(daily_cap_usd=5.0)
+    budget.reserve(0.50)
+    ctx: dict = {"expected_cost_usd": 0.50}
+    install_spawn_cost_hooks(ctx, budget)
+    with pytest.raises(ValueError, match="finite non-negative"):
+        ctx["report_actual_cost"](float("nan"))
+    with pytest.raises(ValueError, match="finite non-negative"):
+        ctx["report_actual_cost"](float("inf"))
+    assert _sidecar_spent() == pytest.approx(0.50)
+
+
+def test_cli_module_uses_settled_entry() -> None:
+    """Production __main__ must call settled/wrap paths, not bare run_one_iteration."""
+    src = Path("orchestration/continuous/__main__.py").read_text(encoding="utf-8")
+    assert "run_one_iteration_settled" in src
+    assert "wrap_spawn_fn" in src
+    # Must not call bare run_one_iteration( for the once path.
+    assert "run_one_iteration(state=" not in src
+
+
 def test_section_7_4_tripwire_files_untouched() -> None:
     """This residual must not modify §7.4 cap-bearing modules."""
     import subprocess

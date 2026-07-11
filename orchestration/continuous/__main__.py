@@ -42,19 +42,39 @@ def main() -> int:
 
     # Defer the daemon import so a `--help` invocation doesn't pay
     # the cost of bringing in the substrate module graph.
+    from orchestration.continuous.budget import DaemonBudget
     from orchestration.continuous.daemon import (
         DaemonConfig,
         DaemonState,
-        run_one_iteration,
+        no_op_spawn,
+        run_forever,
     )
-    from orchestration.continuous.daemon import (
-        main as daemon_main,
+    from orchestration.continuous.spawn_cost import (
+        run_one_iteration_settled,
+        wrap_spawn_fn,
     )
 
     if args.once:
-        run_one_iteration(state=DaemonState(), config=DaemonConfig())
+        # Production one-shot path always installs settled-cost hooks
+        # (tripwire-safe: daemon.py untouched).
+        run_one_iteration_settled(
+            state=DaemonState(),
+            config=DaemonConfig(),
+            budget=DaemonBudget.from_env(),
+            spawn_fn=no_op_spawn,
+        )
         return 0
-    daemon_main()
+    # Forever path: wrap default spawn so any operator-injected spawn_fn
+    # replacement at this boundary still receives hooks. daemon_main()
+    # currently hard-codes no_op; re-implement the forever loop here with
+    # wrap so production is not permanently reserved-only.
+    cfg = DaemonConfig()
+    bdg = DaemonBudget.from_env()
+    run_forever(
+        config=cfg,
+        budget=bdg,
+        spawn_fn=wrap_spawn_fn(no_op_spawn, bdg),
+    )
     return 0
 
 

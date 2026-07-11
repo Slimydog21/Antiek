@@ -13,8 +13,11 @@ This module is the tripwire-safe seam:
   ``report_actual_cost`` on a spawn context (idempotent).
 * ``wrap_spawn_fn`` — production/test wrapper so any spawn callable
   receives the hooks without mutating ``daemon.py``.
+* ``run_one_iteration_settled`` — production entry that always wraps
+  the spawn_fn (used by ``python -m orchestration.continuous``).
 * ``report_actual_cost`` — convert absolute actual USD into the signed
-  delta ``DaemonBudget.record_actual`` expects (``actual − expected``).
+  delta ``DaemonBudget.record_actual`` expects (``actual − expected``),
+  fail-closed on double absolute report and non-finite amounts.
 
 Honesty rules:
 
@@ -24,19 +27,33 @@ Honesty rules:
 * Reporting actual adjusts the same sidecar total via the existing
   ``record_actual`` API; this module does not create a second ledger
   authority.
-* Double-report is allowed as further deltas (same as raw
-  ``record_actual``); callers should report once per spawn.
+* A second absolute ``report_actual_cost`` on the same context fails
+  closed (would otherwise subtract expected twice and floor to fake $0).
 """
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from typing import Any
 
 from .budget import DaemonBudget
-from .daemon import SpawnFn
+from .daemon import (
+    DaemonConfig,
+    DaemonState,
+    SpawnFn,
+    no_op_spawn,
+    run_one_iteration,
+)
 
 _HOOK_FLAG = "_antiek_spawn_cost_hooks_installed"
+
+
+def _require_finite_nonneg(value: float, *, label: str) -> float:
+    amount = float(value)
+    if not math.isfinite(amount) or amount < 0.0:
+        raise ValueError(f"{label} must be a finite non-negative USD amount, got {value!r}")
+    return amount
 
 
 def report_actual_cost(
@@ -50,13 +67,22 @@ def report_actual_cost(
     Returns the signed delta applied (``actual − expected``).
     Requires ``install_spawn_cost_hooks`` (or an equivalent
     ``record_actual_cb``) on ``context``.
+
+    Fail-closed if actual was already reported on this context — a second
+    absolute report would re-subtract ``expected`` and can floor the
+    sidecar to a fabricated $0 spent.
     """
-    if actual_cost_usd < 0:
-        raise ValueError(f"actual_cost_usd must be non-negative, got {actual_cost_usd!r}")
-    expected = float(context.get("expected_cost_usd", 0.0))
-    if expected < 0:
-        raise ValueError(f"expected_cost_usd must be non-negative, got {expected!r}")
-    delta = float(actual_cost_usd) - expected
+    if context.get("_antiek_actual_reported"):
+        raise RuntimeError(
+            "actual cost already reported for this spawn context; "
+            "refusing a second absolute report (would fabricate spent=0)"
+        )
+    actual = _require_finite_nonneg(actual_cost_usd, label="actual_cost_usd")
+    expected = _require_finite_nonneg(
+        float(context.get("expected_cost_usd", 0.0)),
+        label="expected_cost_usd",
+    )
+    delta = actual - expected
     cb = context.get("record_actual_cb")
     if not callable(cb):
         raise RuntimeError(
@@ -64,7 +90,7 @@ def report_actual_cost(
             "install_spawn_cost_hooks(...) or wrap_spawn_fn(...) before reporting actual cost"
         )
     cb(delta)
-    context["_antiek_actual_cost_usd"] = float(actual_cost_usd)
+    context["_antiek_actual_cost_usd"] = actual
     context["_antiek_actual_delta_usd"] = delta
     context["_antiek_actual_reported"] = True
     return delta
@@ -91,14 +117,25 @@ def install_spawn_cost_hooks(
         return context
 
     if expected_cost_usd is not None:
-        context.setdefault("expected_cost_usd", float(expected_cost_usd))
+        context.setdefault(
+            "expected_cost_usd",
+            _require_finite_nonneg(expected_cost_usd, label="expected_cost_usd"),
+        )
     if "expected_cost_usd" not in context:
         raise ValueError(
             "spawn context requires expected_cost_usd "
             "(daemon sets this; or pass expected_cost_usd= to install_spawn_cost_hooks)"
         )
+    # Validate pre-existing expected.
+    context["expected_cost_usd"] = _require_finite_nonneg(
+        float(context["expected_cost_usd"]),
+        label="expected_cost_usd",
+    )
 
     def record_actual_cb(delta_usd: float) -> None:
+        # Raw delta path remains for refunds (daemon already uses
+        # budget.record_actual directly on decline). Spawns should prefer
+        # report_actual_cost for absolute actuals.
         budget.record_actual(float(delta_usd), now=now)
 
     def report_actual(actual_cost_usd: float) -> float:
@@ -138,6 +175,31 @@ def wrap_spawn_fn(
     return wrapped
 
 
+def run_one_iteration_settled(
+    *,
+    state: DaemonState | None = None,
+    config: DaemonConfig | None = None,
+    budget: DaemonBudget | None = None,
+    spawn_fn: SpawnFn = no_op_spawn,
+    now: datetime | None = None,
+) -> Any:
+    """Production entry: ``run_one_iteration`` with spawn always wrapped.
+
+    Ensures every production tick installs ``record_actual_cb`` /
+    ``report_actual_cost`` on spawn contexts without editing daemon.py.
+    """
+    cfg = config or DaemonConfig()
+    bdg = budget or DaemonBudget.from_env()
+    st = state if state is not None else DaemonState()
+    return run_one_iteration(
+        state=st,
+        config=cfg,
+        budget=bdg,
+        spawn_fn=wrap_spawn_fn(spawn_fn, bdg, now=now),
+        now=now,
+    )
+
+
 def actual_was_reported(context: dict[str, Any]) -> bool:
     """True iff ``report_actual_cost`` / successful actual report ran on context."""
     return bool(context.get("_antiek_actual_reported"))
@@ -147,5 +209,6 @@ __all__ = [
     "actual_was_reported",
     "install_spawn_cost_hooks",
     "report_actual_cost",
+    "run_one_iteration_settled",
     "wrap_spawn_fn",
 ]
