@@ -1368,6 +1368,8 @@ def create_app(
     wrestling_db_path: str | None = None,
     wrestling_embedder: Any = None,
     register_providers: bool = True,
+    midnight_oil_dependencies: Any = None,
+    enable_midnight_oil: bool = False,
 ) -> FastAPI:
     """Create the FastAPI app. Pass ``broadcaster`` for tests that want to
     inspect subscriber state; production calls ``create_app()`` and gets
@@ -1721,9 +1723,23 @@ def create_app(
         configure_engagement_hydrate_injectors(_eng_mod)
     except Exception:
         pass  # offline hydrate remains; never block app boot
-    # Midnight Oil — create → recommended price ceiling → explicit approve.
-    from .midnight_oil_routes import register_midnight_oil_routes
-    register_midnight_oil_routes(app)
+    # Midnight Oil carries spend authority, so it is mounted only when the
+    # caller supplies the complete durable dependency bundle.  There is no
+    # process-local or environment-guessed fallback in the application
+    # factory; live launchers must construct and validate the bundle first.
+    if enable_midnight_oil:
+        from .midnight_oil_routes import (
+            MidnightOilDependencies,
+            register_midnight_oil_routes,
+        )
+
+        if not isinstance(midnight_oil_dependencies, MidnightOilDependencies):
+            raise RuntimeError(
+                "enabled Midnight Oil requires validated durable dependencies"
+            )
+        register_midnight_oil_routes(app, dependencies=midnight_oil_dependencies)
+    elif midnight_oil_dependencies is not None:
+        raise RuntimeError("Midnight Oil dependencies supplied while the feature is disabled")
     # Marketplace host-into-account — catalog → host → HTML library view.
     from .marketplace_host_routes import register_marketplace_host_routes
     register_marketplace_host_routes(app)

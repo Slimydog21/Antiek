@@ -5,33 +5,27 @@ from __future__ import annotations
 import os
 import sys
 
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
+
+from test_midnight_oil_consent_routes import _client  # noqa: E402
 
 from interfaces.research.api.engagement_routes import (  # noqa: E402
     register_engagement_routes,
     reset_engagement_stores,
 )
-from interfaces.research.api.midnight_oil_routes import (  # noqa: E402
-    register_midnight_oil_routes,
-    reset_midnight_oil_store,
-)
 
 
-def test_create_approve_deposit_progress_double_run():
-    reset_midnight_oil_store()
+def test_create_deposit_progress_double_run(tmp_path):
     reset_engagement_stores()
-    app = FastAPI()
-    register_midnight_oil_routes(app)
-    register_engagement_routes(app)
-    client = TestClient(app)
+    client, _ = _client(tmp_path)
+    register_engagement_routes(client.app)
+    headers = {"x-test-user": "alice"}
 
     created = client.post(
         "/midnight-oil/create",
+        headers=headers,
         json={
             "goals": ["Map residual risks in retrieval-augmented generation."],
             "duration_minutes": 30,
@@ -43,16 +37,9 @@ def test_create_approve_deposit_progress_double_run():
     assert created.json()["status"] == "awaiting_approval"
     assert created.json()["view_format"] == "html"
 
-    approved = client.post(
-        "/midnight-oil/approve",
-        json={"job_id": job_id, "use_recommended": True},
-    )
-    assert approved.status_code == 200
-    assert approved.json()["status"] == "approved"
-    assert approved.json()["runnable"] is True
-
     d1 = client.post(
         "/midnight-oil/deposit",
+        headers=headers,
         json={
             "job_id": job_id,
             "include_progress_html": True,
@@ -73,6 +60,7 @@ def test_create_approve_deposit_progress_double_run():
     # Second deposit remains honest / does not crash
     d2 = client.post(
         "/midnight-oil/deposit",
+        headers=headers,
         json={"job_id": job_id, "include_progress_html": True},
     )
     assert d2.status_code == 200
