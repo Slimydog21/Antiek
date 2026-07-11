@@ -19,7 +19,7 @@ from .execution_authorization import (
     MultimediaExecutionAuthorizationV2,
     verify_async_execution_authorization,
 )
-from .narration import normalize_script
+from .narration import NarrationParagraph, normalize_script
 from .planner import MultimediaPlan
 
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -116,7 +116,7 @@ def prepare_chapter_tts_request(
             if line.line_id.split("-line-", 1)[0] in chapter_ids
         )
     )
-    grouped: dict[str, list[object]] = {}
+    grouped: dict[str, list[NarrationParagraph]] = {}
     for paragraph in paragraphs:
         grouped.setdefault(paragraph.line_id.split("-line-", 1)[0], []).append(paragraph)
     spoken = tuple(chapter for chapter in plan.chapters if grouped.get(chapter.chapter_id))
@@ -204,4 +204,3 @@ __all__ = [
     "prepare_chapter_tts_request",
     "verify_chapter_tts_authorization",
 ]
-

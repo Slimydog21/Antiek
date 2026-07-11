@@ -6,11 +6,13 @@ import pytest
 
 from substrate.contracts.multimedia import ScriptLine
 from substrate.multimedia.chapter_tts_production import (
+    PreparedChapterTTSRequest,
     prepare_chapter_tts_request,
     verify_chapter_tts_authorization,
 )
 from substrate.multimedia.execution_authorization import (
     ExecutionAuthorizationIntegrityError,
+    MultimediaExecutionAuthorizationV2,
     issue_async_execution_authorization,
 )
 from substrate.multimedia.planner import (
@@ -57,7 +59,7 @@ def _plan(*, chapters: int = 1) -> MultimediaPlan:
     )
 
 
-def _prepared():
+def _prepared() -> PreparedChapterTTSRequest:
     return prepare_chapter_tts_request(
         _plan(),
         asset_id="asset-747",
@@ -68,7 +70,7 @@ def _prepared():
     )
 
 
-def _authorization(digest: str):
+def _authorization(digest: str) -> MultimediaExecutionAuthorizationV2:
     return issue_async_execution_authorization(
         signing_key=KEY,
         request_id="request-1",
