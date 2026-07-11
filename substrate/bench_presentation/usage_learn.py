@@ -78,6 +78,9 @@ def _finalize_weights_for_publish(
     """Assign residual weight on the last published item so sum is exactly 1.0.
 
     Must run **after** the final sort order — float addition is order-dependent.
+    No intermediate rounding of head items (that can sum > 1.0 and make residual
+    negative). If raw head sum exceeds 1.0 due to prior scaling noise, re-scale
+    all masses first.
     """
     if not proposals:
         return []
@@ -93,20 +96,33 @@ def _finalize_weights_for_publish(
                 rationale=p.rationale,
             )
         ]
-    head = [
-        TaskWeightProposal(
-            task=p.task,
-            weight=round(float(p.weight), 6),
-            prior_weight=p.prior_weight,
-            n_success=p.n_success,
-            n_failure=p.n_failure,
-            rationale=p.rationale,
+    raw = [max(0.0, float(p.weight)) for p in proposals]
+    total = sum(raw) or 1.0
+    scaled = [w / total for w in raw]
+    head_sum = sum(scaled[:-1])
+    residual = 1.0 - head_sum
+    if residual < 0.0:
+        # Should be rare after re-scale; force non-negative by collapsing residual
+        residual = 0.0
+        # Re-normalize head to sum 1.0 if residual collapsed
+        hs = sum(scaled[:-1]) or 1.0
+        scaled = [w / hs for w in scaled[:-1]] + [0.0]
+        head_sum = sum(scaled[:-1])
+        residual = 1.0 - head_sum
+    out: list[TaskWeightProposal] = []
+    for p, w in zip(proposals[:-1], scaled[:-1], strict=True):
+        out.append(
+            TaskWeightProposal(
+                task=p.task,
+                weight=w,
+                prior_weight=p.prior_weight,
+                n_success=p.n_success,
+                n_failure=p.n_failure,
+                rationale=p.rationale,
+            )
         )
-        for p in proposals[:-1]
-    ]
-    residual = 1.0 - sum(p.weight for p in head)
     last = proposals[-1]
-    head.append(
+    out.append(
         TaskWeightProposal(
             task=last.task,
             weight=residual,
@@ -116,7 +132,7 @@ def _finalize_weights_for_publish(
             rationale=last.rationale,
         )
     )
-    return head
+    return out
 
 def propose_next_week_weights(
     usage_events: Sequence[Mapping[str, Any]] | None,
