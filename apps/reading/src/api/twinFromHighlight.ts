@@ -12,7 +12,8 @@ export interface HighlightTwinRequest {
   insights?: string[];
   questions?: string[];
   source_label?: string;
-  gated?: boolean;
+  /** Required explicit gate provenance — never omit (fail closed). */
+  gated: boolean;
 }
 
 export interface HighlightTwinSeed {
@@ -102,6 +103,13 @@ export async function postHighlightTwinSeed(
   const highlight = String(req.highlight || "").trim();
   if (!parent) throw new Error("parent_asset_id must be non-empty");
   if (!highlight) throw new Error("highlight must be non-empty");
+  // Fail closed: gated must be an explicit boolean from the caller/provenance
+  // layer. Missing/undefined is rejected (never invent ungated).
+  if (typeof req.gated !== "boolean") {
+    throw new Error(
+      "gated must be an explicit boolean from highlight provenance (fail closed)",
+    );
+  }
   if (req.gated === true) {
     throw new Error("gated/withheld highlight body cannot seed a twin");
   }
@@ -115,7 +123,7 @@ export async function postHighlightTwinSeed(
       insights: req.insights ?? [],
       questions: req.questions ?? [],
       source_label: req.source_label ?? "highlight",
-      gated: false,
+      gated: req.gated,
     }),
   });
   return parseHighlightTwinSeed(await readOkBody(res));

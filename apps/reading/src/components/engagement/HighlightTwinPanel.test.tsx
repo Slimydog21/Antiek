@@ -27,6 +27,7 @@ describe("HighlightTwinPanel", () => {
         seedFn={seedFn}
         initialParentAssetId="asset-1"
         initialHighlight="A key sentence."
+        gated={false}
       />,
     );
     fireEvent.change(screen.getByTestId("highlight-twin-insights"), {
@@ -43,6 +44,7 @@ describe("HighlightTwinPanel", () => {
       highlight: "A key sentence.",
       insights: ["insight"],
       questions: [],
+      gated: false,
     });
   });
 
@@ -55,6 +57,7 @@ describe("HighlightTwinPanel", () => {
         seedFn={seedFn}
         initialParentAssetId="a"
         initialHighlight="x"
+        gated={false}
       />,
     );
     fireEvent.click(screen.getByTestId("highlight-twin-seed"));
@@ -72,12 +75,31 @@ describe("HighlightTwinPanel", () => {
         seedFn={seedFn}
         initialParentAssetId="a"
         initialHighlight="x"
+        gated={false}
       />,
     );
     fireEvent.click(screen.getByTestId("highlight-twin-seed"));
     await waitFor(() => {
       expect(screen.getByTestId("highlight-twin-error").textContent).toMatch(
         /llm_filled/,
+      );
+    });
+  });
+
+  it("passes gated true through and does not invent ungated", async () => {
+    const seedFn = vi.fn(async () => sample);
+    render(
+      <HighlightTwinPanel
+        seedFn={seedFn}
+        initialParentAssetId="a"
+        initialHighlight="secret"
+        gated={true}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("highlight-twin-seed"));
+    await waitFor(() => {
+      expect(seedFn).toHaveBeenCalledWith(
+        expect.objectContaining({ gated: true }),
       );
     });
   });

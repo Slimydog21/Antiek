@@ -24,6 +24,7 @@ def test_seed_ok() -> None:
             "highlight": "A key sentence.",
             "insights": ["insight"],
             "questions": [],
+            "gated": False,
         },
     )
     assert r.status_code == 200, r.text
@@ -52,7 +53,19 @@ def test_extra_forbid() -> None:
         json={
             "parent_asset_id": "a",
             "highlight": "x",
+            "gated": False,
             "llm_filled": True,
+        },
+    )
+    assert r.status_code == 422
+
+
+def test_missing_gated_rejected() -> None:
+    r = _client().post(
+        "/twins/from-highlight/seed",
+        json={
+            "parent_asset_id": "a",
+            "highlight": "x",
         },
     )
     assert r.status_code == 422

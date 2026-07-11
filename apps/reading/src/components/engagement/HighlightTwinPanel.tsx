@@ -18,12 +18,18 @@ export interface HighlightTwinPanelProps {
   ) => Promise<HighlightTwinSeed | unknown>;
   initialParentAssetId?: string;
   initialHighlight?: string;
+  /**
+   * Required gate provenance from the reader/session host.
+   * Must be an explicit boolean; missing/undefined blocks seed.
+   */
+  gated: boolean;
 }
 
 export default function HighlightTwinPanel({
   seedFn = postHighlightTwinSeed,
   initialParentAssetId = "",
   initialHighlight = "",
+  gated,
 }: HighlightTwinPanelProps) {
   const [parent, setParent] = useState(initialParentAssetId);
   const [highlight, setHighlight] = useState(initialHighlight);
@@ -46,11 +52,17 @@ export default function HighlightTwinPanel({
         .split(/\r?\n/)
         .map((s) => s.trim())
         .filter(Boolean);
+      if (typeof gated !== "boolean") {
+        throw new Error(
+          "gated must be an explicit boolean from highlight provenance (fail closed)",
+        );
+      }
       const raw = await seedFn({
         parent_asset_id: parent.trim(),
         highlight: highlight.trim(),
         insights,
         questions,
+        gated,
       });
       setResult(parseHighlightTwinSeed(raw));
     } catch (e) {

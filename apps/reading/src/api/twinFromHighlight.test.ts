@@ -52,13 +52,20 @@ describe("postHighlightTwinSeed", () => {
       parent_asset_id: "asset-1",
       highlight: "A key sentence.",
       insights: ["insight"],
+      gated: false,
     });
     expect(r.authority).toBe("highlight_seed_only");
+    const init = mockFetch.mock.calls[0][1] as { body: string };
+    expect(JSON.parse(init.body).gated).toBe(false);
   });
 
   it("rejects empty highlight without network", async () => {
     await expect(
-      postHighlightTwinSeed({ parent_asset_id: "a", highlight: "  " }),
+      postHighlightTwinSeed({
+        parent_asset_id: "a",
+        highlight: "  ",
+        gated: false,
+      }),
     ).rejects.toThrow(/highlight/);
     expect(mockFetch).not.toHaveBeenCalled();
   });
@@ -74,6 +81,16 @@ describe("postHighlightTwinSeed", () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
+  it("rejects missing gated without network", async () => {
+    await expect(
+      postHighlightTwinSeed({
+        parent_asset_id: "a",
+        highlight: "x",
+      } as Parameters<typeof postHighlightTwinSeed>[0]),
+    ).rejects.toThrow(/explicit boolean/);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
   it("HTTP errors", async () => {
     mockFetch.mockResolvedValue({
       ok: false,
@@ -82,7 +99,11 @@ describe("postHighlightTwinSeed", () => {
       json: async () => ({}),
     } as unknown as Response);
     await expect(
-      postHighlightTwinSeed({ parent_asset_id: "a", highlight: "x" }),
+      postHighlightTwinSeed({
+        parent_asset_id: "a",
+        highlight: "x",
+        gated: false,
+      }),
     ).rejects.toBeInstanceOf(HighlightTwinHttpError);
   });
 });
