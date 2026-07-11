@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import substrate.multimedia.chapter_tts_production as chapter_module
 from runtime.db_lock import FlockWriteCoordinator
 from substrate.multimedia.chapter_tts_production import produce_chapter_narration
 from substrate.multimedia.operations import MultimediaExecutionUnavailable
@@ -13,6 +14,7 @@ from substrate.multimedia.reconciliation_operations import (
     get_chapter_tts_reconciliation,
     operator_quarantine_stale_send,
     operator_recover_unknown_send,
+    operator_release_stale_seal,
 )
 from substrate.multimedia.tts_reconciliation import sign_provider_recovery_evidence
 from tests.test_multimedia_tts_reconciliation import (
@@ -141,3 +143,55 @@ def test_accounting_corruption_fails_closed(tmp_path: Path) -> None:
             db_path=str(values["db_path"]), execution_id=execution_id,
             authenticated_operator_id="operator-1", signing_key=KEY, now=NOW,
         )
+
+
+def test_operator_projects_and_releases_only_expired_seal_lease(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    values, _, authorization = _produce_values(tmp_path)
+    execution_id = _execution_id(authorization)
+    original_run = chapter_module._run
+    monkeypatch.setattr(
+        chapter_module,
+        "_run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(ProcessCrash()),
+    )
+    with pytest.raises(ProcessCrash):
+        produce_chapter_narration(
+            **values,
+            synthesize=lambda request: chapter_module.ChapterTTSSynthesisResult(
+                _wav(), "operator-seal-crash"
+            ),
+        )  # type: ignore[arg-type]
+
+    fresh = get_chapter_tts_reconciliation(
+        db_path=str(values["db_path"]), execution_id=execution_id,
+        authenticated_operator_id="operator-1", signing_key=KEY,
+        now=NOW + timedelta(minutes=1),
+    )
+    assert fresh.next_action == "wait"
+    assert fresh.seal_age_seconds == 60
+    assert fresh.safe_error_code == "seal_lease_fresh"
+
+    stale = get_chapter_tts_reconciliation(
+        db_path=str(values["db_path"]), execution_id=execution_id,
+        authenticated_operator_id="operator-1", signing_key=KEY,
+        now=NOW + timedelta(minutes=10),
+    )
+    assert stale.next_action == "release_seal"
+    assert stale.action_eligible is True
+    assert stale.seal_lease_id is not None
+    reset = operator_release_stale_seal(
+        authority=_recovery(
+            execution_id,
+            "release_seal",
+            NOW + timedelta(minutes=10),
+            stale.seal_lease_id,
+        ),
+        recovery_key=RECOVERY_KEY, authenticated_operator_id="operator-1",
+        signing_key=KEY, db_path=str(values["db_path"]),
+        now=NOW + timedelta(minutes=10),
+    )
+    assert reset.attempt_status == "received"
+    assert reset.next_action == "resume_narration"
+    monkeypatch.setattr(chapter_module, "_run", original_run)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import threading
 import wave
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -15,6 +16,7 @@ from substrate.multimedia.chapter_tts_production import (
     ChapterTTSSynthesisResult,
     PreparedChapterTTSRequest,
     get_chapter_tts_attempt,
+    get_chapter_tts_seal_lease,
     prepare_chapter_tts_request,
     produce_chapter_narration,
 )
@@ -153,7 +155,9 @@ def _produce_values(tmp_path: Path):
     }, prepared, authorization
 
 
-def _recovery(execution_id: str, action: str, now: datetime):
+def _recovery(
+    execution_id: str, action: str, now: datetime, lease_id: str | None = None
+):
     return issue_chapter_tts_recovery_authorization(
         recovery_key=RECOVERY_KEY,
         operator_id="operator-1",
@@ -161,6 +165,7 @@ def _recovery(execution_id: str, action: str, now: datetime):
         action=action,  # type: ignore[arg-type]
         issued_at=now - timedelta(minutes=1),
         expires_at=now + timedelta(minutes=10),
+        lease_id=lease_id,
     )
 
 
@@ -312,40 +317,268 @@ def test_stale_local_seal_releases_without_provider_retry(
     )
     assert attempt.status == "sealing"
     assert attempt.raw_path is not None
-    Path(attempt.raw_path).write_bytes(b"corrupt")
-    Path(attempt.raw_path).chmod(0o600)
+    lease = get_chapter_tts_seal_lease(
+        db_path=str(values["db_path"]), execution_id=execution_id, signing_key=KEY
+    )
     with pytest.raises(Exception, match="valid durable"):
         release_stale_seal(
-            authority=_recovery(execution_id, "release_seal", NOW + timedelta(minutes=1)),
+            authority=_recovery(
+                execution_id, "release_seal", NOW + timedelta(minutes=1), lease.lease_id
+            ),
             recovery_key=RECOVERY_KEY,
             operator_id="operator-1",
             signing_key=KEY,
             db_path=str(values["db_path"]),
             now=NOW + timedelta(minutes=1),
         )
+    Path(attempt.raw_path).write_bytes(b"corrupt")
+    Path(attempt.raw_path).chmod(0o600)
+    with pytest.raises(Exception, match="valid durable"):
+        release_stale_seal(
+            authority=_recovery(
+                execution_id, "release_seal", NOW + timedelta(minutes=10), lease.lease_id
+            ),
+            recovery_key=RECOVERY_KEY,
+            operator_id="operator-1",
+            signing_key=KEY,
+            db_path=str(values["db_path"]),
+            now=NOW + timedelta(minutes=10),
+        )
     Path(attempt.raw_path).write_bytes(_wav())
     Path(attempt.raw_path).chmod(0o600)
 
     reset = release_stale_seal(
-        authority=_recovery(execution_id, "release_seal", NOW + timedelta(minutes=1)),
+        authority=_recovery(
+            execution_id, "release_seal", NOW + timedelta(minutes=10), lease.lease_id
+        ),
         recovery_key=RECOVERY_KEY,
         operator_id="operator-1",
         signing_key=KEY,
         db_path=str(values["db_path"]),
-        now=NOW + timedelta(minutes=1),
+        now=NOW + timedelta(minutes=10),
     )
     assert reset.status == "received"
     monkeypatch.setattr(chapter_module, "_run", original_run)
     artifact = produce_chapter_narration(
-        **{**values, "now": NOW + timedelta(minutes=1)}, synthesize=synthesize
+        **{**values, "now": NOW + timedelta(minutes=10)}, synthesize=synthesize
     )  # type: ignore[arg-type]
     assert artifact.manifest.duration_seconds == 1.0
     assert calls == [1]
 
 
+def test_tampered_or_missing_seal_lease_cannot_release(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    values, _, authorization = _produce_values(tmp_path)
+    execution_id = _execution_id(authorization)
+    monkeypatch.setattr(
+        chapter_module,
+        "_run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(ProcessCrash()),
+    )
+    with pytest.raises(ProcessCrash):
+        produce_chapter_narration(
+            **values,
+            synthesize=lambda request: ChapterTTSSynthesisResult(
+                _wav(), "provider-lease-tamper"
+            ),
+        )  # type: ignore[arg-type]
+    lease = get_chapter_tts_seal_lease(
+        db_path=str(values["db_path"]), execution_id=execution_id, signing_key=KEY
+    )
+    assert lease.state == "active"
+    from runtime.db_lock import FlockWriteCoordinator
+
+    with FlockWriteCoordinator(str(values["db_path"])).acquire_write_context(
+        "test.tamper_seal_lease"
+    ) as connection:
+        connection.execute(
+            "UPDATE multimedia_chapter_tts_seal_leases SET acquired_at=? WHERE execution_id=?",
+            ["2020-01-01T00:00:00Z", execution_id],
+        )
+    with pytest.raises(Exception, match="MAC"):
+        release_stale_seal(
+            authority=_recovery(
+                execution_id, "release_seal", NOW + timedelta(minutes=10), lease.lease_id
+            ),
+            recovery_key=RECOVERY_KEY, operator_id="operator-1", signing_key=KEY,
+            db_path=str(values["db_path"]), now=NOW + timedelta(minutes=10),
+        )
+
+
+def test_legacy_sealing_attempt_without_lease_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    values, _, authorization = _produce_values(tmp_path)
+    execution_id = _execution_id(authorization)
+    monkeypatch.setattr(
+        chapter_module,
+        "_run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(ProcessCrash()),
+    )
+    with pytest.raises(ProcessCrash):
+        produce_chapter_narration(
+            **values,
+            synthesize=lambda request: ChapterTTSSynthesisResult(
+                _wav(), "provider-legacy-seal"
+            ),
+        )  # type: ignore[arg-type]
+    lease = get_chapter_tts_seal_lease(
+        db_path=str(values["db_path"]), execution_id=execution_id, signing_key=KEY
+    )
+    from runtime.db_lock import FlockWriteCoordinator
+
+    with FlockWriteCoordinator(str(values["db_path"])).acquire_write_context(
+        "test.remove_seal_lease"
+    ) as connection:
+        connection.execute(
+            "DELETE FROM multimedia_chapter_tts_seal_leases WHERE execution_id=?",
+            [execution_id],
+        )
+    with pytest.raises(Exception, match="lease does not exist"):
+        release_stale_seal(
+            authority=_recovery(
+                execution_id, "release_seal", NOW + timedelta(minutes=10), lease.lease_id
+            ),
+            recovery_key=RECOVERY_KEY, operator_id="operator-1", signing_key=KEY,
+            db_path=str(values["db_path"]), now=NOW + timedelta(minutes=10),
+        )
+
+
+def test_old_worker_and_authority_cannot_resolve_replacement_lease(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    values, _, authorization = _produce_values(tmp_path)
+    execution_id = _execution_id(authorization)
+    original_run = chapter_module._run
+    monkeypatch.setattr(
+        chapter_module,
+        "_run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(ProcessCrash()),
+    )
+    with pytest.raises(ProcessCrash):
+        produce_chapter_narration(
+            **values,
+            synthesize=lambda request: ChapterTTSSynthesisResult(
+                _wav(), "provider-generation-one"
+            ),
+        )  # type: ignore[arg-type]
+    first = get_chapter_tts_seal_lease(
+        db_path=str(values["db_path"]), execution_id=execution_id, signing_key=KEY
+    )
+    old_authority = _recovery(
+        execution_id, "release_seal", NOW + timedelta(minutes=10), first.lease_id
+    )
+    release_stale_seal(
+        authority=old_authority, recovery_key=RECOVERY_KEY, operator_id="operator-1",
+        signing_key=KEY, db_path=str(values["db_path"]),
+        now=NOW + timedelta(minutes=10),
+    )
+    with pytest.raises(ProcessCrash):
+        produce_chapter_narration(
+            **{**values, "now": NOW + timedelta(minutes=11)},
+            synthesize=lambda request: ChapterTTSSynthesisResult(
+                _wav(), "must-not-call-provider"
+            ),
+        )  # type: ignore[arg-type]
+    second = get_chapter_tts_seal_lease(
+        db_path=str(values["db_path"]), execution_id=execution_id, signing_key=KEY
+    )
+    assert second.lease_id != first.lease_id
+    assert second.state == "active"
+
+    with pytest.raises(Exception, match="lease is invalid"):
+        chapter_module._release_seal(
+            str(values["db_path"]), execution_id, KEY,
+            lease_id=first.lease_id, resolved_at=NOW + timedelta(minutes=20),
+        )
+    with pytest.raises(Exception, match="valid durable"):
+        release_stale_seal(
+            authority=old_authority, recovery_key=RECOVERY_KEY, operator_id="operator-1",
+            signing_key=KEY, db_path=str(values["db_path"]),
+            now=NOW + timedelta(minutes=19),
+        )
+    current = get_chapter_tts_seal_lease(
+        db_path=str(values["db_path"]), execution_id=execution_id, signing_key=KEY
+    )
+    assert current == second
+    monkeypatch.setattr(chapter_module, "_run", original_run)
+
+
+def test_resumed_old_worker_cannot_poison_replacement_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    values, _, authorization = _produce_values(tmp_path)
+    execution_id = _execution_id(authorization)
+    original_run = chapter_module._run
+    entered = threading.Event()
+    resume = threading.Event()
+    call_lock = threading.Lock()
+    media_calls = 0
+    provider_calls: list[str] = []
+    old_errors: list[BaseException] = []
+
+    def controlled_run(argv: list[str], timeout: int):
+        nonlocal media_calls
+        with call_lock:
+            media_calls += 1
+            call_number = media_calls
+        if call_number == 1:
+            entered.set()
+            assert resume.wait(timeout=10)
+        return original_run(argv, timeout)
+
+    monkeypatch.setattr(chapter_module, "_run", controlled_run)
+
+    def old_worker() -> None:
+        try:
+            produce_chapter_narration(
+                **values,
+                synthesize=lambda request: (
+                    provider_calls.append("old")
+                    or ChapterTTSSynthesisResult(_wav(), "provider-fenced-old")
+                ),
+            )  # type: ignore[arg-type]
+        except BaseException as exc:
+            old_errors.append(exc)
+
+    thread = threading.Thread(target=old_worker)
+    thread.start()
+    assert entered.wait(timeout=10)
+    first = get_chapter_tts_seal_lease(
+        db_path=str(values["db_path"]), execution_id=execution_id, signing_key=KEY
+    )
+    release_stale_seal(
+        authority=_recovery(
+            execution_id, "release_seal", NOW + timedelta(minutes=10), first.lease_id
+        ),
+        recovery_key=RECOVERY_KEY, operator_id="operator-1", signing_key=KEY,
+        db_path=str(values["db_path"]), now=NOW + timedelta(minutes=10),
+    )
+    replacement = produce_chapter_narration(
+        **{**values, "now": NOW + timedelta(minutes=11)},
+        synthesize=lambda request: (_ for _ in ()).throw(AssertionError("provider retried")),
+    )  # type: ignore[arg-type]
+    second = get_chapter_tts_seal_lease(
+        db_path=str(values["db_path"]), execution_id=execution_id, signing_key=KEY
+    )
+    assert second.lease_id != first.lease_id
+    assert second.state == "sealed"
+
+    resume.set()
+    thread.join(timeout=15)
+    assert not thread.is_alive()
+    assert provider_calls == ["old"]
+    assert len(old_errors) == 1
+    assert "lease is invalid" in str(old_errors[0])
+    assert Path(replacement.manifest.output_path).is_file()
+    assert second.lease_id in replacement.manifest.output_path
+    assert not tuple(Path(str(values["output_dir"])).glob(f"*{first.lease_id}*"))
+
+
 def test_recovery_authority_rejects_tamper_wrong_action_and_expiry() -> None:
     execution_id = "mmexec_" + "a" * 64
-    authority = _recovery(execution_id, "release_seal", NOW)
+    authority = _recovery(execution_id, "release_seal", NOW, "mmttslease_test")
     with pytest.raises(ChapterTTSReconciliationError, match="signature"):
         release_stale_seal(
             authority=replace(authority, operator_id="attacker"),

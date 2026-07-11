@@ -10,7 +10,11 @@ from pathlib import Path
 
 from runtime.db_lock import connect_read
 
-from .chapter_tts_production import ChapterTTSAttempt, get_chapter_tts_attempt
+from .chapter_tts_production import (
+    ChapterTTSAttempt,
+    get_chapter_tts_attempt,
+    get_chapter_tts_seal_lease,
+)
 from .execution_authorization import MultimediaExecutionAuthorizationV2
 from .operations import MultimediaExecutionUnavailable
 from .provider_execution import ProviderExecutionStatus, get_provider_execution
@@ -19,6 +23,7 @@ from .tts_reconciliation import (
     ChapterTTSRecoveryAuthorization,
     quarantine_stale_send,
     recover_unknown_send,
+    release_stale_seal,
 )
 
 _MAX_AUDIO_BYTES = 64 * 1024 * 1024
@@ -52,6 +57,13 @@ def get_chapter_tts_reconciliation(
         raise MultimediaExecutionUnavailable("multimedia execution is unavailable") from None
 
     age = _send_age(attempt, checked_at)
+    seal_age, seal_lease_id = _seal_state(
+        db_path=db_path,
+        execution_id=execution_id,
+        signing_key=signing_key,
+        now=checked_at,
+        required=attempt.status == "sealing",
+    )
     raw_present, raw_valid = _raw_state(attempt)
     charged_cents = _validated_charged_cents(
         db_path=db_path,
@@ -62,7 +74,12 @@ def get_chapter_tts_reconciliation(
         provider_status=execution.status,
     )
     action, eligible = _next_action(
-        attempt, execution.status, age=age, stale_after=stale_after, raw_valid=raw_valid
+        attempt,
+        execution.status,
+        age=age,
+        seal_age=seal_age,
+        stale_after=stale_after,
+        raw_valid=raw_valid,
     )
     return ChapterTTSReconciliationView(
         execution_id=execution.execution_id,
@@ -73,20 +90,25 @@ def get_chapter_tts_reconciliation(
         next_action=action,
         action_eligible=eligible,
         send_age_seconds=age,
+        seal_age_seconds=seal_age,
+        seal_lease_id=seal_lease_id,
         charged_cents=charged_cents,
         full_ceiling_charged=charged_cents
         == (execution.approved_ceiling_microdollars + 9_999) // 10_000,
         raw_audio_present=raw_present,
         raw_audio_hash_valid=raw_valid,
         requires_signed_operator_authority=action
-        in {"quarantine_send", "recover_unknown"},
+        in {"quarantine_send", "recover_unknown", "release_seal"},
         requires_external_provider_evidence=action == "recover_unknown",
         parent_resume_eligible=action == "resume_narration",
         safe_error_code=(
-            "raw_audio_invalid" if attempt.raw_path is not None and not raw_valid
-            else "seal_staleness_unverifiable" if attempt.status == "sealing"
+            "raw_audio_invalid"
+            if attempt.raw_path is not None and not raw_valid
+            else "seal_lease_fresh"
+            if attempt.status == "sealing" and not eligible
             else "provider_observation_pending"
-            if attempt.status == "received" and execution.status is ProviderExecutionStatus.SUBMITTED
+            if attempt.status == "received"
+            and execution.status is ProviderExecutionStatus.SUBMITTED
             else None
         ),
     )
@@ -104,8 +126,10 @@ def operator_quarantine_stale_send(
     stale_after: timedelta = timedelta(minutes=5),
 ) -> ChapterTTSReconciliationView:
     _assert_owned(
-        db_path=db_path, execution_id=authority.execution_id,
-        authenticated_operator_id=authenticated_operator_id, signing_key=signing_key,
+        db_path=db_path,
+        execution_id=authority.execution_id,
+        authenticated_operator_id=authenticated_operator_id,
+        signing_key=signing_key,
     )
     quarantine_stale_send(
         authority=authority,
@@ -143,8 +167,10 @@ def operator_recover_unknown_send(
     recorded_at: datetime,
 ) -> ChapterTTSReconciliationView:
     _assert_owned(
-        db_path=db_path, execution_id=authority.execution_id,
-        authenticated_operator_id=authenticated_operator_id, signing_key=signing_key,
+        db_path=db_path,
+        execution_id=authority.execution_id,
+        authenticated_operator_id=authenticated_operator_id,
+        signing_key=signing_key,
     )
     recover_unknown_send(
         authority=authority,
@@ -169,11 +195,47 @@ def operator_recover_unknown_send(
     )
 
 
+def operator_release_stale_seal(
+    *,
+    authority: ChapterTTSRecoveryAuthorization,
+    recovery_key: bytes,
+    authenticated_operator_id: str,
+    signing_key: bytes,
+    db_path: str,
+    now: datetime,
+    stale_after: timedelta = timedelta(minutes=5),
+) -> ChapterTTSReconciliationView:
+    _assert_owned(
+        db_path=db_path,
+        execution_id=authority.execution_id,
+        authenticated_operator_id=authenticated_operator_id,
+        signing_key=signing_key,
+    )
+    release_stale_seal(
+        authority=authority,
+        recovery_key=recovery_key,
+        operator_id=authenticated_operator_id,
+        signing_key=signing_key,
+        db_path=db_path,
+        now=now,
+        stale_after=stale_after,
+    )
+    return get_chapter_tts_reconciliation(
+        db_path=db_path,
+        execution_id=authority.execution_id,
+        authenticated_operator_id=authenticated_operator_id,
+        signing_key=signing_key,
+        now=now,
+        stale_after=stale_after,
+    )
+
+
 def _next_action(
     attempt: ChapterTTSAttempt,
     provider_status: ProviderExecutionStatus,
     *,
     age: int | None,
+    seal_age: int | None,
     stale_after: timedelta,
     raw_valid: bool,
 ) -> tuple[ReconciliationAction, bool]:
@@ -185,7 +247,10 @@ def _next_action(
     if attempt.status == "received" and provider_status is ProviderExecutionStatus.SUBMITTED:
         return "recover_unknown", True
     if attempt.status == "sealing":
-        return "wait", False
+        eligible = (
+            raw_valid and seal_age is not None and seal_age >= int(stale_after.total_seconds())
+        )
+        return ("release_seal", True) if eligible else ("wait", False)
     if attempt.status == "received":
         return ("resume_narration", True) if raw_valid else ("wait", False)
     return "none", False
@@ -199,6 +264,32 @@ def _send_age(attempt: ChapterTTSAttempt, now: datetime) -> int | None:
     except ValueError:
         return None
     return max(0, int((now - started.astimezone(UTC)).total_seconds()))
+
+
+def _seal_state(
+    *,
+    db_path: str,
+    execution_id: str,
+    signing_key: bytes,
+    now: datetime,
+    required: bool,
+) -> tuple[int | None, str | None]:
+    if not required:
+        return None, None
+    try:
+        lease = get_chapter_tts_seal_lease(
+            db_path=db_path, execution_id=execution_id, signing_key=signing_key
+        )
+        if lease.state != "active":
+            raise ValueError
+        acquired = datetime.fromisoformat(lease.acquired_at.replace("Z", "+00:00"))
+        if now < acquired:
+            raise ValueError
+        return int((now - acquired).total_seconds()), lease.lease_id
+    except Exception as exc:
+        if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+            raise
+        raise MultimediaExecutionUnavailable("multimedia execution is unavailable") from None
 
 
 def _raw_state(attempt: ChapterTTSAttempt) -> tuple[bool, bool]:
@@ -272,16 +363,22 @@ def _validated_charged_cents(
             raise ValueError
         unknown_charged = attempt_status in {"outcome_unknown", "received", "sealing", "sealed"}
         if unknown_charged and (spent, held, row[3], row[5], row[6]) == (
-            ceiling, 0, "exhausted", "claimed", None
+            ceiling,
+            0,
+            "exhausted",
+            "claimed",
+            None,
         ):
             return spent
         if provider_status is ProviderExecutionStatus.SUCCEEDED and (
-            spent, held, row[3], row[5], row[6]
+            spent,
+            held,
+            row[3],
+            row[5],
+            row[6],
         ) == (ceiling, 0, "exhausted", "settled", ceiling):
             return spent
-        if not unknown_charged and (spent, held, row[5], row[6]) == (
-            0, ceiling, "claimed", None
-        ):
+        if not unknown_charged and (spent, held, row[5], row[6]) == (0, ceiling, "claimed", None):
             return spent
         raise ValueError
     except Exception as exc:
@@ -300,4 +397,5 @@ __all__ = [
     "get_chapter_tts_reconciliation",
     "operator_quarantine_stale_send",
     "operator_recover_unknown_send",
+    "operator_release_stale_seal",
 ]

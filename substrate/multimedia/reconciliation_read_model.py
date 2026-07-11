@@ -11,6 +11,7 @@ ReconciliationAction = Literal[
     "wait",
     "quarantine_send",
     "recover_unknown",
+    "release_seal",
     "resume_narration",
     "none",
 ]
@@ -26,6 +27,8 @@ class ChapterTTSReconciliationView:
     next_action: ReconciliationAction
     action_eligible: bool
     send_age_seconds: int | None
+    seal_age_seconds: int | None
+    seal_lease_id: str | None
     charged_cents: int
     full_ceiling_charged: bool
     raw_audio_present: bool

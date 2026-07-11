@@ -9,7 +9,7 @@
 <li>Unknown ownership and missing state return the same opaque unavailable error.</li>
 <li>Sending becomes quarantine-eligible only after the configured stale interval; outcome-unknown always remains fully charged.</li>
 <li>Provider evidence is required for unknown-send recovery and for resuming a received receipt whose provider success observation crashed.</li>
-<li>Sealing remains wait-only until the attempt schema records a signed seal-start time or lease; the operator adapter must not guess staleness.</li>
+<li>Sealing remains wait-only until the signed seal lease reaches the configured stale threshold; legacy attempts without lease evidence fail closed.</li>
 <li>Commands accept short-lived signed operator authority and delegate to the canonical recovery state machine. They never invoke provider transport.</li>
 </ul></section>
 <section><h2>Acceptance</h2><ol>

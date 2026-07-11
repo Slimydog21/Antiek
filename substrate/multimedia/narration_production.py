@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import hmac
 import json
@@ -153,6 +154,7 @@ def produce_narration_track(
     sample_rate_hz: int = 24_000,
     channels: Literal[1, 2] = 1,
     timeout_seconds: int = 300,
+    publication_id: str | None = None,
 ) -> NarrationProductionArtifact:
     asset_id = _identifier(asset_id, "asset_id")
     revision_id = _identifier(revision_id, "revision_id")
@@ -184,7 +186,10 @@ def produce_narration_track(
     if not 8_000 <= sample_rate_hz <= 48_000 or channels not in {1, 2}:
         raise ValueError("narration audio shape is invalid")
     root = _private_directory(output_dir)
-    destination = root / f"{asset_id}-{revision_id}-narration"
+    publication_suffix = (
+        "" if publication_id is None else f"-{_identifier(publication_id, 'publication_id')}"
+    )
+    destination = root / f"{asset_id}-{revision_id}-narration{publication_suffix}"
     if destination.exists() or destination.is_symlink():
         raise FileExistsError(f"narration destination already exists: {destination.name}")
     ffmpeg = _executable(ffmpeg_path)
@@ -292,7 +297,14 @@ def produce_narration_track(
         os.chmod(staging / "narration.json", 0o600)
         for source in staged_sources:
             source.unlink()
-        os.rename(staging, destination)
+        try:
+            os.rename(staging, destination)
+        except OSError as exc:
+            if exc.errno not in {errno.EEXIST, errno.ENOTEMPTY}:
+                raise
+            raise FileExistsError(
+                f"narration destination already exists: {destination.name}"
+            ) from None
         published = True
         try:
             return NarrationProductionArtifact.reopen(

@@ -291,15 +291,18 @@ def produce_narration_run(
             (destination / "narration.json").read_bytes(), integrity_key
         )
     else:
-        artifact = _produce_aggregate(
-            prepared=prepared,
-            children=tuple(children),
-            integrity_key=integrity_key,
-            output_dir=output_dir,
-            ffmpeg_path=ffmpeg_path,
-            ffprobe_path=ffprobe_path,
-            timeout_seconds=timeout_seconds,
-        )
+        try:
+            artifact = _produce_aggregate(
+                prepared=prepared,
+                children=tuple(children),
+                integrity_key=integrity_key,
+                output_dir=output_dir,
+                ffmpeg_path=ffmpeg_path,
+                ffprobe_path=ffprobe_path,
+                timeout_seconds=timeout_seconds,
+            )
+        except FileExistsError:
+            raise NarrationRunError("aggregate narration publication is in flight") from None
     _verify_aggregate_children(artifact, prepared, tuple(children))
     _seal_run(db_path, prepared.run_id, artifact, signing_key)
     return _reopen_run(

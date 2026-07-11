@@ -29,11 +29,12 @@ class ChapterTTSReconciliationError(RuntimeError):
 
 @dataclass(frozen=True)
 class ChapterTTSRecoveryAuthorization:
-    schema_version: Literal["antiek.chapter-tts-recovery.v1"]
+    schema_version: Literal["antiek.chapter-tts-recovery.v2"]
     authorization_id: str
     operator_id: str
     execution_id: str
     action: RecoveryAction
+    lease_id: str | None
     issued_at: str
     expires_at: str
     signature: str
@@ -47,32 +48,41 @@ def issue_chapter_tts_recovery_authorization(
     action: RecoveryAction,
     issued_at: datetime,
     expires_at: datetime,
+    lease_id: str | None = None,
 ) -> ChapterTTSRecoveryAuthorization:
     _key(recovery_key)
     operator_id = _identifier("operator_id", operator_id)
     execution_id = _identifier("execution_id", execution_id)
     if action not in {"quarantine_send", "recover_unknown", "release_seal"}:
         raise ValueError("invalid chapter TTS recovery action")
+    if action == "release_seal":
+        lease_id = _identifier("lease_id", lease_id) if lease_id is not None else None
+        if lease_id is None:
+            raise ValueError("release_seal authority requires lease_id")
+    elif lease_id is not None:
+        raise ValueError("lease_id is only valid for release_seal authority")
     issued = _timestamp(issued_at)
     expires = _timestamp(expires_at)
     if not timedelta(0) < _parse(expires) - _parse(issued) <= _MAX_LIFETIME:
         raise ValueError("recovery authorization lifetime must be positive and at most one hour")
     fields: dict[str, object] = {
-        "schema_version": "antiek.chapter-tts-recovery.v1",
+        "schema_version": "antiek.chapter-tts-recovery.v2",
         "operator_id": operator_id,
         "execution_id": execution_id,
         "action": action,
+        "lease_id": lease_id,
         "issued_at": issued,
         "expires_at": expires,
     }
     authorization_id = "mmttsrec_" + hashlib.sha256(_canonical(fields)).hexdigest()
     signed = {**fields, "authorization_id": authorization_id}
     return ChapterTTSRecoveryAuthorization(
-        schema_version="antiek.chapter-tts-recovery.v1",
+        schema_version="antiek.chapter-tts-recovery.v2",
         authorization_id=authorization_id,
         operator_id=operator_id,
         execution_id=execution_id,
         action=action,
+        lease_id=lease_id,
         issued_at=issued,
         expires_at=expires,
         signature=hmac.new(recovery_key, _canonical(signed), hashlib.sha256).hexdigest(),
@@ -153,6 +163,7 @@ def release_stale_seal(
     signing_key: bytes,
     db_path: str,
     now: datetime,
+    stale_after: timedelta = timedelta(minutes=5),
 ) -> ChapterTTSAttempt:
     _verify(
         authority,
@@ -161,10 +172,15 @@ def release_stale_seal(
         action="release_seal",
         now=now,
     )
+    if authority.lease_id is None:
+        raise ChapterTTSReconciliationError("seal recovery authority has no lease")
     return release_stale_chapter_tts_seal(
         db_path=db_path,
         execution_id=authority.execution_id,
         signing_key=signing_key,
+        lease_id=authority.lease_id,
+        now=now,
+        stale_after=stale_after,
     )
 
 
@@ -207,6 +223,7 @@ def _verify(
         operator_id=authority.operator_id,
         execution_id=authority.execution_id,
         action=authority.action,
+        lease_id=authority.lease_id,
         issued_at=_parse(authority.issued_at),
         expires_at=_parse(authority.expires_at),
     )
@@ -226,15 +243,18 @@ def _verify(
 
 
 def _execution_id(authorization: MultimediaExecutionAuthorizationV2) -> str:
-    return "mmexec_" + hashlib.sha256(
-        f"{authorization.authorization_id}:{authorization.request_body_digest}".encode()
-    ).hexdigest()
+    return (
+        "mmexec_"
+        + hashlib.sha256(
+            f"{authorization.authorization_id}:{authorization.request_body_digest}".encode()
+        ).hexdigest()
+    )
 
 
 def _canonical(value: dict[str, object]) -> bytes:
-    return json.dumps(
-        value, sort_keys=True, separators=(",", ":"), ensure_ascii=True
-    ).encode("ascii")
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode(
+        "ascii"
+    )
 
 
 def _identifier(field: str, value: str) -> str:
@@ -273,4 +293,3 @@ __all__ = [
     "release_stale_seal",
     "sign_provider_recovery_evidence",
 ]
-

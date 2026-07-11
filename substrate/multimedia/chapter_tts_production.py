@@ -75,6 +75,16 @@ class ChapterTTSAttempt:
     attempt_mac: str
 
 
+@dataclass(frozen=True)
+class ChapterTTSSealLease:
+    execution_id: str
+    lease_id: str
+    acquired_at: str
+    state: str
+    resolved_at: str | None
+    lease_mac: str
+
+
 _ATTEMPT_DDL = """
 CREATE TABLE IF NOT EXISTS multimedia_chapter_tts_attempts (
     execution_id TEXT PRIMARY KEY,
@@ -87,6 +97,17 @@ CREATE TABLE IF NOT EXISTS multimedia_chapter_tts_attempts (
     raw_sha256 TEXT,
     artifact_json TEXT,
     attempt_mac TEXT NOT NULL
+)
+"""
+
+_SEAL_LEASE_DDL = """
+CREATE TABLE IF NOT EXISTS multimedia_chapter_tts_seal_leases (
+    execution_id TEXT PRIMARY KEY,
+    lease_id TEXT NOT NULL UNIQUE,
+    acquired_at TEXT NOT NULL,
+    state TEXT NOT NULL,
+    resolved_at TEXT,
+    lease_mac TEXT NOT NULL
 )
 """
 
@@ -177,9 +198,7 @@ def prepare_chapter_tts_request(
     chapter_ids = {chapter.chapter_id for chapter in plan.chapters}
     paragraphs = normalize_script(
         tuple(
-            line
-            for line in plan.script_lines
-            if line.line_id.split("-line-", 1)[0] in chapter_ids
+            line for line in plan.script_lines if line.line_id.split("-line-", 1)[0] in chapter_ids
         )
     )
     grouped: dict[str, list[NarrationParagraph]] = {}
@@ -335,6 +354,7 @@ def produce_chapter_narration(
             ffmpeg_path=ffmpeg_path,
             ffprobe_path=ffprobe_path,
             timeout_seconds=timeout_seconds,
+            now=now,
         )
     if existing is not None and existing.status in {"sending", "sealing", "outcome_unknown"}:
         raise ChapterTTSProductionError(
@@ -368,6 +388,7 @@ def produce_chapter_narration(
                 ffmpeg_path=ffmpeg_path,
                 ffprobe_path=ffprobe_path,
                 timeout_seconds=timeout_seconds,
+                now=now,
             )
         raise ChapterTTSProductionError("chapter TTS send is already in flight") from exc
     attempt = get_chapter_tts_attempt(
@@ -386,6 +407,7 @@ def produce_chapter_narration(
             ffmpeg_path=ffmpeg_path,
             ffprobe_path=ffprobe_path,
             timeout_seconds=timeout_seconds,
+            now=now,
         )
     if not _mark_send_started(db_path, execution.execution_id, signing_key, now):
         raise ChapterTTSProductionError("chapter TTS send is already in flight")
@@ -456,6 +478,7 @@ def produce_chapter_narration(
         ffmpeg_path=ffmpeg_path,
         ffprobe_path=ffprobe_path,
         timeout_seconds=timeout_seconds,
+        now=now,
     )
 
 
@@ -485,9 +508,12 @@ def quarantine_stale_chapter_tts_send(
     """Charge and quarantine a stale send marker without provider retry."""
     if stale_after <= timedelta(0):
         raise ValueError("stale_after must be positive")
-    execution_id = "mmexec_" + hashlib.sha256(
-        f"{authorization.authorization_id}:{authorization.request_body_digest}".encode()
-    ).hexdigest()
+    execution_id = (
+        "mmexec_"
+        + hashlib.sha256(
+            f"{authorization.authorization_id}:{authorization.request_body_digest}".encode()
+        ).hexdigest()
+    )
     attempt = get_chapter_tts_attempt(
         db_path=db_path, execution_id=execution_id, signing_key=signing_key
     )
@@ -579,9 +605,7 @@ def recover_unknown_chapter_tts_audio(
         external_signature=external_signature,
         recorded_at=recorded_at,
     )
-    raw_path, raw_sha = _persist_raw(
-        _private_directory(output_dir), execution_id, audio_bytes
-    )
+    raw_path, raw_sha = _persist_raw(_private_directory(output_dir), execution_id, audio_bytes)
     bind_provider_job_with_mutation(
         db_path=db_path,
         execution_id=execution_id,
@@ -612,23 +636,57 @@ def recover_unknown_chapter_tts_audio(
 
 
 def release_stale_chapter_tts_seal(
-    *, db_path: str, execution_id: str, signing_key: bytes
+    *,
+    db_path: str,
+    execution_id: str,
+    signing_key: bytes,
+    lease_id: str,
+    now: datetime,
+    stale_after: timedelta = timedelta(minutes=5),
 ) -> ChapterTTSAttempt:
     """Reset a local-only sealing claim to received; never touches provider spend."""
+    if stale_after <= timedelta(0):
+        raise ValueError("stale_after must be positive")
     attempt = get_chapter_tts_attempt(
         db_path=db_path, execution_id=execution_id, signing_key=signing_key
     )
+    lease = get_chapter_tts_seal_lease(
+        db_path=db_path, execution_id=execution_id, signing_key=signing_key
+    )
+    checked_at = datetime.fromisoformat(_timestamp(now).replace("Z", "+00:00"))
+    acquired_at = datetime.fromisoformat(lease.acquired_at.replace("Z", "+00:00"))
     if (
         attempt.status != "sealing"
+        or lease.state != "active"
+        or lease.lease_id != lease_id
+        or checked_at < acquired_at
+        or checked_at - acquired_at < stale_after
         or attempt.raw_path is None
         or attempt.raw_sha256 is None
         or _hash_private_file(Path(attempt.raw_path)) != attempt.raw_sha256
     ):
         raise ChapterTTSProductionError("stale seal has no valid durable received bytes")
-    _release_seal(db_path, execution_id, signing_key)
+    _release_seal(
+        db_path, execution_id, signing_key, lease_id=lease.lease_id, resolved_at=now
+    )
     return get_chapter_tts_attempt(
         db_path=db_path, execution_id=execution_id, signing_key=signing_key
     )
+
+
+def get_chapter_tts_seal_lease(
+    *, db_path: str, execution_id: str, signing_key: bytes
+) -> ChapterTTSSealLease:
+    coordinator = FlockWriteCoordinator(db_path)
+    with coordinator.acquire_write_context("multimedia.chapter_tts.seal_lease.read") as ctx:
+        ctx.execute(_SEAL_LEASE_DDL)
+        row = ctx.execute(
+            "SELECT * FROM multimedia_chapter_tts_seal_leases WHERE execution_id=?",
+            [execution_id],
+        ).fetchone()
+    if row is None:
+        raise ProviderExecutionIntegrityError("chapter TTS seal lease does not exist")
+    return _seal_lease(row, signing_key)
 
 
 def _ensure_attempt(
@@ -665,9 +723,7 @@ def _ensure_attempt(
     )
 
 
-def _mark_send_started(
-    db_path: str, execution_id: str, signing_key: bytes, now: datetime
-) -> bool:
+def _mark_send_started(db_path: str, execution_id: str, signing_key: bytes, now: datetime) -> bool:
     timestamp = _timestamp(now)
     coordinator = FlockWriteCoordinator(db_path)
     with coordinator.acquire_write_context("multimedia.chapter_tts.send") as ctx:
@@ -706,9 +762,7 @@ def _receive_in_context(
     ).fetchone()
     if row is None or _attempt(row, signing_key).status != "sending":
         raise ProviderExecutionIntegrityError("chapter TTS receive state is invalid")
-    BudgetLedger(":memory:").settle_in_context(
-        ctx, hold_id=hold.hold_id, actual_cents=actual_cents
-    )
+    BudgetLedger(":memory:").settle_in_context(ctx, hold_id=hold.hold_id, actual_cents=actual_cents)
     values: list[object] = [
         *row[:3],
         "received",
@@ -721,7 +775,13 @@ def _receive_in_context(
     ctx.execute(
         "UPDATE multimedia_chapter_tts_attempts SET status='received', provider_request_id=?, "
         "raw_path=?, raw_sha256=?, attempt_mac=? WHERE execution_id=?",
-        [provider_request_id, raw_path, raw_sha256, _attempt_mac(values, signing_key), execution_id],
+        [
+            provider_request_id,
+            raw_path,
+            raw_sha256,
+            _attempt_mac(values, signing_key),
+            execution_id,
+        ],
     )
 
 
@@ -752,7 +812,13 @@ def _recover_received_in_context(
     ctx.execute(
         "UPDATE multimedia_chapter_tts_attempts SET status='received', provider_request_id=?, "
         "raw_path=?, raw_sha256=?, attempt_mac=? WHERE execution_id=?",
-        [provider_request_id, raw_path, raw_sha256, _attempt_mac(values, signing_key), execution_id],
+        [
+            provider_request_id,
+            raw_path,
+            raw_sha256,
+            _attempt_mac(values, signing_key),
+            execution_id,
+        ],
     )
 
 
@@ -785,13 +851,15 @@ def _seal_received(
     ffmpeg_path: str,
     ffprobe_path: str,
     timeout_seconds: int,
+    now: datetime,
 ) -> NarrationProductionArtifact:
     if attempt.status != "received" or attempt.raw_path is None or attempt.raw_sha256 is None:
         raise ChapterTTSProductionError("chapter TTS has no durable received audio")
     raw = Path(attempt.raw_path)
     if _hash_private_file(raw) != attempt.raw_sha256:
         raise ChapterTTSProductionError("chapter TTS raw audio digest is invalid")
-    if not _claim_seal(db_path, attempt.execution_id, signing_key):
+    lease = _claim_seal(db_path, attempt.execution_id, signing_key, acquired_at=now)
+    if lease is None:
         raise ChapterTTSProductionError("chapter TTS seal is already in flight")
     staging = Path(tempfile.mkdtemp(prefix=".tts-normalize-", dir=output_dir))
     try:
@@ -799,15 +867,29 @@ def _seal_received(
         wav = staging / "chapter.wav"
         _run(
             [
-                _executable(ffmpeg_path), "-hide_banner", "-loglevel", "error", "-nostdin",
-                "-y", "-i", str(raw), "-ar", str(prepared.sample_rate_hz), "-ac",
-                str(prepared.channels), "-c:a", "pcm_s16le", str(wav),
+                _executable(ffmpeg_path),
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-nostdin",
+                "-y",
+                "-i",
+                str(raw),
+                "-ar",
+                str(prepared.sample_rate_hz),
+                "-ac",
+                str(prepared.channels),
+                "-c:a",
+                "pcm_s16le",
+                str(wav),
             ],
             timeout_seconds,
         )
         os.chmod(wav, 0o600)
         duration = _probe_duration(_executable(ffprobe_path), wav, timeout_seconds)
-        durable_wav = Path(attempt.raw_path).with_suffix(".wav")
+        durable_wav = Path(attempt.raw_path).with_name(
+            f"{Path(attempt.raw_path).stem}.{lease.lease_id}.wav"
+        )
         os.replace(wav, durable_wav)
         os.chmod(durable_wav, 0o600)
         wav = durable_wav
@@ -846,13 +928,32 @@ def _seal_received(
             sample_rate_hz=prepared.sample_rate_hz,
             channels=prepared.channels,
             timeout_seconds=timeout_seconds,
+            publication_id=lease.lease_id,
         )
     except Exception:
-        _release_seal(db_path, attempt.execution_id, signing_key)
+        _release_seal(
+            db_path,
+            attempt.execution_id,
+            signing_key,
+            lease_id=lease.lease_id,
+            resolved_at=now,
+        )
         raise
     finally:
         shutil.rmtree(staging, ignore_errors=True)
-    _mark_sealed(db_path, attempt.execution_id, artifact, signing_key)
+    try:
+        _mark_sealed(
+            db_path,
+            attempt.execution_id,
+            artifact,
+            signing_key,
+            lease_id=lease.lease_id,
+            resolved_at=now,
+        )
+    except Exception:
+        shutil.rmtree(Path(artifact.manifest.output_path).parent, ignore_errors=True)
+        durable_wav.unlink(missing_ok=True)
+        raise
     return NarrationProductionArtifact.reopen(artifact.to_json(), integrity_key)
 
 
@@ -861,63 +962,180 @@ def _mark_sealed(
     execution_id: str,
     artifact: NarrationProductionArtifact,
     signing_key: bytes,
+    lease_id: str,
+    resolved_at: datetime,
 ) -> None:
     payload = artifact.to_json()
     coordinator = FlockWriteCoordinator(db_path)
     with coordinator.acquire_write_context("multimedia.chapter_tts.seal") as ctx:
-        row = ctx.execute(
-            "SELECT * FROM multimedia_chapter_tts_attempts WHERE execution_id = ?",
-            [execution_id],
-        ).fetchone()
-        if row is None or _attempt(row, signing_key).status != "sealing":
-            raise ProviderExecutionIntegrityError("chapter TTS seal state is invalid")
-        values: list[object] = [*row[:3], "sealed", *row[4:8], payload]
-        ctx.execute(
-            "UPDATE multimedia_chapter_tts_attempts SET status='sealed', artifact_json=?, "
-            "attempt_mac=? WHERE execution_id=?",
-            [payload, _attempt_mac(values, signing_key), execution_id],
-        )
+        ctx.execute(_SEAL_LEASE_DDL)
+        ctx.execute("BEGIN TRANSACTION")
+        try:
+            lease_row = ctx.execute(
+                "SELECT * FROM multimedia_chapter_tts_seal_leases WHERE execution_id=?",
+                [execution_id],
+            ).fetchone()
+            if lease_row is None:
+                raise ProviderExecutionIntegrityError("chapter TTS seal lease is invalid")
+            lease = _seal_lease(lease_row, signing_key)
+            if lease.state != "active" or lease.lease_id != lease_id:
+                raise ProviderExecutionIntegrityError("chapter TTS seal lease is invalid")
+            timestamp = _timestamp(resolved_at)
+            lease_values: list[object] = [
+                lease.execution_id, lease.lease_id, lease.acquired_at, "sealed", timestamp
+            ]
+            ctx.execute(
+                "UPDATE multimedia_chapter_tts_seal_leases SET state='sealed', resolved_at=?, "
+                "lease_mac=? WHERE execution_id=? AND lease_id=? AND state='active'",
+                [
+                    timestamp,
+                    _seal_lease_mac(lease_values, signing_key),
+                    execution_id,
+                    lease_id,
+                ],
+            )
+            row = ctx.execute(
+                "SELECT * FROM multimedia_chapter_tts_attempts WHERE execution_id = ?",
+                [execution_id],
+            ).fetchone()
+            if row is None or _attempt(row, signing_key).status != "sealing":
+                raise ProviderExecutionIntegrityError("chapter TTS seal state is invalid")
+            values: list[object] = [*row[:3], "sealed", *row[4:8], payload]
+            ctx.execute(
+                "UPDATE multimedia_chapter_tts_attempts SET status='sealed', artifact_json=?, "
+                "attempt_mac=? WHERE execution_id=?",
+                [payload, _attempt_mac(values, signing_key), execution_id],
+            )
+        except Exception:
+            ctx.execute("ROLLBACK")
+            raise
+        else:
+            ctx.execute("COMMIT")
 
 
-def _claim_seal(db_path: str, execution_id: str, signing_key: bytes) -> bool:
+def _claim_seal(
+    db_path: str, execution_id: str, signing_key: bytes, *, acquired_at: datetime
+) -> ChapterTTSSealLease | None:
     coordinator = FlockWriteCoordinator(db_path)
     with coordinator.acquire_write_context("multimedia.chapter_tts.claim_seal") as ctx:
-        row = ctx.execute(
-            "SELECT * FROM multimedia_chapter_tts_attempts WHERE execution_id = ?",
-            [execution_id],
-        ).fetchone()
-        if row is None:
-            raise ProviderExecutionIntegrityError("chapter TTS attempt disappeared")
-        current = _attempt(row, signing_key)
-        if current.status != "received":
-            return False
-        values: list[object] = [*row[:3], "sealing", *row[4:9]]
-        hit = ctx.execute(
-            "UPDATE multimedia_chapter_tts_attempts SET status='sealing', attempt_mac=? "
-            "WHERE execution_id=? AND status='received' RETURNING 1",
-            [_attempt_mac(values, signing_key), execution_id],
-        ).fetchone()
-        return hit is not None
+        ctx.execute(_SEAL_LEASE_DDL)
+        ctx.execute("BEGIN TRANSACTION")
+        try:
+            row = ctx.execute(
+                "SELECT * FROM multimedia_chapter_tts_attempts WHERE execution_id = ?",
+                [execution_id],
+            ).fetchone()
+            if row is None:
+                raise ProviderExecutionIntegrityError("chapter TTS attempt disappeared")
+            current = _attempt(row, signing_key)
+            if current.status != "received":
+                ctx.execute("ROLLBACK")
+                return None
+            timestamp = _timestamp(acquired_at)
+            existing = ctx.execute(
+                "SELECT * FROM multimedia_chapter_tts_seal_leases WHERE execution_id=?",
+                [execution_id],
+            ).fetchone()
+            if existing is not None:
+                lease = _seal_lease(existing, signing_key)
+                if lease.state == "active":
+                    raise ProviderExecutionIntegrityError("chapter TTS seal lease is active")
+            prior_lease_id = "initial" if existing is None else lease.lease_id
+            lease_id = "mmttslease_" + hashlib.sha256(
+                f"{execution_id}:{timestamp}:{prior_lease_id}".encode("ascii")
+            ).hexdigest()
+            lease_values: list[object] = [execution_id, lease_id, timestamp, "active", None]
+            lease_mac = _seal_lease_mac(lease_values, signing_key)
+            if existing is None:
+                ctx.execute(
+                    "INSERT INTO multimedia_chapter_tts_seal_leases VALUES (?, ?, ?, ?, ?, ?)",
+                    [*lease_values, lease_mac],
+                )
+            else:
+                ctx.execute(
+                    "UPDATE multimedia_chapter_tts_seal_leases SET lease_id=?, acquired_at=?, "
+                    "state='active', resolved_at=NULL, lease_mac=? WHERE execution_id=?",
+                    [lease_id, timestamp, lease_mac, execution_id],
+                )
+            values: list[object] = [*row[:3], "sealing", *row[4:9]]
+            hit = ctx.execute(
+                "UPDATE multimedia_chapter_tts_attempts SET status='sealing', attempt_mac=? "
+                "WHERE execution_id=? AND status='received' RETURNING 1",
+                [_attempt_mac(values, signing_key), execution_id],
+            ).fetchone()
+            if hit is None:
+                raise ProviderExecutionIntegrityError("chapter TTS seal claim raced")
+        except Exception:
+            ctx.execute("ROLLBACK")
+            raise
+        else:
+            ctx.execute("COMMIT")
+            return ChapterTTSSealLease(
+                execution_id=execution_id,
+                lease_id=lease_id,
+                acquired_at=timestamp,
+                state="active",
+                resolved_at=None,
+                lease_mac=lease_mac,
+            )
 
 
-def _release_seal(db_path: str, execution_id: str, signing_key: bytes) -> None:
+def _release_seal(
+    db_path: str,
+    execution_id: str,
+    signing_key: bytes,
+    *,
+    lease_id: str,
+    resolved_at: datetime,
+) -> None:
     coordinator = FlockWriteCoordinator(db_path)
     with coordinator.acquire_write_context("multimedia.chapter_tts.release_seal") as ctx:
-        row = ctx.execute(
-            "SELECT * FROM multimedia_chapter_tts_attempts WHERE execution_id = ?",
-            [execution_id],
-        ).fetchone()
-        if row is None:
-            raise ProviderExecutionIntegrityError("chapter TTS attempt disappeared")
-        current = _attempt(row, signing_key)
-        if current.status != "sealing":
-            raise ProviderExecutionIntegrityError("chapter TTS seal release state is invalid")
-        values: list[object] = [*row[:3], "received", *row[4:9]]
-        ctx.execute(
-            "UPDATE multimedia_chapter_tts_attempts SET status='received', attempt_mac=? "
-            "WHERE execution_id=? AND status='sealing'",
-            [_attempt_mac(values, signing_key), execution_id],
-        )
+        ctx.execute(_SEAL_LEASE_DDL)
+        ctx.execute("BEGIN TRANSACTION")
+        try:
+            lease_row = ctx.execute(
+                "SELECT * FROM multimedia_chapter_tts_seal_leases WHERE execution_id=?",
+                [execution_id],
+            ).fetchone()
+            if lease_row is None:
+                raise ProviderExecutionIntegrityError("chapter TTS seal lease is invalid")
+            lease = _seal_lease(lease_row, signing_key)
+            if lease.state != "active" or lease.lease_id != lease_id:
+                raise ProviderExecutionIntegrityError("chapter TTS seal lease is invalid")
+            row = ctx.execute(
+                "SELECT * FROM multimedia_chapter_tts_attempts WHERE execution_id = ?",
+                [execution_id],
+            ).fetchone()
+            if row is None:
+                raise ProviderExecutionIntegrityError("chapter TTS attempt disappeared")
+            current = _attempt(row, signing_key)
+            if current.status != "sealing":
+                raise ProviderExecutionIntegrityError("chapter TTS seal release state is invalid")
+            values: list[object] = [*row[:3], "received", *row[4:9]]
+            ctx.execute(
+                "UPDATE multimedia_chapter_tts_attempts SET status='received', attempt_mac=? "
+                "WHERE execution_id=? AND status='sealing'",
+                [_attempt_mac(values, signing_key), execution_id],
+            )
+            timestamp = _timestamp(resolved_at)
+            lease_values: list[object] = [
+                lease.execution_id, lease.lease_id, lease.acquired_at, "released", timestamp
+            ]
+            ctx.execute(
+                "UPDATE multimedia_chapter_tts_seal_leases SET state='released', resolved_at=?, "
+                "lease_mac=? WHERE execution_id=? AND lease_id=? AND state='active'",
+                [
+                    timestamp,
+                    _seal_lease_mac(lease_values, signing_key),
+                    execution_id,
+                    lease_id,
+                ],
+            )
+        except Exception:
+            ctx.execute("ROLLBACK")
+            raise
+        else:
+            ctx.execute("COMMIT")
 
 
 def _attempt_for_authorization(
@@ -927,9 +1145,12 @@ def _attempt_for_authorization(
 ) -> ChapterTTSAttempt | None:
     if not Path(db_path).exists():
         return None
-    execution_id = "mmexec_" + hashlib.sha256(
-        f"{authorization.authorization_id}:{authorization.request_body_digest}".encode()
-    ).hexdigest()
+    execution_id = (
+        "mmexec_"
+        + hashlib.sha256(
+            f"{authorization.authorization_id}:{authorization.request_body_digest}".encode()
+        ).hexdigest()
+    )
     try:
         return get_chapter_tts_attempt(
             db_path=db_path, execution_id=execution_id, signing_key=signing_key
@@ -1004,12 +1225,16 @@ def _attempt(row: tuple[object, ...], signing_key: bytes) -> ChapterTTSAttempt:
     if row[3] not in {"intent", "sending", "received", "sealing", "sealed", "outcome_unknown"}:
         raise ProviderExecutionIntegrityError("chapter TTS attempt status is invalid")
     return ChapterTTSAttempt(
-        execution_id=str(row[0]), hold_id=str(row[1]), request_body_digest=str(row[2]),
-        status=str(row[3]), send_started_at=str(row[4]) if row[4] else None,
+        execution_id=str(row[0]),
+        hold_id=str(row[1]),
+        request_body_digest=str(row[2]),
+        status=str(row[3]),
+        send_started_at=str(row[4]) if row[4] else None,
         provider_request_id=str(row[5]) if row[5] else None,
         raw_path=str(row[6]) if row[6] else None,
         raw_sha256=str(row[7]) if row[7] else None,
-        artifact_json=str(row[8]) if row[8] else None, attempt_mac=row[9],
+        artifact_json=str(row[8]) if row[8] else None,
+        attempt_mac=row[9],
     )
 
 
@@ -1018,10 +1243,47 @@ def _attempt_mac(values: list[object], signing_key: bytes) -> str:
     return hmac.new(signing_key, payload, hashlib.sha256).hexdigest()
 
 
+def _seal_lease(row: tuple[object, ...], signing_key: bytes) -> ChapterTTSSealLease:
+    if len(row) != 6 or not isinstance(row[5], str):
+        raise ProviderExecutionIntegrityError("chapter TTS seal lease shape is invalid")
+    if not hmac.compare_digest(row[5], _seal_lease_mac(list(row[:5]), signing_key)):
+        raise ProviderExecutionIntegrityError("chapter TTS seal lease MAC is invalid")
+    if row[3] not in {"active", "released", "sealed"}:
+        raise ProviderExecutionIntegrityError("chapter TTS seal lease state is invalid")
+    acquired_at = _timestamp(datetime.fromisoformat(str(row[2]).replace("Z", "+00:00")))
+    resolved_at = None
+    if row[4] is not None:
+        resolved_at = _timestamp(datetime.fromisoformat(str(row[4]).replace("Z", "+00:00")))
+    if acquired_at != row[2] or (row[4] is not None and resolved_at != row[4]):
+        raise ProviderExecutionIntegrityError("chapter TTS seal lease timestamp is invalid")
+    if (row[3] == "active") != (resolved_at is None):
+        raise ProviderExecutionIntegrityError("chapter TTS seal lease resolution is invalid")
+    if resolved_at is not None and resolved_at < acquired_at:
+        raise ProviderExecutionIntegrityError("chapter TTS seal lease chronology is invalid")
+    return ChapterTTSSealLease(
+        execution_id=str(row[0]),
+        lease_id=str(row[1]),
+        acquired_at=acquired_at,
+        state=str(row[3]),
+        resolved_at=resolved_at,
+        lease_mac=row[5],
+    )
+
+
+def _seal_lease_mac(values: list[object], signing_key: bytes) -> str:
+    payload = json.dumps(values, separators=(",", ":"), ensure_ascii=True).encode("ascii")
+    return hmac.new(signing_key, payload, hashlib.sha256).hexdigest()
+
+
 def _private_directory(value: str) -> Path:
     root = Path(value)
     info = root.lstat()
-    if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+    if (
+        not stat.S_ISDIR(info.st_mode)
+        or stat.S_ISLNK(info.st_mode)
+        or info.st_uid != os.getuid()
+        or info.st_mode & 0o077
+    ):
         raise ValueError("chapter TTS output directory must be private")
     return root.resolve()
 
@@ -1086,10 +1348,12 @@ def _identifier(field: str, value: str) -> str:
 
 __all__ = [
     "ChapterTTSAttempt",
+    "ChapterTTSSealLease",
     "ChapterTTSProductionError",
     "ChapterTTSSynthesisResult",
     "PreparedChapterTTSRequest",
     "get_chapter_tts_attempt",
+    "get_chapter_tts_seal_lease",
     "prepare_chapter_tts_request",
     "produce_chapter_narration",
     "quarantine_stale_chapter_tts_send",
