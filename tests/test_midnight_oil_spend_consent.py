@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import hmac
+import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
@@ -34,6 +37,7 @@ def issue(store: SpendConsentStore, **overrides: object) -> str:
     values: dict[str, object] = {
         "operator_id": "operator-a",
         "config": config(),
+        "operation_id": "operation-1",
         "ceiling_cents": 2500,
         "issued_at_ms": 1_000,
         "expires_at_ms": 11_000,
@@ -49,6 +53,7 @@ def claim(store: SpendConsentStore, token: str, **overrides: object):  # type: i
     values: dict[str, object] = {
         "expected_operator_id": "operator-a",
         "expected_config": config(),
+        "expected_operation_id": "operation-1",
         "expected_ceiling_cents": 2500,
         "now_ms": 2_000,
         "verification_keys": {"key-1": KEY},
@@ -61,6 +66,20 @@ def rejected(reason: ConsentRejection, fn) -> None:  # type: ignore[no-untyped-d
     with pytest.raises(ConsentRejected) as caught:
         fn()
     assert caught.value.reason is reason
+
+
+def resign_with_field(token: str, field: str, value: object) -> str:
+    encoded, _ = token.split(".")
+    payload = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+    raw = json.loads(payload)
+    raw[field] = value
+    changed = json.dumps(raw, sort_keys=True, separators=(",", ":")).encode()
+    signature = hmac.digest(KEY, b"antiek.midnight-oil.spend-consent.v1\x00" + changed, "sha256")
+    return (
+        base64.urlsafe_b64encode(changed).rstrip(b"=").decode()
+        + "."
+        + base64.urlsafe_b64encode(signature).rstrip(b"=").decode()
+    )
 
 
 def test_issue_claim_and_exact_replay_are_distinct(tmp_path: Path) -> None:
@@ -82,6 +101,7 @@ def test_reopen_preserves_claim_state(tmp_path: Path) -> None:
     [
         ({"expected_operator_id": "operator-b"}, ConsentRejection.WRONG_OPERATOR),
         ({"expected_config": replace(config(), job_id="moil_other")}, ConsentRejection.WRONG_JOB),
+        ({"expected_operation_id": "operation-2"}, ConsentRejection.WRONG_OPERATION),
         (
             {"expected_config": replace(config(), duration_minutes=121)},
             ConsentRejection.CONFIG_DRIFT,
@@ -103,16 +123,27 @@ def test_tamper_and_unknown_key_fail_closed(tmp_path: Path) -> None:
     store = SpendConsentStore(tmp_path / "consent.sqlite3")
     token = issue(store)
     payload, signature = token.split(".")
-    replacement = "A" if signature[-1] != "A" else "B"
+    replacement = "A" if signature[0] != "A" else "B"
     rejected(
         ConsentRejection.BAD_SIGNATURE,
-        lambda: claim(store, f"{payload}.{signature[:-1]}{replacement}"),
+        lambda: claim(store, f"{payload}.{replacement}{signature[1:]}"),
     )
     rejected(
         ConsentRejection.UNKNOWN_KEY,
         lambda: claim(store, token, verification_keys={}),
     )
     rejected(ConsentRejection.MALFORMED, lambda: claim(store, "x" * 8_193))
+
+
+@pytest.mark.parametrize(  # type: ignore[untyped-decorator]
+    "field",
+    ["receipt_id", "operator_id", "job_id", "operation_id", "config_hash", "key_id"],
+)
+def test_hostile_receipt_field_types_are_malformed(tmp_path: Path, field: str) -> None:
+    store = SpendConsentStore(tmp_path / "consent.sqlite3")
+    token = issue(store)
+    hostile = resign_with_field(token, field, 1)
+    rejected(ConsentRejection.MALFORMED, lambda: claim(store, hostile))
 
 
 def test_fabricated_signed_but_unissued_receipt_is_rejected(tmp_path: Path) -> None:
@@ -163,3 +194,32 @@ def test_nonpositive_integer_ceiling_is_rejected(tmp_path: Path, ceiling: int) -
     store = SpendConsentStore(tmp_path / "consent.sqlite3")
     with pytest.raises(ValueError, match="ceiling_cents"):
         issue(store, ceiling_cents=ceiling)
+
+
+@pytest.mark.parametrize(  # type: ignore[untyped-decorator]
+    ("overrides", "match"),
+    [
+        ({"ceiling_cents": True}, "ceiling_cents"),
+        ({"issued_at_ms": True}, "timestamps"),
+        ({"expires_at_ms": 86_402_001}, "expiry"),
+        ({"config": replace(config(), duration_minutes=True)}, "duration"),
+        ({"config": replace(config(), fanout_depth=True)}, "fanout"),
+        ({"config": replace(config(), goals=("x" * 4_097,))}, "goal text"),
+    ],
+)
+def test_issuance_rejects_ambiguous_or_unbounded_inputs(
+    tmp_path: Path, overrides: dict[str, object], match: str
+) -> None:
+    store = SpendConsentStore(tmp_path / "consent.sqlite3")
+    with pytest.raises(ValueError, match=match):
+        issue(store, **overrides)
+
+
+def test_claim_rejects_boolean_money_and_time(tmp_path: Path) -> None:
+    store = SpendConsentStore(tmp_path / "consent.sqlite3")
+    token = issue(store)
+    rejected(
+        ConsentRejection.CEILING_MISMATCH,
+        lambda: claim(store, token, expected_ceiling_cents=True),
+    )
+    rejected(ConsentRejection.MALFORMED, lambda: claim(store, token, now_ms=True))
