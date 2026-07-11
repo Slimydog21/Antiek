@@ -26,6 +26,7 @@ from substrate.midnight_oil.budget_ledger import (
 # helpers
 # ---------------------------------------------------------------------------
 
+
 def _ledger(tmp_path: object) -> BudgetLedger:
     """Create a fresh ledger with schema in *tmp_path*."""
     db = pathlib.Path(str(tmp_path)) / "test.duckdb"
@@ -37,6 +38,7 @@ def _ledger(tmp_path: object) -> BudgetLedger:
 # ---------------------------------------------------------------------------
 # 1. Hard ceiling under over-spend
 # ---------------------------------------------------------------------------
+
 
 def test_hard_ceiling_under_overspend(tmp_path: object) -> None:
     ledger = _ledger(tmp_path)
@@ -56,9 +58,36 @@ def test_hard_ceiling_under_overspend(tmp_path: object) -> None:
     assert bal.status == "reserved"
 
 
+def test_post_dispatch_hook_cannot_falsely_claim_not_dispatched(tmp_path: object) -> None:
+    ledger = _ledger(tmp_path)
+    ledger.reserve("post-dispatch", 100, {"researcher": 100})
+
+    def provider_returned() -> tuple[str, int]:
+        return "billed", 25
+
+    def lying_checkpoint(_result: str, _actual_cents: int) -> None:
+        raise CallNotDispatched("store mislabeled a post-dispatch failure")
+
+    with pytest.raises(UnknownCallOutcome) as caught:
+        ledger.guarded_call(
+            "post-dispatch",
+            "researcher",
+            25,
+            provider_returned,
+            before_settle=lying_checkpoint,
+        )
+    assert isinstance(caught.value.provider_error, CallNotDispatched)
+    balance = ledger.balance("post-dispatch")
+    assert balance.spent_cents == 0
+    assert balance.held_cents == 25
+    assert balance.remaining_cents == 75
+    assert balance.status == "reserved"
+
+
 # ---------------------------------------------------------------------------
 # 2. Exact fit then exhaust
 # ---------------------------------------------------------------------------
+
 
 def test_exact_fit_then_exhaust(tmp_path: object) -> None:
     ledger = _ledger(tmp_path)
@@ -80,6 +109,7 @@ def test_exact_fit_then_exhaust(tmp_path: object) -> None:
 # 3. No float leak at $10.03
 # ---------------------------------------------------------------------------
 
+
 def test_no_float_leak_at_ten_oh_three(tmp_path: object) -> None:
     ledger = _ledger(tmp_path)
     ledger.reserve("r1", 1003)
@@ -96,6 +126,7 @@ def test_no_float_leak_at_ten_oh_three(tmp_path: object) -> None:
 # ---------------------------------------------------------------------------
 # 4. Concurrent debit atomicity
 # ---------------------------------------------------------------------------
+
 
 def test_concurrent_debit_atomicity(tmp_path: object) -> None:
     import pathlib
@@ -144,6 +175,7 @@ def test_concurrent_debit_atomicity(tmp_path: object) -> None:
 # 5. ZERO-OVERSHOOT spy (the headline)
 # ---------------------------------------------------------------------------
 
+
 def test_zero_overshoot_spy(tmp_path: object) -> None:
     ledger = _ledger(tmp_path)
     ledger.reserve("r1", 300, role_budgets={"researcher": 300})
@@ -181,6 +213,7 @@ def test_zero_overshoot_spy(tmp_path: object) -> None:
 # 6. Settle releases the unused band
 # ---------------------------------------------------------------------------
 
+
 def test_settle_releases_unused_band(tmp_path: object) -> None:
     ledger = _ledger(tmp_path)
     ledger.reserve("r1", 200, role_budgets={"dev": 200})
@@ -201,8 +234,7 @@ def test_settle_releases_unused_band(tmp_path: object) -> None:
     rd = connect_read(con)
     try:
         events = rd.execute(
-            "SELECT event, amount_cents FROM midnight_oil_spend_ledger "
-            "ORDER BY \"at\", entry_id"
+            'SELECT event, amount_cents FROM midnight_oil_spend_ledger ORDER BY "at", entry_id'
         ).fetchall()
     finally:
         rd.close()
@@ -221,6 +253,7 @@ def test_settle_releases_unused_band(tmp_path: object) -> None:
 # ---------------------------------------------------------------------------
 # 7. Overshoot honesty
 # ---------------------------------------------------------------------------
+
 
 def test_overshoot_honesty(tmp_path: object) -> None:
     ledger = _ledger(tmp_path)
@@ -244,8 +277,7 @@ def test_overshoot_honesty(tmp_path: object) -> None:
     rd = connect_read(ledger._db_path)  # noqa: SLF001
     try:
         rows = rd.execute(
-            "SELECT event, amount_cents FROM midnight_oil_spend_ledger "
-            "WHERE event = 'overshoot'"
+            "SELECT event, amount_cents FROM midnight_oil_spend_ledger WHERE event = 'overshoot'"
         ).fetchall()
     finally:
         rd.close()
@@ -258,10 +290,12 @@ def test_overshoot_honesty(tmp_path: object) -> None:
 # 8. Role headroom
 # ---------------------------------------------------------------------------
 
+
 def test_role_headroom(tmp_path: object) -> None:
     ledger = _ledger(tmp_path)
     ledger.reserve(
-        "r1", 300,
+        "r1",
+        300,
         role_budgets={"a": 100, "b": 100, "c": 100},
     )
 
@@ -286,6 +320,7 @@ def test_role_headroom(tmp_path: object) -> None:
 # 9. Reserve idempotency
 # ---------------------------------------------------------------------------
 
+
 def test_reserve_idempotency(tmp_path: object) -> None:
     ledger = _ledger(tmp_path)
 
@@ -302,6 +337,7 @@ def test_reserve_idempotency(tmp_path: object) -> None:
 # ---------------------------------------------------------------------------
 # 10. CallNotDispatched releases hold; plain RuntimeError does NOT
 # ---------------------------------------------------------------------------
+
 
 def test_failed_call_charges_projected_maximum(tmp_path: object) -> None:
     """CallNotDispatched releases the hold (provably pre-dispatch).
@@ -328,8 +364,7 @@ def test_failed_call_charges_projected_maximum(tmp_path: object) -> None:
     rd = connect_read(ledger._db_path)  # noqa: SLF001
     try:
         rows = rd.execute(
-            "SELECT event, amount_cents FROM midnight_oil_spend_ledger "
-            "WHERE event = 'halted'"
+            "SELECT event, amount_cents FROM midnight_oil_spend_ledger WHERE event = 'halted'"
         ).fetchall()
     finally:
         rd.close()
@@ -356,8 +391,7 @@ def test_failed_call_charges_projected_maximum(tmp_path: object) -> None:
     rd = connect_read(ledger._db_path)  # noqa: SLF001
     try:
         hold_states = rd.execute(
-            "SELECT state FROM midnight_oil_call_holds "
-            "ORDER BY created_at, hold_id"
+            "SELECT state FROM midnight_oil_call_holds ORDER BY created_at, hold_id"
         ).fetchall()
     finally:
         rd.close()
@@ -412,6 +446,7 @@ def test_billed_timeout_cannot_restore_reusable_budget(tmp_path: object) -> None
 # 22. CallNotDispatched releases; plain RuntimeError does NOT (H1)
 # ---------------------------------------------------------------------------
 
+
 def test_call_not_dispatched_releases(tmp_path: object) -> None:
     """CallNotDispatched → hold released, spent 0, halted event.
     Plain RuntimeError → hold 'unknown', held stays, no release.
@@ -437,8 +472,7 @@ def test_call_not_dispatched_releases(tmp_path: object) -> None:
     rd = connect_read(ledger._db_path)  # noqa: SLF001
     try:
         rows = rd.execute(
-            "SELECT event FROM midnight_oil_spend_ledger "
-            "WHERE event = 'halted'"
+            "SELECT event FROM midnight_oil_spend_ledger WHERE event = 'halted'"
         ).fetchall()
     finally:
         rd.close()
@@ -464,8 +498,7 @@ def test_call_not_dispatched_releases(tmp_path: object) -> None:
     rd = connect_read(ledger._db_path)  # noqa: SLF001
     try:
         states = rd.execute(
-            "SELECT state FROM midnight_oil_call_holds "
-            "ORDER BY created_at, hold_id"
+            "SELECT state FROM midnight_oil_call_holds ORDER BY created_at, hold_id"
         ).fetchall()
     finally:
         rd.close()
@@ -477,6 +510,7 @@ def test_call_not_dispatched_releases(tmp_path: object) -> None:
 # ---------------------------------------------------------------------------
 # 23. resolve_unknown (H1)
 # ---------------------------------------------------------------------------
+
 
 def test_resolve_unknown(tmp_path: object) -> None:
     """After test-21 state (unknown hold), resolve_unknown(hold, 60)
@@ -508,8 +542,7 @@ def test_resolve_unknown(tmp_path: object) -> None:
     rd = connect_read(ledger._db_path)  # noqa: SLF001
     try:
         rows = rd.execute(
-            "SELECT event FROM midnight_oil_spend_ledger "
-            "WHERE event = 'reconciled'"
+            "SELECT event FROM midnight_oil_spend_ledger WHERE event = 'reconciled'"
         ).fetchall()
     finally:
         rd.close()
@@ -530,6 +563,7 @@ def test_resolve_unknown(tmp_path: object) -> None:
 # ---------------------------------------------------------------------------
 # 24. release blocked by unknown hold; succeeds after resolve (H1)
 # ---------------------------------------------------------------------------
+
 
 def test_release_blocked_by_unknown_hold(tmp_path: object) -> None:
     """release(run) with an unknown hold → raises.
@@ -554,8 +588,7 @@ def test_release_blocked_by_unknown_hold(tmp_path: object) -> None:
     rd = connect_read(ledger._db_path)  # noqa: SLF001
     try:
         hold_row = rd.execute(
-            "SELECT hold_id FROM midnight_oil_call_holds "
-            "WHERE state = 'unknown'"
+            "SELECT hold_id FROM midnight_oil_call_holds WHERE state = 'unknown'"
         ).fetchone()
     finally:
         rd.close()
@@ -570,6 +603,7 @@ def test_release_blocked_by_unknown_hold(tmp_path: object) -> None:
 # 25. Freed-pool conservation: full refund (H2)
 # ---------------------------------------------------------------------------
 
+
 def test_freed_pool_conservation_full_refund(tmp_path: object) -> None:
     """Role budget 100¢, freed 60¢ (from released sibling).
     Hold projected 160 (draws 60 freed), settle actual 100
@@ -577,7 +611,8 @@ def test_freed_pool_conservation_full_refund(tmp_path: object) -> None:
     """
     ledger = _ledger(tmp_path)
     ledger.reserve(
-        "r1", 300,
+        "r1",
+        300,
         role_budgets={"a": 100, "b": 100, "c": 100},
     )
 
@@ -619,8 +654,7 @@ def test_freed_pool_conservation_full_refund(tmp_path: object) -> None:
             "SELECT freed_cents FROM midnight_oil_reservations WHERE run_id = 'r1'"
         ).fetchone()
         refund_events = rd.execute(
-            "SELECT event, amount_cents FROM midnight_oil_spend_ledger "
-            "WHERE event = 'freed_refund'"
+            "SELECT event, amount_cents FROM midnight_oil_spend_ledger WHERE event = 'freed_refund'"
         ).fetchall()
     finally:
         rd.close()
@@ -633,6 +667,7 @@ def test_freed_pool_conservation_full_refund(tmp_path: object) -> None:
 # 26. Freed-pool conservation: partial refund (H2)
 # ---------------------------------------------------------------------------
 
+
 def test_freed_pool_conservation_partial_refund(tmp_path: object) -> None:
     """Same setup, settle actual 130 → actual excess 30, refund 30, freed==70.
     role_part = 160 - 60 = 100.  actual_excess = max(0, 130 - 100) = 30.
@@ -640,7 +675,8 @@ def test_freed_pool_conservation_partial_refund(tmp_path: object) -> None:
     """
     ledger = _ledger(tmp_path)
     ledger.reserve(
-        "r1", 300,
+        "r1",
+        300,
         role_budgets={"a": 100, "b": 100, "c": 100},
     )
 
@@ -667,6 +703,7 @@ def test_freed_pool_conservation_partial_refund(tmp_path: object) -> None:
 # 27. Freed-pool overshoot draw (H2)
 # ---------------------------------------------------------------------------
 
+
 def test_freed_pool_overshoot_draw(tmp_path: object) -> None:
     """Hold projected 100 (role_part 100, no freed drawn), settle actual 140
     with freed 20 available → freed consumed 20 (best-effort), overshoot
@@ -674,7 +711,8 @@ def test_freed_pool_overshoot_draw(tmp_path: object) -> None:
     """
     ledger = _ledger(tmp_path)
     ledger.reserve(
-        "r1", 300,
+        "r1",
+        300,
         role_budgets={"a": 100, "b": 100, "c": 100},
     )
 
@@ -723,6 +761,7 @@ def test_freed_pool_overshoot_draw(tmp_path: object) -> None:
 # 28. H1 — migrate existing databases (freed_drawn_cents column)
 # ---------------------------------------------------------------------------
 
+
 def test_schema_migration_adds_freed_drawn_cents(tmp_path: object) -> None:
     """Round-2 databases lack freed_drawn_cents on midnight_oil_call_holds.
     ensure_schema() must add it idempotently; reserve+settle must succeed
@@ -759,8 +798,7 @@ def test_schema_migration_adds_freed_drawn_cents(tmp_path: object) -> None:
     rd = connect_read(str(db))
     try:
         row = rd.execute(
-            "SELECT freed_drawn_cents FROM midnight_oil_call_holds "
-            "WHERE hold_id = ?",
+            "SELECT freed_drawn_cents FROM midnight_oil_call_holds WHERE hold_id = ?",
             [hold.hold_id],
         ).fetchone()
     finally:
@@ -780,6 +818,7 @@ def test_schema_migration_adds_freed_drawn_cents(tmp_path: object) -> None:
 # 29. H2 — concurrent unknowns correlate to their own durable rows
 # ---------------------------------------------------------------------------
 
+
 def test_concurrent_unknowns_correlate_to_own_rows(tmp_path: object) -> None:
     """Two concurrent guarded calls that both fail produce two
     UnknownCallOutcome exceptions, each with a distinct hold_id.
@@ -797,7 +836,9 @@ def test_concurrent_unknowns_correlate_to_own_rows(tmp_path: object) -> None:
     def worker(msg: str, projected: int) -> None:
         try:
             ledger.guarded_call(
-                "r1", "r", projected,
+                "r1",
+                "r",
+                projected,
                 lambda: failing_call(msg),
             )
         except UnknownCallOutcome as exc:
@@ -828,8 +869,7 @@ def test_concurrent_unknowns_correlate_to_own_rows(tmp_path: object) -> None:
     rd = connect_read(ledger._db_path)  # noqa: SLF001
     try:
         states = rd.execute(
-            "SELECT hold_id, state FROM midnight_oil_call_holds "
-            "WHERE hold_id IN (?, ?)",
+            "SELECT hold_id, state FROM midnight_oil_call_holds WHERE hold_id IN (?, ?)",
             [exc_a.hold.hold_id, exceptions[1].hold.hold_id],
         ).fetchall()
     finally:
@@ -843,12 +883,14 @@ def test_concurrent_unknowns_correlate_to_own_rows(tmp_path: object) -> None:
 # 30. M1 — honest overshoot during unknown reconciliation (covered excess)
 # ---------------------------------------------------------------------------
 
+
 def test_resolve_unknown_overshoot_covered_freed(tmp_path: object) -> None:
     """resolve_unknown(actual > projected) with freed pool covering the
     excess: must append 'reconciled' AND 'overshoot' events, correct
     amounts, freed pool reflects the reconciliation.
     """
     ledger = _ledger(tmp_path)
+
     def timeout_call() -> tuple[str, int]:
         raise TimeoutError("provider timeout")
 
@@ -877,8 +919,7 @@ def test_resolve_unknown_overshoot_covered_freed(tmp_path: object) -> None:
             "WHERE run_id = 'r2' ORDER BY \"at\", entry_id"
         ).fetchall()
         freed_row = rd.execute(
-            "SELECT freed_cents FROM midnight_oil_reservations "
-            "WHERE run_id = 'r2'"
+            "SELECT freed_cents FROM midnight_oil_reservations WHERE run_id = 'r2'"
         ).fetchone()
     finally:
         rd.close()
@@ -900,6 +941,7 @@ def test_resolve_unknown_overshoot_covered_freed(tmp_path: object) -> None:
 # 31. M1 — honest overshoot during unknown reconciliation (uncovered excess)
 # ---------------------------------------------------------------------------
 
+
 def test_resolve_unknown_overshoot_uncovered_freed(tmp_path: object) -> None:
     """resolve_unknown(actual > projected) where freed pool cannot cover
     the full excess: best-effort consume, overshoot event still present,
@@ -907,7 +949,8 @@ def test_resolve_unknown_overshoot_uncovered_freed(tmp_path: object) -> None:
     """
     ledger = _ledger(tmp_path)
     ledger.reserve(
-        "r1", 500,
+        "r1",
+        500,
         role_budgets={"a": 100, "b": 100},
     )
 
@@ -938,8 +981,7 @@ def test_resolve_unknown_overshoot_uncovered_freed(tmp_path: object) -> None:
             "WHERE run_id = 'r1' ORDER BY \"at\", entry_id"
         ).fetchall()
         freed_row = rd.execute(
-            "SELECT freed_cents FROM midnight_oil_reservations "
-            "WHERE run_id = 'r1'"
+            "SELECT freed_cents FROM midnight_oil_reservations WHERE run_id = 'r1'"
         ).fetchone()
     finally:
         rd.close()
@@ -958,6 +1000,7 @@ def test_resolve_unknown_overshoot_uncovered_freed(tmp_path: object) -> None:
 # ---------------------------------------------------------------------------
 # 32. M2 — persistence failure during unknown transition: both errors, hold open
 # ---------------------------------------------------------------------------
+
 
 def test_unknown_persistence_failure_preserves_both_errors(
     tmp_path: object,
@@ -1003,8 +1046,7 @@ def test_unknown_persistence_failure_preserves_both_errors(
     rd = connect_read(ledger._db_path)  # noqa: SLF001
     try:
         hold_state = rd.execute(
-            "SELECT state FROM midnight_oil_call_holds "
-            "WHERE hold_id = ?",
+            "SELECT state FROM midnight_oil_call_holds WHERE hold_id = ?",
             [exc.hold.hold_id],
         ).fetchone()
     finally:
@@ -1034,6 +1076,7 @@ def test_unknown_persistence_failure_preserves_both_errors(
 # Recovered committed regression coverage (tests 11-20)
 # ---------------------------------------------------------------------------
 
+
 def test_audit_trail_complete(tmp_path: object) -> None:
     ledger = _ledger(tmp_path)
     ledger.reserve("r1", 300, role_budgets={"a": 150, "b": 150})
@@ -1054,8 +1097,7 @@ def test_audit_trail_complete(tmp_path: object) -> None:
     rd = connect_read(ledger._db_path)  # noqa: SLF001
     try:
         rows = rd.execute(
-            "SELECT event, amount_cents FROM midnight_oil_spend_ledger "
-            "ORDER BY \"at\", entry_id"
+            'SELECT event, amount_cents FROM midnight_oil_spend_ledger ORDER BY "at", entry_id'
         ).fetchall()
     finally:
         rd.close()
@@ -1066,9 +1108,18 @@ def test_audit_trail_complete(tmp_path: object) -> None:
     assert event_types[-1] == "released"
     assert sum(amount for event, amount in events if event == "debit") == 110
     allowed_events = {
-        "reserved", "hold", "debit", "settle_release", "overshoot",
-        "role_released", "exhausted", "released", "halted",
-        "freed_refund", "reconciled", "unknown",
+        "reserved",
+        "hold",
+        "debit",
+        "settle_release",
+        "overshoot",
+        "role_released",
+        "exhausted",
+        "released",
+        "halted",
+        "freed_refund",
+        "reconciled",
+        "unknown",
     }
     assert set(event_types) <= allowed_events
 
@@ -1168,9 +1219,7 @@ def test_reserve_invalid_role_budget_leaves_nothing(tmp_path: object) -> None:
     finally:
         rd.close()
     assert counts == (0, 0, 0)
-    assert ledger.reserve(
-        "r1", 300, role_budgets={"a": 100, "b": 100}
-    ).status == "reserved"
+    assert ledger.reserve("r1", 300, role_budgets={"a": 100, "b": 100}).status == "reserved"
 
 
 def test_overshoot_event_atomic_with_spend(tmp_path: object) -> None:
