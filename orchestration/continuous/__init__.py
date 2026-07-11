@@ -45,6 +45,7 @@ from .scoring import (
 )
 from .spawn_cost import (
     actual_was_reported,
+    daemon_config_from_env,
     install_spawn_cost_hooks,
     report_actual_cost,
     run_one_iteration_settled,
@@ -72,6 +73,7 @@ __all__ = [
     "Suggestion",
     "actual_was_reported",
     "build_suggestions",
+    "daemon_config_from_env",
     "install_spawn_cost_hooks",
     "no_op_spawn",
     "normalize_gap_description",

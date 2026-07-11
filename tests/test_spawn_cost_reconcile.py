@@ -238,8 +238,79 @@ def test_cli_module_uses_settled_entry() -> None:
     src = Path("orchestration/continuous/__main__.py").read_text(encoding="utf-8")
     assert "run_one_iteration_settled" in src
     assert "wrap_spawn_fn" in src
+    assert "daemon_config_from_env" in src
     # Must not call bare run_one_iteration( for the once path.
     assert "run_one_iteration(state=" not in src
+    # Config must come from env builder (assignment), not bare constructor call.
+    assert "cfg = daemon_config_from_env()" in src
+    assert "cfg = DaemonConfig()" not in src
+    assert "config=DaemonConfig()" not in src
+
+
+def test_daemon_config_from_env_honors_sleep_and_expected_cost(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Red-proof skeptic finding: CLI must honor documented env vars.
+
+    Drives the real ``daemon_config_from_env`` (same builder used by
+    ``__main__`` and ``run_one_iteration_settled`` when config is omitted).
+    With SLEEP=7 and EXPECTED=1.25, bare ``DaemonConfig()`` would stay at
+    60/0.50 — this asserts the env-built path matches daemon.main() semantics.
+    """
+    from orchestration.continuous.daemon import DaemonConfig
+    from orchestration.continuous.spawn_cost import daemon_config_from_env
+
+    monkeypatch.setenv("ANTIEK_DAEMON_SLEEP_SECONDS", "7")
+    monkeypatch.setenv("ANTIEK_DAEMON_EXPECTED_COST_USD", "1.25")
+
+    cfg = daemon_config_from_env()
+    bare = DaemonConfig()
+
+    assert cfg.sleep_seconds == 7.0
+    assert cfg.expected_cost_per_spawn_usd == 1.25
+    # Prove we are not the bare defaults (the regression under test).
+    assert bare.sleep_seconds == 60.0
+    assert bare.expected_cost_per_spawn_usd == 0.50
+    assert cfg.sleep_seconds != bare.sleep_seconds
+    assert cfg.expected_cost_per_spawn_usd != bare.expected_cost_per_spawn_usd
+
+
+def test_run_one_iteration_settled_uses_env_config_when_omitted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When config= is omitted, settled entry must not fall back to bare defaults.
+
+    Drives the real ``run_one_iteration_settled`` entry and captures the
+    ``config`` object it passes into ``run_one_iteration`` — proves the
+    production helper uses ``daemon_config_from_env()``, not ``DaemonConfig()``.
+    """
+    import orchestration.continuous.spawn_cost as spawn_cost
+    from orchestration.continuous.daemon import DaemonConfig
+
+    monkeypatch.setenv("ANTIEK_DAEMON_SLEEP_SECONDS", "7")
+    monkeypatch.setenv("ANTIEK_DAEMON_EXPECTED_COST_USD", "1.25")
+
+    captured: dict[str, object] = {}
+
+    def fake_run_one_iteration(**kwargs: object) -> object:
+        captured.update(kwargs)
+        return {"ok": True}
+
+    monkeypatch.setattr(spawn_cost, "run_one_iteration", fake_run_one_iteration)
+
+    result = spawn_cost.run_one_iteration_settled(
+        # config intentionally omitted — must build from env
+        budget=DaemonBudget(daily_cap_usd=5.0),
+        spawn_fn=lambda _q, _c: None,
+    )
+    assert result == {"ok": True}
+    cfg = captured["config"]
+    assert isinstance(cfg, DaemonConfig)
+    assert cfg.sleep_seconds == 7.0
+    assert cfg.expected_cost_per_spawn_usd == 1.25
+    # Explicit anti-regression vs bare defaults.
+    assert cfg.sleep_seconds != DaemonConfig().sleep_seconds
+    assert cfg.expected_cost_per_spawn_usd != DaemonConfig().expected_cost_per_spawn_usd
 
 
 def test_section_7_4_tripwire_files_untouched() -> None:

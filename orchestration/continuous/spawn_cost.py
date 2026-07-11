@@ -34,6 +34,7 @@ Honesty rules:
 from __future__ import annotations
 
 import math
+import os
 from datetime import datetime
 from typing import Any
 
@@ -54,6 +55,29 @@ def _require_finite_nonneg(value: float, *, label: str) -> float:
     if not math.isfinite(amount) or amount < 0.0:
         raise ValueError(f"{label} must be a finite non-negative USD amount, got {value!r}")
     return amount
+
+
+def daemon_config_from_env() -> DaemonConfig:
+    """Build ``DaemonConfig`` the same way ``daemon.main()`` does.
+
+    Honors the documented env vars (systemd unit / ``__main__`` docstring):
+
+    * ``ANTIEK_DAEMON_SLEEP_SECONDS`` (default 60)
+    * ``ANTIEK_DAEMON_EXPECTED_COST_USD`` (default 0.50)
+
+    Lives here (not in ``daemon.py``) so the production CLI can restore
+    env-driven config without violating the §7.4 tripwire.
+    """
+    return DaemonConfig(
+        sleep_seconds=_require_finite_nonneg(
+            float(os.environ.get("ANTIEK_DAEMON_SLEEP_SECONDS", "60")),
+            label="ANTIEK_DAEMON_SLEEP_SECONDS",
+        ),
+        expected_cost_per_spawn_usd=_require_finite_nonneg(
+            float(os.environ.get("ANTIEK_DAEMON_EXPECTED_COST_USD", "0.50")),
+            label="ANTIEK_DAEMON_EXPECTED_COST_USD",
+        ),
+    )
 
 
 def report_actual_cost(
@@ -193,8 +217,11 @@ def run_one_iteration_settled(
 
     Ensures every production tick installs ``record_actual_cb`` /
     ``report_actual_cost`` on spawn contexts without editing daemon.py.
+
+    When ``config`` is omitted, uses ``daemon_config_from_env()`` (same
+    env vars as ``daemon.main()``) — never bare ``DaemonConfig()`` defaults.
     """
-    cfg = config or DaemonConfig()
+    cfg = config if config is not None else daemon_config_from_env()
     bdg = budget or DaemonBudget.from_env()
     st = state if state is not None else DaemonState()
     return run_one_iteration(
@@ -213,6 +240,7 @@ def actual_was_reported(context: dict[str, Any]) -> bool:
 
 __all__ = [
     "actual_was_reported",
+    "daemon_config_from_env",
     "install_spawn_cost_hooks",
     "report_actual_cost",
     "run_one_iteration_settled",
