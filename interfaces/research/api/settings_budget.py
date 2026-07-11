@@ -352,6 +352,13 @@ def post_prompt_cost_estimate(req: PromptCostEstimateRequest) -> PromptCostEstim
 
 def register_settings_budget_routes(app: FastAPI) -> None:
     app.include_router(settings_router)
+    # Add-model admin (user-added BYOK providers) mounts through the same
+    # settings-local seam; see settings_models_admin.py. Local import keeps
+    # this file's module surface unchanged for the other open PRs that
+    # touch its cost/spend regions.
+    from .settings_models_admin import register_settings_models_admin_routes
+
+    register_settings_models_admin_routes(app)
 
 
 __all__ = [
