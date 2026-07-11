@@ -191,7 +191,15 @@ def _validate_authority(authority: MidnightOilJobAuthority) -> None:
         "dispatch_finished": 3,
     }.get(state)
     if required_count is not None:
-        if (authority.operation_id is not None) != (required_count > 0):
+        operation_required = state in {
+            "dispatch_claimed",
+            "dispatch_started",
+            "dispatch_finished",
+        }
+        operation_forbidden = state == "awaiting_approval"
+        if operation_required and authority.operation_id is None:
+            raise ValueError(f"operation identity is inconsistent with {state}")
+        if operation_forbidden and authority.operation_id is not None:
             raise ValueError(f"operation identity is inconsistent with {state}")
         if sum(value is not None for value in timestamps) != required_count:
             raise ValueError(f"dispatch timestamps are inconsistent with {state}")

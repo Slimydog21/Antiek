@@ -285,6 +285,84 @@ def test_approval_requires_complete_consent_without_mutation(
     assert store.get_job_for_owner("job-1", "owner-a") == original
 
 
+@pytest.mark.parametrize("invalid", [0, 1, "true", None])
+def test_force_below_cas_requires_strict_boolean_without_mutation(
+    tmp_path, invalid: object
+) -> None:
+    store = SqliteDurableJobStore(str(tmp_path / "jobs.sqlite"))
+    original = store.put_job_for_owner(
+        "owner-a",
+        replace(
+            _job(),
+            status="awaiting_approval",
+            approved_ceiling_usd=None,
+            force_below_recommended=False,
+            authority=MidnightOilJobAuthority(owner_user_id="owner-a"),
+        ),
+    )
+    with pytest.raises(ValueError, match="force_below_recommended"):
+        store.compare_and_set_authority(
+            "job-1",
+            "owner-a",
+            expected_version=0,
+            expected_state="awaiting_approval",
+            expected_operation_id=None,
+            operation_id="op-1",
+            next_state="approved",
+            approved_ceiling_cents=1234,
+            consent_granted_by_user_id="owner-a",
+            consent_recorded_at_ms=10,
+            force_below_recommended=invalid,
+        )
+    assert store.get_job_for_owner("job-1", "owner-a") == original
+
+
+def test_force_below_is_atomic_durable_and_stale_cas_cannot_change_it(tmp_path) -> None:
+    path = str(tmp_path / "jobs.sqlite")
+    store = SqliteDurableJobStore(path)
+    store.put_job_for_owner(
+        "owner-a",
+        replace(
+            _job(),
+            status="awaiting_approval",
+            approved_ceiling_usd=None,
+            force_below_recommended=False,
+            authority=MidnightOilJobAuthority(owner_user_id="owner-a"),
+        ),
+    )
+    approved = store.compare_and_set_authority(
+        "job-1",
+        "owner-a",
+        expected_version=0,
+        expected_state="awaiting_approval",
+        expected_operation_id=None,
+        operation_id="op-1",
+        next_state="approved",
+        approved_ceiling_cents=1234,
+        consent_granted_by_user_id="owner-a",
+        consent_recorded_at_ms=10,
+        force_below_recommended=True,
+    )
+    assert approved is not None and approved.force_below_recommended is True
+    stale = store.compare_and_set_authority(
+        "job-1",
+        "owner-a",
+        expected_version=0,
+        expected_state="awaiting_approval",
+        expected_operation_id=None,
+        operation_id="op-stale",
+        next_state="approved",
+        approved_ceiling_cents=999,
+        consent_granted_by_user_id="owner-a",
+        consent_recorded_at_ms=11,
+        force_below_recommended=False,
+    )
+    assert stale is None
+    reopened = SqliteDurableJobStore(path).get_job_for_owner("job-1", "owner-a")
+    assert reopened == approved
+    assert reopened.force_below_recommended is True
+
+
 @pytest.mark.parametrize(
     "authority_change",
     [

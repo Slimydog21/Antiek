@@ -16,17 +16,13 @@ from interfaces.research.api.engagement_routes import (  # noqa: E402
     register_engagement_routes,
     reset_engagement_stores,
 )
-from interfaces.research.api.midnight_oil_routes import (  # noqa: E402
-    register_midnight_oil_routes,
-    reset_midnight_oil_store,
-)
+from tests.midnight_oil_route_test_support import register_authenticated_midnight_oil  # noqa: E402
 
 
-def test_create_approve_deposit_progress_double_run():
-    reset_midnight_oil_store()
+def test_create_approve_deposit_progress_double_run(tmp_path):
     reset_engagement_stores()
     app = FastAPI()
-    register_midnight_oil_routes(app)
+    register_authenticated_midnight_oil(app, tmp_path)
     register_engagement_routes(app)
     client = TestClient(app)
 
@@ -49,7 +45,6 @@ def test_create_approve_deposit_progress_double_run():
     )
     assert approved.status_code == 200
     assert approved.json()["status"] == "approved"
-    assert approved.json()["runnable"] is True
 
     d1 = client.post(
         "/midnight-oil/deposit",
@@ -59,22 +54,16 @@ def test_create_approve_deposit_progress_double_run():
             "mark_complete": True,
         },
     )
-    assert d1.status_code == 200, d1.text
-    body1 = d1.json()
-    assert body1["view_format"] == "html"
-    assert body1["twin_count"] >= 1
-    assert body1["html"]
-    assert "application/pdf" not in body1["html"].lower()
-    assert body1["progress_seeded"] is True
-    assert body1["progress"] is not None
-    assert body1["progress"]["latest_stage"] == "complete"
-    assert body1["usage_recorded"] is True
+    assert d1.status_code == 409, d1.text
+    assert d1.json() == {"detail": "Midnight Oil dispatch is disabled"}
+    unchanged = client.get(f"/midnight-oil/jobs/{job_id}").json()
+    assert unchanged["spawn_ids"] == []
+    assert unchanged["status"] == "approved"
 
     # Second deposit remains honest / does not crash
     d2 = client.post(
         "/midnight-oil/deposit",
         json={"job_id": job_id, "include_progress_html": True},
     )
-    assert d2.status_code == 200
-    assert d2.json()["view_format"] == "html"
-    assert d2.json()["job_id"] == job_id
+    assert d2.status_code == 409
+    assert d2.json() == {"detail": "Midnight Oil dispatch is disabled"}

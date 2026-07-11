@@ -380,6 +380,7 @@ class SqliteDurableJobStore:
         consent_granted_by_user_id: object = _UNSET,
         consent_recorded_at_ms: object = _UNSET,
         consent_note: object = _UNSET,
+        force_below_recommended: object = _UNSET,
         dispatch_claimed_at_ms: object = _UNSET,
         dispatch_started_at_ms: object = _UNSET,
         dispatch_completed_at_ms: object = _UNSET,
@@ -399,6 +400,7 @@ class SqliteDurableJobStore:
         dispatch_claimed_value: object = _UNSET
         dispatch_started_value: object = _UNSET
         dispatch_completed_value: object = _UNSET
+        force_below_value: object = _UNSET
         approved_cents_value = (
             _validate_cents(
                 approved_ceiling_cents,
@@ -440,12 +442,20 @@ class SqliteDurableJobStore:
             if dispatch_completed_at_ms is not _UNSET
             else _UNSET
         )
+        if force_below_recommended is not _UNSET:
+            if type(force_below_recommended) is not bool:
+                raise ValueError("force_below_recommended must be a boolean")
+            if expected_state != "awaiting_approval" or next_state != "approved":
+                raise ValueError("force_below_recommended is set only during approval")
+            force_below_value = force_below_recommended
         set_clauses = [
             "state_version = state_version + 1",
             "operation_state = ?",
             "operation_id = ?",
         ]
         params: list[Any] = [next_state, operation_id]
+        if next_state == "approved":
+            set_clauses.append("status = 'approved'")
         if approved_cents_value is not _UNSET:
             approved_cents = cast(int | None, approved_cents_value)
             set_clauses.append("approved_ceiling_cents = ?")
@@ -461,6 +471,9 @@ class SqliteDurableJobStore:
         if consent_note is not _UNSET:
             set_clauses.append("consent_note = ?")
             params.append("" if consent_note is None else str(consent_note))
+        if force_below_value is not _UNSET:
+            set_clauses.append("force_below_recommended = ?")
+            params.append(1 if force_below_value else 0)
         if dispatch_claimed_value is not _UNSET:
             set_clauses.append("dispatch_claimed_at_ms = ?")
             params.append(dispatch_claimed_value)

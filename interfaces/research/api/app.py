@@ -1722,8 +1722,17 @@ def create_app(
     except Exception:
         pass  # offline hydrate remains; never block app boot
     # Midnight Oil — create → recommended price ceiling → explicit approve.
-    from .midnight_oil_routes import register_midnight_oil_routes
-    register_midnight_oil_routes(app)
+    from .midnight_oil_routes import (
+        midnight_oil_enabled,
+        production_dependencies_from_env,
+        register_midnight_oil_routes,
+    )
+    midnight_oil_dependencies = (
+        production_dependencies_from_env()
+        if midnight_oil_enabled(os.environ.get("ANTIEK_MIDNIGHT_OIL_ENABLED"))
+        else None
+    )
+    register_midnight_oil_routes(app, midnight_oil_dependencies)
     # Marketplace host-into-account — catalog → host → HTML library view.
     from .marketplace_host_routes import register_marketplace_host_routes
     register_marketplace_host_routes(app)

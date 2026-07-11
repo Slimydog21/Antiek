@@ -16,10 +16,6 @@ from interfaces.research.api.engagement_routes import (  # noqa: E402
     register_engagement_routes,
     reset_engagement_stores,
 )
-from interfaces.research.api.midnight_oil_routes import (  # noqa: E402
-    register_midnight_oil_routes,
-    reset_midnight_oil_store,
-)
 from substrate.midnight_oil import (  # noqa: E402
     approve_price_ceiling,
     create_with_recommended_ceiling,
@@ -27,6 +23,7 @@ from substrate.midnight_oil import (  # noqa: E402
 )
 from substrate.midnight_oil.ceiling import ModelPricing  # noqa: E402
 from substrate.midnight_oil.job import InMemoryJobStore  # noqa: E402
+from tests.midnight_oil_route_test_support import register_authenticated_midnight_oil  # noqa: E402
 
 
 def test_run_job_offline_completes_goals():
@@ -37,9 +34,7 @@ def test_run_job_offline_completes_goals():
         store=store,
         pricing=ModelPricing("m", 1.0, 3.0),
     )
-    approve_price_ceiling(
-        created.job.job_id, store=store, use_recommended=True
-    )
+    approve_price_ceiling(created.job.job_id, store=store, use_recommended=True)
     out = run_job_offline(created.job.job_id, store=store, spent_per_goal=0.05)
     assert out["status"] == "complete"
     assert out["offline"] is True
@@ -62,11 +57,10 @@ def test_run_rejects_unapproved():
         assert "approved" in str(exc).lower()
 
 
-def test_api_run_and_auto_deposit():
-    reset_midnight_oil_store()
+def test_api_run_and_auto_deposit(tmp_path):
     reset_engagement_stores()
     app = FastAPI()
-    register_midnight_oil_routes(app)
+    register_authenticated_midnight_oil(app, tmp_path)
     register_engagement_routes(app)
     client = TestClient(app)
 
@@ -91,16 +85,11 @@ def test_api_run_and_auto_deposit():
         "/midnight-oil/run",
         json={"job_id": job_id, "auto_deposit": True, "spent_per_goal": 0.05},
     )
-    assert r1.status_code == 200, r1.text
-    body = r1.json()
-    assert body["status"] == "complete"
-    assert body["offline"] is True
-    assert body["view_format"] == "html"
-    assert body["spawn_ids"]
-    assert body.get("deposit") is not None
-    assert body["deposit"]["twin_count"] >= 1
-    assert body["deposit"]["view_format"] == "html"
-    assert body["deposit"]["html"]
+    assert r1.status_code == 409, r1.text
+    assert r1.json() == {"detail": "Midnight Oil dispatch is disabled"}
+    unchanged = client.get(f"/midnight-oil/jobs/{job_id}")
+    assert unchanged.status_code == 200
+    assert unchanged.json()["spawn_ids"] == []
 
     # Unapproved run fails
     c2 = client.post(
@@ -111,4 +100,4 @@ def test_api_run_and_auto_deposit():
         "/midnight-oil/run",
         json={"job_id": c2.json()["job_id"]},
     )
-    assert bad.status_code == 400
+    assert bad.status_code == 409
