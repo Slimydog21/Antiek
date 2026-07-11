@@ -213,9 +213,8 @@ export function composeResearchWorkstationSession(
       : "cohesive_ready=false — multi-select pack not acked (optional until multi-instance)",
   );
 
-  // Core gates: sources + quality + budget. Floating/twin/cohesive enrich notes
-  // but floating is required for "chase" workstation posture; twin required for
-  // recursive note-taker posture. Cohesive optional unless floating_instance_count>=2.
+  // Required gates: sources + quality + budget + floating (chase) + twin
+  // (recursive note-taker). Cohesive is required only when floating_instance_count>=2.
   let session_ready =
     sources_ready && quality_ready && budget_ready && floating_ready && twin_ready;
   if (floating_instance_count >= 2 && !cohesive_pack_ready) {
