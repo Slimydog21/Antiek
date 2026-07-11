@@ -7,7 +7,7 @@
  * or hosted completion.
  */
 
-import type { ReactNode } from "react";
+import React, { type ReactNode } from "react";
 import { LemonCard } from "../../components/lemon";
 
 export type LibraryWorkstationSlotId =
@@ -61,9 +61,16 @@ export function isLibrarySlotFilled(content: ReactNode): boolean {
   // Empty React fragments (and elements whose only children are empty)
   // must not invent filled=true.
   if (typeof content === "object" && content !== null && "props" in content) {
-    const props = (content as { props?: { children?: ReactNode } }).props;
-    if (props && "children" in props) {
-      return isLibrarySlotFilled(props.children as ReactNode);
+    const el = content as {
+      type?: unknown;
+      props?: { children?: ReactNode };
+    };
+    // Fragment with no children prop is empty (props: {}).
+    if (el.type === React.Fragment) {
+      return isLibrarySlotFilled(el.props?.children ?? null);
+    }
+    if (el.props && "children" in el.props) {
+      return isLibrarySlotFilled(el.props.children as ReactNode);
     }
   }
   return true;
