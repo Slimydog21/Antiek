@@ -45,6 +45,10 @@ async function readOkBody(res: Response): Promise<unknown> {
   return res.json() as Promise<unknown>;
 }
 
+const MAX_DURATION_MINUTES = 24 * 60;
+const MAX_CEILING_CENTS = 1_000_000_000;
+const REQUIRED_AUTHORITY = "operator_brief_only";
+
 export function parseUnattendedBriefResult(body: unknown): UnattendedBriefResult {
   if (!body || typeof body !== "object") {
     throw new Error("unattended brief response must be an object");
@@ -52,6 +56,15 @@ export function parseUnattendedBriefResult(body: unknown): UnattendedBriefResult
   const o = body as Record<string, unknown>;
   if (typeof o.duration_minutes !== "number" || !Number.isFinite(o.duration_minutes)) {
     throw new Error("unattended brief rejected: duration_minutes must be finite number");
+  }
+  if (
+    !Number.isInteger(o.duration_minutes) ||
+    o.duration_minutes < 1 ||
+    o.duration_minutes > MAX_DURATION_MINUTES
+  ) {
+    throw new Error(
+      `unattended brief rejected: duration_minutes must be in [1, ${MAX_DURATION_MINUTES}]`,
+    );
   }
   if (!Array.isArray(o.goals) || o.goals.length === 0) {
     throw new Error("unattended brief rejected: goals required");
@@ -71,6 +84,15 @@ export function parseUnattendedBriefResult(body: unknown): UnattendedBriefResult
       "unattended brief rejected: approved_ceiling_cents must be finite number",
     );
   }
+  if (
+    !Number.isInteger(o.approved_ceiling_cents) ||
+    o.approved_ceiling_cents < 0 ||
+    o.approved_ceiling_cents > MAX_CEILING_CENTS
+  ) {
+    throw new Error(
+      `unattended brief rejected: approved_ceiling_cents must be in [0, ${MAX_CEILING_CENTS}]`,
+    );
+  }
   if (typeof o.live_execution_authorized !== "boolean") {
     throw new Error(
       "unattended brief rejected: live_execution_authorized must be boolean",
@@ -83,8 +105,10 @@ export function parseUnattendedBriefResult(body: unknown): UnattendedBriefResult
       "unattended brief rejected: live_execution_authorized=true is not accepted by this client",
     );
   }
-  if (typeof o.authority !== "string" || !o.authority.trim()) {
-    throw new Error("unattended brief rejected: authority must be non-empty string");
+  if (typeof o.authority !== "string" || o.authority.trim() !== REQUIRED_AUTHORITY) {
+    throw new Error(
+      `unattended brief rejected: authority must be ${REQUIRED_AUTHORITY}`,
+    );
   }
   if (!Array.isArray(o.notes)) {
     throw new Error("unattended brief rejected: notes must be an array");
@@ -105,6 +129,15 @@ export function parseUnattendedBriefResult(body: unknown): UnattendedBriefResult
         "unattended brief rejected: recommended_ceiling_cents must be finite number|null",
       );
     }
+    if (
+      !Number.isInteger(o.recommended_ceiling_cents) ||
+      o.recommended_ceiling_cents < 0 ||
+      o.recommended_ceiling_cents > MAX_CEILING_CENTS
+    ) {
+      throw new Error(
+        `unattended brief rejected: recommended_ceiling_cents must be in [0, ${MAX_CEILING_CENTS}]`,
+      );
+    }
     recommended = o.recommended_ceiling_cents;
   }
   return {
@@ -114,7 +147,7 @@ export function parseUnattendedBriefResult(body: unknown): UnattendedBriefResult
     recommended_ceiling_cents: recommended,
     notes,
     live_execution_authorized: false,
-    authority: o.authority.trim(),
+    authority: REQUIRED_AUTHORITY,
   };
 }
 
@@ -144,10 +177,13 @@ export async function postUnattendedBrief(
     goals,
     approved_ceiling_cents: Math.trunc(req.approved_ceiling_cents),
   };
-  if (
-    req.recommended_ceiling_cents != null &&
-    Number.isFinite(req.recommended_ceiling_cents)
-  ) {
+  if (req.recommended_ceiling_cents != null) {
+    if (
+      typeof req.recommended_ceiling_cents !== "number" ||
+      !Number.isFinite(req.recommended_ceiling_cents)
+    ) {
+      throw new Error("recommended_ceiling_cents must be a finite number when provided");
+    }
     payload.recommended_ceiling_cents = Math.trunc(req.recommended_ceiling_cents);
   }
 

@@ -70,3 +70,16 @@ def test_never_returns_live_authorized_true() -> None:
     )
     assert r.status_code == 200
     assert r.json()["live_execution_authorized"] is False
+
+
+def test_extra_fields_forbidden() -> None:
+    r = _client().post(
+        "/midnight-oil/unattended/brief",
+        json={
+            "duration_minutes": 30,
+            "goals": ["y"],
+            "approved_ceiling_cents": 0,
+            "live_execution_authorized": True,
+        },
+    )
+    assert r.status_code == 422

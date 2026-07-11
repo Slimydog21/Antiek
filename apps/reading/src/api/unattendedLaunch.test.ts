@@ -50,6 +50,15 @@ describe("parseUnattendedBriefResult", () => {
       parseUnattendedBriefResult({ ...sample, goals: [] }),
     ).toThrow(/goals/);
   });
+
+  it("rejects wrong authority and out-of-domain duration", () => {
+    expect(() =>
+      parseUnattendedBriefResult({ ...sample, authority: "advisory" }),
+    ).toThrow(/authority/);
+    expect(() =>
+      parseUnattendedBriefResult({ ...sample, duration_minutes: 0 }),
+    ).toThrow(/duration_minutes/);
+  });
 });
 
 describe("postUnattendedBrief", () => {

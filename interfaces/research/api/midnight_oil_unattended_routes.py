@@ -19,6 +19,8 @@ midnight_oil_unattended_router = APIRouter(
 
 
 class UnattendedBriefRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+
     duration_minutes: int = Field(strict=True)
     goals: list[str] = Field(min_length=1)
     approved_ceiling_cents: int = Field(strict=True)
