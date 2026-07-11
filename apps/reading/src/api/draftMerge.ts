@@ -56,12 +56,51 @@ function parseErrorCode(body: string): string | null {
   return null;
 }
 
-async function readJson<T>(res: Response): Promise<T> {
+async function readOkBody(res: Response): Promise<unknown> {
   if (!res.ok) {
     const text = await res.text();
     throw new DraftMergeHttpError(res.status, text, parseErrorCode(text));
   }
-  return (await res.json()) as T;
+  return res.json() as Promise<unknown>;
+}
+
+/**
+ * Fail closed when the server returns a 200 that is not a provisional draft.
+ * Draft-merge must never surface a non-provisional body as success.
+ */
+export function parseDraftMergeResult(body: unknown): DraftMergeResult {
+  if (!body || typeof body !== "object") {
+    throw new Error("draft-merge response must be an object");
+  }
+  const o = body as Record<string, unknown>;
+  if (o.provisional !== true) {
+    throw new Error(
+      "draft-merge response rejected: provisional must be true (not final merge)",
+    );
+  }
+  if (typeof o.draft_id !== "string" || !o.draft_id.trim()) {
+    throw new Error("draft-merge response missing draft_id");
+  }
+  if (typeof o.parent_asset_id !== "string" || !o.parent_asset_id.trim()) {
+    throw new Error("draft-merge response missing parent_asset_id");
+  }
+  if (typeof o.html !== "string") {
+    throw new Error("draft-merge response missing html string");
+  }
+  if (!Array.isArray(o.twin_ids)) {
+    throw new Error("draft-merge response missing twin_ids array");
+  }
+  return {
+    draft_id: o.draft_id,
+    parent_asset_id: o.parent_asset_id,
+    provisional: true,
+    html: o.html,
+    twin_ids: o.twin_ids.map((t) => String(t)),
+    insight_count: Number(o.insight_count ?? 0),
+    question_count: Number(o.question_count ?? 0),
+    created_at: Number(o.created_at ?? 0),
+    notes: Array.isArray(o.notes) ? o.notes.map((n) => String(n)) : [],
+  };
 }
 
 export async function postDraftMerge(
@@ -86,7 +125,8 @@ export async function postDraftMerge(
       title: req.title ?? "Draft merge",
     }),
   });
-  return readJson<DraftMergeResult>(res);
+  const raw = await readOkBody(res);
+  return parseDraftMergeResult(raw);
 }
 
 /** Pure display helpers — unit-tested without network. */

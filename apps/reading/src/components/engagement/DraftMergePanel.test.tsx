@@ -58,13 +58,6 @@ describe("DraftMergePanel", () => {
   });
 
   it("surfaces cross-parent rejection honesty", async () => {
-    const err = Object.assign(new Error("draft-merge API 409: cross"), {
-      name: "DraftMergeHttpError",
-      status: 409,
-      code: "cross_parent_draft_merge_rejected",
-      body: "cross",
-    });
-    // Use real isCrossParentRejection path via DraftMergeHttpError instance
     const { DraftMergeHttpError } = await import("../../api/draftMerge");
     const draftFn = vi.fn(async () => {
       throw new DraftMergeHttpError(
@@ -89,7 +82,29 @@ describe("DraftMergePanel", () => {
     const el = screen.getByTestId("draft-merge-error");
     expect(el.getAttribute("data-cross-parent")).toBe("true");
     expect(el.textContent).toMatch(/Cross-parent/i);
-    void err;
+    expect(screen.queryByTestId("draft-merge-result")).toBeNull();
+  });
+
+  it("does not render result when draftFn rejects non-provisional body", async () => {
+    const draftFn = vi.fn(async () => {
+      throw new Error(
+        "draft-merge response rejected: provisional must be true (not final merge)",
+      );
+    });
+    render(
+      <DraftMergePanel
+        draftFn={draftFn}
+        initialParentId="p"
+        initialTwinIds="t1"
+      />,
+    );
+    fireEvent.click(screen.getByTestId("draft-merge-build"));
+    await waitFor(() => {
+      expect(screen.getByTestId("draft-merge-error").textContent).toMatch(
+        /provisional must be true/,
+      );
+    });
+    expect(screen.queryByTestId("draft-merge-result")).toBeNull();
   });
 
   it("shows generic error without cross-parent flag", async () => {

@@ -11,6 +11,7 @@ import {
   formatProvisional,
   formatTwinCount,
   isCrossParentRejection,
+  parseDraftMergeResult,
   postDraftMerge,
 } from "./draftMerge";
 
@@ -119,5 +120,57 @@ describe("postDraftMerge", () => {
         "cross_parent_draft_merge_rejected",
       );
     }
+  });
+
+  it("rejects 200 with provisional false (no invented final-merge success)", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        draft_id: "draft-bad",
+        parent_asset_id: "parent-1",
+        provisional: false,
+        html: "<article>should not surface</article>",
+        twin_ids: ["t1"],
+        insight_count: 0,
+        question_count: 0,
+        created_at: 1,
+        notes: [],
+      }),
+      text: async () => "",
+    } as unknown as Response);
+
+    await expect(
+      postDraftMerge({ parent_asset_id: "parent-1", twin_ids: ["t1"] }),
+    ).rejects.toThrow(/provisional must be true/);
+  });
+});
+
+describe("parseDraftMergeResult", () => {
+  it("accepts provisional true and rejects false/missing", () => {
+    const ok = parseDraftMergeResult({
+      draft_id: "d1",
+      parent_asset_id: "p",
+      provisional: true,
+      html: "<p>x</p>",
+      twin_ids: ["t"],
+      insight_count: 1,
+      question_count: 0,
+      created_at: 1,
+      notes: [],
+    });
+    expect(ok.provisional).toBe(true);
+    expect(() =>
+      parseDraftMergeResult({
+        draft_id: "d1",
+        parent_asset_id: "p",
+        provisional: false,
+        html: "",
+        twin_ids: [],
+      }),
+    ).toThrow(/provisional must be true/);
+    expect(() => parseDraftMergeResult({ draft_id: "d1" })).toThrow(
+      /provisional must be true/,
+    );
   });
 });
