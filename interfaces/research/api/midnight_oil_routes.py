@@ -18,10 +18,13 @@ from fastapi import APIRouter, FastAPI, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, field_validator
 
 from substrate.midnight_oil import (
+    MidnightOilPreflight,
+    MidnightOilRequest,
     create_with_recommended_ceiling,
     deposit_job_results,
     get_job,
     job_summary_html,
+    preflight_midnight_oil,
     product_result_html,
 )
 from substrate.midnight_oil.durable_job import DurableJobStore
@@ -43,8 +46,17 @@ from substrate.midnight_oil.spend_consent import (
 )
 
 midnight_oil_router = APIRouter(prefix="/midnight-oil", tags=["midnight-oil"])
+midnight_oil_preflight_router = APIRouter(
+    prefix="/research/midnight-oil", tags=["deep-research"]
+)
 _DEPENDENCIES = "midnight_oil_dependencies"
 CONSENT_TTL_MS = 15 * 60 * 1000
+
+
+@midnight_oil_preflight_router.post("/preflight", response_model=MidnightOilPreflight)
+def post_midnight_oil_preflight(req: MidnightOilRequest) -> MidnightOilPreflight:
+    """Plan the approved envelope without reserving, dispatching, or retrieving."""
+    return preflight_midnight_oil(req)
 
 
 def _system_clock_ms() -> int:
@@ -686,4 +698,10 @@ def register_midnight_oil_routes(
     app.include_router(midnight_oil_router)
 
 
-__all__ = ["MidnightOilDependencies", "midnight_oil_router", "register_midnight_oil_routes"]
+__all__ = [
+    "MidnightOilDependencies",
+    "midnight_oil_preflight_router",
+    "midnight_oil_router",
+    "post_midnight_oil_preflight",
+    "register_midnight_oil_routes",
+]

@@ -1727,6 +1727,9 @@ def create_app(
     # caller supplies the complete durable dependency bundle.  There is no
     # process-local or environment-guessed fallback in the application
     # factory; live launchers must construct and validate the bundle first.
+    from .midnight_oil_routes import midnight_oil_preflight_router
+
+    app.include_router(midnight_oil_preflight_router)
     if enable_midnight_oil:
         from .midnight_oil_routes import (
             MidnightOilDependencies,
