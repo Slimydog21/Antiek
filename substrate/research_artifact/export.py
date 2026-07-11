@@ -48,7 +48,7 @@ def export_research_artifact(
         payload = ArtifactGeneratedPayload(
             artifact_id=artifact_id,
             artifact_kind="other",
-            intent=f"research_artifact_v1:{investigation_id}",
+            intent=f"research_artifact_v2:{investigation_id}",
             generating_role=generating_role,
             artifact_path=str(path),
             content_hash=content_hash,
