@@ -64,7 +64,7 @@ async function readOkBody(res: Response): Promise<unknown> {
 }
 
 function parseStringList(raw: unknown, field: string): string[] {
-  if (raw === undefined || raw === null) return [];
+  // Require the key to be present as an array — do not invent [] for missing/null.
   if (!Array.isArray(raw)) {
     throw new Error(`twin document rejected: ${field} must be an array`);
   }
@@ -73,16 +73,21 @@ function parseStringList(raw: unknown, field: string): string[] {
     if (typeof item !== "string") {
       throw new Error(`twin document rejected: every ${field} entry must be a string`);
     }
-    // Preserve empty? Store strips empties on write; allow empty here but
-    // do not coerce non-strings.
     out.push(item);
   }
   return out;
 }
 
+function parseFiniteNumber(raw: unknown, field: string): number {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    throw new Error(`twin document rejected: ${field} must be a finite number`);
+  }
+  return raw;
+}
+
 /**
- * Fail closed: twin_id and parent_asset_id must be non-empty strings.
- * insight/question entries must be strings (no null/object coercion).
+ * Fail closed: every TwinDocument field required with declared type.
+ * No inventing empty lists, zero timestamps, or blank source_label.
  */
 export function parseTwinDocument(body: unknown): TwinDocument {
   if (!body || typeof body !== "object") {
@@ -97,31 +102,29 @@ export function parseTwinDocument(body: unknown): TwinDocument {
       "twin document rejected: parent_asset_id must be non-empty string",
     );
   }
-  const created = o.created_at;
-  const updated = o.updated_at;
-  if (created !== undefined && created !== null) {
-    if (typeof created !== "number" || !Number.isFinite(created)) {
-      throw new Error("twin document rejected: created_at must be finite number");
-    }
-  }
-  if (updated !== undefined && updated !== null) {
-    if (typeof updated !== "number" || !Number.isFinite(updated)) {
-      throw new Error("twin document rejected: updated_at must be finite number");
-    }
+  if (typeof o.source_label !== "string") {
+    throw new Error("twin document rejected: source_label must be a string");
   }
   return {
     twin_id: o.twin_id.trim(),
     parent_asset_id: o.parent_asset_id.trim(),
     insights: parseStringList(o.insights, "insights"),
     questions: parseStringList(o.questions, "questions"),
-    source_label: typeof o.source_label === "string" ? o.source_label : "",
-    created_at: Number(created ?? 0),
-    updated_at: Number(updated ?? 0),
+    source_label: o.source_label,
+    created_at: parseFiniteNumber(o.created_at, "created_at"),
+    updated_at: parseFiniteNumber(o.updated_at, "updated_at"),
     merged_from: parseStringList(o.merged_from, "merged_from"),
   };
 }
 
-export function parseListTwinsResult(body: unknown): ListTwinsResult {
+/**
+ * Parse list envelope. When `expectedParent` is provided, the envelope parent
+ * and every twin's parent_asset_id must match it exactly.
+ */
+export function parseListTwinsResult(
+  body: unknown,
+  expectedParent?: string,
+): ListTwinsResult {
   if (!body || typeof body !== "object") {
     throw new Error("list twins response must be an object");
   }
@@ -134,10 +137,24 @@ export function parseListTwinsResult(body: unknown): ListTwinsResult {
   if (!Array.isArray(o.twins)) {
     throw new Error("list twins response rejected: twins must be an array");
   }
-  return {
-    parent_asset_id: o.parent_asset_id.trim(),
-    twins: o.twins.map((t) => parseTwinDocument(t)),
-  };
+  const parent = o.parent_asset_id.trim();
+  if (expectedParent !== undefined) {
+    const want = String(expectedParent).trim();
+    if (parent !== want) {
+      throw new Error(
+        `list twins response rejected: parent_asset_id mismatch (expected ${want}, got ${parent})`,
+      );
+    }
+  }
+  const twins = o.twins.map((t) => parseTwinDocument(t));
+  for (const t of twins) {
+    if (t.parent_asset_id !== parent) {
+      throw new Error(
+        `list twins response rejected: twin ${t.twin_id} parent ${t.parent_asset_id} != envelope ${parent}`,
+      );
+    }
+  }
+  return { parent_asset_id: parent, twins };
 }
 
 export async function recordTwin(req: RecordTwinRequest): Promise<TwinDocument> {
@@ -183,7 +200,7 @@ export async function listTwinsForParent(
     { method: "GET" },
   );
   const raw = await readOkBody(res);
-  return parseListTwinsResult(raw);
+  return parseListTwinsResult(raw, parent);
 }
 
 export async function getTwin(

@@ -72,8 +72,9 @@ export default function TwinNotesPanel({
     setError(null);
     setList(null);
     try {
-      const raw = await listFn(parentAssetId.trim());
-      setList(parseListTwinsResult(raw));
+      const parent = parentAssetId.trim();
+      const raw = await listFn(parent);
+      setList(parseListTwinsResult(raw, parent));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

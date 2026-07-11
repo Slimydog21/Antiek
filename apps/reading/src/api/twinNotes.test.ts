@@ -55,13 +55,30 @@ describe("parseTwinDocument", () => {
     ).toThrow(/parent_asset_id/);
   });
 
-  it("rejects non-string insight entries and non-finite timestamps", () => {
+  it("rejects missing/null lists, source_label, and non-finite timestamps", () => {
+    expect(() =>
+      parseTwinDocument({ ...sampleDoc, insights: null }),
+    ).toThrow(/insights/);
+    expect(() => {
+      const { questions: _q, ...rest } = sampleDoc;
+      parseTwinDocument(rest);
+    }).toThrow(/questions/);
+    expect(() =>
+      parseTwinDocument({ ...sampleDoc, merged_from: undefined }),
+    ).toThrow(/merged_from/);
+    expect(() =>
+      parseTwinDocument({ ...sampleDoc, source_label: null }),
+    ).toThrow(/source_label/);
     expect(() =>
       parseTwinDocument({ ...sampleDoc, insights: [null] }),
     ).toThrow(/insights/);
     expect(() =>
       parseTwinDocument({ ...sampleDoc, created_at: Number.NaN }),
     ).toThrow(/created_at/);
+    expect(() => {
+      const { updated_at: _u, ...rest } = sampleDoc;
+      parseTwinDocument(rest);
+    }).toThrow(/updated_at/);
   });
 
   it("parses a valid document", () => {
@@ -82,6 +99,21 @@ describe("parseListTwinsResult", () => {
       twins: [sampleDoc],
     });
     expect(ok.twins).toHaveLength(1);
+  });
+
+  it("rejects envelope/child parent mismatches", () => {
+    expect(() =>
+      parseListTwinsResult(
+        { parent_asset_id: "asset-B", twins: [sampleDoc] },
+        "asset-1",
+      ),
+    ).toThrow(/mismatch/);
+    expect(() =>
+      parseListTwinsResult({
+        parent_asset_id: "asset-1",
+        twins: [{ ...sampleDoc, parent_asset_id: "other" }],
+      }),
+    ).toThrow(/parent/);
   });
 });
 
