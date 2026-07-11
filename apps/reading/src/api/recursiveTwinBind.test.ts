@@ -107,6 +107,18 @@ describe("evaluateRecursiveTwinBind", () => {
     expect(d.twin_created).toBe(false);
   });
 
+  it("unknown + llm_filled=true is rejected (not silently rewritten)", () => {
+    expect(() =>
+      evaluateRecursiveTwinBind({
+        parent_asset_id: "a",
+        source: "unknown",
+        llm_filled: true,
+        gated: false,
+        insights: ["should not mask"],
+      }),
+    ).toThrow(/llm_note_taker/);
+  });
+
   it("rejects whitespace-only list entries as empty after trim", () => {
     const d = evaluateRecursiveTwinBind({
       parent_asset_id: "a",
