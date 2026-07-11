@@ -160,10 +160,17 @@ def test_worker_rejects_unapproved():
         return WorkerStepResult(spent_usd=0.1, done=True)
 
     with pytest.raises(ValueError, match="approve"):
-        run_worker_iteration(job.job_id, store=store, step_fn=step, clock=clock)
+        run_worker_iteration(
+            job.job_id,
+            store=store,
+            step_fn=step,
+            project_fn=lambda _j: 0.1,
+            clock=clock,
+        )
 
 
 def test_worker_budget_hard_halt():
+    """Reserve-before-spend: an unaffordable step is never executed."""
     store = InMemoryJobStore()
     job = create_job(["g1", "g2"], 60, store=store, model_id="default")
     # Approve a tight ceiling
@@ -182,14 +189,25 @@ def test_worker_budget_hard_halt():
             done=False,
         )
 
-    j1 = run_worker_iteration(job.job_id, store=store, step_fn=step, clock=clock)
+    project = lambda _j: 0.6  # noqa: E731
+
+    j1 = run_worker_iteration(
+        job.job_id, store=store, step_fn=step, project_fn=project, clock=clock
+    )
     assert j1.status == "running"
     assert j1.spent_usd == pytest.approx(0.6)
-    # Second step wants 0.6 more → would exceed 1.0 → halt without charging
-    j2 = run_worker_iteration(job.job_id, store=store, step_fn=step, clock=clock)
+    from substrate.midnight_oil.budget_ledger import BudgetLedger
+
+    assert BudgetLedger(store.budget_db_path()).balance(job.job_id).held_cents == 0
+    # Second step projects 0.6 more → would exceed 1.0 → halted BEFORE the
+    # step runs: no charge, no step execution.
+    j2 = run_worker_iteration(
+        job.job_id, store=store, step_fn=step, project_fn=project, clock=clock
+    )
     assert j2.status == "budget_halted"
     assert j2.spent_usd == pytest.approx(0.6)
-    assert "budget_halt" in j2.notes
+    assert calls["n"] == 1  # prevention: the unaffordable step never ran
+    assert "budget_halt_preflight" in j2.notes
 
 
 def test_worker_timeout_with_fake_clock():
@@ -205,6 +223,7 @@ def test_worker_timeout_with_fake_clock():
         job.job_id,
         store=store,
         step_fn=step,
+        project_fn=lambda _j: 0.01,
         clock=clock,
         max_steps=5,
         advance_ms_per_step=60_000,
@@ -292,6 +311,7 @@ def test_end_to_end_create_approve_run_deposit(tmp_path):
         job.job_id,
         store=job_store,
         step_fn=step,
+        project_fn=lambda _j: 0.05,
         clock=clock,
         max_steps=3,
         advance_ms_per_step=1_000,
@@ -337,6 +357,7 @@ def test_worker_spawn_id_then_deposit_no_keyerror(tmp_path):
         job.job_id,
         store=job_store,
         step_fn=step,
+        project_fn=lambda _j: 0.2,
         clock=clock,
         max_steps=3,
         advance_ms_per_step=1_000,
@@ -388,6 +409,7 @@ def test_worker_dedups_repeated_spawn_id():
         job.job_id,
         store=store,
         step_fn=step,
+        project_fn=lambda _j: 0.01,
         clock=clock,
         max_steps=5,
         advance_ms_per_step=1_000,
@@ -411,4 +433,3 @@ def test_tier_multiplier_contract_matches_closed_set():
     assert tier_multiplier("wrestle") == 2.0
     assert tier_multiplier(None) == 1.0
     assert tier_multiplier("turbo") == 1.0  # normalize → deep
-

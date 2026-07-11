@@ -30,12 +30,11 @@ def test_live_step_status_offline_default() -> None:
 def test_live_step_status_dual_gate_live() -> None:
     configure_midnight_oil_live_step(
         lambda job: WorkerStepResult(
-            job_id=job.job_id,
-            spawn_id=None,
             spent_usd=0.0,
+            spawn_id=None,
             done=True,
-            note="test",
-        )
+        ),
+        lambda job: 0.0,
     )
     payload = live_step_status_payload(
         environ={"ANTIEK_MIDNIGHT_OIL_LIVE_STEP": "1"}

@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from .ceiling import ModelPricing, recommend_price_ceiling
 from .job import (
@@ -214,10 +214,13 @@ def job_summary_html(job: MidnightOilJob) -> str:
                 "content": [{"type": "text", "text": line}],
             }
         )
-    return project_to_html(
-        {"type": "doc", "content": blocks},
-        document_id=job.job_id,
-        creator="midnight_oil",
+    return cast(
+        str,
+        project_to_html(
+            {"type": "doc", "content": blocks},
+            document_id=job.job_id,
+            creator="midnight_oil",
+        ),
     )
 
 
@@ -253,6 +256,21 @@ def offline_goal_step_fn(
     )
 
 
+def offline_goal_project_fn(
+    job: MidnightOilJob,
+    *,
+    spent_per_goal: float = 0.05,
+) -> float:
+    """Projected max cost of the next ``offline_goal_step_fn`` step.
+
+    Exact upper bound: the stub spends ``spent_per_goal`` while goals
+    remain and 0.0 on the terminal step.
+    """
+    if len(job.spawn_ids) >= len(job.goals):
+        return 0.0
+    return float(spent_per_goal)
+
+
 # Residual (bs): optional live step injector — default OFF, no silent network.
 # Env ``ANTIEK_MIDNIGHT_OIL_LIVE_STEP``: 0/empty/false → offline only (default).
 # When enabled AND a process-local injector is configured, run uses that
@@ -260,17 +278,34 @@ def offline_goal_step_fn(
 ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV = "ANTIEK_MIDNIGHT_OIL_LIVE_STEP"
 
 _LiveStepFn = Callable[[MidnightOilJob], "WorkerStepResult"]
+_LiveProjectFn = Callable[[MidnightOilJob], float]
 _live_step_fn: _LiveStepFn | None = None
+_live_project_fn: _LiveProjectFn | None = None
 
 
-def configure_midnight_oil_live_step(step_fn: _LiveStepFn | None) -> None:
+def configure_midnight_oil_live_step(
+    step_fn: _LiveStepFn | None,
+    project_fn: _LiveProjectFn | None = None,
+) -> None:
     """Install or clear the process-local live worker step injector.
+
+    A live step spends real money, so installing one REQUIRES a matching
+    ``project_fn`` declaring each step's projected maximum cost — the worker
+    places that projection in the durable budget ledger before the step runs.
+    Passing ``step_fn=None`` clears both.
 
     Does nothing by itself — ``live_step_enabled()`` must also be true
     for ``run_job_offline`` to use the injector.
     """
-    global _live_step_fn
+    global _live_step_fn, _live_project_fn
+    if step_fn is not None and project_fn is None:
+        raise ValueError(
+            "a live step_fn requires an explicit project_fn: live steps "
+            "spend real money and the worker must reserve the projected "
+            "maximum cost before each step runs"
+        )
     _live_step_fn = step_fn
+    _live_project_fn = project_fn if step_fn is not None else None
 
 
 def clear_midnight_oil_live_step() -> None:
@@ -342,24 +377,33 @@ def resolve_worker_step_fn(
     spent_per_goal: float = 0.05,
     force_offline: bool = False,
     step_fn: _LiveStepFn | None = None,
-) -> tuple[_LiveStepFn, bool]:
-    """Return (step_fn, used_live).
+    project_fn: _LiveProjectFn | None = None,
+) -> tuple[_LiveStepFn, _LiveProjectFn, bool]:
+    """Return (step_fn, project_fn, used_live).
 
     Live path requires: not force_offline, env enabled, and either explicit
     ``step_fn`` or process-local configured injector. Otherwise offline stub.
+    A live step is only ever returned with a matching cost projection —
+    an explicit live ``step_fn`` without ``project_fn`` fails closed.
     """
-    if force_offline:
-        return (
-            lambda j: offline_goal_step_fn(j, spent_per_goal=spent_per_goal),
-            False,
-        )
-    candidate = step_fn if step_fn is not None else _live_step_fn
-    if live_step_enabled() and candidate is not None:
-        return (candidate, True)
-    return (
+    offline = (
         lambda j: offline_goal_step_fn(j, spent_per_goal=spent_per_goal),
+        lambda j: offline_goal_project_fn(j, spent_per_goal=spent_per_goal),
         False,
     )
+    if force_offline:
+        return offline
+    if live_step_enabled():
+        if step_fn is not None:
+            if project_fn is None:
+                raise ValueError(
+                    "explicit live step_fn requires an explicit project_fn "
+                    "(reserve-before-spend needs a projected max cost per step)"
+                )
+            return (step_fn, project_fn, True)
+        if _live_step_fn is not None and _live_project_fn is not None:
+            return (_live_step_fn, _live_project_fn, True)
+    return offline
 
 
 def run_job_offline(
@@ -371,6 +415,7 @@ def run_job_offline(
     advance_ms_per_step: int = 60_000,
     force_offline: bool = False,
     step_fn: _LiveStepFn | None = None,
+    project_fn: _LiveProjectFn | None = None,
 ) -> dict[str, Any]:
     """Product entry: run approved job with worker loop + FakeClock.
 
@@ -393,16 +438,18 @@ def run_job_offline(
 
     steps_cap = max_steps if max_steps is not None else max(len(job.goals) + 2, 4)
     clock = FakeClock(0)
-    resolved_fn, used_live = resolve_worker_step_fn(
+    resolved_fn, resolved_project_fn, used_live = resolve_worker_step_fn(
         spent_per_goal=spent_per_goal,
         force_offline=force_offline,
         step_fn=step_fn,
+        project_fn=project_fn,
     )
 
     final = run_worker_loop(
         job_id,
         store=store,
         step_fn=resolved_fn,
+        project_fn=resolved_project_fn,
         clock=clock,
         max_steps=steps_cap,
         advance_ms_per_step=advance_ms_per_step,

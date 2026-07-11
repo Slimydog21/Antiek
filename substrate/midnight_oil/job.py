@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field, replace
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, Literal, Protocol, runtime_checkable
 
 from substrate.dispatch.research_tier import (
@@ -51,11 +53,15 @@ class MidnightOilJob:
 class JobStore(Protocol):
     def put_job(self, job: dict[str, Any]) -> None: ...
     def get_job(self, job_id: str) -> dict[str, Any] | None: ...
+    def budget_db_path(self) -> str: ...
 
 
 @dataclass
 class InMemoryJobStore:
     _jobs: dict[str, dict[str, Any]] = field(default_factory=dict)
+    _budget_dir: TemporaryDirectory[str] = field(
+        default_factory=TemporaryDirectory, repr=False
+    )
 
     def put_job(self, job: dict[str, Any]) -> None:
         self._jobs[job["job_id"]] = dict(job)
@@ -63,6 +69,10 @@ class InMemoryJobStore:
     def get_job(self, job_id: str) -> dict[str, Any] | None:
         row = self._jobs.get(job_id)
         return dict(row) if row is not None else None
+
+    def budget_db_path(self) -> str:
+        """Return the store-scoped durable ledger used by its worker jobs."""
+        return str(Path(self._budget_dir.name) / "midnight-oil-budget.duckdb")
 
 
 def _job_to_row(job: MidnightOilJob) -> dict[str, Any]:
