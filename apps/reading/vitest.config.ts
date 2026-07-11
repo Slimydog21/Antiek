@@ -1,6 +1,10 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
+
+// ESM-safe dirname (vitest --configLoader runner does not provide __dirname).
+const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
@@ -9,7 +13,7 @@ export default defineConfig({
     // need a resolveable module surface for Settings passkey imports.
     alias: {
       "@simplewebauthn/browser": path.resolve(
-        __dirname,
+        rootDir,
         "src/test-stubs/simplewebauthn-browser.ts",
       ),
     },
