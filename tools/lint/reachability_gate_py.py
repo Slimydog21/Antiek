@@ -37,19 +37,28 @@ THE TWO CHECKS
 assignment or (b) a *factory function* that builds one (return annotation
 ``APIRouter``, or a body that ``return``\\s an ``APIRouter(...)`` call). A
 product is MOUNTED iff its identifier appears inside some ``include_router(...)``
-call anywhere in the non-test product tree (directly — ``include_router(r)`` —
-or via a factory call — ``include_router(make_r())``). A product no
-``include_router`` ever consumes is a route surface no mounted app exposes.
-Catches #742's ``create_multimedia_execution_router`` and the #712
-completion-route absence class.
+call anywhere in the non-test product tree. Mount resolution is MODULE-AWARE
+(not a global bare-name match): a product ``P`` in module ``M`` is mounted only
+if ``M`` itself ``include_router``\\s the local ``P`` (the same-file
+``register_*_routes`` pattern), OR some module ``N`` ``include_router``\\s a
+local name it imported FROM ``M`` (the ``from .m_routes import p_router;
+include_router(p_router)`` pattern, ``as``-alias included). This closes the
+collision where one mounted ``router`` would mask every other file's unmounted
+``router``. A product no ``include_router`` ever consumes is a route surface no
+mounted app exposes. Catches #742's ``create_multimedia_execution_router`` and
+the #712 completion-route absence class.
 
 **Check B — exported-but-uncalled enforcement symbols.** For every
 ``substrate/**`` module, each name in its ``__all__`` that (i) is a callable
 DEFINED in that module (``def`` / ``async def``) and (ii) matches the
-enforcement lexicon (below), and (iii) has ZERO references anywhere in the
-non-test product tree, is flagged. A reference is an ``import``, a call, an
-attribute access, or any bare-name use — so a symbol only ever exercised by
-tests reads as uncalled. Catches ``execute_authorized_call`` / ``complete_spawn``.
+enforcement lexicon (below), and (iii) has ZERO references in a genuine
+REACHABILITY position anywhere in the non-test product tree, is flagged. A
+reference is a CALL (``name(...)``), a callback/dispatch pass (``register(name)``
+— the bare name loaded as a value), or an attribute access (``mod.name``) — it
+is NOT a bare ``import``: importing a symbol without ever invoking it does not
+put it on the production path, so ``from x import execute_authorized_call`` with
+no call still reads as uncalled. A symbol only ever exercised by tests reads as
+uncalled. Catches ``execute_authorized_call`` / ``complete_spawn``.
 
 The enforcement lexicon (tunable — ``_ENFORCEMENT_LEXICON`` below): the symbol
 name and its module path are split into ``[a-z0-9]+`` word tokens, and a
@@ -91,23 +100,47 @@ CANNOT-catch list; rigor #1). Claims ONLY what its AST scan literally matches.
   - **Register-fn defined but never called** — a ``register_*_routes(app)`` that
     DOES ``include_router(r)`` inside its body makes ``r`` read as MOUNTED here
     even if nothing ever calls ``register_*_routes``. The scan gates the
-    falsifiable "is there an ``include_router`` that names this router at all"
-    floor; whether the enclosing register fn is itself reached from the app
-    factory is a call-graph question left to review (the same advisory line the
-    TS gate draws at "imported only by its own test").
+    falsifiable "is there an ``include_router`` that names this router, resolved
+    to its defining module, at all" floor; whether the enclosing register fn is
+    itself reached from the app factory is a call-graph question left to review
+    (the same advisory line the TS gate draws at "imported only by its own test").
+  - **Module-object mount form (Check A)** — ``import m_routes; m_routes.router``
+    passed to ``include_router`` mounts via a module OBJECT, not a name imported
+    FROM the defining module, so the module-aware resolver does not tie it to the
+    product and MAY read it as unmounted. The dominant patterns
+    (``from .m_routes import router`` and same-file mount) resolve correctly; the
+    module-object form is the honest residual → review-owned.
+  - **Registry-stored / string-dispatched callable (Check B)** — a name stored in
+    a dict/registry and later dispatched by string (``TABLE["exec"] = the_fn`` …
+    ``TABLE[key]()``) counts as REFERENCED via the bare-name load at store time
+    even though no literal call site names it; conversely a purely
+    string-keyed dispatch with no name/attribute load is uncatchable. Import is
+    NOT counted as a reference (that is the #739-742 evasion this closes), but
+    this store-then-dispatch residual is → review-owned.
   - **Name-collision masking (Check B)** — if an *unrelated* symbol of the same
     name is referenced elsewhere in the tree, the scan counts the target as
     referenced and will not flag it (a false negative, never a false positive).
     Distinctive enforcement names (``execute_authorized_call``) don't collide;
     generic ones (``complete``) can. Under-detection → review-owned.
+  - **Fixed-then-reintroduced at the same ``path:line:kind``** — if a stranding
+    is fixed (so the operator could shrink its baseline entry) but the entry is
+    NOT shrunk, and later the SAME stranding returns at the identical
+    ``path:line:kind``, it matches the still-present baseline key and reads as
+    grandfathered rather than NEW. Mitigation: while the finding is fixed the
+    gate prints its baseline entry as STALE (``find_stale_baseline_entries``,
+    surfaced every run) — the standing signal to shrink; and the shrink-only
+    ``--write-baseline`` enforcement (below) means a genuinely-new key at a
+    fresh location cannot be baselined away without the loud ``--force-baseline``.
+    Detecting reintroduction at a byte-identical location is review-owned.
   - **Exported classes / constants** — Check B flags only ``def`` / ``async def``
     callables (the enforcement-seam shape). A class exported in ``__all__`` and
     never instantiated is not claimed here.
 
 Everything in the FINDING shapes has a concrete literal signature the AST
 matches (a module-level ``APIRouter`` assignment / a factory returning one; an
-``include_router`` arg naming it; an ``__all__`` string + a same-named ``def``;
-a ``Name``/import/attribute reference). Nothing else is mechanically enforced.
+``include_router`` arg naming it, resolved to its defining module; an ``__all__``
+string + a same-named ``def``; a ``Name`` load / attribute reference — never a
+bare import). Nothing else is mechanically enforced.
 
 ────────────────────────────────────────────────────────────────────────────
 FAIRNESS — why a (future) HARD gate is defensible (fairness #2)
@@ -120,8 +153,14 @@ Rebuttal, baked into the design: the dated SHRINK-ONLY baseline grandfathers
 everything unreachable TODAY. The gate reds ONLY on a NEW stranding — a router
 built after this lands and never mounted, an enforcement export added and never
 called. The fix is the one line that wires it (an ``include_router`` / a call
-site), NOT a re-baseline. The baseline can only shrink (operator refreshes when
-a stranding is fixed), so the grandfathered set is a debt that pays down.
+site), NOT a re-baseline. Shrink-only is ENFORCED, not just documented:
+``--write-baseline`` REFUSES (non-zero) to write a set containing any key not
+already grandfathered — so a dev cannot silence a new stranding in one command.
+The only way to add a key is the explicit, loud ``--force-baseline`` (initial
+mint, or an operator deliberately grandfathering a new dormant set with a
+documented reason). The baseline can only shrink under normal use (operator
+refreshes when a stranding is fixed), so the grandfathered set is a debt that
+pays down.
 
 Per CLAUDE.md's test-integrity floor, this gate is INFORMATIONAL-FIRST: it
 prints ``path:line`` findings and surfaces ``::warning::`` on nonzero, and does
@@ -130,9 +169,10 @@ NOT red the build until a written flip-to-blocking condition lands in
 
 Usage::
 
-    python -m tools.lint.reachability_gate_py                       # enforce, no baseline
-    python -m tools.lint.reachability_gate_py --baseline <file>     # enforce vs baseline
-    python -m tools.lint.reachability_gate_py --write-baseline <f>  # re-capture (operator)
+    python -m tools.lint.reachability_gate_py                        # enforce, no baseline
+    python -m tools.lint.reachability_gate_py --baseline <file>      # enforce vs baseline
+    python -m tools.lint.reachability_gate_py --write-baseline <f>   # shrink-only re-capture
+    python -m tools.lint.reachability_gate_py --write-baseline <f> --force-baseline  # loud add
 """
 
 from __future__ import annotations
@@ -231,35 +271,48 @@ def _parse(path: Path) -> ast.Module | None:
 
 
 # ── Per-file precomputed indexes (parse each product file ONCE) ─────────────
-def _referenced_names(tree: ast.Module) -> set[str]:
-    """Every identifier this module REFERENCES (not merely defines): bare-name
-    loads, attribute accesses (``mod.execute_authorized_call``), and imported
-    names. A ``def foo`` / ``class Foo`` declaration is NOT a reference (its name
-    is a FunctionDef.name string, never a Name-load node), so a module that
-    defines-but-never-uses its own export contributes nothing here — exactly
-    what makes an only-tests-call-it export read as unreferenced."""
+def _reachability_reference_names(tree: ast.Module) -> set[str]:
+    """Every identifier this module uses in a GENUINE REACHABILITY position —
+    i.e. as a value that could actually run the symbol, NOT merely as an
+    import binding.
+
+    An ``import``/``from … import`` alone is deliberately NOT counted: importing
+    ``execute_authorized_call`` without ever calling it does not put it on the
+    production path, and treating the import as a caller is exactly the
+    #739-742 evasion (a green-CI module imported for its side of a test but
+    never invoked). A reference here is therefore a ``Name`` LOAD — which covers
+    a direct call ``execute_authorized_call(...)`` (the callee is a Name load), a
+    callback / dispatch-table pass ``register(execute_authorized_call)`` (the
+    Name is loaded as an argument), and any other read of the bare name — or an
+    ``Attribute`` access ``mod.execute_authorized_call`` (the ``mod.name(...)``
+    call form). A ``def``/``class`` declaration is a name string on the node, not
+    a Name load, so a module that defines-but-never-uses its own export
+    contributes nothing here — which is what makes an only-tests-call-it export
+    read as unreferenced.
+
+    ImportFrom/Import nodes bind names WITHOUT producing a Name load, so a
+    bare import contributes nothing; only a subsequent USE of the bound name
+    does. See the "import is not a caller" line in the CANNOT-catch list for the
+    residual (a name stored in a dict/registry and dispatched by string counts
+    as referenced via its attribute/name load even though no literal call site
+    exists)."""
     names: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.Name):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
             names.add(node.id)
         elif isinstance(node, ast.Attribute):
             names.add(node.attr)
-        elif isinstance(node, ast.ImportFrom):
-            for alias in node.names:
-                names.add(alias.name)
-                if alias.asname:
-                    names.add(alias.asname)
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                names.add(alias.asname or alias.name.split(".")[0])
     return names
 
 
 def _include_router_arg_names(tree: ast.Module) -> set[str]:
-    """Every identifier appearing anywhere inside an ``include_router(...)`` call
-    in this module. ``app.include_router(multimedia_router)`` → {multimedia_router};
-    ``app.include_router(make_thread_router())`` → {make_thread_router}. A router
-    product whose identifier lands in this set (in ANY product file) is mounted."""
+    """The LOCAL identifiers appearing inside an ``include_router(...)`` call in
+    this module. ``app.include_router(multimedia_router)`` → {multimedia_router};
+    ``app.include_router(make_thread_router())`` → {make_thread_router}. These
+    are the local names THIS module mounts; mount resolution (``_is_mounted``)
+    then ties each local name back to the module it was imported FROM, so a
+    router product is mounted only when ITS module's product is the one mounted —
+    never when an unrelated same-spelled ``router`` elsewhere is."""
     names: set[str] = set()
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -277,6 +330,62 @@ def _include_router_arg_names(tree: ast.Module) -> set[str]:
                 elif isinstance(sub, ast.Attribute):
                     names.add(sub.attr)
     return names
+
+
+def _resolve_from_module(importer: Path, module: str | None, level: int) -> str | None:
+    """Resolve a ``from <module> import …`` target to the repo-relative posix
+    path of the defining .py (or its package ``__init__.py``), or None if it does
+    not resolve to an in-repo module. Handles absolute (``level==0``) and
+    relative (``level>=1``) forms — the two shapes the router mounts use."""
+    if level == 0:
+        if not module:
+            return None
+        base = _REPO
+        parts = module.split(".")
+    else:
+        base = importer.parent
+        for _ in range(level - 1):
+            base = base.parent
+        parts = module.split(".") if module else []
+    target = base
+    for part in parts:
+        target = target / part
+    candidates = []
+    if parts:
+        candidates.append(target.with_name(target.name + ".py"))
+        candidates.append(target / "__init__.py")
+    else:
+        candidates.append(base / "__init__.py")
+    for cand in candidates:
+        try:
+            if cand.exists():
+                return cand.resolve().relative_to(_REPO).as_posix()
+        except (OSError, ValueError):
+            continue
+    return None
+
+
+def _import_map(importer: Path, tree: ast.Module) -> dict[str, set[tuple[str, str]]]:
+    """local-name → {(defining-module-relpath, original-name)} for every
+    ``from … import …`` in this module (walked, so function-local imports — the
+    shape ``create_app`` uses — are included). This is how a mounted local name
+    is tied back to the module that actually defines the router, closing the
+    global bare-name collision (an unrelated ``router`` in another file cannot
+    mount THIS module's ``router``). The ``import mod; mod.router`` module-object
+    form is a documented residual (see CANNOT-catch)."""
+    out: dict[str, set[tuple[str, str]]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        target = _resolve_from_module(importer, node.module, node.level)
+        if target is None:
+            continue
+        for alias in node.names:
+            if alias.name == "*":
+                continue
+            local = alias.asname or alias.name
+            out.setdefault(local, set()).add((target, alias.name))
+    return out
 
 
 # ── Check A — unmounted API routers ─────────────────────────────────────────
@@ -347,21 +456,53 @@ def _router_products(path: Path, tree: ast.Module) -> list[tuple[str, int]]:
     return products
 
 
+def _is_mounted(
+    defining_rel: str,
+    product: str,
+    include_local: dict[str, set[str]],
+    import_map: dict[str, dict[str, set[tuple[str, str]]]],
+) -> bool:
+    """True iff router ``product`` defined in module ``defining_rel`` is mounted,
+    resolved MODULE-AWARELY (not by global bare-name collision):
+
+      * same-module — ``defining_rel`` itself ``include_router``\\s the local
+        name ``product`` (the common ``register_*_routes`` pattern where the
+        router is defined and mounted in one file), OR
+      * cross-module — some module N ``include_router``\\s a local name L that N
+        imported FROM ``defining_rel`` whose original name is ``product`` (the
+        ``from .x_routes import x_router; app.include_router(x_router)`` pattern,
+        including an ``as`` alias).
+
+    A different module defining its own ``router`` and mounting it cannot mount
+    THIS module's ``router``: the cross-module arm requires the import to resolve
+    to ``defining_rel`` specifically."""
+    if product in include_local.get(defining_rel, set()):
+        return True
+    for n_rel, mounted_locals in include_local.items():
+        imap = import_map.get(n_rel, {})
+        for local in mounted_locals:
+            for origin_rel, origin_name in imap.get(local, ()):
+                if origin_rel == defining_rel and origin_name == product:
+                    return True
+    return False
+
+
 def find_unmounted_routers(
     trees: dict[Path, ast.Module],
-    mount_names: set[str],
+    include_local: dict[str, set[str]],
+    import_map: dict[str, dict[str, set[tuple[str, str]]]],
 ) -> list[Finding]:
-    """Router products in ``interfaces/**/api/*_routes.py`` whose identifier is
-    never an argument to any ``include_router(...)`` in the product tree."""
+    """Router products in ``interfaces/**/api/*_routes.py`` that no module mounts
+    (module-aware — see ``_is_mounted``)."""
     findings: list[Finding] = []
     for path in _routes_files():
         tree = trees.get(path)
         if tree is None:
             continue
+        rel = path.relative_to(_REPO).as_posix()
         for name, line in _router_products(path, tree):
-            if name in mount_names:
+            if _is_mounted(rel, name, include_local, import_map):
                 continue
-            rel = path.relative_to(_REPO).as_posix()
             findings.append(
                 (
                     path,
@@ -455,12 +596,15 @@ def find_uncalled_enforcement_exports(
                     line,
                     f"export:uncalled:{name}",
                     f"{rel}:{line}: reachability — enforcement export '{name}' is "
-                    f"in __all__ but has ZERO non-test callers/importers anywhere "
-                    f"in the tree. A claimed enforcement/authority/execution seam "
-                    f"only tests exercise does not run in production (stub-theater: "
-                    f"green tests, unguarded path). Wire it into the product path "
-                    f"or remove it from __all__. Reflection/getattr/name-collision "
-                    f"cases are review-owned (see reachability_gate_py.py docstring).",
+                    f"in __all__ but is CALLED by ZERO non-test code anywhere in "
+                    f"the tree (a bare import does not count — only an actual "
+                    f"call/callback/attribute use). A claimed "
+                    f"enforcement/authority/execution seam only tests exercise "
+                    f"does not run in production (stub-theater: green tests, "
+                    f"unguarded path). Wire it into the product path (call it) or "
+                    f"remove it from __all__. Reflection/getattr/registry-dispatch/"
+                    f"name-collision cases are review-owned (see "
+                    f"reachability_gate_py.py docstring).",
                 )
             )
     return findings
@@ -487,16 +631,19 @@ def find_all() -> list[Finding]:
     enforcement exports."""
     product_files = _product_py_files()
     trees: dict[Path, ast.Module] = {}
-    mount_names: set[str] = set()
+    include_local: dict[str, set[str]] = {}
+    import_map: dict[str, dict[str, set[tuple[str, str]]]] = {}
     referenced: set[str] = set()
     for f in product_files:
         tree = _parse(f)
         if tree is None:
             continue
+        rel = f.relative_to(_REPO).as_posix()
         trees[f] = tree
-        mount_names |= _include_router_arg_names(tree)
-        referenced |= _referenced_names(tree)
-    routers = find_unmounted_routers(trees, mount_names)
+        include_local[rel] = _include_router_arg_names(tree)
+        import_map[rel] = _import_map(f, tree)
+        referenced |= _reachability_reference_names(tree)
+    routers = find_unmounted_routers(trees, include_local, import_map)
     exports = find_uncalled_enforcement_exports(trees, referenced)
     return routers + exports
 
@@ -527,9 +674,22 @@ def main(argv: list[str] | None = None) -> int:
         metavar="FILE",
         help=(
             "Re-capture current findings into the baseline JSON (operator-only). "
-            "The baseline is shrink-only: use this to grandfather today's set or "
-            "to refresh after a stranding is fixed (removing its entry); never "
-            "to silence a NEW stranding."
+            "SHRINK-ONLY: this REFUSES (non-zero) if the current findings contain "
+            "any key not already in the existing baseline — you cannot baseline "
+            "away a NEW stranding. Use it to grandfather today's set (via "
+            "--force-baseline on first mint) or to refresh after a stranding is "
+            "fixed (which only REMOVES its entry)."
+        ),
+    )
+    parser.add_argument(
+        "--force-baseline",
+        action="store_true",
+        help=(
+            "The explicit, loud escape hatch for the shrink-only refusal: writes "
+            "the current findings even when they ADD keys (initial mint, or an "
+            "operator deliberately grandfathering a new dormant set with a "
+            "documented reason). Mirrors the ALLOW_EMPTY-style override — never "
+            "the silent default."
         ),
     )
     args = parser.parse_args(argv)
@@ -542,12 +702,35 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.write_baseline is not None:
-        write_baseline(args.write_baseline, lint=_LINT_NAME, violations=keys)
+        target = args.write_baseline
         try:
-            shown = args.write_baseline.relative_to(_REPO)
+            shown = target.relative_to(_REPO)
         except ValueError:
-            shown = args.write_baseline
-        print(f"wrote {len(keys)} finding(s) to {shown}")
+            shown = target
+        # Shrink-only enforcement: the written set must be a SUBSET of the
+        # existing baseline (removals only). Any current key not already
+        # grandfathered is an ADD — refuse unless --force-baseline.
+        try:
+            existing = {
+                (k.path, k.line, k.col, k.kind)
+                for k in load_baseline(target).violations
+            }
+        except FileNotFoundError:
+            existing = set()
+        added = [k for k in keys if (k.path, k.line, k.col, k.kind) not in existing]
+        if added and not args.force_baseline:
+            print(
+                f"shrink-only: {len(added)} new finding(s) cannot be baselined "
+                f"away; wire or remove them, or use --force-baseline with a "
+                f"documented reason:",
+                file=sys.stderr,
+            )
+            for k in added:
+                print(f"  + {k.path}:{k.line} {k.kind}", file=sys.stderr)
+            return 1
+        write_baseline(target, lint=_LINT_NAME, violations=keys)
+        forced = " (FORCED — new keys added)" if (added and args.force_baseline) else ""
+        print(f"wrote {len(keys)} finding(s) to {shown}{forced}")
         return 0
 
     # Enforce mode. With no baseline file, every finding is NEW (honest about

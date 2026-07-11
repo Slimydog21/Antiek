@@ -28,6 +28,7 @@ run with NO baseline — the fixture IS the re-detection proof.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -327,4 +328,206 @@ def test_lexicon_token_prefix_not_substring(tmp_path: Path) -> None:
     assert "guarded_send" in combined, f"guard-prefixed export must flag:\n{combined}"
     assert "aggregate_annual_payouts" not in combined, (
         f"'aggregate' (mere substring of 'gate') must NOT flag:\n{combined}"
+    )
+
+
+# =========================================================================== #
+# (e) FIX #1 — shrink-only --write-baseline is ENFORCED, not help text. A run
+#     that would ADD a key is refused (exit 1, key printed, baseline unchanged);
+#     --force-baseline is the loud escape.
+# =========================================================================== #
+def test_write_baseline_refuses_new_key_without_force(tmp_path: Path) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _build_clean_tree(root)
+    baseline = root / "tools" / "lints" / "baselines" / "reachability_py.json"
+
+    # Mint a clean (empty) baseline first — no new keys, so no --force needed.
+    assert (
+        _run(
+            [sys.executable, str(gate), "--write-baseline", str(baseline)], cwd=root
+        ).returncode
+        == 0
+    )
+
+    # SEED a NEW uncalled enforcement export.
+    _write(
+        root / "substrate" / "authz" / "authority.py",
+        '__all__ = ["execute_authorized_call"]\n\n\n'
+        "def execute_authorized_call(x: int) -> int:\n    return x\n",
+    )
+
+    # --write-baseline WITHOUT --force must REFUSE (exit 1) and NOT add the key.
+    refuse = _run(
+        [sys.executable, str(gate), "--write-baseline", str(baseline)], cwd=root
+    )
+    assert refuse.returncode == 1, (
+        f"shrink-only add must be refused, got {refuse.returncode}\n"
+        f"{refuse.stdout}\n{refuse.stderr}"
+    )
+    combined = refuse.stdout + refuse.stderr
+    assert "shrink-only" in combined, combined
+    assert "execute_authorized_call" in combined, combined
+    data = json.loads(baseline.read_text())
+    assert all(
+        "execute_authorized_call" not in v["kind"] for v in data["violations"]
+    ), f"refused key must NOT be in the baseline:\n{data}"
+
+    # --force-baseline is the loud escape: it DOES write the new key.
+    forced = _run(
+        [
+            sys.executable,
+            str(gate),
+            "--write-baseline",
+            str(baseline),
+            "--force-baseline",
+        ],
+        cwd=root,
+    )
+    assert forced.returncode == 0, f"{forced.stdout}\n{forced.stderr}"
+    data2 = json.loads(baseline.read_text())
+    assert any(
+        "execute_authorized_call" in v["kind"] for v in data2["violations"]
+    ), f"--force-baseline must add the key:\n{data2}"
+
+
+def test_write_baseline_removal_only_shrink_succeeds(tmp_path: Path) -> None:
+    """A shrink (current findings are a SUBSET of the baseline — a fixed entry
+    dropped) is accepted without --force: removals are always allowed."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _build_clean_tree(root)
+    baseline = root / "tools" / "lints" / "baselines" / "reachability_py.json"
+
+    # One genuine uncalled export -> exactly one current finding.
+    _write(
+        root / "substrate" / "authz" / "authority.py",
+        '__all__ = ["guard_the_thing"]\n\n\n'
+        "def guard_the_thing(x: int) -> int:\n    return x\n",
+    )
+    # Force-mint the real finding, then hand-add a PHANTOM (already-fixed) entry.
+    assert (
+        _run(
+            [
+                sys.executable,
+                str(gate),
+                "--write-baseline",
+                str(baseline),
+                "--force-baseline",
+            ],
+            cwd=root,
+        ).returncode
+        == 0
+    )
+    data = json.loads(baseline.read_text())
+    data["violations"].append(
+        {
+            "col": 0,
+            "kind": "export:uncalled:phantom_fixed",
+            "line": 1,
+            "path": "substrate/authz/authority.py",
+        }
+    )
+    baseline.write_text(json.dumps(data))
+
+    # --write-baseline WITHOUT --force: current (1 real) ⊆ baseline (2) -> allowed;
+    # the phantom is dropped (shrink), the live entry kept.
+    shrink = _run(
+        [sys.executable, str(gate), "--write-baseline", str(baseline)], cwd=root
+    )
+    assert shrink.returncode == 0, (
+        f"removal-only shrink must succeed, got {shrink.returncode}\n"
+        f"{shrink.stdout}\n{shrink.stderr}"
+    )
+    kinds = {v["kind"] for v in json.loads(baseline.read_text())["violations"]}
+    assert "export:uncalled:phantom_fixed" not in kinds, f"phantom must be dropped: {kinds}"
+    assert any("guard_the_thing" in k for k in kinds), f"live entry must remain: {kinds}"
+
+
+# =========================================================================== #
+# (f) FIX #2 — an IMPORT is not a caller. An import-only reference must NOT
+#     clear the finding; an actual call clears it.
+# =========================================================================== #
+def test_import_only_reference_still_flagged_call_clears(tmp_path: Path) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    _write(
+        root / "substrate" / "authz" / "execution.py",
+        '__all__ = ["execute_authorized_call"]\n\n\n'
+        "def execute_authorized_call(x: int) -> int:\n    return x\n",
+    )
+    # A non-test product module that IMPORTS but NEVER CALLS it (the evasion).
+    _write(
+        root / "interfaces" / "research" / "api" / "importer.py",
+        "from substrate.authz.execution import execute_authorized_call  # noqa: F401\n",
+    )
+    red = _run([sys.executable, str(gate)], cwd=root)  # no baseline -> all NEW
+    assert red.returncode == 1, (
+        f"import-only reference must NOT clear the finding, got {red.returncode}\n"
+        f"{red.stdout}\n{red.stderr}"
+    )
+    assert "execute_authorized_call" in red.stdout + red.stderr
+
+    # Add an actual CALL in a product module -> cleared.
+    _write(
+        root / "interfaces" / "research" / "api" / "caller.py",
+        "from substrate.authz.execution import execute_authorized_call\n\n\n"
+        "def go(x: int) -> int:\n    return execute_authorized_call(x)\n",
+    )
+    green = _run([sys.executable, str(gate)], cwd=root)
+    assert green.returncode == 0, (
+        f"a real call must clear the finding, got {green.returncode}\n"
+        f"{green.stdout}\n{green.stderr}"
+    )
+
+
+# =========================================================================== #
+# (g) FIX #3 — module-aware mount detection. Two modules each define a `router`;
+#     one is mounted, one is not. The unmounted one must still be flagged (the
+#     mounted same-named router must NOT mask it via global bare-name collision).
+# =========================================================================== #
+def test_module_aware_mount_no_bare_name_collision(tmp_path: Path) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    # Module A: defines `router`, mounted same-module.
+    _write(
+        root / "interfaces" / "research" / "api" / "a_routes.py",
+        "from fastapi import APIRouter, FastAPI\n\n"
+        'router = APIRouter(prefix="/a")\n\n\n'
+        "def register(app: FastAPI) -> None:\n    app.include_router(router)\n",
+    )
+    # Module B: defines an identically-named `router`, NEVER mounted.
+    _write(
+        root / "interfaces" / "research" / "api" / "b_routes.py",
+        'from fastapi import APIRouter\n\nrouter = APIRouter(prefix="/b")\n',
+    )
+    res = _run([sys.executable, str(gate)], cwd=root)  # no baseline -> NEW
+    assert res.returncode == 1, (
+        f"B's unmounted router must red, got {res.returncode}\n"
+        f"{res.stdout}\n{res.stderr}"
+    )
+    combined = res.stdout + res.stderr
+    assert "b_routes.py:" in combined, (
+        f"B's router must be flagged despite A's mounted same-named router:\n{combined}"
+    )
+    assert "a_routes.py:" not in combined, (
+        f"A's router is mounted same-module and must NOT be flagged:\n{combined}"
+    )
+
+    # Also assert the cross-module import mount clears: a third module mounts B
+    # by importing FROM b_routes.
+    _write(
+        root / "interfaces" / "research" / "api" / "mount_b.py",
+        "from fastapi import FastAPI\n"
+        "from .b_routes import router as b_router\n\n\n"
+        "def wire(app: FastAPI) -> None:\n    app.include_router(b_router)\n",
+    )
+    green = _run([sys.executable, str(gate)], cwd=root)
+    assert green.returncode == 0, (
+        f"cross-module import mount must clear B, got {green.returncode}\n"
+        f"{green.stdout}\n{green.stderr}"
     )
