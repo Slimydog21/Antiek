@@ -8,6 +8,7 @@ Exit codes:
     0 — free copy found
     3 — not freely available
     2 — error
+    4 — Gutenberg ingest routed elsewhere (use tools/ingest_public_domain)
 
 Usage:
     python tools/book_lookup.py "The Republic"
@@ -30,10 +31,12 @@ if _REPO not in sys.path:
 
 from acquisition.books.lookup import (  # noqa: E402
     FreeCopyFound,
+    SourceClientFetcher,
     SourceOutcome,
     ingest_found_copy,
     search_free_copy,
 )
+from acquisition.books.public_domain import PublicDomainWork  # noqa: E402
 
 logger = logging.getLogger("tools.book_lookup")
 
@@ -47,6 +50,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "  0  Free copy found\n"
             "  3  Not freely available\n"
             "  2  Error\n"
+            "  4  Gutenberg ingest routed elsewhere (use tools/ingest_public_domain)\n"
         ),
     )
     p.add_argument("title", help="Book title to search for")
@@ -112,10 +116,26 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  At:      {result.retrieved_at}")
 
         if args.ingest:
+            # Gutenberg results (PublicDomainWork) route through a different
+            # ingest path — detect and redirect honestly.
+            if isinstance(result.candidate_ref, PublicDomainWork):
+                msg = (
+                    "Gutenberg PublicDomainWork results are ingested via "
+                    "tools/ingest_public_domain, not this CLI's --ingest. "
+                    f"Run: python tools/ingest_public_domain "
+                    f"--source-id {result.candidate_ref.source_id}"
+                )
+                if args.json:
+                    print(json.dumps({"ingested": False, "reason": msg}))
+                else:
+                    print(f"\n  {msg}")
+                return 4
+
             if not args.json:
                 print("\nIngesting...")
             try:
-                outcome = ingest_found_copy(result, fetcher=None, db_path=args.db_path)
+                fetcher = SourceClientFetcher()
+                outcome = ingest_found_copy(result, fetcher=fetcher, db_path=args.db_path)
                 if hasattr(outcome, "ingested") and outcome.ingested:
                     if args.json:
                         print(json.dumps({"ingested": True, "document_id": outcome.document_id}))

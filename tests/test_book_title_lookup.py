@@ -30,7 +30,7 @@ from acquisition.books.lookup import (
     search_free_copy,
 )
 from acquisition.books.pd_connector_base import BookCandidate, FetchError
-from acquisition.books.public_domain import GUTENDEX_BASE
+from acquisition.books.public_domain import GUTENDEX_BASE, PublicDomainWork
 
 # ---------------------------------------------------------------------------
 # Stub fetcher — FAILS on any URL not explicitly registered
@@ -339,7 +339,16 @@ def test_cli_exit_code_0_on_found():
 
     mock_result = FreeCopyFound(
         source="gutenberg",
-        candidate_ref=type("C", (), {"title": "T", "author": "A"})(),
+        candidate_ref=PublicDomainWork(
+            source="project_gutenberg",
+            source_id="123",
+            title="T",
+            author="A",
+            source_uri="https://www.gutenberg.org/ebooks/123",
+            download_url="https://www.gutenberg.org/files/123/123-0.txt",
+            download_format="text",
+            pd_basis="Gutenberg PD",
+        ),
         rights_basis="PD",
         retrieved_at=_dt.datetime.now(_dt.UTC).isoformat(),
     )
@@ -380,7 +389,16 @@ def test_cli_json_output_found(capsys):
 
     mock_result = FreeCopyFound(
         source="gutenberg",
-        candidate_ref=type("C", (), {"title": "T", "author": "A"})(),
+        candidate_ref=PublicDomainWork(
+            source="project_gutenberg",
+            source_id="123",
+            title="T",
+            author="A",
+            source_uri="https://www.gutenberg.org/ebooks/123",
+            download_url="https://www.gutenberg.org/files/123/123-0.txt",
+            download_format="text",
+            pd_basis="Gutenberg PD",
+        ),
         rights_basis="PD",
         retrieved_at=_dt.datetime.now(_dt.UTC).isoformat(),
     )
@@ -390,3 +408,111 @@ def test_cli_json_output_found(capsys):
     data = json_mod.loads(out)
     assert data["status"] == "found"
     assert data["source"] == "gutenberg"
+
+
+# ---------------------------------------------------------------------------
+# Tests — --ingest regression (BLOCKER 1 fixes)
+# ---------------------------------------------------------------------------
+
+
+def test_cli_ingest_ia_hit_passes_real_fetcher():
+    """IA hit + --ingest → ingest_found_copy is called with a NON-None fetcher
+    (the SourceClientFetcher instance)."""
+    from tools.book_lookup import main as cli_main
+
+    ia_candidate = BookCandidate(
+        source="internet_archive",
+        source_id="internet_archive:testpd",
+        title="Test PD Book",
+        author="Test Author",
+        source_uri="https://archive.org/details/testpd",
+        download_url="https://archive.org/download/testpd/testpd.pdf",
+        download_format="pdf",
+        license_uri=None,
+        pd_signal="NOT_IN_COPYRIGHT",
+        subjects=tuple(),
+    )
+    mock_result = FreeCopyFound(
+        source="internet_archive",
+        candidate_ref=ia_candidate,
+        rights_basis="NOT_IN_COPYRIGHT",
+        retrieved_at=_dt.datetime.now(_dt.UTC).isoformat(),
+    )
+    mock_outcome = type("Outcome", (), {
+        "ingested": True, "document_id": "doc-456", "skipped_reason": None
+    })()
+    with (
+        patch("tools.book_lookup.search_free_copy", return_value=mock_result),
+        patch("tools.book_lookup.ingest_found_copy", return_value=mock_outcome) as mock_ingest,
+    ):
+        exit_code = cli_main(["Test Book", "--ingest", "--db-path", "/tmp/test.duckdb"])
+    assert exit_code == 0
+    mock_ingest.assert_called_once()
+    # The fetcher kwarg must be a real SourceClientFetcher, not None.
+    call_kwargs = mock_ingest.call_args
+    fetcher_arg = call_kwargs[1].get("fetcher") or call_kwargs[0][1]
+    from acquisition.books.lookup import SourceClientFetcher
+    assert isinstance(fetcher_arg, SourceClientFetcher)
+    assert call_kwargs[1].get("db_path") == "/tmp/test.duckdb"
+
+
+def test_cli_ingest_gutenberg_hit_reports_limitation(capsys):
+    """Gutenberg hit + --ingest → clean message about tools/ingest_public_domain
+    and exit code 4, NOT a crash and NOT a generic error."""
+    from tools.book_lookup import main as cli_main
+
+    gutenberg_work = PublicDomainWork(
+        source="project_gutenberg",
+        source_id="2098",
+        title="Walden; Or, Life in the Woods",
+        author="Thoreau, Henry David",
+        source_uri="https://www.gutenberg.org/ebooks/2098",
+        download_url="https://www.gutenberg.org/files/2098/2098-0.txt",
+        download_format="text",
+        pd_basis="Gutenberg PD (US public domain)",
+    )
+    mock_result = FreeCopyFound(
+        source="gutenberg",
+        candidate_ref=gutenberg_work,
+        rights_basis="Gutenberg PD (US public domain)",
+        retrieved_at=_dt.datetime.now(_dt.UTC).isoformat(),
+    )
+    with patch("tools.book_lookup.search_free_copy", return_value=mock_result):
+        exit_code = cli_main(["Walden", "--ingest", "--db-path", "/tmp/test.duckdb"])
+    assert exit_code == 4
+    out = capsys.readouterr().out
+    assert "tools/ingest_public_domain" in out
+    assert "2098" in out
+
+
+def test_cli_ingest_gutenberg_json_reports_limitation(capsys):
+    """Gutenberg hit + --ingest + --json → JSON with reason about routing."""
+    import json as json_mod
+
+    from tools.book_lookup import main as cli_main
+
+    gutenberg_work = PublicDomainWork(
+        source="project_gutenberg",
+        source_id="2098",
+        title="Walden; Or, Life in the Woods",
+        author="Thoreau, Henry David",
+        source_uri="https://www.gutenberg.org/ebooks/2098",
+        download_url="https://www.gutenberg.org/files/2098/2098-0.txt",
+        download_format="text",
+        pd_basis="Gutenberg PD (US public domain)",
+    )
+    mock_result = FreeCopyFound(
+        source="gutenberg",
+        candidate_ref=gutenberg_work,
+        rights_basis="Gutenberg PD (US public domain)",
+        retrieved_at=_dt.datetime.now(_dt.UTC).isoformat(),
+    )
+    with patch("tools.book_lookup.search_free_copy", return_value=mock_result):
+        exit_code = cli_main(["Walden", "--ingest", "--db-path", "/tmp/test.duckdb", "--json"])
+    assert exit_code == 4
+    out = capsys.readouterr().out
+    # CLI emits two JSON objects on separate lines: "found" then "ingest".
+    lines = [line for line in out.strip().splitlines() if line.strip().startswith("{")]
+    second = json_mod.loads(lines[1])
+    assert second["ingested"] is False
+    assert "tools/ingest_public_domain" in second["reason"]

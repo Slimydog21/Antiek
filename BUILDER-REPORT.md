@@ -5,8 +5,8 @@
 | File | Purpose |
 |---|---|
 | `acquisition/books/lookup.py` | Per-title free-copy search over existing PD connectors (Gutendex title search, Internet Archive advancedsearch + layer-2 re-check). `FreeCopyFound | NotFreelyAvailable` result types. Optional `ingest_found_copy` handoff to SPR-02 chokepoint. Zero new HTTP clients. |
-| `tools/book_lookup.py` | CLI wrapper: `python tools/book_lookup.py "<title>" [--author X] [--source ...] [--ingest] [--json]`. Dry-run default. Exit codes 0/3/2. |
-| `tests/test_book_title_lookup.py` | 12 fixture-only tests, zero live network, stub fetcher that fails on unexpected URLs. |
+| `tools/book_lookup.py` | CLI wrapper: `python tools/book_lookup.py "<title>" [--author X] [--source ...] [--ingest] [--json]`. Dry-run default. Exit codes 0/3/2/4. |
+| `tests/test_book_title_lookup.py` | 15 fixture-only tests, zero live network, stub fetcher that fails on unexpected URLs. |
 
 ## Per-source coverage honesty table
 
@@ -82,6 +82,96 @@ Exit codes:
 3. **Ingest handoff limited to Wave-2 BookCandidate.** Gutenberg results use `PublicDomainWork` (the Wave-1 type) which goes through a different ingest path (`ingest_work`). `ingest_found_copy` raises `TypeError` for Gutenberg results and directs the operator to `tools/ingest_public_domain`. The brief's `classify_and_ingest` chokepoint expects `BookCandidate`.
 
 4. **Gutendex `search` parameter matching is API-dependent.** Gutendex's `search` param does relevance-ranked full-text search; the lookup returns the first PD result. There's no guarantee the first result matches the exact title. This is acceptable for a preflight ("is anything free?") but callers wanting exact-title matching should compare `result.candidate_ref.title` against the query.
+
+## Fix round 1
+
+Two release-blockers from adversarial review (codex), fixed per `FIX-ROUND-1.md`.
+
+### BLOCKER 1 — `--ingest` was broken (passed `fetcher=None`)
+
+**Root cause:** `tools/book_lookup.py:118` called `ingest_found_copy(result, fetcher=None, ...)` — a real fetcher is required for `classify_and_ingest` to call `.get_json`. Additionally, Gutenberg hits (`PublicDomainWork`) route through a different ingest path (`tools/ingest_public_domain`), not `ingest_found_copy`.
+
+**Fix:**
+- Construct `SourceClientFetcher()` (the production fetcher wrapper) in the CLI and pass it to `ingest_found_copy` for IA (`BookCandidate`) hits.
+- Detect Gutenberg `PublicDomainWork` hits before calling `ingest_found_copy`; print a clear message naming `tools/ingest_public_domain` and the `--source-id`, then exit with code 4 (distinct from 0/2/3).
+- Exit code 4 documented in `--help` epilog and module docstring.
+
+### BLOCKER 2 — `candidate_ref` type contract was a lie
+
+**Root cause:** `FreeCopyFound.candidate_ref` was annotated `Mapping[str, Any]` but actually stored `PublicDomainWork | BookCandidate` dataclass instances. `mypy --strict` would reject this.
+
+**Fix:**
+- Annotated `candidate_ref` honestly as `PublicDomainWork | BookCandidate`.
+- Removed unused `Mapping` import; added `PublicDomainWork` import.
+- Fixed `dict` → `dict[str, Any]` in `_FetcherProto` and `SourceClientFetcher` for mypy strict compliance.
+- Removed stale `# type: ignore[arg-type]` comments (no longer needed with `--follow-imports=skip`); added `# type: ignore[no-any-return]` on `SourceClientFetcher` methods with one-line comments explaining why (connector return types are `Any` when imports are skipped; connector files owned by others).
+- mypy now passes cleanly: `Success: no issues found in 2 source files`.
+
+### Hygiene — redundant `except (FetchError, Exception)`
+
+Replaced all three `except (FetchError, Exception)` with `except Exception` in `lookup.py` (lines ~198, 233, 239). `FetchError` subclasses `Exception`, so the tuple was redundant.
+
+### Regression tests added
+
+| Test | What it asserts |
+|---|---|
+| `test_cli_ingest_ia_hit_passes_real_fetcher` | IA hit + `--ingest` → `ingest_found_copy` called with a `SourceClientFetcher` instance (not None) and correct `db_path` |
+| `test_cli_ingest_gutenberg_hit_reports_limitation` | Gutenberg hit + `--ingest` → exit code 4 + message containing `tools/ingest_public_domain` and source ID |
+| `test_cli_ingest_gutenberg_json_reports_limitation` | Same as above but `--json` mode → second JSON object has `ingested: false` with routing reason |
+
+### Acceptance results (verbatim)
+
+#### `/Users/slimydog/Antiek/worktrees/settings-add-model-byok/.venv/bin/python -m pytest tests/test_book_title_lookup.py -q`
+
+```
+15 passed in 0.22s
+```
+
+#### `/Users/slimydog/Antiek/worktrees/settings-add-model-byok/.venv/bin/python -m ruff check acquisition/books/lookup.py tools/book_lookup.py tests/test_book_title_lookup.py`
+
+```
+All checks passed!
+```
+
+#### `/Users/slimydog/Antiek/worktrees/settings-add-model-byok/.venv/bin/python -m mypy --strict --follow-imports=skip acquisition/books/lookup.py tools/book_lookup.py`
+
+```
+Success: no issues found in 2 source files
+```
+
+**Note:** `--follow-imports=skip` is used because the lane files' transitive imports (`public_domain.py`, `pd_connector_base.py`, `internet_archive.py`, etc.) are owned by other lanes and carry pre-existing mypy errors (missing type args, untyped stubs). The lane files themselves are fully strict-clean. Four `# type: ignore[no-any-return]` comments on `SourceClientFetcher` methods are the minimum necessary: the underlying connectors return `Any` when imports are skipped.
+
+#### `/Users/slimydog/Antiek/worktrees/settings-add-model-byok/.venv/bin/python tools/book_lookup.py --help`
+
+```
+usage: book_lookup.py [-h] [--author AUTHOR]
+                      [--source {gutenberg,internet_archive}] [--ingest]
+                      [--db-path DB_PATH] [--json] [--debug]
+                      title
+
+Search for a freely-available copy of a book title.
+
+positional arguments:
+  title                 Book title to search for
+
+options:
+  -h, --help            show this help message and exit
+  --author AUTHOR       Author name (improves hit rate)
+  --source {gutenberg,internet_archive}
+                        Source(s) to search (default: gutenberg,
+                        internet_archive)
+  --ingest              Ingest the found copy via classify_and_ingest
+                        (requires --db-path for real run)
+  --db-path DB_PATH     DuckDB path for ingest (required with --ingest)
+  --json                JSON output
+  --debug               Debug logging
+
+Exit codes:
+  0  Free copy found
+  3  Not freely available
+  2  Error
+  4  Gutenberg ingest routed elsewhere (use tools/ingest_public_domain)
+```
 
 ## Commit SHAs
 

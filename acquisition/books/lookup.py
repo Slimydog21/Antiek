@@ -33,12 +33,12 @@ Every HTTP byte flows through the existing ``SourceClient`` /
 from __future__ import annotations
 
 import datetime as _dt
-from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
 from .pd_connector_base import BookCandidate, FetchError, classify_and_ingest
 from .pd_connector_base import IngestOutcome as PdIngestOutcome
+from .public_domain import PublicDomainWork
 
 # ---------------------------------------------------------------------------
 # Result types
@@ -56,7 +56,7 @@ class FreeCopyFound:
     """
 
     source: str
-    candidate_ref: Mapping[str, Any]
+    candidate_ref: PublicDomainWork | BookCandidate
     rights_basis: str
     retrieved_at: str  # ISO-8601 UTC
 
@@ -105,9 +105,9 @@ class _FetcherProto(Protocol):
     existing ``SourceClient`` / ``ThrottledFetcher`` + SPR-03 throttle).
     """
 
-    def get_json(self, url: str, *, params: dict | None = None) -> dict: ...
+    def get_json(self, url: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]: ...
 
-    def get_bytes(self, url: str, *, params: dict | None = None) -> bytes: ...
+    def get_bytes(self, url: str, *, params: dict[str, Any] | None = None) -> bytes: ...
 
 
 # ---------------------------------------------------------------------------
@@ -193,9 +193,9 @@ def _search_gutenberg(
     query = f"{title} {author}" if author else title
     try:
         candidates = gutenberg_candidates(
-            fetcher, search=query, limit=5  # type: ignore[arg-type]
+            fetcher, search=query, limit=5
         )
-    except (FetchError, Exception) as exc:
+    except Exception as exc:
         raise FetchError(f"gutendex search failed: {exc}") from exc
 
     for c in candidates:
@@ -229,14 +229,14 @@ def _search_ia(
 
     query = f"title:({title})" if not author else f"title:({title}) creator:({author})"
     try:
-        identifiers = ia.advancedsearch(fetcher, query=query, limit=5)  # type: ignore[arg-type]
-    except (FetchError, Exception) as exc:
+        identifiers = ia.advancedsearch(fetcher, query=query, limit=5)
+    except Exception as exc:
         raise FetchError(f"IA advancedsearch failed: {exc}") from exc
 
     for ident in identifiers:
         try:
-            cand = ia.item_candidate(fetcher, ident)  # type: ignore[arg-type]
-        except (FetchError, Exception):
+            cand = ia.item_candidate(fetcher, ident)
+        except Exception:
             continue
         if cand is not None and (cand.license_uri is not None or cand.pd_signal is not None):
             return FreeCopyFound(
@@ -285,7 +285,7 @@ def ingest_found_copy(
         )
     return classify_and_ingest(
         candidate,
-        fetcher,  # type: ignore[arg-type]
+        fetcher,
         investigation_id=investigation_id,
         db_path=db_path,
         embedder=embedder,
@@ -314,12 +314,12 @@ class SourceClientFetcher:
         self._gutenberg = SourceClient(source="gutendex")
         self._ia = ThrottledFetcher(source="internet_archive")
 
-    def get_json(self, url: str, *, params: dict | None = None) -> dict:
+    def get_json(self, url: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
         if "gutendex.com" in url:
-            return self._gutenberg.get_json(url, params=params)
-        return self._ia.get_json(url, params=params)
+            return self._gutenberg.get_json(url, params=params)  # type: ignore[no-any-return]  # SourceClient returns Any; connector owned by others
+        return self._ia.get_json(url, params=params)  # type: ignore[no-any-return]  # ThrottledFetcher returns Any; connector owned by others
 
-    def get_bytes(self, url: str, *, params: dict | None = None) -> bytes:
+    def get_bytes(self, url: str, *, params: dict[str, Any] | None = None) -> bytes:
         if "gutendex.com" in url:
-            return self._gutenberg.get_bytes(url)
-        return self._ia.get_bytes(url, params=params)
+            return self._gutenberg.get_bytes(url)  # type: ignore[no-any-return]  # SourceClient returns Any; connector owned by others
+        return self._ia.get_bytes(url, params=params)  # type: ignore[no-any-return]  # ThrottledFetcher returns Any; connector owned by others
