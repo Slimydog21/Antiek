@@ -37,6 +37,7 @@ class ExtractionResult:
 class DiscoveryResponse:
     results: tuple[DiscoveryHit, ...]
     cost: CostRecord
+    discovered_at: datetime
 
 
 @dataclass(frozen=True, slots=True)
