@@ -396,6 +396,35 @@ def test_all_empty_source_allowed_with_explicit_override(tmp_path: Path) -> None
     assert marker["counts"] == {"documents": 0, "chunks": 0, "nodes": 0}
 
 
+def test_hostile_allow_empty_value_is_inert_and_does_not_bypass(tmp_path: Path) -> None:
+    """The shell expands ${ALLOW_EMPTY} into Python SOURCE inside the export
+    heredoc. Before bash-side normalization, a quote-bearing env value could
+    terminate the string literal: a bare double-quote raised SyntaxError (wrong
+    exit path), and the exec-shape payload below EXECUTED arbitrary Python (its
+    leading "" is falsy, so `or` evaluates the injected system() call). Post-fix,
+    only the bare literal 1 or 0 can reach the Python text: any non-"1" value is
+    normalized to 0, so the payload never runs AND the empty gate still refuses."""
+    sentinel = tmp_path / "pwned-by-env-injection"
+    payloads = [
+        '"',  # SyntaxError shape
+        f'" or __import__("os").system("touch {sentinel}") or "',  # exec shape
+    ]
+    for i, payload in enumerate(payloads):
+        harness = _make_harness(tmp_path / f"h{i}", seed_rows=False)
+        harness.env["ANTIEK_BACKUP_ALLOW_EMPTY"] = payload
+        proc = _run_script(harness)
+
+        # Inert: nothing executed, no interpreter crash — the value is data.
+        assert not sentinel.exists(), f"injected payload EXECUTED: {payload!r}"
+        assert "SyntaxError" not in proc.stderr, proc.stderr
+        assert "Traceback" not in proc.stderr, proc.stderr
+        # Not a bypass: treated as not-"1", so the all-empty refusal still fires.
+        assert proc.returncode != 0, f"hostile value must not bypass; stdout:\n{proc.stdout}"
+        assert "refusing to certify an empty backup" in proc.stderr, proc.stderr
+        assert not harness.rclone_log.exists()
+        assert not harness.marker.exists()
+
+
 # ---------------------------------------------------------------------------
 # d. tools/backup_freshness.py: fresh/stale/missing/threshold/--json/env
 # ---------------------------------------------------------------------------

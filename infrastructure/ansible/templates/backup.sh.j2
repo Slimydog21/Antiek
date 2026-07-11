@@ -52,6 +52,15 @@
 #     certifying data loss. Deliberate and loud, set only for a legitimately
 #     empty install.
 # Deployed defaults are unchanged when all three are unset.
+#
+# Injection posture: the shell expands ${...} into the python heredocs below,
+# i.e. env values become Python SOURCE TEXT. Every env-sourced value is
+# therefore validated/normalized in bash first, so only provably-inert text
+# (a bare 0/1, a plain number, a plain path) can reach a heredoc — a raw
+# value containing a quote would otherwise terminate a Python string literal
+# and execute as code. Jinja-rendered values (STATE_DIR etc.) are fixed at
+# DEPLOY time by ansible group_vars, not runtime-injectable, and are not
+# subject to this gate.
 
 set -euo pipefail
 
@@ -59,19 +68,43 @@ readonly STATE_DIR="{{ antiek_state_dir }}"
 readonly BUCKET="{{ backup_bucket_name }}"
 readonly RETENTION_DAYS="{{ backup_retention_days }}"
 readonly TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+
+# ── Env-seam validation (see injection posture above) ─────────────────────
+# Regexes live in variables: bash 3.2 (macOS test hosts) mishandles some
+# quoted/inline regex literals in [[ =~ ]].
+_PATH_RE='^[A-Za-z0-9/._-]+$'
+_NUM_RE='^[0-9]+(\.[0-9]+)?$'
+
 readonly STAGING_ROOT="${ANTIEK_BACKUP_STAGING_ROOT:-/var/tmp}"
+if [[ ! "${STAGING_ROOT}" =~ ${_PATH_RE} ]]; then
+    echo "ERROR: backup: ANTIEK_BACKUP_STAGING_ROOT must match [A-Za-z0-9/._-]+ (it is interpolated into python source); refusing: ${STAGING_ROOT}" >&2
+    exit 6
+fi
+
+readonly LOCK_TIMEOUT_S="${ANTIEK_BACKUP_LOCK_TIMEOUT_S:-180}"
+if [[ ! "${LOCK_TIMEOUT_S}" =~ ${_NUM_RE} ]]; then
+    echo "ERROR: backup: ANTIEK_BACKUP_LOCK_TIMEOUT_S must be a plain non-negative number (it is interpolated into python source); refusing: ${LOCK_TIMEOUT_S}" >&2
+    exit 6
+fi
+
+# Normalized to a provably-safe bare literal: ONLY the exact value "1" opts
+# in; anything else (including hostile quote-bearing payloads) becomes "0",
+# so the token reaching the heredoc is always the character 1 or 0. Captured
+# in the shell (not read from os.environ inside the heredoc) because the
+# heredoc python runs under `sudo -u`, which strips the caller's environment.
+if [[ "${ANTIEK_BACKUP_ALLOW_EMPTY:-0}" == "1" ]]; then
+    readonly ALLOW_EMPTY=1
+else
+    readonly ALLOW_EMPTY=0
+fi
+
 readonly STAGING="${STAGING_ROOT}/antiek-backup-${TIMESTAMP}"
 readonly ARCHIVE="${STAGING_ROOT}/antiek-backup-${TIMESTAMP}.tar.gz"
 # Portable UTC ISO stamp (+%Y-%m-%dT%H:%M:%SZ): GNU date's --iso-8601 is not
 # portable to the BSD date the test harness may run under; output for UTC is
 # equivalent.
 readonly LOG_PREFIX="[$(date -u +%Y-%m-%dT%H:%M:%SZ)]"
-readonly LOCK_TIMEOUT_S="${ANTIEK_BACKUP_LOCK_TIMEOUT_S:-180}"
-# Captured into a shell readonly (not read from os.environ inside the heredoc)
-# because the heredoc python runs under `sudo -u`, which strips the caller's
-# environment; the parent shell expands ${ALLOW_EMPTY} into the heredoc text.
-readonly ALLOW_EMPTY="${ANTIEK_BACKUP_ALLOW_EMPTY:-0}"
-readonly SCRIPT_VERSION="backup.sh/2026-07-11.verify-gate-2"
+readonly SCRIPT_VERSION="backup.sh/2026-07-11.verify-gate-3"
 
 echo "${LOG_PREFIX} backup starting → r2:${BUCKET}/nightly/antiek-${TIMESTAMP}.tar.gz"
 
