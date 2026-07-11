@@ -1,0 +1,34 @@
+[
+  {
+    "file": "apps/reading/src/App.tsx",
+    "rule": "direct-wrestle-route",
+    "fingerprint": "28f251e156cd9c558829e274af452f352e27e33ed749631b9cb9a7deb3a686f5",
+    "reason": "Legacy inbound URL compatibility; this declaration only redirects into the HTML-native reader.",
+    "owner": "reading-platform",
+    "review_condition": "Remove when legacy /wrestle inbound links are no longer supported."
+  },
+  {
+    "file": "apps/reading/src/App.tsx",
+    "rule": "direct-wrestle-route",
+    "fingerprint": "b4f5d0b45054a8e801907999e29224d67175ec8a73040afe252d83ee6b1b8b59",
+    "reason": "Legacy inbound document URL compatibility; this declaration only redirects into the HTML-native reader.",
+    "owner": "reading-platform",
+    "review_condition": "Remove when legacy /wrestle/:documentId inbound links are no longer supported."
+  },
+  {
+    "file": "apps/reading/src/AppLegacy.tsx",
+    "rule": "direct-wrestle-route",
+    "fingerprint": "2085c773766391ab15d3a38474bf184ee5890f694a9f5e138ece081be8e7b114",
+    "reason": "Legacy-shell inbound URL compatibility; this declaration only redirects into the HTML-native reader.",
+    "owner": "reading-platform",
+    "review_condition": "Remove with the legacy shell or when legacy /wrestle inbound links are unsupported."
+  },
+  {
+    "file": "apps/reading/src/AppLegacy.tsx",
+    "rule": "direct-wrestle-route",
+    "fingerprint": "0688121627c14b62eb770be8bd3ea4bc5a96afc9ca3dc5288980882d4886e3d5",
+    "reason": "Legacy-shell inbound document URL compatibility; this declaration only redirects into the HTML-native reader.",
+    "owner": "reading-platform",
+    "review_condition": "Remove with the legacy shell or when legacy /wrestle/:documentId links are unsupported."
+  }
+]

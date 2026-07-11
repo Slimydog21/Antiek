@@ -447,6 +447,15 @@ jobs:
         working-directory: apps/reading
         run: npm run build:check
 
+      - name: HTML-native surface negative gate (AHIS SPR-05 M3)
+        # Blocking source + emitted-bundle guard. Run from the repository root so
+        # diagnostics and fingerprinted exceptions use stable repository paths.
+        run: |
+          python3 tools/lint/html_native_surface_check.py \
+            --root . \
+            --allowlist tools/lint/html_native_surface_allowlist.json \
+            --bundle-dir apps/reading/dist
+
       - name: Reading-physics augmentation boundary (SPR-03 — PR-1/2/3/6/8)
         # The Physics of Reading no-side-store / declare-don't-act guard.
         # Scans apps/reading/src/reading-physics/augmentations + facets and
