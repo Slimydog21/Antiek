@@ -109,7 +109,7 @@ export function evaluateHtmlNativeViewAuthority(
   ];
 
   let html_sha: string | null = null;
-  if (input.html_projection_sha != null && input.html_projection_sha !== undefined) {
+  if (input.html_projection_sha != null) {
     if (typeof input.html_projection_sha !== "string") {
       throw new Error("html_projection_sha must be string or null");
     }
