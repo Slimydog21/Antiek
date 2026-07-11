@@ -75,7 +75,11 @@ from urllib.parse import urlsplit
 # ANY behavioural change to the allowlists or URL policy.
 # 1.1.0 (judge r1 F5): suppression is a matching STACK — a mismatched foreign
 # close (</svg> against an open <math>) no longer ends the wrong suppression.
-SANITIZER_VERSION = "books-allowlist/1.1.0"
+# 1.2.0 (judge r2 G9): suppression close is FAIL-CLOSED — a drop-container end
+# tag pops ONLY the exact stack top; a close for a container deeper in the
+# stack pops nothing (r1's pop-through repair could un-suppress content while
+# an inner drop-container was logically still open).
+SANITIZER_VERSION = "books-allowlist/1.2.0"
 
 # documents.metadata keys of the trusted-HTML contract. A serve path may emit
 # a stored body AS HTML only when is_trusted_sanitized(metadata) is True.
@@ -202,12 +206,15 @@ class _SanitizingParser(HTMLParser):
         super().__init__(convert_charrefs=True)
         self._out: list[str] = []
         self._open: list[str] = []
-        # Suppression STACK of currently-open drop-with-content containers,
-        # mirroring the _open repair semantics. A stack (not a counter) so a
-        # MISMATCHED foreign close cannot end a different container's
-        # suppression: in <svg><math></svg>, </svg> pops through the unclosed
-        # <math>; a stray </math> with nothing matching on the stack is a
-        # no-op and suppression stands (judge r1 F5).
+        # Suppression STACK of currently-open drop-with-content containers.
+        # A stack (not a counter) so a mismatched foreign close cannot end a
+        # different container's suppression (judge r1 F5) — and closes are
+        # FAIL-CLOSED (judge r2 G9): an end tag pops ONLY the exact stack
+        # top. Popping "through" inner containers (the _open repair
+        # semantics) is the wrong direction for suppression: it would
+        # un-suppress content while an inner drop-container is logically
+        # still open. Over-suppressing malformed foreign content to EOF is
+        # acceptable; leaking suppressed text is not.
         self._drop_stack: list[str] = []
 
     # -- serialization helpers ------------------------------------------------
@@ -258,13 +265,14 @@ class _SanitizingParser(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
         if tag in _DROP_WITH_CONTENT:
-            # Pop up to and including the MATCHING container if present
-            # (repair semantics, same as _open); a close with no matching
-            # open container is a no-op — suppression stands.
-            if tag in self._drop_stack:
-                while self._drop_stack:
-                    if self._drop_stack.pop() == tag:
-                        break
+            # FAIL-CLOSED matching (judge r2 G9): pop ONLY when this close
+            # matches the exact top of the suppression stack. A close for a
+            # container deeper in the stack — or not in it at all — pops
+            # NOTHING: suppression stands, possibly to EOF (result() emits
+            # nothing that was suppressed). In <svg><script></svg>…</script>,
+            # the </svg> must NOT un-suppress while <script> is still open.
+            if self._drop_stack and self._drop_stack[-1] == tag:
+                self._drop_stack.pop()
             return
         if self._drop_stack or tag not in ALLOWED_TAGS or tag in VOID_TAGS:
             return
