@@ -52,6 +52,22 @@ describe("parseTwinSearchResponse", () => {
         hits: [{ ...hit, score: "high" }],
       }),
     ).toThrow(/score/);
+    for (const score of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      expect(() =>
+        parseTwinSearchResponse({
+          query: "x",
+          count: 1,
+          hits: [{ ...hit, score }],
+        }),
+      ).toThrow(/score/);
+    }
+    expect(() =>
+      parseTwinSearchResponse({
+        query: "x",
+        count: 1,
+        hits: [{ ...hit, matched_insights: [null as unknown as string] }],
+      }),
+    ).toThrow(/matched_insights/);
   });
 });
 

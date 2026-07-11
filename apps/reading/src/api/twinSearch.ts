@@ -68,16 +68,37 @@ export function parseTwinSearchHit(raw: unknown, path = "hit"): TwinSearchHit {
       `twin-search rejected: ${path}.matched_insights/questions must be arrays`,
     );
   }
+  for (let i = 0; i < o.matched_insights.length; i++) {
+    if (typeof o.matched_insights[i] !== "string") {
+      throw new Error(
+        `twin-search rejected: ${path}.matched_insights[${i}] must be string`,
+      );
+    }
+  }
+  for (let i = 0; i < o.matched_questions.length; i++) {
+    if (typeof o.matched_questions[i] !== "string") {
+      throw new Error(
+        `twin-search rejected: ${path}.matched_questions[${i}] must be string`,
+      );
+    }
+  }
+  let source_label: string | null;
+  if (o.source_label === null || o.source_label === undefined) {
+    source_label = null;
+  } else if (typeof o.source_label === "string") {
+    source_label = o.source_label;
+  } else {
+    throw new Error(
+      `twin-search rejected: ${path}.source_label must be string or null`,
+    );
+  }
   return {
     twin_id: o.twin_id,
     parent_asset_id: o.parent_asset_id,
     score: o.score,
-    matched_insights: o.matched_insights.map((x) => String(x)),
-    matched_questions: o.matched_questions.map((x) => String(x)),
-    source_label:
-      o.source_label === null || o.source_label === undefined
-        ? null
-        : String(o.source_label),
+    matched_insights: o.matched_insights as string[],
+    matched_questions: o.matched_questions as string[],
+    source_label,
   };
 }
 
