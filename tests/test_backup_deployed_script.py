@@ -23,6 +23,12 @@ Four mechanically-asserted behaviors:
      clear message and no upload; after release the same script succeeds.
   d. ``tools/backup_freshness.py`` — fresh marker → 0; stale/missing/invalid/
      future → non-zero one-line reason; ``--json`` shape; threshold override.
+  e. Red-proof (logical truncation) — an all-empty (schema-only) source must
+     be refused BEFORE export/upload unless ANTIEK_BACKUP_ALLOW_EMPTY=1 is
+     set deliberately; with the override it succeeds with zero counts.
+  f. ``--max-age-hours`` fail-closed — nan/inf/negative thresholds are
+     rejected at parse time (NaN would silently disable the gate: every
+     comparison against NaN is False, so any stale marker would read FRESH).
 
 Nothing here is skip-gated: jinja2 and duckdb are hard imports (a missing
 dep fails collection loudly), and every case asserts exit codes + artifacts.
@@ -105,11 +111,20 @@ def _render_template(state_dir: Path, install_dir: Path) -> str:
     )
 
 
-def _seed_state_dir(state_dir: Path) -> None:
-    """A real small Antiek-schema DB + an event-log file, via the repo's own helpers."""
+def _seed_state_dir(state_dir: Path, *, seed_rows: bool = True) -> None:
+    """A real small Antiek-schema DB + an event-log file, via the repo's own helpers.
+
+    ``seed_rows=False`` leaves the schema intact but every table at zero rows —
+    the logical-truncation shape the all-empty refusal (case e) fails closed on.
+    """
     state_dir.mkdir(parents=True, exist_ok=True)
     db = str(state_dir / "antiek.duckdb")
     init_database_at_path(db)
+    events = state_dir / "research_events"
+    events.mkdir(exist_ok=True)
+    (events / "events-0001.jsonl").write_text('{"event": "seed"}\n')
+    if not seed_rows:
+        return
     with connect_write(db, purpose="backup_script_test_seed") as con:
         con.execute(
             "INSERT INTO documents(document_id, source_tier, document_type, title) "
@@ -124,9 +139,6 @@ def _seed_state_dir(state_dir: Path) -> None:
             "VALUES ('n-1', 'Euler', 'person', 'depth'), "
             "('n-2', 'Lagrange', 'person', 'depth')"
         )
-    events = state_dir / "research_events"
-    events.mkdir(exist_ok=True)
-    (events / "events-0001.jsonl").write_text('{"event": "seed"}\n')
 
 
 _SABOTAGED_NORMALIZER = '''\
@@ -187,13 +199,15 @@ def _make_harness(
     *,
     sabotage_normalizer: bool = False,
     lock_timeout_s: str = "60",
+    seed_rows: bool = True,
+    allow_empty: bool = False,
 ) -> Harness:
     state_dir = tmp_path / "state"
     install_dir = tmp_path / "install"
     staging_root = tmp_path / "staging"
     stub_bin = tmp_path / "stub-bin"
 
-    _seed_state_dir(state_dir)
+    _seed_state_dir(state_dir, seed_rows=seed_rows)
     _build_install_dir(install_dir, sabotage_normalizer=sabotage_normalizer)
     _build_stub_bin(stub_bin)
     staging_root.mkdir()
@@ -214,6 +228,10 @@ def _make_harness(
             "ANTIEK_BACKUP_LOCK_TIMEOUT_S": lock_timeout_s,
         }
     )
+    if allow_empty:
+        env["ANTIEK_BACKUP_ALLOW_EMPTY"] = "1"
+    else:
+        env.pop("ANTIEK_BACKUP_ALLOW_EMPTY", None)
     return Harness(
         script=script,
         state_dir=state_dir,
@@ -346,6 +364,39 @@ def test_held_write_lock_times_out_then_succeeds_after_release(tmp_path: Path) -
 
 
 # ---------------------------------------------------------------------------
+# e. Red-proof (logical truncation): all-empty source refused unless overridden
+# ---------------------------------------------------------------------------
+def test_all_empty_source_refused_without_override(tmp_path: Path) -> None:
+    """Schema intact, every core table zero rows — the catastrophic-emptying
+    shape. An empty export count-matches its own emptiness, so without this
+    refusal the pipeline would verify, upload, and stamp a fresh marker."""
+    harness = _make_harness(tmp_path, seed_rows=False)
+    proc = _run_script(harness)
+
+    assert proc.returncode != 0, f"all-empty run must fail; stdout:\n{proc.stdout}"
+    assert "refusing to certify an empty backup" in proc.stderr, proc.stderr
+    assert "ANTIEK_BACKUP_ALLOW_EMPTY=1" in proc.stderr, proc.stderr
+    # Died in step 1 BEFORE export effort: the normalize step (which follows
+    # the export heredoc) never ran, and rclone was never invoked.
+    assert "normalizing EXPORT schema.sql" not in proc.stdout, proc.stdout
+    assert not harness.rclone_log.exists()
+    assert not harness.rclone_keep.exists()
+    assert not harness.marker.exists()
+
+
+def test_all_empty_source_allowed_with_explicit_override(tmp_path: Path) -> None:
+    """ANTIEK_BACKUP_ALLOW_EMPTY=1 (day-0 / fresh-install escape hatch) lets a
+    legitimately empty store back up end-to-end, with honest zero counts."""
+    harness = _make_harness(tmp_path, seed_rows=False, allow_empty=True)
+    proc = _run_script(harness)
+
+    assert proc.returncode == 0, f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+    assert harness.rclone_log.exists()
+    marker = json.loads(harness.marker.read_text())
+    assert marker["counts"] == {"documents": 0, "chunks": 0, "nodes": 0}
+
+
+# ---------------------------------------------------------------------------
 # d. tools/backup_freshness.py: fresh/stale/missing/threshold/--json/env
 # ---------------------------------------------------------------------------
 def _write_marker(path: Path, completed_at: str) -> None:
@@ -429,3 +480,27 @@ def test_freshness_tool_json_mode_and_env_resolution(tmp_path: Path) -> None:
     assert via_marker_env.returncode == 0, via_marker_env.stdout
     via_state_env = _run_freshness_tool([], {"ANTIEK_STATE_DIR": str(tmp_path)})
     assert via_state_env.returncode == 0, via_state_env.stdout
+
+
+# ---------------------------------------------------------------------------
+# f. --max-age-hours fail-closed: nan/inf/negative rejected at parse time
+# ---------------------------------------------------------------------------
+def test_freshness_tool_rejects_non_finite_or_negative_threshold(tmp_path: Path) -> None:
+    """`float("nan")` parses, and every comparison against NaN is False — so
+    `age_hours > NaN` never trips and ANY stale marker would read FRESH. The
+    threshold must be validated finite and non-negative, failing closed."""
+    marker = tmp_path / "backup_freshness.json"
+    # A 30h-stale marker: the exact input a NaN threshold would wrongly bless.
+    _write_marker(marker, _iso_utc(datetime.now(UTC) - timedelta(hours=30)))
+
+    # `=` form so argparse can't swallow `-inf` as an unknown option before the
+    # type validator runs (it special-cases plain negative numbers like -1 only).
+    for bad in ("nan", "-1", "inf", "-inf", "NaN"):
+        proc = _run_freshness_tool(["--marker", str(marker), f"--max-age-hours={bad}"])
+        assert proc.returncode != 0, f"--max-age-hours={bad} must be rejected"
+        assert "finite non-negative" in proc.stderr, (bad, proc.stderr)
+
+    # Control: a valid finite threshold still parses and still says STALE.
+    control = _run_freshness_tool(["--marker", str(marker), "--max-age-hours", "26.0"])
+    assert control.returncode == 1
+    assert control.stdout.startswith("STALE:")

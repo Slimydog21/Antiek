@@ -41,9 +41,17 @@
 #   writer fails the backup loudly instead of blocking forever.
 #
 # This template is executed under test by tests/test_backup_deployed_script.py
-# (rendered + run end-to-end against a scratch state dir). The two env
-# overrides below (ANTIEK_BACKUP_STAGING_ROOT, ANTIEK_BACKUP_LOCK_TIMEOUT_S)
-# exist for that harness; deployed defaults are unchanged when they are unset.
+# (rendered + run end-to-end against a scratch state dir). Env overrides:
+#   ANTIEK_BACKUP_STAGING_ROOT   — staging root (default /var/tmp); test seam.
+#   ANTIEK_BACKUP_LOCK_TIMEOUT_S — flock acquisition deadline (default 180s).
+#   ANTIEK_BACKUP_ALLOW_EMPTY=1  — day-0 / fresh-install escape hatch: permit
+#     certifying a backup whose core tables are ALL zero rows. Never the
+#     default: an all-empty documents/chunks/nodes source on a production
+#     store is a logical truncation, and an empty export count-matches its
+#     own emptiness — it would verify, upload, and stamp a fresh marker,
+#     certifying data loss. Deliberate and loud, set only for a legitimately
+#     empty install.
+# Deployed defaults are unchanged when all three are unset.
 
 set -euo pipefail
 
@@ -59,7 +67,11 @@ readonly ARCHIVE="${STAGING_ROOT}/antiek-backup-${TIMESTAMP}.tar.gz"
 # equivalent.
 readonly LOG_PREFIX="[$(date -u +%Y-%m-%dT%H:%M:%SZ)]"
 readonly LOCK_TIMEOUT_S="${ANTIEK_BACKUP_LOCK_TIMEOUT_S:-180}"
-readonly SCRIPT_VERSION="backup.sh/2026-07-11.verify-gate-1"
+# Captured into a shell readonly (not read from os.environ inside the heredoc)
+# because the heredoc python runs under `sudo -u`, which strips the caller's
+# environment; the parent shell expands ${ALLOW_EMPTY} into the heredoc text.
+readonly ALLOW_EMPTY="${ANTIEK_BACKUP_ALLOW_EMPTY:-0}"
+readonly SCRIPT_VERSION="backup.sh/2026-07-11.verify-gate-2"
 
 echo "${LOG_PREFIX} backup starting → r2:${BUCKET}/nightly/antiek-${TIMESTAMP}.tar.gz"
 
@@ -145,13 +157,27 @@ try:
         pass
     con = duckdb.connect(db_path, read_only=True)
     try:
-        con.execute("EXPORT DATABASE '${STAGING}/duckdb' (FORMAT PARQUET);")
         # Count capture happens on the SAME connection inside the SAME lock
         # window as the EXPORT, so the counts are exactly the snapshot's.
+        # Captured BEFORE the EXPORT so the all-empty refusal below aborts
+        # without wasting export effort.
         counts = {
             t: con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
             for t in ("documents", "chunks", "nodes")
         }
+        # Fail closed on logical truncation: an all-empty source would
+        # count-match its own empty export, pass the verify gate, upload,
+        # and stamp a fresh marker — certifying data loss as a good backup.
+        if "${ALLOW_EMPTY}" != "1" and all(v == 0 for v in counts.values()):
+            sys.stderr.write(
+                "ERROR: backup: all core tables empty (documents=0, chunks=0, "
+                "nodes=0) - refusing to certify an empty backup of a "
+                "production store; set ANTIEK_BACKUP_ALLOW_EMPTY=1 for a "
+                "legitimately empty install (nothing exported, nothing "
+                "uploaded)\n"
+            )
+            sys.exit(5)
+        con.execute("EXPORT DATABASE '${STAGING}/duckdb' (FORMAT PARQUET);")
     finally:
         con.close()
 finally:

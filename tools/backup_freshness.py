@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 from collections.abc import Mapping
@@ -239,6 +240,27 @@ def evaluate(
     )
 
 
+def _threshold_hours(value: str) -> float:
+    """Parse + validate ``--max-age-hours``, fail-closed at the parser.
+
+    ``float`` alone accepts ``nan`` (every comparison against NaN is False, so
+    ``age_hours > NaN`` never trips — the threshold silently disables and any
+    stale marker reads FRESH) and ``inf``/negatives (a threshold that can never
+    pass or never fail is a misconfiguration, not a policy). All are rejected
+    here with argparse's non-zero exit + one-line reason.
+    """
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"{value!r} is not a number") from exc
+    if not math.isfinite(parsed) or parsed < 0:
+        raise argparse.ArgumentTypeError(
+            f"--max-age-hours must be a finite non-negative number of hours, got {value!r} "
+            "(nan/inf/negative would silently disable or invert the freshness gate)"
+        )
+    return parsed
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Exit 0 iff the nightly-backup freshness marker is recent."
@@ -252,9 +274,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--max-age-hours",
-        type=float,
+        type=_threshold_hours,
         default=DEFAULT_MAX_AGE_HOURS,
-        help=f"Freshness threshold in hours (default {DEFAULT_MAX_AGE_HOURS})",
+        help=f"Freshness threshold in hours, finite and >= 0 (default {DEFAULT_MAX_AGE_HOURS})",
     )
     parser.add_argument(
         "--json",
