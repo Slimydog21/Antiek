@@ -94,3 +94,8 @@ def test_direct_construction_rejects_nonfinite() -> None:
             high_usd=1,
             notes=[],
         )
+
+
+def test_rejects_huge_goal_count_overflow() -> None:
+    with pytest.raises(PriceCeilingError, match="overflow"):
+        recommend_price_ceiling(hours=1, goals=10**400, usd_per_hour_low=1, usd_per_hour_high=1)

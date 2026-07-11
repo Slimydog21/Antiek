@@ -96,12 +96,17 @@ def recommend_price_ceiling(
     if high_rate < low_rate:
         raise PriceCeilingError("usd_per_hour_high must be >= usd_per_hour_low")
 
-    goal_cost = goal_count * per_goal
-    low = h * low_rate + goal_cost
-    high = h * high_rate + goal_cost
-    mid = (low + high) / 2.0
-    contingency = mid * contingency_fraction_f
-    recommended = mid + contingency
+    try:
+        goal_cost = goal_count * per_goal
+        low = h * low_rate + goal_cost
+        high = h * high_rate + goal_cost
+        mid = (low + high) / 2.0
+        contingency = mid * contingency_fraction_f
+        recommended = mid + contingency
+    except OverflowError as e:
+        raise PriceCeilingError(
+            "price ceiling arithmetic overflowed; reduce hours, goals, or unit rates"
+        ) from e
 
     for name, val in (
         ("low_usd", low),
