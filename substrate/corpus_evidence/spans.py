@@ -162,6 +162,8 @@ def render_chunks_block(spans: tuple[EvidenceSpan, ...]) -> str:
         tier = str(span.source_tier) if span.source_tier is not None else "unknown"
         blocks.append(
             f"### chunk_id: {span.span_id}\n"
+            f"Span schema: 1 | Corpus ID JSON: "
+            f"{json.dumps(span.corpus_id, ensure_ascii=True)}\n"
             f"Source tier: {tier} | Source: {span.source_kind} | "
             f"Origin: {json.dumps(span.origin_ref, ensure_ascii=True)}\n"
             f"Rights: {span.license_class} | Retrieved: {span.retrieved_at.isoformat()} | "
