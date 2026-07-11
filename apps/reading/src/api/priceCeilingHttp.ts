@@ -3,7 +3,8 @@
  *
  * POST /midnight-oil/price-ceiling/recommend
  *
- * Fail-closed: authority must be "advisory". Never invents spend capacity.
+ * Fail-closed: authority must be "advisory". Never invents rate defaults
+ * or serializes non-finite money as null.
  */
 
 import { API_BASE, apiFetch } from "../lib/api";
@@ -11,10 +12,11 @@ import { API_BASE, apiFetch } from "../lib/api";
 export interface PriceCeilingHttpRequest {
   hours: number;
   goals?: string[] | number;
-  usd_per_hour_low?: number;
-  usd_per_hour_high?: number;
-  usd_per_goal?: number;
-  contingency_fraction?: number;
+  /** Required unit rates — caller must supply; client does not invent. */
+  usd_per_hour_low: number;
+  usd_per_hour_high: number;
+  usd_per_goal: number;
+  contingency_fraction: number;
 }
 
 export interface PriceCeilingHttpResult {
@@ -46,12 +48,12 @@ async function readOkBody(res: Response): Promise<unknown> {
   return res.json() as Promise<unknown>;
 }
 
-function requireFinite(name: string, v: unknown): number {
+function requireFiniteNonneg(name: string, v: unknown): number {
   if (typeof v !== "number" || !Number.isFinite(v)) {
-    throw new Error(`price-ceiling response rejected: ${name} must be finite number`);
+    throw new Error(`${name} must be a finite number`);
   }
   if (v < 0) {
-    throw new Error(`price-ceiling response rejected: ${name} must be nonnegative`);
+    throw new Error(`${name} must be nonnegative`);
   }
   return v;
 }
@@ -78,14 +80,14 @@ export function parsePriceCeilingHttpResult(body: unknown): PriceCeilingHttpResu
     throw new Error("price-ceiling response rejected: goal_count must be nonnegative int");
   }
   return {
-    hours: requireFinite("hours", o.hours),
+    hours: requireFiniteNonneg("hours", o.hours),
     goal_count: o.goal_count,
-    recommended_ceiling_usd: requireFinite(
+    recommended_ceiling_usd: requireFiniteNonneg(
       "recommended_ceiling_usd",
       o.recommended_ceiling_usd,
     ),
-    low_usd: requireFinite("low_usd", o.low_usd),
-    high_usd: requireFinite("high_usd", o.high_usd),
+    low_usd: requireFiniteNonneg("low_usd", o.low_usd),
+    high_usd: requireFiniteNonneg("high_usd", o.high_usd),
     authority: "advisory",
     notes: o.notes as string[],
   };
@@ -94,19 +96,37 @@ export function parsePriceCeilingHttpResult(body: unknown): PriceCeilingHttpResu
 export async function postPriceCeilingRecommend(
   req: PriceCeilingHttpRequest,
 ): Promise<PriceCeilingHttpResult> {
-  if (typeof req.hours !== "number" || !Number.isFinite(req.hours)) {
-    throw new Error("hours must be a finite number");
+  const hours = requireFiniteNonneg("hours", req.hours);
+  if (hours <= 0) {
+    throw new Error("hours must be > 0");
   }
+  const usd_per_hour_low = requireFiniteNonneg(
+    "usd_per_hour_low",
+    req.usd_per_hour_low,
+  );
+  const usd_per_hour_high = requireFiniteNonneg(
+    "usd_per_hour_high",
+    req.usd_per_hour_high,
+  );
+  const usd_per_goal = requireFiniteNonneg("usd_per_goal", req.usd_per_goal);
+  const contingency_fraction = requireFiniteNonneg(
+    "contingency_fraction",
+    req.contingency_fraction,
+  );
+  if (usd_per_hour_high < usd_per_hour_low) {
+    throw new Error("usd_per_hour_high must be >= usd_per_hour_low");
+  }
+
   const res = await apiFetch(`${API_BASE}/midnight-oil/price-ceiling/recommend`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      hours: req.hours,
+      hours,
       goals: req.goals ?? [],
-      usd_per_hour_low: req.usd_per_hour_low ?? 1,
-      usd_per_hour_high: req.usd_per_hour_high ?? 5,
-      usd_per_goal: req.usd_per_goal ?? 0.5,
-      contingency_fraction: req.contingency_fraction ?? 0.15,
+      usd_per_hour_low,
+      usd_per_hour_high,
+      usd_per_goal,
+      contingency_fraction,
     }),
   });
   const raw = await readOkBody(res);

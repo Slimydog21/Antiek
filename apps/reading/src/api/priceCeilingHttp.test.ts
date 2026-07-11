@@ -21,6 +21,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+const rates = {
+  usd_per_hour_low: 1,
+  usd_per_hour_high: 3,
+  usd_per_goal: 0.5,
+  contingency_fraction: 0.1,
+};
+
 const okBody = {
   hours: 2,
   goal_count: 2,
@@ -47,7 +54,7 @@ describe("parsePriceCeilingHttpResult", () => {
 });
 
 describe("postPriceCeilingRecommend", () => {
-  it("POSTs recommend and returns validated body", async () => {
+  it("POSTs recommend with explicit rates and returns validated body", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       status: 200,
@@ -57,12 +64,26 @@ describe("postPriceCeilingRecommend", () => {
     const body = await postPriceCeilingRecommend({
       hours: 2,
       goals: ["a", "b"],
+      ...rates,
     });
     expect(body.recommended_ceiling_usd).toBe(5.5);
-    expect(mockFetch).toHaveBeenCalledWith(
-      "/midnight-oil/price-ceiling/recommend",
-      expect.objectContaining({ method: "POST" }),
-    );
+    const init = mockFetch.mock.calls[0][1] as { body: string };
+    expect(JSON.parse(init.body)).toEqual({
+      hours: 2,
+      goals: ["a", "b"],
+      ...rates,
+    });
+  });
+
+  it("rejects non-finite request money before network", async () => {
+    await expect(
+      postPriceCeilingRecommend({
+        hours: 1,
+        ...rates,
+        usd_per_hour_high: Number.POSITIVE_INFINITY,
+      }),
+    ).rejects.toThrow(/usd_per_hour_high/);
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it("rejects non-advisory 200", async () => {
@@ -73,7 +94,7 @@ describe("postPriceCeilingRecommend", () => {
       text: async () => "",
     } as unknown as Response);
     await expect(
-      postPriceCeilingRecommend({ hours: 1 }),
+      postPriceCeilingRecommend({ hours: 1, ...rates }),
     ).rejects.toThrow(/advisory/);
   });
 
@@ -85,7 +106,7 @@ describe("postPriceCeilingRecommend", () => {
       json: async () => ({}),
     } as unknown as Response);
     await expect(
-      postPriceCeilingRecommend({ hours: 0 }),
+      postPriceCeilingRecommend({ hours: 0, ...rates }),
     ).rejects.toBeInstanceOf(PriceCeilingHttpError);
   });
 });
