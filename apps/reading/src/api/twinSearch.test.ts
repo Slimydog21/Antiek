@@ -68,6 +68,22 @@ describe("parseTwinSearchResponse", () => {
         hits: [{ ...hit, matched_insights: [null as unknown as string] }],
       }),
     ).toThrow(/matched_insights/);
+    const { source_label: _sl, ...noLabel } = hit;
+    void _sl;
+    expect(() =>
+      parseTwinSearchResponse({
+        query: "x",
+        count: 1,
+        hits: [noLabel],
+      }),
+    ).toThrow(/source_label/);
+    expect(() =>
+      parseTwinSearchResponse({
+        query: "x",
+        count: 1,
+        hits: [{ ...hit, source_label: 1 as unknown as string }],
+      }),
+    ).toThrow(/source_label/);
   });
 });
 

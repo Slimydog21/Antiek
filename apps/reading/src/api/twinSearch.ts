@@ -82,8 +82,13 @@ export function parseTwinSearchHit(raw: unknown, path = "hit"): TwinSearchHit {
       );
     }
   }
+  if (!("source_label" in o)) {
+    throw new Error(
+      `twin-search rejected: ${path}.source_label required (string or null)`,
+    );
+  }
   let source_label: string | null;
-  if (o.source_label === null || o.source_label === undefined) {
+  if (o.source_label === null) {
     source_label = null;
   } else if (typeof o.source_label === "string") {
     source_label = o.source_label;
