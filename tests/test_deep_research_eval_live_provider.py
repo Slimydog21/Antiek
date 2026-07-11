@@ -7,7 +7,9 @@ Every test runs against injected fakes — zero network, zero keys. Coverage:
    ``loop_fn`` in both modes (there is nothing to veneer or spoof through
    the public API); live mode refuses every injected seam; direct dataclass
    construction still refuses the known mock/stub loops (defense-in-depth,
-   incl. partial/__wrapped__ veneers).
+   incl. partial/__wrapped__ veneers); and the flag ⇔ seam-provenance
+   invariant survives ``dataclasses.replace`` in both directions (no
+   fake-seam live instance, no real-machinery "offline" instance).
 2. Runner channel: a provider raising ``ProviderFailure`` marks THAT query
    NOT_MEASURED, the judge is never called for it, the other queries are
    still processed; any other exception type still propagates (a bug crashes).
@@ -311,6 +313,48 @@ def test_offline_construction_requires_all_seams() -> None:
     fakes = FakePipeline()
     with pytest.raises(ValueError, match="operator-gated"):
         build_live_provider(gather=fakes.gather, synthesize=fakes.synthesize)
+
+
+# 1d. dataclasses.replace re-runs __post_init__, so the flag ⇔ seam-provenance
+#     invariant holds on every public mutation path: a replace cannot flip an
+#     offline instance live while keeping fake seams, cannot flip a
+#     real-machinery instance to "offline" (which could spend from inside a
+#     test), and cannot swap a single fake seam onto a live instance. Honest
+#     uses of replace (tuning the timeout) keep working.
+def test_dataclasses_replace_cannot_break_flag_seam_invariant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import dataclasses
+
+    from runtime.research_runner import make_exa_gather_loop
+
+    monkeypatch.setenv("EXA_API_KEY", "test-key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    fakes = FakePipeline()
+    offline = fakes.build()
+    live = build_live_provider(allow_live=True, discovery_top_k=1)
+
+    # Repro 1: offline → live, all four fake seams retained (a real loop is
+    # supplied so the refusal is specifically seam provenance, not the loop).
+    with pytest.raises(ValueError, match="not this module's real implementations"):
+        dataclasses.replace(offline, allow_live=True, loop_fn=make_exa_gather_loop())
+
+    # Repro 2: live → offline while keeping ALL real seams — an "offline"
+    # provider that could actually spend/hit the network is refused.
+    with pytest.raises(ValueError, match="must not carry real-machinery seams"):
+        dataclasses.replace(live, allow_live=False)
+
+    # Repro 3: live with ONE fake seam swapped in.
+    with pytest.raises(ValueError, match="not this module's real implementations"):
+        dataclasses.replace(live, gather=fakes.gather)
+
+    # Honest replace still works in both modes: tuning the timeout changes
+    # neither provenance nor the flag, and the offline instance still runs.
+    tuned_offline = dataclasses.replace(offline, per_query_timeout_s=30.0)
+    assert tuned_offline.per_query_timeout_s == 30.0
+    assert isinstance(tuned_offline(_query()), ResearchReport)
+    tuned_live = dataclasses.replace(live, per_query_timeout_s=60.0)
+    assert tuned_live.per_query_timeout_s == 60.0 and tuned_live.allow_live is True
 
 
 # 4b. allow_live gating: missing env keys refuse construction — through the

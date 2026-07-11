@@ -26,26 +26,35 @@ Live mode = real machinery, full stop (no measurement theater)
     therefore NO caller-supplied part on the live path — nothing to veneer,
     wrap, or attribute-spoof through the factory.
 
-    Defense-in-depth for DIRECT dataclass construction (bypassing the
-    factory): ``LiveResearchProvider.__post_init__`` refuses a ``loop_fn``
-    that is (a product of) ``make_demo_loop`` / ``make_contract_gather_stub``
+    Defense-in-depth for DIRECT dataclass construction and for
+    ``dataclasses.replace`` (both re-run ``__post_init__``):
+    ``LiveResearchProvider.__post_init__`` (a) refuses a ``loop_fn`` that is
+    (a product of) ``make_demo_loop`` / ``make_contract_gather_stub``
     (host_local.py :494 / :526 — the benchmark mock and the honest production
     placeholder; both fabricate steps and retrieve nothing), unwrapping
-    ``functools.partial`` / ``__wrapped__`` chains first, and requires the
-    positive ``make_exa_gather_loop`` identity plus the env keys when
-    ``allow_live=True``.
+    ``functools.partial`` / ``__wrapped__`` chains first; and (b) enforces a
+    TWO-direction flag ⇔ seam-provenance invariant: ``allow_live=True``
+    requires the positive ``make_exa_gather_loop`` identity, the env keys,
+    AND all four seams to be this module's real implementations, while
+    ``allow_live=False`` refuses ANY real seam — so a replace that flips the
+    flag while keeping fake seams, flips a real-machinery instance to
+    "offline" (which could spend/hit the network from inside a test), or
+    swaps a single seam on a live instance is refused, and honest uses of
+    ``replace`` (tuning the timeout on an offline instance) keep working.
 
     Honest threat model: those ``__post_init__`` checks catch HONEST MISTAKES
     (grabbing the wrong factory, wiring a stub out of habit, an
     un-unwrappable veneer is still caught for the two named factories when
     passed directly). Python cannot stop a determined caller from directly
-    constructing the dataclass around a function with forged
-    ``__qualname__``/``__module__`` attributes — no attribute-based check
-    can, because attributes are writable. The structural guarantee is
-    narrower and real: the constructor of record has no dishonest path, so
-    producing a spoofed "live" provider requires deliberately bypassing the
-    public API — the adapter guards measurement integrity against mistakes,
-    not against an operator sabotaging their own eval.
+    constructing the dataclass around functions — loop OR seams — with
+    forged ``__qualname__``/``__module__`` attributes: no attribute-based
+    check can, because attributes are writable. The structural guarantee is
+    narrower and real: the constructor of record has no dishonest path, and
+    every public mutation path (direct construction, ``dataclasses.replace``)
+    re-validates the flag/provenance invariant — so producing a spoofed
+    "live" provider requires deliberately forging function identities, which
+    is out of scope (the adapter guards measurement integrity against
+    mistakes, not against an operator sabotaging their own eval).
 
 Fail closed to ``ProviderFailure`` (the core honesty property)
     EVERY failure path — missing keys, plan/launch refusal (including the
@@ -235,21 +244,22 @@ def _unwrap_loop_fn(loop_fn: object) -> object:
     return fn
 
 
-def _loop_identity(loop_fn: object) -> tuple[str, str]:
-    fn = _unwrap_loop_fn(loop_fn)
+def _callable_identity(fn_like: object) -> tuple[str, str]:
+    """(qualname, module-leaf) of a callable after bounded unwrapping — the
+    shared identity primitive for the loop AND seam provenance checks."""
+    fn = _unwrap_loop_fn(fn_like)
     qualname = getattr(fn, "__qualname__", "")
     module = getattr(fn, "__module__", "")
-    return (
-        qualname if isinstance(qualname, str) else "",
-        module if isinstance(module, str) else "",
-    )
+    qualname = qualname if isinstance(qualname, str) else ""
+    module = module if isinstance(module, str) else ""
+    return (qualname, module.rsplit(".", 1)[-1])
 
 
 def _refuse_mock_loop(loop_fn: object) -> None:
     """Raise ``ValueError`` if ``loop_fn`` is (or is a product of) a known
     mock/stub gather factory. Measuring a mock is measurement theater — this
     adapter exists to measure the actual product."""
-    qualname, _ = _loop_identity(loop_fn)
+    qualname, _ = _callable_identity(loop_fn)
     for factory in _MOCK_LOOP_FACTORIES:
         if qualname == factory or qualname.startswith(f"{factory}."):
             raise ValueError(
@@ -261,8 +271,7 @@ def _refuse_mock_loop(loop_fn: object) -> None:
 
 
 def _is_real_exa_loop(loop_fn: object) -> bool:
-    qualname, module = _loop_identity(loop_fn)
-    module_leaf = module.rsplit(".", 1)[-1]
+    qualname, module_leaf = _callable_identity(loop_fn)
     return (
         qualname.startswith(f"{_REAL_LOOP_FACTORY}.")
         and module_leaf == _REAL_LOOP_MODULE_LEAF
@@ -273,6 +282,25 @@ def _missing_live_env() -> list[str]:
     return [key for key in REQUIRED_LIVE_ENV if not os.environ.get(key, "").strip()]
 
 
+# Seam provenance pins: the qualnames of THIS module's real seam
+# implementations (module leaf below). ``allow_live`` ⇔ all-real-seams is a
+# TWO-direction invariant enforced in ``__post_init__`` — which
+# ``dataclasses.replace`` re-runs, so a replace that flips the flag or swaps
+# one seam cannot produce a flag/provenance mismatch through the public API.
+_THIS_MODULE_LEAF = "live_provider"
+_REAL_SEAM_QUALNAMES: tuple[tuple[str, str], ...] = (
+    ("gather", "_build_real_gather.<locals>._gather"),
+    ("synthesize", "_build_real_synthesize.<locals>._synthesize"),
+    ("usage_reader", "_read_dispatch_usage"),
+    ("source_url_lookup", "_lookup_document_source_uri"),
+)
+
+
+def _is_real_seam(seam: object, expected_qualname: str) -> bool:
+    qualname, module_leaf = _callable_identity(seam)
+    return qualname == expected_qualname and module_leaf == _THIS_MODULE_LEAF
+
+
 @dataclass(frozen=True)
 class LiveResearchProvider:
     """Callable ``ProviderFn`` running the real product research path per
@@ -280,12 +308,15 @@ class LiveResearchProvider:
 
     Construct via :func:`build_live_provider` — the constructor of record,
     whose live mode admits NO injected parts. All four pipeline seams are
-    REQUIRED fields — there is no silent default. The ``__post_init__``
-    checks below are defense-in-depth for direct dataclass construction:
-    they refuse the known mock/stub loops and require the real Exa loop
-    identity + env keys under ``allow_live=True``. They catch honest
-    mistakes; they cannot catch deliberately forged function attributes
-    (see the module docstring's threat model).
+    REQUIRED fields — there is no silent default. ``__post_init__`` enforces
+    a TWO-direction flag ⇔ seam-provenance invariant on every construction
+    path (``dataclasses.replace`` re-runs it): ``allow_live=True`` requires
+    the real Exa loop identity, the env keys, AND every seam to be this
+    module's real implementation; ``allow_live=False`` refuses any real
+    seam, so an offline-flagged provider can never run real machinery or
+    spend. These identity checks catch honest mistakes; they cannot catch
+    deliberately forged function attributes (see the module docstring's
+    threat model — the same out-of-scope class as the loop).
     """
 
     gather: GatherFn
@@ -299,6 +330,10 @@ class LiveResearchProvider:
     def __post_init__(self) -> None:
         if self.loop_fn is not None:
             _refuse_mock_loop(self.loop_fn)
+        seam_provenance = [
+            (name, _is_real_seam(getattr(self, name), qualname))
+            for name, qualname in _REAL_SEAM_QUALNAMES
+        ]
         if self.allow_live:
             if self.loop_fn is None or not _is_real_exa_loop(self.loop_fn):
                 raise ValueError(
@@ -313,6 +348,24 @@ class LiveResearchProvider:
                     f"allow_live=True but required env keys are missing: {missing}. "
                     "The live eval path needs EXA_API_KEY (gather discovery) and "
                     "ANTHROPIC_API_KEY (dispatch-backed synthesis) at construction."
+                )
+            non_real = [name for name, is_real in seam_provenance if not is_real]
+            if non_real:
+                raise ValueError(
+                    f"allow_live=True requires the REAL pipeline seams; these are "
+                    f"not this module's real implementations: {non_real}. A "
+                    "live-flagged provider composed from injected parts could "
+                    "measure anything (dataclasses.replace re-runs this check, "
+                    "so flipping the flag on an offline instance is refused too)."
+                )
+        else:
+            real = [name for name, is_real in seam_provenance if is_real]
+            if real:
+                raise ValueError(
+                    f"allow_live=False must not carry real-machinery seams: {real}. "
+                    "An offline-flagged provider around real seams could spend "
+                    "money and hit the network from inside a test; construct "
+                    "live providers only via build_live_provider(allow_live=True)."
                 )
         if self.per_query_timeout_s is not None and self.per_query_timeout_s <= 0:
             raise ValueError("per_query_timeout_s must be positive (or None to disable)")
