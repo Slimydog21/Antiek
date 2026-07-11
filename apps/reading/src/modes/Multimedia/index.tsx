@@ -17,6 +17,7 @@ import type {
   MultimediaAssetSummary,
 } from "../../api/multimedia";
 import { LemonButton, LemonInput, LemonTag, LemonTextarea } from "../../components/lemon";
+import { ReconciliationPanel } from "./ReconciliationPanel";
 
 type Mode = "video" | "audio" | "hybrid";
 type RouteTier = "cheapest" | "balanced" | "highest_quality";
@@ -638,6 +639,7 @@ export default function Multimedia() {
           </section>
 
           <aside className="space-y-4">
+            <ReconciliationPanel />
             <StatusPanel
               state={renderState}
               onState={setRenderState}

@@ -556,8 +556,10 @@ def recover_unknown_chapter_tts_audio(
     evidence_verification_key: bytes,
     external_signature: str,
     recorded_at: datetime,
+    verified_at: datetime | None = None,
 ) -> ChapterTTSAttempt:
     """Bind authenticated provider recovery evidence and returned audio bytes."""
+    transition_at = verified_at or recorded_at
     attempt = get_chapter_tts_attempt(
         db_path=db_path, execution_id=execution_id, signing_key=signing_key
     )
@@ -581,7 +583,7 @@ def recover_unknown_chapter_tts_audio(
                 status=ProviderExecutionStatus.SUCCEEDED,
                 evidence_digest=expected_digest,
                 signing_key=signing_key,
-                observed_at=recorded_at,
+                observed_at=transition_at,
             )
         elif execution.status is not ProviderExecutionStatus.SUCCEEDED:
             raise ChapterTTSProductionError("recovered provider execution state conflicts")
@@ -604,6 +606,7 @@ def recover_unknown_chapter_tts_audio(
         evidence_verification_key=evidence_verification_key,
         external_signature=external_signature,
         recorded_at=recorded_at,
+        verified_at=verified_at,
     )
     raw_path, raw_sha = _persist_raw(_private_directory(output_dir), execution_id, audio_bytes)
     bind_provider_job_with_mutation(
@@ -611,7 +614,7 @@ def recover_unknown_chapter_tts_audio(
         execution_id=execution_id,
         provider_job_id=provider_request_id,
         signing_key=signing_key,
-        now=recorded_at,
+        now=transition_at,
         mutation=lambda ctx: _recover_received_in_context(
             ctx,
             execution_id=execution_id,
@@ -628,7 +631,7 @@ def recover_unknown_chapter_tts_audio(
         status=ProviderExecutionStatus.SUCCEEDED,
         evidence_digest=raw_sha,
         signing_key=signing_key,
-        observed_at=recorded_at,
+        observed_at=transition_at,
     )
     return get_chapter_tts_attempt(
         db_path=db_path, execution_id=execution_id, signing_key=signing_key

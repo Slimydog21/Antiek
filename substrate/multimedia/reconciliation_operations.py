@@ -165,6 +165,7 @@ def operator_recover_unknown_send(
     evidence_verification_key: bytes,
     external_signature: str,
     recorded_at: datetime,
+    verified_at: datetime | None = None,
 ) -> ChapterTTSReconciliationView:
     _assert_owned(
         db_path=db_path,
@@ -185,13 +186,14 @@ def operator_recover_unknown_send(
         evidence_verification_key=evidence_verification_key,
         external_signature=external_signature,
         recorded_at=recorded_at,
+        verified_at=verified_at,
     )
     return get_chapter_tts_reconciliation(
         db_path=db_path,
         execution_id=authority.execution_id,
         authenticated_operator_id=authenticated_operator_id,
         signing_key=signing_key,
-        now=recorded_at,
+        now=verified_at or recorded_at,
     )
 
 

@@ -656,6 +656,7 @@ def record_external_recovery_evidence(
     evidence_verification_key: bytes,
     external_signature: str,
     recorded_at: datetime,
+    verified_at: datetime | None = None,
 ) -> ExternalRecoveryEvidence:
     """Authorize one job-ID recovery for an ambiguous job-less submission."""
     execution_id = _identifier("execution_id", execution_id)
@@ -709,7 +710,14 @@ def record_external_recovery_evidence(
             raise ProviderExecutionIntegrityError(
                 "external evidence requires a job-less unknown execution"
             )
-        if datetime.fromisoformat(timestamp.replace("Z", "+00:00")) < datetime.fromisoformat(
+        checked_at = _timestamp(verified_at) if verified_at is not None else timestamp
+        if datetime.fromisoformat(timestamp.replace("Z", "+00:00")) > datetime.fromisoformat(
+            checked_at.replace("Z", "+00:00")
+        ):
+            raise ProviderExecutionIntegrityError(
+                "external recovery evidence postdates verification"
+            )
+        if datetime.fromisoformat(checked_at.replace("Z", "+00:00")) < datetime.fromisoformat(
             current.updated_at.replace("Z", "+00:00")
         ):
             raise ProviderExecutionIntegrityError(

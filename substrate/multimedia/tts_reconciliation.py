@@ -133,13 +133,14 @@ def recover_unknown_send(
     evidence_verification_key: bytes,
     external_signature: str,
     recorded_at: datetime,
+    verified_at: datetime | None = None,
 ) -> ChapterTTSAttempt:
     _verify(
         authority,
         recovery_key=recovery_key,
         operator_id=operator_id,
         action="recover_unknown",
-        now=recorded_at,
+        now=verified_at or recorded_at,
     )
     return recover_unknown_chapter_tts_audio(
         db_path=db_path,
@@ -152,6 +153,7 @@ def recover_unknown_send(
         evidence_verification_key=evidence_verification_key,
         external_signature=external_signature,
         recorded_at=recorded_at,
+        verified_at=verified_at,
     )
 
 

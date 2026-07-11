@@ -13,12 +13,15 @@ import {
   approveMultimediaDryRun,
   createMultimediaDraft,
   failedGateIds,
+  getChapterTtsReconciliation,
   getMultimediaAsset,
+  getNarrationRunReconciliation,
   listMultimediaAssets,
   listMultimediaJobs,
   prepareMultimediaLiveExecution,
   manualGateIds,
   runMultimediaHardening,
+  executeChapterTtsReconciliation,
   steerMultimediaAsset,
 } from "./multimedia";
 import type { MultimediaAssetRecord } from "./multimedia";
@@ -191,5 +194,28 @@ describe("multimedia API client", () => {
         operator_acknowledged_spend: true,
       }),
     ).rejects.toThrow("multimedia_asset_not_found");
+  });
+
+  it("uses encoded mounted reconciliation endpoints", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, { execution_id: "exec 1" }));
+    await getChapterTtsReconciliation("exec 1");
+    expect(mockFetch()).toHaveBeenLastCalledWith(
+      "/multimedia/executions/exec%201/tts-reconciliation",
+      expect.anything(),
+    );
+
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, { execution_id: "exec 1" }));
+    await executeChapterTtsReconciliation("exec 1", "release_seal");
+    expect(mockFetch()).toHaveBeenLastCalledWith(
+      "/multimedia/executions/exec%201/tts-reconciliation/actions/release_seal",
+      expect.objectContaining({ method: "POST" }),
+    );
+
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, { run_id: "run 1" }));
+    await getNarrationRunReconciliation("run 1");
+    expect(mockFetch()).toHaveBeenLastCalledWith(
+      "/multimedia/narration-runs/run%201/reconciliation",
+      expect.anything(),
+    );
   });
 });

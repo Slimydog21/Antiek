@@ -98,6 +98,48 @@ export interface MultimediaJobList {
   count: number;
 }
 
+export type TtsReconciliationAction = "quarantine_send" | "recover_unknown" | "release_seal";
+
+export interface ChapterTtsReconciliation {
+  execution_id: string;
+  asset_id: string;
+  revision_id: string;
+  attempt_status: string;
+  provider_status: string;
+  next_action: string;
+  action_eligible: boolean;
+  send_age_seconds: number | null;
+  seal_age_seconds: number | null;
+  seal_lease_id: string | null;
+  charged_cents: number;
+  full_ceiling_charged: boolean;
+  raw_audio_present: boolean;
+  raw_audio_hash_valid: boolean;
+  requires_signed_operator_authority: boolean;
+  requires_external_provider_evidence: boolean;
+  parent_resume_eligible: boolean;
+  safe_error_code: string | null;
+}
+
+export interface NarrationRunReconciliationChild {
+  chapter_id: string;
+  execution_id: string;
+  state: string;
+  next_action: string;
+  action_eligible: boolean;
+  reconciliation: ChapterTtsReconciliation | null;
+}
+
+export interface NarrationRunReconciliation {
+  run_id: string;
+  asset_id: string;
+  revision_id: string;
+  run_status: string;
+  blocked_chapter_count: number;
+  parent_resume_eligible: boolean;
+  children: NarrationRunReconciliationChild[];
+}
+
 // The API serializes `gates` only; failed_gate_ids/manual_gate_ids are plain
 // @property in hardening.py and are dropped by pydantic v2. Derive client-side.
 export function failedGateIds(report: MultimediaHardeningReport): string[] {
@@ -182,4 +224,43 @@ export async function prepareMultimediaLiveExecution(
   if (resp.status === 404) throw new Error("multimedia_asset_not_found");
   if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/prepare-live-execution: HTTP ${resp.status}`);
   return (await resp.json()) as MultimediaAssetRecord;
+}
+
+export async function getChapterTtsReconciliation(
+  executionId: string,
+): Promise<ChapterTtsReconciliation> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/executions/${encodeURIComponent(executionId)}/tts-reconciliation`,
+  );
+  if (resp.status === 404) throw new Error("multimedia_execution_unavailable");
+  if (resp.status === 503) throw new Error("multimedia_reconciliation_runtime_unavailable");
+  if (!resp.ok) throw new Error(`GET /multimedia/executions/{id}/tts-reconciliation: HTTP ${resp.status}`);
+  return (await resp.json()) as ChapterTtsReconciliation;
+}
+
+export async function executeChapterTtsReconciliation(
+  executionId: string,
+  action: TtsReconciliationAction,
+): Promise<ChapterTtsReconciliation> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/executions/${encodeURIComponent(executionId)}/tts-reconciliation/actions/${action}`,
+    { method: "POST" },
+  );
+  if (resp.status === 404) throw new Error("multimedia_execution_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_reconciliation_action_conflict");
+  if (resp.status === 503) throw new Error("multimedia_reconciliation_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST /multimedia/executions/{id}/tts-reconciliation/actions/{action}: HTTP ${resp.status}`);
+  return (await resp.json()) as ChapterTtsReconciliation;
+}
+
+export async function getNarrationRunReconciliation(
+  runId: string,
+): Promise<NarrationRunReconciliation> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/narration-runs/${encodeURIComponent(runId)}/reconciliation`,
+  );
+  if (resp.status === 404) throw new Error("multimedia_narration_run_unavailable");
+  if (resp.status === 503) throw new Error("multimedia_reconciliation_runtime_unavailable");
+  if (!resp.ok) throw new Error(`GET /multimedia/narration-runs/{id}/reconciliation: HTTP ${resp.status}`);
+  return (await resp.json()) as NarrationRunReconciliation;
 }
