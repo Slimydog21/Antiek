@@ -53,9 +53,11 @@ describe("LibraryCatalogPanel", () => {
     expect(
       screen.getByTestId("library-work-servability-doc-1").textContent,
     ).toMatch(/servable/i);
-    // never render a body field
-    expect(screen.queryByText(/full text/i)).toBeNull();
-    expect(document.body.textContent).not.toMatch(/raw_text|full_text|served_body/);
+    // never render body payload fields (blurb may mention "full text" as policy)
+    expect(document.body.textContent).not.toMatch(
+      /\braw_text\b|\bfull_text\b|\bserved_body\b|\bbody_text\b/,
+    );
+    expect(screen.queryByTestId("library-work-body-doc-1")).toBeNull();
   });
 
   it("surfaces fetch errors without a result list", async () => {
