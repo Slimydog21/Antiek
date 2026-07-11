@@ -88,7 +88,8 @@ export function parseFinalizeAuthorizeResult(
   }
 
   let authorized = o.authorized;
-  const notes = o.notes as string[];
+  // Copy notes so fail-closed annotation never mutates the raw response body.
+  const notes = [...(o.notes as string[])];
   // Continuous honesty: client never surfaces authorized=true without accept.
   if (authorized === true && operator_accepted !== true) {
     authorized = false;

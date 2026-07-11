@@ -146,3 +146,20 @@ describe("postFinalizeAuthorize", () => {
     ).rejects.toBeInstanceOf(FinalizeAuthorizeHttpError);
   });
 });
+
+describe("immutability", () => {
+  it("does not mutate frozen response notes when fail-closing authorized", () => {
+    const notes = Object.freeze(["server note"]) as unknown as string[];
+    const body = {
+      authorized: true,
+      draft_id: "d1",
+      parent_asset_id: "p1",
+      reason: "ok",
+      notes,
+    };
+    const r = parseFinalizeAuthorizeResult(body, { operator_accepted: false });
+    expect(r.authorized).toBe(false);
+    expect([...notes]).toEqual(["server note"]);
+    expect(r.notes.some((n) => /client fail-closed/i.test(n))).toBe(true);
+  });
+});
