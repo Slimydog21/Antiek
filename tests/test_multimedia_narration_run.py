@@ -160,6 +160,13 @@ def test_three_chapter_run_executes_once_and_replays(tmp_path: Path) -> None:
         "chapter-1",
         "chapter-2",
     )
+    assert tuple(
+        (row.chapter_id, row.script_line_ids, row.source_chunk_ids)
+        for row in first.manifest.chapter_bindings
+    ) == tuple(
+        (row.chapter_id, row.script_line_ids, row.source_chunk_ids)
+        for row in prepared.chapters
+    )
     receipt = get_narration_run(
         db_path=str(values["db_path"]), run_id=prepared.run_id, signing_key=KEY
     )

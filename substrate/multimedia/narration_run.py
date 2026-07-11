@@ -402,6 +402,24 @@ def _verify_aggregate_children(
         != tuple(row.manifest.output_sha256 for row in children)
         or tuple(row.duration_seconds for row in manifest.sources)
         != tuple(row.manifest.duration_seconds for row in children)
+        or tuple(
+            (
+                row.chapter_id,
+                row.script_line_ids,
+                row.source_chunk_ids,
+                row.paragraph_ids,
+            )
+            for row in manifest.chapter_bindings
+        )
+        != tuple(
+            (
+                row.chapter_id,
+                row.script_line_ids,
+                row.source_chunk_ids,
+                row.paragraph_ids,
+            )
+            for row in prepared.chapters
+        )
         or manifest.duration_seconds
         != round(sum(row.manifest.duration_seconds for row in children), 3)
     ):
@@ -533,6 +551,24 @@ def _reopen_run(
         or artifact.manifest.revision_id != prepared.revision_id
         or tuple(row.chapter_id for row in artifact.manifest.sources)
         != tuple(row.chapter_id for row in prepared.chapters)
+        or tuple(
+            (
+                row.chapter_id,
+                row.script_line_ids,
+                row.source_chunk_ids,
+                row.paragraph_ids,
+            )
+            for row in artifact.manifest.chapter_bindings
+        )
+        != tuple(
+            (
+                row.chapter_id,
+                row.script_line_ids,
+                row.source_chunk_ids,
+                row.paragraph_ids,
+            )
+            for row in prepared.chapters
+        )
     ):
         raise NarrationRunError("aggregate narration identity conflicts")
     return artifact

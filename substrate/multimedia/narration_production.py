@@ -58,6 +58,25 @@ class NarrationSource(_Model):
         return self
 
 
+class NarrationChapterBinding(_Model):
+    chapter_id: str
+    script_line_ids: tuple[str, ...]
+    source_chunk_ids: tuple[str, ...]
+    paragraph_ids: tuple[str, ...]
+
+    @model_validator(mode="after")
+    def identifiers_are_bounded(self) -> NarrationChapterBinding:
+        _identifier(self.chapter_id, "chapter_id")
+        for field, values in (
+            ("script_line_id", self.script_line_ids),
+            ("source_chunk_id", self.source_chunk_ids),
+            ("paragraph_id", self.paragraph_ids),
+        ):
+            for value in values:
+                _identifier(value, field)
+        return self
+
+
 class NarrationProductionManifest(_Model):
     schema_version: Literal["antiek.narration-production.v1"] = (
         "antiek.narration-production.v1"
@@ -71,6 +90,9 @@ class NarrationProductionManifest(_Model):
     sample_rate_hz: int = Field(ge=8_000, le=48_000)
     channels: Literal[1, 2]
     sources: tuple[NarrationSource, ...] = Field(min_length=1, max_length=_MAX_CHAPTERS)
+    chapter_bindings: tuple[NarrationChapterBinding, ...] = Field(
+        default_factory=tuple, max_length=_MAX_CHAPTERS
+    )
 
     @model_validator(mode="after")
     def sources_are_complete(self) -> NarrationProductionManifest:
@@ -86,6 +108,10 @@ class NarrationProductionManifest(_Model):
             raise ValueError("narration chapter ids must be unique")
         if len({row.audio_file_id for row in self.sources}) != len(self.sources):
             raise ValueError("narration audio file ids must be unique")
+        if self.chapter_bindings and tuple(
+            row.chapter_id for row in self.chapter_bindings
+        ) != tuple(row.chapter_id for row in self.sources):
+            raise ValueError("narration chapter bindings conflict with sources")
         expected = round(sum(row.duration_seconds for row in self.sources), 3)
         if expected != self.duration_seconds:
             raise ValueError("narration duration is not bound to its chapters")
@@ -248,6 +274,15 @@ def produce_narration_track(
             sample_rate_hz=sample_rate_hz,
             channels=channels,
             sources=tuple(sources),
+            chapter_bindings=tuple(
+                NarrationChapterBinding(
+                    chapter_id=chapter.chapter_id,
+                    script_line_ids=chapter.script_line_ids,
+                    source_chunk_ids=chapter.source_chunk_ids,
+                    paragraph_ids=chapter.paragraph_ids,
+                )
+                for chapter in chapters
+            ),
         )
         artifact = NarrationProductionArtifact(
             manifest=manifest,
@@ -409,4 +444,9 @@ def _manifest_mac(manifest: NarrationProductionManifest, key: bytes) -> str:
     return hmac.new(key, payload, hashlib.sha256).hexdigest()
 
 
-__all__ = ["NarrationProductionArtifact", "NarrationProductionError", "produce_narration_track"]
+__all__ = [
+    "NarrationChapterBinding",
+    "NarrationProductionArtifact",
+    "NarrationProductionError",
+    "produce_narration_track",
+]
