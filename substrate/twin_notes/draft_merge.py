@@ -21,7 +21,7 @@ from __future__ import annotations
 import hashlib
 import html
 import time
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
 from substrate.twin_notes.store import TwinDocument, TwinNotesError, TwinParentMismatch
