@@ -67,6 +67,33 @@ describe("parsePurchaseGateDecision", () => {
     });
     expect(skipOk.path).toBe("skip_free_copy");
   });
+
+  it("rejects incomplete matrix tuples", () => {
+    expect(() =>
+      parsePurchaseGateDecision({
+        ...sample,
+        free_copy_freely_available: false,
+        purchase_intent_allowed: false,
+        path: "blocked",
+      }),
+    ).toThrow(/freely_available=false/);
+    expect(() =>
+      parsePurchaseGateDecision({
+        ...sample,
+        free_copy_freely_available: null,
+        purchase_intent_allowed: false,
+        path: "blocked",
+      }),
+    ).toThrow(/free_copy null/);
+    expect(() =>
+      parsePurchaseGateDecision({
+        ...sample,
+        free_copy_freely_available: true,
+        purchase_intent_allowed: false,
+        path: "blocked",
+      }),
+    ).toThrow(/use_free_copy/);
+  });
 });
 
 describe("postPurchaseGate", () => {

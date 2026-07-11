@@ -93,31 +93,32 @@ export function parsePurchaseGateDecision(body: unknown): PurchaseGateDecision {
             );
           })();
 
-  // Trust-boundary decision matrix (never invent free-miss/skip).
-  if (o.purchase_intent_allowed === true) {
-    if (freeAvail === true) {
+  // Trust-boundary full decision matrix (never invent free-miss/skip).
+  // true  -> blocked + use_free_copy
+  // false -> allowed + purchase_intent_after_free_miss
+  // null  -> allowed + skip_free_copy
+  if (freeAvail === true) {
+    if (o.purchase_intent_allowed !== false || o.path !== "use_free_copy") {
       throw new Error(
-        "purchase gate rejected: freely_available=true cannot allow purchase intent",
+        "purchase gate rejected: freely_available=true requires intent blocked and path use_free_copy",
       );
     }
-    if (freeAvail === false) {
-      if (o.path !== "purchase_intent_after_free_miss") {
-        throw new Error(
-          "purchase gate rejected: free miss must use path purchase_intent_after_free_miss",
-        );
-      }
-    } else {
-      // freeAvail === null: only skip_free_copy path may allow intent
-      if (o.path !== "skip_free_copy") {
-        throw new Error(
-          "purchase gate rejected: free_copy null only allows intent via skip_free_copy path",
-        );
-      }
+  } else if (freeAvail === false) {
+    if (
+      o.purchase_intent_allowed !== true ||
+      o.path !== "purchase_intent_after_free_miss"
+    ) {
+      throw new Error(
+        "purchase gate rejected: freely_available=false requires intent allowed and path purchase_intent_after_free_miss",
+      );
     }
-  } else if (freeAvail === true && o.path !== "use_free_copy") {
-    throw new Error(
-      "purchase gate rejected: freely_available=true must use path use_free_copy when blocked",
-    );
+  } else {
+    // freeAvail === null
+    if (o.purchase_intent_allowed !== true || o.path !== "skip_free_copy") {
+      throw new Error(
+        "purchase gate rejected: free_copy null requires intent allowed and path skip_free_copy",
+      );
+    }
   }
 
   return {
