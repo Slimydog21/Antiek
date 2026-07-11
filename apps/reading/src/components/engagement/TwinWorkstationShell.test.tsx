@@ -67,6 +67,9 @@ describe("TwinWorkstationShell", () => {
     expect(isSlotFilled(false)).toBe(false);
     expect(isSlotFilled("")).toBe(false);
     expect(isSlotFilled("  ")).toBe(false);
+    expect(isSlotFilled(0)).toBe(true);
+    expect(isSlotFilled(Number.NaN)).toBe(true);
+    expect(isSlotFilled(Number.POSITIVE_INFINITY)).toBe(true);
     expect(isSlotFilled(<span>x</span>)).toBe(true);
     render(
       <TwinWorkstationShell
