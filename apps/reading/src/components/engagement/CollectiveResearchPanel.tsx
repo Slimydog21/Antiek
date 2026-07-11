@@ -86,6 +86,7 @@ import {
 } from "../../api/engagement";
 import { fetchDepthTiers } from "../../api/settings";
 import { mapDepthTierToResearchTier } from "../../lib/researchTier";
+import { sanitizeHostedHtml } from "../../lib/sanitizeHostedHtml";
 import { launchFloatingDeepResearch } from "../../modes/Reading/launchFloatingDeepResearch";
 import {
   getLastCollectiveUnitMembership,
@@ -1848,7 +1849,9 @@ export function CollectiveResearchPanel({
             <div
               className="merge-html"
               data-testid="collective-doc-merge-html"
-              dangerouslySetInnerHTML={{ __html: docMerge.html }}
+              dangerouslySetInnerHTML={{
+                __html: sanitizeHostedHtml(docMerge.html),
+              }}
             />
           ) : null}
         </div>

@@ -46,6 +46,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { sanitizeHostedHtml } from "../../lib/sanitizeHostedHtml";
 import {
   attachSourceRefs,
   fetchEvidencePack,
@@ -1462,7 +1463,7 @@ export function ResearchContextPanel({
             <div
               className="evidence-html"
               data-testid="evidence-pack-html"
-              dangerouslySetInnerHTML={{ __html: evidence.html }}
+              dangerouslySetInnerHTML={{ __html: sanitizeHostedHtml(evidence.html) }}
             />
           ) : null}
         </div>
@@ -1631,7 +1632,7 @@ export function ResearchContextPanel({
           {hydrated.html ? (
             <div
               data-testid="hydrate-ref-html"
-              dangerouslySetInnerHTML={{ __html: hydrated.html }}
+              dangerouslySetInnerHTML={{ __html: sanitizeHostedHtml(hydrated.html) }}
             />
           ) : null}
         </div>
@@ -1834,7 +1835,7 @@ export function ResearchContextPanel({
           {searchHits.html ? (
             <div
               data-testid="context-search-html"
-              dangerouslySetInnerHTML={{ __html: searchHits.html }}
+              dangerouslySetInnerHTML={{ __html: sanitizeHostedHtml(searchHits.html) }}
             />
           ) : null}
         </div>
@@ -1853,7 +1854,7 @@ export function ResearchContextPanel({
           {flywheel.html ? (
             <div
               data-testid="context-flywheel-html"
-              dangerouslySetInnerHTML={{ __html: flywheel.html }}
+              dangerouslySetInnerHTML={{ __html: sanitizeHostedHtml(flywheel.html) }}
             />
           ) : null}
         </div>

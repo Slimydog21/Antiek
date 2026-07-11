@@ -130,6 +130,7 @@ import {
 } from "../../components/engagement/ResearchLaunchBudgetPanel";
 import { fetchDepthTiers } from "../../api/settings";
 import { mapDepthTierToResearchTier } from "../../lib/researchTier";
+import { sanitizeHostedHtml } from "../../lib/sanitizeHostedHtml";
 import {
   composeDriverPromptText,
   countPublicationRefs,
@@ -2485,7 +2486,7 @@ export default function MarketplaceHost({
           <div
             className="prose border rounded p-3 text-sm"
             data-testid="hosted-html"
-            dangerouslySetInnerHTML={{ __html: hosted.html }}
+            dangerouslySetInnerHTML={{ __html: sanitizeHostedHtml(hosted.html) }}
           />
         </section>
       ) : null}
@@ -2691,7 +2692,7 @@ export default function MarketplaceHost({
             <div
               className="prose border rounded p-3 text-sm"
               data-testid="library-html"
-              dangerouslySetInnerHTML={{ __html: libraryHtml }}
+              dangerouslySetInnerHTML={{ __html: sanitizeHostedHtml(libraryHtml) }}
             />
           ) : null}
         </section>

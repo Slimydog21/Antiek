@@ -41,6 +41,7 @@ import {
   type ResearchProgressResponse,
 } from "../../api/engagement";
 import { mapResearchTierToProgressPollMs } from "../../lib/researchTier";
+import { sanitizeHostedHtml } from "../../lib/sanitizeHostedHtml";
 import {
   buildResearchProgressWriteHref,
   plainTextFromHtml,
@@ -782,7 +783,9 @@ export function ResearchProgressPanel({
           {progress.html ? (
             <div
               data-testid="research-progress-html"
-              dangerouslySetInnerHTML={{ __html: progress.html }}
+              dangerouslySetInnerHTML={{
+                __html: sanitizeHostedHtml(progress.html),
+              }}
             />
           ) : null}
         </div>

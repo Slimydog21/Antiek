@@ -34,6 +34,7 @@ import {
   type MergeMode,
   type MergeProductResponse,
 } from "../../api/engagement";
+import { sanitizeHostedHtml } from "../../lib/sanitizeHostedHtml";
 import { openWindow } from "../windows/openWindow";
 import {
   buildMergedDocWriteHref,
@@ -649,7 +650,9 @@ export function SpawnMergePanel({
               <div
                 className="prose max-h-40 overflow-auto text-sm"
                 data-testid="spawn-merge-html"
-                dangerouslySetInnerHTML={{ __html: result.html ?? "" }}
+                dangerouslySetInnerHTML={{
+                  __html: sanitizeHostedHtml(result.html ?? ""),
+                }}
               />
             </>
             ) : null;

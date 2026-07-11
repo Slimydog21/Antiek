@@ -29,6 +29,7 @@ import GlassSurface from "../../shell/GlassSurface";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
 import { competitiveDrOfflineSurfaceCatalog } from "../../workspace/competitiveDrQuality";
 import { listRecentDeepResearchSpawnIds } from "../../workspace/recentDeepResearchSpawns";
+import { sanitizeHostedHtml } from "../../lib/sanitizeHostedHtml";
 import {
   formatTwinWriteSeedFreeform,
   loadTwinWriteSeed,
@@ -682,7 +683,7 @@ export default function WriteHome() {
               className="prose max-h-32 overflow-auto text-sm"
               data-testid="write-html-draft-html-preview"
               dangerouslySetInnerHTML={{
-                __html: htmlDraft.html.slice(0, 4000),
+                __html: sanitizeHostedHtml(htmlDraft.html.slice(0, 4000)),
               }}
             />
             <div className="flex flex-wrap gap-2">
@@ -799,7 +800,7 @@ export default function WriteHome() {
                   className="prose max-h-28 overflow-auto text-sm border-t border-ink/10 pt-2 dark:border-bright/10"
                   data-testid="write-twin-seed-html-preview"
                   dangerouslySetInnerHTML={{
-                    __html: twinSeed.html.slice(0, 4000),
+                    __html: sanitizeHostedHtml(twinSeed.html.slice(0, 4000)),
                   }}
                 />
               ) : null}

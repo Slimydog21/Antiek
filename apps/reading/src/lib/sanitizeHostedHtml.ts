@@ -1,6 +1,7 @@
 const BLOCKED_ELEMENTS = new Set([
   "script", "iframe", "object", "embed", "form", "input", "button",
   "textarea", "select", "option", "svg", "math", "link", "meta", "base",
+  "style", "template",
 ]);
 
 const URL_ATTRIBUTES = new Set(["href", "src", "poster", "cite"]);

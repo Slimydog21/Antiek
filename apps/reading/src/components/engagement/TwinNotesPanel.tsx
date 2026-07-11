@@ -70,6 +70,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { sanitizeHostedHtml } from "../../lib/sanitizeHostedHtml";
 import {
   fetchTwinNotes,
   promoteTwinsToContext,
@@ -1933,7 +1934,7 @@ export function TwinNotesPanel({
           {twins.html ? (
             <div
               data-testid="twin-notes-html"
-              dangerouslySetInnerHTML={{ __html: twins.html }}
+              dangerouslySetInnerHTML={{ __html: sanitizeHostedHtml(twins.html) }}
             />
           ) : null}
         </div>
@@ -2119,7 +2120,7 @@ export function TwinNotesPanel({
           {promoted.html ? (
             <div
               data-testid="twin-promote-html"
-              dangerouslySetInnerHTML={{ __html: promoted.html }}
+              dangerouslySetInnerHTML={{ __html: sanitizeHostedHtml(promoted.html) }}
             />
           ) : null}
         </div>

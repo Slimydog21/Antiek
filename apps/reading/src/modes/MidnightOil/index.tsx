@@ -146,6 +146,7 @@ import {
 } from "../../workspace/twinWriteSeed";
 import { useWindows } from "../../workspace/windowsStore";
 import { composeDriverPromptText } from "../../lib/driverPromptText";
+import { sanitizeHostedHtml } from "../../lib/sanitizeHostedHtml";
 
 /** HTML-only deposit open (floating | full). Returns window id or null. */
 export function openMidnightOilDepositWindow(
@@ -2031,7 +2032,9 @@ export default function MidnightOil() {
                 <div
                   className="prose border rounded p-3 text-sm max-h-48 overflow-auto"
                   data-testid="run-html"
-                  dangerouslySetInnerHTML={{ __html: runResult.html }}
+                  dangerouslySetInnerHTML={{
+                    __html: sanitizeHostedHtml(runResult.html),
+                  }}
                 />
               ) : null}
             </div>
@@ -2322,14 +2325,18 @@ export default function MidnightOil() {
                 <div
                   className="prose border rounded p-3 text-sm max-h-64 overflow-auto"
                   data-testid="deposit-html"
-                  dangerouslySetInnerHTML={{ __html: deposit.html }}
+                  dangerouslySetInnerHTML={{
+                    __html: sanitizeHostedHtml(deposit.html),
+                  }}
                 />
               ) : null}
               {deposit.progress?.html ? (
                 <div
                   className="prose border rounded p-3 text-sm max-h-48 overflow-auto"
                   data-testid="deposit-progress-html"
-                  dangerouslySetInnerHTML={{ __html: deposit.progress.html }}
+                  dangerouslySetInnerHTML={{
+                    __html: sanitizeHostedHtml(deposit.progress.html),
+                  }}
                 />
               ) : null}
               {/* Residual (db/ew/ata/ate): open deposit as hosted HTML reading window
@@ -2460,7 +2467,7 @@ export default function MidnightOil() {
             <div
               className="prose border rounded p-3 text-sm"
               data-testid="job-html"
-              dangerouslySetInnerHTML={{ __html: job.html }}
+              dangerouslySetInnerHTML={{ __html: sanitizeHostedHtml(job.html) }}
             />
           ) : null}
         </section>
