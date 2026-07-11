@@ -18,17 +18,28 @@ Model-pin integrity (comparability contract)
     is what is passed to the provider on every call.
 
 Fail-closed to NOT_MEASURED (the core honesty property)
-    ANY failure path — provider exception, timeout, HTTP error, empty/whitespace
-    response, or a non-``str`` response — is converted into a documented sentinel
-    string (``LIVE_JUDGE_ERROR_SENTINEL``) that ``parse_judge_response`` is
-    guaranteed to REJECT (it is not JSON). The runner then records that query as
+    ANY failure path — provider exception, timeout, HTTP error, a NON-COMPLETE
+    ``finish_reason`` (truncation etc.), empty/whitespace response, or a
+    non-``str`` response — is converted into a documented sentinel string
+    (``LIVE_JUDGE_ERROR_SENTINEL``) that ``parse_judge_response`` is guaranteed
+    to REJECT (it is not JSON). The runner then records that query as
     ``NOT_MEASURED`` with ``judge_scores=None`` — never a fabricated or default
     score, never a fallback to a different model, never a retry into a different
     model. A valid-looking judgment is passed through byte-for-byte with no
     pre-parsing or "fix-up": the harness's strict parser stays the single source
     of truth for what counts as MEASURED. The JudgeFn ALWAYS returns a ``str``,
     so it can never trip the runner's ``isinstance(raw_judgment, str)`` guard
-    (which would otherwise raise ``TypeError`` and crash the whole run).
+    (which would otherwise raise ``TypeError`` and crash the whole run). Even the
+    error handler is hardened: it never trusts a hostile exception ``__repr__`` /
+    ``__str__`` (see ``_describe_exception``), so the JudgeFn cannot raise.
+
+    Truncation guard: the adapter admits the response text to the parser ONLY
+    when ``finish_reason`` is a known-complete stop (``_COMPLETE_FINISH_REASONS``
+    = ``{"stop", "end_turn", "stop_sequence"}``). A provider-declared partial
+    stop — Anthropic's ``"max_tokens"``, the normalized ``"length"``,
+    ``"content_filter"``, ``"tool_use"``, ``None``, or any unrecognized value —
+    fails closed EVEN IF the truncated JSON happens to parse, because a partial
+    judgment is not a trustworthy score.
 
 Injectable client (offline testing)
     The factory takes an already-constructed provider — any object satisfying the
@@ -55,9 +66,14 @@ from .runner import JudgeFn
 
 
 class _JudgeResponse(Protocol):
-    """The one field the adapter reads off a provider response: raw text."""
+    """The two fields the adapter reads off a provider response: the raw text
+    and the completion signal (``finish_reason``). A truncated/incomplete
+    judgment is untrustworthy even when its partial text happens to parse, so
+    the adapter must inspect ``finish_reason`` and fail closed on anything that
+    is not a known-complete stop."""
 
     text: str
+    finish_reason: str | None
 
 
 class JudgeProvider(Protocol):
@@ -65,8 +81,8 @@ class JudgeProvider(Protocol):
 
     A dispatch ``AnthropicProvider`` satisfies this structurally (its ``call``
     has this exact keyword signature and returns a ``RawProviderResponse`` whose
-    ``.text`` is a ``str``). Injecting one is the production path; a stub is the
-    test path.
+    ``.text`` is a ``str`` and ``.finish_reason`` is ``str | None``). Injecting
+    one is the production path; a stub is the test path.
     """
 
     def call(
@@ -78,6 +94,16 @@ class JudgeProvider(Protocol):
 # path instead of a fabricated score. The reason is appended for debugging only.
 LIVE_JUDGE_ERROR_SENTINEL = "LIVE_JUDGE_ERROR"
 
+# Known-COMPLETE finish reasons — the ONLY values that admit the response text
+# to the parser. Conservative allow-list, not a deny-list: anything not in here
+# (``"max_tokens"``/``"length"`` truncation, ``"content_filter"``, ``"tool_use"``,
+# ``None``, or any unrecognized value) fails closed → NOT_MEASURED. Two spellings
+# are accepted because the dispatch ``AnthropicProvider`` forwards Anthropic's
+# RAW ``stop_reason`` un-normalized (``"end_turn"``/``"stop_sequence"``) while the
+# base ``RawProviderResponse`` documents a normalized ``"stop"``; both mean the
+# model finished on its own and the text is complete.
+_COMPLETE_FINISH_REASONS = frozenset({"stop", "end_turn", "stop_sequence"})
+
 # Defaults for the single judge call. temperature=0 keeps the judge as stable as
 # the provider allows (comparability); max_tokens comfortably covers the tiny
 # strict-JSON object the rubric asks for.
@@ -88,6 +114,18 @@ _DEFAULT_TEMPERATURE = 0.0
 def _fail_closed(reason: str) -> str:
     """Return a parser-rejected sentinel string → runner marks NOT_MEASURED."""
     return f"{LIVE_JUDGE_ERROR_SENTINEL}: {reason}"
+
+
+def _describe_exception(exc: BaseException) -> str:
+    """Build a fail-closed reason WITHOUT trusting the exception's ``__repr__``
+    or ``__str__`` (a hostile one can raise). ``type(exc).__name__`` never runs
+    user code; detail extraction is isolated so its failure cannot escape."""
+    name = type(exc).__name__
+    try:
+        detail = str(exc)
+    except Exception:  # a hostile __str__ must not crash the eval run
+        return f"provider call failed: {name}: <undisplayable exception detail>"
+    return f"provider call failed: {name}: {detail}"
 
 
 @dataclass(frozen=True)
@@ -126,6 +164,12 @@ class LiveJudge:
                 max_tokens=self.max_tokens,
                 temperature=self.temperature,
             )
+            # Truncation guard: a provider-declared incomplete stop (e.g.
+            # ``max_tokens``) yields an UNTRUSTWORTHY partial judgment even when
+            # the partial text happens to parse. Fail closed regardless of text.
+            finish_reason = response.finish_reason
+            if finish_reason not in _COMPLETE_FINISH_REASONS:
+                return _fail_closed(f"non-complete finish_reason: {finish_reason!r}")
             text = response.text
             # ``isinstance`` also guards a misbehaving provider that returns a
             # non-str despite the type (empty / whitespace → NOT_MEASURED too).
@@ -136,8 +180,10 @@ class LiveJudge:
             # arbiter of MEASURED vs NOT_MEASURED.
             return text
         except Exception as exc:  # fail closed on ANY provider failure
-            # Provider exception / timeout / HTTP error / ProviderError → NOT_MEASURED.
-            return _fail_closed(f"provider call failed: {exc!r}")
+            # Provider exception / timeout / HTTP error / ProviderError →
+            # NOT_MEASURED. ``_describe_exception`` never trusts a hostile
+            # ``__repr__``/``__str__``, so the handler itself cannot raise.
+            return _fail_closed(_describe_exception(exc))
 
 
 def build_live_judge(

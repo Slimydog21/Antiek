@@ -11,6 +11,10 @@ Every test runs against a STUBBED provider — no real network. Coverage:
    run incomplete, judge_scores None — NEVER a fabricated score.
 4. The adapter calls the provider with EXACTLY ``JUDGE_MODEL_ID``.
 5. Raw pass-through: a valid-but-unusual response reaches the parser unmodified.
+6. Truncation guard: valid JSON + ``finish_reason="max_tokens"`` → NOT_MEASURED;
+   the same JSON + a known-complete finish_reason → MEASURED.
+7. Hostile-repr exception: a provider raising an exception whose ``__repr__`` /
+   ``__str__`` raises → JudgeFn still returns the sentinel str, run does not crash.
 """
 
 from __future__ import annotations
@@ -50,9 +54,16 @@ class StubProvider:
 
     name = "anthropic"
 
-    def __init__(self, *, text: str | None = None, raises: Exception | None = None):
+    def __init__(
+        self,
+        *,
+        text: str | None = None,
+        raises: Exception | None = None,
+        finish_reason: str | None = "stop",
+    ):
         self._text = text
         self._raises = raises
+        self._finish_reason = finish_reason
         self.calls: list[dict[str, object]] = []
 
     def call(
@@ -72,7 +83,7 @@ class StubProvider:
         return RawProviderResponse(
             text=self._text,
             raw_usage={"input_tokens": 10, "output_tokens": 5},
-            finish_reason="stop",
+            finish_reason=self._finish_reason,
             latency_ms=1,
         )
 
@@ -218,3 +229,63 @@ def test_raw_pass_through_unmodified() -> None:
     scores = parse_judge_response(raw)
     assert scores is not None
     assert scores.completeness == 0.5
+
+
+# 6. Truncation guard: valid JSON but finish_reason="max_tokens" → NOT_MEASURED;
+#    a success finish_reason with the same JSON → MEASURED. (red-proof)
+def test_truncated_response_fails_closed() -> None:
+    # Valid, parseable rubric JSON — but the provider declares it truncated.
+    truncated = StubProvider(text=_valid_judge_text(), finish_reason="max_tokens")
+    judge = build_live_judge(truncated)
+    raw = judge(build_judge_prompt(_query(), _report()))
+    # Red-proof: the JSON itself WOULD parse, so only the finish_reason guard
+    # keeps a partial judgment from scoring.
+    assert parse_judge_response(_valid_judge_text()) is not None
+    assert raw.startswith(LIVE_JUDGE_ERROR_SENTINEL)
+    assert parse_judge_response(raw) is None
+
+    run = run_eval(
+        _one_query_dataset(), lambda _q: _report(), judge,
+        run_id_seed="seed", week_id="2026-W28",
+    )
+    assert run.scores[0].status == "NOT_MEASURED"
+    assert run.scores[0].judge_scores is None
+    assert run.complete is False
+    assert run.mean_judge_score == 0.0
+
+    # Same JSON, but a known-complete finish_reason → MEASURED.
+    for good in ("stop", "end_turn", "stop_sequence"):
+        complete = build_live_judge(StubProvider(text=_valid_judge_text(), finish_reason=good))
+        scores = parse_judge_response(complete(build_judge_prompt(_query(), _report())))
+        assert scores is not None, f"finish_reason={good!r} must be accepted"
+
+    # None finish_reason is also untrustworthy → fails closed.
+    none_fr = build_live_judge(StubProvider(text=_valid_judge_text(), finish_reason=None))
+    assert parse_judge_response(none_fr(build_judge_prompt(_query(), _report()))) is None
+
+
+# 7. Hostile __repr__/__str__ must not escape the fail-closed handler. (red-proof)
+def test_hostile_exception_repr_does_not_crash() -> None:
+    class HostileError(Exception):
+        def __repr__(self) -> str:
+            raise RuntimeError("repr blew up")
+
+        def __str__(self) -> str:
+            raise RuntimeError("str blew up")
+
+    provider = StubProvider(raises=HostileError())
+    judge = build_live_judge(provider)
+    # The JudgeFn must still return a str (never raise) despite the hostile repr.
+    raw = judge(build_judge_prompt(_query(), _report()))
+    assert isinstance(raw, str)
+    assert raw.startswith(LIVE_JUDGE_ERROR_SENTINEL)
+    assert parse_judge_response(raw) is None
+
+    # And the full run completes (does not crash) with that query NOT_MEASURED.
+    run = run_eval(
+        _one_query_dataset(), lambda _q: _report(), judge,
+        run_id_seed="seed", week_id="2026-W28",
+    )
+    assert run.scores[0].status == "NOT_MEASURED"
+    assert run.scores[0].judge_scores is None
+    assert run.complete is False
