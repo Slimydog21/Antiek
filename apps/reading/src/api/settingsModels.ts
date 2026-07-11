@@ -20,6 +20,9 @@ export interface UserModelRow {
 export interface UserModelsResponse {
   models: UserModelRow[];
   count: number;
+  /** user-* names still live-registered whose registry record is gone
+   *  (corrupt/lost file); they cannot resolve keys and clear at next boot. */
+  stale_registered: string[];
   source: string;
 }
 

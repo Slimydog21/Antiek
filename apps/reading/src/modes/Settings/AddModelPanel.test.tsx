@@ -21,6 +21,7 @@ vi.mock("../../api/settingsModels", () => ({
   fetchUserModels: vi.fn(async () => ({
     models: [existingRow],
     count: 1,
+    stale_registered: [],
     source: "test",
   })),
   addUserModel: vi.fn(async () => ({ ...existingRow, id: "user-added" })),

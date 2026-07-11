@@ -25,6 +25,7 @@ const KIND_OPTIONS = [
 
 export default function AddModelPanel() {
   const [models, setModels] = useState<UserModelRow[] | null>(null);
+  const [staleRegistered, setStaleRegistered] = useState<string[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [kind, setKind] = useState<ProviderKind>("openai_compat");
   const [displayName, setDisplayName] = useState("");
@@ -38,6 +39,7 @@ export default function AddModelPanel() {
     try {
       const res = await fetchUserModels();
       setModels(res.models);
+      setStaleRegistered(res.stale_registered ?? []);
       setLoadError(null);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : String(e));
@@ -117,6 +119,13 @@ export default function AddModelPanel() {
         {models && models.length === 0 && (
           <p className="text-sm text-ink-soft dark:text-starlight">
             No user-added models yet.
+          </p>
+        )}
+        {staleRegistered.length > 0 && (
+          <p className="text-xs text-amber-700 dark:text-amber-300 font-mono">
+            Stale registrations (registry record lost):{" "}
+            {staleRegistered.join(", ")} — they cannot resolve keys and clear
+            at the next restart.
           </p>
         )}
         {models && models.length > 0 && (
