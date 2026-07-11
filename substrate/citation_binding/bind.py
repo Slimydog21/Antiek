@@ -35,7 +35,9 @@ _ABBREVIATIONS = frozenset(
         "vs.",
     }
 )
-_BULLET = re.compile(r"(?m)^[ \t]*(?:[-*+] |\d+[.)] )")
+# ``match(..., pos)`` anchors at the current claim start. Avoid ``^`` because
+# a numbered marker may begin the next sentence on the same physical line.
+_BULLET = re.compile(r"[ \t]*(?:[-*+] |\d+[.)] )")
 _AND = re.compile(r"\s+and\s+", re.IGNORECASE)
 
 
@@ -58,9 +60,15 @@ def segment_claims(report_text: str) -> tuple[Claim, ...]:
         elif not code and char in ".!?":
             token_start = report_text.rfind(" ", start, index) + 1
             token = report_text[token_start : index + 1].lower()
+            numbered_marker = (
+                char == "."
+                and report_text[start : index + 1].strip().removesuffix(".").isdigit()
+                and index + 1 < len(report_text)
+                and report_text[index + 1].isspace()
+            )
             boundary = token not in _ABBREVIATIONS and not (
                 char == "." and index + 1 < len(report_text) and report_text[index + 1].isalnum()
-            )
+            ) and not numbered_marker
             while boundary and end < len(report_text) and report_text[end] in "\"'”’)]}":
                 end += 1
         elif not code and char == "\n":

@@ -58,6 +58,8 @@ class CitationAnnotation:
             raise ValueError("empty annotation range")
         if start < 0 or end < start or end > len(report_text):
             raise ValueError("annotation out of range")
+        if not report_text[start:end].strip():
+            raise ValueError("annotation range must contain non-whitespace text")
         if not isinstance(span, ExtractiveSpan):
             raise TypeError("span must be an ExtractiveSpan")
         return cls(start, end, span.span_id, span.source_url, span)

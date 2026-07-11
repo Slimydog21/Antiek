@@ -64,6 +64,8 @@ def test_annotation_refuses_empty_out_of_range_and_overlap_distinctly() -> None:
         CitationAnnotation.bind(report, 2, 2, evidence)
     with pytest.raises(ValueError, match="annotation out of range"):
         CitationAnnotation.bind(report, 0, 99, evidence)
+    with pytest.raises(ValueError, match="non-whitespace"):
+        CitationAnnotation.bind(report, 6, 7, evidence)
     first = CitationAnnotation.bind(report, 0, 6, evidence)
     second = CitationAnnotation.bind(report, 5, 12, evidence)
     with pytest.raises(ValueError, match="annotations overlap"):
@@ -109,6 +111,17 @@ def test_segmentation_does_not_split_conjunction_inside_inline_code() -> None:
         "proceed.",
         "Revenue rose.",
     ]
+
+
+def test_numbered_list_markers_are_stripped_at_each_claim_boundary() -> None:
+    report = "1) First item. 2) Second item.\n3. Third item."
+    claims = segment_claims(report)
+    assert [claim.text for claim in claims] == [
+        "First item.",
+        "Second item.",
+        "Third item.",
+    ]
+    assert all(report[claim.start : claim.end] == claim.text for claim in claims)
 
 
 def test_unclosed_inline_code_fails_closed_instead_of_hiding_claims() -> None:
