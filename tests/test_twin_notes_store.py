@@ -72,7 +72,7 @@ def test_load_missing_raises(tmp_path: Path) -> None:
 
 
 def test_sanitized_parent_filename_collision_does_not_clobber(tmp_path: Path) -> None:
-    """Codex: distinct parents that sanitize to the same stem must not share a file."""
+    """Distinct parents that sanitize to the same stem must not share a file."""
     store = TwinNotesStore(tmp_path)
     first = store.record("../a", insights=["first"])
     second = store.record(".. ?a", insights=["second"])

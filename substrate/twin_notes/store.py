@@ -63,13 +63,15 @@ def _safe_filename(parent_asset_id: str) -> str:
 
     Sanitization alone maps distinct parents onto the same path (e.g. ``../a``
     and ``.. ?a`` → ``.._a.json``), which would clobber twins. Always append a
-    full-id hash so the mapping is injective.
+    full-id SHA-256 hex so the mapping is collision-resistant.
     """
     raw = parent_asset_id.strip()
     cleaned = _SAFE_ID.sub("_", raw)[:80]
     if not cleaned:
         cleaned = "unknown"
-    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+    # Full SHA-256 hex (not truncated) so the parent→path map is collision-free
+    # under birthday attacks on short digests (critic note on truncated hashes).
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
     return f"{cleaned}__{digest}.json"
 
 
