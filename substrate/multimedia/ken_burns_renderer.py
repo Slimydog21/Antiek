@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -46,7 +46,7 @@ class KenBurnsRenderError(RuntimeError):
     """A local render or its verification failed closed."""
 
 
-class _RenderModel(BaseModel):  # type: ignore[misc]
+class _RenderModel(BaseModel):
     model_config = ConfigDict(
         frozen=True,
         extra="forbid",
@@ -100,11 +100,12 @@ class KenBurnsRenderManifest(_RenderModel):
     subtitle_codec: str
     scene_ids: tuple[str, ...] = Field(min_length=1, max_length=_MAX_SCENES)
     chapter_ids: tuple[str, ...] = Field(min_length=1, max_length=_MAX_SCENES)
+    motions: tuple[MotionPreset, ...] = Field(min_length=1, max_length=_MAX_SCENES)
     visual_labels: tuple[VisualLabel, ...] = Field(min_length=1, max_length=_MAX_SCENES)
     inputs: tuple[RenderedInput, ...] = Field(min_length=1, max_length=_MAX_SCENES)
     captions: tuple[RenderedCaption, ...] = Field(min_length=1, max_length=_MAX_SCENES)
 
-    @model_validator(mode="after")  # type: ignore[untyped-decorator]
+    @model_validator(mode="after")
     def references_are_complete(self) -> KenBurnsRenderManifest:
         _unique(self.scene_ids, "scene ids")
         _unique((row.scene_id for row in self.inputs), "input scene ids")
@@ -115,6 +116,8 @@ class KenBurnsRenderManifest(_RenderModel):
             raise ValueError("render captions do not match scene order")
         if tuple(row.chapter_id for row in self.captions) != self.chapter_ids:
             raise ValueError("render chapters do not match caption order")
+        if len(self.motions) != len(self.scene_ids):
+            raise ValueError("render motions do not match scene order")
         if tuple(row.visual_label for row in self.inputs) != self.visual_labels:
             raise ValueError("render visual labels drifted from inputs")
         if tuple(row.source_chunk_ids for row in self.inputs) != tuple(
@@ -137,10 +140,7 @@ class KenBurnsRenderArtifact(_RenderModel):
 
     @classmethod
     def seal(cls, manifest: KenBurnsRenderManifest, integrity_key: bytes) -> KenBurnsRenderArtifact:
-        validated = cast(
-            KenBurnsRenderManifest,
-            KenBurnsRenderManifest.model_validate(dict(manifest.__dict__)),
-        )
+        validated = KenBurnsRenderManifest.model_validate(dict(manifest.__dict__))
         return cls(
             manifest=validated,
             manifest_sha256=_manifest_digest(validated, _integrity_key(integrity_key)),
@@ -154,7 +154,7 @@ class KenBurnsRenderArtifact(_RenderModel):
         payload_size = len(payload.encode("utf-8")) if isinstance(payload, str) else len(payload)
         if payload_size > _MAX_MANIFEST_BYTES:
             raise KenBurnsRenderError("render manifest exceeds its byte ceiling")
-        artifact = cast(KenBurnsRenderArtifact, cls.model_validate_json(payload))
+        artifact = cls.model_validate_json(payload)
         expected = _manifest_digest(artifact.manifest, _integrity_key(integrity_key))
         if not hmac.compare_digest(artifact.manifest_sha256, expected):
             raise KenBurnsRenderError("render manifest digest mismatch")
@@ -302,6 +302,7 @@ def render_ken_burns_documentary(
             subtitle_codec=str(probe["subtitle_codec"]),
             scene_ids=tuple(entry.scene_id for entry in timeline),
             chapter_ids=tuple(entry.chapter_id for entry in timeline),
+            motions=tuple(entry.motion for entry in timeline),
             visual_labels=tuple(row.visual_label for row in stills),
             inputs=rendered_inputs,
             captions=captions,
