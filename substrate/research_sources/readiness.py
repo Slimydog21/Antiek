@@ -189,16 +189,13 @@ def probe_substack(
     if client is not None:
         try:
             pub = fetch_feed(sample_feed_url, client=client)
-            posts = getattr(pub, "posts", None) or getattr(pub, "items", None) or []
-            offline_ok = pub is not None and (
-                bool(getattr(pub, "title", None)) or bool(posts) or True
+            posts = list(
+                getattr(pub, "posts", None) or getattr(pub, "items", None) or []
             )
             # Require at least one post for offline_ok honesty (empty feed ≠ ok).
-            offline_ok = pub is not None and len(list(posts)) > 0
+            offline_ok = pub is not None and len(posts) > 0
             if offline_ok:
-                details.append(
-                    f"offline fetch_feed returned posts={len(list(getattr(pub, 'posts', []) or getattr(pub, 'items', []) or []))}"
-                )
+                details.append(f"offline fetch_feed returned posts={len(posts)}")
             else:
                 details.append("offline fetch_feed returned empty publication/posts")
         except Exception as exc:  # noqa: BLE001
