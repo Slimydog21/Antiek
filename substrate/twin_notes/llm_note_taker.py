@@ -104,9 +104,9 @@ def build_twin_note_payload(
     insights: Sequence[object] | None = None,
     questions: Sequence[object] | None = None,
     source_label: object = "llm-note-taker",
-    llm_filled: object = False,
+    llm_filled: object,
     asset_text_sha256: object | None = None,
-    gated: object = False,
+    gated: object,
     asset_text: object | None = None,
 ) -> TwinNotePayload:
     """Build a twin note payload from injected lists only.

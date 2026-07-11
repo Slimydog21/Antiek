@@ -31,6 +31,8 @@ def test_empty_lists_rejected_even_with_asset_text() -> None:
             parent_asset_id="a",
             insights=[],
             questions=[],
+            llm_filled=False,
+            gated=False,
             asset_text="Lots of content that must not be mined.",
         )
 
@@ -40,6 +42,7 @@ def test_gated_fails_closed() -> None:
         build_twin_note_payload(
             parent_asset_id="a",
             insights=["x"],
+            llm_filled=True,
             gated=True,
         )
 
@@ -49,6 +52,8 @@ def test_bad_sha_rejected() -> None:
         build_twin_note_payload(
             parent_asset_id="a",
             insights=["x"],
+            llm_filled=True,
+            gated=False,
             asset_text_sha256="not-hex",
         )
 
@@ -59,4 +64,20 @@ def test_llm_filled_must_be_bool() -> None:
             parent_asset_id="a",
             insights=["x"],
             llm_filled="yes",  # type: ignore[arg-type]
+            gated=False,
+        )
+
+
+def test_omitted_gated_or_llm_filled_is_typeerror_not_default() -> None:
+    with pytest.raises(TypeError):
+        build_twin_note_payload(  # type: ignore[call-arg]
+            parent_asset_id="a",
+            insights=["x"],
+            gated=False,
+        )
+    with pytest.raises(TypeError):
+        build_twin_note_payload(  # type: ignore[call-arg]
+            parent_asset_id="a",
+            insights=["x"],
+            llm_filled=True,
         )

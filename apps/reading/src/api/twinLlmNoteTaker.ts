@@ -71,7 +71,15 @@ export function parseTwinNotePayload(body: unknown): TwinNotePayload {
   if (!Array.isArray(o.insights) || !Array.isArray(o.questions)) {
     throw new Error("note-taker rejected: insights/questions must be arrays");
   }
-  if (o.insights.length === 0 && o.questions.length === 0) {
+  const insights = o.insights.map((x) => {
+    if (typeof x !== "string") throw new Error("insights must be strings");
+    return x.trim();
+  }).filter(Boolean);
+  const questions = o.questions.map((x) => {
+    if (typeof x !== "string") throw new Error("questions must be strings");
+    return x.trim();
+  }).filter(Boolean);
+  if (insights.length === 0 && questions.length === 0) {
     throw new Error("note-taker rejected: at least one insight or question required");
   }
   if (!Array.isArray(o.notes)) {
@@ -79,14 +87,8 @@ export function parseTwinNotePayload(body: unknown): TwinNotePayload {
   }
   return {
     parent_asset_id: o.parent_asset_id.trim(),
-    insights: o.insights.map((x) => {
-      if (typeof x !== "string") throw new Error("insights must be strings");
-      return x;
-    }),
-    questions: o.questions.map((x) => {
-      if (typeof x !== "string") throw new Error("questions must be strings");
-      return x;
-    }),
+    insights,
+    questions,
     source_label: typeof o.source_label === "string" ? o.source_label : "llm-note-taker",
     llm_filled: o.llm_filled,
     asset_text_sha256:

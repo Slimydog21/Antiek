@@ -41,6 +41,9 @@ describe("parseTwinNotePayload", () => {
     expect(() =>
       parseTwinNotePayload({ ...sample, insights: [], questions: [] }),
     ).toThrow(/insight or question/);
+    expect(() =>
+      parseTwinNotePayload({ ...sample, insights: ["   "], questions: ["  "] }),
+    ).toThrow(/insight or question/);
   });
 });
 
