@@ -72,30 +72,51 @@ def _as_bool_success(raw: Any) -> bool | None:
     return None
 
 
-def _normalize_exact(weights: dict[str, float]) -> dict[str, float]:
-    """Produce weights that sum to exactly 1.0 in binary float.
+def _finalize_weights_for_publish(
+    proposals: list[TaskWeightProposal],
+) -> list[TaskWeightProposal]:
+    """Assign residual weight on the last published item so sum is exactly 1.0.
 
-    Round all but the last (stable order by task name) to 6 dp, then set the
-    final residual weight as ``1.0 - sum(others)`` so re-summing is exact.
+    Must run **after** the final sort order — float addition is order-dependent.
     """
-    if not weights:
-        return {}
-    tasks = sorted(weights.keys())
-    if len(tasks) == 1:
-        return {tasks[0]: 1.0}
-    rounded: dict[str, float] = {}
-    for t in tasks[:-1]:
-        rounded[t] = round(float(weights[t]), 6)
-    residual = 1.0 - sum(rounded.values())
-    # Guard against negative residual from pathological rounding
-    if residual < 0:
-        # Fall back: proportional re-scale then residual assignment
-        total = sum(float(weights[t]) for t in tasks) or 1.0
-        scaled = {t: float(weights[t]) / total for t in tasks}
-        rounded = {t: round(scaled[t], 6) for t in tasks[:-1]}
-        residual = 1.0 - sum(rounded.values())
-    rounded[tasks[-1]] = residual
-    return rounded
+    if not proposals:
+        return []
+    if len(proposals) == 1:
+        p = proposals[0]
+        return [
+            TaskWeightProposal(
+                task=p.task,
+                weight=1.0,
+                prior_weight=p.prior_weight,
+                n_success=p.n_success,
+                n_failure=p.n_failure,
+                rationale=p.rationale,
+            )
+        ]
+    head = [
+        TaskWeightProposal(
+            task=p.task,
+            weight=round(float(p.weight), 6),
+            prior_weight=p.prior_weight,
+            n_success=p.n_success,
+            n_failure=p.n_failure,
+            rationale=p.rationale,
+        )
+        for p in proposals[:-1]
+    ]
+    residual = 1.0 - sum(p.weight for p in head)
+    last = proposals[-1]
+    head.append(
+        TaskWeightProposal(
+            task=last.task,
+            weight=residual,
+            prior_weight=last.prior_weight,
+            n_success=last.n_success,
+            n_failure=last.n_failure,
+            rationale=last.rationale,
+        )
+    )
+    return head
 
 def propose_next_week_weights(
     usage_events: Sequence[Mapping[str, Any]] | None,
@@ -172,8 +193,6 @@ def propose_next_week_weights(
         s2 = sum(weights.values())
         weights = {t: weights[t] / s2 for t in tasks}
 
-    weights = _normalize_exact(weights)
-
     proposals: list[TaskWeightProposal] = []
     for t in tasks:
         n_s = success.get(t, 0)
@@ -203,7 +222,9 @@ def propose_next_week_weights(
                 rationale=rationale,
             )
         )
+    # Sort first, then residual-correct in published order (float sum order-dependent).
     proposals.sort(key=lambda p: (-p.weight, p.task))
+    proposals = _finalize_weights_for_publish(proposals)
 
     suggested: list[str] = []
     for p in proposals:

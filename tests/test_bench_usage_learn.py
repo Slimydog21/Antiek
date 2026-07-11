@@ -106,6 +106,16 @@ def test_weights_sum_exactly_one_many_tasks() -> None:
         assert sum(t.weight for t in p.task_weights) == 1.0, n
 
 
+def test_weights_sum_exactly_one_failure_pattern_0_2_4() -> None:
+    """Order-dependent float sum regression (codex: failures 0,2,4)."""
+    events: list[dict] = []
+    for task, n_fail in (("a", 0), ("b", 2), ("c", 4)):
+        events.extend({"task": task, "success": False} for _ in range(n_fail))
+        events.append({"task": task, "success": True})
+    p = propose_next_week_weights(events, week_id="w", min_weight=0.0)
+    assert sum(t.weight for t in p.task_weights) == 1.0
+
+
 def test_prior_with_only_unknown_outcomes_incomplete() -> None:
     p = propose_next_week_weights(
         [{"task": "t", "success": None}],
