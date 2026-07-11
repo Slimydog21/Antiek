@@ -5,21 +5,12 @@ from __future__ import annotations
 import os
 import sys
 
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from interfaces.research.api.engagement_routes import (  # noqa: E402
-    register_engagement_routes,
-    reset_engagement_stores,
-)
-from interfaces.research.api.midnight_oil_routes import (  # noqa: E402
-    register_midnight_oil_routes,
-    reset_midnight_oil_store,
-)
+from test_midnight_oil_consent_routes import _client  # noqa: E402
+
 from substrate.midnight_oil import (  # noqa: E402
     approve_price_ceiling,
     create_with_recommended_ceiling,
@@ -62,16 +53,13 @@ def test_run_rejects_unapproved():
         assert "approved" in str(exc).lower()
 
 
-def test_api_run_and_auto_deposit():
-    reset_midnight_oil_store()
-    reset_engagement_stores()
-    app = FastAPI()
-    register_midnight_oil_routes(app)
-    register_engagement_routes(app)
-    client = TestClient(app)
+def test_api_run_is_closed_until_durable_queue(tmp_path):
+    client, _ = _client(tmp_path)
+    headers = {"x-test-user": "alice"}
 
     c = client.post(
         "/midnight-oil/create",
+        headers=headers,
         json={
             "goals": ["Chase arxiv attention paper questions"],
             "duration_minutes": 30,
@@ -80,35 +68,23 @@ def test_api_run_and_auto_deposit():
     )
     assert c.status_code == 200
     job_id = c.json()["job_id"]
-    a = client.post(
-        "/midnight-oil/approve",
-        json={"job_id": job_id, "use_recommended": True},
-    )
-    assert a.status_code == 200
-    assert a.json()["status"] == "approved"
-
     r1 = client.post(
         "/midnight-oil/run",
+        headers=headers,
         json={"job_id": job_id, "auto_deposit": True, "spent_per_goal": 0.05},
     )
-    assert r1.status_code == 200, r1.text
-    body = r1.json()
-    assert body["status"] == "complete"
-    assert body["offline"] is True
-    assert body["view_format"] == "html"
-    assert body["spawn_ids"]
-    assert body.get("deposit") is not None
-    assert body["deposit"]["twin_count"] >= 1
-    assert body["deposit"]["view_format"] == "html"
-    assert body["deposit"]["html"]
+    assert r1.status_code == 409
+    assert "durable enqueue" in r1.text
 
     # Unapproved run fails
     c2 = client.post(
         "/midnight-oil/create",
+        headers=headers,
         json={"goals": ["x"], "duration_minutes": 5},
     )
     bad = client.post(
         "/midnight-oil/run",
+        headers={"x-test-user": "mallory"},
         json={"job_id": c2.json()["job_id"]},
     )
-    assert bad.status_code == 400
+    assert bad.status_code == 404
