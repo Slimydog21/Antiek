@@ -348,8 +348,9 @@ def test_trusted_predicate_accepts_older_versions() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Suppression-stack semantics (judge r1 F5) — a mismatched foreign close must
-# not end a different container's suppression.
+# Suppression-stack semantics (judge r1 F5, tightened FAIL-CLOSED by r2 G9):
+# a mismatched foreign close must never END suppression — not by decrementing
+# the wrong counter (F5) and not by popping through inner containers (G9).
 # ---------------------------------------------------------------------------
 
 
@@ -366,13 +367,32 @@ def test_mismatched_foreign_close_does_not_end_suppression() -> None:
     assert not _looks_dangerous(out)
 
 
-def test_foreign_close_pops_through_unclosed_inner_container() -> None:
-    """</svg> against <svg><math> pops the unclosed <math> too (same repair
-    semantics as the emit stack); the trailing stray </math> is a no-op. The
-    <p> must survive exactly once, with no dangerous content leaking."""
-    out = sanitize_book_html("<svg><math></svg></math><p>visible</p>")
-    assert out == "<p>visible</p>"
-    assert out.count("visible") == 1
+def test_mismatched_foreign_close_stays_suppressed_fail_closed() -> None:
+    """r2 G9 — REPLACES the r1 test `test_foreign_close_pops_through_
+    unclosed_inner_container`, which BLESSED the leak by asserting the wrong
+    contract (that </svg> pops through the unclosed <math> and <p>visible</p>
+    survives). Fail-closed matching: </svg> when the suppression top is
+    <math> pops NOTHING; </math> then pops math but svg is still open — so
+    everything after stays suppressed to EOF. Over-suppression of malformed
+    foreign content is acceptable; leaking suppressed text is not."""
+    assert sanitize_book_html("<svg><math></svg></math><p>visible</p>") == ""
+
+
+def test_drop_close_over_inner_container_does_not_unsuppress() -> None:
+    """r2 G9 — the leak shape the judge found: a close for the OUTER
+    container while an inner drop-container is still logically open must NOT
+    un-suppress. (The judge's literal example used <script>, which
+    html.parser incidentally protects via CDATA mode — the inner </svg>
+    arrives as TEXT, not a tag, so it never leaked; <template> is the same
+    shape WITHOUT that accident and provably leaked under r1's pop-through.)"""
+    out = sanitize_book_html("<svg><template></svg><p>leak</p></template>")
+    assert "leak" not in out
+    assert out == ""  # </template> pops template; svg stays open to EOF
+    # The judge's literal payload, pinned as a regression guard (CDATA mode
+    # protects it in html.parser, but the contract must hold regardless).
+    assert "leak" not in sanitize_book_html(
+        "<svg><script></svg><p>leak</p></script>"
+    )
 
 
 def test_unbalanced_drop_close_alone_is_noop() -> None:
@@ -381,9 +401,10 @@ def test_unbalanced_drop_close_alone_is_noop() -> None:
 
 
 def test_suppression_stack_version_bumped() -> None:
-    """The F5 semantics change is a behavioural change for malformed foreign
-    content — the pinned version must reflect it (auditability contract)."""
-    assert SANITIZER_VERSION == "books-allowlist/1.1.0"
+    """The F5 (1.1.0) and G9 (1.2.0) semantics changes are behavioural for
+    malformed foreign content — the pinned version must reflect the latest
+    (auditability contract)."""
+    assert SANITIZER_VERSION == "books-allowlist/1.2.0"
 
 
 # ---------------------------------------------------------------------------

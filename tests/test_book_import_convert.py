@@ -19,12 +19,14 @@ of XHTML) — no network, no binary blobs in the repo. The suite proves:
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import os
 import tempfile
 import zipfile
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -52,7 +54,7 @@ from substrate.book_import import (
 from substrate.books.html_sanitizer import is_trusted_sanitized, sanitize_book_html
 from substrate.books.model import get_book_asset
 from substrate.books.serve import serve_full_text
-from substrate.graph.ops import insert_document
+from substrate.graph.ops import insert_chunk, insert_document
 from substrate.graph.schema import init_database
 
 # ---------------------------------------------------------------------------
@@ -629,10 +631,10 @@ def test_fresh_publish_rolls_back_all_rows_and_can_retry(
     converted = convert_epub_to_antiek_html(_build_epub())
     events_dir = Path(os.environ["ANTIEK_RESEARCH_EVENTS_DIR"])
     events_before = tuple(events_dir.iterdir())
-    real_insert_chunk = publish_module.insert_chunk
+    real_insert_chunk = publish_module.insert_chunk  # type: ignore[attr-defined]
     calls = 0
 
-    def fail_second_chunk(*args: object, **kwargs: object) -> str:
+    def fail_second_chunk(*args: Any, **kwargs: Any) -> str:
         nonlocal calls
         calls += 1
         if calls == 2:
@@ -731,7 +733,7 @@ def test_audit_sink_failure_is_repaired_by_idempotent_retry(
     db: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     converted = convert_epub_to_antiek_html(_build_epub())
-    real_emit = publish_module.emit_typed
+    real_emit = publish_module.emit_typed  # type: ignore[attr-defined]
 
     def fail_emit(*args: object, **kwargs: object) -> None:
         raise OSError("injected audit sink failure")
@@ -1008,3 +1010,167 @@ def test_cumulative_actual_inflation_budget_fires() -> None:
                 reader.read(name)
         # It accumulated real bytes before refusing — not a pre-emptive raise.
         assert reader.total_actual_bytes > 600
+
+
+# ---------------------------------------------------------------------------
+# Judge r2 — G8 partial-publish rights bypass + G10 content-completeness.
+# ---------------------------------------------------------------------------
+
+
+def _forge_partial_publish(db: str, converted: ConvertedBook, *, content_class: str) -> str:
+    """Forge the realistic partial-publish state: documents row + full chunk
+    set present (as the atomic fresh path writes them), book_assets row
+    MISSING. Returns the document_id."""
+    from substrate.book_import.publish import _markdown_sha256, _toc_sha256
+
+    body_sha = hashlib.sha256(converted.html.encode("utf-8")).hexdigest()
+    document_id = f"doc-bookimport-{body_sha[:32]}"
+    wcon = connect_write(db, purpose="forge-partial-publish")
+    try:
+        insert_document(
+            wcon, document_id=document_id, source_tier=2, document_type="book",
+            title=converted.title, author=converted.author,
+            raw_text=converted.html,
+            content_class=content_class,
+            metadata={
+                "book_import": {
+                    "markdown_sha256": _markdown_sha256(converted.markdown),
+                    "toc_sha256": _toc_sha256(converted.toc),
+                }
+            },
+        )
+        for index, chunk in enumerate(chunk_markdown(converted.markdown)):
+            insert_chunk(
+                wcon, document_id=document_id, chunk_index=index,
+                text=chunk.text, section_path=chunk.section or None,
+                token_count=chunk.token_count,
+            )
+    finally:
+        wcon.close()
+    return document_id
+
+
+def test_partial_publish_completion_cannot_change_rights_red_proof(db: str) -> None:
+    """THE G8 red-proof: a documents row stored RESTRICTED with no book_assets
+    row must not let publish() complete registration with caller-supplied
+    public_domain — typed refusal, and the stored gate column provably
+    unmoved."""
+    converted = convert_epub_to_antiek_html(_build_epub())
+    document_id = _forge_partial_publish(
+        db, converted, content_class="restricted_pending_opt_in"
+    )
+
+    with pytest.raises(RepublishRightsChangeError):
+        _publish(db, converted, content_class="public_domain")
+
+    con = connect_read(db)
+    try:
+        row = con.execute(
+            "SELECT content_class FROM documents WHERE document_id = ?",
+            [document_id],
+        ).fetchone()
+        asset = get_book_asset(con, document_id)
+        served = serve_full_text(con, document_id)
+    finally:
+        con.close()
+    assert row is not None and row[0] == "restricted_pending_opt_in"
+    assert asset is None  # the refusal registered nothing
+    assert served.servable is False and served.full_text is None
+
+
+def test_partial_publish_rights_holder_change_refused(db: str) -> None:
+    converted = convert_epub_to_antiek_html(_build_epub())
+    _forge_partial_publish(db, converted, content_class="restricted_pending_opt_in")
+    with pytest.raises(RepublishRightsChangeError):
+        _publish(db, converted, rights_holder_name="Suddenly A Publisher")
+    # No escrow account minted by the refused comparison.
+    con = connect_read(db)
+    try:
+        row = con.execute(
+            "SELECT COUNT(*) FROM ip_holders WHERE display_name = ?",
+            ["Suddenly A Publisher"],
+        ).fetchone()
+    finally:
+        con.close()
+    assert row is not None and row[0] == 0
+
+
+def test_partial_publish_completion_uses_stored_rights(db: str) -> None:
+    """None/identical args complete the registration USING THE STORED gate
+    columns — the completed asset carries the stored class, not a
+    re-resolved caller default."""
+    converted = convert_epub_to_antiek_html(_build_epub())
+    document_id = _forge_partial_publish(
+        db, converted, content_class="restricted_pending_opt_in"
+    )
+
+    # None args → no change requested → completes with STORED rights.
+    completed = _publish(db, converted)
+    assert completed.was_new is False
+    assert completed.content_class == "restricted_pending_opt_in"
+    assert completed.servability == "gated_metadata_only"
+
+    con = connect_read(db)
+    try:
+        asset = get_book_asset(con, document_id)
+        row = con.execute(
+            "SELECT content_class FROM documents WHERE document_id = ?",
+            [document_id],
+        ).fetchone()
+    finally:
+        con.close()
+    assert asset is not None
+    assert asset.content_class == "restricted_pending_opt_in"
+    assert row is not None and row[0] == "restricted_pending_opt_in"
+
+
+def test_partial_publish_completion_accepts_identical_explicit_class(db: str) -> None:
+    converted = convert_epub_to_antiek_html(_build_epub())
+    _forge_partial_publish(db, converted, content_class="public_domain")
+    completed = _publish(db, converted, content_class="public_domain")
+    assert completed.was_new is False
+    assert completed.content_class == "public_domain"
+    assert completed.servability == "public_domain"
+
+
+def test_republish_with_divergent_markdown_refused_red_proof(db: str) -> None:
+    """THE G10 red-proof: identical sanitized HTML but a tampered markdown
+    projection (what chunks and grounds) must be a typed refusal — never a
+    silent old-state return."""
+    converted = convert_epub_to_antiek_html(_build_epub())
+    _publish(db, converted)
+    tampered = dataclasses.replace(
+        converted, markdown=converted.markdown + "\n\nsmuggled grounding line"
+    )
+    with pytest.raises(StoredBodyMismatchError):
+        _publish(db, tampered)
+
+
+def test_republish_with_divergent_toc_refused(db: str) -> None:
+    """TOC travels independently on a hand-built ConvertedBook — same HTML +
+    same markdown + altered TOC is still a refusal, not a silent accept."""
+    converted = convert_epub_to_antiek_html(_build_epub())
+    _publish(db, converted)
+    tampered = dataclasses.replace(converted, toc=())
+    with pytest.raises(StoredBodyMismatchError):
+        _publish(db, tampered)
+
+
+def test_republish_against_row_without_content_hashes_fails_closed(db: str) -> None:
+    """A stored row missing the book_import content hashes (hand-inserted or
+    pre-hash) cannot vouch for its markdown/TOC — republish fails CLOSED."""
+    converted = convert_epub_to_antiek_html(_build_epub())
+    body_sha = hashlib.sha256(converted.html.encode("utf-8")).hexdigest()
+    document_id = f"doc-bookimport-{body_sha[:32]}"
+    wcon = connect_write(db, purpose="hashless-row")
+    try:
+        insert_document(
+            wcon, document_id=document_id, source_tier=2, document_type="book",
+            title=converted.title, raw_text=converted.html,
+            content_class="restricted_pending_opt_in",
+            metadata={"book_import": {}},
+        )
+    finally:
+        wcon.close()
+    with pytest.raises(StoredBodyMismatchError):
+        _publish(db, converted)
