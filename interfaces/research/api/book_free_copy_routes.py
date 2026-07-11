@@ -124,10 +124,9 @@ def free_copy_preflight(req: FreeCopyPreflightRequest) -> dict[str, Any]:
             raise HTTPException(status_code=400, detail="sources must be non-empty when provided")
 
     try:
+        # SearchFn contract requires title, author, sources= — no TypeError retry
+        # (retry would double-hit network on internal TypeErrors).
         result = _search()(title, author, sources=tuple(sources))
-    except TypeError:
-        # Injectable may not accept sources= kw — try positional-compatible call.
-        result = _search()(title, author)
     except Exception as exc:  # noqa: BLE001 — surface as 502 without leaking secrets
         raise HTTPException(
             status_code=502,

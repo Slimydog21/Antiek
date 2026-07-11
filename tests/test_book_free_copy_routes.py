@@ -151,3 +151,25 @@ def test_http_search_exception_is_502_not_200() -> None:
         assert "freely_available" not in r.json() or r.json().get("freely_available") is not True
     finally:
         set_free_copy_search_fn(None)
+
+
+def test_http_typeerror_is_single_call_502() -> None:
+    """Internal TypeError must not retry (duplicate work) and must stay 502."""
+    calls: list[tuple[object, ...]] = []
+
+    def boom(title, author=None, *, sources=()):  # noqa: ANN001
+        calls.append((title, author, sources))
+        raise TypeError("internal contract break")
+
+    set_free_copy_search_fn(boom)
+    try:
+        app = FastAPI()
+        register_book_free_copy_routes(app)
+        client = TestClient(app)
+        r = client.post("/books/free-copy/preflight", json={"title": "Walden"})
+        assert r.status_code == 502
+        assert len(calls) == 1
+        body = r.json()
+        assert body.get("freely_available") is not True
+    finally:
+        set_free_copy_search_fn(None)
