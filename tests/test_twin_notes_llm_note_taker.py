@@ -16,6 +16,7 @@ def test_builds_payload_from_injected_lists() -> None:
         insights=["scaling laws hold"],
         questions=["until when?"],
         llm_filled=True,
+        gated=False,
         asset_text_sha256="a" * 64,
     )
     d = p.to_dict()
