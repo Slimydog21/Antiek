@@ -3,23 +3,28 @@ plus the runner's typed per-query fail-closed provider channel.
 
 Every test runs against injected fakes — zero network, zero keys. Coverage:
 
-1. Mock refusal: constructing around ``make_demo_loop`` /
-   ``make_contract_gather_stub`` (or the factories themselves, or a
-   partial-wrapped product) raises at construction.
+1. Structural loop refusal: the factory refuses ANY caller-supplied
+   ``loop_fn`` in both modes (there is nothing to veneer or spoof through
+   the public API); live mode refuses every injected seam; direct dataclass
+   construction still refuses the known mock/stub loops (defense-in-depth,
+   incl. partial/__wrapped__ veneers).
 2. Runner channel: a provider raising ``ProviderFailure`` marks THAT query
    NOT_MEASURED, the judge is never called for it, the other queries are
    still processed; any other exception type still propagates (a bug crashes).
 3. Happy path via fakes: evidence maps to a ``ResearchReport`` with real
    ``doc-url-*``-backed provenance URLs and dispatch-bound token accounting.
 4. ``allow_live`` gating: offline construction requires all seams injected;
-   live construction requires the real Exa loop identity AND env keys.
+   live construction requires env keys; direct live construction requires the
+   real Exa loop identity.
 5. Sync bridge: an already-running event loop refuses with ``ProviderFailure``
    (no nesting, no threads).
 6. Hostile exceptions: a pipeline exception whose ``__repr__``/``__str__``
    raises (even a BaseException) still converts to a clean ``ProviderFailure``.
 7. Honest-numbers fail-closed: empty evidence pack, empty answer text, zero
-   dispatch accounting, zero token usage — each refuses rather than reporting
-   a fabricated/defaulted figure; non-URL provenance is never reported.
+   dispatch accounting, zero token usage, ZERO tool calls, duplicate
+   trajectory ids, zero resolvable sources — each refuses rather than
+   reporting a fabricated/defaulted figure; non-URL provenance is never
+   reported.
 """
 
 from __future__ import annotations
@@ -144,47 +149,74 @@ def _valid_judge(prompt: str) -> str:
     return json.dumps({axis: 0.8 for axis in AXES})
 
 
-# 1. Mock/stub refusal at construction — measurement theater is impossible.
-def test_demo_loop_refused_at_construction() -> None:
+# 1a. The factory refuses ANY caller-supplied loop, in both modes: there is
+#     no loop to veneer, wrap, or attribute-spoof through the public API.
+def test_factory_refuses_any_caller_loop_fn() -> None:
     fakes = FakePipeline()
-    with pytest.raises(ValueError, match="mock/stub"):
-        fakes.build(loop_fn=make_demo_loop())
-    with pytest.raises(ValueError, match="mock/stub"):
-        fakes.build(loop_fn=make_contract_gather_stub())
-    # The factories themselves are refused too, not just their products.
-    with pytest.raises(ValueError, match="mock/stub"):
-        fakes.build(loop_fn=make_demo_loop)
-    with pytest.raises(ValueError, match="mock/stub"):
-        fakes.build(loop_fn=make_contract_gather_stub)
+    demo = make_demo_loop()
+
+    async def lambda_veneer(ctx: Any) -> Any:  # pragma: no cover — never runs
+        return await demo(ctx)  # type: ignore[operator]
+
+    for loop in (
+        make_demo_loop(),
+        make_contract_gather_stub(),
+        make_demo_loop,  # the factory itself, not just its product
+        # A veneer that is neither partial nor __wrapped__ (the codex probe
+        # shape): refused for the same STRUCTURAL reason — nothing
+        # caller-supplied is accepted, so identity does not matter.
+        lambda_veneer,
+    ):
+        with pytest.raises(ValueError, match="no caller-supplied loop_fn"):
+            fakes.build(loop_fn=loop)
 
 
-def test_wrapped_demo_loop_still_refused() -> None:
-    # A functools.partial (or __wrapped__) veneer over the mock is unwrapped
-    # before the identity check — trivial wrapping cannot dodge the refusal.
+# 1b. Live mode admits no injected parts at all: any seam refuses.
+def test_allow_live_refuses_injected_seams(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("EXA_API_KEY", "test-key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     fakes = FakePipeline()
-    with pytest.raises(ValueError, match="mock/stub"):
-        fakes.build(loop_fn=functools.partial(make_demo_loop(), None))
+    with pytest.raises(ValueError, match="refuses injected seams"):
+        fakes.build(allow_live=True)  # all four seams injected
+    for seam in ("gather", "synthesize", "usage_reader", "source_url_lookup"):
+        with pytest.raises(ValueError, match="refuses injected seams"):
+            build_live_provider(allow_live=True, **{seam: getattr(fakes, seam)})
+    # And a caller loop is refused even with keys present and no seams.
+    with pytest.raises(ValueError, match="no caller-supplied loop_fn"):
+        build_live_provider(allow_live=True, loop_fn=make_demo_loop())
+
+
+# 1c. Defense-in-depth: DIRECT dataclass construction (bypassing the factory)
+#     still refuses the known mock/stub loops, incl. partial/__wrapped__
+#     veneers. (Forged __qualname__/__module__ attributes on direct
+#     construction are out of scope — see the module docstring threat model.)
+def test_direct_construction_refuses_mock_loops() -> None:
+    fakes = FakePipeline()
+
+    def _direct(loop: object) -> LiveResearchProvider:
+        return LiveResearchProvider(
+            gather=fakes.gather,
+            synthesize=fakes.synthesize,
+            usage_reader=fakes.usage_reader,
+            source_url_lookup=fakes.source_url_lookup,
+            loop_fn=loop,
+        )
 
     async def _veneer(ctx: Any) -> Any:  # pragma: no cover — never called
         raise AssertionError("never runs")
 
     _veneer.__wrapped__ = make_contract_gather_stub()  # type: ignore[attr-defined]
-    with pytest.raises(ValueError, match="mock/stub"):
-        fakes.build(loop_fn=_veneer)
 
-
-def test_direct_construction_also_refuses_mock_loop() -> None:
-    # The guard lives on the dataclass, so bypassing the factory does not
-    # bypass the refusal.
-    fakes = FakePipeline()
-    with pytest.raises(ValueError, match="mock/stub"):
-        LiveResearchProvider(
-            gather=fakes.gather,
-            synthesize=fakes.synthesize,
-            usage_reader=fakes.usage_reader,
-            source_url_lookup=fakes.source_url_lookup,
-            loop_fn=make_demo_loop(),
-        )
+    for loop in (
+        make_demo_loop(),
+        make_contract_gather_stub(),
+        make_demo_loop,
+        make_contract_gather_stub,
+        functools.partial(make_demo_loop(), None),
+        _veneer,
+    ):
+        with pytest.raises(ValueError, match="mock/stub"):
+            _direct(loop)
 
 
 # 2a. Runner channel: ProviderFailure → that query NOT_MEASURED, judge not
@@ -281,29 +313,33 @@ def test_offline_construction_requires_all_seams() -> None:
         build_live_provider(gather=fakes.gather, synthesize=fakes.synthesize)
 
 
-# 4b. allow_live gating: missing env keys refuse construction.
+# 4b. allow_live gating: missing env keys refuse construction — through the
+#     factory AND through direct dataclass construction.
 def test_allow_live_refused_without_env_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("EXA_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     with pytest.raises(ValueError, match="EXA_API_KEY"):
         build_live_provider(allow_live=True)
-    # Keys present but a mock loop supplied: still refused (theater guard
-    # outranks the live flag).
+    # Direct construction with the real loop but a key still missing is
+    # refused by the dataclass gate itself (not only the factory's check).
     monkeypatch.setenv("EXA_API_KEY", "test-key")
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-    with pytest.raises(ValueError, match="mock/stub"):
-        build_live_provider(allow_live=True, loop_fn=make_demo_loop())
-    # A supplied REAL loop with a key still missing is refused by the
-    # dataclass gate itself (not only the factory's early check).
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     from runtime.research_runner import make_exa_gather_loop
 
+    fakes = FakePipeline()
     with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
-        FakePipeline().build(allow_live=True, loop_fn=make_exa_gather_loop())
+        LiveResearchProvider(
+            gather=fakes.gather,
+            synthesize=fakes.synthesize,
+            usage_reader=fakes.usage_reader,
+            source_url_lookup=fakes.source_url_lookup,
+            loop_fn=make_exa_gather_loop(),
+            allow_live=True,
+        )
 
 
-# 4c. allow_live gating: a non-mock but non-Exa loop is refused; the real Exa
-#     loop constructs (inert — no I/O at construction).
+# 4c. allow_live gating on direct construction: a non-mock but non-Exa loop
+#     (or no loop) is refused; the fully-defaulted factory build constructs
+#     (inert — no I/O at construction) and self-wires the real Exa loop.
 def test_allow_live_requires_real_exa_loop(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("EXA_API_KEY", "test-key")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
@@ -312,16 +348,24 @@ def test_allow_live_requires_real_exa_loop(monkeypatch: pytest.MonkeyPatch) -> N
         raise AssertionError("never runs")
 
     fakes = FakePipeline()
+
+    def _direct(loop: object | None) -> LiveResearchProvider:
+        return LiveResearchProvider(
+            gather=fakes.gather,
+            synthesize=fakes.synthesize,
+            usage_reader=fakes.usage_reader,
+            source_url_lookup=fakes.source_url_lookup,
+            loop_fn=loop,
+            allow_live=True,
+        )
+
     with pytest.raises(ValueError, match="REAL Exa gather loop"):
-        fakes.build(allow_live=True, loop_fn=home_grown_loop)
+        _direct(home_grown_loop)
+    with pytest.raises(ValueError, match="REAL Exa gather loop"):
+        _direct(None)
 
-    from runtime.research_runner import make_exa_gather_loop
-
-    provider = fakes.build(allow_live=True, loop_fn=make_exa_gather_loop(top_k=1))
-    assert provider.allow_live is True
-    # Fully-defaulted live construction is also inert and self-wires the
-    # real Exa loop.
-    live = build_live_provider(allow_live=True)
+    # The one honest live construction: fully defaulted through the factory.
+    live = build_live_provider(allow_live=True, discovery_top_k=1)
     assert live.allow_live is True and live.loop_fn is not None
 
 
@@ -395,13 +439,39 @@ def test_missing_dispatch_accounting_fails_closed() -> None:
         zero_usage(_query())
 
 
-# 7d. Sources are never invented: unresolvable or non-http provenance is
-#     dropped, and a lookup crash fails the query closed.
-def test_sources_never_invented() -> None:
+# 7d. Sources are never invented, and a sourceless report is never judged:
+#     an INDIVIDUALLY unresolvable/non-http row is dropped (kept sources stay
+#     real), zero resolvable sources overall refuses, and a lookup crash
+#     fails the query closed.
+def test_sources_never_invented_and_zero_sources_refused() -> None:
+    # One resolvable + one unresolvable doc-url: only the real URL survives.
+    partial = FakePipeline(
+        outcome=_outcome(
+            documents=(
+                ("doc-url-abc123", "Real ingested page"),
+                ("doc-url-dead99", "Pruned row"),
+            )
+        ),
+        urls={"doc-url-abc123": "https://example.org/page", "doc-url-dead99": None},
+    )
+    assert [s.url for s in partial.build()(_query()).sources] == [
+        "https://example.org/page"
+    ]
+
+    # Zero resolvable sources overall → refuse (broken provenance wiring must
+    # not be laundered into a judged score).
     unresolvable = FakePipeline(urls={"doc-url-abc123": None})
-    assert unresolvable.build()(_query()).sources == ()
+    with pytest.raises(ProviderFailure, match="no resolvable real-URL provenance"):
+        unresolvable.build()(_query())
     non_url = FakePipeline(urls={"doc-url-abc123": "duckdb://not-a-web-source"})
-    assert non_url.build()(_query()).sources == ()
+    with pytest.raises(ProviderFailure, match="no resolvable real-URL provenance"):
+        non_url.build()(_query())
+    # A pack with only doc-gather-* placeholders refuses the same way.
+    placeholders_only = FakePipeline(
+        outcome=_outcome(documents=(("doc-gather-session-leaf", "placeholder"),))
+    )
+    with pytest.raises(ProviderFailure, match="no resolvable real-URL provenance"):
+        placeholders_only.build()(_query())
 
     class Boom(FakePipeline):
         def source_url_lookup(self, document_id: str) -> str | None:
@@ -409,6 +479,26 @@ def test_sources_never_invented() -> None:
 
     with pytest.raises(ProviderFailure, match="source url lookup failed"):
         Boom().build()(_query())
+
+
+# 7f. Zero tool calls fails closed — a research run with no real tool actions
+#     has nothing real behind it (the real exa loop's DONE path always steps).
+def test_zero_tool_calls_fails_closed() -> None:
+    fakes = FakePipeline(outcome=_outcome(tool_calls=0))
+    with pytest.raises(ProviderFailure, match="zero tool calls"):
+        fakes.build()(_query())
+    assert fakes.synthesized_packs == []  # refused before synthesis
+
+
+# 7g. Duplicate trajectory ids fail closed — never silently deduped, because a
+#     duplicate would double-count dispatch usage.
+def test_duplicate_investigation_ids_fail_closed() -> None:
+    fakes = FakePipeline(
+        outcome=_outcome(investigation_ids=("same-id", "same-id"))
+    )
+    with pytest.raises(ProviderFailure, match="duplicate investigation ids"):
+        fakes.build()(_query())
+    assert fakes.usage_queries == []  # the usage reader never saw duplicates
 
 
 # 7e. Timeout converts to ProviderFailure (fail closed, never hang the week).

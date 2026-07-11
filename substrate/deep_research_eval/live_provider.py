@@ -13,21 +13,39 @@ the Loop 1 synthesis tail (``orchestration/loop_one/orchestrator.py``
 Four invariants make this adapter safe to feed I-9's "two comparable weekly
 runs":
 
-Real loop only (no measurement theater)
-    The adapter refuses AT CONSTRUCTION (``ValueError``) to be built around
-    ``make_demo_loop`` or ``make_contract_gather_stub``
-    (``runtime/research_runner/host_local.py`` :494 / :526 — the benchmark
-    mock and the honest production placeholder). Both emit fabricated steps
-    and retrieve nothing, so a run over them would measure theater, not the
-    product. Detection is by factory identity: the closures those factories
-    return carry ``__qualname__`` ``"make_demo_loop.<locals>._loop"`` /
-    ``"make_contract_gather_stub.<locals>._loop"`` (``functools.partial`` and
-    ``__wrapped__`` chains are unwrapped first). The live path additionally
-    requires the POSITIVE identity of the real Exa gather loop
-    (``make_exa_gather_loop``, host_local.py :567) — the same loop prod gates
-    behind ``ANTIEK_DRW_GATHER=exa``
-    (``interfaces/research/api/cascade_routes.py`` ``_research_loop_factory``,
-    :260).
+Live mode = real machinery, full stop (no measurement theater)
+    ``build_live_provider`` — the constructor of record — REFUSES
+    (``ValueError``) any injected pipeline seam and any caller-supplied
+    ``loop_fn`` when ``allow_live=True``. Live mode SELF-BUILDS the real Exa
+    gather loop (``make_exa_gather_loop``,
+    ``runtime/research_runner/host_local.py`` :567 — the same loop prod gates
+    behind ``ANTIEK_DRW_GATHER=exa``,
+    ``interfaces/research/api/cascade_routes.py`` ``_research_loop_factory``
+    :260) and the real gather / synthesis / usage / source-URL seams; the
+    caller may tune budgets, timeout, and discovery ``top_k`` only. There is
+    therefore NO caller-supplied part on the live path — nothing to veneer,
+    wrap, or attribute-spoof through the factory.
+
+    Defense-in-depth for DIRECT dataclass construction (bypassing the
+    factory): ``LiveResearchProvider.__post_init__`` refuses a ``loop_fn``
+    that is (a product of) ``make_demo_loop`` / ``make_contract_gather_stub``
+    (host_local.py :494 / :526 — the benchmark mock and the honest production
+    placeholder; both fabricate steps and retrieve nothing), unwrapping
+    ``functools.partial`` / ``__wrapped__`` chains first, and requires the
+    positive ``make_exa_gather_loop`` identity plus the env keys when
+    ``allow_live=True``.
+
+    Honest threat model: those ``__post_init__`` checks catch HONEST MISTAKES
+    (grabbing the wrong factory, wiring a stub out of habit, an
+    un-unwrappable veneer is still caught for the two named factories when
+    passed directly). Python cannot stop a determined caller from directly
+    constructing the dataclass around a function with forged
+    ``__qualname__``/``__module__`` attributes — no attribute-based check
+    can, because attributes are writable. The structural guarantee is
+    narrower and real: the constructor of record has no dishonest path, so
+    producing a spoofed "live" provider requires deliberately bypassing the
+    public API — the adapter guards measurement integrity against mistakes,
+    not against an operator sabotaging their own eval.
 
 Fail closed to ``ProviderFailure`` (the core honesty property)
     EVERY failure path — missing keys, plan/launch refusal (including the
@@ -56,9 +74,14 @@ Honest numbers (every reported figure binds to real accounting)
       (written from the fetched final URL at adapter.py :284/:381; schema at
       ``substrate/graph/schema.py`` :65-83). ``doc-gather-*`` placeholders
       (``orchestration/session_evidence_pack.py`` :265-268) carry no real URL
-      and are NEVER reported; a ``doc-url-*`` row whose ``source_uri`` is
-      missing or non-http is SKIPPED, not invented — under-reporting can only
-      depress the judged score, never inflate it.
+      and are NEVER reported; an individual ``doc-url-*`` row whose
+      ``source_uri`` is missing or non-http is SKIPPED, not invented —
+      under-reporting can only depress the judged score, never inflate it.
+      But a report with ZERO resolvable real-URL sources overall refuses
+      (``ProviderFailure``): a deep-research report with no real provenance
+      at all signals broken provenance wiring (or a stub posing as research),
+      and letting the judge score a sourceless report would launder that
+      breakage into a measured number.
     * ``tool_calls`` — the count of ``"step"``-kind ``StepEvent``s consumed
       from the session's multiplexed ``stream()`` (which terminates only when
       every research finished, so no event is missed). In the real Exa loop
@@ -85,16 +108,16 @@ Honest numbers (every reported figure binds to real accounting)
       that cannot honestly split in/out.
 
 Operator-gated live path (inert offline)
-    ``allow_live=True`` is required for ANY real-machinery default, and it in
-    turn requires (at construction) the real Exa loop identity AND the
-    required env keys (``EXA_API_KEY`` for gather discovery,
-    ``ANTHROPIC_API_KEY`` for dispatch-backed synthesis) to be present —
-    otherwise construction refuses with a clear reason. Without
-    ``allow_live``, every pipeline seam (gather / synthesize / usage reader /
-    source-url lookup) MUST be injected, so offline tests exercise the full
-    fail-closed mapping with fakes and zero network — the same
-    injectable-client pattern as ``live_judge.py``. Construction never
-    performs I/O either way.
+    ``allow_live=True`` requires the env keys (``EXA_API_KEY`` for gather
+    discovery, ``ANTHROPIC_API_KEY`` for dispatch-backed synthesis) at
+    construction — otherwise it refuses with a clear reason — and admits NO
+    injected parts (see above). Without ``allow_live``, every pipeline seam
+    (gather / synthesize / usage reader / source-url lookup) MUST be
+    injected and no ``loop_fn`` may be supplied (offline fakes never run a
+    browse loop, so a caller loop could only exist to confuse identity), so
+    offline tests exercise the full fail-closed mapping with fakes and zero
+    network — the same injectable-client pattern as ``live_judge.py``.
+    Construction never performs I/O either way.
 
 Sync bridge
     ``ProviderFn`` is synchronous; the cascade is async. The adapter bridges
@@ -161,8 +184,13 @@ class GatherOutcome:
       adapter keeps only real ``doc-url-*`` provenance for ``sources``.
     * ``tool_calls`` — count of ``"step"``-kind StepEvents from the session
       stream (each = one real Exa discover/promote action; see module doc).
+      Must be >= 1: the real loop's DONE path always steps, so a zero here
+      means nothing real happened and the query fails closed.
     * ``investigation_ids`` — session id + every leaf id, the trajectories
-      the usage reader sums ``DISPATCH_CALL`` accounting over.
+      the usage reader sums ``DISPATCH_CALL`` accounting over. Must be
+      non-empty and DUPLICATE-FREE: an honest gather never emits the same
+      trajectory twice, and a duplicate would double-count usage. The
+      adapter refuses duplicates rather than silently deduping.
     """
 
     pack: Any
@@ -250,12 +278,14 @@ class LiveResearchProvider:
     """Callable ``ProviderFn`` running the real product research path per
     query, fail-closed to ``ProviderFailure`` on every dishonest outcome.
 
-    Construct via :func:`build_live_provider`. All four pipeline seams are
-    REQUIRED — there is no silent default. ``loop_fn`` (when supplied) is
-    identity-checked against the mock/stub factories at construction;
-    ``allow_live=True`` additionally requires the real Exa loop and the
-    required env keys, so a live-flagged provider can never exist around a
-    mock or without operator keys.
+    Construct via :func:`build_live_provider` — the constructor of record,
+    whose live mode admits NO injected parts. All four pipeline seams are
+    REQUIRED fields — there is no silent default. The ``__post_init__``
+    checks below are defense-in-depth for direct dataclass construction:
+    they refuse the known mock/stub loops and require the real Exa loop
+    identity + env keys under ``allow_live=True``. They catch honest
+    mistakes; they cannot catch deliberately forged function attributes
+    (see the module docstring's threat model).
     """
 
     gather: GatherFn
@@ -370,10 +400,22 @@ class LiveResearchProvider:
                 "gather reported a dishonest tool_calls count (must be a "
                 "non-negative integer bound to real step events)"
             )
+        if outcome.tool_calls == 0:
+            raise ProviderFailure(
+                "gather reported zero tool calls: a real research run always "
+                "performs tool actions (the Exa loop's completion path always "
+                "steps), so nothing real backs this report"
+            )
         if not outcome.investigation_ids:
             raise ProviderFailure(
                 "gather reported no investigation ids; token accounting cannot "
                 "be bound to real trajectories"
+            )
+        if len(set(outcome.investigation_ids)) != len(outcome.investigation_ids):
+            raise ProviderFailure(
+                "gather reported duplicate investigation ids: an honest gather "
+                "never emits the same trajectory twice, and a duplicate would "
+                "double-count dispatch usage (refusing rather than deduping)"
             )
 
     def _resolve_sources(
@@ -381,8 +423,13 @@ class LiveResearchProvider:
     ) -> tuple[SourceRef, ...]:
         """Real-URL provenance only: ``doc-url-*`` documents resolved through
         the ``documents.source_uri`` lookup. Placeholder ``doc-gather-*`` docs
-        and unresolvable/non-http rows are skipped — a missing source can only
-        depress the judged score; an invented one would inflate it."""
+        and INDIVIDUALLY unresolvable/non-http rows are skipped — one missing
+        source among others can only depress the judged score; an invented one
+        would inflate it. But ZERO resolvable sources overall refuses: a
+        deep-research report with no real-URL provenance at all signals broken
+        provenance wiring (or non-research posing as research), and handing
+        the judge a sourceless report would launder that breakage into a
+        measured score."""
         sources: list[SourceRef] = []
         for document_id, title in documents:
             if not document_id.startswith(_URL_DOC_PREFIX):
@@ -396,6 +443,13 @@ class LiveResearchProvider:
             if not isinstance(url, str) or not url.startswith(_URL_SCHEMES):
                 continue
             sources.append(SourceRef(url=url, title=title))
+        if not sources:
+            raise ProviderFailure(
+                "no resolvable real-URL provenance in the evidence pack: a "
+                "deep-research report with zero real sources signals broken "
+                "provenance wiring; refusing to let the judge score a "
+                "sourceless report"
+            )
         return tuple(sources)
 
     def _read_usage(self, investigation_ids: tuple[str, ...]) -> DispatchUsage:
@@ -448,50 +502,38 @@ def build_live_provider(
     per_query_timeout_s: float | None = DEFAULT_PER_QUERY_TIMEOUT_S,
     per_research_budget_usd: float = 5.0,
     aggregate_budget_usd: float | None = None,
+    discovery_top_k: int = 3,
 ) -> LiveResearchProvider:
-    """Build the live ``ProviderFn``. Two construction modes, both inert
-    (no I/O happens here):
+    """Build the live ``ProviderFn``. Two mutually exclusive construction
+    modes, both inert (no I/O happens here):
 
     * **Offline (default, ``allow_live=False``)** — every pipeline seam
       (``gather``, ``synthesize``, ``usage_reader``, ``source_url_lookup``)
       MUST be injected; a missing seam refuses construction rather than
-      silently wiring real machinery. This is the test mode.
-    * **Live (``allow_live=True``)** — missing seams get the REAL defaults
-      (DRW cascade gather over ``make_exa_gather_loop``, Loop 1 synthesis
-      tail, ``DISPATCH_CALL`` trajectory accounting, ``documents.source_uri``
-      lookup). Requires the required env keys at construction; a supplied
-      ``loop_fn`` must be a real ``make_exa_gather_loop`` product. Budget
-      caps bound the per-query gather exactly like a product launch
-      (cascade_routes.py ``launch``).
+      silently wiring real machinery. No ``loop_fn`` may be supplied (fakes
+      never run a browse loop). This is the test mode.
+    * **Live (``allow_live=True``)** — REAL MACHINERY, FULL STOP. Any
+      injected seam or caller-supplied ``loop_fn`` REFUSES construction.
+      Live mode self-builds the real Exa gather loop and the real seams
+      (DRW cascade gather, Loop 1 synthesis tail, ``DISPATCH_CALL``
+      trajectory accounting, ``documents.source_uri`` lookup) and requires
+      the env keys at construction. The caller may tune ONLY budgets,
+      timeout, and ``discovery_top_k`` — the knobs a product launch exposes
+      (cascade_routes.py ``launch``), none of which change WHAT is measured.
 
-    In BOTH modes a mock/stub ``loop_fn`` refuses construction.
+    ``loop_fn`` exists as a parameter solely to refuse it loudly with a
+    reasoned ``ValueError`` (rather than an opaque ``TypeError``) — there is
+    no accepted value in either mode.
     """
+    if loop_fn is not None:
+        raise ValueError(
+            "build_live_provider accepts no caller-supplied loop_fn in any "
+            "mode: live mode self-builds the real Exa gather loop, and "
+            "offline fakes never run a browse loop. A caller-supplied loop "
+            "could only exist to substitute what gets measured."
+        )
     if allow_live:
-        if loop_fn is None:
-            missing = _missing_live_env()
-            if missing:
-                # Refuse BEFORE importing/constructing any real machinery —
-                # same message the dataclass gate raises, surfaced early.
-                raise ValueError(
-                    f"allow_live=True but required env keys are missing: {missing}. "
-                    "The live eval path needs EXA_API_KEY (gather discovery) and "
-                    "ANTHROPIC_API_KEY (dispatch-backed synthesis) at construction."
-                )
-            loop_fn = _build_real_exa_loop()
-        if gather is None:
-            gather = _build_real_gather(
-                loop_fn,
-                per_research_budget_usd=per_research_budget_usd,
-                aggregate_budget_usd=aggregate_budget_usd,
-            )
-        if synthesize is None:
-            synthesize = _build_real_synthesize()
-        if usage_reader is None:
-            usage_reader = _read_dispatch_usage
-        if source_url_lookup is None:
-            source_url_lookup = _lookup_document_source_uri
-    else:
-        missing_seams = [
+        injected = [
             name
             for name, seam in (
                 ("gather", gather),
@@ -499,15 +541,56 @@ def build_live_provider(
                 ("usage_reader", usage_reader),
                 ("source_url_lookup", source_url_lookup),
             )
-            if seam is None
+            if seam is not None
         ]
-        if missing_seams:
+        if injected:
             raise ValueError(
-                "live defaults are operator-gated: pass allow_live=True (with "
-                f"keys configured) or inject the missing seams {missing_seams}. "
-                "Default construction stays inert offline by design."
+                f"allow_live=True refuses injected seams {injected}: live mode "
+                "is real machinery, full stop — a live-flagged provider "
+                "composed from injected parts could measure anything. Tune "
+                "budgets/timeout/discovery_top_k, or drop allow_live for the "
+                "fully-injected offline mode."
             )
-    assert gather is not None  # narrowed by both branches above
+        missing = _missing_live_env()
+        if missing:
+            # Refuse BEFORE importing/constructing any real machinery —
+            # same message the dataclass gate raises, surfaced early.
+            raise ValueError(
+                f"allow_live=True but required env keys are missing: {missing}. "
+                "The live eval path needs EXA_API_KEY (gather discovery) and "
+                "ANTHROPIC_API_KEY (dispatch-backed synthesis) at construction."
+            )
+        real_loop = _build_real_exa_loop(top_k=discovery_top_k)
+        return LiveResearchProvider(
+            gather=_build_real_gather(
+                real_loop,
+                per_research_budget_usd=per_research_budget_usd,
+                aggregate_budget_usd=aggregate_budget_usd,
+            ),
+            synthesize=_build_real_synthesize(),
+            usage_reader=_read_dispatch_usage,
+            source_url_lookup=_lookup_document_source_uri,
+            loop_fn=real_loop,
+            allow_live=True,
+            per_query_timeout_s=per_query_timeout_s,
+        )
+    missing_seams = [
+        name
+        for name, seam in (
+            ("gather", gather),
+            ("synthesize", synthesize),
+            ("usage_reader", usage_reader),
+            ("source_url_lookup", source_url_lookup),
+        )
+        if seam is None
+    ]
+    if missing_seams:
+        raise ValueError(
+            "live defaults are operator-gated: pass allow_live=True (with "
+            f"keys configured) or inject the missing seams {missing_seams}. "
+            "Default construction stays inert offline by design."
+        )
+    assert gather is not None  # narrowed by the check above
     assert synthesize is not None
     assert usage_reader is not None
     assert source_url_lookup is not None
@@ -516,8 +599,8 @@ def build_live_provider(
         synthesize=synthesize,
         usage_reader=usage_reader,
         source_url_lookup=source_url_lookup,
-        loop_fn=loop_fn,
-        allow_live=allow_live,
+        loop_fn=None,
+        allow_live=False,
         per_query_timeout_s=per_query_timeout_s,
     )
 
@@ -528,13 +611,14 @@ def build_live_provider(
 # ---------------------------------------------------------------------------
 
 
-def _build_real_exa_loop() -> object:
+def _build_real_exa_loop(*, top_k: int = 3) -> object:
     """The real gather loop, mirroring prod's ``ANTIEK_DRW_GATHER=exa`` branch
-    (cascade_routes.py :273-275). Construction is lazy/inert — the Exa client
-    reads ``EXA_API_KEY`` on first discover, not here."""
+    (cascade_routes.py :273-275, default ``top_k=3``). Construction is
+    lazy/inert — the Exa client reads ``EXA_API_KEY`` on first discover, not
+    here."""
     from runtime.research_runner import make_exa_gather_loop
 
-    return make_exa_gather_loop(top_k=3)
+    return make_exa_gather_loop(top_k=top_k)
 
 
 def _build_real_gather(
