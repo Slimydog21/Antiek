@@ -18,12 +18,19 @@ from interfaces.research.api.marketplace_host_routes import (  # noqa: E402
     register_marketplace_host_routes,
     reset_marketplace_host_store,
 )
+from substrate.marketplace_host import InMemoryHostStore  # noqa: E402
 
 
 @pytest.fixture
 def client():
     reset_marketplace_host_store()
     app = FastAPI()
+
+    @app.middleware("http")
+    async def test_identity(request, call_next):  # type: ignore[no-untyped-def]
+        request.state.user_id = request.headers.get("x-test-user", "user-api")
+        return await call_next(request)
+
     register_marketplace_host_routes(app)
     return TestClient(app)
 
@@ -91,6 +98,7 @@ def test_purchased_without_receipt_400(client):
 
 def test_purchase_and_host(client):
     raw = base64.b64encode(b"%PDF-1.4 stub purchase").decode("ascii")
+    headers = {"x-test-user": "user-buy"}
     r = client.post(
         "/marketplace/purchase-and-host",
         json={
@@ -99,6 +107,7 @@ def test_purchase_and_host(client):
             "opaque_reference": "ORDER-99",
             "content_b64": raw,
         },
+        headers=headers,
     )
     assert r.status_code == 200, r.text
     body = r.json()
@@ -106,10 +115,84 @@ def test_purchase_and_host(client):
     assert body["license_class"] == "purchased"
     assert body["view_format"] == "html"
     # Residual (abw): purchased library row is never free inventory.
-    lib = client.get("/marketplace/library/user-buy")
+    lib = client.get("/marketplace/library/user-buy", headers=headers)
     assert lib.status_code == 200
     docs = lib.json()["documents"]
     assert docs
     bought = next(d for d in docs if d.get("document_id") == body["document_id"])
     assert bought.get("license_class") == "purchased"
     assert bought.get("is_free") is False
+
+
+def test_owner_scope_is_server_bound_and_document_reads_are_isolated(client):
+    forged = client.post(
+        "/marketplace/host",
+        json={"owner_id": "victim", "book_id": "pd-pride"},
+    )
+    assert forged.status_code == 403
+
+    hosted = client.post(
+        "/marketplace/host",
+        json={"owner_id": "user-api", "book_id": "pd-pride"},
+    )
+    assert hosted.status_code == 200
+    document_id = hosted.json()["document_id"]
+
+    assert client.get("/marketplace/library/victim").status_code == 403
+    victim_library = client.get(
+        "/marketplace/library/victim", headers={"x-test-user": "victim"}
+    )
+    assert victim_library.status_code == 200
+    assert victim_library.json()["count"] == 0
+    assert (
+        client.get(
+            f"/marketplace/documents/{document_id}/html",
+            headers={"x-test-user": "victim"},
+        ).status_code
+        == 403
+    )
+
+
+def test_owner_routes_fail_closed_without_identity_but_catalog_remains_public():
+    reset_marketplace_host_store()
+    app = FastAPI()
+    register_marketplace_host_routes(app)
+    client = TestClient(app)
+
+    assert client.get("/marketplace/catalog").status_code == 200
+    denied = client.post(
+        "/marketplace/host",
+        json={"owner_id": "operator", "book_id": "pd-pride"},
+    )
+    assert denied.status_code == 503
+
+
+def test_operator_alias_membership_migrates_without_hiding_existing_books():
+    store = InMemoryHostStore()
+    store.put_document(
+        "legacy-doc",
+        {
+            "document_id": "legacy-doc",
+            "owner_id": "operator",
+            "title": "Legacy book",
+            "license_class": "public_domain",
+            "view_format": "html",
+        },
+    )
+    store.put_membership("operator", "legacy-doc")
+    reset_marketplace_host_store(store)
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def operator_identity(request, call_next):  # type: ignore[no-untyped-def]
+        request.state.user_id = "__operator__"
+        return await call_next(request)
+
+    register_marketplace_host_routes(app)
+    client = TestClient(app)
+
+    response = client.get("/marketplace/library/operator")
+    assert response.status_code == 200
+    assert response.json()["owner_id"] == "__operator__"
+    assert response.json()["documents"][0]["document_id"] == "legacy-doc"
+    assert store.list_membership("__operator__") == ["legacy-doc"]

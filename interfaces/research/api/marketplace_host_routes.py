@@ -9,7 +9,7 @@ from __future__ import annotations
 import base64
 from typing import Any
 
-from fastapi import APIRouter, FastAPI, HTTPException
+from fastapi import APIRouter, FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from substrate.marketplace_host import (
@@ -68,6 +68,32 @@ class PurchaseHostBody(BaseModel):
     )
     note: str = ""
     seed_twins: bool = True
+
+
+def _request_owner(request: Request) -> str:
+    owner_id = str(getattr(request.state, "user_id", "") or "").strip()
+    if not owner_id:
+        raise HTTPException(
+            status_code=503,
+            detail="authenticated request identity is unavailable",
+        )
+    return owner_id
+
+
+def _authorized_owner(request: Request, requested_owner: str) -> str:
+    """Bind a legacy owner parameter to middleware-authenticated identity."""
+
+    owner_id = _request_owner(request)
+    requested = requested_owner.strip()
+    aliases = {owner_id}
+    if owner_id == "__operator__":
+        aliases.add("operator")
+    if requested not in aliases:
+        raise HTTPException(
+            status_code=403,
+            detail="account scope does not match authenticated identity",
+        )
+    return owner_id
 
 
 def catalog_honesty_payload(entries: list[dict[str, Any]]) -> dict[str, Any]:
@@ -237,7 +263,8 @@ def _maybe_record_marketplace_host_usage(
 
 
 @marketplace_host_router.post("/host")
-def post_host(body: HostBody) -> dict[str, Any]:
+def post_host(body: HostBody, request: Request) -> dict[str, Any]:
+    owner_id = _authorized_owner(request, body.owner_id)
     content = None
     if body.content_b64:
         try:
@@ -246,7 +273,7 @@ def post_host(body: HostBody) -> dict[str, Any]:
             raise HTTPException(status_code=400, detail=f"invalid content_b64: {e}") from e
     try:
         result = host_book_into_account(
-            owner_id=body.owner_id,
+            owner_id=owner_id,
             store=_s(),
             book_id=body.book_id,
             catalog=_c(),
@@ -279,14 +306,15 @@ def post_host(body: HostBody) -> dict[str, Any]:
 
 
 @marketplace_host_router.post("/purchase-and-host")
-def post_purchase_and_host(body: PurchaseHostBody) -> dict[str, Any]:
+def post_purchase_and_host(body: PurchaseHostBody, request: Request) -> dict[str, Any]:
+    owner_id = _authorized_owner(request, body.owner_id)
     try:
         content = base64.b64decode(body.content_b64)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"invalid content_b64: {e}") from e
     try:
         receipt, result = record_purchase_and_host(
-            owner_id=body.owner_id,
+            owner_id=owner_id,
             store=_s(),
             book_id=body.book_id,
             catalog=_c(),
@@ -321,10 +349,17 @@ def post_purchase_and_host(body: PurchaseHostBody) -> dict[str, Any]:
 
 
 @marketplace_host_router.get("/library/{owner_id}")
-def get_library(owner_id: str) -> dict[str, Any]:
+def get_library(owner_id: str, request: Request) -> dict[str, Any]:
+    owner_id = _authorized_owner(request, owner_id)
     store = _s()
     from substrate.marketplace_host import AccountLibrary
 
+    if owner_id == "__operator__":
+        # The campaign UI historically persisted the literal ``operator``.
+        # Migrate those memberships idempotently into the canonical middleware
+        # identity before projecting the account library.
+        for document_id in store.list_membership("operator"):
+            store.put_membership(owner_id, document_id)
     lib = AccountLibrary.load(owner_id, store=store)
     docs = []
     free_count = 0
@@ -357,9 +392,22 @@ def get_library(owner_id: str) -> dict[str, Any]:
 
 
 @marketplace_host_router.get("/documents/{document_id}/html")
-def get_document_html(document_id: str) -> dict[str, Any]:
+def get_document_html(document_id: str, request: Request) -> dict[str, Any]:
     """Residual (dp): return HTML body plus title/license for library rehydrate."""
     store = _s()
+    owner_id = _request_owner(request)
+    doc = store.get_document(document_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"unknown document_id: {document_id}")
+    stored_owner = str(doc.get("owner_id") or "")
+    allowed_owners = {owner_id}
+    if owner_id == "__operator__":
+        allowed_owners.add("operator")
+    if stored_owner not in allowed_owners:
+        raise HTTPException(
+            status_code=403,
+            detail="document does not belong to authenticated identity",
+        )
     try:
         html = project_hosted_book_html(document_id, store=store)
     except KeyError as e:
@@ -367,7 +415,6 @@ def get_document_html(document_id: str) -> dict[str, Any]:
     except RuntimeError as e:
         # PDF / empty projection — honest 400, not a fake HTML body.
         raise HTTPException(status_code=400, detail=str(e)) from e
-    doc = store.get_document(document_id) or {}
     return {
         "document_id": document_id,
         "view_format": "html",
