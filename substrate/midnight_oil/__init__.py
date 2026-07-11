@@ -12,6 +12,21 @@ tests inject clocks and spawn functions.
 from __future__ import annotations
 
 from .ceiling import recommend_price_ceiling
+from .contracts import (
+    ADAPTER_KEYS,
+    GateReceipt,
+    MidnightOilAppliedRunReceipt,
+    MidnightOilApprovalReceipt,
+    MidnightOilArtifactContract,
+    MidnightOilLaunchPacket,
+    MidnightOilPreflight,
+    MidnightOilRequest,
+    MidnightOilRolePlan,
+    MidnightOilRunnerHandoff,
+    is_known_adapter_key,
+    preflight_midnight_oil,
+    validate_receipt_chain,
+)
 from .deposit import DepositResult, deposit_job_results
 from .job import (
     JobStatus,
@@ -53,9 +68,19 @@ from .worker import (
 __all__ = [
     "ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV",
     "DepositResult",
+    "ADAPTER_KEYS",
+    "GateReceipt",
     "JobStatus",
     "MidnightOilJob",
     "MidnightOilProductResult",
+    "MidnightOilAppliedRunReceipt",
+    "MidnightOilApprovalReceipt",
+    "MidnightOilArtifactContract",
+    "MidnightOilLaunchPacket",
+    "MidnightOilPreflight",
+    "MidnightOilRequest",
+    "MidnightOilRolePlan",
+    "MidnightOilRunnerHandoff",
     "ProjectFn",
     "StepFn",
     "WorkerStepResult",
@@ -70,6 +95,7 @@ __all__ = [
     "deposit_job_results",
     "get_job",
     "job_summary_html",
+    "is_known_adapter_key",
     "live_step_enabled",
     "live_step_fn_installed",
     "live_step_status_payload",
@@ -77,6 +103,7 @@ __all__ = [
     "run_leased_worker_iteration",
     "product_result_html",
     "provider_idempotency_key",
+    "preflight_midnight_oil",
     "offline_goal_project_fn",
     "offline_goal_step_fn",
     "recommend_price_ceiling",
@@ -84,4 +111,5 @@ __all__ = [
     "run_job_offline",
     "run_worker_iteration",
     "run_worker_loop",
+    "validate_receipt_chain",
 ]

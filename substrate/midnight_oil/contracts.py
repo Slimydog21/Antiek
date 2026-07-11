@@ -10,9 +10,122 @@ from __future__ import annotations
 
 import math
 import uuid
+from decimal import ROUND_FLOOR, Decimal
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+ADAPTER_KEYS: tuple[str, ...] = (
+    "budget_reservation_provider",
+    "model_provider_route_executor",
+    "retrieval_executor_source_receipts",
+    "graph_mutation_writer",
+    "final_html_artifact_writer",
+    "operator_live_dispatch_enablement",
+    "control_ledger_audit_rollback",
+)
+
+_SIDE_EFFECT_FIELDS = (
+    "dispatch_performed",
+    "budget_reserved",
+    "provider_calls_made",
+    "retrieval_performed",
+    "graph_mutated",
+    "final_artifact_created",
+)
+
+
+class _ContractModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+
+class GateReceipt(_ContractModel):
+    """One inert adapter gate in a provenance-ordered no-spend chain."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+
+    receipt_id: str = Field(min_length=1, max_length=256)
+    run_id: str = Field(min_length=1, max_length=256)
+    adapter_key: str = Field(min_length=1, max_length=128)
+    status: str = Field(min_length=1, max_length=256)
+    prerequisite_receipt_ids: tuple[str, ...] = ()
+    dispatch_performed: bool = False
+    budget_reserved: bool = False
+    provider_calls_made: bool = False
+    retrieval_performed: bool = False
+    graph_mutated: bool = False
+    final_artifact_created: bool = False
+    blockers: tuple[str, ...] = ()
+    required_invariants: tuple[str, ...] = ()
+    notes: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _no_side_effect_claims(self) -> GateReceipt:
+        expected_status = f"blocked_{self.adapter_key}_unimplemented"
+        if self.status != expected_status:
+            raise ValueError(
+                f"gate receipt {self.receipt_id} status must be {expected_status!r}"
+            )
+        claimed = [field for field in _SIDE_EFFECT_FIELDS if getattr(self, field)]
+        if claimed:
+            raise ValueError(
+                f"gate receipt {self.receipt_id} cannot claim side effects: {', '.join(claimed)}"
+            )
+        if len(set(self.prerequisite_receipt_ids)) != len(self.prerequisite_receipt_ids):
+            raise ValueError(f"gate receipt {self.receipt_id} has duplicate prerequisites")
+        for field_name, values in (
+            ("blockers", self.blockers),
+            ("required_invariants", self.required_invariants),
+            ("notes", self.notes),
+        ):
+            if len(values) > 64 or any(
+                type(value) is not str or not value.strip() or len(value) > 2_000
+                for value in values
+            ):
+                raise ValueError(f"gate receipt {self.receipt_id} has invalid {field_name}")
+        return self
+
+
+def is_known_adapter_key(adapter_key: str) -> bool:
+    return type(adapter_key) is str and adapter_key in ADAPTER_KEYS
+
+
+def validate_receipt_chain(receipts: list[GateReceipt]) -> None:
+    """Validate provenance ordering and one-owner-per-adapter invariants."""
+    if not isinstance(receipts, list):
+        raise TypeError("receipt chain must be a list")
+    seen_receipts: set[str] = set()
+    seen_adapters: dict[str, str] = {}
+    run_id: str | None = None
+    for receipt in receipts:
+        if not isinstance(receipt, GateReceipt):
+            raise TypeError("receipt chain entries must be GateReceipt instances")
+        if run_id is None:
+            run_id = receipt.run_id
+        elif receipt.run_id != run_id:
+            raise ValueError(
+                f"receipt {receipt.receipt_id} has mixed run_id {receipt.run_id!r}"
+            )
+        if receipt.receipt_id in seen_receipts:
+            raise ValueError(f"receipt {receipt.receipt_id} has a duplicate receipt_id")
+        duplicate_owner = seen_adapters.get(receipt.adapter_key)
+        if duplicate_owner is not None:
+            raise ValueError(
+                f"receipt {receipt.receipt_id} duplicates adapter_key owned by {duplicate_owner}"
+            )
+        dangling = [
+            prerequisite
+            for prerequisite in receipt.prerequisite_receipt_ids
+            if prerequisite not in seen_receipts
+        ]
+        if dangling:
+            raise ValueError(
+                f"receipt {receipt.receipt_id} has dangling prerequisite {dangling[0]}"
+            )
+        if any(getattr(receipt, field) for field in _SIDE_EFFECT_FIELDS):
+            raise ValueError(f"receipt {receipt.receipt_id} violates the no-spend invariant")
+        seen_receipts.add(receipt.receipt_id)
+        seen_adapters[receipt.adapter_key] = receipt.receipt_id
 
 RouteMode = Literal["auto_quality", "auto_balanced", "auto_cost", "auto_latency", "manual"]
 SourcePolicy = Literal["arxiv", "substack", "web", "operator_corpus"]
@@ -34,7 +147,7 @@ _TIME_WEIGHTS: dict[MidnightOilRole, int] = {
 }
 
 
-class MidnightOilRequest(BaseModel):
+class MidnightOilRequest(_ContractModel):
     goal: str = Field(min_length=1, max_length=4000)
     work_minutes: int = Field(ge=15, le=720)
     price_ceiling_usd: float = Field(gt=0.0, le=10_000.0)
@@ -50,7 +163,7 @@ class MidnightOilRequest(BaseModel):
         return self
 
 
-class MidnightOilArtifactContract(BaseModel):
+class MidnightOilArtifactContract(_ContractModel):
     final_format: Literal["html"] = "html"
     pdf_allowed: bool = False
     antiek_information_asset: bool = True
@@ -59,7 +172,7 @@ class MidnightOilArtifactContract(BaseModel):
     source_receipt_links_required: bool = True
 
 
-class MidnightOilRolePlan(BaseModel):
+class MidnightOilRolePlan(_ContractModel):
     role: MidnightOilRole
     budget_usd: float = Field(ge=0.0)
     max_minutes: int = Field(ge=0)
@@ -69,7 +182,7 @@ class MidnightOilRolePlan(BaseModel):
     planned_route_receipt_id: str
 
 
-class MidnightOilLaunchPacket(BaseModel):
+class MidnightOilLaunchPacket(_ContractModel):
     packet_id: str
     run_id: str
     goal: str
@@ -91,7 +204,7 @@ class MidnightOilLaunchPacket(BaseModel):
     launch_notes: list[str] = Field(default_factory=list)
 
 
-class MidnightOilApprovalReceipt(BaseModel):
+class MidnightOilApprovalReceipt(_ContractModel):
     receipt_id: str
     launch_packet_id: str
     run_id: str
@@ -111,7 +224,7 @@ class MidnightOilApprovalReceipt(BaseModel):
     receipt_notes: list[str] = Field(default_factory=list)
 
 
-class MidnightOilRunnerHandoff(BaseModel):
+class MidnightOilRunnerHandoff(_ContractModel):
     handoff_id: str
     approval_receipt_id: str
     launch_packet_id: str
@@ -130,7 +243,7 @@ class MidnightOilRunnerHandoff(BaseModel):
     handoff_notes: list[str] = Field(default_factory=list)
 
 
-class MidnightOilAppliedRunReceipt(BaseModel):
+class MidnightOilAppliedRunReceipt(_ContractModel):
     receipt_id: str
     runner_handoff_id: str
     approval_receipt_id: str
@@ -150,7 +263,7 @@ class MidnightOilAppliedRunReceipt(BaseModel):
     applied_notes: list[str] = Field(default_factory=list)
 
 
-class MidnightOilPreflight(BaseModel):
+class MidnightOilPreflight(_ContractModel):
     accepted: bool
     denial_reason: str | None = None
     run_id: str | None = None
@@ -337,7 +450,10 @@ def _role_plans(
     work_minutes: int,
     route_mode: RouteMode,
 ) -> list[MidnightOilRolePlan]:
-    cents = max(1, math.floor(price_ceiling_usd * 100))
+    cents = max(
+        1,
+        int((Decimal(str(price_ceiling_usd)) * 100).to_integral_value(rounding=ROUND_FLOOR)),
+    )
     allocated = 0
     plans: list[MidnightOilRolePlan] = []
     for index, role in enumerate(_ROLE_ORDER):
