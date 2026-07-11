@@ -98,6 +98,13 @@ describe("postPriceCeilingRecommend", () => {
     ).rejects.toThrow(/advisory/);
   });
 
+  it("rejects hours <= 0 before network", async () => {
+    await expect(
+      postPriceCeilingRecommend({ hours: 0, ...rates }),
+    ).rejects.toThrow(/hours must be > 0/);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
   it("surfaces HTTP errors", async () => {
     mockFetch.mockResolvedValue({
       ok: false,
@@ -106,7 +113,7 @@ describe("postPriceCeilingRecommend", () => {
       json: async () => ({}),
     } as unknown as Response);
     await expect(
-      postPriceCeilingRecommend({ hours: 0, ...rates }),
+      postPriceCeilingRecommend({ hours: 1, ...rates }),
     ).rejects.toBeInstanceOf(PriceCeilingHttpError);
   });
 });
