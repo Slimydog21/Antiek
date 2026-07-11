@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from decimal import ROUND_FLOOR, Decimal
 from typing import Any
 
-from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
+from fastapi import APIRouter, FastAPI, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, field_validator
 
 from substrate.midnight_oil import (
@@ -26,9 +26,11 @@ from substrate.midnight_oil import (
 )
 from substrate.midnight_oil.job import InMemoryJobStore, JobStore, MidnightOilJob
 from substrate.midnight_oil.job_store import OperationState, OwnerJob, OwnerJobStore
+from substrate.midnight_oil.operation_queue import DurableOperationQueue, OperationQueue
 from substrate.midnight_oil.spend_consent import (
     MAX_CEILING_CENTS,
     ConsentReceipt,
+    ConsentRejected,
     JobConsentConfig,
     SpendConsentStore,
     decode_and_verify,
@@ -47,6 +49,7 @@ class MidnightOilDependencies:
     active_key_id: str
     signing_key: bytes
     verification_keys: Mapping[str, bytes]
+    operation_queue: OperationQueue | None = None
     clock_ms: Callable[[], int] = lambda: time.time_ns() // 1_000_000
     random_token: Callable[[int], str] = secrets.token_urlsafe
     test_mode: bool = False
@@ -73,9 +76,11 @@ class MidnightOilDependencies:
         if self.verification_keys.get(self.active_key_id) != self.signing_key:
             raise ValueError("the active signing key must be in the verification keyring")
         if not self.test_mode and (
-            getattr(self.owner_jobs, "_test_only", False) or isinstance(self.jobs, InMemoryJobStore)
+            getattr(self.owner_jobs, "_test_only", False)
+            or isinstance(self.jobs, InMemoryJobStore)
+            or not isinstance(self.operation_queue, DurableOperationQueue)
         ):
-            raise ValueError("production Midnight Oil requires durable stores")
+            raise ValueError("production Midnight Oil requires durable stores and queue")
 
 
 def reset_midnight_oil_store(store: JobStore | None = None) -> None:
@@ -153,12 +158,12 @@ class DepositBody(BaseModel):
 
 class RunBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    job_id: str
-    max_steps: int | None = None
-    spent_per_goal: float = 0.05
-    auto_deposit: bool = False
-    draft_combined: bool = True
-    force_offline: bool = False
+    job_id: StrictStr = Field(min_length=1, max_length=256)
+    max_steps: StrictInt | None = Field(default=None, ge=1, le=100_000)
+    spent_per_goal: float = 0.05  # legacy display input; never queued or authoritative
+    auto_deposit: StrictBool = False
+    draft_combined: StrictBool = True
+    force_offline: StrictBool = False
 
 
 def _owner_payload(job: Any) -> dict[str, object]:
@@ -434,10 +439,148 @@ def post_approve(request: Request, body: LegacyApproveBody) -> None:
     raise HTTPException(status_code=410, detail="use the integer-cent spend-consent endpoint")
 
 
+def _run_error(status_code: int, detail: str) -> HTTPException:
+    return HTTPException(
+        status_code=status_code, detail=detail, headers={"Cache-Control": "no-store"}
+    )
+
+
 @midnight_oil_router.post("/run")
-def post_run(request: Request, body: RunBody) -> dict[str, Any]:
-    _owned(request, body.job_id)
-    raise HTTPException(status_code=409, detail="dispatch is disabled until durable enqueue")
+def post_run(
+    request: Request,
+    body: RunBody,
+    response: Response,
+    spend_consent: str | None = Header(default=None, alias="X-Midnight-Oil-Spend-Consent"),
+) -> dict[str, Any]:
+    """Consume authority and durably enqueue; never execute provider work."""
+    deps = _deps(request)
+    try:
+        owner = _owner(request)
+    except HTTPException:
+        raise _run_error(401, "authentication required") from None
+    authority = deps.owner_jobs.get_job(owner_user_id=owner, job_id=body.job_id)
+    if authority is None:
+        raise _run_error(404, "job not found")
+    if request.query_params:
+        raise _run_error(400, "spend consent is accepted only by header")
+    response.headers["Cache-Control"] = "no-store"
+    header_values = request.headers.getlist("x-midnight-oil-spend-consent")
+    if len(header_values) != 1 or spend_consent is None or not spend_consent:
+        raise _run_error(400, "spend consent header is required")
+    if (
+        authority.operation_id is None
+        or authority.approved_ceiling_cents is None
+        or authority.consent_receipt_id is None
+        or authority.consent_config_hash is None
+    ):
+        raise _run_error(409, "job has no durable spend authority")
+    if deps.operation_queue is None:
+        raise _run_error(503, "durable operation queue is unavailable")
+    try:
+        now = deps.clock_ms()
+        config = _config(authority)
+        legacy = get_job(body.job_id, store=deps.jobs)
+        if legacy is None:
+            raise _run_error(404, "job not found")
+        if (
+            not _legacy_matches_authority(legacy, config)
+            or config.canonical_hash() != authority.consent_config_hash
+        ):
+            raise _run_error(409, "job configuration requires reconciliation")
+        claim = deps.consents.claim(
+            spend_consent,
+            expected_operator_id=owner,
+            expected_config=config,
+            expected_operation_id=authority.operation_id,
+            expected_ceiling_cents=authority.approved_ceiling_cents,
+            now_ms=now,
+            verification_keys=deps.verification_keys,
+            allow_expired_recovery=True,
+        )
+        if (
+            claim.receipt.receipt_id != authority.consent_receipt_id
+            or claim.receipt.config_hash != authority.consent_config_hash
+        ):
+            raise _run_error(409, "spend authority requires reconciliation")
+    except ConsentRejected:
+        # Deliberately exclude the raw credential and signature from all errors.
+        raise HTTPException(
+            status_code=403,
+            detail="spend consent rejected",
+            headers={"Cache-Control": "no-store"},
+        ) from None
+    except HTTPException:
+        raise
+    except (KeyError, TypeError, ValueError):
+        raise _run_error(409, "stored job authority is invalid") from None
+    except Exception:
+        raise _run_error(503, "spend consent authority is unavailable") from None
+
+    current = authority
+    if claim.receipt.receipt_id != authority.consent_receipt_id:
+        raise _run_error(409, "consent authority requires reconciliation")
+    if current.operation_state is OperationState.CONSENT_ISSUED:
+        # A fresh claim permits only this CAS.  A replayed claim may recover the
+        # same operation after a claim->CAS crash; operation_id is in the CAS.
+        try:
+            changed = deps.owner_jobs.compare_and_set(
+                owner_user_id=owner,
+                job_id=body.job_id,
+                expected_version=current.state_version,
+                expected_state=OperationState.CONSENT_ISSUED,
+                operation_id=claim.receipt.operation_id,
+                next_state=OperationState.QUEUED,
+                consent_claimed_at_ms=claim.claimed_at_ms,
+            )
+        except Exception:
+            raise _run_error(503, "operation transition is unavailable") from None
+        current = changed.job or current
+    elif claim.claimed_now:
+        # A newly consumed receipt cannot legitimately observe a later state.
+        raise _run_error(409, "operation state conflicts with consent")
+
+    # A lost CAS race converges by re-reading authority.  Never infer success.
+    try:
+        latest = deps.owner_jobs.get_job(owner_user_id=owner, job_id=body.job_id)
+    except Exception:
+        raise _run_error(503, "operation authority is unavailable") from None
+    if latest is None or latest.operation_id != claim.receipt.operation_id:
+        raise _run_error(409, "operation conflicts with durable authority")
+    current = latest
+    if current.operation_state is OperationState.CONSENT_ISSUED:
+        raise _run_error(503, "operation transition did not persist")
+
+    try:
+        queued = deps.operation_queue.get(claim.receipt.operation_id)
+    except Exception:
+        raise _run_error(503, "operation queue is unavailable") from None
+    if current.operation_state is OperationState.QUEUED and queued is None:
+        try:
+            queued, _ = deps.operation_queue.enqueue_once(
+                operation_id=claim.receipt.operation_id,
+                owner_user_id=owner,
+                job_id=body.job_id,
+                enqueued_at_ms=now,
+                options={
+                    "max_steps": body.max_steps,
+                    "auto_deposit": body.auto_deposit,
+                    "draft_combined": body.draft_combined,
+                    "force_offline": body.force_offline,
+                },
+            )
+        except ValueError:
+            raise _run_error(409, "operation queue conflicts with authority") from None
+        except Exception:
+            raise _run_error(503, "operation enqueue is unavailable") from None
+    elif queued is not None and (
+        queued.owner_user_id != owner or queued.job_id != body.job_id
+    ):
+        raise _run_error(409, "operation queue conflicts with authority")
+    return {
+        "job_id": body.job_id,
+        "operation_id": claim.receipt.operation_id,
+        "state": current.operation_state.value,
+    }
 
 
 @midnight_oil_router.post("/deposit")

@@ -10,6 +10,8 @@ from typing import Protocol
 
 from .budget_ledger import BudgetCeilingExceeded, BudgetLedger
 from .job import JobStore, MidnightOilJob, _job_from_row, put_job_state
+from .job_store import OperationState, OwnerJobStore
+from .operation_queue import OperationQueue, provider_idempotency_key
 
 _WORKER_ROLE = "research"
 
@@ -45,6 +47,230 @@ class WorkerStepResult:
 
 StepFn = Callable[[MidnightOilJob], WorkerStepResult]
 ProjectFn = Callable[[MidnightOilJob], float]
+
+
+@dataclass(frozen=True)
+class WorkerLease:
+    operation_id: str
+    owner_user_id: str
+    job_id: str
+    worker_id: str
+    step_index: int
+    lease_generation: int
+
+    def idempotency_key(self, step_index: int) -> str:
+        return provider_idempotency_key(self.operation_id, step_index)
+
+
+def lease_authorized_operation(
+    *,
+    operation_id: str,
+    owner_user_id: str,
+    job_id: str,
+    owner_jobs: OwnerJobStore,
+    operation_queue: OperationQueue,
+    jobs: JobStore,
+    worker_id: str,
+    now_ms: int,
+    lease_expires_at_ms: int,
+) -> WorkerLease:
+    """Recheck immutable authority, owner-CAS, then acquire one queue lease."""
+    authority = owner_jobs.get_job(owner_user_id=owner_user_id, job_id=job_id)
+    queued = operation_queue.get(operation_id)
+    legacy_row = jobs.get_job(job_id)
+    if authority is None or queued is None or legacy_row is None:
+        raise ValueError("durable operation is incomplete")
+    if authority.operation_id != operation_id or (
+        queued.owner_user_id,
+        queued.job_id,
+    ) != (owner_user_id, job_id):
+        raise ValueError("operation identity conflicts with durable authority")
+    payload = authority.payload
+    durable_goals = payload.get("goals")
+    immutable_matches = (
+        isinstance(durable_goals, list)
+        and all(type(goal) is str for goal in durable_goals)
+        and tuple(legacy_row.get("goals") or ()) == tuple(durable_goals)
+        and legacy_row.get("duration_minutes") == payload.get("duration_minutes")
+        and legacy_row.get("model_id") == payload.get("model_id")
+        and legacy_row.get("research_tier") == payload.get("research_tier")
+        and legacy_row.get("fanout_depth") == payload.get("fanout_depth")
+        and legacy_row.get("asset_id") == payload.get("asset_id")
+    )
+    if not immutable_matches or authority.approved_ceiling_cents is None:
+        raise ValueError("job configuration requires reconciliation")
+    expected_usd = authority.approved_ceiling_cents / 100
+    existing_ceiling = legacy_row.get("approved_ceiling_usd")
+    if existing_ceiling is not None and _usd_to_cents(
+        float(existing_ceiling), ceiling=True, field="approved_ceiling_usd"
+    ) != authority.approved_ceiling_cents:
+        raise ValueError("legacy ceiling conflicts with durable authority")
+    if authority.operation_state is OperationState.QUEUED:
+        transitioned = owner_jobs.compare_and_set(
+            owner_user_id=owner_user_id,
+            job_id=job_id,
+            expected_version=authority.state_version,
+            expected_state=OperationState.QUEUED,
+            operation_id=operation_id,
+            next_state=OperationState.RUNNING,
+            dispatch_started_at_ms=now_ms,
+        )
+        authority = transitioned.job or authority
+    repair_key = provider_idempotency_key(operation_id, queued.next_step_index)
+    terminal_repair = (
+        authority.operation_state
+        in {
+            OperationState.COMPLETE,
+            OperationState.FAILED,
+            OperationState.BUDGET_HALTED,
+            OperationState.TIMED_OUT,
+        }
+        and repair_key in tuple(legacy_row.get("completed_step_keys") or ())
+    )
+    if authority.operation_state is not OperationState.RUNNING and not terminal_repair:
+        raise ValueError("operation is not dispatchable")
+    # Project authority before exposing the dispatchable lease. A crash after
+    # this idempotent write but before lease can be recovered without dispatch.
+    updated = dict(legacy_row)
+    updated["approved_ceiling_usd"] = expected_usd
+    if updated.get("status") in {"awaiting_approval", "draft"}:
+        updated["status"] = "approved"
+    jobs.put_job(updated)
+    leased, won = operation_queue.lease(
+        operation_id=operation_id,
+        worker_id=worker_id,
+        leased_at_ms=now_ms,
+        lease_expires_at_ms=lease_expires_at_ms,
+    )
+    if not won:
+        raise ValueError("operation is already leased")
+    if leased.state != "running":
+        raise ValueError("operation lease did not persist")
+    return WorkerLease(
+        operation_id,
+        owner_user_id,
+        job_id,
+        worker_id,
+        leased.next_step_index,
+        leased.lease_generation,
+    )
+
+
+IdempotentStepFn = Callable[[MidnightOilJob, str], WorkerStepResult]
+
+
+def _run_leased_worker_iteration_fenced(
+    lease: WorkerLease,
+    *,
+    operation_queue: OperationQueue,
+    owner_jobs: OwnerJobStore,
+    store: JobStore,
+    step_fn: IdempotentStepFn,
+    project_fn: ProjectFn,
+    clock: Clock,
+    on_spawn: Callable[[MidnightOilJob, WorkerStepResult], None] | None = None,
+) -> MidnightOilJob:
+    """Propagate the durable provider key and checkpoint step progression."""
+    key = lease.idempotency_key(lease.step_index)
+    dispatched = False
+
+    def dispatch(current: MidnightOilJob) -> WorkerStepResult:
+        nonlocal dispatched
+        dispatched = True
+        return step_fn(current, key)
+
+    existing = get_or_raise(lease.job_id, store=store)
+    if key in existing.returned_step_keys and key not in existing.completed_step_keys:
+        authority = owner_jobs.get_job(
+            owner_user_id=lease.owner_user_id, job_id=lease.job_id
+        )
+        if authority is not None and authority.operation_state is OperationState.RUNNING:
+            owner_jobs.compare_and_set(
+                owner_user_id=lease.owner_user_id,
+                job_id=lease.job_id,
+                expected_version=authority.state_version,
+                expected_state=OperationState.RUNNING,
+                operation_id=lease.operation_id,
+                next_state=OperationState.FAILED_RECONCILE,
+                completed_at_ms=clock.now_ms(),
+            )
+        raise RuntimeError("provider-returned step requires settlement reconciliation")
+    if key in existing.completed_step_keys:
+        job = existing
+    else:
+        job = run_worker_iteration(
+            lease.job_id,
+            store=store,
+            step_fn=dispatch,
+            project_fn=project_fn,
+            clock=clock,
+            on_spawn=on_spawn,
+            step_identity=key,
+        )
+    terminal_states = {
+        "complete": OperationState.COMPLETE,
+        "failed": OperationState.FAILED,
+        "budget_halted": OperationState.BUDGET_HALTED,
+        "timed_out": OperationState.TIMED_OUT,
+    }
+    terminal = terminal_states.get(job.status)
+    if terminal is not None:
+        authority = owner_jobs.get_job(
+            owner_user_id=lease.owner_user_id, job_id=lease.job_id
+        )
+        if authority is None or authority.operation_id != lease.operation_id:
+            raise RuntimeError("terminal authority requires reconciliation")
+        if authority.operation_state is OperationState.RUNNING:
+            changed = owner_jobs.compare_and_set(
+                owner_user_id=lease.owner_user_id,
+                job_id=lease.job_id,
+                expected_version=authority.state_version,
+                expected_state=OperationState.RUNNING,
+                operation_id=lease.operation_id,
+                next_state=terminal,
+                completed_at_ms=clock.now_ms(),
+            )
+            if not changed.applied:
+                raise RuntimeError("terminal authority requires reconciliation")
+    return job
+
+
+def run_leased_worker_iteration(
+    lease: WorkerLease,
+    *,
+    operation_queue: OperationQueue,
+    owner_jobs: OwnerJobStore,
+    store: JobStore,
+    step_fn: IdempotentStepFn,
+    project_fn: ProjectFn,
+    clock: Clock,
+    on_spawn: Callable[[MidnightOilJob, WorkerStepResult], None] | None = None,
+) -> MidnightOilJob:
+    """Execute all paid side effects under the durable lease coordinator."""
+    key = lease.idempotency_key(lease.step_index)
+
+    def action() -> tuple[MidnightOilJob, bool]:
+        result = _run_leased_worker_iteration_fenced(
+            lease,
+            operation_queue=operation_queue,
+            owner_jobs=owner_jobs,
+            store=store,
+            step_fn=step_fn,
+            project_fn=project_fn,
+            clock=clock,
+            on_spawn=on_spawn,
+        )
+        completed = key in get_or_raise(lease.job_id, store=store).completed_step_keys
+        return result, completed
+
+    return operation_queue.run_fenced(
+        operation_id=lease.operation_id,
+        worker_id=lease.worker_id,
+        lease_generation=lease.lease_generation,
+        now_ms=clock.now_ms(),
+        expected_step_index=lease.step_index,
+        action=action,
+    )
 
 
 def _duration_ms(job: MidnightOilJob) -> int:
@@ -94,6 +320,8 @@ def run_worker_iteration(
     project_fn: ProjectFn,
     clock: Clock,
     on_spawn: Callable[[MidnightOilJob, WorkerStepResult], None] | None = None,
+    step_identity: str | None = None,
+    authority_guard: Callable[[], None] | None = None,
 ) -> MidnightOilJob:
     """Run one project -> durable hold -> dispatch -> settle iteration."""
     row = store.get_job(job_id)
@@ -104,6 +332,12 @@ def run_worker_iteration(
         return job
     if job.status not in ("approved", "running"):
         raise ValueError(f"job {job_id} status is {job.status!r}; must approve before running")
+
+    def guard() -> None:
+        if authority_guard is not None:
+            authority_guard()
+
+    guard()
 
     ledger = _ledger_for(store, job)
     balance = ledger.balance(job.job_id)
@@ -118,6 +352,7 @@ def run_worker_iteration(
                 "in open holds; provider reconciliation is required"
             ),
         )
+        guard()
         return put_job_state(failed, store=store)
     now = clock.now_ms()
     if job.started_at_ms is None:
@@ -125,6 +360,7 @@ def run_worker_iteration(
     else:
         job = replace(job, status="running", elapsed_ms=max(0, now - job.started_at_ms))
     if job.elapsed_ms >= _duration_ms(job):
+        guard()
         return put_job_state(replace(job, status="timed_out"), store=store)
 
     projected_cents = _usd_to_cents(
@@ -136,11 +372,13 @@ def run_worker_iteration(
         )
 
     def dispatch() -> tuple[WorkerStepResult, int]:
+        guard()
         result = step_fn(job)
         actual_cents = _usd_to_cents(float(result.spent_usd), ceiling=False, field="step spent_usd")
         return result, actual_cents
 
     def checkpoint_before_settle(result: WorkerStepResult, actual_cents: int) -> None:
+        guard()
         # Persist a terminal checkpoint while the ledger hold is still open.
         # A failed write becomes an unknown hold; a hard death leaves the open
         # hold. Either state blocks provider redispatch on restart.
@@ -159,6 +397,11 @@ def run_worker_iteration(
             notes=(
                 (job.notes + " | " if job.notes else "")
                 + "paid_step_checkpoint_pending_ledger_settlement"
+            ),
+            returned_step_keys=(
+                job.returned_step_keys
+                if step_identity is None or step_identity in job.returned_step_keys
+                else (*job.returned_step_keys, step_identity)
             ),
         )
         put_job_state(checkpoint, store=store)
@@ -181,6 +424,7 @@ def run_worker_iteration(
                 f"only {exc.remaining_cents} cents remained; step not executed"
             ),
         )
+        guard()
         return put_job_state(halted, store=store)
     except BaseException:
         exception_balance = ledger.balance(job.job_id)
@@ -200,12 +444,19 @@ def run_worker_iteration(
                 + f"step_exception: provider outcome unknown; {outcome_note}"
             ),
         )
+        guard()
         put_job_state(failed, store=store)
         raise
 
+    guard()
     job = replace(
         job,
         spent_usd=balance.spent_cents / 100,
+        completed_step_keys=(
+            job.completed_step_keys
+            if step_identity is None or step_identity in job.completed_step_keys
+            else (*job.completed_step_keys, step_identity)
+        ),
     )
     actual_cents = _usd_to_cents(float(result.spent_usd), ceiling=False, field="step spent_usd")
     if actual_cents > projected_cents:
@@ -232,6 +483,7 @@ def run_worker_iteration(
         elif job.elapsed_ms >= _duration_ms(job):
             job = replace(job, status="timed_out")
         if on_spawn is None:
+            guard()
             return put_job_state(job, store=store)
 
         # Spend has already settled. Persist a terminal fail-closed checkpoint
@@ -248,6 +500,7 @@ def run_worker_iteration(
                 + "on_spawn_pending_after_paid_checkpoint"
             ),
         )
+        guard()
         put_job_state(callback_pending, store=store)
         try:
             on_spawn(intended_job, result)
@@ -256,9 +509,12 @@ def run_worker_iteration(
                 callback_pending,
                 notes=(callback_pending.notes + " | on_spawn_failed_after_durable_checkpoint"),
             )
+            guard()
             put_job_state(failed, store=store)
             raise
+        guard()
         return put_job_state(intended_job, store=store)
+    guard()
     return put_job_state(job, store=store)
 
 
