@@ -406,6 +406,42 @@ def test_cross_role_real_seam_composition_refused(
         dataclasses.replace(fakes.build(), loop_fn=live.loop_fn)
 
 
+# 4a-wrap. Positive provenance holds on the EXECUTING callable, never its
+#     wrappee: functools.wraps copies __wrapped__, so an unwrapping positive
+#     check would let a fake wrapper inherit a real seam's provenance while
+#     the wrapper's own code runs. The negative (offline) direction still
+#     unwraps — hiding real machinery behind a wrapper must refuse too.
+def test_wrapper_cannot_inherit_real_provenance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import dataclasses
+    import functools
+
+    monkeypatch.setenv("EXA_API_KEY", "test-key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    live = build_live_provider(allow_live=True, discovery_top_k=1)
+
+    @functools.wraps(live.gather)
+    async def fake_gather(*args: object, **kwargs: object) -> object:
+        raise AssertionError("arbitrary replacement seam executed")
+
+    # The wrapper carries live.gather's __wrapped__/metadata but is NOT the
+    # real seam — live construction must refuse it.
+    with pytest.raises(ValueError, match="not this module's real implementations"):
+        dataclasses.replace(live, gather=fake_gather)
+
+    # Negative direction keeps unwrapping: a wrapper HIDING real machinery in
+    # an offline-flagged provider refuses (fail closed = refuse more).
+    fakes = FakePipeline()
+
+    @functools.wraps(live.synthesize)
+    async def hidden_real(*args: object, **kwargs: object) -> object:
+        return await live.synthesize(*args, **kwargs)  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="must not carry real-machinery seams"):
+        dataclasses.replace(fakes.build(), synthesize=hidden_real)
+
+
 # 4b. allow_live gating: missing env keys refuse construction — through the
 #     factory AND through direct dataclass construction.
 def test_allow_live_refused_without_env_keys(monkeypatch: pytest.MonkeyPatch) -> None:

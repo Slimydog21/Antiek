@@ -53,15 +53,17 @@ Live mode = real machinery, full stop (no measurement theater)
 
     Honest threat model: the ``__post_init__`` checks catch HONEST MISTAKES
     (grabbing the wrong factory, wiring a stub out of habit) and, with
-    object-identity provenance, also natural name collisions and deliberate
-    name-mimicry. The remaining out-of-scope class is now narrow and pure
-    sabotage: importing this module and attaching its private
-    ``_REAL_PROVENANCE_TOKEN`` to a fake callable by hand. The structural
-    guarantee stands: the constructor of record has no dishonest path, and
-    every public mutation path (direct construction, ``dataclasses.replace``)
-    re-validates the flag/provenance invariant — the adapter guards
-    measurement integrity against mistakes, not against an operator
-    deliberately sabotaging their own eval with the module's own internals.
+    identity-registry provenance, also natural name collisions, deliberate
+    name-mimicry, and ``functools.wraps`` wrappers (which copy ``__dict__``
+    and ``__wrapped__`` but are still a different OBJECT than the registered
+    real seam). The remaining out-of-scope class is now narrow and pure
+    sabotage: importing this module and calling its private ``_register_real``
+    on a fake, or mutating ``_REAL_BY_ROLE`` by hand. The structural guarantee
+    stands: the constructor of record has no dishonest path, and every public
+    mutation path (direct construction, ``dataclasses.replace``) re-validates
+    the flag/provenance invariant — the adapter guards measurement integrity
+    against mistakes, not against an operator deliberately sabotaging their
+    own eval with the module's own internals.
 
 Fail closed to ``ProviderFailure`` (the core honesty property)
     EVERY failure path — missing keys, plan/launch refusal (including the
@@ -149,6 +151,7 @@ import asyncio
 import functools
 import os
 import uuid
+import weakref
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, TypeVar
@@ -171,23 +174,25 @@ REQUIRED_LIVE_ENV: tuple[str, ...] = ("EXA_API_KEY", "ANTHROPIC_API_KEY")
 # __qualname__ ("<factory>.<locals>._loop") or the factory itself.
 _MOCK_LOOP_FACTORIES: tuple[str, ...] = ("make_demo_loop", "make_contract_gather_stub")
 
-# OBJECT-IDENTITY provenance for the real live parts. Names can be mimicked
-# naturally (a foreign module deliberately named ``live_provider`` /
-# ``host_local`` with same-named callables passes any name check with zero
-# attribute forgery); a module-private object cannot. The real builders below
-# stamp what they build with THIS token; the checks compare with ``is``. The
-# token is module-private, unexported, and never leaves this file.
-_REAL_PROVENANCE_TOKEN: object = object()
-_PROVENANCE_ATTR = "__antiek_real_provenance__"
-# The stamp is (token, role), not the bare token: a shared role-less token
-# proves only "built by this module", which would let a REAL callable be
-# composed into the WRONG seam field (e.g. replace(live, synthesize=
-# live.gather)). Role-tagging makes provenance mean "the real implementation
-# OF THIS ROLE". Role strings for the two closure seams equal their
-# _SEAM_FIELDS names so __post_init__ can check them uniformly.
+# OBJECT-IDENTITY provenance for the real live parts, by REGISTRY not by a
+# function attribute. Names can be mimicked naturally (a foreign module named
+# ``live_provider`` / ``host_local`` with same-named callables passes any name
+# check with zero forgery), and a stamped function ATTRIBUTE is worse than it
+# looks: ``functools.wraps(real)`` copies ``__dict__``, so a fake wrapper would
+# INHERIT the stamp while its own code runs. Membership in a module-private
+# ``WeakSet`` keyed by object identity is copy-proof — ``functools.wraps``
+# cannot make a different object BE a registered one. Each real builder
+# registers its product in the role's set at creation; the checks test
+# identity membership. The sets are module-private, unexported, and hold weak
+# refs so a discarded provider's closures are collectible.
 _ROLE_LOOP = "loop"
 _ROLE_GATHER = "gather"
 _ROLE_SYNTHESIZE = "synthesize"
+_REAL_BY_ROLE: dict[str, weakref.WeakSet[object]] = {
+    _ROLE_LOOP: weakref.WeakSet(),
+    _ROLE_GATHER: weakref.WeakSet(),
+    _ROLE_SYNTHESIZE: weakref.WeakSet(),
+}
 
 # A deep research run (discover + promote + synthesis constraint loop) is
 # minutes-long; the default cap only exists so a wedged live run fails closed
@@ -288,31 +293,27 @@ def _refuse_mock_loop(loop_fn: object) -> None:
             )
 
 
-def _stamped_role(fn_like: object) -> str | None:
-    """The role this module's own real builders stamped onto the callable
-    (after bounded unwrap), or None. Object identity on the private token —
-    a shared role-less token would prove only "built by this module" and let
-    a REAL callable be composed into the WRONG seam field (e.g.
-    ``replace(live, synthesize=live.gather)``)."""
-    fn = _unwrap_loop_fn(fn_like)
-    tag = getattr(fn, _PROVENANCE_ATTR, None)
-    if (
-        isinstance(tag, tuple)
-        and len(tag) == 2
-        and tag[0] is _REAL_PROVENANCE_TOKEN
-        and isinstance(tag[1], str)
-    ):
-        return tag[1]
-    return None
+def _register_real(fn: object, role: str) -> None:
+    """Record ``fn`` as the real implementation of ``role`` by object identity.
+    Called by the real builders at creation; nothing else may call it, so the
+    only way into a role's set is being minted by this module."""
+    _REAL_BY_ROLE[role].add(fn)
+
+
+def _has_real_role(fn_like: object, role: str) -> bool:
+    """True iff THIS object (identity, no unwrap) was registered for ``role``.
+    Identity membership defeats both name mimicry and ``functools.wraps`` —
+    a wrapper is a different object even though it copies ``__wrapped__`` and
+    ``__dict__``."""
+    return fn_like in _REAL_BY_ROLE[role]
 
 
 def _is_real_exa_loop(loop_fn: object) -> bool:
-    """True only for the loop minted by ``_build_real_exa_loop`` (which stamps
-    the private ``(token, "loop")`` pair onto the real ``make_exa_gather_loop``
-    product). A naturally same-named loop from a foreign ``host_local`` module
-    carries no token; a real non-loop component misplaced here carries the
-    wrong role. Both fail."""
-    return _stamped_role(loop_fn) == _ROLE_LOOP
+    """True only for the loop minted by ``_build_real_exa_loop`` (registered
+    under ``"loop"``). A naturally same-named loop from a foreign ``host_local``
+    module is not registered; a real non-loop component misplaced here is
+    registered under the wrong role. Both fail."""
+    return _has_real_role(loop_fn, _ROLE_LOOP)
 
 
 def _missing_live_env() -> list[str]:
@@ -337,24 +338,30 @@ def _is_real_seam(seam: object, role: str) -> bool:
     that exact role; the two factory-built closures carry the private
     ``(token, role)`` pair their builders stamped at creation. A naturally
     same-named callable from a foreign module passes neither (no name check
-    to mimic), and a REAL callable of a DIFFERENT role fails the role match —
-    so ``replace(live, synthesize=live.gather)`` refuses."""
-    fn = _unwrap_loop_fn(seam)
+    to mimic), a REAL callable of a DIFFERENT role fails the role match —
+    so ``replace(live, synthesize=live.gather)`` refuses — and a wrapper
+    around a real seam (``functools.wraps`` copies ``__dict__`` AND
+    ``__wrapped__``) fails because registry membership is by object identity:
+    the executing callable itself must be the registered one."""
     if role == "usage_reader":
-        return fn is _read_dispatch_usage
+        return seam is _read_dispatch_usage
     if role == "source_url_lookup":
-        return fn is _lookup_document_source_uri
-    return _stamped_role(fn) == role
+        return seam is _lookup_document_source_uri
+    return _has_real_role(seam, role)
 
 
 def _is_real_machinery(seam: object) -> bool:
     """Role-BLIND check for the offline direction: an offline-flagged provider
     must not carry real machinery in ANY field (even the wrong one) — a real
-    gather sitting in the synthesize slot could still spend money."""
-    fn = _unwrap_loop_fn(seam)
-    if fn is _read_dispatch_usage or fn is _lookup_document_source_uri:
-        return True
-    return _stamped_role(fn) is not None
+    gather sitting in the synthesize slot could still spend money. Unlike the
+    positive checks, this one DOES unwrap: hiding real machinery behind a
+    wrapper must still refuse (fail closed = refuse MORE, never less)."""
+    for candidate in (seam, _unwrap_loop_fn(seam)):
+        if candidate is _read_dispatch_usage or candidate is _lookup_document_source_uri:
+            return True
+        if any(candidate in real_set for real_set in _REAL_BY_ROLE.values()):
+            return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -742,8 +749,8 @@ def _build_real_exa_loop(*, top_k: int = 3) -> object:
     reads ``EXA_API_KEY`` on first discover, not here."""
     from runtime.research_runner import make_exa_gather_loop
 
-    loop: Any = make_exa_gather_loop(top_k=top_k)
-    loop.__antiek_real_provenance__ = (_REAL_PROVENANCE_TOKEN, _ROLE_LOOP)
+    loop = make_exa_gather_loop(top_k=top_k)
+    _register_real(loop, _ROLE_LOOP)
     return loop
 
 
@@ -861,13 +868,9 @@ def _build_real_gather(
             investigation_ids=(session_id, *(leaf.investigation_id for leaf in leaves)),
         )
 
-    # Stamp the private provenance token: object identity, not name, is what
-    # the allow_live seam check accepts (function attribute assignment is
-    # legal at runtime; mypy just doesn't model ad-hoc function attrs).
-    _gather.__antiek_real_provenance__ = (  # type: ignore[attr-defined]
-        _REAL_PROVENANCE_TOKEN,
-        _ROLE_GATHER,
-    )
+    # Register by object identity (not a copyable attribute): the allow_live
+    # seam check tests membership, which functools.wraps cannot forge.
+    _register_real(_gather, _ROLE_GATHER)
     return _gather
 
 
@@ -918,11 +921,8 @@ def _build_real_synthesize() -> SynthesizeFn:
             )
         return text
 
-    # Same object-identity stamp as _build_real_gather's closure.
-    _synthesize.__antiek_real_provenance__ = (  # type: ignore[attr-defined]
-        _REAL_PROVENANCE_TOKEN,
-        _ROLE_SYNTHESIZE,
-    )
+    # Same identity registration as _build_real_gather's closure.
+    _register_real(_synthesize, _ROLE_SYNTHESIZE)
     return _synthesize
 
 
