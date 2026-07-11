@@ -87,4 +87,24 @@ describe("ModelInventoryPanel", () => {
       expect(screen.getByTestId("model-inventory-row-gpt-5.5")).toBeTruthy();
     });
   });
+
+  it("rejects malformed direct rows (invented ready) without listing", () => {
+    render(
+      <ModelInventoryPanel
+        rows={
+          [
+            {
+              provider_id: "x",
+              ready: "yes" as unknown as boolean,
+              primary_model: "m",
+            },
+          ] as InventoryModelRow[]
+        }
+      />,
+    );
+    expect(screen.getByTestId("model-inventory-error").textContent).toMatch(
+      /ready must be boolean/,
+    );
+    expect(screen.queryByTestId("model-inventory-list")).toBeNull();
+  });
 });

@@ -63,11 +63,25 @@ export default function ModelInventoryPanel({
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
 
-  const effectiveRows = loaded ?? rows;
-  const models = useMemo(
-    () => inventoryToDecisionModels(effectiveRows),
-    [effectiveRows],
-  );
+  // Validate both loadFn results and direct `rows` props — never pass
+  // untyped ready values into inventoryToDecisionModels (Boolean() invents).
+  const { models, rowsError } = useMemo(() => {
+    const source = loaded ?? rows;
+    if (source == null) {
+      return { models: [] as ReturnType<typeof inventoryToDecisionModels>, rowsError: null as string | null };
+    }
+    try {
+      const validated = parseRows(source);
+      return { models: inventoryToDecisionModels(validated), rowsError: null as string | null };
+    } catch (e) {
+      return {
+        models: [] as ReturnType<typeof inventoryToDecisionModels>,
+        rowsError: e instanceof Error ? e.message : String(e),
+      };
+    }
+  }, [loaded, rows]);
+
+  const displayError = error ?? rowsError;
 
   async function onLoad() {
     if (!loadFn) return;
@@ -110,17 +124,19 @@ export default function ModelInventoryPanel({
           </LemonButton>
         ) : null}
 
-        {error ? (
+        {displayError ? (
           <div className="text-sm text-danger mt-2" data-testid="model-inventory-error">
-            {error}
+            {displayError}
           </div>
         ) : null}
 
-        {models.length === 0 ? (
+        {!displayError && models.length === 0 ? (
           <div className="text-sm mt-3" data-testid="model-inventory-empty">
             No rankable models (empty inventory or missing primary_model).
           </div>
-        ) : (
+        ) : null}
+
+        {!displayError && models.length > 0 ? (
           <ul className="mt-3 flex flex-col gap-2" data-testid="model-inventory-list">
             {models.map((m) => (
               <li
@@ -148,7 +164,7 @@ export default function ModelInventoryPanel({
               </li>
             ))}
           </ul>
-        )}
+        ) : null}
 
         {selected ? (
           <div className="text-sm mt-2" data-testid="model-inventory-selected">
