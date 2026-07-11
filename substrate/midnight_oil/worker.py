@@ -103,9 +103,7 @@ def run_worker_iteration(
     if job.status in ("complete", "timed_out", "budget_halted", "failed"):
         return job
     if job.status not in ("approved", "running"):
-        raise ValueError(
-            f"job {job_id} status is {job.status!r}; must approve before running"
-        )
+        raise ValueError(f"job {job_id} status is {job.status!r}; must approve before running")
 
     ledger = _ledger_for(store, job)
     balance = ledger.balance(job.job_id)
@@ -134,21 +132,16 @@ def run_worker_iteration(
     )
     if projected_cents <= 0:
         raise ValueError(
-            "project_fn result must be positive; a provider dispatch cannot be "
-            "declared free"
+            "project_fn result must be positive; a provider dispatch cannot be declared free"
         )
 
     def dispatch() -> tuple[WorkerStepResult, int]:
         result = step_fn(job)
-        actual_cents = _usd_to_cents(
-            float(result.spent_usd), ceiling=False, field="step spent_usd"
-        )
+        actual_cents = _usd_to_cents(float(result.spent_usd), ceiling=False, field="step spent_usd")
         return result, actual_cents
 
     try:
-        result, balance = ledger.guarded_call(
-            job.job_id, _WORKER_ROLE, projected_cents, dispatch
-        )
+        result, balance = ledger.guarded_call(job.job_id, _WORKER_ROLE, projected_cents, dispatch)
     except BudgetCeilingExceeded as exc:
         halted = replace(
             _sync_spend(job, ledger),
@@ -168,9 +161,7 @@ def run_worker_iteration(
                 "provider reconciliation"
             )
         else:
-            outcome_note = (
-                f"conservative charge {projected_cents} cents recorded"
-            )
+            outcome_note = f"conservative charge {projected_cents} cents recorded"
         failed = replace(
             job,
             spent_usd=exception_balance.spent_cents / 100,
@@ -187,9 +178,7 @@ def run_worker_iteration(
         job,
         spent_usd=balance.spent_cents / 100,
     )
-    actual_cents = _usd_to_cents(
-        float(result.spent_usd), ceiling=False, field="step spent_usd"
-    )
+    actual_cents = _usd_to_cents(float(result.spent_usd), ceiling=False, field="step spent_usd")
     if actual_cents > projected_cents:
         job = replace(
             job,
@@ -207,16 +196,31 @@ def run_worker_iteration(
         job = replace(
             job,
             spawn_ids=spawn_ids,
-            elapsed_ms=max(
-                0, clock.now_ms() - (job.started_at_ms or clock.now_ms())
-            ),
+            elapsed_ms=max(0, clock.now_ms() - (job.started_at_ms or clock.now_ms())),
         )
-        if on_spawn is not None:
-            on_spawn(job, result)
         if result.done:
             job = replace(job, status="complete")
         elif job.elapsed_ms >= _duration_ms(job):
             job = replace(job, status="timed_out")
+        # Spend has already settled. Persist the spawn/status checkpoint before
+        # invoking any fallible projection callback so a crash cannot make the
+        # paid provider step look undispatched on restart.
+        job = put_job_state(job, store=store)
+        if on_spawn is not None:
+            try:
+                on_spawn(job, result)
+            except BaseException:
+                failed = replace(
+                    job,
+                    status="failed",
+                    notes=(
+                        (job.notes + " | " if job.notes else "")
+                        + "on_spawn_failed_after_durable_checkpoint"
+                    ),
+                )
+                put_job_state(failed, store=store)
+                raise
+        return job
     return put_job_state(job, store=store)
 
 
