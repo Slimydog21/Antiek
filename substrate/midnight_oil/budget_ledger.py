@@ -20,7 +20,7 @@ import uuid
 from collections.abc import Callable, Generator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, TypeVar
+from typing import Any, NoReturn, TypeVar
 
 from runtime.db_lock import FlockWriteCoordinator, connect_read
 
@@ -938,31 +938,34 @@ class BudgetLedger:
           the exact ``CallHold``.  The hold remains open (fail closed).
         """
         hold = self.reserve_call(run_id, role, projected_max_cents)
-        try:
-            result, actual_cents = call()
-            if before_settle is not None:
-                before_settle(result, actual_cents)
-        except CallNotDispatched:
-            # Provably pre-dispatch: safe to release.
-            self._release_hold(hold)
-            raise
-        except Exception as provider_error:
-            # Unknown outcome: fail closed.  Transition hold to 'unknown'.
-            # H2: raise UnknownCallOutcome with durable hold.
-            # M2: if persistence itself fails, raise
-            #     UnknownOutcomePersistenceError with BOTH errors.
+
+        def raise_unknown(error: Exception) -> NoReturn:
             try:
                 durable_hold = self._mark_hold_unknown(hold)
             except Exception as bookkeeping_error:
                 raise UnknownOutcomePersistenceError(
                     hold,
-                    provider_error,
+                    error,
                     bookkeeping_error,
                 ) from bookkeeping_error
-            raise UnknownCallOutcome(
-                durable_hold,
-                provider_error,
-            ) from provider_error
+            raise UnknownCallOutcome(durable_hold, error) from error
+
+        try:
+            result, actual_cents = call()
+        except CallNotDispatched:
+            # Provably pre-dispatch: safe to release.
+            self._release_hold(hold)
+            raise
+        except Exception as provider_error:
+            raise_unknown(provider_error)
+
+        # The provider has returned. From this point onward no exception can
+        # prove non-dispatch, even if it uses the CallNotDispatched type.
+        if before_settle is not None:
+            try:
+                before_settle(result, actual_cents)
+            except Exception as checkpoint_error:
+                raise_unknown(checkpoint_error)
         balance = self.settle(hold, actual_cents)
         return result, balance
 
