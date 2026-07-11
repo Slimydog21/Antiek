@@ -119,6 +119,22 @@ class MultimediaJobRecord(_ReadModelBase):
     retryable: bool | None = None
 
 
+class MultimediaKnowledgeLink(_ReadModelBase):
+    schema_version: Literal["antiek.multimedia-knowledge-link.v1"] = (
+        "antiek.multimedia-knowledge-link.v1"
+    )
+    asset_id: str = Field(min_length=1, max_length=128, pattern=_ASSET_ID.pattern)
+    revision_id: str = Field(min_length=1, max_length=128, pattern=_ASSET_ID.pattern)
+    source_document_id: str = Field(min_length=1, max_length=128, pattern=_ASSET_ID.pattern)
+    source_event_id: str = Field(min_length=1, max_length=128, pattern=_ASSET_ID.pattern)
+    graph_node_id: str = Field(min_length=1, max_length=128, pattern=_ASSET_ID.pattern)
+    twin_document_id: str = Field(min_length=1, max_length=128, pattern=_ASSET_ID.pattern)
+    source_html_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    twin_html_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    insight_node_ids: tuple[str, ...] = Field(default_factory=tuple, max_length=10_000)
+    question_node_ids: tuple[str, ...] = Field(default_factory=tuple, max_length=10_000)
+
+
 class MultimediaAssetSummary(_ReadModelBase):
     asset_id: str
     revision_id: str
@@ -131,6 +147,8 @@ class MultimediaAssetSummary(_ReadModelBase):
     hardening_status: str | None = None
     latest_job_status: JobStatus | None = None
     latest_job_kind: JobKind | None = None
+    knowledge_finalized: bool = False
+    twin_document_id: str | None = None
 
 
 class MultimediaAssetRecord(_ReadModelBase):
@@ -141,6 +159,8 @@ class MultimediaAssetRecord(_ReadModelBase):
     hardening_report: MultimediaHardeningReport | None = None
     latest_steering_intent: SteeringIntent | None = None
     jobs: tuple[MultimediaJobRecord, ...] = Field(default_factory=tuple)
+    knowledge_link: MultimediaKnowledgeLink | None = None
+    knowledge_finalization_revision_id: str | None = None
 
     def summary(self) -> MultimediaAssetSummary:
         latest_job = self.jobs[-1] if self.jobs else None
@@ -156,6 +176,10 @@ class MultimediaAssetRecord(_ReadModelBase):
             hardening_status=self.hardening_report.ship_status if self.hardening_report else None,
             latest_job_status=latest_job.status if latest_job else None,
             latest_job_kind=latest_job.kind if latest_job else None,
+            knowledge_finalized=self.knowledge_link is not None,
+            twin_document_id=(
+                self.knowledge_link.twin_document_id if self.knowledge_link else None
+            ),
         )
 
 
@@ -304,6 +328,8 @@ class MultimediaAssetStore:
         owner_digest = _owner_digest(owner_id)
         with self._locked(exclusive=True):
             record = self._load_unlocked(asset_id, owner_digest)
+            if record.knowledge_finalization_revision_id is not None:
+                raise ValueError("multimedia knowledge finalization is in progress")
             transcript = None
             if request.raw_voice_transcript:
                 transcript = SteeringTranscript(
@@ -316,7 +342,12 @@ class MultimediaAssetStore:
             child = build_revision_asset(record.asset, revision)
             updated = self._with_job(
                 record.model_copy(
-                    update={"asset": child, "latest_steering_intent": intent, "hardening_report": None}
+                    update={
+                        "asset": child,
+                        "latest_steering_intent": intent,
+                        "hardening_report": None,
+                        "knowledge_link": None,
+                    }
                 ),
                 kind="steering",
                 status="succeeded",
@@ -501,6 +532,70 @@ class MultimediaAssetStore:
                 error_code=error_code,
                 retryable=retryable,
             )
+
+    def attach_knowledge_link(
+        self,
+        asset_id: str,
+        link: MultimediaKnowledgeLink,
+        *,
+        expected_revision_id: str,
+        owner_id: str = _DEFAULT_OWNER_ID,
+    ) -> MultimediaAssetRecord:
+        owner_digest = _owner_digest(owner_id)
+        with self._locked(exclusive=True):
+            record = self._load_unlocked(asset_id, owner_digest)
+            if record.asset.revision_id != expected_revision_id:
+                raise ValueError("multimedia knowledge revision is not current")
+            if str(record.asset.status) != "ready":
+                raise ValueError("multimedia knowledge finalization requires a ready asset")
+            if (link.asset_id, link.revision_id) != (
+                record.asset.asset_id,
+                record.asset.revision_id,
+            ):
+                raise ValueError("multimedia knowledge link identity conflicts")
+            if record.knowledge_link is not None:
+                if record.knowledge_link != link:
+                    raise ValueError("multimedia knowledge link conflicts")
+                return record
+            if record.knowledge_finalization_revision_id != expected_revision_id:
+                raise ValueError("multimedia knowledge finalization reservation conflicts")
+            updated = record.model_copy(
+                update={
+                    "knowledge_link": link,
+                    "knowledge_finalization_revision_id": None,
+                }
+            )
+            self._save_unlocked(updated, owner_digest)
+            return updated
+
+    def reserve_knowledge_finalization(
+        self,
+        asset_id: str,
+        *,
+        expected_revision_id: str,
+        owner_id: str = _DEFAULT_OWNER_ID,
+    ) -> MultimediaAssetRecord:
+        owner_digest = _owner_digest(owner_id)
+        with self._locked(exclusive=True):
+            record = self._load_unlocked(asset_id, owner_digest)
+            if record.asset.revision_id != expected_revision_id:
+                raise ValueError("multimedia knowledge revision is not current")
+            if str(record.asset.status) != "ready":
+                raise ValueError("multimedia knowledge finalization requires a ready asset")
+            reserved = record.knowledge_finalization_revision_id
+            if record.knowledge_link is not None:
+                if record.knowledge_link.revision_id != expected_revision_id:
+                    raise ValueError("multimedia knowledge link revision conflicts")
+                return record
+            if reserved is not None and reserved != expected_revision_id:
+                raise ValueError("multimedia knowledge finalization reservation conflicts")
+            if reserved == expected_revision_id:
+                return record
+            updated = record.model_copy(
+                update={"knowledge_finalization_revision_id": expected_revision_id}
+            )
+            self._save_unlocked(updated, owner_digest)
+            return updated
 
     def _record_job_unlocked(
         self,

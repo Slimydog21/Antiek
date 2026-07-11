@@ -7,6 +7,7 @@ import hashlib
 import html
 import json
 import re
+import uuid
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from typing import Any
@@ -302,13 +303,55 @@ async def _checkpoint_distillation(
     distiller: Distiller,
 ) -> Distillation:
     run_id = f"mm-run-{hashlib.sha256(f'{owner_id}:{source_document_id}'.encode()).hexdigest()[:24]}"
-    with connect_read(db_path) as connection:
+    row = _checkpoint_row(db_path, run_id)
+    if row is not None:
+        return _decode_checkpoint(row, owner_id, source_document_id, asset, source_event_id)
+
+    claim_token = uuid.uuid4().hex
+    connection = connect_write(db_path, purpose="multimedia_distillation_claim")
+    try:
+        connection.execute("BEGIN")
         row = connection.execute(
             "SELECT owner_user_id, source_document_id, source_html_sha256, "
             "source_event_id, distillation_json, distillation_sha256 "
             "FROM multimedia_twin_runs WHERE run_id=?",
             [run_id],
         ).fetchone()
+        if row is None:
+            claim = connection.execute(
+                "SELECT owner_user_id, source_document_id, source_html_sha256, "
+                "source_event_id FROM multimedia_distillation_claims WHERE run_id=?",
+                [run_id],
+            ).fetchone()
+            if claim is not None:
+                expected = (owner_id, source_document_id, asset.html_sha256, source_event_id)
+                if tuple(claim) != expected:
+                    raise MultimediaKnowledgeRegistrationError(
+                        "multimedia distillation claim conflicts"
+                    )
+                raise MultimediaKnowledgeRegistrationError(
+                    "multimedia distillation outcome requires recovery"
+                )
+            connection.execute(
+                "INSERT INTO multimedia_distillation_claims "
+                "(run_id, owner_user_id, source_document_id, source_html_sha256, "
+                "source_event_id, claim_token, status) "
+                "VALUES (?, ?, ?, ?, ?, ?, 'in_progress')",
+                [
+                    run_id,
+                    owner_id,
+                    source_document_id,
+                    asset.html_sha256,
+                    source_event_id,
+                    claim_token,
+                ],
+            )
+        connection.execute("COMMIT")
+    except Exception:
+        connection.execute("ROLLBACK")
+        raise
+    finally:
+        connection.close()
     if row is not None:
         return _decode_checkpoint(row, owner_id, source_document_id, asset, source_event_id)
 
@@ -319,10 +362,17 @@ async def _checkpoint_distillation(
     digest = hashlib.sha256(payload.encode()).hexdigest()
     connection = connect_write(db_path, purpose="multimedia_distillation_checkpoint")
     try:
+        connection.execute("BEGIN")
+        claim = connection.execute(
+            "SELECT claim_token, status FROM multimedia_distillation_claims WHERE run_id=?",
+            [run_id],
+        ).fetchone()
+        if claim != (claim_token, "in_progress"):
+            raise MultimediaKnowledgeRegistrationError("multimedia distillation claim conflicts")
         connection.execute(
             "INSERT INTO multimedia_twin_runs (run_id, owner_user_id, source_document_id, "
             "source_html_sha256, source_event_id, distillation_json, distillation_sha256) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
             [run_id, owner_id, source_document_id, asset.html_sha256, source_event_id, payload, digest],
         )
         row = connection.execute(
@@ -331,11 +381,30 @@ async def _checkpoint_distillation(
             "FROM multimedia_twin_runs WHERE run_id=?",
             [run_id],
         ).fetchone()
+        connection.execute(
+            "UPDATE multimedia_distillation_claims SET status='completed', "
+            "completed_at=CURRENT_TIMESTAMP WHERE run_id=? AND claim_token=?",
+            [run_id, claim_token],
+        )
+        connection.execute("COMMIT")
+    except Exception:
+        connection.execute("ROLLBACK")
+        raise
     finally:
         connection.close()
     if row is None:
         raise MultimediaKnowledgeRegistrationError("multimedia distillation checkpoint is unavailable")
     return _decode_checkpoint(row, owner_id, source_document_id, asset, source_event_id)
+
+
+def _checkpoint_row(db_path: str, run_id: str) -> Any:
+    with connect_read(db_path) as connection:
+        return connection.execute(
+            "SELECT owner_user_id, source_document_id, source_html_sha256, "
+            "source_event_id, distillation_json, distillation_sha256 "
+            "FROM multimedia_twin_runs WHERE run_id=?",
+            [run_id],
+        ).fetchone()
 
 
 def _encode_distillation(value: Distillation) -> str:

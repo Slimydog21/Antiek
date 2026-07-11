@@ -29,6 +29,12 @@ from .information_asset import (
     project_multimedia_information_asset,
     register_multimedia_information_asset,
 )
+from .knowledge_finalization import (
+    MultimediaKnowledgeFinalizationError,
+    MultimediaKnowledgeFinalizationRequest,
+    MultimediaKnowledgeFinalizationResponse,
+    finalize_multimedia_knowledge,
+)
 from .knowledge_registration import (
     CanonicalMultimediaKnowledgeRegistrar,
     MultimediaKnowledgeRegistrationError,
@@ -72,6 +78,7 @@ from .read_model import (
     MultimediaAssetRecord,
     MultimediaAssetStore,
     MultimediaAssetSummary,
+    MultimediaKnowledgeLink,
     SteeringRequest,
 )
 from .steering import (
@@ -186,11 +193,16 @@ __all__ = [
     "MultimediaKnowledgeRegistrationError",
     "MultimediaTwinResult",
     "register_multimedia_with_twin",
+    "MultimediaKnowledgeFinalizationError",
+    "MultimediaKnowledgeFinalizationRequest",
+    "MultimediaKnowledgeFinalizationResponse",
+    "finalize_multimedia_knowledge",
     # SPR-09 API persistence/read-model
     "CreateMultimediaDraftRequest",
     "MultimediaAssetList",
     "MultimediaAssetRecord",
     "MultimediaAssetStore",
     "MultimediaAssetSummary",
+    "MultimediaKnowledgeLink",
     "SteeringRequest",
 ]

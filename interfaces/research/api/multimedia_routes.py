@@ -7,10 +7,19 @@ planner/audio/video/steering/hardening seams without live provider spend.
 from __future__ import annotations
 
 import os
-from dataclasses import replace
+from collections.abc import Callable
+from dataclasses import dataclass, replace
+from typing import Any
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException
 
+from roles.note_taker import DispatchDistiller, Distiller
+from substrate.multimedia.knowledge_finalization import (
+    MultimediaKnowledgeFinalizationError,
+    MultimediaKnowledgeFinalizationRequest,
+    MultimediaKnowledgeFinalizationResponse,
+    finalize_multimedia_knowledge,
+)
 from substrate.multimedia.read_model import (
     CreateMultimediaDraftRequest,
     LiveProviderExecutionRequest,
@@ -33,8 +42,38 @@ multimedia_router.include_router(multimedia_reconciliation_router)
 _STORE = MultimediaAssetStore()
 
 
+@dataclass(frozen=True)
+class MultimediaKnowledgeRuntime:
+    db_path: str
+    distiller_factory: Callable[[], Distiller]
+    events_dir: str | None = None
+    embedding_provider: Any = None
+
+
 def get_store() -> MultimediaAssetStore:
     return _STORE
+
+
+def get_multimedia_knowledge_runtime() -> MultimediaKnowledgeRuntime:
+    raise HTTPException(status_code=503, detail="multimedia knowledge runtime is unavailable")
+
+
+def multimedia_knowledge_runtime_from_environment(
+    environ: dict[str, str] | None = None,
+) -> MultimediaKnowledgeRuntime | None:
+    values = os.environ if environ is None else environ
+    enabled = values.get("ANTIEK_MULTIMEDIA_KNOWLEDGE_ENABLED", "").strip().lower()
+    db_path = values.get("ANTIEK_MULTIMEDIA_KNOWLEDGE_DB_PATH", "").strip()
+    events_dir = values.get("ANTIEK_MULTIMEDIA_KNOWLEDGE_EVENTS_DIR", "").strip()
+    if not any((enabled, db_path, events_dir)):
+        return None
+    if enabled not in {"1", "true"} or not db_path:
+        raise RuntimeError("multimedia knowledge configuration is incomplete")
+    return MultimediaKnowledgeRuntime(
+        db_path=db_path,
+        events_dir=events_dir or None,
+        distiller_factory=DispatchDistiller,
+    )
 
 
 @multimedia_router.post("/assets", response_model=MultimediaAssetRecord, status_code=201)
@@ -110,6 +149,32 @@ def run_multimedia_hardening(
         raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
 
 
+@multimedia_router.post(
+    "/assets/{asset_id}/finalize-knowledge",
+    response_model=MultimediaKnowledgeFinalizationResponse,
+)
+async def finalize_multimedia_asset_knowledge(
+    asset_id: str,
+    request: MultimediaKnowledgeFinalizationRequest,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+    runtime: MultimediaKnowledgeRuntime = Depends(get_multimedia_knowledge_runtime),
+) -> MultimediaKnowledgeFinalizationResponse:
+    try:
+        return await finalize_multimedia_knowledge(
+            asset_id,
+            request,
+            owner_id=operator_id,
+            store=get_store(),
+            db_path=runtime.db_path,
+            distiller_factory=runtime.distiller_factory,
+            events_dir=runtime.events_dir,
+            embedding_provider=runtime.embedding_provider,
+        )
+    except MultimediaKnowledgeFinalizationError as exc:
+        status_code = 404 if str(exc) == "multimedia asset is unavailable" else 409
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
 @multimedia_router.post("/assets/{asset_id}/prepare-live-execution", response_model=MultimediaAssetRecord)
 def prepare_multimedia_live_execution(
     asset_id: str,
@@ -136,6 +201,16 @@ def register_multimedia_routes(app: FastAPI) -> None:
             .asset.revision_id,
         )
         app.dependency_overrides[get_multimedia_reconciliation_runtime] = lambda: runtime
+    knowledge_runtime = multimedia_knowledge_runtime_from_environment()
+    if knowledge_runtime is not None:
+        app.dependency_overrides[get_multimedia_knowledge_runtime] = lambda: knowledge_runtime
 
 
-__all__ = ["get_store", "multimedia_router", "register_multimedia_routes"]
+__all__ = [
+    "MultimediaKnowledgeRuntime",
+    "get_multimedia_knowledge_runtime",
+    "get_store",
+    "multimedia_knowledge_runtime_from_environment",
+    "multimedia_router",
+    "register_multimedia_routes",
+]

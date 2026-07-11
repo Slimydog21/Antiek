@@ -363,6 +363,7 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "supersession_candidates",
     "embeddings_meta",
     "multimedia_twin_runs",
+    "multimedia_distillation_claims",
 )
 
 
@@ -433,6 +434,18 @@ CREATE TABLE IF NOT EXISTS multimedia_twin_runs (
     distillation_json    TEXT NOT NULL,
     distillation_sha256  TEXT NOT NULL,
     created_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS multimedia_distillation_claims (
+    run_id               TEXT PRIMARY KEY,
+    owner_user_id        TEXT NOT NULL,
+    source_document_id   TEXT NOT NULL REFERENCES documents(document_id),
+    source_html_sha256   TEXT NOT NULL,
+    source_event_id      TEXT NOT NULL,
+    claim_token          TEXT NOT NULL,
+    status               TEXT NOT NULL CHECK (status IN ('in_progress', 'completed')),
+    created_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at         TIMESTAMP
 );
 
 -- ============================================================
@@ -1274,7 +1287,9 @@ def _schema_is_present(db_path: str) -> bool:
             "WHERE table_schema='main' AND table_name='nodes' "
             "AND column_name='owner_user_id') AND EXISTS (SELECT 1 FROM "
             "information_schema.tables WHERE table_schema='main' "
-            "AND table_name='multimedia_twin_runs'))"
+            "AND table_name='multimedia_twin_runs') AND EXISTS (SELECT 1 FROM "
+            "information_schema.tables WHERE table_schema='main' "
+            "AND table_name='multimedia_distillation_claims'))"
         ).fetchone()
     except Exception:
         return False
