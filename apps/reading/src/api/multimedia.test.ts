@@ -13,6 +13,7 @@ import {
   approveMultimediaDryRun,
   createMultimediaDraft,
   failedGateIds,
+  getAssetReconciliationLinks,
   getChapterTtsReconciliation,
   getMultimediaAsset,
   getNarrationRunReconciliation,
@@ -197,6 +198,13 @@ describe("multimedia API client", () => {
   });
 
   it("uses encoded mounted reconciliation endpoints", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, { asset_id: "asset 1", executions: [] }));
+    await getAssetReconciliationLinks("asset 1");
+    expect(mockFetch()).toHaveBeenLastCalledWith(
+      "/multimedia/assets/asset%201/reconciliation-links",
+      expect.anything(),
+    );
+
     mockFetch().mockResolvedValueOnce(jsonResponse(200, { execution_id: "exec 1" }));
     await getChapterTtsReconciliation("exec 1");
     expect(mockFetch()).toHaveBeenLastCalledWith(

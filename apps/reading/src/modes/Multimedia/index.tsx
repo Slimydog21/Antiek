@@ -639,7 +639,7 @@ export default function Multimedia() {
           </section>
 
           <aside className="space-y-4">
-            <ReconciliationPanel />
+            <ReconciliationPanel assetId={selectedRecord?.asset.asset_id ?? null} />
             <StatusPanel
               state={renderState}
               onState={setRenderState}

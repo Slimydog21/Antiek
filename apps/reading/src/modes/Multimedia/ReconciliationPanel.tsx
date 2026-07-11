@@ -1,16 +1,18 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   executeChapterTtsReconciliation,
+  getAssetReconciliationLinks,
   getChapterTtsReconciliation,
   getNarrationRunReconciliation,
 } from "../../api/multimedia";
 import type {
+  AssetReconciliationLinks,
   ChapterTtsReconciliation,
   NarrationRunReconciliation,
   TtsReconciliationAction,
 } from "../../api/multimedia";
-import { LemonButton, LemonInput, LemonTag } from "../../components/lemon";
+import { LemonButton, LemonTag } from "../../components/lemon";
 
 const ACTION_LABELS: Record<TtsReconciliationAction, string> = {
   quarantine_send: "Quarantine stale send",
@@ -18,11 +20,8 @@ const ACTION_LABELS: Record<TtsReconciliationAction, string> = {
   release_seal: "Release stale seal",
 };
 
-function eligibleAction(
-  view: ChapterTtsReconciliation | null,
-  visibleExecutionId: string,
-): TtsReconciliationAction | null {
-  if (!view?.action_eligible || view.execution_id !== visibleExecutionId.trim()) return null;
+function eligibleAction(view: ChapterTtsReconciliation | null): TtsReconciliationAction | null {
+  if (!view?.action_eligible) return null;
   return view.next_action in ACTION_LABELS ? (view.next_action as TtsReconciliationAction) : null;
 }
 
@@ -34,25 +33,60 @@ function errorMessage(error: unknown): string {
   return "Recovery request failed";
 }
 
-export function ReconciliationPanel() {
-  const [executionId, setExecutionId] = useState("");
-  const [runId, setRunId] = useState("");
+export function ReconciliationPanel({ assetId }: { assetId: string | null }) {
+  const [links, setLinks] = useState<AssetReconciliationLinks | null>(null);
   const [chapter, setChapter] = useState<ChapterTtsReconciliation | null>(null);
   const [run, setRun] = useState<NarrationRunReconciliation | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestGeneration = useRef(0);
-  const action = eligibleAction(chapter, executionId);
+  const action = eligibleAction(chapter);
 
-  async function inspectExecution() {
-    if (!executionId.trim()) return;
+  useEffect(() => {
     const generation = ++requestGeneration.current;
-    const requestedId = executionId.trim();
+    setLinks(null);
+    setChapter(null);
+    setRun(null);
+    setError(null);
+    if (!assetId) {
+      setPending(false);
+      return;
+    }
+    setPending(true);
+    getAssetReconciliationLinks(assetId)
+      .then(async (result) => {
+        if (requestGeneration.current !== generation || result.asset_id !== assetId) return;
+        setLinks(result);
+        const linked = result.executions.find((item) => item.reconciliation_available);
+        if (!linked) return;
+        const view = await getChapterTtsReconciliation(linked.execution_id);
+        if (requestGeneration.current !== generation || view.execution_id !== linked.execution_id) return;
+        setChapter(view);
+      })
+      .catch((caught) => {
+        if (requestGeneration.current !== generation) return;
+        setError(errorMessage(caught));
+      })
+      .finally(() => {
+        if (requestGeneration.current === generation) setPending(false);
+      });
+  }, [assetId]);
+
+  async function executeAction() {
+    if (!action || !chapter || !links) return;
+    const generation = ++requestGeneration.current;
+    const executionId = chapter.execution_id;
     setPending(true);
     try {
-      const result = await getChapterTtsReconciliation(requestedId);
-      if (requestGeneration.current !== generation) return;
+      const result = await executeChapterTtsReconciliation(executionId, action);
+      if (requestGeneration.current !== generation || result.execution_id !== executionId) return;
       setChapter(result);
+      setLinks({
+        ...links,
+        executions: links.executions.map((item) =>
+          item.execution_id === executionId ? { ...item, status: result.provider_status } : item,
+        ),
+      });
       setError(null);
     } catch (caught) {
       if (requestGeneration.current !== generation) return;
@@ -63,31 +97,30 @@ export function ReconciliationPanel() {
     }
   }
 
-  async function executeAction() {
-    if (!action || !chapter) return;
+  async function inspectExecution(executionId: string) {
     const generation = ++requestGeneration.current;
     setPending(true);
     try {
-      const result = await executeChapterTtsReconciliation(chapter.execution_id, action);
-      if (requestGeneration.current !== generation) return;
+      const result = await getChapterTtsReconciliation(executionId);
+      if (requestGeneration.current !== generation || result.execution_id !== executionId) return;
       setChapter(result);
+      setRun(null);
       setError(null);
     } catch (caught) {
       if (requestGeneration.current !== generation) return;
+      setChapter(null);
       setError(errorMessage(caught));
     } finally {
       if (requestGeneration.current === generation) setPending(false);
     }
   }
 
-  async function inspectRun() {
-    if (!runId.trim()) return;
+  async function inspectRun(runId: string) {
     const generation = ++requestGeneration.current;
-    const requestedId = runId.trim();
     setPending(true);
     try {
-      const result = await getNarrationRunReconciliation(requestedId);
-      if (requestGeneration.current !== generation) return;
+      const result = await getNarrationRunReconciliation(runId);
+      if (requestGeneration.current !== generation || result.run_id !== runId) return;
       setRun(result);
       setError(null);
     } catch (caught) {
@@ -109,26 +142,33 @@ export function ReconciliationPanel() {
         {chapter && <LemonTag colour={chapter.action_eligible ? "danger" : "muted"}>{chapter.attempt_status}</LemonTag>}
       </div>
 
-      <label className="mt-3 block font-mono text-[11px] text-shadow-2 dark:text-moonlight" htmlFor="multimedia-execution-id">
-        Execution ID
-      </label>
-      <div className="mt-1 flex gap-2">
-        <LemonInput
-          id="multimedia-execution-id"
-          value={executionId}
-          onChange={(event) => {
-            requestGeneration.current += 1;
-            setExecutionId(event.target.value);
-            setChapter(null);
-            setError(null);
-            setPending(false);
-          }}
-          wrapperClassName="min-w-0 flex-1"
-        />
-        <LemonButton type="button" size="sm" variant="secondary" disabled={pending || !executionId.trim()} onClick={inspectExecution}>
-          Inspect
-        </LemonButton>
-      </div>
+      {!assetId && <p className="mt-3 text-[12px] text-shadow-1 dark:text-moonlight">Select an asset to inspect recovery.</p>}
+      {assetId && pending && !links && <p className="mt-3 text-[12px] text-shadow-1 dark:text-moonlight">Loading recovery state...</p>}
+      {links && links.executions.length === 0 && links.narration_runs.length === 0 && (
+        <p className="mt-3 text-[12px] text-shadow-1 dark:text-moonlight">No provider execution has started.</p>
+      )}
+
+      {links && links.executions.length > 0 && (
+        <div className="mt-3">
+          <p className="font-mono text-[11px] text-shadow-2 dark:text-moonlight">Chapter executions</p>
+          <div className="mt-1 space-y-1">
+            {links.executions.map((item) => (
+              <LemonButton
+                key={item.execution_id}
+                type="button"
+                size="sm"
+                variant={chapter?.execution_id === item.execution_id ? "secondary" : "tertiary"}
+                className="w-full justify-between"
+                disabled={!item.reconciliation_available || pending}
+                onClick={() => inspectExecution(item.execution_id)}
+              >
+                <span className="truncate">{item.provider}</span>
+                <span>{chapter?.execution_id === item.execution_id ? chapter.attempt_status : item.status}</span>
+              </LemonButton>
+            ))}
+          </div>
+        </div>
+      )}
 
       {chapter && (
         <dl className="mt-3 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-[12px]" data-testid="chapter-reconciliation-status">
@@ -141,9 +181,7 @@ export function ReconciliationPanel() {
           {(chapter.send_age_seconds !== null || chapter.seal_age_seconds !== null) && (
             <>
               <dt className="text-shadow-1 dark:text-moonlight">Age</dt>
-              <dd className="text-right text-ink dark:text-bright">
-                {chapter.seal_age_seconds ?? chapter.send_age_seconds}s
-              </dd>
+              <dd className="text-right text-ink dark:text-bright">{chapter.seal_age_seconds ?? chapter.send_age_seconds}s</dd>
             </>
           )}
         </dl>
@@ -154,26 +192,18 @@ export function ReconciliationPanel() {
         </LemonButton>
       )}
 
-      <label className="mt-4 block border-t border-rule pt-3 font-mono text-[11px] text-shadow-2 dark:border-charcoal-1 dark:text-moonlight" htmlFor="multimedia-run-id">
-        Narration run ID
-      </label>
-      <div className="mt-1 flex gap-2">
-        <LemonInput
-          id="multimedia-run-id"
-          value={runId}
-          onChange={(event) => {
-            requestGeneration.current += 1;
-            setRunId(event.target.value);
-            setRun(null);
-            setError(null);
-            setPending(false);
-          }}
-          wrapperClassName="min-w-0 flex-1"
-        />
-        <LemonButton type="button" size="sm" variant="secondary" disabled={pending || !runId.trim()} onClick={inspectRun}>
-          Inspect
-        </LemonButton>
-      </div>
+      {links && links.narration_runs.length > 0 && (
+        <div className="mt-4 border-t border-rule pt-3 dark:border-charcoal-1">
+          <p className="font-mono text-[11px] text-shadow-2 dark:text-moonlight">Narration runs</p>
+          <div className="mt-1 space-y-1">
+            {links.narration_runs.map((item) => (
+              <LemonButton key={item.run_id} type="button" size="sm" variant="tertiary" className="w-full justify-between" aria-label={`Inspect narration run ${item.status}`} disabled={pending} onClick={() => inspectRun(item.run_id)}>
+                <span>Narration</span><span>{item.status}</span>
+              </LemonButton>
+            ))}
+          </div>
+        </div>
+      )}
       {run && (
         <div className="mt-3" data-testid="run-reconciliation-status">
           <div className="flex items-center justify-between gap-2 text-[12px]">

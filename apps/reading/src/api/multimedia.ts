@@ -140,6 +140,27 @@ export interface NarrationRunReconciliation {
   children: NarrationRunReconciliationChild[];
 }
 
+export interface AssetReconciliationExecutionLink {
+  execution_id: string;
+  revision_id: string;
+  provider: string;
+  status: string;
+  reconciliation_available: boolean;
+}
+
+export interface AssetReconciliationRunLink {
+  run_id: string;
+  revision_id: string;
+  status: string;
+}
+
+export interface AssetReconciliationLinks {
+  asset_id: string;
+  revision_id: string;
+  executions: AssetReconciliationExecutionLink[];
+  narration_runs: AssetReconciliationRunLink[];
+}
+
 // The API serializes `gates` only; failed_gate_ids/manual_gate_ids are plain
 // @property in hardening.py and are dropped by pydantic v2. Derive client-side.
 export function failedGateIds(report: MultimediaHardeningReport): string[] {
@@ -236,6 +257,18 @@ export async function getChapterTtsReconciliation(
   if (resp.status === 503) throw new Error("multimedia_reconciliation_runtime_unavailable");
   if (!resp.ok) throw new Error(`GET /multimedia/executions/{id}/tts-reconciliation: HTTP ${resp.status}`);
   return (await resp.json()) as ChapterTtsReconciliation;
+}
+
+export async function getAssetReconciliationLinks(
+  assetId: string,
+): Promise<AssetReconciliationLinks> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/reconciliation-links`,
+  );
+  if (resp.status === 404) throw new Error("multimedia_asset_reconciliation_unavailable");
+  if (resp.status === 503) throw new Error("multimedia_reconciliation_runtime_unavailable");
+  if (!resp.ok) throw new Error(`GET /multimedia/assets/{id}/reconciliation-links: HTTP ${resp.status}`);
+  return (await resp.json()) as AssetReconciliationLinks;
 }
 
 export async function executeChapterTtsReconciliation(

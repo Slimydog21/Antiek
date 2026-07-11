@@ -6,6 +6,8 @@ planner/audio/video/steering/hardening seams without live provider spend.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from fastapi import APIRouter, FastAPI, HTTPException
 
 from substrate.multimedia.read_model import (
@@ -100,6 +102,10 @@ def register_multimedia_routes(app: FastAPI) -> None:
     app.include_router(multimedia_router)
     runtime = multimedia_reconciliation_runtime_from_environment()
     if runtime is not None:
+        runtime = replace(
+            runtime,
+            asset_revision_resolver=lambda asset_id: get_store().get(asset_id).asset.revision_id,
+        )
         app.dependency_overrides[get_multimedia_reconciliation_runtime] = lambda: runtime
 
 

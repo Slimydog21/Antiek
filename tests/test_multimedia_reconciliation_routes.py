@@ -246,6 +246,17 @@ def test_environment_runtime_is_disabled_or_fails_closed_on_partial_configuratio
         multimedia_reconciliation_runtime_from_environment(
             {"ANTIEK_MULTIMEDIA_RECONCILIATION_DB_PATH": "/tmp/only-db"}
         )
+    keys = {
+        "ANTIEK_MULTIMEDIA_RECONCILIATION_DB_PATH": "/tmp/runtime.duckdb",
+        "ANTIEK_MULTIMEDIA_RECONCILIATION_OUTPUT_DIR": "/tmp/output",
+        "ANTIEK_MULTIMEDIA_SIGNING_KEY_B64": base64.b64encode(KEY).decode("ascii"),
+        "ANTIEK_MULTIMEDIA_RECOVERY_KEY_B64": base64.b64encode(RECOVERY_KEY).decode("ascii"),
+        "ANTIEK_MULTIMEDIA_EVIDENCE_KEY_B64": base64.b64encode(EVIDENCE_KEY).decode("ascii"),
+    }
+    with pytest.raises(RuntimeError, match="provider recovery configuration is incomplete"):
+        multimedia_reconciliation_runtime_from_environment(
+            {**keys, "ANTIEK_MULTIMEDIA_RECOVERY_ENDPOINT": "https://recovery.example/v1"}
+        )
 
 
 def test_registered_multimedia_routes_wire_environment_runtime(
@@ -294,6 +305,11 @@ def test_parent_run_projects_blocked_children_without_cross_owner_disclosure(
         evidence_verification_key=EVIDENCE_KEY,
         authorization_resolver=lambda execution_id: next(iter(authorizations.values())),
         recovery_evidence_resolver=lambda execution_id: (_ for _ in ()).throw(LookupError()),
+        asset_revision_resolver=lambda asset_id: (
+            prepared.revision_id
+            if asset_id == prepared.asset_id
+            else (_ for _ in ()).throw(LookupError())
+        ),
         clock=lambda: RUN_NOW + timedelta(minutes=10),
     )
     client = _client(runtime)
@@ -312,3 +328,67 @@ def test_parent_run_projects_blocked_children_without_cross_owner_disclosure(
     ]
     assert body["children"][1]["reconciliation"] is None
     assert client.get(route, headers=_headers("other")).status_code == 404
+
+    links = client.get(
+        f"/multimedia/assets/{prepared.asset_id}/reconciliation-links", headers=_headers()
+    )
+    assert links.status_code == 200, links.text
+    links_body = links.json()
+    assert links_body["asset_id"] == prepared.asset_id
+    assert [row["run_id"] for row in links_body["narration_runs"]] == [prepared.run_id]
+    assert len(links_body["executions"]) == 3
+    assert sum(row["reconciliation_available"] for row in links_body["executions"]) == 1
+    assert "reconciliation" not in links_body["executions"][0]
+    other = client.get(
+        f"/multimedia/assets/{prepared.asset_id}/reconciliation-links",
+        headers=_headers("other"),
+    )
+    assert other.status_code == 200
+    assert other.json()["executions"] == []
+    assert other.json()["narration_runs"] == []
+
+    with FlockWriteCoordinator(db_path).acquire_write_context("test.link_bounds") as connection:
+        execution_row = list(
+            connection.execute(
+                "SELECT * FROM multimedia_provider_executions ORDER BY execution_id LIMIT 1"
+            ).fetchone()
+        )
+        for index in range(62):
+            clone = list(execution_row)
+            clone[0] = f"mmexec_overflow_{index:02d}"
+            clone[1] = f"mmauth_overflow_{index:02d}"
+            clone[-1] = "invalid-unread-mac"
+            connection.execute(
+                "INSERT INTO multimedia_provider_executions VALUES ("
+                + ",".join("?" for _ in clone)
+                + ")",
+                clone,
+            )
+    bounded = client.get(
+        f"/multimedia/assets/{prepared.asset_id}/reconciliation-links", headers=_headers()
+    )
+    assert bounded.status_code == 409
+
+    with FlockWriteCoordinator(db_path).acquire_write_context("test.run_link_bounds") as connection:
+        connection.execute(
+            "DELETE FROM multimedia_provider_executions WHERE execution_id LIKE 'mmexec_overflow_%'"
+        )
+        run_row = list(
+            connection.execute(
+                "SELECT * FROM multimedia_narration_runs WHERE run_id=?", [prepared.run_id]
+            ).fetchone()
+        )
+        for index in range(8):
+            clone = list(run_row)
+            clone[0] = f"mmnrun_overflow_{index:02d}"
+            clone[-1] = "invalid-unread-mac"
+            connection.execute(
+                "INSERT INTO multimedia_narration_runs VALUES ("
+                + ",".join("?" for _ in clone)
+                + ")",
+                clone,
+            )
+    run_bounded = client.get(
+        f"/multimedia/assets/{prepared.asset_id}/reconciliation-links", headers=_headers()
+    )
+    assert run_bounded.status_code == 409

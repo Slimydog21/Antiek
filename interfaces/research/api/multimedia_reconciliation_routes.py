@@ -30,6 +30,14 @@ from substrate.multimedia.provider_execution import (
     ProviderExecutionIntegrityError,
     get_provider_execution,
 )
+from substrate.multimedia.provider_recovery_adapter import (
+    HttpProviderRecoveryTransport,
+    ProviderAccountRecoveryAdapter,
+    ProviderRecoveryError,
+)
+from substrate.multimedia.provider_recovery_adapter import (
+    RecoveredProviderAudio as RecoveredChapterAudio,
+)
 from substrate.multimedia.reconciliation_operations import (
     get_chapter_tts_reconciliation,
     operator_quarantine_stale_send,
@@ -52,15 +60,8 @@ _CONFLICTS = (
     ProviderExecutionIntegrityError,
     ValueError,
 )
-
-
-@dataclass(frozen=True)
-class RecoveredChapterAudio:
-    provider_request_id: str
-    audio_bytes: bytes
-    evidence_source: str
-    external_signature: str
-    recorded_at: datetime
+_MAX_ASSET_EXECUTION_LINKS = 64
+_MAX_ASSET_RUN_LINKS = 8
 
 
 @dataclass(frozen=True)
@@ -72,6 +73,9 @@ class MultimediaReconciliationRuntime:
     evidence_verification_key: bytes
     authorization_resolver: Callable[[str], MultimediaExecutionAuthorizationV2]
     recovery_evidence_resolver: Callable[[str], RecoveredChapterAudio]
+    asset_revision_resolver: Callable[[str], str] = lambda asset_id: (_ for _ in ()).throw(
+        LookupError("multimedia asset is unavailable")
+    )
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
     stale_after: timedelta = timedelta(minutes=5)
 
@@ -122,6 +126,33 @@ class NarrationRunReconciliationResponse(BaseModel):
     children: tuple[NarrationRunChildResponse, ...]
 
 
+class AssetExecutionLinkResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    execution_id: str
+    revision_id: str
+    provider: str
+    status: str
+    reconciliation_available: bool
+
+
+class AssetNarrationRunLinkResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    revision_id: str
+    status: str
+
+
+class AssetReconciliationLinksResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    asset_id: str
+    revision_id: str
+    executions: tuple[AssetExecutionLinkResponse, ...]
+    narration_runs: tuple[AssetNarrationRunLinkResponse, ...]
+
+
 def get_multimedia_reconciliation_runtime() -> MultimediaReconciliationRuntime:
     raise HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -145,6 +176,40 @@ def multimedia_reconciliation_runtime_from_environment(
     if not db_path or not output_dir or not all(encoded_keys):
         raise RuntimeError("multimedia reconciliation configuration is incomplete")
     signing_key, recovery_key, evidence_key = tuple(_decode_key(value) for value in encoded_keys)
+    recovery_values = (
+        values.get("ANTIEK_MULTIMEDIA_RECOVERY_ENDPOINT", "").strip(),
+        values.get("ANTIEK_MULTIMEDIA_RECOVERY_TOKEN", "").strip(),
+        values.get("ANTIEK_MULTIMEDIA_RECOVERY_ACCOUNT_SHA256", "").strip(),
+        values.get("ANTIEK_MULTIMEDIA_RECOVERY_ALLOWED_HOST", "").strip(),
+    )
+    if any(recovery_values) and not all(recovery_values):
+        raise RuntimeError("multimedia provider recovery configuration is incomplete")
+    adapter = None
+    if all(recovery_values):
+        try:
+            adapter = ProviderAccountRecoveryAdapter(
+                transport=HttpProviderRecoveryTransport(
+                    endpoint=recovery_values[0],
+                    bearer_token=recovery_values[1],
+                    allowed_host=recovery_values[3],
+                ),
+                account_identity_digest=recovery_values[2],
+                evidence_key=evidence_key,
+            )
+        except ValueError as exc:
+            raise RuntimeError("multimedia provider recovery configuration is invalid") from exc
+
+    def resolve_recovery(execution_id: str) -> RecoveredChapterAudio:
+        if adapter is None:
+            raise LookupError("provider recovery evidence is unavailable")
+        execution = get_provider_execution(
+            db_path=db_path, execution_id=execution_id, signing_key=signing_key
+        )
+        try:
+            return adapter.resolve(execution, verified_at=datetime.now(UTC))
+        except ProviderRecoveryError as exc:
+            raise LookupError("provider recovery evidence is unavailable") from exc
+
     return MultimediaReconciliationRuntime(
         db_path=db_path,
         output_dir=output_dir,
@@ -156,9 +221,7 @@ def multimedia_reconciliation_runtime_from_environment(
             signing_key=signing_key,
             execution_id=execution_id,
         ),
-        recovery_evidence_resolver=lambda execution_id: (_ for _ in ()).throw(
-            LookupError("provider recovery evidence is unavailable")
-        ),
+        recovery_evidence_resolver=resolve_recovery,
     )
 
 
@@ -174,6 +237,24 @@ def authenticated_multimedia_operator(request: Request) -> str:
 
 
 multimedia_reconciliation_router = APIRouter(tags=["multimedia-reconciliation"])
+
+
+@multimedia_reconciliation_router.get(
+    "/assets/{asset_id}/reconciliation-links",
+    response_model=AssetReconciliationLinksResponse,
+)
+def get_asset_reconciliation_links(
+    asset_id: str,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+    runtime: MultimediaReconciliationRuntime = Depends(get_multimedia_reconciliation_runtime),
+) -> AssetReconciliationLinksResponse:
+    try:
+        revision_id = runtime.asset_revision_resolver(asset_id)
+        return _asset_links(runtime, asset_id, revision_id, operator_id)
+    except (LookupError, MultimediaExecutionUnavailable, ProviderExecutionIntegrityError, NarrationRunError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="multimedia asset unavailable") from exc
+    except _CONFLICTS as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="reconciliation state conflicts") from exc
 
 
 @multimedia_reconciliation_router.get(
@@ -346,6 +427,115 @@ def _response(view: ChapterTTSReconciliationView) -> ChapterTTSReconciliationRes
     )
 
 
+def _asset_links(
+    runtime: MultimediaReconciliationRuntime,
+    asset_id: str,
+    revision_id: str,
+    operator_id: str,
+) -> AssetReconciliationLinksResponse:
+    if not asset_id or not revision_id:
+        raise ValueError("asset identity is invalid")
+    allowed_revisions = {revision_id}
+    run_links: list[AssetNarrationRunLinkResponse] = []
+    with connect_read(runtime.db_path) as connection:
+        has_runs = connection.execute(
+            "SELECT count(*) FROM information_schema.tables "
+            "WHERE table_name='multimedia_narration_runs'"
+        ).fetchone()
+        run_rows = (
+            connection.execute(
+                "SELECT run_id FROM multimedia_narration_runs "
+                "WHERE asset_id=? AND revision_id=? ORDER BY run_id LIMIT ?",
+                [asset_id, revision_id, _MAX_ASSET_RUN_LINKS + 1],
+            ).fetchall()
+            if has_runs and has_runs[0]
+            else []
+        )
+    if len(run_rows) > _MAX_ASSET_RUN_LINKS:
+        raise ValueError("asset narration run linkage exceeds its bound")
+    for row in run_rows:
+        if not isinstance(row[0], str):
+            raise NarrationRunError("narration run identity is invalid")
+        run = get_narration_run(
+            db_path=runtime.db_path, run_id=row[0], signing_key=runtime.signing_key
+        )
+        bindings = json.loads(run.chapter_bindings_json)
+        if not isinstance(bindings, list) or not bindings:
+            raise NarrationRunError("narration run bindings are invalid")
+        child_revisions: list[str] = []
+        owned = True
+        for sequence, binding in enumerate(bindings):
+            if not isinstance(binding, list) or len(binding) != 4 or not isinstance(binding[0], str):
+                raise NarrationRunError("narration run bindings are invalid")
+            child_revision = _child_revision(revision_id, binding[0], sequence)
+            try:
+                _owned_child_execution_id(
+                    runtime,
+                    operator_id=operator_id,
+                    asset_id=asset_id,
+                    revision_id=child_revision,
+                )
+            except MultimediaExecutionUnavailable:
+                owned = False
+                break
+            child_revisions.append(child_revision)
+        if owned:
+            allowed_revisions.update(child_revisions)
+            run_links.append(
+                AssetNarrationRunLinkResponse(
+                    run_id=run.run_id,
+                    revision_id=run.revision_id,
+                    status=run.status,
+                )
+            )
+    with connect_read(runtime.db_path) as connection:
+        has_executions = connection.execute(
+            "SELECT count(*) FROM information_schema.tables "
+            "WHERE table_name='multimedia_provider_executions'"
+        ).fetchone()
+        execution_rows = (
+            connection.execute(
+                "SELECT execution_id FROM multimedia_provider_executions "
+                "WHERE asset_id=? AND operator_id=? ORDER BY created_at, execution_id LIMIT ?",
+                [asset_id, operator_id, _MAX_ASSET_EXECUTION_LINKS + 1],
+            ).fetchall()
+            if has_executions and has_executions[0]
+            else []
+        )
+    if len(execution_rows) > _MAX_ASSET_EXECUTION_LINKS:
+        raise ValueError("asset execution linkage exceeds its bound")
+    execution_links: list[AssetExecutionLinkResponse] = []
+    for row in execution_rows:
+        if not isinstance(row[0], str):
+            raise ProviderExecutionIntegrityError("provider execution identity is invalid")
+        execution = get_provider_execution(
+            db_path=runtime.db_path, execution_id=row[0], signing_key=runtime.signing_key
+        )
+        if (
+            execution.operator_id != operator_id
+            or execution.asset_id != asset_id
+            or execution.revision_id not in allowed_revisions
+        ):
+            continue
+        execution_links.append(
+            AssetExecutionLinkResponse(
+                execution_id=execution.execution_id,
+                revision_id=execution.revision_id,
+                provider=execution.provider,
+                status=execution.status.value,
+                reconciliation_available=_chapter_attempt_exists(
+                    runtime, execution.execution_id
+                ),
+            )
+        )
+    return AssetReconciliationLinksResponse(
+        asset_id=asset_id,
+        revision_id=revision_id,
+        executions=tuple(execution_links),
+        narration_runs=tuple(run_links),
+    )
+
+
 def _owned_child_execution_id(
     runtime: MultimediaReconciliationRuntime,
     *,
@@ -356,7 +546,7 @@ def _owned_child_execution_id(
     with connect_read(runtime.db_path) as connection:
         rows = connection.execute(
             "SELECT execution_id, operator_id FROM multimedia_provider_executions "
-            "WHERE asset_id=? AND revision_id=?",
+            "WHERE asset_id=? AND revision_id=? LIMIT 2",
             [asset_id, revision_id],
         ).fetchall()
     if (
@@ -461,6 +651,7 @@ def _child_revision(parent_revision: str, chapter_id: str, sequence: int) -> str
 
 
 __all__ = [
+    "AssetReconciliationLinksResponse",
     "MultimediaReconciliationRuntime",
     "RecoveredChapterAudio",
     "authenticated_multimedia_operator",
