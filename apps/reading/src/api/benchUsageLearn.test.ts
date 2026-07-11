@@ -83,6 +83,21 @@ describe("parseUsageLearnProposal", () => {
         task_weights: [],
       }),
     ).toThrow();
+    // missing prior_weight key must not invent null
+    const { prior_weight: _pw, ...noPrior } = valid.task_weights[0];
+    void _pw;
+    expect(() =>
+      parseUsageLearnProposal({
+        ...valid,
+        task_weights: [noPrior],
+      }),
+    ).toThrow(/prior_weight/);
+    expect(() =>
+      parseUsageLearnProposal({
+        ...valid,
+        notes: [1 as unknown as string],
+      }),
+    ).toThrow(/notes/);
   });
 });
 

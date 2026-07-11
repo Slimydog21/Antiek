@@ -115,8 +115,13 @@ export function parseUsageLearnProposal(body: unknown): UsageLearnProposal {
         `usage-learn response rejected: task_weights[${idx}].weight must be nonnegative`,
       );
     }
+    if (!("prior_weight" in row)) {
+      throw new Error(
+        `usage-learn response rejected: task_weights[${idx}].prior_weight required (null allowed)`,
+      );
+    }
     let prior_weight: number | null;
-    if (row.prior_weight === null || row.prior_weight === undefined) {
+    if (row.prior_weight === null) {
       prior_weight = null;
     } else if (
       typeof row.prior_weight === "number" &&
@@ -152,12 +157,26 @@ export function parseUsageLearnProposal(body: unknown): UsageLearnProposal {
       rationale: row.rationale,
     };
   });
+  for (let i = 0; i < o.notes.length; i++) {
+    if (typeof o.notes[i] !== "string") {
+      throw new Error(
+        `usage-learn response rejected: notes[${i}] must be string`,
+      );
+    }
+  }
+  for (let i = 0; i < o.suggested_new_tasks.length; i++) {
+    if (typeof o.suggested_new_tasks[i] !== "string") {
+      throw new Error(
+        `usage-learn response rejected: suggested_new_tasks[${i}] must be string`,
+      );
+    }
+  }
   return {
     week_id: o.week_id,
     authority: "advisory",
     incomplete: o.incomplete,
-    notes: o.notes.map((n) => String(n)),
-    suggested_new_tasks: o.suggested_new_tasks.map((t) => String(t)),
+    notes: o.notes as string[],
+    suggested_new_tasks: o.suggested_new_tasks as string[],
     task_weights,
   };
 }
