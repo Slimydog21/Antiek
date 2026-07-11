@@ -1,0 +1,13 @@
+{
+  "generated_at": "2026-07-11T06:59:47.515156+00:00",
+  "lint": "reachability_gate_py",
+  "schema_version": 1,
+  "violations": [
+    {
+      "col": 0,
+      "kind": "export:uncalled:guarded_send_to_author",
+      "line": 90,
+      "path": "substrate/payouts/contact_guard.py"
+    }
+  ]
+}
