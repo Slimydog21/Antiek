@@ -5,7 +5,13 @@ budget-awareness needs. The adjacent admin router securely registers BYOK
 providers but does not grant route authority or route via NotDiamond.
 
 Honesty rules (load-bearing):
-  * Spent is ``null`` when no ledger is wired — never invent ``$0 spent``.
+  * Spent/remaining are ``null`` when no ledger is wired — never invent ``$0``.
+  * Sidecar ``spent_usd`` is a **reserved estimate** (fixed per-spawn holds),
+    not settled provider cost. Surfaces label that basis explicitly.
+  * Display (Settings) cap and enforcement (daemon) cap are both reported when
+    they diverge — never pretend one number is both.
+  * Remaining under the display cap is **signed** (negative when over budget)
+    so overrun magnitude is never clamped away.
   * Cost projection uses ``substrate/dispatch/config.yaml`` tier pricing; when
     rates are ``0.0`` (operator-placeholder), the estimate is ``null`` with an
     explicit note rather than a fake number.
@@ -27,7 +33,6 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from orchestration.continuous.budget import (
     _ENV_DAILY_CAP,
     DEFAULT_DAILY_CAP_USD,
-    DaemonBudget,
     _budget_path,
 )
 from substrate.dispatch.advisory_decision import (
@@ -46,6 +51,7 @@ _MAX_BENCHMARK_AGE = timedelta(days=8)
 _MAX_BENCHMARK_FUTURE_SKEW = timedelta(minutes=5)
 _TEXT_DECISION_TIERS = frozenset({"flash", "pro", "synthesis", "verify"})
 _MAX_FALLBACK_DEPTH = 16
+SpendBasis = Literal["unknown", "reserved_estimate"]
 
 
 class ModelRow(BaseModel):
@@ -65,12 +71,28 @@ class ModelsResponse(BaseModel):
 
 
 class BudgetResponse(BaseModel):
+    """Operator budget readout.
+
+    ``daily_cap_usd`` is the Settings/display cap. ``enforcement_cap_usd`` is
+    what the continuous daemon actually enforces. ``spent_usd`` mirrors
+    ``reserved_estimated_usd`` for back-compat; both are reserved holds, not
+    settled provider cost (see ``spend_basis``). ``remaining_usd`` is signed:
+    ``display_cap - reserved`` (negative when over the display cap).
+    """
+
     daily_cap_usd: float | None
     spent_usd: float | None
     remaining_usd: float | None
     spent_status: SpentStatus
     cap_env: str | None
     notes: list[str] = Field(default_factory=list)
+    # Honesty fields (additive; older clients ignore them).
+    reserved_estimated_usd: float | None = None
+    spend_basis: SpendBasis = "unknown"
+    enforcement_cap_usd: float | None = None
+    enforcement_cap_env: str | None = None
+    caps_aligned: bool | None = None
+    over_budget: bool | None = None
 
 
 class PromptCostEstimateRequest(BaseModel):
@@ -353,61 +375,112 @@ def estimate_prompt_cost(
     )
 
 
-def read_operator_budget() -> BudgetResponse:
-    """Read daily cap + spent with honest unknown-spend semantics."""
-    notes: list[str] = []
-    cap_env: str | None = None
-    daily_cap: float | None = None
-
+def _resolve_display_cap(notes: list[str]) -> tuple[float, str | None]:
+    """Settings/display cap: operator env preferred, then daemon env, then default."""
     for env_name in ("ANTIEK_OPERATOR_BUDGET_USD", _ENV_DAILY_CAP):
         raw = os.environ.get(env_name)
         if raw is None or raw.strip() == "":
             continue
         try:
-            daily_cap = float(raw)
-            cap_env = env_name
-            break
+            return float(raw), env_name
         except ValueError:
             notes.append(f"{env_name} is not a float; ignored")
+    notes.append(
+        f"no ANTIEK_OPERATOR_BUDGET_USD / {_ENV_DAILY_CAP}; "
+        f"showing daemon default cap ${DEFAULT_DAILY_CAP_USD:.2f}/day as reference"
+    )
+    return DEFAULT_DAILY_CAP_USD, None
 
-    if daily_cap is None:
-        # Surface the daemon default as informational only when env unset.
-        daily_cap = DEFAULT_DAILY_CAP_USD
-        cap_env = None
+
+def _resolve_enforcement_cap(notes: list[str]) -> tuple[float, str | None]:
+    """Cap the continuous daemon actually enforces (never the operator-only env)."""
+    raw = os.environ.get(_ENV_DAILY_CAP)
+    if raw is not None and raw.strip() != "":
+        try:
+            return float(raw), _ENV_DAILY_CAP
+        except ValueError:
+            notes.append(f"{_ENV_DAILY_CAP} is not a float; enforcement uses default")
+    return DEFAULT_DAILY_CAP_USD, None
+
+
+def _read_sidecar_reserved_usd() -> float | None:
+    """Read reserved-estimate spend from the daemon sidecar JSON.
+
+    Does **not** call ``DaemonBudget.remaining_today()`` (that re-bases on
+    whatever cap the DaemonBudget was constructed with) and does **not** edit
+    ``orchestration/continuous/budget.py`` (protected by the §7.4 tripwire).
+    Absent file → ``None`` (unknown), never a fabricated zero.
+    """
+    path = _budget_path()
+    if not path.is_file():
+        return None
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError("budget sidecar is not a JSON object")
+    return max(0.0, float(raw.get("spent_usd", 0.0)))
+
+
+def read_operator_budget() -> BudgetResponse:
+    """Read display/enforcement caps + reserved-estimate spend honestly."""
+    notes: list[str] = []
+    daily_cap, cap_env = _resolve_display_cap(notes)
+    enforcement_cap, enforcement_cap_env = _resolve_enforcement_cap(notes)
+    caps_aligned = abs(float(daily_cap) - float(enforcement_cap)) < 1e-9
+    if not caps_aligned:
         notes.append(
-            f"no ANTIEK_OPERATOR_BUDGET_USD / {_ENV_DAILY_CAP}; "
-            f"showing daemon default cap ${DEFAULT_DAILY_CAP_USD:.2f}/day as reference"
+            f"display cap ${float(daily_cap):.2f}/day"
+            f" ({cap_env or 'default'}) differs from enforcement cap"
+            f" ${float(enforcement_cap):.2f}/day"
+            f" ({enforcement_cap_env or 'daemon default'}) —"
+            f" daemon halt uses enforcement; Settings bar uses display"
         )
 
-    # Prefer daemon budget sidecar when present (shared daily spend signal).
-    # Crucial honesty detail: DaemonBudget.remaining_today() fabricates an
-    # in-memory zero-spend snapshot when the file is absent. Settings is a
-    # readout, not the daemon, so absence of the sidecar means unknown spend.
-    spent: float | None = None
+    reserved: float | None = None
     remaining: float | None = None
     spent_status: SpentStatus = "unknown"
+    spend_basis: SpendBasis = "unknown"
+    over_budget: bool | None = None
     try:
-        if _budget_path().is_file():
-            bdg = DaemonBudget(daily_cap_usd=float(daily_cap))
-            remaining = float(bdg.remaining_today())
-            spent = max(0.0, float(daily_cap) - remaining)
-            spent_status = "known"
-            notes.append("spent sourced from continuous-daemon daily budget sidecar")
-        else:
+        reserved = _read_sidecar_reserved_usd()
+        if reserved is None:
             notes.append("spent ledger unavailable: daemon sidecar missing")
+        else:
+            # Signed remaining on the Settings/display cap — no clamp.
+            remaining = float(daily_cap) - float(reserved)
+            spent_status = "known"
+            spend_basis = "reserved_estimate"
+            over_budget = remaining < 0.0
+            notes.append(
+                "reserved_estimated_usd from continuous-daemon sidecar "
+                "(fixed per-spawn holds, not settled provider cost)"
+            )
+            if over_budget:
+                notes.append(
+                    f"over display budget by ${abs(remaining):.4f} "
+                    f"(remaining_usd is signed, not clamped to 0)"
+                )
     except Exception as exc:  # noqa: BLE001 — honesty over crash
-        spent = None
+        reserved = None
         remaining = None
         spent_status = "unknown"
+        spend_basis = "unknown"
+        over_budget = None
         notes.append(f"spent ledger unavailable: {type(exc).__name__}")
 
     return BudgetResponse(
         daily_cap_usd=daily_cap,
-        spent_usd=spent,
+        # Back-compat alias: same number as reserved_estimated_usd.
+        spent_usd=reserved,
         remaining_usd=remaining,
         spent_status=spent_status,
         cap_env=cap_env,
         notes=notes,
+        reserved_estimated_usd=reserved,
+        spend_basis=spend_basis,
+        enforcement_cap_usd=enforcement_cap,
+        enforcement_cap_env=enforcement_cap_env,
+        caps_aligned=caps_aligned,
+        over_budget=over_budget,
     )
 
 
