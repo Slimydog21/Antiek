@@ -7,9 +7,11 @@ Every test runs against injected fakes — zero network, zero keys. Coverage:
    ``loop_fn`` in both modes (there is nothing to veneer or spoof through
    the public API); live mode refuses every injected seam; direct dataclass
    construction still refuses the known mock/stub loops (defense-in-depth,
-   incl. partial/__wrapped__ veneers); and the flag ⇔ seam-provenance
-   invariant survives ``dataclasses.replace`` in both directions (no
-   fake-seam live instance, no real-machinery "offline" instance).
+   incl. partial/__wrapped__ veneers); the flag ⇔ seam-provenance invariant
+   survives ``dataclasses.replace`` in both directions (no fake-seam live
+   instance, no real-machinery "offline" instance); and provenance is OBJECT
+   IDENTITY, so a foreign module naturally named live_provider/host_local
+   with the exact real qualnames (zero attribute forgery) still refuses.
 2. Runner channel: a provider raising ``ProviderFailure`` marks THAT query
    NOT_MEASURED, the judge is never called for it, the other queries are
    still processed; any other exception type still propagates (a bug crashes).
@@ -326,7 +328,7 @@ def test_dataclasses_replace_cannot_break_flag_seam_invariant(
 ) -> None:
     import dataclasses
 
-    from runtime.research_runner import make_exa_gather_loop
+    from substrate.deep_research_eval.live_provider import _build_real_exa_loop
 
     monkeypatch.setenv("EXA_API_KEY", "test-key")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
@@ -334,10 +336,12 @@ def test_dataclasses_replace_cannot_break_flag_seam_invariant(
     offline = fakes.build()
     live = build_live_provider(allow_live=True, discovery_top_k=1)
 
-    # Repro 1: offline → live, all four fake seams retained (a real loop is
-    # supplied so the refusal is specifically seam provenance, not the loop).
+    # Repro 1: offline → live, all four fake seams retained. The loop is the
+    # module-minted (token-stamped) real one so the refusal is specifically
+    # seam provenance, not the loop — under object-identity provenance only
+    # _build_real_exa_loop mints a live-eligible loop.
     with pytest.raises(ValueError, match="not this module's real implementations"):
-        dataclasses.replace(offline, allow_live=True, loop_fn=make_exa_gather_loop())
+        dataclasses.replace(offline, allow_live=True, loop_fn=_build_real_exa_loop())
 
     # Repro 2: live → offline while keeping ALL real seams — an "offline"
     # provider that could actually spend/hit the network is refused.
@@ -364,10 +368,13 @@ def test_allow_live_refused_without_env_keys(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     with pytest.raises(ValueError, match="EXA_API_KEY"):
         build_live_provider(allow_live=True)
-    # Direct construction with the real loop but a key still missing is
-    # refused by the dataclass gate itself (not only the factory's check).
+    # Direct construction with the module-minted real loop but a key still
+    # missing is refused by the dataclass gate itself (not only the factory's
+    # check). The loop must come from _build_real_exa_loop — under
+    # object-identity provenance a bare make_exa_gather_loop() product is no
+    # longer live-eligible (it carries no token).
     monkeypatch.setenv("EXA_API_KEY", "test-key")
-    from runtime.research_runner import make_exa_gather_loop
+    from substrate.deep_research_eval.live_provider import _build_real_exa_loop
 
     fakes = FakePipeline()
     with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
@@ -376,14 +383,15 @@ def test_allow_live_refused_without_env_keys(monkeypatch: pytest.MonkeyPatch) ->
             synthesize=fakes.synthesize,
             usage_reader=fakes.usage_reader,
             source_url_lookup=fakes.source_url_lookup,
-            loop_fn=make_exa_gather_loop(),
+            loop_fn=_build_real_exa_loop(),
             allow_live=True,
         )
 
 
-# 4c. allow_live gating on direct construction: a non-mock but non-Exa loop
-#     (or no loop) is refused; the fully-defaulted factory build constructs
-#     (inert — no I/O at construction) and self-wires the real Exa loop.
+# 4c. allow_live gating on direct construction: a non-mock but non-token loop
+#     (home-grown, None, or even a genuine make_exa_gather_loop product that
+#     this module did not mint) is refused; the fully-defaulted factory build
+#     constructs (inert — no I/O at construction) and self-wires the real loop.
 def test_allow_live_requires_real_exa_loop(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("EXA_API_KEY", "test-key")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
@@ -403,14 +411,127 @@ def test_allow_live_requires_real_exa_loop(monkeypatch: pytest.MonkeyPatch) -> N
             allow_live=True,
         )
 
+    from runtime.research_runner import make_exa_gather_loop
+
     with pytest.raises(ValueError, match="REAL Exa gather loop"):
         _direct(home_grown_loop)
     with pytest.raises(ValueError, match="REAL Exa gather loop"):
         _direct(None)
+    # Object-identity tightening: even the genuine factory's product does not
+    # qualify unless THIS module minted (token-stamped) it.
+    with pytest.raises(ValueError, match="REAL Exa gather loop"):
+        _direct(make_exa_gather_loop())
 
     # The one honest live construction: fully defaulted through the factory.
     live = build_live_provider(allow_live=True, discovery_top_k=1)
     assert live.allow_live is True and live.loop_fn is not None
+
+
+# 4d. Codex round-3 mimic probe: a foreign module NATURALLY named
+#     "live_provider" / "host_local" whose callables carry the exact real
+#     qualnames — zero attribute forgery — must not pass provenance in either
+#     direction. Object identity (private token / is-checks) replaces names.
+def test_natural_name_mimicry_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    import textwrap
+    import types
+
+    monkeypatch.setenv("EXA_API_KEY", "test-key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+    def _mimic_module(name: str, source: str) -> types.ModuleType:
+        mod = types.ModuleType(name)
+        exec(compile(textwrap.dedent(source), f"<{name}>", "exec"), mod.__dict__)
+        return mod
+
+    fake_lp = _mimic_module(
+        "fakepkg.live_provider",
+        """
+        def _build_real_gather():
+            async def _gather(query, session_id):
+                raise AssertionError("mimic must never run")
+            return _gather
+
+        def _build_real_synthesize():
+            async def _synthesize(pack):
+                raise AssertionError("mimic must never run")
+            return _synthesize
+
+        def _read_dispatch_usage(investigation_ids):
+            raise AssertionError("mimic must never run")
+
+        def _lookup_document_source_uri(document_id):
+            raise AssertionError("mimic must never run")
+        """,
+    )
+    fake_hl = _mimic_module(
+        "fakepkg.host_local",
+        """
+        def make_exa_gather_loop(top_k=3):
+            async def _loop(ctx):
+                raise AssertionError("mimic must never run")
+            return _loop
+        """,
+    )
+    mimic_gather = fake_lp.__dict__["_build_real_gather"]()
+    mimic_synth = fake_lp.__dict__["_build_real_synthesize"]()
+    mimic_usage = fake_lp.__dict__["_read_dispatch_usage"]
+    mimic_lookup = fake_lp.__dict__["_lookup_document_source_uri"]
+    mimic_loop = fake_hl.__dict__["make_exa_gather_loop"]()
+
+    # Red-proof the mimicry: these ARE the exact names + module leaves the
+    # round-3 name-matching accepted. Only object identity distinguishes them.
+    assert mimic_gather.__qualname__ == "_build_real_gather.<locals>._gather"
+    assert mimic_gather.__module__.rsplit(".", 1)[-1] == "live_provider"
+    assert mimic_loop.__qualname__ == "make_exa_gather_loop.<locals>._loop"
+    assert mimic_loop.__module__.rsplit(".", 1)[-1] == "host_local"
+
+    # Live direction, mimic loop: refused (no token).
+    with pytest.raises(ValueError, match="REAL Exa gather loop"):
+        LiveResearchProvider(
+            gather=mimic_gather,
+            synthesize=mimic_synth,
+            usage_reader=mimic_usage,
+            source_url_lookup=mimic_lookup,
+            loop_fn=mimic_loop,
+            allow_live=True,
+        )
+
+    # Live direction, genuine minted loop but mimic seams: every seam refused.
+    from substrate.deep_research_eval.live_provider import (
+        _build_real_exa_loop,
+        _read_dispatch_usage,
+    )
+
+    with pytest.raises(ValueError, match="'gather', 'synthesize', 'usage_reader'"):
+        LiveResearchProvider(
+            gather=mimic_gather,
+            synthesize=mimic_synth,
+            usage_reader=mimic_usage,
+            source_url_lookup=mimic_lookup,
+            loop_fn=_build_real_exa_loop(),
+            allow_live=True,
+        )
+
+    # Offline direction: the mimics are just fakes — with names out of the
+    # picture they are NOT misclassified as real machinery, so offline
+    # construction works (this was a false-positive under name-matching)...
+    offline = LiveResearchProvider(
+        gather=mimic_gather,
+        synthesize=mimic_synth,
+        usage_reader=mimic_usage,
+        source_url_lookup=mimic_lookup,
+    )
+    assert offline.allow_live is False
+    # ...while a GENUINE real seam under the offline flag still refuses by
+    # object identity (the direction that guards real spend inside tests).
+    fakes = FakePipeline()
+    with pytest.raises(ValueError, match="must not carry real-machinery seams"):
+        LiveResearchProvider(
+            gather=fakes.gather,
+            synthesize=fakes.synthesize,
+            usage_reader=_read_dispatch_usage,
+            source_url_lookup=fakes.source_url_lookup,
+        )
 
 
 # 5. Sync bridge: an already-running loop refuses (no nesting, no threads).

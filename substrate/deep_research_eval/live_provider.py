@@ -33,28 +33,35 @@ Live mode = real machinery, full stop (no measurement theater)
     (host_local.py :494 / :526 — the benchmark mock and the honest production
     placeholder; both fabricate steps and retrieve nothing), unwrapping
     ``functools.partial`` / ``__wrapped__`` chains first; and (b) enforces a
-    TWO-direction flag ⇔ seam-provenance invariant: ``allow_live=True``
-    requires the positive ``make_exa_gather_loop`` identity, the env keys,
-    AND all four seams to be this module's real implementations, while
-    ``allow_live=False`` refuses ANY real seam — so a replace that flips the
-    flag while keeping fake seams, flips a real-machinery instance to
-    "offline" (which could spend/hit the network from inside a test), or
-    swaps a single seam on a live instance is refused, and honest uses of
-    ``replace`` (tuning the timeout on an offline instance) keep working.
+    TWO-direction flag ⇔ seam-provenance invariant by OBJECT IDENTITY, not
+    name: ``allow_live=True`` requires the env keys, a loop stamped with this
+    module's private provenance token (only ``_build_real_exa_loop`` stamps
+    it), and all four seams to be this module's real implementations (the two
+    factory-built closures carry the same token; the two module-level seams
+    are matched with direct ``is`` identity), while ``allow_live=False``
+    refuses ANY real seam. So a replace that flips the flag while keeping
+    fake seams, flips a real-machinery instance to "offline" (which could
+    spend/hit the network from inside a test), or swaps a single seam on a
+    live instance is refused, and honest uses of ``replace`` (tuning the
+    timeout on an offline instance) keep working. Names were deliberately
+    rejected as the provenance signal: a foreign module naturally named
+    ``live_provider`` / ``host_local`` with same-named callables mimics any
+    ``__qualname__``/module check with zero forgery; a module-private token
+    object cannot be recreated. (The mock/stub refusal stays name-based — it
+    is a NEGATIVE guard, and dressing a loop up as a known mock to get
+    refused is self-sabotage, not a spoof.)
 
-    Honest threat model: those ``__post_init__`` checks catch HONEST MISTAKES
-    (grabbing the wrong factory, wiring a stub out of habit, an
-    un-unwrappable veneer is still caught for the two named factories when
-    passed directly). Python cannot stop a determined caller from directly
-    constructing the dataclass around functions — loop OR seams — with
-    forged ``__qualname__``/``__module__`` attributes: no attribute-based
-    check can, because attributes are writable. The structural guarantee is
-    narrower and real: the constructor of record has no dishonest path, and
+    Honest threat model: the ``__post_init__`` checks catch HONEST MISTAKES
+    (grabbing the wrong factory, wiring a stub out of habit) and, with
+    object-identity provenance, also natural name collisions and deliberate
+    name-mimicry. The remaining out-of-scope class is now narrow and pure
+    sabotage: importing this module and attaching its private
+    ``_REAL_PROVENANCE_TOKEN`` to a fake callable by hand. The structural
+    guarantee stands: the constructor of record has no dishonest path, and
     every public mutation path (direct construction, ``dataclasses.replace``)
-    re-validates the flag/provenance invariant — so producing a spoofed
-    "live" provider requires deliberately forging function identities, which
-    is out of scope (the adapter guards measurement integrity against
-    mistakes, not against an operator sabotaging their own eval).
+    re-validates the flag/provenance invariant — the adapter guards
+    measurement integrity against mistakes, not against an operator
+    deliberately sabotaging their own eval with the module's own internals.
 
 Fail closed to ``ProviderFailure`` (the core honesty property)
     EVERY failure path — missing keys, plan/launch refusal (including the
@@ -164,10 +171,14 @@ REQUIRED_LIVE_ENV: tuple[str, ...] = ("EXA_API_KEY", "ANTHROPIC_API_KEY")
 # __qualname__ ("<factory>.<locals>._loop") or the factory itself.
 _MOCK_LOOP_FACTORIES: tuple[str, ...] = ("make_demo_loop", "make_contract_gather_stub")
 
-# The one REAL gather factory (host_local.py :567) the live path requires,
-# pinned to its defining module so a same-named function elsewhere cannot pose.
-_REAL_LOOP_FACTORY = "make_exa_gather_loop"
-_REAL_LOOP_MODULE_LEAF = "host_local"
+# OBJECT-IDENTITY provenance for the real live parts. Names can be mimicked
+# naturally (a foreign module deliberately named ``live_provider`` /
+# ``host_local`` with same-named callables passes any name check with zero
+# attribute forgery); a module-private object cannot. The real builders below
+# stamp what they build with THIS token; the checks compare with ``is``. The
+# token is module-private, unexported, and never leaves this file.
+_REAL_PROVENANCE_TOKEN: object = object()
+_PROVENANCE_ATTR = "__antiek_real_provenance__"
 
 # A deep research run (discover + promote + synthesis constraint loop) is
 # minutes-long; the default cap only exists so a wedged live run fails closed
@@ -244,22 +255,20 @@ def _unwrap_loop_fn(loop_fn: object) -> object:
     return fn
 
 
-def _callable_identity(fn_like: object) -> tuple[str, str]:
-    """(qualname, module-leaf) of a callable after bounded unwrapping — the
-    shared identity primitive for the loop AND seam provenance checks."""
+def _callable_qualname(fn_like: object) -> str:
+    """Qualname of a callable after bounded unwrapping. Used ONLY by the
+    NEGATIVE mock/stub guard — name-mimicry there would be self-sabotage
+    (dressing your loop up as a known mock to get refused)."""
     fn = _unwrap_loop_fn(fn_like)
     qualname = getattr(fn, "__qualname__", "")
-    module = getattr(fn, "__module__", "")
-    qualname = qualname if isinstance(qualname, str) else ""
-    module = module if isinstance(module, str) else ""
-    return (qualname, module.rsplit(".", 1)[-1])
+    return qualname if isinstance(qualname, str) else ""
 
 
 def _refuse_mock_loop(loop_fn: object) -> None:
     """Raise ``ValueError`` if ``loop_fn`` is (or is a product of) a known
     mock/stub gather factory. Measuring a mock is measurement theater — this
     adapter exists to measure the actual product."""
-    qualname, _ = _callable_identity(loop_fn)
+    qualname = _callable_qualname(loop_fn)
     for factory in _MOCK_LOOP_FACTORIES:
         if qualname == factory or qualname.startswith(f"{factory}."):
             raise ValueError(
@@ -270,35 +279,47 @@ def _refuse_mock_loop(loop_fn: object) -> None:
             )
 
 
+def _has_real_provenance(fn_like: object) -> bool:
+    """Object-identity provenance: True only for a callable this module's own
+    real builders stamped with the private token (after bounded unwrap)."""
+    fn = _unwrap_loop_fn(fn_like)
+    return getattr(fn, _PROVENANCE_ATTR, None) is _REAL_PROVENANCE_TOKEN
+
+
 def _is_real_exa_loop(loop_fn: object) -> bool:
-    qualname, module_leaf = _callable_identity(loop_fn)
-    return (
-        qualname.startswith(f"{_REAL_LOOP_FACTORY}.")
-        and module_leaf == _REAL_LOOP_MODULE_LEAF
-    )
+    """True only for the loop minted by ``_build_real_exa_loop`` (which stamps
+    the private token onto the real ``make_exa_gather_loop`` product). A
+    naturally same-named loop from a foreign ``host_local`` module carries no
+    token and fails."""
+    return _has_real_provenance(loop_fn)
 
 
 def _missing_live_env() -> list[str]:
     return [key for key in REQUIRED_LIVE_ENV if not os.environ.get(key, "").strip()]
 
 
-# Seam provenance pins: the qualnames of THIS module's real seam
-# implementations (module leaf below). ``allow_live`` ⇔ all-real-seams is a
-# TWO-direction invariant enforced in ``__post_init__`` — which
+# The four seam fields of LiveResearchProvider. ``allow_live`` ⇔ all-real-seams
+# is a TWO-direction invariant enforced in ``__post_init__`` — which
 # ``dataclasses.replace`` re-runs, so a replace that flips the flag or swaps
 # one seam cannot produce a flag/provenance mismatch through the public API.
-_THIS_MODULE_LEAF = "live_provider"
-_REAL_SEAM_QUALNAMES: tuple[tuple[str, str], ...] = (
-    ("gather", "_build_real_gather.<locals>._gather"),
-    ("synthesize", "_build_real_synthesize.<locals>._synthesize"),
-    ("usage_reader", "_read_dispatch_usage"),
-    ("source_url_lookup", "_lookup_document_source_uri"),
+_SEAM_FIELDS: tuple[str, ...] = (
+    "gather",
+    "synthesize",
+    "usage_reader",
+    "source_url_lookup",
 )
 
 
-def _is_real_seam(seam: object, expected_qualname: str) -> bool:
-    qualname, module_leaf = _callable_identity(seam)
-    return qualname == expected_qualname and module_leaf == _THIS_MODULE_LEAF
+def _is_real_seam(seam: object) -> bool:
+    """Object-identity seam provenance. The two module-level real seams are
+    matched by direct ``is`` identity; the two factory-built closures carry
+    the private token their builders stamped at creation. A naturally
+    same-named callable from a foreign module named ``live_provider`` passes
+    neither — there is no name check to mimic."""
+    fn = _unwrap_loop_fn(seam)
+    if fn is _read_dispatch_usage or fn is _lookup_document_source_uri:
+        return True
+    return getattr(fn, _PROVENANCE_ATTR, None) is _REAL_PROVENANCE_TOKEN
 
 
 @dataclass(frozen=True)
@@ -311,12 +332,14 @@ class LiveResearchProvider:
     REQUIRED fields — there is no silent default. ``__post_init__`` enforces
     a TWO-direction flag ⇔ seam-provenance invariant on every construction
     path (``dataclasses.replace`` re-runs it): ``allow_live=True`` requires
-    the real Exa loop identity, the env keys, AND every seam to be this
+    the self-built real Exa loop, the env keys, AND every seam to be this
     module's real implementation; ``allow_live=False`` refuses any real
     seam, so an offline-flagged provider can never run real machinery or
-    spend. These identity checks catch honest mistakes; they cannot catch
-    deliberately forged function attributes (see the module docstring's
-    threat model — the same out-of-scope class as the loop).
+    spend. Provenance is OBJECT IDENTITY (a module-private token / direct
+    ``is`` checks), not names — natural name collisions and deliberate
+    name-mimicry both fail. The only remaining bypass is attaching this
+    module's private token to a fake by hand — pure sabotage, documented
+    out of scope in the module docstring's threat model.
     """
 
     gather: GatherFn
@@ -331,16 +354,16 @@ class LiveResearchProvider:
         if self.loop_fn is not None:
             _refuse_mock_loop(self.loop_fn)
         seam_provenance = [
-            (name, _is_real_seam(getattr(self, name), qualname))
-            for name, qualname in _REAL_SEAM_QUALNAMES
+            (name, _is_real_seam(getattr(self, name))) for name in _SEAM_FIELDS
         ]
         if self.allow_live:
             if self.loop_fn is None or not _is_real_exa_loop(self.loop_fn):
                 raise ValueError(
-                    "allow_live=True requires the REAL Exa gather loop (a "
-                    "make_exa_gather_loop product from "
-                    "runtime.research_runner.host_local); refusing to flag a "
-                    "provider live around anything else."
+                    "allow_live=True requires the REAL Exa gather loop minted "
+                    "by this module's _build_real_exa_loop (object-identity "
+                    "provenance token; a same-named loop from elsewhere does "
+                    "not qualify); refusing to flag a provider live around "
+                    "anything else."
                 )
             missing = _missing_live_env()
             if missing:
@@ -666,12 +689,15 @@ def build_live_provider(
 
 def _build_real_exa_loop(*, top_k: int = 3) -> object:
     """The real gather loop, mirroring prod's ``ANTIEK_DRW_GATHER=exa`` branch
-    (cascade_routes.py :273-275, default ``top_k=3``). Construction is
-    lazy/inert — the Exa client reads ``EXA_API_KEY`` on first discover, not
-    here."""
+    (cascade_routes.py :273-275, default ``top_k=3``), stamped with this
+    module's private provenance token — the ONLY way a loop can satisfy the
+    ``allow_live`` identity check. Construction is lazy/inert — the Exa client
+    reads ``EXA_API_KEY`` on first discover, not here."""
     from runtime.research_runner import make_exa_gather_loop
 
-    return make_exa_gather_loop(top_k=top_k)
+    loop: Any = make_exa_gather_loop(top_k=top_k)
+    loop.__antiek_real_provenance__ = _REAL_PROVENANCE_TOKEN
+    return loop
 
 
 def _build_real_gather(
@@ -788,6 +814,10 @@ def _build_real_gather(
             investigation_ids=(session_id, *(leaf.investigation_id for leaf in leaves)),
         )
 
+    # Stamp the private provenance token: object identity, not name, is what
+    # the allow_live seam check accepts (function attribute assignment is
+    # legal at runtime; mypy just doesn't model ad-hoc function attrs).
+    _gather.__antiek_real_provenance__ = _REAL_PROVENANCE_TOKEN  # type: ignore[attr-defined]
     return _gather
 
 
@@ -838,6 +868,8 @@ def _build_real_synthesize() -> SynthesizeFn:
             )
         return text
 
+    # Same object-identity stamp as _build_real_gather's closure.
+    _synthesize.__antiek_real_provenance__ = _REAL_PROVENANCE_TOKEN  # type: ignore[attr-defined]
     return _synthesize
 
 
