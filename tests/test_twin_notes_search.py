@@ -65,6 +65,27 @@ def test_http_search_route(tmp_path: Path) -> None:
     set_twin_notes_search_store(None)
 
 
+def test_source_label_alone_does_not_match(tmp_path: Path) -> None:
+    store = TwinNotesStore(tmp_path)
+    store.record(
+        "doc",
+        insights=["unrelated body"],
+        questions=[],
+        source_label="scaling-label-only",
+    )
+    hits = search_store(store, "scaling-label-only", parent_asset_id="doc")
+    assert hits == []
+
+
+def test_malformed_json_array_skipped_in_global_search(tmp_path: Path) -> None:
+    store = TwinNotesStore(tmp_path)
+    store.record("good", insights=["transformer attention"])
+    (tmp_path / "junk.json").write_text("[]\n", encoding="utf-8")
+    hits = search_store(store, "transformer")
+    assert hits
+    assert hits[0].parent_asset_id == "good"
+
+
 def test_http_empty_q_rejected(tmp_path: Path) -> None:
     store = TwinNotesStore(tmp_path)
     set_twin_notes_search_store(store)

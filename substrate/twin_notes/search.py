@@ -35,7 +35,8 @@ class TwinSearchHit:
 
 
 def _doc_text(doc: TwinDocument) -> str:
-    return " ".join(list(doc.insights) + list(doc.questions) + [doc.source_label])
+    # Scope is insights + questions only (not source_label metadata).
+    return " ".join(list(doc.insights) + list(doc.questions))
 
 
 def _df(tokens: Sequence[str], corpus_token_sets: Sequence[set[str]]) -> dict[str, int]:
@@ -125,13 +126,14 @@ def search_store(
         twins = store.list_for_parent(parent_asset_id)
     else:
         twins = []
-        for path in sorted(store.root.glob("*.json")):
-            # list via parent id stored in file
-            try:
-                import json
+        import json
 
+        for path in sorted(store.root.glob("*.json")):
+            try:
                 raw = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
+            except (OSError, ValueError, json.JSONDecodeError):
+                continue
+            if not isinstance(raw, dict):
                 continue
             parent = str(raw.get("parent_asset_id") or "")
             if parent:
