@@ -60,6 +60,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))
 
 from substrate.dispatch import AnthropicProvider, ProviderError, TierPricing  # noqa: E402
+from substrate.dispatch.providers._safe_diagnostics import correlation_digest  # noqa: E402
 from substrate.dispatch.router import _compute_cost_usd  # noqa: E402
 
 
@@ -102,7 +103,7 @@ def test_anthropic_basic_call_and_headers_and_body():
     assert raw.text == "hello back"
     assert raw.finish_reason == "end_turn"
     assert raw.latency_ms >= 0
-    assert raw.request_id == "req_abc"
+    assert raw.request_id == correlation_digest("req_abc")
 
     # Request URL + method
     assert captured["url"].endswith("/v1/messages")
@@ -369,6 +370,66 @@ def test_anthropic_http_error_maps_to_provider_error(status, retryable):
     assert ei.value.provider == "anthropic"
 
 
+def test_anthropic_http_error_omits_upstream_body_and_api_key():
+    secret = "sk-ant-reflected-secret"
+    attacker_text = "attacker-controlled-diagnostic"
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            401,
+            text=f"{attacker_text}: {req.headers['x-api-key']}",
+            headers={"request-id": secret},
+        )
+
+    p = AnthropicProvider(api_key=secret, client=_make_client(handler))
+    with pytest.raises(ProviderError) as ei:
+        p.call(model="m", prompt="x", max_tokens=10, temperature=0.0)
+
+    rendered = str(ei.value)
+    assert rendered == "anthropic: HTTP 401"
+    assert secret not in rendered
+    assert attacker_text not in rendered
+    assert ei.value.request_id == correlation_digest(secret)
+    assert secret not in ei.value.request_id
+
+
+def test_anthropic_transport_error_omits_exception_text_and_api_key():
+    secret = "sk-ant-transport-secret"
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError(
+            f"reflected {req.headers['x-api-key']}",
+            request=req,
+        )
+
+    p = AnthropicProvider(api_key=secret, client=_make_client(handler))
+    with pytest.raises(ProviderError) as ei:
+        p.call(model="m", prompt="x", max_tokens=10, temperature=0.0)
+
+    assert str(ei.value) == "anthropic: network error (ConnectError)"
+    assert secret not in str(ei.value)
+    assert ei.value.retryable is True
+    assert ei.value.__cause__ is None
+    assert ei.value.__suppress_context__ is True
+
+
+def test_anthropic_200_error_object_fails_without_copying_body():
+    secret = "sk-ant-200-secret"
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"type": "error", "error": {"message": req.headers["x-api-key"]}},
+        )
+
+    p = AnthropicProvider(api_key=secret, client=_make_client(handler))
+    with pytest.raises(ProviderError) as ei:
+        p.call(model="m", prompt="x", max_tokens=10, temperature=0.0)
+
+    assert "unexpected response shape" in str(ei.value)
+    assert secret not in str(ei.value)
+
+
 def test_anthropic_timeout_maps_to_retryable_provider_error():
     def handler(req: httpx.Request) -> httpx.Response:
         raise httpx.TimeoutException("simulated")
@@ -421,3 +482,55 @@ def test_anthropic_reads_api_key_from_env(monkeypatch):
     p = AnthropicProvider(client=_make_client(handler))
     p.call(model="m", prompt="x", max_tokens=10, temperature=0.0)
     assert captured["key"] == "env-key-123"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"content": [{"type": "text", "text": "ok"}], "usage": "secret"},
+        {"id": 17, "content": [{"type": "text", "text": "ok"}]},
+        {"content": [{"type": "tool_use", "id": "tool"}]},
+        {"content": [{"type": "text", "text": ""}]},
+        {"content": [{"type": "text", "text": "ok"}], "stop_reason": {}},
+    ],
+)
+def test_anthropic_malformed_success_stays_in_provider_error(payload):
+    p = AnthropicProvider(
+        api_key="k",
+        client=_make_client(lambda _req: httpx.Response(200, json=payload)),
+    )
+
+    with pytest.raises(ProviderError, match="unexpected response shape"):
+        p.call(model="m", prompt="x", max_tokens=10, temperature=0.0)
+
+
+def test_anthropic_non_finite_usage_stays_in_provider_error():
+    body = (
+        b'{"content":[{"type":"text","text":"ok"}],'
+        b'"usage":{"input_tokens":1e400}}'
+    )
+    p = AnthropicProvider(
+        api_key="k",
+        client=_make_client(lambda _req: httpx.Response(200, content=body)),
+    )
+
+    with pytest.raises(ProviderError, match="unexpected response shape"):
+        p.call(model="m", prompt="x", max_tokens=10, temperature=0.0)
+
+
+def test_anthropic_drops_provider_controlled_success_metadata():
+    secret = "sk-reflected-metadata"
+    payload = {
+        "id": "safe-id",
+        "model": secret,
+        "content": [{"type": "text", "text": "ok"}],
+    }
+    p = AnthropicProvider(
+        api_key="k",
+        client=_make_client(lambda _req: httpx.Response(200, json=payload)),
+    )
+
+    result = p.call(model="m", prompt="x", max_tokens=10, temperature=0.0)
+
+    assert result.extra == {}
+    assert secret not in repr(result)

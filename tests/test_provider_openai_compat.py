@@ -26,6 +26,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))
 
 from substrate.dispatch import OpenAICompatProvider, ProviderError  # noqa: E402
+from substrate.dispatch.providers._safe_diagnostics import correlation_digest  # noqa: E402
 
 
 def _make_client(handler) -> httpx.Client:
@@ -219,6 +220,59 @@ def test_openai_compat_http_error_maps_correctly(status, retryable):
     assert ei.value.provider == "x"
 
 
+def test_openai_compat_http_error_omits_upstream_body_and_api_key():
+    secret = "sk-reflected-openai-secret"
+    attacker_text = "attacker-controlled-diagnostic"
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            401,
+            text=f"{attacker_text}: {req.headers['authorization']}",
+            headers={"x-request-id": secret},
+        )
+
+    p = OpenAICompatProvider(
+        name="x",
+        base_url="https://e.example.com",
+        api_key=secret,
+        client=_make_client(handler),
+    )
+    with pytest.raises(ProviderError) as ei:
+        p.call(model="m", prompt="x", max_tokens=10, temperature=0.0)
+
+    rendered = str(ei.value)
+    assert rendered == "x: HTTP 401"
+    assert secret not in rendered
+    assert attacker_text not in rendered
+    assert ei.value.request_id == correlation_digest(secret)
+    assert secret not in ei.value.request_id
+
+
+def test_openai_compat_transport_error_omits_exception_text_and_api_key():
+    secret = "sk-openai-transport-secret"
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError(
+            f"reflected {req.headers['authorization']}",
+            request=req,
+        )
+
+    p = OpenAICompatProvider(
+        name="x",
+        base_url="https://e.example.com",
+        api_key=secret,
+        client=_make_client(handler),
+    )
+    with pytest.raises(ProviderError) as ei:
+        p.call(model="m", prompt="x", max_tokens=10, temperature=0.0)
+
+    assert str(ei.value) == "x: network error (ConnectError)"
+    assert secret not in str(ei.value)
+    assert ei.value.retryable is True
+    assert ei.value.__cause__ is None
+    assert ei.value.__suppress_context__ is True
+
+
 def test_openai_compat_timeout_maps_retryable():
     def handler(req: httpx.Request) -> httpx.Response:
         raise httpx.TimeoutException("slow")
@@ -287,3 +341,66 @@ def test_openai_compat_unexpected_shape_raises_non_retryable():
     with pytest.raises(ProviderError) as ei:
         p.call(model="m", prompt="x", max_tokens=10, temperature=0.0)
     assert ei.value.retryable is False
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+            "usage": "secret",
+        },
+        {
+            "id": 17,
+            "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+        },
+        {"choices": [{"message": {"content": "ok"}, "finish_reason": {}}]},
+        {"choices": [{"message": {"content": ""}, "finish_reason": "stop"}]},
+    ],
+)
+def test_openai_compat_malformed_success_stays_in_provider_error(payload):
+    p = OpenAICompatProvider(
+        name="x",
+        base_url="https://e.example.com",
+        api_key="k",
+        client=_make_client(lambda _req: httpx.Response(200, json=payload)),
+    )
+
+    with pytest.raises(ProviderError, match="unexpected response shape"):
+        p.call(model="m", prompt="x", max_tokens=10, temperature=0.0)
+
+
+def test_openai_compat_non_finite_usage_stays_in_provider_error():
+    body = (
+        b'{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],'
+        b'"usage":{"prompt_tokens":1e400}}'
+    )
+    p = OpenAICompatProvider(
+        name="x",
+        base_url="https://e.example.com",
+        api_key="k",
+        client=_make_client(lambda _req: httpx.Response(200, content=body)),
+    )
+
+    with pytest.raises(ProviderError, match="unexpected response shape"):
+        p.call(model="m", prompt="x", max_tokens=10, temperature=0.0)
+
+
+def test_openai_compat_drops_provider_controlled_success_metadata():
+    secret = "sk-reflected-metadata"
+    payload = {
+        "id": "safe-id",
+        "object": secret,
+        "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+    }
+    p = OpenAICompatProvider(
+        name="x",
+        base_url="https://e.example.com",
+        api_key="k",
+        client=_make_client(lambda _req: httpx.Response(200, json=payload)),
+    )
+
+    result = p.call(model="m", prompt="x", max_tokens=10, temperature=0.0)
+
+    assert result.extra == {}
+    assert secret not in repr(result)
