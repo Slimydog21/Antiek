@@ -58,8 +58,8 @@ def compose_model_decision_with_projection(
     models: object,
     daily_cap_usd: float | None,
     spent_usd: float | None,
-    projected_cost_usd_high: float | None | None = None,
-    projected_cost_usd_low: float | None | None = None,
+    projected_cost_usd_high: float | None = None,
+    projected_cost_usd_low: float | None = None,
     use_model_cost_defaults: bool = True,
 ) -> ModelDecisionPromptComposeResult:
     """Compose selected model + usage bar + prompt projection.
