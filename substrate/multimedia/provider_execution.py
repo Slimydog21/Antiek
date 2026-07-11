@@ -229,6 +229,28 @@ CREATE TABLE IF NOT EXISTS multimedia_provider_execution_observations (
 )
 """
 
+_RECONCILIATIONS_DDL = """
+CREATE TABLE IF NOT EXISTS multimedia_provider_reconciliations (
+    observation_id TEXT PRIMARY KEY, execution_id TEXT NOT NULL,
+    provider TEXT NOT NULL, provider_job_id TEXT NOT NULL,
+    authorization_id TEXT NOT NULL, request_body_digest TEXT NOT NULL,
+    account_identity_digest TEXT NOT NULL, source TEXT NOT NULL,
+    raw_payload_digest TEXT NOT NULL, status TEXT NOT NULL,
+    evidence_json TEXT NOT NULL, observed_at TEXT NOT NULL,
+    observation_mac TEXT NOT NULL,
+    UNIQUE(execution_id, source, raw_payload_digest)
+)
+"""
+
+_ARTIFACT_CANDIDATES_DDL = """
+CREATE TABLE IF NOT EXISTS multimedia_provider_artifact_candidates (
+    candidate_id TEXT PRIMARY KEY, execution_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL, source_locator_digest TEXT NOT NULL,
+    declared_media_type TEXT NOT NULL,
+    candidate_mac TEXT NOT NULL, UNIQUE(execution_id, ordinal)
+)
+"""
+
 _RECOVERY_EVIDENCE_DDL = """
 CREATE TABLE IF NOT EXISTS multimedia_provider_external_recovery_evidence (
     execution_id TEXT PRIMARY KEY,
@@ -280,9 +302,12 @@ def begin_reserved_provider_submission(
     """Atomically persist submit intent and reserve its complete spend band."""
     ceiling_cents = (authorization.approved_ceiling_microdollars + 9_999) // 10_000
     role = f"multimedia:{authorization.provider}"
-    hold_id = "mmhold_" + hashlib.sha256(
-        f"{authorization.authorization_id}:{authorization.request_body_digest}".encode()
-    ).hexdigest()
+    hold_id = (
+        "mmhold_"
+        + hashlib.sha256(
+            f"{authorization.authorization_id}:{authorization.request_body_digest}".encode()
+        ).hexdigest()
+    )
     ledger = BudgetLedger(_db_path(db_path))
     coordinator = FlockWriteCoordinator(_db_path(db_path))
     with coordinator.acquire_write_context("multimedia.provider_execution.begin_reserved") as ctx:
@@ -363,9 +388,12 @@ def _begin_in_context(
             f"authorization {authorization.authorization_id} was already consumed"
         )
     timestamp = _timestamp(now)
-    execution_id = "mmexec_" + hashlib.sha256(
-        f"{authorization.authorization_id}:{authorization.request_body_digest}".encode()
-    ).hexdigest()
+    execution_id = (
+        "mmexec_"
+        + hashlib.sha256(
+            f"{authorization.authorization_id}:{authorization.request_body_digest}".encode()
+        ).hexdigest()
+    )
     values = [
         execution_id,
         authorization.authorization_id,
@@ -438,7 +466,9 @@ def bind_provider_job_with_mutation(
     provider_job_id = _identifier("provider_job_id", provider_job_id)
     timestamp = _timestamp(now)
     coordinator = FlockWriteCoordinator(_db_path(db_path))
-    with coordinator.acquire_write_context("multimedia.provider_execution.bind_with_mutation") as ctx:
+    with coordinator.acquire_write_context(
+        "multimedia.provider_execution.bind_with_mutation"
+    ) as ctx:
         _ensure_schema(ctx)
         ctx.execute("BEGIN TRANSACTION")
         try:
@@ -457,9 +487,9 @@ def bind_provider_job_with_mutation(
             }:
                 raise ProviderExecutionIntegrityError("provider job binding state is invalid")
             if current.status is ProviderExecutionStatus.SUBMITTING:
-                if datetime.fromisoformat(timestamp.replace("Z", "+00:00")) < datetime.fromisoformat(
-                    current.updated_at.replace("Z", "+00:00")
-                ):
+                if datetime.fromisoformat(
+                    timestamp.replace("Z", "+00:00")
+                ) < datetime.fromisoformat(current.updated_at.replace("Z", "+00:00")):
                     raise ProviderExecutionIntegrityError(
                         "provider job binding predates current execution state"
                     )
@@ -519,6 +549,21 @@ def record_provider_observation(
         evidence_digest=_digest("evidence_digest", evidence_digest),
         signing_key=signing_key,
         now=observed_at,
+    )
+
+
+def request_provider_cancellation(
+    *, db_path: str, execution_id: str, signing_key: bytes, now: datetime
+) -> ProviderExecutionRecord:
+    """Persist cancellation intent without any outbound provider I/O."""
+    return _transition(
+        db_path=db_path,
+        execution_id=execution_id,
+        target=ProviderExecutionStatus.CANCEL_REQUESTED,
+        provider_job_id=None,
+        evidence_digest=None,
+        signing_key=signing_key,
+        now=now,
     )
 
 
@@ -697,9 +742,9 @@ def charge_and_mark_submission_unknown(
             if current.status is ProviderExecutionStatus.OUTCOME_UNKNOWN:
                 result = current
             else:
-                if datetime.fromisoformat(timestamp.replace("Z", "+00:00")) < datetime.fromisoformat(
-                    current.updated_at.replace("Z", "+00:00")
-                ):
+                if datetime.fromisoformat(
+                    timestamp.replace("Z", "+00:00")
+                ) < datetime.fromisoformat(current.updated_at.replace("Z", "+00:00")):
                     raise ProviderExecutionIntegrityError(
                         "unknown outcome predates current execution state"
                     )
@@ -907,6 +952,8 @@ def _ensure_schema(ctx: WriteContext) -> None:
     ctx.execute(_ASYNC_REVOCATIONS_DDL)
     ctx.execute(_EXECUTIONS_DDL)
     ctx.execute(_OBSERVATIONS_DDL)
+    ctx.execute(_RECONCILIATIONS_DDL)
+    ctx.execute(_ARTIFACT_CANDIDATES_DDL)
     ctx.execute(_RECOVERY_EVIDENCE_DDL)
 
 
@@ -1163,4 +1210,5 @@ __all__ = [
     "mark_submission_outcome_unknown",
     "record_external_recovery_evidence",
     "record_provider_observation",
+    "request_provider_cancellation",
 ]
