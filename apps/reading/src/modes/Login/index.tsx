@@ -2,7 +2,6 @@ import { startAuthentication, startRegistration } from "@simplewebauthn/browser"
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
-import wernerDefault from "../../brand/werner/poses/anchor/werner_default_v5_nano_corrected.png";
 import { LemonButton, LemonInput } from "../../components/lemon";
 import {
   authCallbackErrorDisplay,
@@ -12,6 +11,7 @@ import {
   finishPasskeyLogin,
   finishPasskeyRegistration,
   getPasskeyStatus,
+  claimLogin,
   requestMagicLink,
   useAuth,
 } from "../../lib/auth";
@@ -20,7 +20,7 @@ import { track, trackException } from "../../lib/analytics";
 
 import "./Login.css";
 
-type EmailStatus = "idle" | "sending" | "sent" | "error";
+type EmailStatus = "idle" | "sending" | "sent" | "approved" | "expired" | "error";
 type PasskeyState = "checking" | "ready" | "absent" | "working" | "error";
 
 function isPasskeyCancellation(error: unknown): boolean {
@@ -52,12 +52,14 @@ export default function Login() {
   const [errorMsg, setErrorMsg] = useState("");
   const [errorHint, setErrorHint] = useState<string | null>(null);
   const [diagnosticCode, setDiagnosticCode] = useState<AuthDiagnosticCode | null>(null);
+  const [handoff, setHandoff] = useState<{ attemptId: string; claimSecret: string } | null>(null);
 
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const { state, refresh } = useAuth();
   const isSetup = searchParams.get("setup") === "passkey";
+  const isApprovalReceipt = searchParams.get("approved") === "1";
   const nextPath = useMemo(
     () =>
       searchParams.get("next") ??
@@ -107,6 +109,43 @@ export default function Login() {
     next.delete("error");
     navigate({ pathname: "/login", search: next.toString() ? `?${next}` : "" }, { replace: true });
   }, [navigate, searchParams]);
+
+  useEffect(() => {
+    if (!handoff || emailStatus !== "sent") return;
+    let live = true;
+    let timer: number | undefined;
+    const poll = async () => {
+      try {
+        const result = await claimLogin(handoff.attemptId, handoff.claimSecret);
+        if (!live) return;
+        if (result.status === "authenticated") {
+          setEmailStatus("approved");
+          await refresh();
+          navigate(
+            result.setup_passkey
+              ? `/login?setup=passkey&next=${encodeURIComponent(result.next)}`
+              : result.next,
+            { replace: true },
+          );
+          return;
+        }
+        if (result.status === "expired") {
+          setEmailStatus("expired");
+          setErrorMsg("That handoff expired.");
+          setErrorHint("Send a fresh one and leave this screen open.");
+          return;
+        }
+      } catch {
+        // A brief network interruption should not cancel a valid handoff.
+      }
+      if (live) timer = window.setTimeout(poll, 1800);
+    };
+    void poll();
+    return () => {
+      live = false;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [emailStatus, handoff, navigate, refresh]);
 
   async function unlockWithPasskey() {
     if (passkeyState === "working") return;
@@ -168,6 +207,7 @@ export default function Login() {
     track("login_requested");
     const result = await requestMagicLink(email, nextPath);
     if (result.kind === "sent") {
+      setHandoff({ attemptId: result.attempt_id, claimSecret: result.claim_secret });
       setEmailStatus("sent");
       track("login_link_sent");
       return;
@@ -182,6 +222,19 @@ export default function Login() {
 
   const showPasskeyFirst = passkeyState !== "absent" && passkeyState !== "checking";
   const setupReady = isSetup && state.status === "authenticated";
+
+  if (isApprovalReceipt) {
+    return (
+      <main className="antiek-login antiek-login--receipt">
+        <section className="handoff-receipt" role="status">
+          <span className="handoff-receipt__stamp">Approved</span>
+          <div className="antiek-login__eyebrow"><span /> Device handoff</div>
+          <h1>Your other screen is unlocking.</h1>
+          <p>Return to the computer or iPad where you started. You can close this page.</p>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="antiek-login" data-passkey-state={passkeyState}>
@@ -264,12 +317,18 @@ export default function Login() {
             </>
           ) : emailStatus === "sent" ? (
             <div className="antiek-login__sent" role="status">
-              <div className="antiek-login__sent-mark" aria-hidden="true">✓</div>
-              <div className="antiek-login__eyebrow"><span /> Link sent</div>
-              <h1>Check your phone.</h1>
+              <div className="antiek-login__eyebrow"><span /> Handoff waiting</div>
+              <h1>Now check your phone.</h1>
               <p className="antiek-login__lede">
-                Open the message sent to <strong>{email}</strong>. Antiek will help you save a passkey so this is the last email detour.
+                Open the message sent to <strong>{email}</strong>. Approve it there; this screen will unlock itself.
               </p>
+              <div className="handoff-ticket" aria-label="Sign-in handoff status">
+                <div><small>01 · REQUEST</small><strong>This screen</strong></div>
+                <span className="handoff-ticket__route" aria-hidden="true"><i /><i /><i /></span>
+                <div><small>02 · APPROVE</small><strong>Your phone</strong></div>
+                <span className="handoff-ticket__route" aria-hidden="true"><i /><i /><i /></span>
+                <div><small>03 · OPEN</small><strong>Automatically</strong></div>
+              </div>
               <button type="button" className="antiek-login__quiet" onClick={() => setEmailStatus("idle")}>
                 Use a different email
               </button>
@@ -277,9 +336,9 @@ export default function Login() {
           ) : (
             <>
               <div className="antiek-login__eyebrow"><span /> First unlock</div>
-              <h1>Enter your workstation.</h1>
+              <h1>Open your desk.</h1>
               <p className="antiek-login__lede">
-                Verify your email once. Then replace it with a passkey on your phone, iPad, or computer.
+                Start here, approve on your phone. This screen opens itself—no link gymnastics.
               </p>
               <EmailForm
                 email={email}
@@ -301,22 +360,17 @@ export default function Login() {
         </footer>
       </section>
 
-      <aside className="antiek-login__world" aria-label="Werner keeps watch over your research">
-        <div className="ice-portal" aria-hidden="true">
-          <span className="ice-portal__ring ice-portal__ring--1" />
-          <span className="ice-portal__ring ice-portal__ring--2" />
-          <span className="ice-portal__ring ice-portal__ring--3" />
-          <span className="ice-portal__core"><PasskeyMark active={passkeyState === "working"} /></span>
+      <aside className="antiek-login__dispatch" aria-label="How device handoff works">
+        <div className="dispatch-sheet">
+          <header><span>ANTIEK / ACCESS DESK</span><span>PRIVATE</span></header>
+          <p className="dispatch-sheet__number">№ 001</p>
+          <h2>The email moves.<br />Your work doesn’t.</h2>
+          <div className="dispatch-diagram" aria-hidden="true">
+            <span className="dispatch-device">DESK</span><span className="dispatch-line" /><span className="dispatch-device dispatch-device--sun">PHONE</span><span className="dispatch-line dispatch-line--return" /><span className="dispatch-device">OPEN</span>
+          </div>
+          <p className="dispatch-sheet__note">A one-time approval returns securely to the screen that asked for it.</p>
+          <footer><span>Expires in 15 min</span><span>No password stored</span></footer>
         </div>
-        <div className="antiek-login__werner-wrap">
-          <span className="antiek-login__watch-note">Werner kept your place.</span>
-          <img src={wernerDefault} alt="Werner, Antiek's penguin" className="antiek-login__werner" />
-        </div>
-        <blockquote>
-          <span>“</span>
-          The good question is still waiting.
-        </blockquote>
-        <div className="antiek-login__coordinates" aria-hidden="true">78° S · PRIVATE CHANNEL · SIGNAL CLEAR</div>
       </aside>
     </main>
   );
