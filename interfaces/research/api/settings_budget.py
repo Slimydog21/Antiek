@@ -21,6 +21,7 @@ Honesty rules (load-bearing):
 from __future__ import annotations
 
 import json
+import math
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -375,6 +376,14 @@ def estimate_prompt_cost(
     )
 
 
+def _parse_nonnegative_finite_usd(raw: str, *, label: str) -> float:
+    """Parse a USD amount that must be finite and >= 0; raise ValueError otherwise."""
+    value = float(raw)
+    if not math.isfinite(value) or value < 0.0:
+        raise ValueError(f"{label} must be a finite non-negative USD amount")
+    return value
+
+
 def _resolve_display_cap(notes: list[str]) -> tuple[float, str | None]:
     """Settings/display cap: operator env preferred, then daemon env, then default."""
     for env_name in ("ANTIEK_OPERATOR_BUDGET_USD", _ENV_DAILY_CAP):
@@ -382,9 +391,9 @@ def _resolve_display_cap(notes: list[str]) -> tuple[float, str | None]:
         if raw is None or raw.strip() == "":
             continue
         try:
-            return float(raw), env_name
+            return _parse_nonnegative_finite_usd(raw, label=env_name), env_name
         except ValueError:
-            notes.append(f"{env_name} is not a float; ignored")
+            notes.append(f"{env_name} is not a finite non-negative float; ignored")
     notes.append(
         f"no ANTIEK_OPERATOR_BUDGET_USD / {_ENV_DAILY_CAP}; "
         f"showing daemon default cap ${DEFAULT_DAILY_CAP_USD:.2f}/day as reference"
@@ -397,9 +406,15 @@ def _resolve_enforcement_cap(notes: list[str]) -> tuple[float, str | None]:
     raw = os.environ.get(_ENV_DAILY_CAP)
     if raw is not None and raw.strip() != "":
         try:
-            return float(raw), _ENV_DAILY_CAP
+            return (
+                _parse_nonnegative_finite_usd(raw, label=_ENV_DAILY_CAP),
+                _ENV_DAILY_CAP,
+            )
         except ValueError:
-            notes.append(f"{_ENV_DAILY_CAP} is not a float; enforcement uses default")
+            notes.append(
+                f"{_ENV_DAILY_CAP} is not a finite non-negative float; "
+                "enforcement uses default"
+            )
     return DEFAULT_DAILY_CAP_USD, None
 
 
@@ -409,7 +424,11 @@ def _read_sidecar_reserved_usd() -> float | None:
     Does **not** call ``DaemonBudget.remaining_today()`` (that re-bases on
     whatever cap the DaemonBudget was constructed with) and does **not** edit
     ``orchestration/continuous/budget.py`` (protected by the §7.4 tripwire).
+
     Absent file → ``None`` (unknown), never a fabricated zero.
+    Present file missing/null/non-finite/negative ``spent_usd`` → raises
+    (caller maps to unknown). Defaulting missing keys to 0.0 is forbidden —
+    that is the exact "fake zero" honesty failure mode.
     """
     path = _budget_path()
     if not path.is_file():
@@ -417,7 +436,17 @@ def _read_sidecar_reserved_usd() -> float | None:
     raw = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         raise ValueError("budget sidecar is not a JSON object")
-    return max(0.0, float(raw.get("spent_usd", 0.0)))
+    if "spent_usd" not in raw:
+        raise ValueError("budget sidecar missing required spent_usd key")
+    spent_raw = raw["spent_usd"]
+    if spent_raw is None:
+        raise ValueError("budget sidecar spent_usd is null")
+    value = float(spent_raw)
+    if not math.isfinite(value) or value < 0.0:
+        raise ValueError(
+            "budget sidecar spent_usd must be a finite non-negative USD amount"
+        )
+    return value
 
 
 def read_operator_budget() -> BudgetResponse:

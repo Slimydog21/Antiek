@@ -16,7 +16,7 @@ from interfaces.research.api.settings_budget import (
     estimate_prompt_cost,
     read_operator_budget,
 )
-from orchestration.continuous.budget import DaemonBudget
+from orchestration.continuous.budget import DaemonBudget, _budget_path
 
 
 @pytest.fixture
@@ -160,6 +160,56 @@ def test_budget_sidecar_read_does_not_require_budget_py_mutation() -> None:
     budget_mod = Path("orchestration/continuous/budget.py").read_text(encoding="utf-8")
     # Guard: residual must not add spent_today() (the #715 placement that tripped CI).
     assert "def spent_today" not in budget_mod
+
+
+def test_budget_malformed_sidecar_missing_spent_key_is_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Present sidecar without spent_usd must NOT fabricate $0 known spend."""
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    # Create a sidecar-shaped file missing the required key via reserve then edit.
+    DaemonBudget(daily_cap_usd=5.0).reserve(1.0)
+    path = _budget_path()
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    del raw["spent_usd"]
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    budget = read_operator_budget()
+    assert budget.spent_status == "unknown"
+    assert budget.spent_usd is None
+    assert budget.remaining_usd is None
+    assert budget.spend_basis == "unknown"
+
+
+def test_budget_malformed_sidecar_negative_spent_is_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Negative sidecar spend is corrupt data → unknown, not clamped to 0."""
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    DaemonBudget(daily_cap_usd=5.0).reserve(1.0)
+    path = _budget_path()
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["spent_usd"] = -3.0
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    budget = read_operator_budget()
+    assert budget.spent_status == "unknown"
+    assert budget.spent_usd is None
+    assert budget.remaining_usd is None
+
+
+def test_budget_rejects_non_finite_operator_cap(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """nan/inf/negative display caps are ignored; fall back with an explicit note."""
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    monkeypatch.setenv("ANTIEK_OPERATOR_BUDGET_USD", "nan")
+    budget = read_operator_budget()
+    assert budget.daily_cap_usd == 5.0  # daemon default fallback
+    assert any("finite non-negative" in n for n in budget.notes)
 
 
 def test_prompt_cost_estimate_pricing_placeholder_is_null(client: TestClient) -> None:
