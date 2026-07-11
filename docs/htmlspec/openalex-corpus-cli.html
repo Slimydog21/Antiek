@@ -1,0 +1,14 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>OpenAlex corpus CLI</title></head>
+<body><main><h1>OpenAlex corpus CLI</h1>
+<p>Status: implemented as an operator-reachable child of the durable publication corpus stack.</p>
+<ul>
+<li><code>sync-search QUERY --yes</code> uses the real cursor client and requires <code>OPENALEX_MAILTO</code>; 1–100 selected records commit atomically before success.</li>
+<li>The raw per-item client cache is explicitly non-authoritative. SQLite stores canonical selected payloads with per-record digests, schema/application identity, full synchronous transactions, private paths, and integrity checks.</li>
+<li><code>search</code> and <code>fetch</code> reopen authoritative records and make no network call.</li>
+</ul>
+<h2>Acceptance</h2><pre>uv run --with pytest --with mypy python -m pytest tests/test_openalex.py tests/test_corpus_contract.py tests/test_acquisition_corpus_bridge.py tests/test_openalex_corpus_cli.py -q
+uv run --with pytest --with mypy python -m mypy --strict --explicit-package-bases acquisition/openalex_cache tools/openalex_corpus.py tests/test_openalex_corpus_cli.py
+uv run --with ruff ruff check acquisition/openalex_cache tools/openalex_corpus.py tests/test_openalex_corpus_cli.py
+uv run python -m py_compile acquisition/openalex/*.py acquisition/openalex_cache/*.py tools/openalex_corpus.py
+uv run python tools/openalex_corpus.py --help
+git diff --check</pre></main></body></html>
