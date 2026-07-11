@@ -89,6 +89,27 @@ def run_source_policy_preflight(
 
     entries: list[SourcePreflightEntry] = []
     for source in ordered:
+        # Web gather mode must share the same authoritative ``mode`` as the
+        # receipt header — do not re-read ANTIEK_DRW_GATHER inside probe_source
+        # (that allowed gather_mode="stub" vs env=exa contradictory receipts).
+        if source == "web":
+            exa = mode == "exa"
+            entries.append(
+                SourcePreflightEntry(
+                    source="web",
+                    status="gated" if exa else "stub",
+                    runner_consumes_today=exa,
+                    external_call_would_be_required=exa,
+                    note=(
+                        "ANTIEK_DRW_GATHER=exa would use the env-gated Exa gather loop"
+                        if exa
+                        else "current gather mode is stub; no public-web call will run"
+                    ),
+                    adapter_importable=True,
+                    offline_probe_ok=True,
+                )
+            )
+            continue
         readiness = probe_source(
             source,
             arxiv_client=arxiv_client if source == "arxiv" else None,

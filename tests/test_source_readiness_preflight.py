@@ -207,6 +207,32 @@ def test_http_route_end_to_end_offline_arxiv(
     assert by_src["arxiv"]["runner_consumes_today"] is False
 
 
+def test_gather_mode_arg_overrides_env_for_web_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Receipt gather_mode and web entry must share one authoritative mode.
+
+    Regression (codex): gather_mode='stub' with env exa produced stub header
+    but runner_consumes_today=True from probe_source re-reading env.
+    """
+    monkeypatch.setenv("ANTIEK_DRW_GATHER", "exa")
+    result = run_source_policy_preflight(
+        ["web"],
+        gather_mode="stub",
+    )
+    assert result.gather_mode == "stub"
+    web = result.entries[0]
+    assert web.source == "web"
+    assert web.status == "stub"
+    assert web.runner_consumes_today is False
+    assert web.external_call_would_be_required is False
+
+    result_exa = run_source_policy_preflight(["web"], gather_mode="exa")
+    assert result_exa.gather_mode == "exa"
+    assert result_exa.entries[0].runner_consumes_today is True
+    assert result_exa.entries[0].status == "gated"
+
+
 def test_register_function_mounts_preflight_path() -> None:
     app = FastAPI()
     register_source_readiness_routes(app)
