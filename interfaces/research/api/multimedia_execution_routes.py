@@ -11,7 +11,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from substrate.multimedia.execution_authorization import (
     MAX_CENTS,
+    ExecutionAuthorizationConsumed,
+    ExecutionAuthorizationIntegrityError,
     MultimediaExecutionAuthorization,
+    MultimediaExecutionRevocation,
+    revoke_execution_authorization,
 )
 from substrate.multimedia.execution_authorization_issuer import (
     ExecutionAuthorizationIssueConflict,
@@ -42,6 +46,8 @@ class ExecutionAuthorizationRequest(BaseModel):
 
 
 class ExecutionAuthorizationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     version: int
     authorization_id: str
     request_id: str
@@ -54,6 +60,12 @@ class ExecutionAuthorizationResponse(BaseModel):
     issued_at: str
     expires_at: str
     signature: str
+
+
+class ExecutionRevocationResponse(BaseModel):
+    authorization_id: str
+    operator_id: str
+    revoked_at: str
 
 
 def create_multimedia_execution_router(
@@ -124,6 +136,29 @@ def create_multimedia_execution_router(
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
         return _response(receipt)
 
+    @router.post(
+        "/execution-authorizations/revoke",
+        response_model=ExecutionRevocationResponse,
+    )
+    def revoke_authorization(
+        body: ExecutionAuthorizationResponse,
+        request: Request,
+    ) -> ExecutionRevocationResponse:
+        operator_id = _operator_id(request)
+        try:
+            result = revoke_execution_authorization(
+                _authorization(body),
+                signing_key=signing_key,
+                db_path=db_path,
+                operator_id=operator_id,
+                now=read_clock(),
+            )
+        except ExecutionAuthorizationConsumed as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        except ExecutionAuthorizationIntegrityError as exc:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+        return _revocation_response(result)
+
     return router
 
 
@@ -146,8 +181,17 @@ def _response(receipt: MultimediaExecutionAuthorization) -> ExecutionAuthorizati
     return ExecutionAuthorizationResponse.model_validate(receipt.to_dict())
 
 
+def _authorization(body: ExecutionAuthorizationResponse) -> MultimediaExecutionAuthorization:
+    return MultimediaExecutionAuthorization.from_dict(body.model_dump())
+
+
+def _revocation_response(result: MultimediaExecutionRevocation) -> ExecutionRevocationResponse:
+    return ExecutionRevocationResponse.model_validate(result.__dict__)
+
+
 __all__ = [
     "ExecutionAuthorizationRequest",
     "ExecutionAuthorizationResponse",
+    "ExecutionRevocationResponse",
     "create_multimedia_execution_router",
 ]

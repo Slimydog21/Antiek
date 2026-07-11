@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -14,9 +15,11 @@ from substrate.multimedia.execution_authorization import (
     MAX_CENTS,
     ExecutionAuthorizationConsumed,
     ExecutionAuthorizationIntegrityError,
+    ExecutionAuthorizationRevoked,
     MultimediaExecutionAuthorization,
     execute_authorized_call,
     issue_execution_authorization,
+    revoke_execution_authorization,
     verify_execution_authorization,
 )
 
@@ -24,6 +27,7 @@ KEY = b"multimedia-execution-authorization-key"
 ISSUED_AT = datetime(2026, 7, 11, 1, 30, tzinfo=UTC)
 EXPIRES_AT = ISSUED_AT + timedelta(hours=1)
 EXECUTION_TIME = ISSUED_AT + timedelta(minutes=1)
+REVOCATION_RACE_ROUNDS = 12
 
 
 def _authorization(**overrides: object) -> MultimediaExecutionAuthorization:
@@ -359,6 +363,116 @@ def test_projected_maximum_must_equal_signed_ceiling_before_reserve(tmp_path: Pa
             call=call,
         )
     assert calls == 0
+
+
+def test_revocation_is_idempotent_and_blocks_execution(tmp_path: Path) -> None:
+    authorization = _authorization(request_id="revoked")
+    db_path = _db_path(tmp_path)
+    first = revoke_execution_authorization(
+        authorization,
+        signing_key=KEY,
+        db_path=db_path,
+        operator_id="alice",
+        now=EXECUTION_TIME,
+    )
+    replay = revoke_execution_authorization(
+        authorization,
+        signing_key=KEY,
+        db_path=db_path,
+        operator_id="alice",
+        now=EXECUTION_TIME + timedelta(seconds=1),
+    )
+    assert replay == first
+    expired_replay = revoke_execution_authorization(
+        authorization,
+        signing_key=KEY,
+        db_path=db_path,
+        operator_id="alice",
+        now=EXPIRES_AT + timedelta(days=1),
+    )
+    assert expired_replay == first
+    calls = 0
+
+    def call() -> tuple[str, int]:
+        nonlocal calls
+        calls += 1
+        return "never", 1
+
+    with pytest.raises(ExecutionAuthorizationRevoked):
+        _execute(authorization, db_path, call)
+    assert calls == 0
+
+    with pytest.raises(ExecutionAuthorizationIntegrityError, match="operator_id"):
+        revoke_execution_authorization(
+            _authorization(request_id="wrong-operator"),
+            signing_key=KEY,
+            db_path=db_path,
+            operator_id="bob",
+            now=EXECUTION_TIME,
+        )
+
+    consumed = _authorization(request_id="already-executed")
+    consumed_root = tmp_path / "consumed"
+    consumed_root.mkdir()
+    consumed_db = _db_path(consumed_root)
+    _execute(consumed, consumed_db, lambda: ("done", 1))
+    with pytest.raises(ExecutionAuthorizationConsumed):
+        revoke_execution_authorization(
+            consumed,
+            signing_key=KEY,
+            db_path=consumed_db,
+            operator_id="alice",
+            now=EXECUTION_TIME,
+        )
+
+
+def test_execution_and_revocation_have_exactly_one_durable_winner(tmp_path: Path) -> None:
+    for index in range(REVOCATION_RACE_ROUNDS):
+        authorization = _authorization(request_id=f"race-{index}")
+        race_root = tmp_path / str(index)
+        race_root.mkdir()
+        db_path = _db_path(race_root)
+        calls = 0
+
+        def execute(
+            authorization: MultimediaExecutionAuthorization = authorization,
+            db_path: str = db_path,
+        ) -> str:
+            nonlocal calls
+
+            def call() -> tuple[str, int]:
+                nonlocal calls
+                calls += 1
+                return "executed", 1
+
+            try:
+                _execute(authorization, db_path, call)
+                return "executed"
+            except ExecutionAuthorizationRevoked:
+                return "revoked"
+
+        def revoke(
+            authorization: MultimediaExecutionAuthorization = authorization,
+            db_path: str = db_path,
+        ) -> str:
+            try:
+                revoke_execution_authorization(
+                    authorization,
+                    signing_key=KEY,
+                    db_path=db_path,
+                    operator_id="alice",
+                    now=EXECUTION_TIME,
+                )
+                return "revoked"
+            except ExecutionAuthorizationConsumed:
+                return "executed"
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            outcomes = {pool.submit(execute), pool.submit(revoke)}
+            results = [future.result() for future in outcomes]
+        assert len(set(results)) == 1
+        assert results[0] in {"executed", "revoked"}
+        assert calls == (1 if results[0] == "executed" else 0)
 
 
 def test_module_has_no_provider_network_or_environment_surface() -> None:

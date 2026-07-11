@@ -14,6 +14,10 @@ from interfaces.research.api.multimedia_execution_routes import (
     create_multimedia_execution_router,
 )
 from runtime.db_lock import connect_write
+from substrate.multimedia.execution_authorization import (
+    MultimediaExecutionAuthorization,
+    execute_authorized_call,
+)
 from substrate.multimedia.execution_authorization_issuer import (
     ExecutionAuthorizationIssueConflict,
     ExecutionAuthorizationIssuer,
@@ -109,6 +113,60 @@ def test_conflicting_idempotency_replay_fails_closed(tmp_path: Path) -> None:
         _body(record, approved_ceiling_cents=251),
     )
     assert conflict.status_code == 409
+
+
+def test_authenticated_revocation_is_exact_and_operator_bound(tmp_path: Path) -> None:
+    record = _asset(tmp_path / "assets")
+    client = _client(tmp_path)
+    issued = _post(client, record.asset.asset_id, _body(record))
+    assert issued.status_code == 201
+    route = "/multimedia/execution-authorizations/revoke"
+    revoked = client.post(
+        route,
+        headers={"x-test-auth": "yes", "x-test-user": "operator"},
+        json=issued.json(),
+    )
+    assert revoked.status_code == 200, revoked.text
+    replay = client.post(
+        route,
+        headers={"x-test-auth": "yes", "x-test-user": "operator"},
+        json=issued.json(),
+    )
+    assert replay.status_code == 200
+    assert replay.json() == revoked.json()
+
+    wrong_operator = client.post(
+        route,
+        headers={"x-test-auth": "yes", "x-test-user": "other"},
+        json=issued.json(),
+    )
+    assert wrong_operator.status_code == 403
+
+    consumed_issue = _post(
+        client,
+        record.asset.asset_id,
+        _body(record, request_id="consumed-before-revoke"),
+    )
+    consumed = MultimediaExecutionAuthorization.from_dict(consumed_issue.json())
+    execute_authorized_call(
+        consumed,
+        signing_key=KEY,
+        db_path=str(tmp_path / "execution.duckdb"),
+        operator_id="operator",
+        asset_id=record.asset.asset_id,
+        revision_id=record.asset.revision_id,
+        provider="krea",
+        route_policy="balanced",
+        projected_max_cents=250,
+        now=NOW,
+        call=lambda: ("completed", 1),
+    )
+    consumed_revoke = client.post(
+        route,
+        headers={"x-test-auth": "yes", "x-test-user": "operator"},
+        json=consumed_issue.json(),
+    )
+    assert consumed_revoke.status_code == 409
 
 
 def test_issuer_serializes_identical_and_conflicting_concurrent_requests(tmp_path: Path) -> None:

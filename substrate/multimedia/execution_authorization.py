@@ -33,6 +33,10 @@ class ExecutionAuthorizationConsumed(RuntimeError):
     """The one-shot authorization was already claimed by an execution attempt."""
 
 
+class ExecutionAuthorizationRevoked(RuntimeError):
+    """The operator revoked this authorization before execution claimed it."""
+
+
 @dataclass(frozen=True)
 class MultimediaExecutionAuthorization:
     version: int
@@ -72,6 +76,13 @@ class MultimediaExecutionAuthorization:
             raise ExecutionAuthorizationIntegrityError(
                 "malformed multimedia execution authorization"
             ) from exc
+
+
+@dataclass(frozen=True)
+class MultimediaExecutionRevocation:
+    authorization_id: str
+    operator_id: str
+    revoked_at: str
 
 
 def issue_execution_authorization(
@@ -276,6 +287,15 @@ CREATE TABLE IF NOT EXISTS multimedia_execution_authorization_claims (
 )
 """
 
+_REVOCATION_DDL = """
+CREATE TABLE IF NOT EXISTS multimedia_execution_authorization_revocations (
+    authorization_id TEXT PRIMARY KEY,
+    operator_id TEXT NOT NULL,
+    signature TEXT NOT NULL,
+    revoked_at TEXT NOT NULL
+)
+"""
+
 
 def _claim_authorization(
     db_path: str,
@@ -284,8 +304,18 @@ def _claim_authorization(
     coordinator = FlockWriteCoordinator(db_path)
     with coordinator.acquire_write_context("multimedia.execution_authorization.claim") as ctx:
         ctx.execute(_AUTHORIZATION_DDL)
+        ctx.execute(_REVOCATION_DDL)
         ctx.execute("BEGIN TRANSACTION")
         try:
+            revoked = ctx.execute(
+                "SELECT 1 FROM multimedia_execution_authorization_revocations "
+                "WHERE authorization_id = ?",
+                [authorization.authorization_id],
+            ).fetchone()
+            if revoked is not None:
+                raise ExecutionAuthorizationRevoked(
+                    f"authorization {authorization.authorization_id} was revoked"
+                )
             inserted = ctx.execute(
                 "INSERT INTO multimedia_execution_authorization_claims "
                 "(authorization_id, signature, status, actual_cents, claimed_at, settled_at) "
@@ -302,6 +332,101 @@ def _claim_authorization(
             raise
         else:
             ctx.execute("COMMIT")
+
+
+def revoke_execution_authorization(
+    authorization: MultimediaExecutionAuthorization,
+    *,
+    signing_key: bytes,
+    db_path: str,
+    operator_id: str,
+    now: datetime,
+) -> MultimediaExecutionRevocation:
+    """Atomically revoke unused authority; exact replay returns the first receipt."""
+    issued_at = _parse_timestamp(authorization.issued_at)
+    verify_execution_authorization(
+        authorization,
+        signing_key=signing_key,
+        operator_id=operator_id,
+        asset_id=authorization.asset_id,
+        revision_id=authorization.revision_id,
+        provider=authorization.provider,
+        route_policy=authorization.route_policy,
+        now=issued_at,
+    )
+    if not isinstance(db_path, str) or not db_path.strip():
+        raise ValueError("db_path is required")
+    revoked_at = _utc_timestamp(now)
+    coordinator = FlockWriteCoordinator(db_path)
+    with coordinator.acquire_write_context("multimedia.execution_authorization.revoke") as ctx:
+        ctx.execute(_AUTHORIZATION_DDL)
+        ctx.execute(_REVOCATION_DDL)
+        ctx.execute("BEGIN TRANSACTION")
+        try:
+            claimed = ctx.execute(
+                "SELECT 1 FROM multimedia_execution_authorization_claims "
+                "WHERE authorization_id = ?",
+                [authorization.authorization_id],
+            ).fetchone()
+            existing = ctx.execute(
+                "SELECT operator_id, signature, revoked_at "
+                "FROM multimedia_execution_authorization_revocations "
+                "WHERE authorization_id = ?",
+                [authorization.authorization_id],
+            ).fetchone()
+            if claimed is not None and existing is not None:
+                raise ExecutionAuthorizationIntegrityError(
+                    "authorization is both consumed and revoked"
+                )
+            if existing is not None:
+                if existing[0] != operator_id or not hmac.compare_digest(
+                    existing[1], authorization.signature
+                ):
+                    raise ExecutionAuthorizationIntegrityError(
+                        "stored revocation does not match authorization"
+                    )
+                result = MultimediaExecutionRevocation(
+                    authorization_id=authorization.authorization_id,
+                    operator_id=existing[0],
+                    revoked_at=_identifier("revoked_at", existing[2]),
+                )
+            else:
+                if claimed is not None:
+                    raise ExecutionAuthorizationConsumed(
+                        f"authorization {authorization.authorization_id} was already consumed"
+                    )
+                verify_execution_authorization(
+                    authorization,
+                    signing_key=signing_key,
+                    operator_id=operator_id,
+                    asset_id=authorization.asset_id,
+                    revision_id=authorization.revision_id,
+                    provider=authorization.provider,
+                    route_policy=authorization.route_policy,
+                    now=now,
+                )
+                ctx.execute(
+                    "INSERT INTO multimedia_execution_authorization_revocations "
+                    "(authorization_id, operator_id, signature, revoked_at) "
+                    "VALUES (?, ?, ?, ?)",
+                    [
+                        authorization.authorization_id,
+                        operator_id,
+                        authorization.signature,
+                        revoked_at,
+                    ],
+                )
+                result = MultimediaExecutionRevocation(
+                    authorization_id=authorization.authorization_id,
+                    operator_id=operator_id,
+                    revoked_at=revoked_at,
+                )
+        except Exception:
+            ctx.execute("ROLLBACK")
+            raise
+        else:
+            ctx.execute("COMMIT")
+            return result
 
 
 def _settle_authorization(db_path: str, authorization_id: str, actual_cents: int) -> None:
@@ -383,10 +508,13 @@ def _parse_timestamp(value: object) -> datetime:
 __all__ = [
     "ExecutionAuthorizationConsumed",
     "ExecutionAuthorizationIntegrityError",
+    "ExecutionAuthorizationRevoked",
     "MAX_CENTS",
     "MAX_AUTHORIZATION_LIFETIME",
     "MultimediaExecutionAuthorization",
+    "MultimediaExecutionRevocation",
     "execute_authorized_call",
     "issue_execution_authorization",
+    "revoke_execution_authorization",
     "verify_execution_authorization",
 ]
