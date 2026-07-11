@@ -31,7 +31,7 @@ Honesty rules:
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Callable, Optional
+from typing import Any
 
 from .budget import DaemonBudget
 from .daemon import SpawnFn
@@ -129,7 +129,7 @@ def wrap_spawn_fn(
         )
     """
 
-    def wrapped(question: str, context: dict[str, Any]) -> Optional[str]:
+    def wrapped(question: str, context: dict[str, Any]) -> str | None:
         # Shallow copy so concurrent/retry callers cannot clobber hooks.
         ctx = dict(context)
         install_spawn_cost_hooks(ctx, budget, now=now)

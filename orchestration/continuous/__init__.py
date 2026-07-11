@@ -36,18 +36,18 @@ from .daemon import (
     no_op_spawn,
     run_one_iteration,
 )
-from .spawn_cost import (
-    actual_was_reported,
-    install_spawn_cost_hooks,
-    report_actual_cost,
-    wrap_spawn_fn,
-)
 from .research_topic import ResearchTopic, topic_id_for
 from .scoring import (
     GapEntry,
     GapRegistry,
     normalize_gap_description,
     score_gap,
+)
+from .spawn_cost import (
+    actual_was_reported,
+    install_spawn_cost_hooks,
+    report_actual_cost,
+    wrap_spawn_fn,
 )
 from .suggestions import (
     DAEMON_SPAWN_POLICY_ID,
