@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import ast
+import fcntl
+import json
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -11,6 +14,8 @@ from substrate.antiek_bench.live.journal import Journal
 from substrate.antiek_bench.live.nd_shadow import (
     NDShadowConfig,
     NDShadowJournal,
+    NDShadowJournalCorruptionError,
+    NDShadowRecord,
     NDShadowResponse,
     collect_nd_shadow,
 )
@@ -267,3 +272,139 @@ def test_module_has_no_execution_authority_surface() -> None:
             assert not any((node.module or "").startswith(module) for module in forbidden_modules)
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             assert node.name not in forbidden_callables
+
+
+def _pending(shadow_id: str = "nds_test") -> NDShadowRecord:
+    return NDShadowRecord(
+        shadow_id=shadow_id,
+        week_id="2026-W28",
+        suite_version="suite-live-v1",
+        item_id_hash="sha256:item",
+        task_class="distill",
+        prompt_hash="sha256:prompt",
+        candidates=("model-a", "model-b"),
+        tradeoff="quality",
+        status="pending",
+        claimed_at_ms=1,
+    )
+
+
+def test_shadow_journal_recovers_torn_tail_before_append(tmp_path: Path) -> None:
+    path = tmp_path / "torn.jsonl"
+    journal = NDShadowJournal(path)
+    first = _pending("nds_first")
+    assert journal.claim(first)
+    with path.open("ab") as handle:
+        handle.write(b'{"torn":')
+
+    assert journal.claim(_pending("nds_second"))
+    raw = path.read_bytes()
+    assert raw.endswith(b"\n")
+    assert b'"torn"' not in raw
+    assert {row.shadow_id for row in journal.list_records()} == {
+        "nds_first",
+        "nds_second",
+    }
+
+
+def test_shadow_journal_interior_corruption_is_typed(tmp_path: Path) -> None:
+    path = tmp_path / "corrupt.jsonl"
+    path.write_bytes(b'{"broken":true}\n{"also":')
+    journal = NDShadowJournal(path)
+
+    with pytest.raises(NDShadowJournalCorruptionError, match="row 1"):
+        journal.list_records()
+    with pytest.raises(NDShadowJournalCorruptionError, match="row 1"):
+        journal.claim(_pending())
+
+
+def test_shadow_journal_completes_short_writes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    journal = NDShadowJournal(tmp_path / "short.jsonl")
+    real_write = os.write
+    writes: list[int] = []
+
+    def short_write(fd: int, payload: bytes | memoryview) -> int:
+        chunk = bytes(payload[: max(1, len(payload) // 3)])
+        writes.append(len(chunk))
+        return real_write(fd, chunk)
+
+    monkeypatch.setattr(os, "write", short_write)
+    assert journal.claim(_pending())
+    assert len(writes) > 1
+    assert journal.list_records() == [_pending()]
+
+
+def test_shadow_journal_zero_progress_write_fails_loudly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    journal = NDShadowJournal(tmp_path / "zero-write.jsonl")
+    monkeypatch.setattr(os, "write", lambda _fd, _payload: 0)
+
+    with pytest.raises(OSError, match="no progress"):
+        journal.claim(_pending())
+
+
+def test_shadow_journal_short_reads_never_trigger_false_tail_repair(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "short-read.jsonl"
+    journal = NDShadowJournal(path)
+    assert journal.claim(_pending("nds_first"))
+    assert journal.claim(_pending("nds_second"))
+    before = path.read_bytes()
+    real_read = os.read
+
+    def short_read(fd: int, _size: int) -> bytes:
+        return real_read(fd, 17)
+
+    monkeypatch.setattr(os, "read", short_read)
+    assert {row.shadow_id for row in journal.list_records()} == {
+        "nds_first",
+        "nds_second",
+    }
+    assert not journal.claim(_pending("nds_first"))
+    assert path.read_bytes() == before
+
+
+def test_shadow_journal_snapshot_read_takes_shared_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    journal = NDShadowJournal(tmp_path / "locked-read.jsonl")
+    assert journal.claim(_pending())
+    real_flock = fcntl.flock
+    operations: list[int] = []
+
+    def recording_flock(fd: int, operation: int) -> None:
+        operations.append(operation)
+        real_flock(fd, operation)
+
+    monkeypatch.setattr(fcntl, "flock", recording_flock)
+    assert journal.list_records() == [_pending()]
+    assert fcntl.LOCK_SH in operations
+    assert operations[-1] == fcntl.LOCK_UN
+
+
+def test_shadow_journal_rejects_sequence_and_identity_tampering(tmp_path: Path) -> None:
+    path = tmp_path / "identity.jsonl"
+    pending = _pending()
+    terminal = NDShadowRecord(
+        **{
+            **pending.to_dict(),
+            "status": "ok",
+            "recommendation": "model-a",
+            "tradeoff": "tampered",
+        }
+    )
+    path.write_text(
+        json.dumps(pending.to_dict()) + "\n" + json.dumps(terminal.to_dict()) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(NDShadowJournalCorruptionError, match="identity mismatch"):
+        NDShadowJournal(path).list_records()
+
+    terminal_only = tmp_path / "terminal-only.jsonl"
+    terminal_only.write_text(json.dumps(terminal.to_dict()) + "\n", encoding="utf-8")
+    with pytest.raises(NDShadowJournalCorruptionError, match="without claim"):
+        NDShadowJournal(terminal_only).list_records()

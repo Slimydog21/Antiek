@@ -16,6 +16,10 @@ ANTIEK_NOTDIAMOND_ENV = "ANTIEK_NOTDIAMOND"
 ShadowStatus = Literal["pending", "ok", "failed", "timeout"]
 
 
+class NDShadowJournalCorruptionError(RuntimeError):
+    """The advisory journal contains an invalid durable row or sequence."""
+
+
 @dataclass(frozen=True)
 class NDShadowResponse:
     recommendation: str
@@ -85,16 +89,129 @@ class NDShadowJournal:
 
     @staticmethod
     def _decode(raw: bytes) -> list[NDShadowRecord]:
+        if not raw:
+            return []
+        lines = raw.splitlines(keepends=True)
         records: list[NDShadowRecord] = []
-        for line in raw.splitlines():
-            data = json.loads(line)
-            data["candidates"] = tuple(data["candidates"])
-            records.append(NDShadowRecord(**data))
+        for index, line in enumerate(lines):
+            if not line.strip():
+                continue
+            if index == len(lines) - 1 and not line.endswith(b"\n"):
+                break
+            try:
+                data = json.loads(line)
+                if not isinstance(data, dict):
+                    raise ValueError("shadow journal row must be an object")
+                data["candidates"] = tuple(data["candidates"])
+                record = NDShadowRecord(**data)
+                NDShadowJournal._validate(record)
+                records.append(record)
+            except (
+                UnicodeDecodeError,
+                json.JSONDecodeError,
+                KeyError,
+                TypeError,
+                ValueError,
+            ) as exc:
+                raise NDShadowJournalCorruptionError(
+                    f"invalid shadow journal row {index + 1}"
+                ) from exc
         return records
 
+    @staticmethod
+    def _validate(record: NDShadowRecord) -> None:
+        if record.schema_version != 1:
+            raise ValueError("unsupported shadow schema_version")
+        if record.status not in {"pending", "ok", "failed", "timeout"}:
+            raise ValueError("invalid shadow status")
+        for name in (
+            "shadow_id",
+            "week_id",
+            "suite_version",
+            "item_id_hash",
+            "task_class",
+            "prompt_hash",
+            "tradeoff",
+        ):
+            if not str(getattr(record, name)).strip():
+                raise ValueError(f"{name} must not be blank")
+        if not record.shadow_id.startswith("nds_"):
+            raise ValueError("invalid shadow_id")
+        if not record.item_id_hash.startswith("sha256:"):
+            raise ValueError("invalid item_id_hash")
+        if not record.prompt_hash.startswith("sha256:"):
+            raise ValueError("invalid prompt_hash")
+        if len(record.candidates) != 2 or len(set(record.candidates)) != 2:
+            raise ValueError("shadow candidates must be two distinct values")
+        if min(record.latency_ms, record.claimed_at_ms) < 0:
+            raise ValueError("shadow timing values must be non-negative")
+
+    @staticmethod
+    def _identity(record: NDShadowRecord) -> tuple[Any, ...]:
+        return (
+            record.shadow_id,
+            record.week_id,
+            record.suite_version,
+            record.item_id_hash,
+            record.task_class,
+            record.prompt_hash,
+            record.candidates,
+            record.tradeoff,
+            record.schema_version,
+        )
+
+    @classmethod
+    def _fold(cls, events: Sequence[NDShadowRecord]) -> dict[str, NDShadowRecord]:
+        folded: dict[str, NDShadowRecord] = {}
+        for record in events:
+            current = folded.get(record.shadow_id)
+            if current is None:
+                if record.status != "pending":
+                    raise NDShadowJournalCorruptionError(
+                        f"terminal shadow without claim: {record.shadow_id}"
+                    )
+            elif current.status != "pending" or record.status == "pending":
+                raise NDShadowJournalCorruptionError(
+                    f"invalid shadow event sequence: {record.shadow_id}"
+                )
+            elif cls._identity(current) != cls._identity(record):
+                raise NDShadowJournalCorruptionError(
+                    f"shadow settlement identity mismatch: {record.shadow_id}"
+                )
+            folded[record.shadow_id] = record
+        return folded
+
+    @staticmethod
+    def _read_fd(fd: int) -> bytes:
+        os.lseek(fd, 0, os.SEEK_SET)
+        chunks: list[bytes] = []
+        while True:
+            chunk = os.read(fd, 1024 * 1024)
+            if not chunk:
+                return b"".join(chunks)
+            chunks.append(chunk)
+
+    @classmethod
+    def _repair_and_fold_locked(
+        cls, fd: int
+    ) -> dict[str, NDShadowRecord]:
+        raw = cls._read_fd(fd)
+        events = cls._decode(raw)
+        if raw and not raw.endswith(b"\n"):
+            os.ftruncate(fd, raw.rfind(b"\n") + 1)
+            os.fsync(fd)
+        return cls._fold(events)
+
     def _append_locked(self, fd: int, record: NDShadowRecord) -> None:
+        self._validate(record)
         line = json.dumps(record.to_dict(), sort_keys=True, separators=(",", ":"))
-        os.write(fd, (line + "\n").encode())
+        payload = memoryview((line + "\n").encode())
+        written = 0
+        while written < len(payload):
+            count = os.write(fd, payload[written:])
+            if count <= 0:
+                raise OSError("shadow journal write made no progress")
+            written += count
         os.fsync(fd)
 
     def claim(self, record: NDShadowRecord) -> bool:
@@ -104,9 +221,8 @@ class NDShadowJournal:
         fd = os.open(str(self.path), os.O_RDWR | os.O_APPEND | os.O_CREAT, 0o600)
         try:
             fcntl.flock(fd, fcntl.LOCK_EX)
-            os.lseek(fd, 0, os.SEEK_SET)
-            existing = self._decode(os.read(fd, os.fstat(fd).st_size))
-            if any(row.shadow_id == record.shadow_id for row in existing):
+            existing = self._repair_and_fold_locked(fd)
+            if record.shadow_id in existing:
                 return False
             self._append_locked(fd, record)
             return True
@@ -120,13 +236,14 @@ class NDShadowJournal:
         fd = os.open(str(self.path), os.O_RDWR | os.O_APPEND | os.O_CREAT, 0o600)
         try:
             fcntl.flock(fd, fcntl.LOCK_EX)
-            os.lseek(fd, 0, os.SEEK_SET)
-            existing = self._decode(os.read(fd, os.fstat(fd).st_size))
-            matching = [row for row in existing if row.shadow_id == record.shadow_id]
-            if any(row.status != "pending" for row in matching):
-                return False
-            if len(matching) != 1:
+            existing = self._repair_and_fold_locked(fd)
+            current = existing.get(record.shadow_id)
+            if current is None:
                 raise ValueError("settlement requires exactly one pending claim")
+            if current.status != "pending":
+                return False
+            if self._identity(current) != self._identity(record):
+                raise ValueError("settlement identity does not match pending claim")
             self._append_locked(fd, record)
             return True
         finally:
@@ -134,12 +251,16 @@ class NDShadowJournal:
             os.close(fd)
 
     def list_records(self) -> list[NDShadowRecord]:
-        if not self.path.exists():
+        try:
+            fd = os.open(str(self.path), os.O_RDONLY)
+        except FileNotFoundError:
             return []
-        folded: dict[str, NDShadowRecord] = {}
-        for record in self._decode(self.path.read_bytes()):
-            folded[record.shadow_id] = record
-        return list(folded.values())
+        try:
+            fcntl.flock(fd, fcntl.LOCK_SH)
+            return list(self._fold(self._decode(self._read_fd(fd))).values())
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
 
     def lookup(self, shadow_id: str) -> NDShadowRecord | None:
         return next(
