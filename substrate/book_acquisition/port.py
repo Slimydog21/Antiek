@@ -15,7 +15,7 @@ from substrate.book_import import (
 )
 from substrate.books.model import get_book_asset
 
-from .authorization import verify_authorization
+from .authorization import BookAcquisitionConnection, verify_authorization
 
 
 class PortReceiptIntegrityError(RuntimeError):
@@ -61,9 +61,7 @@ def _canonical(values: dict[str, object]) -> str:
     return json.dumps(values, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
 
-def _signed_payload(
-    signing_key: bytes, values: dict[str, object]
-) -> tuple[str, str]:
+def _signed_payload(signing_key: bytes, values: dict[str, object]) -> tuple[str, str]:
     if not isinstance(signing_key, bytes) or len(signing_key) < 32:
         raise ValueError("signing_key must contain at least 32 bytes")
     canonical = _canonical(values).encode("utf-8")
@@ -167,15 +165,13 @@ def port_authorized_epub(
 
 
 def verify_port_receipt(
-    con: LockedConnection,
+    con: BookAcquisitionConnection,
     *,
     port_receipt_id: str,
     authorization_receipt_id: str,
     operator_id: str,
     signing_key: bytes,
 ) -> AuthorizedBookPort:
-    if not isinstance(con, LockedConnection):
-        raise TypeError("book port reads require LockedConnection")
     verify_authorization(
         con,
         authorization_receipt_id=authorization_receipt_id,
@@ -189,8 +185,15 @@ def verify_port_receipt(
     if row is None:
         raise PortReceiptIntegrityError("port receipt does not exist")
     (
-        stored_id, stored_auth, epub_sha256, document_id, reader_route,
-        content_class, servability, stored_hash, stored_mac,
+        stored_id,
+        stored_auth,
+        epub_sha256,
+        document_id,
+        reader_route,
+        content_class,
+        servability,
+        stored_hash,
+        stored_mac,
     ) = row
     if stored_auth != authorization_receipt_id:
         raise PortReceiptIntegrityError("port receipt authorization binding is invalid")
@@ -220,8 +223,7 @@ def verify_port_receipt(
         raise PortReceiptIntegrityError("ported document has been taken down")
     raw_text, stored_content_class = document
     expected_document_id = (
-        "doc-bookimport-"
-        + hashlib.sha256(str(raw_text).encode("utf-8")).hexdigest()[:32]
+        "doc-bookimport-" + hashlib.sha256(str(raw_text).encode("utf-8")).hexdigest()[:32]
     )
     if (
         expected_document_id != document_id
@@ -231,6 +233,13 @@ def verify_port_receipt(
     ):
         raise PortReceiptIntegrityError("ported document integrity is invalid")
     return AuthorizedBookPort(
-        str(stored_id), str(stored_auth), str(epub_sha256), str(document_id),
-        str(reader_route), str(content_class), str(servability), False, port_hash,
+        str(stored_id),
+        str(stored_auth),
+        str(epub_sha256),
+        str(document_id),
+        str(reader_route),
+        str(content_class),
+        str(servability),
+        False,
+        port_hash,
     )

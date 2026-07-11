@@ -133,8 +133,7 @@ def test_fabricated_authorization_is_rejected(writer: LockedConnection) -> None:
 def test_tampered_intent_cannot_be_authorized(writer: LockedConnection) -> None:
     intent = _intent(writer)
     writer.execute(
-        "UPDATE book_purchase_intents SET max_price_usd_cents = 999999 "
-        "WHERE intent_receipt_id = ?",
+        "UPDATE book_purchase_intents SET max_price_usd_cents = 999999 WHERE intent_receipt_id = ?",
         [intent.intent_receipt_id],
     )
     with pytest.raises(AcquisitionIntegrityError, match="tampered"):
@@ -162,8 +161,16 @@ def test_coherent_intent_rewrite_without_signing_key_is_rejected(
         "UPDATE book_purchase_intents SET intent_receipt_id=?, title=?, author=?, "
         "store=?, max_price_usd_cents=?, intent_hash=?, intent_mac=? "
         "WHERE intent_receipt_id=?",
-        [rewritten_id, "Rewritten", "Attacker", "attacker.example", 1, digest,
-         attacker_mac, intent.intent_receipt_id],
+        [
+            rewritten_id,
+            "Rewritten",
+            "Attacker",
+            "attacker.example",
+            1,
+            digest,
+            attacker_mac,
+            intent.intent_receipt_id,
+        ],
     )
     with pytest.raises(AcquisitionIntegrityError, match="signature"):
         _authorize(writer, rewritten_id)
@@ -273,18 +280,19 @@ def test_denial_is_not_a_verified_authorization(writer: LockedConnection) -> Non
 def test_authorized_receipt_verifies(writer: LockedConnection) -> None:
     intent = _intent(writer)
     authorization = _authorize(writer, intent.intent_receipt_id)
-    assert verify_authorization(
-        writer,
-        authorization_receipt_id=authorization.authorization_receipt_id,
-        expected_operator_id="operator-alice",
-        signing_key=_SIGNING_KEY,
-    ) == authorization
+    assert (
+        verify_authorization(
+            writer,
+            authorization_receipt_id=authorization.authorization_receipt_id,
+            expected_operator_id="operator-alice",
+            signing_key=_SIGNING_KEY,
+        )
+        == authorization
+    )
 
 
 @pytest.mark.parametrize("bad", [-1, 1.5, True])
-def test_money_requires_non_negative_integer_cents(
-    writer: LockedConnection, bad: object
-) -> None:
+def test_money_requires_non_negative_integer_cents(writer: LockedConnection, bad: object) -> None:
     with pytest.raises(ValueError, match="non-negative integer"):
         create_purchase_intent(
             writer,
@@ -306,21 +314,25 @@ def test_raw_duckdb_connection_cannot_write() -> None:
         raw.close()
 
 
-def test_every_public_operation_requires_locked_connection() -> None:
+def test_every_public_write_operation_requires_locked_connection() -> None:
     raw = duckdb.connect(":memory:")
     try:
         operations = (
             lambda: create_purchase_intent(
-                raw, operator_id="o", title="t", author="a", store="s",
-                max_price_usd_cents=1, signing_key=_SIGNING_KEY,
+                raw,
+                operator_id="o",
+                title="t",
+                author="a",
+                store="s",
+                max_price_usd_cents=1,
+                signing_key=_SIGNING_KEY,
             ),
             lambda: authorize_purchase_intent(
-                raw, intent_receipt_id="i", operator_id="o",
+                raw,
+                intent_receipt_id="i",
+                operator_id="o",
                 decision=AuthorizationDecision.AUTHORIZED,
-                authorized_price_ceiling_usd_cents=1, signing_key=_SIGNING_KEY,
-            ),
-            lambda: verify_authorization(
-                raw, authorization_receipt_id="a", expected_operator_id="o",
+                authorized_price_ceiling_usd_cents=1,
                 signing_key=_SIGNING_KEY,
             ),
         )
@@ -332,17 +344,10 @@ def test_every_public_operation_requires_locked_connection() -> None:
 
 
 def test_no_spend_surface_or_transport_imports() -> None:
-    module_path = (
-        Path(__file__).parents[1]
-        / "substrate"
-        / "book_acquisition"
-        / "authorization.py"
-    )
+    module_path = Path(__file__).parents[1] / "substrate" / "book_acquisition" / "authorization.py"
     tree = ast.parse(module_path.read_text(encoding="utf-8"))
     imported = {
-        node.names[0].name.split(".")[0]
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Import)
+        node.names[0].name.split(".")[0] for node in ast.walk(tree) if isinstance(node, ast.Import)
     }
     imported |= {
         node.module.split(".")[0]
@@ -350,8 +355,16 @@ def test_no_spend_surface_or_transport_imports() -> None:
         if isinstance(node, ast.ImportFrom) and node.module
     }
     assert imported <= {
-        "__future__", "hashlib", "hmac", "json", "collections", "contextlib",
-        "dataclasses", "enum", "runtime",
+        "__future__",
+        "hashlib",
+        "hmac",
+        "json",
+        "collections",
+        "contextlib",
+        "dataclasses",
+        "enum",
+        "runtime",
+        "typing",
     }
     called_names = {
         node.func.id
