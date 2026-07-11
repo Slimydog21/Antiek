@@ -31,6 +31,15 @@ describe("computeUsageBar", () => {
       computeUsageBar({ daily_cap_usd: Number.NaN, spent_usd: 1 }),
     ).toThrow(/finite/);
   });
+
+  it("rejects overflow remaining", () => {
+    expect(() =>
+      computeUsageBar({
+        daily_cap_usd: Number.MAX_VALUE,
+        spent_usd: -Number.MAX_VALUE,
+      }),
+    ).toThrow(/non-finite|overflow/);
+  });
 });
 
 describe("projectPromptAgainstBar", () => {
@@ -70,6 +79,16 @@ describe("projectPromptAgainstBar", () => {
       projected_cost_usd_high: null,
     });
     expect(p.would_exceed).toBeNull();
+  });
+
+  it("rejects after-high overflow", () => {
+    const bar = computeUsageBar({ daily_cap_usd: 1, spent_usd: 0 });
+    expect(() =>
+      projectPromptAgainstBar(bar, {
+        projected_cost_usd_low: 0,
+        projected_cost_usd_high: -Number.MAX_VALUE,
+      }),
+    ).toThrow(/non-finite|overflow/);
   });
 });
 

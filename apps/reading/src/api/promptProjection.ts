@@ -57,11 +57,17 @@ export function computeUsageBar(input: {
 
   if (cap !== null && spent !== null) {
     remaining = cap - spent;
+    if (!Number.isFinite(remaining)) {
+      throw new Error("remaining_usd overflowed to non-finite");
+    }
     over = remaining < 0;
     if (cap > 0) {
       fraction = spent / cap;
+      if (!Number.isFinite(fraction)) {
+        throw new Error("fraction_used overflowed to non-finite");
+      }
     } else {
-      notes.push("daily_cap_usd is zero — fraction_used null (not 0-faked)");
+      notes.push("daily_cap_usd is zero - fraction_used null (not 0-faked)");
       fraction = null;
     }
     if (over) {
@@ -118,6 +124,9 @@ export function projectPromptAgainstBar(
     would = null;
   } else {
     after = remaining - high;
+    if (!Number.isFinite(after)) {
+      throw new Error("remaining_after_high_usd overflowed to non-finite");
+    }
     would = high > remaining;
     if (would) {
       notes.push(
