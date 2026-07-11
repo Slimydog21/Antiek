@@ -57,6 +57,9 @@ export default function ComposeAnalysisPanel({
   async function onCompose() {
     setBusy(true);
     setError(null);
+    // Clear stale draft immediately so prior HTML cannot linger while a new
+    // request is in flight (different twin set / title).
+    setResult(null);
     try {
       const raw = await composeFn({
         twin_ids: twinIds,
@@ -92,6 +95,7 @@ export default function ComposeAnalysisPanel({
               placeholder="twin-a, twin-b"
               data-testid="compose-analysis-twin-ids"
               aria-label="Twin ids"
+              disabled={busy}
             />
           </label>
 
@@ -103,6 +107,7 @@ export default function ComposeAnalysisPanel({
               placeholder="Combined analysis"
               data-testid="compose-analysis-title"
               aria-label="Analysis title"
+              disabled={busy}
             />
           </label>
 
@@ -114,6 +119,7 @@ export default function ComposeAnalysisPanel({
               placeholder="asset-…"
               data-testid="compose-analysis-parent"
               aria-label="Parent asset id"
+              disabled={busy}
             />
           </label>
 

@@ -94,4 +94,51 @@ describe("ComposeAnalysisPanel", () => {
     });
     expect(screen.queryByTestId("compose-analysis-result")).toBeNull();
   });
+
+  it("clears stale HTML immediately when a new compose starts", async () => {
+    let resolveFirst!: (v: ComposeAnalysisResult) => void;
+    const first = new Promise<ComposeAnalysisResult>((r) => {
+      resolveFirst = r;
+    });
+    const composeFn = vi
+      .fn()
+      .mockImplementationOnce(() => first)
+      .mockImplementationOnce(async () => ({
+        ...sample,
+        html: "<article>second draft</article>",
+        twin_ids: ["t9"],
+      }));
+
+    render(
+      <ComposeAnalysisPanel composeFn={composeFn} initialTwinIds="t1, t2" />,
+    );
+
+    fireEvent.click(screen.getByTestId("compose-analysis-run"));
+    resolveFirst(sample);
+    await waitFor(() => {
+      expect(screen.getByTestId("compose-analysis-html").textContent).toMatch(
+        /antiek-twin-analysis/,
+      );
+    });
+
+    // Start second compose; prior result must vanish before second resolves.
+    let resolveSecond!: (v: ComposeAnalysisResult) => void;
+    const second = new Promise<ComposeAnalysisResult>((r) => {
+      resolveSecond = r;
+    });
+    composeFn.mockImplementationOnce(() => second);
+    fireEvent.click(screen.getByTestId("compose-analysis-run"));
+    expect(screen.queryByTestId("compose-analysis-result")).toBeNull();
+
+    resolveSecond({
+      ...sample,
+      html: "<article>second draft</article>",
+      twin_ids: ["t9"],
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("compose-analysis-html").textContent).toMatch(
+        /second draft/,
+      );
+    });
+  });
 });

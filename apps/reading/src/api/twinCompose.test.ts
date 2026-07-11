@@ -82,6 +82,21 @@ describe("parseComposeAnalysisResult", () => {
     expect(ok.parent_asset_id).toBe("asset-1");
     expect(ok.insight_count).toBe(2);
   });
+
+  it("rejects malformed twin_ids entries (null/object/empty string)", () => {
+    expect(() =>
+      parseComposeAnalysisResult({ ...sampleBody, twin_ids: [null] }),
+    ).toThrow(/twin_id/);
+    expect(() =>
+      parseComposeAnalysisResult({ ...sampleBody, twin_ids: [{}] }),
+    ).toThrow(/twin_id/);
+    expect(() =>
+      parseComposeAnalysisResult({ ...sampleBody, twin_ids: [""] }),
+    ).toThrow(/twin_id/);
+    expect(() =>
+      parseComposeAnalysisResult({ ...sampleBody, twin_ids: ["  "] }),
+    ).toThrow(/twin_id/);
+  });
 });
 
 describe("postComposeAnalysis", () => {

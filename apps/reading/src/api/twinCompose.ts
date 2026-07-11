@@ -60,6 +60,15 @@ export function parseComposeAnalysisResult(body: unknown): ComposeAnalysisResult
   if (!Array.isArray(o.twin_ids) || o.twin_ids.length === 0) {
     throw new Error("compose analysis response rejected: twin_ids required");
   }
+  const twinIds: string[] = [];
+  for (const raw of o.twin_ids) {
+    if (typeof raw !== "string" || !raw.trim()) {
+      throw new Error(
+        "compose analysis response rejected: every twin_id must be a non-empty string",
+      );
+    }
+    twinIds.push(raw.trim());
+  }
   if (typeof o.parent_asset_id !== "string" || !o.parent_asset_id.trim()) {
     throw new Error(
       "compose analysis response rejected: parent_asset_id must be non-empty string",
@@ -83,7 +92,7 @@ export function parseComposeAnalysisResult(body: unknown): ComposeAnalysisResult
     parent_asset_id: o.parent_asset_id,
     title: typeof o.title === "string" && o.title.trim() ? o.title : "Combined analysis",
     html: o.html,
-    twin_ids: o.twin_ids.map((t) => String(t)),
+    twin_ids: twinIds,
     insight_count: Number(insightRaw ?? 0),
     question_count: Number(questionRaw ?? 0),
   };
