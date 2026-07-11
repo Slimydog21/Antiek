@@ -70,15 +70,17 @@ def test_int_goal_count() -> None:
 
 
 def test_rejects_overflow_to_inf() -> None:
-    with pytest.raises(PriceCeilingError, match="non-finite|finite"):
-        recommend_price_ceiling(hours=1e308, goals=0, usd_per_hour_low=1, usd_per_hour_high=5)
-    with pytest.raises(PriceCeilingError):
+    with pytest.raises(PriceCeilingError, match="non-finite|overflow"):
         recommend_price_ceiling(
-            hours=1,
+            hours=1e308, goals=0, usd_per_hour_low=1, usd_per_hour_high=5
+        )
+    with pytest.raises(PriceCeilingError, match="non-finite|overflow"):
+        recommend_price_ceiling(
+            hours=1e200,
             goals=0,
-            usd_per_hour_low=1,
-            usd_per_hour_high=1,
-            contingency_fraction=1e308,
+            usd_per_hour_low=1e200,
+            usd_per_hour_high=1e200,
+            contingency_fraction=0,
         )
 
 
