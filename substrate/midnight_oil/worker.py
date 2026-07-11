@@ -214,6 +214,12 @@ def _run_leased_worker_iteration_fenced(
         "timed_out": OperationState.TIMED_OUT,
     }
     terminal = terminal_states.get(job.status)
+    if terminal is OperationState.FAILED:
+        try:
+            if BudgetLedger(store.budget_db_path()).balance(job.job_id).held_cents > 0:
+                terminal = OperationState.FAILED_RECONCILE
+        except Exception:
+            terminal = OperationState.FAILED_RECONCILE
     if terminal is not None:
         authority = owner_jobs.get_job(
             owner_user_id=lease.owner_user_id, job_id=lease.job_id

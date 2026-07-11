@@ -24,8 +24,14 @@ from substrate.midnight_oil import (
     job_summary_html,
     product_result_html,
 )
+from substrate.midnight_oil.durable_job import DurableJobStore
 from substrate.midnight_oil.job import InMemoryJobStore, JobStore, MidnightOilJob
-from substrate.midnight_oil.job_store import OperationState, OwnerJob, OwnerJobStore
+from substrate.midnight_oil.job_store import (
+    DurableOwnerJobStore,
+    OperationState,
+    OwnerJob,
+    OwnerJobStore,
+)
 from substrate.midnight_oil.operation_queue import DurableOperationQueue, OperationQueue
 from substrate.midnight_oil.spend_consent import (
     MAX_CEILING_CENTS,
@@ -41,6 +47,10 @@ _DEPENDENCIES = "midnight_oil_dependencies"
 CONSENT_TTL_MS = 15 * 60 * 1000
 
 
+def _system_clock_ms() -> int:
+    return time.time_ns() // 1_000_000
+
+
 @dataclass(frozen=True)
 class MidnightOilDependencies:
     owner_jobs: OwnerJobStore
@@ -50,7 +60,7 @@ class MidnightOilDependencies:
     signing_key: bytes
     verification_keys: Mapping[str, bytes]
     operation_queue: OperationQueue | None = None
-    clock_ms: Callable[[], int] = lambda: time.time_ns() // 1_000_000
+    clock_ms: Callable[[], int] = _system_clock_ms
     random_token: Callable[[int], str] = secrets.token_urlsafe
     test_mode: bool = False
 
@@ -75,12 +85,18 @@ class MidnightOilDependencies:
                 raise ValueError("verification keys must be at least 256 bits")
         if self.verification_keys.get(self.active_key_id) != self.signing_key:
             raise ValueError("the active signing key must be in the verification keyring")
-        if not self.test_mode and (
-            getattr(self.owner_jobs, "_test_only", False)
-            or isinstance(self.jobs, InMemoryJobStore)
-            or not isinstance(self.operation_queue, DurableOperationQueue)
-        ):
-            raise ValueError("production Midnight Oil requires durable stores and queue")
+        if not self.test_mode:
+            if (
+                type(self.owner_jobs) is not DurableOwnerJobStore
+                or type(self.jobs) is not DurableJobStore
+                or type(self.consents) is not SpendConsentStore
+                or type(self.operation_queue) is not DurableOperationQueue
+            ):
+                raise ValueError("production Midnight Oil requires durable stores and queue")
+            if self.clock_ms is not _system_clock_ms:
+                raise ValueError("production Midnight Oil requires the system clock")
+            if self.random_token is not secrets.token_urlsafe:
+                raise ValueError("production Midnight Oil requires secrets.token_urlsafe")
 
 
 def reset_midnight_oil_store(store: JobStore | None = None) -> None:
