@@ -61,6 +61,24 @@ export default function CascadeLaunchPanel({
         require_source_preflight: requirePreflight,
         per_research_budget_usd: budget,
       });
+      // Panel fail-closed: never render success when preflight was required
+      // but the resolved result lacks a receipt (covers injectable stubs).
+      if (body.require_source_preflight) {
+        const pf = body.source_preflight;
+        const policy =
+          pf && typeof pf === "object"
+            ? (pf as { source_policy?: unknown }).source_policy
+            : null;
+        if (
+          !pf ||
+          !Array.isArray(policy) ||
+          policy.length === 0
+        ) {
+          throw new Error(
+            "source_preflight receipt required when require_source_preflight is true",
+          );
+        }
+      }
       setResult(body);
     } catch (e) {
       setResult(null);
