@@ -179,12 +179,13 @@ _MOCK_LOOP_FACTORIES: tuple[str, ...] = ("make_demo_loop", "make_contract_gather
 # ``live_provider`` / ``host_local`` with same-named callables passes any name
 # check with zero forgery), and a stamped function ATTRIBUTE is worse than it
 # looks: ``functools.wraps(real)`` copies ``__dict__``, so a fake wrapper would
-# INHERIT the stamp while its own code runs. Membership in a module-private
-# ``WeakSet`` keyed by object identity is copy-proof — ``functools.wraps``
-# cannot make a different object BE a registered one. Each real builder
-# registers its product in the role's set at creation; the checks test
-# identity membership. The sets are module-private, unexported, and hold weak
-# refs so a discarded provider's closures are collectible.
+# INHERIT the stamp while its own code runs. A module-private ``WeakSet`` per
+# role, checked by EXPLICIT ``is`` against each member (never ``in`` — that
+# consults ``__hash__``/``__eq__``, which an impostor can override to compare
+# equal to a real seam), is forgery-proof: only the real object satisfies
+# ``is``. Each real builder registers its product in the role's set at
+# creation. The sets are module-private, unexported, and hold weak refs so a
+# discarded provider's closures are collectible.
 _ROLE_LOOP = "loop"
 _ROLE_GATHER = "gather"
 _ROLE_SYNTHESIZE = "synthesize"
@@ -301,11 +302,13 @@ def _register_real(fn: object, role: str) -> None:
 
 
 def _has_real_role(fn_like: object, role: str) -> bool:
-    """True iff THIS object (identity, no unwrap) was registered for ``role``.
-    Identity membership defeats both name mimicry and ``functools.wraps`` —
-    a wrapper is a different object even though it copies ``__wrapped__`` and
-    ``__dict__``."""
-    return fn_like in _REAL_BY_ROLE[role]
+    """True iff THIS object (strict ``is`` identity, no unwrap) was registered
+    for ``role``. Explicit ``is`` — NOT ``in`` — because ``WeakSet.__contains__``
+    consults ``__hash__``/``__eq__``, which an impostor can override to compare
+    equal to a real seam; only object identity is unforgeable. Defeats name
+    mimicry, ``functools.wraps`` (a wrapper is a different object), and
+    equality-spoofing impostors."""
+    return any(fn_like is real for real in _REAL_BY_ROLE[role])
 
 
 def _is_real_exa_loop(loop_fn: object) -> bool:
@@ -341,8 +344,9 @@ def _is_real_seam(seam: object, role: str) -> bool:
     to mimic), a REAL callable of a DIFFERENT role fails the role match —
     so ``replace(live, synthesize=live.gather)`` refuses — and a wrapper
     around a real seam (``functools.wraps`` copies ``__dict__`` AND
-    ``__wrapped__``) fails because registry membership is by object identity:
-    the executing callable itself must be the registered one."""
+    ``__wrapped__``) or an equality-spoofing impostor both fail because the
+    check is strict ``is`` identity: the executing callable itself must BE the
+    registered one."""
     if role == "usage_reader":
         return seam is _read_dispatch_usage
     if role == "source_url_lookup":
@@ -359,7 +363,11 @@ def _is_real_machinery(seam: object) -> bool:
     for candidate in (seam, _unwrap_loop_fn(seam)):
         if candidate is _read_dispatch_usage or candidate is _lookup_document_source_uri:
             return True
-        if any(candidate in real_set for real_set in _REAL_BY_ROLE.values()):
+        if any(
+            candidate is real
+            for real_set in _REAL_BY_ROLE.values()
+            for real in real_set
+        ):
             return True
     return False
 

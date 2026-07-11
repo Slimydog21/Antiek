@@ -442,6 +442,38 @@ def test_wrapper_cannot_inherit_real_provenance(
         dataclasses.replace(fakes.build(), synthesize=hidden_real)
 
 
+# 4a-eq. Provenance is STRICT `is` identity, not set membership: WeakSet.__contains__
+#     consults __hash__/__eq__, which an impostor can override to compare equal
+#     to a real seam. The check must survive an equality-spoofing callable.
+def test_equality_spoofing_impostor_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    import dataclasses
+
+    monkeypatch.setenv("EXA_API_KEY", "test-key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    live = build_live_provider(allow_live=True, discovery_top_k=1)
+
+    class _EqSpoof:
+        """Compares/hashes equal to the real gather but runs its own code."""
+
+        def __init__(self, target: object) -> None:
+            self._target = target
+
+        def __hash__(self) -> int:
+            return hash(self._target)
+
+        def __eq__(self, other: object) -> bool:
+            return other is self._target or other is self
+
+        async def __call__(self, *args: object, **kwargs: object) -> object:
+            raise AssertionError("impostor seam executed")
+
+    impostor = _EqSpoof(live.gather)
+    # It IS equal to and hashes with the real seam — a membership check accepts it.
+    assert impostor == live.gather and hash(impostor) == hash(live.gather)
+    with pytest.raises(ValueError, match="not this module's real implementations"):
+        dataclasses.replace(live, gather=impostor)
+
+
 # 4b. allow_live gating: missing env keys refuse construction — through the
 #     factory AND through direct dataclass construction.
 def test_allow_live_refused_without_env_keys(monkeypatch: pytest.MonkeyPatch) -> None:
