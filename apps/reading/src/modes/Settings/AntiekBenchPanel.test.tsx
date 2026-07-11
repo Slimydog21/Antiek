@@ -45,7 +45,15 @@ function makeView(
 describe("AntiekBenchPanel", () => {
   it("shows advisory authority and NOT MEASURED for null scores", async () => {
     const fetchFn = vi.fn(async () => makeView());
-    render(<AntiekBenchPanel fetchFn={fetchFn} />);
+    render(
+      <AntiekBenchPanel
+        fetchFn={fetchFn}
+        records={[
+          { task: "deep_research", model_id: "thinker", score: 0.9 },
+          { task: "deep_research", model_id: "flash", score: null },
+        ]}
+      />,
+    );
     fireEvent.click(screen.getByTestId("antiek-bench-load"));
     await waitFor(() => {
       expect(screen.getByTestId("antiek-bench-result")).toBeTruthy();
@@ -59,9 +67,14 @@ describe("AntiekBenchPanel", () => {
     expect(
       screen.getByTestId("score-deep_research-thinker").textContent,
     ).toMatch(/0\.900/);
+    // Default empty records must not invent demo measurements
+    expect(fetchFn.mock.calls[0][0].records).toEqual([
+      { task: "deep_research", model_id: "thinker", score: 0.9 },
+      { task: "deep_research", model_id: "flash", score: null },
+    ]);
   });
 
-  it("empty best_by_task shows none", async () => {
+  it("default empty records posts empty list (no fabricated measurements)", async () => {
     const fetchFn = vi.fn(async () =>
       makeView({
         best_by_task: {},
@@ -72,10 +85,12 @@ describe("AntiekBenchPanel", () => {
     render(<AntiekBenchPanel fetchFn={fetchFn} />);
     fireEvent.click(screen.getByTestId("antiek-bench-load"));
     await waitFor(() => {
-      expect(screen.getByTestId("antiek-bench-best").textContent).toMatch(
-        /none/i,
-      );
+      expect(fetchFn).toHaveBeenCalled();
     });
+    expect(fetchFn.mock.calls[0][0].records).toEqual([]);
+    expect(screen.getByTestId("antiek-bench-best").textContent).toMatch(
+      /none/i,
+    );
   });
 
   it("shows error when fetch throws", async () => {

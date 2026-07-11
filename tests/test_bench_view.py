@@ -59,6 +59,16 @@ def test_tie_breaks_stable_by_model_id() -> None:
     assert view.best_by_task["general"] == "alpha"
 
 
+def test_bool_score_is_not_measured() -> None:
+    view = present_weekly_bench(
+        [{"task": "t", "model_id": "m", "score": False}],  # type: ignore[dict-item]
+        week_id="w",
+    )
+    assert view.scores[0].score is None
+    assert view.best_by_task == {}
+    assert view.incomplete is True
+
+
 def test_http_weekly_route() -> None:
     app = FastAPI()
     register_bench_view_routes(app)
@@ -82,3 +92,18 @@ def test_http_weekly_route() -> None:
     assert r2.status_code == 200
     assert r2.json()["incomplete"] is True
     assert r2.json()["best_by_task"] == {}
+    # bool must not become score 0.0
+    r3 = client.post(
+        "/settings/antiek-bench/weekly",
+        json={
+            "week_id": "w",
+            "records": [{"task": "t", "model_id": "m", "score": False}],
+        },
+    )
+    # strict pydantic may 422, or pure path treats as unmeasured
+    if r3.status_code == 200:
+        body3 = r3.json()
+        assert body3["best_by_task"] == {}
+        assert body3["scores"][0]["score"] is None
+    else:
+        assert r3.status_code == 422

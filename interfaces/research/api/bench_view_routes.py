@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, FastAPI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from substrate.bench_presentation.view import present_weekly_bench, weekly_view_to_dict
 
@@ -25,6 +25,14 @@ class BenchRecordIn(BaseModel):
     score: float | None = None
     n_runs: int = 0
     notes: str = ""
+
+    @field_validator("score", mode="before")
+    @classmethod
+    def _score_not_bool(cls, v: object) -> object:
+        # bool is a subclass of int; reject so false/true never become 0.0/1.0
+        if isinstance(v, bool):
+            raise ValueError("score must be a number or null, not a boolean")
+        return v
 
 
 class WeeklyBenchRequest(BaseModel):
