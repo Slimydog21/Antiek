@@ -53,7 +53,6 @@ def probe_arxiv(
     """
     details: list[str] = []
     try:
-        from acquisition.arxiv import client as arxiv_client
         from acquisition.arxiv.client import fetch_by_id, search
     except Exception as exc:  # noqa: BLE001 — honesty over crash
         return SourceReadiness(
@@ -132,7 +131,6 @@ def probe_substack() -> SourceReadiness:
     """Probe Substack acquisition readiness (import + callables, no HTTP)."""
     details: list[str] = []
     try:
-        from acquisition.substack import client as substack_client
         from acquisition.substack.client import fetch_feed
     except Exception as exc:  # noqa: BLE001
         return SourceReadiness(

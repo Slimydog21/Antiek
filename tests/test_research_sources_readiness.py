@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import httpx
-import pytest
 
 from substrate.research_sources import probe_arxiv, probe_source, probe_substack
 from substrate.research_sources.readiness import readiness_to_preflight_fields
@@ -24,7 +23,7 @@ def _arxiv_atom(arxiv_id: str = "2402.03300") -> bytes:
     <category term="cs.AI"/>
   </entry>
 </feed>
-""".encode("utf-8")
+""".encode()
 
 
 def _mock_arxiv_client(body: bytes | None = None) -> httpx.Client:
