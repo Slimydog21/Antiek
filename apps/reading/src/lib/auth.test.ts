@@ -48,13 +48,14 @@ describe("requestMagicLink", () => {
 
   it("B-POLICY-ALLOWLIST-SILENT: 200 sent has null diagnostic_code", async () => {
     (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
-      jsonResponse(200, { sent: true, attempt_id: "attempt-123456789", claim_secret: "claim-1234567890" }),
+      jsonResponse(200, { sent: true, attempt_id: "attempt-123456789", claim_secret: "claim-1234567890", device_code: "2048" }),
     );
     const result = await requestMagicLink("any@example.com");
     expect(result).toEqual({
       kind: "sent",
       attempt_id: "attempt-123456789",
       claim_secret: "claim-1234567890",
+      device_code: "2048",
       diagnostic_code: null,
       layer: null,
     });

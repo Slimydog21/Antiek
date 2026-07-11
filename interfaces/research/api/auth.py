@@ -96,11 +96,16 @@ class AuthRequestResponse(BaseModel):
     sent: bool = True
     attempt_id: str
     claim_secret: str
+    device_code: str
 
 
 class AuthClaimPayload(BaseModel):
     attempt_id: str = Field(..., min_length=16, max_length=200)
     claim_secret: str = Field(..., min_length=16, max_length=200)
+
+
+class AuthApprovePayload(BaseModel):
+    attempt_id: str = Field(..., min_length=16, max_length=200)
 
 
 class AuthMeResponse(BaseModel):
@@ -126,10 +131,11 @@ class PasskeyStatusResponse(BaseModel):
 
 
 class _LoginAttempt:
-    def __init__(self, *, email: str, claim_hash: str, next_path: str) -> None:
+    def __init__(self, *, email: str, claim_hash: str, next_path: str, device_code: str) -> None:
         self.email = email
         self.claim_hash = claim_hash
         self.next_path = next_path
+        self.device_code = device_code
         self.created_at = time.time()
         self.approved = False
         self.claimed = False
@@ -144,9 +150,10 @@ def _digest_claim(secret: str) -> str:
     return hashlib.sha256(secret.encode()).hexdigest()
 
 
-def _new_attempt(*, email: str, next_path: str) -> tuple[str, str]:
+def _new_attempt(*, email: str, next_path: str) -> tuple[str, str, str]:
     attempt_id = secrets.token_urlsafe(24)
     claim_secret = secrets.token_urlsafe(32)
+    device_code = f"{secrets.randbelow(10000):04d}"
     now = time.time()
     with _attempts_lock:
         for key, attempt in list(_attempts.items()):
@@ -156,8 +163,9 @@ def _new_attempt(*, email: str, next_path: str) -> tuple[str, str]:
             email=email,
             claim_hash=_digest_claim(claim_secret),
             next_path=next_path,
+            device_code=device_code,
         )
-    return attempt_id, claim_secret
+    return attempt_id, claim_secret, device_code
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -350,7 +358,7 @@ def register_auth_routes(
         email = payload.email.strip().lower()
         next_path = payload.next if _is_safe_relative(payload.next) else "/"
         allowlist = _resolve_allowlist()
-        attempt_id, claim_secret = _new_attempt(email=email, next_path=next_path)
+        attempt_id, claim_secret, device_code = _new_attempt(email=email, next_path=next_path)
         if email in allowlist:
             token = mint_magic_link_token(email)
             link = _build_magic_link(token, next_path, attempt_id)
@@ -372,7 +380,12 @@ def register_auth_routes(
         # Non-allowlisted: silently no-op. Constant-time-ish: the
         # branch difference is unavoidable but the response is
         # identical, which is what enumeration protection turns on.
-        return AuthRequestResponse(sent=True, attempt_id=attempt_id, claim_secret=claim_secret)
+        return AuthRequestResponse(
+            sent=True,
+            attempt_id=attempt_id,
+            claim_secret=claim_secret,
+            device_code=device_code,
+        )
 
     @app.get("/auth/callback", tags=["auth"])
     async def auth_callback(token: str, next: str = "/", attempt: str | None = None) -> Response:
@@ -392,16 +405,22 @@ def register_auth_routes(
             user_id="__operator__",
             email=email,
         )
-        if attempt:
-            with _attempts_lock:
-                pending = _attempts.get(attempt)
-                if pending and pending.email == email and time.time() - pending.created_at <= _ATTEMPT_TTL_SECONDS:
-                    pending.approved = True
         # The first successful email proof is also the passkey bootstrap.
         # Keep the original destination, but pause on Login long enough to
         # create the device credential that makes future email unnecessary.
         if attempt:
-            redirect_url = _resolve_redirect("/login?approved=1")
+            with _attempts_lock:
+                pending = _attempts.get(attempt)
+                valid_attempt = bool(
+                    pending
+                    and pending.email == email
+                    and time.time() - pending.created_at <= _ATTEMPT_TTL_SECONDS
+                )
+                device_code = pending.device_code if valid_attempt and pending else ""
+            if valid_attempt:
+                redirect_url = _resolve_redirect(
+                    f"/login?{urlencode({'approve': attempt, 'code': device_code})}"
+                )
         elif not list_credentials():
             safe_next = next if _is_safe_relative(next) else "/"
             redirect_url = _resolve_redirect(
@@ -415,6 +434,24 @@ def register_auth_routes(
             **_cookie_kwargs(),
         )
         return response
+
+    @app.post("/auth/approve", tags=["auth"])
+    async def auth_approve(payload: AuthApprovePayload, request: Request) -> Response:
+        email = getattr(request.state, "user_email", None)
+        with _attempts_lock:
+            pending = _attempts.get(payload.attempt_id)
+            if (
+                not email
+                or not pending
+                or pending.email != email
+                or time.time() - pending.created_at > _ATTEMPT_TTL_SECONDS
+            ):
+                raise HTTPException(
+                    status_code=410,
+                    detail={"code": "login_attempt_expired", "message": "This sign-in request has expired."},
+                )
+            pending.approved = True
+        return Response(status_code=204)
 
     @app.post("/auth/claim", tags=["auth"])
     async def auth_claim(payload: AuthClaimPayload) -> Response:

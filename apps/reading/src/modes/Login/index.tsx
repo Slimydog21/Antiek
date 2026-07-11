@@ -6,6 +6,7 @@ import { LemonButton, LemonInput } from "../../components/lemon";
 import {
   authCallbackErrorDisplay,
   authLoginErrorDisplay,
+  approveLogin,
   beginPasskeyLogin,
   beginPasskeyRegistration,
   finishPasskeyLogin,
@@ -52,14 +53,16 @@ export default function Login() {
   const [errorMsg, setErrorMsg] = useState("");
   const [errorHint, setErrorHint] = useState<string | null>(null);
   const [diagnosticCode, setDiagnosticCode] = useState<AuthDiagnosticCode | null>(null);
-  const [handoff, setHandoff] = useState<{ attemptId: string; claimSecret: string } | null>(null);
+  const [handoff, setHandoff] = useState<{ attemptId: string; claimSecret: string; deviceCode: string } | null>(null);
+  const [approvalWorking, setApprovalWorking] = useState(false);
 
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const { state, refresh } = useAuth();
   const isSetup = searchParams.get("setup") === "passkey";
-  const isApprovalReceipt = searchParams.get("approved") === "1";
+  const approvalAttempt = searchParams.get("approve");
+  const approvalCode = searchParams.get("code");
   const nextPath = useMemo(
     () =>
       searchParams.get("next") ??
@@ -69,10 +72,10 @@ export default function Login() {
   );
 
   useEffect(() => {
-    if (state.status === "authenticated" && !isSetup) {
+    if (state.status === "authenticated" && !isSetup && !approvalAttempt) {
       navigate(nextPath, { replace: true });
     }
-  }, [isSetup, navigate, nextPath, state.status]);
+  }, [approvalAttempt, isSetup, navigate, nextPath, state.status]);
 
   useEffect(() => {
     if (isSetup) return;
@@ -207,7 +210,7 @@ export default function Login() {
     track("login_requested");
     const result = await requestMagicLink(email, nextPath);
     if (result.kind === "sent") {
-      setHandoff({ attemptId: result.attempt_id, claimSecret: result.claim_secret });
+      setHandoff({ attemptId: result.attempt_id, claimSecret: result.claim_secret, deviceCode: result.device_code });
       setEmailStatus("sent");
       track("login_link_sent");
       return;
@@ -223,7 +226,39 @@ export default function Login() {
   const showPasskeyFirst = passkeyState !== "absent" && passkeyState !== "checking";
   const setupReady = isSetup && state.status === "authenticated";
 
-  if (isApprovalReceipt) {
+  async function approveHandoff() {
+    if (!approvalAttempt || approvalWorking) return;
+    setApprovalWorking(true);
+    setErrorMsg("");
+    try {
+      await approveLogin(approvalAttempt);
+      navigate("/login?approved=1", { replace: true });
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : "This device handoff has expired.");
+      setApprovalWorking(false);
+    }
+  }
+
+  if (approvalAttempt) {
+    return (
+      <main className="antiek-login antiek-login--receipt">
+        <section className="handoff-receipt">
+          <div className="antiek-login__eyebrow"><span /> Device handoff</div>
+          <h1>Does your other screen show this code?</h1>
+          <p className="handoff-code" aria-label={`Device code ${approvalCode}`}>{approvalCode}</p>
+          <p>Only approve when the computer or iPad where you started shows the same four digits.</p>
+          <button type="button" className="antiek-login__primary" onClick={() => void approveHandoff()} disabled={approvalWorking}>
+            <span aria-hidden="true">✓</span>
+            <span><strong>{approvalWorking ? "Approving…" : "Yes, unlock that screen"}</strong><small>One-time approval · expires in 15 minutes</small></span>
+            <span className="antiek-login__arrow" aria-hidden="true">→</span>
+          </button>
+          {errorMsg && <div className="antiek-login__error" role="alert"><strong>{errorMsg}</strong></div>}
+        </section>
+      </main>
+    );
+  }
+
+  if (searchParams.get("approved") === "1") {
     return (
       <main className="antiek-login antiek-login--receipt">
         <section className="handoff-receipt" role="status">
@@ -322,6 +357,10 @@ export default function Login() {
               <p className="antiek-login__lede">
                 Open the message sent to <strong>{email}</strong>. Approve it there; this screen will unlock itself.
               </p>
+              <div className="handoff-code handoff-code--desk" aria-label={`Device code ${handoff?.deviceCode}`}>
+                <small>Match this code on your phone</small>
+                <strong>{handoff?.deviceCode}</strong>
+              </div>
               <div className="handoff-ticket" aria-label="Sign-in handoff status">
                 <div><small>01 · REQUEST</small><strong>This screen</strong></div>
                 <span className="handoff-ticket__route" aria-hidden="true"><i /><i /><i /></span>
