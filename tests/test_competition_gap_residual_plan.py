@@ -79,6 +79,10 @@ def test_max_items() -> None:
 def test_rejects_invalid_area_and_max() -> None:
     with pytest.raises(CompetitionGapResidualPlanError, match="max_items"):
         build_competition_gap_residual_plan(decisions=DECISIONS, max_items=0)
+    with pytest.raises(CompetitionGapResidualPlanError, match="max_items"):
+        build_competition_gap_residual_plan(
+            decisions=DECISIONS, max_items=float("inf")
+        )
     with pytest.raises(CompetitionGapResidualPlanError, match="area"):
         build_competition_gap_residual_plan(
             decisions=[

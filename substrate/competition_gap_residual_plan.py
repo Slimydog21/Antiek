@@ -6,6 +6,7 @@ future agents. backlog_mutated is always False.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -149,7 +150,8 @@ def build_competition_gap_residual_plan(
             raise CompetitionGapResidualPlanError(
                 "max_items must be a positive finite number when set"
             )
-        if not (max_items > 0) or max_items != max_items:  # NaN check
+        # Reject NaN / ±inf before int() (OverflowError is not fail-closed).
+        if not math.isfinite(float(max_items)) or not (max_items > 0):
             raise CompetitionGapResidualPlanError(
                 "max_items must be a positive finite number when set"
             )
