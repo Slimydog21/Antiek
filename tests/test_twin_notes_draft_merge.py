@@ -82,6 +82,23 @@ def test_empty_twins_and_parent_fail(tmp_path: Path) -> None:
     except (TwinNotesError, TwinParentMismatch):
         pass
 
+def test_draft_does_not_mutate_store_and_escapes_title(tmp_path: Path) -> None:
+    store = TwinNotesStore(tmp_path)
+    t = store.record("asset-1", insights=["stable"], questions=[])
+    before = list(tmp_path.glob("*.json"))
+    assert before
+    raw_before = before[0].read_bytes()
+    draft = build_draft_merge(
+        parent_asset_id="asset-1",
+        parent_html="body",
+        twins=[store.load(t.twin_id)],
+        title='</h1><script>x</script>',
+    )
+    assert before[0].read_bytes() == raw_before
+    assert "<script>" not in draft.html
+    assert "&lt;/h1&gt;" in draft.html or "&lt;script&gt;" in draft.html
+
+
 def test_http_draft_merge(tmp_path: Path) -> None:
     store = TwinNotesStore(tmp_path)
     a = store.record("asset-1", insights=["Alpha"], questions=["Q?"])
