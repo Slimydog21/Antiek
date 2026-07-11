@@ -173,10 +173,29 @@ export async function postCascadeLaunch(
       );
     }
     const receiptPolicy = source_preflight.source_policy;
-    if (!Array.isArray(receiptPolicy) || receiptPolicy.length === 0) {
+    if (!Array.isArray(receiptPolicy)) {
       throw new CascadeLaunchClientError(
         "source_preflight_missing_policy",
         "source_preflight.source_policy must be a non-empty array",
+      );
+    }
+    // Fail closed: receipt policy must normalize to a non-empty allowed list.
+    let normalizedReceipt: SourcePolicyName[] | null;
+    try {
+      normalizedReceipt = normalizeSourcePolicy(receiptPolicy as string[]);
+    } catch (e) {
+      if (e instanceof CascadeLaunchClientError) {
+        throw new CascadeLaunchClientError(
+          "source_preflight_invalid_policy",
+          e.message,
+        );
+      }
+      throw e;
+    }
+    if (normalizedReceipt === null || normalizedReceipt.length === 0) {
+      throw new CascadeLaunchClientError(
+        "source_preflight_missing_policy",
+        "source_preflight.source_policy must be a non-empty allowed list",
       );
     }
   }

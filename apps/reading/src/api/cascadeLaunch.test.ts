@@ -95,6 +95,27 @@ describe("postCascadeLaunch", () => {
     ).rejects.toMatchObject({ code: "source_preflight_missing" });
   });
 
+  it("fails closed when receipt source_policy is blank/unknown/empty", async () => {
+    for (const receiptPolicy of [[" "], ["ftp"], []] as string[][]) {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          launched: true,
+          source_preflight: { source_policy: receiptPolicy },
+        }),
+        text: async () => "",
+      } as unknown as Response);
+      await expect(
+        postCascadeLaunch({
+          root_id: "root-1",
+          source_policy: ["web"],
+          require_source_preflight: true,
+        }),
+      ).rejects.toBeInstanceOf(CascadeLaunchClientError);
+    }
+  });
+
   it("rejects empty root_id and nonpositive budget without network", async () => {
     await expect(
       postCascadeLaunch({ root_id: "  " }),
