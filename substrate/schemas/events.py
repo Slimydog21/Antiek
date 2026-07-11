@@ -775,6 +775,71 @@ class _PayloadBase(BaseModel):
 # ── Dispatch + context pack ─────────────────────────────────────────
 
 
+class RouteReceiptCandidate(_PayloadBase):
+    """One model route considered by the dispatch router."""
+
+    provider: str
+    model: str
+    tier: str
+    fallback_chain_index: int = Field(ge=0)
+    pricing_known: bool
+    estimated_cost_usd_low: float | None = Field(default=None, ge=0.0)
+    estimated_cost_usd_high: float | None = Field(default=None, ge=0.0)
+
+
+class RouteReceiptSelection(_PayloadBase):
+    """A provider attempt, or an explicitly synthetic no-provider selection."""
+
+    provider: str
+    model: str
+    tier: str
+    fallback_chain_index: int = Field(ge=0)
+    reason_code: Literal[
+        "primary",
+        "operator_override",
+        "fallback_after_error",
+        "provider_unregistered",
+        "circuit_breaker_open",
+        "provider_error",
+        "synthetic_no_provider",
+    ]
+    pricing_known: bool
+
+
+class RouteReceiptBudget(_PayloadBase):
+    """Optional budget projection fields for settings/workstation surfaces."""
+
+    cap_usd: float | None = Field(default=None, ge=0.0)
+    remaining_before_usd: float | None = Field(default=None, ge=0.0)
+    projected_cost_usd_low: float | None = Field(default=None, ge=0.0)
+    projected_cost_usd_high: float | None = Field(default=None, ge=0.0)
+    actual_cost_usd: float | None = Field(default=None, ge=0.0)
+    would_exceed_budget: bool | None = None
+
+
+class RouteReceiptCacheState(_PayloadBase):
+    """Optional cache-routing state for future cache-aware routers."""
+
+    status: Literal["warm", "cold", "unknown"] = "unknown"
+    cache_family: str | None = None
+    adjustment_reason: str | None = None
+
+
+class RouteReceipt(_PayloadBase):
+    """Secret-free audit object explaining a provider or synthetic route."""
+
+    route_receipt_id: str
+    task_kind: str
+    objective: Literal["quality", "cost", "latency", "balanced", "operator_selected"] = (
+        "balanced"
+    )
+    override: Literal["none", "manual", "fallback"] = "none"
+    candidate_models: tuple[RouteReceiptCandidate, ...] = Field(default_factory=tuple)
+    selected: RouteReceiptSelection
+    budget: RouteReceiptBudget | None = None
+    cache_state: RouteReceiptCacheState | None = None
+
+
 class DispatchCallPayload(_PayloadBase):
     """Emitted by ``substrate/dispatch/`` on every LLM provider call.
 

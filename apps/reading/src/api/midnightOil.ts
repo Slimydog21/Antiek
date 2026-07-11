@@ -5,7 +5,67 @@
  */
 
 import { API_BASE, apiFetch } from "../lib/api";
-import type { RouteReceipt } from "../generated/types";
+
+export type MidnightOilExecutionRequest = {
+  launch_packet: Record<string, unknown>;
+  approval_receipt: Record<string, unknown>;
+  runner_handoff: Record<string, unknown>;
+  applied_run_receipt: Record<string, unknown>;
+  role_plans: Array<Record<string, unknown>>;
+};
+
+export type MidnightOilRouteReceipt = {
+  route_receipt_id: string;
+  task_kind: string;
+  selected: {
+    provider: string;
+    model: string;
+    reason_code: string;
+    pricing_known: boolean;
+  };
+  budget: {
+    cap_usd: number | null;
+    actual_cost_usd: number | null;
+  } | null;
+};
+
+export type MidnightOilExecutionReceipt = {
+  receipt_id: string;
+  run_id: string;
+  status: "mock_completed";
+  execution_mode: "synthetic" | "live";
+  persisted: boolean;
+  goal_fingerprint: string;
+  role_outputs: Array<{
+    role: "planner" | "gatherer" | "verifier" | "synthesizer";
+    status: "synthetic_complete";
+    execution_mode: "synthetic_no_provider";
+    route_receipt: MidnightOilRouteReceipt;
+    source_receipt_ids: string[];
+    output_summary: string;
+  }>;
+  html_information_asset: string;
+  twin_note_html: string;
+  actual_cost_usd: number;
+  dispatch_performed: boolean;
+  budget_reserved: boolean;
+  provider_calls_made: boolean;
+  retrieval_performed: boolean;
+  graph_mutated: boolean;
+  final_artifact_created: boolean;
+  notes: string[];
+};
+
+export async function executeMidnightOil(
+  request: MidnightOilExecutionRequest,
+): Promise<MidnightOilExecutionReceipt> {
+  const res = await apiFetch(`${API_BASE}/research/midnight-oil/execute`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  return readJson<MidnightOilExecutionReceipt>(res);
+}
 
 export type MidnightOilJobResponse = {
   job_id: string;

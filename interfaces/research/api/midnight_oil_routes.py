@@ -18,10 +18,13 @@ from fastapi import APIRouter, FastAPI, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, field_validator
 
 from substrate.midnight_oil import (
+    MidnightOilExecutionReceipt,
+    MidnightOilExecutionRequest,
     MidnightOilPreflight,
     MidnightOilRequest,
     create_with_recommended_ceiling,
     deposit_job_results,
+    execute_midnight_oil,
     get_job,
     job_summary_html,
     preflight_midnight_oil,
@@ -57,6 +60,17 @@ CONSENT_TTL_MS = 15 * 60 * 1000
 def post_midnight_oil_preflight(req: MidnightOilRequest) -> MidnightOilPreflight:
     """Plan the approved envelope without reserving, dispatching, or retrieving."""
     return preflight_midnight_oil(req)
+
+
+@midnight_oil_preflight_router.post("/execute", response_model=MidnightOilExecutionReceipt)
+def post_midnight_oil_execute(
+    req: MidnightOilExecutionRequest,
+) -> MidnightOilExecutionReceipt:
+    """Run the permanent, networkless synthetic oracle.
+
+    Live mode remains unreachable until the operator-gated SPR-06 wiring.
+    """
+    return execute_midnight_oil(req)
 
 
 def _system_clock_ms() -> int:
@@ -703,5 +717,6 @@ __all__ = [
     "midnight_oil_preflight_router",
     "midnight_oil_router",
     "post_midnight_oil_preflight",
+    "post_midnight_oil_execute",
     "register_midnight_oil_routes",
 ]

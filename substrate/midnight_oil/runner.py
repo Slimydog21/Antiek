@@ -1,4 +1,9 @@
-"""Deterministic Midnight Oil execution proof with no external side effects."""
+"""The single Midnight Oil runner and its permanent synthetic oracle.
+
+``execute_midnight_oil`` defaults to a deterministic, free, networkless
+synthetic execution.  SPR-05 adds authorized budget decrement and SPR-06 is
+the only operator-gated seam allowed to make ``live`` execution reachable.
+"""
 
 from __future__ import annotations
 
@@ -25,7 +30,9 @@ from .contracts import (
 )
 
 _ROLES: tuple[MidnightOilRole, ...] = ("planner", "gatherer", "verifier", "synthesizer")
-class MidnightOilMockExecutionRequest(BaseModel):
+
+
+class MidnightOilExecutionRequest(BaseModel):
     launch_packet: MidnightOilLaunchPacket
     approval_receipt: MidnightOilApprovalReceipt
     runner_handoff: MidnightOilRunnerHandoff
@@ -33,7 +40,7 @@ class MidnightOilMockExecutionRequest(BaseModel):
     role_plans: list[MidnightOilRolePlan] = Field(min_length=4, max_length=4)
 
     @model_validator(mode="after")
-    def _approved_lineage_is_complete(self) -> MidnightOilMockExecutionRequest:
+    def _approved_lineage_is_complete(self) -> MidnightOilExecutionRequest:
         packet = self.launch_packet
         approval = self.approval_receipt
         handoff = self.runner_handoff
@@ -81,7 +88,9 @@ class MidnightOilMockExecutionRequest(BaseModel):
         if packet.role_count != len(_ROLES):
             raise ValueError("launch_packet must plan four mock swarm roles")
         if tuple(plan.role for plan in self.role_plans) != _ROLES:
-            raise ValueError("role_plans must contain planner, gatherer, verifier, synthesizer in order")
+            raise ValueError(
+                "role_plans must contain planner, gatherer, verifier, synthesizer in order"
+            )
         route_ids = [plan.planned_route_receipt_id for plan in self.role_plans]
         if route_ids != packet.role_route_receipt_ids:
             raise ValueError("role_plans must match launch_packet route receipts")
@@ -122,7 +131,7 @@ class MidnightOilMockExecutionRequest(BaseModel):
         return self
 
 
-class MidnightOilMockRoleOutput(BaseModel):
+class MidnightOilRoleOutput(BaseModel):
     role: MidnightOilRole
     status: Literal["synthetic_complete"] = "synthetic_complete"
     execution_mode: Literal["synthetic_no_provider"] = "synthetic_no_provider"
@@ -131,7 +140,7 @@ class MidnightOilMockRoleOutput(BaseModel):
     output_summary: str
 
 
-class MidnightOilMockExecutionReceipt(BaseModel):
+class MidnightOilExecutionReceipt(BaseModel):
     receipt_id: str
     run_id: str
     launch_packet_id: str
@@ -141,23 +150,44 @@ class MidnightOilMockExecutionReceipt(BaseModel):
     status: Literal["mock_completed"] = "mock_completed"
     synthetic: Literal[True] = True
     goal_fingerprint: str
-    role_outputs: list[MidnightOilMockRoleOutput]
+    role_outputs: list[MidnightOilRoleOutput]
     html_information_asset: str
     twin_note_html: str
-    actual_cost_usd: Literal[0.0] = 0.0
-    dispatch_performed: Literal[False] = False
-    budget_reserved: Literal[False] = False
-    provider_calls_made: Literal[False] = False
-    retrieval_performed: Literal[False] = False
-    graph_mutated: Literal[False] = False
-    persisted: Literal[False] = False
+    actual_cost_usd: float = Field(default=0.0, ge=0.0)
+    dispatch_performed: bool = False
+    budget_reserved: bool = False
+    provider_calls_made: bool = False
+    retrieval_performed: bool = False
+    graph_mutated: bool = False
+    final_artifact_created: bool = False
+    execution_mode: Literal["synthetic", "live"] = "synthetic"
+    persisted: bool = False
     notes: list[str]
 
+    @model_validator(mode="after")
+    def _synthetic_execution_cannot_claim_effects(self) -> MidnightOilExecutionReceipt:
+        if self.execution_mode == "synthetic" and (
+            self.actual_cost_usd != 0.0
+            or any(
+                (
+                    self.dispatch_performed,
+                    self.budget_reserved,
+                    self.provider_calls_made,
+                    self.retrieval_performed,
+                    self.graph_mutated,
+                    self.final_artifact_created,
+                    self.persisted,
+                )
+            )
+        ):
+            raise ValueError("synthetic execution cannot claim side effects or persistence")
+        return self
 
-def execute_mock_midnight_oil(req: MidnightOilMockExecutionRequest) -> MidnightOilMockExecutionReceipt:
+
+def execute_midnight_oil(req: MidnightOilExecutionRequest) -> MidnightOilExecutionReceipt:
     run_id = req.launch_packet.run_id
     role_outputs = [
-        MidnightOilMockRoleOutput(
+        MidnightOilRoleOutput(
             role=plan.role,
             route_receipt=_mock_route_receipt(plan=plan),
             output_summary=f"Synthetic {plan.role} stage completed without external execution.",
@@ -166,7 +196,7 @@ def execute_mock_midnight_oil(req: MidnightOilMockExecutionRequest) -> MidnightO
     ]
     goal_fingerprint = hashlib.sha256(req.launch_packet.goal.encode()).hexdigest()
     route_links = "".join(
-        f'<li><code>{escape(output.route_receipt.route_receipt_id)}</code> - {output.role}</li>'
+        f"<li><code>{escape(output.route_receipt.route_receipt_id)}</code> - {output.role}</li>"
         for output in role_outputs
     )
     information_asset = (
@@ -187,7 +217,7 @@ def execute_mock_midnight_oil(req: MidnightOilMockExecutionRequest) -> MidnightO
         "<li>Which competing explanations should the verifier test?</li>"
         "</ul><p>No insights are asserted because retrieval did not run.</p></aside>"
     )
-    return MidnightOilMockExecutionReceipt(
+    return MidnightOilExecutionReceipt(
         receipt_id=f"{run_id}-mock-execution",
         run_id=run_id,
         launch_packet_id=req.launch_packet.packet_id,

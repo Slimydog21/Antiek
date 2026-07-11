@@ -54,6 +54,12 @@ from .product_path import (
     resolve_worker_step_fn,
     run_job_offline,
 )
+from .runner import (
+    MidnightOilExecutionReceipt,
+    MidnightOilExecutionRequest,
+    MidnightOilRoleOutput,
+    execute_midnight_oil,
+)
 from .worker import (
     ProjectFn,
     StepFn,
@@ -64,12 +70,6 @@ from .worker import (
     run_worker_iteration,
     run_worker_loop,
 )
-from .mock_execution import (
-    MidnightOilMockExecutionReceipt,
-    MidnightOilMockExecutionRequest,
-    MidnightOilMockRoleOutput,
-    execute_mock_midnight_oil,
-)
 
 __all__ = [
     "ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV",
@@ -79,6 +79,9 @@ __all__ = [
     "JobStatus",
     "MidnightOilJob",
     "MidnightOilProductResult",
+    "MidnightOilExecutionReceipt",
+    "MidnightOilExecutionRequest",
+    "MidnightOilRoleOutput",
     "MidnightOilAppliedRunReceipt",
     "MidnightOilApprovalReceipt",
     "MidnightOilArtifactContract",
@@ -100,6 +103,7 @@ __all__ = [
     "create_with_recommended_ceiling",
     "deposit_job_results",
     "get_job",
+    "execute_midnight_oil",
     "job_summary_html",
     "is_known_adapter_key",
     "live_step_enabled",
