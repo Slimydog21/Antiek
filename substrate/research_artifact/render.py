@@ -74,7 +74,10 @@ def render_html(body: ResearchArtifactBody) -> str:
             citations = ""
             for citation in claim.citations:
                 label_parts = [
-                    citation.title or citation.document_id or citation.external_source_id or citation.citation_id,
+                    citation.title
+                    or citation.document_id
+                    or citation.external_source_id
+                    or citation.citation_id,
                     citation.source_kind,
                     citation.rights_class,
                     f"tier {citation.source_tier}" if citation.source_tier is not None else None,
@@ -82,12 +85,14 @@ def render_html(body: ResearchArtifactBody) -> str:
                     citation.resolution,
                 ]
                 label = " · ".join(part for part in label_parts if part)
-                citations += f'<li data-citation-id="{_esc(citation.citation_id)}">{_esc(label)}</li>'
+                citations += (
+                    f'<li data-citation-id="{_esc(citation.citation_id)}">{_esc(label)}</li>'
+                )
             if not citations:
                 citations = '<li class="empty">(no chunk citations)</li>'
             claims_html += (
                 '<div class="card" data-kind="claim">'
-                f'<p>{_esc(claim.statement)}</p><ul>{citations}</ul></div>'
+                f"<p>{_esc(claim.statement)}</p><ul>{citations}</ul></div>"
             )
     else:
         claims_html = '<p class="empty">No claim-level provenance yet.</p>'
@@ -112,7 +117,7 @@ def render_html(body: ResearchArtifactBody) -> str:
 <section id="synthesis"><h2>Synthesis excerpt</h2>{synth_block}</section>
 <section id="claims"><h2>Claims and sources</h2>{claims_html}</section>
 <section id="agent-notes"><h2>Agent notes</h2>
-<ul id="agent-notes-list">{"".join(f'<li>{_esc(n)}</li>' for n in body.agent_notes if (n or "").strip()) or '<li class="empty">(none yet)</li>'}</ul>
+<ul id="agent-notes-list">{"".join(f"<li>{_esc(n)}</li>" for n in body.agent_notes if (n or "").strip()) or '<li class="empty">(none yet)</li>'}</ul>
 <label for="note-input">Add cross-window note (Thariq two-way)</label>
 <textarea id="note-input" placeholder="Insight for the next agent session…"></textarea>
 <p class="tag">Findings/gaps stay graph-sourced. Notes import via <code>--import-notes</code> or API.</p></section>
@@ -123,33 +128,23 @@ def render_html(body: ResearchArtifactBody) -> str:
 <script>
 (function() {{
   var el = document.getElementById("antiek-artifact-v1");
-  var list = document.getElementById("agent-notes-list");
   var input = document.getElementById("note-input");
   function payload() {{ return JSON.parse(el.textContent); }}
-  function syncList(notes) {{
-    list.innerHTML = "";
-    if (!notes.length) {{
-      var li = document.createElement("li");
-      li.className = "empty";
-      li.textContent = "(none yet)";
-      list.appendChild(li);
-      return;
-    }}
-    notes.forEach(function(t) {{
-      var li = document.createElement("li");
-      li.textContent = t;
-      list.appendChild(li);
-    }});
-  }}
   document.getElementById("add-note").addEventListener("click", function() {{
     var t = (input.value || "").trim();
     if (!t) return;
     var p = payload();
-    p.agent_notes = p.agent_notes || [];
-    p.agent_notes.push(t);
-    el.textContent = JSON.stringify(p, null, 2);
-    syncList(p.agent_notes);
-    input.value = "";
+    // A sandboxed opaque-origin frame cannot name its parent origin. "*" is
+    // safe here because the host authenticates both event.source and origin.
+    // Keep the textarea/DOM unchanged until the canonical API write succeeds;
+    // the parent then reloads this frame from the committed artifact.
+    window.parent.postMessage({{
+      version: 1,
+      type: "antiek.research-artifact.append-note",
+      investigation_id: p.investigation_id,
+      note: t.slice(0, 20000),
+      expected_content_hash: document.querySelector("main").dataset.contentHash
+    }}, "*");
   }});
   document.getElementById("copy-prompt").addEventListener("click", function() {{
     var body = el.textContent;

@@ -111,6 +111,10 @@ export const WINDOW_PAGES: Record<string, { title: string; renderer: WindowPageR
     title: "Hosted book",
     renderer: lazy(() => import("./HostedHtmlDocumentHost")),
   },
+  research_artifact: {
+    title: "Research artifact",
+    renderer: lazy(() => import("./ResearchArtifactHost")),
+  },
 };
 
 export type WindowEligibleKind = keyof typeof WINDOW_PAGES;

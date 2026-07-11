@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>ResearchArtifact workstation view</title>
+  <style>
+    body { max-width: 72rem; margin: 2rem auto; padding: 0 1rem; font: 16px/1.5 system-ui, sans-serif; color: #17212b; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: .55rem; border: 1px solid #b8c1c8; text-align: left; vertical-align: top; }
+    code { background: #edf2f5; padding: .1rem .25rem; }
+  </style>
+</head>
+<body>
+  <h1>ResearchArtifact workstation view</h1>
+  <p><strong>Starting tip:</strong> exact <code>7105b5cbb</code>. <strong>Lane:</strong> private Profile-B artifact consumption and canonical note persistence only.</p>
+
+  <h2>Contract</h2>
+  <p>The existing export remains the sole mutation. Its response adds the canonical <code>view_url</code>. A new GET reads only <code>artifact_path_for(investigation_id)</code>; it accepts no path body or path parameter and performs no write, regeneration, import, or graph mutation.</p>
+  <p>The GET uses <code>lstat</code> and rejects missing files, symlinks, non-regular files, link counts other than one, files above 2 MiB, and invalid UTF-8. The opened descriptor is revalidated against the lstat device/inode to close replacement races. Unsafe states are indistinguishable as a 404.</p>
+  <p>The add-note control keeps its immediate DOM update and sends its parent a versioned, 20,000-character-bounded message containing only <code>investigation_id</code>, note text, and the rendered artifact's expected content hash. <code>POST /research/{id}/artifact/notes</code> accepts those two mutable values, never HTML, path, or <code>view_url</code>. The substrate reopens only the canonical path without following links, validates v2 identity and optimistic hash, append-only deduplicates, atomically replaces a private <code>0600</code> rendering using a synced same-directory temporary file, and only then records the existing agent-note event. Graph findings remain authoritative and untouched.</p>
+
+  <h2>Security boundary</h2>
+  <table>
+    <thead><tr><th>Layer</th><th>Required behavior</th><th>Proof</th></tr></thead>
+    <tbody>
+      <tr><td>HTTP</td><td><code>text/html</code>, <code>Cache-Control: no-store</code>, <code>X-Content-Type-Options: nosniff</code></td><td>Focused backend response test</td></tr>
+      <tr><td>Document CSP</td><td><code>sandbox allow-scripts</code>, deny defaults/network/forms/base; permit only inline artifact script/style plus data-only image/font assets</td><td>Exact directive assertions</td></tr>
+      <tr><td>Iframe</td><td><code>sandbox="allow-scripts"</code> and never <code>allow-same-origin</code></td><td>Host DOM test</td></tr>
+      <tr><td>Identity</td><td>Host derives the canonical URL from investigation identity and ignores caller-supplied URL payloads</td><td>Host hostile-payload regression</td></tr>
+      <tr><td>Message</td><td>Accept only the exact iframe <code>contentWindow</code>, sandbox origin <code>null</code>, version/type, matching identity, SHA-256 expected hash, and bounded nonblank note</td><td>Other-window/origin/identity/hash/version/bounds regressions</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Workstation behavior</h2>
+  <p>The existing ArtifactOutlineShelf export action exports first, then opens window kind <code>research_artifact</code>. Its stable ID is <code>win:research_artifact:&lt;investigation_id&gt;</code>, so the existing window store focuses a repeated open rather than stacking duplicates. The window-native host renders the canonical artifact in an iframe. Profile-B inline copy and note scripts remain intentional and enabled, but the opaque iframe origin cannot exercise API-origin authority.</p>
+  <p>The parent alone performs the typed authenticated API call. It shows concise saving/saved/error state and reloads the canonical iframe after success so the next message carries the new current hash. A stale hash is a stable 409 and does not overwrite newer artifact state.</p>
+
+  <h2>Acceptance matrix</h2>
+  <table>
+    <thead><tr><th>Row</th><th>Acceptance</th></tr></thead>
+    <tbody>
+      <tr><td>Backend happy path</td><td>Exact HTML survives, including inline style/script and UTF-8; file bytes and mtime remain unchanged.</td></tr>
+      <tr><td>Backend hostile filesystem</td><td>Missing, symlink, directory, hard-link, oversize, and non-UTF-8 all fail closed.</td></tr>
+      <tr><td>No caller path</td><td>A hostile <code>?path=</code> cannot influence the served artifact.</td></tr>
+      <tr><td>Export handoff</td><td>Response exposes the percent-encoded canonical view route.</td></tr>
+      <tr><td>Frontend isolation</td><td>Iframe allows scripts only; supplied URL cannot override canonical identity-derived source.</td></tr>
+      <tr><td>Window cardinality</td><td>Shelf supplies one stable ID per investigation to the existing deduplicating window store.</td></tr>
+      <tr><td>Durable note</td><td>A saved note survives canonical reads and iframe refresh; a duplicate reports skipped without another append/event.</td></tr>
+      <tr><td>Failure and bounds</td><td>Stale hash is stable 409; identity mismatch, oversize/blank note, unsafe canonical files, and malformed hashes fail closed; atomic replace failure preserves the old file and emits no event.</td></tr>
+      <tr><td>Authority/privacy</td><td>No caller HTML/path is accepted, no source passage text is introduced, and graph-derived findings/claims remain unchanged.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Explicit non-goals</h2>
+  <p>No HostedHtmlDocumentHost edits, ResearchWorkstation/App mounting, public synthesis replacement, artifact schema changes, source-text embedding, live calls, control-plane edits, commits, pushes, PRs, merges, or deploys.</p>
+</body>
+</html>
