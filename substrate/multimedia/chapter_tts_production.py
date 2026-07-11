@@ -57,7 +57,6 @@ class ChapterTTSProductionError(RuntimeError):
 class ChapterTTSSynthesisResult:
     audio_bytes: bytes
     provider_request_id: str
-    actual_microdollars: int
 
 
 @dataclass(frozen=True)
@@ -396,7 +395,7 @@ def produce_chapter_narration(
         _mark_unknown(db_path, execution.execution_id, signing_key)
         raise
 
-    actual_cents = (result.actual_microdollars + 9_999) // 10_000
+    actual_cents = (authorization.approved_ceiling_microdollars + 9_999) // 10_000
     try:
         bind_provider_job_with_mutation(
             db_path=db_path,
@@ -768,12 +767,6 @@ def _validate_synthesis_result(
     if not 0 < len(result.audio_bytes) <= _MAX_AUDIO_BYTES:
         raise ValueError("TTS response bytes are empty or exceed the byte ceiling")
     _identifier("provider_request_id", result.provider_request_id)
-    if (
-        isinstance(result.actual_microdollars, bool)
-        or result.actual_microdollars < 0
-        or result.actual_microdollars > authorization.approved_ceiling_microdollars
-    ):
-        raise ValueError("actual TTS spend exceeds signed authority")
 
 
 def _persist_raw(root: Path, execution_id: str, payload: bytes) -> tuple[str, str]:

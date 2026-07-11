@@ -232,7 +232,7 @@ def test_paid_send_materializes_truthful_audio_and_replays_once(tmp_path: Path) 
 
     def synthesize(request: PreparedChapterTTSRequest) -> ChapterTTSSynthesisResult:
         calls.append(1)
-        return ChapterTTSSynthesisResult(_wav_bytes(), "provider-request-1", 12_000)
+        return ChapterTTSSynthesisResult(_wav_bytes(), "provider-request-1")
 
     first = produce_chapter_narration(**values, synthesize=synthesize)  # type: ignore[arg-type]
     second = produce_chapter_narration(**values, synthesize=synthesize)  # type: ignore[arg-type]
@@ -271,7 +271,7 @@ def test_attempt_mac_tamper_fails_closed(tmp_path: Path) -> None:
     produce_chapter_narration(
         **values,  # type: ignore[arg-type]
         synthesize=lambda request: ChapterTTSSynthesisResult(
-            _wav_bytes(), "provider-request-mac", 10_000
+            _wav_bytes(), "provider-request-mac"
         ),
     )
     authorization = _authorization(prepared.body_digest)
@@ -297,7 +297,7 @@ def test_persisted_raw_tamper_breaks_received_resume(tmp_path: Path) -> None:
 
     def synthesize(request: PreparedChapterTTSRequest) -> ChapterTTSSynthesisResult:
         calls.append(1)
-        return ChapterTTSSynthesisResult(_wav_bytes(), "provider-request-raw", 10_000)
+        return ChapterTTSSynthesisResult(_wav_bytes(), "provider-request-raw")
 
     artifact = produce_chapter_narration(**values, synthesize=synthesize)  # type: ignore[arg-type]
     execution_id = "mmexec_" + hashlib.sha256(
@@ -322,7 +322,7 @@ def test_invalid_provider_bytes_after_send_are_never_retried(tmp_path: Path) -> 
 
     def invalid(request: PreparedChapterTTSRequest) -> ChapterTTSSynthesisResult:
         calls.append(1)
-        return ChapterTTSSynthesisResult(b"", "provider-request-empty", 0)
+        return ChapterTTSSynthesisResult(b"", "provider-request-empty")
 
     with pytest.raises(ValueError, match="empty"):
         produce_chapter_narration(**values, synthesize=invalid)  # type: ignore[arg-type]
@@ -339,7 +339,7 @@ def test_twenty_concurrent_callers_invoke_provider_once(tmp_path: Path) -> None:
     def synthesize(request: PreparedChapterTTSRequest) -> ChapterTTSSynthesisResult:
         with lock:
             calls.append(1)
-        return ChapterTTSSynthesisResult(_wav_bytes(), "provider-request-race", 10_000)
+        return ChapterTTSSynthesisResult(_wav_bytes(), "provider-request-race")
 
     def run() -> object:
         try:
