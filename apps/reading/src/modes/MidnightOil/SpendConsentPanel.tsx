@@ -4,7 +4,7 @@
  * Free-file. Does not issue/claim receipts, hold keys, or authorize spend.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { LemonButton, LemonCard } from "../../components/lemon";
 import {
   formatConsentReceiptSummary,
@@ -16,7 +16,7 @@ import {
 export interface SpendConsentPanelProps {
   /** Injectable receipt loader/parser input. */
   loadFn?: () => Promise<unknown>;
-  /** Optional static receipt for tests. */
+  /** Optional static receipt (re-parsed on every receipt prop change). */
   receipt?: unknown;
   nowMs?: number;
 }
@@ -28,23 +28,31 @@ export default function SpendConsentPanel({
 }: SpendConsentPanelProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<ConsentReceiptView | null>(() => {
-    if (receipt == null) return null;
-    try {
-      return parseConsentReceiptView(receipt);
-    } catch {
-      return null;
+  const [loaded, setLoaded] = useState<ConsentReceiptView | null>(null);
+
+  // Re-parse static receipt whenever the prop changes (no stale prior view).
+  const staticParsed = useMemo(() => {
+    if (receipt == null || loadFn) {
+      return { view: null as ConsentReceiptView | null, error: null as string | null };
     }
-  });
+    try {
+      return { view: parseConsentReceiptView(receipt), error: null as string | null };
+    } catch (e) {
+      return {
+        view: null as ConsentReceiptView | null,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  }, [receipt, loadFn]);
 
   async function onLoad() {
     if (!loadFn) return;
     setBusy(true);
     setError(null);
-    setView(null);
+    setLoaded(null);
     try {
       const raw = await loadFn();
-      setView(parseConsentReceiptView(raw));
+      setLoaded(parseConsentReceiptView(raw));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -52,19 +60,8 @@ export default function SpendConsentPanel({
     }
   }
 
-  // Re-parse static receipt when provided without loadFn (fail closed on invent).
-  let staticError: string | null = null;
-  let staticView = view;
-  if (receipt != null && !loadFn && view == null) {
-    try {
-      staticView = parseConsentReceiptView(receipt);
-    } catch (e) {
-      staticError = e instanceof Error ? e.message : String(e);
-    }
-  }
-
-  const shown = staticView;
-  const shownError = error ?? staticError;
+  const shown = loadFn ? loaded : staticParsed.view;
+  const shownError = loadFn ? error : staticParsed.error;
 
   return (
     <div data-testid="spend-consent-panel">

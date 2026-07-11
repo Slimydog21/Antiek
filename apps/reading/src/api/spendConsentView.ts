@@ -86,5 +86,6 @@ export function isConsentExpired(
   if (typeof nowMs !== "number" || !Number.isFinite(nowMs)) {
     throw new Error("nowMs must be a finite number");
   }
-  return nowMs > r.expires_at_ms;
+  // Match substrate: reject at now_ms >= expires_at_ms (exact expiry is expired).
+  return nowMs >= r.expires_at_ms;
 }

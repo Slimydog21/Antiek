@@ -50,6 +50,7 @@ describe("isConsentExpired / format", () => {
   it("expiry and summary", () => {
     const r = parseConsentReceiptView(sample);
     expect(isConsentExpired(r, 1_500)).toBe(false);
+    expect(isConsentExpired(r, 2_000)).toBe(true); // exact expiry is expired
     expect(isConsentExpired(r, 2_001)).toBe(true);
     expect(formatConsentReceiptSummary(r)).toMatch(/ceiling 500/);
   });
