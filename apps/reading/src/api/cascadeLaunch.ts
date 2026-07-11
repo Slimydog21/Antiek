@@ -4,7 +4,8 @@
  * POST /research/plans/{root_id}/launch
  *
  * When require_source_preflight is true, source_policy must be non-empty
- * before any network call. Never invents an empty successful policy pack.
+ * before any network call, and a successful response must include a
+ * source_preflight receipt. Blank/unknown policy entries fail closed.
  */
 
 import { API_BASE, apiFetch } from "../lib/api";
@@ -26,15 +27,15 @@ export interface CascadeLaunchRequest {
   root_id: string;
   per_research_budget_usd?: number;
   aggregate_budget_usd?: number | null;
-  source_policy?: SourcePolicyName[] | null;
+  source_policy?: SourcePolicyName[] | string[] | null;
   require_source_preflight?: boolean;
 }
 
 export interface CascadeLaunchResult {
-  // Opaque launch body — validated for presence only at this residual.
   raw: Record<string, unknown>;
   source_policy: SourcePolicyName[] | null;
   require_source_preflight: boolean;
+  source_preflight: Record<string, unknown> | null;
 }
 
 export class CascadeLaunchHttpError extends Error {
@@ -82,7 +83,10 @@ export function normalizeSourcePolicy(
   const bad: string[] = [];
   for (const raw of policy) {
     const s = String(raw).trim();
-    if (!s) continue;
+    if (!s) {
+      bad.push(JSON.stringify(raw));
+      continue;
+    }
     if (!allowed.has(s)) {
       bad.push(s);
       continue;
@@ -94,10 +98,24 @@ export function normalizeSourcePolicy(
   if (bad.length) {
     throw new CascadeLaunchClientError(
       "source_policy_invalid",
-      "unknown source_policy entries: " + bad.join(", "),
+      "unknown or blank source_policy entries: " + bad.join(", "),
     );
   }
   return out.length ? out : null;
+}
+
+function extractSourcePreflight(
+  raw: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const pf = raw.source_preflight;
+  if (pf === null || pf === undefined) return null;
+  if (typeof pf !== "object" || Array.isArray(pf)) {
+    throw new CascadeLaunchClientError(
+      "source_preflight_invalid",
+      "source_preflight must be an object when present",
+    );
+  }
+  return pf as Record<string, unknown>;
 }
 
 export async function postCascadeLaunch(
@@ -140,13 +158,33 @@ export async function postCascadeLaunch(
       }),
     },
   );
-  const raw = await readOkBody(res);
-  if (!raw || typeof raw !== "object") {
+  const rawUnknown = await readOkBody(res);
+  if (!rawUnknown || typeof rawUnknown !== "object" || Array.isArray(rawUnknown)) {
     throw new Error("cascade-launch response must be an object");
   }
+  const raw = rawUnknown as Record<string, unknown>;
+  const source_preflight = extractSourcePreflight(raw);
+
+  if (require) {
+    if (!source_preflight) {
+      throw new CascadeLaunchClientError(
+        "source_preflight_missing",
+        "launch with require_source_preflight must return source_preflight receipt",
+      );
+    }
+    const receiptPolicy = source_preflight.source_policy;
+    if (!Array.isArray(receiptPolicy) || receiptPolicy.length === 0) {
+      throw new CascadeLaunchClientError(
+        "source_preflight_missing_policy",
+        "source_preflight.source_policy must be a non-empty array",
+      );
+    }
+  }
+
   return {
-    raw: raw as Record<string, unknown>,
+    raw,
     source_policy: policy,
     require_source_preflight: require,
+    source_preflight,
   };
 }

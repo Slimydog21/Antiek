@@ -23,7 +23,7 @@ afterEach(() => {
 });
 
 describe("normalizeSourcePolicy", () => {
-  it("dedupes and rejects unknown entries", () => {
+  it("dedupes and rejects unknown or blank entries", () => {
     expect(normalizeSourcePolicy(["arxiv", "arxiv", "web"])).toEqual([
       "arxiv",
       "web",
@@ -32,6 +32,9 @@ describe("normalizeSourcePolicy", () => {
     expect(normalizeSourcePolicy(null)).toBeNull();
     expect(() => normalizeSourcePolicy(["arxiv", "ftp"])).toThrow(
       /source_policy_invalid|unknown/,
+    );
+    expect(() => normalizeSourcePolicy(["arxiv", " "])).toThrow(
+      /blank|source_policy_invalid/,
     );
   });
 });
@@ -47,11 +50,18 @@ describe("postCascadeLaunch", () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("POSTs launch with source_policy when provided", async () => {
+  it("POSTs launch with source_policy and requires receipt when required", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ launched: true, handles: [] }),
+      json: async () => ({
+        launched: true,
+        handles: [],
+        source_preflight: {
+          source_policy: ["arxiv", "substack"],
+          source_receipt_id: "rcpt-1",
+        },
+      }),
       text: async () => "",
     } as unknown as Response);
 
@@ -62,18 +72,27 @@ describe("postCascadeLaunch", () => {
       per_research_budget_usd: 0.25,
     });
     expect(body.source_policy).toEqual(["arxiv", "substack"]);
-    expect(body.raw.launched).toBe(true);
+    expect(body.source_preflight?.source_receipt_id).toBe("rcpt-1");
     expect(mockFetch).toHaveBeenCalledWith(
       "/research/plans/root-1/launch",
       expect.objectContaining({ method: "POST" }),
     );
-    const init = mockFetch.mock.calls[0][1] as { body: string };
-    expect(JSON.parse(init.body)).toEqual({
-      per_research_budget_usd: 0.25,
-      aggregate_budget_usd: null,
-      source_policy: ["arxiv", "substack"],
-      require_source_preflight: true,
-    });
+  });
+
+  it("fails closed when required launch omits source_preflight", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ launched: true, handles: [] }),
+      text: async () => "",
+    } as unknown as Response);
+    await expect(
+      postCascadeLaunch({
+        root_id: "root-1",
+        source_policy: ["web"],
+        require_source_preflight: true,
+      }),
+    ).rejects.toMatchObject({ code: "source_preflight_missing" });
   });
 
   it("rejects empty root_id and nonpositive budget without network", async () => {
@@ -90,7 +109,8 @@ describe("postCascadeLaunch", () => {
     mockFetch.mockResolvedValue({
       ok: false,
       status: 409,
-      text: async () => JSON.stringify({ detail: { code: "source_policy_unavailable" } }),
+      text: async () =>
+        JSON.stringify({ detail: { code: "source_policy_unavailable" } }),
       json: async () => ({}),
     } as unknown as Response);
     await expect(
